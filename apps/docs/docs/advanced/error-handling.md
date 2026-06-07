@@ -119,3 +119,7 @@ Reach for this when a decision is transient and tied to one run. If the fact nee
 ## What you'll see in DevTool
 
 The failed-block detail panel surfaces the error message at the top, the `code` as a small mono-text badge, a dedicated "Raw output" section when the runtime captured one, a "Validation issues" list when Zod issues are present, and a "Details" JSON panel that always renders any other keys on `error.details`. For tool-invoked blocks that fail, the panel also shows the originating tool call's arguments — see [DevTool overview](/docs/devtool/overview).
+
+## See also
+
+To route block failures to an external observability service (Sentry, Datadog, Bugsnag) for production alerting, see [Error capture](./error-capture.md).

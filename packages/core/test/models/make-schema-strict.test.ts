@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { makeSchemaStrict } from "../../src/models/makeSchemaStrict";
+import {
+  makeSchemaStrict,
+  assertStrictCompatible,
+} from "../../src/models/makeSchemaStrict";
+import { StrictSchemaError } from "../../src/errors/strict-schema-error";
 
 describe("makeSchemaStrict", () => {
   it("strips .optional() from object properties", () => {
@@ -137,5 +141,182 @@ describe("makeSchemaStrict", () => {
     const strict = makeSchemaStrict(original);
     const result = strict.safeParse({ name: "test" });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("assertStrictCompatible", () => {
+  it("throws on a reachable z.record with the offending path", () => {
+    const schema = z.object({
+      summary: z.string(),
+      metrics: z.record(z.string(), z.number()),
+    });
+
+    expect(() => assertStrictCompatible(schema)).toThrow(StrictSchemaError);
+    try {
+      assertStrictCompatible(schema);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(StrictSchemaError);
+      const e = err as StrictSchemaError;
+      expect(e.violations).toHaveLength(1);
+      expect(e.violations[0]).toMatchObject({
+        path: "$.metrics",
+        typeName: "ZodRecord",
+      });
+    }
+  });
+
+  it("throws on a record nested inside an array with a `[]` path segment", () => {
+    const schema = z.object({
+      rows: z.array(
+        z.object({
+          tags: z.record(z.string(), z.string()),
+        }),
+      ),
+    });
+
+    try {
+      assertStrictCompatible(schema);
+      throw new Error("expected throw");
+    } catch (err) {
+      const e = err as StrictSchemaError;
+      expect(e).toBeInstanceOf(StrictSchemaError);
+      expect(e.violations[0].path).toBe("$.rows[].tags");
+      expect(e.violations[0].typeName).toBe("ZodRecord");
+    }
+  });
+
+  it("throws on a non-literal union", () => {
+    const schema = z.object({
+      payload: z.union([z.object({ a: z.string() }), z.object({ b: z.number() })]),
+    });
+
+    try {
+      assertStrictCompatible(schema);
+      throw new Error("expected throw");
+    } catch (err) {
+      const e = err as StrictSchemaError;
+      expect(e).toBeInstanceOf(StrictSchemaError);
+      expect(e.violations[0].path).toBe("$.payload");
+      expect(e.violations[0].typeName).toBe("ZodUnion");
+    }
+  });
+
+  it("throws on a discriminated union of differing shapes", () => {
+    const schema = z.object({
+      result: z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("ok"), value: z.string() }),
+        z.object({ kind: z.literal("err"), reason: z.string() }),
+      ]),
+    });
+
+    expect(() => assertStrictCompatible(schema)).toThrow(StrictSchemaError);
+  });
+
+  it("surfaces a violation nested inside a record value in the same throw", () => {
+    // A record (itself a violation) whose value object contains a union. Both
+    // the record and the nested union should be reported at once, so the author
+    // does not have to fix the record, re-run, then discover the union.
+    const schema = z.object({
+      byKey: z.record(
+        z.string(),
+        z.object({ choice: z.union([z.object({ a: z.string() }), z.object({ b: z.number() })]) }),
+      ),
+    });
+
+    try {
+      assertStrictCompatible(schema);
+      throw new Error("expected throw");
+    } catch (err) {
+      const e = err as StrictSchemaError;
+      expect(e).toBeInstanceOf(StrictSchemaError);
+      const paths = e.violations.map((v) => v.path);
+      expect(paths).toContain("$.byKey"); // the record itself
+      expect(paths).toContain("$.byKey[*].choice"); // the nested union under the open value
+    }
+  });
+
+  it("does not over-report a record of safe values", () => {
+    const schema = z.object({ counts: z.record(z.string(), z.number()) });
+    try {
+      assertStrictCompatible(schema);
+      throw new Error("expected throw");
+    } catch (err) {
+      const e = err as StrictSchemaError;
+      // Only the record itself — the number value type is strict-safe.
+      expect(e.violations).toHaveLength(1);
+      expect(e.violations[0].path).toBe("$.counts");
+    }
+  });
+
+  it("exposes violations via both `violations` and `details.violations`", () => {
+    const schema = z.object({ metrics: z.record(z.string(), z.number()) });
+    try {
+      assertStrictCompatible(schema);
+      throw new Error("expected throw");
+    } catch (err) {
+      const e = err as StrictSchemaError;
+      expect(e.violations).toBe(e.details.violations);
+    }
+  });
+
+  it("passes an enum-style union of literals", () => {
+    const schema = z.object({
+      status: z.union([z.literal("a"), z.literal("b"), z.literal("c")]),
+    });
+
+    expect(() => assertStrictCompatible(schema)).not.toThrow();
+  });
+
+  it("passes object properties wrapped in optional/default/nullable (stripped first)", () => {
+    const schema = z.object({
+      a: z.string().optional(),
+      b: z.boolean().default(false),
+      c: z.number().nullable(),
+      nested: z.object({ d: z.string().optional() }),
+    });
+
+    expect(() => assertStrictCompatible(schema)).not.toThrow();
+  });
+
+  it("passes non-object roots (string, unknown)", () => {
+    expect(() => assertStrictCompatible(z.string())).not.toThrow();
+    expect(() => assertStrictCompatible(z.unknown())).not.toThrow();
+  });
+
+  it("passes a schema whose root is wrapped in .superRefine() (ZodEffects)", () => {
+    const schema = z
+      .object({ category: z.string(), confidence: z.number() })
+      .superRefine(() => {});
+
+    expect(() => assertStrictCompatible(schema)).not.toThrow();
+  });
+
+  it("prefixes the label onto the thrown message", () => {
+    const schema = z.object({ metrics: z.record(z.string(), z.number()) });
+
+    expect(() => assertStrictCompatible(schema, 'Generator "x"')).toThrow(
+      /Generator "x" output schema is not OpenAI strict-mode compatible/,
+    );
+  });
+});
+
+describe("makeSchemaStrict validate option", () => {
+  it("returns the strict schema unchanged when validation passes", () => {
+    const schema = z.object({ a: z.string().optional() });
+    const strict = makeSchemaStrict(schema, { validate: true });
+    // optional was stripped → `a` is now required
+    expect(strict.safeParse({}).success).toBe(false);
+    expect(strict.safeParse({ a: "x" }).success).toBe(true);
+  });
+
+  it("throws when validation fails", () => {
+    const schema = z.object({ metrics: z.record(z.string(), z.number()) });
+    expect(() => makeSchemaStrict(schema, { validate: true })).toThrow(StrictSchemaError);
+  });
+
+  it("does not throw without the validate flag (transform only)", () => {
+    const schema = z.object({ metrics: z.record(z.string(), z.number()) });
+    expect(() => makeSchemaStrict(schema)).not.toThrow();
   });
 });

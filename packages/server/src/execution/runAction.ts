@@ -812,7 +812,8 @@ export async function runActionInternal<
       stores: options.stores,
       logger,
       tracingLevel: options.runtimeConfig.tracingLevel,
-      durabilityEnabled: options.runtimeConfig.durabilityProvider !== undefined
+      durabilityEnabled: options.runtimeConfig.durabilityProvider !== undefined,
+      errorCapture: options.runtimeConfig.errorCapture
     });
   } catch (setupError) {
     deregisterAbortController(requestId);

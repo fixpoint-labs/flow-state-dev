@@ -190,9 +190,10 @@ Update policy:
 ### BP-016: Generator outputSchemas must be OpenAI strict-compatible
 
 - Status: Active
-- Date: 2026-05-11
+- Date: 2026-05-11 (definition-time enforcement added 2026-06-07)
 - Rule:
   - Generator `outputSchema` values must serialize to a JSON schema OpenAI's structured-output strict mode accepts.
+  - **This is enforced automatically.** `generator()` calls `assertStrictCompatible(outputSchema)` at construction, so a violating schema throws a `StrictSchemaError` at definition (module load) naming the offending path — not lazily on the first live model call. The rules below are what that check enforces.
   - Concretely:
     - **No `z.record()` on object roots or anywhere reachable from a generator output.** It serializes to `additionalProperties: true`, which strict mode rejects. Use a fixed-shape `z.object({...})` when the keys are known. When the keys are dynamic, use `z.array(z.object({ key: z.string(), value: z.string() }))` and convert to a `Record` at the writer seam.
     - **No `z.optional()` or `z.default()` on generator outputs.** They remove the key from the `required` set. Use `z.nullable()` (key stays required, value can be `null`).
@@ -200,10 +201,10 @@ Update policy:
   - Two examples in this repo:
     - Fixed-shape metrics: [`labs/trading-desk/src/flows/trading-desk/phase-2/thesis-schemas.ts`](../../labs/trading-desk/src/flows/trading-desk/phase-2/thesis-schemas.ts) (closed `z.object({ conviction, horizon, target, stop })`).
     - Array-of-pairs metrics for variable keys + the canonical nullable section shape: [`labs/trading-desk/src/flows/trading-desk/blocks/thesis-schema.ts`](../../labs/trading-desk/src/flows/trading-desk/blocks/thesis-schema.ts).
-  - Authors can sanity-check a schema in a test: import `makeSchemaStrict` from `@flow-state-dev/core` and run the result through a walker that fails on the patterns above. The trading-desk example ships such a guard at [`labs/trading-desk/test/output-schemas-strict.spec.ts`](../../labs/trading-desk/test/output-schemas-strict.spec.ts) — copy it into any package that defines generator outputs.
+  - To assert a schema constant in a test (e.g. a multi-consumer schema not yet wired to a generator), import `assertStrictCompatible` from `@flow-state-dev/core` and call it: `expect(() => assertStrictCompatible(mySchema)).not.toThrow()`. There is no walker to copy — the one canonical implementation lives in core. See [`labs/trading-desk/test/output-schemas-strict.spec.ts`](../../labs/trading-desk/test/output-schemas-strict.spec.ts) for the per-package pattern.
 - Why:
-  - The framework calls `makeSchemaStrict()` internally before handing schemas to the AI SDK ([`packages/core/src/models/createAiSdkModelResolver.ts`](../../packages/core/src/models/createAiSdkModelResolver.ts)), but the helper only unwraps `optional` / `default` / `nullable` — it does not transform `record` or `union` patterns. Those bypass the framework's safety net and fail at first generator call against OpenAI strict mode, surfacing as opaque "Invalid schema for response_format" errors that are hard to diagnose without context.
-  - Catching the bug at test time (via the strict-mode walker) is cheaper than catching it at runtime on a real API call, especially because the framework's `intent/*` fallback wraps the strict-mode error in a "All models in group failed" message that hides the root cause.
+  - The framework calls `makeSchemaStrict()` internally before handing schemas to the AI SDK ([`packages/core/src/models/createAiSdkModelResolver.ts`](../../packages/core/src/models/createAiSdkModelResolver.ts)), but the helper only unwraps `optional` / `default` / `nullable` — it does not transform `record` or `union` patterns. `generator()` now runs `assertStrictCompatible` at definition to catch those eagerly; without it they bypass the framework's safety net and fail at first generator call against OpenAI strict mode, surfacing as opaque "Invalid schema for response_format" errors that are hard to diagnose without context.
+  - Catching the bug at definition time (the eager throw) is cheaper than catching it at runtime on a real API call, especially because the framework's `intent/*` fallback wraps the strict-mode error in a "All models in group failed" message that hides the root cause.
   - Phase 1 of the trading-desk app hit this bug three times in one day across three different schema patterns (record, optional, union) before BP-016 existed. The pattern is real and recurring.
 
 ### BP-017: Use the generator `context` slot for typed, segmented prompts
@@ -411,16 +412,16 @@ Update policy:
 ### BP-027: User-scoped resources default to shared (`flowIsolation` off); isolate only deliberately
 
 - Status: Active
-- Date: 2026-06-05
+- Date: 2026-06-05 (updated 2026-06-06, FIX-735)
 - Rule:
   - Leave `flowIsolation` unset (or set it to `false`) on user-scoped resources unless there is a deliberate privacy or isolation reason — e.g., the resource contains per-app configuration that should never bleed between unrelated products sharing the same `userId`.
   - Do NOT reflexively add `flowIsolation: true` on every user-scoped resource as a "safe default." Reflexive isolation prevents legitimate cross-flow reads without any benefit.
-  - When any user-scoped resource on a flow carries `flowIsolation: true`, the framework's `effectiveScopeIsolation` function raises the flag for the ENTIRE flow's user scope — ALL user-scoped resources (including those with `flowIsolation: false`) then resolve their storage key to `{userId}:{flowKind}` instead of bare `{userId}`. One stray isolation flag silently breaks cross-flow sharing for every other user-scoped resource on the flow. Until FIX-735 ships (per-resource-granularity isolation), isolation is an all-or-nothing property at the flow-scope level.
+  - `flowIsolation` is honored **per resource** (FIX-735). A `flowIsolation: false` resource keys at the bare `{userId}` and stays shared across flows even when a sibling on the same flow declares `flowIsolation: true` (which keys at `{userId}:{flowKind}`). The flow-level `isolateUserState` / `isolateOrgState` flag is only the default for resources that don't declare their own, plus the key for the scope's own `state` blob.
   - The practical test: if a second flow needs to read this resource without a client bridge (e.g., the analysis flow reads the portfolio flow's `accounts` and `portfolioQuotes` at `seedSession`), the resource MUST have `flowIsolation: false` (or unset) on both sides.
 - Why:
-  - The trading-desk hit this exactly: when `accounts`, `portfolioQuotes`, and `specialInstructions` each carried `flowIsolation: true`, the analysis flow's `seedSession` was resolving the portfolio's account data under `{userId}:analysis`, not the bare `{userId}` the portfolio flow wrote to — so it read zero accounts. The resource appeared written, but no cross-flow consumer could find it.
-  - Until FIX-735 resolves per-resource isolation granularity, the only safe, predictable behavior is: default shared, opt into isolation explicitly and with documentation of the reason.
-- See: FIX-735 (tracks the framework-level gap that makes isolation an all-or-nothing flow-scope property)
+  - Default shared keeps cross-flow reads working without a client bridge; opt into isolation only with a documented reason.
+  - Before FIX-735 this was a footgun: any one isolated user-scoped resource collapsed the WHOLE flow's user scope to `{userId}:{flowKind}`, silently breaking cross-flow sharing for every shared sibling. The trading-desk hit exactly this — `accounts`, `portfolioQuotes`, and `specialInstructions` all isolated, so the analysis flow's `seedSession` read zero accounts. Per-resource granularity removes the collapse; the default-shared guidance still stands.
+- See: FIX-735 (per-resource isolation granularity — shipped)
 
 ## Template For New Entries
 

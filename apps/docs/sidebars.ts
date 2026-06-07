@@ -213,6 +213,7 @@ const sidebars: SidebarsConfig = {
         "advanced/generator-prompts-markdown",
         "advanced/resource-templates-markdown",
         "advanced/error-handling",
+        "advanced/error-capture",
         "advanced/idempotency",
         "advanced/durable-execution",
         "advanced/voice",

@@ -214,6 +214,8 @@ const deliberate = generator({
 
 Examples use `intent/*` strings, not the underlying `provider/model`. That's the point of intents: blocks declare what they need; the resolver decides which model fills the role.
 
+A note on structured outputs: a generator's `outputSchema` must be compatible with OpenAI's strict structured-output mode (no open-keyed `z.record()`, no unions of differently-shaped variants). The framework checks this when you define the generator and throws with the offending path, so a bad schema fails immediately rather than on the first model call. See [`assertStrictCompatible`](/docs/api/core#schema-validation) for the details and the fixes.
+
 ## Array Fallback
 
 Don't need a named intent? Pass an array directly. The framework tries each model in order:
