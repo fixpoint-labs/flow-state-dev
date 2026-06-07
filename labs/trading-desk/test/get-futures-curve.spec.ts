@@ -95,7 +95,10 @@ describe("get_futures_curve handler", () => {
     const es = result.output.products.find((p) => p.productCode === "ES");
     expect(es?.lastPrice).toBe(101);
     expect(es?.changePct).toBeCloseTo(0.01, 6);
-    expect(["risk-on", "neutral", "risk-off"]).toContain(result.output.riskTone);
+    // Every leg moved +1% identically, so the equity-minus-gold composite is 0
+    // → neutral. A precise assertion: it would flip to risk-on if the composite
+    // ever stopped subtracting the gold leg.
+    expect(result.output.riskTone).toBe("neutral");
   });
 
   it("degrades to unavailable when no product prices", async () => {

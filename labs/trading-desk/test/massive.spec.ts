@@ -165,6 +165,31 @@ describe("fetchFuturesFrontNext", () => {
     expect(out).toEqual({ front: null, next: null });
   });
 
+  it("preserves the front leg when the next contract's aggregates fail", async () => {
+    // Regression: a failed aggregates fetch for the SECOND contract must not
+    // throw away the front leg that already priced (would null the whole
+    // product's front-month price + session change downstream).
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: any) => {
+      const url = String(input instanceof URL ? input.href : input);
+      if (url.includes("/v3/futures/contracts")) {
+        return new Response(JSON.stringify({ results: [{ ticker: "ESM6" }, { ticker: "ESU6" }] }), {
+          status: 200,
+        });
+      }
+      if (url.includes("/v3/futures/aggregates/ESM6")) {
+        return new Response(JSON.stringify({ results: [{ close: 5612.5 }, { close: 5646.0 }] }), {
+          status: 200,
+        });
+      }
+      // The next contract's aggregates fail.
+      return new Response("error", { status: 500 });
+    });
+
+    const { front, next } = await fetchFuturesFrontNext("ES");
+    expect(front).toEqual({ ticker: "ESM6", last: 5612.5, priorClose: 5646.0 });
+    expect(next).toBeNull();
+  });
+
   it("leaves priorClose null when only one bar is returned", async () => {
     mockFetchByUrl([
       { match: "/v3/futures/contracts", payload: { results: [{ ticker: "CLM6" }] } },

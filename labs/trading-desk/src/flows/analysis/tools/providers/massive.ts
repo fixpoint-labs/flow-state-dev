@@ -196,8 +196,16 @@ export async function fetchFuturesFrontNext(
 
   let next: FuturesNextLeg | null = null;
   if (tickers[1]) {
-    const nextCloses = await fetchContractCloses(tickers[1]);
-    next = { ticker: tickers[1], last: nextCloses.last };
+    // The next contract is secondary — only the front/next spread reads it. A
+    // failure fetching its aggregates must NOT discard the front leg that
+    // already priced, so it degrades to null on its own (the caller then
+    // reports a null spread, not a fully-failed product).
+    try {
+      const nextCloses = await fetchContractCloses(tickers[1]);
+      next = { ticker: tickers[1], last: nextCloses.last };
+    } catch {
+      next = null;
+    }
   }
   return { front, next };
 }

@@ -109,6 +109,24 @@ describe("get_options_chain handler", () => {
     expect(result.output.expiriesCovered).toBe(1);
   });
 
+  it("stays tagged massive (not unavailable) for an empty-but-successful chain", async () => {
+    process.env.MASSIVE_API_KEY = "test-key";
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response(JSON.stringify({ results: [] }), { status: 200 }),
+    );
+    const result = await testBlock(get_options_chain, {
+      input: { ticker: "ZZZZ", date: "2026-05-06" },
+      flow: fixtureFlow,
+      session: sessionFor("live"),
+    });
+    expect(result.error).toBeNull();
+    // The provider answered — the name simply has no listed options. That is a
+    // real "massive" answer with null fields, not an "unavailable" failure.
+    expect(result.output.source).toBe("massive");
+    expect(result.output.atmIv).toBeNull();
+    expect(result.output.expiriesCovered).toBe(0);
+  });
+
   it("degrades to unavailable when the live fetch fails", async () => {
     process.env.MASSIVE_API_KEY = "test-key";
     vi.spyOn(globalThis, "fetch").mockImplementation(
