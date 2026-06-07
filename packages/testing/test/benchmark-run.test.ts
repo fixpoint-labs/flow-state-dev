@@ -70,6 +70,48 @@ function judgeResolver(score: number): ModelResolver {
   return r;
 }
 
+function judgeResolverWithUsage(score: number): ModelResolver {
+  const structuredOutput = {
+    findings: [{ criterion: "rubric", score, assessment: "ok" }],
+  };
+  const r = ((modelId: string): GeneratorModel => ({
+    modelId,
+    async generate() {
+      return {
+        structuredOutput,
+        usage: { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 },
+        finishReason: "stop",
+      };
+    },
+    async *stream() {
+      yield {
+        type: "finish",
+        finishReason: "stop",
+        fullResult: { structuredOutput, finishReason: "stop" },
+      };
+    },
+  })) as ModelResolver;
+  r.resolveId = (modelId: string) => modelId;
+  return r;
+}
+
+/** A subject whose sequencer makes no model call, so executor cost is 0. */
+function noModelSubject(name: string): BenchmarkSubject {
+  const seq = sequencer({
+    name,
+    inputSchema,
+    stateSchema: z.record(z.string(), z.unknown()),
+  }).step(
+    handler({
+      name: `${name}-echo`,
+      inputSchema,
+      outputSchema: z.string(),
+      execute: async () => "a fixed answer",
+    }),
+  ) as SequencerDefinition<any, any>;
+  return { name, kind: "pattern", sequencer: seq, mapTask: (task) => ({ prompt: task.prompt }) };
+}
+
 function genSubject(name: string, kind: "pattern" | "baseline"): BenchmarkSubject {
   const seq = sequencer({
     name,
@@ -171,6 +213,21 @@ describe("runBenchmark", () => {
     );
     expect(healthy?.successfulRuns).toBe(2);
     expect(healthy?.mean).toBeCloseTo(0.7, 5);
+  });
+
+  it("counts the judge's own LLM cost toward the budget", async () => {
+    // The subject makes no model call (executor cost 0), so any nonzero total
+    // cost must come from the judge — proving judge spend is accounted for.
+    const report = await runBenchmark({
+      subjects: [noModelSubject("p")],
+      tasks: [tasks[0]],
+      model: "openai/gpt-5.4-mini",
+      judgeModel: "openai/gpt-5.4-mini",
+      runs: 1,
+      modelResolver: executorResolver("unused"),
+      judgeResolver: judgeResolverWithUsage(0.6),
+    });
+    expect(report.totalCostUsd).toBeGreaterThan(0);
   });
 
   it("trips the cost budget and marks the report budgetExceeded", async () => {

@@ -22,7 +22,7 @@ import type { ModelResolver } from "@flow-state-dev/core/types";
 import { testSequencer } from "../test-utilities/testSequencer";
 import { analyzerScorer } from "../eval/analyzerScorer";
 import { createLimiter } from "../eval/concurrency";
-import { estimateCostUsd } from "./pricing";
+import { sumCostFromItems } from "../eval/cost";
 import { buildBenchmarkReport } from "./report";
 import type {
   BenchmarkRunResult,
@@ -43,30 +43,6 @@ function forceModelResolver(modelId: string): ModelResolver {
   resolver.resolveId = (_id: string, options?: { preferProvider?: string | string[] }) =>
     base.resolveId(modelId, options);
   return resolver;
-}
-
-/**
- * Best-effort cost estimate for one subject run: sums `modelUsage` across the
- * emitted `block_trace` items. Returns 0 when trace observability is off (no
- * `modelUsage` present), keeping cost a non-blocking estimate.
- */
-function sumCostFromItems(items: readonly unknown[]): number {
-  let total = 0;
-  for (const item of items) {
-    const trace = item as {
-      type?: string;
-      modelUsage?: {
-        model: string;
-        promptTokens: number;
-        completionTokens: number;
-        totalTokens: number;
-      };
-    };
-    if (trace.type === "block_trace" && trace.modelUsage !== undefined) {
-      total += estimateCostUsd(trace.modelUsage.model, trace.modelUsage);
-    }
-  }
-  return total;
 }
 
 interface Cell {
@@ -169,6 +145,9 @@ export async function runBenchmark(
             });
             score = judged.score;
             passed = judged.passed;
+            // Include the judge's own LLM spend in the cell cost so the budget
+            // guard reflects total spend, not just the executor call.
+            costUsd += judged.costUsd ?? 0;
 
             for (const scorer of scorers) {
               const r = await scorer.score({
