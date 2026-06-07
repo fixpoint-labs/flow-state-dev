@@ -46,6 +46,14 @@ export type CollectionClientContentConfig = ResourceClientContentConfig & {
 /**
  * A compute function that derives client-visible data from a resource's state.
  * Analogous to scope-level clientData, but scoped to the resource.
+ *
+ * Note (FIX-741): `ClientDataOf` recovers the `data` branch's precise output type
+ * from the function's *return type*. Declared here as `JsonValue`, so an inline
+ * `data: (state): MyShape => ({...})` (return annotated, or a literal body)
+ * threads `MyShape`, but a function pre-assigned to `ResourceClientDataFn<...>`
+ * before being passed in erases its return to `JsonValue` — `ClientDataOf` then
+ * widens to `JsonValue` with no error. Inline the projection (or annotate its
+ * return) when you want the precise client type.
  */
 export type ResourceClientDataFn<TState extends JsonObject = JsonObject> =
   (state: Readonly<TState>) => JsonValue | Promise<JsonValue>;
