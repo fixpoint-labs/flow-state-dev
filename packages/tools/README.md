@@ -45,12 +45,17 @@ Perplexity Search API returns raw ranked web results (hybrid lexical + semantic 
 search({
   provider: "tavily",        // override auto-detection
   maxResults: 10,            // default: 5
-  searchDepth: "advanced",   // "basic" (default) or "advanced"
-  searchMode: "basic",       // provider-specific mode hint (Parallel: "advanced" (default) or "basic")
+  tier: "deep",              // "fast" | "balanced" (default) | "deep" — retrieval thoroughness
+  searchDepth: "advanced",   // "basic" (default) or "advanced" — content pulled per result
+  searchMode: "neural",      // provider-native override of the tier mapping (e.g. Exa type)
+  includeDomains: ["arxiv.org"],   // restrict to these domains (where supported)
+  excludeDomains: ["pinterest.com"], // exclude these domains (where supported)
   topic: "news",             // "general" (default) or "news"
   keys: { tavily: "sk-..." }, // explicit keys (default: env vars)
 });
 ```
+
+`tier` is a provider-agnostic latency-vs-thoroughness knob mapped to each provider's native parameter. When several providers are configured, auto-selection prefers one that supports the requested tier (Serper and Brave have no deep mode, so a `deep` request routes past them). `balanced` reproduces the previous default behavior. For provider-specific behaviors the tier doesn't cover, `searchMode` overrides the native value directly. See the [search tool docs](https://flow-state.dev/docs/tools/search) for the full per-provider mapping.
 
 ### Direct provider constructors
 

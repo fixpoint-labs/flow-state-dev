@@ -27,6 +27,9 @@ export function search(config: SearchConfig = {}) {
         maxResults: input.maxResults,
         searchDepth: config.searchDepth ?? "basic",
         searchMode: config.searchMode,
+        tier: config.tier ?? "balanced",
+        includeDomains: config.includeDomains,
+        excludeDomains: config.excludeDomains,
         topic: input.topic,
         apiKey,
       });
@@ -70,9 +73,11 @@ export type {
   SearchOutput,
   SearchProviderName,
   SearchProviderAdapter,
+  SearchCapabilities,
+  SearchTier,
   SearchInput,
 } from "./types";
-export { searchInputSchema, searchOutputSchema, searchResultSchema, searchProviders } from "./types";
+export { searchInputSchema, searchOutputSchema, searchResultSchema, searchProviders, searchTiers } from "./types";
 
 /** Resolve the active provider adapter + API key from `SearchConfig` + env
  *  vars. Exposed for callers that need to run a search outside the
