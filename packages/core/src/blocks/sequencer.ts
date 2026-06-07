@@ -509,16 +509,21 @@ export async function executeBlock(
         (scopedCtx as { _generatorModelUsage?: GeneratorModelUsageMeta })._generatorModelUsage = modelUsage;
       }
 
-      // FIX-742: block-level rescue. A non-sequencer block carrying its own
-      // `config.rescue` recovers here — run the first matching handler with this
-      // block's scoped context and return its output, so the enclosing chain /
-      // fan-out / branch continues. `SuspensionError` is control flow and is
-      // never rescued. Sequencers handle chain-level rescue in their operation
-      // loop, so they are excluded here to avoid double-handling.
-      const rescueHandlers = block.kind !== "sequencer" ? block.config.rescue : undefined;
+      // FIX-742: block-level rescue for scoped (in-flow) child invocations — run
+      // the first matching handler with this block's scoped context and return
+      // its output, so the enclosing chain / fan-out / branch continues. The
+      // `_withExecutionScope !== undefined` gate makes this seam mutually
+      // exclusive with build-block's scope-less seam, so a throwing rescue
+      // handler in a unit harness is not "rescued" twice. `SuspensionError` is
+      // control flow and is never rescued; sequencers handle chain-level rescue
+      // in their operation loop and are excluded to avoid double-handling.
+      const rescueHandlers =
+        ctx._withExecutionScope !== undefined && block.kind !== "sequencer"
+          ? block.config.rescue
+          : undefined;
       if (rescueHandlers !== undefined && rescueHandlers.length > 0 && !(error instanceof SuspensionError)) {
         const rescued = await runRescue(execCtx, rescueHandlers, toError(error), path);
-        if (rescued !== RESCUE_NO_MATCH) {
+        if (rescued !== undefined) {
           // Stamp the recovery on the SCOPED ctx (not `execCtx`, which is a
           // spread copy for generators) so `_withExecutionScope` records
           // `result.rescued` for `ctx.wasRescued(...)`.
@@ -609,29 +614,28 @@ async function mapWithConcurrency<TInput, TOutput>(
 }
 
 /**
- * Sentinel returned by `runRescue` when no handler's `when` filter matched the
- * error. The caller must re-throw the original error.
- */
-const RESCUE_NO_MATCH = Symbol("rescue-no-match");
-
-/**
  * Run the first rescue handler whose `when` matches `error`, at a rescue path
  * under `basePath`, using `ctx` (the block's scoped context — so the handler can
  * read sequencer state, per FIX-742). Returns the handler's output and a
- * BlockValue descriptor for it, or `RESCUE_NO_MATCH` when nothing matched.
+ * BlockValue descriptor for it, or `undefined` when nothing matched (the caller
+ * must then re-throw the original error).
  *
  * Setting the out-of-band `_didRescue` flag is left to the caller, which knows
  * the scope-relevant context to stamp (the sequencer ctx in the op-loop path;
  * the scoped ctx in the block-execution path, which may differ from `ctx` for a
  * generator's spread copy). NEVER call this for a `SuspensionError` — the caller
  * must re-throw that first, since suspension is control flow, not a failure.
+ *
+ * Exported so the server's top-level `executeBlock` can honor `config.rescue`
+ * on a bare action-root block (in-flow children are handled by the core
+ * `executeBlock` seam below); `server` may depend on `core`, never the reverse.
  */
-async function runRescue(
+export async function runRescue(
   ctx: BlockContext,
   handlers: RescueHandlerSpec[],
   error: Error,
   basePath: string
-): Promise<{ value: unknown; descriptor: BlockOutputHint; name: string } | typeof RESCUE_NO_MATCH> {
+): Promise<{ value: unknown; descriptor: BlockOutputHint; name: string } | undefined> {
   for (let i = 0; i < handlers.length; i += 1) {
     const handler = handlers[i];
     if (!matchesRescueHandler(error, handler)) {
@@ -644,7 +648,7 @@ async function runRescue(
     const descriptor = refDescriptorForPath(ctx, rescuePath);
     return { value, descriptor, name: handler.block.config.name ?? "rescue" };
   }
-  return RESCUE_NO_MATCH;
+  return undefined;
 }
 
 function createRuntimeState(): SequencerRuntimeState {
@@ -865,7 +869,7 @@ function runSequencerOperations(
         }
         const normalizedError = toError(error);
         const rescued = await runRescue(ctx, rescueHandlers, normalizedError, currentPath(ctx));
-        if (rescued !== RESCUE_NO_MATCH) {
+        if (rescued !== undefined) {
           // A rescue branch passes through to the handler block's output.
           if (rescued.descriptor.kind !== "inline") {
             (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescued.descriptor;

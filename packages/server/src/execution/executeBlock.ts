@@ -4,7 +4,7 @@
 import type { BlockContext, BlockDefinition, BlockOutputHint, ModelIdentity } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
-import { SuspensionError } from "@flow-state-dev/core";
+import { SuspensionError, runRescue } from "@flow-state-dev/core";
 import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
 import type { BlockMiddlewareContext } from "../middleware/types";
@@ -451,6 +451,31 @@ export async function executeBlock(
     if (error instanceof SuspensionError) {
       throw error;
     }
+
+    // FIX-742: honor a bare action-root block's own `.rescue()`. In-flow child
+    // blocks are recovered by core's `executeBlock` seam; the root block runs
+    // here, so recover it once retries are exhausted (this catch sits outside
+    // `retryWithPolicy`, giving retry-then-rescue ordering). The handler runs
+    // via core's `runRescue`, which opens its own child scope for a clean trace.
+    // Sequencers self-handle chain-level rescue in their op-loop and are excluded.
+    const rootRescueHandlers =
+      options.block.kind !== "sequencer" ? options.block.config.rescue : undefined;
+    if (rootRescueHandlers !== undefined && rootRescueHandlers.length > 0) {
+      const rescued = await runRescue(
+        options.ctx,
+        rootRescueHandlers,
+        error instanceof Error ? error : new Error(String(error)),
+        blockPath
+      );
+      if (rescued !== undefined) {
+        return {
+          output: rescued.value,
+          items: getResponseItems(options.ctx.response),
+          durationMs: Date.now() - startedAt
+        };
+      }
+    }
+
     const normalized = normalizeError(error, {
       blockName: options.block.name,
       scope: "block"

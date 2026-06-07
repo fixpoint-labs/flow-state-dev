@@ -119,6 +119,10 @@ export {
   router,
   sequencer
 } from "./blocks";
+// Block-level rescue resolution (FIX-742). Exported so the server's top-level
+// `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow
+// children are rescued by the core `executeBlock` seam.
+export { runRescue } from "./blocks/sequencer";
 export { defineFlow } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath } from "./tools/resource-tools";

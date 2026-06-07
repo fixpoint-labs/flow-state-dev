@@ -2061,6 +2061,39 @@ describe("block-level rescue (FIX-742)", () => {
     expect((cleanCtx as { _didRescue?: boolean })._didRescue).toBeUndefined();
   });
 
+  it("does not re-rescue when a rescue handler itself throws (single attempt)", async () => {
+    let catchAllRan = false;
+    const throwingFallback = handler({
+      name: "throwing-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => {
+        throw new Error("fallback exploded");
+      }
+    });
+    const catchAll = handler({
+      name: "catch-all-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => {
+        catchAllRan = true;
+        return 0;
+      }
+    });
+
+    // The first handler matches and throws. A correct single-attempt
+    // implementation lets that throw propagate — it must NOT be caught by the
+    // second handler ("rescuing the rescue"). Run as a sequencer step so the
+    // failure routes through the executeBlock seam, not just runForTest.
+    const seq = sequencer({ name: "no-double-rescue", inputSchema: z.number() }).step(
+      throwing("double-rescue-target").rescue([{ block: throwingFallback }, { block: catchAll }])
+    );
+
+    const ctx = createMockContext();
+    await expect(runForTest(seq, 1, ctx)).rejects.toThrow("fallback exploded");
+    expect(catchAllRan).toBe(false);
+  });
+
   it("folds rescue handler resources into the block's declared resources", () => {
     const auditLog = defineResource({
       name: "auditLog",
