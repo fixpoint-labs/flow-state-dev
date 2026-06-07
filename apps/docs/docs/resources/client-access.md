@@ -382,7 +382,7 @@ const memos = defineResourceCollection({
 });
 ```
 
-With `live: true`, each mutation carries its projected `clientData` inline on the `resource_change` event. The React layer folds that delta straight into the cached snapshot, so a subscribed `useResource` or `useResourceCollectionItem` reflects the change in the same paint as the server mutation, with no refetch. This is the resource-side analog of how scope-level `state_change` updates merge mid-stream (see [State & Scopes](/docs/fundamentals/state-and-scopes)).
+With `live: true`, each mutation carries its projected `clientData` inline on the `resource_change` event. The React layer folds that delta straight into the cached snapshot, so a subscribed `useResource`, `useResourceCollectionItem`, or `useResourceCollectionList` reflects the change in the same paint as the server mutation, with no refetch. The list hook applies the same overlay across its items, so a navigator rendering every item's status updates live. This is the resource-side analog of how scope-level `state_change` updates merge mid-stream (see [State & Scopes](/docs/fundamentals/state-and-scopes)).
 
 `live` requires that the resource's `clientData` actually reach the client. For a collection that means `state.read: true` or a projection (`expose` / `exclude` / `data`); for a single resource it means a projection. Declaring `live` without a client-visible projection throws at definition time — there would be nothing to stream.
 

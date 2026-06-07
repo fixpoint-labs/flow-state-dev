@@ -245,7 +245,7 @@ if (item === null) return <div>Not found</div>;
 const content = await item.fetchContent();
 ```
 
-If the collection declares `client: { live: true }`, mutations to this topic update `item.clientData` mid-stream with no refetch — a memo flipping from `writing` to `published` repaints in place. `useResource` behaves the same way for single resources. See [Resources: Client Access — Live updates](/docs/resources/client-access#live-updates) for the server-side setup.
+If the collection declares `client: { live: true }`, mutations to this topic update `item.clientData` mid-stream with no refetch — a memo flipping from `writing` to `published` repaints in place. `useResource` behaves the same way for single resources, and `useResourceCollectionList` applies the overlay across every item (status updates, removals on delete, and mid-stream creates) so an all-items navigator stays live. See [Resources: Client Access — Live updates](/docs/resources/client-access#live-updates) for the server-side setup.
 
 ## useResourceManifest
 
