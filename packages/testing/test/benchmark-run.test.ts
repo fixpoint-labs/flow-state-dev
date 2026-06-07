@@ -230,6 +230,20 @@ describe("runBenchmark", () => {
     expect(report.totalCostUsd).toBeGreaterThan(0);
   });
 
+  it("warns when maxCostUsd is set but a model is not in the pricing table", async () => {
+    const report = await runBenchmark({
+      subjects: [genSubject("p", "pattern")],
+      tasks: [tasks[0]],
+      model: "openrouter/meta-llama/llama-3.1-70b-instruct", // unpriced
+      judgeModel: "anthropic/claude-haiku-4-5", // priced
+      runs: 1,
+      maxCostUsd: 1.0,
+      modelResolver: executorResolver("a"),
+      judgeResolver: judgeResolver(0.5),
+    });
+    expect(report.warnings.some((w) => w.includes("not in the pricing table"))).toBe(true);
+  });
+
   it("trips the cost budget and marks the report budgetExceeded", async () => {
     // ~0.001 USD/cell at the gpt-5.4-mini rate; a 0.0015 ceiling trips after ~2 cells.
     const report = await runBenchmark({

@@ -22,7 +22,7 @@ import type { ModelResolver } from "@flow-state-dev/core/types";
 import { testSequencer } from "../test-utilities/testSequencer";
 import { analyzerScorer } from "../eval/analyzerScorer";
 import { createLimiter } from "../eval/concurrency";
-import { sumCostFromItems } from "../eval/cost";
+import { sumCostFromItems, isModelPriced } from "../eval/cost";
 import { buildBenchmarkReport } from "./report";
 import type {
   BenchmarkRunResult,
@@ -100,6 +100,25 @@ export async function runBenchmark(
   };
 
   const judgeResolver = config.judgeResolver ?? forceModelResolver(judgeModelId);
+
+  // The cost budget relies on the pricing table; an unpriced model estimates to
+  // $0 and never trips `maxCostUsd`. Warn so a budget isn't silently ignored —
+  // easy to hit now that subjects can run on different models.
+  if (maxCostUsd !== undefined) {
+    const modelsInPlay = new Set<string>([
+      model,
+      judgeModelId,
+      ...subjects.map((s) => s.model ?? model),
+    ]);
+    const unpriced = [...modelsInPlay].filter((m) => !isModelPriced(m));
+    if (unpriced.length > 0) {
+      warnings.push(
+        `maxCostUsd is set but these models are not in the pricing table, so their ` +
+          `spend estimates to $0 and will not count toward the budget: ${unpriced.join(", ")}. ` +
+          `The sweep may exceed the ceiling.`,
+      );
+    }
+  }
 
   // The same-model baseline (kind "baseline", model === run model) is the primary
   // reference for deltas — "pattern on model X vs pure model X". Other baselines

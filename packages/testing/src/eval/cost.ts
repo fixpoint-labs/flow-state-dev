@@ -30,6 +30,15 @@ const PRICE_TABLE: Array<{ key: string; price: ModelPrice }> = [
 ];
 
 /**
+ * Whether a model id matches an entry in the pricing table. Used to warn when a
+ * cost budget is set but a model's spend would estimate to 0 (and so never trip
+ * the budget).
+ */
+export function isModelPriced(modelId: string): boolean {
+  return PRICE_TABLE.some((row) => modelId.includes(row.key));
+}
+
+/**
  * Estimates the USD cost of one generation from its token usage. Returns 0 for
  * unpriced models or when usage is absent — never throws.
  */
