@@ -214,6 +214,33 @@ describe("durability sweeper", () => {
       expect(await stores.checkpoints.latest("req_done", "seq_1")).toBeNull();
     });
 
+    it("prunes ALL eligible requests across multiple pages (batchLimit < count)", async () => {
+      // Regression: the orphan sweep must page through every record, not just
+      // the first page. `request.list` returns newest-first while eligible
+      // (aged-out) records sort last, so a single-page scan would leave most
+      // orphaned checkpoints behind once the table exceeds one page.
+      const now = Date.now();
+      const ids = ["a", "b", "c", "d", "e"].map((s) => `req_pg_${s}`);
+      for (const id of ids) {
+        await stores.request.set(
+          id,
+          makeRequest(id, {
+            status: "completed",
+            completedAtMs: now - DAY - 1000
+          }),
+          "any"
+        );
+        await writeCheckpoint(stores, id);
+      }
+
+      // batchLimit 2 forces three pages over five records.
+      await runTick(tickArgs(provider, stores, { batchLimit: 2 }));
+
+      for (const id of ids) {
+        expect(await stores.checkpoints.latest(id, "seq_1")).toBeNull();
+      }
+    });
+
     it("does NOT prune checkpoints of a suspended request", async () => {
       const now = Date.now();
       await stores.request.set(

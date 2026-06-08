@@ -28,10 +28,7 @@ import {
 } from "../transports/http/createHttpTransportAdapter";
 import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
-import {
-  createDurabilitySweeper,
-  type DurabilityRetentionConfig
-} from "../durability/durability-sweeper";
+import { createDurabilitySweeper } from "../durability/durability-sweeper";
 import type { MatchFunction } from "path-to-regexp";
 import {
   compileTransportPattern,
@@ -146,15 +143,6 @@ export type CreateFlowApiRouterOptions = {
    * false positives. Default: 60000 (60 seconds).
    */
   staleSweepThresholdMs?: number;
-
-  /**
-   * Retention policy for the durability sweeper (FIX-141). Only takes effect
-   * when a `durabilityProvider` is configured (via `runtimeConfig`). When both
-   * are present the router builds a periodic sweeper that enforces suspension
-   * expiry and prunes aged-out suspensions, leases, and orphaned checkpoints.
-   * Absent → no sweeper (a no-op handle).
-   */
-  durabilityRetention?: DurabilityRetentionConfig;
 
   /**
    * Enable the privileged read-only debug endpoint surface under
@@ -293,13 +281,12 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   });
 
   // Server-internal durability sweeper (FIX-141): enforces suspension expiry
-  // and prunes aged-out durability artifacts. Built only when both a
-  // durability provider and a retention policy are configured; otherwise a
-  // no-op handle. The flat option wins over a `runtimeConfig`-carried one
-  // (mirrors how `createFlowState` may thread the policy through the bundle).
+  // and prunes aged-out durability artifacts. Built only when both a durability
+  // provider and a retention policy are configured; otherwise a no-op handle.
+  // Both travel on `runtimeConfig` so the durability config stays grouped
+  // (the provider is read by runAction too).
   const durabilityProvider = runtimeConfig.durabilityProvider;
-  const durabilityRetention =
-    options.durabilityRetention ?? runtimeConfig.durabilityRetention;
+  const durabilityRetention = runtimeConfig.durabilityRetention;
   const durabilitySweeper =
     durabilityProvider !== undefined && durabilityRetention !== undefined
       ? createDurabilitySweeper({

@@ -104,6 +104,13 @@ function defaultHolder(): string {
 const PRUNABLE_TERMINAL_STATUSES: RequestStatus[] = ["completed", "failed", "aborted"];
 
 /**
+ * Safety bound on pages scanned per status per tick in the orphan-checkpoint
+ * step. The request table is already bounded by session retention, so this is
+ * a guard against pathological growth, not the normal stopping condition.
+ */
+const MAX_SCAN_PAGES = 1000;
+
+/**
  * Build a durability retention sweeper. Returns a handle whose `dispose`
  * clears the underlying interval — call it on router teardown to avoid
  * leaking a timer. When `sweepIntervalMs <= 0` (or non-finite) the returned
@@ -240,9 +247,11 @@ export async function runTick(rawArgs: RunTickArgs): Promise<void> {
  * Closes the gate so the resume endpoint rejects it.
  */
 async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Promise<void> {
-  const { provider, logger } = args;
+  const { provider, batchLimit, logger } = args;
   try {
-    const pending = await provider.listSuspended({ status: "pending" });
+    // Bound the working set per tick like every other step. Records expired
+    // this tick leave the `pending` set, so the next tick picks up the rest.
+    const pending = await provider.listSuspended({ status: "pending", limit: batchLimit });
     for (const record of pending) {
       if (record.expiresAt != null && record.expiresAt <= now) {
         const expired: SuspensionRecord = {
@@ -330,13 +339,18 @@ async function pruneOrphanCheckpoints(args: ResolvedTickArgs, now: number): Prom
     }) => number | undefined
   ): Promise<void> => {
     try {
+      // Page through every record of this status. `request.list` returns
+      // newest-first, but the records we want are the OLDEST (terminal/interrupt
+      // timestamp past the cutoff), which sort to the end — so a single page
+      // would miss them once the table exceeds one page. Scan all pages instead;
+      // `cleanupCheckpoints` is idempotent, so re-visiting already-cleaned
+      // records on later ticks is a cheap no-op. `MAX_SCAN_PAGES` bounds the
+      // worst case; the request table is itself bounded by session retention.
       let offset = 0;
-      let scanned = 0;
-      while (scanned < batchLimit) {
+      for (let page = 0; page < MAX_SCAN_PAGES; page++) {
         const records = await stores.request.list({ status, limit: batchLimit, offset });
         if (records.length === 0) break;
         for (const rec of records) {
-          scanned++;
           if (isEligible(timestampOf(rec))) {
             await provider.cleanupCheckpoints(rec.id);
           }

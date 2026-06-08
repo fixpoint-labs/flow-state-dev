@@ -70,7 +70,7 @@ export const TERMINAL_SUSPENSION_STATUSES: readonly SuspensionStatus[] = [
 
 /** True when `status` is a resolved/aged-out (non-pending) suspension status. */
 export function isTerminalSuspensionStatus(status: SuspensionStatus): boolean {
-  return status !== "pending";
+  return TERMINAL_SUSPENSION_STATUSES.includes(status);
 }
 
 /**

@@ -135,7 +135,7 @@ export interface CreateFlowStateOptions<
    * alongside a configured `durabilityProvider`. Enforces suspension expiry and
    * prunes aged-out suspensions, leases, and orphaned checkpoints on a cadence.
    */
-  durabilityRetention?: CreateFlowApiRouterOptions["durabilityRetention"];
+  durabilityRetention?: RuntimeConfig["durabilityRetention"];
 }
 
 /**
