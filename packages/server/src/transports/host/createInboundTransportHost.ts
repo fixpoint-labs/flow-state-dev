@@ -148,20 +148,7 @@ export function createInboundTransportHost(
     } else {
       finished = effectiveDispatcher
         .dispatch(dispatchEnvelope)
-        .then((handle) => {
-          if (envelope.signal) {
-            const onAbort = () => handle.abort();
-            if (envelope.signal.aborted) {
-              handle.abort();
-            } else {
-              envelope.signal.addEventListener("abort", onAbort, { once: true });
-              handle.finished.finally(() =>
-                envelope.signal!.removeEventListener("abort", onAbort)
-              );
-            }
-          }
-          return handle.finished;
-        });
+        .then((handle) => handle.finished);
     }
 
     finished = finished.finally(() => {
