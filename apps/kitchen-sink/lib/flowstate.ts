@@ -25,18 +25,26 @@ import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
-import { createBullmqRuntime, createRedisStreamBridge } from "@flow-state-dev/bullmq";
+import { createBullmqRuntime, createRedisStreamBridge, createWorkerDispatcher } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const redisUrl = process.env.REDIS_URL;
+const bullmqDispatch = process.env.FSD_BULLMQ_DISPATCH === "1";
 
 // BullMQ runtime for local dev. When REDIS_URL is set (e.g. via docker compose),
 // the runtime registers a co-located worker so background jobs are durable.
 // The web process enqueues and the worker runs in the same process for simplicity.
 const bullmqRuntime = redisUrl
   ? createBullmqRuntime({ connection: redisUrl })
+  : undefined;
+
+// Stream bridge shared by the dispatcher (web→worker live relay) and the
+// co-located worker (worker→web event push). Created once so both sides
+// use the same channel prefix.
+const streamBridge = redisUrl
+  ? createRedisStreamBridge({ connection: redisUrl })
   : undefined;
 
 // Vercel/Neon-tuned Postgres adapter. Backs the prod profile's `primary` slot
@@ -116,6 +124,13 @@ export const flowstate = createFlowState({
   // Schema/recovery scans on cold start can exhaust the serverless pool before
   // real requests are served.
   detectInterruptedOnStartup: false,
+  // FSD_BULLMQ_DISPATCH=1 routes all action dispatches through the BullMQ
+  // queue instead of running in-process. Requires REDIS_URL. Useful for
+  // testing the full queue→worker→stream-bridge pipeline locally.
+  dispatcher:
+    bullmqDispatch && bullmqRuntime && streamBridge
+      ? createWorkerDispatcher({ queue: bullmqRuntime.queue, bridge: streamBridge })
+      : undefined,
   adapters: [createScheduledTransportAdapter()],
   onError: (error, ctx) => {
     console.error(`[flowstate] ${ctx.method} ${ctx.path}:`, error.message);
@@ -160,16 +175,18 @@ if (bullmqRuntime && redisUrl) {
           }),
   };
 
-  const bridge = createRedisStreamBridge({ connection: redisUrl });
-
   bullmqRuntime.createWorker({
     registry,
     stores,
     runtimeConfig,
-    bridge,
+    bridge: streamBridge,
   });
 
-  console.log("[flowstate] BullMQ co-located worker started (REDIS_URL set)");
+  console.log(
+    bullmqDispatch
+      ? "[flowstate] BullMQ co-located worker + dispatcher active (all actions route through queue)"
+      : "[flowstate] BullMQ co-located worker started (enqueue-only, actions run in-process)"
+  );
 }
 
 export { bullmqRuntime };
