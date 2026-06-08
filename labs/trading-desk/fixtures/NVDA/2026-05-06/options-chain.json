@@ -1,0 +1,15 @@
+{
+  "source": "fixture",
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "spotPrice": 118.4,
+  "nearestExpiry": "2026-05-15",
+  "atmIv": 0.472,
+  "ivTermStructure": "contango",
+  "ivTermSlope": 0.038,
+  "skew25Delta": 0.041,
+  "putCallOiRatio": 0.83,
+  "totalOpenInterest": 4185000,
+  "totalVolume": 1920000,
+  "expiriesCovered": 6
+}
