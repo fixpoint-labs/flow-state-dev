@@ -189,6 +189,7 @@ Seeding is idempotent — already-present users/sessions/orgs aren't re-`set`, s
 - `testSequencer` step/work traces are inferred from emitted item provenance in Phase 1.
 - Generator mocks are resolved by generator block name first (`generators`) and model id second (`models`).
 - `testFlow` accepts `generators`, `models`, `unmockedGeneratorPolicy`, and an optional `stores` registry.
+- `unmockedGeneratorPolicy` is `"error"` (default) | `"warn"` | `"allow"` | `"default"`. Under `"default"`, unmocked generators yield the caller-supplied `unmockedDefault` script (a step or a `({ modelId, blockName }) => step` factory) instead of throwing or emitting empty output — useful when a flow has many generators and you only mock the few that matter.
 
 ## Architecture Reference
 
