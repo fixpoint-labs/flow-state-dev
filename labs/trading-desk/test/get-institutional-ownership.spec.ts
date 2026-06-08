@@ -29,7 +29,6 @@ function sessionFor(dataSource: "fixture" | "live") {
       costPreset: "fast" as const,
       dataSource,
       activePhase: "idle" as const,
-      memoStatus: {},
     },
   };
 }

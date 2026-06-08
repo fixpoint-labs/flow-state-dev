@@ -529,9 +529,10 @@ The per-group boilerplate splits across two `agents/_recipe/` helpers and the
 registry:
 
 - `defineMemoSetup({ phaseId, agentTeam, keys, activePhase })` in
-  `agents/_recipe/memo-setup.ts` — pre-creates the group's memos in `pending`. The
-  memoStatus seed is derived from `Object.keys(keys)` so adding a new
-  memo to a group is a one-line edit to `registry.ts`.
+  `agents/_recipe/memo-setup.ts` — pre-creates the group's memos in `pending`
+  (the navigator reads each memo's status live off the collection, so the
+  `pending` scaffolds are the only status seed — there is no session mirror).
+  Adding a new memo to a group is a one-line edit to `registry.ts`.
 - The **memo lifecycle is not built per group.** `markWriting` / `markError`
   are the single key-driven pair from `defineMemoStep` (see the section above);
   they read `agentTeam` / `phaseId` / `errorMessageFallback` /

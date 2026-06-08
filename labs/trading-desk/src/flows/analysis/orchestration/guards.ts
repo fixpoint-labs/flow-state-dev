@@ -4,8 +4,10 @@
  * These handlers are the orchestration-level wiring that `analyze.ts`
  * composes between the agent stages:
  *
- *   - `seedSession` patches session state from action input and resets the
- *     memo-status mirror so a re-run starts from a clean navigator.
+ *   - `seedSession` patches session state from action input. A re-run starts
+ *     from a clean navigator because the setup taps re-create each memo in
+ *     `pending` (`{ replace: true }`); there is no session-state status mirror
+ *     to reset.
  *   - `checkTickerResolvable`, `checkPhase1HasFundamentalsAndProfile`, and
  *     `checkPhase1HasData` are the three stop-condition guards. Each patches
  *     `stoppedReason` + `stoppedMessage` on session state when it trips; the
@@ -22,7 +24,7 @@ import { z } from "zod";
 import { PHASE_1_MEMO_KEYS } from "../registry";
 import { analyzeInputSchema } from "../flow-schema";
 import { resolveTicker } from "../lib/ticker-resolver";
-import { memoResources, type MemoStatus } from "../resources";
+import { memoResources } from "../resources";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
@@ -33,8 +35,9 @@ import {
 import { buildPortfolioContext } from "../build-portfolio-context";
 
 /**
- * Patches session state from action input and resets the memo-status
- * mirror so a re-run starts from a clean navigator.
+ * Patches session state from action input. A re-run starts from a clean
+ * navigator because the per-phase setup taps re-create each memo in `pending`;
+ * there is no session-state status mirror to reset here.
  */
 export const seedSession = handler({
   name: "seed-session",
@@ -75,7 +78,6 @@ export const seedSession = handler({
       // Cheap preset runs one bull/bear round; full preset runs two. Caller
       // input never sets this — the schema's `max(2)` enforces the ceiling.
       maxDebateRounds: input.costPreset === "full" ? 2 : 1,
-      memoStatus: {} as Record<string, MemoStatus>,
       runComplete: false,
       // Reset terminal stop state from any prior run on this session key
       // so the navigator doesn't render a stale "stopped" banner.

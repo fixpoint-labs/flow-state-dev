@@ -11,6 +11,8 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import analysisFlow from "../src/flows/analysis/flow";
+import { ALL_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const ticker = "NVDA";
 const date = "2026-05-06";
@@ -230,11 +232,6 @@ describe("Phase 3 end-to-end", () => {
     expect(result.error).toBeUndefined();
     expect(result.status).toBe("completed");
 
-    const session = await stores.session.get(sessionId);
-    const memoStatus = (session?.state as { memoStatus?: Record<string, string> })
-      ?.memoStatus ?? {};
-    expect(memoStatus.trader).toBe("published");
-
     const memoResources = await stores.resourceState.getAll("session", sessionId);
     const traderMemo = memoResources["memos/p3/trader"] as
       | {
@@ -311,13 +308,9 @@ describe("Phase 3 end-to-end", () => {
 
     expect(result.status).toBe("completed");
 
-    const session = await stores.session.get(sessionId);
-    const memoStatus = (session?.state as { memoStatus?: Record<string, string> })
-      ?.memoStatus ?? {};
-    expect(memoStatus.bull).toBe("published");
-    expect(memoStatus.bear).toBe("published");
-    expect(memoStatus.researchManager).toBe("published");
-    expect(memoStatus.trader).toBe("error");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.bull.memoKey)).toBe("published");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.bear.memoKey)).toBe("published");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.researchManager.memoKey)).toBe("published");
 
     const memoResources = await stores.resourceState.getAll("session", sessionId);
     const traderMemo = memoResources["memos/p3/trader"] as

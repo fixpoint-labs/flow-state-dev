@@ -8,10 +8,12 @@
  *   - `published` otherwise → `ThesisHeader` + `ThesisBody`.
  *   - `error` → red marker + error message.
  *
- * Live status (`memoStatus`) flows in from the parent via `useClientData`,
- * so the navigator and doc area both reflect mid-stream transitions. Body
- * content comes from `useResourceCollectionItem` keyed on the per-agent
- * memo's `collectionKey`.
+ * Live status is derived from the memos collection itself: the collection
+ * opts into `client: { live: true }` (FIX-739), so `useResourceCollectionList`
+ * surfaces each memo's `status` mid-stream with no refetch, and the navigator
+ * and doc area both reflect transitions straight from the resource — no
+ * `memoStatus` session mirror. Body content comes from
+ * `useResourceCollectionItem` keyed on the per-agent memo's `collectionKey`.
  *
  * Auto-follow: when the user has not selected manually, selection tracks
  * the most-recently-published (or, failing that, currently-writing) memo.
@@ -34,7 +36,11 @@ import {
   type ReactElement,
 } from "react";
 import type { SessionView } from "@flow-state-dev/react";
-import { useClientData, useResourceCollectionItem } from "@flow-state-dev/react";
+import {
+  useClientData,
+  useResourceCollectionItem,
+  useResourceCollectionList,
+} from "@flow-state-dev/react";
 import { MemoSidebar } from "./memo-sidebar";
 import { AgentBadge } from "@/components/agent-badge";
 import { ThesisHeader } from "./thesis-header";
@@ -47,6 +53,7 @@ import { ReportSummary } from "@/components/summary/report-summary";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
+  COLLECTION_KEY_TO_SHORT,
   LENS_IDS,
   PHASE_2B_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
@@ -61,7 +68,6 @@ import { cn } from "@/lib/utils";
 
 type ThesesPaneProps = {
   session: SessionView;
-  memoStatus: Partial<Record<AnyMemoShortName, MemoStatus>>;
 };
 
 /** The four phase-2b lens agents, derived READ-ONLY from the Slice-5
@@ -95,10 +101,7 @@ const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
   "thesisAlignment",
 ];
 
-export function ThesesPane({
-  session,
-  memoStatus,
-}: ThesesPaneProps): ReactElement {
+export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
   const [selectedAgent, setSelectedAgent] = useState<AgentName | null>(null);
   const userSelectedRef = useRef(false);
   const [tab, setTab] = useState<"theses" | "summary">("theses");
@@ -111,6 +114,25 @@ export function ThesesPane({
   // runComplete === true; a fresh or re-running session has it false.
   const { session: live } = useClientData(session, { session: ["runComplete"] });
   const runComplete = live?.runComplete === true;
+
+  // Per-agent live status, derived from the memos collection. The collection
+  // is `client: { live: true }`, so `useResourceCollectionList` reflects each
+  // memo's `status` mid-stream (FIX-739) with no session-state mirror. A memo
+  // not yet created is absent → `statusForAgent` defaults it to `pending`.
+  // Derived state → useMemo, not an effect (BP-010).
+  const { items: memoItems } = useResourceCollectionList(session, "memos", {
+    limit: 50,
+  });
+  const memoStatus = useMemo<Partial<Record<AnyMemoShortName, MemoStatus>>>(() => {
+    const map: Partial<Record<AnyMemoShortName, MemoStatus>> = {};
+    for (const item of memoItems) {
+      const short = COLLECTION_KEY_TO_SHORT[item.topic];
+      if (short === undefined) continue;
+      const status = (item.clientData as { status?: MemoStatus } | null)?.status;
+      if (status !== undefined) map[short] = status;
+    }
+    return map;
+  }, [memoItems]);
 
   // Reset manual-selection flags only on a genuine re-run — a run STARTING
   // (streaming, 0 items) on a session that is NOT already complete. The

@@ -31,7 +31,7 @@ import {
   useResourceCollectionList,
 } from "@flow-state-dev/react";
 import {
-  ALL_MEMO_KEYS,
+  COLLECTION_KEY_TO_SHORT,
   type AnyMemoShortName,
 } from "@/src/flows/analysis/registry";
 import type { MemoState } from "@/src/flows/analysis/resources";
@@ -53,13 +53,6 @@ import { cn } from "@/lib/utils";
 export type ReportSummaryProps = {
   session: SessionView;
 };
-
-/** Reverse map: bare collection key (item.topic) → short name. */
-const COLLECTION_KEY_TO_SHORT = Object.fromEntries(
-  (Object.entries(ALL_MEMO_KEYS) as Array<
-    [AnyMemoShortName, (typeof ALL_MEMO_KEYS)[AnyMemoShortName]]
-  >).map(([short, mapping]) => [mapping.collectionKey, short]),
-) as Record<string, AnyMemoShortName>;
 
 /**
  * A single resource that's unwritten surfaces in the client snapshot as `{}`

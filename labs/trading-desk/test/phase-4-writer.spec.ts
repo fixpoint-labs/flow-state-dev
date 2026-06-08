@@ -1,6 +1,6 @@
 /**
  * Tests for the Phase 4 writer taps. Confirms `markWriting`,
- * `markError`, and the four commit handlers flip `session.memoStatus`
+ * `markError`, and the four commit handlers flip each memo's status
  * and patch the resources with the right extension fields.
  */
 import { readFileSync } from "node:fs";
@@ -22,6 +22,8 @@ import {
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
 } from "../src/flows/analysis/agents/risk/schemas";
+import { PHASE_4_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 // The phase-4 prompts now live as `.md` files; read them raw to assert their
 // prose names every dismissal category (parity with the prior string-export).
@@ -66,12 +68,6 @@ const baseSessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-4" as const,
   maxDebateRounds: 1,
-  memoStatus: {
-    aggressive: "pending" as const,
-    conservative: "pending" as const,
-    neutral: "pending" as const,
-    riskAssessment: "pending" as const,
-  },
 };
 
 function seededP4Memo(opts: {
@@ -241,30 +237,15 @@ const riskAssessment = {
   calibrationRationale: "Conviction aligns with the evidence base.",
 };
 
-function lastSessionState(result: {
-  stateChanges: Array<{
-    scope: string;
-    resultingState: Record<string, unknown>;
-  }>;
-}): { memoStatus: Record<string, string> } {
-  const sessionPatches = result.stateChanges.filter(
-    (c) => c.scope === "session",
-  );
-  expect(sessionPatches.length).toBeGreaterThan(0);
-  return sessionPatches[sessionPatches.length - 1]
-    .resultingState as unknown as { memoStatus: Record<string, string> };
-}
-
 describe("Phase 4 writer taps", () => {
-  it("markWriting flips memoStatus[shortName] to writing", async () => {
+  it("markWriting flips the memo to writing", async () => {
     const result = await testBlock(writeAggressive, {
       input: {},
       flow: fixtureFlow,
       session: { state: baseSessionState },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.aggressive).toBe("writing");
+    expect(latestMemoStatus(result.items, PHASE_4_MEMO_KEYS.aggressive.memoKey)).toBe("writing");
   });
 
   it("commitPersonaMemo('aggressive') flips aggressive to published", async () => {
@@ -272,7 +253,7 @@ describe("Phase 4 writer taps", () => {
       input: aggressiveCritique,
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { aggressive: "writing" } },
+        state: baseSessionState,
         resources: {
           "memos/p4/aggressive-risk": seededP4Memo({
             agentName: "aggressiveRisk",
@@ -282,7 +263,7 @@ describe("Phase 4 writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    expect(lastSessionState(result).memoStatus.aggressive).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_4_MEMO_KEYS.aggressive.memoKey)).toBe("published");
   });
 
   it("commitPersonaMemo('conservative') flips conservative to published", async () => {
@@ -290,7 +271,7 @@ describe("Phase 4 writer taps", () => {
       input: conservativeCritique,
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { conservative: "writing" } },
+        state: baseSessionState,
         resources: {
           "memos/p4/conservative-risk": seededP4Memo({
             agentName: "conservativeRisk",
@@ -300,7 +281,7 @@ describe("Phase 4 writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    expect(lastSessionState(result).memoStatus.conservative).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_4_MEMO_KEYS.conservative.memoKey)).toBe("published");
   });
 
   it("commitPersonaMemo('neutral') writes persona fields plus dismissedRisks", async () => {
@@ -308,7 +289,7 @@ describe("Phase 4 writer taps", () => {
       input: neutralCritique,
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { neutral: "writing" } },
+        state: baseSessionState,
         resources: {
           "memos/p4/neutral-risk": seededP4Memo({
             agentName: "neutralRisk",
@@ -318,7 +299,7 @@ describe("Phase 4 writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    expect(lastSessionState(result).memoStatus.neutral).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_4_MEMO_KEYS.neutral.memoKey)).toBe("published");
   });
 
   it("commitRiskAssessmentMemo flips riskAssessment to published", async () => {
@@ -326,10 +307,7 @@ describe("Phase 4 writer taps", () => {
       input: riskAssessment,
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { riskAssessment: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p4/risk-assessment": seededP4Memo({
             agentName: "riskAssessment",
@@ -339,7 +317,7 @@ describe("Phase 4 writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    expect(lastSessionState(result).memoStatus.riskAssessment).toBe(
+    expect(latestMemoStatus(result.items, PHASE_4_MEMO_KEYS.riskAssessment.memoKey)).toBe(
       "published",
     );
   });
@@ -403,7 +381,7 @@ describe("Phase 4 writer taps", () => {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { aggressive: "writing" } },
+        state: baseSessionState,
         resources: {
           "memos/p4/aggressive-risk": seededP4Memo({
             agentName: "aggressiveRisk",
@@ -413,7 +391,7 @@ describe("Phase 4 writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    expect(lastSessionState(result).memoStatus.aggressive).toBe("error");
+    expect(latestMemoStatus(result.items, PHASE_4_MEMO_KEYS.aggressive.memoKey)).toBe("error");
     expect((result.output as { text: string }).text).toBe(
       "(critique unavailable: aggressiveRisk)",
     );

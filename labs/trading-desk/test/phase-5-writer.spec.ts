@@ -1,9 +1,9 @@
 /**
  * Tests for the Phase 5 writer taps. Confirms `markWriting`,
- * `markError`, and `commitPortfolioManagerMemo` flip
- * `session.memoStatus` and patch the resource correctly — including the
- * seven Phase 5 extension fields, the derived `agreesWithTrader` and
- * `upstreamReferences` fields, and the `runComplete` session flag.
+ * `markError`, and `commitPortfolioManagerMemo` flip the PM memo's status
+ * and patch the resource correctly — including the seven Phase 5 extension
+ * fields, the derived `agreesWithTrader` and `upstreamReferences` fields, and
+ * the `runComplete` session flag.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
@@ -14,6 +14,8 @@ import { portfolioDecisionOutputSchema } from "../src/flows/analysis/agents/port
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 import { valuationSpineResource } from "../src/flows/analysis/valuation-spine-resource";
+import { PHASE_5_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const writePm = markWriting("portfolioManager");
 const errorPm = markError("portfolioManager");
@@ -36,9 +38,6 @@ const baseSessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-5" as const,
   maxDebateRounds: 1,
-  memoStatus: {
-    portfolioManager: "pending" as const,
-  },
   runComplete: false,
 };
 
@@ -169,15 +168,14 @@ function portfolioDecision(
 }
 
 describe("Phase 5 writer taps", () => {
-  it("markWriting flips memoStatus.portfolioManager to writing", async () => {
+  it("markWriting flips the PM memo to writing", async () => {
     const result = await testBlock(writePm, {
       input: {},
       flow: fixtureFlow,
       session: { state: baseSessionState },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.portfolioManager).toBe("writing");
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.portfolioManager.memoKey)).toBe("writing");
   });
 
   it("commitPortfolioManagerMemo publishes the memo, sets runComplete, and derives agreesWithTrader (matching direction)", async () => {
@@ -185,10 +183,7 @@ describe("Phase 5 writer taps", () => {
       input: portfolioDecision("Buy"),
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { portfolioManager: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/portfolio-manager": seededPmMemo({
             startedAt: new Date().toISOString(),
@@ -198,9 +193,8 @@ describe("Phase 5 writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.portfolioManager).toBe("published");
-    expect(last.runComplete).toBe(true);
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.portfolioManager.memoKey)).toBe("published");
+    expect(lastSessionState(result).runComplete).toBe(true);
   });
 
   // The `agreesWithTrader` derivation, the computed `upstreamReferences`,
@@ -255,10 +249,7 @@ describe("Phase 5 writer taps", () => {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { portfolioManager: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/portfolio-manager": seededPmMemo({
             startedAt: new Date().toISOString(),
@@ -267,14 +258,19 @@ describe("Phase 5 writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.portfolioManager).toBe("error");
-    expect(last.runComplete).toBe(false);
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.portfolioManager.memoKey)).toBe("error");
+    // The error path must never mark the run complete — only the successful
+    // PM commit flips `runComplete`. No session patch should set it true.
+    const flippedRunComplete = result.stateChanges.some(
+      (c) =>
+        c.scope === "session" &&
+        (c.resultingState as { runComplete?: boolean }).runComplete === true,
+    );
+    expect(flippedRunComplete).toBe(false);
   });
 });
 
 type LastStatePayload = {
-  memoStatus: Record<string, string>;
   runComplete: boolean;
 };
 

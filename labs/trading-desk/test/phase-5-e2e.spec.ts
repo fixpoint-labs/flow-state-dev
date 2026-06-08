@@ -14,6 +14,8 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import analysisFlow from "../src/flows/analysis/flow";
+import { ALL_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const ticker = "NVDA";
 const date = "2026-05-06";
@@ -490,11 +492,9 @@ describe("Phase 5 end-to-end", () => {
 
     const session = await stores.session.get(sessionId);
     const sessionState = (session?.state ?? {}) as {
-      memoStatus?: Record<string, string>;
       runComplete?: boolean;
       activePhase?: string;
     };
-    expect(sessionState.memoStatus?.portfolioManager).toBe("published");
     expect(sessionState.runComplete).toBe(true);
     expect(sessionState.activePhase).toBe("phase-5");
 
@@ -588,12 +588,10 @@ describe("Phase 5 end-to-end", () => {
 
     const session = await stores.session.get(sessionId);
     const sessionState = (session?.state ?? {}) as {
-      memoStatus?: Record<string, string>;
       runComplete?: boolean;
     };
-    expect(sessionState.memoStatus?.trader).toBe("published");
-    expect(sessionState.memoStatus?.riskAssessment).toBe("published");
-    expect(sessionState.memoStatus?.portfolioManager).toBe("error");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.trader.memoKey)).toBe("published");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.riskAssessment.memoKey)).toBe("published");
     expect(sessionState.runComplete).toBe(false);
 
     const memoResources = await stores.resourceState.getAll("session", sessionId);

@@ -195,7 +195,6 @@ export const commitPortfolioManagerMemo = handler({
 
     await publishMemo(
       ctx,
-      "portfolioManager",
       PHASE_5_MEMO_KEYS.portfolioManager.collectionKey,
       {
         label: decision.label,

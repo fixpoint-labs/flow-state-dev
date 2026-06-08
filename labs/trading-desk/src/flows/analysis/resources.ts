@@ -352,6 +352,10 @@ export const memosCollection = defineResourceCollection({
     // No projection declared — the renderer needs every field on the memo
     // state, so the identity default ships the whole state to the client.
     state: { read: true },
+    // Stream each memo's projected state inline on every mutation (FIX-739),
+    // so the navigator renders `pending → writing → published` live straight
+    // from the resource — no `memoStatus` session mirror.
+    live: true,
   },
 });
 
