@@ -54,11 +54,9 @@ import {
   type AgentName,
   type AnyMemoShortName,
 } from "@/src/flows/analysis/registry";
-import type {
-  MemoState,
-  MemoStatus,
-  ThesisSection,
-} from "@/src/flows/analysis/resources";
+import type { MemoStatus } from "@/src/flows/analysis/resources";
+import { memosCollection } from "@/src/flows/analysis/resources";
+import type { ClientDataOf } from "@flow-state-dev/core";
 import { cn } from "@/lib/utils";
 
 type ThesesPaneProps = {
@@ -254,73 +252,11 @@ type MemoDocProps = {
   status: MemoStatus | "unavailable";
 };
 
-// Derived from the canonical `memoStateSchema` so the client-data type
-// can't drift from the resource contract (FIX-564 reviewer feedback).
-type AcceptedAdjustment = NonNullable<
-  MemoState["acceptedAdjustments"]
->["sizing"];
-// Slice 5 — portfolio-fit + lens-convergence shapes, derived from the canonical
-// schema so the client-data type can't drift.
-type PortfolioFit = NonNullable<MemoState["portfolioFit"]>;
-type LensConvergence = NonNullable<MemoState["lensConvergence"]>;
-
-type MemoClientData = {
-  status: MemoStatus;
-  label: string | null;
-  headline: string | null;
-  rating: string | null;
-  body: ThesisSection[] | null;
-  metrics: Record<string, string> | null;
-  citations: Array<{ url: string; title: string }> | null;
-  errorMessage: string | null;
-  // Lens fields (Slice 5) — populated on `memos/p2b/<lensId>` lens memos; the
-  // 3-tier stance + self-reported conviction the LensCard (Slice 7) reads back.
-  stance: "bullish" | "neutral" | "bearish" | null;
-  conviction: number | null;
-  // Phase 5 extension fields — only populated on `memos/p5/scenario-forecaster`.
-  scenarios: Array<{
-    name: string;
-    probability: number;
-    trigger: string;
-    triggerSource: string;
-    expectedOutcome: string;
-    tradeBehavior: string;
-  }> | null;
-  distribution: "concentrated" | "balanced" | "barbell" | "long-tail" | null;
-  evidenceBasis: "sufficient" | "thin" | null;
-  horizon: string | null;
-  // Phase 5 extension fields — only populated on `memos/p5/portfolio-manager`.
-  decisionSummary: string | null;
-  finalRating:
-    | "Sell"
-    | "Underweight"
-    | "Hold"
-    | "Overweight"
-    | "Buy"
-    | null;
-  decisionConfidence: number | null;
-  acceptedAdjustments:
-    | {
-        sizing: AcceptedAdjustment;
-        holdingPeriod: AcceptedAdjustment;
-        invalidation: AcceptedAdjustment;
-      }
-    | null;
-  keyDependencies: string[] | null;
-  upstreamReferences:
-    | {
-        analystMemos: string[];
-        thesis: string;
-        tradeProposal: string;
-        riskAssessment: string;
-      }
-    | null;
-  agreesWithTrader: boolean | null;
-  primaryScenario: string | null;
-  // Slice 5 — only populated on `memos/p5/portfolio-manager`.
-  portfolioFit: PortfolioFit | null;
-  lensConvergence: LensConvergence | null;
-};
+// FIX-741: the client-data type is derived from the memos collection's
+// projection (identity → full MemoState) via `ClientDataOf`, so it can't drift
+// from the resource contract. Replaces the previously hand-mirrored type; a
+// projection/consumer mismatch is now a compile error.
+type MemoClientData = ClientDataOf<typeof memosCollection>;
 
 function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
   const shortName = shortNameForAgent(agent);
@@ -330,7 +266,7 @@ function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
   // The memos collection always exists at the flow level; only call the
   // hook for known phase-1 short names. PMHero / Phase 2+ memos go through
   // their own resource lookup in later phases.
-  const { item } = useResourceCollectionItem(
+  const { item } = useResourceCollectionItem<MemoClientData>(
     session,
     "memos",
     collectionKey ?? "p1/fundamentals",
@@ -338,7 +274,7 @@ function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
   const data = useMemo<MemoClientData | null>(() => {
     if (collectionKey === undefined) return null;
     if (item === null) return null;
-    return (item.clientData ?? null) as MemoClientData | null;
+    return item.clientData ?? null;
   }, [item, collectionKey]);
 
   if (status === "unavailable" || status === "pending") {
@@ -429,14 +365,14 @@ function PmHeroWithScenarios({
   data: MemoClientData | null;
   agent: AgentName;
 }): ReactElement {
-  const { item: scenarioItem } = useResourceCollectionItem(
+  const { item: scenarioItem } = useResourceCollectionItem<MemoClientData>(
     session,
     "memos",
     PHASE_5_MEMO_KEYS.scenarioForecast.collectionKey,
   );
   const scenarioStrip = useMemo(() => {
     if (scenarioItem === null) return null;
-    const sd = scenarioItem.clientData as MemoClientData | null;
+    const sd = scenarioItem.clientData ?? null;
     if (sd === null || sd.scenarios === null || sd.scenarios.length === 0) return null;
     return {
       scenarios: sd.scenarios.map((s) => ({ name: s.name, probability: s.probability })),

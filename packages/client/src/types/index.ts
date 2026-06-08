@@ -252,10 +252,16 @@ export type CollectionItemState = {
  * React-layer wrapper around a collection item. Augments the server's
  * `{ topic, clientData? }` payload with the FIX-296 lazy-content ergonomic
  * (`fetchContent()`) so consumers don't have to plumb the client themselves.
+ *
+ * `TClient` (FIX-741) is the projected client-data shape — supplied by the
+ * React hook generic, typically via `ClientDataOf<typeof collection>`. Defaults
+ * to `unknown` so untyped call sites are unaffected. The runtime payload is the
+ * `JsonValue` produced by the server projection; the type is a hook-boundary
+ * assertion backed by the projection contract.
  */
-export type CollectionItemHandle = {
+export type CollectionItemHandle<TClient = unknown> = {
   topic: string;
-  clientData?: unknown;
+  clientData?: TClient;
   fetchContent(): Promise<string | null>;
 };
 

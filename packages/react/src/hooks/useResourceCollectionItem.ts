@@ -6,21 +6,27 @@ import type { CollectionItemHandle } from "@flow-state-dev/client";
 import { useResourceCollection } from "./useResourceCollection";
 import type { SessionView } from "./useSession";
 
-export type UseResourceCollectionItemResult = {
-  item: CollectionItemHandle | null;
+/**
+ * `TClient` (FIX-741) is the collection's projected per-item client-data type;
+ * pass it via the hook generic, e.g.
+ * `useResourceCollectionItem<ClientDataOf<typeof memos>>(...)`. Defaults to
+ * `unknown` so existing untyped call sites are unchanged.
+ */
+export type UseResourceCollectionItemResult<TClient = unknown> = {
+  item: CollectionItemHandle<TClient> | null;
   isLoading: boolean;
   error: Error | undefined;
   refetch: () => void;
 };
 
-export function useResourceCollectionItem(
+export function useResourceCollectionItem<TClient = unknown>(
   session: SessionView,
   ref: string,
   topic: string
-): UseResourceCollectionItemResult {
-  const { get, wrap } = useResourceCollection(session, ref);
+): UseResourceCollectionItemResult<TClient> {
+  const { get, wrap } = useResourceCollection<TClient>(session, ref);
 
-  const [item, setItem] = useState<CollectionItemHandle | null>(null);
+  const [item, setItem] = useState<CollectionItemHandle<TClient> | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | undefined>(undefined);
   const [generation, setGeneration] = useState(0);
