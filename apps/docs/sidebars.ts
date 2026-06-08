@@ -152,9 +152,11 @@ const sidebars: SidebarsConfig = {
           label: "Tools",
           items: [
             "tools/overview",
+            "tools/search",
             "tools/fetch",
             "tools/crawl",
             "tools/bash",
+            "tools/claude-code-cli",
           ],
         },
         {

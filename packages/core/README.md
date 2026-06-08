@@ -351,6 +351,10 @@ Block, flow, resource, scope, streaming, and model type definitions. Use this su
 
 `defineResourceCollection` accepts a `prefetchWindow?: number` (default `0`) that inlines the first N items in the snapshot's `prefetched` window in lexicographic storage-key order. Per-item `clientData` in the window appears only when `client.state.read: true` is also set. `CollectionStateClientConfig` controls per-item state visibility separately from content; single resources don't accept `client.state` (state visibility is governed by `client.data` on those).
 
+Set `client: { live: true }` to stream each mutation's projected `clientData` as an inline delta that the client merges mid-stream without a refetch (the resource-side analog of `state_change`). It requires the resource's `clientData` to be client-visible (`state.read: true` or a projection on collections; a projection on single resources). `lifecycleSchema(statuses)` is a convenience export that returns a `status` enum plus nullable `startedAt` / `completedAt` / `errorMessage` fields to spread into a status-bearing `stateSchema`.
+
+`defineResource` and `defineResourceCollection` carry a derived client-projection type alongside the state type. `ClientDataOf<typeof def>` extracts it — the `Pick` from `expose`, the `Omit` from `exclude`, the return type of `data`, or the full state for the identity default. Pass it to the React hooks (`useResource<T>`, `useResourceCollectionItem<T>`, …) so `clientData` is typed instead of `unknown`. This is a type-level brand only; the runtime payload stays `JsonValue`. For `data` projections, annotate the function's return so the type is captured precisely.
+
 ### Items (`@flow-state-dev/core/items`)
 
 Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `container`, `tool_output`, `status`, `source`, `state_change`, `resource_change`, `error`.
@@ -508,9 +512,9 @@ See the [models page](https://flow-state.dev/docs/fundamentals/models#env-var-ov
 
 Every item produced by a generator carries a `model: ModelIdentity` field, and the unified `BlockTraceItem` for generator blocks gains a top-level `model` field with the same shape. `ModelIdentity = { actual: string; requested?: string; gateway?: string }` answers "which concrete model produced this?" — distinct from `BlockTraceItem.generator.model` (the requested string) and `BlockTraceItem.modelUsage.model` (the token-accounting key). `actual` is always populated; `requested` appears when it differs from `actual` (intent strings, fallback to a non-first candidate, provider substitution); `gateway` appears when the call routed through a gateway. Handler-emitted items do not carry the field. See the [streaming items reference](https://flow-state.dev/docs/streaming/items) for the full surface.
 
-### Strict-mode schema helper
+### Strict-mode schema helpers
 
-`makeSchemaStrict(schema)` is exported from the package root. It returns a copy of a Zod schema with `optional` / `default` / `nullable` wrappers unwrapped so the JSON schema sent to OpenAI's structured-output strict mode has every property in `required`. The framework calls it internally before handing schemas to the AI SDK; the public export is for authors who want to assert their generator output schemas pass strict mode at test time. See BP-016 in `docs/contributing/best-practices.md`.
+`makeSchemaStrict(schema)` is exported from the package root. It returns a copy of a Zod schema with `optional` / `default` / `nullable` wrappers unwrapped so the JSON schema sent to OpenAI's structured-output strict mode has every property in `required`. The framework calls it internally before handing schemas to the AI SDK.
 
 ```ts
 import { makeSchemaStrict } from "@flow-state-dev/core";
@@ -520,7 +524,19 @@ const strict = makeSchemaStrict(myGeneratorOutputSchema);
 // when the schema is serialized to JSON schema for the LLM provider.
 ```
 
-Note: the helper does NOT transform `z.record()` or `z.union()` of differently-shaped variants — both still fail OpenAI strict and must be rewritten in the source schema. See BP-016 for the rules and the canonical patterns.
+The transform does NOT rewrite `z.record()` or `z.union()` of differently-shaped variants — both still fail OpenAI strict mode and must be fixed in the source schema (array-of-pairs for dynamic keys, a single nullable shape or split generators for unions). `assertStrictCompatible(schema, label?)` detects those eagerly: it runs the transform and throws a `StrictSchemaError` (carrying `.violations` with the offending path) if any survive.
+
+```ts
+import { assertStrictCompatible } from "@flow-state-dev/core";
+
+// Passes — array-of-pairs for dynamic keys.
+assertStrictCompatible(z.object({ pairs: z.array(z.object({ key: z.string(), value: z.string() })) }));
+
+// Throws StrictSchemaError: "$.metrics: ZodRecord: additionalProperties=true …"
+assertStrictCompatible(z.object({ metrics: z.record(z.string(), z.number()) }));
+```
+
+`generator()` calls `assertStrictCompatible` automatically at definition when an `outputSchema` is set, so a bad output schema fails at import — not on the first live model call. Call it directly only to assert a bare schema constant in a test. See BP-016 in `docs/contributing/best-practices.md`.
 
 ## Token and Cost Adapters
 

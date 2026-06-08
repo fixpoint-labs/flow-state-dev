@@ -424,6 +424,42 @@ type OutputValidationDetails = {
 
 `code` is `"output_validation_error"`. `retryable` is `false`. See [Error handling](/docs/advanced/error-handling) for usage patterns.
 
+### `StrictSchemaError`
+
+Thrown at `generator()` construction when an `outputSchema` is not compatible with OpenAI's strict structured-output mode. Strict mode requires a JSON schema with no open-keyed maps and no conflicting `required` sets across union variants, so a reachable `z.record()` or a `z.union()` of differently-shaped variants is rejected. Subclass of `FlowError` with `code` `"strict_schema_error"` and `retryable` `false`. Carries the located violations:
+
+```ts
+interface StrictViolation {
+  path: string;     // e.g. "$.metrics", "$.items[].scores"
+  typeName: string; // e.g. "ZodRecord", "ZodUnion"
+  reason: string;
+}
+// error.violations: StrictViolation[]
+```
+
+## Schema validation
+
+### `assertStrictCompatible(schema, label?)`
+
+Throws a [`StrictSchemaError`](#strictschemaerror) if `schema` — after the strict transform strips its `optional` / `default` / `nullable` wrappers — still contains a construct OpenAI strict mode rejects. A no-op on a compatible schema. Generators call it automatically at definition, so you only need it to check a bare schema constant in a test.
+
+```ts
+import { assertStrictCompatible } from "@flow-state-dev/core";
+import { z } from "zod";
+
+// Throws: dynamic-keyed map → additionalProperties=true
+assertStrictCompatible(z.object({ scores: z.record(z.string(), z.number()) }));
+
+// Passes: array-of-pairs carries dynamic keys without an open map
+assertStrictCompatible(
+  z.object({ scores: z.array(z.object({ key: z.string(), value: z.number() })) }),
+);
+```
+
+### `makeSchemaStrict(schema, options?)`
+
+Returns a copy of `schema` with `optional` / `default` / `nullable` wrappers unwrapped so every property lands in the provider's `required` set. The framework calls it internally before serializing a schema to the AI SDK. Pass `{ validate: true }` to also throw `StrictSchemaError` when an incompatible construct survives (this is what `assertStrictCompatible` does). The transform does not rewrite `z.record()` / `z.union()` — fix those in the source schema.
+
 ## Type Helpers
 
 ```ts
