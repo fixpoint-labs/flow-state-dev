@@ -8,7 +8,7 @@
  * POSTs to the framework's schedule dispatch endpoint, bridging BullMQ's
  * native cron to the scheduled transport adapter.
  */
-import { Worker } from "bullmq";
+import { Worker, UnrecoverableError } from "bullmq";
 import type { Queue, Job } from "bullmq";
 import type { FlowRegistry } from "@flow-state-dev/server";
 import { resolveWorkerConnection } from "./connection";
@@ -106,7 +106,7 @@ export function createScheduleDispatchWorker(
     const userId = data.userId ?? "system";
 
     if (!flowKind || !scheduleId) {
-      throw new Error(
+      throw new UnrecoverableError(
         `Schedule job missing flowKind or scheduleId: ${JSON.stringify(data)}`
       );
     }
