@@ -99,6 +99,9 @@ No headless progress polling or streaming today — that waits on the CLI exposi
 a machine-readable cloud-task status surface. The persisted handle and its
 `status` field are shaped to absorb that follow-up without a breaking change.
 
+For an agent that runs in-process and streams its work rather than dispatching to
+the cloud, see the [Claude Code SDK agent](./claude-code-sdk.md).
+
 See also: [Tools overview](./overview.md), and the
 [CLI](../cli/overview.md) for running flows locally rather than dispatching to
 the cloud.

@@ -157,6 +157,7 @@ const sidebars: SidebarsConfig = {
             "tools/crawl",
             "tools/bash",
             "tools/claude-code-cli",
+            "tools/claude-code-sdk",
           ],
         },
         {
