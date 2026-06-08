@@ -120,8 +120,10 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
   // memo's `status` mid-stream (FIX-739) with no session-state mirror. A memo
   // not yet created is absent → `statusForAgent` defaults it to `pending`.
   // Derived state → useMemo, not an effect (BP-010).
+  // Cap tracks the registry so adding a phase can never silently truncate the
+  // status map (a dropped memo would render permanently `pending`).
   const { items: memoItems } = useResourceCollectionList(session, "memos", {
-    limit: 50,
+    limit: Object.keys(ALL_MEMO_KEYS).length,
   });
   const memoStatus = useMemo<Partial<Record<AnyMemoShortName, MemoStatus>>>(() => {
     const map: Partial<Record<AnyMemoShortName, MemoStatus>> = {};

@@ -21,7 +21,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { PHASE_1_MEMO_KEYS } from "../registry";
+import { ALL_MEMO_KEYS, PHASE_1_MEMO_KEYS } from "../registry";
 import { analyzeInputSchema } from "../flow-schema";
 import { resolveTicker } from "../lib/ticker-resolver";
 import { memoResources } from "../resources";
@@ -35,17 +35,35 @@ import {
 import { buildPortfolioContext } from "../build-portfolio-context";
 
 /**
- * Patches session state from action input. A re-run starts from a clean
- * navigator because the per-phase setup taps re-create each memo in `pending`;
- * there is no session-state status mirror to reset here.
+ * Patches session state from action input and clears any memos a prior run
+ * left on this session, so a re-run starts from a clean navigator.
+ *
+ * The memos collection is the navigator's live status source now (no
+ * `memoStatus` session mirror), and a stop guard can exit the pipeline before
+ * any per-phase setup re-creates the `pending` scaffolds — `checkTickerResolvable`
+ * runs immediately after this seed and `.exitIf`-bails before `setupPhase1Memos`.
+ * So the prior-run reset has to happen here, not lean on the setup taps. (The
+ * old `memoStatus: {}` reset did the equivalent for the retired mirror.)
  */
 export const seedSession = handler({
   name: "seed-session",
   inputSchema: analyzeInputSchema,
   outputSchema: analyzeInputSchema,
   sessionStateSchema,
-  resources: { accounts: accountsCollection, portfolioQuotes: portfolioQuotesResource },
+  resources: {
+    accounts: accountsCollection,
+    portfolioQuotes: portfolioQuotesResource,
+    ...memoResources,
+  },
   execute: async (input, ctx) => {
+    // Clear any memos persisted by a prior run on this session. `delete` is
+    // idempotent (no-op, no event, for a key that doesn't exist), so a first
+    // run is unaffected; a re-run starts the navigator from an all-pending
+    // slate that the per-phase setups then re-create.
+    for (const { collectionKey } of Object.values(ALL_MEMO_KEYS)) {
+      await ctx.resources.memos.delete(collectionKey);
+    }
+
     // Freeze the per-run thesis at seed time so editing the form mid-run
     // can't affect the session that's already analyzing. A non-null
     // `userThesis` gates Phase 6; a sub-threshold (< 20 chars) thesis is
