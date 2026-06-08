@@ -142,7 +142,7 @@ For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.p
 ## What this package does
 
 - **Action execution** — Validates input, resolves sessions, runs block pipelines, emits items
-- **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume
+- **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume. Resources declaring `client: { live: true }` emit their projected delta inline on each mutation so clients merge it without a refetch
 - **State persistence** — In-memory and filesystem store adapters with CAS-guarded atomic writes
 - **Flow registry** — Register multiple flows, routes are derived automatically
 - **Error normalization** — All errors become typed `FlowError` instances with codes, retry signals, and scope context

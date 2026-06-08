@@ -43,7 +43,11 @@ function makeRegistry(options: {
   configs?: Record<string, ResourceConfig | ResourceCollectionConfig>;
   initialState?: Record<string, JsonObject>;
   initialContent?: Record<string, string>;
-  onResourceChanged?: (path: string, type: "created" | "updated" | "deleted") => void;
+  onResourceChanged?: (
+    path: string,
+    type: "created" | "updated" | "deleted",
+    projection?: { delta: unknown }
+  ) => void;
 }) {
   const state = { ...(options.initialState ?? {}) };
   const content = { ...(options.initialContent ?? {}) };
@@ -479,15 +483,122 @@ describe("createScopeResourceRegistry — lifecycle hooks", () => {
     });
 
     await (registry as any).items.create("doc1", {});
-    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "created");
+    // Non-live collection: third (projection) arg is undefined.
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "created", undefined);
 
     const ref = await (registry as any).items.get("doc1");
     await ref.patchState({ v: 1 });
-    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated");
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated", undefined);
 
     await (registry as any).items.delete("doc1");
-    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "deleted");
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "deleted", undefined);
     expect(onChange).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
+  it("passes the projected delta on a live collection mutation", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("memos/*", {
+      stateSchema: z.object({ status: z.string(), secret: z.string().default("x") }).passthrough(),
+      client: { state: { read: true }, live: true, exclude: ["secret"] }
+    });
+    const registry = makeRegistry({
+      configs: { memos: nsConfig },
+      onResourceChanged: onChange
+    });
+
+    await (registry as any).memos.create("m1", { status: "pending" });
+    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "created", {
+      delta: { status: "pending" } // `secret` excluded by the projection
+    });
+
+    const ref = await (registry as any).memos.get("m1");
+    await ref.patchState({ status: "writing" });
+    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "updated", {
+      delta: { status: "writing" }
+    });
+
+    await (registry as any).memos.upsert("m1", { status: "published" });
+    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "updated", {
+      delta: { status: "published" }
+    });
+
+    // Deletes on a live collection carry a null delta so the client drops the
+    // item without a refetch.
+    await (registry as any).memos.delete("m1");
+    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "deleted", { delta: null });
+  });
+
+  it("omits the delete delta for a non-live collection", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("memos/*", {
+      stateSchema: z.object({ status: z.string() }).passthrough(),
+      client: { state: { read: true } }
+    });
+    const registry = makeRegistry({ configs: { memos: nsConfig }, onResourceChanged: onChange });
+    await (registry as any).memos.create("m1", { status: "pending" });
+    await (registry as any).memos.delete("m1");
+    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "deleted", undefined);
+  });
+
+  it("omits the delta for a non-live collection (batched-refetch path)", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("memos/*", {
+      stateSchema: z.object({ status: z.string() }).passthrough(),
+      client: { state: { read: true } }
+    });
+    const registry = makeRegistry({ configs: { memos: nsConfig }, onResourceChanged: onChange });
+
+    await (registry as any).memos.create("m1", { status: "pending" });
+    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "created", undefined);
+  });
+
+  it("emits a live delta for a live single resource (and nothing for non-live)", async () => {
+    const onLive = vi.fn();
+    const liveReg = makeRegistry({
+      configs: {
+        doc: makeResourceConfig({
+          stateSchema: z.object({ status: z.string().default("pending") }).passthrough(),
+          client: { expose: ["status"], live: true }
+        })
+      },
+      initialState: { doc: { status: "pending" } },
+      onResourceChanged: onLive
+    });
+    await liveReg.get("doc").patchState({ status: "writing" });
+    expect(onLive).toHaveBeenLastCalledWith("doc", "updated", { delta: { status: "writing" } });
+
+    const onSilent = vi.fn();
+    const silentReg = makeRegistry({
+      configs: {
+        doc: makeResourceConfig({
+          stateSchema: z.object({ status: z.string().default("pending") }).passthrough(),
+          client: { expose: ["status"] }
+        })
+      },
+      initialState: { doc: { status: "pending" } },
+      onResourceChanged: onSilent
+    });
+    await silentReg.get("doc").patchState({ status: "writing" });
+    expect(onSilent).not.toHaveBeenCalled();
+  });
+
+  it("degrades to no delta when a live client.data projection throws", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("memos/*", {
+      stateSchema: z.object({ status: z.string() }).passthrough(),
+      client: {
+        state: { read: true },
+        live: true,
+        data: () => { throw new Error("boom"); }
+      }
+    });
+    const registry = makeRegistry({ configs: { memos: nsConfig }, onResourceChanged: onChange });
+
+    // The mutation must still succeed; the delta degrades to undefined.
+    await (registry as any).memos.create("m1", { status: "pending" });
+    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "created", undefined);
   });
 });
 

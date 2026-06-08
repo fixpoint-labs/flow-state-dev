@@ -277,6 +277,7 @@ export function defineResourceCollection<
   validateClientProjection({
     definer: "defineResourceCollection()",
     ref: config.pattern,
+    kind: "collection",
     stateSchema: config.stateSchema,
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });

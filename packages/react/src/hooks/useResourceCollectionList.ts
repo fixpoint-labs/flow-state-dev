@@ -4,16 +4,52 @@
  * Manages the React state lifecycle for a paginated list view: loading,
  * error, accumulated pages via `loadMore`, and refetching on mutations.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   CollectionItemHandle,
   CollectionListPage
 } from "@flow-state-dev/client";
 import {
   useResourceCollection,
-  type CollectionListOptions
+  type CollectionListOptions,
+  type UseResourceCollectionResult
 } from "./useResourceCollection";
 import type { SessionView } from "./useSession";
+
+/**
+ * Apply a `client.live` overlay (FIX-739) over a fetched/prefetched item list:
+ * override each item's `clientData` from its live entry, drop tombstoned
+ * topics, and append live-created topics not in the fetched window (so a
+ * mid-stream create surfaces without a refetch). Appended items land at the end
+ * — list order reconciles on the next snapshot refetch. Returns the input
+ * reference unchanged when there's no overlay, so non-live collections don't
+ * re-render.
+ */
+export function applyLiveOverlay<TClient = unknown>(
+  items: CollectionItemHandle<TClient>[],
+  live: UseResourceCollectionResult<TClient>["live"],
+  wrap: UseResourceCollectionResult<TClient>["wrap"]
+): CollectionItemHandle<TClient>[] {
+  if (live === undefined) return items;
+  const seen = new Set<string>();
+  const out: CollectionItemHandle<TClient>[] = [];
+  for (const item of items) {
+    seen.add(item.topic);
+    const overlay = live[item.topic];
+    if (overlay === undefined) {
+      out.push(item);
+    } else if (overlay.deleted !== true) {
+      // The overlay carries the same projected shape as the baseline item.
+      out.push({ ...item, clientData: overlay.clientData as TClient });
+    }
+    // deleted → omitted
+  }
+  for (const [topic, overlay] of Object.entries(live)) {
+    if (seen.has(topic) || overlay.deleted === true) continue;
+    out.push(wrap({ topic, clientData: overlay.clientData }));
+  }
+  return out;
+}
 
 /**
  * `TClient` (FIX-741) is the collection's projected per-item client-data type;
@@ -39,7 +75,7 @@ export function useResourceCollectionList<TClient = unknown>(
   ref: string,
   options: { limit?: number; topicPrefix?: string } = {}
 ): UseResourceCollectionListResult<TClient> {
-  const { list, prefetched, count, wrap } = useResourceCollection<TClient>(session, ref);
+  const { list, prefetched, count, live, wrap } = useResourceCollection<TClient>(session, ref);
   const limit = options.limit;
   const topicPrefix = options.topicPrefix;
 
@@ -94,8 +130,15 @@ export function useResourceCollectionList<TClient = unknown>(
   // (including during the in-flight initial load). Once the first page
   // resolves, `items` takes over. This is the whole point of declaring
   // `prefetchWindow` — render immediately, no network round-trip.
-  const surfaced =
+  const baseItems =
     items.length === 0 && prefetched !== undefined ? prefetched : items;
+  // Apply the live overlay (FIX-739) over the fetched/prefetched window so a
+  // `client.live: true` collection's list reflects mid-stream status changes,
+  // deletes, and creates without a refetch. Reactive via `live` (snapshot-derived).
+  const surfaced = useMemo(
+    () => applyLiveOverlay(baseItems, live, wrap),
+    [baseItems, live, wrap]
+  );
   const surfacedPagination =
     pagination ??
     (count !== undefined && prefetched !== undefined

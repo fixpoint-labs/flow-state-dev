@@ -64,6 +64,14 @@ export type UseResourceCollectionResult<TClient = unknown> = {
   /** Total item count from the snapshot, when the collection is client-visible. */
   count: number | undefined;
   /**
+   * Per-topic live overlay from the snapshot (FIX-739), populated for
+   * `client.live: true` collections. A created/updated entry carries
+   * `clientData`; a deleted entry is a tombstone (`deleted: true`). The
+   * convenience hooks apply this over their fetched items so list/item reads
+   * reflect mid-stream mutations without a refetch.
+   */
+  live: Record<string, { clientData?: unknown; deleted?: boolean }> | undefined;
+  /**
    * Wraps a raw `{ topic, clientData? }` page item from `list()` as a
    * `CollectionItemHandle` with the FIX-296 lazy `fetchContent()` ergonomic.
    * Reuses the hook's resource client; the convenience hooks
@@ -105,7 +113,7 @@ function pathAffectsCollection(path: string, ref: string): boolean {
 }
 
 /** Locate the snapshot entry for `ref` across all scopes. */
-function findCollectionEntry(
+export function findCollectionEntry(
   session: SessionView,
   ref: string
 ): CollectionSnapshotEntry | undefined {
@@ -311,6 +319,7 @@ export function useResourceCollection<TClient = unknown>(
     refetch: invalidate,
     prefetched,
     count: collectionEntry?.count,
+    live: collectionEntry?.live,
     wrap,
   };
 }
