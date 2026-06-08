@@ -16,7 +16,8 @@ export type SdkResultSubtype =
   | "success"
   | "error_max_turns"
   | "error_max_budget_usd"
-  | "error_during_execution";
+  | "error_during_execution"
+  | "error_max_structured_output_retries";
 
 /**
  * Handle for a single in-process Agent SDK run.
@@ -47,7 +48,13 @@ export const sdkAgentHandleSchema = remoteAgentTaskHandleSchema.extend({
   source: z.literal("sdk"),
   status: z.enum(["running", "completed", "errored"]),
   resultSubtype: z
-    .enum(["success", "error_max_turns", "error_max_budget_usd", "error_during_execution"])
+    .enum([
+      "success",
+      "error_max_turns",
+      "error_max_budget_usd",
+      "error_during_execution",
+      "error_max_structured_output_retries",
+    ])
     .nullable(),
   finalMessage: z.string().nullable(),
   toolsObserved: z.array(z.string()),
@@ -69,6 +76,11 @@ export type SdkMessageLike =
   | {
       type: "assistant";
       session_id?: string;
+      /**
+       * The container tool-use id when this message was produced inside a
+       * sub-agent (`Task`/`Agent`) loop; `null`/absent at the top level. Used to
+       * nest the sub-agent's own assistant/tool items under its container.
+       */
       parent_tool_use_id?: string | null;
       message?: {
         content?: Array<
@@ -98,8 +110,12 @@ export type SdkMessageLike =
       event?: {
         type?: string;
         delta?: {
-          type?: "text_delta" | "input_json_delta" | string;
+          type?: "text_delta" | "thinking_delta" | "input_json_delta" | string;
+          /** Present on a `text_delta` (Anthropic raw-stream contract). */
           text?: string;
+          /** Present on a `thinking_delta` — NOT `text`. */
+          thinking?: string;
+          /** Present on an `input_json_delta` (streamed tool arguments). */
           partial_json?: string;
         };
       };
@@ -107,11 +123,14 @@ export type SdkMessageLike =
   | {
       type: "result";
       subtype?: SdkResultSubtype | string;
+      /** Present only on the `success` result variant. */
       result?: string;
+      /** Present only on error-subtype results (replaces `result`). */
+      errors?: string[];
       session_id?: string;
+      /** `NonNullableUsage` carries `input_tokens`/`output_tokens` (+ cache). */
       usage?: { input_tokens?: number; output_tokens?: number } | null;
       total_cost_usd?: number | null;
-      cost?: number | null;
     };
 
 /**
@@ -122,16 +141,29 @@ export type SdkMessageLike =
 export type TranslatedEvent =
   /** A streamed token of assistant text (partial-message path). */
   | { kind: "message_delta"; text: string }
-  /** A complete assistant message block (whole-message path). */
-  | { kind: "message_complete"; text: string }
+  /**
+   * A complete assistant message block (whole-message path). When partials are
+   * ON this fires only as a close boundary; `parentCallId` (when set) is the
+   * sub-agent container this turn belongs to.
+   */
+  | { kind: "message_complete"; text: string; parentCallId?: string }
   /** A streamed token of reasoning text (partial-message path). */
   | { kind: "reasoning_delta"; text: string }
   /** A complete reasoning block (whole-message path). */
-  | { kind: "reasoning_complete"; text: string }
-  /** The SDK requested a tool. `callId` correlates with the eventual result. */
-  | { kind: "tool_call"; callId: string; name: string; arguments: string }
+  | { kind: "reasoning_complete"; text: string; parentCallId?: string }
+  /**
+   * The SDK requested a tool. `callId` correlates with the eventual result;
+   * `parentCallId` (when set) is the sub-agent container that owns this tool.
+   */
+  | { kind: "tool_call"; callId: string; name: string; arguments: string; parentCallId?: string }
   /** A tool finished. `callId` correlates with its opening `tool_call`. */
-  | { kind: "tool_result"; callId: string; output: unknown; isError: boolean }
+  | {
+      kind: "tool_result";
+      callId: string;
+      output: unknown;
+      isError: boolean;
+      parentCallId?: string;
+    }
   /** A sub-agent (`Agent`/`Task`) spawned. `callId` is its tool_use id. */
   | { kind: "subagent_open"; callId: string; name: string }
   /** A sub-agent finished. `callId` matches its `subagent_open`. */
@@ -177,6 +209,8 @@ export interface ClaudeAgentQueryOptions {
   maxTurns?: number;
   resume?: string;
   includePartialMessages?: boolean;
+  /** Forwarded to the SDK so an aborted `ctx.signal` stops the run. */
+  abortController?: AbortController;
 }
 
 /** The SDK's `canUseTool` callback shape (HITL seam target). */
@@ -204,6 +238,11 @@ export type ResolveClaudeAgent = (
 export interface ToolApprovalRequest {
   toolName: string;
   input: unknown;
+  /**
+   * The SDK's per-call abort signal (`extra.signal` from `canUseTool`), when
+   * present. A host UI can observe it to cancel a pending approval prompt.
+   */
+  signal?: AbortSignal;
 }
 
 /** A decision returned by {@link ClaudeCodeAgentOptions.onToolApproval}. */

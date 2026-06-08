@@ -2,9 +2,14 @@ import { describe, it, expect } from "vitest";
 import { createTranslateState, translateSdkMessage } from "../../src/sdk/translate";
 import type { SdkMessageLike } from "../../src/sdk/types";
 
-/** Translate a single message against a fresh state and return the events. */
+/**
+ * Translate a single message against a fresh state and return the events.
+ * Defaults to the partials-OFF path so whole-message assistant blocks still
+ * surface their text/thinking content (the partials-ON skip is covered by its
+ * own dedicated tests with an explicit `createTranslateState({ partialMessages: true })`).
+ */
 function translateOne(msg: SdkMessageLike) {
-  const state = createTranslateState();
+  const state = createTranslateState({ partialMessages: false });
   return translateSdkMessage(msg, state);
 }
 
@@ -99,6 +104,55 @@ describe("translateSdkMessage", () => {
     expect(events).toEqual([{ kind: "message_delta", text: "tok" }]);
   });
 
+  it("maps a thinking_delta stream_event to a reasoning_delta reading delta.thinking", () => {
+    const events = translateOne({
+      type: "stream_event",
+      event: {
+        type: "content_block_delta",
+        delta: { type: "thinking_delta", thinking: "pondering" },
+      },
+    });
+    expect(events).toEqual([{ kind: "reasoning_delta", text: "pondering" }]);
+  });
+
+  it("when partials are ON, an assistant message skips text/thinking blocks (already streamed)", () => {
+    const state = createTranslateState({ partialMessages: true });
+    const events = translateSdkMessage(
+      {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "plan" },
+            { type: "text", text: "answer" },
+            { type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "ls" } },
+          ],
+        },
+      },
+      state,
+    );
+    // Only the tool_use survives; text/thinking already streamed as deltas.
+    expect(events).toEqual([
+      { kind: "tool_call", callId: "toolu_1", name: "Bash", arguments: '{"command":"ls"}' },
+    ]);
+  });
+
+  it("when partials are OFF, an assistant message still emits text/thinking complete events", () => {
+    const state = createTranslateState({ partialMessages: false });
+    const events = translateSdkMessage(
+      {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "plan" },
+            { type: "text", text: "answer" },
+          ],
+        },
+      },
+      state,
+    );
+    expect(events.map((e) => e.kind)).toEqual(["reasoning_complete", "message_complete"]);
+  });
+
   it("ignores input_json_delta stream events (tool args come from the whole block)", () => {
     const events = translateOne({
       type: "stream_event",
@@ -160,24 +214,51 @@ describe("translateSdkMessage", () => {
     ]);
   });
 
-  it("maps an error_max_turns result to an error event plus a result event", () => {
+  it("maps an error_max_turns result (errors[]) to an error event plus a result event", () => {
+    // Error-subtype results carry `errors: string[]`, never `result`.
     const events = translateOne({
       type: "result",
       subtype: "error_max_turns",
-      result: "hit the turn limit",
+      errors: ["hit the turn limit", "and another detail"],
       session_id: "sess_7",
     });
     expect(events).toEqual([
-      { kind: "error", message: "hit the turn limit", code: "error_max_turns" },
+      { kind: "error", message: "hit the turn limit; and another detail", code: "error_max_turns" },
       {
         kind: "result",
         subtype: "error_max_turns",
-        finalMessage: "hit the turn limit",
+        finalMessage: "hit the turn limit; and another detail",
         sessionId: "sess_7",
         usage: null,
         costUsd: null,
       },
     ]);
+  });
+
+  it("falls back to a generic message when an error result has neither result nor errors", () => {
+    const events = translateOne({
+      type: "result",
+      subtype: "error_during_execution",
+      session_id: "sess_g",
+    });
+    const error = events.find((e) => e.kind === "error");
+    expect(error).toEqual({
+      kind: "error",
+      message: "Claude Code agent run failed (error_during_execution).",
+      code: "error_during_execution",
+    });
+  });
+
+  it("normalizes error_max_structured_output_retries as a non-success subtype", () => {
+    const events = translateOne({
+      type: "result",
+      subtype: "error_max_structured_output_retries",
+      errors: ["gave up retrying"],
+      session_id: "sess_r",
+    });
+    expect(events.map((e) => e.kind)).toEqual(["error", "result"]);
+    const result = events.find((e) => e.kind === "result");
+    expect(result).toMatchObject({ subtype: "error_max_structured_output_retries" });
   });
 
   it("drops usage and cost to null when the result omits them", () => {

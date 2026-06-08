@@ -1,7 +1,7 @@
 /**
  * `claudeCodeAgent` — handler block running the Claude Code Agent SDK in-process.
  *
- * This is the FIX-118 "Level 2 agent adapter": the SDK owns its own agentic
+ * This is the FIX-671 "Level 2 agent adapter": the SDK owns its own agentic
  * loop and built-in tools; FSD observes, translates, and persists. The block
  * resumes a prior SDK session (via the session provider + persisted
  * `sdkSessionId`), runs `query()` to completion, pipes each streamed message
@@ -15,7 +15,12 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { createEmitState, emitTranslatedEvent, finalizeOpenItems } from "./emit";
+import {
+  closeStreamingItems,
+  createEmitState,
+  emitTranslatedEvent,
+  finalizeOpenItems,
+} from "./emit";
 import { createTranslateState, translateSdkMessage } from "./translate";
 import { defaultResolveClaudeAgent } from "./sdk-client";
 import { createClaudeAgentSessionProvider, type ClaudeAgentSession } from "./session";
@@ -91,6 +96,22 @@ function isErroredSubtype(subtype: SdkResultSubtype | null): boolean {
 }
 
 /**
+ * Create an {@link AbortController} that mirrors the block's `ctx.signal`, so an
+ * aborted request stops the in-process SDK run. Tolerates an absent signal
+ * (returns a live, un-aborted controller). Forwards an already-aborted signal
+ * synchronously, and a later abort via a one-shot listener.
+ */
+export function forwardSignalToController(signal: AbortSignal | undefined): AbortController {
+  const controller = new AbortController();
+  if (signal?.aborted) {
+    controller.abort();
+  } else {
+    signal?.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  return controller;
+}
+
+/**
  * Create the in-process Agent SDK handler block.
  *
  * On success it appends an {@link SdkAgentHandle} to
@@ -138,6 +159,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
       const resolved = await resolveClaudeAgent(ctx);
       const dispatchedAt = Date.now();
+      const abortController = forwardSignalToController(ctx.signal);
 
       const queryOptions: ClaudeAgentQueryOptions = {
         model,
@@ -148,11 +170,12 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         agents,
         maxTurns,
         includePartialMessages,
+        abortController,
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
         ...(onToolApproval ? { canUseTool: buildCanUseTool(onToolApproval, ctx) } : {}),
       };
 
-      const translateState = createTranslateState();
+      const translateState = createTranslateState({ partialMessages: includePartialMessages });
       const emitState = createEmitState();
 
       let resultSubtype: SdkResultSubtype | null = null;
@@ -173,6 +196,12 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               if (event.usage !== null) usage = event.usage;
               if (event.costUsd !== null) costUsd = event.costUsd;
             }
+          }
+          // Partials path: the whole `assistant` message is the turn's close
+          // boundary. translate skips its text/thinking (already streamed), so
+          // close the open streaming items here before the next turn's deltas.
+          if (includePartialMessages && message.type === "assistant") {
+            await closeStreamingItems(ctx, emitState);
           }
         }
       } catch (err) {
@@ -232,24 +261,33 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
 /**
  * Adapt an {@link ClaudeCodeAgentOptions.onToolApproval} seam onto the SDK's
- * `canUseTool` callback. Each decision is noted via a status item so the
- * approval is observable in the stream; a deny continues the run (the SDK
- * surfaces the denial to the model).
+ * `canUseTool` callback. The SDK invokes `canUseTool(toolName, input, extra)`
+ * where `extra = { signal, suggestions }`; the `extra.signal` is forwarded to
+ * the approval request so a host UI can cancel a pending prompt. Each decision
+ * is recorded as a DURABLE, non-colliding status item (auditable: it replays on
+ * history reload, and a per-decision sequence number defeats `emitStatus`'s
+ * same-string dedupe so repeated approvals of one tool aren't swallowed). A deny
+ * continues the run (the SDK surfaces the denial to the model).
  */
 function buildCanUseTool(
   onToolApproval: NonNullable<ClaudeCodeAgentOptions["onToolApproval"]>,
   ctx: BlockContext,
 ): SdkCanUseTool {
-  return async (toolName, toolInput) => {
-    const decision = await onToolApproval({ toolName, input: toolInput }, ctx);
+  let decisionSeq = 0;
+  return async (toolName, toolInput, extra) => {
+    const decision = await onToolApproval(
+      { toolName, input: toolInput, signal: extra?.signal },
+      ctx,
+    );
+    const seq = ++decisionSeq;
     if (decision.decision === "allow") {
-      ctx.emit.status(`Approved tool: ${toolName}.`);
+      ctx.emit.status(`Approved tool: ${toolName} (#${seq}).`, { transient: false });
       return {
         behavior: "allow",
         updatedInput: decision.updatedInput ?? toolInput,
       };
     }
-    ctx.emit.status(`Denied tool: ${toolName}.`);
+    ctx.emit.status(`Denied tool: ${toolName} (#${seq}).`, { transient: false });
     return {
       behavior: "deny",
       message: decision.message ?? `Tool ${toolName} was denied.`,

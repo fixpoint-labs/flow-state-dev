@@ -28,11 +28,27 @@ export interface TranslateState {
   readonly openTools: Set<string>;
   /** Sub-agent tool-use ids currently open (`Agent`/`Task`). */
   readonly openSubagents: Set<string>;
+  /**
+   * Whether the SDK is emitting partial-message deltas (`includePartialMessages`).
+   * When true, text/thinking already stream as deltas, so the subsequent whole
+   * `assistant` message must NOT re-emit them — it only closes the open items.
+   */
+  readonly partialMessages: boolean;
+}
+
+/** Options controlling how messages are interpreted across a run. */
+export interface TranslateStateOptions {
+  /** Mirrors the SDK's `includePartialMessages`. Default `true`. */
+  partialMessages?: boolean;
 }
 
 /** Create a fresh, empty {@link TranslateState} for one run. */
-export function createTranslateState(): TranslateState {
-  return { openTools: new Set<string>(), openSubagents: new Set<string>() };
+export function createTranslateState(options: TranslateStateOptions = {}): TranslateState {
+  return {
+    openTools: new Set<string>(),
+    openSubagents: new Set<string>(),
+    partialMessages: options.partialMessages ?? true,
+  };
 }
 
 /** Normalize the SDK's terminal subtype string to a known value or `null`. */
@@ -42,6 +58,7 @@ function normalizeSubtype(raw: string | undefined): SdkResultSubtype | null {
     case "error_max_turns":
     case "error_max_budget_usd":
     case "error_during_execution":
+    case "error_max_structured_output_retries":
       return raw;
     default:
       return null;
@@ -98,17 +115,30 @@ function translateSystem(msg: Extract<SdkMessageLike, { type: "system" }>): Tran
  * `assistant` whole-message → per-block message/reasoning/tool_call events.
  * Each content block becomes its own event so multiple blocks in one message
  * map to distinct items downstream.
+ *
+ * When `state.partialMessages` is on, the text/thinking content already streamed
+ * as `stream_event` deltas; re-emitting `message_complete`/`reasoning_complete`
+ * here would double the items. So in that mode this skips text/thinking blocks
+ * and emits only `tool_use`/sub-agent events — the open streaming items are
+ * closed downstream (in `emit.ts`) by the tool/sub-agent boundary or run end.
+ *
+ * `parent_tool_use_id`, when set, is the sub-agent container this turn ran
+ * inside; it is threaded onto the events so `emit.ts` can nest them.
  */
 function translateAssistant(
   msg: Extract<SdkMessageLike, { type: "assistant" }>,
   state: TranslateState,
 ): TranslatedEvent[] {
   const events: TranslatedEvent[] = [];
+  const parentCallId = msg.parent_tool_use_id ?? undefined;
+  const withParent = parentCallId ? { parentCallId } : {};
   for (const block of msg.message?.content ?? []) {
     if (block.type === "text") {
-      events.push({ kind: "message_complete", text: block.text });
+      if (state.partialMessages) continue;
+      events.push({ kind: "message_complete", text: block.text, ...withParent });
     } else if (block.type === "thinking") {
-      events.push({ kind: "reasoning_complete", text: block.thinking });
+      if (state.partialMessages) continue;
+      events.push({ kind: "reasoning_complete", text: block.thinking, ...withParent });
     } else if (block.type === "tool_use") {
       if (SUBAGENT_TOOL_NAMES.has(block.name)) {
         state.openSubagents.add(block.id);
@@ -120,6 +150,7 @@ function translateAssistant(
           callId: block.id,
           name: block.name,
           arguments: stringifyArgs(block.input),
+          ...withParent,
         });
       }
     }
@@ -136,6 +167,8 @@ function translateUser(
   state: TranslateState,
 ): TranslatedEvent[] {
   const events: TranslatedEvent[] = [];
+  const parentCallId = msg.parent_tool_use_id ?? undefined;
+  const withParent = parentCallId ? { parentCallId } : {};
   for (const block of msg.message?.content ?? []) {
     if (block.type !== "tool_result") continue;
     const callId = block.tool_use_id;
@@ -145,7 +178,7 @@ function translateUser(
       events.push({ kind: "subagent_close", callId, output: block.content, isError });
     } else {
       state.openTools.delete(callId);
-      events.push({ kind: "tool_result", callId, output: block.content, isError });
+      events.push({ kind: "tool_result", callId, output: block.content, isError, ...withParent });
     }
   }
   return events;
@@ -166,8 +199,9 @@ function translateStreamEvent(
   if (delta.type === "text_delta" && typeof delta.text === "string") {
     return [{ kind: "message_delta", text: delta.text }];
   }
-  if (delta.type === "thinking_delta" && typeof delta.text === "string") {
-    return [{ kind: "reasoning_delta", text: delta.text }];
+  // Thinking deltas carry the token on `delta.thinking`, not `delta.text`.
+  if (delta.type === "thinking_delta" && typeof delta.thinking === "string") {
+    return [{ kind: "reasoning_delta", text: delta.thinking }];
   }
   return [];
 }
@@ -182,25 +216,26 @@ function translateResult(msg: Extract<SdkMessageLike, { type: "result" }>): Tran
           outputTokens: msg.usage.output_tokens ?? 0,
         }
       : null;
-  const costUsd =
-    typeof msg.total_cost_usd === "number"
-      ? msg.total_cost_usd
-      : typeof msg.cost === "number"
-        ? msg.cost
-        : null;
+  const costUsd = typeof msg.total_cost_usd === "number" ? msg.total_cost_usd : null;
+
+  // Success results carry `result`; error-subtype results carry `errors[]` and
+  // have no `result`. Coalesce to the best detail available, else a generic.
+  const errorsText =
+    msg.errors && msg.errors.length > 0 ? msg.errors.join("; ") : undefined;
 
   const events: TranslatedEvent[] = [];
   if (subtype !== null && subtype !== "success") {
     events.push({
       kind: "error",
-      message: msg.result ?? `Claude Code agent run failed (${subtype}).`,
+      message: msg.result ?? errorsText ?? `Claude Code agent run failed (${subtype}).`,
       code: subtype,
     });
   }
   events.push({
     kind: "result",
     subtype,
-    finalMessage: typeof msg.result === "string" ? msg.result : null,
+    finalMessage:
+      typeof msg.result === "string" ? msg.result : (errorsText ?? null),
     sessionId: msg.session_id ?? null,
     usage,
     costUsd,

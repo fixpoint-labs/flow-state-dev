@@ -9,8 +9,10 @@
  * accumulated via deltas).
  *
  * Visibility: conversational items carry `{ client: true, history: true }`.
- * Sub-agent activity surfaces as container open/close pairs; tools as
- * `tool_output` items correlated by SDK tool-use id.
+ * Sub-agent activity surfaces as container open/close pairs, and the
+ * sub-agent's own assistant/tool items nest inside it via `ownedBy` (keyed off
+ * the message's `parent_tool_use_id`); tools surface as `tool_output` items
+ * correlated by SDK tool-use id.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { TranslatedEvent } from "./types";
@@ -36,7 +38,10 @@ export interface EmitState {
   /** Item id + accumulated text of the in-progress streamed reasoning, if any. */
   reasoning: { id: string; contentIndex: number; text: string } | null;
   /** Open tool_output items keyed by SDK tool-use callId. */
-  readonly openTools: Map<string, { id: string; name: string; arguments: string }>;
+  readonly openTools: Map<
+    string,
+    { id: string; name: string; arguments: string; ownedBy?: string }
+  >;
   /** Open container item ids keyed by sub-agent callId. */
   readonly openSubagents: Map<string, string>;
   /** Distinct SDK tool names observed, in first-seen order. */
@@ -50,7 +55,7 @@ export function createEmitState(): EmitState {
   return {
     message: null,
     reasoning: null,
-    openTools: new Map<string, { id: string; name: string; arguments: string }>(),
+    openTools: new Map<string, { id: string; name: string; arguments: string; ownedBy?: string }>(),
     openSubagents: new Map<string, string>(),
     toolsObserved: [],
     finalMessage: null,
@@ -95,6 +100,17 @@ function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) 
 
 const CONVERSATIONAL_VISIBILITY = { client: true, history: true } as const;
 
+/**
+ * Resolve the `ownedBy` container id for an item produced inside a sub-agent.
+ * `parentCallId` is the sub-agent's tool-use id (from the SDK message's
+ * `parent_tool_use_id`); when a container is open for it, the item nests under
+ * that container's item id. Returns `undefined` for top-level items.
+ */
+function resolveOwnedBy(state: EmitState, parentCallId: string | undefined): string | undefined {
+  if (parentCallId === undefined) return undefined;
+  return state.openSubagents.get(parentCallId);
+}
+
 /** Fallback block name used when re-deriving provenance for a close emission. */
 const DEFAULT_AGENT_NAME = "claude-code-agent";
 
@@ -114,11 +130,11 @@ export async function emitTranslatedEvent(
     case "message_delta":
       return emitMessageDelta(event.text, ctx, state, provenance);
     case "message_complete":
-      return emitMessageComplete(event.text, ctx, state, provenance);
+      return emitMessageComplete(event.text, ctx, state, provenance, event.parentCallId);
     case "reasoning_delta":
       return emitReasoningDelta(event.text, ctx, state, provenance);
     case "reasoning_complete":
-      return emitReasoningComplete(event.text, ctx, provenance);
+      return emitReasoningComplete(event.text, ctx, state, provenance, event.parentCallId);
     case "tool_call":
       return emitToolCall(event, ctx, state, provenance, blockName);
     case "tool_result":
@@ -176,6 +192,18 @@ async function emitMessageDelta(
   });
 }
 
+/**
+ * Close any open streaming message/reasoning items. In the partials-ON path the
+ * whole `assistant` message is the turn's close boundary: text/thinking already
+ * streamed as deltas (translate skips re-emitting them), so the agent loop calls
+ * this once it has translated that whole message. Without it, a later turn's
+ * deltas would append to the prior turn's still-open item and coalesce into one.
+ */
+export async function closeStreamingItems(ctx: BlockContext, state: EmitState): Promise<void> {
+  await closeStreamingMessage(ctx, state);
+  await closeStreamingReasoning(ctx, state);
+}
+
 /** Finalize the streamed message item (called at end of an assistant turn). */
 async function closeStreamingMessage(ctx: BlockContext, state: EmitState): Promise<void> {
   if (state.message === null) return;
@@ -214,7 +242,9 @@ async function emitMessageComplete(
   ctx: BlockContext,
   state: EmitState,
   provenance: EmitProvenance,
+  parentCallId: string | undefined,
 ): Promise<void> {
+  const ownedBy = resolveOwnedBy(state, parentCallId);
   const base = buildBase(ctx, provenance, "msg");
   const inProgress = {
     ...base,
@@ -222,6 +252,7 @@ async function emitMessageComplete(
     role: "assistant" as const,
     status: "in_progress" as const,
     itemVisibility: CONVERSATIONAL_VISIBILITY,
+    ...(ownedBy ? { ownedBy } : {}),
     content: [{ type: "output_text" as const, text: "" }],
   };
   await ctx.response.emit({ type: "item.added", item: inProgress });
@@ -309,14 +340,18 @@ async function closeStreamingReasoning(ctx: BlockContext, state: EmitState): Pro
 async function emitReasoningComplete(
   text: string,
   ctx: BlockContext,
+  state: EmitState,
   provenance: EmitProvenance,
+  parentCallId: string | undefined,
 ): Promise<void> {
+  const ownedBy = resolveOwnedBy(state, parentCallId);
   const base = buildBase(ctx, provenance, "reasoning");
   const inProgress = {
     ...base,
     type: "reasoning" as const,
     status: "in_progress" as const,
     itemVisibility: CONVERSATIONAL_VISIBILITY,
+    ...(ownedBy ? { ownedBy } : {}),
     summary: [{ type: "reasoning_text" as const, text: "" }],
   };
   await ctx.response.emit({ type: "item.added", item: inProgress });
@@ -350,6 +385,7 @@ async function emitToolCall(
   await closeStreamingMessage(ctx, state);
   await closeStreamingReasoning(ctx, state);
   if (!state.toolsObserved.includes(event.name)) state.toolsObserved.push(event.name);
+  const ownedBy = resolveOwnedBy(state, event.parentCallId);
   const base = buildBase(ctx, provenance, "tool");
   const item = {
     ...base,
@@ -364,12 +400,14 @@ async function emitToolCall(
       generatorBlock: blockName,
     },
     itemVisibility: CONVERSATIONAL_VISIBILITY,
+    ...(ownedBy ? { ownedBy } : {}),
   };
   await ctx.response.emit({ type: "item.added", item });
   state.openTools.set(event.callId, {
     id: base.id,
     name: event.name,
     arguments: event.arguments,
+    ...(ownedBy ? { ownedBy } : {}),
   });
 }
 
@@ -387,6 +425,7 @@ async function emitToolResult(
   const id = open?.id ?? mintId("tool");
   const toolName = open?.name ?? blockName;
   const toolArgs = open?.arguments ?? "{}";
+  const ownedBy = open?.ownedBy ?? resolveOwnedBy(state, event.parentCallId);
   const item = {
     id,
     type: "tool_output" as const,
@@ -404,6 +443,7 @@ async function emitToolResult(
       generatorBlock: blockName,
     },
     itemVisibility: CONVERSATIONAL_VISIBILITY,
+    ...(ownedBy ? { ownedBy } : {}),
     ...(event.isError ? { error: { message: String(event.output) } } : {}),
   };
   await ctx.response.emit({ type: "item.done", item });
@@ -510,6 +550,7 @@ export async function finalizeOpenItems(
           generatorBlock: blockName,
         },
         itemVisibility: CONVERSATIONAL_VISIBILITY,
+        ...(open.ownedBy ? { ownedBy: open.ownedBy } : {}),
       },
     });
   }
