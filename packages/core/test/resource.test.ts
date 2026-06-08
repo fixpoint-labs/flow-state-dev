@@ -90,21 +90,36 @@ describe("defineResource", () => {
     expect(res.contentTemplateRef).toBe("templates/analyst");
   });
 
-  it("accepts a block binding in reactTo", () => {
+  it("accepts an updated block binding in reactTo", () => {
     const res = defineResource({
       scope: "session",
       stateSchema: z.object({ name: z.string() }),
-      reactTo: { created: reactiveBlock },
+      reactTo: { updated: reactiveBlock },
     });
-    expect(res.reactTo?.created).toBe(reactiveBlock);
+    expect(res.reactTo?.updated).toBe(reactiveBlock);
+  });
+
+  it("rejects created/deleted reactTo bindings on a single resource", () => {
+    // Single resources have no create/delete lifecycle — only `updated` fires,
+    // so binding those kinds would be a silent no-op. Reject at build time.
+    expect(() => defineResource({
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      reactTo: { created: reactiveBlock },
+    })).toThrow("does not support reactTo.created");
+    expect(() => defineResource({
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      reactTo: { deleted: reactiveBlock },
+    })).toThrow("does not support reactTo.deleted");
   });
 
   it("throws when a reactTo binding is not a block", () => {
     expect(() => defineResource({
       scope: "session",
       stateSchema: z.object({ name: z.string() }),
-      reactTo: { created: {} as never },
-    })).toThrow("reactTo.created must be a block");
+      reactTo: { updated: {} as never },
+    })).toThrow("reactTo.updated must be a block");
   });
 
   it("throws when a reactTo binding's when is not a function", () => {

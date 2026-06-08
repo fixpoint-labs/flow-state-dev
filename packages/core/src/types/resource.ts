@@ -375,7 +375,8 @@ export function defineResource<
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
 
-  validateReactTo("defineResource()", config.reactTo);
+  // Single resources have no create/delete lifecycle — only `updated` fires.
+  validateReactTo("defineResource()", config.reactTo, ["updated"]);
 
   return config as unknown as TConfig & DefinedResource<
     AsStateObject<TStateSchema["_output"]>,

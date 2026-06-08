@@ -643,8 +643,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async writeContent(content: string): Promise<void> {
         await options.persistResourceContentKey(storageKey, content);
-        // Content-only change carries no state delta; the reactive dispatcher
-        // treats a missing 4th arg as a null state/prevState payload.
+        // Content-only change carries no state delta. Fire the seam so the
+        // FIX-739 client projection refreshes, but pass no 4th arg: the reactive
+        // dispatcher skips content-only changes (reactive bindings react to state
+        // mutations, not content writes).
         await options.onResourceChanged?.(storageKey, "updated");
       }
     };

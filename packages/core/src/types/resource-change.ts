@@ -97,12 +97,14 @@ export interface ReactiveBindings<TState extends JsonObject = JsonObject> {
 export function normalizeReactiveBinding<TState extends JsonObject = JsonObject>(
   binding: ReactiveBinding<TState>
 ): { block: BlockDefinition<any, any>; when?: (c: ResourceChange<TState>) => boolean } {
-  if ("block" in binding) {
-    return binding.when === undefined
-      ? { block: binding.block }
-      : { block: binding.block, when: binding.when };
+  // Discriminate via the canonical block guard rather than `"block" in binding`,
+  // which would misread a bare block that ever gained a `block` property.
+  if (isBlockDefinition(binding)) {
+    return { block: binding };
   }
-  return { block: binding };
+  return binding.when === undefined
+    ? { block: binding.block }
+    : { block: binding.block, when: binding.when };
 }
 
 /**
@@ -110,10 +112,17 @@ export function normalizeReactiveBinding<TState extends JsonObject = JsonObject>
  * normalizes the binding and asserts the resolved `block` is a block definition
  * and any `when` is a function, throwing a `<definer>` qualified error otherwise.
  * Shared by `defineResource` and `defineResourceCollection`.
+ *
+ * `allowedKinds` restricts which mutation kinds may be bound. Single resources
+ * have no create/delete lifecycle (they always exist with a default and are only
+ * ever `updated`), so `defineResource` passes `["updated"]` — a `created` or
+ * `deleted` binding on a single resource is a silent no-op at runtime and is
+ * rejected here instead. Collections fire all three.
  */
 export function validateReactTo(
   definer: string,
-  reactTo: ReactiveBindings | undefined
+  reactTo: ReactiveBindings | undefined,
+  allowedKinds: readonly ResourceChangeKind[] = ["created", "updated", "deleted"]
 ): void {
   if (reactTo === undefined) {
     return;
@@ -122,6 +131,11 @@ export function validateReactTo(
     const binding = reactTo[kind];
     if (binding === undefined) {
       continue;
+    }
+    if (!allowedKinds.includes(kind)) {
+      throw new Error(
+        `${definer} does not support reactTo.${kind} — single resources have no create/delete lifecycle and only fire "updated". Use reactTo.updated.`
+      );
     }
     const { block, when } = normalizeReactiveBinding(binding);
     if (!isBlockDefinition(block)) {

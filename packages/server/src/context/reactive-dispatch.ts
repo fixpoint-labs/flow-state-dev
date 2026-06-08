@@ -171,6 +171,14 @@ export function createReactiveDispatcher(
     const binding = reactTo?.[changeType];
     if (binding === undefined) return;
 
+    // Content-only changes (e.g. a collection instance `writeContent`) fire the
+    // seam with no state descriptor. Reactive bindings react to state mutations,
+    // not content writes, so skip when no change payload was threaded — otherwise
+    // an `updated` binding would run with null `state`/`prevState`, misfiring
+    // `when` gates and blocks that assume real state. The FIX-739 client
+    // projection still fires for content writes independently.
+    if (change === undefined) return;
+
     const ctx = ctxRef.current;
     if (ctx === undefined) return;
 
@@ -184,7 +192,7 @@ export function createReactiveDispatcher(
     };
 
     const { block, when } = normalizeReactiveBinding(binding);
-    if (when !== undefined && when(payload) === false) return;
+    if (when !== undefined && !when(payload)) return;
 
     // Cascade budget: check before running. On breach emit a diagnostic and
     // return without running (and without incrementing the budget).

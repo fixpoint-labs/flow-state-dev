@@ -23,7 +23,7 @@ The two coexist. A collection can keep its `onInstance*` callbacks for cheap log
 
 ## Declaring `reactTo`
 
-`reactTo` is a field on `defineResource()` and `defineResourceCollection()`. The surface is identical for both. You map each change kind you care about, `created`, `updated`, `deleted`, to a block:
+`reactTo` is a field on `defineResource()` and `defineResourceCollection()`. You map each change kind you care about, `created`, `updated`, `deleted`, to a block:
 
 ```ts
 import { defineResourceCollection, handler } from "@flow-state-dev/core";
@@ -51,6 +51,8 @@ const memos = defineResourceCollection({
 ```
 
 Each entry is either a bare block, as above, or an object `{ block, when }` where `when` gates dispatch (covered below).
+
+Collections fire all three kinds. Single resources support only `updated`: a single resource always exists with a default state and has no create or delete lifecycle, so `defineResource` accepts `reactTo.updated` and throws on `created` or `deleted`. A content-only write (`writeContent`) is not a state change, so it does not run `updated` reactions.
 
 ## What the block receives
 

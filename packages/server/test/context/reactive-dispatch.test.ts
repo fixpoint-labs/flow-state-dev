@@ -370,3 +370,37 @@ describe("reactive dispatch: input validation", () => {
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+describe("reactive dispatch: content-only writes", () => {
+  it("does not run an updated binding for a collection instance content write", async () => {
+    const seen: ResourceChange[] = [];
+    const onUpdate = handler({
+      name: "on-update-content",
+      inputSchema: resourceChangeSchema(fileSchema),
+      execute: (change: ResourceChange) => {
+        seen.push(change);
+        return "done";
+      },
+    });
+    const files = defineResourceCollection({
+      scope: "session",
+      pattern: "files/**",
+      stateSchema: fileSchema,
+      reactTo: { updated: onUpdate },
+    });
+
+    const { ctx } = await createCtx({ files });
+    const ns = ctx.resources.files as any;
+    await ns.create("a.ts", { language: "typescript", status: "draft" });
+
+    // Content-only write carries no state delta — must NOT dispatch the updated
+    // reactive block (it would otherwise run with null state/prevState).
+    await (await ns.get("a.ts")).writeContent("const x = 1;");
+    expect(seen).toHaveLength(0);
+
+    // A real state update still dispatches it (regression guard).
+    await (await ns.get("a.ts")).patchState({ status: "published" });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.state).toMatchObject({ status: "published" });
+  });
+});
