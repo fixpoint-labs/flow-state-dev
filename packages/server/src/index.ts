@@ -191,6 +191,14 @@ export * from "./middleware";
 
 export { createCheckpointDurabilityProvider } from "./durability/checkpoint-durability-provider";
 export type { DurabilityProvider, Lease, LeaseOptions } from "./durability/types";
+export {
+  createDurabilitySweeper
+} from "./durability/durability-sweeper";
+export type {
+  DurabilityRetentionConfig,
+  CreateDurabilitySweeperOptions,
+  DurabilitySweeper
+} from "./durability/durability-sweeper";
 
 export const serverPackageMarker = "@flow-state-dev/server";
 

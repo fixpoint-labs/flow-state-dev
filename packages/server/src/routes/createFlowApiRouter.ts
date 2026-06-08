@@ -28,6 +28,10 @@ import {
 } from "../transports/http/createHttpTransportAdapter";
 import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
+import {
+  createDurabilitySweeper,
+  type DurabilityRetentionConfig
+} from "../durability/durability-sweeper";
 import type { MatchFunction } from "path-to-regexp";
 import {
   compileTransportPattern,
@@ -142,6 +146,15 @@ export type CreateFlowApiRouterOptions = {
    * false positives. Default: 60000 (60 seconds).
    */
   staleSweepThresholdMs?: number;
+
+  /**
+   * Retention policy for the durability sweeper (FIX-141). Only takes effect
+   * when a `durabilityProvider` is configured (via `runtimeConfig`). When both
+   * are present the router builds a periodic sweeper that enforces suspension
+   * expiry and prunes aged-out suspensions, leases, and orphaned checkpoints.
+   * Absent → no sweeper (a no-op handle).
+   */
+  durabilityRetention?: DurabilityRetentionConfig;
 
   /**
    * Enable the privileged read-only debug endpoint surface under
@@ -279,6 +292,24 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     staleThresholdMs: staleSweepThresholdMs
   });
 
+  // Server-internal durability sweeper (FIX-141): enforces suspension expiry
+  // and prunes aged-out durability artifacts. Built only when both a
+  // durability provider and a retention policy are configured; otherwise a
+  // no-op handle. The flat option wins over a `runtimeConfig`-carried one
+  // (mirrors how `createFlowState` may thread the policy through the bundle).
+  const durabilityProvider = runtimeConfig.durabilityProvider;
+  const durabilityRetention =
+    options.durabilityRetention ?? runtimeConfig.durabilityRetention;
+  const durabilitySweeper =
+    durabilityProvider !== undefined && durabilityRetention !== undefined
+      ? createDurabilitySweeper({
+          provider: durabilityProvider,
+          stores: handlers.host.stores,
+          retention: durabilityRetention,
+          logger: runtimeConfig.logger
+        })
+      : { dispose: () => {} };
+
   // Built-in HTTP adapter delegates to the canonical handler. The catch-all
   // route returned by the adapter doesn't need to be wired into a custom
   // dispatcher here — the public `{ GET, POST, PATCH, DELETE }` shape is
@@ -372,8 +403,9 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // not part of the router's public shape (keeps `keyof typeof router`
   // narrow for consumers that index by HTTP method).
   const dispose = async (): Promise<void> => {
-    // Stop the sweeper first so its tick can't race with adapter teardown.
+    // Stop the sweepers first so their ticks can't race with adapter teardown.
     sweeper.dispose();
+    durabilitySweeper.dispose();
     for (let i = allBindings.length - 1; i >= 0; i--) {
       const entry = allBindings[i];
       if (entry === undefined || entry.bindings.stop === undefined) continue;

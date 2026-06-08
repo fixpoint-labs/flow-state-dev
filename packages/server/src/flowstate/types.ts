@@ -129,6 +129,13 @@ export interface CreateFlowStateOptions<
   staleSweepIntervalMs?: number;
   /** Heartbeat-age threshold (ms) for the stale-request sweeper. Default 60000. */
   staleSweepThresholdMs?: number;
+
+  /**
+   * Retention policy for the durability sweeper (FIX-141). Only takes effect
+   * alongside a configured `durabilityProvider`. Enforces suspension expiry and
+   * prunes aged-out suspensions, leases, and orphaned checkpoints on a cadence.
+   */
+  durabilityRetention?: CreateFlowApiRouterOptions["durabilityRetention"];
 }
 
 /**

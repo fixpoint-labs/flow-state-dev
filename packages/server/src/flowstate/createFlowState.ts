@@ -236,6 +236,7 @@ class InternalFlowState<TSettings extends object>
       middleware: this.#options.middleware,
       onBackgroundWork: this.#options.onBackgroundWork,
       defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs,
+      durabilityRetention: this.#options.durabilityRetention,
       errorCapture: this.#options.errorCapture
     });
 

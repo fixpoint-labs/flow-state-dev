@@ -562,6 +562,11 @@ export async function runActionInternal<
   // termination ensures the last write/delete completes before the action
   // returns. (FIX-401)
   const cleanupCheckpointsOnTerminal = options.flow.request?.cleanupCheckpointsOnTerminal === true;
+  // Set whenever a durable state_snapshot frame is seen — the precise signal
+  // that this request exercised durable execution (a `sequencer({ durable })`
+  // step ran). Used by the terminal-completion cleanup wire (FIX-141) to
+  // decide whether to clean up this request's own durability artifacts.
+  let sawDurableFrame = false;
   const checkpointChains = new Map<string, Promise<void>>();
   const checkpointKey = (id: string) => `${requestId}:${id}`;
   function chainCheckpoint(blockInstanceId: string, op: () => Promise<void>): void {
@@ -597,6 +602,7 @@ export async function runActionInternal<
     onItemDone: (item) => {
       if (item.type === "state_snapshot") {
         if (item.durable) {
+          sawDurableFrame = true;
           const requestIdForCheckpoint = item.requestId;
           const blockInstanceId = item.provenance.blockInstanceId;
           const parentBlockInstanceId = item.provenance.parentBlockInstanceId ?? null;
@@ -1093,6 +1099,43 @@ export async function runActionInternal<
       } catch (err) {
         logRuntimeEvent(logger, "warn", "[flow-state] durability cleanup failed", {
           requestId, resumeOf, error: String(err)
+        });
+      }
+    }
+
+    // Non-resumed durable completion: clean up THIS request's own durability
+    // artifacts (suspension records + lease) when it completes on the first
+    // run (never suspended/resumed). The `resumeOf` block above already cleans
+    // the original request on the resume path, so this branch is mutually
+    // exclusive with it (guarded by `resumeOf === undefined`) — no double-clean.
+    //
+    // "Durable" here means the request actually exercised durability:
+    // `action.durable` is the documented action-level opt-in (it's what makes
+    // ctx.suspend() / crash recovery available and is the reliable signal even
+    // for this in-process path). `sawDurableFrame` additionally covers the
+    // route/streaming path where a `sequencer({ durable: true })` emits durable
+    // state_snapshot frames through the checkpoint hook. Gating on real durable
+    // activity avoids touching the stores for purely transient requests, where
+    // `cleanup` would be a no-op anyway.
+    //
+    // Checkpoints are removed only when the flow opts into
+    // `cleanupCheckpointsOnTerminal` (per-instance terminal deletes during the
+    // run already handle the common case; this is the catch-up for any survivors).
+    const usedDurability = action.durable === true || sawDurableFrame;
+    if (
+      resumeOf === undefined &&
+      usedDurability &&
+      terminalStatus === "completed" &&
+      options.runtimeConfig.durabilityProvider !== undefined
+    ) {
+      try {
+        await options.runtimeConfig.durabilityProvider.cleanup(requestId);
+        if (cleanupCheckpointsOnTerminal) {
+          await options.runtimeConfig.durabilityProvider.cleanupCheckpoints(requestId);
+        }
+      } catch (err) {
+        logRuntimeEvent(logger, "warn", "[flow-state] durability cleanup failed", {
+          requestId, error: String(err)
         });
       }
     }

@@ -66,6 +66,19 @@ describe("createFlowState — router option forwarding", () => {
     await fs.dispose();
   });
 
+  it("forwards durabilityRetention into the runtimeConfig bundle", async () => {
+    const retention = { sweepIntervalMs: 1234, batchLimit: 7 };
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: stubModelResolver,
+      durabilityRetention: retention
+    });
+    await fs.ready();
+    expect(calls[0]?.runtimeConfig?.durabilityRetention).toEqual(retention);
+    await fs.dispose();
+  });
+
   it("omits the options when unset (router defaults apply)", async () => {
     const fs = createFlowState({
       flows: { noop: noopFlow },
