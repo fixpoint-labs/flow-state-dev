@@ -9,7 +9,7 @@ import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { Braces, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { JsonViewer } from "../shared/json-viewer";
 import { BlockValueView } from "../shared/block-value-view";
-import { safeParseJson } from "../../lib/utils";
+import { safeParseJson, errorSummary } from "../../lib/utils";
 
 export function BlockTraceItemView({ item }: { item: BlockTraceItem }) {
   const [expanded, setExpanded] = useState(false);
@@ -67,6 +67,7 @@ export function BlockTraceItemView({ item }: { item: BlockTraceItem }) {
 
   const statusLabel = item.status === "completed" ? "completed" : item.status === "in_progress" ? "running" : item.status;
   const failedMessage = item.status === "failed" ? item.error?.message : undefined;
+  const failedSummary = item.status === "failed" ? errorSummary(item.error?.details) : undefined;
 
   return (
     <div>
@@ -82,6 +83,11 @@ export function BlockTraceItemView({ item }: { item: BlockTraceItem }) {
         <span className="font-mono text-slate-300">{item.blockName}</span>
         <span className="text-slate-600">→</span>
         <span className="text-slate-500">{statusLabel}</span>
+        {failedSummary && (
+          <span className="text-[10px] font-mono px-1 py-0 rounded border border-red-700/60 text-red-300 shrink-0">
+            {failedSummary}
+          </span>
+        )}
         {failedMessage && (
           <span className="text-red-400/80 truncate max-w-[20rem]" title={failedMessage}>
             {failedMessage}

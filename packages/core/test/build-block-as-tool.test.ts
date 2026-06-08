@@ -141,6 +141,38 @@ describe("BlockDefinition.asTool", () => {
     expect(update?.patch?.error?.message).toBe("kaboom");
   });
 
+  it("serializes the error cause chain into tool_output.error.details (FIX-723)", async () => {
+    const boom = handler({
+      name: "boom-with-cause",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => {
+        const root = Object.assign(new TypeError("fetch failed"), { code: "ECONNRESET" });
+        throw new Error("tool failed", { cause: root });
+      },
+    });
+
+    const seq = sequencer({
+      name: "fail-cause",
+      inputSchema: z.object({ q: z.string() }),
+    }).step(boom.asTool());
+
+    const { ctx, emitted } = ctxWithRecorder();
+    await expect(runForTest(seq, { q: "x" }, ctx)).rejects.toThrow("tool failed");
+
+    const item = toolOutputsOf(emitted)[0];
+    expect(item.status).toBe("failed");
+    // The thrown error's message is the item message; details.cause holds its
+    // serialized immediate cause (the buried transport error), so a swallowed
+    // ECONNRESET is visible in the transcript.
+    expect(item.error.message).toBe("tool failed");
+    expect(item.error.details?.cause).toEqual({
+      name: "TypeError",
+      message: "fetch failed",
+      code: "ECONNRESET",
+    });
+  });
+
   it("stamps itemVisibility/agentName from opts onto the emitted item", async () => {
     const inner = handler({
       name: "lookup",

@@ -313,7 +313,9 @@ export {
   SuspensionRejectedError,
   SuspensionTimeoutError,
   rootCause,
-  isAbortLike
+  isAbortLike,
+  serializeError,
+  errorDetailsWithCause
 } from "./errors";
 export type {
   FlowErrorOptions,
@@ -321,5 +323,6 @@ export type {
   OutputValidationDetails,
   SequencerOutputSchemaErrorDetails,
   SequencerSchemaMismatchErrorDetails,
-  SuspendOptions
+  SuspendOptions,
+  SerializedError
 } from "./errors";

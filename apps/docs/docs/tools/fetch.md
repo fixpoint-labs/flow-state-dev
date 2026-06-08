@@ -132,13 +132,39 @@ The LLM will call `search`, scan the snippets, then `fetch` the pages that look 
 
 ## Error handling
 
-| Scenario | Behavior |
-|----------|----------|
-| URL returns 404/500 | Throws an error. Generator retry handles transient failures. |
-| URL redirects | Follows redirects automatically (standard fetch behavior) |
-| Page has no readable content | Returns best-effort markdown (raw body conversion if Readability can't extract an article) |
-| Firecrawl API error | Throws with the Firecrawl error message. Generator can retry. |
-| Jina rate limited (429) | Throws. Generator retry will back off. |
+When a fetch fails, the tool throws a `FlowError` carrying structured detail so you can tell a bot wall from a connection reset without reading raw traces. The detail lives on `error.details`:
+
+- `errorType` — the failure category: `"http"`, `"network"`, `"timeout"`, `"abort"`, `"parse"`, or `"unknown"`.
+- `httpStatus` / `httpStatusText` — the status for a non-2xx HTTP response. A 403 reads differently from a 500.
+- `responseBody` — a truncated copy of the response body, useful when an API returns an error message in the body.
+- `cause` — the underlying transport error (e.g. a buried `ECONNRESET`), preserved so the chain survives to the DevTool.
+
+The thrown error also sets `retryable`: a 5xx, a network failure, or a timeout is retryable; a 4xx, an abort, or a parse failure is not. A generator's built-in retry reads this, so transient server failures are backed off for you without any extra wiring.
+
+| Scenario | Behavior | Retryable |
+|----------|----------|-----------|
+| URL returns 404 (page gone) | Throws with `httpStatus: 404`, `errorType: "http"` | No |
+| URL returns 5xx | Throws with `httpStatus`, `responseBody` | Yes |
+| Bot wall (403) | Throws with `httpStatus: 403` and the wall's response body | No |
+| Connection reset / DNS failure | Throws with `errorType: "network"`, `cause` preserved | Yes |
+| Request times out | Throws with `errorType: "timeout"` | Yes |
+| URL redirects | Follows redirects automatically (standard fetch behavior) | — |
+| Page has no readable content | Returns best-effort markdown, no error | — |
+| Firecrawl API error | Throws with the Firecrawl error message | No (fails fast — no status to judge) |
+
+To branch on the failure yourself, read `error.details` in a rescue or catch:
+
+```ts
+try {
+  await fetchTool.run({ url }, ctx);
+} catch (error) {
+  if (error instanceof FlowError && error.details?.httpStatus === 404) {
+    // permanent — don't retry, pick a different source
+  }
+}
+```
+
+See [Error handling](/docs/advanced/error-handling) for the full error contract and how to consume `details` in a block.
 
 ## Next steps
 
