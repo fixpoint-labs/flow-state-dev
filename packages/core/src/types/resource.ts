@@ -11,6 +11,8 @@ import type { ResourceCollectionRef, DefinedResourceCollection } from "./resourc
 import type { ResourceTemplate } from "../resource-template/resource-template";
 import { validateClientProjection } from "../helpers/client-projection";
 import type { ProjectedClient } from "../helpers/client-projection";
+import type { ReactiveBindings } from "./resource-change";
+import { validateReactTo } from "./resource-change";
 
 /**
  * The scope a resource is intrinsically bound to. Determines which storage
@@ -204,6 +206,13 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   prefetchMode?: "eager" | "lazy";
   /** Client visibility configuration. Omit to keep the resource invisible to clients. */
   client?: ResourceClientConfig<TState>;
+  /**
+   * Bind blocks to this resource's mutations (FIX-751). Each present entry
+   * (`created` / `updated` / `deleted`) names a block — bare, or
+   * `{ block, when }` with an optional gate — that the server dispatcher runs
+   * with a `ResourceChange` payload when that mutation fires.
+   */
+  reactTo?: ReactiveBindings<TState>;
 };
 
 export type ResourceContext<TState extends JsonObject = JsonObject> = {
@@ -365,6 +374,8 @@ export function defineResource<
     stateSchema: config.stateSchema,
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
+
+  validateReactTo("defineResource()", config.reactTo);
 
   return config as unknown as TConfig & DefinedResource<
     AsStateObject<TStateSchema["_output"]>,
