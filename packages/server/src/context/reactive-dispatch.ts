@@ -42,8 +42,7 @@ const MAX_CASCADE_FANOUT = 1000;
  * Per-request cascade budget, shared across all three scope dispatchers. `depth`
  * tracks the current re-entrancy depth (a reactive block mutating a resource
  * that has its own reactive block); `fanout` is the cumulative count of
- * dispatched reactive blocks for the whole turn. Exposed to `when` via
- * {@link CascadeController.depth}.
+ * dispatched reactive blocks for the whole turn.
  */
 export interface CascadeController {
   depth: number;
@@ -76,6 +75,13 @@ export interface ReactiveDispatcherDeps {
  * Resolve the config (and, for collections, the bare instance key) that owns a
  * changed `resourcePath`. Single resources match on their resolved storage key;
  * collections on `matchesPattern`. Returns `undefined` when no config owns it.
+ *
+ * First-match-wins over the scope's configs. A single resource is never a
+ * collection config, so the two branches only collide if a single's storage key
+ * also satisfies a co-scoped collection's pattern (a pre-existing structural
+ * overlap in the resource model, pathological in practice). For parameterized
+ * patterns (e.g. `[topic]/observations`) there is no leading prefix to strip, so
+ * `key` is the full `resourcePath` — the block re-derives params from `ref`.
  */
 function resolveConfigFor(
   resourcePath: string,
@@ -104,14 +110,18 @@ function resolveConfigFor(
 }
 
 /**
- * Emit a `reactive_cascade_exceeded` diagnostic as a failed `error` item. Reuses
- * the response emitter's `emitItemAdded`/`emitItemDone` path (same shape as
- * `runAction`'s `emitTerminalError`). Best-effort: never throws.
+ * Emit a reactive-dispatch diagnostic as a failed `error` item, reusing the
+ * response emitter's `emitItemAdded`/`emitItemDone` path (same item shape as
+ * `runAction`'s terminal error). Best-effort: no-ops when the context has no
+ * streaming emitter (the reactive-only path with no client), so a missing
+ * stream degrades the diagnostic without affecting the reactive block run.
+ * Callers compose the `code` (`reactive_cascade_exceeded` /
+ * `reactive_input_invalid`) and human-readable `message`.
  */
-async function emitCascadeExceeded(
+async function emitReactiveError(
   ctx: ExecutionContext,
-  blockName: string,
-  limit: "depth" | "fanout"
+  code: string,
+  message: string
 ): Promise<void> {
   const response = ctx.response as unknown as {
     emitItemAdded?: (item: ErrorItem) => Promise<unknown>;
@@ -125,10 +135,6 @@ async function emitCascadeExceeded(
   ) {
     return;
   }
-  const message =
-    limit === "depth"
-      ? `Reactive cascade exceeded max depth (${MAX_CASCADE_DEPTH}) dispatching "${blockName}"`
-      : `Reactive cascade exceeded max fan-out (${MAX_CASCADE_FANOUT}) dispatching "${blockName}"`;
   const item: ErrorItem = {
     id: `item_error_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "error",
@@ -138,43 +144,7 @@ async function emitCascadeExceeded(
     provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
     ts: Date.now(),
     message,
-    code: "reactive_cascade_exceeded",
-  };
-  await response.emitItemAdded(item);
-  await response.emitItemDone(item);
-}
-
-/**
- * Emit a `reactive_cascade_exceeded` diagnostic for an input-validation failure
- * — same item shape, distinct code. The malformed payload never runs the block.
- */
-async function emitInputInvalid(
-  ctx: ExecutionContext,
-  blockName: string,
-  detail: string
-): Promise<void> {
-  const response = ctx.response as unknown as {
-    emitItemAdded?: (item: ErrorItem) => Promise<unknown>;
-    emitItemDone?: (item: ErrorItem) => Promise<unknown>;
-  };
-  if (
-    typeof response !== "object" ||
-    response === null ||
-    typeof response.emitItemAdded !== "function" ||
-    typeof response.emitItemDone !== "function"
-  ) {
-    return;
-  }
-  const item: ErrorItem = {
-    id: `item_error_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    type: "error",
-    status: "failed",
-    requestId: ctx.requestRuntime.requestId,
-    itemIndex: getResponseItemCount(ctx.response),
-    provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
-    ts: Date.now(),
-    message: `Reactive block "${blockName}" input validation failed: ${detail}`,
-    code: "reactive_input_invalid",
+    code,
   };
   await response.emitItemAdded(item);
   await response.emitItemDone(item);
@@ -219,11 +189,19 @@ export function createReactiveDispatcher(
     // Cascade budget: check before running. On breach emit a diagnostic and
     // return without running (and without incrementing the budget).
     if (controller.depth >= MAX_CASCADE_DEPTH) {
-      await emitCascadeExceeded(ctx, block.name, "depth");
+      await emitReactiveError(
+        ctx,
+        "reactive_cascade_exceeded",
+        `Reactive cascade exceeded max depth (${MAX_CASCADE_DEPTH}) dispatching "${block.name}"`
+      );
       return;
     }
     if (controller.fanout >= MAX_CASCADE_FANOUT) {
-      await emitCascadeExceeded(ctx, block.name, "fanout");
+      await emitReactiveError(
+        ctx,
+        "reactive_cascade_exceeded",
+        `Reactive cascade exceeded max fan-out (${MAX_CASCADE_FANOUT}) dispatching "${block.name}"`
+      );
       return;
     }
 
@@ -238,7 +216,11 @@ export function createReactiveDispatcher(
         const issue = parsed.error.issues[0];
         const path = issue?.path?.join(".") ?? "";
         const suffix = path.length > 0 ? ` at "${path}"` : "";
-        await emitInputInvalid(ctx, block.name, `${issue?.message ?? "schema validation failed"}${suffix}`);
+        await emitReactiveError(
+          ctx,
+          "reactive_input_invalid",
+          `Reactive block "${block.name}" input validation failed: ${issue?.message ?? "schema validation failed"}${suffix}`
+        );
         return;
       }
       runInput = parsed.data;
