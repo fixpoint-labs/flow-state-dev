@@ -108,6 +108,24 @@ describe("createResourceEdgeApi", () => {
     expect(stored.map((x) => x.confidence).sort()).toEqual([0.3, 0.4]);
   });
 
+  it("maxEdges never culls the just-added edge (add returns a stored edge)", async () => {
+    // Saturate the cap with higher-confidence active edges, then add a lower
+    // one. Without protection the cull would drop the new edge and `add` would
+    // return a phantom id; the new edge must survive and an existing edge goes.
+    const ref = makeFakeRef();
+    const e = api(ref, { maxEdges: 2 });
+    await e.add({ from: "a", to: "b", type: "r", confidence: 0.9 });
+    await e.add({ from: "a", to: "c", type: "r", confidence: 0.8 });
+    const added = await e.add({ from: "a", to: "d", type: "r", confidence: 0.3 }); // lowest, just added
+
+    const stored = ref.state.edges ?? [];
+    expect(stored).toHaveLength(2);
+    // The returned edge is actually in storage — supersede/remove will resolve.
+    expect(stored.find((x) => x.id === added.id)).toBeDefined();
+    // The lowest-confidence EXISTING edge (0.8) was culled instead of the new one.
+    expect(stored.map((x) => x.confidence).sort()).toEqual([0.3, 0.9]);
+  });
+
   it("maxEdges confidence-tie cull is deterministic (oldest createdAt dropped first)", async () => {
     // Three active edges with identical confidence; cap=2 forces one out. The
     // oldest (first-created) must be the one culled, deterministically.

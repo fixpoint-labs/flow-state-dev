@@ -75,18 +75,24 @@ export type EdgeBackingRef = {
  *     (older edges go before newer ones). The newest/highest-confidence edges
  *     are kept.
  *
- * Returns a new array of length `maxEdges`; preserves the relative order of the
- * survivors as they appeared in `edges`.
+ * `protectId` (when given) is never dropped — `add()` passes the edge it just
+ * created so a freshly-added edge is always persisted, even when it is the
+ * lowest-value edge in a saturated graph. This keeps `add()`'s "returns the
+ * stored edge" contract honest: the returned id always exists in state, so a
+ * follow-up `supersede(id)` / `remove(id)` resolves.
+ *
+ * Returns a new array; preserves the relative order of the survivors as they
+ * appeared in `edges`.
  */
-function cullToMax(edges: Edge[], maxEdges: number): Edge[] {
+function cullToMax(edges: Edge[], maxEdges: number, protectId?: string): Edge[] {
   let overflow = edges.length - maxEdges;
   if (overflow <= 0) return edges;
 
   const dropIds = new Set<string>();
 
-  // Phase 1: drop oldest superseded edges first.
+  // Phase 1: drop oldest superseded edges first (never the protected edge).
   const superseded = edges
-    .filter((e) => e.validUntil !== null)
+    .filter((e) => e.validUntil !== null && e.id !== protectId)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   for (const e of superseded) {
     if (overflow <= 0) break;
@@ -96,9 +102,10 @@ function cullToMax(edges: Edge[], maxEdges: number): Edge[] {
 
   // Phase 2: still over cap — cull active edges by lowest confidence, then
   // oldest createdAt. Sort the cull candidates worst-first and drop the head.
+  // The protected edge is excluded so the just-added edge always survives.
   if (overflow > 0) {
     const active = edges
-      .filter((e) => e.validUntil === null)
+      .filter((e) => e.validUntil === null && e.id !== protectId)
       .sort((a, b) =>
         a.confidence !== b.confidence
           ? a.confidence - b.confidence
@@ -154,7 +161,9 @@ export function createResourceEdgeApi(ref: EdgeBackingRef, slot: EdgeSlotConfig)
       await ref.updateState((s) => {
         let edges: Edge[] = [...((s.edges as Edge[] | undefined) ?? []), edge];
         if (slot.maxEdges != null && edges.length > slot.maxEdges) {
-          edges = cullToMax(edges, slot.maxEdges);
+          // Protect the just-added edge so it is never the one culled — `add`
+          // must persist what it returns.
+          edges = cullToMax(edges, slot.maxEdges, edge.id);
         }
         return { ...s, edges };
       });
