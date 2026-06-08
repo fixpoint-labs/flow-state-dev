@@ -29,8 +29,12 @@ import type {
   ActionConfig,
   ActionInputSchema,
   FlowActionInput,
-  InferScopeStateFromConfig
+  InferScopeStateFromConfig,
+  SuspensionRecord,
+  SuspensionStatus
 } from "@flow-state-dev/core/types";
+
+export type { SuspensionRecord, SuspensionStatus };
 
 /**
  * Generic fetch signature used by all client transport modules.
@@ -501,6 +505,19 @@ export type DebugResourcesResponse = {
   flowKind: string;
   generatedAt: string;
   resources: DebugResourceEntry[];
+};
+
+/** Response shape for the debug suspensions listing endpoint. */
+export type DebugSuspensionsResponse = {
+  suspensions: SuspensionRecord[];
+};
+
+/** Query options for the debug suspensions endpoint. */
+export type ListDebugSuspensionsOptions = {
+  status?: SuspensionStatus;
+  flowKind?: string;
+  userId?: string;
+  limit?: number;
 };
 
 /** One item in a paginated collection debug listing. */

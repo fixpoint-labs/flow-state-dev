@@ -51,6 +51,7 @@ import {
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
 import {
   handleDebugListResources,
+  handleDebugListSuspensions,
   handleDebugListCollectionItems,
   handleDebugGetResourceContent,
   handleDebugGetCollectionItemContent,
@@ -485,6 +486,14 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "debug_list_resources") {
         return await handleDebugListResources(request, route, {
+          registry: options.registry,
+          stores,
+          debug: debugConfig
+        });
+      }
+
+      if (route.kind === "debug_list_suspensions") {
+        return await handleDebugListSuspensions(request, route, {
           registry: options.registry,
           stores,
           debug: debugConfig

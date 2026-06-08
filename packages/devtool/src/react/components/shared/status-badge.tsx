@@ -1,7 +1,7 @@
 import { Badge } from "../ui/badge";
 import { cn } from "../../lib/utils";
 
-export type RequestStatusLabel = "completed" | "in_progress" | "finishing" | "failed" | "incomplete" | "created";
+export type RequestStatusLabel = "completed" | "in_progress" | "finishing" | "failed" | "incomplete" | "created" | "suspended";
 
 const statusStyles: Record<RequestStatusLabel, string> = {
   completed: "bg-green-900/40 text-green-400 border-green-800",
@@ -10,6 +10,7 @@ const statusStyles: Record<RequestStatusLabel, string> = {
   failed: "bg-red-900/40 text-red-400 border-red-800",
   incomplete: "bg-slate-800 text-slate-400 border-slate-700",
   created: "bg-slate-800 text-slate-400 border-slate-700",
+  suspended: "bg-purple-900/40 text-purple-400 border-purple-800",
 };
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {

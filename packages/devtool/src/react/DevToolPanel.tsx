@@ -26,6 +26,7 @@ import { SettingsSheet } from "./components/navigator/settings-sheet";
 import { StreamView, type RequestGroup } from "./components/workspace/stream-view";
 import { TraceView } from "./components/workspace/trace-view";
 import { TaskCollectionsView } from "./components/workspace/task-collections-view";
+import { SuspensionsView } from "./components/workspace/suspensions-view";
 import { ActionBar } from "./components/workspace/action-bar";
 import { LiveSwitch } from "./components/workspace/live-switch";
 import { SessionContextPanel } from "./components/detail/session-context";
@@ -425,6 +426,7 @@ function PanelContent({ className }: { className?: string }) {
                 <TabsTrigger value="stream">Stream</TabsTrigger>
                 <TabsTrigger value="trace">Trace</TabsTrigger>
                 <TabsTrigger value="tasks">Tasks</TabsTrigger>
+                <TabsTrigger value="suspensions">Suspensions</TabsTrigger>
               </TabsList>
               <div className="flex items-center gap-3 min-w-0">
                 <SessionIdBadge sessionId={effectiveSessionId} />
@@ -474,6 +476,13 @@ function PanelContent({ className }: { className?: string }) {
               <TaskCollectionsView
                 key={effectiveSessionId ?? "none"}
                 items={requestGroups.flatMap((g) => g.items)}
+              />
+            </TabsContent>
+
+            <TabsContent value="suspensions" className="flex-1 min-h-0 m-0">
+              <SuspensionsView
+                key={effectiveSessionId ?? "none"}
+                sessionId={effectiveSessionId}
               />
             </TabsContent>
 
