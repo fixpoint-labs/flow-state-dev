@@ -94,3 +94,5 @@ async function handler(req: Request): Promise<Response> {
 export const GET = handler;
 export const POST = handler;
 export const PUT = handler;
+export const DELETE = handler;
+export const PATCH = handler;

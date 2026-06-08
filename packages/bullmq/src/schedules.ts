@@ -111,7 +111,7 @@ export function createScheduleDispatchWorker(
       );
     }
 
-    const url = `${baseUrl}/api/flows/${flowKind}/schedules/${userId}/${scheduleId}/dispatch`;
+    const url = `${baseUrl}/api/flows/${encodeURIComponent(flowKind)}/schedules/${encodeURIComponent(userId)}/${encodeURIComponent(scheduleId)}/dispatch`;
     const response = await fetch(url, {
       method: "POST",
       headers: {
