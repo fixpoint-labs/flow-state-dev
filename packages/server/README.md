@@ -100,6 +100,25 @@ createFlowState({ /* ... */ onBackgroundWork: (p) => after(() => p) });
 
 It's a `createFlowState` option, not a handler option, because the router is built inside `createFlowState`.
 
+### Error capture
+
+`errorCapture` is an opt-in, block-aware sink for routing runtime block failures to an external observability service (Sentry, Datadog, Bugsnag). It's distinct from `onError`, which is an HTTP-level sink. The callback receives a provider-neutral `ErrorCaptureEvent` (the normalized `FlowError` plus the failing block's identity and the flow/request/session/user IDs), fires once per failing block, and is fire-and-forget — a throw or rejection is swallowed and logged, never affecting the request.
+
+```ts
+import * as Sentry from "@sentry/node";
+
+createFlowState({
+  /* ... */
+  errorCapture: (event) =>
+    Sentry.captureException(event.error, {
+      user: { id: event.userId },
+      tags: { flow: event.flowKind, block: event.blockName ?? "unknown" },
+    }),
+});
+```
+
+See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture) for the full event shape and filtering guidance.
+
 ### Connection resilience
 
 `createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
@@ -123,7 +142,7 @@ For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.p
 ## What this package does
 
 - **Action execution** — Validates input, resolves sessions, runs block pipelines, emits items
-- **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume
+- **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume. Resources declaring `client: { live: true }` emit their projected delta inline on each mutation so clients merge it without a refetch
 - **State persistence** — In-memory and filesystem store adapters with CAS-guarded atomic writes
 - **Flow registry** — Register multiple flows, routes are derived automatically
 - **Error normalization** — All errors become typed `FlowError` instances with codes, retry signals, and scope context

@@ -37,6 +37,7 @@ import { resolveTracingLevel, type TracingLevel } from "../helpers/tracing-level
 import { getRequestWorkPool } from "../execution/request-work-pool";
 import { getTransientKeys, stripTransientKeys } from "../helpers/transient-slot";
 import { compareZodSchemasStructurally } from "../helpers/zod-introspect";
+import { mapLimit } from "../helpers/concurrency";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
@@ -500,7 +501,7 @@ export async function executeBlock(
 
       return output;
     } catch (error) {
-      scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt, block.transient);
+      scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt, block.transient, scopedCtx);
 
       // FIX-573: forward partial modelUsage on the failure path too. The
       // `output` phase in `_withExecutionScope` reads it and patches the
@@ -1162,7 +1163,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             // hint once before dispatching so every branch stamps the same
             // input source (FIX-573 §3.3 fan-out).
             const branchInputHint = sequentialInputHint(ctx, runtime);
-            const outputs = await mapWithConcurrency(
+            const outputs = await mapLimit(
               entries,
               options?.maxConcurrency,
               async ([, step], branchIndex): Promise<unknown> => {
@@ -1256,7 +1257,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             }
 
             const iterationPaths: string[] = [];
-            const outputs = await mapWithConcurrency(items, options?.maxConcurrency, async (item, index) => {
+            const outputs = await mapLimit(items, options?.maxConcurrency, async (item, index) => {
               const block =
                 typeof blockOrFactory === "function" && !isBlockDefinition(blockOrFactory)
                   ? blockOrFactory(item, index, ctx)
@@ -1848,7 +1849,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             const basePath = childBlockPath(ctx, runtime, "stepAll", stepIndex);
             const branchPaths: string[] = [];
             const branchInputHint = sequentialInputHint(ctx, runtime);
-            const outputs = await mapWithConcurrency(
+            const outputs = await mapLimit(
               steps,
               options?.maxConcurrency,
               async (step, branchIndex): Promise<unknown> => {

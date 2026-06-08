@@ -52,6 +52,8 @@ The body is a Liquid template, not a JavaScript template literal. If you write `
 
 Strict-variable checking is on, so a reference to something that does not exist throws at render time instead of quietly producing an empty string. For genuinely optional values, supply a fallback: `{{ input.note | default: "" }}`.
 
+To render a typed object, list, or table without flattening it in TypeScript first, use the built-in `fsd_keyValues` / `fsd_list` / `fsd_table` / `fsd_json` filters — for example `{{ input.holdings | fsd_table }}`. See [Built-in filters](/docs/advanced/generator-prompts-markdown#built-in-filters).
+
 ## Step 3 — Wire it back into the generator
 
 Load the file and spread it into the generator. `definePromptFile` fills the `prompt`, `user`, `caching`, `maxTokens`, and `temperature` fields from the file.

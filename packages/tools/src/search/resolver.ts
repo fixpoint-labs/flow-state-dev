@@ -41,6 +41,19 @@ export function resolveProvider(config: SearchConfig): {
     return { adapter: getAdapter(config.provider), apiKey };
   }
 
+  // Capability-aware auto-selection: among keyed providers, prefer (by priority)
+  // one that meaningfully supports the requested tier. `balanced` is supported
+  // by every provider, so the default reproduces plain key-presence selection.
+  const requestedTier = config.tier ?? "balanced";
+  for (const name of providerPriority) {
+    const apiKey = resolveKey(name, config);
+    if (apiKey && getAdapter(name).capabilities.tiers.includes(requestedTier)) {
+      return { adapter: getAdapter(name), apiKey };
+    }
+  }
+
+  // Fallback: no tier-capable provider has a key. Honor any keyed provider
+  // (best-effort — it clamps/ignores the tier) so resolution still succeeds.
   for (const name of providerPriority) {
     const apiKey = resolveKey(name, config);
     if (apiKey) {

@@ -121,6 +121,61 @@ describe("parallelAdapter", () => {
     );
   });
 
+  it("maps the fast tier to Parallel basic mode", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), { status: 200 })
+    );
+
+    await parallelAdapter.search("query", {
+      maxResults: 5,
+      searchDepth: "basic",
+      tier: "fast",
+      topic: "general",
+      apiKey: "test-key",
+    });
+
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body.mode).toBe("basic");
+  });
+
+  it("maps the deep tier to Parallel advanced mode", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), { status: 200 })
+    );
+
+    await parallelAdapter.search("query", {
+      maxResults: 5,
+      searchDepth: "basic",
+      tier: "deep",
+      topic: "general",
+      apiKey: "test-key",
+    });
+
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body.mode).toBe("advanced");
+  });
+
+  it("sends source_policy only when domain filters are provided", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), { status: 200 })
+    );
+
+    await parallelAdapter.search("query", {
+      maxResults: 5,
+      searchDepth: "basic",
+      topic: "general",
+      includeDomains: ["arxiv.org"],
+      excludeDomains: ["pinterest.com"],
+      apiKey: "test-key",
+    });
+
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body.source_policy).toEqual({
+      include_domains: ["arxiv.org"],
+      exclude_domains: ["pinterest.com"],
+    });
+  });
+
   it("throws on non-200 response including the response body", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("invalid key", { status: 401, statusText: "Unauthorized" })

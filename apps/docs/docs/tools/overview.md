@@ -123,6 +123,8 @@ npm install @mendable/firecrawl-js  # only if using Firecrawl
 
 ## Next steps
 
+- [Search tool](/docs/tools/search) — multi-provider web search with depth tiers
 - [Fetch tool](/docs/tools/fetch) — single page fetching
 - [Crawl tool](/docs/tools/crawl) — multi-page site crawling
 - [Bash tool](/docs/tools/bash) — sandboxed command execution with resource sync
+- [Claude Code remote dispatch](/docs/tools/claude-code-cli) — dispatch a cloud coding task via the local `claude` CLI (separate `@flow-state-dev/claude-code` package)

@@ -230,4 +230,62 @@ describe("mockGenerator", () => {
       expect(mock.calls.length).toBe(2);
     });
   });
+
+  describe("unmocked-generator policy", () => {
+    it("throws for an unmocked generator under the default policy (error)", () => {
+      const resolver = createMockModelResolver({ generators: {} });
+      expect(() => resolver("any/model", "missing")).toThrow(/No mock for generator/);
+    });
+
+    it("yields the caller-supplied default under policy 'default'", async () => {
+      const resolver = createMockModelResolver({
+        generators: {},
+        policy: "default",
+        unmockedDefault: { structuredOutput: { ok: true } }
+      });
+      const model = resolver("any/model", "missing");
+      const result = await model.generate({ messages: [] });
+      expect(result.structuredOutput).toEqual({ ok: true });
+    });
+
+    it("resolves a factory default with the resolved model/block info", async () => {
+      const resolver = createMockModelResolver({
+        generators: {},
+        policy: "default",
+        unmockedDefault: ({ modelId, blockName }) => ({
+          text: `${blockName}@${modelId}`
+        })
+      });
+      const result = await resolver("m1", "b1").generate({ messages: [] });
+      expect(result.text).toBe("b1@m1");
+    });
+
+    it("survives repeated calls on the same default-resolved model", async () => {
+      const resolver = createMockModelResolver({
+        generators: {},
+        policy: "default",
+        unmockedDefault: { text: "fallback" }
+      });
+      const model = resolver("any/model", "missing");
+      expect((await model.generate({ messages: [] })).text).toBe("fallback");
+      expect((await model.generate({ messages: [] })).text).toBe("fallback");
+    });
+
+    it("falls back to a no-op terminal when 'default' has no unmockedDefault", async () => {
+      const resolver = createMockModelResolver({ generators: {}, policy: "default" });
+      const result = await resolver("any/model", "missing").generate({ messages: [] });
+      expect(result.finishReason).toBe("stop");
+      expect(result.text).toBeUndefined();
+    });
+
+    it("still prefers a real mock over the default fallback", async () => {
+      const resolver = createMockModelResolver({
+        generators: { real: mockGenerator({ name: "real", script: [{ text: "real" }] }) },
+        policy: "default",
+        unmockedDefault: { text: "fallback" }
+      });
+      expect((await resolver("m", "real").generate({ messages: [] })).text).toBe("real");
+      expect((await resolver("m", "missing").generate({ messages: [] })).text).toBe("fallback");
+    });
+  });
 });

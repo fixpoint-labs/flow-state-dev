@@ -10,6 +10,8 @@ import {
   getZodObjectShape,
   getZodArrayElement,
   getZodInnerType,
+  getZodUnionOptions,
+  getZodRecordValueType,
   compareZodSchemasStructurally,
 } from "../src/helpers/zod-introspect";
 import { execSync } from "child_process";
@@ -167,6 +169,50 @@ describe("getZodInnerType", () => {
     expect(getZodInnerType(z.string())).toBeUndefined();
     expect(getZodInnerType(z.number())).toBeUndefined();
     expect(getZodInnerType(z.object({}))).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getZodUnionOptions
+// ---------------------------------------------------------------------------
+
+describe("getZodUnionOptions", () => {
+  it("returns the variants of a z.union()", () => {
+    const a = z.string();
+    const b = z.number();
+    const options = getZodUnionOptions(z.union([a, b]));
+    expect(options).toEqual([a, b]);
+  });
+
+  it("returns the variants of a z.discriminatedUnion()", () => {
+    const options = getZodUnionOptions(
+      z.discriminatedUnion("k", [
+        z.object({ k: z.literal("a") }),
+        z.object({ k: z.literal("b") }),
+      ]),
+    );
+    expect(options).toHaveLength(2);
+  });
+
+  it("returns undefined for non-union schemas", () => {
+    expect(getZodUnionOptions(z.string())).toBeUndefined();
+    expect(getZodUnionOptions(z.object({}))).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getZodRecordValueType
+// ---------------------------------------------------------------------------
+
+describe("getZodRecordValueType", () => {
+  it("returns the value type of a z.record()", () => {
+    const value = z.number();
+    expect(getZodRecordValueType(z.record(z.string(), value))).toBe(value);
+  });
+
+  it("returns undefined for non-record schemas", () => {
+    expect(getZodRecordValueType(z.string())).toBeUndefined();
+    expect(getZodRecordValueType(z.object({}))).toBeUndefined();
   });
 });
 

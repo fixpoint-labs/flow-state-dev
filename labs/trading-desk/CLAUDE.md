@@ -101,6 +101,7 @@ src/flows/analysis/
       eight-k-items.ts           pure mapper: 8-K item codes → typed material events with signal tier
       web.ts                     homepage meta + web-search fallback
       xai.ts                     Grok (xAI) credentials + model id
+      massive.ts                 Massive.com (Polygon) client — options-chain snapshot + futures front/next (the desk's only futures + options source)
 
   orchestration/                 composition only — the ONLY code that knows execution order
     analyze.ts                   the analyze sequence + guard wiring (was flow.ts's analyzePipeline body)
@@ -376,12 +377,13 @@ evidence to produce a convergence signal the PM uses for sizing conviction.
   generator (`defineLensGenerator`, BP-024 factory) reads ONLY the shared
   post-Phase-2 bundle (`investmentThesis` + `phase1MemosFull` + `valuationSpine`)
   plus its own persona via a per-generator `context` slot — NEVER another lens's
-  memo. The steps are chained SEQUENTIALLY (not `.parallel`) for a runtime
-  reason: this runtime does not merge all parallel branches' collection writes
-  back into the continuation's resource cache, so a convergence tap after a
-  parallel fan-out reads a stale view (3 of 4 lens memos still `pending`). A
-  sequential chain commits each memo before the next runs, so the convergence
-  tap sees all N. Sequential ≠ debate — each lens is still blind. Lens verdict
+  memo. The steps are fanned out with `.parallel`. They previously ran as a
+  sequential chain to dodge a runtime bug where parallel branches' distinct-key
+  collection writes clobbered each other in the continuation cache, so a
+  convergence tap after the fan-out read a stale view (3 of 4 lens memos still
+  `pending`). FIX-744 made distinct-key collection writes cache-consistent, so
+  the convergence tap now sees all N after a parallel fan-out. Parallel ≠ debate
+  — each lens is still blind. Lens verdict
   schema (`agents/lenses/lens-verdict-schema.ts`) is STRICT per BP-016 (3-tier
   `stance` + `conviction` + `missingData` honesty array; in the strict walker).
 - **Convergence is DETERMINISTIC (no LLM).** `computeAndStoreConvergence` (a
@@ -704,9 +706,23 @@ Required environment variables:
 FINNHUB_API_KEY=...      # finnhub.io — fundamentals snapshot, prices, news, insider transactions, institutional ownership
 FRED_API_KEY=...         # research.stlouisfed.org — macro indicators + NFCI financial conditions
 XAI_API_KEY=...          # xai — Grok-backed social sentiment via xSearch (optional)
+MASSIVE_API_KEY=...      # massive.com (rebranded polygon.io) — options chain (Quant) + futures curve (Macro). PAID, per-product (options Starter, futures separate); optional
 ```
 
 Polymarket, Yahoo Finance, and SEC EDGAR don't require keys.
+
+Massive.com (the rebranded Polygon.io) is the desk's only **futures** and
+**options** source — the two asset classes the equity providers above don't
+cover. `get_options_chain` (Quant Analyst) reads an option-chain snapshot →
+ATM implied vol, IV term structure, 25-delta skew, put/call OI. `get_futures_curve`
+(Macro Analyst) reads a benchmark futures basket (ES/NQ/CL/GC/ZN) → front-month
+levels + session change, contango/backwardation, and a composite risk tone.
+Both are Massive-only (no fallback chain) and tag `source: "massive"`; bearer
+auth via `MASSIVE_API_KEY`. Massive bills per asset-class product, so a key
+without the options/futures entitlement 401s — which surfaces, correctly, as
+`source: "unavailable"`. EOD/delayed data is acceptable (the desk runs on an
+as-of date). The per-run rate-budget question for capped providers is deferred
+to the multi-provider composition work (FIX-675), not built here.
 
 The macro-flow tools added for the macro-reflexive lens's data needs:
 `get_cross_asset_flow` (Macro Analyst) computes risk-on/risk-off ETF spreads
@@ -717,9 +733,11 @@ directionality (the `liquidity` sub-block is null when `FRED_API_KEY` is
 absent; the ETF read still stands). `get_institutional_ownership` (Quant
 Analyst) reads 13F institutional positioning from Finnhub `/stock/ownership`
 (premium-gated on some plans; degrades to `unavailable`, never fabricated,
-when absent). Net-liquidity (WALCL − RRP − TGA) and options/COT positioning
-are documented follow-ups, not built. The lens reads both via the Macro and
-Quant memos (`phase1MemosFull`) — there is no lens-specific data wiring.
+when absent). Net-liquidity (WALCL − RRP − TGA) and COT positioning remain
+documented follow-ups; futures (Macro, `get_futures_curve`) and options
+positioning (Quant, `get_options_chain`) are now built via Massive (see Live
+mode below). The lens reads both via the Macro and Quant memos
+(`phase1MemosFull`) — there is no lens-specific data wiring.
 
 The three financial statements (`get_balance_sheet` / `get_income_statement`
 / `get_cashflow`) source from **SEC EDGAR XBRL companyfacts first, then Yahoo

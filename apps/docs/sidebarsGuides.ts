@@ -12,6 +12,7 @@ const sidebars: SidebarsConfig = {
     "adding-skills-to-your-app",
     "projects-on-org-scope",
     "writing-ui-stories",
+    "routing-errors-to-sentry",
     {
       type: "category",
       label: "Deployment",

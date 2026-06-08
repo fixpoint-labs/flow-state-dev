@@ -159,6 +159,44 @@ describe("resolveProvider", () => {
     });
   });
 
+  describe("capability-aware tier selection", () => {
+    it("prefers a deep-capable provider over a higher-priority one that is not", () => {
+      // serper outranks perplexity-sonar in priority, but serper does not
+      // support the 'deep' tier — so a deep request must route to sonar.
+      const deep = resolveProvider({
+        tier: "deep",
+        keys: { serper: "serper-key", "perplexity-sonar": "pplx-key" },
+      });
+      expect(deep.adapter.name).toBe("perplexity-sonar");
+    });
+
+    it("keeps the existing priority order for the balanced default", () => {
+      const balanced = resolveProvider({
+        keys: { serper: "serper-key", "perplexity-sonar": "pplx-key" },
+      });
+      // serper outranks perplexity-sonar and supports balanced — unchanged.
+      expect(balanced.adapter.name).toBe("serper");
+    });
+
+    it("falls back to a non-tier-capable provider when no capable one is keyed", () => {
+      const result = resolveProvider({
+        tier: "deep",
+        keys: { brave: "brave-key" },
+      });
+      // brave has no deep tier, but it is the only keyed provider — best effort.
+      expect(result.adapter.name).toBe("brave");
+    });
+
+    it("honors an explicit provider regardless of requested tier", () => {
+      const result = resolveProvider({
+        provider: "serper",
+        tier: "deep",
+        keys: { serper: "serper-key" },
+      });
+      expect(result.adapter.name).toBe("serper");
+    });
+  });
+
   describe("no provider available", () => {
     it("throws with helpful error when no keys are configured", () => {
       expect(() => resolveProvider({})).toThrow(

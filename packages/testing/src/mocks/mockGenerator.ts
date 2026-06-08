@@ -167,7 +167,16 @@ export type MockGeneratorInstance = {
   reset(): void;
 };
 
-export type UnmockedGeneratorPolicy = "error" | "warn" | "allow";
+export type UnmockedGeneratorPolicy = "error" | "warn" | "allow" | "default";
+
+/**
+ * Fallback for an unmocked generator under `policy: "default"`. Either a static
+ * script step or a per-resolve factory keyed on the model / block being
+ * resolved. Omitting it under `"default"` yields a no-op terminal step.
+ */
+export type UnmockedDefault =
+  | MockGeneratorScriptStep
+  | ((info: { modelId: string; blockName?: string }) => MockGeneratorScriptStep);
 
 function isPredicateEntry(
   entry: MockGeneratorScriptEntry
@@ -189,41 +198,45 @@ function createNoopModel(modelId: string): GeneratorModel {
   };
 }
 
+/** Resolve the fallback script step for an unmocked generator under
+ * `policy: "default"`. Omitted fallback ⇒ a no-op terminal step. */
+function resolveUnmockedDefault(
+  unmockedDefault: UnmockedDefault | undefined,
+  modelId: string,
+  blockName?: string
+): MockGeneratorScriptStep {
+  if (unmockedDefault === undefined) {
+    return { finishReason: "stop" };
+  }
+  return typeof unmockedDefault === "function"
+    ? unmockedDefault({ modelId, blockName })
+    : unmockedDefault;
+}
+
 /**
  * Builds a `ModelResolver` that delegates to scripted mocks. Per-block mocks
- * win over per-model mocks. Unmocked generators produce a no-op model under
- * `policy: "warn" | "allow"` and throw under `"error"` (default).
+ * win over per-model mocks. Unmocked generators throw under `policy: "error"`
+ * (default), produce a no-op model under `"warn" | "allow"`, and yield the
+ * caller-supplied `unmockedDefault` script under `"default"` — so a large
+ * e2e flow can fall back for the generators it didn't mock instead of breaking.
  */
 export function createMockModelResolver(options: {
   generators?: Record<string, MockGeneratorInstance>;
   models?: Record<string, MockGeneratorInstance>;
   policy?: UnmockedGeneratorPolicy;
   onUnmocked?: (message: string) => void;
+  unmockedDefault?: UnmockedDefault;
 }): ModelResolver {
   const policy = options.policy ?? "error";
 
   const resolver = ((modelId: string, blockName?: string): GeneratorModel => {
     const byBlock = blockName === undefined ? undefined : options.generators?.[blockName];
     const byModel = options.models?.[modelId];
-    const mock = byBlock ?? byModel;
+    const matched = byBlock ?? byModel;
 
-    if (mock === undefined) {
-      const message = blockName === undefined
-        ? `No mock for model "${modelId}". Provide models["${modelId}"] or set unmockedGeneratorPolicy to "warn" or "allow".`
-        : `No mock for generator "${blockName}" / model "${modelId}". Provide generators["${blockName}"] or models["${modelId}"], or set unmockedGeneratorPolicy to "warn" or "allow".`;
-
-      if (policy === "error") {
-        throw new Error(message);
-      }
-
-      if (policy === "warn") {
-        (options.onUnmocked ?? console.warn)(message);
-      }
-
-      return createNoopModel(modelId);
-    }
-
-    return {
+    // One model factory serves both a matched mock and the "default" fallback,
+    // so the fallback honors structuredOutput / text / tool loops identically.
+    const buildModel = (mock: MockGeneratorInstance): GeneratorModel => ({
       modelId,
       async generate(generateOptions): Promise<GeneratorModelResult> {
         // Simulate the AI SDK's internal multi-step tool loop via `runScript`.
@@ -345,7 +358,37 @@ export function createMockModelResolver(options: {
         };
         yield { type: "finish", finishReason, fullResult };
       }
-    };
+    });
+
+    if (matched !== undefined) {
+      return buildModel(matched);
+    }
+
+    const message = blockName === undefined
+      ? `No mock for model "${modelId}". Provide models["${modelId}"] or set unmockedGeneratorPolicy to "warn", "allow", or "default".`
+      : `No mock for generator "${blockName}" / model "${modelId}". Provide generators["${blockName}"] or models["${modelId}"], or set unmockedGeneratorPolicy to "warn", "allow", or "default".`;
+
+    if (policy === "error") {
+      throw new Error(message);
+    }
+
+    if (policy === "warn") {
+      (options.onUnmocked ?? console.warn)(message);
+    }
+
+    if (policy === "default") {
+      // A repeatable predicate entry so the fallback survives multiple calls on
+      // the same resolved model.
+      const step = resolveUnmockedDefault(options.unmockedDefault, modelId, blockName);
+      return buildModel(
+        mockGenerator({
+          name: blockName ?? modelId,
+          script: [{ when: () => true, then: step }]
+        })
+      );
+    }
+
+    return createNoopModel(modelId);
   }) as ModelResolver;
 
   resolver.resolveId = (modelId: string): string => modelId;

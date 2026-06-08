@@ -438,7 +438,7 @@ export interface BlockContext<
   _runtimeHooks?: {
     onBlockStart?: (blockName: string, blockKind: string, input: unknown, transient?: boolean) => void;
     onBlockComplete?: (blockName: string, blockKind: string, output: unknown, durationMs: number, transient?: boolean) => void;
-    onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number, transient?: boolean) => void;
+    onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number, transient?: boolean, ctx?: BlockContext) => void;
     onRouteSelected?: (routerName: string, selectedBlockName: string, blockInstanceId?: string) => void;
     onGeneratorModelResult?: (payload: {
       model: string;

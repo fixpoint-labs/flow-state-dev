@@ -25,21 +25,48 @@ type ProjectionClient =
   | undefined;
 
 /**
+ * Type-level mirror of `resolveClientProjection`'s runtime branches (FIX-741).
+ * Derives the client-visible shape from a resource/collection `client` config:
+ *
+ *   - `data`    → the (awaited) return type of the projection fn
+ *   - `expose`  → `Pick<TState, listed keys>`
+ *   - `exclude` → `Omit<TState, listed keys>`
+ *   - none      → `TState` (identity default, including `client: undefined`)
+ *
+ * Mutual exclusion of `expose`/`exclude`/`data` is enforced at runtime by
+ * `validateClientProjection`, so the ordered conditional is sound. Pure type —
+ * the runtime contract stays `JsonValue`.
+ */
+export type ProjectedClient<TState extends JsonObject, TClient> =
+  TClient extends { data: (state: any) => infer R }
+    ? Awaited<R>
+    : TClient extends { expose: ReadonlyArray<infer K extends keyof TState> }
+      ? Pick<TState, K>
+      : TClient extends { exclude: ReadonlyArray<infer K extends keyof TState> }
+        ? Omit<TState, K>
+        : TState;
+
+/**
  * Throws at definition time when the `client` projection config is ambiguous
- * (more than one of `expose`/`exclude`/`data` set) or references a field name
- * that isn't on the state schema. `definer` is included verbatim in the
+ * (more than one of `expose`/`exclude`/`data` set), references a field name
+ * that isn't on the state schema, or sets `live` on a resource whose
+ * `clientData` isn't client-visible. `definer` is included verbatim in the
  * error message so authors can grep for the location.
  *
  * `ref` is the resource ref or collection pattern — surfaced in the error
- * to disambiguate when many resources are defined in one file.
+ * to disambiguate when many resources are defined in one file. `kind`
+ * selects the `live` visibility gate: a collection ships per-item `clientData`
+ * under `state.read: true` (or a projection); a single resource ships it only
+ * under a projection (no `state.read` gate exists for singles).
  */
 export function validateClientProjection(args: {
   definer: string;
   ref: string;
+  kind: "single" | "collection";
   stateSchema: unknown;
   client: ProjectionClient;
 }): void {
-  const { definer, ref, stateSchema, client } = args;
+  const { definer, ref, kind, stateSchema, client } = args;
   if (client === undefined) return;
 
   const set: string[] = [];
@@ -52,6 +79,23 @@ export function validateClientProjection(args: {
       `${definer} for "${ref}": client config may set at most one of ` +
       `\`expose\`, \`exclude\`, or \`data\`. Got: ${set.join(", ")}.`
     );
+  }
+
+  // `live` streams the projected `clientData`, so it requires that clientData
+  // ship at all. The gate mirrors the snapshot builder: collections gate
+  // per-item state on `state.read`; single resources gate on a projection.
+  if (client.live === true) {
+    const hasProjection = set.length === 1;
+    const stateRead = (client.state as { read?: boolean } | undefined)?.read === true;
+    const visible = kind === "collection" ? stateRead || hasProjection : hasProjection;
+    if (!visible) {
+      throw new Error(
+        `${definer} for "${ref}": client.live requires the resource's clientData to be ` +
+        (kind === "collection"
+          ? "client-visible (set `client.state.read: true` or a projection)."
+          : "projected (set `expose`, `exclude`, or `data`).")
+      );
+    }
   }
 
   const fields = client.expose ?? client.exclude;
