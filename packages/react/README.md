@@ -164,6 +164,17 @@ Convenience hook for paginated list views. Returns `items` (array of `Collection
 
 Single-item lookup by topic. Returns `null` when not present. Refetches automatically when the watched `ref` receives a `resource_change` notice — e.g., a memo flipping from `writing` to `published` updates in place without remounting. When the collection declares `client: { live: true }`, the mutation arrives as an inline delta merged into the snapshot, so `item.clientData` updates mid-stream with no refetch (`useResource` does the same for single resources).
 
+#### Typing `clientData`
+
+`useResource`, `useResourceCollection`, `useResourceCollectionList`, and `useResourceCollectionItem` each take a `TClient` type parameter that types `clientData` instead of `unknown`. Derive it from the definition with `ClientDataOf<typeof collection>` (from `@flow-state-dev/core`) so it tracks the projection automatically:
+
+```tsx
+const { item } = useResourceCollectionItem<ClientDataOf<typeof artifacts>>(session, "artifacts", "spec.md");
+// item?.clientData is the projected type — no cast
+```
+
+The parameter defaults to `unknown`, so untyped call sites are unchanged.
+
 ### `SessionView.resourceChanges`
 
 `ReadonlyArray<ResourceChangeNotice>` of mid-stream resource_change notices in arrival order. Each notice carries `{ resourcePath, changeType, seq }`. Surfaced independently of the items filter, so subscribers can react to in-flight resource mutations without setting `includeTransient: true` on `useSession`. Reset on session change.

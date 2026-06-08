@@ -42,8 +42,13 @@ export type CollectionListOptions = {
 
 /**
  * Return type for useResourceCollection.
+ *
+ * `TClient` (FIX-741) is the collection's projected per-item client-data type;
+ * pass it via the hook generic, e.g.
+ * `useResourceCollection<ClientDataOf<typeof memos>>(...)`. Defaults to `unknown`
+ * so existing untyped call sites are unchanged.
  */
-export type UseResourceCollectionResult = {
+export type UseResourceCollectionResult<TClient = unknown> = {
   /** Fetch a paginated page of items. Cached by normalized query. */
   list: (options?: CollectionListOptions) => Promise<CollectionListPage>;
   /** Fetch a single item by topic. Returns `null` if not present. */
@@ -55,7 +60,7 @@ export type UseResourceCollectionResult = {
   /** Clear the per-instance page cache and re-trigger active subscribers. */
   refetch: () => void;
   /** Items inlined in the snapshot when `prefetchWindow > 0`, wrapped as handles. */
-  prefetched: CollectionItemHandle[] | undefined;
+  prefetched: CollectionItemHandle<TClient>[] | undefined;
   /** Total item count from the snapshot, when the collection is client-visible. */
   count: number | undefined;
   /**
@@ -73,7 +78,7 @@ export type UseResourceCollectionResult = {
    * (`useResourceCollectionList` / `useResourceCollectionItem`) share this
    * to avoid constructing redundant clients.
    */
-  wrap: (raw: { topic: string; clientData?: unknown; content?: string }) => CollectionItemHandle;
+  wrap: (raw: { topic: string; clientData?: unknown; content?: string }) => CollectionItemHandle<TClient>;
 };
 
 /** @deprecated keep for soft back-compat with callers reading `CollectionItem`. */
@@ -126,15 +131,17 @@ export function findCollectionEntry(
   return undefined;
 }
 
-function wrapItem(
+function wrapItem<TClient>(
   raw: { topic: string; clientData?: unknown; content?: string },
   client: ResourceClient,
   sessionId: string | undefined,
   ref: string
-): CollectionItemHandle {
+): CollectionItemHandle<TClient> {
   return {
     topic: raw.topic,
-    clientData: raw.clientData,
+    // Runtime payload is the server's JsonValue projection; the cast threads the
+    // declared TClient (FIX-741), backed by the projection contract.
+    clientData: raw.clientData as TClient,
     fetchContent: async () => {
       if (!sessionId) return null;
       if (raw.content !== undefined) return raw.content;
@@ -148,10 +155,10 @@ function wrapItem(
 // useResourceCollection
 // ---------------------------------------------------------------------------
 
-export function useResourceCollection(
+export function useResourceCollection<TClient = unknown>(
   session: SessionView,
   ref: string
-): UseResourceCollectionResult {
+): UseResourceCollectionResult<TClient> {
   const context = useFlowContext();
   const baseUrl = context.baseUrl;
 
@@ -294,11 +301,11 @@ export function useResourceCollection(
 
   const wrap = useCallback(
     (raw: { topic: string; clientData?: unknown; content?: string }) =>
-      wrapItem(raw, client, session.sessionId, ref),
+      wrapItem<TClient>(raw, client, session.sessionId, ref),
     [client, session.sessionId, ref]
   );
 
-  const prefetched = useMemo<CollectionItemHandle[] | undefined>(() => {
+  const prefetched = useMemo<CollectionItemHandle<TClient>[] | undefined>(() => {
     const raw = collectionEntry?.prefetched as CollectionSnapshotPrefetchedItem[] | undefined;
     if (raw === undefined) return undefined;
     return raw.map(wrap);

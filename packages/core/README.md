@@ -350,6 +350,8 @@ Block, flow, resource, scope, streaming, and model type definitions. Use this su
 
 Set `client: { live: true }` to stream each mutation's projected `clientData` as an inline delta that the client merges mid-stream without a refetch (the resource-side analog of `state_change`). It requires the resource's `clientData` to be client-visible (`state.read: true` or a projection on collections; a projection on single resources). `lifecycleSchema(statuses)` is a convenience export that returns a `status` enum plus nullable `startedAt` / `completedAt` / `errorMessage` fields to spread into a status-bearing `stateSchema`.
 
+`defineResource` and `defineResourceCollection` carry a derived client-projection type alongside the state type. `ClientDataOf<typeof def>` extracts it — the `Pick` from `expose`, the `Omit` from `exclude`, the return type of `data`, or the full state for the identity default. Pass it to the React hooks (`useResource<T>`, `useResourceCollectionItem<T>`, …) so `clientData` is typed instead of `unknown`. This is a type-level brand only; the runtime payload stays `JsonValue`. For `data` projections, annotate the function's return so the type is captured precisely.
+
 ### Items (`@flow-state-dev/core/items`)
 
 Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `container`, `tool_output`, `status`, `source`, `state_change`, `resource_change`, `error`.

@@ -23,7 +23,8 @@ export {
   whenResourceChanged,
   whenResourceMatching
 } from "./items/predicates";
-export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
+// `ClientDataOf` covers both DefinedResource and DefinedResourceCollection — one import for either.
+export type { ClientDataOf, ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
   CollectionHookContext,
   DefinedResourceCollection,
