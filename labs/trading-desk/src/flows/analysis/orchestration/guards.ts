@@ -4,8 +4,10 @@
  * These handlers are the orchestration-level wiring that `analyze.ts`
  * composes between the agent stages:
  *
- *   - `seedSession` patches session state from action input and resets the
- *     memo-status mirror so a re-run starts from a clean navigator.
+ *   - `seedSession` patches session state from action input. A re-run starts
+ *     from a clean navigator because the setup taps re-create each memo in
+ *     `pending` (`{ replace: true }`); there is no session-state status mirror
+ *     to reset.
  *   - `checkTickerResolvable`, `checkPhase1HasFundamentalsAndProfile`, and
  *     `checkPhase1HasData` are the three stop-condition guards. Each patches
  *     `stoppedReason` + `stoppedMessage` on session state when it trips; the
@@ -19,10 +21,10 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { PHASE_1_MEMO_KEYS } from "../registry";
+import { ALL_MEMO_KEYS, PHASE_1_MEMO_KEYS } from "../registry";
 import { analyzeInputSchema } from "../flow-schema";
 import { resolveTicker } from "../lib/ticker-resolver";
-import { memoResources, type MemoStatus } from "../resources";
+import { memoResources } from "../resources";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
@@ -33,16 +35,35 @@ import {
 import { buildPortfolioContext } from "../build-portfolio-context";
 
 /**
- * Patches session state from action input and resets the memo-status
- * mirror so a re-run starts from a clean navigator.
+ * Patches session state from action input and clears any memos a prior run
+ * left on this session, so a re-run starts from a clean navigator.
+ *
+ * The memos collection is the navigator's live status source now (no
+ * `memoStatus` session mirror), and a stop guard can exit the pipeline before
+ * any per-phase setup re-creates the `pending` scaffolds — `checkTickerResolvable`
+ * runs immediately after this seed and `.exitIf`-bails before `setupPhase1Memos`.
+ * So the prior-run reset has to happen here, not lean on the setup taps. (The
+ * old `memoStatus: {}` reset did the equivalent for the retired mirror.)
  */
 export const seedSession = handler({
   name: "seed-session",
   inputSchema: analyzeInputSchema,
   outputSchema: analyzeInputSchema,
   sessionStateSchema,
-  resources: { accounts: accountsCollection, portfolioQuotes: portfolioQuotesResource },
+  resources: {
+    accounts: accountsCollection,
+    portfolioQuotes: portfolioQuotesResource,
+    ...memoResources,
+  },
   execute: async (input, ctx) => {
+    // Clear any memos persisted by a prior run on this session. `delete` is
+    // idempotent (no-op, no event, for a key that doesn't exist), so a first
+    // run is unaffected; a re-run starts the navigator from an all-pending
+    // slate that the per-phase setups then re-create.
+    for (const { collectionKey } of Object.values(ALL_MEMO_KEYS)) {
+      await ctx.resources.memos.delete(collectionKey);
+    }
+
     // Freeze the per-run thesis at seed time so editing the form mid-run
     // can't affect the session that's already analyzing. A non-null
     // `userThesis` gates Phase 6; a sub-threshold (< 20 chars) thesis is
@@ -75,7 +96,6 @@ export const seedSession = handler({
       // Cheap preset runs one bull/bear round; full preset runs two. Caller
       // input never sets this — the schema's `max(2)` enforces the ceiling.
       maxDebateRounds: input.costPreset === "full" ? 2 : 1,
-      memoStatus: {} as Record<string, MemoStatus>,
       runComplete: false,
       // Reset terminal stop state from any prior run on this session key
       // so the navigator doesn't render a stale "stopped" banner.

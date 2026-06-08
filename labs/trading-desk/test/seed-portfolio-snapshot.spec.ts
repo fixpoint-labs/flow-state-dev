@@ -125,6 +125,47 @@ describe("seedSession portfolio snapshot (server-side)", () => {
     expect(sessionState.portfolio?.holdings.map((h) => h.ticker)).not.toContain("AAPL");
   });
 
+  it("clears memos a prior run left on the session so a re-run starts clean", async () => {
+    // The navigator reads memo status live off the collection (no memoStatus
+    // mirror). A stop guard can exit before any phase setup re-creates the
+    // scaffolds, so seedSession itself must clear prior-run memos — otherwise a
+    // re-run keeps rendering the previous run's published/error states.
+    const result = await testBlock(seedSession, {
+      input: {
+        ticker: "NVDA",
+        date: "2026-05-06",
+        costPreset: "fast" as const,
+        dataSource: "fixture" as const,
+        userThesis: null,
+        userThesisRationale: null,
+        selectedAccountIds: [],
+      },
+      flow,
+      session: {
+        resources: {
+          // A memo left `published` by a prior run on this same session.
+          "memos/p1/fundamentals": {
+            status: "published",
+            agentName: "fundamentalsAnalyst",
+            agentTeam: "analyst",
+            phaseId: "p1",
+            ticker: "NVDA",
+            date: "2026-05-06",
+          },
+        },
+      },
+    });
+
+    expect(result.error).toBeNull();
+    const clearedFundamentals = result.items.some(
+      (item) =>
+        (item as { type?: string }).type === "resource_change" &&
+        (item as { resourcePath?: string }).resourcePath === "memos/p1/fundamentals" &&
+        (item as { changeType?: string }).changeType === "deleted",
+    );
+    expect(clearedFundamentals).toBe(true);
+  });
+
   it("sets portfolio to null when there are no accounts", async () => {
     const result = await testBlock(seedSession, {
       input: {

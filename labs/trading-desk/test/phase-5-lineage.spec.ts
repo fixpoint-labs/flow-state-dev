@@ -44,7 +44,6 @@ const baseSessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-5" as const,
   maxDebateRounds: 1,
-  memoStatus: { portfolioManager: "writing" as const },
   runComplete: false,
 };
 

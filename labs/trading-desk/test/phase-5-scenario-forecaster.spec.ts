@@ -1,6 +1,6 @@
 /**
  * Tests for the Phase 5 scenario-forecast writer taps and the ScenarioForecast output schema.
- * Confirms `markWriting` flips `session.memoStatus`, that
+ * Confirms `markWriting` flips the scenario-forecast memo's status, that
  * `commitScenarioForecastMemo` publishes a well-formed forecast with
  * normalized probabilities and copied horizon, and that out-of-band
  * probability sums trigger `probability-violation`.
@@ -13,6 +13,8 @@ import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/mem
 import { scenarioForecastOutputSchema } from "../src/flows/analysis/agents/scenario-forecaster/scenario-forecaster";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { PHASE_5_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const writeSf = markWriting("scenarioForecast");
 const errorSf = markError("scenarioForecast");
@@ -35,7 +37,6 @@ const baseSessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-5" as const,
   maxDebateRounds: 1,
-  memoStatus: { scenarioForecast: "pending" as const },
   runComplete: false,
 };
 
@@ -114,15 +115,14 @@ function scenarioForecast(
 }
 
 describe("Phase 5 scenario-forecast writer taps", () => {
-  it("markWriting flips memoStatus.scenarioForecast to writing", async () => {
+  it("markWriting flips the scenario-forecast memo to writing", async () => {
     const result = await testBlock(writeSf, {
       input: {},
       flow: fixtureFlow,
       session: { state: baseSessionState },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.scenarioForecast).toBe("writing");
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.scenarioForecast.memoKey)).toBe("writing");
   });
 
   it("commitScenarioForecastMemo publishes a well-formed forecast", async () => {
@@ -130,10 +130,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       input: scenarioForecast(),
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { scenarioForecast: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
@@ -143,8 +140,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.scenarioForecast).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.scenarioForecast.memoKey)).toBe("published");
   });
 
   it("commitScenarioForecastMemo normalizes probabilities to sum 1.0", async () => {
@@ -167,10 +163,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       input: scenarioForecast({ scenarios }),
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { scenarioForecast: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
@@ -180,8 +173,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.scenarioForecast).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.scenarioForecast.memoKey)).toBe("published");
   });
 
   it("markError flips scenarioForecast to error", async () => {
@@ -189,10 +181,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { scenarioForecast: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
@@ -201,8 +190,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.scenarioForecast).toBe("error");
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.scenarioForecast.memoKey)).toBe("error");
   });
 });
 
@@ -265,10 +253,7 @@ describe("probability-violation rescue", () => {
       input: scenarioForecast({ scenarios }),
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { scenarioForecast: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
@@ -292,10 +277,7 @@ describe("probability-violation rescue", () => {
       input: scenarioForecast({ scenarios }),
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { scenarioForecast: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
@@ -308,16 +290,3 @@ describe("probability-violation rescue", () => {
     expect(result.error?.message).toContain("probability-violation");
   });
 });
-
-type LastStatePayload = { memoStatus: Record<string, string> };
-
-type ResultLike = {
-  stateChanges: Array<{ scope: string; resultingState: Record<string, unknown> }>;
-};
-
-function lastSessionState(result: ResultLike): LastStatePayload {
-  const sessionPatches = result.stateChanges.filter((c) => c.scope === "session");
-  expect(sessionPatches.length).toBeGreaterThan(0);
-  return sessionPatches[sessionPatches.length - 1]
-    .resultingState as unknown as LastStatePayload;
-}

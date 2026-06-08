@@ -26,7 +26,6 @@ import { PortfolioPane } from "@/components/portfolio/portfolio-pane";
 import { parseReportRow, reportRowTuple } from "@/src/flows/analysis/report-index";
 import { buildAnalyzeInput } from "@/src/flows/analysis/analyze-input";
 import type { MemoStatus } from "@/src/flows/analysis/resources";
-import type { AnyMemoShortName } from "@/src/flows/analysis/registry";
 import {
   EMPTY_INSTRUCTIONS,
   type SpecialInstructionsState,
@@ -170,14 +169,10 @@ function TradingDeskApp(): ReactElement {
   }, [theme]);
 
   const { session: sessionClientData } = useClientData(session, {
-    session: ["costPreset", "memoStatus", "userThesis", "userThesisWarning"],
+    session: ["costPreset", "userThesis", "userThesisWarning"],
   });
   const liveCostPreset =
     (sessionClientData?.costPreset as CostPreset | undefined) ?? costPreset;
-  const memoStatus =
-    (sessionClientData?.memoStatus as
-      | Partial<Record<AnyMemoShortName, MemoStatus>>
-      | undefined) ?? {};
   const liveUserThesis =
     (sessionClientData?.userThesis as string | null | undefined) ?? null;
   const liveUserThesisWarning =
@@ -193,6 +188,12 @@ function TradingDeskApp(): ReactElement {
   const thesisAlignment =
     (thesisAlignmentItem?.clientData as { alignment?: string | null } | null)
       ?.alignment ?? null;
+  // The Phase 6 memo's own lifecycle status, read live off the same item (the
+  // memos collection is `client: { live: true }`) — replaces the retired
+  // `memoStatus.thesisAlignment` session mirror.
+  const thesisAlignmentStatus =
+    (thesisAlignmentItem?.clientData as { status?: MemoStatus } | null)?.status ??
+    "pending";
 
   // Status-bar badge: only shown when a thesis was provided for this run.
   // `pending` while in flight, the alignment verdict once published, and
@@ -200,9 +201,9 @@ function TradingDeskApp(): ReactElement {
   const thesisBadge: string | undefined =
     liveUserThesis === null
       ? undefined
-      : memoStatus.thesisAlignment === "published" && thesisAlignment !== null
+      : thesisAlignmentStatus === "published" && thesisAlignment !== null
         ? thesisAlignment
-        : memoStatus.thesisAlignment === "error"
+        : thesisAlignmentStatus === "error"
           ? "error"
           : "pending";
 
@@ -368,7 +369,7 @@ function TradingDeskApp(): ReactElement {
           className="grid overflow-hidden"
           style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}
         >
-          <ThesesPane session={session} memoStatus={memoStatus} />
+          <ThesesPane session={session} />
           <TranscriptPane session={session} />
         </main>
       )}

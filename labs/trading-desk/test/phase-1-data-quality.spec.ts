@@ -22,6 +22,7 @@ import { commitAnalystMemo } from "../src/flows/analysis/agents/analysts/writer"
 import { thesisOutputSchema } from "../src/flows/analysis/agents/analysts/thesis-schema";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const DATA_QUALITY_VALUES = ["full", "partial", "unavailable"] as const;
 
@@ -77,7 +78,6 @@ const baseSessionState = {
   costPreset: "fast" as const,
   dataSource: "fixture" as const,
   activePhase: "phase-1" as const,
-  memoStatus: { fundamentals: "writing" as const },
 };
 
 const seededResources = {
@@ -101,11 +101,9 @@ describe("commitAnalystMemo with dataQuality sentinel", () => {
         session: { state: baseSessionState, resources: seededResources },
       });
       expect(result.error).toBeNull();
-      const sessionPatches = result.stateChanges.filter((c) => c.scope === "session");
-      const last = sessionPatches[sessionPatches.length - 1].resultingState as {
-        memoStatus: Record<string, string>;
-      };
-      expect(last.memoStatus.fundamentals).toBe("published");
+      expect(
+        latestMemoStatus(result.items, "memos/p1/fundamentals"),
+      ).toBe("published");
     });
   }
 });

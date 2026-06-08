@@ -253,8 +253,10 @@ Press **re-run** to dispatch a new `analyze` request.
 The cheap-preset run completes end-to-end in well under a minute on default
 models with one provider key configured. Each analyst writes a structured
 `Thesis` resource observable via `useResourceCollection`; the navigator's live
-`pending → writing → published` flicker comes from `useClientData` reading the
-session-state `memoStatus` mirror.
+`pending → writing → published` flicker comes straight from that resource. The
+memos collection is `client: { live: true }`, so each status change streams to
+the client inline and `useResourceCollectionList` reflects it with no refetch —
+there is no separate session-state status field to keep in sync.
 
 ## Persistence and sessions
 
@@ -263,8 +265,8 @@ four inputs at the top of the page name it: `(ticker, date, preset, source)`.
 
 - Re-running with the same four inputs reuses the existing session and
   refreshes its data. Memo resources have deterministic keys, so they
-  overwrite in place; the session state mirror (`memoStatus`, `runComplete`)
-  resets via `seedSession` at the start of each request.
+  overwrite in place (the setup taps re-create each memo in `pending`);
+  `runComplete` resets via `seedSession` at the start of each request.
 - Changing any one of the four inputs starts a new session. Its title is
   derived from the tuple (`NVDA · 2026-05-06 · fast · fixture`), so prior
   runs stay identifiable for a future session-browser UI.

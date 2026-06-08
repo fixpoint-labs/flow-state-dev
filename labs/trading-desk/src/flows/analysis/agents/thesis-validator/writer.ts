@@ -48,7 +48,6 @@ export const commitThesisAlignmentMemo = memoHandler({
 
     await publishMemo(
       ctx,
-      "thesisAlignment",
       PHASE_6_MEMO_KEYS.thesisAlignment.collectionKey,
       {
         label: audit.label,

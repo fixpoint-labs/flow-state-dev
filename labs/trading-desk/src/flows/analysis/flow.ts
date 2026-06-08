@@ -7,9 +7,10 @@
  * stages → gated thesis audit), and `setInstructions` is the standing
  * special-instructions writer.
  *
- * Session-scope client data is exposed via `client.expose` so navigator
- * status (`memoStatus`) reflects mid-stream `state_change` items in the
- * client's `useClientData` hook.
+ * Session-scope client data is exposed via `client.expose` for the header
+ * inputs, run lifecycle, and stop banner. Per-memo navigator status is NOT
+ * exposed here — it streams live off the memos collection itself
+ * (`client: { live: true }`), read via `useResourceCollectionList`.
  */
 import { defineFlow } from "@flow-state-dev/core";
 import { decisionSnapshotResource } from "./decision-snapshot-resource";
@@ -51,7 +52,6 @@ const analysisFlow = defineFlow({
         "dataSource",
         "activePhase",
         "maxDebateRounds",
-        "memoStatus",
         "runComplete",
         "stoppedReason",
         "stoppedMessage",

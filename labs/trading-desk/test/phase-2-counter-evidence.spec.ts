@@ -28,7 +28,6 @@ const baseSessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-2" as const,
   maxDebateRounds: 2,
-  memoStatus: {},
 };
 
 function fundamentalsMemo(paragraph: string) {
