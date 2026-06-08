@@ -431,10 +431,13 @@ interface CheckpointStore {
   write(checkpoint: SequencerCheckpoint): Promise<void>;
   latest(requestId: string, blockInstanceId: string): Promise<SequencerCheckpoint | null>;
   delete(requestId: string, blockInstanceId: string): Promise<void>;
+  deleteForRequest(requestId: string): Promise<void>;
 }
 ```
 
-Memory, filesystem, SQLite, and Postgres adapters all ship with first-class implementations. Custom registries can wrap a third-party KV store; storage is constant per sequencer regardless of step count, so the implementation needs no enumeration or pruning.
+`deleteForRequest` removes every checkpoint for a request in one call (all `blockInstanceId`s) — used by the retention sweeper to reclaim checkpoints of a crashed run whose per-instance terminal deletes never fired.
+
+Memory, filesystem, SQLite, and Postgres adapters all ship with first-class implementations. Per-sequencer storage is constant regardless of step count.
 
 By default the final checkpoint is retained after terminal completion (success / error / abort) for post-mortem inspection. Set `flow.request.cleanupCheckpointsOnTerminal: true` on a flow to make terminal frames trigger an immediate `delete()`.
 
@@ -455,9 +458,31 @@ const provider = createCheckpointDurabilityProvider({
 { durabilityProvider: provider }
 ```
 
-The interface has 8 methods: `saveCheckpoint`, `loadCheckpoint`, `suspend`, `loadSuspension`, `listSuspended`, `acquireLease`, `releaseLease`, and `cleanup`. `createCheckpointDurabilityProvider` delegates each to the matching store from `StoreRegistry`.
+The interface methods are `saveCheckpoint`, `loadCheckpoint`, `suspend`, `loadSuspension`, `listSuspended`, `acquireLease`, `releaseLease`, `cleanup`, plus the retention seams `cleanupCheckpoints` (delegates to `CheckpointStore.deleteForRequest`) and `pruneSuspensions` (delegates to `SuspensionStore.pruneTerminalBefore`). `createCheckpointDurabilityProvider` delegates each to the matching store from `StoreRegistry`.
 
 `SuspensionStore` and `LeaseStore` ship with in-memory, filesystem, SQLite, and Postgres adapters. See the [Durable Execution guide](https://flow-state.dev/docs/advanced/durable-execution) for usage patterns.
+
+### Durability retention
+
+Durability records accumulate on long-lived hosts: a completed run's checkpoints are dead weight, a resolved suspension is only worth keeping for a window, and a crashed run leaves records that `cleanup()` never fires for. `createDurabilitySweeper` is an opt-in periodic job that reclaims them, modeled on the stale-request sweeper (`setInterval` + `unref`, `inFlight` guard, idempotent `dispose`, no-op handle when disabled).
+
+Configure it via `RuntimeConfig.durabilityRetention` (forwarded by `createFlowState` and `createFlowApiRouter`). The sweeper is built only when both a `durabilityProvider` and a `durabilityRetention` policy are present.
+
+```ts
+createFlowState({
+  // ...
+  durabilityProvider: createCheckpointDurabilityProvider(stores),
+  durabilityRetention: {
+    sweepIntervalMs: 600_000,                // sweep cadence; 0 disables. Default 10min.
+    checkpointMaxAgeMs: 86_400_000,          // terminal-run checkpoint backstop. Default 24h.
+    suspensionTerminalMaxAgeMs: 604_800_000, // resolved-suspension window. Default 7d.
+    orphanCheckpointThresholdMs: 86_400_000, // abandoned-interrupted threshold. Default 24h.
+    batchLimit: 1000,                        // max deletes per store per tick. Default 1000.
+  },
+});
+```
+
+Each tick takes a single-holder sentinel lease (co-located hosts serialize), enforces suspension expiry (`pending` past `expiresAt` → `expired`), prunes resolved suspensions and expired leases past their windows, and prunes orphaned checkpoints. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
 
 ## Connection resilience
 
