@@ -3,23 +3,40 @@
  *
  * Stores the full SuspensionRecord as JSONB in the `data` column.
  * Scalar columns (`request_id`, `suspension_id`, `created_at`) enable
- * indexed queries; nested filter fields are filtered in JS from the
- * parsed JSONB blob.
+ * indexed queries; `list` pushes filters down to SQL (JSONB accessors for
+ * blob-only fields, scalar columns for the rest).
+ *
+ * The denormalized `status` / `resolved_at` columns (FIX-141) mirror the
+ * blob and back the `(status, resolved_at)` index, so `pruneTerminalBefore`
+ * runs a bounded indexed DELETE via `ctid` rather than scanning every row.
  */
-import type { SuspensionFilter, SuspensionRecord } from "@flow-state-dev/core/types";
-import type { SuspensionStore } from "@flow-state-dev/server";
+import {
+  TERMINAL_SUSPENSION_STATUSES,
+  type SuspensionFilter,
+  type SuspensionRecord,
+  type SuspensionStore
+} from "@flow-state-dev/server";
 import type { QueryExecutor } from "./types";
 
 export function createPostgresSuspensionStore(executor: QueryExecutor): SuspensionStore {
   return {
     async set(record: SuspensionRecord): Promise<void> {
       await executor.query(
-        `INSERT INTO suspension_records (request_id, suspension_id, data, created_at)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO suspension_records (request_id, suspension_id, data, created_at, status, resolved_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (request_id, suspension_id) DO UPDATE SET
            data = EXCLUDED.data,
-           created_at = EXCLUDED.created_at`,
-        [record.requestId, record.suspensionId, JSON.stringify(record), record.createdAt]
+           created_at = EXCLUDED.created_at,
+           status = EXCLUDED.status,
+           resolved_at = EXCLUDED.resolved_at`,
+        [
+          record.requestId,
+          record.suspensionId,
+          JSON.stringify(record),
+          record.createdAt,
+          record.status,
+          record.resolvedAt ?? null
+        ]
       );
     },
 
@@ -55,6 +72,16 @@ export function createPostgresSuspensionStore(executor: QueryExecutor): Suspensi
         conditions.push(`data->>'status' = $${paramIdx++}`);
         params.push(filter.status);
       }
+      if (filter?.createdBefore !== undefined) {
+        conditions.push(`created_at < $${paramIdx++}`);
+        params.push(filter.createdBefore);
+      }
+      if (filter?.resolvedBefore !== undefined) {
+        // `resolved_at IS NOT NULL` so unresolved records never match — the
+        // sweeper-visible semantics defined in `matchesSuspensionFilter`.
+        conditions.push(`resolved_at IS NOT NULL AND resolved_at < $${paramIdx++}`);
+        params.push(filter.resolvedBefore);
+      }
 
       const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
       const limit = filter?.limit !== undefined ? ` LIMIT $${paramIdx++}` : "";
@@ -76,6 +103,26 @@ export function createPostgresSuspensionStore(executor: QueryExecutor): Suspensi
         "DELETE FROM suspension_records WHERE request_id = $1",
         [requestId]
       );
+    },
+
+    async pruneTerminalBefore(cutoffMs: number, limit: number): Promise<number> {
+      // Bounded indexed delete: the inner SELECT walks the
+      // (status, resolved_at) index for the terminal-status set and caps at
+      // `limit` ctids, so the DELETE touches at most `limit` rows regardless
+      // of table size. `ctid` is the physical row pointer — the standard
+      // Postgres idiom for a LIMIT-bounded delete.
+      const result = await executor.query(
+        `DELETE FROM suspension_records
+         WHERE ctid IN (
+           SELECT ctid FROM suspension_records
+           WHERE status = ANY($1::text[])
+             AND resolved_at IS NOT NULL
+             AND resolved_at < $2
+           LIMIT $3
+         )`,
+        [TERMINAL_SUSPENSION_STATUSES, cutoffMs, limit]
+      );
+      return result.rowCount ?? 0;
     }
   };
 }

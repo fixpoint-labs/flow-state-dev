@@ -53,6 +53,13 @@ export function createPostgresCheckpointStore(executor: QueryExecutor): Checkpoi
         "DELETE FROM sequencer_checkpoints WHERE request_id = $1 AND block_instance_id = $2",
         [requestId, blockInstanceId]
       );
+    },
+
+    async deleteForRequest(requestId: string): Promise<void> {
+      await executor.query(
+        "DELETE FROM sequencer_checkpoints WHERE request_id = $1",
+        [requestId]
+      );
     }
   };
 }

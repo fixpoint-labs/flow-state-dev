@@ -39,6 +39,9 @@ export function createSQLiteCheckpointStore(db: Database.Database): CheckpointSt
   const deleteStmt = db.prepare(
     `DELETE FROM sequencer_checkpoints WHERE request_id = ? AND block_instance_id = ?`
   );
+  const deleteForRequestStmt = db.prepare(
+    `DELETE FROM sequencer_checkpoints WHERE request_id = ?`
+  );
 
   return {
     async write(checkpoint: SequencerCheckpoint): Promise<void> {
@@ -61,6 +64,10 @@ export function createSQLiteCheckpointStore(db: Database.Database): CheckpointSt
 
     async delete(requestId: string, blockInstanceId: string): Promise<void> {
       deleteStmt.run(requestId, blockInstanceId);
+    },
+
+    async deleteForRequest(requestId: string): Promise<void> {
+      deleteForRequestStmt.run(requestId);
     }
   };
 }

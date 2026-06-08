@@ -79,6 +79,20 @@ export type {
   UserRecord,
   UserStore
 } from "./stores";
+// Suspension retention primitives, re-exported from core so sibling store
+// adapter packages (store-sqlite, store-postgres) that depend only on
+// `@flow-state-dev/server` can import them at runtime without a direct core
+// dependency. The types travel alongside for the same reason.
+export {
+  TERMINAL_SUSPENSION_STATUSES,
+  isTerminalSuspensionStatus,
+  matchesSuspensionFilter
+} from "@flow-state-dev/core/types";
+export type {
+  SuspensionFilter,
+  SuspensionRecord,
+  SuspensionStatus
+} from "@flow-state-dev/core/types";
 export * from "./streaming";
 export * from "./execution";
 export * from "./registry";
