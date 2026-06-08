@@ -197,6 +197,10 @@ if (bullmqRuntime && redisUrl) {
     bridge: streamBridge,
   });
 
+  const shutdown = () => { bullmqRuntime.close().catch(() => {}); };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+
   console.log(
     bullmqDispatch
       ? "[flowstate] BullMQ co-located worker + dispatcher active (all actions route through queue)"
