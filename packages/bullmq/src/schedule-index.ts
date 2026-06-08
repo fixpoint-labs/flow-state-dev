@@ -11,6 +11,8 @@ import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled"
 export interface CreateBullmqScheduleIndexOptions {
   /** Prefix for BullMQ scheduler ids. Default "fsd-sched". */
   schedulerIdPrefix?: string;
+  /** Flow kind to embed in job data. Required by the dispatch worker. */
+  flowKind: string;
 }
 
 const DEFAULT_SCHEDULER_PREFIX = "fsd-sched";
@@ -23,10 +25,11 @@ const DEFAULT_SCHEDULER_PREFIX = "fsd-sched";
  */
 export function createBullmqScheduleIndex(
   queue: Queue,
-  opts?: CreateBullmqScheduleIndexOptions
+  opts: CreateBullmqScheduleIndexOptions
 ): ScheduleIndex {
   const schedulerPrefix =
-    opts?.schedulerIdPrefix ?? DEFAULT_SCHEDULER_PREFIX;
+    opts.schedulerIdPrefix ?? DEFAULT_SCHEDULER_PREFIX;
+  const flowKind = opts.flowKind;
 
   function schedulerId(userId: string, key: string): string {
     return `${schedulerPrefix}:${userId}:${key}`;
@@ -43,6 +46,7 @@ export function createBullmqScheduleIndex(
         {
           name: "schedule-fire",
           data: {
+            flowKind,
             userId: row.userId,
             key: row.key,
             cron: row.cron,

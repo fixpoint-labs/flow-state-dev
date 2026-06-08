@@ -176,7 +176,9 @@ import { Queue } from "bullmq";
 import { createBullmqScheduleIndex } from "@flow-state-dev/bullmq";
 
 const queue = new Queue("fsd-schedules", { connection: redisUrl });
-const scheduleIndex = createBullmqScheduleIndex(queue);
+const scheduleIndex = createBullmqScheduleIndex(queue, {
+  flowKind: "weekly-digest",
+});
 ```
 
 ## Monitoring with Bull Board

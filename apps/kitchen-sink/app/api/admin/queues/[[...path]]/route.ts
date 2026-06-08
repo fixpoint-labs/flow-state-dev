@@ -12,6 +12,21 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function handler(req: Request): Promise<Response> {
+  const token = process.env.BULL_BOARD_TOKEN;
+  if (token) {
+    const auth = req.headers.get("authorization");
+    const cookie = req.headers.get("cookie");
+    const hasBearer = auth === `Bearer ${token}`;
+    const hasQueryToken =
+      new URL(req.url).searchParams.get("token") === token;
+    const hasCookieToken = cookie
+      ?.split(";")
+      .some((c) => c.trim() === `bull_board_token=${token}`);
+    if (!hasBearer && !hasQueryToken && !hasCookieToken) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+  }
+
   const url = new URL(req.url);
   const body =
     req.method !== "GET" && req.method !== "HEAD"
