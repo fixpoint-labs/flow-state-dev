@@ -1,0 +1,535 @@
+/**
+ * Emission layer: drives `ctx.response.emit` from {@link TranslatedEvent}s.
+ *
+ * Each translated event becomes one or more canonical FSD item lifecycle
+ * emissions, hand-built exactly like `generator.ts` does (base fields derived
+ * from `_blockIdentity`, fresh `itemIndex` per item). The pure interpretation
+ * lives in `translate.ts`; this module owns the side effects and the small
+ * amount of cross-event streaming state (the open message/reasoning item being
+ * accumulated via deltas).
+ *
+ * Visibility: conversational items carry `{ client: true, history: true }`.
+ * Sub-agent activity surfaces as container open/close pairs; tools as
+ * `tool_output` items correlated by SDK tool-use id.
+ */
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { TranslatedEvent } from "./types";
+
+/** Provenance shape derived once per run and stamped on every emitted item. */
+interface EmitProvenance {
+  blockName: string;
+  blockInstanceId: string;
+  parentBlockInstanceId?: string;
+  phase: "main" | "work";
+}
+
+/**
+ * Streaming bookkeeping for the emit pass. Tracks the message/reasoning item
+ * currently being accumulated via deltas (so a run of `message_delta`s coalesce
+ * into one item), the open `tool_output` item ids keyed by SDK tool-use id, and
+ * the open container item ids for sub-agents. Distinct from the translation
+ * state — this is about emission, not interpretation.
+ */
+export interface EmitState {
+  /** Item id + accumulated text of the in-progress streamed message, if any. */
+  message: { id: string; contentIndex: number; text: string } | null;
+  /** Item id + accumulated text of the in-progress streamed reasoning, if any. */
+  reasoning: { id: string; contentIndex: number; text: string } | null;
+  /** Open tool_output items keyed by SDK tool-use callId. */
+  readonly openTools: Map<string, { id: string; name: string; arguments: string }>;
+  /** Open container item ids keyed by sub-agent callId. */
+  readonly openSubagents: Map<string, string>;
+  /** Distinct SDK tool names observed, in first-seen order. */
+  readonly toolsObserved: string[];
+  /** Last completed assistant message text (whole or coalesced delta). */
+  finalMessage: string | null;
+}
+
+/** Create a fresh {@link EmitState} for one run. */
+export function createEmitState(): EmitState {
+  return {
+    message: null,
+    reasoning: null,
+    openTools: new Map<string, { id: string; name: string; arguments: string }>(),
+    openSubagents: new Map<string, string>(),
+    toolsObserved: [],
+    finalMessage: null,
+  };
+}
+
+/** Derive the run-stable provenance from the block context identity. */
+function deriveProvenance(ctx: BlockContext, blockName: string): EmitProvenance {
+  const identity = (
+    ctx as {
+      _blockIdentity?: {
+        blockName?: string;
+        blockInstanceId?: string;
+        parentBlockInstanceId?: string;
+        phase?: "main" | "work";
+      };
+    }
+  )._blockIdentity;
+  return {
+    blockName: identity?.blockName ?? blockName,
+    blockInstanceId: identity?.blockInstanceId ?? blockName,
+    parentBlockInstanceId: identity?.parentBlockInstanceId,
+    phase: identity?.phase ?? "main",
+  };
+}
+
+/** Mint a unique item id with a kind-specific prefix. */
+function mintId(kind: string): string {
+  return `item_${kind}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+/** Build the per-item base fields, reading a fresh `itemIndex` each call. */
+function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) {
+  return {
+    id: mintId(kind),
+    requestId: ctx.request.identity.id,
+    itemIndex: ctx.response.getItemCount(),
+    provenance,
+    ts: Date.now(),
+  };
+}
+
+const CONVERSATIONAL_VISIBILITY = { client: true, history: true } as const;
+
+/** Fallback block name used when re-deriving provenance for a close emission. */
+const DEFAULT_AGENT_NAME = "claude-code-agent";
+
+/**
+ * Apply one {@link TranslatedEvent} to the response stream, mutating `state`.
+ * Returns nothing — the observable result is the emitted items and the updated
+ * `state` (final message text, observed tools, open containers).
+ */
+export async function emitTranslatedEvent(
+  event: TranslatedEvent,
+  ctx: BlockContext,
+  state: EmitState,
+  blockName: string,
+): Promise<void> {
+  const provenance = deriveProvenance(ctx, blockName);
+  switch (event.kind) {
+    case "message_delta":
+      return emitMessageDelta(event.text, ctx, state, provenance);
+    case "message_complete":
+      return emitMessageComplete(event.text, ctx, state, provenance);
+    case "reasoning_delta":
+      return emitReasoningDelta(event.text, ctx, state, provenance);
+    case "reasoning_complete":
+      return emitReasoningComplete(event.text, ctx, provenance);
+    case "tool_call":
+      return emitToolCall(event, ctx, state, provenance, blockName);
+    case "tool_result":
+      return emitToolResult(event, ctx, state, provenance, blockName);
+    case "subagent_open":
+      return emitSubagentOpen(event, ctx, state, provenance);
+    case "subagent_close":
+      return emitSubagentClose(event, ctx, state);
+    case "status":
+      ctx.emit.status(event.message);
+      return;
+    case "error":
+      return emitError(event, ctx, provenance);
+    case "result":
+      // The result event mutates the handle, not the stream. Handled by the
+      // agent block from the returned TranslatedEvent; nothing to emit here.
+      return;
+  }
+}
+
+/** Open (lazily) the streamed message item and push one text delta. */
+async function emitMessageDelta(
+  text: string,
+  ctx: BlockContext,
+  state: EmitState,
+  provenance: EmitProvenance,
+): Promise<void> {
+  if (state.message === null) {
+    // A reasoning item streaming before the first text closes here.
+    await closeStreamingReasoning(ctx, state);
+    const base = buildBase(ctx, provenance, "msg");
+    const item = {
+      ...base,
+      type: "message" as const,
+      role: "assistant" as const,
+      status: "in_progress" as const,
+      itemVisibility: CONVERSATIONAL_VISIBILITY,
+      content: [{ type: "output_text" as const, text: "" }],
+    };
+    await ctx.response.emit({ type: "item.added", item });
+    await ctx.response.emit({
+      type: "content.added",
+      itemId: base.id,
+      contentIndex: 0,
+      content: { type: "output_text", text: "" },
+    });
+    state.message = { id: base.id, contentIndex: 0, text: "" };
+  }
+  state.message.text += text;
+  await ctx.response.emit({
+    type: "content.delta",
+    itemId: state.message.id,
+    contentIndex: state.message.contentIndex,
+    delta: text,
+  });
+}
+
+/** Finalize the streamed message item (called at end of an assistant turn). */
+async function closeStreamingMessage(ctx: BlockContext, state: EmitState): Promise<void> {
+  if (state.message === null) return;
+  const { id, contentIndex, text } = state.message;
+  await ctx.response.emit({
+    type: "content.done",
+    itemId: id,
+    contentIndex,
+    content: { type: "output_text", text },
+  });
+  await ctx.response.emit({
+    type: "item.done",
+    item: {
+      id,
+      type: "message",
+      role: "assistant",
+      status: "completed",
+      requestId: ctx.request.identity.id,
+      itemIndex: ctx.response.getItemCount(),
+      provenance: deriveProvenance(ctx, DEFAULT_AGENT_NAME),
+      ts: Date.now(),
+      itemVisibility: CONVERSATIONAL_VISIBILITY,
+      content: [{ type: "output_text", text }],
+    },
+  });
+  state.finalMessage = text;
+  state.message = null;
+}
+
+/**
+ * Emit a complete message item in the whole-message (non-partial) path:
+ * added(in_progress) → content.added → content.done → item.done(completed).
+ */
+async function emitMessageComplete(
+  text: string,
+  ctx: BlockContext,
+  state: EmitState,
+  provenance: EmitProvenance,
+): Promise<void> {
+  const base = buildBase(ctx, provenance, "msg");
+  const inProgress = {
+    ...base,
+    type: "message" as const,
+    role: "assistant" as const,
+    status: "in_progress" as const,
+    itemVisibility: CONVERSATIONAL_VISIBILITY,
+    content: [{ type: "output_text" as const, text: "" }],
+  };
+  await ctx.response.emit({ type: "item.added", item: inProgress });
+  await ctx.response.emit({
+    type: "content.added",
+    itemId: base.id,
+    contentIndex: 0,
+    content: { type: "output_text", text: "" },
+  });
+  await ctx.response.emit({
+    type: "content.done",
+    itemId: base.id,
+    contentIndex: 0,
+    content: { type: "output_text", text },
+  });
+  await ctx.response.emit({
+    type: "item.done",
+    item: { ...inProgress, status: "completed", content: [{ type: "output_text", text }] },
+  });
+  state.finalMessage = text;
+}
+
+/** Open (lazily) the streamed reasoning item and push one text delta. */
+async function emitReasoningDelta(
+  text: string,
+  ctx: BlockContext,
+  state: EmitState,
+  provenance: EmitProvenance,
+): Promise<void> {
+  if (state.reasoning === null) {
+    const base = buildBase(ctx, provenance, "reasoning");
+    const item = {
+      ...base,
+      type: "reasoning" as const,
+      status: "in_progress" as const,
+      itemVisibility: CONVERSATIONAL_VISIBILITY,
+      summary: [{ type: "reasoning_text" as const, text: "" }],
+    };
+    await ctx.response.emit({ type: "item.added", item });
+    await ctx.response.emit({
+      type: "content.added",
+      itemId: base.id,
+      contentIndex: 0,
+      content: { type: "reasoning_text", text: "" },
+    });
+    state.reasoning = { id: base.id, contentIndex: 0, text: "" };
+  }
+  state.reasoning.text += text;
+  await ctx.response.emit({
+    type: "content.delta",
+    itemId: state.reasoning.id,
+    contentIndex: state.reasoning.contentIndex,
+    delta: text,
+  });
+}
+
+/** Finalize the streamed reasoning item, if one is open. */
+async function closeStreamingReasoning(ctx: BlockContext, state: EmitState): Promise<void> {
+  if (state.reasoning === null) return;
+  const { id, contentIndex, text } = state.reasoning;
+  await ctx.response.emit({
+    type: "content.done",
+    itemId: id,
+    contentIndex,
+    content: { type: "reasoning_text", text },
+  });
+  await ctx.response.emit({
+    type: "item.done",
+    item: {
+      id,
+      type: "reasoning",
+      status: "completed",
+      requestId: ctx.request.identity.id,
+      itemIndex: ctx.response.getItemCount(),
+      provenance: deriveProvenance(ctx, DEFAULT_AGENT_NAME),
+      ts: Date.now(),
+      itemVisibility: CONVERSATIONAL_VISIBILITY,
+      summary: [{ type: "reasoning_text", text }],
+    },
+  });
+  state.reasoning = null;
+}
+
+/** Emit a complete reasoning item in the whole-message path. */
+async function emitReasoningComplete(
+  text: string,
+  ctx: BlockContext,
+  provenance: EmitProvenance,
+): Promise<void> {
+  const base = buildBase(ctx, provenance, "reasoning");
+  const inProgress = {
+    ...base,
+    type: "reasoning" as const,
+    status: "in_progress" as const,
+    itemVisibility: CONVERSATIONAL_VISIBILITY,
+    summary: [{ type: "reasoning_text" as const, text: "" }],
+  };
+  await ctx.response.emit({ type: "item.added", item: inProgress });
+  await ctx.response.emit({
+    type: "content.added",
+    itemId: base.id,
+    contentIndex: 0,
+    content: { type: "reasoning_text", text: "" },
+  });
+  await ctx.response.emit({
+    type: "content.done",
+    itemId: base.id,
+    contentIndex: 0,
+    content: { type: "reasoning_text", text },
+  });
+  await ctx.response.emit({
+    type: "item.done",
+    item: { ...inProgress, status: "completed", summary: [{ type: "reasoning_text", text }] },
+  });
+}
+
+/** Open a `tool_output` item (in_progress) on a tool call. */
+async function emitToolCall(
+  event: Extract<TranslatedEvent, { kind: "tool_call" }>,
+  ctx: BlockContext,
+  state: EmitState,
+  provenance: EmitProvenance,
+  blockName: string,
+): Promise<void> {
+  // A message streaming before a tool call closes here so order is correct.
+  await closeStreamingMessage(ctx, state);
+  await closeStreamingReasoning(ctx, state);
+  if (!state.toolsObserved.includes(event.name)) state.toolsObserved.push(event.name);
+  const base = buildBase(ctx, provenance, "tool");
+  const item = {
+    ...base,
+    type: "tool_output" as const,
+    status: "in_progress" as const,
+    blockName: event.name,
+    output: null as unknown,
+    toolCall: {
+      callId: event.callId,
+      name: event.name,
+      arguments: event.arguments,
+      generatorBlock: blockName,
+    },
+    itemVisibility: CONVERSATIONAL_VISIBILITY,
+  };
+  await ctx.response.emit({ type: "item.added", item });
+  state.openTools.set(event.callId, {
+    id: base.id,
+    name: event.name,
+    arguments: event.arguments,
+  });
+}
+
+/** Complete the open `tool_output` item when its result arrives. */
+async function emitToolResult(
+  event: Extract<TranslatedEvent, { kind: "tool_result" }>,
+  ctx: BlockContext,
+  state: EmitState,
+  provenance: EmitProvenance,
+  blockName: string,
+): Promise<void> {
+  const open = state.openTools.get(event.callId);
+  // If we never saw the opening call (e.g. partial-message gaps), emit a
+  // self-contained completed tool_output rather than dropping the result.
+  const id = open?.id ?? mintId("tool");
+  const toolName = open?.name ?? blockName;
+  const toolArgs = open?.arguments ?? "{}";
+  const item = {
+    id,
+    type: "tool_output" as const,
+    status: event.isError ? ("failed" as const) : ("completed" as const),
+    requestId: ctx.request.identity.id,
+    itemIndex: ctx.response.getItemCount(),
+    provenance,
+    ts: Date.now(),
+    blockName: toolName,
+    output: event.output,
+    toolCall: {
+      callId: event.callId,
+      name: toolName,
+      arguments: toolArgs,
+      generatorBlock: blockName,
+    },
+    itemVisibility: CONVERSATIONAL_VISIBILITY,
+    ...(event.isError ? { error: { message: String(event.output) } } : {}),
+  };
+  await ctx.response.emit({ type: "item.done", item });
+  state.openTools.delete(event.callId);
+}
+
+/** Open a container item for a spawned sub-agent. */
+async function emitSubagentOpen(
+  event: Extract<TranslatedEvent, { kind: "subagent_open" }>,
+  ctx: BlockContext,
+  state: EmitState,
+  provenance: EmitProvenance,
+): Promise<void> {
+  await closeStreamingMessage(ctx, state);
+  await closeStreamingReasoning(ctx, state);
+  const base = buildBase(ctx, provenance, "container");
+  const item = {
+    ...base,
+    type: "container" as const,
+    status: "in_progress" as const,
+    blockName: event.name,
+    label: `Sub-agent: ${event.name}`,
+    startedAt: Date.now(),
+  };
+  await ctx.response.emit({ type: "item.added", item });
+  state.openSubagents.set(event.callId, base.id);
+}
+
+/** Close the container item for a sub-agent when it returns. */
+async function emitSubagentClose(
+  event: Extract<TranslatedEvent, { kind: "subagent_close" }>,
+  ctx: BlockContext,
+  state: EmitState,
+): Promise<void> {
+  const id = state.openSubagents.get(event.callId);
+  if (id === undefined) return;
+  const completedAt = Date.now();
+  await ctx.response.emit({
+    type: "item.done",
+    item: {
+      id,
+      type: "container",
+      status: event.isError ? "failed" : "completed",
+      requestId: ctx.request.identity.id,
+      itemIndex: ctx.response.getItemCount(),
+      provenance: deriveProvenance(ctx, DEFAULT_AGENT_NAME),
+      ts: Date.now(),
+      blockName: "agent",
+      completedAt,
+      ...(event.isError ? { error: { message: String(event.output) } } : {}),
+    },
+  });
+  state.openSubagents.delete(event.callId);
+}
+
+/** Emit a terminal error item. */
+async function emitError(
+  event: Extract<TranslatedEvent, { kind: "error" }>,
+  ctx: BlockContext,
+  provenance: EmitProvenance,
+): Promise<void> {
+  const base = buildBase(ctx, provenance, "error");
+  const item = {
+    ...base,
+    type: "error" as const,
+    status: "failed" as const,
+    message: event.message,
+    ...(event.code ? { code: event.code } : {}),
+  };
+  await ctx.response.emit({ type: "item.added", item });
+  await ctx.response.emit({ type: "item.done", item });
+}
+
+/**
+ * Close any items still open at stream end: finalize a streaming message /
+ * reasoning, mark open tools `incomplete`, and close open sub-agent containers
+ * defensively. Called once by the agent block after the message loop.
+ */
+export async function finalizeOpenItems(
+  ctx: BlockContext,
+  state: EmitState,
+  blockName: string,
+): Promise<void> {
+  await closeStreamingMessage(ctx, state);
+  await closeStreamingReasoning(ctx, state);
+
+  for (const [callId, open] of state.openTools) {
+    await ctx.response.emit({
+      type: "item.done",
+      item: {
+        id: open.id,
+        type: "tool_output",
+        status: "incomplete",
+        requestId: ctx.request.identity.id,
+        itemIndex: ctx.response.getItemCount(),
+        provenance: deriveProvenance(ctx, blockName),
+        ts: Date.now(),
+        blockName: open.name,
+        output: null,
+        toolCall: {
+          callId,
+          name: open.name,
+          arguments: open.arguments,
+          generatorBlock: blockName,
+        },
+        itemVisibility: CONVERSATIONAL_VISIBILITY,
+      },
+    });
+  }
+  state.openTools.clear();
+
+  for (const [, id] of state.openSubagents) {
+    await ctx.response.emit({
+      type: "item.done",
+      item: {
+        id,
+        type: "container",
+        status: "incomplete",
+        requestId: ctx.request.identity.id,
+        itemIndex: ctx.response.getItemCount(),
+        provenance: deriveProvenance(ctx, blockName),
+        ts: Date.now(),
+        blockName: "agent",
+        completedAt: Date.now(),
+      },
+    });
+  }
+  state.openSubagents.clear();
+}
