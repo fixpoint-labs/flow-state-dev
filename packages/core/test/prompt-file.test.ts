@@ -200,6 +200,73 @@ describe("parsePromptFile — custom filters", () => {
   });
 });
 
+describe("parsePromptFile — built-in fsd_ filters", () => {
+  it("fsd_keyValues renders a typed object as key: value lines", async () => {
+    const pf = parsePromptFile(`<system>{{ input.meta | fsd_keyValues }}</system>`);
+    const out = await pf.prompt({ meta: { name: "Alice", role: "admin" } }, mockCtx());
+    expect(out).toBe("name: Alice\nrole: admin");
+  });
+
+  it("fsd_list renders an array as a bullet list, ordered on request", async () => {
+    const bullets = parsePromptFile(`<system>{{ input.xs | fsd_list }}</system>`);
+    expect(await bullets.prompt({ xs: ["a", "b"] }, mockCtx())).toBe("- a\n- b");
+
+    const numbered = parsePromptFile(
+      `<system>{{ input.xs | fsd_list: "ordered" }}</system>`
+    );
+    expect(await numbered.prompt({ xs: ["a", "b"] }, mockCtx())).toBe("1. a\n2. b");
+  });
+
+  it("fsd_table renders an array of records as a Markdown table", async () => {
+    const pf = parsePromptFile(`<system>{{ input.rows | fsd_table }}</system>`);
+    const out = await pf.prompt(
+      { rows: [{ t: "AAPL", q: 10 }, { t: "JPM", q: 5 }] },
+      mockCtx()
+    );
+    expect(out).toBe("| t | q |\n| --- | --- |\n| AAPL | 10 |\n| JPM | 5 |");
+  });
+
+  it("fsd_json renders a fenced, pretty-printed json block", async () => {
+    const pf = parsePromptFile(`<system>{{ input.obj | fsd_json }}</system>`);
+    const out = await pf.prompt({ obj: { a: 1 } }, mockCtx());
+    expect(out).toBe('```json\n{\n  "a": 1\n}\n```');
+  });
+
+  it("fsd_json renders undefined as null so the block stays valid json", async () => {
+    // The lenient <context> engine can pass an absent key through as undefined.
+    const pf = parsePromptFile(
+      `<system>s</system>\n<context>{{ config.context.missing | fsd_json }}</context>`
+    );
+    const out = await getPromptFileBrand(pf.prompt)!.renderContext!({
+      input: {},
+      ctx: mockCtx(),
+      config: { context: {} },
+    });
+    expect(out).toBe("```json\nnull\n```");
+  });
+
+  it("lets a caller filter override a built-in fsd_ filter", async () => {
+    const pf = parsePromptFile(`<system>{{ input.x | fsd_json }}</system>`, {
+      filters: { fsd_json: () => "OVERRIDDEN" },
+    });
+    expect(await pf.prompt({ x: { a: 1 } }, mockCtx())).toBe("OVERRIDDEN");
+  });
+
+  it("makes fsd_ filters available inside the lenient <context> section", async () => {
+    const pf = parsePromptFile(
+      `<system>s</system>\n<context>{{ config.context.rows | fsd_keyValues }}</context>`
+    );
+    const rendered = pf._meta.hasContextBlock
+      ? await getPromptFileBrand(pf.prompt)!.renderContext!({
+          input: {},
+          ctx: mockCtx(),
+          config: { context: { rows: { k: "v" } as unknown as string } },
+        })
+      : "";
+    expect(rendered).toBe("k: v");
+  });
+});
+
 describe("parsePromptFile — partials", () => {
   it("renders a pre-registered partial via {% render %}", async () => {
     const pf = parsePromptFile(`<system>{% render 'preamble' %}\nbody</system>`, {

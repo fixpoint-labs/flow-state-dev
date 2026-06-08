@@ -1,0 +1,15 @@
+{
+  "source": "fixture",
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "spotPrice": 211.6,
+  "nearestExpiry": "2026-05-15",
+  "atmIv": 0.258,
+  "ivTermStructure": "contango",
+  "ivTermSlope": 0.021,
+  "skew25Delta": 0.029,
+  "putCallOiRatio": 0.74,
+  "totalOpenInterest": 3120000,
+  "totalVolume": 980000,
+  "expiriesCovered": 6
+}
