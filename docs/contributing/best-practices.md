@@ -199,7 +199,7 @@ Update policy:
     - **No `z.optional()` or `z.default()` on generator outputs.** They remove the key from the `required` set. Use `z.nullable()` (key stays required, value can be `null`).
     - **No `z.union([...])` of differently-shaped variants.** The variants produce conflicting `required` sets. Collapse to a single shape with nullable slots, or split into separate generators with their own schemas. Discriminated unions over differing shapes have the same problem.
   - Two examples in this repo:
-    - Fixed-shape output: [`labs/trading-desk/src/flows/analysis/agents/lenses/lens-verdict-schema.ts`](../../labs/trading-desk/src/flows/analysis/agents/lenses/lens-verdict-schema.ts) (closed `z.object` of enums + primitives + array-of-strings — `stance`, `conviction`, `verdict`, `missingData`).
+    - Fixed-shape output: [`labs/trading-desk/src/flows/analysis/agents/lenses/lens-verdict-schema.ts`](../../labs/trading-desk/src/flows/analysis/agents/lenses/lens-verdict-schema.ts) (closed `z.object` of enums + primitives + array-of-strings, e.g. `stance`, `conviction`, `missingData`).
     - Array-of-pairs metrics for variable keys + the canonical nullable section shape: [`labs/trading-desk/src/flows/analysis/agents/analysts/thesis-schema.ts`](../../labs/trading-desk/src/flows/analysis/agents/analysts/thesis-schema.ts).
   - To assert a schema constant in a test (e.g. a multi-consumer schema not yet wired to a generator), import `assertStrictCompatible` from `@flow-state-dev/core` and call it: `expect(() => assertStrictCompatible(mySchema)).not.toThrow()`. There is no walker to copy — the one canonical implementation lives in core. See [`labs/trading-desk/test/output-schemas-strict.spec.ts`](../../labs/trading-desk/test/output-schemas-strict.spec.ts) for the per-package pattern.
 - Why:
@@ -229,7 +229,7 @@ Update policy:
   - When two or more blocks (across agents or within one agent group) format the same shape of data into a prompt — memo blocks, transcript dumps, structured-field rollups — lift the formatter into a `lib/format.ts` file (or equivalent leaf utility module) and import it from each consumer.
   - Agent-specific formatters used by only one block stay in that block's file; the bar is "two or more consumers."
 - Why:
-  - Inline copies drift. Back when the trading-desk was organized by phase, it carried three nearly-identical copies of `formatMemoBlock` across phase-2/3/4 — they diverged enough that one introduced a duplicate-heading bug that was caught only by a manual review. The single canonical copy now lives in `lib/format.ts`.
+  - Inline copies drift. Back when the trading-desk was organized by phase, it carried three nearly-identical copies of `formatMemoBlock` across phase-2/3/4 — they diverged enough that one introduced a duplicate-heading bug that was caught only by a manual review. The single canonical copy now lives in [`labs/trading-desk/src/flows/analysis/lib/format.ts`](../../labs/trading-desk/src/flows/analysis/lib/format.ts).
   - One canonical formatter per data shape means one place to fix rendering tweaks, one place to enforce field ordering, one place to test.
 
 ### BP-019: Resource refs live in dedicated leaf modules
