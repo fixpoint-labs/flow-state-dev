@@ -23,7 +23,8 @@ export {
   whenResourceChanged,
   whenResourceMatching
 } from "./items/predicates";
-export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
+// `ClientDataOf` covers both DefinedResource and DefinedResourceCollection — one import for either.
+export type { ClientDataOf, ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
   CollectionHookContext,
   DefinedResourceCollection,
@@ -95,6 +96,8 @@ export type {
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
+export { mapLimit } from "./helpers/concurrency";
+export { lifecycleSchema } from "./helpers/lifecycle-schema";
 export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
 export { resolveTracingLevel } from "./helpers/tracing-level";
 export type { TracingLevel } from "./helpers/tracing-level";
@@ -310,7 +313,9 @@ export {
   SuspensionRejectedError,
   SuspensionTimeoutError,
   rootCause,
-  isAbortLike
+  isAbortLike,
+  serializeError,
+  errorDetailsWithCause
 } from "./errors";
 export type {
   FlowErrorOptions,
@@ -318,5 +323,6 @@ export type {
   OutputValidationDetails,
   SequencerOutputSchemaErrorDetails,
   SequencerSchemaMismatchErrorDetails,
-  SuspendOptions
+  SuspendOptions,
+  SerializedError
 } from "./errors";

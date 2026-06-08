@@ -136,6 +136,29 @@ A missing partial throws at parse time, not at render time, so a bad reference i
 
 One sharp edge: section markers like `<system>` inside a partial are literal text, not section composers. Section splitting happens only in the top-level prompt file. A partial contributes prose, not structure.
 
+## Built-in filters
+
+The framework auto-registers four filters on every prompt file, so a template can format typed objects and arrays without pre-flattening them into strings in TypeScript first. They expose the same shapes as the [prompt formatters](../api/core.md#prompt-formatters) (`keyValues`, `list`, `table`), available inside the template.
+
+| Filter | Input | Output |
+|--------|-------|--------|
+| `fsd_keyValues` | an object | `key: value` lines, one per entry |
+| `fsd_list` | an array | a bullet list; pass `"ordered"` for a numbered list |
+| `fsd_table` | an array of records | a Markdown table; extra args fix the columns |
+| `fsd_json` | any value | a fenced ` ```json ` block, pretty-printed |
+
+```liquid
+<system>
+Holdings:
+{{ input.holdings | fsd_table }}
+
+Run config:
+{{ config.context.runMeta | fsd_keyValues }}
+</system>
+```
+
+`{{ items | fsd_list: "ordered" }}` numbers the list; `{{ rows | fsd_table: "ticker", "qty" }}` pins the column set. Each filter is `fsd_`-prefixed to stay clear of LiquidJS built-ins and your own filters, and a custom filter of the same name overrides it (see below). LiquidJS also ships a bare `json` filter if you want the unfenced form.
+
 ## Custom filters
 
 A filter transforms a value inside `{{ }}`: `{{ price | format_usd }}`. LiquidJS ships roughly 40 built-ins — `upcase`, `downcase`, `truncate`, `default`, `join`, `map`, `where`, `sort`, `date`, `round`, `replace`, `slice`, and more. The full list is in the [LiquidJS filter docs](https://liquidjs.com/filters/overview.html).

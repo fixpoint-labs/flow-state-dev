@@ -9,9 +9,10 @@ import type {
   UserScopeHandle
 } from "./scope";
 import type { JsonObject, JsonValue } from "../schema/common";
-import type { ResourceCollectionRef } from "./resource-collection";
+import type { ResourceCollectionRef, DefinedResourceCollection } from "./resource-collection";
 import type { ResourceTemplate } from "../resource-template/resource-template";
 import { validateClientProjection } from "../helpers/client-projection";
+import type { ProjectedClient } from "../helpers/client-projection";
 
 /**
  * The scope a resource is intrinsically bound to. Determines which storage
@@ -47,6 +48,14 @@ export type CollectionClientContentConfig = ResourceClientContentConfig & {
 /**
  * A compute function that derives client-visible data from a resource's state.
  * Analogous to scope-level clientData, but scoped to the resource.
+ *
+ * Note (FIX-741): `ClientDataOf` recovers the `data` branch's precise output type
+ * from the function's *return type*. Declared here as `JsonValue`, so an inline
+ * `data: (state): MyShape => ({...})` (return annotated, or a literal body)
+ * threads `MyShape`, but a function pre-assigned to `ResourceClientDataFn<...>`
+ * before being passed in erases its return to `JsonValue` — `ClientDataOf` then
+ * widens to `JsonValue` with no error. Inline the projection (or annotate its
+ * return) when you want the precise client type.
  */
 export type ResourceClientDataFn<TState extends JsonObject = JsonObject> =
   (state: Readonly<TState>) => JsonValue | Promise<JsonValue>;
@@ -68,6 +77,15 @@ export type ResourceClientConfig<TState extends JsonObject = JsonObject> = {
   exclude?: ReadonlyArray<keyof TState & string>;
   /** Escape hatch for computed / transformed projections. Mutually exclusive with `expose` and `exclude`. */
   data?: ResourceClientDataFn<TState>;
+  /**
+   * Stream this resource's projected `clientData` as an inline delta on every
+   * state mutation, merged into the client's cached snapshot without a refetch
+   * (the resource-side analog of `state_change` live merge). Requires a
+   * projection (`expose` / `exclude` / `data`) — a single resource with no
+   * projection keeps its state private and has nothing to stream. Default
+   * `false`: mutations flag a batched snapshot refetch at request completion.
+   */
+  live?: boolean;
 };
 
 /**
@@ -112,6 +130,15 @@ export type CollectionClientConfig<TState extends JsonObject = JsonObject> = {
    * entries (the latter only when `state.read: true`).
    */
   data?: ResourceClientDataFn<TState>;
+  /**
+   * Stream each mutated instance's projected `clientData` as an inline delta
+   * mid-stream, merged into the client's cached snapshot without a refetch
+   * (the resource-side analog of `state_change` live merge). Requires the
+   * item's `clientData` to be client-visible — set `state.read: true` (identity
+   * projection) or a projection (`expose` / `exclude` / `data`). Default
+   * `false`: mutations flag a batched snapshot refetch at request completion.
+   */
+  live?: boolean;
 };
 
 export type ResourceConfig<TState extends JsonObject = JsonObject> = {
@@ -195,12 +222,33 @@ export type ResourceContext<TState extends JsonObject = JsonObject> = {
 /**
  * Branded definition returned by `defineResource()`. Carries the resolved
  * state type and intrinsic scope/flowIsolation stamps used by the framework
- * to derive storage keys and detect cross-flow collisions.
+ * to derive storage keys and detect cross-flow collisions. `ClientType`
+ * (FIX-741) is the projected client-data shape derived from the `client` config
+ * — a pure type-level brand (runtime `clientData` stays `JsonValue`). Extract it
+ * with `ClientDataOf<typeof resource>`.
  */
-export type DefinedResource<TState extends JsonObject = JsonObject> = ResourceConfig & {
+export type DefinedResource<
+  TState extends JsonObject = JsonObject,
+  TClient = JsonValue,
+> = ResourceConfig & {
   StateType: TState;
   ContextType: ResourceContext<TState>;
+  ClientType: TClient;
 };
+
+/**
+ * Extracts the projected client-data output type from a defined resource or
+ * collection (FIX-741). Resolves to the `client` projection's shape —
+ * `Pick`/`Omit`/computed-return/identity — so consumers derive the client type
+ * from the definition instead of hand-mirroring it. `never` for anything that
+ * isn't a defined resource/collection.
+ */
+export type ClientDataOf<T> =
+  T extends DefinedResourceCollection<any, infer C>
+    ? C
+    : T extends DefinedResource<any, infer C>
+      ? C
+      : never;
 
 export type MessageLike = {
   role: "system" | "developer" | "user" | "assistant" | "tool";
@@ -298,7 +346,10 @@ export function defineResource<
   const TConfig extends ResourceConfig<AsStateObject<TStateSchema["_output"]>> & { stateSchema: TStateSchema }
 >(
   config: TConfig
-): TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>> {
+): TConfig & DefinedResource<
+  AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>,
+  ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+> {
   const contentSources = [
     config.content !== undefined && "content",
     config.contentFile !== undefined && "contentFile",
@@ -331,6 +382,7 @@ export function defineResource<
   validateClientProjection({
     definer: "defineResource()",
     ref: config.ref ?? "(unnamed)",
+    kind: "single",
     stateSchema: config.stateSchema,
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
@@ -361,7 +413,10 @@ export function defineResource<
   }
 
   return { ...config, stateSchema, default: defaultValue } as unknown as
-    TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>>;
+    TConfig & DefinedResource<
+      AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>,
+      ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+    >;
 }
 
 function toJsonObject(value: Record<string, unknown>): JsonObject {

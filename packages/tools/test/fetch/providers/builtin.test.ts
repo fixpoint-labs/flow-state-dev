@@ -36,13 +36,14 @@ describe("builtin fetch adapter", () => {
       ok: false,
       status: 404,
       statusText: "Not Found",
+      text: () => Promise.resolve("page not found"),
     });
 
     await expect(
       builtinFetchAdapter.fetch("https://example.com/missing", {
         waitForJS: false,
       })
-    ).rejects.toThrow("Fetch failed: 404 Not Found");
+    ).rejects.toThrow("builtin fetch failed: 404 Not Found");
   });
 
   it("sends proper user-agent header", async () => {

@@ -1,9 +1,10 @@
 import type { ZodTypeAny } from "zod";
-import type { JsonObject } from "../schema/common";
+import type { JsonObject, JsonValue } from "../schema/common";
 import type { ScopeType } from "./scope";
-import type { ResourceRef, CollectionClientConfig } from "./resource";
+import type { ResourceRef, CollectionClientConfig, StateOf } from "./resource";
 import type { ResourceTemplate } from "../resource-template/resource-template";
 import type { EdgeSlotConfig } from "../graph";
+import type { ProjectedClient } from "../helpers/client-projection";
 
 // Re-export pattern utilities for consumers
 export {
@@ -80,9 +81,10 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   /**
    * Declare a typed-edge graph on each instance of this collection. `true` =
    * defaults; object = curated vocabulary / size cap. Attaches an `.edges` API
-   * to each live instance ref backed by that instance's own state. The instance
-   * `stateSchema` must carry an `edges` field (collections do not auto-inject the
-   * schema field the way `defineResource` does).
+   * to each live instance ref backed by that instance's own state.
+   * `defineResourceCollection` injects an `edges` field into the instance
+   * `stateSchema` (the same way `defineResource` does for single resources), so
+   * callers do not declare it themselves.
    */
   edges?: boolean | EdgeSlotConfig;
 
@@ -113,17 +115,23 @@ type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
 
 /**
  * Branded type returned by `defineResourceCollection()`.
- * Carries phantom `StateType` for downstream type inference. The `prefetchMode`
- * config field still exists (it controls server-side loading behaviour), but
- * it no longer affects the ref's read-method signatures — both eager and lazy
- * collections expose the same async `ResourceCollectionRef` interface (FIX-700).
+ * Carries phantom `StateType` for downstream type inference, and `ClientType`
+ * (FIX-741) — the projected client-data shape derived from the `client` config
+ * (`expose`/`exclude`/`data`/identity). `ClientType` is a pure type-level brand;
+ * the runtime `clientData` payload stays `JsonValue`. Extract it with
+ * `ClientDataOf<typeof collection>`. The `prefetchMode` config field still exists
+ * (it controls server-side loading behaviour), but it no longer affects the
+ * ref's read-method signatures — both eager and lazy collections expose the same
+ * async `ResourceCollectionRef` interface (FIX-700).
  */
 export type DefinedResourceCollection<
   TState extends JsonObject = JsonObject,
+  TClient = JsonValue,
 > =
   ResourceCollectionConfig & {
     readonly __brand: "ResourceCollection";
     StateType: TState;
+    ClientType: TClient;
   };
 
 // ---------------------------------------------------------------------------
@@ -223,7 +231,10 @@ export function defineResourceCollection<
   const TConfig extends ResourceCollectionConfig<AsStateObject<TStateSchema["_output"]>> & { stateSchema: TStateSchema }
 >(
   config: TConfig
-): TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>> {
+): TConfig & DefinedResourceCollection<
+  AsStateObject<TStateSchema["_output"]>,
+  ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+> {
   validatePattern(config.pattern);
 
   if (config.contentTemplate !== undefined && config.contentTemplateRef !== undefined) {
@@ -279,6 +290,7 @@ export function defineResourceCollection<
   validateClientProjection({
     definer: "defineResourceCollection()",
     ref: config.pattern,
+    kind: "collection",
     stateSchema: config.stateSchema,
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
@@ -305,7 +317,10 @@ export function defineResourceCollection<
   return Object.assign({}, config, {
     stateSchema,
     __brand: "ResourceCollection" as const,
-  }) as unknown as TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>>;
+  }) as unknown as TConfig & DefinedResourceCollection<
+    AsStateObject<TStateSchema["_output"]>,
+    ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+  >;
 }
 
 // ---------------------------------------------------------------------------

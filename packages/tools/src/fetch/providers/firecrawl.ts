@@ -1,4 +1,5 @@
 import type { FetchProviderAdapter, FetchResult } from "../types";
+import { providerFetchError } from "../errors";
 
 export const firecrawlFetchAdapter: FetchProviderAdapter = {
   name: "firecrawl",
@@ -20,9 +21,7 @@ export const firecrawlFetchAdapter: FetchProviderAdapter = {
     });
 
     if (!result.success) {
-      throw new Error(
-        `Firecrawl scrape failed: ${result.error ?? "unknown error"}`
-      );
+      throw providerFetchError("firecrawl", url, result.error ?? "unknown error");
     }
 
     return {

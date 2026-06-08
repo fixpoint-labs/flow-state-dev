@@ -8,6 +8,7 @@
  */
 
 export { cloneValue } from "./clone";
+export { mapLimit } from "./concurrency";
 export { deepEqual, looseDeepEqual } from "./deep-equal";
 export { deepMerge } from "./deep-merge";
 export { warnDeprecated, __resetDeprecationWarningsForTests } from "./deprecation";

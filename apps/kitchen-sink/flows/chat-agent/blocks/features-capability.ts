@@ -43,7 +43,8 @@ const featuresSessionStateSchema = z.object({
 });
 
 // Web tools — instantiated once, included conditionally by the features cap.
-const searchTool = search();
+// agentControlsTier lets the model pick search depth per query (e.g. "deep").
+const searchTool = search({ agentControlsTier: true });
 const fetchTool = fetch();
 const crawlTool = crawl();
 

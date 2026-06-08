@@ -219,18 +219,50 @@ Skip prefetch for collections with many items or large content bodies. The defau
 
 The `@flow-state-dev/react` package provides three hooks for working with client-visible resources.
 
+### Typing `clientData`
+
+By default `clientData` reads as `unknown`. But a definition already knows the shape of its projection, so you don't have to restate it. `ClientDataOf<typeof def>` pulls that shape out, and each hook takes it as a type parameter:
+
+```tsx
+import type { ClientDataOf } from "@flow-state-dev/core";
+import { useResourceCollectionItem } from "@flow-state-dev/react";
+import { artifacts } from "./resources"; // a defineResourceCollection(...)
+
+type ArtifactClient = ClientDataOf<typeof artifacts>;
+
+function Artifact({ session, topic }) {
+  const { item } = useResourceCollectionItem<ArtifactClient>(session, "artifacts", topic);
+  // item?.clientData is ArtifactClient — no cast
+  return <strong>{item?.clientData?.title}</strong>;
+}
+```
+
+The derived type follows how the projection was declared: `expose` gives a `Pick` of the state, `exclude` an `Omit`, the identity default the full state, and `data` the function's return type. Because the type comes from the definition, changing the projection turns a stale read into a compile error instead of a silent mismatch.
+
+This is a type-level convenience — the runtime payload is the same `JsonValue` the server has always sent. The hook applies the projection-backed cast at its boundary so call sites don't. Hooks default the parameter to `unknown`, so existing untyped call sites are unaffected.
+
+For the `data` escape hatch, annotate the function's return so the type is captured precisely (the projection function's `state` argument is loosely typed, so the return annotation is what threads the shape):
+
+```ts
+client: {
+  data: (state): { displayTone: string } => ({ displayTone: String(state.tone) })
+}
+```
+
 ### useResource
 
 For single resources. Metadata is available immediately from the snapshot. Content is fetched on demand.
 
 ```tsx
 import { useSession, useResource } from "@flow-state-dev/react";
+import type { ClientDataOf } from "@flow-state-dev/core";
+import { soul } from "./resources";
 
 function SoulPanel() {
   const session = useSession(sessionId);
-  const { clientData, fetchContent } = useResource(session, "soul");
+  const { clientData, fetchContent } = useResource<ClientDataOf<typeof soul>>(session, "soul");
 
-  const tone = (clientData as { tone: string })?.tone;
+  const tone = clientData?.tone;
   const [content, setContent] = useState<string | null>(null);
 
   const handleOpen = async () => {
@@ -274,15 +306,17 @@ For collections. Returns items (metadata from the snapshot) and CRUD actions sha
 
 ```tsx
 import { useResourceCollection } from "@flow-state-dev/react";
+import type { ClientDataOf } from "@flow-state-dev/core";
+import { artifacts } from "./resources";
 
 function ArtifactList() {
   const session = useSession(sessionId);
-  const { items, actions } = useResourceCollection(session, "artifacts");
+  const { items, actions } = useResourceCollection<ClientDataOf<typeof artifacts>>(session, "artifacts");
 
   return (
     <ul>
       {Object.entries(items).map(([key, item]) => {
-        const data = item.clientData as { title: string; summary: string };
+        const data = item.clientData; // typed from the projection — no cast
         return (
           <li key={key} onClick={() => openArtifact(key)}>
             <strong>{data.title}</strong>
@@ -359,9 +393,53 @@ All paths are relative to `/api/flows`. Permissions are enforced server-side bas
 
 ## Live updates
 
-When a resource changes during streaming (e.g., a tool creates an artifact), the server emits a `resource_change` SSE event. The React hooks handle this automatically: the session snapshot is refreshed after the request completes, and collection items update in place.
+When a resource changes during streaming (e.g., a tool creates an artifact), the server emits a `resource_change` event over the stream. By default this is an invalidation cue, not the data: the React hooks refresh the session snapshot once the request completes, and collection items update in place then. You don't need to poll or manually refetch. If an artifact is created mid-turn, it appears in `useResourceCollection`'s `items` once the turn finishes.
 
-You don't need to poll or manually refetch. If an artifact is created mid-turn, it appears in `useResourceCollection`'s `items` once the turn finishes.
+That batched-at-completion default is the right call for most resources. It avoids a burst of per-change HTTP fetches during artifact-heavy turns, and it never ships content you didn't ask for.
+
+### Opt-in mid-stream updates with `live: true`
+
+Some UIs need the change *now*, not at completion: a navigator that renders a memo moving through `pending → writing → published` as the agent works. For those, set `live: true` on the resource's `client` config:
+
+```ts
+const memos = defineResourceCollection({
+  pattern: "memos/**",
+  scope: "session",
+  stateSchema: z.object({
+    ...lifecycleSchema(["pending", "writing", "published"]),
+    title: z.string(),
+  }),
+  client: {
+    state: { read: true },
+    live: true,
+  },
+});
+```
+
+With `live: true`, each mutation carries its projected `clientData` inline on the `resource_change` event. The React layer folds that delta straight into the cached snapshot, so a subscribed `useResource`, `useResourceCollectionItem`, or `useResourceCollectionList` reflects the change in the same paint as the server mutation, with no refetch. The list hook applies the same overlay across its items, so a navigator rendering every item's status updates live. This is the resource-side analog of how scope-level `state_change` updates merge mid-stream (see [State & Scopes](/docs/fundamentals/state-and-scopes)).
+
+`live` requires that the resource's `clientData` actually reach the client. For a collection that means `state.read: true` or a projection (`expose` / `exclude` / `data`); for a single resource it means a projection. Declaring `live` without a client-visible projection throws at definition time — there would be nothing to stream.
+
+What ships and what doesn't:
+
+- Only the projected slice travels, never content. Content still loads on demand through its own endpoint.
+- The default (un-opted) batched-refetch path is unchanged. `live` is purely additive.
+- Per-item state updates live (including a delete, which marks the item gone). The collection's `count` and list pages aren't tracked mid-stream — they reconcile at the end of the request, when the snapshot refetches.
+
+### The `lifecycleSchema` mixin
+
+A resource needs a status field to project before a UI can render its lifecycle. `lifecycleSchema(statuses)` returns that field set — a required `status` enum plus nullable `startedAt` / `completedAt` / `errorMessage` slots — to spread into a `stateSchema`:
+
+```ts
+import { lifecycleSchema } from "@flow-state-dev/core";
+
+stateSchema: z.object({
+  ...lifecycleSchema(["pending", "writing", "published"]),
+  title: z.string(),
+})
+```
+
+The nullable fields follow the resource-schema default convention (`.nullable().default(null)`), so a `create` or `setState` call supplies only the `status` and lets the framework fill the rest. It pairs naturally with `live: true`, but it's an ordinary schema fragment — use it anywhere you want a status-bearing resource.
 
 ## Debug and the DevTool
 

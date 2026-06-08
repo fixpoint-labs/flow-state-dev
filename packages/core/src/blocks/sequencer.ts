@@ -37,6 +37,7 @@ import { resolveTracingLevel, type TracingLevel } from "../helpers/tracing-level
 import { getRequestWorkPool } from "../execution/request-work-pool";
 import { getTransientKeys, stripTransientKeys } from "../helpers/transient-slot";
 import { compareZodSchemasStructurally } from "../helpers/zod-introspect";
+import { mapLimit } from "../helpers/concurrency";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
@@ -555,36 +556,6 @@ export async function executeBlock(
     // dispatch) into the child scope so the entire descendant tree sees it.
     options?.signalOverride
   );
-}
-
-async function mapWithConcurrency<TInput, TOutput>(
-  values: readonly TInput[],
-  maxConcurrency: number | undefined,
-  mapper: (value: TInput, index: number) => Promise<TOutput>
-): Promise<TOutput[]> {
-  if (values.length === 0) {
-    return [];
-  }
-
-  const limit = Math.max(1, maxConcurrency ?? values.length);
-  const results: TOutput[] = new Array<TOutput>(values.length);
-  let nextIndex = 0;
-
-  const worker = async (): Promise<void> => {
-    while (nextIndex < values.length) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      results[currentIndex] = await mapper(values[currentIndex], currentIndex);
-    }
-  };
-
-  const workers: Promise<void>[] = [];
-  for (let index = 0; index < Math.min(limit, values.length); index += 1) {
-    workers.push(worker());
-  }
-
-  await Promise.all(workers);
-  return results;
 }
 
 function matchesRescueHandler(error: Error, handler: RescueHandlerSpec): boolean {
@@ -1121,7 +1092,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             // hint once before dispatching so every branch stamps the same
             // input source (FIX-573 §3.3 fan-out).
             const branchInputHint = sequentialInputHint(ctx, runtime);
-            const outputs = await mapWithConcurrency(
+            const outputs = await mapLimit(
               entries,
               options?.maxConcurrency,
               async ([, step], branchIndex): Promise<unknown> => {
@@ -1215,7 +1186,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             }
 
             const iterationPaths: string[] = [];
-            const outputs = await mapWithConcurrency(items, options?.maxConcurrency, async (item, index) => {
+            const outputs = await mapLimit(items, options?.maxConcurrency, async (item, index) => {
               const block =
                 typeof blockOrFactory === "function" && !isBlockDefinition(blockOrFactory)
                   ? blockOrFactory(item, index, ctx)
@@ -1807,7 +1778,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             const basePath = childBlockPath(ctx, runtime, "stepAll", stepIndex);
             const branchPaths: string[] = [];
             const branchInputHint = sequentialInputHint(ctx, runtime);
-            const outputs = await mapWithConcurrency(
+            const outputs = await mapLimit(
               steps,
               options?.maxConcurrency,
               async (step, branchIndex): Promise<unknown> => {

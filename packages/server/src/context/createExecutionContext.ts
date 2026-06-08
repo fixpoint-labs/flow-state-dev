@@ -52,11 +52,11 @@ import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
-import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
-import { normalizeError } from "../errors/normalize-error";
+import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
   safeCaptureError,
   toErrorCaptureEvent,
@@ -1485,13 +1485,26 @@ export async function createExecutionContext<
   // so clients can refresh clientData without waiting for request completion.
   const rawResponse = options.response as unknown as Record<string, unknown> | undefined;
   const emitter = rawResponse && typeof rawResponse.emitResourceChange === "function"
-    ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean }) => Promise<unknown> })
+    ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean; delta?: unknown }) => Promise<unknown> })
     : undefined;
 
   function makeResourceChangeHandler(scope: "session" | "user" | "org") {
     if (!emitter) return undefined;
-    return (resourcePath: string, changeType: "created" | "updated" | "deleted") => {
-      void emitter.emitResourceChange({ scope, resourcePath, changeType, transient: true });
+    return (
+      resourcePath: string,
+      changeType: "created" | "updated" | "deleted",
+      projection?: { delta: unknown }
+    ) => {
+      // `projection` is present only for `client.live: true` resources; it fills
+      // the resource_change item's `delta` slot so the client merges the change
+      // without a refetch (FIX-739). Absent → batched-refetch path unchanged.
+      void emitter.emitResourceChange({
+        scope,
+        resourcePath,
+        changeType,
+        transient: true,
+        delta: projection?.delta
+      });
     };
   }
 
@@ -2782,6 +2795,14 @@ export async function createExecutionContext<
             if (generatorModelIdentity !== undefined) {
               (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
             }
+            // Fold the error cause chain into details so intermediate
+            // failures aren't swallowed on the failed block_trace. `displayCause`
+            // unwraps the synthetic layer normalizeError adds for plain throws,
+            // so this matches the tool-output seam for the same failure.
+            const blockTraceErrorDetails = errorDetailsWithCause({
+              details: normalized.details,
+              cause: displayCause(normalized),
+            });
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -2793,7 +2814,7 @@ export async function createExecutionContext<
                   error: {
                     message: normalized.message,
                     code: normalized.code,
-                    ...(normalized.details ? { details: normalized.details } : {}),
+                    ...(blockTraceErrorDetails ? { details: blockTraceErrorDetails } : {}),
                   },
                   modelUsage: generatorModelUsage,
                   model: generatorModelIdentity,

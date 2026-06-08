@@ -217,7 +217,8 @@ export async function testFlow<TInput = unknown>(
       modelResolver: createMockModelResolver({
         generators: options.generators,
         models: options.models,
-        policy: options.unmockedGeneratorPolicy
+        policy: options.unmockedGeneratorPolicy,
+        unmockedDefault: options.unmockedDefault
       }),
       settings: options.settings
     }

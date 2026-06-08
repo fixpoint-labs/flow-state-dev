@@ -64,6 +64,70 @@ describe("perplexityAdapter", () => {
     });
   });
 
+  it("maps tier to search_context_size (fast → low, deep → high)", async () => {
+    // Fresh Response per call — a Response body can only be read once.
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response(JSON.stringify({ results: [] }), { status: 200 })
+    );
+
+    await perplexityAdapter.search("q", {
+      maxResults: 5,
+      searchDepth: "basic",
+      tier: "fast",
+      topic: "general",
+      apiKey: "k",
+    });
+    expect(
+      JSON.parse((fetch as any).mock.calls[0][1].body).search_context_size
+    ).toBe("low");
+
+    await perplexityAdapter.search("q", {
+      maxResults: 5,
+      searchDepth: "basic",
+      tier: "deep",
+      topic: "general",
+      apiKey: "k",
+    });
+    expect(
+      JSON.parse((fetch as any).mock.calls[1][1].body).search_context_size
+    ).toBe("high");
+  });
+
+  it("omits search_context_size for the balanced tier", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), { status: 200 })
+    );
+
+    await perplexityAdapter.search("q", {
+      maxResults: 5,
+      searchDepth: "basic",
+      tier: "balanced",
+      topic: "general",
+      apiKey: "k",
+    });
+    expect(
+      JSON.parse((fetch as any).mock.calls[0][1].body)
+    ).not.toHaveProperty("search_context_size");
+  });
+
+  it("maps domain filters to search_domain_filter with a '-' exclude prefix", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), { status: 200 })
+    );
+
+    await perplexityAdapter.search("q", {
+      maxResults: 5,
+      searchDepth: "basic",
+      topic: "general",
+      includeDomains: ["arxiv.org"],
+      excludeDomains: ["pinterest.com"],
+      apiKey: "k",
+    });
+    expect(
+      JSON.parse((fetch as any).mock.calls[0][1].body).search_domain_filter
+    ).toEqual(["arxiv.org", "-pinterest.com"]);
+  });
+
   it("throws on non-200 response", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("Unauthorized", { status: 401, statusText: "Unauthorized" })

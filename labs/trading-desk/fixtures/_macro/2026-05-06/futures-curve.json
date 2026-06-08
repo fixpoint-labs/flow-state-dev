@@ -1,0 +1,62 @@
+{
+  "source": "fixture",
+  "asOf": "2026-05-06",
+  "products": [
+    {
+      "productCode": "ES",
+      "name": "E-mini S&P 500",
+      "assetClass": "equity-index",
+      "frontContract": "ESM6",
+      "lastPrice": 5612.5,
+      "changePct": -0.006,
+      "nextContract": "ESU6",
+      "frontNextSpreadPct": 0.0042,
+      "termStructure": "contango"
+    },
+    {
+      "productCode": "NQ",
+      "name": "E-mini Nasdaq 100",
+      "assetClass": "equity-index",
+      "frontContract": "NQM6",
+      "lastPrice": 19840.25,
+      "changePct": -0.009,
+      "nextContract": "NQU6",
+      "frontNextSpreadPct": 0.0045,
+      "termStructure": "contango"
+    },
+    {
+      "productCode": "CL",
+      "name": "WTI Crude Oil",
+      "assetClass": "energy",
+      "frontContract": "CLM6",
+      "lastPrice": 78.92,
+      "changePct": 0.013,
+      "nextContract": "CLN6",
+      "frontNextSpreadPct": -0.0061,
+      "termStructure": "backwardation"
+    },
+    {
+      "productCode": "GC",
+      "name": "Gold",
+      "assetClass": "metal",
+      "frontContract": "GCM6",
+      "lastPrice": 2418.7,
+      "changePct": 0.011,
+      "nextContract": "GCQ6",
+      "frontNextSpreadPct": 0.0078,
+      "termStructure": "contango"
+    },
+    {
+      "productCode": "ZN",
+      "name": "10-Year T-Note",
+      "assetClass": "rates",
+      "frontContract": "ZNM6",
+      "lastPrice": 110.84,
+      "changePct": 0.002,
+      "nextContract": "ZNU6",
+      "frontNextSpreadPct": -0.0009,
+      "termStructure": "flat"
+    }
+  ],
+  "riskTone": "risk-off"
+}

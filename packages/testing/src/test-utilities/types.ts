@@ -3,6 +3,7 @@ import type { BlockInput, BlockOutput, FlowInstance, FlowStateSettings } from "@
 import type { StoreRegistry } from "@flow-state-dev/server";
 import type {
   MockGeneratorInstance,
+  UnmockedDefault,
   UnmockedGeneratorPolicy
 } from "../mocks/mockGenerator";
 
@@ -45,6 +46,8 @@ export type TestBlockOptions<TInput> = {
   generators?: Record<string, MockGeneratorInstance>;
   models?: Record<string, MockGeneratorInstance>;
   unmockedGeneratorPolicy?: UnmockedGeneratorPolicy;
+  /** Fallback script for unmocked generators when policy is "default". */
+  unmockedDefault?: UnmockedDefault;
 };
 
 export type StateChange = {
@@ -121,6 +124,11 @@ export type TestFlowOptions<TInput = unknown> = {
   generators?: Record<string, MockGeneratorInstance>;
   models?: Record<string, MockGeneratorInstance>;
   unmockedGeneratorPolicy?: UnmockedGeneratorPolicy;
+  /**
+   * Fallback script for unmocked generators when `unmockedGeneratorPolicy` is
+   * `"default"` — yields this instead of throwing or emitting empty output.
+   */
+  unmockedDefault?: UnmockedDefault;
   /**
    * Instance-level settings exposed to blocks via `ctx.settings`. Mirrors
    * `createFlowState({ settings })` so tests can exercise settings-dependent

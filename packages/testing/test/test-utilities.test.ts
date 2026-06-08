@@ -150,6 +150,40 @@ describe("testing utilities", () => {
     expect(secondary.output).toEqual({ reply: "from model-id" });
   });
 
+  it("testFlow falls back to unmockedDefault instead of throwing on a missing mock", async () => {
+    const chat = generator<{ message: string }, { reply: string }>({
+      name: "chat-generator",
+      model: "openai/gpt-5.4-mini",
+      prompt: "Reply to the user",
+      outputSchema: passthroughSchema as any
+    });
+
+    const flow: FlowInstance = {
+      id: "default-flow",
+      kind: "default-flow",
+      requireUser: true,
+      actions: {
+        run: {
+          inputSchema: passthroughSchema as any,
+          block: chat
+        }
+      }
+    } as FlowInstance;
+
+    const result = await testFlow({
+      flow,
+      action: "run",
+      input: { message: "hi" },
+      userId: "user_1",
+      // No generator/model mock provided for chat-generator.
+      unmockedGeneratorPolicy: "default",
+      unmockedDefault: { structuredOutput: { reply: "default reply" } }
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.output).toEqual({ reply: "default reply" });
+  });
+
   it("testFlow shares state across runs when given the same stores", async () => {
     const counter = handler<{ amount: number }, { total: number }>({
       name: "counter",

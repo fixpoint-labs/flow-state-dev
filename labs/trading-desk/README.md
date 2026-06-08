@@ -82,6 +82,16 @@ Phase 1 — analyst fan-out:
   actual quotes rather than a single non-deterministic score.
   `shortInterestPct` is `null` on the xAI path — short interest can't be
   measured from chatter, and a fabricated 0 would read as "no shorts."
+- **Derivatives & futures signals (Massive)** — two signals the desk has no
+  other provider for, sourced from Massive.com (rebranded Polygon.io). The
+  quant analyst reads an options-chain snapshot (`get_options_chain`): ATM
+  implied vol, IV term structure, 25-delta skew, and the put/call open-interest
+  balance. The macro analyst reads a benchmark futures curve
+  (`get_futures_curve`): front-month levels and session change for ES / NQ / CL
+  / GC / ZN, contango/backwardation, and a composite cross-asset risk tone.
+  Both are Massive-only (no fallback); each derived field is nullable and the
+  tools return `unavailable` when no key/entitlement is present, like other
+  single-provider tools.
 - **Status-bar disclaimer** visible on every run.
 
 Phase 2 — research debate:
@@ -316,6 +326,12 @@ missing signal. `XAI_API_KEY` enables live social sentiment via Grok's
 treatment. `FMP_API_KEY` (optional, free tier) enables earnings-call
 transcripts via `get_earnings_transcript`; without it the disclosure
 analyst still runs on EDGAR filings and Finnhub ratings alone.
+`MASSIVE_API_KEY` (optional, **paid** — Massive bills per asset-class product:
+options is the Starter tier, futures a separate subscription) enables
+`get_options_chain` (quant analyst) and `get_futures_curve` (macro analyst);
+without it, or without the matching product entitlement, both return
+`unavailable` and the analysts apply the missing-signal treatment. EOD /
+delayed data is fine — the desk runs on an as-of date.
 
 Live investigative discovery on the `full` preset uses
 `@flow-state-dev/tools/search`'s auto-detected provider — Tavily, Exa,

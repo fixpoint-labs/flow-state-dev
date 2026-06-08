@@ -6,17 +6,34 @@
  * `x-api-key` header (not Bearer — unlike every other provider here). No SDK
  * dependency — one HTTP POST.
  *
- * Execution mode comes from the shared `searchMode` config hint, defaulting to
- * "advanced". Parallel's /v1/search accepts only "advanced" or "basic".
+ * Parallel's /v1/search `mode` accepts only "advanced" or "basic". The
+ * normalized `tier` drives it (fast → "basic", balanced/deep → "advanced"); a
+ * `searchMode` override replaces it verbatim. Domain filters map to
+ * `source_policy` and are only sent when provided.
  */
 
-import type { SearchProviderAdapter, SearchOutput } from "../types";
+import type { SearchProviderAdapter, SearchOutput, SearchTier } from "../types";
 
 const PARALLEL_SEARCH_ENDPOINT = "https://api.parallel.ai/v1/search";
 
+const TIER_TO_MODE: Record<SearchTier, "basic" | "advanced"> = {
+  fast: "basic",
+  balanced: "advanced",
+  deep: "advanced",
+};
+
 export const parallelAdapter: SearchProviderAdapter = {
   name: "parallel",
+  capabilities: { tiers: ["fast", "balanced", "deep"] },
   async search(query, options): Promise<SearchOutput> {
+    // searchMode (provider-native passthrough) wins over the tier mapping.
+    const mode = options.searchMode ?? TIER_TO_MODE[options.tier ?? "balanced"];
+    const sourcePolicy: Record<string, string[]> = {};
+    if (options.includeDomains?.length)
+      sourcePolicy.include_domains = options.includeDomains;
+    if (options.excludeDomains?.length)
+      sourcePolicy.exclude_domains = options.excludeDomains;
+
     // `options.topic` is intentionally not forwarded: Parallel's /v1/search has
     // no topic/category filter. The objective string is the only intent channel.
     const response = await globalThis.fetch(PARALLEL_SEARCH_ENDPOINT, {
@@ -28,7 +45,7 @@ export const parallelAdapter: SearchProviderAdapter = {
       body: JSON.stringify({
         objective: query,
         search_queries: [query],
-        mode: options.searchMode ?? "advanced",
+        mode,
         advanced_settings: {
           max_results: options.maxResults,
           excerpt_settings: {
@@ -37,6 +54,9 @@ export const parallelAdapter: SearchProviderAdapter = {
               options.searchDepth === "advanced" ? 6000 : 1500,
           },
         },
+        ...(Object.keys(sourcePolicy).length
+          ? { source_policy: sourcePolicy }
+          : {}),
       }),
     });
 
