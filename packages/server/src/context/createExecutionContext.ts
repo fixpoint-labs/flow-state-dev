@@ -94,6 +94,7 @@ import {
   type LazyLoadOutcome,
   type ScopeLazyLoad,
 } from "./resource-registry";
+import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 
 
 function ensureJournalDefaults(record: SessionRecord): void {
@@ -1488,23 +1489,55 @@ export async function createExecutionContext<
     ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean; delta?: unknown }) => Promise<unknown> })
     : undefined;
 
+  // FIX-751: shared per-request cascade budget and a late-bound ctx ref. The
+  // reactive dispatcher needs the live ExecutionContext to run blocks in-session
+  // via `executeBlock`, but the root context isn't built until the end of this
+  // function — so the dispatchers close over `reactiveCtxRef`, populated below.
+  const cascadeController = createCascadeController();
+  const reactiveCtxRef: { current: ExecutionContext | undefined } = { current: undefined };
+
   function makeResourceChangeHandler(scope: "session" | "user" | "org") {
-    if (!emitter) return undefined;
-    return (
+    const scopeConfigs =
+      scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs;
+    const hasReactive = Object.values(scopeConfigs).some((c) => c.reactTo !== undefined);
+
+    // Only wire a handler when there is something to do: a live emitter
+    // (FIX-739 streaming) and/or a `reactTo` binding (FIX-751). Reactive-only
+    // resources still dispatch even with no emitter present.
+    if (!emitter && !hasReactive) return undefined;
+
+    const dispatchReactive = hasReactive
+      ? createReactiveDispatcher({
+          configs: scopeConfigs,
+          ctxRef: reactiveCtxRef,
+          controller: cascadeController,
+        })
+      : undefined;
+
+    return async (
       resourcePath: string,
       changeType: "created" | "updated" | "deleted",
-      projection?: { delta: unknown }
-    ) => {
-      // `projection` is present only for `client.live: true` resources; it fills
-      // the resource_change item's `delta` slot so the client merges the change
-      // without a refetch (FIX-739). Absent → batched-refetch path unchanged.
-      void emitter.emitResourceChange({
-        scope,
-        resourcePath,
-        changeType,
-        transient: true,
-        delta: projection?.delta
-      });
+      projection?: { delta: unknown },
+      change?: { state?: JsonObject; prevState?: JsonObject; evicted?: boolean }
+    ): Promise<void> => {
+      // FIX-739 streaming emit stays fire-and-forget: `projection` is present
+      // only for `client.live: true` resources and fills the resource_change
+      // item's `delta` slot so the client merges without a refetch. Absent →
+      // batched-refetch path unchanged.
+      if (emitter !== undefined) {
+        void emitter.emitResourceChange({
+          scope,
+          resourcePath,
+          changeType,
+          transient: true,
+          delta: projection?.delta
+        });
+      }
+      // FIX-751 reactive dispatch is awaited inline — it runs the bound block
+      // as part of the mutating turn, and a block failure propagates out.
+      if (dispatchReactive !== undefined) {
+        await dispatchReactive(resourcePath, changeType, change);
+      }
     };
   }
 
@@ -2925,6 +2958,10 @@ export async function createExecutionContext<
   // explicitly (see the assignment alongside `_blockIdentity` there) — pool
   // identity is preserved across the entire request scope.
   (rootContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+  // FIX-751: bind the live context so reactive dispatchers can run blocks
+  // in-session via `executeBlock`. Set after construction since the handlers
+  // (wired into the registries above) close over `reactiveCtxRef`.
+  reactiveCtxRef.current = rootContext as unknown as ExecutionContext;
   // FIX-663: attach the background signal to the root context. Child scopes
   // re-attach it in `_withExecutionScope` (alongside the work pool).
   (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
