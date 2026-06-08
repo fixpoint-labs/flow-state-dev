@@ -13,9 +13,9 @@
 import {
   TERMINAL_SUSPENSION_STATUSES,
   type SuspensionFilter,
-  type SuspensionRecord,
-  type SuspensionStore
-} from "@flow-state-dev/server";
+  type SuspensionRecord
+} from "@flow-state-dev/core/types";
+import type { SuspensionStore } from "@flow-state-dev/server";
 import type { QueryExecutor } from "./types";
 
 export function createPostgresSuspensionStore(executor: QueryExecutor): SuspensionStore {

@@ -15,9 +15,9 @@ import {
   TERMINAL_SUSPENSION_STATUSES,
   matchesSuspensionFilter,
   type SuspensionFilter,
-  type SuspensionRecord,
-  type SuspensionStore
-} from "@flow-state-dev/server";
+  type SuspensionRecord
+} from "@flow-state-dev/core/types";
+import type { SuspensionStore } from "@flow-state-dev/server";
 
 export function createSQLiteSuspensionStore(db: Database.Database): SuspensionStore {
   const upsertStmt = db.prepare(

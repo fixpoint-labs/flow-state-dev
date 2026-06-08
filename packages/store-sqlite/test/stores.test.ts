@@ -13,6 +13,7 @@ import type {
 import { createTraceStoreConformanceTests } from "@flow-state-dev/server/testing";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
 import { initializeSchema } from "../src/schema";
+import { createSQLiteSuspensionStore } from "../src/suspension-store";
 import { createSQLiteRequestStore } from "../src/request-store";
 
 function now() {
@@ -1315,6 +1316,32 @@ describe("SQLite store adapter", () => {
       await s.suspensions.set(makeSuspension({ status: "pending" }));
 
       expect(await s.suspensions.pruneTerminalBefore(Date.now() + 1000, 100)).toBe(0);
+    });
+
+    it("migration backfills legacy NULL status/resolved_at columns so they become prunable", async () => {
+      // Regression: a terminal suspension resolved before the FIX-141 migration
+      // is never re-set(), so its denormalized scalar columns would stay NULL
+      // and pruneTerminalBefore (which filters on status/resolved_at) would
+      // never reap it. Insert a row raw to simulate the pre-migration shape.
+      const db = new Database(":memory:");
+      initializeSchema(db);
+      const record = makeSuspension({
+        suspensionId: "legacy",
+        requestId: "rL",
+        status: "approved",
+        resolvedAt: 100
+      });
+      db.prepare(
+        `INSERT INTO suspension_records (request_id, suspension_id, data, created_at, status, resolved_at)
+         VALUES (?, ?, ?, ?, NULL, NULL)`
+      ).run("rL", "legacy", JSON.stringify(record), record.createdAt);
+
+      // Re-running schema init backfills the NULL scalar columns from the blob.
+      initializeSchema(db);
+
+      const store = createSQLiteSuspensionStore(db);
+      expect(await store.pruneTerminalBefore(200, 100)).toBe(1);
+      expect(await store.get("rL", "legacy")).toBeNull();
     });
   });
 

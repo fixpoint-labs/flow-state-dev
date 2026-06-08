@@ -130,7 +130,13 @@ export function SuspensionsView({ sessionId }: Props) {
         {selected === null ? (
           <EmptyState message="Select a suspension to inspect and resolve it." />
         ) : (
-          <SuspensionDetail record={selected} onResolved={refresh} />
+          // key forces a clean remount per selection so one suspension's
+          // unsubmitted resume JSON / parse error never carries to another.
+          <SuspensionDetail
+            key={selected.suspensionId}
+            record={selected}
+            onResolved={refresh}
+          />
         )}
       </div>
     </div>

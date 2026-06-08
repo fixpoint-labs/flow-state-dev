@@ -340,9 +340,13 @@ function migrateProjectToOrg(db: Database.Database): void {
  * FIX-141: add the denormalized `status` / `resolved_at` columns to a
  * pre-FIX-141 `suspension_records` table so `pruneTerminalBefore` has an
  * indexed access path. SQLite has no `ADD COLUMN IF NOT EXISTS`, so we probe
- * `pragma_table_info` first. New columns are nullable (no NOT NULL default) —
- * existing rows read back as NULL until their next `set()`, which is correct:
- * the sweeper only deletes rows with a non-null terminal status anyway.
+ * `pragma_table_info` first. After adding the columns we backfill them from the
+ * JSON `data` blob: terminal records resolved before the upgrade are never
+ * re-`set()`, so without the backfill their scalar columns would stay NULL and
+ * `pruneTerminalBefore` (which requires a non-null terminal status) would never
+ * reap them — the retention window would silently not apply. The backfill is
+ * guarded by `status IS NULL`, so it touches only un-backfilled rows and is
+ * safe to re-run.
  */
 function migrateAddSuspensionStatusColumns(db: Database.Database): void {
   const tableExists = db
@@ -360,6 +364,12 @@ function migrateAddSuspensionStatusColumns(db: Database.Database): void {
   if (!names.has("resolved_at")) {
     db.exec("ALTER TABLE suspension_records ADD COLUMN resolved_at INTEGER");
   }
+  db.exec(
+    `UPDATE suspension_records
+       SET status = json_extract(data, '$.status'),
+           resolved_at = json_extract(data, '$.resolvedAt')
+     WHERE status IS NULL`
+  );
 }
 
 /**

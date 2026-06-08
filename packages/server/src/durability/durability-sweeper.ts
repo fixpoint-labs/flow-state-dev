@@ -247,11 +247,17 @@ export async function runTick(rawArgs: RunTickArgs): Promise<void> {
  * Closes the gate so the resume endpoint rejects it.
  */
 async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Promise<void> {
-  const { provider, batchLimit, logger } = args;
+  const { provider, logger } = args;
   try {
-    // Bound the working set per tick like every other step. Records expired
-    // this tick leave the `pending` set, so the next tick picks up the rest.
-    const pending = await provider.listSuspended({ status: "pending", limit: batchLimit });
+    // List ALL pending suspensions — deliberately unbounded. `listSuspended`
+    // returns newest-first, so a `limit` would skip the OLDEST pending records,
+    // which are exactly the ones most likely past `expiresAt`; they would stay
+    // `pending` and remain resumable indefinitely. Pending suspensions are
+    // bounded by the number of flows concurrently awaiting human input (a small
+    // set), unlike the terminal records the other steps prune, so listing all
+    // of them each tick is cheap. (A store-level `expiresBefore` predicate could
+    // make this bounded-and-correct if pending volume ever grows.)
+    const pending = await provider.listSuspended({ status: "pending" });
     for (const record of pending) {
       if (record.expiresAt != null && record.expiresAt <= now) {
         const expired: SuspensionRecord = {

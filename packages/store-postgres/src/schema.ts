@@ -270,6 +270,11 @@ BEGIN
   ) THEN
     EXECUTE 'ALTER TABLE suspension_records ADD COLUMN IF NOT EXISTS status TEXT';
     EXECUTE 'ALTER TABLE suspension_records ADD COLUMN IF NOT EXISTS resolved_at BIGINT';
+    -- Backfill from the JSONB blob: terminal records resolved before the
+    -- upgrade are never re-set(), so without this their scalar columns stay
+    -- NULL and pruneTerminalBefore never reaps them. Guarded by status IS NULL
+    -- so it only touches un-backfilled rows and is safe to re-run.
+    EXECUTE 'UPDATE suspension_records SET status = data->>''status'', resolved_at = (data->>''resolvedAt'')::bigint WHERE status IS NULL';
   END IF;
 END $$;
 `;
