@@ -431,4 +431,63 @@ describe("claudeCodeAgent", () => {
     const fakeCtx = {} as Parameters<typeof resolve>[0];
     await expect(resolve(fakeCtx)).rejects.toBeInstanceOf(ClaudeAgentSdkNotInstalledError);
   });
+
+  it("nests a sub-agent's streamed (partials) inner text under its container via ownedBy", async () => {
+    // With partials ON, sub-agent inner text arrives as stream_event deltas
+    // carrying parent_tool_use_id — the streamed item must still nest, not float
+    // up as a top-level peer.
+    const messages: SdkMessageLike[] = [
+      {
+        type: "assistant",
+        message: {
+          content: [{ type: "tool_use", id: "toolu_task", name: "Task", input: { task: "sub" } }],
+        },
+      },
+      {
+        type: "stream_event",
+        parent_tool_use_id: "toolu_task",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "sub streamed" } },
+      },
+      // Whole assistant message is the partials-ON close boundary for the stream.
+      {
+        type: "assistant",
+        parent_tool_use_id: "toolu_task",
+        message: { content: [{ type: "text", text: "sub streamed" }] },
+      },
+      {
+        type: "user",
+        message: { content: [{ type: "tool_result", tool_use_id: "toolu_task", content: "done" }] },
+      },
+      RESULT_OK,
+    ];
+
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(messages),
+      includePartialMessages: true,
+    });
+    const { items } = await testBlock(block, { input: { prompt: "spawn" } });
+
+    const container = items.find((i) => i.type === "container") as { id: string } | undefined;
+    expect(container).toBeDefined();
+    const innerMessage = items.find((i) => i.type === "message") as { ownedBy?: string } | undefined;
+    expect(innerMessage?.ownedBy).toBe(container!.id);
+  });
+
+  it("reports an errored handle for an unrecognized result subtype", async () => {
+    const messages: SdkMessageLike[] = [
+      {
+        type: "result",
+        subtype: "error_some_future_mode",
+        errors: ["nope"],
+        session_id: "s",
+      } as SdkMessageLike,
+    ];
+    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) });
+    const { output, error, items } = await testBlock(block, { input: { prompt: "x" } });
+
+    expect(error).toBeNull();
+    expect((output as SdkAgentHandle).status).toBe("errored");
+    expect(items.some((i) => i.type === "error")).toBe(true);
+  });
+
 });

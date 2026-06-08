@@ -139,16 +139,22 @@ export type SdkMessageLike =
  * stable contract between `translate.ts` (pure) and `emit.ts` (ctx-driven).
  */
 export type TranslatedEvent =
-  /** A streamed token of assistant text (partial-message path). */
-  | { kind: "message_delta"; text: string }
+  /**
+   * A streamed token of assistant text (partial-message path). `parentCallId`
+   * (when set) is the sub-agent container this streamed turn belongs to.
+   */
+  | { kind: "message_delta"; text: string; parentCallId?: string }
   /**
    * A complete assistant message block (whole-message path). When partials are
    * ON this fires only as a close boundary; `parentCallId` (when set) is the
    * sub-agent container this turn belongs to.
    */
   | { kind: "message_complete"; text: string; parentCallId?: string }
-  /** A streamed token of reasoning text (partial-message path). */
-  | { kind: "reasoning_delta"; text: string }
+  /**
+   * A streamed token of reasoning text (partial-message path). `parentCallId`
+   * (when set) is the sub-agent container this streamed turn belongs to.
+   */
+  | { kind: "reasoning_delta"; text: string; parentCallId?: string }
   /** A complete reasoning block (whole-message path). */
   | { kind: "reasoning_complete"; text: string; parentCallId?: string }
   /**

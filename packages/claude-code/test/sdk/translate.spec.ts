@@ -271,4 +271,35 @@ describe("translateSdkMessage", () => {
     const events = translateOne({ type: "system", subtype: "init", session_id: "s" });
     expect(events).toEqual([{ kind: "status", message: "Claude Code agent session started." }]);
   });
+
+  it("threads parent_tool_use_id from a partial stream_event onto the delta event", () => {
+    // Sub-agent inner text streams as a partial delta carrying the spawning
+    // Task's tool-use id — the emitter needs it to nest under the container.
+    const state = createTranslateState({ partialMessages: true });
+    const events = translateSdkMessage(
+      {
+        type: "stream_event",
+        parent_tool_use_id: "toolu_task",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "hi" } },
+      },
+      state,
+    );
+    expect(events).toEqual([{ kind: "message_delta", text: "hi", parentCallId: "toolu_task" }]);
+  });
+
+  it("treats an unrecognized result subtype as an errored outcome, not success", () => {
+    // A future SDK failure mode this version doesn't know about must still emit
+    // an error event (and not be silently treated as a completed run).
+    const events = translateOne({
+      type: "result",
+      subtype: "error_some_future_mode",
+      errors: ["nope"],
+      session_id: "s",
+    } as SdkMessageLike);
+    expect(events.map((e) => e.kind)).toEqual(["error", "result"]);
+    expect(events.find((e) => e.kind === "error")).toMatchObject({ code: "error_some_future_mode" });
+    // Unknown subtype normalizes to null on the result event (no typed value),
+    // but the run is still surfaced as an error above.
+    expect(events.find((e) => e.kind === "result")).toMatchObject({ subtype: null });
+  });
 });

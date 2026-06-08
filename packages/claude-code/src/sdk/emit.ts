@@ -33,10 +33,12 @@ interface EmitProvenance {
  * state — this is about emission, not interpretation.
  */
 export interface EmitState {
-  /** Item id + accumulated text of the in-progress streamed message, if any. */
-  message: { id: string; contentIndex: number; text: string } | null;
-  /** Item id + accumulated text of the in-progress streamed reasoning, if any. */
-  reasoning: { id: string; contentIndex: number; text: string } | null;
+  /** Item id + accumulated text of the in-progress streamed message, if any.
+   *  `ownedBy` (when set) nests the item under a sub-agent container. */
+  message: { id: string; contentIndex: number; text: string; ownedBy?: string } | null;
+  /** Item id + accumulated text of the in-progress streamed reasoning, if any.
+   *  `ownedBy` (when set) nests the item under a sub-agent container. */
+  reasoning: { id: string; contentIndex: number; text: string; ownedBy?: string } | null;
   /** Open tool_output items keyed by SDK tool-use callId. */
   readonly openTools: Map<
     string,
@@ -128,11 +130,11 @@ export async function emitTranslatedEvent(
   const provenance = deriveProvenance(ctx, blockName);
   switch (event.kind) {
     case "message_delta":
-      return emitMessageDelta(event.text, ctx, state, provenance);
+      return emitMessageDelta(event.text, ctx, state, provenance, event.parentCallId);
     case "message_complete":
       return emitMessageComplete(event.text, ctx, state, provenance, event.parentCallId);
     case "reasoning_delta":
-      return emitReasoningDelta(event.text, ctx, state, provenance);
+      return emitReasoningDelta(event.text, ctx, state, provenance, event.parentCallId);
     case "reasoning_complete":
       return emitReasoningComplete(event.text, ctx, state, provenance, event.parentCallId);
     case "tool_call":
@@ -161,10 +163,12 @@ async function emitMessageDelta(
   ctx: BlockContext,
   state: EmitState,
   provenance: EmitProvenance,
+  parentCallId: string | undefined,
 ): Promise<void> {
   if (state.message === null) {
     // A reasoning item streaming before the first text closes here.
     await closeStreamingReasoning(ctx, state);
+    const ownedBy = resolveOwnedBy(state, parentCallId);
     const base = buildBase(ctx, provenance, "msg");
     const item = {
       ...base,
@@ -172,6 +176,7 @@ async function emitMessageDelta(
       role: "assistant" as const,
       status: "in_progress" as const,
       itemVisibility: CONVERSATIONAL_VISIBILITY,
+      ...(ownedBy ? { ownedBy } : {}),
       content: [{ type: "output_text" as const, text: "" }],
     };
     await ctx.response.emit({ type: "item.added", item });
@@ -181,7 +186,7 @@ async function emitMessageDelta(
       contentIndex: 0,
       content: { type: "output_text", text: "" },
     });
-    state.message = { id: base.id, contentIndex: 0, text: "" };
+    state.message = { id: base.id, contentIndex: 0, text: "", ownedBy };
   }
   state.message.text += text;
   await ctx.response.emit({
@@ -207,7 +212,7 @@ export async function closeStreamingItems(ctx: BlockContext, state: EmitState): 
 /** Finalize the streamed message item (called at end of an assistant turn). */
 async function closeStreamingMessage(ctx: BlockContext, state: EmitState): Promise<void> {
   if (state.message === null) return;
-  const { id, contentIndex, text } = state.message;
+  const { id, contentIndex, text, ownedBy } = state.message;
   await ctx.response.emit({
     type: "content.done",
     itemId: id,
@@ -226,6 +231,7 @@ async function closeStreamingMessage(ctx: BlockContext, state: EmitState): Promi
       provenance: deriveProvenance(ctx, DEFAULT_AGENT_NAME),
       ts: Date.now(),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
+      ...(ownedBy ? { ownedBy } : {}),
       content: [{ type: "output_text", text }],
     },
   });
@@ -281,14 +287,17 @@ async function emitReasoningDelta(
   ctx: BlockContext,
   state: EmitState,
   provenance: EmitProvenance,
+  parentCallId: string | undefined,
 ): Promise<void> {
   if (state.reasoning === null) {
+    const ownedBy = resolveOwnedBy(state, parentCallId);
     const base = buildBase(ctx, provenance, "reasoning");
     const item = {
       ...base,
       type: "reasoning" as const,
       status: "in_progress" as const,
       itemVisibility: CONVERSATIONAL_VISIBILITY,
+      ...(ownedBy ? { ownedBy } : {}),
       summary: [{ type: "reasoning_text" as const, text: "" }],
     };
     await ctx.response.emit({ type: "item.added", item });
@@ -298,7 +307,7 @@ async function emitReasoningDelta(
       contentIndex: 0,
       content: { type: "reasoning_text", text: "" },
     });
-    state.reasoning = { id: base.id, contentIndex: 0, text: "" };
+    state.reasoning = { id: base.id, contentIndex: 0, text: "", ownedBy };
   }
   state.reasoning.text += text;
   await ctx.response.emit({
@@ -312,7 +321,7 @@ async function emitReasoningDelta(
 /** Finalize the streamed reasoning item, if one is open. */
 async function closeStreamingReasoning(ctx: BlockContext, state: EmitState): Promise<void> {
   if (state.reasoning === null) return;
-  const { id, contentIndex, text } = state.reasoning;
+  const { id, contentIndex, text, ownedBy } = state.reasoning;
   await ctx.response.emit({
     type: "content.done",
     itemId: id,
@@ -330,6 +339,7 @@ async function closeStreamingReasoning(ctx: BlockContext, state: EmitState): Pro
       provenance: deriveProvenance(ctx, DEFAULT_AGENT_NAME),
       ts: Date.now(),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
+      ...(ownedBy ? { ownedBy } : {}),
       summary: [{ type: "reasoning_text", text }],
     },
   });
@@ -421,7 +431,11 @@ async function emitToolResult(
 ): Promise<void> {
   const open = state.openTools.get(event.callId);
   // If we never saw the opening call (e.g. partial-message gaps), emit a
-  // self-contained completed tool_output rather than dropping the result.
+  // self-contained tool_output rather than dropping the result. Such an orphan
+  // had no opening `item.added`, so emit one here before `item.done` (mirroring
+  // `emitError`) — consumers that track items added-then-done won't reference a
+  // non-existent item.
+  const isOrphan = open === undefined;
   const id = open?.id ?? mintId("tool");
   const toolName = open?.name ?? blockName;
   const toolArgs = open?.arguments ?? "{}";
@@ -446,6 +460,9 @@ async function emitToolResult(
     ...(ownedBy ? { ownedBy } : {}),
     ...(event.isError ? { error: { message: String(event.output) } } : {}),
   };
+  if (isOrphan) {
+    await ctx.response.emit({ type: "item.added", item });
+  }
   await ctx.response.emit({ type: "item.done", item });
   state.openTools.delete(event.callId);
 }

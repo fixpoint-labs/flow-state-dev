@@ -8,12 +8,11 @@
  * process may run the Agent SDK in-process.
  */
 import { defineCapability } from "@flow-state-dev/core";
-import { z } from "zod";
-import { claudeCodeAgent, type ClaudeCodeAgentOptions } from "./agent";
 import {
-  sdkAgentHandleSchema,
-  type SdkAgentHandle,
-} from "./types";
+  claudeCodeAgent,
+  claudeAgentSessionStateSchema,
+  type ClaudeCodeAgentOptions,
+} from "./agent";
 
 export interface CreateClaudeCodeAgentCapabilityOptions extends ClaudeCodeAgentOptions {}
 
@@ -30,10 +29,9 @@ export function createClaudeCodeAgentCapability(
 
   return defineCapability({
     name: "claude-code-agent",
-    sessionStateSchema: z.object({
-      sdkSessionId: z.string().nullable().default(null),
-      sdkAgentRuns: z.array(sdkAgentHandleSchema).default([] as SdkAgentHandle[]),
-    }),
+    // Reuse the block's own schema so the capability never drifts from the
+    // shape the handler reads and writes.
+    sessionStateSchema: claudeAgentSessionStateSchema,
     presets: {
       tools: {
         tools: [agent],

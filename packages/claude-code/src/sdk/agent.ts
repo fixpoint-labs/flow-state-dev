@@ -90,9 +90,14 @@ export interface ClaudeCodeAgentOptions {
   name?: string;
 }
 
-/** A terminal subtype counts as an errored outcome unless it is `"success"`. */
+/**
+ * A terminal subtype counts as an errored outcome unless it is exactly
+ * `"success"`. `null` here means the SDK reported a subtype this version does
+ * not recognize (`normalizeSubtype` only nulls unknown values — `"success"` is
+ * always recognized), so it is a failure, not a silent success.
+ */
 function isErroredSubtype(subtype: SdkResultSubtype | null): boolean {
-  return subtype !== null && subtype !== "success";
+  return subtype !== "success";
 }
 
 /**

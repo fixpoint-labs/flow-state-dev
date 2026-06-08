@@ -196,19 +196,23 @@ function translateStreamEvent(
   const event = msg.event;
   if (event?.type !== "content_block_delta" || event.delta === undefined) return [];
   const delta = event.delta;
+  // Sub-agent inner content streams as partial deltas carrying the spawning
+  // Task/Agent tool-use id, so the emitter can nest these under its container.
+  const parentCallId = msg.parent_tool_use_id ?? undefined;
   if (delta.type === "text_delta" && typeof delta.text === "string") {
-    return [{ kind: "message_delta", text: delta.text }];
+    return [{ kind: "message_delta", text: delta.text, ...(parentCallId ? { parentCallId } : {}) }];
   }
   // Thinking deltas carry the token on `delta.thinking`, not `delta.text`.
   if (delta.type === "thinking_delta" && typeof delta.thinking === "string") {
-    return [{ kind: "reasoning_delta", text: delta.thinking }];
+    return [{ kind: "reasoning_delta", text: delta.thinking, ...(parentCallId ? { parentCallId } : {}) }];
   }
   return [];
 }
 
 /** `result` terminal message → an optional error notice plus a result event. */
 function translateResult(msg: Extract<SdkMessageLike, { type: "result" }>): TranslatedEvent[] {
-  const subtype = normalizeSubtype(msg.subtype);
+  const rawSubtype = msg.subtype;
+  const subtype = normalizeSubtype(rawSubtype);
   const usage =
     msg.usage && (msg.usage.input_tokens !== undefined || msg.usage.output_tokens !== undefined)
       ? {
@@ -224,11 +228,15 @@ function translateResult(msg: Extract<SdkMessageLike, { type: "result" }>): Tran
     msg.errors && msg.errors.length > 0 ? msg.errors.join("; ") : undefined;
 
   const events: TranslatedEvent[] = [];
-  if (subtype !== null && subtype !== "success") {
+  // Any terminal subtype that is not "success" is an errored outcome — including
+  // an unrecognized subtype (a future SDK failure mode), which `normalizeSubtype`
+  // maps to `null`. Keying off the raw subtype here (and `subtype !== "success"`
+  // in the agent's status check) prevents a failed run from reporting "completed".
+  if (rawSubtype !== "success") {
     events.push({
       kind: "error",
-      message: msg.result ?? errorsText ?? `Claude Code agent run failed (${subtype}).`,
-      code: subtype,
+      message: msg.result ?? errorsText ?? `Claude Code agent run failed (${rawSubtype ?? "unknown subtype"}).`,
+      code: rawSubtype ?? "unknown",
     });
   }
   events.push({
