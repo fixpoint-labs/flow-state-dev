@@ -70,6 +70,7 @@ export function createInboundTransportHost(
   });
   const effectiveDispatcher: FlowDispatcher | InProcessDispatcher =
     options.dispatcher ?? inProcessDispatcher;
+  const isExternalDispatcher = !("dispatchLocal" in effectiveDispatcher);
 
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
     const flow = registry.get(envelope.flowKind);
@@ -96,8 +97,14 @@ export function createInboundTransportHost(
     //   - `null`                → explicit fire-and-forget (webhook, schedule)
     //   - a `ResponseEmitter`   → caller is bringing its own; do not create a
     //                             redundant live stream and waste a slot
+    //
+    // External dispatchers (BullMQ, etc.) execute in a separate context and
+    // persist events to the shared store. The client falls back to the GET
+    // request-stream endpoint (store-driven live tail) when it receives a 202
+    // instead of an inline SSE response, so creating a live stream here would
+    // be an empty pipe that never receives events.
     const liveStream =
-      envelope.responseEmitter === undefined
+      envelope.responseEmitter === undefined && !isExternalDispatcher
         ? createLiveRequestStream({
             requestId,
             maxBufferSize: maxResponseBufferSize,

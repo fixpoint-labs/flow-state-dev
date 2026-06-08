@@ -15,7 +15,7 @@
 import { after } from "next/server";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
-import { createFlowState, createFlowRegistry, createModelResolver, createInMemoryStores, inMemoryStores, filesystemStores } from "@flow-state-dev/server";
+import { createFlowState, createFlowRegistry, createModelResolver, createInMemoryStores, inMemoryStores, filesystemStores, type StoreAdapter, type StoreRegistry } from "@flow-state-dev/server";
 import type { RuntimeConfig } from "@flow-state-dev/server";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
@@ -46,6 +46,17 @@ const bullmqRuntime = redisUrl
 const streamBridge = redisUrl
   ? createRedisStreamBridge({ connection: redisUrl })
   : undefined;
+
+// When the BullMQ co-located worker runs in-process, it must share the same
+// store instance as the web runtime so events persisted by the worker are
+// visible to the web's GET request-stream (store-driven live tail) and devtool.
+// Build the registry once and wrap it in a StoreAdapter for the profile system.
+const sharedDevStores: StoreRegistry | undefined =
+  bullmqDispatch && redisUrl ? createInMemoryStores() : undefined;
+
+function wrapRegistry(registry: StoreRegistry): StoreAdapter {
+  return { capabilities: ["primary"], resolve: () => Promise.resolve(registry) };
+}
 
 // Vercel/Neon-tuned Postgres adapter. Backs the prod profile's `primary` slot
 // and exposes a same-pool `scheduleIndex` for the weekly-digest flow. Declared
@@ -106,11 +117,15 @@ export const flowstate = createFlowState({
     prod: { primary: pgStores, scheduler: pgStores },
     // `STORE_TYPE=filesystem` opts the local profile into on-disk persistence
     // (`.fsdev/data`); otherwise dev runs against ephemeral in-memory stores.
+    // When BullMQ dispatch is active, the shared registry is used so the
+    // co-located worker and web runtime see the same state.
     dev: {
       primary:
-        process.env.STORE_TYPE === "filesystem"
-          ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
-          : inMemoryStores(),
+        sharedDevStores
+          ? wrapRegistry(sharedDevStores)
+          : process.env.STORE_TYPE === "filesystem"
+            ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
+            : inMemoryStores(),
     },
   },
   // Default to the Postgres profile whenever a database URL is configured
@@ -145,7 +160,7 @@ if (bullmqRuntime && redisUrl) {
   registry.register(richTextComponentFlow);
   registry.register(weeklyDigestFlow);
 
-  const stores = createInMemoryStores();
+  const stores = sharedDevStores ?? createInMemoryStores();
 
   const runtimeConfig: RuntimeConfig = {
     modelResolver:
