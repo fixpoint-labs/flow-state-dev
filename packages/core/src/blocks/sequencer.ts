@@ -584,36 +584,6 @@ export async function executeBlock(
   );
 }
 
-async function mapWithConcurrency<TInput, TOutput>(
-  values: readonly TInput[],
-  maxConcurrency: number | undefined,
-  mapper: (value: TInput, index: number) => Promise<TOutput>
-): Promise<TOutput[]> {
-  if (values.length === 0) {
-    return [];
-  }
-
-  const limit = Math.max(1, maxConcurrency ?? values.length);
-  const results: TOutput[] = new Array<TOutput>(values.length);
-  let nextIndex = 0;
-
-  const worker = async (): Promise<void> => {
-    while (nextIndex < values.length) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      results[currentIndex] = await mapper(values[currentIndex], currentIndex);
-    }
-  };
-
-  const workers: Promise<void>[] = [];
-  for (let index = 0; index < Math.min(limit, values.length); index += 1) {
-    workers.push(worker());
-  }
-
-  await Promise.all(workers);
-  return results;
-}
-
 /**
  * Run the first rescue handler whose `when` matches `error`, at a rescue path
  * under `basePath`, using `ctx` (the block's scoped context — so the handler can
