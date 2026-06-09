@@ -25,8 +25,10 @@ const DEFAULT_SCHEDULER_PREFIX = "fsd-sched-static";
 
 /**
  * Iterates all flows in the registry and upserts a BullMQ repeatable job
- * scheduler for each entry in `flow.schedules.static`. Idempotent — safe
- * to call on every deploy.
+ * scheduler for each entry in `flow.schedules.static`. Reconciles: any
+ * scheduler under the static prefix that is no longer in the registry
+ * is removed, preventing removed/renamed schedules from firing forever.
+ * Idempotent — safe to call on every deploy.
  */
 export async function registerStaticSchedules(
   opts: RegisterStaticSchedulesOptions
@@ -35,12 +37,15 @@ export async function registerStaticSchedules(
   const schedulerPrefix =
     opts.schedulerIdPrefix ?? DEFAULT_SCHEDULER_PREFIX;
 
+  const desiredIds = new Set<string>();
+
   for (const flow of registry.list()) {
     const staticSchedules = flow.schedules?.static;
     if (!staticSchedules) continue;
 
     for (const [name, schedule] of Object.entries(staticSchedules)) {
       const schedulerId = `${schedulerPrefix}:${flow.kind}:${name}`;
+      desiredIds.add(schedulerId);
       await queue.upsertJobScheduler(
         schedulerId,
         {
@@ -58,6 +63,13 @@ export async function registerStaticSchedules(
           },
         }
       );
+    }
+  }
+
+  const existing = await queue.getJobSchedulers();
+  for (const scheduler of existing) {
+    if (scheduler.id?.startsWith(schedulerPrefix + ":") && !desiredIds.has(scheduler.id)) {
+      await queue.removeJobScheduler(scheduler.id);
     }
   }
 }
@@ -128,6 +140,7 @@ export function createScheduleDispatchWorker(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ nominalFireTime }),
+      signal: AbortSignal.timeout(25_000),
     });
 
     onDispatch?.(

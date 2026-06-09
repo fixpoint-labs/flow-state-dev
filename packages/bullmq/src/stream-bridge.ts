@@ -43,10 +43,9 @@ export function createRedisStreamBridge(
   }
 
   function createRedisClient(): Redis {
-    if (typeof connOpts === "string") {
-      return new Redis(connOpts);
-    }
-    return new Redis(connOpts);
+    return typeof connOpts === "string"
+      ? new Redis(connOpts)
+      : new Redis(connOpts);
   }
 
   return {
@@ -81,6 +80,7 @@ export function createRedisStreamBridge(
       const channel = eventChannel(requestId);
       const abortCh = abortChannel(requestId);
       let closed = false;
+      let aborted = false;
 
       const eventBuffer: StreamEvent[] = [];
       let pendingResolve:
@@ -88,18 +88,28 @@ export function createRedisStreamBridge(
         | null = null;
       let terminalResult: ExecutionResult | undefined;
       let terminalResolve: ((result: ExecutionResult) => void) | undefined;
-      const completedPromise = new Promise<ExecutionResult>((res) => {
+      let terminalReject: ((reason: Error) => void) | undefined;
+      const completedPromise = new Promise<ExecutionResult>((res, rej) => {
         terminalResolve = res;
+        terminalReject = rej;
       });
 
       sub.subscribe(channel, abortCh);
-      sub.on("message", (_ch: string, message: string) => {
+      sub.on("message", (ch: string, message: string) => {
+        if (ch === abortCh) {
+          aborted = true;
+          terminalReject?.(new Error("Aborted"));
+          if (pendingResolve) {
+            pendingResolve({ value: undefined as never, done: true });
+            pendingResolve = null;
+          }
+          return;
+        }
         try {
           const parsed = JSON.parse(message) as StreamEvent;
           if (parsed.event === "terminal") {
             terminalResult = JSON.parse(parsed.data) as ExecutionResult;
             terminalResolve?.(terminalResult);
-            // Signal end of iteration
             if (pendingResolve) {
               pendingResolve({ value: undefined as never, done: true });
               pendingResolve = null;
@@ -117,6 +127,11 @@ export function createRedisStreamBridge(
         }
       });
 
+      sub.on("error", (err: Error) => {
+        terminalReject?.(err);
+        terminalReject = undefined;
+      });
+
       return {
         events(): AsyncIterable<StreamEvent> {
           return {
@@ -124,7 +139,7 @@ export function createRedisStreamBridge(
               return {
                 next(): Promise<IteratorResult<StreamEvent>> {
                   if (
-                    terminalResult !== undefined &&
+                    (terminalResult !== undefined || aborted) &&
                     eventBuffer.length === 0
                   ) {
                     return Promise.resolve({

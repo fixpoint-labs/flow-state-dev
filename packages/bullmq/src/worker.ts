@@ -66,6 +66,7 @@ export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
       publisher = bridge.createPublisher(data.requestId ?? job.id ?? "unknown");
     }
 
+    let terminalPublished = false;
     try {
       const result = await runAction({
         flow,
@@ -93,23 +94,21 @@ export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
         },
       });
 
+      if (publisher) {
+        await publisher.publishTerminal(result).catch(() => {});
+        terminalPublished = true;
+      }
+
       if (result.error) {
-        if (publisher) {
-          await publisher.publishTerminal(result).catch(() => {});
-        }
         if (isNonRetryable(result.error)) {
           throw new UnrecoverableError(result.error.message);
         }
         throw new Error(result.error.message);
       }
 
-      if (publisher) {
-        await publisher.publishTerminal(result).catch(() => {});
-      }
-
       return result;
     } catch (err) {
-      if (publisher) {
+      if (publisher && !terminalPublished) {
         const errorResult = {
           error: { message: err instanceof Error ? err.message : String(err) }
         };
