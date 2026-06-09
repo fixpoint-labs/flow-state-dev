@@ -32,6 +32,17 @@ describe("MANDATE_PACK", () => {
     expect(conservative.kellyFraction).toBeLessThan(aggressive.kellyFraction);
     expect(balanced.riskRank).toBe(2);
   });
+
+  it("maintains the capacityVetoCapPct ≤ unclearedCapPct invariant for every preset", () => {
+    // The PM commit applies the hard capacity veto BEFORE the soft worth-it cap
+    // and relies on capacityVetoCapPct being the tighter bound, so the soft cap
+    // never has to fire after a capacity clamp (see the MANDATE_PACK doc
+    // comment). A violation would still be safe — both caps only reduce size —
+    // but would silently muddy the gate's reasoning, so the pack self-polices.
+    for (const m of MANDATE_PACK) {
+      expect(m.capacityVetoCapPct).toBeLessThanOrEqual(m.unclearedCapPct);
+    }
+  });
 });
 
 describe("resolveMandate", () => {
