@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { handler, sequencer } from "../src";
+import { handler, router, sequencer } from "../src";
 import type { BlockContext } from "../src/types/block";
 import { SequencerOutputSchemaError, SequencerSchemaMismatchError, SuspensionError } from "../src";
 import { defineResource } from "../src/types/resource";
@@ -2059,6 +2059,48 @@ describe("block-level rescue (FIX-742)", () => {
       cleanCtx
     );
     expect((cleanCtx as { _didRescue?: boolean })._didRescue).toBeUndefined();
+  });
+
+  it("isolates a failing parallel branch via per-branch rescue", async () => {
+    const fallback = handler({
+      name: "par-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => -1
+    });
+    const okBranch = handler({
+      name: "par-ok",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (n: number) => n + 100
+    });
+
+    const seq = sequencer({ name: "parallel-rescue", inputSchema: z.number() }).parallel({
+      a: throwing("par-fail").rescue([{ block: fallback }]),
+      b: okBranch
+    });
+
+    const ctx = createMockContext();
+    // The failing branch recovers to -1; the healthy branch is unaffected.
+    await expect(runForTest(seq, 1, ctx)).resolves.toEqual({ a: -1, b: 101 });
+  });
+
+  it("recovers a block selected by a router route", async () => {
+    const fallback = handler({
+      name: "router-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => -1
+    });
+    const safe = throwing("router-target").rescue([{ block: fallback }]);
+    const route = router({
+      name: "rescue-router",
+      routes: [safe],
+      execute: () => safe
+    });
+
+    const ctx = createMockContext();
+    await expect(runForTest(route, 1, ctx)).resolves.toBe(-1);
   });
 
   it("does not re-rescue when a rescue handler itself throws (single attempt)", async () => {

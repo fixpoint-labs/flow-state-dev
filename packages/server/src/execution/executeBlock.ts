@@ -25,7 +25,7 @@ import {
   logRuntimeEvent,
   summarizeForLog
 } from "./logging";
-import { mergeRetryPolicy, retryWithPolicy } from "./retry";
+import { mergeRetryPolicy, retryWithPolicy, isRetryableError } from "./retry";
 import type {
   ExecuteBlockContext,
   ExecuteBlockOptions,
@@ -355,8 +355,17 @@ export async function executeBlock(
               // reach here — they go through core's `executeBlock`.
               const rootRescueHandlers =
                 options.block.kind !== "sequencer" ? options.block.config.rescue : undefined;
+              const normalizedRescueError =
+                error instanceof Error ? error : new Error(String(error));
+              // Rescue after retries are exhausted. A non-retryable error is
+              // also "final": `retryWithPolicy` aborts the loop early for it, so
+              // there will be no further attempt — rescue must fire now or the
+              // error escapes un-rescued (the "retries exhaust, then rescue"
+              // contract must hold for non-retryable errors too).
               const isFinalAttempt =
-                retryPolicy === undefined || attempt >= retryPolicy.maxAttempts - 1;
+                retryPolicy === undefined ||
+                attempt >= retryPolicy.maxAttempts - 1 ||
+                !isRetryableError(normalizedRescueError, retryPolicy);
               if (
                 !(error instanceof SuspensionError) &&
                 isFinalAttempt &&
@@ -366,7 +375,7 @@ export async function executeBlock(
                 const rescued = await runRescue(
                   scopedCtx,
                   rootRescueHandlers,
-                  error instanceof Error ? error : new Error(String(error)),
+                  normalizedRescueError,
                   blockPath
                 );
                 if (rescued !== undefined) {

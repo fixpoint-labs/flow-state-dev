@@ -532,6 +532,11 @@ export async function executeBlock(
           if (rescued.descriptor.kind !== "inline") {
             (scopedCtx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescued.descriptor;
           }
+          // The block errored then recovered: `onBlockError` above records the
+          // underlying failure (matching chain-level rescue precedent), and this
+          // fires `onBlockComplete` so the runtime hook stream matches the
+          // `completed + rescued` trace `_withExecutionScope` will record.
+          scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, rescued.value, Date.now() - startedAt, block.transient);
           return rescued.value;
         }
       }

@@ -274,6 +274,8 @@ Reach for a per-step rescue when one step is allowed to fail in isolation — a 
 
 A `.tap()` step that carries a rescue runs its handler for the side effect and leaves the running value unchanged, since `.tap` never changes the value. That is the shape for "mark this record failed and keep going."
 
+On a `.step`, the handler's output replaces the failed block's output and flows on to the next step as that block's output type. The compiler does not check this for you — a rescue handler is typed loosely — so make sure the handler returns a value that satisfies the rescued block's output contract, or the next step receives something its input doesn't expect.
+
 ### Querying rescue status
 
 Rescue catches an error and routes it to a recovery block. Sometimes a later step needs to know that happened: did the block before me throw and get recovered, or did it run cleanly? `ctx.wasRescued(...)` answers that without the recovered value having to carry a marker.
