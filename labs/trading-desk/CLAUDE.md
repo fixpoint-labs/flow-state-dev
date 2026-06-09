@@ -344,8 +344,9 @@ kitchen-sink precedent (FIX-184): both shells render, CSS picks one — no
   a past report on mobile reuses `handleOpenReport` (tuple-first, zero model
   spend) and then routes to the Report tab.
 - **Pane reflow rules:** `ThesesPane`'s 200px `MemoSidebar` is `hidden lg:block`
-  inline and opens as a slide-in overlay drawer below `lg` (the "Phases"
-  button). `HoldingsTable` renders the 8-column table only when its own
+  inline and opens as a native `<dialog>` drawer below `lg` (the "Phases"
+  button) — same imperative open/close idiom as the app's other dialogs, so
+  ESC/focus-trap/backdrop come from the browser. `HoldingsTable` renders the 8-column table only when its own
   container is ≥ `@3xl` (a CSS container query, not a viewport breakpoint) and
   stacks one card per holding below that — both layouts read the SAME
   `buildHoldingRowModel` view model (`test/holdings-row-model.spec.ts`), so the

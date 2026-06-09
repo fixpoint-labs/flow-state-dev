@@ -110,6 +110,16 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
   // Below `lg` the memo navigator opens as a slide-in drawer (FIX-757); the
   // inline 200px sidebar would eat half a phone's width.
   const [navOpen, setNavOpen] = useState(false);
+  const navDialogRef = useRef<HTMLDialogElement>(null);
+
+  // Drive the drawer's native <dialog> imperatively from `navOpen` — the same
+  // idiom as SettingsDialog, so ESC/focus-trap/backdrop come from the browser.
+  useEffect(() => {
+    const dialog = navDialogRef.current;
+    if (!dialog) return;
+    if (navOpen && !dialog.open) dialog.showModal();
+    if (!navOpen && dialog.open) dialog.close();
+  }, [navOpen]);
 
   // Authoritative completion flag, read from the exposed session state. Stable
   // across a transient stream re-attach (opening a stored report can briefly
@@ -205,31 +215,34 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
         selectedAgent={selectedAgent}
         onSelectAgent={handleSelectAgent}
       />
-      {navOpen ? (
-        <div
-          className="fixed inset-0 z-40 flex bg-black/40 lg:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Theses navigator"
-        >
-          <MemoSidebar
-            className="h-full w-[260px] max-w-[85vw] shadow-2xl"
-            memoStatus={memoStatus}
-            selectedAgent={selectedAgent}
-            onSelectAgent={(agent) => {
-              setNavOpen(false);
-              handleSelectAgent(agent);
-            }}
-          />
-          {/* Backdrop — spans the rest of the overlay; tap to dismiss. */}
-          <button
-            type="button"
-            className="flex-1"
-            aria-label="Close theses navigator"
-            onClick={() => setNavOpen(false)}
-          />
-        </div>
-      ) : null}
+      {/* Below lg the navigator opens as a native <dialog> drawer — the same
+          imperative open/close idiom as the app's other dialogs, so the focus
+          trap, ESC-to-close, and the backdrop come from the browser (a bare
+          role="dialog" div provides none of those for keyboard users). A
+          backdrop click lands on the dialog element itself (the sidebar fills
+          it), which is the standard dismiss test. */}
+      <dialog
+        ref={navDialogRef}
+        onClose={() => setNavOpen(false)}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) e.currentTarget.close();
+        }}
+        aria-label="Theses navigator"
+        className={cn(
+          "m-0 h-full max-h-none w-[260px] max-w-[85vw] border-0 p-0",
+          "bg-transparent shadow-2xl backdrop:bg-black/40 lg:hidden",
+        )}
+      >
+        <MemoSidebar
+          className="h-full w-full"
+          memoStatus={memoStatus}
+          selectedAgent={selectedAgent}
+          onSelectAgent={(agent) => {
+            setNavOpen(false);
+            handleSelectAgent(agent);
+          }}
+        />
+      </dialog>
       <div className="flex flex-1 flex-col overflow-y-auto p-6 max-lg:p-4">
         <div className="mb-4 flex items-center gap-2">
           <button

@@ -107,10 +107,13 @@ button {
       translate: 0 100%;
     }
   }
-}
-@media (prefers-reduced-motion: reduce) {
-  dialog.td-sheet[open] {
-    transition: none;
+  /* Nested inside the width gate on purpose: the slide-up it cancels only
+     exists below lg, and a global override would silently eat any future
+     desktop transition on the same class. */
+  @media (prefers-reduced-motion: reduce) {
+    dialog.td-sheet[open] {
+      transition: none;
+    }
   }
 }
 
