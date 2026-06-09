@@ -28,7 +28,7 @@ import {
   type ResourceChangeKind,
 } from "@flow-state-dev/core";
 import type { ErrorItem } from "@flow-state-dev/core/items";
-import { isCollectionConfig } from "./resource-registry";
+import { isCollectionConfig, type ResourceChangeDelta } from "./resource-registry";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import type { ExecutionContext } from "./types";
 import { executeBlock } from "../execution/executeBlock";
@@ -52,13 +52,6 @@ export interface CascadeController {
 /** Create a fresh per-request cascade controller. */
 export function createCascadeController(): CascadeController {
   return { depth: 0, fanout: 0 };
-}
-
-/** The payload `onResourceChanged` threads to the dispatcher as its 4th arg. */
-export interface ReactiveChangeInput {
-  state?: JsonObject;
-  prevState?: JsonObject;
-  evicted?: boolean;
 }
 
 /** Dependencies the dispatcher closes over for one scope. */
@@ -85,9 +78,9 @@ export interface ReactiveDispatcherDeps {
  */
 function resolveConfigFor(
   resourcePath: string,
-  configs: Record<string, ResourceConfig | ResourceCollectionConfig>
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig>,
+  storageKeys: Record<string, string>
 ): { config: ResourceConfig | ResourceCollectionConfig; key: string } | undefined {
-  const storageKeys = resourceStorageKeys(configs);
   for (const [accessor, config] of Object.entries(configs)) {
     if (isCollectionConfig(config)) {
       if (matchesPattern(config.pattern, resourcePath)) {
@@ -160,11 +153,13 @@ let reactiveDispatchSeq = 0;
  */
 export function createReactiveDispatcher(
   deps: ReactiveDispatcherDeps
-): (resourcePath: string, changeType: ResourceChangeKind, change: ReactiveChangeInput | undefined) => Promise<void> {
+): (resourcePath: string, changeType: ResourceChangeKind, change: ResourceChangeDelta | undefined) => Promise<void> {
   const { configs, ctxRef, controller } = deps;
+  // Storage-key alias map is fixed for the dispatcher's lifetime — compute once.
+  const storageKeys = resourceStorageKeys(configs);
 
   return async (resourcePath, changeType, change) => {
-    const resolved = resolveConfigFor(resourcePath, configs);
+    const resolved = resolveConfigFor(resourcePath, configs, storageKeys);
     if (resolved === undefined) return;
     const { config, key } = resolved;
     const reactTo = config.reactTo;

@@ -65,6 +65,20 @@ function asJsonValue(value: unknown): JsonValue {
   return out;
 }
 
+/**
+ * FIX-751: the state delta a mutation threads to `onResourceChanged` as its 4th
+ * arg, used by the reactive dispatcher to build the `ResourceChange` payload.
+ * `state` is the post-mutation state (omit for `deleted`); `prevState` the
+ * pre-mutation state (omit for `created`); `evicted` is `true` only for a
+ * capacity-driven removal. Declared once here and imported type-only by the
+ * dispatcher and the execution context so the shape can't drift.
+ */
+export interface ResourceChangeDelta {
+  state?: JsonObject;
+  prevState?: JsonObject;
+  evicted?: boolean;
+}
+
 function updateObjectState(
   currentState: JsonObject,
   updates: Partial<JsonObject>
@@ -440,15 +454,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       resourcePath: string,
       changeType: "created" | "updated" | "deleted",
       projection?: { delta: JsonValue },
-      /**
-       * FIX-751: the state delta carried by the mutation, used by the reactive
-       * dispatcher to build the {@link ResourceChange} payload. `state` is the
-       * post-mutation state (omit for `deleted`); `prevState` the pre-mutation
-       * state (omit for `created`); `evicted` is `true` only for a
-       * capacity-driven removal. Awaitable so reactive blocks run inline within
-       * the mutating turn.
-       */
-      change?: { state?: JsonObject; prevState?: JsonObject; evicted?: boolean }
+      // FIX-751: state delta for the reactive dispatcher (see ResourceChangeDelta).
+      // Awaitable so reactive blocks run inline within the mutating turn.
+      change?: ResourceChangeDelta
     ) => void | Promise<void>;
     /**
      * FIX-688: on-demand loaders for `prefetchMode: 'lazy'` collections. When
@@ -597,8 +605,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       async updateState(
         updater: (state: JsonObject) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
+        // Pass the updater a fresh clone so an in-place mutation can't alias
+        // `prev` — `prev` is the pre-mutation state for the hook and reactive payload.
         const prev = readState();
-        const next = await updater(prev);
+        const next = await updater(readState());
         await persistNamespaceInstanceState(storageKey, nsConfig, next);
         if (nsConfig.onInstanceUpdated && nsHookCtx) {
           await nsConfig.onInstanceUpdated(
@@ -1100,8 +1110,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           state: JsonObject
         ) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
+        // Pass the updater a fresh clone so an in-place mutation can't alias
+        // `prev` — `prev` is the pre-mutation `prevState` for the reactive payload.
         const prev = readState();
-        const next = await updater(prev);
+        const next = await updater(readState());
         await persistResourceState(storageKey, config, next);
         await notifySingleChange(prev);
       },
@@ -1195,7 +1207,7 @@ async function evictInstance(
     resourcePath: string,
     changeType: "created" | "updated" | "deleted",
     projection?: { delta: JsonValue },
-    change?: { state?: JsonObject; prevState?: JsonObject; evicted?: boolean }
+    change?: ResourceChangeDelta
   ) => void | Promise<void>
 ): Promise<void> {
   const keys = Object.keys(resources).filter((k) =>
@@ -1230,10 +1242,12 @@ async function evictInstance(
     await nsConfig.onInstanceDeleted(evictKey, hookCtx);
   }
 
+  // A live collection streams evictions too (delta `null`) so the client
+  // tombstones the item mid-stream, matching the explicit `delete()` path.
   await onResourceChanged?.(
     evictKey,
     "deleted",
-    undefined,
+    nsConfig.client?.live === true ? { delta: null } : undefined,
     { state: undefined, prevState: evictedPrevState, evicted: true }
   );
 }

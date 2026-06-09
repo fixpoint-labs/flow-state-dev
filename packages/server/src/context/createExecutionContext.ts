@@ -93,6 +93,7 @@ import {
   normalizeStateDefault,
   type LazyLoadOutcome,
   type ScopeLazyLoad,
+  type ResourceChangeDelta,
 } from "./resource-registry";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 
@@ -1514,17 +1515,30 @@ export async function createExecutionContext<
         })
       : undefined;
 
+    // FIX-739 streams resource_change for client-visible changes: all collections
+    // (delta only when live) and live single resources. A single resource that
+    // fires the seam only because it declares `reactTo` (FIX-751, non-live) must
+    // NOT emit — that would leak a client item for a resource with no client
+    // projection. Precompute those storage keys once and skip the emit for them.
+    const scopeStorageKeys = resourceStorageKeys(scopeConfigs);
+    const nonStreamingSingleKeys = new Set<string>();
+    for (const [accessor, cfg] of Object.entries(scopeConfigs)) {
+      if (!isCollectionConfig(cfg) && cfg.client?.live !== true) {
+        nonStreamingSingleKeys.add(scopeStorageKeys[accessor] ?? accessor);
+      }
+    }
+
     return async (
       resourcePath: string,
       changeType: "created" | "updated" | "deleted",
       projection?: { delta: unknown },
-      change?: { state?: JsonObject; prevState?: JsonObject; evicted?: boolean }
+      change?: ResourceChangeDelta
     ): Promise<void> => {
       // FIX-739 streaming emit stays fire-and-forget: `projection` is present
       // only for `client.live: true` resources and fills the resource_change
       // item's `delta` slot so the client merges without a refetch. Absent →
-      // batched-refetch path unchanged.
-      if (emitter !== undefined) {
+      // batched-refetch path unchanged. Skip non-live singles (reactive-only).
+      if (emitter !== undefined && !nonStreamingSingleKeys.has(resourcePath)) {
         void emitter.emitResourceChange({
           scope,
           resourcePath,

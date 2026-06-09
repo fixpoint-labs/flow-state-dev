@@ -371,6 +371,62 @@ describe("reactive dispatch: input validation", () => {
   });
 });
 
+describe("reactive dispatch: non-live single streaming + updateState aliasing", () => {
+  const docSchema = z.object({ status: z.string().default("draft") });
+
+  it("a non-live single with reactTo runs the block but emits no resource_change", async () => {
+    let ran = false;
+    const onUpdate = handler({
+      name: "on-single-update",
+      execute: () => {
+        ran = true;
+        return "done";
+      },
+    });
+    // No `client` config → non-live. Before the fix this leaked a resource_change.
+    const doc = defineResource({
+      scope: "session",
+      stateSchema: docSchema,
+      reactTo: { updated: onUpdate },
+    });
+
+    const { ctx, items } = await createCtx({ doc });
+    await (ctx.resources.doc as any).patchState({ status: "published" });
+
+    expect(ran).toBe(true);
+    expect(items.some((i) => i.type === "resource_change")).toBe(false);
+  });
+
+  it("updateState gives the updater a fresh clone so prevState is not aliased", async () => {
+    const seen: ResourceChange[] = [];
+    const onUpdate = handler({
+      name: "on-single-update2",
+      inputSchema: resourceChangeSchema(docSchema),
+      execute: (change: ResourceChange) => {
+        seen.push(change);
+        return "done";
+      },
+    });
+    const doc = defineResource({
+      scope: "session",
+      stateSchema: docSchema,
+      reactTo: { updated: onUpdate },
+    });
+
+    const { ctx } = await createCtx({ doc });
+    // In-place-mutating updater: mutate the argument and return it. The payload's
+    // prevState must still reflect the pre-mutation state, not alias the result.
+    await (ctx.resources.doc as any).updateState((s: any) => {
+      s.status = "published";
+      return s;
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.state).toMatchObject({ status: "published" });
+    expect(seen[0]!.prevState).toMatchObject({ status: "draft" });
+  });
+});
+
 describe("reactive dispatch: content-only writes", () => {
   it("does not run an updated binding for a collection instance content write", async () => {
     const seen: ResourceChange[] = [];

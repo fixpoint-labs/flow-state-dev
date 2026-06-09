@@ -489,7 +489,7 @@ await actions.create({ topic: 'spec.md', content: '# New Spec' })
 await actions.update({ topic: 'readme.md', content: '# Updated' })
 ```
 
-Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`.
+Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`. The `resource_change` projection rides the registry's internal post-mutation seam (`onResourceChanged`); the same seam also drives in-session reactive blocks (`reactTo`) — see [Reactive blocks](/docs/resources/reactive-blocks) and the seam contract in [Resource Collections](./resource-collections.md#reactive-blocks-reactto).
 
 ## Canonical Authority
 

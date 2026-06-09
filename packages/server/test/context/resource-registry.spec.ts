@@ -641,6 +641,27 @@ describe("createScopeResourceRegistry — LRU eviction", () => {
     expect(a).toBeDefined();
   });
 
+  it("eviction on a live collection fires a deleted change with null delta (FIX-751)", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", {
+      maxInstances: 1,
+      eviction: "oldest",
+      client: { live: true } as ResourceCollectionConfig["client"]
+    });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/a": {} },
+      onResourceChanged: onChange
+    });
+
+    // Creating "b" evicts "a"; the eviction must tombstone the live client the
+    // same way an explicit delete does (projection `{ delta: null }`).
+    await (registry as any).items.create("b", {});
+    const deletedCall = onChange.mock.calls.find((c) => c[1] === "deleted");
+    expect(deletedCall).toBeDefined();
+    expect(deletedCall![2]).toEqual({ delta: null });
+  });
+
   it("throws when maxInstances reached with eviction=none", async () => {
     const nsConfig = makeCollectionConfig("items/*", {
       maxInstances: 1,
