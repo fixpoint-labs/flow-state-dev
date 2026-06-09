@@ -1,32 +1,35 @@
 /**
- * MandateBlock — the Summary's risk-appetite mandate verdict (FIX-752). The
- * third decision axis (appetite) beside the portfolio-fit weight block
- * (mechanics) and the lens-convergence card (philosophy).
+ * Risk-appetite mandate panel (FIX-752) — the third decision axis (appetite)
+ * beside portfolio-fit (mechanics) and the lens pack (philosophy).
  *
- * Reads straight off the PM memo's stored `mandateDecision` mirror — the verdict
- * + gate flags were derived deterministically at PM-commit (never from the LLM),
- * and the compact reward-to-risk figure comes from the resource. This component
- * computes nothing. It mirrors the PmHero `MandatePanel`
- * (components/theses/pm-hero.tsx) so the report view and the Summary read the
- * same signal identically.
+ * Shared by both the report view (`pm-hero.tsx` `PmHero`) and the Summary view
+ * (`summary/report-summary.tsx`) so the same mandate decision renders identically
+ * on both surfaces — there is no layout difference between them (unlike the lens
+ * strip vs. card), so the panel lives here once rather than mirrored per surface.
  *
- * The caller (`report-summary.tsx`) gates this on `mandateDecision !== null`, so
- * a mandate-blind run omits the block cleanly — never a stubbed verdict.
+ * Reads the PM memo's stored `mandateDecision` mirror — the verdict + gate flags
+ * were derived deterministically at PM-commit (never from the LLM); the compact
+ * reward-to-risk figure comes from the resource. This component computes nothing;
+ * the caller gates it on `mandateDecision !== null`, so a mandate-blind run omits
+ * the panel cleanly.
  *
  * Real-money discipline: every figure traces to a stored field; a missing GLR /
- * EV / worst case renders `—`, never fabricated. The copy frames this as a
- * documented, user-settable methodology — not financial advice.
+ * EV / worst case renders `—` (never fabricated). The `noDownside` case is
+ * labeled honestly. The copy frames this as a documented, user-settable
+ * methodology — not financial advice.
  */
 import type { ReactElement } from "react";
-import type { MandateDecision } from "./aggregate";
-import { pctOrDash, verdictColor } from "@/components/theses/mandate-helpers";
+import type { MemoState } from "@/src/flows/analysis/resources";
+import { pctOrDash, verdictColor } from "./mandate-helpers";
 import { cn } from "@/lib/utils";
 
-export type MandateBlockProps = {
+type MandateDecision = NonNullable<MemoState["mandateDecision"]>;
+
+export type MandatePanelProps = {
   decision: MandateDecision;
 };
 
-export function MandateBlock({ decision }: MandateBlockProps): ReactElement {
+export function MandatePanel({ decision }: MandatePanelProps): ReactElement {
   return (
     <section
       className={cn(

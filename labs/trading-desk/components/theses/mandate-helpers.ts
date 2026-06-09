@@ -2,11 +2,10 @@
  * Shared formatting helpers for the risk-appetite mandate UI (FIX-752).
  *
  * One source of truth for the verdict pill color and the signed-percent / dash
- * formatter, used by BOTH the PmHero `MandatePanel` (`components/theses/pm-hero.tsx`)
- * and the Summary `MandateBlock` (`components/summary/mandate-block.tsx`) so the
- * two surfaces render the same mandate decision identically — no silent drift if
- * a token or the rounding changes. Typed on the primitive inputs so it does not
- * couple to either surface's `MandateDecision` view type.
+ * formatter, used by the shared `MandatePanel` (`components/theses/mandate-panel.tsx`)
+ * that both the report view (`pm-hero.tsx`) and the Summary (`report-summary.tsx`)
+ * render. Typed on the primitive inputs so it does not couple to the panel's
+ * `MandateDecision` view type.
  */
 
 /** Mandate verdict → classification-pill color. `clears` reads positive (live);

@@ -48,7 +48,7 @@ import { ScenarioStrip } from "./charts/scenario-strip";
 import { PriceOverlay, type PriceOverlayLevel } from "./charts/price-overlay";
 import { PortfolioFitBlock } from "./portfolio-fit-block";
 import { LensConvergenceBlock } from "./lens-convergence-block";
-import { MandateBlock } from "./mandate-block";
+import { MandatePanel } from "../theses/mandate-panel";
 import { cn } from "@/lib/utils";
 
 export type ReportSummaryProps = {
@@ -204,7 +204,7 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
       {summary.mandateDecision !== null ? (
         <>
           <SectionLabel>Risk-appetite mandate</SectionLabel>
-          <MandateBlock decision={summary.mandateDecision} />
+          <MandatePanel decision={summary.mandateDecision} />
         </>
       ) : null}
 

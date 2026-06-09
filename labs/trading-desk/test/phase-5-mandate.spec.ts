@@ -71,7 +71,6 @@ function figure(over: Record<string, unknown> = {}) {
     glr: 2.5,
     lossAdjustedGlr: 1.5,
     worstCaseReturnPct: -10,
-    probGain: 0.6,
     noDownside: false,
     evidenceBasis: "sufficient",
     lossAversion: 2,

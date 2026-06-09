@@ -40,8 +40,6 @@ export interface RewardToRisk {
   lossAdjustedGlr: number | null;
   /** Worst single-bucket return, %. The capacity-veto input. */
   worstCaseReturnPct: number | null;
-  /** Total probability mass on up-buckets. */
-  probGain: number | null;
   /** True when no bucket is negative (expectedLoss == 0) — the GLR is undefined
    *  and the mandate treats the reward-to-risk floor as cleared. */
   noDownside: boolean;
@@ -73,7 +71,6 @@ export function computeRewardToRisk(args: {
       glr: null,
       lossAdjustedGlr: null,
       worstCaseReturnPct: null,
-      probGain: null,
       noDownside: false,
       evidenceBasis: "thin",
     };
@@ -88,7 +85,6 @@ export function computeRewardToRisk(args: {
   let expectedValuePct = 0;
   let expectedGainPct = 0;
   let expectedLossPct = 0;
-  let probGain = 0;
   // Seed to +Infinity (not bucket 0's raw value) so the running-min below picks
   // up the first sanitized return — keeps the seed consistent with the
   // finiteness-guarded accumulators. `scenarios` is non-empty here (the empty
@@ -101,7 +97,6 @@ export function computeRewardToRisk(args: {
     expectedValuePct += p * r;
     if (r > 0) {
       expectedGainPct += p * r;
-      probGain += p;
     } else if (r < 0) {
       expectedLossPct += p * -r;
     }
@@ -121,7 +116,6 @@ export function computeRewardToRisk(args: {
     glr,
     lossAdjustedGlr,
     worstCaseReturnPct,
-    probGain,
     noDownside,
     evidenceBasis,
   };

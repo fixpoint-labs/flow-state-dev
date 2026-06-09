@@ -556,11 +556,13 @@ export function formatRewardToRisk(
 }
 
 /**
- * Render the active risk-appetite mandate as the `<riskMandate>` prompt block
- * the PM sizes against (FIX-752). Frames the mandate as a documented, user-set
- * standard (NOT advice) and states the worth-it bar + the sizing/escape rule the
- * commit enforces deterministically. Returns `null` (tag suppressed) when the
- * run is mandate-blind (the `userThesis`/`portfolioContext` precedent).
+ * Render the active risk-appetite mandate as the `<riskMandate>` prompt block.
+ * Frames the mandate as a documented, user-set standard (NOT advice) and states
+ * the worth-it bar + the sizing appetite (FIX-752). Agent-agnostic: this shared
+ * block feeds BOTH the trader and the PM, so it carries no output-field
+ * directives (the PM prompt's rule 11 owns the `portfolioFit` / override
+ * mechanics, which only the PM can emit). Returns `null` (tag suppressed) when
+ * the run is mandate-blind (the `userThesis`/`portfolioContext` precedent).
  */
 export function formatRiskMandate(
   mandate: RiskMandate | null | undefined,
@@ -586,9 +588,9 @@ export function formatRiskMandate(
     `- No scenario worse than -${mandate.maxTolerableLossPct}% (capacity line — a worse worst case hard-caps the size and cannot be overridden).`,
   );
   lines.push(
-    `Sizing: size a CLEARED name to about ${(mandate.kellyFraction * 100).toFixed(
+    `Sizing appetite: a name that CLEARS the bar is sized to about ${(mandate.kellyFraction * 100).toFixed(
       0,
-    )}% of a full-Kelly stake (fractional-Kelly appetite). If the bar is NOT cleared, set portfolioFit.action to hold/token and keep the target at or below ${mandate.unclearedCapPct}% of NAV — UNLESS you state a mandateOverrideReason. The desk's commit enforces these caps deterministically; the mandate only ever reduces size, never inflates it, and never changes the rating.`,
+    )}% of a full-Kelly stake (fractional-Kelly); a name that does NOT clear is held to a token size (at or below ${mandate.unclearedCapPct}% of NAV). The mandate only ever reduces size, never inflates it, and never changes the rating.`,
   );
   return lines.join("\n");
 }

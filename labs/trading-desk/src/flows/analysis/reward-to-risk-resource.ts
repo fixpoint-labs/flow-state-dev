@@ -25,7 +25,6 @@ export const rewardToRiskStateSchema = z.object({
   glr: z.number().nullable(),
   lossAdjustedGlr: z.number().nullable(),
   worstCaseReturnPct: z.number().nullable(),
-  probGain: z.number().nullable(),
   noDownside: z.boolean(),
   evidenceBasis: z.enum(["sufficient", "thin"]),
   // Provenance: the loss-aversion λ used, and which mandate supplied it (null
