@@ -6,7 +6,7 @@ import type {
   SessionRecord,
   UserRecord
 } from "@flow-state-dev/server";
-import { createPostgresStores, type PostgresStoreRegistry } from "../src";
+import { createPostgresStores, initializeSchema, type PostgresStoreRegistry } from "../src";
 import type { QueryExecutor } from "../src";
 
 /** Wrap PGlite to match the QueryExecutor interface */
@@ -1405,6 +1405,32 @@ describe("PostgreSQL store adapter", () => {
       await s.suspensions.set(makeSuspension({ status: "pending" }));
 
       expect(await s.suspensions.pruneTerminalBefore(Date.now() + 1000, 100)).toBe(0);
+    });
+
+    it("migration backfills legacy NULL status/resolved_at columns so they become prunable", async () => {
+      // Regression: a terminal suspension resolved before the FIX-141 migration
+      // keeps NULL scalar columns and would escape pruneTerminalBefore. Insert a
+      // row with NULL scalars to simulate the pre-migration shape, then re-run
+      // schema init to trigger the backfill (mirrors the SQLite test).
+      const s = await freshStores();
+      const executor = pgliteExecutor(pglite);
+      const record = makeSuspension({
+        suspensionId: "legacy",
+        requestId: "rL",
+        status: "approved",
+        resolvedAt: 100
+      });
+      await executor.query(
+        `INSERT INTO suspension_records (request_id, suspension_id, data, created_at, status, resolved_at)
+         VALUES ($1, $2, $3::jsonb, $4, NULL, NULL)`,
+        ["rL", "legacy", JSON.stringify(record), record.createdAt]
+      );
+
+      // Re-running schema init runs the backfill UPDATE (WHERE status IS NULL).
+      await initializeSchema(executor);
+
+      expect(await s.suspensions.pruneTerminalBefore(200, 100)).toBe(1);
+      expect(await s.suspensions.get("rL", "legacy")).toBeNull();
     });
   });
 });

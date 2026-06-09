@@ -92,9 +92,10 @@ function tickArgs(
 ) {
   const r = { ...baseRetention(), ...overrides };
   return {
+    // `logger` is optional on RunTickArgs; runTick defaults it to
+    // DEFAULT_RUNTIME_LOGGER, so the tests omit it.
     provider,
     stores,
-    logger: undefined as never, // falls through to DEFAULT_RUNTIME_LOGGER via factory only; runTick needs a logger
     holder: overrides?.holder ?? "test-holder",
     sweepIntervalMs: r.sweepIntervalMs,
     checkpointMaxAgeMs: r.checkpointMaxAgeMs,

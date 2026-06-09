@@ -29,15 +29,14 @@ export class InMemorySuspensionStore implements SuspensionStore {
   }
 
   async list(filter?: SuspensionFilter): Promise<SuspensionRecord[]> {
-    let results = Array.from(this.data.values()).filter((r) =>
-      matchesSuspensionFilter(r, filter)
-    );
+    const results = Array.from(this.data.values())
+      .filter((r) => matchesSuspensionFilter(r, filter))
+      // Sort newest-first to match the filesystem/SQLite/Postgres adapters
+      // (which order by created_at DESC) so `limit` keeps the same end across
+      // every store and the DevTool list orders identically in dev and prod.
+      .sort((a, b) => b.createdAt - a.createdAt);
 
-    if (filter?.limit !== undefined) {
-      results = results.slice(0, filter.limit);
-    }
-
-    return results;
+    return filter?.limit !== undefined ? results.slice(0, filter.limit) : results;
   }
 
   async deleteForRequest(requestId: string): Promise<void> {

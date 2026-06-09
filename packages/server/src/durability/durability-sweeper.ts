@@ -259,14 +259,19 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
     // make this bounded-and-correct if pending volume ever grows.)
     const pending = await provider.listSuspended({ status: "pending" });
     for (const record of pending) {
-      if (record.expiresAt != null && record.expiresAt <= now) {
-        const expired: SuspensionRecord = {
-          ...record,
-          status: "expired",
-          resolvedAt: now
-        };
-        await provider.suspend(expired);
-      }
+      if (record.expiresAt == null || record.expiresAt > now) continue;
+      // Re-load immediately before writing: an operator may have approved or
+      // rejected this suspension via the resume endpoint between the list read
+      // above and this write. Skipping unless it is still `pending` shrinks the
+      // clobber window from the whole iteration to a single roundtrip, so the
+      // sweeper can't overwrite a just-resolved audit record with `expired`.
+      // (A full fix needs a store-level CAS the SuspensionStore API lacks.)
+      const current = await provider.loadSuspension(
+        record.requestId,
+        record.suspensionId
+      );
+      if (current === null || current.status !== "pending") continue;
+      await provider.suspend({ ...current, status: "expired", resolvedAt: now });
     }
   } catch (err) {
     logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: expiry enforcement failed", {
