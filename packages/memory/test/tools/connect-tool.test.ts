@@ -210,7 +210,9 @@ describe('memory capability relation helpers', () => {
     return (cap.fns as (ctx: any) => any)(buildCapCtx(sem))
   }
 
-  it('connections returns the neighbour edges around an entity', () => {
+  it('connections returns ONLY the direct (1-hop) neighbour edges', () => {
+    // user -married to-> moni -works at-> acme. connections is 1-hop: it returns
+    // the user→moni edge but NOT the 2-hop moni→acme edge (use egoGraph for depth).
     const edges = [
       makeEdge({ from: 'user', to: 'moni', type: 'married to' }),
       makeEdge({ from: 'moni', to: 'acme', type: 'works at' }),
@@ -218,6 +220,7 @@ describe('memory capability relation helpers', () => {
     const fns = fnsFor(createMockSemRef(edges, {}))
     const out = fns.connections('User')
     expect(out.map((e: Edge) => e.to)).toEqual(['moni'])
+    expect(out.some((e: Edge) => e.to === 'acme')).toBe(false)
   })
 
   it('relate returns the shortest-path edges between two entities', () => {

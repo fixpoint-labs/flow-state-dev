@@ -168,20 +168,10 @@ export function buildMemoryCapability(
     throw new Error('Digest requires semantic memory to be configured')
   }
 
-  // Validate: relations requires semantic (FIX-745). Relations live on the
-  // semantic store's edge slot — without semantic there is nothing to attach
-  // them to. `semantic: true` has no `relations` field, so this only fires for
-  // an explicit object config that set `relations` with semantic absent — but
-  // since `relations` nests under `semantic`, that shape is unreachable; the
-  // guard documents the invariant and catches untyped callers.
-  if (
-    options.semantic &&
-    options.semantic !== true &&
-    options.semantic.relations &&
-    !options.episodic
-  ) {
-    throw new Error('Relations require episodic memory (via semantic) to be configured')
-  }
+  // Relations nest under `semantic`, so "relations require semantic" is already
+  // enforced structurally, and "relations require episodic" is covered by the
+  // semantic-requires-episodic guard above (relations can't be set without
+  // semantic). No separate relations guard is needed.
 
   // Validate: model is required for the recall tool's filter strategy.
   // TypeScript enforces this at compile time; this guard catches untyped callers.
@@ -293,11 +283,13 @@ export function buildMemoryCapability(
         /** Cross-store recall — queries all configured stores, deduplicates, ranks by relevance. */
         recall: (cue?: string) => recallFn(ctx, cue),
         /**
-         * Ego-graph edges around `entity` (relations tier, FIX-745). Returns
-         * `[]` when relations are disabled. Entity is canonicalized (trim +
-         * lowercase) to match stored edge endpoints.
+         * Direct neighbour edges around `entity` — exactly 1 hop (relations
+         * tier, FIX-745). Returns `[]` when relations are disabled. Entity is
+         * canonicalized (trim + lowercase) to match stored edge endpoints. For a
+         * multi-hop neighbourhood use `egoGraph(entity, { depth })`; `depth` is
+         * intentionally not accepted here.
          */
-        connections: (entity: string, opts?: TraversalOpts): Edge[] =>
+        connections: (entity: string, opts?: Omit<TraversalOpts, 'depth'>): Edge[] =>
           edges ? edges.neighbors(canonicalizeSubject(entity) as NodeRef, opts) : [],
         /**
          * Shortest-path edges between two entities, or `null` if unreachable /

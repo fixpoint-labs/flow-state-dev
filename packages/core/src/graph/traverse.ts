@@ -29,10 +29,14 @@ export type TraversalOpts = {
 
 /** Edges valid at `at` (default: now). Active = validFrom is null or <= at, AND validUntil is null or > at. */
 export function activeAt(edges: Edge[], at?: string): Edge[] {
-  const instant = at ?? new Date().toISOString();
+  // Compare parsed instants, not raw ISO strings: caller-supplied timestamps
+  // (`at`, `validFrom`, `supersede(id, at)`) may carry different fractional-
+  // second precision, and lexicographic order misranks those (e.g.
+  // "…:00.500Z" sorts before "…:00Z").
+  const instant = at !== undefined ? Date.parse(at) : Date.now();
   return edges.filter((e) => {
-    const startsOk = e.validFrom === null || e.validFrom <= instant;
-    const endsOk = e.validUntil === null || e.validUntil > instant;
+    const startsOk = e.validFrom === null || Date.parse(e.validFrom) <= instant;
+    const endsOk = e.validUntil === null || Date.parse(e.validUntil) > instant;
     return startsOk && endsOk;
   });
 }

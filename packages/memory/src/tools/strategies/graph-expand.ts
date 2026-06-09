@@ -17,7 +17,7 @@ import type { Edge } from '@flow-state-dev/core/graph'
 import { egoGraph } from '@flow-state-dev/core/graph'
 import { edgeToMemoryItem } from '../types'
 import type { MemoryItem } from '../types'
-import { extractExactPhrases } from './llm-filter-strategy'
+import { extractExactPhrases } from './query-phrases'
 
 /** Default ego-graph depth for query-driven expansion. */
 const DEFAULT_EXPAND_DEPTH = 2

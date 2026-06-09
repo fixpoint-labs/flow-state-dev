@@ -29,6 +29,7 @@ import type { WorkingMemoryState } from '../../working-memory'
 import { allFacts } from '../../semantic-memory-helpers'
 import { effectiveConfidence } from '../../janitor'
 import { graphExpandCandidates } from './graph-expand'
+import { extractExactPhrases } from './query-phrases'
 import { edgesOf } from '../../internal/helpers'
 import type {
   MemoryItem,
@@ -66,7 +67,6 @@ export const RECENCY_HALF_LIFE = 50
 export const EXACT_PHRASE_CAP = 5
 
 /** Minimum word count for an exact-phrase match candidate. */
-const EXACT_PHRASE_MIN_WORDS = 3
 
 /**
  * Intrinsic score for a semantic fact (no query component).
@@ -137,23 +137,9 @@ export function episodeToMemoryItem(episode: Episode): MemoryItem {
   }
 }
 
-/**
- * Extract contiguous phrases of `EXACT_PHRASE_MIN_WORDS`+ words from the query.
- *
- * Whitespace splits only — no tokenisation tricks. Phrases overlap; a 5-word
- * query produces (5-3)+(5-4)+(5-5) = 3 phrases at min-len 3.
- */
-export function extractExactPhrases(query: string): string[] {
-  const words = query.trim().split(/\s+/).filter((w) => w.length > 0)
-  if (words.length < EXACT_PHRASE_MIN_WORDS) return []
-  const phrases: string[] = []
-  for (let len = EXACT_PHRASE_MIN_WORDS; len <= words.length; len++) {
-    for (let start = 0; start + len <= words.length; start++) {
-      phrases.push(words.slice(start, start + len).join(' '))
-    }
-  }
-  return phrases
-}
+// `extractExactPhrases` lives in `./query-phrases` so graph-expand can share it
+// without a cycle back to this module. Re-exported here for existing consumers.
+export { extractExactPhrases }
 
 /**
  * Stage 1.5: scan non-pre-ranked items for literal phrase matches.

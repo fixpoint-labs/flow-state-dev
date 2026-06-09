@@ -339,7 +339,7 @@ describe('memory/relations ENABLED', () => {
       facts: [],
       edges: [{
         from: 'User', to: 'Moni', type: 'married to',
-        confidence: 0.9, action: 'new', targetEdgeId: '',
+        confidence: 0.9, sourceEpisodeIds: ['ep1', 'ep2'], action: 'new', targetEdgeId: '',
       }],
     } as any)
 
@@ -349,9 +349,8 @@ describe('memory/relations ENABLED', () => {
     expect(edges[0].to).toBe('moni')
     expect(edges[0].type).toBe('married to')
     expect(edges[0].confidence).toBe(0.9)
-    // Provenance: empty here (no source episode ids on the edge proposal),
-    // but the field is present so recall can attribute later.
-    expect(Array.isArray(edges[0].source)).toBe(true)
+    // Provenance: the episode ids the relation was derived from are persisted.
+    expect(edges[0].source).toEqual(['ep1', 'ep2'])
   })
 
   it('dedups a duplicate new edge into a reinforcement (single active edge)', async () => {
