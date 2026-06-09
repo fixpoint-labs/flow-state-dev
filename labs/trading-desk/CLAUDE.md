@@ -323,6 +323,54 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   session (option a) — the pane prompts the user to run an analysis first when no
   session exists. Once any session is bound, Add Account / Import work.
 
+## Responsive / mobile layout
+
+The desk branches its **shell** at the `lg` breakpoint (1024px); content
+components and data hooks are shared, never forked (FIX-757). Follows the
+kitchen-sink precedent (FIX-184): both shells render, CSS picks one — no
+`useMediaQuery`, no hydration risk.
+
+- **The two shells live in `app/page.tsx`.** Desktop (`hidden lg:grid`) is the
+  original fixed-viewport grid (`44px / 1fr / 28px` rows, TopBar + view-switched
+  main + StatusBar), unchanged. Mobile (`lg:hidden`, `height: 100svh`) stacks
+  `MobileHeader` → one full-width surface → `MobileStatusLine` → `BottomNav`.
+  The mobile `<main>` is a single-cell grid so each pane stretches to fill both
+  axes without its own sizing classes.
+- **Mobile navigation** (`components/mobile/`): `mobileTab`
+  (`"report" | "transcript" | "portfolio" | "history"`) in `page.tsx` is the
+  single source of truth; it is independent of the desktop `view` state. The
+  bottom tab bar's center **New** slot is an ACTION (opens the New Analysis
+  sheet), never a destination — it must not join the `MobileTab` union. Opening
+  a past report on mobile reuses `handleOpenReport` (tuple-first, zero model
+  spend) and then routes to the Report tab.
+- **Pane reflow rules:** `ThesesPane`'s 200px `MemoSidebar` is `hidden lg:block`
+  inline and opens as a slide-in overlay drawer below `lg` (the "Phases"
+  button). `HoldingsTable` renders the 8-column table only when its own
+  container is ≥ `@3xl` (a CSS container query, not a viewport breakpoint) and
+  stacks one card per holding below that — both layouts read the SAME
+  `buildHoldingRowModel` view model (`test/holdings-row-model.spec.ts`), so the
+  real-money `—`-for-missing gate and P/L coloring hold in both by
+  construction.
+- **The StatusBar splits on mobile.** Run metrics condense into
+  `MobileStatusLine`; the instructions gear moves to `MobileHeader`; the
+  not-advice disclaimer — a real-money gate — stays visible in the mobile shell
+  (it renders in `MobileStatusLine`, above the tab bar). Never ship a mobile
+  layout that hides it.
+- **Chrome conventions:** the mobile shell uses `100svh` (NOT `vh`, which
+  overflows behind mobile browser toolbars, and NOT `dvh`, which reflows on
+  scroll), plus `env(safe-area-inset-top/bottom)` on the header/tab bar.
+  `viewport-fit=cover` is set via the `viewport` export in `app/layout.tsx` —
+  removing it silently zeroes every safe-area inset.
+- **Dialogs are bottom sheets below `lg`.** Every native `<dialog>` carries
+  the `td-sheet` class; the shared sheet geometry (bottom-pinned, full-width,
+  `85svh` cap, safe-area padding) and the slide-up entry live in ONE
+  `globals.css` rule under `@media (width < 64rem)` — the exact boundary
+  Tailwind compiles `lg` to, and unlayered so it beats the dialogs' layered
+  utilities. Dialogs also carry `m-auto` so the desktop modal is actually
+  centered (Tailwind preflight zeroes the UA `dialog` margin). No drawer
+  dependency — native `<dialog>` already provides the focus trap, ESC, and
+  backdrop.
+
 ## Portfolio-aware analysis + lens pack (Slice 5)
 
 A run can carry the live portfolio so the trader and the PM size against real

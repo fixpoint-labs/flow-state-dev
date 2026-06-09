@@ -35,6 +35,7 @@ import {
   useState,
   type ReactElement,
 } from "react";
+import { PanelLeft } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
 import {
   useClientData,
@@ -106,6 +107,9 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
   const userSelectedRef = useRef(false);
   const [tab, setTab] = useState<"theses" | "summary">("theses");
   const userPickedTabRef = useRef(false);
+  // Below `lg` the memo navigator opens as a slide-in drawer (FIX-757); the
+  // inline 200px sidebar would eat half a phone's width.
+  const [navOpen, setNavOpen] = useState(false);
 
   // Authoritative completion flag, read from the exposed session state. Stable
   // across a transient stream re-attach (opening a stored report can briefly
@@ -196,12 +200,52 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
       aria-label="Theses"
     >
       <MemoSidebar
+        className="hidden lg:block"
         memoStatus={memoStatus}
         selectedAgent={selectedAgent}
         onSelectAgent={handleSelectAgent}
       />
-      <div className="flex flex-1 flex-col overflow-y-auto p-6">
-        <TabSwitch tab={tab} onPick={handlePickTab} />
+      {navOpen ? (
+        <div
+          className="fixed inset-0 z-40 flex bg-black/40 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Theses navigator"
+        >
+          <MemoSidebar
+            className="h-full w-[260px] max-w-[85vw] shadow-2xl"
+            memoStatus={memoStatus}
+            selectedAgent={selectedAgent}
+            onSelectAgent={(agent) => {
+              setNavOpen(false);
+              handleSelectAgent(agent);
+            }}
+          />
+          {/* Backdrop — spans the rest of the overlay; tap to dismiss. */}
+          <button
+            type="button"
+            className="flex-1"
+            aria-label="Close theses navigator"
+            onClick={() => setNavOpen(false)}
+          />
+        </div>
+      ) : null}
+      <div className="flex flex-1 flex-col overflow-y-auto p-6 max-lg:p-4">
+        <div className="mb-4 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setNavOpen(true)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md border px-2 py-1 lg:hidden",
+              "border-[color:var(--c-border)] text-[color:var(--c-fg-muted)]",
+              "font-mono text-[10.5px] uppercase tracking-wider",
+            )}
+          >
+            <PanelLeft className="h-3.5 w-3.5" aria-hidden />
+            Phases
+          </button>
+          <TabSwitch tab={tab} onPick={handlePickTab} />
+        </div>
         {tab === "summary" ? (
           <ReportSummary session={session} />
         ) : selectedAgent === null ? (
@@ -226,11 +270,7 @@ function TabSwitch({
   onPick: (next: "theses" | "summary") => void;
 }): ReactElement {
   return (
-    <div
-      className="mb-4 flex gap-1"
-      role="tablist"
-      aria-label="Report view"
-    >
+    <div className="flex gap-1" role="tablist" aria-label="Report view">
       {(["theses", "summary"] as const).map((value) => (
         <button
           key={value}
