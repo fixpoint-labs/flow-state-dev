@@ -479,6 +479,12 @@ function TradingDeskApp(): ReactElement {
         onUserThesisRationaleChange={setUserThesisRationale}
         onSubmit={() => {
           void handleRun();
+          // Land the mobile shell on the Report surface so the new run's
+          // stream is visible — submitting from Portfolio/History would
+          // otherwise start the run on a tab that doesn't show it. The
+          // desktop `view` is deliberately untouched (pre-existing behavior:
+          // desktop runs stream into whichever view is showing).
+          setMobileTab("report");
         }}
         isRunning={session.isStreaming}
         isExistingSession={isExistingSession}
