@@ -120,6 +120,11 @@ function decision(opts: {
       suggestedAccount: "",
       convictionBasis: "",
     },
+    mandateFit: {
+      rewardToRiskRead: "",
+      sizeStance: "",
+      mandateOverrideReason: "",
+    },
   };
 }
 

@@ -33,6 +33,7 @@ import {
   portfolioQuotesResource,
 } from "../../portfolio/portfolio-resources";
 import { buildPortfolioContext } from "../build-portfolio-context";
+import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 
 /**
  * Patches session state from action input and clears any memos a prior run
@@ -87,6 +88,16 @@ export const seedSession = handler({
     const q = ctx.resources.portfolioQuotes.state; // nullable single-resource read
     const portfolio = buildPortfolioContext(scoped, q?.quotes ?? [], q?.fetchedAt ?? null);
 
+    // Resolve the effective risk-appetite mandate (FIX-752): a per-run override
+    // wins; else the most-conservative default among the SELECTED accounts (the
+    // ones this trade is for); else null (mandate-blind). Frozen as the full dial
+    // object so the reward-to-risk tap and the PM commit read it without
+    // re-resolving — the `portfolio`-snapshot precedent. An unknown / stale
+    // stored id resolves to null, never throws.
+    const riskMandate =
+      resolveMandate(input.riskMandate) ??
+      mostConservativeMandate(scoped.map((a) => a.riskMandate));
+
     await ctx.session.patchState({
       ticker: input.ticker,
       date: input.date,
@@ -108,6 +119,8 @@ export const seedSession = handler({
       // (was: input.portfolio). Null → portfolio-blind run.
       portfolio,
       selectedAccountIds: input.selectedAccountIds,
+      // Effective risk-appetite mandate (FIX-752), frozen for the run.
+      riskMandate,
     });
     return input;
   },

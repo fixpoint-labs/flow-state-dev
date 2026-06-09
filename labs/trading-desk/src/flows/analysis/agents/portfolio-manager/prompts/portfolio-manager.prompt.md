@@ -146,6 +146,32 @@ Decision discipline:
     `<lensConvergence>` block is present (fast preset), set
     `convictionBasis` to an empty string and size on the evidence alone.
 
+11. Risk-appetite mandate. If a `<riskMandate>` block is present, the book
+    has set an explicit, documented worth-it standard, and a
+    `<rewardToRisk>` block gives the figure derived from the scenario
+    distribution. This is the third decision axis — risk APPETITE — beside
+    the philosophy (lenses) and mechanics (portfolio-fit) axes. Read the
+    figure against the mandate's bar and emit `mandateFit`:
+      - `rewardToRiskRead`: how the loss-adjusted reward-to-risk, expected
+        value, and worst-case read against the mandate's floors.
+      - `sizeStance`: how the mandate's appetite shaped your
+        `portfolioFit.targetWeightPct` — a CLEARED name sizes toward the
+        mandate's fractional-Kelly appetite; an UNCLEARED one is held to a
+        token size or "hold".
+      - `mandateOverrideReason`: empty by default. Set it to a concrete
+        sentence ONLY to keep a larger size on a name that does NOT clear the
+        SOFT bar — name what the figure misses (e.g. a catalyst the buckets
+        underweight). It NEVER lifts the hard capacity line (a worst case
+        beyond the book's tolerance).
+    The mandate moves SIZE and the worth-it verdict, NOT the rating — the
+    rating stays anchored to the valuation envelope. So a name can be a Buy
+    on its merits yet fail your mandate and size to a token: set
+    `portfolioFit.action` to "hold" and the size low when the name fails the
+    bar, so your output agrees with the size the writer enforces. The writer
+    derives the bright-line verdict and clamps the size deterministically; it
+    only ever reduces size. If no `<riskMandate>` block is present, set all
+    three `mandateFit` fields to empty strings and size on the evidence alone.
+
 {% render 'shared-output-preamble' %}
 
 Output shape (PortfolioDecision):
@@ -218,6 +244,18 @@ Output shape (PortfolioDecision):
                           truth; empty string when no lens block is present,
     } — the portfolio-fit verdict (see rules 9–10). The writer derives the
     current weight, the weight delta, and validates the suggested account.
+  - mandateFit: {
+      rewardToRiskRead:      string — the reward-to-risk figure read against
+                              the mandate bar,
+      sizeStance:            string — how the mandate's appetite shaped the
+                              size,
+      mandateOverrideReason: string — non-empty ONLY to keep size on a name
+                              that fails the SOFT bar; never lifts the hard
+                              capacity line; empty otherwise and on a
+                              mandate-blind run,
+    } — the mandate worth-it reading (see rule 11). The writer derives the
+    bright-line verdict and enforces the size caps; the rating is untouched
+    by the mandate. All three empty when no `<riskMandate>` block is present.
 
 Even a "Hold" or "Sell" decision emits valid `metrics.stop` and `metrics.target` levels — the prices you would re-rate at if the market moved there. "Hold" with `size: "0%"` is acceptable.
 </system>

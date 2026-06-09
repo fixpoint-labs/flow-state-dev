@@ -338,6 +338,11 @@ function portfolioManagerStructuredOutput(
         suggestedAccount: "",
         convictionBasis: "",
       },
+      mandateFit: {
+        rewardToRiskRead: "",
+        sizeStance: "",
+        mandateOverrideReason: "",
+      },
     },
   };
 }
