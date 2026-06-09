@@ -94,16 +94,23 @@ export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
         },
       });
 
+      if (result.error) {
+        if (isNonRetryable(result.error)) {
+          if (publisher) {
+            await publisher.publishTerminal(result).catch(() => {});
+            terminalPublished = true;
+          }
+          throw new UnrecoverableError(result.error.message);
+        }
+        // Retryable error: don't publish terminal yet — BullMQ will retry
+        // and the subscriber needs to stay alive to receive the eventual
+        // success or final-failure terminal.
+        throw new Error(result.error.message);
+      }
+
       if (publisher) {
         await publisher.publishTerminal(result).catch(() => {});
         terminalPublished = true;
-      }
-
-      if (result.error) {
-        if (isNonRetryable(result.error)) {
-          throw new UnrecoverableError(result.error.message);
-        }
-        throw new Error(result.error.message);
       }
 
       return result;
