@@ -22,7 +22,6 @@ export interface FlowJobData {
   tenantId?: string;
   source?: string;
   metadata?: Record<string, unknown>;
-  idempotencyKey?: string;
   requestId?: string;
 }
 

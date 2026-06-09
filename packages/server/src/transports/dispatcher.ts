@@ -23,7 +23,6 @@ export interface DispatchEnvelope {
   tenantId?: string;
   source?: string;
   metadata?: Record<string, unknown>;
-  idempotencyKey?: string;
 }
 
 /**

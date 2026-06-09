@@ -131,16 +131,6 @@ export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
   });
 }
 
-/** Error codes / types that should not be retried. */
-function isNonRetryable(error: { code?: string; type?: string }): boolean {
-  const nonRetryableCodes = [
-    "VALIDATION_ERROR",
-    "FLOW_NOT_FOUND",
-    "ACTION_NOT_FOUND",
-  ];
-  return (
-    nonRetryableCodes.includes(error.code ?? "") ||
-    error.type === "validation" ||
-    error.type === "permanent"
-  );
+function isNonRetryable(error: { retryable?: boolean }): boolean {
+  return error.retryable !== true;
 }

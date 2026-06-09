@@ -11,7 +11,7 @@ function createMockQueue() {
 describe("createBullmqScheduleIndex", () => {
   it("upsert calls queue.upsertJobScheduler with correct args", async () => {
     const queue = createMockQueue();
-    const index = createBullmqScheduleIndex(queue);
+    const index = createBullmqScheduleIndex(queue, { flowKind: "weekly-digest" });
 
     await index.upsert({
       userId: "user-1",
@@ -27,6 +27,7 @@ describe("createBullmqScheduleIndex", () => {
       {
         name: "schedule-fire",
         data: {
+          flowKind: "weekly-digest",
           userId: "user-1",
           key: "daily-report",
           cron: "0 9 * * *",
@@ -38,7 +39,7 @@ describe("createBullmqScheduleIndex", () => {
 
   it("upsert omits tz when timezone is undefined", async () => {
     const queue = createMockQueue();
-    const index = createBullmqScheduleIndex(queue);
+    const index = createBullmqScheduleIndex(queue, { flowKind: "weekly-digest" });
 
     await index.upsert({
       userId: "user-1",
@@ -53,14 +54,14 @@ describe("createBullmqScheduleIndex", () => {
 
   it("claimDue always returns empty array (native firing)", async () => {
     const queue = createMockQueue();
-    const index = createBullmqScheduleIndex(queue);
+    const index = createBullmqScheduleIndex(queue, { flowKind: "weekly-digest" });
     const result = await index.claimDue(Date.now());
     expect(result).toEqual([]);
   });
 
   it("remove calls queue.removeJobScheduler with correct id", async () => {
     const queue = createMockQueue();
-    const index = createBullmqScheduleIndex(queue);
+    const index = createBullmqScheduleIndex(queue, { flowKind: "weekly-digest" });
     await index.remove("user-1", "daily-report");
     expect(queue.removeJobScheduler).toHaveBeenCalledWith(
       "fsd-sched:user-1:daily-report"
@@ -70,6 +71,7 @@ describe("createBullmqScheduleIndex", () => {
   it("uses custom scheduler id prefix", async () => {
     const queue = createMockQueue();
     const index = createBullmqScheduleIndex(queue, {
+      flowKind: "weekly-digest",
       schedulerIdPrefix: "myapp-sched"
     });
 

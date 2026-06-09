@@ -152,9 +152,11 @@ export const flowstate = createFlowState({
   },
 });
 
-// Co-located worker: when REDIS_URL is set, start a worker in the same process
-// that processes enqueued jobs. Build deps from the same config used by createFlowState.
-if (bullmqRuntime && redisUrl) {
+// Co-located worker: only start when FSD_BULLMQ_DISPATCH=1 so the worker
+// shares stores with the web runtime via sharedDevStores. Without dispatch
+// mode, there's no store-sharing guarantee and the worker would silently
+// persist to a disconnected store instance.
+if (bullmqRuntime && bullmqDispatch && redisUrl) {
   const registry = createFlowRegistry();
   registry.register(chatAgentFlow);
   registry.register(richTextComponentFlow);
@@ -201,11 +203,7 @@ if (bullmqRuntime && redisUrl) {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 
-  console.log(
-    bullmqDispatch
-      ? "[flowstate] BullMQ co-located worker + dispatcher active (all actions route through queue)"
-      : "[flowstate] BullMQ co-located worker started (enqueue-only, actions run in-process)"
-  );
+  console.log("[flowstate] BullMQ co-located worker + dispatcher active (all actions route through queue)");
 }
 
 export { bullmqRuntime };

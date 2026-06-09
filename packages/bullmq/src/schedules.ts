@@ -103,7 +103,6 @@ export function createScheduleDispatchWorker(
     const data = job.data;
     const flowKind = data.flowKind;
     const scheduleId = data.key ?? data.scheduleName;
-    const userId = data.userId ?? "system";
 
     if (!flowKind || !scheduleId) {
       throw new UnrecoverableError(
@@ -111,25 +110,32 @@ export function createScheduleDispatchWorker(
       );
     }
 
-    const url = `${baseUrl}/api/flows/${encodeURIComponent(flowKind)}/schedules/${encodeURIComponent(userId)}/${encodeURIComponent(scheduleId)}/dispatch`;
+    // Static schedules (from registerStaticSchedules) have no userId;
+    // user-scoped schedules (from the schedule index) carry userId.
+    // The dispatch endpoint looks up static keys as bare names, so only
+    // include the userId segment for user-scoped jobs.
+    const userId = data.userId;
+    const pathSegment = userId !== undefined
+      ? `${encodeURIComponent(userId)}/${encodeURIComponent(scheduleId)}`
+      : encodeURIComponent(scheduleId);
+    const url = `${baseUrl}/api/flows/${encodeURIComponent(flowKind)}/schedules/${pathSegment}/dispatch`;
+
+    const nominalFireTime = new Date(job.timestamp ?? Date.now()).toISOString();
     const response = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${secret}`,
         "Content-Type": "application/json",
-        "x-nominal-fire-time": String(job.timestamp ?? Date.now()),
       },
-      body: JSON.stringify({
-        action: data.actionName ?? "default",
-      }),
+      body: JSON.stringify({ nominalFireTime }),
     });
 
     onDispatch?.(
-      { scheduleId: `${userId}/${scheduleId}`, flowKind },
+      { scheduleId: userId !== undefined ? `${userId}/${scheduleId}` : scheduleId, flowKind },
       response.status
     );
 
-    if (!response.ok && response.status !== 409) {
+    if (!response.ok) {
       throw new Error(
         `Schedule dispatch failed: ${response.status} ${response.statusText}`
       );

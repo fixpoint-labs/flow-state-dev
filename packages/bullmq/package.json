@@ -71,6 +71,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
     "bullmq": "^5.0.0",
     "ioredis": "^5.0.0"

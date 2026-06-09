@@ -55,7 +55,6 @@ export function createWorkerDispatcher(
           tenantId: envelope.tenantId,
           source: envelope.source,
           metadata: envelope.metadata,
-          idempotencyKey: envelope.idempotencyKey,
           requestId: envelope.requestId,
         },
         jobOpts
