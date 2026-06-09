@@ -1,11 +1,22 @@
 /**
  * Portfolio-manager commit handler (runs second in Phase 5, terminal).
  *
- *   - `commitPortfolioManagerMemo` — derives two structural fields at
- *     commit time (`agreesWithTrader` from the trader memo's direction vs
- *     the PM's final rating; `upstreamReferences` from the canonical key
- *     maps), enforces trader-dependency lineage, publishes the memo, then
- *     flips `session.runComplete` so the navigator renders a terminal state.
+ *   - `commitPortfolioManagerMemo` — the terminal commit. It does several
+ *     deterministic jobs the LLM is NOT trusted with, then publishes the memo,
+ *     writes the durable decision snapshot, and flips `session.runComplete`:
+ *       1. derives `agreesWithTrader` (trader direction vs the PM's rating) and
+ *          `upstreamReferences` (from the canonical key maps);
+ *       2. enforces trader-dependency lineage (throws `lineage-violation` →
+ *          memo flips to `error`);
+ *       3. clamps `finalRating` to the FIX-715 valuation envelope (logged escape);
+ *       4. derives the FIX-728 portfolio-fit echo fields (current weight, delta,
+ *          validated suggested account);
+ *       5. applies the FIX-752 risk-mandate SIZE gate — derives the worth-it
+ *          verdict and clamps `targetWeightPct` (hard capacity veto, then soft
+ *          worth-it cap); the mandate never touches `finalRating`.
+ *
+ * The mandate gate and the valuation clamp are independent: the valuation
+ * envelope bounds the rating; the mandate bounds the size. Both only reduce.
  *
  * The `runComplete` patch is inline at the end of the PM handler — not
  * abstracted into a factory callback. This is the cleanest expression of

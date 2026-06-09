@@ -80,6 +80,12 @@ export type RiskMandate = z.infer<typeof riskMandateSchema>;
  * The mandate pack. Three deliberately-differentiated presets spanning a
  * retiree's income book through a volatility-hungry growth fund. Adding or
  * retuning a mandate is one edit here (config-as-data).
+ *
+ * INVARIANT: keep `capacityVetoCapPct ≤ unclearedCapPct` for every preset. The PM
+ * commit applies the hard capacity veto BEFORE the soft worth-it cap and relies on
+ * the capacity cap being the tighter of the two, so the soft cap never has to fire
+ * after a capacity clamp. A violation would still be safe (both caps only reduce
+ * size) but would muddy the gate's reasoning.
  */
 export const MANDATE_PACK: readonly RiskMandate[] = [
   {

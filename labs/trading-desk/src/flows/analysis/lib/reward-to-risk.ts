@@ -89,7 +89,11 @@ export function computeRewardToRisk(args: {
   let expectedGainPct = 0;
   let expectedLossPct = 0;
   let probGain = 0;
-  let worstCaseReturnPct = scenarios[0].expectedReturnPct;
+  // Seed to +Infinity (not bucket 0's raw value) so the running-min below picks
+  // up the first sanitized return — keeps the seed consistent with the
+  // finiteness-guarded accumulators. `scenarios` is non-empty here (the empty
+  // case returned above), so the loop always sets a finite value.
+  let worstCaseReturnPct = Infinity;
 
   for (const s of scenarios) {
     const r = Number.isFinite(s.expectedReturnPct) ? s.expectedReturnPct : 0;

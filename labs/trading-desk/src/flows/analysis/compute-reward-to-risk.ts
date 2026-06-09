@@ -31,15 +31,22 @@ export const computeAndStoreRewardToRisk = handler({
       expectedReturnPct: number | null;
     }>;
     // Only buckets with a numeric return feed the metric; a forecaster that
-    // produced none (absent / errored memo, or all returns null) leaves the
-    // resource null and the run gates mandate-blind.
+    // produced none (absent / errored memo, or all returns null) gates the run
+    // mandate-blind.
     const usable = scenarios
       .filter((s) => s.expectedReturnPct != null)
       .map((s) => ({
         probability: s.probability,
         expectedReturnPct: s.expectedReturnPct as number,
       }));
-    if (usable.length === 0) return;
+    // Clear any prior-run figure on the no-usable-buckets path so a re-run on the
+    // same session cannot gate from STALE scenario math (the `resetLensConvergence`
+    // precedent). `setState(null)` replaces the whole nullable state; `patchState`
+    // (a merge) cannot express null.
+    if (usable.length === 0) {
+      await ctx.resources.rewardToRisk.setState(null);
+      return;
+    }
 
     const mandate = ctx.session.state.riskMandate;
     const lossAversion = mandate?.lossAversion ?? 1;

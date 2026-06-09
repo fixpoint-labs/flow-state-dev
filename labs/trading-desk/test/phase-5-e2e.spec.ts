@@ -444,9 +444,9 @@ function makeUpstreamMocks() {
             metrics: { horizon: "months", distribution: "concentrated", buckets: "3 scenarios", evidence: "sufficient" },
             body: [{ h: "Summary", p: "Base case dominant.", items: null }],
             scenarios: [
-              { name: "Base", probability: 0.55, trigger: "t", triggerSource: "investmentThesis", expectedOutcome: "o", tradeBehavior: "b" },
-              { name: "Up", probability: 0.25, trigger: "t", triggerSource: "tradeProposal", expectedOutcome: "o", tradeBehavior: "b" },
-              { name: "Down", probability: 0.20, trigger: "t", triggerSource: "riskAssessment", expectedOutcome: "o", tradeBehavior: "b" },
+              { name: "Base", probability: 0.55, trigger: "t", triggerSource: "investmentThesis", expectedOutcome: "o", expectedReturnPct: 4, tradeBehavior: "b" },
+              { name: "Up", probability: 0.25, trigger: "t", triggerSource: "tradeProposal", expectedOutcome: "o", expectedReturnPct: 12, tradeBehavior: "b" },
+              { name: "Down", probability: 0.20, trigger: "t", triggerSource: "riskAssessment", expectedOutcome: "o", expectedReturnPct: -8, tradeBehavior: "b" },
             ],
             distribution: "concentrated",
             evidenceBasis: "sufficient",
