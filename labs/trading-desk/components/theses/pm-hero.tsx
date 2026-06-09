@@ -15,6 +15,7 @@ import {
   type AgentName,
 } from "@/src/flows/analysis/registry";
 import { ThesisBody } from "./thesis-body";
+import { pctOrDash, verdictColor } from "./mandate-helpers";
 import type {
   MemoState,
   ThesisSection,
@@ -365,20 +366,6 @@ function classificationColor(c: LensConvergence["classification"]): string {
   if (c === "convergent") return "var(--c-live)";
   if (c === "divergent") return "var(--c-warn)";
   return "var(--c-fg-muted)";
-}
-
-/** Mandate verdict → classification-pill color. `clears` reads positive (live);
- *  `fails` reads cautionary (warn). Mirrors the lens classification-pill idiom. */
-function verdictColor(verdict: MandateDecision["verdict"]): string {
-  return verdict === "clears" ? "var(--c-live)" : "var(--c-warn)";
-}
-
-/** Format a signed percentage figure, or `—` when the number is absent. The
- *  real-money gate: a missing reward-to-risk input is never fabricated. */
-function pctOrDash(value: number | null, signed = false): string {
-  if (value === null) return "—";
-  const sign = signed && value >= 0 ? "+" : "";
-  return `${sign}${value.toFixed(1)}%`;
 }
 
 /**

@@ -236,6 +236,39 @@ describe("Phase 5 risk-mandate size gate", () => {
     expect(d.portfolioFit.targetWeightPct).toBe(0.5);
   });
 
+  it("still applies the soft gate to a thin-evidence figure (clamps a weak figure down)", async () => {
+    // A thin figure (the PM is told it's indicative only) is still gated
+    // deterministically: clamping a weak figure DOWN is the cautious default, and
+    // the PM retains the override to push back. Relaxing the soft cap on thin
+    // would let thin figures size UP — the wrong default for a cautious book.
+    const d = await commit({
+      mandateId: "conservative-income",
+      fig: {
+        evidenceBasis: "thin",
+        lossAdjustedGlr: 1.0,
+        expectedValuePct: 8,
+        worstCaseReturnPct: -10,
+      },
+      decision: { targetWeightPct: 2.5, decisionConfidence: 0.75 },
+    });
+    expect(d.portfolioFit.targetWeightPct).toBe(0.5);
+    expect(d.mandateDecision?.verdict).toBe("fails");
+    expect(d.mandateDecision?.sizeClamped).toBe(true);
+  });
+
+  it("fails the hard capacity gate CLOSED when the worst case is unknown (null)", async () => {
+    // A hard safety gate never silently passes an unknown worst case. (Today this
+    // only arises from a future partial patch; the figure always carries a
+    // worst case when the forecaster produced buckets.)
+    const d = await commit({
+      mandateId: "balanced", // capacityVetoCapPct 0.5
+      fig: { worstCaseReturnPct: null, lossAdjustedGlr: 3.0, expectedValuePct: 8 },
+      decision: { targetWeightPct: 2.5, decisionConfidence: 0.75 },
+    });
+    expect(d.mandateDecision?.capacityVetoed).toBe(true);
+    expect(d.portfolioFit.targetWeightPct).toBe(0.5);
+  });
+
   it("never clamps the rating — a Buy stays a Buy even when the size is gated down", async () => {
     const d = await commit({
       mandateId: "conservative-income",

@@ -215,9 +215,12 @@ export const commitPortfolioManagerMemo = handler({
         rr.expectedValuePct != null && rr.expectedValuePct >= mandate.hurdleReturnPct;
       const confidenceCleared = decision.decisionConfidence >= mandate.confidenceFloor;
       const cleared = rrCleared && hurdleCleared && confidenceCleared;
-      // Hard capacity line: the worst-case bucket must be within tolerance.
+      // Hard capacity line: the worst-case bucket must be within tolerance. A
+      // null worst case fails CLOSED — today it only arises when no figure was
+      // computed (the gate is then skipped above), but a hard safety gate must
+      // never silently pass an unknown worst case.
       const capacityCleared =
-        rr.worstCaseReturnPct == null ||
+        rr.worstCaseReturnPct != null &&
         rr.worstCaseReturnPct >= -mandate.maxTolerableLossPct;
       const override = decision.mandateFit.mandateOverrideReason.trim().length > 0;
 

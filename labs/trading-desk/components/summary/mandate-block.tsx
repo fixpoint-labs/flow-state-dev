@@ -19,24 +19,12 @@
  */
 import type { ReactElement } from "react";
 import type { MandateDecision } from "./aggregate";
+import { pctOrDash, verdictColor } from "@/components/theses/mandate-helpers";
 import { cn } from "@/lib/utils";
 
 export type MandateBlockProps = {
   decision: MandateDecision;
 };
-
-/** Verdict → classification-pill color. `clears` reads positive (live); `fails`
- *  reads cautionary (warn). Mirrors the PmHero `verdictColor`. */
-function verdictColor(verdict: MandateDecision["verdict"]): string {
-  return verdict === "clears" ? "var(--c-live)" : "var(--c-warn)";
-}
-
-/** Format a signed percentage figure, or `—` when absent. Mirrors PmHero. */
-function pctOrDash(value: number | null, signed = false): string {
-  if (value === null) return "—";
-  const sign = signed && value >= 0 ? "+" : "";
-  return `${sign}${value.toFixed(1)}%`;
-}
 
 export function MandateBlock({ decision }: MandateBlockProps): ReactElement {
   return (
