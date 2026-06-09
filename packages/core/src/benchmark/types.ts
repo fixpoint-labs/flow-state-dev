@@ -16,12 +16,19 @@
 import type { SequencerDefinition } from "../blocks";
 import type { UsesSlot } from "../capability";
 
-/** Coarse task family used to bucket and rank subjects in the scorecard. */
+/**
+ * Coarse task family used to bucket and rank subjects in the scorecard. The
+ * built-in suite uses the four labels below, but a custom suite may use any
+ * string (the `(string & {})` keeps autocomplete for the built-ins while
+ * accepting arbitrary categories).
+ */
 export type BenchmarkCategory =
   | "reasoning"
   | "multi-step-research"
   | "critique-revision"
-  | "tool-use";
+  | "planning"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {});
 
 /**
  * A single benchmark task. The same prompt is fed to every subject (each

@@ -14,6 +14,7 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Command } from "commander";
 import {
+  baselineSubject,
   comparePatterns,
   runBenchmark,
   renderScorecard,
@@ -182,7 +183,17 @@ export async function executeBenchmarkCommand(
 
   let report: BenchmarkReport;
   if (run.subjects !== undefined && run.subjects.length > 0) {
-    report = await runBenchmark({ ...run.config, subjects: run.subjects });
+    // Honor baseline/baselineModels on the explicit-subjects path too, so a
+    // definition with `subjects` and `baseline: true` still gets a control.
+    const subjects = [...run.subjects];
+    if (run.config.baseline !== false) {
+      const baselineModels = run.config.baselineModels ?? [run.config.model];
+      for (const m of baselineModels) {
+        const name = m === run.config.model ? "single-generator" : `pure-${m.split("/").pop()}`;
+        subjects.push(baselineSubject({ model: m, name }));
+      }
+    }
+    report = await runBenchmark({ ...run.config, subjects });
   } else if (run.names !== undefined && run.names.length > 0) {
     if (run.registry === undefined) {
       throw new CliError(

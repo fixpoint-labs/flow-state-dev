@@ -77,7 +77,9 @@ export interface BenchmarkRanking {
   mean: number;
   /** Mean minus the baseline subject's mean (0 when no baseline). */
   deltaVsBaseline: number;
-  /** Whether the delta exceeds the combined subject+baseline stddev. */
+  /** Whether the delta clears ~2× the standard error of the difference of means
+   *  (and both groups have at least 2 runs). False when it could be run-to-run
+   *  noise. */
   credible: boolean;
 }
 

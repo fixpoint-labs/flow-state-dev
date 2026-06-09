@@ -166,6 +166,7 @@ export async function runBenchmark(
         let passed = false;
         let errored = false;
         let costUsd = 0;
+        let latencyMs = 0;
         let output: unknown;
         const codeScores: Record<string, number> = {};
 
@@ -175,11 +176,16 @@ export async function runBenchmark(
             modelResolver: resolverForSubject(subject),
           });
 
+          // Subject-only latency (judge + code scorers excluded), and subject
+          // cost on both paths — a subject can spend real money before erroring,
+          // and that spend must count toward the budget.
+          latencyMs = Date.now() - cellStart;
+          costUsd = sumCostFromItems(res.items);
+
           if (res.error) {
             errored = true;
           } else {
             output = res.output;
-            costUsd = sumCostFromItems(res.items);
             const judged = await judgeForTask(task).score({
               output,
               expected: task.expected as never,
@@ -202,6 +208,7 @@ export async function runBenchmark(
           }
         } catch {
           errored = true;
+          if (latencyMs === 0) latencyMs = Date.now() - cellStart;
         }
 
         totalCostUsd += costUsd;
@@ -219,7 +226,7 @@ export async function runBenchmark(
           passed,
           errored,
           costUsd,
-          latencyMs: Date.now() - cellStart,
+          latencyMs,
           codeScores: scorers.length > 0 ? codeScores : undefined,
         });
       }),

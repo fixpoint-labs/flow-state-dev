@@ -113,7 +113,7 @@ interface BenchmarkRanking {
   subject: string;
   mean: number;            // mean judge score (0-1)
   deltaVsBaseline: number; // mean minus the baseline subject's mean (0 when no baseline)
-  credible: boolean;       // delta exceeds the combined subject+baseline stddev
+  credible: boolean;       // delta clears ~2x the standard error of the difference of means (needs >=2 runs)
 }
 ```
 

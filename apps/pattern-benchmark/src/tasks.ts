@@ -14,7 +14,7 @@
  * - multi-step-research: synthesis that benefits from decomposition + merge.
  * - critique-revision: a flawed input to improve; auditor/debate/review shapes
  *   should out-perform a one-shot answer.
- * - tool-use: tasks that reward explicit step decomposition and sequencing
+ * - planning: tasks that reward explicit step decomposition and sequencing
  *   (planning), even without external tools wired in.
  */
 import type { BenchmarkTask } from "@flow-state-dev/core";
@@ -154,11 +154,11 @@ export const tasks: BenchmarkTask[] = [
   },
 
   // -------------------------------------------------------------------------
-  // tool-use (planning / explicit step decomposition)
+  // planning (explicit step decomposition)
   // -------------------------------------------------------------------------
   {
     id: "plan-incident",
-    category: "tool-use",
+    category: "planning",
     prompt:
       "A production database is at 95% disk and climbing. Produce an ordered, " +
       "step-by-step incident response plan that a single on-call engineer can " +
@@ -171,7 +171,7 @@ export const tasks: BenchmarkTask[] = [
   },
   {
     id: "plan-release",
-    category: "tool-use",
+    category: "planning",
     prompt:
       "Lay out a release checklist for shipping a breaking API change to external " +
       "customers. Decompose it into pre-release, release, and post-release phases, " +
@@ -184,7 +184,7 @@ export const tasks: BenchmarkTask[] = [
   },
   {
     id: "plan-data-pipeline",
-    category: "tool-use",
+    category: "planning",
     prompt:
       "Design the steps to build a nightly data pipeline that ingests CSVs, " +
       "validates them, loads them into a warehouse, and alerts on failure. Present " +

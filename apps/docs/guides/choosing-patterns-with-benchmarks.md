@@ -126,7 +126,7 @@ Reading it:
 - **parallel-tasks trails on reasoning (0.760)** but is competitive on research. The category split is doing its job: there's no single winner, there's a winner per kind of work.
 - **single-generator is the floor.** Every pattern beats it here, which is the result you hope for. If a pattern doesn't beat the baseline, its extra model calls bought you nothing on these tasks.
 
-The `--format json` output adds `rankings`, where each subject carries a `deltaVsBaseline` and a `credible` flag. `credible` is `false` when the delta is smaller than the combined subject-and-baseline stddev. Treat `credible: false` as "no measurable difference," not as a result. It's the harness refusing to call noise a win.
+Every format prints an overall ranking — subject, mean, `Δ vs baseline`, `credible`, and a success ratio — and `--format json` adds the full `rankings` structure. `credible` is `true` only when the delta clears about 2× the standard error of the difference of means and both groups have at least 2 runs; otherwise it stays `false`. Treat `credible: false` as "no measurable difference," not as a result. It's the harness refusing to call noise a win.
 
 ## Honest caveats
 

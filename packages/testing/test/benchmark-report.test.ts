@@ -109,7 +109,7 @@ describe("buildBenchmarkReport", () => {
     expect(stat?.codeScores.exactMatch).toBeCloseTo(0.5, 5);
   });
 
-  it("excludes errored cells from score stats but keeps them in run counts", () => {
+  it("counts errored cells as score 0 in the mean but tracks successfulRuns", () => {
     const runs: BenchmarkRunResult[] = [
       cell({ subject: "rlm", kind: "pattern", score: 0.8, run: 0 }),
       cell({ subject: "rlm", kind: "pattern", score: 0, errored: true, passed: false, run: 1 }),
@@ -121,7 +121,20 @@ describe("buildBenchmarkReport", () => {
     );
     expect(overall?.runs).toBe(2);
     expect(overall?.successfulRuns).toBe(1);
-    expect(overall?.mean).toBeCloseTo(0.8, 5); // errored cell not averaged in
+    // Failures drag the mean down (reliability is part of quality): (0.8 + 0)/2.
+    expect(overall?.mean).toBeCloseTo(0.4, 5);
+  });
+
+  it("withholds credibility when either group has fewer than 2 runs", () => {
+    const runs: BenchmarkRunResult[] = [
+      cell({ subject: "supervisor", kind: "pattern", score: 1.0, run: 0 }),
+      cell({ subject: "single-generator", kind: "baseline", score: 0.1, run: 0 }),
+    ];
+    const report = buildBenchmarkReport(runs, meta);
+    const sup = report.rankings["overall"].find((r) => r.subject === "supervisor");
+    // Big delta, but a single sample has no spread — not credible.
+    expect(sup?.deltaVsBaseline).toBeCloseTo(0.9, 5);
+    expect(sup?.credible).toBe(false);
   });
 });
 
@@ -143,11 +156,15 @@ describe("renderScorecard", () => {
     expect(report.primaryBaseline).toBe("single-generator");
   });
 
-  it("renders a markdown table marking the baseline", () => {
+  it("renders a markdown table marking the baseline plus a ranking with deltas", () => {
     const md = renderScorecard(report, "markdown");
     expect(md).toContain("| Subject |");
     expect(md).toContain("supervisor");
     expect(md).toContain("single-generator (baseline)");
+    // The headline ranking (delta + credible + success) reaches the markdown.
+    expect(md).toContain("### Overall ranking");
+    expect(md).toContain("Δ vs baseline");
+    expect(md).toContain("+0.500"); // supervisor 0.9 vs baseline 0.4
   });
 
   it("renders json that round-trips to the report", () => {
@@ -155,9 +172,11 @@ describe("renderScorecard", () => {
     expect(JSON.parse(json).subjects).toEqual(["supervisor", "single-generator"]);
   });
 
-  it("renders plain aligned text", () => {
+  it("renders plain aligned text with a ranking section", () => {
     const table = renderScorecard(report, "table");
     expect(table).toContain("subject");
+    expect(table).toContain("overall ranking");
+    expect(table).toContain("Δ vs baseline");
     expect(table.split("\n").length).toBeGreaterThanOrEqual(3);
   });
 });

@@ -28,7 +28,7 @@ describe("pattern-benchmark suite", () => {
   it("covers all four categories", () => {
     const categories = new Set(tasks.map((t) => t.category));
     expect(categories).toEqual(
-      new Set(["reasoning", "multi-step-research", "critique-revision", "tool-use"]),
+      new Set(["reasoning", "multi-step-research", "critique-revision", "planning"]),
     );
   });
 

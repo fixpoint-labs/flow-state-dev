@@ -104,7 +104,7 @@ A higher mean is a better-scoring pattern in that category. The stddev is the sp
 `report.rankings` makes the comparison explicit. For each category (and `overall`) it lists subjects sorted by mean, with two fields that earn their keep:
 
 - `deltaVsBaseline` — the subject's mean minus the baseline's mean in that bucket. This is the number that says whether the coordination paid off. A positive delta means the pattern beat the naive single call.
-- `credible` — `false` when the delta is smaller than the combined subject-plus-baseline stddev. A delta inside the noise is not a win. Treat `credible: false` as "no measurable difference," not as a result.
+- `credible` — `true` only when the delta clears about 2× the standard error of the difference of means (and both the subject and the baseline have at least 2 runs). A delta inside the noise, or a run count too small to tell, stays `false`. Treat `credible: false` as "no measurable difference," not as a result.
 
 The report also carries `totalCostUsd`, `budgetExceeded` (true when a cost ceiling stopped the run early), `warnings`, and `timing`. The `markdown` format renders the same table for pasting into a doc or PR; `json` gives you the full report to process.
 
@@ -115,7 +115,7 @@ Grading is LLM-as-judge: a model reads each output and scores it. That's a confl
 - **Blinded.** The judge sees only the task and the output. It never sees which pattern produced the output, so it can't favor one shape over another.
 - **Distinct judge model.** The judge model is separate from the executor model. A model tends to prefer its own family's phrasing; using a different grader removes that thumb on the scale. If you leave `judgeModel` unset it defaults to the executor and the report carries a self-preference warning.
 - **Locked, published rubric.** Each task's grading criteria live on the task and ship with the suite. Anyone can read exactly what the output was scored against. The judge grades the output against those criteria, not against a vague sense of quality.
-- **Repetition with a credibility flag.** Each (subject, task) cell runs `k` times (`runs`, default 3). A delta smaller than the pooled standard deviation is flagged not-credible rather than reported as a win. Noise doesn't get to look like a result.
+- **Repetition with a credibility flag.** Each (subject, task) cell runs `k` times (`runs`, default 3). A delta that doesn't clear ~2× the standard error of the difference of means is flagged not-credible rather than reported as a win, and with fewer than 2 runs credibility is withheld entirely. Noise doesn't get to look like a result.
 
 The honest caveat: the defaults wire one shared generator into every pattern. That isolates the coordination shape, not each pattern's best-tuned roster of specialist models. The numbers are scoped to the task suite and the model you ran. They inform a pattern choice for work like the tasks in the suite. They don't rank the patterns in general.
 

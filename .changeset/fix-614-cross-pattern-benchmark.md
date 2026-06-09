@@ -1,8 +1,8 @@
 ---
-"@flow-state-dev/testing": minor
-"@flow-state-dev/patterns": minor
-"@flow-state-dev/cli": minor
-"@flow-state-dev/core": minor
+"@flow-state-dev/testing": patch
+"@flow-state-dev/patterns": patch
+"@flow-state-dev/cli": patch
+"@flow-state-dev/core": patch
 ---
 
 Add a cross-pattern benchmark harness that runs a fixed task suite across multiple coordination patterns plus a single-generator baseline on one model and produces a comparative scorecard.

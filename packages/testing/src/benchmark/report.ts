@@ -65,11 +65,14 @@ function aggregate(
   category: BenchmarkCategory | "overall",
   cells: BenchmarkRunResult[]
 ): SubjectCategoryStat {
+  // Errored cells count as score 0 (reliability is part of pattern quality), so a
+  // pattern that frequently fails ranks below a steady one. `successfulRuns` is
+  // surfaced separately so a low mean caused by failures is legible.
   const successful = cells.filter((c) => !c.errored);
-  const scores = successful.map((c) => c.score);
+  const scores = cells.map((c) => (c.errored ? 0 : c.score));
   const { mean, stddev } = meanStddev(scores);
-  const passCount = successful.filter((c) => c.passed).length;
-  const passRate = successful.length > 0 ? passCount / successful.length : 0;
+  const passCount = cells.filter((c) => !c.errored && c.passed).length;
+  const passRate = cells.length > 0 ? passCount / cells.length : 0;
   const costUsd = cells.reduce((acc, c) => acc + c.costUsd, 0);
   const meanLatencyMs =
     cells.length > 0 ? cells.reduce((acc, c) => acc + c.latencyMs, 0) / cells.length : 0;
@@ -168,20 +171,24 @@ export function buildBenchmarkReport(
     const baselineStat = entries.find((s) => s.subject === primaryBaseline);
     const baselineMean = baselineStat?.mean ?? 0;
     const baselineStddev = baselineStat?.stddev ?? 0;
-    const baselineN = baselineStat?.successfulRuns ?? 0;
+    const baselineN = baselineStat?.runs ?? 0;
 
     const ranked: BenchmarkRanking[] = entries
       .map((s) => {
         const deltaVsBaseline = round(s.mean - baselineMean);
         // Credible when the delta clears ~2 standard errors of the difference of
-        // means (pooled stddev/sqrt(n)). Unlike summing raw stddevs, this tightens
-        // as repetitions grow, so a real delta gets more credible with more runs
-        // and a delta lost in run-to-run noise is not reported as a win.
+        // means (stddev/sqrt(n) over all runs). It tightens as repetitions grow,
+        // so a delta lost in run-to-run noise is not reported as a win. With
+        // fewer than 2 runs in either group the standard error is undefined
+        // (a single sample has zero spread), so credibility is withheld rather
+        // than trivially asserted.
         const seDiff = Math.sqrt(
-          variancePerN(s.stddev, s.successfulRuns) +
-            variancePerN(baselineStddev, baselineN),
+          variancePerN(s.stddev, s.runs) + variancePerN(baselineStddev, baselineN),
         );
-        const credible = Math.abs(deltaVsBaseline) > 2 * seDiff;
+        const credible =
+          s.runs >= 2 &&
+          baselineN >= 2 &&
+          Math.abs(deltaVsBaseline) > 2 * seDiff;
         return { subject: s.subject, mean: s.mean, deltaVsBaseline, credible };
       })
       .sort((a, b) => b.mean - a.mean);
@@ -232,6 +239,39 @@ function columns(report: BenchmarkReport): Array<BenchmarkCategory | "overall"> 
   return [...report.categories, "overall"];
 }
 
+function fmtDelta(delta: number): string {
+  return `${delta > 0 ? "+" : ""}${delta.toFixed(3)}`;
+}
+
+/**
+ * Builds the overall-ranking rows (the headline result): subjects sorted by
+ * overall mean with Δ vs the primary baseline, the credibility flag, and a
+ * success ratio so failure-driven means are legible. Baselines show "—" for Δ /
+ * credible since they are the reference.
+ */
+function rankingRows(report: BenchmarkReport): string[][] {
+  const lookup = statLookup(report);
+  const baselines = new Set(report.baselineSubjects);
+  const header = ["rank", "subject", "mean", "Δ vs baseline", "credible", "success"];
+  const rows: string[][] = [header];
+
+  (report.rankings["overall"] ?? []).forEach((r, i) => {
+    const overall = lookup.get(`${r.subject}::overall`);
+    const success = overall ? `${overall.successfulRuns}/${overall.runs}` : "—";
+    const isBaseline = baselines.has(r.subject);
+    rows.push([
+      String(i + 1),
+      isBaseline ? `${r.subject} (baseline)` : r.subject,
+      r.mean.toFixed(3),
+      isBaseline ? "—" : fmtDelta(r.deltaVsBaseline),
+      isBaseline ? "—" : r.credible ? "yes" : "no",
+      success,
+    ]);
+  });
+
+  return rows;
+}
+
 /** Render a report as a publishable markdown table. */
 function renderMarkdown(report: BenchmarkReport): string {
   const cols = columns(report);
@@ -249,7 +289,26 @@ function renderMarkdown(report: BenchmarkReport): string {
     lines.push(`| ${[label, ...cells].join(" | ")} |`);
   }
 
+  // Headline ranking — the result people paste into docs.
+  const refNote = report.primaryBaseline ? ` (Δ vs ${report.primaryBaseline})` : "";
+  lines.push("", `### Overall ranking${refNote}`, "");
+  const rows = rankingRows(report);
+  lines.push(`| ${rows[0].join(" | ")} |`);
+  lines.push(`| ${rows[0].map(() => "---").join(" | ")} |`);
+  for (const row of rows.slice(1)) {
+    lines.push(`| ${row.join(" | ")} |`);
+  }
+
   return lines.join("\n");
+}
+
+function renderAligned(rows: string[][]): string {
+  const widths = rows[0].map((_, col) =>
+    Math.max(...rows.map((r) => (r[col] ?? "").length)),
+  );
+  return rows
+    .map((r) => r.map((cell, col) => (cell ?? "").padEnd(widths[col])).join("  "))
+    .join("\n");
 }
 
 /** Render a report as plain aligned text. */
@@ -263,13 +322,13 @@ function renderTable(report: BenchmarkReport): string {
     rows.push([subject, ...cols.map((c) => fmtCell(lookup.get(`${subject}::${c}`)))]);
   }
 
-  const widths = header.map((_, col) =>
-    Math.max(...rows.map((r) => r[col].length))
-  );
-
-  return rows
-    .map((r) => r.map((cell, col) => cell.padEnd(widths[col])).join("  "))
-    .join("\n");
+  const refNote = report.primaryBaseline ? ` (Δ vs ${report.primaryBaseline})` : "";
+  return [
+    renderAligned(rows),
+    "",
+    `overall ranking${refNote}:`,
+    renderAligned(rankingRows(report)),
+  ].join("\n");
 }
 
 /**
