@@ -110,7 +110,6 @@ export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
 
       if (publisher) {
         await publisher.publishTerminal(result).catch(() => {});
-        terminalPublished = true;
       }
 
       return result;
