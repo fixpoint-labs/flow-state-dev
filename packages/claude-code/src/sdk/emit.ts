@@ -44,8 +44,17 @@ export interface EmitState {
     string,
     { id: string; name: string; arguments: string; ownedBy?: string }
   >;
-  /** Open container item ids keyed by sub-agent callId. */
-  readonly openSubagents: Map<string, string>;
+  /**
+   * Open sub-agent containers keyed by sub-agent callId. Carries the container
+   * item id, the synthetic `provenance.blockInstanceId` stamped on the container
+   * (the framework's ownership key — inner items set `ownedBy` to it, see
+   * `docs/architecture/items.md` and react `useContainerItems`), and the fields
+   * the close emission must preserve.
+   */
+  readonly openSubagents: Map<
+    string,
+    { itemId: string; instanceId: string; name: string; label: string; startedAt: number }
+  >;
   /** Distinct SDK tool names observed, in first-seen order. */
   readonly toolsObserved: string[];
   /** Last completed assistant message text (whole or coalesced delta). */
@@ -58,7 +67,10 @@ export function createEmitState(): EmitState {
     message: null,
     reasoning: null,
     openTools: new Map<string, { id: string; name: string; arguments: string; ownedBy?: string }>(),
-    openSubagents: new Map<string, string>(),
+    openSubagents: new Map<
+      string,
+      { itemId: string; instanceId: string; name: string; label: string; startedAt: number }
+    >(),
     toolsObserved: [],
     finalMessage: null,
   };
@@ -103,18 +115,16 @@ function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) 
 const CONVERSATIONAL_VISIBILITY = { client: true, history: true } as const;
 
 /**
- * Resolve the `ownedBy` container id for an item produced inside a sub-agent.
+ * Resolve the `ownedBy` value for an item produced inside a sub-agent.
  * `parentCallId` is the sub-agent's tool-use id (from the SDK message's
  * `parent_tool_use_id`); when a container is open for it, the item nests under
- * that container's item id. Returns `undefined` for top-level items.
+ * that container by carrying its `provenance.blockInstanceId` (the framework's
+ * container-ownership key). Returns `undefined` for top-level items.
  */
 function resolveOwnedBy(state: EmitState, parentCallId: string | undefined): string | undefined {
   if (parentCallId === undefined) return undefined;
-  return state.openSubagents.get(parentCallId);
+  return state.openSubagents.get(parentCallId)?.instanceId;
 }
-
-/** Fallback block name used when re-deriving provenance for a close emission. */
-const DEFAULT_AGENT_NAME = "claude-code-agent";
 
 /**
  * Apply one {@link TranslatedEvent} to the response stream, mutating `state`.
@@ -144,7 +154,7 @@ export async function emitTranslatedEvent(
     case "subagent_open":
       return emitSubagentOpen(event, ctx, state, provenance);
     case "subagent_close":
-      return emitSubagentClose(event, ctx, state);
+      return emitSubagentClose(event, ctx, state, blockName);
     case "status":
       ctx.emit.status(event.message);
       return;
@@ -167,7 +177,7 @@ async function emitMessageDelta(
 ): Promise<void> {
   if (state.message === null) {
     // A reasoning item streaming before the first text closes here.
-    await closeStreamingReasoning(ctx, state);
+    await closeStreamingReasoning(ctx, state, provenance.blockName);
     const ownedBy = resolveOwnedBy(state, parentCallId);
     const base = buildBase(ctx, provenance, "msg");
     const item = {
@@ -204,13 +214,21 @@ async function emitMessageDelta(
  * this once it has translated that whole message. Without it, a later turn's
  * deltas would append to the prior turn's still-open item and coalesce into one.
  */
-export async function closeStreamingItems(ctx: BlockContext, state: EmitState): Promise<void> {
-  await closeStreamingMessage(ctx, state);
-  await closeStreamingReasoning(ctx, state);
+export async function closeStreamingItems(
+  ctx: BlockContext,
+  state: EmitState,
+  blockName: string,
+): Promise<void> {
+  await closeStreamingMessage(ctx, state, blockName);
+  await closeStreamingReasoning(ctx, state, blockName);
 }
 
 /** Finalize the streamed message item (called at end of an assistant turn). */
-async function closeStreamingMessage(ctx: BlockContext, state: EmitState): Promise<void> {
+async function closeStreamingMessage(
+  ctx: BlockContext,
+  state: EmitState,
+  blockName: string,
+): Promise<void> {
   if (state.message === null) return;
   const { id, contentIndex, text, ownedBy } = state.message;
   await ctx.response.emit({
@@ -228,7 +246,7 @@ async function closeStreamingMessage(ctx: BlockContext, state: EmitState): Promi
       status: "completed",
       requestId: ctx.request.identity.id,
       itemIndex: ctx.response.getItemCount(),
-      provenance: deriveProvenance(ctx, DEFAULT_AGENT_NAME),
+      provenance: deriveProvenance(ctx, blockName),
       ts: Date.now(),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
       ...(ownedBy ? { ownedBy } : {}),
@@ -319,7 +337,11 @@ async function emitReasoningDelta(
 }
 
 /** Finalize the streamed reasoning item, if one is open. */
-async function closeStreamingReasoning(ctx: BlockContext, state: EmitState): Promise<void> {
+async function closeStreamingReasoning(
+  ctx: BlockContext,
+  state: EmitState,
+  blockName: string,
+): Promise<void> {
   if (state.reasoning === null) return;
   const { id, contentIndex, text, ownedBy } = state.reasoning;
   await ctx.response.emit({
@@ -336,7 +358,7 @@ async function closeStreamingReasoning(ctx: BlockContext, state: EmitState): Pro
       status: "completed",
       requestId: ctx.request.identity.id,
       itemIndex: ctx.response.getItemCount(),
-      provenance: deriveProvenance(ctx, DEFAULT_AGENT_NAME),
+      provenance: deriveProvenance(ctx, blockName),
       ts: Date.now(),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
       ...(ownedBy ? { ownedBy } : {}),
@@ -392,8 +414,8 @@ async function emitToolCall(
   blockName: string,
 ): Promise<void> {
   // A message streaming before a tool call closes here so order is correct.
-  await closeStreamingMessage(ctx, state);
-  await closeStreamingReasoning(ctx, state);
+  await closeStreamingMessage(ctx, state, provenance.blockName);
+  await closeStreamingReasoning(ctx, state, provenance.blockName);
   if (!state.toolsObserved.includes(event.name)) state.toolsObserved.push(event.name);
   const ownedBy = resolveOwnedBy(state, event.parentCallId);
   const base = buildBase(ctx, provenance, "tool");
@@ -474,19 +496,27 @@ async function emitSubagentOpen(
   state: EmitState,
   provenance: EmitProvenance,
 ): Promise<void> {
-  await closeStreamingMessage(ctx, state);
-  await closeStreamingReasoning(ctx, state);
-  const base = buildBase(ctx, provenance, "container");
+  await closeStreamingMessage(ctx, state, provenance.blockName);
+  await closeStreamingReasoning(ctx, state, provenance.blockName);
+  // Each sub-agent container needs a distinct `blockInstanceId` — the handler's
+  // own id is shared across every sub-agent in the run, so two containers would
+  // be indistinguishable and the framework's ownership filter (which keys off
+  // `provenance.blockInstanceId`) could not separate their items. Stamp a
+  // synthetic per-sub-agent id and make that the `ownedBy` value inner items use.
+  const instanceId = `${provenance.blockInstanceId}:subagent:${event.callId}`;
+  const base = buildBase(ctx, { ...provenance, blockInstanceId: instanceId }, "container");
+  const label = `Sub-agent: ${event.name}`;
+  const startedAt = Date.now();
   const item = {
     ...base,
     type: "container" as const,
     status: "in_progress" as const,
     blockName: event.name,
-    label: `Sub-agent: ${event.name}`,
-    startedAt: Date.now(),
+    label,
+    startedAt,
   };
   await ctx.response.emit({ type: "item.added", item });
-  state.openSubagents.set(event.callId, base.id);
+  state.openSubagents.set(event.callId, { itemId: base.id, instanceId, name: event.name, label, startedAt });
 }
 
 /** Close the container item for a sub-agent when it returns. */
@@ -494,22 +524,24 @@ async function emitSubagentClose(
   event: Extract<TranslatedEvent, { kind: "subagent_close" }>,
   ctx: BlockContext,
   state: EmitState,
+  blockName: string,
 ): Promise<void> {
-  const id = state.openSubagents.get(event.callId);
-  if (id === undefined) return;
-  const completedAt = Date.now();
+  const open = state.openSubagents.get(event.callId);
+  if (open === undefined) return;
   await ctx.response.emit({
     type: "item.done",
     item: {
-      id,
+      id: open.itemId,
       type: "container",
       status: event.isError ? "failed" : "completed",
       requestId: ctx.request.identity.id,
       itemIndex: ctx.response.getItemCount(),
-      provenance: deriveProvenance(ctx, DEFAULT_AGENT_NAME),
+      provenance: { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId },
       ts: Date.now(),
-      blockName: "agent",
-      completedAt,
+      blockName: open.name,
+      label: open.label,
+      startedAt: open.startedAt,
+      completedAt: Date.now(),
       ...(event.isError ? { error: { message: String(event.output) } } : {}),
     },
   });
@@ -544,8 +576,8 @@ export async function finalizeOpenItems(
   state: EmitState,
   blockName: string,
 ): Promise<void> {
-  await closeStreamingMessage(ctx, state);
-  await closeStreamingReasoning(ctx, state);
+  await closeStreamingMessage(ctx, state, blockName);
+  await closeStreamingReasoning(ctx, state, blockName);
 
   for (const [callId, open] of state.openTools) {
     await ctx.response.emit({
@@ -573,18 +605,20 @@ export async function finalizeOpenItems(
   }
   state.openTools.clear();
 
-  for (const [, id] of state.openSubagents) {
+  for (const [, open] of state.openSubagents) {
     await ctx.response.emit({
       type: "item.done",
       item: {
-        id,
+        id: open.itemId,
         type: "container",
         status: "incomplete",
         requestId: ctx.request.identity.id,
         itemIndex: ctx.response.getItemCount(),
-        provenance: deriveProvenance(ctx, blockName),
+        provenance: { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId },
         ts: Date.now(),
-        blockName: "agent",
+        blockName: open.name,
+        label: open.label,
+        startedAt: open.startedAt,
         completedAt: Date.now(),
       },
     });

@@ -357,8 +357,13 @@ describe("claudeCodeAgent", () => {
     });
     const { items } = await testBlock(block, { input: { prompt: "spawn" } });
 
-    const container = items.find((i) => i.type === "container") as { id: string } | undefined;
+    const container = items.find((i) => i.type === "container") as
+      | { id: string; blockName?: string; label?: string; startedAt?: number; provenance: { blockInstanceId: string } }
+      | undefined;
     expect(container).toBeDefined();
+    // Ownership keys off the container's provenance.blockInstanceId, not its item id.
+    const ownerId = container!.provenance.blockInstanceId;
+    expect(ownerId).not.toBe(container!.id);
 
     const innerMessage = items.find((i) => i.type === "message") as
       | { ownedBy?: string }
@@ -366,8 +371,12 @@ describe("claudeCodeAgent", () => {
     const innerTool = items.find((i) => i.type === "tool_output") as
       | { ownedBy?: string }
       | undefined;
-    expect(innerMessage?.ownedBy).toBe(container!.id);
-    expect(innerTool?.ownedBy).toBe(container!.id);
+    expect(innerMessage?.ownedBy).toBe(ownerId);
+    expect(innerTool?.ownedBy).toBe(ownerId);
+    // The closed container preserves its identifying fields (not blockName "agent").
+    expect(container!.blockName).toBe("Task");
+    expect(container!.label).toBe("Sub-agent: Task");
+    expect(typeof container!.startedAt).toBe("number");
   });
 
   it("returns an errored handle and an error item (no throw) on error_max_turns", async () => {
@@ -467,10 +476,12 @@ describe("claudeCodeAgent", () => {
     });
     const { items } = await testBlock(block, { input: { prompt: "spawn" } });
 
-    const container = items.find((i) => i.type === "container") as { id: string } | undefined;
+    const container = items.find((i) => i.type === "container") as
+      | { id: string; provenance: { blockInstanceId: string } }
+      | undefined;
     expect(container).toBeDefined();
     const innerMessage = items.find((i) => i.type === "message") as { ownedBy?: string } | undefined;
-    expect(innerMessage?.ownedBy).toBe(container!.id);
+    expect(innerMessage?.ownedBy).toBe(container!.provenance.blockInstanceId);
   });
 
   it("reports an errored handle for an unrecognized result subtype", async () => {

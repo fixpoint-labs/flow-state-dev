@@ -158,6 +158,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       }
 
       const priorSessionId = (ctx.session.state as Record<string, unknown>)[SDK_SESSION_ID_KEY];
+      // Resolve, but intentionally do NOT release per run: the session must
+      // survive across requests for resume-by-id to work, so its lifecycle is
+      // the host's (cache TTL/eviction or session end), not this block's. The
+      // default provider's `release` is a no-op for exactly this reason.
       const session = await sessionProvider.resolve(
         typeof priorSessionId === "string" ? priorSessionId : "",
       );
@@ -191,6 +195,12 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
       try {
         for await (const message of resolved.query({ prompt: promptText, options: queryOptions })) {
+          // Capture the SDK session id from any message that carries it (the
+          // `system` init message does, well before the terminal result), so an
+          // aborted or failed run is still resumable.
+          const sid = (message as { session_id?: string }).session_id;
+          if (typeof sid === "string" && sid !== "") newSessionId = sid;
+
           const events = translateSdkMessage(message, translateState);
           for (const event of events) {
             await emitTranslatedEvent(event, ctx, emitState, name);
@@ -206,11 +216,16 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // boundary. translate skips its text/thinking (already streamed), so
           // close the open streaming items here before the next turn's deltas.
           if (includePartialMessages && message.type === "assistant") {
-            await closeStreamingItems(ctx, emitState);
+            await closeStreamingItems(ctx, emitState, name);
           }
         }
       } catch (err) {
         await finalizeOpenItems(ctx, emitState, name);
+        // Persist the session id even on failure so the next request can resume
+        // the conversation the SDK actually created.
+        if (newSessionId !== null) {
+          await ctx.session.patchState(SDK_SESSION_ID_KEY, () => newSessionId);
+        }
         const wrapped = new ClaudeAgentRunError(
           `Claude Code agent run failed: ${(err as Error).message}`,
           { cause: (err as Error).message },
@@ -254,7 +269,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
       ctx.emit.status(
         errored
-          ? `Claude Code agent run errored (${resultSubtype}).`
+          ? `Claude Code agent run errored (${resultSubtype ?? "unknown subtype"}).`
           : "Claude Code agent run completed.",
         { transient: false },
       );

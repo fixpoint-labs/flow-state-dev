@@ -482,6 +482,9 @@ importers:
 
   packages/claude-code:
     dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: '*'
+        version: 0.1.77(zod@3.25.76)
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
@@ -489,9 +492,6 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
-      '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.1.0
-        version: 0.1.77(zod@3.25.76)
       '@flow-state-dev/server':
         specifier: workspace:*
         version: link:../server

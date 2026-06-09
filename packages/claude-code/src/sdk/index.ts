@@ -31,6 +31,7 @@ export {
 export {
   createEmitState,
   emitTranslatedEvent,
+  closeStreamingItems,
   finalizeOpenItems,
   type EmitState,
 } from "./emit";
