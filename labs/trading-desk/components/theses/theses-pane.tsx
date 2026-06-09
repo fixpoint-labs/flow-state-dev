@@ -121,6 +121,20 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
     if (!navOpen && dialog.open) dialog.close();
   }, [navOpen]);
 
+  // Close the drawer if the viewport crosses up past `lg` while it is open.
+  // A modal dialog keeps the rest of the document inert from the top layer
+  // even when `lg:hidden` visually hides it, which would leave the desktop
+  // shell unreachable after a resize. Effect, not derived state: it syncs
+  // with an external system (the viewport media query).
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 64rem)");
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setNavOpen(false);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
   // Authoritative completion flag, read from the exposed session state. Stable
   // across a transient stream re-attach (opening a stored report can briefly
   // report isStreaming with 0 items) — unlike isStreaming/items, which flicker.
@@ -229,7 +243,7 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
         }}
         aria-label="Theses navigator"
         className={cn(
-          "m-0 h-full max-h-none w-[260px] max-w-[85vw] border-0 p-0",
+          "td-drawer m-0 h-full max-h-none w-[260px] max-w-[85vw] border-0 p-0",
           "bg-transparent shadow-2xl backdrop:bg-black/40 lg:hidden",
         )}
       >

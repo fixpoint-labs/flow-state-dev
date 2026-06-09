@@ -107,11 +107,21 @@ button {
       translate: 0 100%;
     }
   }
-  /* Nested inside the width gate on purpose: the slide-up it cancels only
-     exists below lg, and a global override would silently eat any future
-     desktop transition on the same class. */
+  /* The theses-navigator drawer mirrors the sheet entry, sliding from the
+     left edge instead of the bottom. */
+  dialog.td-drawer[open] {
+    translate: 0 0;
+    transition: translate 0.22s ease;
+    @starting-style {
+      translate: -100% 0;
+    }
+  }
+  /* Nested inside the width gate on purpose: the transitions it cancels only
+     exist below lg, and a global override would silently eat any future
+     desktop transition on the same classes. */
   @media (prefers-reduced-motion: reduce) {
-    dialog.td-sheet[open] {
+    dialog.td-sheet[open],
+    dialog.td-drawer[open] {
       transition: none;
     }
   }
