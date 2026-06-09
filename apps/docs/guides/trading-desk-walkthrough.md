@@ -150,6 +150,14 @@ The right-pane PM Hero is the marquee surface. It renders the rating bar, the me
 
 One honest tradeoff. `decisionConfidence` is self-reported. The PM is asked to be honest about uncertainty, not to predict accuracy. If you wanted calibration, you'd score these against outcomes, and the example does not do that.
 
+### The risk-appetite mandate
+
+The decision also reads a risk-appetite mandate. A mandate is a setting that says how much downside this book will accept per unit of upside. You pick one before a run, or set a default on the account. The desk takes the scenario distribution from the forecaster and computes a reward-to-risk figure from it: probability-weighted upside over downside, with the downside weighted more heavily for a cautious mandate. It checks that figure against the mandate's bar, which is a minimum reward-to-risk, a return hurdle, a confidence floor, and a worst-case loss the book can absorb.
+
+What the mandate moves is the position size and an explicit worth-it verdict, not the rating. The rating stays anchored to the valuation read, so it means the same thing across books and stays comparable. A name can be a Buy on its merits and still fail a conservative mandate. When that happens the desk sizes it to a token position and says so. Run the same ticker under a conservative income mandate and an aggressive growth one, hold everything else fixed, and you watch the size and the verdict move while the rating holds.
+
+Three presets ship. This is a demonstration of gating a sizing decision on an explicit, documented standard. It is not production risk governance, and not advice.
+
 ## Custom instructions and steerability
 
 The status bar carries a settings gear that opens a free-text dialog: one global block applied to every phase, and one block per phase for narrower guidance. Edits persist for the user across every run and survive server restarts. It's the example's first user-scoped resource, which makes it a useful walkthrough of three things: how to declare scope and isolation on a resource, where to inject prompt context once and have it reach every agent, and how to read user-scope state from the client without writing a new endpoint.
@@ -214,7 +222,7 @@ pnpm install
 pnpm --filter @flow-state-dev/trading-desk dev
 ```
 
-The top bar exposes a ticker input, a date, a cost preset (`fast` or `full`), and a data source toggle (`fixture` or `live`). A disclaimer band sits above the transcript: this is a demo, not investment advice.
+The top bar exposes a ticker input, a date, a cost preset (`fast` or `full`), a data source toggle (`fixture` or `live`), and a risk-appetite mandate selector (leave it on the default to run without one). A disclaimer band sits above the transcript: this is a demo, not investment advice.
 
 On a fresh run, you'll see the nine analyst cards appear in `pending` right away. They flip to `writing` as each analyst starts its generator call, then to `done` as the memos commit. The bull and bear cards follow. Then the trade proposal, then the three risk persona cards, then the consolidated risk assessment, then the PM Hero on the right.
 
