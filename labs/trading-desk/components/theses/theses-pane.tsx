@@ -234,6 +234,7 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
         <div className="mb-4 flex items-center gap-2">
           <button
             type="button"
+            aria-expanded={navOpen}
             onClick={() => setNavOpen(true)}
             className={cn(
               "flex items-center gap-1.5 rounded-md border px-2 py-1 lg:hidden",
