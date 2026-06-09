@@ -14,12 +14,19 @@ import { cn } from "@/lib/utils";
 import type {
   AccountType,
 } from "@/src/flows/portfolio/portfolio-schema";
+import {
+  MANDATE_PACK,
+  type RiskMandateId,
+} from "@/src/flows/analysis/lib/risk-mandate";
 
 type NewAccountDraft = {
   name: string;
   type: AccountType;
   currency: string;
   cashBalance: number;
+  // The account's default risk-appetite mandate (FIX-752), or null for no
+  // default. Stored opaquely server-side; resolved by the analysis flow at seed.
+  riskMandate: RiskMandateId | null;
 };
 
 type AddAccountDialogProps = {
@@ -52,6 +59,7 @@ export function AddAccountDialog({
   const [type, setType] = useState<AccountType>("taxable");
   const [currency, setCurrency] = useState("USD");
   const [cash, setCash] = useState("");
+  const [riskMandate, setRiskMandate] = useState<RiskMandateId | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
 
   // Drive the native <dialog> imperatively from `open` (matches SettingsDialog).
@@ -69,6 +77,7 @@ export function AddAccountDialog({
       setType("taxable");
       setCurrency("USD");
       setCash("");
+      setRiskMandate(null);
       setError(undefined);
     }
   }, [open]);
@@ -93,6 +102,7 @@ export function AddAccountDialog({
       type,
       currency: currency.trim().toUpperCase(),
       cashBalance: cashNum,
+      riskMandate,
     });
     onClose();
   };
@@ -177,6 +187,31 @@ export function AddAccountDialog({
               placeholder="0"
               inputMode="decimal"
             />
+          </label>
+
+          {/* Default risk-appetite mandate (FIX-752). "No default" → null; a run
+              against this book uses it as the seed default unless a per-run
+              override is set. Same option set as the New Analysis selector. */}
+          <label className="flex flex-col gap-1">
+            <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+              Default risk mandate (optional)
+            </span>
+            <select
+              value={riskMandate ?? "__none"}
+              onChange={(e) => {
+                const v = e.currentTarget.value;
+                setRiskMandate(v === "__none" ? null : (v as RiskMandateId));
+              }}
+              className={inputClass}
+              aria-label="Default risk-appetite mandate"
+            >
+              <option value="__none">No default</option>
+              {MANDATE_PACK.map((m) => (
+                <option key={m.id} value={m.id} title={m.description}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
           </label>
 
           {error !== undefined ? (

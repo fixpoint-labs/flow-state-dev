@@ -27,6 +27,10 @@ import {
 } from "react";
 import { Segmented } from "@/components/ui/segmented";
 import type { CostPreset, DataSourceMode } from "@/components/topbar";
+import {
+  MANDATE_PACK,
+  type RiskMandateId,
+} from "@/src/flows/analysis/lib/risk-mandate";
 import { cn } from "@/lib/utils";
 
 /** Cost-preset toggle options. Lives here because the dialog is now the only
@@ -89,6 +93,12 @@ type NewAnalysisDialogProps = {
   onCostPresetChange: (value: CostPreset) => void;
   onDataSourceChange: (value: DataSourceMode) => void;
 
+  // Optional per-run risk-appetite mandate override (FIX-752). `null` = house
+  // default (fall back to the selected accounts' default at seed). A refinement,
+  // NOT a tuple field — changing it does not key a new report.
+  riskMandate: RiskMandateId | null;
+  onRiskMandateChange: (value: RiskMandateId | null) => void;
+
   // Optional thesis (controlled by parent).
   userThesis: string;
   userThesisRationale: string;
@@ -117,6 +127,8 @@ export function NewAnalysisDialog({
   onDateChange,
   onCostPresetChange,
   onDataSourceChange,
+  riskMandate,
+  onRiskMandateChange,
   userThesis,
   userThesisRationale,
   onUserThesisChange,
@@ -282,6 +294,36 @@ export function NewAnalysisDialog({
               onChange={onDataSourceChange}
             />
           </div>
+
+          {/* Risk-appetite mandate override (FIX-752). "Default (house)" → null,
+              which falls back to the selected accounts' default at seed; an
+              explicit pick overrides it for this run only. Not a tuple field —
+              re-running with a different mandate refines the same report. */}
+          <label className="flex flex-col gap-1">
+            <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+              Risk mandate
+            </span>
+            <select
+              value={riskMandate ?? "__default"}
+              onChange={(e) => {
+                const v = e.currentTarget.value;
+                onRiskMandateChange(v === "__default" ? null : (v as RiskMandateId));
+              }}
+              className={inputClass}
+              aria-label="Risk-appetite mandate"
+            >
+              <option value="__default">Default (house)</option>
+              {MANDATE_PACK.map((m) => (
+                <option key={m.id} value={m.id} title={m.description}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <span className="text-[10.5px] leading-relaxed text-[color:var(--c-fg-muted)]">
+              The variable risk standard the PM sizes against. Default falls back
+              to your account's mandate; the run is mandate-blind if none is set.
+            </span>
+          </label>
 
           {/* Portfolio (coming soon) — a reserved, visibly-disabled mount point
               for the later Portfolio slice. No logic, no state, no scoping. */}

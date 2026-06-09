@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
 import { seedSession } from "../src/flows/analysis/orchestration/guards";
+import type { RiskMandateId } from "../src/flows/analysis/lib/risk-mandate";
 import flow from "../src/flows/analysis/flow";
 
 function account(id: string, riskMandate: string | null) {
@@ -33,7 +34,7 @@ const baseInput = {
   userThesis: null,
   userThesisRationale: null,
   selectedAccountIds: [] as string[],
-  riskMandate: null as string | null,
+  riskMandate: null as RiskMandateId | null,
 };
 
 async function seedWith(opts: {
