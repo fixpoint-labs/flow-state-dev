@@ -371,6 +371,12 @@ State-shape primitives shared across the framework. All three operate on the sam
 - **`deepMerge(base, override)`** — recursive merge returning a new object. Scalars and arrays in `override` replace; nested plain objects merge; `base` is never mutated.
 - **`deepEqual(a, b)`** — structural equality powering the state-write no-op guard. Primitives compared by `Object.is` (NaN-equal-NaN, `+0 != -0`); plain objects and arrays compared recursively. Rejects non-JSON shapes (Map, Set, functions) with a `TypeError`. `looseDeepEqual` is the throw-free variant.
 
+### Graph (`@flow-state-dev/core/graph`)
+
+A reusable typed-edge primitive for relational state. `edgeSchema` describes a directed, typed, bi-temporal `Edge` (`from`/`to`/`type`/`confidence`/`validFrom`/`validUntil`/`source`), and pure traversal helpers walk a plain `Edge[]`: `egoGraph`, `shortestPath`, `neighbors`, `traverse`, `activeAt`, plus `nodeRef`/`parseNodeRef` for `"namespace:key"` node ids. All traversals are depth-bounded and cycle-safe.
+
+Resources opt into a first-class edge graph with `defineResource({ edges: true })` (or `{ vocabulary, maxEdges }`): the framework stores an `edges` array in the resource's state and exposes an `.edges` API (`add`, `supersede`, `remove`, `all`, `neighbors`, `egoGraph`, `shortestPath`, `pruneDangling`) on the live resource reference. Resources without `edges` are unaffected.
+
 ## Sequencer instance state
 
 A sequencer can declare a `stateSchema` that gives every step in the pipeline a shared, typed state container. State is read via `ctx.sequencer.state` and written via the seven helpers on `ctx.sequencer`: `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, and `atomicState`.

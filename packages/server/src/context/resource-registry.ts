@@ -30,6 +30,7 @@ import {
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type { ContentScopeType, ContentStore, ResourceStateStore } from "../stores/types";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
@@ -547,7 +548,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       return parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
     };
 
-    return {
+    const ref: ResourceRef<JsonObject> = {
       path: storageKey,
       scope: options.scope,
       uri: `${options.scope}/${storageKey}`,
@@ -637,6 +638,17 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         options.onResourceChanged?.(storageKey, "updated");
       }
     };
+
+    // Attach the typed-edge API when the collection declared an `edges` slot,
+    // so each instance ref carries `.edges` backed by its own state.
+    if (nsConfig.edges) {
+      (ref as { edges?: unknown }).edges = createResourceEdgeApi(
+        ref as never,
+        nsConfig.edges === true ? {} : nsConfig.edges
+      );
+    }
+
+    return ref;
   }
 
   // Storage key for each accessor. Dual-registered aliases collapse to a
@@ -1120,6 +1132,16 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         await options.persistResourceContentKey(storageKey, content);
       }
     };
+
+    // Attach the typed-edge API when the resource declared an `edges` slot.
+    // It reads/writes through this ref's own state via `updateState`, so edge
+    // writes persist and emit `onResourceChanged` like any other state write.
+    if (config.edges) {
+      (handles[resourceName] as { edges?: unknown }).edges = createResourceEdgeApi(
+        handles[resourceName] as never,
+        config.edges === true ? {} : config.edges
+      );
+    }
   }
 
   return {
