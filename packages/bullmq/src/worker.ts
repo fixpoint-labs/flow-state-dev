@@ -43,22 +43,32 @@ const DEFAULT_CONCURRENCY = 2;
 const DEFAULT_LOCK_DURATION = 300_000;
 
 /**
- * Creates a BullMQ Worker that processes flow-run jobs by calling `runAction`.
- * Each job carries a `FlowJobData` payload; the worker resolves the flow from
- * the registry, executes it, and maps the result back to BullMQ job
- * completion/failure semantics.
+ * Builds the job processor used by `createFlowWorker`. Exported separately so
+ * the retry/terminal-publish semantics are testable without a Redis
+ * connection (constructing a BullMQ `Worker` connects eagerly).
  */
-export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
-  const { connection, prefix } = resolveWorkerConnection(options);
-  const queueName = options.queueName ?? DEFAULT_QUEUE_NAME;
-  const { registry, stores, runtimeConfig, bridge, concurrency, lockDuration, onItem } =
-    options.deps;
+export function createFlowJobProcessor(deps: FlowWorkerDeps) {
+  const { registry, stores, runtimeConfig, bridge, onItem } = deps;
 
-  const processor = async (job: Job<FlowJobData>) => {
+  return async (job: Job<FlowJobData>) => {
     const data = job.data;
     const flow = registry.get(data.flowKind);
     if (!flow) {
       throw new UnrecoverableError(`Unknown flow "${data.flowKind}"`);
+    }
+
+    // On a retry attempt the previous run may have persisted events under
+    // the same requestId. Resume sequence numbering past them — tailing
+    // clients filter on `sequence_number > cursor`, so a restart at zero
+    // would hide the retry's events and corrupt cursor-based replay.
+    // `attemptsMade` counts completed attempts inside a processor (BullMQ
+    // increments it after moveToCompleted/moveToFailed), so > 0 means retry.
+    let startSequenceNumber: number | undefined;
+    if (job.attemptsMade > 0 && data.requestId !== undefined) {
+      const prior = await stores.request
+        .getEvents(data.requestId)
+        .catch(() => []);
+      startSequenceNumber = prior[prior.length - 1]?.sequence_number;
     }
 
     let publisher: StreamPublisher | undefined;
@@ -81,6 +91,7 @@ export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
         metadata: data.metadata,
         stores,
         runtimeConfig,
+        startSequenceNumber,
         onItem: (item: OutputItem, kind: "added" | "updated" | "done") => {
           onItem?.(job.id ?? "unknown", item, kind);
           if (publisher) {
@@ -114,7 +125,17 @@ export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
 
       return result;
     } catch (err) {
-      if (publisher && !terminalPublished) {
+      // Publish the error terminal only when BullMQ will NOT retry this
+      // job: a non-retryable error or the final configured attempt. Earlier
+      // attempts skip the publish so the web-side subscriber stays alive for
+      // the retry. Mirrors BullMQ's own `shouldRetryJob` predicate
+      // (`attemptsMade + 1 < attempts`, UnrecoverableError checked by name
+      // too for cross-realm errors).
+      const willRetry =
+        !(err instanceof UnrecoverableError) &&
+        (err as Error | undefined)?.name !== "UnrecoverableError" &&
+        job.attemptsMade + 1 < (job.opts.attempts ?? 1);
+      if (publisher && !terminalPublished && !willRetry) {
         const errorResult = {
           error: { message: err instanceof Error ? err.message : String(err) }
         };
@@ -127,6 +148,19 @@ export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
       }
     }
   };
+}
+
+/**
+ * Creates a BullMQ Worker that processes flow-run jobs by calling `runAction`.
+ * Each job carries a `FlowJobData` payload; the worker resolves the flow from
+ * the registry, executes it, and maps the result back to BullMQ job
+ * completion/failure semantics.
+ */
+export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
+  const { connection, prefix } = resolveWorkerConnection(options);
+  const queueName = options.queueName ?? DEFAULT_QUEUE_NAME;
+  const { concurrency, lockDuration } = options.deps;
+  const processor = createFlowJobProcessor(options.deps);
 
   return new Worker(queueName, processor, {
     connection,

@@ -325,7 +325,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 **Runtime:**
 - `renderTemplate` — Handlebars-style template rendering utility for resource content
 - `createExecutionContext` — Build a block execution context
-- `runAction` — Execute a flow action end-to-end. Also the sanctioned non-HTTP entry point (jobs, cron, queue consumers): pass an `onItem` callback to observe items live, and read `requestId` back off the result to correlate logs or attach a stream
+- `runAction` — Execute a flow action end-to-end. Also the sanctioned non-HTTP entry point (jobs, cron, queue consumers): pass an `onItem` callback to observe items live, and read `requestId` back off the result to correlate logs or attach a stream. Queue consumers re-running an action under the same `requestId` (retry attempts) pass `startSequenceNumber` — the last persisted sequence number — so the per-request event log stays strictly increasing across attempts
 - `executeBlock` — Execute a single block with context
 
 **Stores:**

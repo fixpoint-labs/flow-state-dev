@@ -440,7 +440,8 @@ export async function runActionInternal<
   const internalSeams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
   const response = options.responseEmitter ?? createInternalResponseEmitter({
     requestId,
-    internalSeams: undefined
+    internalSeams: undefined,
+    startSequenceNumber: options.startSequenceNumber
   });
 
   if (options.onItem !== undefined) {
