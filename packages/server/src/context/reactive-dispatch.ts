@@ -24,6 +24,7 @@ import type {
 import { matchesPattern, getPatternPrefix } from "@flow-state-dev/core/types";
 import {
   normalizeReactiveBinding,
+  buildBlockInstanceId,
   type ResourceChange,
   type ResourceChangeKind,
 } from "@flow-state-dev/core";
@@ -62,6 +63,19 @@ export interface ReactiveDispatcherDeps {
   ctxRef: { current: ExecutionContext | undefined };
   /** Shared per-request cascade budget. */
   controller: CascadeController;
+  /**
+   * Instance id of the block currently executing — the one that performed the
+   * mutation. Read from the runtime's attribution frame at dispatch time so the
+   * reactive block nests under its trigger in the trace instead of at the root.
+   * `undefined` when the mutation happens outside any block scope.
+   */
+  getTriggerInstanceId: () => string | undefined;
+  /**
+   * Run `fn` inside the reactive block's own attribution frame (keyed by its
+   * instance id) so a mutation it performs attributes its reactive children
+   * under this block (cascade nesting), and its resource loads attribute here.
+   */
+  runAttributed: <T>(instanceId: string, fn: () => T) => T;
 }
 
 /**
@@ -231,14 +245,23 @@ export function createReactiveDispatcher(
 
     controller.depth += 1;
     controller.fanout += 1;
-    const blockPath = `__reactive__/${changeType}/${reactiveDispatchSeq++}`;
+    // Self-describing path: which resource + change kind drove this dispatch.
+    const blockPath = `__reactive__/${resourcePath}/${changeType}#${reactiveDispatchSeq++}`;
+    // Parent the reactive block under the block that performed the mutation, so
+    // it nests in the trace beneath its trigger instead of at the request root.
+    const parentBlockInstanceId = deps.getTriggerInstanceId();
+    const reactiveInstanceId = buildBlockInstanceId(ctx.requestRuntime.requestId, blockPath, 0);
     try {
-      const result = await executeBlock({
-        block,
-        input: runInput,
-        ctx,
-        metadata: { scope: "block", blockPath },
-      });
+      // Run inside the reactive block's attribution frame so a mutation it makes
+      // nests its own reactive children under this block (cascade nesting).
+      const result = await deps.runAttributed(reactiveInstanceId, () =>
+        executeBlock({
+          block,
+          input: runInput,
+          ctx,
+          metadata: { scope: "block", blockPath, parentBlockInstanceId },
+        })
+      );
       // A reactive block failure propagates to the mutating call (atomic).
       if (result.error !== undefined) {
         throw result.error;

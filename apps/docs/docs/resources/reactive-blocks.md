@@ -131,6 +131,10 @@ A reactive block can mutate a resource that has its own reactive block, which fi
 
 You don't configure these limits. They're a backstop against accidental loops, not a tuning knob. If you hit the diagnostic, it means a reaction chain is feeding back on itself, and the fix is in the flow's logic, usually a `when` gate that stops the chain re-firing on its own writes.
 
+## In the trace
+
+A reactive block shows up in the trace nested under the block that performed the mutation, not at the request root, so you can see what triggered it. Its trace path is self-describing: `__reactive__/<resource-ref>/<kind>`, for example `__reactive__/memos/memo-1/updated`. If the reaction itself mutates a resource and triggers a further reaction, that one nests under the reaction, so a cascade reads as a tree.
+
 ## See also
 
 - [Resource Collections](/docs/resources/collections) — patterns, eviction, and the `onInstance*` lifecycle callbacks

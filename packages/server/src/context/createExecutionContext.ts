@@ -1512,6 +1512,10 @@ export async function createExecutionContext<
           configs: scopeConfigs,
           ctxRef: reactiveCtxRef,
           controller: cascadeController,
+          // The attribution ALS holds the executing block's instance id, so the
+          // reactive block parents under whichever block performed the mutation.
+          getTriggerInstanceId: () => loadAttributionStorage.getStore(),
+          runAttributed: (instanceId, fn) => loadAttributionStorage.run(instanceId, fn),
         })
       : undefined;
 

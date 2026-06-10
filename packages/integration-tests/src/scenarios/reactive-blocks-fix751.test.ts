@@ -80,6 +80,64 @@ describe("FIX-751: reactive blocks", () => {
     expect(reactIdx).toBeGreaterThan(mutateIdx);
   });
 
+  it("nests the reactive block under the block that triggered the mutation", async () => {
+    const onCreate = handler({
+      name: "reactive-nested",
+      inputSchema: resourceChangeSchema(noteSchema),
+      execute: (change: ResourceChange, ctx) => {
+        ctx.emit.message([{ type: "output_text", text: `reacted:${change.key}` }]);
+        return "done";
+      },
+    });
+    const notes = defineResourceCollection({
+      scope: "session",
+      pattern: "notes/**",
+      stateSchema: noteSchema,
+      reactTo: { created: onCreate },
+    });
+
+    // The mutation happens inside a sequencer STEP (a nested scope), not the root
+    // action block — so the runtime's attribution frame names the step as the
+    // trigger and the reactive block parents under it.
+    const mutatingStep = handler({
+      name: "mutating-step",
+      resources: { notes },
+      execute: async (_input, ctx) => {
+        ctx.emit.message([{ type: "output_text", text: "mutating" }]);
+        await (ctx.resources.notes as any).create("a", { text: "hi" });
+        return "ok";
+      },
+    });
+    const root = sequencer({ name: "root-seq" }).step(mutatingStep);
+
+    const flow = defineFlow({
+      kind: "fix751-nesting",
+      actions: { run: { inputSchema: z.string(), block: root } },
+    })({ id: "test" });
+
+    const result = await testFlow({
+      flow,
+      action: "run",
+      userId: "u",
+      input: "go",
+      unmockedGeneratorPolicy: "allow",
+    });
+    expect(result.status).toBe("completed");
+
+    const mutating = result.items.find(
+      (i) => i.type === "message" && JSON.stringify(i).includes("mutating")
+    ) as any;
+    const reacted = result.items.find(
+      (i) => i.type === "message" && JSON.stringify(i).includes("reacted:a")
+    ) as any;
+    expect(mutating?.provenance?.blockInstanceId).toBeTruthy();
+    // The reactive block's parent is the step that performed the mutation, not
+    // the request root — so DevTool renders it nested under the trigger.
+    expect(reacted?.provenance?.parentBlockInstanceId).toBe(
+      mutating.provenance.blockInstanceId
+    );
+  });
+
   it("isolates a .work()-wrapped reactive failure — the turn still completes", async () => {
     let workerRan = false;
     const failingWorker = handler({
