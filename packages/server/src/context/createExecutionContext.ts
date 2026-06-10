@@ -71,7 +71,8 @@ import {
   resolveOrgStorageKey,
   resolveResourceIsolation,
   resolveResourceScopeId,
-  resolveSessionStorageKey
+  resolveSessionStorageKey,
+  tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
@@ -615,7 +616,7 @@ export async function createExecutionContext<
     // The loaded record's stored `tenantId` is authoritative — reject when it
     // differs from this request's tenant so a key collision can never read or
     // mutate across the tenant boundary.
-    if ((sessionRecord.tenantId ?? undefined) !== (options.tenantId ?? undefined)) {
+    if (!tenantMatches(sessionRecord.tenantId, options.tenantId)) {
       throw new TenantBindingMismatchError(
         sessionId,
         sessionRecord.tenantId,

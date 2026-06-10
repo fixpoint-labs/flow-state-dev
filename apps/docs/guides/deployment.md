@@ -128,6 +128,8 @@ request.headers.set("x-tenant-id", tenantId);
 
 Send the same header on every call — actions, session reads, state, resources — so they all resolve the same tenant. Session and request data isolate by tenant; user and org scopes stay shared (org policy and user preferences are meant to span tenants).
 
+One constraint: tenant ids can't contain a colon (`:`) — the framework reserves it as the session-key separator, and a request with a colon in the tenant header is rejected with a 400. Use any other stable id (a uuid, an org slug, a subdomain). Session ids are unrestricted.
+
 Verify in staging that two tenants don't collide:
 
 ```bash

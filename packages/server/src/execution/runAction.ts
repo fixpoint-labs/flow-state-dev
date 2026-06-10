@@ -15,7 +15,7 @@ import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
 import { createExecutionContext } from "../context/createExecutionContext";
-import { resolveSessionStorageKey } from "../stores/scope-keys";
+import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestWorkPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
@@ -545,7 +545,11 @@ export async function runActionInternal<
     // execution context reads/writes; a bare key would miss a tenant session.
     const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
     const session = await options.stores.session.get(sessionKey);
-    if (session !== undefined) {
+    // Tenant-binding guard (FIX-682): this write runs before
+    // createExecutionContext's binding check, so without it a no-tenant caller
+    // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
+    // latestRequestId (an auto-resume hijack) even though the run then fails.
+    if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
       await options.stores.session.set(
         sessionKey,
         { ...session, latestRequestId: requestId, updatedAt: Date.now() },

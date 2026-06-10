@@ -270,12 +270,13 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       (await seams.enrichRequestContext?.(requestContext)) ?? {};
     const bootstrapPath = `/api/flows/${path.join("/")}`;
 
-    // Tenant id for every session-touching route (FIX-682). Extracted once
-    // here so session/state/resource reads namespace the session storage key
-    // the same way action dispatch does. Undefined for single-tenant requests.
-    const tenantId = extractTenantId(request, options.tenantIdHeader);
-
     try {
+      // Tenant id for every session-touching route (FIX-682). Extracted once
+      // here so session/state/resource reads namespace the session storage key
+      // the same way action dispatch does. Undefined for single-tenant
+      // requests; rejected (400) inside the try if it contains ":".
+      const tenantId = extractTenantId(request, options.tenantIdHeader);
+
       if (route.kind === "not_found") {
         return jsonResponse(404, { error: "Route not found" });
       }

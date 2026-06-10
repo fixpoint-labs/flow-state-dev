@@ -13,7 +13,7 @@ import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
 import { createResponseEmitter } from "../../streaming/response-emitter";
 import { runAction } from "../../execution/runAction";
-import { resolveSessionStorageKey } from "../../stores/scope-keys";
+import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
 import { generateId } from "../../utils/generate-id";
 import { OrgRequiredError, PrincipalResolutionError } from "../errors";
 import type {
@@ -153,7 +153,7 @@ export function createInboundTransportHost(
       // crafted sessionId can't borrow another tenant's org (FIX-682).
       if (
         existing?.orgId !== undefined &&
-        (existing.tenantId ?? undefined) === (envelope.tenantId ?? undefined)
+        tenantMatches(existing.tenantId, envelope.tenantId)
       ) {
         return;
       }

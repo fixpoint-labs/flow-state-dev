@@ -98,6 +98,22 @@ export function toBareSessionId(
 }
 
 /**
+ * Whether a stored record's tenant matches a request's tenant (FIX-682),
+ * treating `undefined` and absent identically (single-tenant). The canonical
+ * tenant-binding predicate: the `${tenantId}:${sessionId}` key is ambiguous
+ * when the caller controls `sessionId`, so a key collision must never be acted
+ * on across the boundary. Used by the session binding guard, the route session
+ * loader, the `latestRequestId` update, and resource/debug reads — one
+ * predicate keeps the rule greppable.
+ */
+export function tenantMatches(
+  recordTenantId: string | undefined,
+  requestTenantId: string | undefined
+): boolean {
+  return (recordTenantId ?? undefined) === (requestTenantId ?? undefined);
+}
+
+/**
  * Tenant list-filter predicate (FIX-682) with present-vs-absent semantics:
  * - When the `tenantId` key is **absent** from `options`, every record passes
  *   (admin/debug "list everything" callers stay unfiltered).

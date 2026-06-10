@@ -126,6 +126,10 @@ describe("tenant store-key isolation", () => {
     // Acme's session state is untouched by the bypass attempt.
     const acme = await stores.session.get(resolveSessionStorageKey("s", "acme"));
     expect((acme?.state as { count?: number }).count).toBe(1);
+    // ...and the attacker's request id never lands on acme's auto-resume
+    // pointer — the `latestRequestId` write runs before the binding check, so
+    // without its own guard this would hijack acme's session.
+    expect(acme?.latestRequestId).not.toBe("r_attack");
   });
 
   it("re-dispatches a retry within the original tenant", async () => {

@@ -22,7 +22,8 @@ import type { StoreRegistry } from "../stores/types";
 import {
   mergeScopeReads,
   resolveSessionStorageKey,
-  resourceScopeIds
+  resourceScopeIds,
+  tenantMatches
 } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
 import { resourceStorageKeys } from "./storage-keys";
@@ -132,7 +133,7 @@ export async function getPersistedData(
   // Tenant binding: the `${tenantId}:${sessionId}` key is ambiguous when the
   // caller controls `sessionId`, so reject a record whose stored tenant differs
   // from the request's — a key collision must never read across tenants.
-  if ((session.tenantId ?? undefined) !== (tenantId ?? undefined)) return undefined;
+  if (!tenantMatches(session.tenantId, tenantId)) return undefined;
 
   if (scope === "session") {
     const [resources, content] = await Promise.all([

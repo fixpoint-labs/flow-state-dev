@@ -27,7 +27,7 @@ import {
   type ResourcePersistenceContext
 } from "../resources/internal";
 import { resourceStorageKeys } from "../resources/storage-keys";
-import { resolveSessionStorageKey } from "../stores/scope-keys";
+import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { extractBareTopic, isResourceConfig } from "./route-utils";
 
@@ -262,7 +262,7 @@ export async function buildDebugResourceTree(opts: {
   );
   // Reject a tenant-key collision: the stored tenant must match the request's
   // (FIX-682), so a crafted `sessionId` can't inspect another tenant's data.
-  if (!session || (session.tenantId ?? undefined) !== (tenantId ?? undefined)) {
+  if (!session || !tenantMatches(session.tenantId, tenantId)) {
     return null;
   }
   const flow = ctx.registry.get(session.flowKind);
@@ -429,7 +429,7 @@ export async function buildDebugCollectionItems(opts: {
   const session = await ctx.stores.session.get(
     resolveSessionStorageKey(sessionId, tenantId)
   );
-  if (!session || (session.tenantId ?? undefined) !== (tenantId ?? undefined)) {
+  if (!session || !tenantMatches(session.tenantId, tenantId)) {
     return { ok: false, kind: "session_not_found" };
   }
   const flow = ctx.registry.get(session.flowKind);
@@ -567,7 +567,7 @@ export async function lookupDebugContent(opts: {
   const session = await ctx.stores.session.get(
     resolveSessionStorageKey(sessionId, tenantId)
   );
-  if (!session || (session.tenantId ?? undefined) !== (tenantId ?? undefined)) {
+  if (!session || !tenantMatches(session.tenantId, tenantId)) {
     return { ok: false, kind: "session_not_found" };
   }
   const flow = ctx.registry.get(session.flowKind);

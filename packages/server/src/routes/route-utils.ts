@@ -12,7 +12,7 @@ import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
-import { resolveSessionStorageKey } from "../stores/scope-keys";
+import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { sortItemsChronologically } from "../utils/sort";
@@ -47,13 +47,26 @@ export const DEFAULT_TENANT_ID_HEADER = "x-tenant-id";
  * as single-tenant (bare keys), matching `resolveSessionStorageKey`. The
  * canonical extraction point so action dispatch and every session-touching
  * route namespace consistently.
+ *
+ * Rejects a tenant id containing `:` (400). The session storage key is
+ * `${tenantId}:${sessionId}` and session ids legitimately contain `:`, so a
+ * tenant id with a `:` would make the key ambiguous (tenant `a` + session
+ * `b:c` collides with tenant `a:b` + session `c`). Tenant ids are
+ * deployment-controlled, so this is a cheap config guard that removes the
+ * ambiguity class outright — the binding check still prevents any data leak.
  */
 export function extractTenantId(
   request: Request,
   tenantIdHeader?: string
 ): string | undefined {
   const value = request.headers.get(tenantIdHeader ?? DEFAULT_TENANT_ID_HEADER);
-  return value !== null && value.length > 0 ? value : undefined;
+  if (value === null || value.length === 0) return undefined;
+  if (value.includes(":")) {
+    throw new ValidationError(
+      `Tenant id must not contain ":" (received "${value}"). The session storage key reserves ":" as a separator.`
+    );
+  }
+  return value;
 }
 
 /**
@@ -72,7 +85,7 @@ export async function loadTenantSession(
 ): Promise<SessionRecord | undefined> {
   const record = await store.get(resolveSessionStorageKey(sessionId, tenantId));
   if (record === undefined) return undefined;
-  if ((record.tenantId ?? undefined) !== (tenantId ?? undefined)) return undefined;
+  if (!tenantMatches(record.tenantId, tenantId)) return undefined;
   return record;
 }
 

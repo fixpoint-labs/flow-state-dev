@@ -319,6 +319,14 @@ The public session id stays bare everywhere it surfaces: `ctx.session.identity.i
 
 Single-tenant apps are unaffected: `resolveSessionStorageKey(sessionId, undefined) === sessionId`, so every key is byte-identical to a deployment without the axis. There is no migration for the common case. Persistence adapters add a nullable `tenant_id` column (SQLite/Postgres) via an idempotent `ADD COLUMN` migration; existing rows read back as no-tenant.
 
+### Key ambiguity and the binding check
+
+The `${tenantId}:${sessionId}` scheme is ambiguous because session ids may themselves contain `:` (chat ids like `slack:C123:...`) and both the tenant header and the session id are caller-supplied — tenant `acme` + session `chat-1` resolves to the same key as a *no-tenant* request using session id `acme:chat-1`. The key alone therefore can't isolate. Every load-and-act path closes this with a **tenant-binding check** (`tenantMatches`): the loaded record's stored `tenantId` must equal the request's, or the operation is rejected (`createExecutionContext` throws `TenantBindingMismatchError`; routes return 404; `session.create` keeps a raw existence check so a colliding id 409s rather than overwriting). To remove the ambiguity at the source, tenant ids themselves may not contain `:` (rejected with 400 at header extraction); session ids still may.
+
+### What `requestId` gates, not tenant
+
+Stream attach (`GET .../requests/:id/stream`) and suspension resume are authorized by `requestId` alone — an unguessable capability token — and are **not** re-checked against the tenant header. This is the pre-existing request-as-capability model and is deliberate: a `requestId` is only obtainable by the caller who created it. Resume re-dispatches under the original request's stored `tenantId`, so a resumed run still lands in the correct tenant's session. Session, state, and resource reads (addressed by the caller-supplied `sessionId`) do enforce the tenant binding, because their identifier is guessable.
+
 ## Cross-Flow State: Shared vs Isolated
 
 User- and org-scope records are not session-like — by default they are shared across every flow registered on a server, keyed by bare `userId` / `orgId`. A user has one `UserRecord`; every flow operating for that user reads and writes the same record. That is desirable when two flows genuinely share an identity concept (preferences, profile, quotas). It is a data-loss bug when two flows declare incompatible schemas over the same key.
