@@ -42,23 +42,28 @@ export function createWorkerDispatcher(
       // Subscribe before enqueuing so we don't miss early events
       const subscriber = activeBridge.createSubscriber(envelope.requestId);
 
-      // Enqueue the job
-      await queue.add(
-        "flow-run",
-        {
-          flowKind: envelope.flowKind,
-          actionName: envelope.actionName,
-          input: envelope.input,
-          userId: envelope.userId,
-          sessionId: envelope.sessionId,
-          orgId: envelope.orgId,
-          tenantId: envelope.tenantId,
-          source: envelope.source,
-          metadata: envelope.metadata,
-          requestId: envelope.requestId,
-        },
-        jobOpts
-      );
+      // Enqueue the job — clean up subscriber connections on failure
+      try {
+        await queue.add(
+          "flow-run",
+          {
+            flowKind: envelope.flowKind,
+            actionName: envelope.actionName,
+            input: envelope.input,
+            userId: envelope.userId,
+            sessionId: envelope.sessionId,
+            orgId: envelope.orgId,
+            tenantId: envelope.tenantId,
+            source: envelope.source,
+            metadata: envelope.metadata,
+            requestId: envelope.requestId,
+          },
+          jobOpts
+        );
+      } catch (err) {
+        await subscriber.close().catch(() => {});
+        throw err;
+      }
 
       return {
         requestId: envelope.requestId,
