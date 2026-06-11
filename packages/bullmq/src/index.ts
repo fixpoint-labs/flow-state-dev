@@ -6,6 +6,8 @@
  * from existing framework seams (runAction, ScheduleIndex, dispatch contract)
  * with FlowDispatcher/StreamBridge interfaces for pluggable execution.
  */
+export { bullmqWorker } from "./flowstate-adapter";
+export type { BullmqWorkerOptions, BullmqWorkerAdapter } from "./flowstate-adapter";
 export { createBullmqRuntime } from "./runtime";
 export type { BullmqRuntime, CreateBullmqRuntimeOptions } from "./runtime";
 export { createFlowWorker } from "./worker";

@@ -21,11 +21,13 @@ import { createRuntimeConfig } from "../runtime-config";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { resolveProfileStores } from "./resolve-slots";
+import type { FlowDispatcher } from "../transports/dispatcher";
 import type {
   CreateFlowStateOptions,
   FlowState,
   FlowStateModelsConfig,
-  FlowStateRuntime
+  FlowStateRuntime,
+  WorkerHandle
 } from "./types";
 
 function toModelResolverOptions(
@@ -72,6 +74,10 @@ class InternalFlowState<TSettings extends object>
   #runtimePromise: Promise<FlowStateRuntime> | null = null;
   #initPromise: Promise<FlowApiRouter> | null = null;
   #disposed = false;
+  /** Dispatcher built by the worker adapter during runtime init. */
+  #workerDispatcher: FlowDispatcher | undefined;
+  /** Started worker, closed by dispose() before store adapters. */
+  #workerHandle: WorkerHandle | undefined;
 
   constructor(options: CreateFlowStateOptions<TSettings>) {
     this.#options = options;
@@ -80,6 +86,13 @@ class InternalFlowState<TSettings extends object>
     if (this.#profileKeys.length === 0) {
       throw new FlowStateConfigError(
         "createFlowState: stores must declare at least one profile"
+      );
+    }
+
+    if (options.worker !== undefined && options.dispatcher !== undefined) {
+      throw new FlowStateConfigError(
+        "createFlowState: `worker` and `dispatcher` are mutually exclusive. " +
+          "The worker adapter provides its own dispatcher; pass one or the other."
       );
     }
 
@@ -146,6 +159,20 @@ class InternalFlowState<TSettings extends object>
       } catch {
         // init failed; adapters may still hold partially-opened resources.
       }
+    }
+
+    // Stop the execution backend before the stores close: the worker drains
+    // in-flight jobs (which write to the stores), then the adapter releases
+    // its queue/connections.
+    try {
+      await this.#workerHandle?.close();
+    } catch (err) {
+      console.error("[flowstate] worker close failed", err);
+    }
+    try {
+      await this.#options.worker?.close?.();
+    } catch (err) {
+      console.error("[flowstate] worker adapter close failed", err);
     }
 
     for (const adapter of this.#allAdapters) {
@@ -239,7 +266,29 @@ class InternalFlowState<TSettings extends object>
       errorCapture: this.#options.errorCapture
     });
 
-    return { registry: this.#registry, stores, runtimeConfig };
+    const runtime: FlowStateRuntime = {
+      registry: this.#registry,
+      stores,
+      runtimeConfig
+    };
+
+    // Execution-backend wiring: the adapter gets the SAME resolved runtime
+    // the router uses, so the dispatch side and the worker can never
+    // disagree on stores. A failure here rejects runtime init on purpose —
+    // a queue-routed deployment whose queue is unreachable should fail
+    // loudly, not limp along half-wired.
+    const worker = this.#options.worker;
+    if (worker !== undefined) {
+      const mode = worker.mode ?? "colocated";
+      if (mode !== "worker-only") {
+        this.#workerDispatcher = worker.createDispatcher(runtime);
+      }
+      if (mode !== "dispatch-only") {
+        this.#workerHandle = worker.startWorker(runtime);
+      }
+    }
+
+    return runtime;
   }
 
   async #doInit(): Promise<FlowApiRouter> {
@@ -256,7 +305,7 @@ class InternalFlowState<TSettings extends object>
       debugEndpointsEnabled: this.#options.debugEndpointsEnabled,
       staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
-      dispatcher: this.#options.dispatcher
+      dispatcher: this.#options.dispatcher ?? this.#workerDispatcher
     });
   }
 }

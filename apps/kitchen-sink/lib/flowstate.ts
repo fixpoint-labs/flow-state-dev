@@ -24,7 +24,7 @@ import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
-import { createBullmqRuntime, createRedisStreamBridge, createWorkerDispatcher } from "@flow-state-dev/bullmq";
+import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
@@ -32,18 +32,13 @@ const openaiApiKey = process.env.OPENAI_API_KEY;
 const redisUrl = process.env.REDIS_URL;
 const bullmqDispatch = process.env.FSD_BULLMQ_DISPATCH === "1";
 
-// BullMQ runtime for local dev. When REDIS_URL is set (e.g. via docker compose),
-// the runtime registers a co-located worker so background jobs are durable.
-// The web process enqueues and the worker runs in the same process for simplicity.
-const bullmqRuntime = redisUrl
-  ? createBullmqRuntime({ connection: redisUrl })
-  : undefined;
-
-// Stream bridge shared by the dispatcher (web→worker live relay) and the
-// co-located worker (worker→web event push). Created once so both sides
-// use the same channel prefix.
-const streamBridge = redisUrl
-  ? createRedisStreamBridge({ connection: redisUrl })
+// BullMQ execution backend for local dev (docker compose Redis). Created
+// whenever REDIS_URL is set so Bull Board can mount the queue; only installed
+// as the FlowState `worker` when FSD_BULLMQ_DISPATCH=1 routes actions through
+// the queue. Colocated mode: the dispatcher and the worker run in this
+// process, both against the runtime's resolved stores.
+export const bullmq = redisUrl
+  ? bullmqWorker({ connection: redisUrl })
   : undefined;
 
 // Vercel/Neon-tuned Postgres adapter. Backs the prod profile's `primary` slot
@@ -124,38 +119,25 @@ export const flowstate = createFlowState({
   // real requests are served.
   detectInterruptedOnStartup: false,
   // FSD_BULLMQ_DISPATCH=1 routes all action dispatches through the BullMQ
-  // queue instead of running in-process. Requires REDIS_URL. Useful for
-  // testing the full queue→worker→stream-bridge pipeline locally.
-  dispatcher:
-    bullmqDispatch && bullmqRuntime && streamBridge
-      ? createWorkerDispatcher({ queue: bullmqRuntime.queue, bridge: streamBridge })
-      : undefined,
+  // queue instead of running in-process. Requires REDIS_URL. The adapter
+  // wires the dispatcher and the co-located worker against the same resolved
+  // runtime the router uses.
+  worker: bullmqDispatch ? bullmq : undefined,
   adapters: [createScheduledTransportAdapter()],
   onError: (error, ctx) => {
     console.error(`[flowstate] ${ctx.method} ${ctx.path}:`, error.message);
   },
 });
 
-// Co-located worker: only start when FSD_BULLMQ_DISPATCH=1. The worker
-// consumes `flowstate.getRuntime()` — the same resolved flow registry, store
-// registry, and runtime config the web router uses — so worker writes are
-// visible to the web's GET request-stream (store-driven live tail), devtool,
-// and refresh under whichever store profile is active (filesystem, in-memory,
-// Postgres). Building a separate registry here would silently split state.
-if (bullmqRuntime && bullmqDispatch && redisUrl) {
-  void flowstate.getRuntime().then(({ registry, stores, runtimeConfig }) => {
-    bullmqRuntime.createWorker({
-      registry,
-      stores,
-      runtimeConfig,
-      bridge: streamBridge,
-    });
-    console.log("[flowstate] BullMQ co-located worker + dispatcher active (all actions route through queue)");
+// Runtime init is lazy; warm it eagerly under dispatch mode so the colocated
+// worker consumes the queue from boot rather than from the first web request.
+// dispose() drains the worker and closes the queue before the stores.
+if (bullmq && bullmqDispatch) {
+  void flowstate.ready().then(() => {
+    console.log("[flowstate] BullMQ worker adapter active (all actions route through queue)");
   });
 
-  const shutdown = () => { bullmqRuntime.close().catch(() => {}); };
+  const shutdown = () => { void flowstate.dispose(); };
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 }
-
-export { bullmqRuntime };

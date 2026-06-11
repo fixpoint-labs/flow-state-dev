@@ -74,26 +74,41 @@ REDIS_URL=redis://localhost:6379
 
 ---
 
-## 3. Create the runtime
+## 3. Wire it up
 
-`createBullmqRuntime` gives you a queue for enqueuing jobs, a factory for constructing workers, and a `close` hook for graceful shutdown.
+One option on `createFlowState` does the whole job. `bullmqWorker` bundles the queue, the dispatch side, the worker, and the Redis stream bridge into a single adapter:
 
-```ts title="lib/bullmq.ts"
-import { createBullmqRuntime } from "@flow-state-dev/bullmq";
+```ts title="lib/flowstate.ts"
+import { createFlowState } from "@flow-state-dev/server";
+import { bullmqWorker } from "@flow-state-dev/bullmq";
 
-export const bullmq = createBullmqRuntime({
-  connection: process.env.REDIS_URL ?? "redis://localhost:6379",
-  retry: {
-    attempts: 3,
-    backoff: { type: "exponential", delay: 1000 },
-  },
+export const bullmq = bullmqWorker({
+  connection: process.env.REDIS_URL!,
+  retry: { attempts: 3, backoff: { type: "exponential", delay: 1000 } },
 });
+
+export const flowstate = createFlowState({
+  flows: { /* ... */ },
+  stores: { /* ... */ },
+  worker: bullmq,
+});
+
+// Runtime init is lazy. Warm it so the worker consumes the queue from boot,
+// and drain it cleanly on shutdown.
+void flowstate.ready();
+process.on("SIGTERM", () => void flowstate.dispose());
 ```
 
-### Enqueue a job
+That's the complete local setup. Actions now route through the BullMQ queue, and a worker in the same process consumes them. The framework hands both sides the same resolved flow registry, stores, and runtime config — there is no way to wire the worker against different stores than the web runtime, which is the classic mistake in queue setups (the worker's output silently disappears from streaming, refresh, and the devtool).
+
+Live streaming still works: the worker persists events to the shared stores, and SSE clients tail them through the regular request-stream endpoint.
+
+### Enqueue a one-off job
+
+The adapter exposes the underlying runtime for direct enqueueing outside the action dispatch path:
 
 ```ts
-await bullmq.enqueueAction({
+await bullmq.runtime.enqueueAction({
   flowKind: "billing",
   actionName: "generateInvoice",
   input: { month: "2026-06" },
@@ -101,75 +116,41 @@ await bullmq.enqueueAction({
 });
 ```
 
-### Start a co-located worker
-
-For local development, running the worker in the same process is the simplest setup. Get the worker's dependencies from `flowstate.getRuntime()` — it returns the same resolved flow registry, store registry, and runtime config the web router uses:
-
-```ts
-import { flowstate } from "./lib/flowstate";
-
-const { registry, stores, runtimeConfig } = await flowstate.getRuntime();
-const worker = bullmq.createWorker({ registry, stores, runtimeConfig });
-
-process.on("SIGTERM", async () => {
-  await worker.close();
-  await bullmq.close();
-});
-```
-
-Don't build a second store registry for the worker. A co-located worker with its own registry writes to state the web process can't see — streaming, refresh, and the devtool all read the web runtime's stores, so the worker's output silently disappears. `getRuntime()` hands you the same instances and also keeps the worker on the active store profile (in-memory, filesystem, or Postgres) instead of pinning it to one backend.
+The `queue` property is also exposed — useful for mounting admin consoles like Bull Board.
 
 ---
 
 ## 4. Separated workers
 
-For production, run workers in dedicated containers. The web process enqueues via `createWorkerDispatcher`; workers process via `createFlowWorker`.
+For production, run workers in dedicated containers. Both processes build the **same** `createFlowState(...)` from shared config; the only difference is the adapter's `mode`:
 
-### Web process
-
-```ts title="lib/flowstate.ts"
-import { Queue } from "bullmq";
-import { createFlowState } from "@flow-state-dev/server";
-import {
-  createWorkerDispatcher,
-  createRedisStreamBridge,
-} from "@flow-state-dev/bullmq";
-
-const redisUrl = process.env.REDIS_URL!;
-const bridge = createRedisStreamBridge({ connection: redisUrl });
-const queue = new Queue("fsd-flows", { connection: redisUrl });
-
+```ts title="lib/flowstate.ts (shared config module)"
 export const flowstate = createFlowState({
   flows: { /* ... */ },
-  dispatcher: createWorkerDispatcher({ queue, bridge }),
+  stores: { /* ... a backend both processes reach, e.g. Postgres ... */ },
+  worker: bullmqWorker({
+    connection: process.env.REDIS_URL!,
+    mode: process.env.FSD_WORKER_MODE === "worker-only" ? "worker-only" : "dispatch-only",
+    concurrency: 4,
+  }),
 });
 ```
 
-The `dispatcher` option routes all flow dispatches through the BullMQ queue. The `StreamBridge` uses Redis pub/sub to relay live events back to the web process so SSE clients still receive streaming updates.
-
-### Worker process
+- **Web container** — `FSD_WORKER_MODE=dispatch-only`. Serves the router; actions are enqueued, never processed here.
+- **Worker container** — `FSD_WORKER_MODE=worker-only`. The entry point is just:
 
 ```ts title="worker.ts"
-import { createFlowWorker, createRedisStreamBridge } from "@flow-state-dev/bullmq";
+import { flowstate } from "./lib/flowstate";
 
-const redisUrl = process.env.REDIS_URL!;
-const bridge = createRedisStreamBridge({ connection: redisUrl });
-
-const worker = createFlowWorker({
-  connection: redisUrl,
-  deps: {
-    registry,   // same flow registry as the web process
-    stores,     // same store setup
-    runtimeConfig,
-    bridge,     // publishes events back to web subscribers
-    concurrency: 4,
-  },
-});
-
-process.on("SIGTERM", () => worker.close());
+await flowstate.ready();
+process.on("SIGTERM", () => void flowstate.dispose());
 ```
 
 Separated processes can't share an in-memory registry. Both sides need a store backend they genuinely share — Postgres in production, or SQLite/filesystem on a shared disk for a single-machine setup.
+
+### Low-level primitives
+
+`bullmqWorker` composes from public factories — `createBullmqRuntime`, `createFlowWorker`, `createWorkerDispatcher`, `createRedisStreamBridge`. Reach for them directly only when building a custom topology (your own dispatcher, a non-FlowState host). For everything else, the `worker` option is the supported path; hand-wiring these pieces means you own the store-sharing invariant yourself.
 
 ---
 
@@ -223,15 +204,15 @@ Pass a Redis URL string or an ioredis options object:
 
 ```ts
 // URL
-createBullmqRuntime({ connection: "redis://localhost:6379" });
+bullmqWorker({ connection: "redis://localhost:6379" });
 
 // Options
-createBullmqRuntime({
+bullmqWorker({
   connection: { host: "redis.internal", port: 6379, password: "secret" },
 });
 
 // TLS
-createBullmqRuntime({ connection: "rediss://user:pass@redis.cloud:6380" });
+bullmqWorker({ connection: "rediss://user:pass@redis.cloud:6380" });
 ```
 
 The `prefix` option namespaces all BullMQ keys. Default is `"fsd"`. Use this for multi-tenant isolation or running multiple apps against the same Redis instance. Never use ioredis `keyPrefix` — it's incompatible with BullMQ's Lua scripts.
@@ -241,7 +222,7 @@ The `prefix` option namespaces all BullMQ keys. Default is `"fsd"`. Use this for
 ## Retry and dead-letter queues
 
 ```ts
-createBullmqRuntime({
+bullmqWorker({
   connection: redisUrl,
   retry: {
     attempts: 5,
@@ -283,7 +264,7 @@ echo "REDIS_URL=redis://localhost:6379" >> .env.local
 pnpm dev
 ```
 
-When `REDIS_URL` is set, the kitchen-sink creates a `BullmqRuntime` and logs its availability at startup. See `lib/flowstate.ts` for the wiring.
+When `REDIS_URL` is set, the kitchen-sink builds a `bullmqWorker` adapter (Bull Board mounts its queue at `/api/admin/queues`). Setting `FSD_BULLMQ_DISPATCH=1` additionally installs it as the FlowState `worker`, routing every action through the queue. See `lib/flowstate.ts` for the wiring.
 
 ---
 

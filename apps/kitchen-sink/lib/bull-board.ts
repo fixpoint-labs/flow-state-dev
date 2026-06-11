@@ -1,23 +1,23 @@
 /**
- * Bull Board admin dashboard wired to the BullMQ runtime's queue.
+ * Bull Board admin dashboard wired to the BullMQ worker adapter's queue.
  *
- * Only activates when `bullmqRuntime` is available (REDIS_URL set).
+ * Only activates when the `bullmq` adapter is available (REDIS_URL set).
  * Mounted at /api/admin/queues via Next.js catch-all route.
  */
 import express from "express";
 import { createBullBoard } from "@bull-board/api";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { ExpressAdapter } from "@bull-board/express";
-import { bullmqRuntime } from "./flowstate";
+import { bullmq } from "./flowstate";
 
 const BASE_PATH = "/api/admin/queues";
 
 const serverAdapter = new ExpressAdapter();
 serverAdapter.setBasePath(BASE_PATH);
 
-if (bullmqRuntime) {
+if (bullmq) {
   createBullBoard({
-    queues: [new BullMQAdapter(bullmqRuntime.queue)],
+    queues: [new BullMQAdapter(bullmq.queue)],
     serverAdapter,
   });
 }
