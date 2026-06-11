@@ -149,9 +149,11 @@ export function createScheduleDispatchWorker(
     );
 
     if (!response.ok) {
-      throw new Error(
-        `Schedule dispatch failed: ${response.status} ${response.statusText}`
-      );
+      const msg = `Schedule dispatch failed: ${response.status} ${response.statusText}`;
+      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        throw new UnrecoverableError(msg);
+      }
+      throw new Error(msg);
     }
   };
 
