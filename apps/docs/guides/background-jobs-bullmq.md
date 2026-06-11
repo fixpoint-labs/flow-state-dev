@@ -103,11 +103,12 @@ await bullmq.enqueueAction({
 
 ### Start a co-located worker
 
-For local development, running the worker in the same process is the simplest setup:
+For local development, running the worker in the same process is the simplest setup. Get the worker's dependencies from `flowstate.getRuntime()` — it returns the same resolved flow registry, store registry, and runtime config the web router uses:
 
 ```ts
-import { registry, stores, runtimeConfig } from "./your-server-setup";
+import { flowstate } from "./lib/flowstate";
 
+const { registry, stores, runtimeConfig } = await flowstate.getRuntime();
 const worker = bullmq.createWorker({ registry, stores, runtimeConfig });
 
 process.on("SIGTERM", async () => {
@@ -115,6 +116,8 @@ process.on("SIGTERM", async () => {
   await bullmq.close();
 });
 ```
+
+Don't build a second store registry for the worker. A co-located worker with its own registry writes to state the web process can't see — streaming, refresh, and the devtool all read the web runtime's stores, so the worker's output silently disappears. `getRuntime()` hands you the same instances and also keeps the worker on the active store profile (in-memory, filesystem, or Postgres) instead of pinning it to one backend.
 
 ---
 
@@ -165,6 +168,8 @@ const worker = createFlowWorker({
 
 process.on("SIGTERM", () => worker.close());
 ```
+
+Separated processes can't share an in-memory registry. Both sides need a store backend they genuinely share — Postgres in production, or SQLite/filesystem on a shared disk for a single-machine setup.
 
 ---
 

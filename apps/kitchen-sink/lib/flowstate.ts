@@ -15,8 +15,7 @@
 import { after } from "next/server";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
-import { createFlowState, createFlowRegistry, createModelResolver, createInMemoryStores, inMemoryStores, filesystemStores, type StoreAdapter, type StoreRegistry } from "@flow-state-dev/server";
-import type { RuntimeConfig } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores, filesystemStores } from "@flow-state-dev/server";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
@@ -46,17 +45,6 @@ const bullmqRuntime = redisUrl
 const streamBridge = redisUrl
   ? createRedisStreamBridge({ connection: redisUrl })
   : undefined;
-
-// When the BullMQ co-located worker runs in-process, it must share the same
-// store instance as the web runtime so events persisted by the worker are
-// visible to the web's GET request-stream (store-driven live tail) and devtool.
-// Build the registry once and wrap it in a StoreAdapter for the profile system.
-const sharedDevStores: StoreRegistry | undefined =
-  bullmqDispatch && redisUrl ? createInMemoryStores() : undefined;
-
-function wrapRegistry(registry: StoreRegistry): StoreAdapter {
-  return { capabilities: ["primary"], resolve: () => Promise.resolve(registry) };
-}
 
 // Vercel/Neon-tuned Postgres adapter. Backs the prod profile's `primary` slot
 // and exposes a same-pool `scheduleIndex` for the weekly-digest flow. Declared
@@ -117,15 +105,11 @@ export const flowstate = createFlowState({
     prod: { primary: pgStores, scheduler: pgStores },
     // `STORE_TYPE=filesystem` opts the local profile into on-disk persistence
     // (`.fsdev/data`); otherwise dev runs against ephemeral in-memory stores.
-    // When BullMQ dispatch is active, the shared registry is used so the
-    // co-located worker and web runtime see the same state.
     dev: {
       primary:
-        sharedDevStores
-          ? wrapRegistry(sharedDevStores)
-          : process.env.STORE_TYPE === "filesystem"
-            ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
-            : inMemoryStores(),
+        process.env.STORE_TYPE === "filesystem"
+          ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
+          : inMemoryStores(),
     },
   },
   // Default to the Postgres profile whenever a database URL is configured
@@ -152,58 +136,26 @@ export const flowstate = createFlowState({
   },
 });
 
-// Co-located worker: only start when FSD_BULLMQ_DISPATCH=1 so the worker
-// shares stores with the web runtime via sharedDevStores. Without dispatch
-// mode, there's no store-sharing guarantee and the worker would silently
-// persist to a disconnected store instance.
+// Co-located worker: only start when FSD_BULLMQ_DISPATCH=1. The worker
+// consumes `flowstate.getRuntime()` — the same resolved flow registry, store
+// registry, and runtime config the web router uses — so worker writes are
+// visible to the web's GET request-stream (store-driven live tail), devtool,
+// and refresh under whichever store profile is active (filesystem, in-memory,
+// Postgres). Building a separate registry here would silently split state.
 if (bullmqRuntime && bullmqDispatch && redisUrl) {
-  const registry = createFlowRegistry();
-  registry.register(chatAgentFlow);
-  registry.register(richTextComponentFlow);
-  registry.register(weeklyDigestFlow);
-
-  const stores = sharedDevStores ?? createInMemoryStores();
-
-  const runtimeConfig: RuntimeConfig = {
-    modelResolver:
-      process.env.KITCHEN_SINK_TEST_MODE === "1"
-        ? createKitchenSinkTestModelResolver()
-        : createModelResolver({
-            defaultModel: "vercel/anthropic/claude-sonnet-4.6",
-            intents: {
-              utility: [
-                "vercel/google/gemini-3.1-flash-lite",
-                "vercel/anthropic/claude-haiku-4.5",
-                "vercel/openai/gpt-5.4-nano",
-              ],
-              chat: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
-              plan: ["vercel/anthropic/claude-opus-4.7", "vercel/openai/gpt-5.5"],
-              synthesize: [
-                "vercel/anthropic/claude-sonnet-4.6",
-                "vercel/openai/gpt-5.5",
-                "vercel/google/gemini-2.5-pro",
-              ],
-              code: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
-              reason: ["vercel/anthropic/claude-opus-4.7", "vercel/openai/gpt-5.5"],
-            },
-            gateways: gatewayApiKey
-              ? { vercel: createGateway({ apiKey: gatewayApiKey }) }
-              : undefined,
-          }),
-  };
-
-  bullmqRuntime.createWorker({
-    registry,
-    stores,
-    runtimeConfig,
-    bridge: streamBridge,
+  void flowstate.getRuntime().then(({ registry, stores, runtimeConfig }) => {
+    bullmqRuntime.createWorker({
+      registry,
+      stores,
+      runtimeConfig,
+      bridge: streamBridge,
+    });
+    console.log("[flowstate] BullMQ co-located worker + dispatcher active (all actions route through queue)");
   });
 
   const shutdown = () => { bullmqRuntime.close().catch(() => {}); };
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
-
-  console.log("[flowstate] BullMQ co-located worker + dispatcher active (all actions route through queue)");
 }
 
 export { bullmqRuntime };
