@@ -60,6 +60,7 @@ import {
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
+import type { FlowDispatcher } from "../transports/dispatcher";
 
 export type RequestContext = {
   method: string;
@@ -161,6 +162,8 @@ export type CreateFlowRouteHandlersOptions = {
   debugAllowedOrigins?: string[];
   debugAllowAnonymousLocal?: boolean;
   debugCountLimit?: number;
+  /** Pluggable flow dispatcher. Default: in-process via runAction. */
+  dispatcher?: FlowDispatcher;
 };
 
 const DEFAULT_SSE_HEARTBEAT_MS = 15_000;
@@ -232,7 +235,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     registry: options.registry,
     stores,
     resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
-    runtimeConfig
+    runtimeConfig,
+    dispatcher: options.dispatcher
   });
 
   // Detect interrupted requests from previous runs on startup
