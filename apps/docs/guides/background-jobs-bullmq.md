@@ -205,7 +205,7 @@ When a repeatable job fires, the worker POSTs to the framework's schedule dispat
 ```ts
 import { createBullmqScheduleIndex } from "@flow-state-dev/bullmq";
 
-const scheduleIndex = createBullmqScheduleIndex(queue);
+const scheduleIndex = createBullmqScheduleIndex(queue, { flowKind: "my-flow" });
 ```
 
 ---

@@ -171,5 +171,5 @@ export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
 }
 
 function isNonRetryable(error: { retryable?: boolean }): boolean {
-  return error.retryable !== true;
+  return error.retryable === false;
 }
