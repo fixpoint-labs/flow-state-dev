@@ -60,7 +60,7 @@ export function wireDlqHandler(
   worker.on("failed", async (job, err) => {
     if (!job) return;
     const isFinalFailure =
-      job.attemptsMade >= maxAttempts || err.name === "UnrecoverableError";
+      job.attemptsMade >= (job.opts.attempts ?? maxAttempts) || err.name === "UnrecoverableError";
     if (isFinalFailure) {
       try {
         await dlqQueue.add("dead-letter", {
