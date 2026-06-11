@@ -15,7 +15,7 @@
 import { after } from "next/server";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
-import { createFlowState, inMemoryStores, filesystemStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/server";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
@@ -129,6 +129,22 @@ export const flowstate = createFlowState({
   },
 });
 
+// `next dev` re-evaluates this module on every HMR edit, building a fresh
+// FlowState (and, under dispatch mode, a fresh BullMQ worker) each time.
+// Dispose the previous generation so its worker stops consuming the queue
+// and its pools close — otherwise stale workers accumulate and can claim
+// jobs against orphaned stores. Production evaluates once; this is a no-op
+// there. Deliberately NOT the cache-on-globalThis pattern: caching would
+// freeze flows/config until restart, defeating the source-HMR dev loop.
+const hmr = globalThis as typeof globalThis & {
+  __fsdFlowstate?: FlowState;
+  __fsdShutdownRegistered?: boolean;
+};
+if (hmr.__fsdFlowstate !== undefined) {
+  void hmr.__fsdFlowstate.dispose();
+}
+hmr.__fsdFlowstate = flowstate;
+
 // Runtime init is lazy; warm it eagerly under dispatch mode so the colocated
 // worker consumes the queue from boot rather than from the first web request.
 // dispose() drains the worker and closes the queue before the stores.
@@ -137,7 +153,13 @@ if (bullmq && bullmqDispatch) {
     console.log("[flowstate] BullMQ worker adapter active (all actions route through queue)");
   });
 
-  const shutdown = () => { void flowstate.dispose(); };
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
+  // Register signal handlers once per process (not per HMR generation —
+  // process.on accumulates listeners across re-evaluations otherwise) and
+  // always dispose the CURRENT generation via the globalThis slot.
+  if (hmr.__fsdShutdownRegistered !== true) {
+    hmr.__fsdShutdownRegistered = true;
+    const shutdown = () => { void hmr.__fsdFlowstate?.dispose(); };
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
+  }
 }

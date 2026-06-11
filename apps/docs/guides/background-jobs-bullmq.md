@@ -103,6 +103,18 @@ That's the complete local setup. Actions now route through the BullMQ queue, and
 
 Live streaming still works: the worker persists events to the shared stores, and SSE clients tail them through the regular request-stream endpoint.
 
+### Next.js dev note (HMR)
+
+`next dev` re-evaluates your config module on every edit, and each evaluation builds a fresh FlowState — and a fresh worker. Without cleanup, stale workers accumulate and can claim jobs against orphaned stores. Dispose the previous generation when the module re-runs:
+
+```ts
+const hmr = globalThis as typeof globalThis & { __fsdFlowstate?: FlowState };
+if (hmr.__fsdFlowstate) void hmr.__fsdFlowstate.dispose();
+hmr.__fsdFlowstate = flowstate;
+```
+
+Don't reach for the cache-on-`globalThis` pattern you'd use for a database client — caching the FlowState would freeze your flows and config until a restart. Disposing the predecessor keeps HMR semantics: every edit takes effect, and exactly one worker generation is live. Production builds evaluate the module once, so this is a no-op there. The same applies to signal handlers: register `SIGTERM`/`SIGINT` once behind a `globalThis` flag, not per evaluation.
+
 ### Enqueue a one-off job
 
 The adapter exposes the underlying runtime for direct enqueueing outside the action dispatch path:
