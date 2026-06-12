@@ -1,7 +1,7 @@
 /**
  * Unit test for `setupPhase3Memos` — verifies the trader memo is created
- * in `pending`, `session.memoStatus.trader` is seeded, prior phases' entries
- * are preserved, and `activePhase` flips to `"phase-3"`.
+ * in `pending` (streamed off the live collection) and `activePhase` flips to
+ * `"phase-3"`.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
@@ -9,6 +9,8 @@ import { testBlock } from "@flow-state-dev/testing";
 import { setupPhase3Memos } from "../src/flows/analysis/agents/trader/setup";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { PHASE_3_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p3-setup-test",
@@ -30,12 +32,6 @@ describe("setupPhase3Memos", () => {
           dataSource: "fixture",
           activePhase: "phase-2",
           maxDebateRounds: 1,
-          memoStatus: {
-            fundamentals: "published",
-            bull: "published",
-            bear: "published",
-            researchManager: "published",
-          },
         },
       },
     });
@@ -45,11 +41,7 @@ describe("setupPhase3Memos", () => {
     expect(sessionPatches.length).toBeGreaterThan(0);
     const last = sessionPatches[sessionPatches.length - 1].resultingState;
     expect(last.activePhase).toBe("phase-3");
-    const memoStatus = last.memoStatus as Record<string, string>;
-    // Earlier-phase entries are preserved.
-    expect(memoStatus.fundamentals).toBe("published");
-    expect(memoStatus.researchManager).toBe("published");
-    // P3 entry is seeded.
-    expect(memoStatus.trader).toBe("pending");
+    // The trader memo is seeded to pending.
+    expect(latestMemoStatus(result.items, PHASE_3_MEMO_KEYS.trader.memoKey)).toBe("pending");
   });
 });

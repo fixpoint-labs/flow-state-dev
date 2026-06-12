@@ -116,6 +116,16 @@ The lifecycle mirrors content exactly:
 
 The `Resource*Ref` API is unchanged; this is an internal storage relocation. The scope record's former inline `resources` field is no longer read or written.
 
+### Typed Edges (`edges` slot)
+
+A resource (or collection) can opt into a typed-edge graph by declaring `edges: true | { vocabulary?, maxEdges? }` on `defineResource` / `defineResourceCollection`. This is part of the resource contract, not a separate store:
+
+- **State field injection.** `defineResource` extends the resource's `stateSchema` (and default) with an `edges: Edge[]` field unless the schema already declares one; `defineResourceCollection` does the same for each instance schema. Edges therefore live *inside* the resource's own state `JsonObject` and persist through the same per-key `ResourceStateStore` path as any other state — no new storage key, no store-adapter change. The graph is opaque to the store (it's just an array in the value), so traversal is in-memory.
+- **`.edges` ref API.** When `edges` is declared, the live `ResourceRef` / `ResourceContext` (and each collection-instance ref) gains an `.edges` accessor: `add`, `supersede` (bi-temporal close, never a hard delete), `remove`, `all({ at? })`, `neighbors`, `egoGraph`, `shortestPath`, and `pruneDangling`. Mutators route through the resource's existing `updateState`, so edge writes emit the same `resource_change` events as any state write. The edge schema and pure traversal helpers are the reusable `@flow-state-dev/core/graph` primitive; the slot is what wires them onto the resource.
+- **Bounding.** `maxEdges` caps growth; the cull drops superseded tombstones first, then lowest-confidence active edges, and never evicts the edge just added (so `add()` always returns a stored edge).
+
+The first consumer is the memory `relations` tier (see `apps/docs/docs/memory/relations`), which stores typed relationships between fact subjects on the semantic resource's edge slot.
+
 ### Three-Wave Loading
 
 A request loads only the resources its dispatched action and blocks declare, partitioned into three waves. The partition is computed from where each resource is declared:
@@ -431,6 +441,8 @@ defineResourceCollection({
 - `create`, `update`, `delete` are collection-only — declaring them on a single resource is a type error
 - Omitting `client` entirely means the resource is invisible to clients (no change from current behavior)
 
+**Client-projection output type (FIX-741).** `defineResource` / `defineResourceCollection` carry the projected client-data type as a phantom (`ClientType`) alongside `StateType`, derived from the `client` config: `Pick` from `expose`, `Omit` from `exclude`, the awaited return of `data`, or the full state for the identity default. `ClientDataOf<typeof def>` extracts it, and the React hooks accept it as a `TClient` type parameter so `clientData` is typed instead of `unknown`. This is a pure type-level brand — `resolveClientProjection` and the `JsonValue` wire contract are unchanged; the hook applies a single projection-backed cast at its boundary. The `data` branch depends on the projection function's return type, so annotating that return is what threads a precise shape (the function's `state` argument is not concretely typed at the definer's inference position).
+
 ### Snapshot Response with Resources
 
 The snapshot includes a `resources` key with metadata and `clientData` only — no content (except `prefetch: true` resources):
@@ -487,7 +499,7 @@ await actions.create({ topic: 'spec.md', content: '# New Spec' })
 await actions.update({ topic: 'readme.md', content: '# Updated' })
 ```
 
-Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`.
+Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`. The `resource_change` projection rides the registry's internal post-mutation seam (`onResourceChanged`); the same seam also drives in-session reactive blocks (`reactTo`) — see [Reactive blocks](/docs/resources/reactive-blocks) and the seam contract in [Resource Collections](./resource-collections.md#reactive-blocks-reactto).
 
 ## Canonical Authority
 

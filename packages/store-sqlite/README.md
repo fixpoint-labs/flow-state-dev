@@ -1,6 +1,6 @@
 # @flow-state-dev/store-sqlite
 
-SQLite persistence adapter for flow-state-dev. Implements all 5 store interfaces (`SessionStore`, `RequestStore`, `UserStore`, `ProjectStore`, `ActiveRequestRegistry`) using `better-sqlite3`.
+SQLite persistence adapter for flow-state-dev. Implements the full `StoreRegistry` — including durable resource content and resource state — using `better-sqlite3`.
 
 ## Why SQLite
 
@@ -74,6 +74,30 @@ See [the schedule index reference](https://flowstate.dev/docs/server/schedule-in
 ## Interrupted Request Recovery
 
 This adapter fully supports interrupted request recovery. The `ActiveRequestRegistry` implementation stores in-flight request entries with heartbeat timestamps, enabling `listStale()` to detect abandoned requests via an indexed range query.
+
+## Resource persistence
+
+Everything this adapter stores survives a process restart, including resource state and resource content. A file-backed registry is a true persistent store, at parity with the Postgres adapter.
+
+| Data | Durable | Stored in |
+|------|---------|-----------|
+| Scope records (session, user, org) | Yes | `sessions` / `users` / `orgs` |
+| Request items and stream events | Yes | `request_items` / `request_events` |
+| Resource state (single + collection instances) | Yes | `resource_state` |
+| Resource content (artifacts, collection bodies, client data) | Yes | `resource_content` |
+| Sequencer checkpoints, suspensions, leases, traces | Yes | dedicated tables |
+
+```ts
+const stores = createSQLiteStores({ filename: "./data/flowstate.db" });
+await stores.content.set("session", sessionId, "artifacts/report", "…body…");
+stores.close();
+
+// After a restart, reopen the same file — the content is still there.
+const reopened = createSQLiteStores({ filename: "./data/flowstate.db" });
+await reopened.content.get("session", sessionId, "artifacts/report"); // "…body…"
+```
+
+Live-tail subscriptions (`request.subscribeToEvents`) share one poll loop per request rather than one per subscriber: N concurrent SSE viewers of the same request issue one shared query per tick, woken in-process by the write path. The subscription contract is unchanged.
 
 ## Schema evolution
 

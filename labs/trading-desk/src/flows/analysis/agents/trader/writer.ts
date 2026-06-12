@@ -18,7 +18,7 @@ export const commitTraderMemo = memoHandler({
   inputSchema: tradeProposalOutputSchema,
   execute: async (trade, ctx) => {
     const convictionNumber = Number.parseFloat(trade.metrics.conviction);
-    await publishMemo(ctx, "trader", PHASE_3_MEMO_KEYS.trader.collectionKey, {
+    await publishMemo(ctx, PHASE_3_MEMO_KEYS.trader.collectionKey, {
       ...trade,
       conviction: Number.isFinite(convictionNumber) ? convictionNumber : null,      
     });

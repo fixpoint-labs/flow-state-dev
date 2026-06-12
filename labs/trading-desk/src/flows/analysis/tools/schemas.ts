@@ -40,6 +40,9 @@ export class FixtureMissingError extends Error {
  *   - `"xai"`         — live mode, xAI (Grok) answered. Model estimate
  *                       grounded in xSearch-retrieved X posts, not a
  *                       measured feed.
+ *   - `"massive"`     — live mode, Massive.com (rebranded Polygon.io) answered.
+ *                       The desk's only futures + options-chain source; paid
+ *                       per-product tiers. See `providers/massive.ts`.
  *   - `"unavailable"` — live mode, no provider could answer; payload is an
  *                       empty/zeroed schema-valid skeleton. Never silently
  *                       substitutes fixture data — false data is worse than
@@ -54,6 +57,7 @@ const sourceTag = z.enum([
   "polymarket",
   "xai",
   "fmp",
+  "massive",
   "unavailable",
 ]);
 export type SourceTag = z.infer<typeof sourceTag>;
@@ -687,6 +691,81 @@ export const earningsTranscriptSchema = z.object({
   content: z.string().nullable(),
 });
 
+/**
+ * Options-chain read for the analyzed ticker (Massive / Polygon). A single
+ * snapshot of the near-dated chain, reduced to the derivatives signals the Quant
+ * Analyst reasons over: at-the-money implied vol, the IV term-structure tilt,
+ * the 25-delta put-vs-call skew, and the put/call open-interest balance.
+ *
+ * Every derived field is nullable so a thin or absent chain degrades honestly
+ * (BP-020): a name with no listed options, or a chain too thin to interpolate a
+ * skew, reads `null` — never a fabricated 0. `source: "massive"` means the
+ * provider answered (even with an empty chain); `"unavailable"` means it could
+ * not be reached or no key/entitlement was present.
+ */
+export const optionsChainSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  /** Underlying spot used to locate the at-the-money strike. */
+  spotPrice: z.number().nullable(),
+  /** Nearest expiration the metrics below were measured on (YYYY-MM-DD). */
+  nearestExpiry: z.string().nullable(),
+  /** At-the-money implied vol on the nearest expiry, as a fraction (0.32 = 32%). */
+  atmIv: z.number().nullable(),
+  /** Sign of `ivTermSlope`: far ATM IV above near = contango, below = backwardation. */
+  ivTermStructure: z.enum(["contango", "flat", "backwardation"]).nullable(),
+  /** Far-expiry ATM IV minus near-expiry ATM IV. Needs ≥2 expiries; else null. */
+  ivTermSlope: z.number().nullable(),
+  /** 25-delta skew: put IV at ~−0.25Δ minus call IV at ~+0.25Δ on the nearest
+   *  expiry. Positive = downside puts richer than upside calls (fear premium). */
+  skew25Delta: z.number().nullable(),
+  /** Total put open interest divided by total call open interest across the
+   *  fetched chain. > 1 = more put than call OI. */
+  putCallOiRatio: z.number().nullable(),
+  totalOpenInterest: z.number().nullable(),
+  totalVolume: z.number().nullable(),
+  /** Count of distinct expirations seen in the fetched chain (0 in the empty payload). */
+  expiriesCovered: z.number(),
+});
+
+/**
+ * Benchmark futures curve (Massive / Polygon). A fixed basket of the most
+ * macro-relevant US futures — equity-index, energy, metal, rates — each reduced
+ * to a front-month level, its session change, and the front-vs-next spread that
+ * reveals contango/backwardation. `riskTone` is a composite read off the
+ * equity-index and gold legs. The Macro Analyst's cross-asset positioning lane.
+ *
+ * Per-product fields are nullable so one unpriced product degrades on its own
+ * (BP-020); the basket still returns the products that priced. `source` is
+ * "massive" when any product priced, "unavailable" when none did.
+ */
+export const futuresCurveSchema = z.object({
+  source: sourceTag,
+  asOf: z.string(),
+  products: z.array(
+    z.object({
+      /** Root product code, e.g. "ES". */
+      productCode: z.string(),
+      name: z.string(),
+      assetClass: z.enum(["equity-index", "energy", "metal", "rates"]),
+      /** Front (nearest-expiry active) contract ticker. Null when unresolved. */
+      frontContract: z.string().nullable(),
+      lastPrice: z.number().nullable(),
+      /** Front-month last vs prior session close, as a fraction. */
+      changePct: z.number().nullable(),
+      /** Next active contract ticker. Null when only the front resolved. */
+      nextContract: z.string().nullable(),
+      /** (next − front) / front, as a fraction. Positive = deferred richer. */
+      frontNextSpreadPct: z.number().nullable(),
+      termStructure: z.enum(["contango", "backwardation", "flat"]).nullable(),
+    }),
+  ),
+  /** Composite cross-asset tone from the equity-index and gold legs. Null when
+   *  neither priced. Risk-on = equity up / gold down; risk-off = the inverse. */
+  riskTone: z.enum(["risk-on", "neutral", "risk-off"]).nullable(),
+});
+
 export const toolInputSchemas = {
   get_balance_sheet: periodInput,
   get_income_statement: periodInput,
@@ -717,6 +796,8 @@ export const toolInputSchemas = {
   get_quant_composites: periodInput,
   get_short_interest: periodInput,
   get_institutional_ownership: periodInput,
+  get_options_chain: periodInput,
+  get_futures_curve: z.object({ date: z.string().min(1) }),
   discover_quant_context: periodInput,
   get_sec_filings: periodInput,
   get_analyst_estimates: periodInput,
@@ -754,6 +835,8 @@ export const toolOutputSchemas = {
   get_quant_composites: quantCompositesSchema,
   get_short_interest: shortInterestSchema,
   get_institutional_ownership: institutionalOwnershipSchema,
+  get_options_chain: optionsChainSchema,
+  get_futures_curve: futuresCurveSchema,
   discover_quant_context: discoveryPayloadSchema,
   get_sec_filings: secFilingsSchema,
   get_analyst_estimates: analystEstimatesSchema,
@@ -796,6 +879,8 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_quant_composites: "quant-composites.json",
   get_short_interest: "short-interest.json",
   get_institutional_ownership: "institutional-ownership.json",
+  get_options_chain: "options-chain.json",
+  get_futures_curve: "futures-curve.json",
   discover_quant_context: "discover-quant-context.json",
   get_sec_filings: "sec-filings.json",
   get_analyst_estimates: "analyst-estimates.json",

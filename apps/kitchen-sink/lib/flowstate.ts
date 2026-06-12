@@ -15,7 +15,7 @@
 import { after } from "next/server";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
-import { createFlowState, filesystemStores, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/server";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
@@ -24,10 +24,22 @@ import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
+import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 const openaiApiKey = process.env.OPENAI_API_KEY;
+const redisUrl = process.env.REDIS_URL;
+const bullmqDispatch = process.env.FSD_BULLMQ_DISPATCH === "1";
+
+// BullMQ execution backend for local dev (docker compose Redis). Created
+// whenever REDIS_URL is set so Bull Board can mount the queue; only installed
+// as the FlowState `worker` when FSD_BULLMQ_DISPATCH=1 routes actions through
+// the queue. Colocated mode: the dispatcher and the worker run in this
+// process, both against the runtime's resolved stores.
+export const bullmq = redisUrl
+  ? bullmqWorker({ connection: redisUrl })
+  : undefined;
 
 // Vercel/Neon-tuned Postgres adapter. Backs the prod profile's `primary` slot
 // and exposes a same-pool `scheduleIndex` for the weekly-digest flow. Declared
@@ -106,8 +118,48 @@ export const flowstate = createFlowState({
   // Schema/recovery scans on cold start can exhaust the serverless pool before
   // real requests are served.
   detectInterruptedOnStartup: false,
+  // FSD_BULLMQ_DISPATCH=1 routes all action dispatches through the BullMQ
+  // queue instead of running in-process. Requires REDIS_URL. The adapter
+  // wires the dispatcher and the co-located worker against the same resolved
+  // runtime the router uses.
+  worker: bullmqDispatch ? bullmq : undefined,
   adapters: [createScheduledTransportAdapter()],
   onError: (error, ctx) => {
     console.error(`[flowstate] ${ctx.method} ${ctx.path}:`, error.message);
   },
 });
+
+// `next dev` re-evaluates this module on every HMR edit, building a fresh
+// FlowState (and, under dispatch mode, a fresh BullMQ worker) each time.
+// Dispose the previous generation so its worker stops consuming the queue
+// and its pools close — otherwise stale workers accumulate and can claim
+// jobs against orphaned stores. Production evaluates once; this is a no-op
+// there. Deliberately NOT the cache-on-globalThis pattern: caching would
+// freeze flows/config until restart, defeating the source-HMR dev loop.
+const hmr = globalThis as typeof globalThis & {
+  __fsdFlowstate?: FlowState;
+  __fsdShutdownRegistered?: boolean;
+};
+if (hmr.__fsdFlowstate !== undefined) {
+  void hmr.__fsdFlowstate.dispose();
+}
+hmr.__fsdFlowstate = flowstate;
+
+// Runtime init is lazy; warm it eagerly under dispatch mode so the colocated
+// worker consumes the queue from boot rather than from the first web request.
+// dispose() drains the worker and closes the queue before the stores.
+if (bullmq && bullmqDispatch) {
+  void flowstate.ready().then(() => {
+    console.log("[flowstate] BullMQ worker adapter active (all actions route through queue)");
+  });
+
+  // Register signal handlers once per process (not per HMR generation —
+  // process.on accumulates listeners across re-evaluations otherwise) and
+  // always dispose the CURRENT generation via the globalThis slot.
+  if (hmr.__fsdShutdownRegistered !== true) {
+    hmr.__fsdShutdownRegistered = true;
+    const shutdown = () => { void hmr.__fsdFlowstate?.dispose(); };
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
+  }
+}

@@ -52,11 +52,11 @@ import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
-import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
-import { normalizeError } from "../errors/normalize-error";
+import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
   safeCaptureError,
   toErrorCaptureEvent,
@@ -93,7 +93,9 @@ import {
   normalizeStateDefault,
   type LazyLoadOutcome,
   type ScopeLazyLoad,
+  type ResourceChangeDelta,
 } from "./resource-registry";
+import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 
 
 function ensureJournalDefaults(record: SessionRecord): void {
@@ -1485,13 +1487,75 @@ export async function createExecutionContext<
   // so clients can refresh clientData without waiting for request completion.
   const rawResponse = options.response as unknown as Record<string, unknown> | undefined;
   const emitter = rawResponse && typeof rawResponse.emitResourceChange === "function"
-    ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean }) => Promise<unknown> })
+    ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean; delta?: unknown }) => Promise<unknown> })
     : undefined;
 
+  // FIX-751: shared per-request cascade budget and a late-bound ctx ref. The
+  // reactive dispatcher needs the live ExecutionContext to run blocks in-session
+  // via `executeBlock`, but the root context isn't built until the end of this
+  // function — so the dispatchers close over `reactiveCtxRef`, populated below.
+  const cascadeController = createCascadeController();
+  const reactiveCtxRef: { current: ExecutionContext | undefined } = { current: undefined };
+
   function makeResourceChangeHandler(scope: "session" | "user" | "org") {
-    if (!emitter) return undefined;
-    return (resourcePath: string, changeType: "created" | "updated" | "deleted") => {
-      void emitter.emitResourceChange({ scope, resourcePath, changeType, transient: true });
+    const scopeConfigs =
+      scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs;
+    const hasReactive = Object.values(scopeConfigs).some((c) => c.reactTo !== undefined);
+
+    // Only wire a handler when there is something to do: a live emitter
+    // (FIX-739 streaming) and/or a `reactTo` binding (FIX-751). Reactive-only
+    // resources still dispatch even with no emitter present.
+    if (!emitter && !hasReactive) return undefined;
+
+    const dispatchReactive = hasReactive
+      ? createReactiveDispatcher({
+          configs: scopeConfigs,
+          ctxRef: reactiveCtxRef,
+          controller: cascadeController,
+          // The attribution ALS holds the executing block's instance id, so the
+          // reactive block parents under whichever block performed the mutation.
+          getTriggerInstanceId: () => loadAttributionStorage.getStore(),
+          runAttributed: (instanceId, fn) => loadAttributionStorage.run(instanceId, fn),
+        })
+      : undefined;
+
+    // FIX-739 streams resource_change for client-visible changes: all collections
+    // (delta only when live) and live single resources. A single resource that
+    // fires the seam only because it declares `reactTo` (FIX-751, non-live) must
+    // NOT emit — that would leak a client item for a resource with no client
+    // projection. Precompute those storage keys once and skip the emit for them.
+    const scopeStorageKeys = resourceStorageKeys(scopeConfigs);
+    const nonStreamingSingleKeys = new Set<string>();
+    for (const [accessor, cfg] of Object.entries(scopeConfigs)) {
+      if (!isCollectionConfig(cfg) && cfg.client?.live !== true) {
+        nonStreamingSingleKeys.add(scopeStorageKeys[accessor] ?? accessor);
+      }
+    }
+
+    return async (
+      resourcePath: string,
+      changeType: "created" | "updated" | "deleted",
+      projection?: { delta: unknown },
+      change?: ResourceChangeDelta
+    ): Promise<void> => {
+      // FIX-739 streaming emit stays fire-and-forget: `projection` is present
+      // only for `client.live: true` resources and fills the resource_change
+      // item's `delta` slot so the client merges without a refetch. Absent →
+      // batched-refetch path unchanged. Skip non-live singles (reactive-only).
+      if (emitter !== undefined && !nonStreamingSingleKeys.has(resourcePath)) {
+        void emitter.emitResourceChange({
+          scope,
+          resourcePath,
+          changeType,
+          transient: true,
+          delta: projection?.delta
+        });
+      }
+      // FIX-751 reactive dispatch is awaited inline — it runs the bound block
+      // as part of the mutating turn, and a block failure propagates out.
+      if (dispatchReactive !== undefined) {
+        await dispatchReactive(resourcePath, changeType, change);
+      }
     };
   }
 
@@ -2782,6 +2846,14 @@ export async function createExecutionContext<
             if (generatorModelIdentity !== undefined) {
               (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
             }
+            // Fold the error cause chain into details so intermediate
+            // failures aren't swallowed on the failed block_trace. `displayCause`
+            // unwraps the synthetic layer normalizeError adds for plain throws,
+            // so this matches the tool-output seam for the same failure.
+            const blockTraceErrorDetails = errorDetailsWithCause({
+              details: normalized.details,
+              cause: displayCause(normalized),
+            });
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -2793,7 +2865,7 @@ export async function createExecutionContext<
                   error: {
                     message: normalized.message,
                     code: normalized.code,
-                    ...(normalized.details ? { details: normalized.details } : {}),
+                    ...(blockTraceErrorDetails ? { details: blockTraceErrorDetails } : {}),
                   },
                   modelUsage: generatorModelUsage,
                   model: generatorModelIdentity,
@@ -2912,6 +2984,10 @@ export async function createExecutionContext<
   // explicitly (see the assignment alongside `_blockIdentity` there) — pool
   // identity is preserved across the entire request scope.
   (rootContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+  // FIX-751: bind the live context so reactive dispatchers can run blocks
+  // in-session via `executeBlock`. Set after construction since the handlers
+  // (wired into the registries above) close over `reactiveCtxRef`.
+  reactiveCtxRef.current = rootContext as unknown as ExecutionContext;
   // FIX-663: attach the background signal to the root context. Child scopes
   // re-attach it in `_withExecutionScope` (alongside the work pool).
   (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;

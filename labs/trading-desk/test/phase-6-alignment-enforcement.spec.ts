@@ -32,7 +32,6 @@ const sessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-6" as const,
   maxDebateRounds: 1,
-  memoStatus: { thesisAlignment: "writing" as const },
   runComplete: true,
   userThesis: "A thesis long enough to audit against the pipeline.",
 };

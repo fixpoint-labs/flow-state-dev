@@ -10,7 +10,7 @@ import type {
   Middleware,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import { SuspensionError } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
@@ -25,7 +25,7 @@ import {
 import type { ExecutionContext } from "../context/types";
 import type { FlowError } from "../errors/flow-error";
 import { ValidationError } from "../errors/flow-error";
-import { normalizeError } from "../errors/normalize-error";
+import { normalizeError, displayCause } from "../errors/normalize-error";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
 import { executeBlock } from "./executeBlock";
@@ -298,6 +298,13 @@ async function emitTerminalError(
     emitItemDone: (item: ErrorItem) => Promise<unknown>;
   };
 
+  // Fold the error cause chain into details so intermediate failures aren't
+  // swallowed on the terminal error item. `displayCause` unwraps the synthetic
+  // layer normalizeError adds for plain throws, matching the tool-output seam.
+  const details = errorDetailsWithCause({
+    details: error.details,
+    cause: displayCause(error),
+  });
   const item: ErrorItem = {
     id: `item_error_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "error",
@@ -307,7 +314,8 @@ async function emitTerminalError(
     provenance: RUNTIME_PROVENANCE,
     ts: Date.now(),
     message: error.message,
-    code: error.code
+    code: error.code,
+    ...(details ? { details } : {})
   };
 
   await response.emitItemAdded(item);
@@ -432,7 +440,8 @@ export async function runActionInternal<
   const internalSeams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
   const response = options.responseEmitter ?? createInternalResponseEmitter({
     requestId,
-    internalSeams: undefined
+    internalSeams: undefined,
+    startSequenceNumber: options.startSequenceNumber
   });
 
   if (options.onItem !== undefined) {

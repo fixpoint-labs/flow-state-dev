@@ -43,7 +43,11 @@ function makeRegistry(options: {
   configs?: Record<string, ResourceConfig | ResourceCollectionConfig>;
   initialState?: Record<string, JsonObject>;
   initialContent?: Record<string, string>;
-  onResourceChanged?: (path: string, type: "created" | "updated" | "deleted") => void;
+  onResourceChanged?: (
+    path: string,
+    type: "created" | "updated" | "deleted",
+    projection?: { delta: unknown }
+  ) => void;
 }) {
   const state = { ...(options.initialState ?? {}) };
   const content = { ...(options.initialContent ?? {}) };
@@ -479,15 +483,137 @@ describe("createScopeResourceRegistry — lifecycle hooks", () => {
     });
 
     await (registry as any).items.create("doc1", {});
-    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "created");
+    // Non-live collection: third (projection) arg is undefined. The fourth
+    // (change) arg carries the state delta for the reactive dispatcher (FIX-751).
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "created", undefined, {
+      state: { v: 0 },
+      prevState: undefined,
+      evicted: false
+    });
 
     const ref = await (registry as any).items.get("doc1");
     await ref.patchState({ v: 1 });
-    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated");
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated", undefined, {
+      state: { v: 1 },
+      prevState: { v: 0 },
+      evicted: false
+    });
 
     await (registry as any).items.delete("doc1");
-    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "deleted");
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "deleted", undefined, {
+      state: undefined,
+      prevState: { v: 1 },
+      evicted: false
+    });
     expect(onChange).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
+  it("passes the projected delta on a live collection mutation", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("memos/*", {
+      stateSchema: z.object({ status: z.string(), secret: z.string().default("x") }).passthrough(),
+      client: { state: { read: true }, live: true, exclude: ["secret"] }
+    });
+    const registry = makeRegistry({
+      configs: { memos: nsConfig },
+      onResourceChanged: onChange
+    });
+
+    await (registry as any).memos.create("m1", { status: "pending" });
+    // Assert only the projection (3rd) arg here — the 4th change arg is covered
+    // by the non-live test above; live projection is the focus of this case.
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "created", {
+      delta: { status: "pending" } // `secret` excluded by the projection
+    }]);
+
+    const ref = await (registry as any).memos.get("m1");
+    await ref.patchState({ status: "writing" });
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "updated", {
+      delta: { status: "writing" }
+    }]);
+
+    await (registry as any).memos.upsert("m1", { status: "published" });
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "updated", {
+      delta: { status: "published" }
+    }]);
+
+    // Deletes on a live collection carry a null delta so the client drops the
+    // item without a refetch.
+    await (registry as any).memos.delete("m1");
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "deleted", { delta: null }]);
+  });
+
+  it("omits the delete delta for a non-live collection", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("memos/*", {
+      stateSchema: z.object({ status: z.string() }).passthrough(),
+      client: { state: { read: true } }
+    });
+    const registry = makeRegistry({ configs: { memos: nsConfig }, onResourceChanged: onChange });
+    await (registry as any).memos.create("m1", { status: "pending" });
+    await (registry as any).memos.delete("m1");
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "deleted", undefined]);
+  });
+
+  it("omits the delta for a non-live collection (batched-refetch path)", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("memos/*", {
+      stateSchema: z.object({ status: z.string() }).passthrough(),
+      client: { state: { read: true } }
+    });
+    const registry = makeRegistry({ configs: { memos: nsConfig }, onResourceChanged: onChange });
+
+    await (registry as any).memos.create("m1", { status: "pending" });
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "created", undefined]);
+  });
+
+  it("emits a live delta for a live single resource (and nothing for non-live)", async () => {
+    const onLive = vi.fn();
+    const liveReg = makeRegistry({
+      configs: {
+        doc: makeResourceConfig({
+          stateSchema: z.object({ status: z.string().default("pending") }).passthrough(),
+          client: { expose: ["status"], live: true }
+        })
+      },
+      initialState: { doc: { status: "pending" } },
+      onResourceChanged: onLive
+    });
+    await liveReg.get("doc").patchState({ status: "writing" });
+    expect(onLive.mock.lastCall?.slice(0, 3)).toEqual(["doc", "updated", { delta: { status: "writing" } }]);
+
+    const onSilent = vi.fn();
+    const silentReg = makeRegistry({
+      configs: {
+        doc: makeResourceConfig({
+          stateSchema: z.object({ status: z.string().default("pending") }).passthrough(),
+          client: { expose: ["status"] }
+        })
+      },
+      initialState: { doc: { status: "pending" } },
+      onResourceChanged: onSilent
+    });
+    await silentReg.get("doc").patchState({ status: "writing" });
+    expect(onSilent).not.toHaveBeenCalled();
+  });
+
+  it("degrades to no delta when a live client.data projection throws", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("memos/*", {
+      stateSchema: z.object({ status: z.string() }).passthrough(),
+      client: {
+        state: { read: true },
+        live: true,
+        data: () => { throw new Error("boom"); }
+      }
+    });
+    const registry = makeRegistry({ configs: { memos: nsConfig }, onResourceChanged: onChange });
+
+    // The mutation must still succeed; the delta degrades to undefined.
+    await (registry as any).memos.create("m1", { status: "pending" });
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "created", undefined]);
   });
 });
 
@@ -513,6 +639,27 @@ describe("createScopeResourceRegistry — LRU eviction", () => {
 
     const a = await (registry as any).items.getOptional("a");
     expect(a).toBeDefined();
+  });
+
+  it("eviction on a live collection fires a deleted change with null delta (FIX-751)", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", {
+      maxInstances: 1,
+      eviction: "oldest",
+      client: { live: true } as ResourceCollectionConfig["client"]
+    });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/a": {} },
+      onResourceChanged: onChange
+    });
+
+    // Creating "b" evicts "a"; the eviction must tombstone the live client the
+    // same way an explicit delete does (projection `{ delta: null }`).
+    await (registry as any).items.create("b", {});
+    const deletedCall = onChange.mock.calls.find((c) => c[1] === "deleted");
+    expect(deletedCall).toBeDefined();
+    expect(deletedCall![2]).toEqual({ delta: null });
   });
 
   it("throws when maxInstances reached with eviction=none", async () => {
@@ -594,5 +741,62 @@ describe("createScopeResourceRegistry — upsert", () => {
       { v: 0, label: "scaffold" }
     );
     expect(ref.state).toEqual({ v: 10, label: "scaffold" });
+  });
+});
+
+describe("createScopeResourceRegistry — edges slot", () => {
+  it("attaches an .edges API to a static resource ref when edges is declared", async () => {
+    const config = makeResourceConfig({
+      edges: true,
+      stateSchema: z.object({ facts: z.array(z.string()), edges: z.array(z.any()).default([]) }).passthrough(),
+      default: { facts: [], edges: [] }
+    });
+    const registry = makeRegistry({ configs: { kb: config } });
+    const ref = registry.get("kb");
+    expect(ref.edges).toBeDefined();
+
+    await ref.edges!.add({ from: "a", to: "b", type: "drives" });
+    await ref.edges!.add({ from: "b", to: "c", type: "drives" });
+
+    expect((ref.state as any).edges).toHaveLength(2);
+    const path = ref.edges!.shortestPath("a", "c", { depth: 3 });
+    expect(path).not.toBeNull();
+    expect(path).toHaveLength(2);
+  });
+
+  it("passes an object edges config through to the API (vocabulary enforced)", async () => {
+    const config = makeResourceConfig({
+      edges: { vocabulary: ["drives"] },
+      stateSchema: z.object({ edges: z.array(z.any()).default([]) }).passthrough(),
+      default: { edges: [] }
+    });
+    const registry = makeRegistry({ configs: { kb: config } });
+    const ref = registry.get("kb");
+    await expect(ref.edges!.add({ from: "a", to: "b", type: "owns" })).rejects.toThrow(/vocabulary/);
+  });
+
+  it("does not attach .edges when edges is not declared", () => {
+    const config = makeResourceConfig({
+      stateSchema: z.object({ facts: z.array(z.string()) }).passthrough()
+    });
+    const registry = makeRegistry({ configs: { kb: config } });
+    expect(registry.get("kb").edges).toBeUndefined();
+  });
+
+  it("attaches an .edges API to collection instances when declared", async () => {
+    const nsConfig = makeCollectionConfig("graphs/*", {
+      edges: true,
+      stateSchema: z.object({ edges: z.array(z.any()).default([]) }).passthrough()
+    });
+    const registry = makeRegistry({
+      configs: { graphs: nsConfig },
+      initialState: { "graphs/g1": { edges: [] } }
+    });
+    // Resolve a concrete instance ref (createNamespaceInstanceRef is where the
+    // collection-side edge wiring lives).
+    const inst = await (registry as any).graphs.upsert("g1", {});
+    expect(inst.edges).toBeDefined();
+    await inst.edges.add({ from: "x", to: "y", type: "rel" });
+    expect((inst.state as any).edges).toHaveLength(1);
   });
 });

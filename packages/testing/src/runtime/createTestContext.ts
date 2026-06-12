@@ -507,7 +507,8 @@ export async function createTestContext<TInput = unknown>(
   const modelResolver = options.modelResolver ?? createMockModelResolver({
     generators: options.generators,
     models: options.models,
-    policy: options.unmockedGeneratorPolicy
+    policy: options.unmockedGeneratorPolicy,
+    unmockedDefault: options.unmockedDefault
   });
 
   const ctx = await createExecutionContext({

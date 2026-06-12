@@ -17,6 +17,8 @@ export type {
   SequencerSchemaMismatchErrorDetails
 } from "./sequencer-output-schema-error";
 export { rootCause, isAbortLike } from "./abort";
+export { serializeError, errorDetailsWithCause } from "./serialize-error";
+export type { SerializedError } from "./serialize-error";
 export {
   SuspensionError,
   SuspensionRejectedError,

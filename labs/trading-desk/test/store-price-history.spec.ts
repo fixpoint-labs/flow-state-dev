@@ -41,7 +41,6 @@ const baseState = {
   dataSource: "fixture" as const,
   activePhase: "phase-1" as const,
   maxDebateRounds: 1,
-  memoStatus: {},
   runComplete: false,
 };
 

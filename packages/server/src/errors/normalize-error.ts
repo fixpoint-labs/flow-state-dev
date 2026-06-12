@@ -99,3 +99,26 @@ export function normalizeError(
     details: options.details
   });
 }
+
+/**
+ * The cause chain to serialize *below* a normalized error's own message.
+ *
+ * `normalizeError` wraps a non-`FlowError` throw as `FlowError.cause`, copying
+ * its message onto the synthesized `FlowError` (see the branch above).
+ * Serializing that layer directly would emit a redundant `details.cause` that
+ * just repeats the top-level message — and, when the thrown error had a real
+ * cause, an extra wrapper level. Unwrapping the synthetic layer makes the
+ * server's `block_trace` / terminal error details match the raw-throw seam
+ * (`emit-tool-output`), which serializes the original error's `.cause` directly.
+ */
+export function displayCause(error: FlowError): unknown {
+  const cause = error.cause;
+  if (
+    cause instanceof Error &&
+    !FlowError.isInstance(cause) &&
+    cause.message === error.message
+  ) {
+    return (cause as Error & { cause?: unknown }).cause;
+  }
+  return cause;
+}

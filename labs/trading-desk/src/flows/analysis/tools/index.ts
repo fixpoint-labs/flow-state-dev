@@ -31,6 +31,8 @@ export { get_risk_regime } from "./data/get_risk_regime";
 export { get_quant_composites } from "./data/get_quant_composites";
 export { get_short_interest } from "./data/get_short_interest";
 export { get_institutional_ownership } from "./data/get_institutional_ownership";
+export { get_options_chain } from "./data/get_options_chain";
+export { get_futures_curve } from "./data/get_futures_curve";
 export { discover_quant_context } from "./data/discover_quant_context";
 export { get_sec_filings } from "./data/get_sec_filings";
 export { get_analyst_estimates } from "./data/get_analyst_estimates";

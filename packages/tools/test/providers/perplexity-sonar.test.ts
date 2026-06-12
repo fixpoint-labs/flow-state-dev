@@ -65,6 +65,49 @@ describe("perplexitySonarAdapter", () => {
     );
   });
 
+  it("selects the sonar-reasoning model for the deep tier", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ choices: [{ message: { content: "a" } }], citations: [] }),
+        { status: 200 }
+      )
+    );
+
+    await perplexitySonarAdapter.search("q", {
+      maxResults: 5,
+      searchDepth: "basic",
+      tier: "deep",
+      topic: "general",
+      apiKey: "k",
+    });
+
+    expect(JSON.parse((fetch as any).mock.calls[0][1].body).model).toBe(
+      "sonar-reasoning"
+    );
+  });
+
+  it("uses searchMode as the model override", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ choices: [{ message: { content: "a" } }], citations: [] }),
+        { status: 200 }
+      )
+    );
+
+    await perplexitySonarAdapter.search("q", {
+      maxResults: 5,
+      searchDepth: "basic",
+      tier: "fast",
+      searchMode: "sonar-pro",
+      topic: "general",
+      apiKey: "k",
+    });
+
+    expect(JSON.parse((fetch as any).mock.calls[0][1].body).model).toBe(
+      "sonar-pro"
+    );
+  });
+
   it("throws on non-200 response", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("Rate limited", { status: 429, statusText: "Too Many Requests" })

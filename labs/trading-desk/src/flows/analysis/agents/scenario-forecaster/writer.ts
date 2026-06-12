@@ -41,7 +41,6 @@ export const commitScenarioForecastMemo = memoHandler({
 
     await publishMemo(
       ctx,
-      "scenarioForecast",
       PHASE_5_MEMO_KEYS.scenarioForecast.collectionKey,
       {
         label: forecast.label,

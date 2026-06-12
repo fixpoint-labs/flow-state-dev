@@ -245,20 +245,46 @@ orderPipeline
 
 Handlers are checked in order. The first match runs. If the recovery block succeeds, its output continues down the chain. If no handler matches, the original error propagates up. Add a final entry without `when` to catch anything else.
 
-`rescue` is the only error-handling primitive in the DSL. There's no try/catch wrapping at the chain level. If you don't add `.rescue()`, errors bubble out and the sequencer fails — which is usually what you want.
+If you don't add a rescue, errors bubble out and the sequencer fails — which is usually what you want.
 
 For throwing structured errors with machine-readable codes and `details` that surface in the DevTool, see [Error handling](/docs/advanced/error-handling).
+
+### Per-step rescue: recover and continue
+
+`.rescue()` is also a method on any block, not just the sequencer. Call it on a single block and you get a copy that recovers from its own failure: if the block throws, the first matching handler runs and its output is returned in place of the throw. The handler runs with the block's own context, so it can read sequencer state.
+
+The difference from the chain-level rescue above is scope, not behavior. Put a rescue on one step and the chain *continues* to the next step, because that step returned a value instead of throwing:
+
+```ts
+const fallbackPrice = handler({
+  name: "fallback-price",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({ price: z.number() }),
+  execute: () => ({ price: 0 }),
+});
+
+pipeline
+  .step(fetchInventory)
+  // priceOrder can fail on its own without taking down the rest of the chain.
+  .step(priceOrder.rescue([{ block: fallbackPrice }]))
+  .step(recordOrder); // still runs, with the fallback price
+```
+
+Reach for a per-step rescue when one step is allowed to fail in isolation — a flaky external call, one element of a fan-out, one branch of a `.parallel`. Reach for the chain-level `.rescue()` when a failure anywhere in the chain should stop it and route to recovery. Both are the same operation; you choose where it applies.
+
+A `.tap()` step that carries a rescue runs its handler for the side effect and leaves the running value unchanged, since `.tap` never changes the value. That is the shape for "mark this record failed and keep going."
+
+On a `.step`, the handler's output replaces the failed block's output and flows on to the next step as that block's output type. The compiler does not check this for you — a rescue handler is typed loosely — so make sure the handler returns a value that satisfies the rescued block's output contract, or the next step receives something its input doesn't expect.
 
 ### Querying rescue status
 
 Rescue catches an error and routes it to a recovery block. Sometimes a later step needs to know that happened: did the block before me throw and get recovered, or did it run cleanly? `ctx.wasRescued(...)` answers that without the recovered value having to carry a marker.
 
-Pass it a block name or a block definition — usually a step that wraps a risky operation in its own `.rescue()`. It returns `true` only when that block ran as a prior step in the current sequencer and recovered an error through its own `.rescue()`. It returns `false` for a clean run, a step that never ran (skipped by `.stepIf`), an unknown name, or a call from outside a sequencer. It never throws.
+Pass it a block name or a block definition — typically a step that carries its own `.rescue()`. It returns `true` only when that block ran as a prior step in the current sequencer and recovered an error through its own rescue. It returns `false` for a clean run, a step that never ran (skipped by `.stepIf`), an unknown name, or a call from outside a sequencer. It never throws.
 
 ```ts
-const primarySearch = sequencer({ name: "primary-search", inputSchema: query })
-  .step(callSearchApi)
-  .rescue([{ block: fallbackSearch }]);
+// callSearchApi carries its own leaf rescue, so the step recovers in place.
+const primarySearch = callSearchApi.rescue([{ block: fallbackSearch }]);
 
 sequencer({ name: "search-pipeline", inputSchema: query })
   .step(primarySearch)

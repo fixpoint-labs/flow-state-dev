@@ -38,7 +38,14 @@ const scenarioSchema = z.object({
     "riskAssessment",
     "phase1",
   ]),
+  // Free-text stock-level read (e.g. "Data-center beat, +12%"). Kept for the
+  // human-facing render alongside the machine-readable `expectedReturnPct`.
   expectedOutcome: z.string(),
+  // Signed expected stock move over the trade window, as a percent (e.g. +12,
+  // -8). The numeric anchor the FIX-752 reward-to-risk metric derives from —
+  // `expectedOutcome` carries the same magnitude in prose. Required (BP-016);
+  // the prompt requires it agree with `expectedOutcome`.
+  expectedReturnPct: z.number(),
   tradeBehavior: z.string(),
 });
 

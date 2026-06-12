@@ -224,6 +224,16 @@ export type CollectionSnapshotEntry = {
    * included only when `client.state.read: true`.
    */
   prefetched?: CollectionSnapshotPrefetchedItem[];
+  /**
+   * Per-topic live overlay (FIX-739). Populated client-side by
+   * `mergeResourceChangeIntoSnapshot` from `live: true` resource_change deltas
+   * and read by `useResourceCollectionItem` as an overlay on the fetched
+   * baseline. A created/updated entry carries `clientData`; a deleted entry is
+   * a tombstone (`deleted: true`) so the hook can show the item as gone without
+   * waiting for a refetch. Never emitted by the server — purely a client-merge
+   * target, reconciled away on the next authoritative snapshot.
+   */
+  live?: Record<string, { clientData?: unknown; deleted?: boolean }>;
 };
 
 /**
@@ -252,10 +262,16 @@ export type CollectionItemState = {
  * React-layer wrapper around a collection item. Augments the server's
  * `{ topic, clientData? }` payload with the FIX-296 lazy-content ergonomic
  * (`fetchContent()`) so consumers don't have to plumb the client themselves.
+ *
+ * `TClient` (FIX-741) is the projected client-data shape — supplied by the
+ * React hook generic, typically via `ClientDataOf<typeof collection>`. Defaults
+ * to `unknown` so untyped call sites are unaffected. The runtime payload is the
+ * `JsonValue` produced by the server projection; the type is a hook-boundary
+ * assertion backed by the projection contract.
  */
-export type CollectionItemHandle = {
+export type CollectionItemHandle<TClient = unknown> = {
   topic: string;
-  clientData?: unknown;
+  clientData?: TClient;
   fetchContent(): Promise<string | null>;
 };
 

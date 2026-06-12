@@ -4,7 +4,7 @@
 import type { BlockContext, BlockDefinition, BlockOutputHint, ModelIdentity } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
-import { SuspensionError } from "@flow-state-dev/core";
+import { SuspensionError, runRescue } from "@flow-state-dev/core";
 import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
 import type { BlockMiddlewareContext } from "../middleware/types";
@@ -25,7 +25,7 @@ import {
   logRuntimeEvent,
   summarizeForLog
 } from "./logging";
-import { mergeRetryPolicy, retryWithPolicy } from "./retry";
+import { mergeRetryPolicy, retryWithPolicy, isRetryableError } from "./retry";
 import type {
   ExecuteBlockContext,
   ExecuteBlockOptions,
@@ -333,15 +333,64 @@ export async function executeBlock(
             // executeByKind returns `{ output, modelUsage }`; unwrap so
             // _withExecutionScope sees the raw block output. modelUsage is
             // forwarded to the caller via the closure-captured slot below.
-            const result = await executeByKind(
-              options.block,
-              interceptedInput,
-              scopedCtx as ExecuteBlockContext,
-              {
-                internalSeams: seams,
-                metadata: attemptMetadata,
+            let result: { output: unknown; modelUsage?: GeneratorModelUsageMeta; modelIdentity?: ModelIdentity };
+            try {
+              result = await executeByKind(
+                options.block,
+                interceptedInput,
+                scopedCtx as ExecuteBlockContext,
+                {
+                  internalSeams: seams,
+                  metadata: attemptMetadata,
+                }
+              );
+            } catch (error) {
+              // FIX-742: honor a bare action-root block's own `.rescue()` here,
+              // in-scope, so its trace records `completed + rescued` — consistent
+              // with the core child seam — rather than the outer catch (which
+              // runs after `_withExecutionScope` already recorded a failed
+              // trace). Only on the final retry attempt, so retries still run
+              // first. `SuspensionError` is control flow; sequencers self-handle
+              // chain-level rescue in their op-loop. In-flow child blocks never
+              // reach here — they go through core's `executeBlock`.
+              const rootRescueHandlers =
+                options.block.kind !== "sequencer" ? options.block.config.rescue : undefined;
+              const normalizedRescueError =
+                error instanceof Error ? error : new Error(String(error));
+              // Rescue after retries are exhausted. A non-retryable error is
+              // also "final": `retryWithPolicy` aborts the loop early for it, so
+              // there will be no further attempt — rescue must fire now or the
+              // error escapes un-rescued (the "retries exhaust, then rescue"
+              // contract must hold for non-retryable errors too).
+              const isFinalAttempt =
+                retryPolicy === undefined ||
+                attempt >= retryPolicy.maxAttempts - 1 ||
+                !isRetryableError(normalizedRescueError, retryPolicy);
+              if (
+                !(error instanceof SuspensionError) &&
+                isFinalAttempt &&
+                rootRescueHandlers !== undefined &&
+                rootRescueHandlers.length > 0
+              ) {
+                const rescued = await runRescue(
+                  scopedCtx,
+                  rootRescueHandlers,
+                  normalizedRescueError,
+                  blockPath
+                );
+                if (rescued !== undefined) {
+                  (scopedCtx as { _didRescue?: boolean })._didRescue = true;
+                  // Mirror the other rescue seams: carry the handler's output
+                  // descriptor so `_withExecutionScope` records a ref (not a
+                  // defaulted `inline`) for the rescued block's trace output.
+                  if (rescued.descriptor.kind !== "inline") {
+                    (scopedCtx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescued.descriptor;
+                  }
+                  return rescued.value;
+                }
               }
-            );
+              throw error;
+            }
             scopedExecutionResult = result;
             // Stash modelUsage on the scoped ctx so the unified `output`
             // phase capture in createExecutionContext picks it up when

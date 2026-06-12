@@ -20,6 +20,30 @@ import { createMockContext, runForTest } from "./helpers";
 // ---------------------------------------------------------------------------
 
 describe("defineResourceCollection", () => {
+  it("injects an edges field into the instance state schema when edges is declared", () => {
+    const coll = defineResourceCollection({
+      pattern: "graphs/*",
+      scope: "user",
+      stateSchema: z.object({ label: z.string().default("") }),
+      edges: true,
+    });
+
+    // The framework injects `edges` so writes aren't silently stripped on
+    // persist; parsing a bare instance yields an empty edge array.
+    expect("edges" in (coll.stateSchema as z.ZodObject<z.ZodRawShape>).shape).toBe(true);
+    const parsed = coll.stateSchema.parse({ label: "x" }) as { edges: unknown[] };
+    expect(parsed.edges).toEqual([]);
+  });
+
+  it("leaves the instance state schema untouched when edges is not declared", () => {
+    const coll = defineResourceCollection({
+      pattern: "plain/*",
+      scope: "user",
+      stateSchema: z.object({ label: z.string().default("") }),
+    });
+    expect("edges" in (coll.stateSchema as z.ZodObject<z.ZodRawShape>).shape).toBe(false);
+  });
+
   it("creates a collection with single-level wildcard pattern", () => {
     const coll = defineResourceCollection({
       pattern: "files/*",

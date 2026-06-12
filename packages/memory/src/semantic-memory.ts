@@ -1,4 +1,5 @@
 import { defineResource } from '@flow-state-dev/core'
+import type { EdgeSlotConfig } from '@flow-state-dev/core/graph'
 import { z } from 'zod'
 
 /** Semantic fact categories. */
@@ -53,13 +54,23 @@ export type SemanticMemoryState = z.infer<typeof semanticMemoryStateSchema>
 /**
  * Create a semantic memory resource definition with the given scope.
  * Follows the same factory pattern as `createEpisodicMemoryResource`.
+ *
+ * When `relations` is passed (relations tier enabled, FIX-745), the resource
+ * declares an `edges` slot so the framework injects an `edges: Edge[]` field
+ * into the state and attaches the `ResourceEdgeApi` to the live ref. When it
+ * is omitted, the resource carries no `edges` field and no edge API — the
+ * chat-personalization path is byte-for-byte unchanged.
  */
-export function createSemanticMemoryResource(scope: 'user' | 'org') {
+export function createSemanticMemoryResource(
+  scope: 'user' | 'org',
+  relations?: EdgeSlotConfig,
+) {
   return defineResource({
     ref: 'semanticMemory',
     scope,
     stateSchema: semanticMemoryStateSchema,
     default: { facts: [], totalExtracted: 0, totalConsolidations: 0 },
     writable: true,
+    ...(relations ? { edges: relations } : {}),
   })
 }

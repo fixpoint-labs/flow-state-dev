@@ -240,6 +240,8 @@ defineResourceCollection({
 
 Hook context provides `log(message)` and `scopeType`. Hooks are synchronous.
 
+When a reaction needs to do more than log or mirror, bind a real block instead with `reactTo`. A reactive block runs inside the turn that caused the change, so it can emit items, call models, run sub-blocks, and show up in traces. Treat `reactTo` as the upgrade path from these callbacks: keep `onInstance*` for cheap synchronous side effects, reach for `reactTo` when the reaction is part of the flow's work. See [Reactive blocks](/docs/resources/reactive-blocks).
+
 ## Block declarations
 
 Collections work with block-level resource declarations the same way static resources do:
@@ -378,3 +380,7 @@ The old snapshot carried `resources[scope][ref].items` as a record of every item
 3. If you relied on `Object.keys(items).length` for a count, read the always-emitted `count` field from the snapshot.
 
 See the changelog entry for the per-version detail.
+
+## See also
+
+For relationships between resources or entities rather than many instances of one shape, see [Edges](./edges).

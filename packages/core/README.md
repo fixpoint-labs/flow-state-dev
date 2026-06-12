@@ -58,6 +58,8 @@ const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .rescue([{ when: [ModelError], block: fallback }]);
 ```
 
+`.rescue()` is also a method on any block. `someBlock.rescue([{ block: fallback }])` returns a block that recovers from its own failure and returns the handler's output instead of throwing — so a single step (or one `forEach` element, `parallel` branch, or `router` route) can fail in isolation while the rest of the chain continues. The chain-level `.rescue()` above is the same operation applied to the whole sequencer.
+
 A later step can check whether an earlier one was recovered with `ctx.wasRescued(blockName | blockDef)` — without the recovered value carrying any marker.
 
 Sequencers can optionally declare an `outputSchema` as a runtime contract on the composed output of the whole chain — validated on every exit path (tail, `exitIf`, `rescue`). Call `.validate()` at build time to catch structural drift early.
@@ -154,7 +156,8 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `orgResources`)
   - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows
   - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — `'lazy'` defers the load until the declaring block dispatches. Once the resource is resolved its `ref.state` getter is synchronous. Declaring `'lazy'` on a flow-level single resource throws at build time (no per-block load trigger).
-- `defineResourceNamespace(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), optional `maxInstances`/`eviction`, and lifecycle hooks
+  - `reactTo?: { created?, updated?, deleted? }` — bind a block (handler/generator/sequencer) to a mutation. Each entry is a bare block or `{ block, when }`. The block runs blocking inside the originating turn with a `ResourceChange` payload (`key`, `ref`, `kind`, `state`, `prevState`, `evicted`); type its input with `resourceChangeSchema(stateSchema)`. See the [Reactive blocks](https://flow-state.dev/docs/resources/reactive-blocks) reference.
+- `defineResourceNamespace(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), optional `maxInstances`/`eviction`, lifecycle hooks, and `reactTo` (same `{ created?, updated?, deleted? }` shape as `defineResource`; supersedes the `onInstance*` callbacks for the block case)
   - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — a loading-cost knob, not an API-shape knob. Eager preloads the whole prefix into a per-request cache so reads resolve instantly; `'lazy'` reads per access from the store. The call shape is identical in both modes: `get`/`getOptional`/`list`/`count` all return Promises (always `await` them), and the mutations `create`/`getOrCreate`/`upsert`/`delete` were already async. Flipping `prefetchMode` needs no call-site changes. `'lazy'` requires `eviction: 'none'` (a partial cache can't drive eviction) and throws at build time otherwise.
   - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `upsert()`, `list()`, `delete()`, `count()`
   - **`create(key, initial, { replace: true })`** — overwrites an existing instance instead of throwing. `setState` semantics; Zod `.default(null)` fills nullables on both the create and replace branches. `maxInstances` only checked when adding a new instance. Use for setup/reset paths.
@@ -205,7 +208,10 @@ Forwarding is direct-only: inner capabilities used by `myCap` do not propagate t
 - `client` on scope configs — Per-scope client view: `expose: string[]` (verbatim passthrough by field name) and `derived: { name: fn }` (compute functions receive `{ state, resources }`). State without a `client` block is private. `clientData` is the previous name for `client.derived` and is deprecated.
 
 **Prompt formatters** (`@flow-state-dev/core/prompt`):
-- `section`, `list`, `keyValues`, `entries`, `codeBlock`, `join`, `when` — Composable text formatters for building clean LLM context
+- `section`, `list`, `keyValues`, `table`, `entries`, `codeBlock`, `join`, `when` — Composable text formatters for building clean LLM context. `section` takes a string title (default `##`) or `{ title, level }` to nest under another section; `table` renders an array of records as a Markdown table. The same `keyValues` / `list` / `table` shapes are auto-registered as `fsd_*` filters inside `.md` prompt templates.
+
+**Concurrency** (`@flow-state-dev/core`):
+- `mapLimit(values, maxConcurrency, mapper)` — bounded-concurrency async fan-out preserving input order. Use it for async work **inside a handler** (`.parallel` fans out blocks, not in-handler async).
 - `xmlTag(name, content)`, `renderTaggedContext(tagged, order)` — XML tag rendering used by object-form generator context
 - `validateTagName(name)`, `RESERVED_TAG_NAMES` — Reserved-tag list and validator for object-form context keys
 
@@ -348,6 +354,10 @@ Block, flow, resource, scope, streaming, and model type definitions. Use this su
 
 `defineResourceCollection` accepts a `prefetchWindow?: number` (default `0`) that inlines the first N items in the snapshot's `prefetched` window in lexicographic storage-key order. Per-item `clientData` in the window appears only when `client.state.read: true` is also set. `CollectionStateClientConfig` controls per-item state visibility separately from content; single resources don't accept `client.state` (state visibility is governed by `client.data` on those).
 
+Set `client: { live: true }` to stream each mutation's projected `clientData` as an inline delta that the client merges mid-stream without a refetch (the resource-side analog of `state_change`). It requires the resource's `clientData` to be client-visible (`state.read: true` or a projection on collections; a projection on single resources). `lifecycleSchema(statuses)` is a convenience export that returns a `status` enum plus nullable `startedAt` / `completedAt` / `errorMessage` fields to spread into a status-bearing `stateSchema`.
+
+`defineResource` and `defineResourceCollection` carry a derived client-projection type alongside the state type. `ClientDataOf<typeof def>` extracts it — the `Pick` from `expose`, the `Omit` from `exclude`, the return type of `data`, or the full state for the identity default. Pass it to the React hooks (`useResource<T>`, `useResourceCollectionItem<T>`, …) so `clientData` is typed instead of `unknown`. This is a type-level brand only; the runtime payload stays `JsonValue`. For `data` projections, annotate the function's return so the type is captured precisely.
+
 ### Items (`@flow-state-dev/core/items`)
 
 Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `container`, `tool_output`, `status`, `source`, `state_change`, `resource_change`, `error`.
@@ -363,6 +373,12 @@ State-shape primitives shared across the framework. All three operate on the sam
 - **`cloneValue(value)`** — structural deep copy via the platform `structuredClone`, falling back to a JSON round-trip. Stores clone records on read/write so callers can't mutate stored state through a retained reference.
 - **`deepMerge(base, override)`** — recursive merge returning a new object. Scalars and arrays in `override` replace; nested plain objects merge; `base` is never mutated.
 - **`deepEqual(a, b)`** — structural equality powering the state-write no-op guard. Primitives compared by `Object.is` (NaN-equal-NaN, `+0 != -0`); plain objects and arrays compared recursively. Rejects non-JSON shapes (Map, Set, functions) with a `TypeError`. `looseDeepEqual` is the throw-free variant.
+
+### Graph (`@flow-state-dev/core/graph`)
+
+A reusable typed-edge primitive for relational state. `edgeSchema` describes a directed, typed, bi-temporal `Edge` (`from`/`to`/`type`/`confidence`/`validFrom`/`validUntil`/`source`), and pure traversal helpers walk a plain `Edge[]`: `egoGraph`, `shortestPath`, `neighbors`, `traverse`, `activeAt`, plus `nodeRef`/`parseNodeRef` for `"namespace:key"` node ids. All traversals are depth-bounded and cycle-safe.
+
+Resources opt into a first-class edge graph with `defineResource({ edges: true })` (or `{ vocabulary, maxEdges }`): the framework stores an `edges` array in the resource's state and exposes an `.edges` API (`add`, `supersede`, `remove`, `all`, `neighbors`, `egoGraph`, `shortestPath`, `pruneDangling`) on the live resource reference. Resources without `edges` are unaffected.
 
 ## Sequencer instance state
 

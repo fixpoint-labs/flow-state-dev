@@ -10,6 +10,7 @@ import { commitAnalystMemo } from "../src/flows/analysis/agents/analysts/writer"
 import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const writeBlock = markWriting("fundamentals");
 const commitBlock = commitAnalystMemo("fundamentals");
@@ -32,7 +33,6 @@ const baseSessionState = {
   costPreset: "fast" as const,
   dataSource: "fixture" as const,
   activePhase: "phase-1" as const,
-  memoStatus: { fundamentals: "pending" as const },
 };
 
 /**
@@ -63,18 +63,17 @@ const seededResources = {
 };
 
 describe("memo-writer taps", () => {
-  it("markWriting flips memoStatus to writing", async () => {
+  it("markWriting flips the memo to writing", async () => {
     const result = await testBlock(writeBlock, {
       input: {},
       flow: fixtureFlow,
       session: { state: baseSessionState },
     });
     expect(result.error).toBeNull();
-    const sessionState = lastSessionState(result);
-    expect(sessionState.memoStatus.fundamentals).toBe("writing");
+    expect(latestMemoStatus(result.items, "memos/p1/fundamentals")).toBe("writing");
   });
 
-  it("commitAnalystMemo writes thesis fields and flips memoStatus to published", async () => {
+  it("commitAnalystMemo writes thesis fields and flips the memo to published", async () => {
     const thesis = {
       label: "Fundamentals memo",
       headline: "Top-line growth durable; margins stable.",
@@ -99,38 +98,24 @@ describe("memo-writer taps", () => {
       input: thesis,
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { fundamentals: "writing" } },
+        state: baseSessionState,
         resources: seededResources,
       },
     });
     expect(result.error).toBeNull();
-    const sessionState = lastSessionState(result);
-    expect(sessionState.memoStatus.fundamentals).toBe("published");
+    expect(latestMemoStatus(result.items, "memos/p1/fundamentals")).toBe("published");
   });
 
-  it("markError flips memoStatus to error and stamps an error message", async () => {
+  it("markError flips the memo to error and stamps an error message", async () => {
     const result = await testBlock(errorBlock, {
       input: { error: new Error("provider timeout") },
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { fundamentals: "writing" } },
+        state: baseSessionState,
         resources: seededResources,
       },
     });
     expect(result.error).toBeNull();
-    const sessionState = lastSessionState(result);
-    expect(sessionState.memoStatus.fundamentals).toBe("error");
+    expect(latestMemoStatus(result.items, "memos/p1/fundamentals")).toBe("error");
   });
 });
-
-type LastStatePayload = {
-  memoStatus: Record<string, string>;
-};
-
-function lastSessionState(result: {
-  stateChanges: Array<{ scope: string; resultingState: Record<string, unknown> }>;
-}): LastStatePayload {
-  const sessionPatches = result.stateChanges.filter((c) => c.scope === "session");
-  expect(sessionPatches.length).toBeGreaterThan(0);
-  return sessionPatches[sessionPatches.length - 1].resultingState as unknown as LastStatePayload;
-}

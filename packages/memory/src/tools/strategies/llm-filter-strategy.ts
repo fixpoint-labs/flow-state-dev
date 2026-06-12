@@ -28,6 +28,9 @@ import type { SemanticFact, SemanticMemoryState } from '../../semantic-memory'
 import type { WorkingMemoryState } from '../../working-memory'
 import { allFacts } from '../../semantic-memory-helpers'
 import { effectiveConfidence } from '../../janitor'
+import { graphExpandCandidates } from './graph-expand'
+import { extractExactPhrases } from './query-phrases'
+import { edgesOf } from '../../internal/helpers'
 import type {
   MemoryItem,
   PrepareEnvelope,
@@ -64,7 +67,6 @@ export const RECENCY_HALF_LIFE = 50
 export const EXACT_PHRASE_CAP = 5
 
 /** Minimum word count for an exact-phrase match candidate. */
-const EXACT_PHRASE_MIN_WORDS = 3
 
 /**
  * Intrinsic score for a semantic fact (no query component).
@@ -135,23 +137,9 @@ export function episodeToMemoryItem(episode: Episode): MemoryItem {
   }
 }
 
-/**
- * Extract contiguous phrases of `EXACT_PHRASE_MIN_WORDS`+ words from the query.
- *
- * Whitespace splits only — no tokenisation tricks. Phrases overlap; a 5-word
- * query produces (5-3)+(5-4)+(5-5) = 3 phrases at min-len 3.
- */
-export function extractExactPhrases(query: string): string[] {
-  const words = query.trim().split(/\s+/).filter((w) => w.length > 0)
-  if (words.length < EXACT_PHRASE_MIN_WORDS) return []
-  const phrases: string[] = []
-  for (let len = EXACT_PHRASE_MIN_WORDS; len <= words.length; len++) {
-    for (let start = 0; start + len <= words.length; start++) {
-      phrases.push(words.slice(start, start + len).join(' '))
-    }
-  }
-  return phrases
-}
+// `extractExactPhrases` lives in `./query-phrases` so graph-expand can share it
+// without a cycle back to this module. Re-exported here for existing consumers.
+export { extractExactPhrases }
 
 /**
  * Stage 1.5: scan non-pre-ranked items for literal phrase matches.
@@ -298,6 +286,22 @@ function buildPrepareBlock(includeExactPhrase: boolean) {
         ...passThroughs.map((c) => c.item),
       ]
 
+      // Graph-expanded recall (FIX-745): when the relations tier is enabled,
+      // surface edges connected to entities named in the query that a
+      // keyword/intrinsic candidate set would miss. Strictly gated on the edge
+      // API being present and non-empty — `graphExpandCandidates` is a no-op
+      // for an empty graph, so the relations-disabled path adds nothing and
+      // pays no cost. Reading edges from ctx here (rather than threading them
+      // through the strategy) keeps the strategy contract unchanged.
+      const edgeApi = edgesOf(ctx)
+      if (edgeApi) {
+        const allEdges = edgeApi.all()
+        if (allEdges.length > 0) {
+          const includedIdsForExpand = new Set(candidates.map((c) => c.id))
+          candidates.push(...graphExpandCandidates(allEdges, input.query, includedIdsForExpand))
+        }
+      }
+
       return {
         query: input.query,
         limit: input.limit,
@@ -347,6 +351,14 @@ function extractCandidateMetadata(item: MemoryItem): Record<string, unknown> {
       category: item.category,
       confidence: item.confidence,
       reinforcementCount: item.reinforcementCount,
+    }
+  }
+  if (item.source === 'relation') {
+    return {
+      from: item.from,
+      to: item.to,
+      relationType: item.relationType,
+      confidence: item.confidence,
     }
   }
   return {

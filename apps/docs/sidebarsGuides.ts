@@ -26,6 +26,11 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "Background jobs",
+      items: ["background-jobs-bullmq"],
+    },
+    {
+      type: "category",
       label: "Scheduled actions",
       items: [
         "scheduled-vercel-cron",

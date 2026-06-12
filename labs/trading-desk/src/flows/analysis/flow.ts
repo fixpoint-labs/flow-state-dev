@@ -7,9 +7,10 @@
  * stages → gated thesis audit), and `setInstructions` is the standing
  * special-instructions writer.
  *
- * Session-scope client data is exposed via `client.expose` so navigator
- * status (`memoStatus`) reflects mid-stream `state_change` items in the
- * client's `useClientData` hook.
+ * Session-scope client data is exposed via `client.expose` for the header
+ * inputs, run lifecycle, and stop banner. Per-memo navigator status is NOT
+ * exposed here — it streams live off the memos collection itself
+ * (`client: { live: true }`), read via `useResourceCollectionList`.
  */
 import { defineFlow } from "@flow-state-dev/core";
 import { decisionSnapshotResource } from "./decision-snapshot-resource";
@@ -17,6 +18,7 @@ import { analyze } from "./orchestration/analyze";
 import { setInstructions } from "./orchestration/guards";
 import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
 import { priceHistoryResource } from "./price-history-resource";
+import { rewardToRiskResource } from "./reward-to-risk-resource";
 import {
   accountsCollection,
   portfolioQuotesResource,
@@ -51,7 +53,6 @@ const analysisFlow = defineFlow({
         "dataSource",
         "activePhase",
         "maxDebateRounds",
-        "memoStatus",
         "runComplete",
         "stoppedReason",
         "stoppedMessage",
@@ -84,6 +85,11 @@ const analysisFlow = defineFlow({
     // Decision-of-record snapshot — written once at PM-commit; the durable
     // audit record Past Reports and outcome tracking read.
     decisionSnapshot: decisionSnapshotResource,
+    // Reward-to-risk figure (FIX-752) — derived from the scenario buckets after
+    // Phase 5a, read by the PM as `<rewardToRisk>` context and re-read by the PM
+    // commit to gate size against the active mandate. Nullable; null when the
+    // forecaster produced no usable buckets.
+    rewardToRisk: rewardToRiskResource,
     // Portfolio domain (Spine B), owned + written by the
     // `portfolio` flow. Declared here READ-ONLY: `seedSession`
     // reads the shared user-scoped `accounts` (flowIsolation: false → bare

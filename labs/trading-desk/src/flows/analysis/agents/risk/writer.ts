@@ -42,7 +42,7 @@ export function commitPersonaMemo(shortName: Phase4PersonaShortName) {
     name: `commit-memo-p4-${shortName}`,
     inputSchema: personaCritiqueOutputSchema,
     execute: async (critique, ctx) => {
-      await publishMemo(ctx, shortName, collectionKey, critique);
+      await publishMemo(ctx, collectionKey, critique);
     },
   });
 }
@@ -51,6 +51,6 @@ export const commitRiskAssessmentMemo = memoHandler({
   name: "commit-memo-p4-risk-assessment",
   inputSchema: riskAssessmentOutputSchema,
   execute: async (assessment, ctx) => {
-    await publishMemo(ctx, "riskAssessment", PHASE_4_MEMO_KEYS.riskAssessment.collectionKey, assessment);
+    await publishMemo(ctx, PHASE_4_MEMO_KEYS.riskAssessment.collectionKey, assessment);
   },
 });

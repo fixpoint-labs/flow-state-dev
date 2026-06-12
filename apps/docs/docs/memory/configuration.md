@@ -116,6 +116,8 @@ User-scoped consolidated facts. Periodically, the system runs an LLM consolidati
 
 Consolidation runs an LLM call, so budget for the latency. If you don't want that on the hot path of a user turn, drive `mem.consolidate` from a scheduled action instead of the capture pipeline.
 
+Semantic memory also has an opt-in `relations` knob that stores typed connections between entities alongside facts. It's off by default; see [Relations](./relations) for when and how to enable it.
+
 ### `digest`
 
 User-scoped rolling summary that gets regenerated periodically. The digest is the cheapest thing to surface in the prompt: a static blob the agent reads, not a search target. If you want one always-on memory surface and nothing else, this is the one to keep.

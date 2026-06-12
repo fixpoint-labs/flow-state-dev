@@ -81,6 +81,7 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
     models: options.models,
     unmockedGeneratorPolicy: options.unmockedGeneratorPolicy,
     modelResolver: options.modelResolver,
+    unmockedDefault: options.unmockedDefault,
     actionName: `test:${block.name}`,
     sessionId: "test-session",
     sequencerName: block.name
