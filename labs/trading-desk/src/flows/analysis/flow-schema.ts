@@ -14,6 +14,7 @@
  * `state.ts` and `build-portfolio-context.ts`.
  */
 import { z } from "zod";
+import { riskMandateIdSchema } from "./lib/risk-mandate";
 
 /**
  * One holding line within the computed portfolio snapshot. `seedSession`
@@ -80,6 +81,12 @@ export const analyzeInputSchema = z.object({
   // server-side by `seedSession` from the user-scoped accounts + portfolioQuotes
   // resources (Task 2), so no `portfolio` field is passed from the client.
   selectedAccountIds: z.array(z.string()).default([]),
+  // Optional per-run risk-appetite mandate override (FIX-752) — one of the
+  // MANDATE_PACK ids. Null → fall back to the selected accounts' default(s) at
+  // seed; if none resolve, the run is mandate-blind. Does NOT join the session
+  // keying tuple: changing the mandate refines an analysis, it is not a new
+  // report (the `selectedAccountIds` precedent).
+  riskMandate: riskMandateIdSchema.nullable().default(null),
 });
 
 export type AnalyzeInput = z.infer<typeof analyzeInputSchema>;

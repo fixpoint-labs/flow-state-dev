@@ -492,6 +492,7 @@ function PmHeroWithScenarios({
       portfolioFit={data?.portfolioFit ?? null}
       lensConvergence={data?.lensConvergence ?? null}
       snapshotAsOf={data?.portfolioFit?.snapshotAsOf ?? null}
+      mandateDecision={data?.mandateDecision ?? null}
     />
   );
 }

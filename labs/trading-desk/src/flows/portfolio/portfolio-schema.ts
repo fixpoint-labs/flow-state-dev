@@ -76,6 +76,12 @@ export const accountStateSchema = z.object({
   /** The account's positions. Empty on a fresh account; populated by import or
    *  manual edit. Replacing this array IS the import write. */
   holdings: z.array(holdingSchema).default([]),
+  /** Default risk-appetite mandate id for this book (FIX-752), or null for no
+   *  default. Stored as an OPAQUE string so this portfolio leaf stays decoupled
+   *  from the analysis flow's mandate vocabulary; the analysis flow validates it
+   *  via `resolveMandate` at seed (an unknown / stale id resolves to
+   *  mandate-blind, never throws). A per-run override beats this default. */
+  riskMandate: z.string().nullable().default(null),
   /** Audit timestamps. Plain ISO strings. */
   createdAt: z.string(),
   updatedAt: z.string(),

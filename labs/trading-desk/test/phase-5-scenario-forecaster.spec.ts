@@ -60,6 +60,7 @@ function scenarioForecast(
       trigger: string;
       triggerSource: "investmentThesis" | "tradeProposal" | "riskAssessment" | "phase1";
       expectedOutcome: string;
+      expectedReturnPct: number;
       tradeBehavior: string;
     }>;
     distribution: "concentrated" | "balanced" | "barbell" | "long-tail";
@@ -90,6 +91,7 @@ function scenarioForecast(
         trigger: "Consensus data-center revenue met",
         triggerSource: "investmentThesis" as const,
         expectedOutcome: "Stock +3-5% on guidance re-affirm",
+        expectedReturnPct: 4,
         tradeBehavior: "Modest gain, hold to target",
       },
       {
@@ -98,6 +100,7 @@ function scenarioForecast(
         trigger: "Attach rate exceeds street model",
         triggerSource: "tradeProposal" as const,
         expectedOutcome: "Stock +10-15% on Q2 beat",
+        expectedReturnPct: 12,
         tradeBehavior: "Full profit, consider scaling out",
       },
       {
@@ -106,6 +109,7 @@ function scenarioForecast(
         trigger: "China export controls tighten",
         triggerSource: "riskAssessment" as const,
         expectedOutcome: "Stock -5 to -10% on cut",
+        expectedReturnPct: -8,
         tradeBehavior: "Stop hit, exit at loss",
       },
     ],
@@ -147,15 +151,15 @@ describe("Phase 5 scenario-forecast writer taps", () => {
     const scenarios = [
       {
         name: "A", probability: 0.5, trigger: "t", triggerSource: "investmentThesis" as const,
-        expectedOutcome: "o", tradeBehavior: "b",
+        expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b",
       },
       {
         name: "B", probability: 0.3, trigger: "t", triggerSource: "riskAssessment" as const,
-        expectedOutcome: "o", tradeBehavior: "b",
+        expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b",
       },
       {
         name: "C", probability: 0.3, trigger: "t", triggerSource: "tradeProposal" as const,
-        expectedOutcome: "o", tradeBehavior: "b",
+        expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b",
       },
     ];
     // Sum = 1.1, within [0.8, 1.2] — should normalize
@@ -202,11 +206,11 @@ describe("scenarioForecastOutputSchema", () => {
 
   it("accepts a 5-bucket forecast", () => {
     const scenarios = [
-      { name: "A", probability: 0.3, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "B", probability: 0.25, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "C", probability: 0.2, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "D", probability: 0.15, trigger: "t", triggerSource: "phase1" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "E", probability: 0.1, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", tradeBehavior: "b" },
+      { name: "A", probability: 0.3, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "B", probability: 0.25, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "C", probability: 0.2, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "D", probability: 0.15, trigger: "t", triggerSource: "phase1" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "E", probability: 0.1, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
     ];
     const parsed = scenarioForecastOutputSchema.safeParse(
       scenarioForecast({ scenarios }),
@@ -216,8 +220,8 @@ describe("scenarioForecastOutputSchema", () => {
 
   it("rejects a 2-bucket forecast", () => {
     const scenarios = [
-      { name: "A", probability: 0.6, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "B", probability: 0.4, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", tradeBehavior: "b" },
+      { name: "A", probability: 0.6, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "B", probability: 0.4, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
     ];
     const parsed = scenarioForecastOutputSchema.safeParse(
       scenarioForecast({ scenarios }),
@@ -231,7 +235,7 @@ describe("scenarioForecastOutputSchema", () => {
       probability: 1 / 6,
       trigger: "t",
       triggerSource: "investmentThesis" as const,
-      expectedOutcome: "o",
+      expectedOutcome: "o", expectedReturnPct: 0,
       tradeBehavior: "b",
     }));
     const parsed = scenarioForecastOutputSchema.safeParse(
@@ -244,9 +248,9 @@ describe("scenarioForecastOutputSchema", () => {
 describe("probability-violation rescue", () => {
   it("throws when probabilities sum below 0.8", async () => {
     const scenarios = [
-      { name: "A", probability: 0.2, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "B", probability: 0.2, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "C", probability: 0.2, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", tradeBehavior: "b" },
+      { name: "A", probability: 0.2, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "B", probability: 0.2, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "C", probability: 0.2, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
     ];
     // Sum = 0.6, outside [0.8, 1.2]
     const result = await testBlock(commitScenarioForecastMemo, {
@@ -268,9 +272,9 @@ describe("probability-violation rescue", () => {
 
   it("throws when probabilities sum above 1.2", async () => {
     const scenarios = [
-      { name: "A", probability: 0.5, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "B", probability: 0.5, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "C", probability: 0.5, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", tradeBehavior: "b" },
+      { name: "A", probability: 0.5, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "B", probability: 0.5, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "C", probability: 0.5, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
     ];
     // Sum = 1.5, outside [0.8, 1.2]
     const result = await testBlock(commitScenarioForecastMemo, {

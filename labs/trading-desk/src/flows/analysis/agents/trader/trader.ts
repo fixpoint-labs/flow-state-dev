@@ -64,6 +64,11 @@ export const traderGenerator = generator({
       // (it treats `sizePct` as % of NAV). No trader output-schema change: the
       // portfolio-fit verdict lives solely on the PM (the final arbiter).
       portfolioContext: true,
+      // FIX-752 — the trader sizes with awareness of the book's risk-appetite
+      // mandate (frozen at seed). The worth-it gate itself lives on the PM; the
+      // reward-to-risk figure is not yet computed at Phase 3 (it derives from the
+      // Phase 5a forecast), so the trader sees only the mandate, not the figure.
+      riskMandate: true,
     }),
   ],
   ...definePromptFile(traderPrompt),

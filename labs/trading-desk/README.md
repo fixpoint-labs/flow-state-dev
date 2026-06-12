@@ -482,6 +482,34 @@ The PM Hero renderer reads from the same `useResourceCollectionItem`
 hook every other memo uses. The marquee surface has no special-case
 data flow.
 
+**The decision turns on three orthogonal axes**, each documented
+methodology rather than advice:
+
+- **Valuation envelope** (the deterministic spine, FIX-715): bounds
+  `finalRating` to a band implied by expected return, margin of safety,
+  and the setup score. The PM may step outside the band only with a logged
+  `ratingOverrideReason`.
+- **Portfolio-fit** (FIX-728): sizes the position against the real book —
+  current weight, cash, concentration, tax-account suitability — and the
+  investor-lens convergence (robustness across philosophies, sized down on
+  divergence, never up).
+- **Risk-appetite mandate** (FIX-752): a variable, user-selectable
+  standard for "is this risk worth it." The desk derives a reward-to-risk
+  figure from the Phase 5a scenario buckets — probability-weighted upside
+  over downside, with the downside weighted by the mandate's loss-aversion
+  — and judges it against the mandate's bar (a reward-to-risk floor, a
+  return hurdle, a confidence floor, and a worst-case capacity line). The
+  mandate moves the position SIZE and an explicit worth-it verdict; it does
+  NOT move the rating, which stays the valuation-anchored,
+  cross-book-comparable signal. A name can be a Buy on its merits yet fail
+  a conservative book's mandate and size to a token. Three presets ship
+  (`conservative-income`, `balanced`, `aggressive-growth`); the mandate is
+  a per-run choice, or a default stored on the account, with the
+  most-conservative selected-account default binding when no per-run choice
+  is made. Run the same name under two mandates and the size and the
+  verdict move while the rating holds. See `mandateFit` on
+  `PortfolioDecision` and the pack in `lib/risk-mandate.ts`.
+
 ## What this is not
 
 - **Not a trading product.** It does not execute and it does not track
@@ -489,7 +517,9 @@ data flow.
   "Portfolio-aware analysis" above), but that snapshot is dev-only and
   frozen at dispatch, the sizing is documented-methodology not advice, and
   with no portfolio supplied `sizePct` is still a suggested percentage of a
-  notional NAV in the 0.5–2.5 range for a normal-conviction trade.
+  notional NAV in the 0.5–2.5 range for a normal-conviction trade. The
+  risk-appetite mandate is the same: a pedagogical demonstration of
+  parameterized risk gating, not production risk governance.
 - **Not a backtest.** There is no historical evaluation, no calibration
   against outcomes, no measure of decision quality. The Portfolio
   Manager's `decisionConfidence` is self-reported uncertainty, not a

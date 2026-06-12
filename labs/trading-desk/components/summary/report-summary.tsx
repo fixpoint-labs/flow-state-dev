@@ -48,6 +48,7 @@ import { ScenarioStrip } from "./charts/scenario-strip";
 import { PriceOverlay, type PriceOverlayLevel } from "./charts/price-overlay";
 import { PortfolioFitBlock } from "./portfolio-fit-block";
 import { LensConvergenceBlock } from "./lens-convergence-block";
+import { MandatePanel } from "../theses/mandate-panel";
 import { cn } from "@/lib/utils";
 
 export type ReportSummaryProps = {
@@ -194,6 +195,16 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
         <>
           <SectionLabel>Investor lenses</SectionLabel>
           <LensConvergenceBlock convergence={summary.lensConvergence} />
+        </>
+      ) : null}
+
+      {/* FIX-752: risk-appetite mandate verdict, read from the PM memo's stored
+          `mandateDecision` mirror. Omitted cleanly on a mandate-blind run —
+          never a stubbed verdict. */}
+      {summary.mandateDecision !== null ? (
+        <>
+          <SectionLabel>Risk-appetite mandate</SectionLabel>
+          <MandatePanel decision={summary.mandateDecision} />
         </>
       ) : null}
 

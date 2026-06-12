@@ -28,6 +28,7 @@ import { PastReportsPane } from "@/components/reports/past-reports-pane";
 import { PortfolioPane } from "@/components/portfolio/portfolio-pane";
 import { parseReportRow, reportRowTuple } from "@/src/flows/analysis/report-index";
 import { buildAnalyzeInput } from "@/src/flows/analysis/analyze-input";
+import type { RiskMandateId } from "@/src/flows/analysis/lib/risk-mandate";
 import type { MemoStatus } from "@/src/flows/analysis/resources";
 import {
   EMPTY_INSTRUCTIONS,
@@ -153,6 +154,11 @@ function TradingDeskApp(): ReactElement {
   // session. A non-null thesis gates the Phase 6 audit.
   const [userThesis, setUserThesis] = useState("");
   const [userThesisRationale, setUserThesisRationale] = useState("");
+  // Optional per-run risk-appetite mandate override (FIX-752). `null` = house
+  // default (the seed falls back to the selected accounts' mandate). Like
+  // `selectedAccountIds`, this is a REFINEMENT, not part of the session keying
+  // tuple — re-running with a different mandate resolves the SAME report.
+  const [riskMandate, setRiskMandate] = useState<RiskMandateId | null>(null);
 
   // Pending dispatch: after `selectSession`/`createSession` updates
   // `activeSessionId`, the next render gives us a `useSession` bound to the
@@ -163,6 +169,7 @@ function TradingDeskApp(): ReactElement {
       tuple: AnalyzeTuple;
       userThesis: string | null;
       userThesisRationale: string | null;
+      riskMandate: RiskMandateId | null;
     } | null
   >(null);
 
@@ -272,12 +279,16 @@ function TradingDeskApp(): ReactElement {
       tuple,
       userThesis: frozen.userThesis,
       userThesisRationale: frozen.userThesisRationale,
+      // Freeze the mandate at click time too (the thesis-freeze precedent), so a
+      // later dropdown change doesn't reach this in-flight run.
+      riskMandate,
     });
   }, [
     tuple,
     matchedSessionId,
     userThesis,
     userThesisRationale,
+    riskMandate,
     flow,
     sessionClient,
   ]);
@@ -330,7 +341,12 @@ function TradingDeskApp(): ReactElement {
   useEffect(() => {
     if (pendingDispatch === null) return;
     if (flow.activeSessionId !== pendingDispatch.sessionId) return;
-    const { tuple, userThesis: ut, userThesisRationale: utr } = pendingDispatch;
+    const {
+      tuple,
+      userThesis: ut,
+      userThesisRationale: utr,
+      riskMandate: rm,
+    } = pendingDispatch;
     setPendingDispatch(null);
     void session.sendAction("analyze", {
       ...tuple,
@@ -340,6 +356,9 @@ function TradingDeskApp(): ReactElement {
       // portfolio snapshot is now computed server-side at seed from the user-scoped
       // accounts + portfolioQuotes resources — no `portfolio` field is dispatched.
       selectedAccountIds: [],
+      // Per-run mandate override (FIX-752). Null falls back to the accounts'
+      // default at seed. Not a tuple field — it refines, never re-keys the run.
+      riskMandate: rm,
     });
   }, [pendingDispatch, flow.activeSessionId, session]);
 
@@ -473,6 +492,8 @@ function TradingDeskApp(): ReactElement {
         onDateChange={setDate}
         onCostPresetChange={setCostPreset}
         onDataSourceChange={setDataSource}
+        riskMandate={riskMandate}
+        onRiskMandateChange={setRiskMandate}
         userThesis={userThesis}
         userThesisRationale={userThesisRationale}
         onUserThesisChange={setUserThesis}
