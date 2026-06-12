@@ -111,7 +111,19 @@ Synthesize a thesis from the financial data provided.
 
 `{% render %}` runs the partial in an isolated scope, so the partial cannot accidentally read or clobber the caller's variables. That is the safer default. There is also `{% include %}`, which shares the caller's scope; reach for it only when you specifically need that.
 
-The example builds its loader once with `createPromptLoader` and exports it as `loadPrompt` — it anchors paths at `process.cwd()` and points every `{% render %}` at the shared `_partials` directory, so each call site is just a filename. Anchoring at the working directory rather than `import.meta.url` is a deliberate call here, because the Next.js bundler makes `import.meta.url` unreliable for resolving sibling files. If your app bundles prompts, watch for the same issue.
+The example builds its loader once with `createPromptLoader` and exports it as `loadPrompt`, pointing every `{% render %}` at the shared `_partials` directory so each call site is just a filename. The base directory comes from `resolveBaseDir`, which tries candidates in order and takes the first that exists and contains the probe path:
+
+```ts
+const APP_ROOT = resolveBaseDir(
+  [moduleDir(import.meta.url, "../../../.."), process.cwd()],
+  { expect: "src/flows/analysis" },
+);
+const loadPrompt = createPromptLoader(path.join(APP_ROOT, "src/flows/analysis"), {
+  partialsDir: path.join(APP_ROOT, "src/flows/analysis/prompts/_partials"),
+});
+```
+
+Each candidate covers a different runtime. The module-relative one (`moduleDir(import.meta.url, ...)`) wins under vitest, tsx, and `fsdev run`, no matter what directory the process started in. The `process.cwd()` one carries Next.js dev and build, where the bundler rewrites `import.meta.url` to a virtual path but cwd is pinned to the app package. If your app bundles prompts, you'll want the same two-candidate shape — anchoring on cwd alone works under the bundler and then breaks the moment anything imports the flow from somewhere else.
 
 ### Reaching for context override
 

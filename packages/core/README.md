@@ -305,6 +305,8 @@ Defaultable fields: `sessionStateSchema`, `userStateSchema`,
 
 Author a generator's prompt as a `.md` file. The isomorphic subpath exports `parsePromptFile(text, options?)`, `definePromptFile(pf)`, `isPromptFile(value)`, and the `PromptFile` / `PromptFileConfig` / `PromptFileParseError` / `PromptFileLoadError` types. The Node-only subpath exports `loadPromptFile(specifier, importerUrl, options?)`, which reads the file and auto-registers sibling `.md` files as partials; only this subpath imports `node:fs`, so browser/bundled consumers use `parsePromptFile` with raw text plus an explicit `partials` map.
 
+**Resolution rule.** Relative specifiers resolve against the caller's `import.meta.url`; absolute specifiers are used as-is (`importerUrl` ignored); `createPromptLoader` joins every `relPath` onto its absolute `baseDir`. Resolution never consults the process working directory — compute `baseDir` with `resolveBaseDir(candidates, { expect? })` (first candidate dir that exists and contains the `expect` probe; throws listing all candidates when none qualifies) composed with `moduleDir(importerUrl, relative?)` (the module's directory, or `undefined` when a bundler has rewritten `import.meta.url` to a non-`file:` URL). Module-relative candidate first, `process.cwd()`-derived fallback for bundled runtimes that pin cwd (Next.js dev/build).
+
 Two ergonomic shortcuts cut the boilerplate:
 
 - **Pass the `PromptFile` straight to `prompt`** instead of spreading `definePromptFile(pf)`. `generator({ prompt: loadPromptFile(...), model })` expands the file's `user` / `caching` / `maxTokens` / `temperature` / `name` / `description` into the config; any sibling field you set explicitly wins (same precedence as `...definePromptFile(pf), <overrides>`).
@@ -312,9 +314,16 @@ Two ergonomic shortcuts cut the boilerplate:
 
 ```ts
 import { generator } from "@flow-state-dev/core";
-import { createPromptLoader } from "@flow-state-dev/core/prompt-file/node";
+import {
+  createPromptLoader,
+  moduleDir,
+  resolveBaseDir,
+} from "@flow-state-dev/core/prompt-file/node";
 
-const load = createPromptLoader(path.resolve(process.cwd(), "src/prompts"));
+const PROMPT_ROOT = resolveBaseDir(
+  [moduleDir(import.meta.url, "./prompts"), path.resolve(process.cwd(), "src/prompts")],
+);
+const load = createPromptLoader(PROMPT_ROOT);
 const analyst = generator({ name: "analyst", model, prompt: load("analyst.prompt.md") });
 ```
 

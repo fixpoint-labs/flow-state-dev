@@ -1,13 +1,17 @@
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "../src/types/block";
 import {
   createPromptLoader,
   loadPromptFile,
+  moduleDir,
   PromptFileLoadError,
+  resolveBaseDir,
 } from "../src/prompt/load-prompt-file.node";
 
 const FIXTURE_DIR = fileURLToPath(new URL("./fixtures/prompts", import.meta.url));
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 function mockCtx(): BlockContext {
   return { session: { state: { recent_news: [] } }, resources: {} } as unknown as BlockContext;
@@ -80,5 +84,60 @@ describe("createPromptLoader", () => {
 
   it("throws when baseDir is not absolute", () => {
     expect(() => createPromptLoader("relative/dir")).toThrow(TypeError);
+  });
+});
+
+describe("moduleDir", () => {
+  it("returns the module's own directory for a file: URL", () => {
+    expect(moduleDir(import.meta.url)).toBe(TEST_DIR);
+  });
+
+  it("walks the optional relative path", () => {
+    expect(moduleDir(import.meta.url, "./fixtures/prompts")).toBe(FIXTURE_DIR);
+    expect(moduleDir(import.meta.url, "..")).toBe(path.dirname(TEST_DIR));
+  });
+
+  it("returns undefined for non-file: schemes (bundler-rewritten URLs)", () => {
+    expect(moduleDir("turbopack://[project]/src/flows/x.js")).toBeUndefined();
+    expect(moduleDir("https://example.com/chunk.js")).toBeUndefined();
+  });
+
+  it("returns undefined for an unparseable URL", () => {
+    expect(moduleDir("not a url at all")).toBeUndefined();
+  });
+});
+
+describe("resolveBaseDir", () => {
+  it("returns the first existing candidate", () => {
+    const missing = path.join(TEST_DIR, "does-not-exist");
+    expect(resolveBaseDir([missing, TEST_DIR])).toBe(TEST_DIR);
+  });
+
+  it("skips undefined candidates (composes with moduleDir)", () => {
+    expect(resolveBaseDir([undefined, FIXTURE_DIR])).toBe(FIXTURE_DIR);
+  });
+
+  it("rejects an existing directory that lacks the expect probe", () => {
+    // FIXTURE_DIR exists but contains no nested fixtures/prompts; TEST_DIR does.
+    expect(
+      resolveBaseDir([FIXTURE_DIR, TEST_DIR], { expect: "fixtures/prompts" })
+    ).toBe(TEST_DIR);
+  });
+
+  it("throws TypeError on a relative candidate", () => {
+    expect(() => resolveBaseDir(["relative/dir"])).toThrow(TypeError);
+  });
+
+  it("throws an Error listing every rejected candidate when none qualifies", () => {
+    const missing = path.join(TEST_DIR, "does-not-exist");
+    expect(() =>
+      resolveBaseDir([undefined, missing, FIXTURE_DIR], { expect: "nope" })
+    ).toThrow(
+      expect.objectContaining({
+        message: expect.stringMatching(
+          /no candidate directory qualified[\s\S]*does-not-exist \(does not exist\)[\s\S]*\(missing "nope"\)[\s\S]*1 undefined candidate/
+        ),
+      })
+    );
   });
 });

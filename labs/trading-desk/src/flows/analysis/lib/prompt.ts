@@ -3,10 +3,15 @@
  *
  * Builds the desk's prompt loader with `@flow-state-dev/core/prompt-file/node`'s
  * `createPromptLoader` so phase prompts authored as `.md` files load consistently
- * across the trading-desk runtimes. The loader is anchored at `process.cwd()` (the trading-desk package
- * dir under Next.js dev/build and vitest alike) rather than `import.meta.url`,
- * which bundling makes unreliable here — see `lib/fixtures.ts` for the same
- * anchoring decision.
+ * across the trading-desk runtimes.
+ *
+ * Resolution rule: `loadPrompt` paths are relative to the flow root
+ * (`src/flows/analysis`), which is anchored at the package directory resolved
+ * in `lib/app-root.ts` — module-relative first, `process.cwd()` fallback for
+ * bundled Next.js runtimes. Resolution therefore never depends on the
+ * invoker's working directory: importing this flow from the repo root
+ * (`fsdev run`), a test runner, or a consumer-repo script all resolve the
+ * same files as `next dev` does.
  *
  * All phase prompts share one partials directory (`prompts/_partials`), so the
  * output-schema preamble that was previously copy-pasted across every phase's
@@ -15,8 +20,9 @@
  */
 import path from "node:path";
 import { createPromptLoader } from "@flow-state-dev/core/prompt-file/node";
+import { APP_ROOT } from "./app-root";
 
-const FLOW_ROOT = path.resolve(process.cwd(), "src/flows/analysis");
+const FLOW_ROOT = path.join(APP_ROOT, "src/flows/analysis");
 const PARTIALS_DIR = path.join(FLOW_ROOT, "prompts", "_partials");
 
 /**
