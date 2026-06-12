@@ -59,6 +59,14 @@ describe("createFlowState durable: true — end to end", () => {
     const suspendedReq = await stores.request.get(initial.requestId!);
     expect(suspendedReq?.status).toBe("suspended");
 
+    // Regression: a suspended block is control flow, not a failure — its block
+    // trace must NOT be marked "failed".
+    const traceEvents = await stores.traces.getEvents(initial.requestId!);
+    const failedTraces = traceEvents.filter(
+      (e) => e.item.type === "block_trace" && e.item.status === "failed"
+    );
+    expect(failedTraces).toHaveLength(0);
+
     const pending = await provider!.listSuspended({ status: "pending" });
     expect(pending).toHaveLength(1);
     // The Zod resumeSchema must be persisted as a plain JSON Schema (no Zod

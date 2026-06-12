@@ -2777,6 +2777,17 @@ export async function createExecutionContext<
 
           return output;
         } catch (error) {
+          // SuspensionError is control flow, not a failure: the block paused at
+          // a `ctx.suspend()` gate awaiting external input. Propagate it without
+          // marking the block/sequencer "failed" — runAction catches it, writes
+          // the suspension record, and sets the request status to "suspended".
+          // The block trace is left at its "in_progress" (paused) state rather
+          // than emitting a misleading "failed" terminal; resume runs as a fresh
+          // request rebuilt from the checkpoint, so this run's bookkeeping is
+          // discarded anyway.
+          if (error instanceof SuspensionError) {
+            throw error;
+          }
           siblingEntry.result.status = "failed";
           siblingEntry.result.error = error instanceof Error ? error : new Error(String(error));
           siblingEntry.result.output = undefined;
