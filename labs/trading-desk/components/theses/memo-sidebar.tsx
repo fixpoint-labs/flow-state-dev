@@ -25,6 +25,9 @@ type MemoSidebarProps = {
   memoStatus: Partial<Record<AnyMemoShortName, MemoStatus>>;
   selectedAgent: AgentName | null;
   onSelectAgent: (agent: AgentName) => void;
+  /** Layout classes from the host: the inline desktop sidebar hides itself
+   *  below `lg`; the mobile drawer instance sizes itself (FIX-757). */
+  className?: string;
 };
 
 const STATUS_LABEL: Record<MemoStatus | "unavailable", string> = {
@@ -48,12 +51,14 @@ export function MemoSidebar({
   memoStatus,
   selectedAgent,
   onSelectAgent,
+  className,
 }: MemoSidebarProps): ReactElement {
   return (
     <nav
       className={cn(
         "w-[200px] shrink-0 overflow-y-auto",
         "border-r border-[color:var(--c-border)] bg-[color:var(--c-surface)]",
+        className,
       )}
       aria-label="Theses navigator"
     >

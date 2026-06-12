@@ -1,0 +1,15 @@
+{
+  "source": "fixture",
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "spotPrice": 248.3,
+  "nearestExpiry": "2026-05-15",
+  "atmIv": 0.214,
+  "ivTermStructure": "flat",
+  "ivTermSlope": 0.004,
+  "skew25Delta": 0.033,
+  "putCallOiRatio": 0.91,
+  "totalOpenInterest": 1460000,
+  "totalVolume": 410000,
+  "expiriesCovered": 5
+}

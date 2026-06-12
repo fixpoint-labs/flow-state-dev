@@ -103,6 +103,7 @@ export type {
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
+export { mapLimit } from "./helpers/concurrency";
 export { lifecycleSchema } from "./helpers/lifecycle-schema";
 export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
 export { resolveTracingLevel } from "./helpers/tracing-level";
@@ -319,7 +320,9 @@ export {
   SuspensionRejectedError,
   SuspensionTimeoutError,
   rootCause,
-  isAbortLike
+  isAbortLike,
+  serializeError,
+  errorDetailsWithCause
 } from "./errors";
 export type {
   FlowErrorOptions,
@@ -327,5 +330,6 @@ export type {
   OutputValidationDetails,
   SequencerOutputSchemaErrorDetails,
   SequencerSchemaMismatchErrorDetails,
-  SuspendOptions
+  SuspendOptions,
+  SerializedError
 } from "./errors";

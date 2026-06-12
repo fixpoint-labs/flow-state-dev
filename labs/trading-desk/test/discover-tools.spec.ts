@@ -59,7 +59,6 @@ function sessionFor(
       costPreset,
       dataSource,
       activePhase: "idle" as const,
-      memoStatus: {},
     },
   };
 }

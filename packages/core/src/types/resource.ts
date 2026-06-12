@@ -1,4 +1,6 @@
 import type { ZodTypeAny } from "zod";
+import { z } from "zod";
+import { edgeListSchema, type EdgeSlotConfig, type ResourceEdgeApi, type Edge } from "../graph";
 import type {
   OrgScopeHandle,
   RequestScopeHandle,
@@ -213,6 +215,8 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    * with a `ResourceChange` payload when that mutation fires.
    */
   reactTo?: ReactiveBindings<TState>;
+  /** Declare a typed-edge graph on this resource. `true` = defaults; object = curated vocabulary / size cap. The framework injects an `edges: Edge[]` state field (if absent) and attaches an `.edges` API to the live ref. */
+  edges?: boolean | EdgeSlotConfig;
 };
 
 export type ResourceContext<TState extends JsonObject = JsonObject> = {
@@ -220,6 +224,8 @@ export type ResourceContext<TState extends JsonObject = JsonObject> = {
   patchState(updates: Partial<TState>): Promise<void>;
   setState(nextState: TState): Promise<void>;
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>;
+  /** Typed-edge graph API — present at runtime only when the resource declared `edges`. Consumers that declared edges access it via `ctx.edges!`. */
+  edges?: ResourceEdgeApi;
 };
 
 /**
@@ -284,6 +290,8 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
   contentType?: string;
   extension?: string;
   config: Readonly<ResourceConfig>;
+  /** Typed-edge graph API — present at runtime only when the resource declared `edges`. Consumers that declared edges access it via `ref.edges!`. */
+  edges?: ResourceEdgeApi;
 }
 
 
@@ -308,6 +316,19 @@ export type StateOf<T> = T extends { stateSchema: infer S extends ZodTypeAny }
     : never;
 
 type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
+
+/**
+ * Resolves to `{ edges: Edge[] }` when a config declares a (non-false) `edges`
+ * slot, otherwise `{}`. Intersecting with `{}` is a no-op, so configs without
+ * an `edges` slot keep their inferred state unchanged.
+ *
+ * Uses a required-key probe (`{ edges: infer E }`) rather than `infer E` over
+ * the whole config, so an *unset* optional `edges` (which infers `E` including
+ * `undefined`) does not falsely trigger injection.
+ */
+type EdgesField<TConfig> = TConfig extends { edges: true | EdgeSlotConfig }
+  ? { edges: Edge[] }
+  : {};
 
 export type ContextOf<
   T,
@@ -335,7 +356,7 @@ export function defineResource<
 >(
   config: TConfig
 ): TConfig & DefinedResource<
-  AsStateObject<TStateSchema["_output"]>,
+  AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>,
   ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
 > {
   const contentSources = [
@@ -378,10 +399,36 @@ export function defineResource<
   // Single resources have no create/delete lifecycle — only `updated` fires.
   validateReactTo("defineResource()", config.reactTo, ["updated"]);
 
-  return config as unknown as TConfig & DefinedResource<
-    AsStateObject<TStateSchema["_output"]>,
-    ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
-  >;
+  // Edge-slot injection: when `edges` is declared, fold an `edges: Edge[]` field
+  // into the resolved state schema + default unless the resource already declares
+  // one. Build a fresh config object — never mutate the caller's `config`.
+  let stateSchema: ZodTypeAny = config.stateSchema;
+  let defaultValue = config.default;
+  if (config.edges) {
+    if (!(stateSchema instanceof z.ZodObject)) {
+      throw new Error(
+        `defineResource() with edges requires an object stateSchema (got ${stateSchema.constructor.name})`
+      );
+    }
+    if (!("edges" in stateSchema.shape)) {
+      stateSchema = stateSchema.extend({ edges: edgeListSchema.default([]) });
+    }
+    if (
+      defaultValue !== undefined &&
+      typeof defaultValue === "object" &&
+      defaultValue !== null &&
+      !Array.isArray(defaultValue) &&
+      !("edges" in (defaultValue as object))
+    ) {
+      defaultValue = { ...(defaultValue as Record<string, unknown>), edges: [] } as typeof defaultValue;
+    }
+  }
+
+  return { ...config, stateSchema, default: defaultValue } as unknown as
+    TConfig & DefinedResource<
+      AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>,
+      ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+    >;
 }
 
 function toJsonObject(value: Record<string, unknown>): JsonObject {

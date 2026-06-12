@@ -8,10 +8,12 @@
  *   - `published` otherwise → `ThesisHeader` + `ThesisBody`.
  *   - `error` → red marker + error message.
  *
- * Live status (`memoStatus`) flows in from the parent via `useClientData`,
- * so the navigator and doc area both reflect mid-stream transitions. Body
- * content comes from `useResourceCollectionItem` keyed on the per-agent
- * memo's `collectionKey`.
+ * Live status is derived from the memos collection itself: the collection
+ * opts into `client: { live: true }` (FIX-739), so `useResourceCollectionList`
+ * surfaces each memo's `status` mid-stream with no refetch, and the navigator
+ * and doc area both reflect transitions straight from the resource — no
+ * `memoStatus` session mirror. Body content comes from
+ * `useResourceCollectionItem` keyed on the per-agent memo's `collectionKey`.
  *
  * Auto-follow: when the user has not selected manually, selection tracks
  * the most-recently-published (or, failing that, currently-writing) memo.
@@ -33,8 +35,13 @@ import {
   useState,
   type ReactElement,
 } from "react";
+import { PanelLeft } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
-import { useClientData, useResourceCollectionItem } from "@flow-state-dev/react";
+import {
+  useClientData,
+  useResourceCollectionItem,
+  useResourceCollectionList,
+} from "@flow-state-dev/react";
 import { MemoSidebar } from "./memo-sidebar";
 import { AgentBadge } from "@/components/agent-badge";
 import { ThesisHeader } from "./thesis-header";
@@ -47,6 +54,7 @@ import { ReportSummary } from "@/components/summary/report-summary";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
+  COLLECTION_KEY_TO_SHORT,
   LENS_IDS,
   PHASE_2B_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
@@ -61,7 +69,6 @@ import { cn } from "@/lib/utils";
 
 type ThesesPaneProps = {
   session: SessionView;
-  memoStatus: Partial<Record<AnyMemoShortName, MemoStatus>>;
 };
 
 /** The four phase-2b lens agents, derived READ-ONLY from the Slice-5
@@ -95,14 +102,38 @@ const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
   "thesisAlignment",
 ];
 
-export function ThesesPane({
-  session,
-  memoStatus,
-}: ThesesPaneProps): ReactElement {
+export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
   const [selectedAgent, setSelectedAgent] = useState<AgentName | null>(null);
   const userSelectedRef = useRef(false);
   const [tab, setTab] = useState<"theses" | "summary">("theses");
   const userPickedTabRef = useRef(false);
+  // Below `lg` the memo navigator opens as a slide-in drawer (FIX-757); the
+  // inline 200px sidebar would eat half a phone's width.
+  const [navOpen, setNavOpen] = useState(false);
+  const navDialogRef = useRef<HTMLDialogElement>(null);
+
+  // Drive the drawer's native <dialog> imperatively from `navOpen` — the same
+  // idiom as SettingsDialog, so ESC/focus-trap/backdrop come from the browser.
+  useEffect(() => {
+    const dialog = navDialogRef.current;
+    if (!dialog) return;
+    if (navOpen && !dialog.open) dialog.showModal();
+    if (!navOpen && dialog.open) dialog.close();
+  }, [navOpen]);
+
+  // Close the drawer if the viewport crosses up past `lg` while it is open.
+  // A modal dialog keeps the rest of the document inert from the top layer
+  // even when `lg:hidden` visually hides it, which would leave the desktop
+  // shell unreachable after a resize. Effect, not derived state: it syncs
+  // with an external system (the viewport media query).
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 64rem)");
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setNavOpen(false);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
 
   // Authoritative completion flag, read from the exposed session state. Stable
   // across a transient stream re-attach (opening a stored report can briefly
@@ -111,6 +142,27 @@ export function ThesesPane({
   // runComplete === true; a fresh or re-running session has it false.
   const { session: live } = useClientData(session, { session: ["runComplete"] });
   const runComplete = live?.runComplete === true;
+
+  // Per-agent live status, derived from the memos collection. The collection
+  // is `client: { live: true }`, so `useResourceCollectionList` reflects each
+  // memo's `status` mid-stream (FIX-739) with no session-state mirror. A memo
+  // not yet created is absent → `statusForAgent` defaults it to `pending`.
+  // Derived state → useMemo, not an effect (BP-010).
+  // Cap tracks the registry so adding a phase can never silently truncate the
+  // status map (a dropped memo would render permanently `pending`).
+  const { items: memoItems } = useResourceCollectionList(session, "memos", {
+    limit: Object.keys(ALL_MEMO_KEYS).length,
+  });
+  const memoStatus = useMemo<Partial<Record<AnyMemoShortName, MemoStatus>>>(() => {
+    const map: Partial<Record<AnyMemoShortName, MemoStatus>> = {};
+    for (const item of memoItems) {
+      const short = COLLECTION_KEY_TO_SHORT[item.topic];
+      if (short === undefined) continue;
+      const status = (item.clientData as { status?: MemoStatus } | null)?.status;
+      if (status !== undefined) map[short] = status;
+    }
+    return map;
+  }, [memoItems]);
 
   // Reset manual-selection flags only on a genuine re-run — a run STARTING
   // (streaming, 0 items) on a session that is NOT already complete. The
@@ -172,12 +224,56 @@ export function ThesesPane({
       aria-label="Theses"
     >
       <MemoSidebar
+        className="hidden lg:block"
         memoStatus={memoStatus}
         selectedAgent={selectedAgent}
         onSelectAgent={handleSelectAgent}
       />
-      <div className="flex flex-1 flex-col overflow-y-auto p-6">
-        <TabSwitch tab={tab} onPick={handlePickTab} />
+      {/* Below lg the navigator opens as a native <dialog> drawer — the same
+          imperative open/close idiom as the app's other dialogs, so the focus
+          trap, ESC-to-close, and the backdrop come from the browser (a bare
+          role="dialog" div provides none of those for keyboard users). A
+          backdrop click lands on the dialog element itself (the sidebar fills
+          it), which is the standard dismiss test. */}
+      <dialog
+        ref={navDialogRef}
+        onClose={() => setNavOpen(false)}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) e.currentTarget.close();
+        }}
+        aria-label="Theses navigator"
+        className={cn(
+          "td-drawer m-0 h-full max-h-none w-[260px] max-w-[85vw] border-0 p-0",
+          "bg-transparent shadow-2xl backdrop:bg-black/40 lg:hidden",
+        )}
+      >
+        <MemoSidebar
+          className="h-full w-full"
+          memoStatus={memoStatus}
+          selectedAgent={selectedAgent}
+          onSelectAgent={(agent) => {
+            setNavOpen(false);
+            handleSelectAgent(agent);
+          }}
+        />
+      </dialog>
+      <div className="flex flex-1 flex-col overflow-y-auto p-6 max-lg:p-4">
+        <div className="mb-4 flex items-center gap-2">
+          <button
+            type="button"
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen(true)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md border px-2 py-1 lg:hidden",
+              "border-[color:var(--c-border)] text-[color:var(--c-fg-muted)]",
+              "font-mono text-[10.5px] uppercase tracking-wider",
+            )}
+          >
+            <PanelLeft className="h-3.5 w-3.5" aria-hidden />
+            Phases
+          </button>
+          <TabSwitch tab={tab} onPick={handlePickTab} />
+        </div>
         {tab === "summary" ? (
           <ReportSummary session={session} />
         ) : selectedAgent === null ? (
@@ -202,11 +298,7 @@ function TabSwitch({
   onPick: (next: "theses" | "summary") => void;
 }): ReactElement {
   return (
-    <div
-      className="mb-4 flex gap-1"
-      role="tablist"
-      aria-label="Report view"
-    >
+    <div className="flex gap-1" role="tablist" aria-label="Report view">
       {(["theses", "summary"] as const).map((value) => (
         <button
           key={value}
@@ -400,6 +492,7 @@ function PmHeroWithScenarios({
       portfolioFit={data?.portfolioFit ?? null}
       lensConvergence={data?.lensConvergence ?? null}
       snapshotAsOf={data?.portfolioFit?.snapshotAsOf ?? null}
+      mandateDecision={data?.mandateDecision ?? null}
     />
   );
 }

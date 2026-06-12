@@ -129,6 +129,71 @@ describe("defineResource", () => {
       reactTo: { updated: { block: reactiveBlock, when: "x" as never } },
     })).toThrow("reactTo.updated.when must be a function");
   });
+
+  describe("edges slot", () => {
+    it("injects an edges field into the schema and default when edges:true", () => {
+      const res = defineResource({
+        scope: "session",
+        edges: true,
+        stateSchema: z.object({ facts: z.array(z.string()) }),
+        default: { facts: [] },
+      });
+      const parsed = res.stateSchema.parse({ facts: [] });
+      expect(parsed).toEqual({ facts: [], edges: [] });
+      expect(res.default).toEqual({ facts: [], edges: [] });
+    });
+
+    it("accepts an object edges config", () => {
+      const res = defineResource({
+        scope: "session",
+        edges: { vocabulary: ["drives"], maxEdges: 10 },
+        stateSchema: z.object({ facts: z.array(z.string()) }),
+      });
+      expect(res.stateSchema.parse({ facts: [] })).toEqual({ facts: [], edges: [] });
+    });
+
+    it("throws when edges is declared on a non-object stateSchema", () => {
+      expect(() => defineResource({
+        scope: "session",
+        edges: true,
+        stateSchema: z.array(z.string()),
+      })).toThrow(/object stateSchema/);
+    });
+
+    it("does not double-inject when the schema already declares edges", () => {
+      const customEdges = z.array(z.object({ id: z.string() }));
+      const res = defineResource({
+        scope: "session",
+        edges: true,
+        stateSchema: z.object({ facts: z.array(z.string()), edges: customEdges }),
+      });
+      // The custom edges shape must survive — a bare {id} edge must parse.
+      expect(res.stateSchema.parse({ facts: [], edges: [{ id: "x" }] }))
+        .toEqual({ facts: [], edges: [{ id: "x" }] });
+    });
+
+    it("leaves schema and default untouched when edges is not declared", () => {
+      const schema = z.object({ facts: z.array(z.string()) });
+      const res = defineResource({
+        scope: "session",
+        stateSchema: schema,
+        default: { facts: [] },
+      });
+      expect(res.stateSchema).toBe(schema);
+      expect(res.default).toEqual({ facts: [] });
+      expect(res.stateSchema.parse({ facts: [] })).toEqual({ facts: [] });
+    });
+
+    it("leaves default untouched when default already declares edges", () => {
+      const res = defineResource({
+        scope: "session",
+        edges: true,
+        stateSchema: z.object({ facts: z.array(z.string()) }),
+        default: { facts: [], edges: [] },
+      });
+      expect(res.default).toEqual({ facts: [], edges: [] });
+    });
+  });
 });
 
 describe("defineResourceCollection", () => {

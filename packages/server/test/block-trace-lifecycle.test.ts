@@ -194,6 +194,98 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     expect(doneForFailing).toBeDefined();
   });
 
+  it("failed block: serializes the error cause chain into block_trace.error.details (FIX-723)", async () => {
+    const failing = handler({
+      name: "h-fails-cause",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: () => {
+        const root = Object.assign(new TypeError("fetch failed"), { code: "ENOTFOUND" });
+        throw new Error("upstream failed", { cause: root });
+      }
+    });
+
+    const pipeline = sequencer({
+      name: "fail-cause-seq",
+      inputSchema: z.object({})
+    }).step(failing);
+
+    const flow = defineFlow({
+      kind: "fail-cause-flow",
+      actions: { run: { inputSchema: z.object({}), block: pipeline } }
+    })();
+
+    const stores = createInMemoryStores();
+    const response = createResponseEmitter({ requestId: "req_lf3", now: () => Date.now() });
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u",
+      sessionId: "s",
+      stores,
+      responseEmitter: response,
+      runtimeConfig: {}
+    });
+
+    const failingTrace = getTraces(response.getItems()).find(
+      (t) => t.blockName === "h-fails-cause"
+    );
+    expect(failingTrace!.status).toBe("failed");
+    // details.cause is the chain *below* the displayed message — the synthetic
+    // wrapper normalizeError adds for a plain throw is unwrapped, so this matches
+    // the tool-output seam (the buried TypeError directly, no "upstream failed"
+    // wrapper duplicating error.message).
+    expect(failingTrace!.error?.message).toContain("upstream failed");
+    expect(failingTrace!.error?.details?.cause).toEqual({
+      name: "TypeError",
+      message: "fetch failed",
+      code: "ENOTFOUND"
+    });
+  });
+
+  it("failed block with a causeless error: no spurious details.cause (FIX-723)", async () => {
+    const failing = handler({
+      name: "h-fails-nocause",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: () => {
+        throw new Error("plain boom");
+      }
+    });
+
+    const pipeline = sequencer({
+      name: "fail-nocause-seq",
+      inputSchema: z.object({})
+    }).step(failing);
+
+    const flow = defineFlow({
+      kind: "fail-nocause-flow",
+      actions: { run: { inputSchema: z.object({}), block: pipeline } }
+    })();
+
+    const stores = createInMemoryStores();
+    const response = createResponseEmitter({ requestId: "req_lf4", now: () => Date.now() });
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u",
+      sessionId: "s",
+      stores,
+      responseEmitter: response,
+      runtimeConfig: {}
+    });
+
+    const failingTrace = getTraces(response.getItems()).find(
+      (t) => t.blockName === "h-fails-nocause"
+    );
+    expect(failingTrace!.status).toBe("failed");
+    // A plain Error with no cause must not produce a Cause panel that just
+    // repeats the message.
+    expect(failingTrace!.error?.details?.cause).toBeUndefined();
+  });
+
   it("trace observability disabled: no block_trace items emitted", async () => {
     process.env.FSDEV_TRACE_OBSERVABILITY = "false";
     const block = handler({

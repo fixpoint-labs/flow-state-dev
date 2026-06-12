@@ -463,6 +463,14 @@ export type ErrorItem = OutputItemBase & {
   type: "error";
   message: string;
   code?: string;
+  /**
+   * Open structured payload attached at failure time. Same shape and
+   * well-known keys as `block_trace.error.details` / `tool_output.error.details`
+   * (e.g. `cause` for the serialized cause chain, `httpStatus` / `responseBody`
+   * / `errorType` from the fetch tool) so every error surface renders
+   * identically in the devtool.
+   */
+  details?: Record<string, unknown>;
 };
 
 /** Source reference emitted by provider-native tools (e.g., web search). */

@@ -19,25 +19,38 @@
 /** A value that may be a string or falsy (undefined, null, empty string, false). */
 export type MaybeString = string | undefined | null | false;
 
+/** Options form for {@link section}. `level` (1–6) sets the heading depth so a
+ * section can nest under another (e.g. `level: 3` → `###`). */
+export type SectionOptions = { title: string; level?: number };
+
 /**
  * Creates a titled section with content underneath.
  * Falsy content items are filtered out.
+ *
+ * Pass a string title for a level-2 (`##`) heading, or the options form
+ * `{ title, level }` to nest under another section. `level` is clamped to 1–6.
  *
  * @example
  * ```ts
  * section("Research Topics", list(topics))
  * // => "## Research Topics\ntopic1\ntopic2"
  *
- * section("Notes", "First note", undefined, "Third note")
- * // => "## Notes\nFirst note\nThird note"
+ * section({ title: "Subsection", level: 3 }, "body")
+ * // => "### Subsection\nbody"
  * ```
  */
-export function section(title: string, ...content: MaybeString[]): string {
+export function section(
+  title: string | SectionOptions,
+  ...content: MaybeString[]
+): string {
+  const resolvedTitle = typeof title === "string" ? title : title.title;
+  const level = typeof title === "string" ? 2 : title.level ?? 2;
+  const heading = "#".repeat(Math.min(6, Math.max(1, level)));
   const filtered = content.filter(isTruthy);
   if (filtered.length === 0) {
-    return `## ${title}`;
+    return `${heading} ${resolvedTitle}`;
   }
-  return `## ${title}\n${filtered.join("\n")}`;
+  return `${heading} ${resolvedTitle}\n${filtered.join("\n")}`;
 }
 
 /**
@@ -99,6 +112,49 @@ export function keyValues(
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Renders an array of records as a GitHub-flavored Markdown table.
+ *
+ * Columns default to the union of keys across all rows in first-seen order;
+ * pass `columns` to fix the set and order. Missing cells render empty, values
+ * are stringified, and `|` / newlines in cells are escaped so they don't break
+ * the table. Empty input (or no columns) returns an empty string.
+ *
+ * @example
+ * ```ts
+ * table([{ ticker: "AAPL", qty: 10 }, { ticker: "JPM", qty: 5 }])
+ * // => "| ticker | qty |\n| --- | --- |\n| AAPL | 10 |\n| JPM | 5 |"
+ * ```
+ */
+export function table(
+  rows: Array<Record<string, unknown>>,
+  options?: { columns?: string[] }
+): string {
+  if (rows.length === 0) {
+    return "";
+  }
+  const columns =
+    options?.columns ?? [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  if (columns.length === 0) {
+    return "";
+  }
+
+  const headerRow = `| ${columns.join(" | ")} |`;
+  const dividerRow = `| ${columns.map(() => "---").join(" | ")} |`;
+  const bodyRows = rows.map(
+    (row) => `| ${columns.map((column) => formatCell(row[column])).join(" | ")} |`
+  );
+  return [headerRow, dividerRow, ...bodyRows].join("\n");
+}
+
+/** Stringify a table cell, escaping pipes and flattening newlines. */
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value).replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 
 /**

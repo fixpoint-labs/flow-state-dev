@@ -79,9 +79,31 @@ const result = await testFlow({
   models: {
     "openai/gpt-5.4-mini": { output: "Fallback" },
   },
-  unmockedGeneratorPolicy: "error",  // "error" | "passthrough"
+  unmockedGeneratorPolicy: "error",  // "error" | "warn" | "allow" | "default"
 });
 ```
+
+`unmockedGeneratorPolicy` controls what happens when a generator on the run path has no matching mock:
+
+- `"error"` (default) — throw. Good for tightly-mocked tests where every generator is accounted for.
+- `"warn"` / `"allow"` — return a no-op model (empty output); `"warn"` also logs.
+- `"default"` — yield the caller-supplied `unmockedDefault` fallback script instead of throwing or emitting empty output. Lets a flow with many generators fall back for the ones you didn't mock.
+
+```ts
+await testFlow({
+  flow: myFlow,
+  action: "chat",
+  input: { message: "hello" },
+  userId: "testuser",
+  // chat-gen mocked explicitly; everything else falls back.
+  generators: { "chat-gen": chatMock },
+  unmockedGeneratorPolicy: "default",
+  unmockedDefault: { structuredOutput: { reply: "" } },
+  // or a factory: ({ modelId, blockName }) => ({ ... })
+});
+```
+
+Reach for `"default"` on breadth-oriented e2e tests; keep mocking explicitly wherever the generator's output shape matters to the assertion.
 
 ## Generator Mocks
 
@@ -161,7 +183,7 @@ const ctx = createTestContext({
 Generator mocks are resolved in this order:
 1. By generator block name (`generators` option)
 2. By model ID (`models` option)
-3. `unmockedGeneratorPolicy` determines behavior when no mock matches
+3. `unmockedGeneratorPolicy` determines behavior when no mock matches (`"error"` | `"warn"` | `"allow"` | `"default"`); under `"default"`, the `unmockedDefault` script is used
 
 ## Eval Harness
 

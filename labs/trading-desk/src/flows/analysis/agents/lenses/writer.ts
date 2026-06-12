@@ -84,7 +84,7 @@ export function commitLensVerdict(lensId: LensId) {
           `lens-id-mismatch: generator answered for "${verdict.lensId}", expected "${lensId}"`,
         );
       }
-      await publishMemo(ctx, lensId, collectionKey, {
+      await publishMemo(ctx, collectionKey, {
         label: lens?.label ?? lensId,
         headline: verdict.verdict,
         rating: stanceLabel(verdict.stance),

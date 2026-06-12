@@ -1,9 +1,9 @@
 /**
  * `setupPhase1Memos` — pre-creates the five Phase 1 memo resources in
  * `pending` before the parallel analyst fan-out starts. Built via the
- * shared `defineMemoSetup` factory; the navigator reads
- * `session.memoStatus` to render the five slots immediately, so all
- * Phase 1 memos appear before any generator runs.
+ * shared `defineMemoSetup` factory; the navigator reads each memo's status
+ * live off the collection, so all Phase 1 memos appear in `pending`
+ * immediately before any generator runs.
  */
 import { PHASE_1_MEMO_KEYS } from "../../registry";
 import { defineMemoSetup } from "../_recipe/memo-setup";

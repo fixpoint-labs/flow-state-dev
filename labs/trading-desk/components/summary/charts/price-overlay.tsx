@@ -1,11 +1,13 @@
 /**
- * PriceOverlay — inline-SVG close-price line with entry/stop/target/fair-value
+ * PriceOverlay — inline-SVG close-price line with entry/stop/target
  * horizontal overlays. No chart library, no interactivity, no ResizeObserver:
  * a static figure projected into a fixed viewBox.
  *
  * The series comes from the stored `priceHistory` resource slice (date + close
- * only). The overlay levels come from the trader memo (stop/target) and the
- * valuation spine (fair value); the latest close is drawn as a reference line.
+ * only). The overlay levels come from the trader memo (stop/target); the
+ * latest close is drawn as a reference line. Only per-share price quantities
+ * may join the levels — the spine's fairValue is a company-level $B figure
+ * and must never be plotted here (FIX-778).
  * Every level that falls outside the price domain widens the domain so it stays
  * visible. With fewer than two bars the caller renders the trade-levels fallback
  * instead — this component assumes a drawable series.

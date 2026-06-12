@@ -25,6 +25,9 @@ import {
   parseRoleTaggedMarkdown,
   RoleTaggedMarkdownParseError,
 } from "../markdown/role-tagged";
+import { DEFAULT_PROMPT_FILE_FILTERS } from "./default-filters";
+
+export { DEFAULT_PROMPT_FILE_FILTERS } from "./default-filters";
 
 /** Brand key carried on the `prompt` closure a PromptFile produces. The
  * generator reads it to detect PromptFile-sourced prompts and route them
@@ -311,7 +314,10 @@ export function parsePromptFile(
     memoryLimit: 1e8,
     fs: partialFs,
   });
-  for (const [filterName, impl] of Object.entries(options?.filters ?? {})) {
+  // Framework filters first, caller filters second so callers can override a
+  // built-in by registering one of the same name. Both engines get the set.
+  const mergedFilters = { ...DEFAULT_PROMPT_FILE_FILTERS, ...(options?.filters ?? {}) };
+  for (const [filterName, impl] of Object.entries(mergedFilters)) {
     engine.registerFilter(filterName, impl);
     contextEngine.registerFilter(filterName, impl);
   }

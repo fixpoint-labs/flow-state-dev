@@ -46,7 +46,10 @@ export type {
   FlowState,
   FlowStateModelsConfig,
   FlowStateRuntime,
-  FlowStateVoiceConfig
+  FlowStateVoiceConfig,
+  WorkerAdapter,
+  WorkerHandle,
+  WorkerMode
 } from "./flowstate/types";
 export type {
   ActiveRequestEntry,

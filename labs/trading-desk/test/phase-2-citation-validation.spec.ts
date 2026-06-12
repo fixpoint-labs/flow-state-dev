@@ -32,7 +32,6 @@ const baseSessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-2" as const,
   maxDebateRounds: 2,
-  memoStatus: {},
 };
 
 /** Seed an analyst memo whose body contains `paragraph`. */

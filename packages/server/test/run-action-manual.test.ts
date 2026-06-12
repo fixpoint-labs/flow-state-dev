@@ -128,4 +128,27 @@ describe("runAction — non-HTTP affordances", () => {
     );
     expect(persistedTransient).toEqual([]);
   });
+
+  it("resumes event numbering from startSequenceNumber", async () => {
+    // Queue consumers re-running an action under the same requestId (e.g. a
+    // BullMQ retry attempt) pass the last persisted sequence number so the
+    // event log stays strictly increasing — tailing clients filter on
+    // `sequence_number > cursor` and would never see a restarted sequence.
+    const stores = createInMemoryStores();
+    const result = await runAction({
+      flow: buildMessageFlow(),
+      actionName: "greet",
+      input: { name: "Ada" },
+      userId: "user_1",
+      requestId: "req_seq_resume",
+      startSequenceNumber: 100,
+      stores,
+      runtimeConfig: {}
+    });
+
+    expect(result.error).toBeUndefined();
+    const events = await stores.request.getEvents("req_seq_resume");
+    expect(events.length).toBeGreaterThan(0);
+    expect(Math.min(...events.map((e) => e.sequence_number))).toBe(101);
+  });
 });

@@ -1,7 +1,7 @@
 /**
  * Unit tests for `setupPhase2Memos` — verifies the three p2 memos are
- * pre-created and `session.memoStatus` carries the initial `pending`
- * entries before the bull/bear loop runs.
+ * pre-created in `pending` (streamed off the live collection) before the
+ * bull/bear loop runs.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
@@ -9,6 +9,8 @@ import { testBlock } from "@flow-state-dev/testing";
 import { setupPhase2Memos } from "../src/flows/analysis/agents/research/setup";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { PHASE_2_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p2-setup-test",
@@ -30,12 +32,6 @@ describe("setupPhase2Memos", () => {
           dataSource: "fixture",
           activePhase: "phase-1",
           maxDebateRounds: 1,
-          memoStatus: {
-            fundamentals: "published",
-            sentiment: "published",
-            news: "published",
-            technical: "published",
-          },
         },
       },
     });
@@ -45,12 +41,9 @@ describe("setupPhase2Memos", () => {
     expect(sessionPatches.length).toBeGreaterThan(0);
     const last = sessionPatches[sessionPatches.length - 1].resultingState;
     expect(last.activePhase).toBe("phase-2");
-    const memoStatus = last.memoStatus as Record<string, string>;
-    // Phase 1 entries are preserved.
-    expect(memoStatus.fundamentals).toBe("published");
-    // Phase 2 entries are seeded.
-    expect(memoStatus.bull).toBe("pending");
-    expect(memoStatus.bear).toBe("pending");
-    expect(memoStatus.researchManager).toBe("pending");
+    // Phase 2 memos are seeded to pending.
+    expect(latestMemoStatus(result.items, PHASE_2_MEMO_KEYS.bull.memoKey)).toBe("pending");
+    expect(latestMemoStatus(result.items, PHASE_2_MEMO_KEYS.bear.memoKey)).toBe("pending");
+    expect(latestMemoStatus(result.items, PHASE_2_MEMO_KEYS.researchManager.memoKey)).toBe("pending");
   });
 });

@@ -1,6 +1,6 @@
 /**
  * Tests for the Phase 3 writer taps. Confirms `markWriting`,
- * `markError`, and `commitTraderMemo` flip `session.memoStatus` and
+ * `markError`, and `commitTraderMemo` flip the trader memo's status and
  * patch the resource correctly — including the seven P3 extension fields.
  */
 import { describe, expect, it } from "vitest";
@@ -10,6 +10,8 @@ import { commitTraderMemo } from "../src/flows/analysis/agents/trader/writer";
 import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { PHASE_3_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const writeTrader = markWriting("trader");
 const errorTrader = markError("trader");
@@ -32,9 +34,6 @@ const baseSessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-3" as const,
   maxDebateRounds: 1,
-  memoStatus: {
-    trader: "pending" as const,
-  },
 };
 
 function seededTraderMemo(opts: { startedAt?: string | null } = {}) {
@@ -95,15 +94,14 @@ const tradeProposal = {
 };
 
 describe("Phase 3 writer taps", () => {
-  it("markWriting flips memoStatus.trader to writing", async () => {
+  it("markWriting flips the trader memo to writing", async () => {
     const result = await testBlock(writeTrader, {
       input: {},
       flow: fixtureFlow,
       session: { state: baseSessionState },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.trader).toBe("writing");
+    expect(latestMemoStatus(result.items, PHASE_3_MEMO_KEYS.trader.memoKey)).toBe("writing");
   });
 
   it("commitTraderMemo flips trader to published and writes extension fields", async () => {
@@ -111,10 +109,7 @@ describe("Phase 3 writer taps", () => {
       input: tradeProposal,
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { trader: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p3/trader": seededTraderMemo({
             startedAt: new Date().toISOString(),
@@ -123,8 +118,7 @@ describe("Phase 3 writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.trader).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_3_MEMO_KEYS.trader.memoKey)).toBe("published");
   });
 
   it("markError flips trader to error and stamps the message", async () => {
@@ -132,7 +126,7 @@ describe("Phase 3 writer taps", () => {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { trader: "writing" } },
+        state: baseSessionState,
         resources: {
           "memos/p3/trader": seededTraderMemo({
             startedAt: new Date().toISOString(),
@@ -141,19 +135,6 @@ describe("Phase 3 writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.trader).toBe("error");
+    expect(latestMemoStatus(result.items, PHASE_3_MEMO_KEYS.trader.memoKey)).toBe("error");
   });
 });
-
-type LastStatePayload = {
-  memoStatus: Record<string, string>;
-};
-
-function lastSessionState(result: {
-  stateChanges: Array<{ scope: string; resultingState: Record<string, unknown> }>;
-}): LastStatePayload {
-  const sessionPatches = result.stateChanges.filter((c) => c.scope === "session");
-  expect(sessionPatches.length).toBeGreaterThan(0);
-  return sessionPatches[sessionPatches.length - 1].resultingState as unknown as LastStatePayload;
-}

@@ -12,12 +12,13 @@
  *      — the single source of truth. The two recipes (`defineAnalyst`, the
  *      lens fan-out) are thin wrappers over `defineMemoStep`.
  *
- *   2. `publishMemo(ctx, shortName, collectionKey, patch)`
- *      — helper that performs the published-memo dual write (resource
- *      `patchState` + session `memoStatus` mirror) with the standard
- *      `status / completedAt / errorMessage` fields filled in. Called from
- *      a plain `handler({...})` execute body — each commit handler is just
- *      the projection-of-LLM-output into the patch shape.
+ *   2. `publishMemo(ctx, collectionKey, patch)`
+ *      — helper that publishes a memo via a single resource `patchState`
+ *      (with the standard `status / completedAt / errorMessage` fields filled
+ *      in). The navigator reads status live off the resource, so there is no
+ *      session mirror. Called from a plain `handler({...})` execute body —
+ *      each commit handler is just the projection-of-LLM-output into the
+ *      patch shape.
  *
  *   3. `memoHandler` — a `handler.withDefaults(...)` instance with
  *      `sessionStateSchema`, `resources: memoResources`, and
@@ -82,9 +83,6 @@ export function markWriting(key: AnyMemoShortName): BlockDefinition {
           date: ctx.session.state.date,
         },
       );
-      if (ctx.session.state.memoStatus[key] !== "writing") {
-        await ctx.session.setStateRecord("memoStatus", key, "writing");
-      }
     },
   });
 }
@@ -121,9 +119,6 @@ export function markError(key: AnyMemoShortName): BlockDefinition {
           errorMessage: message,
           completedAt: new Date().toISOString(),
         });
-      }
-      if (ctx.session.state.memoStatus[key] !== "error") {
-        await ctx.session.setStateRecord("memoStatus", key, "error");
       }
       return {
         status: "error" as const,
@@ -186,25 +181,23 @@ export type CommitPatch = Omit<
 >;
 
 /**
- * Perform the published-memo dual write: patch the memo resource (with the
- * standard `status: "published" / completedAt / errorMessage: null` fields
- * merged onto the caller's `patch`), then mirror the new status onto
- * `session.memoStatus[shortName]` via `setStateRecord` (atomic per-key,
- * safe under parallel writers).
+ * Publish a memo: patch the memo resource with the caller's `patch` plus the
+ * standard `status: "published" / completedAt / errorMessage: null` fields. The
+ * navigator reads the new status live off the resource itself (the memos
+ * collection is `client: { live: true }`), so there is no session-state mirror
+ * to keep in sync.
  *
  * Uses `.get()` (throws) rather than `.getOptional()`: by commit time
  * setup + markWriting have created/patched the resource, and a missing
  * ref is a real bug we want surfaced into the per-step rescue.
  *
- * `ctx` is typed as `LooseBlockContext<SessionState>` — typed on session
- * state (so `setStateRecord("memoStatus", ...)` is type-checked) and
- * permissive on resources (so any caller's narrower inferred ctx assigns
- * in). The framework's full `BlockContext` doesn't work here because its
- * `TResources` generic is invariant on `ResourceRegistry`.
+ * `ctx` stays typed as `LooseBlockContext<SessionState>` — permissive on
+ * resources (so any caller's narrower inferred ctx assigns in), matching the
+ * other memo-touching handlers. The framework's full `BlockContext` doesn't
+ * work here because its `TResources` generic is invariant on `ResourceRegistry`.
  */
 export async function publishMemo(
   ctx: LooseBlockContext<SessionState>,
-  shortName: string,
   collectionKey: string,
   patch: CommitPatch,
 ): Promise<void> {
@@ -215,9 +208,6 @@ export async function publishMemo(
     completedAt: new Date().toISOString(),
     errorMessage: null,
   });
-  if (ctx.session.state.memoStatus[shortName] !== "published") {
-    await ctx.session.setStateRecord("memoStatus", shortName, "published");
-  }
 }
 
 // ---------------------------------------------------------------------------

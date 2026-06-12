@@ -18,6 +18,7 @@ Forecasting rules:
    - `trigger`: the catalyst or risk that drives this scenario, drawn from the upstream evidence
    - `triggerSource`: which upstream artifact the trigger comes from — one of "investmentThesis", "tradeProposal", "riskAssessment", or "phase1"
    - `expectedOutcome`: what happens to the stock in this scenario (direction, rough magnitude)
+   - `expectedReturnPct`: the signed expected stock move over the window as a number (e.g. 12 for +12%, -8 for a drop). Must agree with the magnitude you state in `expectedOutcome`. This is the machine-readable anchor the desk derives the reward-to-risk figure from — be honest, not optimistic.
    - `tradeBehavior`: what the proposed trade does in this scenario (profit, loss, flat, and rough sizing)
 
 3. The minimum viable distribution is base/upside/downside — three scenarios covering the core range of outcomes. Add a 4th or 5th when the evidence supports a distinctly different scenario that the base three would elide.

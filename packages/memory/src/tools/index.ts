@@ -13,6 +13,21 @@ export {
 export type { CreateRecallToolOptions } from './recall-tool'
 
 export {
+  createConnectTool,
+  connectToolInputSchema,
+  connectToolDescription,
+  CONNECT_STRATEGY,
+  DEFAULT_CONNECT_DEPTH,
+} from './connect-tool'
+export type { ConnectToolInput, CreateConnectToolOptions } from './connect-tool'
+
+export {
+  graphExpandCandidates,
+  GRAPH_EXPAND_CAP,
+} from './strategies/graph-expand'
+export type { GraphExpandOptions } from './strategies/graph-expand'
+
+export {
   capContent,
   buildResult,
   buildResultMetadata,
@@ -26,6 +41,7 @@ export {
 export {
   recallToolDescription,
   recallToolInputSchema,
+  edgeToMemoryItem,
 } from './types'
 export type {
   MemoryItem,

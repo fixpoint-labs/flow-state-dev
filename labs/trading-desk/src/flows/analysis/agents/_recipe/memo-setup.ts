@@ -12,8 +12,9 @@
  * Uses `memoHandler` (from `./memo-writer`) for the shared scaffolding —
  * setup is a memo-touching block like commits, so the same defaults apply.
  *
- * The memoStatus seed is derived from the keys registry so adding a new
- * memo to a phase doesn't require touching this file.
+ * The navigator reads each memo's status live off the collection
+ * (`client: { live: true }`), so the `pending` scaffolds created here are the
+ * only status seed — there is no session-state mirror to populate.
  */
 import { z } from "zod";
 import type { AgentName, AgentTeam } from "../../registry";
@@ -57,13 +58,7 @@ export function defineMemoSetup<Keys extends Record<string, KeyEntry>>(
           { replace: true },
         );
       }
-      const memoStatusSeed = Object.fromEntries(
-        Object.keys(keys).map((shortName) => [shortName, "pending" as const]),
-      );
-      await ctx.session.patchState({
-        activePhase,
-        memoStatus: { ...ctx.session.state.memoStatus, ...memoStatusSeed },
-      });
+      await ctx.session.patchState({ activePhase });
     },
   });
 }
