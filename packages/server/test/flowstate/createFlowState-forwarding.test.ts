@@ -79,6 +79,32 @@ describe("createFlowState — router option forwarding", () => {
     await fs.dispose();
   });
 
+  it("builds a durabilityProvider from resolved stores when durable: true", async () => {
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: stubModelResolver,
+      durable: true
+    });
+    await fs.ready();
+    expect(calls[0]?.runtimeConfig?.durabilityProvider).toBeDefined();
+    expect(typeof calls[0]?.runtimeConfig?.durabilityProvider?.suspend).toBe(
+      "function"
+    );
+    await fs.dispose();
+  });
+
+  it("leaves durabilityProvider undefined when durable is unset", async () => {
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: stubModelResolver
+    });
+    await fs.ready();
+    expect(calls[0]?.runtimeConfig?.durabilityProvider).toBeUndefined();
+    await fs.dispose();
+  });
+
   it("omits the options when unset (router defaults apply)", async () => {
     const fs = createFlowState({
       flows: { noop: noopFlow },

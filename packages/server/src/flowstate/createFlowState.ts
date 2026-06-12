@@ -18,6 +18,7 @@ import {
 import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
 import { createFlowApiRouter, type FlowApiRouter } from "../routes/createFlowApiRouter";
 import { createRuntimeConfig } from "../runtime-config";
+import { createCheckpointDurabilityProvider } from "../durability/checkpoint-durability-provider";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { resolveProfileStores } from "./resolve-slots";
@@ -256,6 +257,13 @@ class InternalFlowState<TSettings extends object>
     // boundary. The intermediate execution-chain layers take this bundle
     // verbatim — adding a new forwarded field means one line here, not a
     // per-layer signature change.
+    // Durable execution: build the default checkpoint provider from the SAME
+    // resolved stores the router/worker use, so checkpoints, suspensions, and
+    // leases all read/write the active profile. Opt-in via `durable: true`.
+    const durabilityProvider = this.#options.durable === true
+      ? createCheckpointDurabilityProvider(stores)
+      : undefined;
+
     const runtimeConfig = createRuntimeConfig({
       modelResolver,
       voiceProvider,
@@ -263,6 +271,7 @@ class InternalFlowState<TSettings extends object>
       middleware: this.#options.middleware,
       onBackgroundWork: this.#options.onBackgroundWork,
       defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs,
+      durabilityProvider,
       durabilityRetention: this.#options.durabilityRetention,
       errorCapture: this.#options.errorCapture
     });

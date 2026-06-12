@@ -406,6 +406,55 @@ const setThinkingEnabledHandler = handler({
 });
 
 // ---------------------------------------------------------------------------
+// Durable human-in-the-loop approval gate (FIX-140 / FIX-141 demo)
+// ---------------------------------------------------------------------------
+//
+// A minimal durable action that pauses for a human decision. Triggering it
+// suspends the request (status "suspended") and writes a SuspensionRecord;
+// an operator resolves it from the DevTool Suspensions tab (or the resume
+// endpoint), and the action continues from the checkpoint. Kept off the main
+// `run` pipeline so ordinary chat turns stay transient.
+
+const approvalGateInputSchema = z.object({
+  /** Human-readable description of the action awaiting approval. */
+  request: z.string().min(1),
+});
+
+/** Zod shape the operator fills in when approving/rejecting from the DevTool. */
+const approvalResumeSchema = z.object({
+  approved: z.boolean(),
+  note: z.string().optional(),
+});
+
+const approvalGateStep = handler({
+  name: "approval-gate",
+  inputSchema: approvalGateInputSchema,
+  outputSchema: z.string(),
+  execute: async (input, ctx) => {
+    // `ctx.suspend` is only present in a durable action running inside a
+    // sequencer. On first run it throws a SuspensionError the sequencer
+    // catches at this step boundary; on resume it returns the operator's
+    // decision instead of throwing.
+    const decision = (await ctx.suspend!({
+      reason: "human_approval",
+      message: `Approve action: "${input.request}"?`,
+      resumeSchema: approvalResumeSchema,
+    })) as z.infer<typeof approvalResumeSchema> | undefined;
+
+    if (decision?.approved) {
+      return `Approved${decision.note ? ` — ${decision.note}` : ""}. Proceeding with "${input.request}".`;
+    }
+    return `Rejected${decision?.note ? ` — ${decision.note}` : ""}. "${input.request}" was not performed.`;
+  },
+});
+
+const approvalGate = sequencer({
+  name: "approval-gate-seq",
+  inputSchema: approvalGateInputSchema,
+  durable: true,
+}).step(approvalGateStep);
+
+// ---------------------------------------------------------------------------
 // Run sequencer
 // ---------------------------------------------------------------------------
 
@@ -464,6 +513,15 @@ const chatAgentFlow = defineFlow({
     },
     "task-queue": {
       block: taskQueueDemo,
+    },
+    // Durable HITL action: suspends for human approval, resolvable from the
+    // DevTool Suspensions tab. `durable: true` makes ctx.suspend() available
+    // and enables checkpoint-based resume (requires `durable: true` on the
+    // FlowState runtime — see lib/flowstate.ts).
+    requestApproval: {
+      block: approvalGate,
+      durable: true,
+      userMessage: (input) => `Requesting approval: ${input.request}`,
     },
   },
 
