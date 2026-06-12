@@ -142,7 +142,7 @@ For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.p
 ## What this package does
 
 - **Action execution** — Validates input, resolves sessions, runs block pipelines, emits items
-- **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume
+- **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume. Resources declaring `client: { live: true }` emit their projected delta inline on each mutation so clients merge it without a refetch
 - **State persistence** — In-memory and filesystem store adapters with CAS-guarded atomic writes
 - **Flow registry** — Register multiple flows, routes are derived automatically
 - **Error normalization** — All errors become typed `FlowError` instances with codes, retry signals, and scope context
@@ -336,7 +336,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 **Runtime:**
 - `renderTemplate` — Handlebars-style template rendering utility for resource content
 - `createExecutionContext` — Build a block execution context
-- `runAction` — Execute a flow action end-to-end. Also the sanctioned non-HTTP entry point (jobs, cron, queue consumers): pass an `onItem` callback to observe items live, and read `requestId` back off the result to correlate logs or attach a stream
+- `runAction` — Execute a flow action end-to-end. Also the sanctioned non-HTTP entry point (jobs, cron, queue consumers): pass an `onItem` callback to observe items live, and read `requestId` back off the result to correlate logs or attach a stream. Queue consumers re-running an action under the same `requestId` (retry attempts) pass `startSequenceNumber` — the last persisted sequence number — so the per-request event log stays strictly increasing across attempts
 - `executeBlock` — Execute a single block with context
 
 **Stores:**
@@ -367,6 +367,18 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 **Cross-flow schema validation:**
 
 `FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `org.stateSchema`, and user/org resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateOrgState: true` on `defineFlow`) are namespaced by `flowKind` in storage and skip the registry check. See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and the [state and scopes reference](https://flow-state.dev/docs/fundamentals/state-and-scopes) for the full model.
+
+**Execution backend (worker adapters):**
+- `WorkerAdapter` / `WorkerHandle` / `WorkerMode` — Contract for the `worker` option on `createFlowState`. An adapter (e.g. `bullmqWorker` from `@flow-state-dev/bullmq`) provides the dispatch side and/or the processing side; `createFlowState` hands both the same resolved `{ registry, stores, runtimeConfig }` so the worker can never run against different stores than the router. `mode` picks the deployment shape: `"colocated"` (default), `"dispatch-only"` (web container), `"worker-only"` (worker container — call `ready()` to start consuming). `dispose()` drains the worker before closing stores
+
+**Dispatcher (pluggable execution backend):**
+- `FlowDispatcher` — Interface controlling where flow actions execute. Default: in-process. Implementations route execution to external workers (e.g., BullMQ)
+- `DispatchEnvelope` — Serializable subset of `InboundRequestEnvelope` carried over the queue
+- `FlowDispatchHandle` — Handle returned by `dispatch()`: `requestId`, `finished` promise, `abort()` hook
+- `createInProcessDispatcher` — Default dispatcher that calls `runAction` in the current process
+- `StreamBridge` / `StreamPublisher` / `StreamSubscriber` — Bridges live SSE events between a remote worker and the web process. The worker writes events to the bridge; the web process reads them and forwards to SSE
+- `StreamEvent` — Single event published through the bridge, matching the SSE event shape
+- Pass `dispatcher` to `createFlowState` or `createFlowApiRouter` to route all action dispatches through an external queue. Most deployments should prefer the `worker` option — the adapter wires the dispatcher and the worker together; `dispatcher` is the low-level escape hatch (mutually exclusive with `worker`)
 
 **Errors:**
 - `FlowError` and canonical subclasses

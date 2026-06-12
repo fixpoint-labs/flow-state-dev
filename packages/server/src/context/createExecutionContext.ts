@@ -52,11 +52,11 @@ import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
-import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
-import { normalizeError } from "../errors/normalize-error";
+import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
   safeCaptureError,
   toErrorCaptureEvent,
@@ -99,7 +99,9 @@ import {
   normalizeStateDefault,
   type LazyLoadOutcome,
   type ScopeLazyLoad,
+  type ResourceChangeDelta,
 } from "./resource-registry";
+import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 
 
 function ensureJournalDefaults(record: SessionRecord): void {
@@ -1363,137 +1365,64 @@ export async function createExecutionContext<
   const readProjectResourceContent = (): Record<string, string> =>
     orgContentRef.current;
 
-  const persistSessionResources = async (
-    next: Record<string, JsonObject>
-  ): Promise<void> => {
-    const normalized = normalizeScopeResources(sessionResourceConfigs, next);
-    const previous = sessionStateRef.current;
-
-    for (const [key, value] of Object.entries(normalized)) {
-      if (!deepEqual(previous[key], value)) {
-        await stores.resourceState.set("session", sessionKey, key, value);
+  // FIX-744: single-key resource persistence. Each write/delete commits one
+  // key to the durable store, then mutates the live per-scope cache IN PLACE
+  // at that key (`ref.current[key] = value`) rather than snapshotting and
+  // replacing the whole map. Distinct keys are independent, so concurrent
+  // distinct-key writes from `.parallel` / `.forEach` branches — which all
+  // share one `ctx` — can no longer clobber each other in the in-memory view
+  // a convergence read sees. Mirrors the per-field commutative path the
+  // scope-state container already uses. Same-key concurrent writes resolve
+  // last-writer-wins (accepted, matching commutative state semantics).
+  //
+  // FIX-735: the durable store id is resolved PER KEY via
+  // `resolveResourceStorageScopeId(scope, key)` (each resource persists to its
+  // own isolation bucket); the in-memory cache stays keyed by the resource key
+  // regardless of which bucket backs it.
+  const makeKeyPersisters = (scope: ContentScopeType) => {
+    const stateRef = scopeStateRef(scope);
+    const contentRef = scopeContentRef(scope);
+    return {
+      persistResourceKey: async (key: string, value: JsonObject): Promise<void> => {
+        const scopeId = resolveResourceStorageScopeId(scope, key);
+        if (scopeId === undefined) return;
+        if (deepEqual(stateRef.current[key], value)) return;
+        await stores.resourceState.set(scope, scopeId, key, value);
+        stateRef.current[key] = value;
+      },
+      deleteResourceKey: async (key: string): Promise<void> => {
+        const scopeId = resolveResourceStorageScopeId(scope, key);
+        // `!(key in stateRef.current)` is a load-state check, not a
+        // correctness guarantee: it scopes the delete to keys present in the
+        // cache, matching the prior whole-map reconciliation (which only ever
+        // diffed cached keys). Eager scopes hold the full set, so this is
+        // exact; for a `prefetchMode: 'lazy'` instance never loaded this
+        // request the store row is left untouched — a pre-existing gap, not
+        // introduced by the per-key path.
+        if (scopeId === undefined || !(key in stateRef.current)) return;
+        await stores.resourceState.delete(scope, scopeId, key);
+        delete stateRef.current[key];
+      },
+      persistResourceContentKey: async (key: string, content: string): Promise<void> => {
+        const scopeId = resolveResourceStorageScopeId(scope, key);
+        if (scopeId === undefined) return;
+        if (contentRef.current[key] === content) return;
+        await stores.content.set(scope, scopeId, key, content);
+        contentRef.current[key] = content;
+      },
+      deleteResourceContentKey: async (key: string): Promise<void> => {
+        const scopeId = resolveResourceStorageScopeId(scope, key);
+        // Load-state check, as in `deleteResourceKey` above.
+        if (scopeId === undefined || !(key in contentRef.current)) return;
+        await stores.content.delete(scope, scopeId, key);
+        delete contentRef.current[key];
       }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.resourceState.delete("session", sessionKey, key);
-      }
-    }
-
-    sessionStateRef.current = normalized;
+    };
   };
 
-  const persistSessionResourceContent = async (
-    next: Record<string, string>
-  ): Promise<void> => {
-    const normalized = normalizeScopeResourceContent(sessionResourceConfigs, next);
-    const previous = sessionContentRef.current;
-
-    for (const [key, value] of Object.entries(normalized)) {
-      if (previous[key] !== value) {
-        await stores.content.set("session", sessionKey, key, value);
-      }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.content.delete("session", sessionKey, key);
-      }
-    }
-
-    sessionContentRef.current = normalized;
-  };
-
-  const persistUserResources = async (
-    next: Record<string, JsonObject>
-  ): Promise<void> => {
-    const normalized = normalizeScopeResources(userResourceConfigs, next);
-    const previous = userStateRef.current;
-
-    // FIX-735: each resource persists to its own isolation bucket.
-    for (const [key, value] of Object.entries(normalized)) {
-      if (!deepEqual(previous[key], value)) {
-        await stores.resourceState.set("user", resolveResourceStorageScopeId("user", key)!, key, value);
-      }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.resourceState.delete("user", resolveResourceStorageScopeId("user", key)!, key);
-      }
-    }
-
-    userStateRef.current = normalized;
-  };
-
-  const persistUserResourceContent = async (
-    next: Record<string, string>
-  ): Promise<void> => {
-    const normalized = normalizeScopeResourceContent(userResourceConfigs, next);
-    const previous = userContentRef.current;
-
-    // FIX-735: each resource persists to its own isolation bucket.
-    for (const [key, value] of Object.entries(normalized)) {
-      if (previous[key] !== value) {
-        await stores.content.set("user", resolveResourceStorageScopeId("user", key)!, key, value);
-      }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.content.delete("user", resolveResourceStorageScopeId("user", key)!, key);
-      }
-    }
-
-    userContentRef.current = normalized;
-  };
-
-  const persistProjectResources = async (
-    next: Record<string, JsonObject>
-  ): Promise<void> => {
-    if (resolvedOrgKey === undefined) {
-      return;
-    }
-
-    const normalized = normalizeScopeResources(orgResourceConfigs, next);
-    const previous = orgStateRef.current;
-
-    // FIX-735: each resource persists to its own isolation bucket.
-    for (const [key, value] of Object.entries(normalized)) {
-      if (!deepEqual(previous[key], value)) {
-        await stores.resourceState.set("org", resolveResourceStorageScopeId("org", key)!, key, value);
-      }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.resourceState.delete("org", resolveResourceStorageScopeId("org", key)!, key);
-      }
-    }
-
-    orgStateRef.current = normalized;
-  };
-
-  const persistProjectResourceContent = async (
-    next: Record<string, string>
-  ): Promise<void> => {
-    if (resolvedOrgKey === undefined) {
-      return;
-    }
-
-    const normalized = normalizeScopeResourceContent(orgResourceConfigs, next);
-    const previous = orgContentRef.current;
-
-    // FIX-735: each resource persists to its own isolation bucket.
-    for (const [key, value] of Object.entries(normalized)) {
-      if (previous[key] !== value) {
-        await stores.content.set("org", resolveResourceStorageScopeId("org", key)!, key, value);
-      }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.content.delete("org", resolveResourceStorageScopeId("org", key)!, key);
-      }
-    }
-
-    orgContentRef.current = normalized;
-  };
+  const sessionKeyPersisters = makeKeyPersisters("session");
+  const userKeyPersisters = makeKeyPersisters("user");
+  const orgKeyPersisters = makeKeyPersisters("org");
 
   const requestContainer = createStateContainer<TRequestState>(
     requestRef.current.state as TRequestState,
@@ -1598,13 +1527,75 @@ export async function createExecutionContext<
   // so clients can refresh clientData without waiting for request completion.
   const rawResponse = options.response as unknown as Record<string, unknown> | undefined;
   const emitter = rawResponse && typeof rawResponse.emitResourceChange === "function"
-    ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean }) => Promise<unknown> })
+    ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean; delta?: unknown }) => Promise<unknown> })
     : undefined;
 
+  // FIX-751: shared per-request cascade budget and a late-bound ctx ref. The
+  // reactive dispatcher needs the live ExecutionContext to run blocks in-session
+  // via `executeBlock`, but the root context isn't built until the end of this
+  // function — so the dispatchers close over `reactiveCtxRef`, populated below.
+  const cascadeController = createCascadeController();
+  const reactiveCtxRef: { current: ExecutionContext | undefined } = { current: undefined };
+
   function makeResourceChangeHandler(scope: "session" | "user" | "org") {
-    if (!emitter) return undefined;
-    return (resourcePath: string, changeType: "created" | "updated" | "deleted") => {
-      void emitter.emitResourceChange({ scope, resourcePath, changeType, transient: true });
+    const scopeConfigs =
+      scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs;
+    const hasReactive = Object.values(scopeConfigs).some((c) => c.reactTo !== undefined);
+
+    // Only wire a handler when there is something to do: a live emitter
+    // (FIX-739 streaming) and/or a `reactTo` binding (FIX-751). Reactive-only
+    // resources still dispatch even with no emitter present.
+    if (!emitter && !hasReactive) return undefined;
+
+    const dispatchReactive = hasReactive
+      ? createReactiveDispatcher({
+          configs: scopeConfigs,
+          ctxRef: reactiveCtxRef,
+          controller: cascadeController,
+          // The attribution ALS holds the executing block's instance id, so the
+          // reactive block parents under whichever block performed the mutation.
+          getTriggerInstanceId: () => loadAttributionStorage.getStore(),
+          runAttributed: (instanceId, fn) => loadAttributionStorage.run(instanceId, fn),
+        })
+      : undefined;
+
+    // FIX-739 streams resource_change for client-visible changes: all collections
+    // (delta only when live) and live single resources. A single resource that
+    // fires the seam only because it declares `reactTo` (FIX-751, non-live) must
+    // NOT emit — that would leak a client item for a resource with no client
+    // projection. Precompute those storage keys once and skip the emit for them.
+    const scopeStorageKeys = resourceStorageKeys(scopeConfigs);
+    const nonStreamingSingleKeys = new Set<string>();
+    for (const [accessor, cfg] of Object.entries(scopeConfigs)) {
+      if (!isCollectionConfig(cfg) && cfg.client?.live !== true) {
+        nonStreamingSingleKeys.add(scopeStorageKeys[accessor] ?? accessor);
+      }
+    }
+
+    return async (
+      resourcePath: string,
+      changeType: "created" | "updated" | "deleted",
+      projection?: { delta: unknown },
+      change?: ResourceChangeDelta
+    ): Promise<void> => {
+      // FIX-739 streaming emit stays fire-and-forget: `projection` is present
+      // only for `client.live: true` resources and fills the resource_change
+      // item's `delta` slot so the client merges without a refetch. Absent →
+      // batched-refetch path unchanged. Skip non-live singles (reactive-only).
+      if (emitter !== undefined && !nonStreamingSingleKeys.has(resourcePath)) {
+        void emitter.emitResourceChange({
+          scope,
+          resourcePath,
+          changeType,
+          transient: true,
+          delta: projection?.delta
+        });
+      }
+      // FIX-751 reactive dispatch is awaited inline — it runs the bound block
+      // as part of the mutating turn, and a block failure propagates out.
+      if (dispatchReactive !== undefined) {
+        await dispatchReactive(resourcePath, changeType, change);
+      }
     };
   }
 
@@ -1618,9 +1609,8 @@ export async function createExecutionContext<
     scopeId: userId,
     configs: userResourceConfigs,
     readResources: readUserResources,
-    persistResources: persistUserResources,
     readResourceContent: readUserResourceContent,
-    persistResourceContent: persistUserResourceContent,
+    ...userKeyPersisters,
     onResourceChanged: makeResourceChangeHandler("user"),
     lazyLoad: userLazyLoad,
     recordResourceLoad,
@@ -1633,9 +1623,8 @@ export async function createExecutionContext<
     scopeId: sessionKey,
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
-    persistResources: persistSessionResources,
     readResourceContent: readSessionResourceContent,
-    persistResourceContent: persistSessionResourceContent,
+    ...sessionKeyPersisters,
     onResourceChanged: makeResourceChangeHandler("session"),
     lazyLoad: sessionLazyLoad,
     recordResourceLoad,
@@ -1651,9 +1640,8 @@ export async function createExecutionContext<
           scopeId: orgRef.current!.orgId,
           configs: orgResourceConfigs,
           readResources: readProjectResources,
-          persistResources: persistProjectResources,
           readResourceContent: readProjectResourceContent,
-          persistResourceContent: persistProjectResourceContent,
+          ...orgKeyPersisters,
           onResourceChanged: makeResourceChangeHandler("org"),
           lazyLoad: orgLazyLoad,
           recordResourceLoad,
@@ -2901,6 +2889,14 @@ export async function createExecutionContext<
             if (generatorModelIdentity !== undefined) {
               (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
             }
+            // Fold the error cause chain into details so intermediate
+            // failures aren't swallowed on the failed block_trace. `displayCause`
+            // unwraps the synthetic layer normalizeError adds for plain throws,
+            // so this matches the tool-output seam for the same failure.
+            const blockTraceErrorDetails = errorDetailsWithCause({
+              details: normalized.details,
+              cause: displayCause(normalized),
+            });
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -2912,7 +2908,7 @@ export async function createExecutionContext<
                   error: {
                     message: normalized.message,
                     code: normalized.code,
-                    ...(normalized.details ? { details: normalized.details } : {}),
+                    ...(blockTraceErrorDetails ? { details: blockTraceErrorDetails } : {}),
                   },
                   modelUsage: generatorModelUsage,
                   model: generatorModelIdentity,
@@ -3031,6 +3027,10 @@ export async function createExecutionContext<
   // explicitly (see the assignment alongside `_blockIdentity` there) — pool
   // identity is preserved across the entire request scope.
   (rootContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+  // FIX-751: bind the live context so reactive dispatchers can run blocks
+  // in-session via `executeBlock`. Set after construction since the handlers
+  // (wired into the registries above) close over `reactiveCtxRef`.
+  reactiveCtxRef.current = rootContext as unknown as ExecutionContext;
   // FIX-663: attach the background signal to the root context. Child scopes
   // re-attach it in `_withExecutionScope` (alongside the work pool).
   (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;

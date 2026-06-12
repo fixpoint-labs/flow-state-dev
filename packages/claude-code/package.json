@@ -1,0 +1,96 @@
+{
+  "name": "@flow-state-dev/claude-code",
+  "version": "0.0.0",
+  "description": "Claude Code integration for flow-state-dev: dispatch cloud coding tasks via the local claude CLI.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "claude-code",
+    "claude"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/claude-code"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./cli": {
+      "types": "./dist/cli/index.d.ts",
+      "default": "./src/cli/index.ts"
+    },
+    "./sdk": {
+      "types": "./dist/sdk/index.d.ts",
+      "default": "./src/sdk/index.ts"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./cli": {
+        "types": "./dist/cli/index.d.ts",
+        "default": "./dist/cli/index.js"
+      },
+      "./sdk": {
+        "types": "./dist/sdk/index.d.ts",
+        "default": "./dist/sdk/index.js"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "*"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured yet'",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root ."
+  }
+}

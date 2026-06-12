@@ -1,4 +1,25 @@
-import type { BlockDefinition, ResponseEmitterHandle } from "../../types/block";
+import type { BlockDefinition, RescueHandlerSpec, ResponseEmitterHandle } from "../../types/block";
+
+/**
+ * Whether a rescue handler applies to `error`. A handler with no `when` (or an
+ * empty `when`) matches any error; otherwise it matches only when the error is
+ * an instance of one of the listed error types. Shared by the sequencer's
+ * chain-level rescue path and the block-level `.rescue()` honoring in
+ * build-block (FIX-742).
+ */
+export function matchesRescueHandler(error: Error, handler: RescueHandlerSpec): boolean {
+  if (handler.when === undefined || handler.when.length === 0) {
+    return true;
+  }
+
+  for (const ErrorType of handler.when) {
+    if (error instanceof ErrorType) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 export function toError(value: unknown): Error {
   if (value instanceof Error) {

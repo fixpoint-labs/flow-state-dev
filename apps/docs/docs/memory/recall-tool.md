@@ -68,4 +68,6 @@ The two surfaces complement each other, and most flows want both.
 
 The defaults give you both.
 
+When [relations](./relations) are enabled, a companion `memory/connect` tool answers connection questions ("what links X to Y", "what's connected to X") by traversing the edge graph, and recall itself becomes connection-aware.
+
 See [Configuration](./configuration#capability-presets) for toggling each surface, and [Tools](../tools/overview) for how tool blocks work in general.

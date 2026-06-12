@@ -282,6 +282,7 @@ describe("buildReportSummary — factor scores, risks, scenarios, alignment", ()
                 trigger: "t",
                 triggerSource: "phase1",
                 expectedOutcome: "o",
+                expectedReturnPct: 0,
                 tradeBehavior: "b",
               },
               {
@@ -290,6 +291,7 @@ describe("buildReportSummary — factor scores, risks, scenarios, alignment", ()
                 trigger: "t",
                 triggerSource: "phase1",
                 expectedOutcome: "o",
+                expectedReturnPct: 0,
                 tradeBehavior: "b",
               },
             ],

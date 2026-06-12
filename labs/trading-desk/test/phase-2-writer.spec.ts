@@ -1,8 +1,8 @@
 /**
  * Tests for the Phase 2 writer taps. Confirms the three commit blocks
  * write the right shape per memo (including the InvestmentThesis
- * extension fields on the research-manager memo) and flip
- * `session.memoStatus` correctly.
+ * extension fields on the research-manager memo) and flip each memo's
+ * status correctly.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
@@ -15,6 +15,8 @@ import {
 import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { PHASE_2_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const writeBull = markWriting("bull");
 const errorBull = markError("bull");
@@ -39,11 +41,6 @@ const baseSessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-2" as const,
   maxDebateRounds: 1,
-  memoStatus: {
-    bull: "pending" as const,
-    bear: "pending" as const,
-    researchManager: "pending" as const,
-  },
 };
 
 /**
@@ -162,15 +159,14 @@ const investmentThesis = {
 };
 
 describe("Phase 2 writer taps", () => {
-  it("markWriting flips memoStatus to writing", async () => {
+  it("markWriting flips the bull memo to writing", async () => {
     const result = await testBlock(writeBull, {
       input: {},
       flow: fixtureFlow,
       session: { state: baseSessionState },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.bull).toBe("writing");
+    expect(latestMemoStatus(result.items, PHASE_2_MEMO_KEYS.bull.memoKey)).toBe("writing");
   });
 
   it("commitBullMemo flips bull to published with the thesis fields", async () => {
@@ -178,13 +174,12 @@ describe("Phase 2 writer taps", () => {
       input: bullThesis,
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { ...baseSessionState.memoStatus, bull: "writing" } },
+        state: baseSessionState,
         resources: seededWritingResources,
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.bull).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_2_MEMO_KEYS.bull.memoKey)).toBe("published");
   });
 
   it("commitBearMemo flips bear to published", async () => {
@@ -192,13 +187,12 @@ describe("Phase 2 writer taps", () => {
       input: bearThesis,
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { ...baseSessionState.memoStatus, bear: "writing" } },
+        state: baseSessionState,
         resources: seededWritingResources,
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.bear).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_2_MEMO_KEYS.bear.memoKey)).toBe("published");
   });
 
   it("commitResearchManagerMemo flips researchManager to published", async () => {
@@ -206,16 +200,12 @@ describe("Phase 2 writer taps", () => {
       input: investmentThesis,
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { ...baseSessionState.memoStatus, researchManager: "writing" },
-        },
+        state: baseSessionState,
         resources: seededWritingResources,
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.researchManager).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_2_MEMO_KEYS.researchManager.memoKey)).toBe("published");
   });
 
   it("markError flips bull to error and stamps the message", async () => {
@@ -223,24 +213,11 @@ describe("Phase 2 writer taps", () => {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { ...baseSessionState.memoStatus, bull: "writing" } },
+        state: baseSessionState,
         resources: seededWritingResources,
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.bull).toBe("error");
+    expect(latestMemoStatus(result.items, PHASE_2_MEMO_KEYS.bull.memoKey)).toBe("error");
   });
 });
-
-type LastStatePayload = {
-  memoStatus: Record<string, string>;
-};
-
-function lastSessionState(result: {
-  stateChanges: Array<{ scope: string; resultingState: Record<string, unknown> }>;
-}): LastStatePayload {
-  const sessionPatches = result.stateChanges.filter((c) => c.scope === "session");
-  expect(sessionPatches.length).toBeGreaterThan(0);
-  return sessionPatches[sessionPatches.length - 1].resultingState as unknown as LastStatePayload;
-}

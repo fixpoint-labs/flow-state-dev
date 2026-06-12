@@ -1,8 +1,11 @@
 import type { ZodTypeAny } from "zod";
-import type { JsonObject } from "../schema/common";
+import type { JsonObject, JsonValue } from "../schema/common";
 import type { ScopeType } from "./scope";
-import type { ResourceRef, CollectionClientConfig } from "./resource";
+import type { ResourceRef, CollectionClientConfig, StateOf } from "./resource";
 import type { ResourceTemplate } from "../resource-template/resource-template";
+import type { EdgeSlotConfig } from "../graph";
+import type { ProjectedClient } from "../helpers/client-projection";
+import type { ReactiveBindings } from "./resource-change";
 
 // Re-export pattern utilities for consumers
 export {
@@ -77,6 +80,16 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   client?: CollectionClientConfig<TState>;
 
   /**
+   * Declare a typed-edge graph on each instance of this collection. `true` =
+   * defaults; object = curated vocabulary / size cap. Attaches an `.edges` API
+   * to each live instance ref backed by that instance's own state.
+   * `defineResourceCollection` injects an `edges` field into the instance
+   * `stateSchema` (the same way `defineResource` does for single resources), so
+   * callers do not declare it themselves.
+   */
+  edges?: boolean | EdgeSlotConfig;
+
+  /**
    * Number of items to inline in the snapshot's `prefetched` window for this
    * collection. Default `0` (lazy — clients fetch items via the list endpoint
    * or `useResourceCollectionList`). Items are selected in lexicographic
@@ -97,23 +110,39 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   ) => void | Promise<void>;
   /** Fires when a specific instance is deleted (including eviction). */
   onInstanceDeleted?: (key: string, ctx: CollectionHookContext) => void | Promise<void>;
+
+  /**
+   * Bind blocks to this collection's instance mutations (FIX-751). Each present
+   * entry (`created` / `updated` / `deleted`) names a block — bare, or
+   * `{ block, when }` with an optional gate — that the server dispatcher runs
+   * with a `ResourceChange` payload when that mutation fires. Coexists with the
+   * `onInstance*` callbacks above and supersedes them for the block case: prefer
+   * `reactTo` when the reaction is itself a block to run, not just a side effect.
+   */
+  reactTo?: ReactiveBindings<TState>;
 };
 
 type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
 
 /**
  * Branded type returned by `defineResourceCollection()`.
- * Carries phantom `StateType` for downstream type inference. The `prefetchMode`
- * config field still exists (it controls server-side loading behaviour), but
- * it no longer affects the ref's read-method signatures — both eager and lazy
- * collections expose the same async `ResourceCollectionRef` interface (FIX-700).
+ * Carries phantom `StateType` for downstream type inference, and `ClientType`
+ * (FIX-741) — the projected client-data shape derived from the `client` config
+ * (`expose`/`exclude`/`data`/identity). `ClientType` is a pure type-level brand;
+ * the runtime `clientData` payload stays `JsonValue`. Extract it with
+ * `ClientDataOf<typeof collection>`. The `prefetchMode` config field still exists
+ * (it controls server-side loading behaviour), but it no longer affects the
+ * ref's read-method signatures — both eager and lazy collections expose the same
+ * async `ResourceCollectionRef` interface (FIX-700).
  */
 export type DefinedResourceCollection<
   TState extends JsonObject = JsonObject,
+  TClient = JsonValue,
 > =
   ResourceCollectionConfig & {
     readonly __brand: "ResourceCollection";
     StateType: TState;
+    ClientType: TClient;
   };
 
 // ---------------------------------------------------------------------------
@@ -203,15 +232,21 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
 // defineResourceCollection()
 // ---------------------------------------------------------------------------
 
+import { z } from "zod";
 import { validatePattern } from "./collection-patterns";
 import { validateClientProjection } from "../helpers/client-projection";
+import { validateReactTo } from "./resource-change";
+import { edgeListSchema } from "../graph";
 
 export function defineResourceCollection<
   const TStateSchema extends ZodTypeAny,
   const TConfig extends ResourceCollectionConfig<AsStateObject<TStateSchema["_output"]>> & { stateSchema: TStateSchema }
 >(
   config: TConfig
-): TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>> {
+): TConfig & DefinedResourceCollection<
+  AsStateObject<TStateSchema["_output"]>,
+  ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+> {
   validatePattern(config.pattern);
 
   if (config.contentTemplate !== undefined && config.contentTemplateRef !== undefined) {
@@ -267,13 +302,39 @@ export function defineResourceCollection<
   validateClientProjection({
     definer: "defineResourceCollection()",
     ref: config.pattern,
+    kind: "collection",
     stateSchema: config.stateSchema,
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
 
+  validateReactTo("defineResourceCollection()", config.reactTo);
+
+  // Edge slot injection (FIX-745): when a collection declares `edges`, extend
+  // each instance's state schema with an `edges: Edge[]` field — the same way
+  // `defineResource` does for single resources. Without this, Zod strips edge
+  // writes on persist (the field isn't in the schema), silently discarding
+  // them. Collections have no config-level `default`; the per-instance default
+  // comes from parsing the schema, so the `.default([])` on the injected field
+  // is enough to seed `edges: []` on every new instance.
+  let stateSchema = config.stateSchema as ZodTypeAny;
+  if (config.edges) {
+    if (!(stateSchema instanceof z.ZodObject)) {
+      throw new Error(
+        `defineResourceCollection() with edges requires an object stateSchema (got ${stateSchema.constructor.name})`
+      );
+    }
+    if (!("edges" in stateSchema.shape)) {
+      stateSchema = stateSchema.extend({ edges: edgeListSchema.default([]) });
+    }
+  }
+
   return Object.assign({}, config, {
+    stateSchema,
     __brand: "ResourceCollection" as const,
-  }) as unknown as TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>>;
+  }) as unknown as TConfig & DefinedResourceCollection<
+    AsStateObject<TStateSchema["_output"]>,
+    ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+  >;
 }
 
 // ---------------------------------------------------------------------------

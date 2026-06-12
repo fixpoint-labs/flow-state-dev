@@ -52,11 +52,17 @@ The DevTool renders these as dedicated sections: a "Raw output" pane with the mo
 
 The runtime auto-populates these. Author-thrown keys are passed through verbatim alongside them:
 
-| Key         | Source                          | Type                  |
-| ----------- | ------------------------------- | --------------------- |
-| `rawOutput` | `OutputValidationError`         | `string`              |
-| `issues`    | `OutputValidationError`         | `ZodIssue[]`          |
-| `phase`     | `OutputValidationError`         | `"stream" \| "final"` |
+| Key            | Source                  | Type                                                          |
+| -------------- | ----------------------- | ------------------------------------------------------------- |
+| `rawOutput`    | `OutputValidationError` | `string`                                                      |
+| `issues`       | `OutputValidationError` | `ZodIssue[]`                                                  |
+| `phase`        | `OutputValidationError` | `"stream" \| "final"`                                         |
+| `cause`        | any thrown error        | `{ name, message, code?, cause? }`                            |
+| `errorType`    | `fetch` tool            | `"http" \| "network" \| "timeout" \| "abort" \| "parse" \| "unknown"` |
+| `httpStatus`   | `fetch` tool            | `number`                                                      |
+| `responseBody` | `fetch` tool            | `string` (truncated)                                          |
+
+Any thrown error that carries a `cause` has the chain serialized into `details.cause`, so an intermediate failure — a buried `ECONNRESET` under a `fetch failed`, say — reaches the DevTool instead of being dropped at the item boundary. The `fetch` tool adds the HTTP and classification keys; see [the fetch tool](/docs/tools/fetch#error-handling).
 
 ## SequencerOutputSchemaError
 
@@ -76,7 +82,7 @@ To catch drift before the flow runs at all, call `.validate()` on the sequencer 
 
 ## Recovering with rescue
 
-To handle a failure inline rather than letting it bubble, use the sequencer's `.rescue()` branch. See [Composing blocks](/docs/sequencers/composing-blocks) for the full DSL. The rescue branch receives the thrown error, so you can read `error.code` to route on the failure category and `error.details` to consume the structured payload.
+To handle a failure inline rather than letting it bubble, use `.rescue()`. It's a method on any block — put it on a single step to recover that step and continue the chain, or on a whole sequencer to recover the chain as a unit. See [Composing blocks](/docs/sequencers/composing-blocks#per-step-rescue-recover-and-continue) for the full DSL. The rescue handler receives the thrown error, so you can read `error.code` to route on the failure category and `error.details` to consume the structured payload.
 
 ## Querying rescue status
 

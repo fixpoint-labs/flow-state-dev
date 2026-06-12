@@ -786,7 +786,7 @@ describe('memory/capabilities', () => {
       expect(cap.uses).toContain(cap.tiers.episodic)
     })
 
-    it('declares the five orthogonal presets with the standard default-on set', () => {
+    it('declares the orthogonal presets with the standard default-on set', () => {
       const cap = createMemoryCapability({
         model: 'intent/utility',
         working: true,
@@ -795,9 +795,34 @@ describe('memory/capabilities', () => {
         digest: true,
       })
       const defs = cap.__presetDefs!
+      // `connect` is always declared (a no-op when relations are off), like the
+      // tier presets — so it appears in the key set but not the default-on set.
       expect(Object.keys(defs).filter((k) => k !== 'default').sort())
-        .toEqual(['digest', 'episodic', 'recall', 'semantic', 'working'])
+        .toEqual(['connect', 'digest', 'episodic', 'recall', 'semantic', 'working'])
       expect(defs.default).toEqual(['digest', 'working', 'recall'])
+    })
+
+    it('connect preset joins the default-on set and carries a tools thunk when relations is enabled', () => {
+      const cap = createMemoryCapability({
+        model: 'intent/utility',
+        working: true,
+        episodic: true,
+        semantic: { relations: true },
+      })
+      const defs = cap.__presetDefs as Record<string, { tools?: unknown }> & { default: string[] }
+      expect(defs.default).toEqual(['digest', 'working', 'recall', 'connect'])
+      expect(typeof defs.connect.tools).toBe('function')
+    })
+
+    it('connect preset is an empty no-op when relations is disabled', () => {
+      const cap = createMemoryCapability({
+        model: 'intent/utility',
+        working: true,
+        episodic: true,
+        semantic: true,
+      })
+      const defs = cap.__presetDefs as Record<string, { tools?: unknown }>
+      expect(defs.connect.tools).toBeUndefined()
     })
 
     it('digest/semantic/episodic presets are empty no-ops when their tier is absent', () => {

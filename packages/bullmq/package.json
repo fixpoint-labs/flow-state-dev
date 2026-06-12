@@ -1,0 +1,99 @@
+{
+  "name": "@flow-state-dev/bullmq",
+  "version": "0.0.0",
+  "description": "BullMQ host/runtime adapter for flow-state-dev — durable background jobs, native cron, and full-flow worker dispatch for long-lived hosts.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "bullmq",
+    "redis",
+    "background-jobs",
+    "cron",
+    "worker"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/bullmq"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "default": "./src/worker.ts"
+    },
+    "./schedules": {
+      "types": "./dist/schedules.d.ts",
+      "default": "./src/schedules.ts"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./worker": {
+        "types": "./dist/worker.d.ts",
+        "default": "./dist/worker.js"
+      },
+      "./schedules": {
+        "types": "./dist/schedules.d.ts",
+        "default": "./dist/schedules.js"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/server": "workspace:*",
+    "bullmq": "^5.0.0",
+    "ioredis": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@flow-state-dev/scheduled": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@flow-state-dev/scheduled": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@flow-state-dev/scheduled": "workspace:*",
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "vitest": "latest"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root ."
+  }
+}

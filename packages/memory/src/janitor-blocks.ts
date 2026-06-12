@@ -14,7 +14,8 @@ import { workingMemoryResource } from './working-memory'
 import { memorySystemResource } from './memory-system'
 import { createEpisodicMemoryResource } from './episodic-memory'
 import { createSemanticMemoryResource } from './semantic-memory'
-import { cullByEffectiveConfidence } from './semantic-memory-helpers'
+import { cullByEffectiveConfidence, knownSubjects } from './semantic-memory-helpers'
+import { edgesOf } from './internal/helpers'
 import { cullByTTL, markStale } from './episodic-memory-helpers'
 import type { EpisodicTTLConfig } from './episodic-memory-helpers'
 import { janitorResource } from './janitor'
@@ -97,6 +98,31 @@ export function memorySystemJanitor(
           culledFactIds = await cullByEffectiveConfidence(semRef, now, halfLife, cullFloor)
         } catch (err) {
           console.warn('[memory] janitor: confidence-decay cull failed:', (err as Error).message ?? err)
+        }
+      }
+
+      // Relations dangling-edge cleanup (FIX-745): after fact culls land, drop
+      // edges whose endpoints no longer correspond to a stored fact subject.
+      // Runs only when relations is enabled and the live ref carries the edge
+      // API. Non-fatal — a failure here must not crash the hygiene pass.
+      //
+      // Gated on `createImplicitEntities === false`. The prune signal is the set
+      // of known fact subjects, which is only a complete picture of legitimate
+      // endpoints when implicit entities are disabled — in that mode the write
+      // side (applyEdges → resolveEndpoint) drops any edge whose endpoint is not
+      // a known fact subject, so every surviving edge endpoint IS a fact subject
+      // and `pruneDangling(factSubjects)` correctly removes edges orphaned by a
+      // culled subject. With implicit entities enabled, the write side
+      // intentionally mints and persists edges to endpoints that are NOT fact
+      // subjects; pruning by a fact-subject signal would silently delete those
+      // legitimate edges (often immediately, since hygiene can run right after
+      // consolidation). So we skip the fact-subject prune entirely in that mode.
+      const edges = edgesOf(ctx)
+      if (edges && config.semantic?.relations && !config.semantic.relations.createImplicitEntities) {
+        try {
+          await edges.pruneDangling(knownSubjects(semRef))
+        } catch (err) {
+          console.warn('[memory] janitor: dangling-edge prune failed:', (err as Error).message ?? err)
         }
       }
 

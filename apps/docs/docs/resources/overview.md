@@ -137,6 +137,8 @@ const filesCollection = defineResourceCollection({
 
 See [Resource Collections](/docs/resources/collections) for the full reference: patterns, runtime API, eviction, lifecycle hooks, and storage model.
 
+To run a block when a resource or collection changes (emitting items, calling models, visible in traces), bind it with `reactTo`. See [Reactive blocks](/docs/resources/reactive-blocks).
+
 ## Block-level resource declarations
 
 Blocks declare resource dependencies with `sessionResources`, `userResources`, and `orgResources`:
@@ -214,5 +216,6 @@ See [Resource Collections](/docs/resources/collections) for how parameterized pa
 
 - **[State vs Resources](/docs/resources/storage)** — When to use resources vs scope state, scoping decisions, shared vs block-private
 - **[Resource Collections](/docs/resources/collections)** — Dynamic collections with patterns, eviction, and lifecycle hooks
+- **[Reactive blocks](/docs/resources/reactive-blocks)** — Run a block automatically when a resource changes, inside the originating turn
 - **[Client Access](/docs/resources/client-access)** — Exposing resources to the frontend: visibility config, React hooks, content endpoints
 - **[State & Scopes](/docs/fundamentals/state-and-scopes)** — Broader state model, clientData, targets

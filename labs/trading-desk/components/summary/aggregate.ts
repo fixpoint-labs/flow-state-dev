@@ -95,6 +95,14 @@ export type PortfolioFit = NonNullable<MemoState["portfolioFit"]>;
  */
 export type LensConvergence = NonNullable<MemoState["lensConvergence"]>;
 
+/**
+ * The risk-appetite mandate verdict (FIX-752), mirrored onto the PM memo at
+ * commit. Null on a mandate-blind run (no per-run override and no resolvable
+ * account default, or no PM memo). The verdict + gate flags are derived at
+ * commit (never from the LLM); the figure feeds the panel from one place.
+ */
+export type MandateDecision = NonNullable<MemoState["mandateDecision"]>;
+
 export type ReportSummary = {
   ticker: string;
   date: string;
@@ -130,6 +138,12 @@ export type ReportSummary = {
    * the lens card ONLY when this is non-null.
    */
   lensConvergence: LensConvergence | null;
+  /**
+   * The risk-appetite mandate verdict (FIX-752 mirror), or null on a mandate-
+   * blind run (no override + no account default, or no PM memo). The Summary
+   * renders the mandate block ONLY when this is non-null.
+   */
+  mandateDecision: MandateDecision | null;
 };
 
 /**
@@ -332,6 +346,12 @@ export function buildReportSummary(
   const portfolioFit = pm?.portfolioFit ?? null;
   const lensConvergence = pm?.lensConvergence ?? null;
 
+  // FIX-752 risk-appetite mandate verdict (PM memo mirror). Read straight
+  // through — the verdict + gate flags were derived at PM-commit; nothing is
+  // recomputed here. Null on a mandate-blind / unpublished-PM run → the Summary
+  // omits the mandate block cleanly.
+  const mandateDecision = pm?.mandateDecision ?? null;
+
   return {
     ticker,
     date,
@@ -348,6 +368,7 @@ export function buildReportSummary(
     thesisAlignment,
     portfolioFit,
     lensConvergence,
+    mandateDecision,
   };
 }
 

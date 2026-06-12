@@ -171,6 +171,40 @@ CREATE TABLE IF NOT EXISTS request_events (
 CREATE INDEX IF NOT EXISTS idx_request_events_request_id ON request_events(request_id);
 `;
 
+// FIX-687: durable resource content, addressed by (scope_type, scope_id,
+// resource_key). Mirrors the Postgres `resource_content` table — the same
+// identity and scope index — so the SQLite adapter persists artifacts,
+// collections, and client data across process restart instead of dropping
+// them with an in-memory map. `content` is opaque TEXT; the scope index
+// serves `getAll`/`getByPrefix`/`deleteAll` as a scoped lookup rather than a
+// process-wide scan.
+const RESOURCE_CONTENT_TABLE = `
+CREATE TABLE IF NOT EXISTS resource_content (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  resource_key  TEXT NOT NULL,
+  content       TEXT NOT NULL,
+  PRIMARY KEY (scope_type, scope_id, resource_key)
+);
+CREATE INDEX IF NOT EXISTS idx_resource_content_scope ON resource_content(scope_type, scope_id);
+`;
+
+// FIX-687: durable resource state, the state-layer twin of resource_content
+// (FIX-689 created the ResourceStateStore abstraction and punted the durable
+// SQLite table here). Same identity and scope index. SQLite has no JSONB
+// type, so `state` is JSON stored as TEXT — `JSON.stringify` on write,
+// `JSON.parse` on read — matching how request_runonce stores its values.
+const RESOURCE_STATE_TABLE = `
+CREATE TABLE IF NOT EXISTS resource_state (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  resource_key  TEXT NOT NULL,
+  state         TEXT NOT NULL,
+  PRIMARY KEY (scope_type, scope_id, resource_key)
+);
+CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type, scope_id);
+`;
+
 // FIX-401: durable sequencer checkpoints. Identity is
 // (request_id, block_instance_id); upsert overwrites latest, delete removes
 // at terminal completion. `data` carries the full SequencerCheckpoint JSON
@@ -362,6 +396,8 @@ export function initializeSchemaDDL(db: Database.Database): void {
   db.exec(ACTIVE_REQUESTS_TABLE);
   db.exec(REQUEST_ITEMS_TABLE);
   db.exec(REQUEST_EVENTS_TABLE);
+  db.exec(RESOURCE_CONTENT_TABLE);
+  db.exec(RESOURCE_STATE_TABLE);
   db.exec(REQUEST_RUNONCE_TABLE);
   db.exec(SEQUENCER_CHECKPOINTS_TABLE);
   db.exec(TRACE_REQUEST_ROSTER_TABLE);

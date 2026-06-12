@@ -21,6 +21,8 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import analysisFlow from "../src/flows/analysis/flow";
+import { ALL_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const ticker = "NVDA";
 const date = "2026-05-06";
@@ -209,17 +211,12 @@ describe("Phase 2 end-to-end", () => {
 
     const session = await stores.session.get(sessionId);
     expect(session).toBeDefined();
-    const memoStatus = (session?.state as { memoStatus?: Record<string, string> })
-      ?.memoStatus ?? {};
 
-    expect(memoStatus.fundamentals).toBe("published");
-    expect(memoStatus.sentiment).toBe("published");
-    expect(memoStatus.news).toBe("published");
-    expect(memoStatus.technical).toBe("published");
-    expect(memoStatus.companyProfile).toBe("published");
-    expect(memoStatus.bull).toBe("published");
-    expect(memoStatus.bear).toBe("published");
-    expect(memoStatus.researchManager).toBe("published");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.fundamentals.memoKey)).toBe("published");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.sentiment.memoKey)).toBe("published");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.news.memoKey)).toBe("published");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.technical.memoKey)).toBe("published");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.companyProfile.memoKey)).toBe("published");
 
     const memoResources = await stores.resourceState.getAll("session", sessionId);
     const rmMemo = memoResources["memos/p2/research-manager"] as
@@ -278,13 +275,8 @@ describe("Phase 2 end-to-end", () => {
 
     expect(result.status).toBe("completed");
 
-    const session = await stores.session.get(sessionId);
-    const memoStatus = (session?.state as { memoStatus?: Record<string, string> })
-      ?.memoStatus ?? {};
-
-    expect(memoStatus.bull).toBe("error");
-    expect(memoStatus.bear).toBe("published");
-    expect(memoStatus.researchManager).toBe("published");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.bear.memoKey)).toBe("published");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.researchManager.memoKey)).toBe("published");
 
     const memoResources = await stores.resourceState.getAll("session", sessionId);
     const bullMemo = memoResources["memos/p2/bull"] as

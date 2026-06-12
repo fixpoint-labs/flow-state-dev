@@ -190,20 +190,21 @@ Update policy:
 ### BP-016: Generator outputSchemas must be OpenAI strict-compatible
 
 - Status: Active
-- Date: 2026-05-11
+- Date: 2026-05-11 (definition-time enforcement added 2026-06-07)
 - Rule:
   - Generator `outputSchema` values must serialize to a JSON schema OpenAI's structured-output strict mode accepts.
+  - **This is enforced automatically.** `generator()` calls `assertStrictCompatible(outputSchema)` at construction, so a violating schema throws a `StrictSchemaError` at definition (module load) naming the offending path — not lazily on the first live model call. The rules below are what that check enforces.
   - Concretely:
     - **No `z.record()` on object roots or anywhere reachable from a generator output.** It serializes to `additionalProperties: true`, which strict mode rejects. Use a fixed-shape `z.object({...})` when the keys are known. When the keys are dynamic, use `z.array(z.object({ key: z.string(), value: z.string() }))` and convert to a `Record` at the writer seam.
     - **No `z.optional()` or `z.default()` on generator outputs.** They remove the key from the `required` set. Use `z.nullable()` (key stays required, value can be `null`).
     - **No `z.union([...])` of differently-shaped variants.** The variants produce conflicting `required` sets. Collapse to a single shape with nullable slots, or split into separate generators with their own schemas. Discriminated unions over differing shapes have the same problem.
   - Two examples in this repo:
-    - Fixed-shape metrics: [`labs/trading-desk/src/flows/trading-desk/phase-2/thesis-schemas.ts`](../../labs/trading-desk/src/flows/trading-desk/phase-2/thesis-schemas.ts) (closed `z.object({ conviction, horizon, target, stop })`).
-    - Array-of-pairs metrics for variable keys + the canonical nullable section shape: [`labs/trading-desk/src/flows/trading-desk/blocks/thesis-schema.ts`](../../labs/trading-desk/src/flows/trading-desk/blocks/thesis-schema.ts).
-  - Authors can sanity-check a schema in a test: import `makeSchemaStrict` from `@flow-state-dev/core` and run the result through a walker that fails on the patterns above. The trading-desk example ships such a guard at [`labs/trading-desk/test/output-schemas-strict.spec.ts`](../../labs/trading-desk/test/output-schemas-strict.spec.ts) — copy it into any package that defines generator outputs.
+    - Fixed-shape output: [`labs/trading-desk/src/flows/analysis/agents/lenses/lens-verdict-schema.ts`](../../labs/trading-desk/src/flows/analysis/agents/lenses/lens-verdict-schema.ts) (closed `z.object` of enums + primitives + array-of-strings, e.g. `stance`, `conviction`, `missingData`).
+    - Array-of-pairs metrics for variable keys + the canonical nullable section shape: [`labs/trading-desk/src/flows/analysis/agents/analysts/thesis-schema.ts`](../../labs/trading-desk/src/flows/analysis/agents/analysts/thesis-schema.ts).
+  - To assert a schema constant in a test (e.g. a multi-consumer schema not yet wired to a generator), import `assertStrictCompatible` from `@flow-state-dev/core` and call it: `expect(() => assertStrictCompatible(mySchema)).not.toThrow()`. There is no walker to copy — the one canonical implementation lives in core. See [`labs/trading-desk/test/output-schemas-strict.spec.ts`](../../labs/trading-desk/test/output-schemas-strict.spec.ts) for the per-package pattern.
 - Why:
-  - The framework calls `makeSchemaStrict()` internally before handing schemas to the AI SDK ([`packages/core/src/models/createAiSdkModelResolver.ts`](../../packages/core/src/models/createAiSdkModelResolver.ts)), but the helper only unwraps `optional` / `default` / `nullable` — it does not transform `record` or `union` patterns. Those bypass the framework's safety net and fail at first generator call against OpenAI strict mode, surfacing as opaque "Invalid schema for response_format" errors that are hard to diagnose without context.
-  - Catching the bug at test time (via the strict-mode walker) is cheaper than catching it at runtime on a real API call, especially because the framework's `intent/*` fallback wraps the strict-mode error in a "All models in group failed" message that hides the root cause.
+  - The framework calls `makeSchemaStrict()` internally before handing schemas to the AI SDK ([`packages/core/src/models/createAiSdkModelResolver.ts`](../../packages/core/src/models/createAiSdkModelResolver.ts)), but the helper only unwraps `optional` / `default` / `nullable` — it does not transform `record` or `union` patterns. `generator()` now runs `assertStrictCompatible` at definition to catch those eagerly; without it they bypass the framework's safety net and fail at first generator call against OpenAI strict mode, surfacing as opaque "Invalid schema for response_format" errors that are hard to diagnose without context.
+  - Catching the bug at definition time (the eager throw) is cheaper than catching it at runtime on a real API call, especially because the framework's `intent/*` fallback wraps the strict-mode error in a "All models in group failed" message that hides the root cause.
   - Phase 1 of the trading-desk app hit this bug three times in one day across three different schema patterns (record, optional, union) before BP-016 existed. The pattern is real and recurring.
 
 ### BP-017: Use the generator `context` slot for typed, segmented prompts
@@ -218,31 +219,32 @@ Update policy:
 - Why:
   - Hand-built user prompts duplicate boilerplate (`Ticker:`, `As-of date:`, role lines) across every generator. The trading-desk had ~8 generators all repeating the same 3-line preamble before BP-017 landed.
   - The `context` slot is type-checked against the session state schema and the capability surface. Hand-built strings drift silently when state shape changes.
-  - Models handle XML-tagged context segmentation better than markdown headers buried in a long user message — empirically the same model produces tighter outputs when fields are tagged rather than concatenated. See [`labs/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts`](../../labs/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts) for the canonical pattern.
+  - Models handle XML-tagged context segmentation better than markdown headers buried in a long user message — empirically the same model produces tighter outputs when fields are tagged rather than concatenated. See [`labs/trading-desk/src/flows/analysis/capability.ts`](../../labs/trading-desk/src/flows/analysis/capability.ts) for the canonical pattern.
 
-### BP-018: Shared prompt formatters live in `services/`
+### BP-018: Shared prompt formatters live in `lib/`
 
 - Status: Active
 - Date: 2026-05-13
 - Rule:
-  - When two or more blocks (across phases or within a phase) format the same shape of data into a prompt — memo blocks, transcript dumps, structured-field rollups — lift the formatter into a `services/format.ts` file (or equivalent service module) and import it from each consumer.
-  - Phase-specific formatters used by only one block stay in that block's file; the bar is "two or more consumers."
+  - When two or more blocks (across agents or within one agent group) format the same shape of data into a prompt — memo blocks, transcript dumps, structured-field rollups — lift the formatter into a `lib/format.ts` file (or equivalent leaf utility module) and import it from each consumer.
+  - Agent-specific formatters used by only one block stay in that block's file; the bar is "two or more consumers."
+  - Before hand-rolling a formatter, reach for the framework's prompt composers in `@flow-state-dev/core/prompt` — `section` (with a `{ title, level }` form for nesting), `list`, `keyValues`, `table`, `entries`, `codeBlock`, `join`, `when`. Inside `.md` prompt templates the same shapes are available as the auto-registered `fsd_keyValues` / `fsd_list` / `fsd_table` / `fsd_json` filters, so a typed object renders without a TypeScript pre-flatten step. Only write a shared formatter for shapes these don't cover.
 - Why:
-  - Inline copies drift. The trading-desk had three nearly-identical copies of `formatMemoBlock` across phase-2/3/4 before BP-018 — they diverged enough that one introduced a duplicate-heading bug that was caught only by a manual review.
+  - Inline copies drift. Back when the trading-desk was organized by phase, it carried three nearly-identical copies of `formatMemoBlock` across phase-2/3/4 — they diverged enough that one introduced a duplicate-heading bug that was caught only by a manual review. The single canonical copy now lives in [`labs/trading-desk/src/flows/analysis/lib/format.ts`](../../labs/trading-desk/src/flows/analysis/lib/format.ts).
   - One canonical formatter per data shape means one place to fix rendering tweaks, one place to enforce field ordering, one place to test.
 
-### BP-019: Per-phase resources live in `phase-N/resources.ts`
+### BP-019: Resource refs live in dedicated leaf modules
 
 - Status: Active
 - Date: 2026-05-13
 - Rule:
-  - All `defineResource()` calls and resource-factory invocations (e.g., `createRoundRobinContributions()`) for a phase live in a single `phase-N/resources.ts` leaf module.
-  - That file imports only from `@flow-state-dev/core`, `@flow-state-dev/patterns`, `zod`, and other leaf utility files. **Never** imports from the phase's own logic files (generators, sequencers, round-robin instances, writers).
-  - Capabilities and cross-phase consumers import resource refs from `phase-N/resources.ts`, not from logic files that happen to re-export them.
+  - Every `defineResource()` call and resource-factory invocation (e.g., `createRoundRobinContributions()`) lives in a dedicated resource leaf module — a `*-resource.ts` file (e.g., `price-history-resource.ts`, `decision-snapshot-resource.ts`, the agent-owned `agents/lenses/lens-convergence-resource.ts`), or a shared `resources.ts` / `portfolio-resources.ts` when several refs share one home.
+  - That module imports only from `@flow-state-dev/core`, `@flow-state-dev/patterns`, `zod`, and other leaf utility files. **Never** imports from logic files (generators, sequencers, round-robin instances, writers).
+  - Capabilities and cross-agent consumers import resource refs from the resource module, not from logic files that happen to re-export them.
 - Why:
-  - When a capability needs a resource ref defined in a phase's `round-robin.ts`, and that `round-robin.ts` also imports the phase's generators, and those generators import the capability — you get a cycle that breaks at first use with `Cannot read properties of undefined`. The trading-desk hit this exactly during the FIX-589 refactor.
-  - Resources are pure data — singleton refs with no runtime dependencies on the phase's logic. Putting them in a leaf module makes the import graph clean by construction.
-  - Naming the file `resources.ts` instead of inventing a name per resource keeps the convention obvious. Every phase has one; importers know where to look.
+  - When a capability needs a resource ref defined in an agent's `round-robin.ts`, and that `round-robin.ts` also imports the agent's generators, and those generators import the capability — you get a cycle that breaks at first use with `Cannot read properties of undefined`. The trading-desk hit this exactly during the FIX-589 refactor.
+  - Resources are pure data — singleton refs with no runtime dependencies on the agent's logic. Putting them in a leaf module makes the import graph clean by construction.
+  - Naming resource modules predictably — `*-resource.ts` per ref, or a shared `resources.ts` — keeps the convention obvious. Importers know to look in the resource module, never in a logic file.
 
 ### BP-020: Live mode never silently falls back to fixture data
 

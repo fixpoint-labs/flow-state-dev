@@ -28,8 +28,9 @@ import {
   getPatternPrefix,
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
-import { cloneValue } from "@flow-state-dev/core/helpers";
+import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type { ContentScopeType, ContentStore, ResourceStateStore } from "../stores/types";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
@@ -63,6 +64,20 @@ function asJsonValue(value: unknown): JsonValue {
   }
 
   return out;
+}
+
+/**
+ * FIX-751: the state delta a mutation threads to `onResourceChanged` as its 4th
+ * arg, used by the reactive dispatcher to build the `ResourceChange` payload.
+ * `state` is the post-mutation state (omit for `deleted`); `prevState` the
+ * pre-mutation state (omit for `created`); `evicted` is `true` only for a
+ * capacity-driven removal. Declared once here and imported type-only by the
+ * dispatcher and the execution context so the shape can't drift.
+ */
+export interface ResourceChangeDelta {
+  state?: JsonObject;
+  prevState?: JsonObject;
+  evicted?: boolean;
 }
 
 function updateObjectState(
@@ -412,11 +427,38 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     scopeId: string;
     configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
-    persistResources: (next: Record<string, JsonObject>) => Promise<void>;
     readResourceContent: () => Record<string, string>;
-    persistResourceContent: (next: Record<string, string>) => Promise<void>;
-    /** Called after any resource mutation so the streaming layer can push change events to clients. */
-    onResourceChanged?: (resourcePath: string, changeType: "created" | "updated" | "deleted") => void;
+    /**
+     * Persist a single resource / collection-instance state key (FIX-744).
+     * Commits the one key to the durable store and mutates the live scope
+     * cache IN PLACE (`cache[key] = value`) — never snapshots and replaces the
+     * whole map. This is what lets concurrent distinct-key writes from
+     * parallel branches coexist in the in-memory view instead of clobbering.
+     */
+    persistResourceKey: (key: string, value: JsonObject) => Promise<void>;
+    /** Remove a single state key: durable per-key delete plus in-place live-cache delete. */
+    deleteResourceKey: (key: string) => Promise<void>;
+    /** Persist a single resource's content body: durable per-key write plus in-place live-cache set. */
+    persistResourceContentKey: (key: string, content: string) => Promise<void>;
+    /** Remove a single resource's content body: durable per-key delete plus in-place live-cache delete. */
+    deleteResourceContentKey: (key: string) => Promise<void>;
+    /**
+     * Called after any resource mutation so the streaming layer can push change
+     * events to clients. The optional `projection` carries the mutated
+     * instance's projected `clientData` slice — populated only for resources
+     * declaring `client.live: true` — so the change event ships an inline delta
+     * the client merges without a refetch (FIX-739). Omitted for non-live
+     * resources (the streaming layer falls back to a batched refetch) and for
+     * `deleted` / content-only changes (nothing to project).
+     */
+    onResourceChanged?: (
+      resourcePath: string,
+      changeType: "created" | "updated" | "deleted",
+      projection?: { delta: JsonValue },
+      // FIX-751: state delta for the reactive dispatcher (see ResourceChangeDelta).
+      // Awaitable so reactive blocks run inline within the mutating turn.
+      change?: ResourceChangeDelta
+    ) => void | Promise<void>;
     /**
      * FIX-688: on-demand loaders for `prefetchMode: 'lazy'` collections. When
      * present, lazy collection accessors ensure the target instance/prefix is
@@ -440,6 +482,38 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
   const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
   const configs = options.configs ?? {};
 
+  /**
+   * Compute the live projection payload for a mutation, or `undefined` when the
+   * resource hasn't opted into `client.live`. Reuses `resolveClientProjection`
+   * so the streamed delta is byte-identical to the slice the snapshot builder
+   * would later send. A throwing `client.data` projection degrades to no delta
+   * (the mutation already committed; the client falls back to a batched
+   * refetch) rather than failing the mutation (FIX-739).
+   *
+   * Ordering: callers `await` this between persist and emit. For the common
+   * `expose`/`exclude` projection it resolves synchronously, so emit order
+   * matches persist order. A `client.data` function may be async; the client
+   * merge is last-write-wins, so two *concurrent* mutations to the same
+   * instance whose `data()` promises resolve out of order could surface a stale
+   * delta. That requires concurrent writers on one instance — rare in practice;
+   * sequential mutations (the norm) are always ordered.
+   */
+  const liveProjection = async (
+    cfg: { client?: { live?: boolean } } | undefined,
+    nextState: JsonObject
+  ): Promise<{ delta: JsonValue } | undefined> => {
+    if (cfg?.client?.live !== true) return undefined;
+    try {
+      const delta = await resolveClientProjection(
+        cfg.client as Parameters<typeof resolveClientProjection>[0],
+        nextState
+      );
+      return { delta };
+    } catch {
+      return undefined;
+    }
+  };
+
   const persistResourceState = async (
     name: string,
     config: ResourceConfig,
@@ -449,24 +523,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       throw new Error(`Resource "${name}" is read-only`);
     }
 
-    const nextResources = {
-      ...options.readResources(),
-      [name]: normalizeResourceState(config, next)
-    };
-
-    await options.persistResources(nextResources);
-  };
-
-  const persistResourceContent = async (
-    name: string,
-    content: string
-  ): Promise<void> => {
-    const nextContent = {
-      ...options.readResourceContent(),
-      [name]: content
-    };
-
-    await options.persistResourceContent(nextContent);
+    await options.persistResourceKey(name, normalizeResourceState(config, next));
   };
 
   // --- Namespace instance persistence helpers ---
@@ -478,29 +535,17 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     const parsed = nsConfig.stateSchema.safeParse(next);
     const value = parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
 
-    const nextResources = {
-      ...options.readResources(),
-      [storageKey]: value
-    };
-
-    await options.persistResources(nextResources);
+    await options.persistResourceKey(storageKey, value);
   };
 
   const deleteNamespaceInstance = async (
     storageKey: string
   ): Promise<void> => {
-    const current = options.readResources();
-    const next = { ...current };
-    delete next[storageKey];
-
-    await options.persistResources(next);
+    await options.deleteResourceKey(storageKey);
 
     // Also remove content if present
-    const currentContent = options.readResourceContent();
-    if (storageKey in currentContent) {
-      const nextContent = { ...currentContent };
-      delete nextContent[storageKey];
-      await options.persistResourceContent(nextContent);
+    if (storageKey in options.readResourceContent()) {
+      await options.deleteResourceContentKey(storageKey);
     }
   };
 
@@ -520,7 +565,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       return parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
     };
 
-    return {
+    const ref: ResourceRef<JsonObject> = {
       path: storageKey,
       scope: options.scope,
       uri: `${options.scope}/${storageKey}`,
@@ -543,7 +588,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             nsHookCtx
           );
         }
-        options.onResourceChanged?.(storageKey, "updated");
+        await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
       },
       async setState(nextState: JsonObject): Promise<void> {
         const prev = readState();
@@ -556,13 +601,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             nsHookCtx
           );
         }
-        options.onResourceChanged?.(storageKey, "updated");
+        await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
       },
       async updateState(
         updater: (state: JsonObject) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
+        // Pass the updater a fresh clone so an in-place mutation can't alias
+        // `prev` — `prev` is the pre-mutation state for the hook and reactive payload.
         const prev = readState();
-        const next = await updater(prev);
+        const next = await updater(readState());
         await persistNamespaceInstanceState(storageKey, nsConfig, next);
         if (nsConfig.onInstanceUpdated && nsHookCtx) {
           await nsConfig.onInstanceUpdated(
@@ -572,7 +619,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             nsHookCtx
           );
         }
-        options.onResourceChanged?.(storageKey, "updated");
+        await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
       },
       async readContentRaw(): Promise<string | null> {
         if (nsConfig.contentTemplate !== undefined && typeof nsConfig.contentTemplate !== "string") {
@@ -606,14 +653,25 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return typeof raw === "string" ? raw : null;
       },
       async writeContent(content: string): Promise<void> {
-        const nextContent = {
-          ...options.readResourceContent(),
-          [storageKey]: content
-        };
-        await options.persistResourceContent(nextContent);
-        options.onResourceChanged?.(storageKey, "updated");
+        await options.persistResourceContentKey(storageKey, content);
+        // Content-only change carries no state delta. Fire the seam so the
+        // FIX-739 client projection refreshes, but pass no 4th arg: the reactive
+        // dispatcher skips content-only changes (reactive bindings react to state
+        // mutations, not content writes).
+        await options.onResourceChanged?.(storageKey, "updated");
       }
     };
+
+    // Attach the typed-edge API when the collection declared an `edges` slot,
+    // so each instance ref carries `.edges` backed by its own state.
+    if (nsConfig.edges) {
+      (ref as { edges?: unknown }).edges = createResourceEdgeApi(
+        ref as never,
+        nsConfig.edges === true ? {} : nsConfig.edges
+      );
+    }
+
+    return ref;
   }
 
   // Storage key for each accessor. Dual-registered aliases collapse to a
@@ -726,7 +784,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
                 );
               }
               // Evict one instance — persists the deletion
-              await evictInstance(nsConfig, resources, eviction, lruAccess, options.persistResources, hookCtx);
+              await evictInstance(nsConfig, resources, eviction, lruAccess, options.deleteResourceKey, hookCtx, options.onResourceChanged);
             }
           }
 
@@ -756,8 +814,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             ? (cloneValue(resources[storageKey] as JsonObject) as JsonObject)
             : undefined;
 
-          const nextResources = { ...(options.readResources()), [storageKey]: state };
-          await options.persistResources(nextResources);
+          await options.persistResourceKey(storageKey, state);
 
           lruAccess.set(storageKey, Date.now());
 
@@ -765,12 +822,12 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             if (nsConfig.onInstanceUpdated) {
               await nsConfig.onInstanceUpdated(storageKey, state, prevState ?? {}, hookCtx);
             }
-            options.onResourceChanged?.(storageKey, "updated");
+            await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, state), { state, prevState, evicted: false });
           } else {
             if (nsConfig.onInstanceCreated) {
               await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
             }
-            options.onResourceChanged?.(storageKey, "created");
+            await options.onResourceChanged?.(storageKey, "created", await liveProjection(nsConfig, state), { state, prevState: undefined, evicted: false });
           }
 
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
@@ -836,11 +893,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             const prev = cloneValue(rawPrev) as JsonObject;
             await persistNamespaceInstanceState(storageKey, nsConfig, merged);
             lruAccess.set(storageKey, Date.now());
+            const postState = (options.readResources()[storageKey] as JsonObject | undefined) ?? {};
             if (nsConfig.onInstanceUpdated) {
-              const next = (options.readResources()[storageKey] as JsonObject | undefined) ?? {};
-              await nsConfig.onInstanceUpdated(storageKey, next, prev, hookCtx);
+              await nsConfig.onInstanceUpdated(storageKey, postState, prev, hookCtx);
             }
-            options.onResourceChanged?.(storageKey, "updated");
+            await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, postState), { state: postState, prevState: prev, evicted: false });
             return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
           }
 
@@ -878,6 +935,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             return;
           }
 
+          // Capture the about-to-be-deleted state before the per-key delete so
+          // the reactive `deleted` payload can carry it as `prevState`.
+          const deletedPrevState = cloneValue(resources[storageKey] as JsonObject) as JsonObject;
+
           await deleteNamespaceInstance(storageKey);
           lruAccess.delete(storageKey);
 
@@ -885,7 +946,16 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             await nsConfig.onInstanceDeleted(storageKey, hookCtx);
           }
 
-          options.onResourceChanged?.(storageKey, "deleted");
+          // A live collection streams deletes too (delta `null`) so the client
+          // tombstones the item mid-stream without a refetch; the collection's
+          // count / list membership reconcile on the next snapshot. Non-live
+          // deletes carry no delta and fall through to the batched-refetch path.
+          await options.onResourceChanged?.(
+            storageKey,
+            "deleted",
+            nsConfig.client?.live === true ? { delta: null } : undefined,
+            { state: undefined, prevState: deletedPrevState, evicted: false }
+          );
         },
 
         async count(): Promise<number> {
@@ -1000,6 +1070,31 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           normalizeResourceDefault(config)
       );
 
+    // Static single resources don't emit resource_change on state mutation by
+    // default (only collections do). A `client.live: true` single resource opts
+    // into emission so its projected delta merges into the client snapshot
+    // mid-stream (FIX-739); non-live singles stay silent on the streaming side.
+    //
+    // FIX-751: a single with `reactTo` also needs the seam to fire so its
+    // reactive block runs, even when it isn't live. So we fire whenever the
+    // resource is live OR declares `reactTo`. The live `projection` stays gated
+    // on `client.live` (only live resources compute a delta); the `change`
+    // delta carries `{ state, prevState }` so the dispatcher can build the
+    // payload. `prev` is the pre-mutation state, captured by the caller.
+    const notifySingleChange = async (prev: JsonObject): Promise<void> => {
+      if (config.client?.live !== true && config.reactTo === undefined) return;
+      const projection =
+        config.client?.live === true
+          ? await liveProjection(config, readState())
+          : undefined;
+      await options.onResourceChanged?.(
+        storageKey,
+        "updated",
+        projection,
+        { state: readState(), prevState: prev, evicted: false }
+      );
+    };
+
     handles[resourceName] = {
       path: storageKey,
       scope: options.scope,
@@ -1009,22 +1104,30 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return readState();
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
+        const prev = readState();
         await persistResourceState(
           storageKey,
           config,
-          updateObjectState(readState(), updates)
+          updateObjectState(prev, updates)
         );
+        await notifySingleChange(prev);
       },
       async setState(nextState: JsonObject): Promise<void> {
+        const prev = readState();
         await persistResourceState(storageKey, config, nextState);
+        await notifySingleChange(prev);
       },
       async updateState(
         updater: (
           state: JsonObject
         ) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
+        // Pass the updater a fresh clone so an in-place mutation can't alias
+        // `prev` — `prev` is the pre-mutation `prevState` for the reactive payload.
+        const prev = readState();
         const next = await updater(readState());
         await persistResourceState(storageKey, config, next);
+        await notifySingleChange(prev);
       },
       async readContentRaw(): Promise<string | null> {
         if (config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
@@ -1070,9 +1173,19 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           throw new Error(`Resource "${resourceName}" content is read-only`);
         }
 
-        await persistResourceContent(storageKey, content);
+        await options.persistResourceContentKey(storageKey, content);
       }
     };
+
+    // Attach the typed-edge API when the resource declared an `edges` slot.
+    // It reads/writes through this ref's own state via `updateState`, so edge
+    // writes persist and emit `onResourceChanged` like any other state write.
+    if (config.edges) {
+      (handles[resourceName] as { edges?: unknown }).edges = createResourceEdgeApi(
+        handles[resourceName] as never,
+        config.edges === true ? {} : config.edges
+      );
+    }
   }
 
   return {
@@ -1107,8 +1220,17 @@ async function evictInstance(
   resources: Record<string, JsonObject>,
   policy: "lru" | "oldest",
   lruAccess: Map<string, number>,
-  persistResources: (next: Record<string, JsonObject>) => Promise<void>,
-  hookCtx: CollectionHookContext
+  deleteResourceKey: (key: string) => Promise<void>,
+  hookCtx: CollectionHookContext,
+  // FIX-751: fired after the per-key delete with `evicted: true` so a reactive
+  // `deleted` binding can distinguish a capacity eviction from an explicit
+  // delete. Omitted by callers that don't wire the seam (mock registries).
+  onResourceChanged?: (
+    resourcePath: string,
+    changeType: "created" | "updated" | "deleted",
+    projection?: { delta: JsonValue },
+    change?: ResourceChangeDelta
+  ) => void | Promise<void>
 ): Promise<void> {
   const keys = Object.keys(resources).filter((k) =>
     matchesPattern(nsConfig.pattern, k)
@@ -1129,15 +1251,25 @@ async function evictInstance(
     evictKey = keys[0]!;
   }
 
-  // Persist the deletion without mutating the caller's map — persistResources
-  // diffs next-vs-cache to derive the per-key delete, so the cache must still
-  // hold evictKey when it runs.
-  const next = { ...resources };
-  delete next[evictKey];
-  await persistResources(next);
+  // Capture the evicted state before the delete so the reactive `deleted`
+  // payload can carry it as `prevState`.
+  const evictedPrevState = cloneValue(resources[evictKey] as JsonObject) as JsonObject;
+
+  // Per-key delete: removes evictKey from the durable store and the live cache
+  // in place, leaving sibling instances untouched.
+  await deleteResourceKey(evictKey);
   lruAccess.delete(evictKey);
 
   if (nsConfig.onInstanceDeleted) {
     await nsConfig.onInstanceDeleted(evictKey, hookCtx);
   }
+
+  // A live collection streams evictions too (delta `null`) so the client
+  // tombstones the item mid-stream, matching the explicit `delete()` path.
+  await onResourceChanged?.(
+    evictKey,
+    "deleted",
+    nsConfig.client?.live === true ? { delta: null } : undefined,
+    { state: undefined, prevState: evictedPrevState, evicted: true }
+  );
 }

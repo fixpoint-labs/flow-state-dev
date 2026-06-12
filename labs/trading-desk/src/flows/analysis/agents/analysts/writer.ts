@@ -29,7 +29,7 @@ export function commitAnalystMemo(shortName: Phase1MemoShortName) {
     name: `commit-memo-p1-${shortName}`,
     inputSchema: thesisOutputSchema,
     execute: async (thesis, ctx) => {
-      await publishMemo(ctx, shortName, collectionKey, {
+      await publishMemo(ctx, collectionKey, {
         label: thesis.label,
         headline: thesis.headline,
         rating: thesis.rating,

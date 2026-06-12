@@ -18,6 +18,7 @@
 import { sequencer } from "@flow-state-dev/core";
 import { analyzeInputSchema } from "../flow-schema";
 import { computeAndStoreSpine } from "../compute-spine";
+import { computeAndStoreRewardToRisk } from "../compute-reward-to-risk";
 import { storePriceHistory } from "../store-price-history";
 import { resetLensConvergence } from "../agents/lenses/writer";
 import {
@@ -76,6 +77,10 @@ export const analyze = sequencer({
   .step(traderStage)
   .step(riskStage)
   .step(forecastStage)
+  // Derive the reward-to-risk figure from the committed scenario buckets and
+  // the active mandate's loss-aversion, before the PM reads it (FIX-752). A
+  // deterministic tap (no model call) — null resource when no usable buckets.
+  .tap(computeAndStoreRewardToRisk)
   .step(portfolioStage)
   // Phase 6 — post-decision thesis audit. Only runs when the caller supplied
   // a usable thesis at seed time; otherwise the pipeline ends at the PM.

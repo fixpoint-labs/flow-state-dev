@@ -1,6 +1,6 @@
 /**
  * Tests for the Phase 6 writer taps and the ThesisAlignment output schema.
- * Confirms `markWriting` flips `session.memoStatus`, that
+ * Confirms `markWriting` flips the thesis-alignment memo's status, that
  * `commitThesisAlignmentMemo` publishes a well-formed audit, and that the
  * schema enforces the `blindSpots.min(1)` floor (the structural guard that
  * forces the validator to do the audit work).
@@ -13,6 +13,8 @@ import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/mem
 import { thesisAlignmentOutputSchema } from "../src/flows/analysis/agents/thesis-validator/thesis-validator";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { PHASE_6_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const writeTv = markWriting("thesisAlignment");
 const errorTv = markError("thesisAlignment");
@@ -35,7 +37,6 @@ const baseSessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-6" as const,
   maxDebateRounds: 1,
-  memoStatus: { thesisAlignment: "pending" as const },
   runComplete: true,
   userThesis: "NVDA data-center growth decelerates faster than consensus.",
 };
@@ -96,15 +97,14 @@ function thesisAlignment(
 }
 
 describe("Phase 6 writer taps", () => {
-  it("markWriting flips memoStatus.thesisAlignment to writing", async () => {
+  it("markWriting flips the thesis-alignment memo to writing", async () => {
     const result = await testBlock(writeTv, {
       input: {},
       flow: fixtureFlow,
       session: { state: baseSessionState },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.thesisAlignment).toBe("writing");
+    expect(latestMemoStatus(result.items, PHASE_6_MEMO_KEYS.thesisAlignment.memoKey)).toBe("writing");
   });
 
   it("commitThesisAlignmentMemo publishes a partially-aligned audit", async () => {
@@ -112,7 +112,7 @@ describe("Phase 6 writer taps", () => {
       input: thesisAlignment("partially-aligned"),
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { thesisAlignment: "writing" } },
+        state: baseSessionState,
         resources: {
           "memos/p6/thesis-alignment": seededTvMemo({
             startedAt: new Date().toISOString(),
@@ -121,8 +121,7 @@ describe("Phase 6 writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.thesisAlignment).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_6_MEMO_KEYS.thesisAlignment.memoKey)).toBe("published");
   });
 
   it("markError flips thesisAlignment to error", async () => {
@@ -130,7 +129,7 @@ describe("Phase 6 writer taps", () => {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,
       session: {
-        state: { ...baseSessionState, memoStatus: { thesisAlignment: "writing" } },
+        state: baseSessionState,
         resources: {
           "memos/p6/thesis-alignment": seededTvMemo({
             startedAt: new Date().toISOString(),
@@ -139,8 +138,7 @@ describe("Phase 6 writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.thesisAlignment).toBe("error");
+    expect(latestMemoStatus(result.items, PHASE_6_MEMO_KEYS.thesisAlignment.memoKey)).toBe("error");
   });
 });
 
@@ -173,16 +171,3 @@ describe("thesisAlignmentOutputSchema", () => {
     expect(parsed.success).toBe(true);
   });
 });
-
-type LastStatePayload = { memoStatus: Record<string, string> };
-
-type ResultLike = {
-  stateChanges: Array<{ scope: string; resultingState: Record<string, unknown> }>;
-};
-
-function lastSessionState(result: ResultLike): LastStatePayload {
-  const sessionPatches = result.stateChanges.filter((c) => c.scope === "session");
-  expect(sessionPatches.length).toBeGreaterThan(0);
-  return sessionPatches[sessionPatches.length - 1]
-    .resultingState as unknown as LastStatePayload;
-}

@@ -96,6 +96,47 @@ describe("serperAdapter", () => {
     expect(result.results[0].snippet).toBe("News description");
   });
 
+  it("emulates domain filters with site: / -site: query operators", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ organic: [] }), { status: 200 })
+    );
+
+    const result = await serperAdapter.search("react hooks", {
+      maxResults: 5,
+      searchDepth: "basic",
+      topic: "general",
+      includeDomains: ["react.dev"],
+      excludeDomains: ["pinterest.com"],
+      apiKey: "test-key",
+    });
+
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body.q).toBe("react hooks site:react.dev -site:pinterest.com");
+    // The normalized query stays the original, un-augmented string.
+    expect(result.query).toBe("react hooks");
+  });
+
+  it("OR-groups multiple include domains so Google does not AND them", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ organic: [] }), { status: 200 })
+    );
+
+    await serperAdapter.search("gpu papers", {
+      maxResults: 5,
+      searchDepth: "basic",
+      topic: "general",
+      includeDomains: ["arxiv.org", "github.com"],
+      apiKey: "test-key",
+    });
+
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body.q).toBe("gpu papers (site:arxiv.org OR site:github.com)");
+  });
+
+  it("declares it does not support the deep tier", () => {
+    expect(serperAdapter.capabilities.tiers).toEqual(["fast", "balanced"]);
+  });
+
   it("throws on non-200 response", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("Unauthorized", { status: 401, statusText: "Unauthorized" })

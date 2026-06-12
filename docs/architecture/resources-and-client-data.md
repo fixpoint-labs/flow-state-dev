@@ -116,6 +116,16 @@ The lifecycle mirrors content exactly:
 
 The `Resource*Ref` API is unchanged; this is an internal storage relocation. The scope record's former inline `resources` field is no longer read or written.
 
+### Typed Edges (`edges` slot)
+
+A resource (or collection) can opt into a typed-edge graph by declaring `edges: true | { vocabulary?, maxEdges? }` on `defineResource` / `defineResourceCollection`. This is part of the resource contract, not a separate store:
+
+- **State field injection.** `defineResource` extends the resource's `stateSchema` (and default) with an `edges: Edge[]` field unless the schema already declares one; `defineResourceCollection` does the same for each instance schema. Edges therefore live *inside* the resource's own state `JsonObject` and persist through the same per-key `ResourceStateStore` path as any other state — no new storage key, no store-adapter change. The graph is opaque to the store (it's just an array in the value), so traversal is in-memory.
+- **`.edges` ref API.** When `edges` is declared, the live `ResourceRef` / `ResourceContext` (and each collection-instance ref) gains an `.edges` accessor: `add`, `supersede` (bi-temporal close, never a hard delete), `remove`, `all({ at? })`, `neighbors`, `egoGraph`, `shortestPath`, and `pruneDangling`. Mutators route through the resource's existing `updateState`, so edge writes emit the same `resource_change` events as any state write. The edge schema and pure traversal helpers are the reusable `@flow-state-dev/core/graph` primitive; the slot is what wires them onto the resource.
+- **Bounding.** `maxEdges` caps growth; the cull drops superseded tombstones first, then lowest-confidence active edges, and never evicts the edge just added (so `add()` always returns a stored edge).
+
+The first consumer is the memory `relations` tier (see `apps/docs/docs/memory/relations`), which stores typed relationships between fact subjects on the semantic resource's edge slot.
+
 ### Three-Wave Loading
 
 A request loads only the resources its dispatched action and blocks declare, partitioned into three waves. The partition is computed from where each resource is declared:
@@ -131,6 +141,8 @@ Where each wave fires:
 - **Wave 3 (per-block dispatch)** — the block runtime's `run` loads a block's `prefetchMode: 'lazy'` single resources when that block dispatches, through `_loadDeclaredResources`. Lazy collections defer further: they load per access through the on-demand accessor (below) rather than at block dispatch.
 
 **Per-scope cache and dedupe.** Each scope (session / user / org) keeps an in-memory state and content cache that the waves fill. A `loadedCollectionPrefixes` set per scope records which collection pattern-prefixes have already been bulk-loaded, seeded with the flow-level prefixes from Wave 1, so a re-dispatch never re-scans. Single resources are tracked implicitly by presence in the state cache. An `inflightLoads` single-flight map collapses concurrent loads of the same key or prefix across parallel block dispatch (for example a sequencer's `.work()` fan-out), and clears its entry in `finally` so a failed load retries on the next attempt instead of poisoning the map.
+
+**Concurrent writes to the cache.** Every write commits one key to the per-key store and then mutates the live per-scope cache in place at that key (`cache[key] = value`) rather than replacing the whole map (FIX-744). Because `.parallel`/`.forEach` branches share one execution context, this is what lets distinct-key collection writes from a fan-out coexist in the cache: a convergence read (`.list()`/`.count()`) after the fan-out sees every instance, not just the last branch's. Same-key concurrent writes are last-writer-wins. See [State and Scopes — concurrency guidance](./state-and-scopes.md).
 
 **Lazy collection reads.** `prefetchMode` is a loading-cost knob, not an API-shape one: a collection's `get`/`getOptional`/`list`/`count` are async in both modes. Eager just resolves them against a cache the waves prefilled, while lazy defers loading to the moment of access. A `prefetchMode: 'lazy'` collection reads through a per-scope on-demand accessor: `getInstance(storageKey)` and `getByPrefix(prefix)` fill the same per-scope cache and reuse the same single-flight map and `loadedCollectionPrefixes` set as the eager waves, so a key fetched on demand and one fetched by a wave dedupe against each other. The underlying reads go to the per-key `ResourceStateStore` (and `ContentStore` for content). See [Resource Collections — prefetch mode](./resource-collections.md#prefetch-mode).
 
@@ -429,6 +441,8 @@ defineResourceCollection({
 - `create`, `update`, `delete` are collection-only — declaring them on a single resource is a type error
 - Omitting `client` entirely means the resource is invisible to clients (no change from current behavior)
 
+**Client-projection output type (FIX-741).** `defineResource` / `defineResourceCollection` carry the projected client-data type as a phantom (`ClientType`) alongside `StateType`, derived from the `client` config: `Pick` from `expose`, `Omit` from `exclude`, the awaited return of `data`, or the full state for the identity default. `ClientDataOf<typeof def>` extracts it, and the React hooks accept it as a `TClient` type parameter so `clientData` is typed instead of `unknown`. This is a pure type-level brand — `resolveClientProjection` and the `JsonValue` wire contract are unchanged; the hook applies a single projection-backed cast at its boundary. The `data` branch depends on the projection function's return type, so annotating that return is what threads a precise shape (the function's `state` argument is not concretely typed at the definer's inference position).
+
 ### Snapshot Response with Resources
 
 The snapshot includes a `resources` key with metadata and `clientData` only — no content (except `prefetch: true` resources):
@@ -485,7 +499,7 @@ await actions.create({ topic: 'spec.md', content: '# New Spec' })
 await actions.update({ topic: 'readme.md', content: '# Updated' })
 ```
 
-Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`.
+Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`. The `resource_change` projection rides the registry's internal post-mutation seam (`onResourceChanged`); the same seam also drives in-session reactive blocks (`reactTo`) — see [Reactive blocks](/docs/resources/reactive-blocks) and the seam contract in [Resource Collections](./resource-collections.md#reactive-blocks-reactto).
 
 ## Canonical Authority
 

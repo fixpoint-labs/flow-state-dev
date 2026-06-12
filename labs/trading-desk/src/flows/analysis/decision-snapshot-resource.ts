@@ -47,6 +47,14 @@ export const decisionSnapshotStateSchema = z.object({
     .enum(["days", "weeks", "months", "quarters"])
     .nullable()
     .default(null),
+  // Risk-mandate decision (FIX-752). The machine-scoreable record of how the
+  // active mandate shaped the call — the FIX-614 sensitivity-benchmark input.
+  // Null when the run was mandate-blind.
+  mandateId: z.string().nullable().default(null),
+  mandateVerdict: z.enum(["clears", "fails"]).nullable().default(null),
+  rewardToRiskLossAdjustedGlr: z.number().nullable().default(null),
+  worstCaseReturnPct: z.number().nullable().default(null),
+  capacityVetoed: z.boolean().nullable().default(null),
   // Provenance.
   decidedAt: z.string(), // ISO commit time
   // Outcome-tracking fields — NULL on write; a FUTURE feature fills these.
@@ -86,6 +94,11 @@ export const decisionSnapshotResource = defineResource({
       "targetPrice",
       "sizePct",
       "holdingPeriod",
+      "mandateId",
+      "mandateVerdict",
+      "rewardToRiskLossAdjustedGlr",
+      "worstCaseReturnPct",
+      "capacityVetoed",
       "decidedAt",
       "outcomeRealizedPrice",
       "outcomeAsOf",

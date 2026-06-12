@@ -319,7 +319,6 @@ const baseInput = {
 };
 
 type SessionStateShape = {
-  memoStatus?: Record<string, string>;
   userThesis?: string | null;
   userThesisWarning?: string | null;
 };
@@ -349,9 +348,6 @@ describe("Phase 6 gating", () => {
     expect(result.status).toBe("completed");
     expect(validator.calls).toHaveLength(0);
 
-    const session = await stores.session.get(sessionId);
-    const state = (session?.state ?? {}) as SessionStateShape;
-    expect(state.memoStatus?.thesisAlignment).toBeUndefined();
     const resourceState = await stores.resourceState.getAll("session", sessionId);
     expect(resourceState["memos/p6/thesis-alignment"]).toBeUndefined();
   });
@@ -382,10 +378,6 @@ describe("Phase 6 gating", () => {
     expect(result.error).toBeUndefined();
     expect(result.status).toBe("completed");
     expect(validator.calls).toHaveLength(1);
-
-    const session = await stores.session.get(sessionId);
-    const state = (session?.state ?? {}) as SessionStateShape;
-    expect(state.memoStatus?.thesisAlignment).toBe("published");
 
     const resourceState = await stores.resourceState.getAll("session", sessionId);
     const memo = resourceState["memos/p6/thesis-alignment"] as

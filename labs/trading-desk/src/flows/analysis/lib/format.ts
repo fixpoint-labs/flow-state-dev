@@ -15,6 +15,8 @@ import { AGENTS, PHASE_1_MEMO_KEYS } from "../registry";
 import type { CitationIntegrity } from "../resources";
 import type { PortfolioContextInput } from "../flow-schema";
 import type { LensConvergenceState } from "../agents/lenses/lens-convergence-resource";
+import type { RewardToRiskState } from "../reward-to-risk-resource";
+import type { RiskMandate } from "./risk-mandate";
 
 /** Render a memo state as a compact prompt block. Permissive `any` —
  *  body shape is enforced by `memoStateSchema` at write time, so reads
@@ -177,10 +179,15 @@ export function formatScenarioForecastExtensions(memo: any): string {
       trigger: string;
       triggerSource: string;
       expectedOutcome: string;
+      expectedReturnPct?: number | null;
       tradeBehavior: string;
     }>) {
+      const ret =
+        s.expectedReturnPct != null
+          ? ` (${s.expectedReturnPct >= 0 ? "+" : ""}${s.expectedReturnPct}%)`
+          : "";
       lines.push(
-        `- ${s.name} · ${(s.probability * 100).toFixed(0)}% · trigger: ${s.trigger} [${s.triggerSource}] · outcome: ${s.expectedOutcome} · trade: ${s.tradeBehavior}`,
+        `- ${s.name} · ${(s.probability * 100).toFixed(0)}% · trigger: ${s.trigger} [${s.triggerSource}] · outcome: ${s.expectedOutcome}${ret} · trade: ${s.tradeBehavior}`,
       );
     }
   }
@@ -491,6 +498,99 @@ export function formatLensConvergence(
   lines.push(
     `Sizing rule: a CONVERGENT read permits the PM's full sizing; MIXED/DIVERGENT pulls toward a ` +
       `smaller target or hold. Robustness adjusts size DOWN on divergence only — it never inflates a position.`,
+  );
+  return lines.join("\n");
+}
+
+/**
+ * Render the scenario-derived reward-to-risk figure as the `<rewardToRisk>`
+ * prompt block the PM judges against the mandate (FIX-752). Documented
+ * methodology, not a probability of being right. Returns `null` (tag suppressed)
+ * when the resource has not been computed — a registered-but-unwritten nullable
+ * resource can surface as `{}`, so the guard is on the required `evidenceBasis`.
+ */
+export function formatRewardToRisk(
+  figure: RewardToRiskState | null | undefined,
+): string | null {
+  if (
+    figure == null ||
+    typeof figure !== "object" ||
+    (figure as Partial<RewardToRiskState>).evidenceBasis == null
+  ) {
+    return null;
+  }
+  const pct = (n: number | null) =>
+    n == null ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+  const ratio = (n: number | null) =>
+    n == null ? "n/a (no downside scenario)" : n.toFixed(2);
+  const lines: string[] = [];
+  lines.push(
+    "Reward-to-risk, derived deterministically from the scenario distribution (documented methodology, NOT a probability of being right):",
+  );
+  lines.push(
+    `- Probability-weighted upside ${pct(figure.expectedGainPct)} vs downside ${pct(
+      figure.expectedLossPct == null ? null : -figure.expectedLossPct,
+    )}.`,
+  );
+  lines.push(
+    `- Gain/Loss ratio ${ratio(figure.glr)}; loss-adjusted (λ=${figure.lossAversion}) ${ratio(
+      figure.lossAdjustedGlr,
+    )}.`,
+  );
+  lines.push(
+    `- Expected value ${pct(figure.expectedValuePct)}; worst-case bucket ${pct(
+      figure.worstCaseReturnPct,
+    )}.`,
+  );
+  if (figure.noDownside) {
+    lines.push(
+      "- No scenario is negative — the reward-to-risk floor is treated as cleared (worst-case and confidence gates still apply).",
+    );
+  }
+  lines.push(
+    `- Evidence basis: ${figure.evidenceBasis}${
+      figure.evidenceBasis === "thin" ? " — treat the figure as indicative only" : ""
+    }.`,
+  );
+  return lines.join("\n");
+}
+
+/**
+ * Render the active risk-appetite mandate as the `<riskMandate>` prompt block.
+ * Frames the mandate as a documented, user-set standard (NOT advice) and states
+ * the worth-it bar + the sizing appetite (FIX-752). Agent-agnostic: this shared
+ * block feeds BOTH the trader and the PM, so it carries no output-field
+ * directives (the PM prompt's rule 11 owns the `portfolioFit` / override
+ * mechanics, which only the PM can emit). Returns `null` (tag suppressed) when
+ * the run is mandate-blind (the `userThesis`/`portfolioContext` precedent).
+ */
+export function formatRiskMandate(
+  mandate: RiskMandate | null | undefined,
+): string | null {
+  if (
+    mandate == null ||
+    typeof mandate !== "object" ||
+    (mandate as Partial<RiskMandate>).id == null
+  ) {
+    return null;
+  }
+  const lines: string[] = [];
+  lines.push(
+    `The book's risk-appetite mandate is "${mandate.label}" — a documented, user-set standard (NOT financial advice): ${mandate.description}`,
+  );
+  lines.push("Worth-it bar this name must clear:");
+  lines.push(
+    `- Loss-adjusted reward-to-risk ≥ ${mandate.rewardToRiskFloor.toFixed(1)} (downside weighted ${mandate.lossAversion}×).`,
+  );
+  lines.push(`- Expected return ≥ ${mandate.hurdleReturnPct}% (hurdle / opportunity cost).`);
+  lines.push(`- Decision confidence ≥ ${mandate.confidenceFloor.toFixed(2)}.`);
+  lines.push(
+    `- No scenario worse than -${mandate.maxTolerableLossPct}% (capacity line — a worse worst case hard-caps the size and cannot be overridden).`,
+  );
+  lines.push(
+    `Sizing appetite: a name that CLEARS the bar is sized to about ${(mandate.kellyFraction * 100).toFixed(
+      0,
+    )}% of a full-Kelly stake (fractional-Kelly); a name that does NOT clear is held to a token size (at or below ${mandate.unclearedCapPct}% of NAV). The mandate only ever reduces size, never inflates it, and never changes the rating.`,
   );
   return lines.join("\n");
 }

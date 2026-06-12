@@ -1,7 +1,7 @@
 /**
  * Unit test for `setupPhase4Memos` — verifies the four P4 memo slots are
- * seeded to `pending`, `session.memoStatus` gains the four entries, prior
- * phases' entries are preserved, and `activePhase` flips to `"phase-4"`.
+ * seeded to `pending` (streamed off the live collection) and `activePhase`
+ * flips to `"phase-4"`.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
@@ -9,6 +9,8 @@ import { testBlock } from "@flow-state-dev/testing";
 import { setupPhase4Memos } from "../src/flows/analysis/agents/risk/setup";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { PHASE_4_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p4-setup-test",
@@ -30,11 +32,6 @@ describe("setupPhase4Memos", () => {
           dataSource: "fixture",
           activePhase: "phase-3",
           maxDebateRounds: 1,
-          memoStatus: {
-            fundamentals: "published",
-            researchManager: "published",
-            trader: "published",
-          },
         },
       },
     });
@@ -46,15 +43,10 @@ describe("setupPhase4Memos", () => {
     expect(sessionPatches.length).toBeGreaterThan(0);
     const last = sessionPatches[sessionPatches.length - 1].resultingState;
     expect(last.activePhase).toBe("phase-4");
-    const memoStatus = last.memoStatus as Record<string, string>;
-    // Earlier-phase entries are preserved.
-    expect(memoStatus.fundamentals).toBe("published");
-    expect(memoStatus.researchManager).toBe("published");
-    expect(memoStatus.trader).toBe("published");
-    // All four P4 entries seeded.
-    expect(memoStatus.aggressive).toBe("pending");
-    expect(memoStatus.conservative).toBe("pending");
-    expect(memoStatus.neutral).toBe("pending");
-    expect(memoStatus.riskAssessment).toBe("pending");
+    // All four P4 memos seeded to pending.
+    expect(latestMemoStatus(result.items, PHASE_4_MEMO_KEYS.aggressive.memoKey)).toBe("pending");
+    expect(latestMemoStatus(result.items, PHASE_4_MEMO_KEYS.conservative.memoKey)).toBe("pending");
+    expect(latestMemoStatus(result.items, PHASE_4_MEMO_KEYS.neutral.memoKey)).toBe("pending");
+    expect(latestMemoStatus(result.items, PHASE_4_MEMO_KEYS.riskAssessment.memoKey)).toBe("pending");
   });
 });

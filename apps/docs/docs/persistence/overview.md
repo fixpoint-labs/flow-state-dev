@@ -97,7 +97,7 @@ The store interface is pluggable. If you need Redis, an alternative SQL backend,
 `RequestStore` exposes `subscribeToEvents(requestId, options)` so the SSE wire can serve a request started on any instance. Stores choose their own delivery mechanism:
 
 - The in-memory store fans out from an in-process bus.
-- SQLite and the filesystem store poll `getEvents(requestId, fromSequence)`.
+- SQLite runs one shared poll loop per request, fanned out to every subscriber and woken in-process by the write path; the filesystem store polls `getEvents(requestId, fromSequence)`.
 - Postgres uses `LISTEN/NOTIFY` on a dedicated client. See `@flow-state-dev/store-postgres` for details.
 
 ### Incremental items storage

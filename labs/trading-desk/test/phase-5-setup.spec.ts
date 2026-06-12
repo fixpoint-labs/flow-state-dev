@@ -1,7 +1,7 @@
 /**
  * Unit test for `setupPhase5Memos` — verifies the portfolio-manager memo is
- * created in `pending`, `session.memoStatus.portfolioManager` is seeded,
- * prior phases' entries are preserved, and `activePhase` flips to `"phase-5"`.
+ * created in `pending` (streamed off the live collection) and `activePhase`
+ * flips to `"phase-5"`.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
@@ -9,6 +9,8 @@ import { testBlock } from "@flow-state-dev/testing";
 import { setupPhase5Memos } from "../src/flows/analysis/agents/portfolio-manager/setup";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { PHASE_5_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p5-setup-test",
@@ -30,17 +32,6 @@ describe("setupPhase5Memos", () => {
           dataSource: "fixture",
           activePhase: "phase-4",
           maxDebateRounds: 1,
-          memoStatus: {
-            fundamentals: "published",
-            bull: "published",
-            bear: "published",
-            researchManager: "published",
-            trader: "published",
-            aggressive: "published",
-            conservative: "published",
-            neutral: "published",
-            riskAssessment: "published",
-          },
           runComplete: false,
         },
       },
@@ -56,13 +47,7 @@ describe("setupPhase5Memos", () => {
     expect(sessionPatches.length).toBeGreaterThan(0);
     const last = sessionPatches[sessionPatches.length - 1].resultingState;
     expect(last.activePhase).toBe("phase-5");
-    const memoStatus = last.memoStatus as Record<string, string>;
-    // Earlier-phase entries are preserved.
-    expect(memoStatus.fundamentals).toBe("published");
-    expect(memoStatus.researchManager).toBe("published");
-    expect(memoStatus.trader).toBe("published");
-    expect(memoStatus.riskAssessment).toBe("published");
-    // P5 entry is seeded.
-    expect(memoStatus.portfolioManager).toBe("pending");
+    // The portfolioManager memo is seeded to pending.
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.portfolioManager.memoKey)).toBe("pending");
   });
 });

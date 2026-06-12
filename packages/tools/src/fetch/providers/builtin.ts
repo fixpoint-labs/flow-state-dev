@@ -1,21 +1,25 @@
 import type { FetchProviderAdapter, FetchResult } from "../types";
 import { htmlToMarkdown } from "../../_internal/html-to-markdown";
+import { httpFetchError, readTruncatedBody, transportFetchError } from "../errors";
 
 export const builtinFetchAdapter: FetchProviderAdapter = {
   name: "builtin",
   async fetch(url, _options): Promise<FetchResult> {
-    const response = await globalThis.fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; FlowStateDev/1.0)",
-        Accept: "text/html,application/xhtml+xml",
-      },
-      redirect: "follow",
-    });
+    let response: Response;
+    try {
+      response = await globalThis.fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; FlowStateDev/1.0)",
+          Accept: "text/html,application/xhtml+xml",
+        },
+        redirect: "follow",
+      });
+    } catch (cause) {
+      throw transportFetchError("builtin", url, cause);
+    }
 
     if (!response.ok) {
-      throw new Error(
-        `Fetch failed: ${response.status} ${response.statusText} for ${url}`
-      );
+      throw httpFetchError("builtin", url, response, await readTruncatedBody(response));
     }
 
     const html = await response.text();

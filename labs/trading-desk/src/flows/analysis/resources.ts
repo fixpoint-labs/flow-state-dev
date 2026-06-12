@@ -68,6 +68,36 @@ export const citationIntegritySchema = z.object({
 
 export type CitationIntegrity = z.infer<typeof citationIntegritySchema>;
 
+/** Phase 5 risk-mandate decision mirror (FIX-752). Only the portfolioManager
+ *  memo populates this; null on a mandate-blind run (the panel is omitted). The
+ *  derived verdict + gate flags come from the commit (never the LLM); the compact
+ *  reward-to-risk figure feeds the PmHero panel from one place; the three
+ *  narrative strings mirror the PM's `mandateFit`. */
+export const mandateDecisionSchema = z.object({
+  mandateId: z.string(),
+  mandateLabel: z.string(),
+  /** Bright-line worth-it verdict, derived from the figure vs the dials. */
+  verdict: z.enum(["clears", "fails"]),
+  /** Soft gates (reward-to-risk / hurdle / confidence) all met. */
+  cleared: z.boolean(),
+  /** Hard capacity line breached (worst case beyond the mandate's tolerance). */
+  capacityVetoed: z.boolean(),
+  /** The commit reduced `targetWeightPct` to a mandate cap. */
+  sizeClamped: z.boolean(),
+  // Compact reward-to-risk figure for the panel (from the resource).
+  lossAdjustedGlr: z.number().nullable(),
+  expectedValuePct: z.number().nullable(),
+  worstCaseReturnPct: z.number().nullable(),
+  noDownside: z.boolean(),
+  evidenceBasis: z.enum(["sufficient", "thin"]),
+  // The PM's interpretive narrative (mirrored from `mandateFit`).
+  rewardToRiskRead: z.string(),
+  sizeStance: z.string(),
+  overrideReason: z.string(),
+});
+
+export type MandateDecision = z.infer<typeof mandateDecisionSchema>;
+
 /** Structured memo body the renderer dispatches on. Mirrors the Claude Design
  *  handoff's `Thesis` shape so the same component renders fixture and live
  *  outputs identically. Fields are nullable while the memo is `pending` or
@@ -220,6 +250,10 @@ export const memoStateSchema = z.object({
           "phase1",
         ]),
         expectedOutcome: z.string(),
+        // Signed expected stock move (%) over the window — the numeric anchor the
+        // FIX-752 reward-to-risk metric derives from. Nullable here (resource
+        // state, not generator output) so legacy memos read back cleanly.
+        expectedReturnPct: z.number().nullable().default(null),
         tradeBehavior: z.string(),
       }),
     )
@@ -340,6 +374,10 @@ export const memoStateSchema = z.object({
   // the PmHero strip reads it without a second resource fetch. Reuses the
   // resource's own state schema (z.record-free → safe to import here, no cycle).
   lensConvergence: lensConvergenceStateSchema.nullable().default(null),
+  // Risk-mandate decision mirror (FIX-752), projected onto the PM memo at commit
+  // so the PmHero panel reads the verdict + figure + narrative from one place.
+  // Null on a mandate-blind run.
+  mandateDecision: mandateDecisionSchema.nullable().default(null),
 });
 
 export type MemoState = z.infer<typeof memoStateSchema>;
@@ -352,6 +390,10 @@ export const memosCollection = defineResourceCollection({
     // No projection declared — the renderer needs every field on the memo
     // state, so the identity default ships the whole state to the client.
     state: { read: true },
+    // Stream each memo's projected state inline on every mutation (FIX-739),
+    // so the navigator renders `pending → writing → published` live straight
+    // from the resource — no `memoStatus` session mirror.
+    live: true,
   },
 });
 

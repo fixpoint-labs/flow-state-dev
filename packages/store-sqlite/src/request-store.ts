@@ -24,6 +24,7 @@ import type {
   SubscribeToEventsOptions
 } from "@flow-state-dev/server";
 import { createSQLiteRecordStore } from "./sqlite-store";
+import { createLiveTailRegistry, DEFAULT_POLL_INTERVAL_MS } from "./live-tail";
 
 /**
  * SQLite has no B-tree index row-size limit as tight as Postgres, but we cap
@@ -74,104 +75,6 @@ function mergeLegacyWithTable(
   return [...fromTable, ...legacyOnly].sort((a, b) => a.itemIndex - b.itemIndex);
 }
 
-const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
-const DEFAULT_POLL_INTERVAL_MS = 100;
-
-type ReadEventsFn = (
-  requestId: string,
-  fromSequence?: number
-) => Promise<RequestStreamEvent[]>;
-
-/** Whether an event marks the end of a request event stream. */
-function isTerminalRequestStreamEvent(event: RequestStreamEvent): boolean {
-  switch (event.type) {
-    case "request.completed":
-    case "request.failed":
-    case "request.aborted":
-    case "request.incomplete":
-    case "request.suspended":
-      return true;
-    case "request.interrupted":
-      return (event as { status?: string }).status === "interrupted";
-    default:
-      return false;
-  }
-}
-
-/** Build a non-persisted liveness-timeout event for stalled subscriptions. */
-function synthesizeRequestInterrupted(
-  requestId: string,
-  sequenceNumber: number
-): RequestStreamEvent {
-  return {
-    stream: "request",
-    type: "request.interrupted",
-    status: "interrupted",
-    requestId,
-    sequence_number: sequenceNumber,
-    ts: Date.now()
-  } as RequestStreamEvent;
-}
-
-/** Abort-aware sleep used by the polling subscription loop. */
-function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = (): void => {
-      clearTimeout(timer);
-      resolve();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-/**
- * Poll durable request events until aborted, terminal, or liveness timeout.
- *
- * This mirrors the server helper without importing server runtime values; the
- * SQLite package may only import server types.
- */
-async function* pollEvents(
-  readEvents: ReadEventsFn,
-  requestId: string,
-  options: SubscribeToEventsOptions,
-  pollIntervalMs: number
-): AsyncIterableIterator<RequestStreamEvent> {
-  const livenessMs = options.livenessTimeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS;
-
-  const initial = await readEvents(requestId, options.fromSequence);
-  let lastSeen = options.fromSequence;
-  for (const event of initial) {
-    yield event;
-    lastSeen = event.sequence_number;
-    if (isTerminalRequestStreamEvent(event)) return;
-  }
-
-  let lastTickAt = Date.now();
-
-  while (!options.signal?.aborted) {
-    await abortableSleep(pollIntervalMs, options.signal);
-    if (options.signal?.aborted) return;
-
-    const next = await readEvents(requestId, lastSeen);
-    if (next.length > 0) {
-      lastTickAt = Date.now();
-      for (const event of next) {
-        yield event;
-        lastSeen = event.sequence_number;
-        if (isTerminalRequestStreamEvent(event)) return;
-      }
-    } else if (Date.now() - lastTickAt > livenessMs) {
-      yield synthesizeRequestInterrupted(requestId, lastSeen ?? 0);
-      return;
-    }
-  }
-}
-
 /** Options for the SQLite-backed request store. */
 export type CreateSQLiteRequestStoreOptions = {
   /**
@@ -198,6 +101,11 @@ export function createSQLiteRequestStore(
   options: CreateSQLiteRequestStoreOptions = {}
 ): RequestStore {
   const pollIntervalMs = options.subscribePollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+  // One shared live-tail loop per request id (vs one per subscriber). The
+  // write path nudges it via `wake` after each event commit; the interval poll
+  // is the correctness backstop. `readEvents` is hoisted (function declaration
+  // below), so capturing it here is safe.
+  const liveTail = createLiveTailRegistry(readEvents, pollIntervalMs);
 
   const base = createSQLiteRecordStore<RequestRecord, RequestListOptions>(db, {
     tableName: "requests",
@@ -501,6 +409,9 @@ export function createSQLiteRequestStore(
         if (newEvents.length === 0) return;
         // INSERT OR REPLACE handles duplicates by sequence_number.
         insertEventsBatch(newEvents, requestId);
+        // Nudge the shared live-tail loop to deliver the just-committed events
+        // without waiting out the poll interval. No-op if nobody is tailing.
+        liveTail.wake(requestId);
       });
     },
 
@@ -514,7 +425,7 @@ export function createSQLiteRequestStore(
       requestId: string,
       options: SubscribeToEventsOptions
     ): AsyncIterableIterator<RequestStreamEvent> {
-      return pollEvents(readEvents, requestId, options, pollIntervalMs);
+      return liveTail.subscribe(requestId, options);
     },
 
     async getRunOnceResult(

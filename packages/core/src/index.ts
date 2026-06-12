@@ -23,7 +23,8 @@ export {
   whenResourceChanged,
   whenResourceMatching
 } from "./items/predicates";
-export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
+// `ClientDataOf` covers both DefinedResource and DefinedResourceCollection — one import for either.
+export type { ClientDataOf, ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
   CollectionHookContext,
   DefinedResourceCollection,
@@ -54,6 +55,13 @@ export type {
   ToolCacheStore,
 } from "./blocks/tool-cache";
 export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
+export { normalizeReactiveBinding, resourceChangeSchema } from "./types/resource-change";
+export type {
+  ReactiveBinding,
+  ReactiveBindings,
+  ResourceChange,
+  ResourceChangeKind,
+} from "./types/resource-change";
 export type {
   InitialSkill,
   MatchedSkill,
@@ -95,6 +103,8 @@ export type {
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
+export { mapLimit } from "./helpers/concurrency";
+export { lifecycleSchema } from "./helpers/lifecycle-schema";
 export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
 export { resolveTracingLevel } from "./helpers/tracing-level";
 export type { TracingLevel } from "./helpers/tracing-level";
@@ -119,6 +129,10 @@ export {
   router,
   sequencer
 } from "./blocks";
+// Block-level rescue resolution (FIX-742). Exported so the server's top-level
+// `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow
+// children are rescued by the core `executeBlock` seam.
+export { runRescue } from "./blocks/sequencer";
 export { defineFlow } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath } from "./tools/resource-tools";
@@ -263,7 +277,8 @@ export {
   isModelSelection,
   applyCaching,
   DEFAULT_CACHING_CONFIG,
-  makeSchemaStrict
+  makeSchemaStrict,
+  assertStrictCompatible
 } from "./models";
 export type {
   ResolveAiSdkLanguageModel,
@@ -286,7 +301,9 @@ export type {
   ProviderPreference,
   ResolveOptions,
   ExplainCandidate,
-  ExplainResult
+  ExplainResult,
+  MakeSchemaStrictOptions,
+  StrictViolation
 } from "./models";
 export type {
   RequestWorkPool,
@@ -300,13 +317,16 @@ export { getRequestWorkPool } from "./execution/request-work-pool";
 export {
   FlowError,
   OutputValidationError,
+  StrictSchemaError,
   SequencerOutputSchemaError,
   SequencerSchemaMismatchError,
   SuspensionError,
   SuspensionRejectedError,
   SuspensionTimeoutError,
   rootCause,
-  isAbortLike
+  isAbortLike,
+  serializeError,
+  errorDetailsWithCause
 } from "./errors";
 export type {
   FlowErrorOptions,
@@ -314,5 +334,6 @@ export type {
   OutputValidationDetails,
   SequencerOutputSchemaErrorDetails,
   SequencerSchemaMismatchErrorDetails,
-  SuspendOptions
+  SuspendOptions,
+  SerializedError
 } from "./errors";
