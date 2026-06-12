@@ -167,28 +167,22 @@ export function responseAuditor(config: ResponseAuditorConfig) {
   const analyzers = config.analyzers;
   const thresholdBlock = createApplyThreshold(threshold);
 
-  // Each analyzer is wrapped in a mini-sequencer with .rescue() so that
-  // individual failures are caught at the framework level rather than
-  // via manual try/catch. Failed analyzers produce null, filtered out
-  // after the forEach.
-  function createSafeAnalyzer(analyzer: typeof analyzers[number]) {
-    return sequencer({
-      name: `safe-${analyzer.name}`,
-      inputSchema: auditorInputSchema,
-    })
-      .step(analyzer)
-      .rescue([{ block: analyzerErrorFallback }]);
-  }
+  // Each analyzer carries its own block-level `.rescue()` so an individual
+  // failure is caught at the framework level (not via manual try/catch) and the
+  // fan-out keeps going: the failing analyzer recovers to `null`, which the map
+  // below filters out. No wrapper sub-sequencer needed (FIX-742).
+  const safeAnalyzers = analyzers.map((analyzer) =>
+    analyzer.rescue([{ block: analyzerErrorFallback }])
+  );
 
   // Build the pipeline using the sequencer DSL:
   // 1. captureContext stores input in state
   // 2. map creates an array of identical inputs (one per analyzer) for forEach
   // 3. forEach fans out to analyzers using a factory function that selects
-  //    the correct safe-wrapped analyzer per index
+  //    the correct rescue-wrapped analyzer per index
   // 4. map filters out nulls from failed analyzers
   // 5. aggregateResults computes overall score
   // 6. applyThreshold filters to surfaced results
-  const safeAnalyzers = analyzers.map(createSafeAnalyzer);
 
   return sequencer({
     name: "response-auditor",

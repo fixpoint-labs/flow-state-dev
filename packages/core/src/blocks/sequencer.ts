@@ -22,7 +22,7 @@ import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
 import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
 import { runBackground, runChild } from "./internal/sequencer-kernel";
 import type { DeclaredResources } from "../types/block";
-import { getEmitterItemCount, isBlockDefinition, toError, withTimeout } from "./internal/utils";
+import { getEmitterItemCount, isBlockDefinition, matchesRescueHandler, toError, withTimeout } from "./internal/utils";
 import {
   blockPathBranch,
   blockPathIteration,
@@ -510,6 +510,37 @@ export async function executeBlock(
         (scopedCtx as { _generatorModelUsage?: GeneratorModelUsageMeta })._generatorModelUsage = modelUsage;
       }
 
+      // FIX-742: block-level rescue for scoped (in-flow) child invocations — run
+      // the first matching handler with this block's scoped context and return
+      // its output, so the enclosing chain / fan-out / branch continues. The
+      // `_withExecutionScope !== undefined` gate makes this seam mutually
+      // exclusive with build-block's scope-less seam, so a throwing rescue
+      // handler in a unit harness is not "rescued" twice. `SuspensionError` is
+      // control flow and is never rescued; sequencers handle chain-level rescue
+      // in their operation loop and are excluded to avoid double-handling.
+      const rescueHandlers =
+        ctx._withExecutionScope !== undefined && block.kind !== "sequencer"
+          ? block.config.rescue
+          : undefined;
+      if (rescueHandlers !== undefined && rescueHandlers.length > 0 && !(error instanceof SuspensionError)) {
+        const rescued = await runRescue(execCtx, rescueHandlers, toError(error), path);
+        if (rescued !== undefined) {
+          // Stamp the recovery on the SCOPED ctx (not `execCtx`, which is a
+          // spread copy for generators) so `_withExecutionScope` records
+          // `result.rescued` for `ctx.wasRescued(...)`.
+          (scopedCtx as { _didRescue?: boolean })._didRescue = true;
+          if (rescued.descriptor.kind !== "inline") {
+            (scopedCtx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescued.descriptor;
+          }
+          // The block errored then recovered: `onBlockError` above records the
+          // underlying failure (matching chain-level rescue precedent), and this
+          // fires `onBlockComplete` so the runtime hook stream matches the
+          // `completed + rescued` trace `_withExecutionScope` will record.
+          scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, rescued.value, Date.now() - startedAt, block.transient);
+          return rescued.value;
+        }
+      }
+
       throw error;
     }
   };
@@ -558,18 +589,42 @@ export async function executeBlock(
   );
 }
 
-function matchesRescueHandler(error: Error, handler: RescueHandlerSpec): boolean {
-  if (handler.when === undefined || handler.when.length === 0) {
-    return true;
-  }
-
-  for (const ErrorType of handler.when) {
-    if (error instanceof ErrorType) {
-      return true;
+/**
+ * Run the first rescue handler whose `when` matches `error`, at a rescue path
+ * under `basePath`, using `ctx` (the block's scoped context — so the handler can
+ * read sequencer state, per FIX-742). Returns the handler's output and a
+ * BlockValue descriptor for it, or `undefined` when nothing matched (the caller
+ * must then re-throw the original error).
+ *
+ * Setting the out-of-band `_didRescue` flag is left to the caller, which knows
+ * the scope-relevant context to stamp (the sequencer ctx in the op-loop path;
+ * the scoped ctx in the block-execution path, which may differ from `ctx` for a
+ * generator's spread copy). NEVER call this for a `SuspensionError` — the caller
+ * must re-throw that first, since suspension is control flow, not a failure.
+ *
+ * Exported so the server's top-level `executeBlock` can honor `config.rescue`
+ * on a bare action-root block (in-flow children are handled by the core
+ * `executeBlock` seam below); `server` may depend on `core`, never the reverse.
+ */
+export async function runRescue(
+  ctx: BlockContext,
+  handlers: RescueHandlerSpec[],
+  error: Error,
+  basePath: string
+): Promise<{ value: unknown; descriptor: BlockOutputHint; name: string } | undefined> {
+  for (let i = 0; i < handlers.length; i += 1) {
+    const handler = handlers[i];
+    if (!matchesRescueHandler(error, handler)) {
+      continue;
     }
+    const rescuePath = extendBlockPath(basePath, blockPathRescue(i));
+    // Rescue receives the thrown error inline — no upstream item to ref.
+    stashInputHint(ctx, { kind: "inline", value: undefined });
+    const value = await executeBlock(handler.block, error, ctx, rescuePath);
+    const descriptor = refDescriptorForPath(ctx, rescuePath);
+    return { value, descriptor, name: handler.block.config.name ?? "rescue" };
   }
-
-  return false;
+  return undefined;
 }
 
 function createRuntimeState(): SequencerRuntimeState {
@@ -789,27 +844,18 @@ function runSequencerOperations(
           throw error;
         }
         const normalizedError = toError(error);
-        for (let i = 0; i < rescueHandlers.length; i += 1) {
-          const handler = rescueHandlers[i];
-          if (!matchesRescueHandler(normalizedError, handler)) {
-            continue;
-          }
-
-          const rescuePath = extendBlockPath(currentPath(ctx), blockPathRescue(i));
-          // Rescue receives the thrown error inline — no upstream item to ref.
-          stashInputHint(ctx, { kind: "inline", value: undefined });
-          const rescued = await executeBlock(handler.block, normalizedError, ctx, rescuePath);
+        const rescued = await runRescue(ctx, rescueHandlers, normalizedError, currentPath(ctx));
+        if (rescued !== undefined) {
           // A rescue branch passes through to the handler block's output.
-          const rescueDescriptor = refDescriptorForPath(ctx, rescuePath);
-          if (rescueDescriptor.kind !== "inline") {
-            (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescueDescriptor;
+          if (rescued.descriptor.kind !== "inline") {
+            (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescued.descriptor;
           }
           // Record the recovery out-of-band so a downstream block can ask
           // `ctx.wasRescued(...)` without the rescued value carrying a marker.
           // Read post-execution by `_withExecutionScope` to stamp this block's
           // sibling-registry result.
           (ctx as { _didRescue?: boolean })._didRescue = true;
-          return { value: rescued, lastStepName: handler.block.config.name ?? "rescue" };
+          return { value: rescued.value, lastStepName: rescued.name };
         }
 
         throw normalizedError;

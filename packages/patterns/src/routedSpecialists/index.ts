@@ -441,13 +441,12 @@ export function routedSpecialists<
     },
   });
 
-  const dispatch = sequencer({
-    name: `${name}-dispatch-safe`,
-    inputSchema: z.any(),
-    stateSchema: routedSpecialistsControlSchema,
-  })
-    .step(dispatchRouter)
-    .rescue([{ block: recordError }]);
+  // Block-level rescue (FIX-742): the router carries its own recovery, so a
+  // failing specialist recovers to `recordError` and the loop continues — no
+  // wrapper sub-sequencer. `.rescue()` preserves the block name, so
+  // `wasRescued(dispatch)` below still matches, and the handler runs in the
+  // outer loop's scope where `currentTaskId` lives.
+  const dispatch = dispatchRouter.rescue([{ block: recordError }]);
 
   // 5. RecordCompletion: writes the specialist's output back as the task
   //    output. Skipped when the iteration was marked `done` (no task was

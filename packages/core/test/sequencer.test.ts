@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { handler, sequencer } from "../src";
+import { handler, router, sequencer } from "../src";
 import type { BlockContext } from "../src/types/block";
-import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../src";
+import { SequencerOutputSchemaError, SequencerSchemaMismatchError, SuspensionError } from "../src";
 import { defineResource } from "../src/types/resource";
 import { createMockContext, runForTest } from "./helpers";
 function addHandler(name: string, delta = 1) {
@@ -1890,5 +1890,268 @@ describe("sequencer builder", () => {
       const seq = sequencer({ name: "bt-noschema", inputSchema: z.number() }).step(strBlock);
       expect(() => seq.validate()).not.toThrow();
     });
+  });
+});
+
+describe("block-level rescue (FIX-742)", () => {
+  class RateLimitError extends Error {}
+  class OtherError extends Error {}
+
+  function throwing(name: string, err: () => Error = () => new Error("boom")) {
+    return handler({
+      name,
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => {
+        throw err();
+      }
+    });
+  }
+
+  it("recovers a leaf block to the handler's output instead of throwing", async () => {
+    const failing = throwing("leaf-fail");
+    const fallback = handler({
+      name: "leaf-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: (error: Error) => `recovered:${error.message}`
+    });
+
+    const ctx = createMockContext();
+    await expect(runForTest(failing.rescue([{ block: fallback }]), 1, ctx)).resolves.toBe(
+      "recovered:boom"
+    );
+  });
+
+  it("lets the chain continue after a rescued step", async () => {
+    const failing = throwing("mid-step", () => new Error("mid"));
+    const fallback = handler({
+      name: "mid-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => 0
+    });
+    const after = addHandler("after-rescue", 5);
+
+    const seq = sequencer({ name: "continue-seq", inputSchema: z.number() })
+      .step(addHandler("before-rescue", 1))
+      .step(failing.rescue([{ block: fallback }]))
+      .step(after);
+
+    const ctx = createMockContext();
+    // before (1 -> 2), failing rescued to 0, after (0 -> 5).
+    await expect(runForTest(seq, 1, ctx)).resolves.toBe(5);
+  });
+
+  it("leaves the running value unchanged when a tapped block is rescued", async () => {
+    let sideEffect = "";
+    const failing = throwing("tap-fail");
+    const fallback = handler({
+      name: "tap-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.null(),
+      execute: () => {
+        sideEffect = "ran";
+        return null;
+      }
+    });
+
+    const seq = sequencer({ name: "tap-rescue-seq", inputSchema: z.number() })
+      .tap(failing.rescue([{ block: fallback }]))
+      .step(addHandler("after-tap", 10));
+
+    const ctx = createMockContext();
+    // tap discards output; the running value (1) flows to after-tap -> 11.
+    await expect(runForTest(seq, 1, ctx)).resolves.toBe(11);
+    expect(sideEffect).toBe("ran");
+  });
+
+  it("isolates a failing forEach element via per-element rescue", async () => {
+    const fallback = handler({
+      name: "elem-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => -1
+    });
+    const double = handler({
+      name: "elem-double",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (n: number) => {
+        if (n === 2) throw new Error("bad element");
+        return n * 10;
+      }
+    });
+
+    const seq = sequencer({ name: "foreach-rescue", inputSchema: z.array(z.number()) })
+      .forEach((_item: number, index: number) =>
+        index === 1 ? double.rescue([{ block: fallback }]) : double
+      );
+
+    const ctx = createMockContext();
+    await expect(runForTest(seq, [1, 2, 3], ctx)).resolves.toEqual([10, -1, 30]);
+  });
+
+  it("only rescues errors matched by the `when` filter", async () => {
+    const fallback = handler({
+      name: "when-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => 99
+    });
+
+    const rateLimited = throwing("rate-limited", () => new RateLimitError("429"));
+    const ctx = createMockContext();
+    await expect(
+      runForTest(rateLimited.rescue([{ when: [RateLimitError], block: fallback }]), 1, ctx)
+    ).resolves.toBe(99);
+
+    const other = throwing("other-error", () => new OtherError("nope"));
+    await expect(
+      runForTest(other.rescue([{ when: [RateLimitError], block: fallback }]), 1, createMockContext())
+    ).rejects.toThrow("nope");
+  });
+
+  it("does not rescue a SuspensionError (control flow propagates)", async () => {
+    const fallback = handler({
+      name: "suspend-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => 0
+    });
+    const suspending = handler({
+      name: "suspending",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => {
+        throw new SuspensionError({ suspensionId: "s1", reason: "input_required" });
+      }
+    });
+
+    const ctx = createMockContext();
+    await expect(
+      runForTest(suspending.rescue([{ block: fallback }]), 1, ctx)
+    ).rejects.toBeInstanceOf(SuspensionError);
+  });
+
+  it("stamps _didRescue when a leaf rescue recovers, leaving it unset otherwise", async () => {
+    const fallback = handler({
+      name: "flag-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => 0
+    });
+
+    const recoveredCtx = createMockContext();
+    await runForTest(
+      sequencer({ name: "flag-rescue", inputSchema: z.number() }).step(
+        throwing("flag-fail").rescue([{ block: fallback }])
+      ),
+      1,
+      recoveredCtx
+    );
+    expect((recoveredCtx as { _didRescue?: boolean })._didRescue).toBe(true);
+
+    const cleanCtx = createMockContext();
+    await runForTest(
+      sequencer({ name: "flag-clean", inputSchema: z.number() }).step(addHandler("clean", 1)),
+      1,
+      cleanCtx
+    );
+    expect((cleanCtx as { _didRescue?: boolean })._didRescue).toBeUndefined();
+  });
+
+  it("isolates a failing parallel branch via per-branch rescue", async () => {
+    const fallback = handler({
+      name: "par-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => -1
+    });
+    const okBranch = handler({
+      name: "par-ok",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (n: number) => n + 100
+    });
+
+    const seq = sequencer({ name: "parallel-rescue", inputSchema: z.number() }).parallel({
+      a: throwing("par-fail").rescue([{ block: fallback }]),
+      b: okBranch
+    });
+
+    const ctx = createMockContext();
+    // The failing branch recovers to -1; the healthy branch is unaffected.
+    await expect(runForTest(seq, 1, ctx)).resolves.toEqual({ a: -1, b: 101 });
+  });
+
+  it("recovers a block selected by a router route", async () => {
+    const fallback = handler({
+      name: "router-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => -1
+    });
+    const safe = throwing("router-target").rescue([{ block: fallback }]);
+    const route = router({
+      name: "rescue-router",
+      routes: [safe],
+      execute: () => safe
+    });
+
+    const ctx = createMockContext();
+    await expect(runForTest(route, 1, ctx)).resolves.toBe(-1);
+  });
+
+  it("does not re-rescue when a rescue handler itself throws (single attempt)", async () => {
+    let catchAllRan = false;
+    const throwingFallback = handler({
+      name: "throwing-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => {
+        throw new Error("fallback exploded");
+      }
+    });
+    const catchAll = handler({
+      name: "catch-all-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => {
+        catchAllRan = true;
+        return 0;
+      }
+    });
+
+    // The first handler matches and throws. A correct single-attempt
+    // implementation lets that throw propagate — it must NOT be caught by the
+    // second handler ("rescuing the rescue"). Run as a sequencer step so the
+    // failure routes through the executeBlock seam, not just runForTest.
+    const seq = sequencer({ name: "no-double-rescue", inputSchema: z.number() }).step(
+      throwing("double-rescue-target").rescue([{ block: throwingFallback }, { block: catchAll }])
+    );
+
+    const ctx = createMockContext();
+    await expect(runForTest(seq, 1, ctx)).rejects.toThrow("fallback exploded");
+    expect(catchAllRan).toBe(false);
+  });
+
+  it("folds rescue handler resources into the block's declared resources", () => {
+    const auditLog = defineResource({
+      name: "auditLog",
+      scope: "session",
+      stateSchema: z.object({ entries: z.array(z.string()) })
+    });
+    const fallback = handler({
+      name: "resource-fallback",
+      inputSchema: z.any(),
+      outputSchema: z.null(),
+      resources: { auditLog },
+      execute: () => null
+    });
+
+    const rescued = throwing("needs-resource").rescue([{ block: fallback }]);
+    expect(rescued.declaredResources).toBeDefined();
+    expect(Object.keys(rescued.declaredResources ?? {})).toContain("auditLog");
   });
 });
