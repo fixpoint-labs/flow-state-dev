@@ -125,13 +125,14 @@ flows/<flow-name>.ts            → direct file export
 
 ### Monorepo support
 
-In monorepo structures, the CLI also scans one level of subdirectories under `packages/`, `examples/`, and `apps/`:
+In monorepo structures, the CLI also scans one level of subdirectories under `packages/`, `examples/`, `apps/`, and `labs/`:
 
 ```text
 packages/*/src/flows/
 packages/*/flows/
 examples/*/src/flows/
 apps/*/src/flows/
+labs/*/src/flows/
 ```
 
 This means flows defined anywhere in your monorepo are automatically discoverable without configuration.
@@ -150,12 +151,16 @@ When `--flow-dir` is specified, only the given directories are searched — the 
 
 ### Error messages
 
-When a flow or action isn't found, the error lists what was discovered and where it searched:
+When a flow or action isn't found, the error lists what was discovered, where it searched, and any modules that were found but failed to import:
 
 ```text
 Flow "chat" not found. Available flows: echo, stateful, my-agent
 Searched: src/flows, flows, examples/hello-chat/src/flows
+1 flow module(s) failed to import:
+  /repo/examples/chat/src/flows/chat/flow.ts: Error: Cannot find package 'left-pad'
 ```
+
+A module that throws during import also produces a stderr warning at discovery time, so a broken flow is distinguishable from a missing one even when the run otherwise succeeds.
 
 ## Programmatic API
 
@@ -176,7 +181,17 @@ const flows2 = await discoverFlows({
   cwd: "./my-project",
   flowDirs: ["packages/api/src/flows", "shared/flows"],
 });
+
+// Observe modules that throw during import
+const flows3 = await discoverFlows({
+  cwd: "./my-project",
+  onImportFailed: (failure) => {
+    console.warn(`${failure.filePath}: ${failure.message}`);
+  },
+});
 ```
+
+Modules that throw during import are skipped and reported through the `onImportFailed` callback; without it they are skipped silently. Each `FlowImportFailure` carries `filePath` (absolute path), `message` (normalized error text), and `cause` (the original thrown value).
 
 ### `resolveFlow(specifier)`
 
