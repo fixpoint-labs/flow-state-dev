@@ -84,7 +84,7 @@ const spine = clientData as ValuationSpineState | null; // null until computed /
 Numeric fields good for charts (all typed numbers, not display strings):
 
 - `setupScore`: `{ value, quality, factor, momentum }` (each `number | null`, ~0–100 scale) → **factor bar group**.
-- `fairValue`: `{ fairValue, marginOfSafety, justifiedPE }` → fair-value marker on the price chart.
+- `fairValue`: `{ fairValue, marginOfSafety, justifiedPE }` — `fairValue` is a company-level fair market cap in $B, not a share price; it is NOT rendered on the price chart or trade-levels list (FIX-778).
 - `expectedReturn`: `{ expectedReturn, hurdle, excessReturn }` → a small "expected vs. hurdle" pair.
 - `envelope`: `{ implied, floor, ceiling, absoluteRating, relativeRating }` → already mirrored onto the PM memo (`modelImpliedRating` / `ratingBand`); prefer the PM memo fields for the decision header, use the spine for chart numerics.
 
@@ -336,7 +336,7 @@ components/summary/
   charts/
     bar-group.tsx              <BarGroup> — generic horizontal labeled bars (factor scores, etc.) — inline SVG
     scenario-strip.tsx         <ScenarioStrip> — probability strip (lift-and-restyle of PmHero L122-168)
-    price-overlay.tsx          <PriceOverlay> — line chart + entry/stop/target/fair-value horizontal lines — inline SVG
+    price-overlay.tsx          <PriceOverlay> — line chart + entry/stop/target horizontal lines — inline SVG (price-axis quantities only; never the spine's $B fairValue — FIX-778)
   risk-panel.tsx               <RiskPanel> — critical risks + key dependencies
   chart-empty.tsx              <ChartEmpty label="..."> — the "not available for this run" note
 ```
@@ -359,7 +359,7 @@ No chart library is installed and one must not be added (confirmed: `package.jso
 - Use the OKLCH `--c-*` design tokens (`--c-accent`, `--c-surface`, `--c-surface-2`, `--c-fg`, `--c-fg-faint`, `--c-fg-muted`, `--c-border`, `--c-warn`, `--c-live`, `--c-pulse`) so charts are visually consistent and theme-aware (light/dark flip via `data-theme`).
 - Inline SVG server-renders cleanly under Next 16 RSC and adds zero bundle weight. recharts (~95KB + d3, client-island-only under RSC) is explicitly rejected. If rich interactivity is ever needed, revisit visx — not now.
 
-`<PriceOverlay>` math (keep it a pure function, no ResizeObserver): map `close` values to a fixed viewBox (e.g. `0 0 600 160`), `x = i/(n-1)*600`, `y = (1 - (close-min)/(max-min)) * 160`. Draw the close line as a `<polyline>`. Draw `stopPrice` / `targetPrice` / `fairValue.fairValue` / latest-close as horizontal `<line>`s with right-edge labels, each clamped into the same min/max domain (lines outside the price domain widen the domain so they stay visible). If `bars.length < 2`, render `<ChartEmpty label="Price history unavailable for this run" />` plus a standalone trade-levels list (direction/size/stop/target) so the panel still earns its space.
+`<PriceOverlay>` math (keep it a pure function, no ResizeObserver): map `close` values to a fixed viewBox (e.g. `0 0 600 160`), `x = i/(n-1)*600`, `y = (1 - (close-min)/(max-min)) * 160`. Draw the close line as a `<polyline>`. Draw `stopPrice` / `targetPrice` / latest-close as horizontal `<line>`s with right-edge labels, each clamped into the same min/max domain (lines outside the price domain widen the domain so they stay visible). If `bars.length < 2`, render `<ChartEmpty label="Price history unavailable for this run" />` plus a standalone trade-levels list (direction/size/stop/target) so the panel still earns its space.
 
 ### 6.4 ASCII mockups
 

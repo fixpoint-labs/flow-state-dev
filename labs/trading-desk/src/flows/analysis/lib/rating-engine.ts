@@ -36,8 +36,13 @@ export interface RatingEnvelope {
 }
 
 // ── Absolute axis thresholds ────────────────────────────────────────
-// Buy:  excessReturn ≥ +10% AND marginOfSafety ≥ 25%
-// Hold: -3% ≤ excessReturn < +10% OR mixed/thin
+// Buy:  excessReturn ≥ +10%, AND marginOfSafety ≥ 25% when a valid MoS
+//       reading exists. A null MoS (no applicable valuation method — e.g.
+//       high-growth names outside the Gordon domain, financials) is NO
+//       EVIDENCE, not a failed value test: the floor must not fire on it
+//       (FIX-778 — missing data is absorbed by confidence, never by a
+//       lower rating).
+// Hold: -3% ≤ excessReturn < +10%, OR mixed/thin, OR a VALID MoS < 25%
 // Sell: excessReturn < -3%
 
 function computeAbsoluteRating(
@@ -58,6 +63,13 @@ function computeAbsoluteRating(
     };
   }
 
+  if (xr >= 0.10 && mos == null) {
+    return {
+      rating: "Buy",
+      rationale: `excess return ${(xr * 100).toFixed(1)}% ≥ 10%; margin of safety unavailable (no applicable valuation method) — return-anchored`,
+    };
+  }
+
   if (xr >= 0.10 && mos != null && mos >= 0.25) {
     return {
       rating: "Buy",
@@ -68,7 +80,7 @@ function computeAbsoluteRating(
   return {
     rating: "Hold",
     rationale: xr >= 0.10
-      ? `excess return ${(xr * 100).toFixed(1)}% but margin of safety ${mos != null ? (mos * 100).toFixed(0) + "%" : "unavailable"} < 25%`
+      ? `excess return ${(xr * 100).toFixed(1)}% but margin of safety ${(mos! * 100).toFixed(0)}% < 25%`
       : `excess return ${(xr * 100).toFixed(1)}% within neutral band`,
   };
 }
