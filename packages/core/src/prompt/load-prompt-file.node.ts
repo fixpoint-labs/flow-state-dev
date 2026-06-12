@@ -12,7 +12,7 @@
  * `partials` map to `parsePromptFile` instead.
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -76,8 +76,10 @@ export interface ResolveBaseDirOptions {
  * );
  * ```
  *
- * @throws {TypeError} when a defined candidate is not an absolute path —
- *   relative candidates would silently reintroduce cwd-dependence.
+ * @throws {TypeError} when any defined candidate is not an absolute path —
+ *   checked eagerly for every candidate before probing, so a malformed
+ *   fallback fails in every runtime, not only in the runtime where the
+ *   earlier candidates happen to miss.
  * @throws {Error} when no candidate qualifies; the message lists every
  *   candidate with the reason it was rejected.
  */
@@ -86,21 +88,23 @@ export function resolveBaseDir(
   options?: ResolveBaseDirOptions
 ): string {
   const expect = options?.expect;
-  const rejected: string[] = [];
-  let sawUndefined = false;
-  for (const candidate of candidates) {
-    if (candidate === undefined) {
-      sawUndefined = true;
-      continue;
-    }
+  const defined = candidates.filter((c): c is string => c !== undefined);
+  for (const candidate of defined) {
     if (!path.isAbsolute(candidate)) {
       throw new TypeError(
         `resolveBaseDir: candidates must be absolute paths, got "${candidate}". ` +
           `Derive candidates from moduleDir(import.meta.url, ...) or process.cwd().`
       );
     }
+  }
+  const rejected: string[] = [];
+  for (const candidate of defined) {
     if (!existsSync(candidate)) {
       rejected.push(`  - ${candidate} (does not exist)`);
+      continue;
+    }
+    if (!statSync(candidate).isDirectory()) {
+      rejected.push(`  - ${candidate} (not a directory)`);
       continue;
     }
     if (expect !== undefined && !existsSync(path.join(candidate, expect))) {
@@ -109,9 +113,10 @@ export function resolveBaseDir(
     }
     return candidate;
   }
-  const skippedNote = sawUndefined
-    ? `\n(Undefined candidates were skipped — typically a bundler-rewritten import.meta.url.)`
-    : "";
+  const skippedNote =
+    defined.length < candidates.length
+      ? `\n(Undefined candidates were skipped — typically a bundler-rewritten import.meta.url.)`
+      : "";
   throw new Error(
     `resolveBaseDir: no candidate directory qualified.\nTried:\n` +
       (rejected.length > 0 ? rejected.join("\n") : "  (no defined candidates)") +

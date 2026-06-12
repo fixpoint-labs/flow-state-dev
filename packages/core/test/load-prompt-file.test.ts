@@ -113,6 +113,12 @@ describe("resolveBaseDir", () => {
     expect(resolveBaseDir([missing, TEST_DIR])).toBe(TEST_DIR);
   });
 
+  it("prefers the earlier candidate when several qualify", () => {
+    // The heart of the anchoring idiom: the module-relative candidate must
+    // beat the cwd fallback whenever both directories exist.
+    expect(resolveBaseDir([TEST_DIR, FIXTURE_DIR])).toBe(TEST_DIR);
+  });
+
   it("skips candidates whose moduleDir came back undefined (bundler-rewritten URL)", () => {
     expect(
       resolveBaseDir([moduleDir("turbopack://[project]/x.js"), FIXTURE_DIR])
@@ -128,6 +134,12 @@ describe("resolveBaseDir", () => {
 
   it("throws TypeError on a relative candidate", () => {
     expect(() => resolveBaseDir(["relative/dir"])).toThrow(TypeError);
+  });
+
+  it("validates every candidate eagerly, even after a qualifying one", () => {
+    // A malformed fallback must fail in every runtime, not only in the
+    // runtime where the earlier candidates happen to miss.
+    expect(() => resolveBaseDir([TEST_DIR, "relative/dir"])).toThrow(TypeError);
   });
 
   it("throws an Error listing every rejected candidate when none qualifies", () => {

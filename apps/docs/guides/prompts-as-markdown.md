@@ -94,7 +94,7 @@ Run the flow and open the block-trace inspector for the generator. It shows a "T
 
 The trading-desk example shows the migration on real prompts. Each Phase 1 analyst used to carry its full system prompt as an inline string in `prompts.ts`, and every one of them repeated the same output-schema preamble: "Your output schema is enforced by the framework. Return a single JSON object…".
 
-After the migration, each analyst's prompt lives in its own file under `phase-1/prompts/`, and the repeated preamble lives once as a partial.
+After the migration, each analyst's prompt lives in its own file under `agents/analysts/prompts/`, and the repeated preamble lives once as a partial.
 
 A partial is just another `.md` file. In Node, `loadPromptFile` auto-registers sibling `.md` files in the prompt's directory as partials, named by filename. The shared preamble sits in a `_partials` directory and gets pulled in with `{% render 'shared-output-preamble' %}`:
 
@@ -114,6 +114,13 @@ Synthesize a thesis from the financial data provided.
 The example builds its loader once with `createPromptLoader` and exports it as `loadPrompt`, pointing every `{% render %}` at the shared `_partials` directory so each call site is just a filename. The base directory comes from `resolveBaseDir`, which tries candidates in order and takes the first that exists and contains the probe path:
 
 ```ts
+import path from "node:path";
+import {
+  createPromptLoader,
+  moduleDir,
+  resolveBaseDir,
+} from "@flow-state-dev/core/prompt-file/node";
+
 const APP_ROOT = resolveBaseDir(
   [moduleDir(import.meta.url, "../../../.."), process.cwd()],
   { expect: "src/flows/analysis" },
