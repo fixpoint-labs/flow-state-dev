@@ -295,16 +295,24 @@ describe("createScopeResourceRegistry — static resources", () => {
     const ref = registry.get("doc");
     await ref.writeContent("new content");
     expect(await ref.readContent()).toBe("new content");
+    // Parity with the collection-instance content path (FIX-756): exactly one
+    // emission, with no projection delta and no state delta (exact arity).
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith("doc", "updated");
   });
 
   it("writeContent throws for read-only resources", async () => {
+    const onChange = vi.fn();
     const config = makeResourceConfig({ writable: false });
     const registry = makeRegistry({
       configs: { doc: config },
-      initialState: { doc: {} }
+      initialState: { doc: {} },
+      onResourceChanged: onChange
     });
     const ref = registry.get("doc");
     await expect(ref.writeContent("fail")).rejects.toThrow(/read-only/);
+    // The guard throws before persist — a failed write must not announce.
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 
@@ -431,6 +439,24 @@ describe("createScopeResourceRegistry — collections", () => {
     expect(ref.state).toEqual({ v: 2 });
     expect(onUpdated).toHaveBeenCalledOnce();
     expect(onUpdated.mock.calls[0][0]).toBe("items/doc1");
+  });
+
+  it("instance writeContent persists content and emits change (FIX-756 parity)", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*");
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      onResourceChanged: onChange
+    });
+    await (registry as any).items.create("doc1", {});
+    const ref = await (registry as any).items.get("doc1");
+    onChange.mockClear();
+
+    await ref.writeContent("body");
+    // Content-only write: exactly one emission, no projection delta and no
+    // state delta (exact arity) — the client falls back to a batched refetch.
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated");
   });
 
   it("instance setState replaces state and fires onInstanceUpdated", async () => {
@@ -597,6 +623,27 @@ describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
     });
     await silentReg.get("doc").patchState({ status: "writing" });
     expect(onSilent).not.toHaveBeenCalled();
+  });
+
+  it("emits with no projection delta for a live single-resource content write (FIX-756)", async () => {
+    const onChange = vi.fn();
+    const registry = makeRegistry({
+      configs: {
+        doc: makeResourceConfig({
+          stateSchema: z.object({ status: z.string().default("pending") }).passthrough(),
+          client: { expose: ["status"], live: true }
+        })
+      },
+      initialState: { doc: { status: "pending" } },
+      onResourceChanged: onChange
+    });
+
+    await registry.get("doc").writeContent("body");
+    // Content carries no state projection — even for a live resource the
+    // emission has exact arity (key, "updated"): no delta is ever computed
+    // from state on a content-only write.
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith("doc", "updated");
   });
 
   it("degrades to no delta when a live client.data projection throws", async () => {
