@@ -46,6 +46,11 @@ Phase 1 — analyst fan-out:
 - **Typed memo resources** — every analyst writes a structured `Thesis`-shape
   memo readable via the standard resource hook.
 - **Two-pane streaming UI** — transcript on the left, theses on the right.
+- **Phone-friendly mobile shell** — below 1024px the desk swaps to a dedicated
+  mobile layout: a bottom tab bar (Report · Transcript · New · Portfolio ·
+  History), one full-width surface at a time, and the dialogs presented as
+  bottom sheets. Same content components and data hooks as the desktop shell;
+  only the layout and navigation branch.
 - **Fixture / live data toggle** — fixtures ship for `NVDA / 2026-05-06`,
   `AAPL / 2026-05-06`, and `JPM / 2026-05-06`. Live prices and fundamentals
   via `yahoo-finance2` (no key required).

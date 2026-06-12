@@ -102,7 +102,7 @@ export function AddAccountDialog({
       ref={dialogRef}
       onClose={onClose}
       className={cn(
-        "rounded border p-0 backdrop:bg-black/40",
+        "td-sheet m-auto rounded border p-0 backdrop:bg-black/40",
         "border-[color:var(--c-border)] bg-[color:var(--c-surface)]",
         "text-[color:var(--c-fg)]",
         "w-[min(440px,calc(100vw-32px))]",
