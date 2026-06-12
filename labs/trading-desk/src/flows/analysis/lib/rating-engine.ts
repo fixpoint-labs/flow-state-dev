@@ -77,10 +77,13 @@ function computeAbsoluteRating(
     };
   }
 
+  // Reaching here with xr ≥ 0.10 implies mos != null && mos < 0.25 (the
+  // null-MoS case returned Buy above); the && narrows mos without an
+  // assertion so a future guard reorder fails the compile, not the runtime.
   return {
     rating: "Hold",
-    rationale: xr >= 0.10
-      ? `excess return ${(xr * 100).toFixed(1)}% but margin of safety ${(mos! * 100).toFixed(0)}% < 25%`
+    rationale: xr >= 0.10 && mos != null
+      ? `excess return ${(xr * 100).toFixed(1)}% but margin of safety ${(mos * 100).toFixed(0)}% < 25%`
       : `excess return ${(xr * 100).toFixed(1)}% within neutral band`,
   };
 }
