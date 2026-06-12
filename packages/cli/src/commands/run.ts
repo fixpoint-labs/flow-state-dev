@@ -18,7 +18,14 @@ import {
   type StoreRegistry
 } from "@flow-state-dev/server";
 import type { FlowInstance, ModelResolver, JsonObject } from "@flow-state-dev/core/types";
-import { discoverFlows, getSearchedDirs, type DiscoverFlowsOptions } from "../resolve-flow";
+import {
+  discoverFlows,
+  getSearchedDirs,
+  formatImportFailureWarning,
+  formatFailedImportSection,
+  type DiscoverFlowsOptions,
+  type FlowImportFailure,
+} from "../resolve-flow";
 import { parseInputArg } from "../parse-input";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
@@ -263,12 +270,20 @@ export async function executeRunCommand(
   const cwd = options.cwd ?? process.cwd();
   loadEnvFiles(cwd);
 
-  // 1. Discover flows from conventional directories
+  // 1. Discover flows from conventional directories. Import failures are
+  // collected and warned to stderr unconditionally (not gated by --quiet):
+  // they're diagnostics about broken modules, the same category as CliError
+  // output, and stderr keeps stdout NDJSON-pure.
+  const failures: FlowImportFailure[] = [];
   const discoverOptions: DiscoverFlowsOptions = {
     cwd: options.cwd,
     ...(options.flowDir !== undefined ? { flowDirs: options.flowDir } : {}),
+    onImportFailed: (failure) => failures.push(failure),
   };
   const flows = await discoverFlows(discoverOptions);
+  for (const failure of failures) {
+    process.stderr.write(formatImportFailureWarning(failure));
+  }
 
   const flow = flows.find((f) => f.kind === flowKind);
   if (flow === undefined) {
@@ -276,7 +291,7 @@ export async function executeRunCommand(
     const searched = getSearchedDirs(discoverOptions).join(", ");
     throw new CliError(
       `Flow "${flowKind}" not found. Available flows: ${available}\n` +
-      `Searched: ${searched}`,
+      `Searched: ${searched}` + formatFailedImportSection(failures),
       EXIT_DISCOVERY_ERROR,
     );
   }

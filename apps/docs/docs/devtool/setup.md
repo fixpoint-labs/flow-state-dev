@@ -103,4 +103,4 @@ Session data persists to `.fsdev/data/` relative to your working directory. Dele
 
 ## Monorepo support
 
-In monorepos, `fsdev dev` scans one level under `packages/`, `examples/`, and `apps/` for flow directories. Run it from the monorepo root to discover flows across all packages.
+In monorepos, `fsdev dev` scans one level under `packages/`, `examples/`, `apps/`, and `labs/` for flow directories. Run it from the monorepo root to discover flows across all packages.

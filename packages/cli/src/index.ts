@@ -5,7 +5,7 @@
 export { program } from "./cli";
 export { resolveBlock, isBlockDefinition } from "./resolve-block";
 export { resolveFlow, discoverFlows, getSearchedDirs, isFlowInstance } from "./resolve-flow";
-export type { DiscoverFlowsOptions } from "./resolve-flow";
+export type { DiscoverFlowsOptions, FlowImportFailure } from "./resolve-flow";
 export { parseInputArg } from "./parse-input";
 export { formatOutput } from "./format-output";
 export {

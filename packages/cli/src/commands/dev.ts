@@ -19,7 +19,14 @@ import {
 } from "@flow-state-dev/server";
 import { serve } from "@flow-state-dev/node";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { discoverFlows, getSearchedDirs, type DiscoverFlowsOptions } from "../resolve-flow";
+import {
+  discoverFlows,
+  getSearchedDirs,
+  formatImportFailureWarning,
+  formatFailedImportSection,
+  type DiscoverFlowsOptions,
+  type FlowImportFailure,
+} from "../resolve-flow";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_DISCOVERY_ERROR, EXIT_CONFIG_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 import { loadEnvFiles } from "../load-env";
@@ -76,17 +83,24 @@ async function executeDevCommand(options: DevCommandOptions): Promise<void> {
   // 1. Resolve DevTool asset path
   const assetPath = await resolveDevToolAssets();
 
-  // 2. Discover flows
+  // 2. Discover flows. Import failures are warned to stderr unconditionally —
+  // diagnostics about broken modules, same category as CliError output.
+  const failures: FlowImportFailure[] = [];
   const discoverOptions: DiscoverFlowsOptions = {
     ...(options.flowDir !== undefined ? { flowDirs: options.flowDir } : {}),
+    onImportFailed: (failure) => failures.push(failure),
   };
   const flows = await discoverFlows(discoverOptions);
+  for (const failure of failures) {
+    process.stderr.write(formatImportFailureWarning(failure));
+  }
 
   if (flows.length === 0) {
     const searched = getSearchedDirs(discoverOptions).join(", ");
     throw new CliError(
       `No flows found. Searched: ${searched}\n` +
-      `Place flow definitions in src/flows/ or flows/, or use --flow-dir.`,
+      `Place flow definitions in src/flows/ or flows/, or use --flow-dir.` +
+      formatFailedImportSection(failures),
       EXIT_DISCOVERY_ERROR,
     );
   }
