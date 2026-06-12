@@ -322,6 +322,7 @@ import {
 
 const PROMPT_ROOT = resolveBaseDir(
   [moduleDir(import.meta.url, "./prompts"), path.resolve(process.cwd(), "src/prompts")],
+  { expect: "_partials" },
 );
 const load = createPromptLoader(PROMPT_ROOT);
 const analyst = generator({ name: "analyst", model, prompt: load("analyst.prompt.md") });
