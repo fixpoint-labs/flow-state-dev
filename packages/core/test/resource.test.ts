@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineResource } from "../src";
+import { defineResource, handler } from "../src";
 import { defineResourceCollection } from "../src/types/resource-collection";
 import { parseResourceTemplate } from "../src/resource-template/resource-template";
 
 const stubTemplate = parseResourceTemplate("<system>Hello {{ state.name }}</system>");
+
+const reactiveBlock = handler({ name: "react", execute: () => {} });
 
 describe("defineResource", () => {
   it("throws when content and contentFile are both provided", () => {
@@ -86,6 +88,46 @@ describe("defineResource", () => {
       contentTemplateRef: "templates/analyst",
     });
     expect(res.contentTemplateRef).toBe("templates/analyst");
+  });
+
+  it("accepts an updated block binding in reactTo", () => {
+    const res = defineResource({
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      reactTo: { updated: reactiveBlock },
+    });
+    expect(res.reactTo?.updated).toBe(reactiveBlock);
+  });
+
+  it("rejects created/deleted reactTo bindings on a single resource", () => {
+    // Single resources have no create/delete lifecycle — only `updated` fires,
+    // so binding those kinds would be a silent no-op. Reject at build time.
+    expect(() => defineResource({
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      reactTo: { created: reactiveBlock },
+    })).toThrow("does not support reactTo.created");
+    expect(() => defineResource({
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      reactTo: { deleted: reactiveBlock },
+    })).toThrow("does not support reactTo.deleted");
+  });
+
+  it("throws when a reactTo binding is not a block", () => {
+    expect(() => defineResource({
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      reactTo: { updated: {} as never },
+    })).toThrow("reactTo.updated must be a block");
+  });
+
+  it("throws when a reactTo binding's when is not a function", () => {
+    expect(() => defineResource({
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      reactTo: { updated: { block: reactiveBlock, when: "x" as never } },
+    })).toThrow("reactTo.updated.when must be a function");
   });
 
   describe("edges slot", () => {
@@ -183,5 +225,24 @@ describe("defineResourceCollection", () => {
       contentTemplate: "./templates/item.md",
     });
     expect(col.contentTemplate).toBe("./templates/item.md");
+  });
+
+  it("accepts a block binding in reactTo", () => {
+    const col = defineResourceCollection({
+      pattern: "items/*",
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      reactTo: { deleted: reactiveBlock },
+    });
+    expect(col.reactTo?.deleted).toBe(reactiveBlock);
+  });
+
+  it("throws when a reactTo binding is not a block", () => {
+    expect(() => defineResourceCollection({
+      pattern: "items/*",
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      reactTo: { deleted: {} as never },
+    })).toThrow("reactTo.deleted must be a block");
   });
 });

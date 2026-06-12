@@ -13,6 +13,8 @@ import type { ResourceCollectionRef, DefinedResourceCollection } from "./resourc
 import type { ResourceTemplate } from "../resource-template/resource-template";
 import { validateClientProjection } from "../helpers/client-projection";
 import type { ProjectedClient } from "../helpers/client-projection";
+import type { ReactiveBindings } from "./resource-change";
+import { validateReactTo } from "./resource-change";
 
 /**
  * The scope a resource is intrinsically bound to. Determines which storage
@@ -206,6 +208,13 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   prefetchMode?: "eager" | "lazy";
   /** Client visibility configuration. Omit to keep the resource invisible to clients. */
   client?: ResourceClientConfig<TState>;
+  /**
+   * Bind blocks to this resource's mutations (FIX-751). Each present entry
+   * (`created` / `updated` / `deleted`) names a block — bare, or
+   * `{ block, when }` with an optional gate — that the server dispatcher runs
+   * with a `ResourceChange` payload when that mutation fires.
+   */
+  reactTo?: ReactiveBindings<TState>;
   /** Declare a typed-edge graph on this resource. `true` = defaults; object = curated vocabulary / size cap. The framework injects an `edges: Edge[]` state field (if absent) and attaches an `.edges` API to the live ref. */
   edges?: boolean | EdgeSlotConfig;
 };
@@ -386,6 +395,9 @@ export function defineResource<
     stateSchema: config.stateSchema,
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
+
+  // Single resources have no create/delete lifecycle — only `updated` fires.
+  validateReactTo("defineResource()", config.reactTo, ["updated"]);
 
   // Edge-slot injection: when `edges` is declared, fold an `edges: Edge[]` field
   // into the resolved state schema + default unless the resource already declares

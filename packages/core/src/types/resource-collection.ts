@@ -5,6 +5,7 @@ import type { ResourceRef, CollectionClientConfig, StateOf } from "./resource";
 import type { ResourceTemplate } from "../resource-template/resource-template";
 import type { EdgeSlotConfig } from "../graph";
 import type { ProjectedClient } from "../helpers/client-projection";
+import type { ReactiveBindings } from "./resource-change";
 
 // Re-export pattern utilities for consumers
 export {
@@ -109,6 +110,16 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   ) => void | Promise<void>;
   /** Fires when a specific instance is deleted (including eviction). */
   onInstanceDeleted?: (key: string, ctx: CollectionHookContext) => void | Promise<void>;
+
+  /**
+   * Bind blocks to this collection's instance mutations (FIX-751). Each present
+   * entry (`created` / `updated` / `deleted`) names a block — bare, or
+   * `{ block, when }` with an optional gate — that the server dispatcher runs
+   * with a `ResourceChange` payload when that mutation fires. Coexists with the
+   * `onInstance*` callbacks above and supersedes them for the block case: prefer
+   * `reactTo` when the reaction is itself a block to run, not just a side effect.
+   */
+  reactTo?: ReactiveBindings<TState>;
 };
 
 type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
@@ -224,6 +235,7 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
 import { z } from "zod";
 import { validatePattern } from "./collection-patterns";
 import { validateClientProjection } from "../helpers/client-projection";
+import { validateReactTo } from "./resource-change";
 import { edgeListSchema } from "../graph";
 
 export function defineResourceCollection<
@@ -294,6 +306,8 @@ export function defineResourceCollection<
     stateSchema: config.stateSchema,
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
+
+  validateReactTo("defineResourceCollection()", config.reactTo);
 
   // Edge slot injection (FIX-745): when a collection declares `edges`, extend
   // each instance's state schema with an `edges: Edge[]` field — the same way
