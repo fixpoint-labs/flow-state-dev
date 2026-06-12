@@ -10,8 +10,9 @@ import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 
 const FIXTURE_ROOT = path.resolve(__dirname, "..", "fixtures");
 
-// `loadFixture` resolves against `process.cwd()`. Tests anchor cwd to the
-// trading-desk package root so the loader finds the curated fixtures.
+// `loadFixture` now anchors at the package root via `lib/app-root.ts`
+// (module-relative, cwd fallback), so this chdir is no longer load-bearing;
+// it stays as harmless scaffolding shared with the other tool specs.
 const originalCwd = process.cwd();
 beforeEach(() => {
   process.chdir(path.resolve(__dirname, ".."));

@@ -19,7 +19,7 @@ The trading-desk's `tradingDesk` capability hit the threshold easily: nine
 generators across four phases share model selection and ticker/date context,
 plus the heavy memo/contribution context bundles are reusable across
 multiple consolidation steps. See
-[`labs/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts`](../../labs/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts).
+[`labs/trading-desk/src/flows/analysis/capability.ts`](../../labs/trading-desk/src/flows/analysis/capability.ts).
 
 ## When per-tool files beat a dispatch abstraction
 
@@ -64,7 +64,7 @@ designed for this.
 The trading-desk's first cut used a session-scoped resource for market-data
 deduplication. That was over-architecting — every NVDA fundamentals fetch
 ran once per session. Switching to a process-wide 120s TTL cache (see
-[`labs/trading-desk/src/flows/trading-desk/services/cache.ts`](../../labs/trading-desk/src/flows/trading-desk/services/cache.ts))
+[`labs/trading-desk/src/flows/analysis/tools/runtime/cache.ts`](../../labs/trading-desk/src/flows/analysis/tools/runtime/cache.ts))
 let multiple sessions share warm fetches, dropped the cache plumbing
 (`ctx.resources.marketdata`, the `marketDataCollection` definition, the flow
 registration), and made the call sites cleaner.
@@ -78,9 +78,11 @@ snapshot day, every fixture lookup misses.
 The trading-desk pattern:
 
 ```ts
-// services/fixtures.ts
+// tools/runtime/fixtures.ts
 const FIXTURE_SNAPSHOT = "2026-05-06";
-const FIXTURE_ROOT = path.resolve(process.cwd(), "fixtures");
+// FIXTURE_ROOT hangs off the package root resolved once in lib/app-root.ts —
+// see "import.meta.url is unreliable under Turbopack" below for why.
+const FIXTURE_ROOT = path.join(APP_ROOT, "fixtures");
 
 export async function loadFixture<T extends ToolName>(
   tool: T,
@@ -126,20 +128,39 @@ A few gotchas when the flow runs inside a Next.js app:
 
 Turbopack rewrites `import.meta.url` during server bundling, so a relative
 walk from the file location can land inside `.next/` rather than the source
-tree. **Anchor on `process.cwd()`** for filesystem paths in server code —
-Next.js dev, Next.js build, and vitest all set `cwd` to the app's package
-directory.
+tree. Anchoring on `process.cwd()` alone is no better: it works under Next.js
+dev/build (which pin cwd to the app package) and then breaks the moment
+anything imports the flow from another directory — `fsdev run` at the repo
+root, a consumer-repo script, an eval harness.
+
+**Resolve the anchor once with `resolveBaseDir`** (from
+`@flow-state-dev/core/prompt-file/node`): a module-relative candidate first,
+a cwd-derived fallback second, and an `expect` probe that rejects
+bundler-rewritten paths. The module-relative candidate carries every
+unbundled runtime from any cwd; the cwd candidate carries Turbopack.
 
 ```ts
-// Reliable
-const FIXTURE_ROOT = path.resolve(process.cwd(), "fixtures");
+// Robust across fsdev run / vitest / tsx / Next.js dev and build
+const APP_ROOT = resolveBaseDir(
+  [moduleDir(import.meta.url, "../../../.."), process.cwd()],
+  { expect: "src/flows/analysis" },
+);
+const FIXTURE_ROOT = path.join(APP_ROOT, "fixtures");
 
-// Fragile under Turbopack
+// Fragile under Turbopack (lands inside .next/)
 const FIXTURE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../../fixtures",
 );
+
+// Fragile from any other entry point (depends on where the process started)
+const FIXTURE_ROOT = path.resolve(process.cwd(), "fixtures");
 ```
+
+If no candidate qualifies, `resolveBaseDir` throws at import time listing
+everything it tried — a flow that cannot locate its files should fail loudly
+at import, not mid-run on a fabricated path. See the trading-desk's
+`lib/app-root.ts` for the live example.
 
 ### Module-level `const` values are frozen at server start
 
