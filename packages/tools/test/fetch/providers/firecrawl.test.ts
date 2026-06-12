@@ -48,7 +48,7 @@ describe("firecrawl fetch adapter", () => {
         waitForJS: false,
         apiKey: "test-key",
       })
-    ).rejects.toThrow("Firecrawl scrape failed: Rate limit exceeded");
+    ).rejects.toThrow("firecrawl fetch failed: Rate limit exceeded");
   });
 
   it("passes waitFor when waitForJS is true", async () => {

@@ -1,6 +1,6 @@
 /**
  * Tests for the Phase 5 scenario-forecast writer taps and the ScenarioForecast output schema.
- * Confirms `markWriting` flips `session.memoStatus`, that
+ * Confirms `markWriting` flips the scenario-forecast memo's status, that
  * `commitScenarioForecastMemo` publishes a well-formed forecast with
  * normalized probabilities and copied horizon, and that out-of-band
  * probability sums trigger `probability-violation`.
@@ -13,6 +13,8 @@ import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/mem
 import { scenarioForecastOutputSchema } from "../src/flows/analysis/agents/scenario-forecaster/scenario-forecaster";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { PHASE_5_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const writeSf = markWriting("scenarioForecast");
 const errorSf = markError("scenarioForecast");
@@ -35,7 +37,6 @@ const baseSessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-5" as const,
   maxDebateRounds: 1,
-  memoStatus: { scenarioForecast: "pending" as const },
   runComplete: false,
 };
 
@@ -59,6 +60,7 @@ function scenarioForecast(
       trigger: string;
       triggerSource: "investmentThesis" | "tradeProposal" | "riskAssessment" | "phase1";
       expectedOutcome: string;
+      expectedReturnPct: number;
       tradeBehavior: string;
     }>;
     distribution: "concentrated" | "balanced" | "barbell" | "long-tail";
@@ -89,6 +91,7 @@ function scenarioForecast(
         trigger: "Consensus data-center revenue met",
         triggerSource: "investmentThesis" as const,
         expectedOutcome: "Stock +3-5% on guidance re-affirm",
+        expectedReturnPct: 4,
         tradeBehavior: "Modest gain, hold to target",
       },
       {
@@ -97,6 +100,7 @@ function scenarioForecast(
         trigger: "Attach rate exceeds street model",
         triggerSource: "tradeProposal" as const,
         expectedOutcome: "Stock +10-15% on Q2 beat",
+        expectedReturnPct: 12,
         tradeBehavior: "Full profit, consider scaling out",
       },
       {
@@ -105,6 +109,7 @@ function scenarioForecast(
         trigger: "China export controls tighten",
         triggerSource: "riskAssessment" as const,
         expectedOutcome: "Stock -5 to -10% on cut",
+        expectedReturnPct: -8,
         tradeBehavior: "Stop hit, exit at loss",
       },
     ],
@@ -114,15 +119,14 @@ function scenarioForecast(
 }
 
 describe("Phase 5 scenario-forecast writer taps", () => {
-  it("markWriting flips memoStatus.scenarioForecast to writing", async () => {
+  it("markWriting flips the scenario-forecast memo to writing", async () => {
     const result = await testBlock(writeSf, {
       input: {},
       flow: fixtureFlow,
       session: { state: baseSessionState },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.scenarioForecast).toBe("writing");
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.scenarioForecast.memoKey)).toBe("writing");
   });
 
   it("commitScenarioForecastMemo publishes a well-formed forecast", async () => {
@@ -130,10 +134,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       input: scenarioForecast(),
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { scenarioForecast: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
@@ -143,23 +144,22 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.scenarioForecast).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.scenarioForecast.memoKey)).toBe("published");
   });
 
   it("commitScenarioForecastMemo normalizes probabilities to sum 1.0", async () => {
     const scenarios = [
       {
         name: "A", probability: 0.5, trigger: "t", triggerSource: "investmentThesis" as const,
-        expectedOutcome: "o", tradeBehavior: "b",
+        expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b",
       },
       {
         name: "B", probability: 0.3, trigger: "t", triggerSource: "riskAssessment" as const,
-        expectedOutcome: "o", tradeBehavior: "b",
+        expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b",
       },
       {
         name: "C", probability: 0.3, trigger: "t", triggerSource: "tradeProposal" as const,
-        expectedOutcome: "o", tradeBehavior: "b",
+        expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b",
       },
     ];
     // Sum = 1.1, within [0.8, 1.2] — should normalize
@@ -167,10 +167,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       input: scenarioForecast({ scenarios }),
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { scenarioForecast: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
@@ -180,8 +177,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.scenarioForecast).toBe("published");
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.scenarioForecast.memoKey)).toBe("published");
   });
 
   it("markError flips scenarioForecast to error", async () => {
@@ -189,10 +185,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { scenarioForecast: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
@@ -201,8 +194,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
       },
     });
     expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.scenarioForecast).toBe("error");
+    expect(latestMemoStatus(result.items, PHASE_5_MEMO_KEYS.scenarioForecast.memoKey)).toBe("error");
   });
 });
 
@@ -214,11 +206,11 @@ describe("scenarioForecastOutputSchema", () => {
 
   it("accepts a 5-bucket forecast", () => {
     const scenarios = [
-      { name: "A", probability: 0.3, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "B", probability: 0.25, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "C", probability: 0.2, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "D", probability: 0.15, trigger: "t", triggerSource: "phase1" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "E", probability: 0.1, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", tradeBehavior: "b" },
+      { name: "A", probability: 0.3, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "B", probability: 0.25, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "C", probability: 0.2, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "D", probability: 0.15, trigger: "t", triggerSource: "phase1" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "E", probability: 0.1, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
     ];
     const parsed = scenarioForecastOutputSchema.safeParse(
       scenarioForecast({ scenarios }),
@@ -228,8 +220,8 @@ describe("scenarioForecastOutputSchema", () => {
 
   it("rejects a 2-bucket forecast", () => {
     const scenarios = [
-      { name: "A", probability: 0.6, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "B", probability: 0.4, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", tradeBehavior: "b" },
+      { name: "A", probability: 0.6, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "B", probability: 0.4, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
     ];
     const parsed = scenarioForecastOutputSchema.safeParse(
       scenarioForecast({ scenarios }),
@@ -243,7 +235,7 @@ describe("scenarioForecastOutputSchema", () => {
       probability: 1 / 6,
       trigger: "t",
       triggerSource: "investmentThesis" as const,
-      expectedOutcome: "o",
+      expectedOutcome: "o", expectedReturnPct: 0,
       tradeBehavior: "b",
     }));
     const parsed = scenarioForecastOutputSchema.safeParse(
@@ -256,19 +248,16 @@ describe("scenarioForecastOutputSchema", () => {
 describe("probability-violation rescue", () => {
   it("throws when probabilities sum below 0.8", async () => {
     const scenarios = [
-      { name: "A", probability: 0.2, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "B", probability: 0.2, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "C", probability: 0.2, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", tradeBehavior: "b" },
+      { name: "A", probability: 0.2, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "B", probability: 0.2, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "C", probability: 0.2, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
     ];
     // Sum = 0.6, outside [0.8, 1.2]
     const result = await testBlock(commitScenarioForecastMemo, {
       input: scenarioForecast({ scenarios }),
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { scenarioForecast: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
@@ -283,19 +272,16 @@ describe("probability-violation rescue", () => {
 
   it("throws when probabilities sum above 1.2", async () => {
     const scenarios = [
-      { name: "A", probability: 0.5, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "B", probability: 0.5, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", tradeBehavior: "b" },
-      { name: "C", probability: 0.5, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", tradeBehavior: "b" },
+      { name: "A", probability: 0.5, trigger: "t", triggerSource: "investmentThesis" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "B", probability: 0.5, trigger: "t", triggerSource: "riskAssessment" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
+      { name: "C", probability: 0.5, trigger: "t", triggerSource: "tradeProposal" as const, expectedOutcome: "o", expectedReturnPct: 0, tradeBehavior: "b" },
     ];
     // Sum = 1.5, outside [0.8, 1.2]
     const result = await testBlock(commitScenarioForecastMemo, {
       input: scenarioForecast({ scenarios }),
       flow: fixtureFlow,
       session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: { scenarioForecast: "writing" },
-        },
+        state: baseSessionState,
         resources: {
           "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
@@ -308,16 +294,3 @@ describe("probability-violation rescue", () => {
     expect(result.error?.message).toContain("probability-violation");
   });
 });
-
-type LastStatePayload = { memoStatus: Record<string, string> };
-
-type ResultLike = {
-  stateChanges: Array<{ scope: string; resultingState: Record<string, unknown> }>;
-};
-
-function lastSessionState(result: ResultLike): LastStatePayload {
-  const sessionPatches = result.stateChanges.filter((c) => c.scope === "session");
-  expect(sessionPatches.length).toBeGreaterThan(0);
-  return sessionPatches[sessionPatches.length - 1]
-    .resultingState as unknown as LastStatePayload;
-}

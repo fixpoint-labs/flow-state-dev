@@ -46,6 +46,11 @@ Phase 1 — analyst fan-out:
 - **Typed memo resources** — every analyst writes a structured `Thesis`-shape
   memo readable via the standard resource hook.
 - **Two-pane streaming UI** — transcript on the left, theses on the right.
+- **Phone-friendly mobile shell** — below 1024px the desk swaps to a dedicated
+  mobile layout: a bottom tab bar (Report · Transcript · New · Portfolio ·
+  History), one full-width surface at a time, and the dialogs presented as
+  bottom sheets. Same content components and data hooks as the desktop shell;
+  only the layout and navigation branch.
 - **Fixture / live data toggle** — fixtures ship for `NVDA / 2026-05-06`,
   `AAPL / 2026-05-06`, and `JPM / 2026-05-06`. Live prices and fundamentals
   via `yahoo-finance2` (no key required).
@@ -253,8 +258,10 @@ Press **re-run** to dispatch a new `analyze` request.
 The cheap-preset run completes end-to-end in well under a minute on default
 models with one provider key configured. Each analyst writes a structured
 `Thesis` resource observable via `useResourceCollection`; the navigator's live
-`pending → writing → published` flicker comes from `useClientData` reading the
-session-state `memoStatus` mirror.
+`pending → writing → published` flicker comes straight from that resource. The
+memos collection is `client: { live: true }`, so each status change streams to
+the client inline and `useResourceCollectionList` reflects it with no refetch —
+there is no separate session-state status field to keep in sync.
 
 ## Persistence and sessions
 
@@ -263,8 +270,8 @@ four inputs at the top of the page name it: `(ticker, date, preset, source)`.
 
 - Re-running with the same four inputs reuses the existing session and
   refreshes its data. Memo resources have deterministic keys, so they
-  overwrite in place; the session state mirror (`memoStatus`, `runComplete`)
-  resets via `seedSession` at the start of each request.
+  overwrite in place (the setup taps re-create each memo in `pending`);
+  `runComplete` resets via `seedSession` at the start of each request.
 - Changing any one of the four inputs starts a new session. Its title is
   derived from the tuple (`NVDA · 2026-05-06 · fast · fixture`), so prior
   runs stay identifiable for a future session-browser UI.
@@ -475,6 +482,34 @@ The PM Hero renderer reads from the same `useResourceCollectionItem`
 hook every other memo uses. The marquee surface has no special-case
 data flow.
 
+**The decision turns on three orthogonal axes**, each documented
+methodology rather than advice:
+
+- **Valuation envelope** (the deterministic spine, FIX-715): bounds
+  `finalRating` to a band implied by expected return, margin of safety,
+  and the setup score. The PM may step outside the band only with a logged
+  `ratingOverrideReason`.
+- **Portfolio-fit** (FIX-728): sizes the position against the real book —
+  current weight, cash, concentration, tax-account suitability — and the
+  investor-lens convergence (robustness across philosophies, sized down on
+  divergence, never up).
+- **Risk-appetite mandate** (FIX-752): a variable, user-selectable
+  standard for "is this risk worth it." The desk derives a reward-to-risk
+  figure from the Phase 5a scenario buckets — probability-weighted upside
+  over downside, with the downside weighted by the mandate's loss-aversion
+  — and judges it against the mandate's bar (a reward-to-risk floor, a
+  return hurdle, a confidence floor, and a worst-case capacity line). The
+  mandate moves the position SIZE and an explicit worth-it verdict; it does
+  NOT move the rating, which stays the valuation-anchored,
+  cross-book-comparable signal. A name can be a Buy on its merits yet fail
+  a conservative book's mandate and size to a token. Three presets ship
+  (`conservative-income`, `balanced`, `aggressive-growth`); the mandate is
+  a per-run choice, or a default stored on the account, with the
+  most-conservative selected-account default binding when no per-run choice
+  is made. Run the same name under two mandates and the size and the
+  verdict move while the rating holds. See `mandateFit` on
+  `PortfolioDecision` and the pack in `lib/risk-mandate.ts`.
+
 ## What this is not
 
 - **Not a trading product.** It does not execute and it does not track
@@ -482,7 +517,9 @@ data flow.
   "Portfolio-aware analysis" above), but that snapshot is dev-only and
   frozen at dispatch, the sizing is documented-methodology not advice, and
   with no portfolio supplied `sizePct` is still a suggested percentage of a
-  notional NAV in the 0.5–2.5 range for a normal-conviction trade.
+  notional NAV in the 0.5–2.5 range for a normal-conviction trade. The
+  risk-appetite mandate is the same: a pedagogical demonstration of
+  parameterized risk gating, not production risk governance.
 - **Not a backtest.** There is no historical evaluation, no calibration
   against outcomes, no measure of decision quality. The Portfolio
   Manager's `decisionConfidence` is self-reported uncertainty, not a

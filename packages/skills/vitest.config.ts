@@ -11,6 +11,7 @@ export default defineConfig({
       "@flow-state-dev/core/types": resolve(root, "packages/core/src/types/index.ts"),
       "@flow-state-dev/core/items/internal": resolve(root, "packages/core/src/items/internal.ts"),
       "@flow-state-dev/core/items": resolve(root, "packages/core/src/items/index.ts"),
+      "@flow-state-dev/core/graph": resolve(root, "packages/core/src/graph/index.ts"),
       "@flow-state-dev/core/capability": resolve(root, "packages/core/src/capability/index.ts"),
       "@flow-state-dev/core/helpers": resolve(root, "packages/core/src/helpers/index.ts"),
       "@flow-state-dev/core/models": resolve(root, "packages/core/src/models/index.ts"),

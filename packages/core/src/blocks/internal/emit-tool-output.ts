@@ -12,6 +12,7 @@ import type { ItemVisibility, ModelIdentity } from "../../items/types";
 import { sanitizeToolName } from "../../helpers/tool-name";
 import { getEmitterItemCount } from "./utils";
 import { toError } from "./utils";
+import { errorDetailsWithCause } from "../../errors/serialize-error";
 
 /**
  * Attribution fields stamped on the emitted `tool_output` item. The AI SDK
@@ -126,13 +127,15 @@ export async function emitToolOutputAround(
     const err = toError(error) as Error & {
       code?: string;
       details?: Record<string, unknown>;
+      cause?: unknown;
     };
     item.status = "failed";
     item.output = undefined;
+    const details = errorDetailsWithCause(err);
     item.error = {
       message: err.message,
       ...(err.code ? { code: err.code } : {}),
-      ...(err.details ? { details: err.details } : {}),
+      ...(details ? { details } : {}),
     };
     await ctx.response.emit({
       type: "item.updated",

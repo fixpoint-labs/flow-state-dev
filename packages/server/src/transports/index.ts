@@ -19,6 +19,16 @@ export type {
   TransportRoute
 } from "./types";
 
+export type {
+  DispatchEnvelope,
+  FlowDispatchHandle,
+  FlowDispatcher,
+  StreamBridge,
+  StreamEvent,
+  StreamPublisher,
+  StreamSubscriber
+} from "./dispatcher";
+
 export type { AuthenticationConfig, ResolvePrincipalFn } from "@flow-state-dev/core/types";
 
 export {
@@ -56,6 +66,13 @@ export {
   createInboundTransportHost,
   type CreateInboundTransportHostOptions
 } from "./host/createInboundTransportHost";
+
+export {
+  createInProcessDispatcher,
+  type InProcessDispatcher,
+  type InProcessDispatchContext,
+  type InProcessDispatcherDeps
+} from "./host/in-process-dispatcher";
 
 export {
   createHttpTransportAdapter,

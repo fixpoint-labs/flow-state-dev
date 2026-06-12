@@ -33,6 +33,10 @@
     "./cli": {
       "types": "./dist/cli/index.d.ts",
       "default": "./src/cli/index.ts"
+    },
+    "./sdk": {
+      "types": "./dist/sdk/index.d.ts",
+      "default": "./src/sdk/index.ts"
     }
   },
   "license": "MIT",
@@ -52,6 +56,10 @@
       "./cli": {
         "types": "./dist/cli/index.d.ts",
         "default": "./dist/cli/index.js"
+      },
+      "./sdk": {
+        "types": "./dist/sdk/index.d.ts",
+        "default": "./dist/sdk/index.js"
       }
     }
   },
@@ -62,6 +70,14 @@
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "zod": "^3.24.1"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "*"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@flow-state-dev/server": "workspace:*",

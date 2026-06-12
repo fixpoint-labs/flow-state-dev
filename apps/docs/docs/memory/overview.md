@@ -102,5 +102,6 @@ Memory ships from its own package, `@flow-state-dev/memory`, so apps that don't 
 ## Further reading
 
 - [Configuration](./configuration) — every knob `system()` exposes and when to reach for them.
+- [Relations](./relations) — the opt-in layer that stores typed connections between entities, for connection and multi-hop recall.
 - [Recall tool](./recall-tool) — the agent-invocable search surface, plus custom strategies.
 - [Resources](../resources/overview) — how memory persistence is scoped.

@@ -382,6 +382,18 @@ export const ALL_MEMO_KEYS = {
 
 export type AnyMemoShortName = keyof typeof ALL_MEMO_KEYS;
 
+/** Reverse map: bare collection key (a memo `item.topic`, e.g. `p1/fundamentals`)
+ *  → its short name. Used by every consumer that reads memos back from the
+ *  collection (the Summary aggregate and the navigator's live status map) to
+ *  re-key list items onto the short-name registry. */
+export const COLLECTION_KEY_TO_SHORT = Object.fromEntries(
+  (
+    Object.entries(ALL_MEMO_KEYS) as Array<
+      [AnyMemoShortName, (typeof ALL_MEMO_KEYS)[AnyMemoShortName]]
+    >
+  ).map(([short, mapping]) => [mapping.collectionKey, short]),
+) as Record<string, AnyMemoShortName>;
+
 /** Reverse lookup: which short name owns this agent across any phase? */
 export function shortNameForAgent(
   agent: AgentName,

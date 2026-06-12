@@ -18,6 +18,7 @@ import { testBlock } from "@flow-state-dev/testing";
 import { commitResearchManagerMemo } from "../src/flows/analysis/agents/research/writer";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const RM_PROMPT_PATH = path.join(
   process.cwd(),
@@ -38,7 +39,6 @@ const baseSessionState = {
   dataSource: "fixture" as const,
   activePhase: "phase-2" as const,
   maxDebateRounds: 2,
-  memoStatus: { researchManager: "writing" as const },
 };
 
 const seededRmMemo = {
@@ -90,10 +90,8 @@ describe("RM reasoning-order fix", () => {
       session: { state: baseSessionState, resources: seededRmMemo },
     });
     expect(result.error).toBeNull();
-    const sessionPatches = result.stateChanges.filter((c) => c.scope === "session");
-    const last = sessionPatches[sessionPatches.length - 1].resultingState as {
-      memoStatus: Record<string, string>;
-    };
-    expect(last.memoStatus.researchManager).toBe("published");
+    expect(
+      latestMemoStatus(result.items, "memos/p2/research-manager"),
+    ).toBe("published");
   });
 });

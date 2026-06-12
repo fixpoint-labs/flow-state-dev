@@ -21,7 +21,7 @@ export const commitBullMemo = memoHandler({
   name: "commit-memo-p2-bull",
   inputSchema: bullThesisOutputSchema,
   execute: async (thesis, ctx) => {
-    await publishMemo(ctx, "bull", PHASE_2_MEMO_KEYS.bull.collectionKey, thesis);
+    await publishMemo(ctx, PHASE_2_MEMO_KEYS.bull.collectionKey, thesis);
   },
 });
 
@@ -29,7 +29,7 @@ export const commitBearMemo = memoHandler({
   name: "commit-memo-p2-bear",
   inputSchema: bearThesisOutputSchema,
   execute: async (thesis, ctx) => {
-    await publishMemo(ctx, "bear", PHASE_2_MEMO_KEYS.bear.collectionKey, thesis);
+    await publishMemo(ctx, PHASE_2_MEMO_KEYS.bear.collectionKey, thesis);
   },
 });
 
@@ -48,7 +48,7 @@ export const commitResearchManagerMemo = memoHandler({
   name: "commit-memo-p2-research-manager",
   inputSchema: investmentThesisOutputSchema,
   execute: async (thesis, ctx) => {
-    await publishMemo(ctx, "researchManager", PHASE_2_MEMO_KEYS.researchManager.collectionKey, {
+    await publishMemo(ctx, PHASE_2_MEMO_KEYS.researchManager.collectionKey, {
       ...thesis,
       citationIntegrity: ctx.session.state.citationIntegrity,
     });

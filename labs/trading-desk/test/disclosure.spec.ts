@@ -13,6 +13,7 @@ import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 import { emptyPayload, skippedDiscoveryPayload } from "../src/flows/analysis/tools/empty-payloads";
 import { toolOutputSchemas } from "../src/flows/analysis/tools/schemas";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 function disclosureThesis() {
   return {
@@ -54,7 +55,6 @@ const baseSessionState = {
   costPreset: "fast" as const,
   dataSource: "fixture" as const,
   activePhase: "phase-1" as const,
-  memoStatus: { disclosure: "writing" as const },
 };
 
 const seededResources = {
@@ -70,18 +70,16 @@ const seededResources = {
 };
 
 describe("disclosure memo commit transition", () => {
-  it("publishes a disclosure memo and flips memoStatus to published", async () => {
+  it("publishes a disclosure memo and flips the memo to published", async () => {
     const result = await testBlock(commitBlock, {
       input: disclosureThesis(),
       flow: fixtureFlow,
       session: { state: baseSessionState, resources: seededResources },
     });
     expect(result.error).toBeNull();
-    const sessionPatches = result.stateChanges.filter((c) => c.scope === "session");
-    const last = sessionPatches[sessionPatches.length - 1].resultingState as {
-      memoStatus: Record<string, string>;
-    };
-    expect(last.memoStatus.disclosure).toBe("published");
+    expect(latestMemoStatus(result.items, "memos/p1/disclosure")).toBe(
+      "published",
+    );
   });
 });
 

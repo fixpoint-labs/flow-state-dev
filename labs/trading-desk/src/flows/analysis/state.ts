@@ -2,12 +2,6 @@
  * Flow-level session state schema, lifted out of `flow.ts` so blocks can
  * reference it without creating an import cycle.
  *
- * `memoStatus` is a per-memo-key mirror of each resource's `status` field.
- * The navigator reads it via `useClientData` (the flow file passes it in
- * `client.expose`) so memos transition `pending → writing → published`
- * live mid-stream — body content still loads from `useResourceCollection`
- * at the terminal snapshot.
- *
  * `maxDebateRounds` caps the Phase 2 bull/bear loop. The cheap preset sets
  * it to 1 and the full preset to 2. The schema enforces the ceiling so
  * caller input cannot exceed it.
@@ -33,6 +27,7 @@
 import { z } from "zod";
 import { citationIntegritySchema } from "./resources";
 import { portfolioContextInput } from "./flow-schema";
+import { riskMandateSchema } from "./lib/risk-mandate";
 
 export const sessionStateSchema = z.object({
   ticker: z.string().default("NVDA"),
@@ -51,9 +46,6 @@ export const sessionStateSchema = z.object({
     ])
     .default("idle"),
   maxDebateRounds: z.number().int().min(1).max(2).default(1),
-  memoStatus: z
-    .record(z.string(), z.enum(["pending", "writing", "published", "error"]))
-    .default({}),
   runComplete: z.boolean().default(false),
   stoppedReason: z
     .enum(["unresolvable-ticker", "phase-1-missing-primary", "phase-1-no-data"])
@@ -79,6 +71,13 @@ export const sessionStateSchema = z.object({
   // Which account(s) the user is considering this position for; subset of
   // `portfolio.accounts[].id`. Empty → let the PM suggest.
   selectedAccountIds: z.array(z.string()).default([]),
+  // Per-run risk-appetite mandate (FIX-752), resolved at `seedSession` from the
+  // per-run override or the most-conservative selected-account default and frozen
+  // here as the full dial object. The reward-to-risk tap reads its `lossAversion`;
+  // the PM reads it as `<riskMandate>` context and the commit gates SIZE against
+  // it. Null → mandate-blind: no worth-it size gate, the run behaves exactly as
+  // before FIX-752.
+  riskMandate: riskMandateSchema.nullable().default(null),
 });
 
 export type SessionState = z.infer<typeof sessionStateSchema>;

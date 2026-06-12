@@ -18,6 +18,7 @@ function account(over: Partial<AccountState> = {}): AccountState {
     currency: "USD",
     cashBalance: 0,
     holdings: [],
+    riskMandate: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...over,

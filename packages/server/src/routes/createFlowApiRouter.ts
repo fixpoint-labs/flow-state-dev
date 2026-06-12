@@ -40,6 +40,7 @@ import type {
   TransportBindings,
   TransportRoute
 } from "../transports/types";
+import type { FlowDispatcher } from "../transports/dispatcher";
 
 /**
  * Public router adapter options.
@@ -185,6 +186,13 @@ export type CreateFlowApiRouterOptions = {
   debugCountLimit?: number;
 
   /**
+   * Controls where flow actions execute. Default: in-process via runAction.
+   * Set to a FlowDispatcher implementation to route execution to an
+   * external worker (e.g., BullMQ WorkerDispatcher).
+   */
+  dispatcher?: FlowDispatcher;
+
+  /**
    * @internal — set by `createFlowState`, which has already resolved its
    * resolvers and instance settings. Direct callers pass the flat options
    * above; the router bundles them itself. When provided, it wins over the
@@ -261,7 +269,8 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   const handlers = createFlowRouteHandlers({
     ...options,
     runtimeConfig,
-    internalSeams: NOOP_INTERNAL_ROUTE_SEAMS
+    internalSeams: NOOP_INTERNAL_ROUTE_SEAMS,
+    dispatcher: options.dispatcher
   });
 
   // Server-internal sweeper: marks requests whose executor heartbeat stopped

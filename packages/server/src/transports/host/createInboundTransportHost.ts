@@ -12,9 +12,13 @@ import type { ExecutionResult } from "../../execution/types";
 import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
 import { createResponseEmitter } from "../../streaming/response-emitter";
-import { runAction } from "../../execution/runAction";
 import { generateId } from "../../utils/generate-id";
 import { OrgRequiredError, PrincipalResolutionError } from "../errors";
+import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
+import {
+  createInProcessDispatcher,
+  type InProcessDispatcher
+} from "./in-process-dispatcher";
 import type {
   DispatchHandle,
   InboundRequestEnvelope,
@@ -36,6 +40,12 @@ export type CreateInboundTransportHostOptions = {
    * `runAction`. See {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;
+  /**
+   * Controls where flow actions execute. Default: in-process via runAction.
+   * Set to a FlowDispatcher implementation to route execution to an
+   * external worker (e.g., BullMQ WorkerDispatcher).
+   */
+  dispatcher?: FlowDispatcher;
 };
 
 /**
@@ -52,6 +62,15 @@ export function createInboundTransportHost(
   const { registry, stores, resolvePrincipal, runtimeConfig } = options;
   const { onBackgroundWork, maxResponseBufferSize, defaultSseHeartbeatMs } =
     runtimeConfig;
+
+  const inProcessDispatcher = createInProcessDispatcher({
+    registry,
+    stores,
+    runtimeConfig
+  });
+  const effectiveDispatcher: FlowDispatcher | InProcessDispatcher =
+    options.dispatcher ?? inProcessDispatcher;
+  const isExternalDispatcher = !("dispatchLocal" in effectiveDispatcher);
 
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
     const flow = registry.get(envelope.flowKind);
@@ -78,8 +97,14 @@ export function createInboundTransportHost(
     //   - `null`                → explicit fire-and-forget (webhook, schedule)
     //   - a `ResponseEmitter`   → caller is bringing its own; do not create a
     //                             redundant live stream and waste a slot
+    //
+    // External dispatchers (BullMQ, etc.) execute in a separate context and
+    // persist events to the shared store. The client falls back to the GET
+    // request-stream endpoint (store-driven live tail) when it receives a 202
+    // instead of an inline SSE response, so creating a live stream here would
+    // be an empty pipe that never receives events.
     const liveStream =
-      envelope.responseEmitter === undefined
+      envelope.responseEmitter === undefined && !isExternalDispatcher
         ? createLiveRequestStream({
             requestId,
             maxBufferSize: maxResponseBufferSize,
@@ -97,24 +122,43 @@ export function createInboundTransportHost(
       liveStream?.emitter ??
       createResponseEmitter({ requestId });
 
-    const finished = runAction({
-      flow,
-      actionName: envelope.action as keyof typeof flow.actions & string,
+    const dispatchEnvelope: DispatchEnvelope = {
+      requestId,
+      flowKind: envelope.flowKind,
+      actionName: envelope.action,
       input: envelope.input,
       userId: envelope.principal.userId,
       sessionId: envelope.sessionId,
-      requestId,
       orgId: envelope.orgId ?? envelope.principal.orgId,
       tenantId: envelope.tenantId,
       source: envelope.source,
-      metadata: envelope.metadata,
-      signal: envelope.signal,
-      stores,
-      responseEmitter,
-      // Override the router-level provider with the per-flow effective value
-      // for this dispatch; everything else forwards verbatim.
-      runtimeConfig: { ...runtimeConfig, voiceProvider: effectiveVoiceProvider }
-    }).finally(() => {
+      metadata: envelope.metadata
+    };
+
+    // Delegate to the dispatcher. InProcessDispatcher uses dispatchLocal
+    // (carries non-serializable context); external dispatchers use the
+    // generic dispatch interface.
+    let finished: Promise<ExecutionResult>;
+    if ("dispatchLocal" in effectiveDispatcher) {
+      const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
+        dispatchEnvelope,
+        {
+          signal: envelope.signal,
+          responseEmitter,
+          effectiveRuntimeConfig: {
+            ...runtimeConfig,
+            voiceProvider: effectiveVoiceProvider
+          }
+        }
+      );
+      finished = handle.finished;
+    } else {
+      finished = effectiveDispatcher
+        .dispatch(dispatchEnvelope)
+        .then((handle) => handle.finished);
+    }
+
+    finished = finished.finally(() => {
       if (liveStream !== null) {
         liveStream.close();
       }

@@ -18,6 +18,8 @@
 
 import { defineCapability } from '@flow-state-dev/core'
 import type { DefinedCapability, CapabilityRef } from '@flow-state-dev/core'
+import type { Edge, NodeRef, TraversalOpts } from '@flow-state-dev/core/graph'
+import { canonicalizeSubject, edgesOf } from './internal/helpers'
 
 import {
   memorySystemResource,
@@ -45,6 +47,7 @@ import {
   createEpisodicEntry,
 } from './formatter'
 import { createRecallTool } from './tools/recall-tool'
+import { createConnectTool } from './tools/connect-tool'
 import { resolveStrategy } from './tools/strategies/index'
 import { buildRecall } from './internal/recall'
 import { resolveHygieneConfig } from './internal/hygiene-config'
@@ -114,6 +117,11 @@ export interface MemoryCapability extends DefinedCapability {
     digest?: CapabilityRef
   }
   readonly recallToolBlock: ReturnType<typeof createRecallTool>
+  /**
+   * The `memory/connect` relation-graph tool — present only when the relations
+   * tier is enabled (FIX-745). `undefined` when relations are off.
+   */
+  readonly connectToolBlock?: ReturnType<typeof createConnectTool>
 }
 
 /**
@@ -160,6 +168,11 @@ export function buildMemoryCapability(
     throw new Error('Digest requires semantic memory to be configured')
   }
 
+  // Relations nest under `semantic`, so "relations require semantic" is already
+  // enforced structurally, and "relations require episodic" is covered by the
+  // semantic-requires-episodic guard above (relations can't be set without
+  // semantic). No separate relations guard is needed.
+
   // Validate: model is required for the recall tool's filter strategy.
   // TypeScript enforces this at compile time; this guard catches untyped callers.
   if (options.model == null || (Array.isArray(options.model) && options.model.length === 0)) {
@@ -186,6 +199,22 @@ export function buildMemoryCapability(
   const semCapability = semanticConfig
     ? createSemanticMemoryCapability({
         scope: semanticConfig.scope,
+        // Relations tier (FIX-745): when resolved, create the resource with a
+        // typed-edge slot. We forward ONLY `maxEdges` to the core slot.
+        // Vocabulary enforcement is owned by memory's `applyEdges`, which
+        // pre-filters out-of-vocab edge types with a drop+warn before they ever
+        // reach `edges.add` — forwarding `vocabulary` here too would arm the
+        // core slot's throw-on-out-of-vocab path, a second, conflicting failure
+        // mode. `createImplicitEntities` is a write-path concern read from
+        // `semanticConfig.relations`. The core slot's `vocabulary` feature is
+        // intact for other consumers; memory simply doesn't use it.
+        ...(semanticConfig.relations
+          ? {
+              edges: {
+                ...(semanticConfig.relations.maxEdges != null ? { maxEdges: semanticConfig.relations.maxEdges } : {}),
+              },
+            }
+          : {}),
       })
     : undefined
 
@@ -221,6 +250,12 @@ export function buildMemoryCapability(
     defaults: toolConfig.defaults,
   })
 
+  // Relations tier (FIX-745, read-side): build the connect tool only when
+  // relations is enabled. Gating here (rather than always building + toggling
+  // off) keeps the disabled path free of the tool block entirely.
+  const relationsEnabled = !!semanticConfig?.relations
+  const connectToolBlock = relationsEnabled ? createConnectTool() : undefined
+
   // Build the recall helper (ranking decay derived from hygiene).
   const recallFn = buildRecall(
     episodicConfig ? { scope: episodicConfig.scope } : undefined,
@@ -238,10 +273,40 @@ export function buildMemoryCapability(
     name: 'memory' as const,
     uses: capUses,
     resources: { memorySystem: memorySystemResource },
-    fns: (ctx: any) => ({
-      /** Cross-store recall — queries all configured stores, deduplicates, ranks by relevance. */
-      recall: (cue?: string) => recallFn(ctx, cue),
-    }),
+    fns: (ctx: any) => {
+      // Edge API is present only when the relations tier installed an edge slot
+      // on the semantic resource. All relation helpers degrade to empty/null
+      // when it is absent (relations disabled), so callers can invoke them
+      // unconditionally.
+      const edges = edgesOf(ctx)
+      return {
+        /** Cross-store recall — queries all configured stores, deduplicates, ranks by relevance. */
+        recall: (cue?: string) => recallFn(ctx, cue),
+        /**
+         * Direct neighbour edges around `entity` — exactly 1 hop (relations
+         * tier, FIX-745). Returns `[]` when relations are disabled. Entity is
+         * canonicalized (trim + lowercase) to match stored edge endpoints. For a
+         * multi-hop neighbourhood use `egoGraph(entity, { depth })`; `depth` is
+         * intentionally not accepted here.
+         */
+        connections: (entity: string, opts?: Omit<TraversalOpts, 'depth'>): Edge[] =>
+          edges ? edges.neighbors(canonicalizeSubject(entity) as NodeRef, opts) : [],
+        /**
+         * Shortest-path edges between two entities, or `null` if unreachable /
+         * relations disabled. Endpoints are canonicalized.
+         */
+        relate: (from: string, to: string, opts?: TraversalOpts): Edge[] | null =>
+          edges
+            ? edges.shortestPath(canonicalizeSubject(from) as NodeRef, canonicalizeSubject(to) as NodeRef, opts)
+            : null,
+        /**
+         * Full ego graph (`{ nodes, edges }`) around `entity`. Returns an empty
+         * graph when relations are disabled. Entity is canonicalized.
+         */
+        egoGraph: (entity: string, opts?: TraversalOpts): { nodes: NodeRef[]; edges: Edge[] } =>
+          edges ? edges.egoGraph(canonicalizeSubject(entity) as NodeRef, opts) : { nodes: [], edges: [] },
+      }
+    },
     presets: {
       /**
        * Inject the rolling digest into the prompt under
@@ -289,7 +354,19 @@ export function buildMemoryCapability(
         }},
         tools: () => [recallToolBlock],
       },
-      default: ['digest', 'working', 'recall'],
+      /**
+       * Install the `memory/connect` tool so the model can traverse relation
+       * edges between entities (FIX-745). Default-on when the relations tier is
+       * enabled; an empty no-op preset otherwise so toggling it on a
+       * relations-disabled memory is harmless.
+       */
+      connect: connectToolBlock
+        ? { tools: () => [connectToolBlock] }
+        : {},
+      // Connect joins the default-on set only when relations is enabled.
+      default: relationsEnabled
+        ? ['digest', 'working', 'recall', 'connect']
+        : ['digest', 'working', 'recall'],
     },
   })
 
@@ -316,6 +393,7 @@ export function buildMemoryCapability(
     userResources,
     tiers,
     recallToolBlock,
+    ...(connectToolBlock ? { connectToolBlock } : {}),
   }) as MemoryCapability
 
   return { capability, resolved, hygiene, recall: recallFn }

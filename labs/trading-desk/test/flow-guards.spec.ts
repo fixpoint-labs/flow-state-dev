@@ -39,7 +39,6 @@ const baseSessionState = {
   costPreset: "fast" as const,
   dataSource: "fixture" as const,
   activePhase: "phase-1" as const,
-  memoStatus: {},
   stoppedReason: null,
   stoppedMessage: null,
 };

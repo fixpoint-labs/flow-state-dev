@@ -707,3 +707,60 @@ describe("createScopeResourceRegistry — upsert", () => {
     expect(ref.state).toEqual({ v: 10, label: "scaffold" });
   });
 });
+
+describe("createScopeResourceRegistry — edges slot", () => {
+  it("attaches an .edges API to a static resource ref when edges is declared", async () => {
+    const config = makeResourceConfig({
+      edges: true,
+      stateSchema: z.object({ facts: z.array(z.string()), edges: z.array(z.any()).default([]) }).passthrough(),
+      default: { facts: [], edges: [] }
+    });
+    const registry = makeRegistry({ configs: { kb: config } });
+    const ref = registry.get("kb");
+    expect(ref.edges).toBeDefined();
+
+    await ref.edges!.add({ from: "a", to: "b", type: "drives" });
+    await ref.edges!.add({ from: "b", to: "c", type: "drives" });
+
+    expect((ref.state as any).edges).toHaveLength(2);
+    const path = ref.edges!.shortestPath("a", "c", { depth: 3 });
+    expect(path).not.toBeNull();
+    expect(path).toHaveLength(2);
+  });
+
+  it("passes an object edges config through to the API (vocabulary enforced)", async () => {
+    const config = makeResourceConfig({
+      edges: { vocabulary: ["drives"] },
+      stateSchema: z.object({ edges: z.array(z.any()).default([]) }).passthrough(),
+      default: { edges: [] }
+    });
+    const registry = makeRegistry({ configs: { kb: config } });
+    const ref = registry.get("kb");
+    await expect(ref.edges!.add({ from: "a", to: "b", type: "owns" })).rejects.toThrow(/vocabulary/);
+  });
+
+  it("does not attach .edges when edges is not declared", () => {
+    const config = makeResourceConfig({
+      stateSchema: z.object({ facts: z.array(z.string()) }).passthrough()
+    });
+    const registry = makeRegistry({ configs: { kb: config } });
+    expect(registry.get("kb").edges).toBeUndefined();
+  });
+
+  it("attaches an .edges API to collection instances when declared", async () => {
+    const nsConfig = makeCollectionConfig("graphs/*", {
+      edges: true,
+      stateSchema: z.object({ edges: z.array(z.any()).default([]) }).passthrough()
+    });
+    const registry = makeRegistry({
+      configs: { graphs: nsConfig },
+      initialState: { "graphs/g1": { edges: [] } }
+    });
+    // Resolve a concrete instance ref (createNamespaceInstanceRef is where the
+    // collection-side edge wiring lives).
+    const inst = await (registry as any).graphs.upsert("g1", {});
+    expect(inst.edges).toBeDefined();
+    await inst.edges.add({ from: "x", to: "y", type: "rel" });
+    expect((inst.state as any).edges).toHaveLength(1);
+  });
+});

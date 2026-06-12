@@ -43,6 +43,7 @@ import {
 } from "./registry";
 import { memosCollection, phase2Contributions } from "./resources";
 import { valuationSpineResource } from "./valuation-spine-resource";
+import { rewardToRiskResource } from "./reward-to-risk-resource";
 import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
 import {
   formatValuationSpine,
@@ -59,7 +60,9 @@ import {
   formatMemoBlock,
   formatPersonaCritique,
   formatPortfolioContext,
+  formatRewardToRisk,
   formatRiskAssessmentExtensions,
+  formatRiskMandate,
   formatScenarioForecastExtensions,
   formatStanceContributions,
   formatThesisExtensions,
@@ -502,6 +505,30 @@ export const tradingDesk = defineCapability({
       },
     },
 
+    /** Scenario-derived reward-to-risk figure (FIX-752) — the PM reads it as the
+     *  worth-it input it judges against the mandate. From the session-scoped
+     *  resource the post-forecast tap writes. Returns null (tag suppressed) when
+     *  the forecaster produced no usable buckets. PM only. */
+    rewardToRisk: {
+      resources: { rewardToRisk: rewardToRiskResource },
+      context: {
+        rewardToRisk: (_input, ctx) =>
+          formatRewardToRisk(ctx.resources.rewardToRisk?.state),
+      },
+    },
+
+    /** Active risk-appetite mandate (FIX-752) — the variable standard the PM
+     *  sizes against. Reads the frozen session-state mandate (no resource — the
+     *  `userThesis` pattern). Returns null to suppress the `<riskMandate>` tag on
+     *  a mandate-blind run. Opted into by the trader (sizes with awareness) and
+     *  the PM (the worth-it arbiter). */
+    riskMandate: {
+      context: {
+        riskMandate: (_input, ctx) =>
+          formatRiskMandate(ctx.session.state.riskMandate),
+      },
+    },
+
     // ────────────────────────────────────────────────────────────────────
     // Cost-preset-gated variants.
     //
@@ -586,7 +613,9 @@ export {
   formatMemoBlock,
   formatPersonaCritique,
   formatPortfolioContext,
+  formatRewardToRisk,
   formatRiskAssessmentExtensions,
+  formatRiskMandate,
   formatScenarioForecastExtensions,
   formatStanceContributions,
   formatThesisExtensions,

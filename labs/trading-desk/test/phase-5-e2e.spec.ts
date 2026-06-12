@@ -14,6 +14,8 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import analysisFlow from "../src/flows/analysis/flow";
+import { ALL_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { latestMemoStatus } from "./_helpers/memo-status";
 
 const ticker = "NVDA";
 const date = "2026-05-06";
@@ -336,6 +338,11 @@ function portfolioManagerStructuredOutput(
         suggestedAccount: "",
         convictionBasis: "",
       },
+      mandateFit: {
+        rewardToRiskRead: "",
+        sizeStance: "",
+        mandateOverrideReason: "",
+      },
     },
   };
 }
@@ -437,9 +444,9 @@ function makeUpstreamMocks() {
             metrics: { horizon: "months", distribution: "concentrated", buckets: "3 scenarios", evidence: "sufficient" },
             body: [{ h: "Summary", p: "Base case dominant.", items: null }],
             scenarios: [
-              { name: "Base", probability: 0.55, trigger: "t", triggerSource: "investmentThesis", expectedOutcome: "o", tradeBehavior: "b" },
-              { name: "Up", probability: 0.25, trigger: "t", triggerSource: "tradeProposal", expectedOutcome: "o", tradeBehavior: "b" },
-              { name: "Down", probability: 0.20, trigger: "t", triggerSource: "riskAssessment", expectedOutcome: "o", tradeBehavior: "b" },
+              { name: "Base", probability: 0.55, trigger: "t", triggerSource: "investmentThesis", expectedOutcome: "o", expectedReturnPct: 4, tradeBehavior: "b" },
+              { name: "Up", probability: 0.25, trigger: "t", triggerSource: "tradeProposal", expectedOutcome: "o", expectedReturnPct: 12, tradeBehavior: "b" },
+              { name: "Down", probability: 0.20, trigger: "t", triggerSource: "riskAssessment", expectedOutcome: "o", expectedReturnPct: -8, tradeBehavior: "b" },
             ],
             distribution: "concentrated",
             evidenceBasis: "sufficient",
@@ -490,11 +497,9 @@ describe("Phase 5 end-to-end", () => {
 
     const session = await stores.session.get(sessionId);
     const sessionState = (session?.state ?? {}) as {
-      memoStatus?: Record<string, string>;
       runComplete?: boolean;
       activePhase?: string;
     };
-    expect(sessionState.memoStatus?.portfolioManager).toBe("published");
     expect(sessionState.runComplete).toBe(true);
     expect(sessionState.activePhase).toBe("phase-5");
 
@@ -588,12 +593,10 @@ describe("Phase 5 end-to-end", () => {
 
     const session = await stores.session.get(sessionId);
     const sessionState = (session?.state ?? {}) as {
-      memoStatus?: Record<string, string>;
       runComplete?: boolean;
     };
-    expect(sessionState.memoStatus?.trader).toBe("published");
-    expect(sessionState.memoStatus?.riskAssessment).toBe("published");
-    expect(sessionState.memoStatus?.portfolioManager).toBe("error");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.trader.memoKey)).toBe("published");
+    expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.riskAssessment.memoKey)).toBe("published");
     expect(sessionState.runComplete).toBe(false);
 
     const memoResources = await stores.resourceState.getAll("session", sessionId);

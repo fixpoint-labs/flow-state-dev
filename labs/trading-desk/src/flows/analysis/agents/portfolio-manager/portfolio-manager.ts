@@ -120,6 +120,22 @@ export const portfolioDecisionOutputSchema = z.object({
     // run (fast preset).
     convictionBasis: z.string(),
   }),
+  // FIX-752 — the PM's interpretive reading of the scenario-derived reward-to-risk
+  // figure against the active risk mandate. NARRATIVE ONLY (BP-016 strict: three
+  // required strings). The bright-line verdict and the size gate are DERIVED at
+  // commit from the figure + the frozen mandate (the agreesWithTrader precedent),
+  // so the model cannot assert its way past the standard. All "" on a
+  // mandate-blind run.
+  mandateFit: z.object({
+    // How the derived reward-to-risk figure reads against the mandate's bar.
+    rewardToRiskRead: z.string(),
+    // How the mandate's appetite (kellyFraction) shaped the size you chose.
+    sizeStance: z.string(),
+    // Non-empty ONLY to lift the soft worth-it size cap when the mandate is NOT
+    // cleared — you must name what the figure misses. "" otherwise and on a
+    // mandate-blind run. Never lifts the hard capacity veto.
+    mandateOverrideReason: z.string(),
+  }),
 });
 
 export type PortfolioDecisionOutput = z.infer<typeof portfolioDecisionOutputSchema>;
@@ -143,6 +159,10 @@ export const portfolioManagerGenerator = generator({
       // and reasons convergence -> conviction -> size to emit `portfolioFit`.
       portfolioContext: true,
       lensConvergence: true,
+      // FIX-752 — the worth-it axis: the scenario-derived reward-to-risk figure
+      // and the active risk-appetite mandate it is judged against.
+      rewardToRisk: true,
+      riskMandate: true,
     }),
   ],
   ...definePromptFile(portfolioManagerPrompt),

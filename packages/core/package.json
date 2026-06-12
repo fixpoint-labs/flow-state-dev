@@ -64,6 +64,10 @@
       "types": "./dist/capability/index.d.ts",
       "default": "./src/capability/index.ts"
     },
+    "./graph": {
+      "types": "./dist/graph/index.d.ts",
+      "default": "./src/graph/index.ts"
+    },
     "./helpers": {
       "types": "./dist/helpers/index.d.ts",
       "default": "./src/helpers/index.ts"
@@ -126,6 +130,10 @@
       "./capability": {
         "types": "./dist/capability/index.d.ts",
         "default": "./dist/capability/index.js"
+      },
+      "./graph": {
+        "types": "./dist/graph/index.d.ts",
+        "default": "./dist/graph/index.js"
       },
       "./helpers": {
         "types": "./dist/helpers/index.d.ts",

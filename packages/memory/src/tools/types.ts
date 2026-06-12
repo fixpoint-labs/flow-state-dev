@@ -11,9 +11,14 @@
 
 import { z } from 'zod'
 import type { BlockDefinition } from '@flow-state-dev/core/types'
+import type { Edge } from '@flow-state-dev/core/graph'
 
-/** Source store of a recalled memory item. */
-export type MemoryItemSource = 'semantic' | 'episodic'
+/**
+ * Source store of a recalled memory item. `relation` items originate from the
+ * semantic resource's typed-edge graph (relations tier, FIX-745) rather than a
+ * fact/episode store.
+ */
+export type MemoryItemSource = 'semantic' | 'episodic' | 'relation'
 
 /**
  * Unified memory item passed through retrieval strategies and the recall
@@ -34,6 +39,33 @@ export type MemoryItem = {
   occurredAtTurn?: number
   significance?: number
   encodedAt?: string
+  // relation fields (undefined for semantic/episodic) — populated only when
+  // `source === 'relation'`. `confidence` above is reused for edge confidence.
+  /** Edge tail node (canonical subject string). Relation-only. */
+  from?: string
+  /** Edge head node (canonical subject string). Relation-only. */
+  to?: string
+  /** Edge relation type, e.g. "married to". Relation-only. */
+  relationType?: string
+}
+
+/**
+ * Convert a relation edge to the unified `MemoryItem` shape. Content renders as
+ * `"<from> <type> <to>"` so the agent reads the relation as a sentence; the
+ * structured `from`/`to`/`relationType`/`confidence` fields carry the typed
+ * data for downstream consumers. The item id is the edge id so dedup against an
+ * already-included set works by id.
+ */
+export function edgeToMemoryItem(edge: Edge): MemoryItem {
+  return {
+    id: edge.id,
+    content: `${edge.from} ${edge.type} ${edge.to}`,
+    source: 'relation',
+    from: edge.from,
+    to: edge.to,
+    relationType: edge.type,
+    confidence: edge.confidence,
+  }
 }
 
 /** Zod schema for the recall tool's input parameters. */

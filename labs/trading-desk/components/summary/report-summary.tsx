@@ -31,7 +31,7 @@ import {
   useResourceCollectionList,
 } from "@flow-state-dev/react";
 import {
-  ALL_MEMO_KEYS,
+  COLLECTION_KEY_TO_SHORT,
   type AnyMemoShortName,
 } from "@/src/flows/analysis/registry";
 import type { MemoState } from "@/src/flows/analysis/resources";
@@ -48,18 +48,12 @@ import { ScenarioStrip } from "./charts/scenario-strip";
 import { PriceOverlay, type PriceOverlayLevel } from "./charts/price-overlay";
 import { PortfolioFitBlock } from "./portfolio-fit-block";
 import { LensConvergenceBlock } from "./lens-convergence-block";
+import { MandatePanel } from "../theses/mandate-panel";
 import { cn } from "@/lib/utils";
 
 export type ReportSummaryProps = {
   session: SessionView;
 };
-
-/** Reverse map: bare collection key (item.topic) → short name. */
-const COLLECTION_KEY_TO_SHORT = Object.fromEntries(
-  (Object.entries(ALL_MEMO_KEYS) as Array<
-    [AnyMemoShortName, (typeof ALL_MEMO_KEYS)[AnyMemoShortName]]
-  >).map(([short, mapping]) => [mapping.collectionKey, short]),
-) as Record<string, AnyMemoShortName>;
 
 /**
  * A single resource that's unwritten surfaces in the client snapshot as `{}`
@@ -165,7 +159,7 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
       </div>
 
       <SectionLabel>Price &amp; levels</SectionLabel>
-      <PricePanel price={price} trade={summary.trade} spine={spineRaw} />
+      <PricePanel price={price} trade={summary.trade} />
 
       <RiskPanel
         criticalRisks={summary.criticalRisks}
@@ -204,6 +198,16 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
         </>
       ) : null}
 
+      {/* FIX-752: risk-appetite mandate verdict, read from the PM memo's stored
+          `mandateDecision` mirror. Omitted cleanly on a mandate-blind run —
+          never a stubbed verdict. */}
+      {summary.mandateDecision !== null ? (
+        <>
+          <SectionLabel>Risk-appetite mandate</SectionLabel>
+          <MandatePanel decision={summary.mandateDecision} />
+        </>
+      ) : null}
+
       <SectionLabel>Analyst TLDRs</SectionLabel>
       <AnalystTldrGrid analysts={summary.analysts} />
     </div>
@@ -231,18 +235,15 @@ function SectionLabel({
 function PricePanel({
   price,
   trade,
-  spine,
 }: {
   price: PriceHistorySlice | null;
   trade: ReturnType<typeof buildReportSummary>["trade"];
-  spine: unknown;
 }): ReactElement {
-  const fairValue =
-    (spine as ValuationSpineState | null)?.fairValue?.fairValue ?? null;
-
   const hasSeries =
     price !== null && price.source !== "unavailable" && price.bars.length >= 2;
 
+  // The spine's fairValue is a company-level $B figure (a fair market cap),
+  // not a share price — it must never join the price-axis levels (FIX-778).
   const levels: PriceOverlayLevel[] = [];
   if (trade?.targetPrice != null)
     levels.push({
@@ -250,8 +251,6 @@ function PricePanel({
       value: trade.targetPrice,
       color: "var(--c-live)",
     });
-  if (fairValue != null)
-    levels.push({ label: "fair", value: fairValue, color: "var(--c-accent)" });
   if (trade?.stopPrice != null)
     levels.push({
       label: "stop",
@@ -281,7 +280,7 @@ function PricePanel({
       ) : (
         <>
           <ChartEmpty label="Price history unavailable for this run" />
-          <TradeLevelsList trade={trade} fairValue={fairValue} />
+          <TradeLevelsList trade={trade} />
         </>
       )}
     </div>
@@ -290,10 +289,8 @@ function PricePanel({
 
 function TradeLevelsList({
   trade,
-  fairValue,
 }: {
   trade: ReturnType<typeof buildReportSummary>["trade"];
-  fairValue: number | null;
 }): ReactElement | null {
   const rows: Array<{ label: string; value: string }> = [];
   if (trade?.direction != null)
@@ -304,8 +301,6 @@ function TradeLevelsList({
     rows.push({ label: "stop", value: String(trade.stopPrice) });
   if (trade?.targetPrice != null)
     rows.push({ label: "target", value: String(trade.targetPrice) });
-  if (fairValue != null)
-    rows.push({ label: "fair value", value: String(fairValue) });
   if (rows.length === 0) return null;
 
   return (
