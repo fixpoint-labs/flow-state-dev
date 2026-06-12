@@ -1,5 +1,5 @@
 /**
- * Resolves flow definitions from disk for `fsdev run`.
+ * Resolves flow definitions from disk for `fsdev run` and `fsdev dev`.
  * Scans conventional directories (src/flows/, flows/) and imports modules
  * that default-export a FlowInstance. Also scans one level of subdirectories
  * for monorepo structures (packages/*, examples/*, apps/*, labs/*).
@@ -239,7 +239,10 @@ async function tryImportFlow(filePath: string): Promise<FlowImportResult> {
  * package's public API.
  */
 export function formatImportFailureWarning(failure: FlowImportFailure): string {
-  return `Warning: failed to import flow module: ${failure.filePath}\n  ${failure.message}\n`;
+  // Indent continuation lines so multi-line errors (e.g. transform errors
+  // with code frames) stay visually attached to their warning.
+  const indented = failure.message.split("\n").join("\n  ");
+  return `Warning: failed to import flow module: ${failure.filePath}\n  ${indented}\n`;
 }
 
 /**
@@ -253,7 +256,9 @@ export function formatFailedImportSection(failures: FlowImportFailure[]): string
   }
   return (
     `\n${failures.length} flow module(s) failed to import:\n` +
-    failures.map((f) => `  ${f.filePath}: ${f.message}`).join("\n")
+    failures
+      .map((f) => `  ${f.filePath}: ${f.message.split("\n").join("\n    ")}`)
+      .join("\n")
   );
 }
 
