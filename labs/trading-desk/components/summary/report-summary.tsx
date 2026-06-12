@@ -159,7 +159,7 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
       </div>
 
       <SectionLabel>Price &amp; levels</SectionLabel>
-      <PricePanel price={price} trade={summary.trade} spine={spineRaw} />
+      <PricePanel price={price} trade={summary.trade} />
 
       <RiskPanel
         criticalRisks={summary.criticalRisks}
@@ -235,18 +235,15 @@ function SectionLabel({
 function PricePanel({
   price,
   trade,
-  spine,
 }: {
   price: PriceHistorySlice | null;
   trade: ReturnType<typeof buildReportSummary>["trade"];
-  spine: unknown;
 }): ReactElement {
-  const fairValue =
-    (spine as ValuationSpineState | null)?.fairValue?.fairValue ?? null;
-
   const hasSeries =
     price !== null && price.source !== "unavailable" && price.bars.length >= 2;
 
+  // The spine's fairValue is a company-level $B figure (a fair market cap),
+  // not a share price — it must never join the price-axis levels (FIX-778).
   const levels: PriceOverlayLevel[] = [];
   if (trade?.targetPrice != null)
     levels.push({
@@ -254,8 +251,6 @@ function PricePanel({
       value: trade.targetPrice,
       color: "var(--c-live)",
     });
-  if (fairValue != null)
-    levels.push({ label: "fair", value: fairValue, color: "var(--c-accent)" });
   if (trade?.stopPrice != null)
     levels.push({
       label: "stop",
@@ -285,7 +280,7 @@ function PricePanel({
       ) : (
         <>
           <ChartEmpty label="Price history unavailable for this run" />
-          <TradeLevelsList trade={trade} fairValue={fairValue} />
+          <TradeLevelsList trade={trade} />
         </>
       )}
     </div>
@@ -294,10 +289,8 @@ function PricePanel({
 
 function TradeLevelsList({
   trade,
-  fairValue,
 }: {
   trade: ReturnType<typeof buildReportSummary>["trade"];
-  fairValue: number | null;
 }): ReactElement | null {
   const rows: Array<{ label: string; value: string }> = [];
   if (trade?.direction != null)
@@ -308,8 +301,6 @@ function TradeLevelsList({
     rows.push({ label: "stop", value: String(trade.stopPrice) });
   if (trade?.targetPrice != null)
     rows.push({ label: "target", value: String(trade.targetPrice) });
-  if (fairValue != null)
-    rows.push({ label: "fair value", value: String(fairValue) });
   if (rows.length === 0) return null;
 
   return (
