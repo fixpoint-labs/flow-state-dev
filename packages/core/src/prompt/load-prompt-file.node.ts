@@ -40,14 +40,9 @@ import {
  *                    directory (e.g. `".."`). Defaults to the module's own dir.
  */
 export function moduleDir(importerUrl: string, relative = "."): string | undefined {
-  let url: URL;
   try {
-    url = new URL(importerUrl);
-  } catch {
-    return undefined;
-  }
-  if (url.protocol !== "file:") return undefined;
-  try {
+    const url = new URL(importerUrl);
+    if (url.protocol !== "file:") return undefined;
     return path.resolve(path.dirname(fileURLToPath(url)), relative);
   } catch {
     return undefined;
@@ -92,10 +87,10 @@ export function resolveBaseDir(
 ): string {
   const expect = options?.expect;
   const rejected: string[] = [];
-  let skipped = 0;
+  let sawUndefined = false;
   for (const candidate of candidates) {
     if (candidate === undefined) {
-      skipped++;
+      sawUndefined = true;
       continue;
     }
     if (!path.isAbsolute(candidate)) {
@@ -114,16 +109,15 @@ export function resolveBaseDir(
     }
     return candidate;
   }
-  const skippedNote =
-    skipped > 0
-      ? `\n(${skipped} undefined candidate(s) skipped — typically a bundler-rewritten import.meta.url.)`
-      : "";
+  const skippedNote = sawUndefined
+    ? `\n(Undefined candidates were skipped — typically a bundler-rewritten import.meta.url.)`
+    : "";
   throw new Error(
     `resolveBaseDir: no candidate directory qualified.\nTried:\n` +
       (rejected.length > 0 ? rejected.join("\n") : "  (no defined candidates)") +
       skippedNote +
       `\nPass an absolute fallback derived from a directory the runtime pins ` +
-      `(e.g. process.cwd() under Next.js dev/build, which set cwd to the app package).`
+      `(e.g. process.cwd() under Next.js dev/build, which pin cwd to the app package).`
   );
 }
 

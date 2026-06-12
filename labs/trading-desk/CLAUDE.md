@@ -111,6 +111,7 @@ src/flows/analysis/
   lib/                           pure IO-free utilities — neither tool-runtime nor recipe
     helpers.ts                   tickerDate / asDataBlock / memoLabel / attributedTools
     format.ts                    shared prompt formatters (memo, debate, contributions)
+    app-root.ts                  APP_ROOT — package root resolved once (module-relative, cwd fallback)
     prompt.ts                    loadPrompt(path) — resolves *.prompt.md relative to the flow root
     ticker-resolver.ts           pre-flight ticker probe
     concurrency.ts               mapLimit — bounded + retried fan-out

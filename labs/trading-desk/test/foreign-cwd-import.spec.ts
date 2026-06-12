@@ -28,7 +28,9 @@ describe("importing the analysis flow from a foreign cwd", () => {
   it("loads a phase prompt through loadPrompt", async () => {
     const { loadPrompt } = await import("../src/flows/analysis/lib/prompt");
     const pf = loadPrompt("agents/analysts/prompts/fundamentals.prompt.md");
-    expect(pf.description).toMatch(/fundamentals analyst/i);
+    // A parsed PromptFile with its frontmatter intact proves the load + parse
+    // succeeded; don't pin the prompt's copy, which changes independently.
+    expect(pf.description).toBeTruthy();
   });
 
   it("loads a fixture without a rootDir override", async () => {

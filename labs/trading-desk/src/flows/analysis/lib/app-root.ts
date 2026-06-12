@@ -16,6 +16,11 @@
  * qualifies, `resolveBaseDir` throws at import time listing what it tried —
  * a flow that cannot locate its files must fail loudly at import, never
  * mid-run on a fabricated path.
+ *
+ * Placement: `lib/` is documented as IO-free utilities, but `lib/prompt.ts`
+ * already reads the filesystem at import time, and this file sits next to its
+ * consumers (`lib/prompt.ts`, `tools/runtime/fixtures.ts` — `tools/ → lib/`
+ * imports have precedent in the catalog).
  */
 import path from "node:path";
 import { moduleDir, resolveBaseDir } from "@flow-state-dev/core/prompt-file/node";

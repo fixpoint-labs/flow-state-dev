@@ -113,8 +113,10 @@ describe("resolveBaseDir", () => {
     expect(resolveBaseDir([missing, TEST_DIR])).toBe(TEST_DIR);
   });
 
-  it("skips undefined candidates (composes with moduleDir)", () => {
-    expect(resolveBaseDir([undefined, FIXTURE_DIR])).toBe(FIXTURE_DIR);
+  it("skips candidates whose moduleDir came back undefined (bundler-rewritten URL)", () => {
+    expect(
+      resolveBaseDir([moduleDir("turbopack://[project]/x.js"), FIXTURE_DIR])
+    ).toBe(FIXTURE_DIR);
   });
 
   it("rejects an existing directory that lacks the expect probe", () => {
@@ -130,14 +132,15 @@ describe("resolveBaseDir", () => {
 
   it("throws an Error listing every rejected candidate when none qualifies", () => {
     const missing = path.join(TEST_DIR, "does-not-exist");
-    expect(() =>
-      resolveBaseDir([undefined, missing, FIXTURE_DIR], { expect: "nope" })
-    ).toThrow(
-      expect.objectContaining({
-        message: expect.stringMatching(
-          /no candidate directory qualified[\s\S]*does-not-exist \(does not exist\)[\s\S]*\(missing "nope"\)[\s\S]*1 undefined candidate/
-        ),
-      })
-    );
+    let message = "";
+    try {
+      resolveBaseDir([undefined, missing, FIXTURE_DIR], { expect: "nope" });
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain("no candidate directory qualified");
+    expect(message).toContain(`${missing} (does not exist)`);
+    expect(message).toContain(`${FIXTURE_DIR} (missing "nope")`);
+    expect(message).toContain("Undefined candidates were skipped");
   });
 });
