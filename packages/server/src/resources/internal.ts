@@ -22,6 +22,7 @@ import type { StoreRegistry } from "../stores/types";
 import { mergeScopeReads, resourceScopeIds } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
 import { resourceStorageKeys } from "./storage-keys";
+import { isParsedResourceTemplate } from "./content-paths";
 import {
   parseResourceTemplate,
   renderResourceTemplate,
@@ -163,7 +164,7 @@ export async function renderContent(
   state: JsonObject,
   templateRaw?: string
 ): Promise<string | null> {
-  if ("contentTemplate" in config && config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
+  if ("contentTemplate" in config && isParsedResourceTemplate(config.contentTemplate)) {
     return renderResourceTemplate(config.contentTemplate, state);
   }
   if ("contentTemplateRef" in config && config.contentTemplateRef !== undefined) {

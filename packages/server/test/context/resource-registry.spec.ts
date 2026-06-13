@@ -171,6 +171,50 @@ describe("resolveStringContentTemplates", () => {
     const config = makeResourceConfig({ contentTemplate: "/nonexistent/template.md" });
     expect(() => resolveStringContentTemplates({ doc: config })).toThrow(/Failed to load contentTemplate/);
   });
+
+  it("resolves an anchored path relative to the declaring module, not cwd", () => {
+    // "./fixtures/..." does not exist relative to the test cwd (the package
+    // root) — only relative to this spec file. Module-relative must win.
+    const config = makeResourceConfig({
+      contentTemplate: { path: "./fixtures/anchored-template.md", importerUrl: import.meta.url },
+    });
+    resolveStringContentTemplates({ doc: config });
+    const template = config.contentTemplate as { name?: string; sections: { system: string } };
+    expect(template.name).toBe("anchored");
+    expect(template.sections.system).toContain("{{ state.role }}");
+  });
+
+  it("falls back to cwd when the anchor is a bundler-rewritten URL", () => {
+    // Path exists relative to the package root (the test cwd) but the anchor
+    // is unusable — the cwd candidate must carry it.
+    const config = makeResourceConfig({
+      contentTemplate: {
+        path: "./test/context/fixtures/anchored-template.md",
+        importerUrl: "turbopack://[project]/flows/x.js",
+      },
+    });
+    resolveStringContentTemplates({ doc: config });
+    expect((config.contentTemplate as { name?: string }).name).toBe("anchored");
+  });
+
+  it("throws naming every candidate when an anchored path matches nothing", () => {
+    const config = makeResourceConfig({
+      contentTemplate: { path: "./does-not-exist.md", importerUrl: import.meta.url },
+    });
+    expect(() => resolveStringContentTemplates({ doc: config })).toThrow(
+      /Failed to resolve contentTemplate[\s\S]*Tried:/
+    );
+  });
+});
+
+describe("normalizeScopeResourceContent — anchored contentFile", () => {
+  it("loads an anchored contentFile relative to the declaring module", () => {
+    const config = makeResourceConfig({
+      contentFile: { path: "./fixtures/anchored-content.txt", importerUrl: import.meta.url },
+    });
+    const result = normalizeScopeResourceContent({ doc: config }, undefined);
+    expect(result.doc).toBe("anchored file content\n");
+  });
 });
 
 describe("filterFlowLevelEager", () => {
