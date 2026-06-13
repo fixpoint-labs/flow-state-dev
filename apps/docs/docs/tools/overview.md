@@ -107,6 +107,8 @@ Don't mark a tool cacheable if it mutates state, depends on time or randomness n
 
 The cross-task observation flow that pairs with this layer is documented in the [Flow policy](/docs/patterns/flow-policy) guide — observations get recorded whether or not the tool is cacheable.
 
+Tool memoization is input-addressed and in-run: it keys on the call arguments and the cache disappears when the run ends. For data that's identity-addressed, persisted, and freshness-bounded — fetched once, referenced by a stable key, shared across blocks and sessions, and good for a configurable window — see the [Cached Fetch](/docs/patterns/cached-fetch) pattern.
+
 ## Installation
 
 The tools package is part of the monorepo. For external projects:

@@ -154,6 +154,8 @@ Errors are never cached. If `execute` throws, no entry is written and the next c
 
 Cross-task observation flow (Layer A) does not require cacheable tools to be useful — the ledger records every tool call regardless. Caching is a separate optimization.
 
+Tool memoization here is in-run and input-addressed: it keys on the call arguments and lives for the duration of the run. For identity-addressed data that persists across requests and carries a freshness window (fetch once, reference by a stable key, treat as fresh for N minutes), reach for the [Cached Fetch](./cached-fetch.md) pattern instead.
+
 ## Writing a custom policy
 
 `flowPolicy.custom` takes a `select` function with the same signature the built-ins implement:

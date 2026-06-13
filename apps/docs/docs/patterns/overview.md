@@ -68,6 +68,8 @@ The first three patterns use `utility.decomposer` internally to plan work. They 
 
 **Drain Pool** — concurrent streaming dispatch over a dynamic, durable queue. N workers continuously pull items from a shared session-resource collection, process them, and loop until drained. Workers can enqueue follow-up items mid-drain. The parent sequencer waits for full completion. Bounded concurrency (exactly N workers, not `N^depth`), at-least-once semantics, durable via session resources.
 
+**Cached Fetch** — identity-addressed, persisted, freshness-bounded caching over a resource collection. Fetch or compute a value once, reference it by a stable key, and treat it as fresh for a configurable window. Consumed as a capability a block opts into with `uses`. Use it for expensive external data (quotes, profiles, rendered reports) that's stable for a known window and worth keeping warm across requests.
+
 ## Pattern selection
 
 ```

@@ -135,6 +135,7 @@ const sidebars: SidebarsConfig = {
               label: "Other Patterns",
               items: [
                 "patterns/response-auditor",
+                "patterns/cached-fetch",
               ],
             },
             {

@@ -233,6 +233,33 @@ The pattern also accepts an optional `moderator` block. When provided, the moder
 
 **Key exports:** `debate`, `createDebateTranscript`, `createDebater`, `createJudge`, `createModerator`, `createSynthesize`, `createInitTranscript`, `createRecordArgument`, `formatTranscriptForJudge`, `debateInputSchema`, `debateStateSchema`, `debateContributionEntrySchema`, `debateVerdictSchema`, `debateTranscriptStateSchema`, `debateModeratorOutputSchema`, `debateModeratorDecisionSchema`
 
+### Cached Fetch
+
+Identity-addressed, persisted, freshness-bounded caching over a resource collection. Fetch or compute a value once, reference it by a stable key, and treat it as good for a freshness window. The next read inside that window serves the stored value; past it, the next read refetches. Distinct from the in-run, input-addressed tool cache (`cacheable`) and from plain resource collections, which persist but have no notion of freshness. Consumed as a capability — a block opts in with `uses: [cap]` and the capability auto-installs its cache collection, so there's no per-flow resource declaration.
+
+```typescript
+import { createCachedFetchCapability } from "@flow-state-dev/patterns";
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const marketData = createCachedFetchCapability({ name: "cache", staleAfter: "15m" });
+
+const quoteTool = handler({
+  name: "get-quote",
+  inputSchema: z.object({ ticker: z.string() }),
+  outputSchema: z.object({ price: z.number() }),
+  uses: [marketData],
+  execute: async ({ ticker }, ctx) => {
+    const quote = await ctx.cap.cache.getOrFetch("get_quote", { ticker }, () => fetchQuote(ticker));
+    return { price: quote.price };
+  },
+});
+```
+
+Freshness is evaluated app-side on read from a `storedAt` timestamp, so it works on any store backend and a shortened `staleAfter` takes effect immediately on existing entries. Expiry is lazy (stale entries persist until overwritten or count-evicted). `staleIfError` serves stale on a fetcher failure within a grace window. Per-request single-flight is always on; `processDedup` adds tenant-safe cross-request single-flight. The lower-level substrate (`cachedCollection`, `getOrCompute(ref, ...)`, `invalidateCached`) is available for typed domain collections.
+
+**Key exports:** `createCachedFetchCapability`, `cachedCollection`, `getOrCompute`, `invalidateCached`, `jsonValueSchema`, and types `CacheEnvelope`, `CachedFetchAccessor`, `CachedCollectionOptions`, `CreateCachedFetchCapabilityOptions`, `GetOrComputeOptions`
+
 ## Pattern-Level `instructions`
 
 All three coordination patterns (`planAndExecute`, `supervisor`, `blackboard`) accept an `instructions` prop — a top-level "team brief" that the pattern digests across its internal sub-blocks. This lets consumers apply a role, stance, or set of rules without rebuilding sub-blocks.

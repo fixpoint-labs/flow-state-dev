@@ -135,7 +135,7 @@ const filesCollection = defineResourceCollection({
 });
 ```
 
-See [Resource Collections](/docs/resources/collections) for the full reference: patterns, runtime API, eviction, lifecycle hooks, and storage model.
+See [Resource Collections](/docs/resources/collections) for the full reference: patterns, runtime API, eviction, lifecycle hooks, and storage model. For a freshness-bounded cache built on top of a collection — fetch once, reference by key, treat as fresh for a window — see the [Cached Fetch](/docs/patterns/cached-fetch) pattern.
 
 ## Block-level resource declarations
 

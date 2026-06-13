@@ -160,6 +160,10 @@ Setting `eviction` to `"lru"` or `"oldest"` without `maxInstances` throws at def
 
 Set `maxInstances` for any collection that could grow without limit. An AI creating files in a loop with no cap will cause memory and storage pressure. `"lru"` is the safest default — it keeps the working set and discards stale entries.
 
+:::note Eviction bounds cardinality, not age
+Count eviction caps how many instances live in a collection. It has no notion of how old an entry is. If you need a time-based freshness window over a collection — fetch a value, treat it as good for N minutes, refetch past that — see the [Cached Fetch](/docs/patterns/cached-fetch) pattern, which layers freshness on top of a collection.
+:::
+
 ## Eager vs lazy collections
 
 `prefetchMode` is a loading-cost knob, not an API-shape knob. All reads (`get`, `getOptional`, `list`, `count`) are async in both modes — you always `await` them. What `prefetchMode` changes is *when* the data loads, not how you call for it. Flipping the mode requires zero call-site changes. The default is `"eager"`.
