@@ -27,4 +27,12 @@ export const analysisCache = createCachedFetchCapability({
   scope: "user",
   flowIsolation: false,
   staleAfter: 120_000,
+  // The old process cache never served stale-on-error: a miss ran the fetcher
+  // and propagated its result (or throw). The desk relies on that — providers
+  // throw on failure and tools degrade to empty/null rather than reuse old
+  // data, and the post-Phase-1 taps (compute-spine, store-price-history) pass a
+  // fetcher that throws ON PURPOSE to mean "not warm this run". Serving a stale
+  // entry there would build the spine/price-history from a prior run. Keep the
+  // old semantics: never serve stale on a fetcher error.
+  staleIfError: false,
 });
