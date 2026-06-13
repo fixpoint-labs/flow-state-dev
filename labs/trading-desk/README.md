@@ -246,12 +246,14 @@ Defaults to `NVDA / 2026-05-06`. The top bar exposes four controls:
 - **preset** — `fast` (cheap utility models) or `full` (higher-tier chat models).
   Resolved via the model resolver's `intent/utility` and `intent/chat` intents,
   so the concrete model depends on which provider key is configured.
-- **source** — `fixture` (canonical hand-curated JSON) or `live` (SEC EDGAR +
+- **source** — `fixture` (canonical hand-curated JSON), `live` (SEC EDGAR +
   Yahoo Finance + Finnhub + FRED + Polymarket for structured data; Grok via
   `xSearch` for social sentiment when `XAI_API_KEY` is set; tools whose provider
-  key is absent return `unavailable`). The three financial statements
-  (balance sheet, income statement, cash flow) come from SEC EDGAR XBRL
-  filings first, falling back to Yahoo for non-US filers.
+  key is absent return `unavailable`), or `record` (runs live and persists every
+  tool payload into the fixture corpus, making the run immediately replayable
+  with `fixture`; not offered in the UI — pass it via the action input). The
+  three financial statements (balance sheet, income statement, cash flow) come
+  from SEC EDGAR XBRL filings first, falling back to Yahoo for non-US filers.
 
 Press **re-run** to dispatch a new `analyze` request.
 

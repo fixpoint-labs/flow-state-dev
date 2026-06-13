@@ -89,6 +89,8 @@ src/flows/analysis/
     runtime/                     tool runtime (was lib/)
       cache.ts                   process-wide TTL cache (getOrFetch)
       fixtures.ts                loadFixture(tool, args)
+      recorder.ts                recordFixture — stable-serialize + write to corpus
+      resolve.ts                 resolveToolPayload — single dispatch for fixture/live/record
       discover.ts                web-search → DiscoveryPayload shape
     providers/                   external API clients — stateless, throw on failure (was ../providers/)
       finnhub.ts                 Finnhub fetch helpers (incl. institutional ownership)
@@ -798,23 +800,33 @@ of them with no consumer. Keep it a plain chain.
 
 ## Fixture mode
 
-Fixtures are a single pinned snapshot at `2026-05-06` (the
-`FIXTURE_SNAPSHOT` constant in
-[`tools/runtime/fixtures.ts`](src/flows/analysis/tools/runtime/fixtures.ts)). The
-loader ignores `args.date` and always reads from the snapshot directory. The
-returned payload carries the fixture's own `asOf` field, so analysts see the
-actual data date.
+`dataSource` accepts three values: `fixture`, `live`, and `record`.
 
-When adding a new ticker to fixture coverage:
+Fixture mode reads from `fixtures/{TICKER}/{DATE}/` for the requested
+`args.date`. The loader is date-addressed: each `{TICKER}/{DATE}/` directory
+is one snapshot. `FIXTURE_SNAPSHOT` (`"2026-05-06"`) is the default date for
+the curated corpus, not a pin — requesting an unknown ticker or date throws
+`FixtureMissingError` loudly, never a silent fallback. The returned payload
+carries the fixture's own `asOf` field, so analysts see the actual data date.
 
-1. Create `fixtures/<TICKER>/2026-05-06/`.
-2. Drop in one JSON per tool (see existing `fixtures/NVDA/2026-05-06/` for
-   the shape — names match `fixtureFileName(tool)`). The Phase 1 file set
-   includes `insider-transactions.json` (90 days of Form 4 rows for the
-   news analyst).
-3. The framework needs no other registration.
+Providers recorded as `source: "unavailable"` survive replay. The loader
+preserves the `"unavailable"` tag so a recorded provider miss stays a miss;
+any other source tag (`"yahoo"`, `"finnhub"`, etc.) replays as `"fixture"`.
+
+To add a new ticker to fixture coverage, record it:
+
+```bash
+pnpm fsdev run analysis analyze -i '{"ticker":"XOM","date":"2026-06-12","dataSource":"record","costPreset":"full"}'
+```
+
+See [`fixtures/README.md`](fixtures/README.md) for the full record-mode
+workflow and the hand-authoring fallback for edge cases.
 
 ## Live mode
+
+Record mode (`dataSource: "record"`) runs the same provider chain as live mode,
+so the same API keys apply. Use `costPreset: "full"` when recording to ensure
+the eight `discover_*` tools run and the fixture corpus is complete.
 
 Live mode wires Finnhub → Yahoo → FRED → Polymarket as the upstream
 providers, plus the `fetch` tool from `@flow-state-dev/tools` for article
