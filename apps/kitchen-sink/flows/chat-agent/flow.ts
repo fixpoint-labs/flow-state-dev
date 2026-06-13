@@ -21,6 +21,7 @@ import {
   generator,
   handler,
   sequencer,
+  SuspensionRejectedError,
   utility,
 } from "@flow-state-dev/core";
 
@@ -420,9 +421,8 @@ const approvalGateInputSchema = z.object({
   request: z.string().min(1),
 });
 
-/** Zod shape the operator fills in when approving/rejecting from the DevTool. */
+/** Optional note the operator can attach when resolving from the DevTool. */
 const approvalResumeSchema = z.object({
-  approved: z.boolean(),
   note: z.string().optional(),
 });
 
@@ -432,19 +432,25 @@ const approvalGateStep = handler({
   outputSchema: z.string(),
   execute: async (input, ctx) => {
     // `ctx.suspend` is only present in a durable action running inside a
-    // sequencer. On first run it throws a SuspensionError the sequencer
-    // catches at this step boundary; on resume it returns the operator's
-    // decision instead of throwing.
-    const decision = (await ctx.suspend!({
-      reason: "human_approval",
-      message: `Approve action: "${input.request}"?`,
-      resumeSchema: approvalResumeSchema,
-    })) as z.infer<typeof approvalResumeSchema> | undefined;
-
-    if (decision?.approved) {
-      return `Approved${decision.note ? ` — ${decision.note}` : ""}. Proceeding with "${input.request}".`;
+    // sequencer. On first run it throws a SuspensionError the sequencer catches
+    // at this step boundary. On resume the operator's *action* decides the
+    // outcome: "approve" makes ctx.suspend RETURN the resume data; "reject"
+    // makes it THROW SuspensionRejectedError. So reaching past ctx.suspend means
+    // approved — don't key off a data field.
+    try {
+      const data = (await ctx.suspend!({
+        reason: "human_approval",
+        message: `Approve action: "${input.request}"?`,
+        resumeSchema: approvalResumeSchema,
+      })) as z.infer<typeof approvalResumeSchema> | undefined;
+      return `Approved${data?.note ? ` — ${data.note}` : ""}. Proceeding with "${input.request}".`;
+    } catch (err) {
+      if (err instanceof SuspensionRejectedError) {
+        const note = (err.rejectionData as { note?: string } | undefined)?.note;
+        return `Rejected${note ? ` — ${note}` : ""}. "${input.request}" was not performed.`;
+      }
+      throw err;
     }
-    return `Rejected${decision?.note ? ` — ${decision.note}` : ""}. "${input.request}" was not performed.`;
   },
 });
 
