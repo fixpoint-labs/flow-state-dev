@@ -76,6 +76,23 @@ export interface ResourceTemplate {
   readonly partials?: ResourceTemplatePartials;
 }
 
+/**
+ * True when `value` is a parsed {@link ResourceTemplate} — as opposed to an
+ * unresolved file path (a string or anchored-path object) still sitting on a
+ * config's `contentTemplate` slot. Structural: parsed templates always carry
+ * a string `source` and a non-null `sections` object. Lives next to the
+ * interface so the guard and the shape stay in lockstep.
+ */
+export function isResourceTemplate(value: unknown): value is ResourceTemplate {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { source?: unknown }).source === "string" &&
+    typeof (value as { sections?: unknown }).sections === "object" &&
+    (value as { sections?: unknown }).sections !== null
+  );
+}
+
 /** Pre-registered partials, keyed by name (filename without `.md`). */
 export type ResourceTemplatePartials = Record<string, string>;
 

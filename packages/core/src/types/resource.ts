@@ -143,6 +143,21 @@ export type CollectionClientConfig<TState extends JsonObject = JsonObject> = {
   live?: boolean;
 };
 
+/**
+ * A file path carrying the declaring module's anchor. Pass `import.meta.url`
+ * as `importerUrl`; the server resolves a relative `path` against the
+ * module's directory first, falling back to the working directory when the
+ * anchor is unusable (e.g. rewritten by a bundler) or the module-relative
+ * file doesn't exist. Plain strings stay supported and resolve from the
+ * working directory only. Isomorphic-safe: both fields are plain strings.
+ */
+export type AnchoredPath = {
+  /** Relative or absolute file path. */
+  path: string;
+  /** The declaring module's `import.meta.url`, anchoring a relative `path`. */
+  importerUrl: string;
+};
+
 export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   /**
    * Logical reference name. Used as the storage namespace identifier
@@ -172,18 +187,25 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   stateSchema: ZodTypeAny;
   default?: JsonValue;
   content?: string;
-  /** Path to a file on disk to load as the content body template. Mutually exclusive with `content`. */
-  contentFile?: string;
+  /**
+   * Path to a file on disk to load as the content body template. A bare
+   * string resolves from the working directory; an {@link AnchoredPath}
+   * resolves relative to the declaring module first (pass `import.meta.url`).
+   * Mutually exclusive with `content`.
+   */
+  contentFile?: string | AnchoredPath;
   render?: (content: string, state: JsonObject) => string | Promise<string>;
   /**
-   * A role-tagged Markdown template for this resource's content. Accepts
-   * either a pre-parsed `ResourceTemplate` (from `parseResourceTemplate` /
-   * `loadResourceTemplate`) or a file path string that the server resolves
-   * at startup. The resource's content is rendered against its `state` via
-   * deterministic LiquidJS. Mutually exclusive with `content` /
+   * A role-tagged Markdown template for this resource's content. Accepts a
+   * pre-parsed `ResourceTemplate` (from `parseResourceTemplate` /
+   * `loadResourceTemplate`), or a file path that the server resolves at
+   * startup — a bare string resolves from the working directory; an
+   * {@link AnchoredPath} resolves relative to the declaring module first
+   * (pass `import.meta.url`). The resource's content is rendered against its
+   * `state` via deterministic LiquidJS. Mutually exclusive with `content` /
    * `contentFile` / `contentTemplateRef`.
    */
-  contentTemplate?: ResourceTemplate | string;
+  contentTemplate?: ResourceTemplate | string | AnchoredPath;
   /**
    * Path of another resource whose RAW content is a role-tagged Markdown
    * template. Resolved at read-time: editing the template resource or this

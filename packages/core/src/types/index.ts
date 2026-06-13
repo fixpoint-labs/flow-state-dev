@@ -127,6 +127,7 @@ export type {
 } from "./model";
 
 export type {
+  AnchoredPath,
   CollectionClientConfig,
   CollectionClientContentConfig,
   CollectionStateClientConfig,
