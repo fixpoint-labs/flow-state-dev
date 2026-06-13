@@ -8,14 +8,13 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchEdgarFinancialsHistory } from "../providers/edgar";
 import { fetchYahooFinancialsHistory } from "../providers/yahoo";
 import type { FinancialPeriod } from "../providers/financials-history";
 import { emptyPayload } from "../empty-payloads";
 import { altmanZDoublePrime, piotroskiFScore, type StatementPeriod } from "./composite-math";
 import {
-  pickMode,
   toolInputSchemas,
   toolOutputSchemas,
   type ToolInput,
@@ -106,8 +105,7 @@ export const get_quant_composites = handler({
   inputSchema: toolInputSchemas.get_quant_composites,
   outputSchema: toolOutputSchemas.get_quant_composites,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_quant_composites", input);
-    return getOrFetch("get_quant_composites", input, async () => {
+    return resolveToolPayload("get_quant_composites", input, ctx, async () => {
       try {
         return await fetchLive(input);
       } catch {

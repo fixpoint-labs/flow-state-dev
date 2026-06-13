@@ -4,11 +4,10 @@
  * (EDGAR is free and requires only a User-Agent).
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchEdgarFilings } from "../providers/edgar-filings";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_sec_filings = handler({
   name: "get_sec_filings",
@@ -20,10 +19,7 @@ export const get_sec_filings = handler({
   inputSchema: toolInputSchemas.get_sec_filings,
   outputSchema: toolOutputSchemas.get_sec_filings,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") {
-      return loadFixture("get_sec_filings", input);
-    }
-    return getOrFetch("get_sec_filings", input, async () => {
+    return resolveToolPayload("get_sec_filings", input, ctx, async () => {
       try {
         return await fetchEdgarFilings(input.ticker, input.date);
       } catch {

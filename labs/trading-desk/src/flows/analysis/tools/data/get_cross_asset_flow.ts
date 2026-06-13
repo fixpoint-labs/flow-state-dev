@@ -18,7 +18,7 @@
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../runtime/cache";
 import { mapLimit } from "../../lib/concurrency";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchFredSeries, hasFredKey } from "../providers/fred";
 import { fetchYahooChart } from "../providers/yahoo";
 import {
@@ -29,7 +29,6 @@ import {
 import { emptyPayload } from "../empty-payloads";
 import { trailingReturn } from "../indicators-math";
 import {
-  pickMode,
   toolInputSchemas,
   toolOutputSchemas,
   type ToolInput,
@@ -173,8 +172,7 @@ export const get_cross_asset_flow = handler({
   inputSchema: toolInputSchemas.get_cross_asset_flow,
   outputSchema: toolOutputSchemas.get_cross_asset_flow,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_cross_asset_flow", input);
-    return getOrFetch("get_cross_asset_flow", input, async () => {
+    return resolveToolPayload("get_cross_asset_flow", input, ctx, async () => {
       try {
         return await fetchLive(input);
       } catch {

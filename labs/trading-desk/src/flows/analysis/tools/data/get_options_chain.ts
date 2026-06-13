@@ -11,8 +11,7 @@
  * options) stays `source: "massive"` with null derived fields.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchOptionChainSnapshot, hasMassiveKey } from "../providers/massive";
 import {
   atmIv,
@@ -24,7 +23,6 @@ import {
 } from "./options-math";
 import { emptyPayload } from "../empty-payloads";
 import {
-  pickMode,
   toolInputSchemas,
   toolOutputSchemas,
   type ToolInput,
@@ -71,8 +69,7 @@ export const get_options_chain = handler({
   inputSchema: toolInputSchemas.get_options_chain,
   outputSchema: toolOutputSchemas.get_options_chain,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_options_chain", input);
-    return getOrFetch("get_options_chain", input, async () => {
+    return resolveToolPayload("get_options_chain", input, ctx, async () => {
       if (!hasMassiveKey()) return emptyPayload("get_options_chain", input);
       try {
         return await fetchLive(input);

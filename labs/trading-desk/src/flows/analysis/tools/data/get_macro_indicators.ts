@@ -15,12 +15,11 @@
  * payload; `unavailable` is reported only when every series fails.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
 import { mapLimit } from "../../lib/concurrency";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchFredSeries } from "../providers/fred";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 /** Max simultaneous FRED requests. FRED throttles concurrent bursts, so keep
  *  this low; drop to 1 (fully sequential) if throttling still bites. */
@@ -50,8 +49,7 @@ export const get_macro_indicators = handler({
   inputSchema: toolInputSchemas.get_macro_indicators,
   outputSchema: toolOutputSchemas.get_macro_indicators,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_macro_indicators", input);
-    return getOrFetch("get_macro_indicators", input, async () => {
+    return resolveToolPayload("get_macro_indicators", input, ctx, async () => {
       const key = process.env.FRED_API_KEY?.trim();
       if (!key) return emptyPayload("get_macro_indicators", input);
       try {

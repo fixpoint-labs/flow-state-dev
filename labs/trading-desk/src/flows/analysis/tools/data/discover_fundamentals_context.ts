@@ -17,11 +17,10 @@
  * the gap honestly.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
 import { discoverWeb, FUNDAMENTALS_QUERY } from "../runtime/discover";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { emptyPayload, skippedDiscoveryPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const discover_fundamentals_context = handler({
   name: "discover_fundamentals_context",
@@ -34,10 +33,7 @@ export const discover_fundamentals_context = handler({
     if (ctx.session.state.costPreset !== "full") {
       return skippedDiscoveryPayload("discover_fundamentals_context", input);
     }
-    if (pickMode(ctx) === "fixture") {
-      return loadFixture("discover_fundamentals_context", input);
-    }
-    return getOrFetch("discover_fundamentals_context", input, async () => {
+    return resolveToolPayload("discover_fundamentals_context", input, ctx, async () => {
       try {
         return await discoverWeb({
           ticker: input.ticker,

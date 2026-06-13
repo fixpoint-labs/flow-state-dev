@@ -3,12 +3,11 @@
  * fallback. Fixture: curated NVDA JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
 import { fetchFinnhubCandles, hasFinnhubKey } from "../providers/finnhub";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchYahooChart } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_price_history = handler({
   name: "get_price_history",
@@ -16,8 +15,7 @@ export const get_price_history = handler({
   inputSchema: toolInputSchemas.get_price_history,
   outputSchema: toolOutputSchemas.get_price_history,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_price_history", input);
-    return getOrFetch("get_price_history", input, async () => {
+    return resolveToolPayload("get_price_history", input, ctx, async () => {
       if (hasFinnhubKey()) {
         try { return await fetchFinnhubCandles(input); } catch {}
       }

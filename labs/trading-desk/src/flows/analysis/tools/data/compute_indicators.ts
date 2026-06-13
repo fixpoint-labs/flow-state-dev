@@ -12,12 +12,12 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchYahooChart } from "../providers/yahoo";
 import { fetchFinnhubCandles, hasFinnhubKey } from "../providers/finnhub";
 import { emptyPayload } from "../empty-payloads";
 import { computeIndicators, type Bar } from "../indicators-math";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const compute_indicators = handler({
   name: "compute_indicators",
@@ -25,8 +25,7 @@ export const compute_indicators = handler({
   inputSchema: toolInputSchemas.compute_indicators,
   outputSchema: toolOutputSchemas.compute_indicators,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("compute_indicators", input);
-    return getOrFetch("compute_indicators", input, async () => {
+    return resolveToolPayload("compute_indicators", input, ctx, async () => {
       const priceInput = { ticker: input.ticker, date: input.date, range: "1y" as const };
       const prices = await getOrFetch("get_price_history", priceInput, async () => {
         if (hasFinnhubKey()) {

@@ -7,7 +7,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchFinnhubShortInterest, hasFinnhubKey } from "../providers/finnhub";
 import {
   fetchYahooChart,
@@ -16,7 +16,6 @@ import {
 } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import {
-  pickMode,
   toolInputSchemas,
   toolOutputSchemas,
   type ToolInput,
@@ -107,8 +106,7 @@ export const get_short_interest = handler({
   inputSchema: toolInputSchemas.get_short_interest,
   outputSchema: toolOutputSchemas.get_short_interest,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_short_interest", input);
-    return getOrFetch("get_short_interest", input, async () => {
+    return resolveToolPayload("get_short_interest", input, ctx, async () => {
       // Yahoo first (free, no key, ADR coverage); Finnhub backstops; empty only
       // when neither answers.
       try {

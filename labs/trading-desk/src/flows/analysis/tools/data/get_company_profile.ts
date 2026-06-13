@@ -15,13 +15,12 @@
  * thrown error. Fixture mode: curated per-ticker JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
 import { fetchFinnhubCompanyProfile, hasFinnhubKey } from "../providers/finnhub";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchWebsiteMetaDescription, searchCompanyWeb } from "../providers/web";
 import { fetchYahooCompanyProfile } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 import type { ToolInput, ToolOutput } from "../schemas";
 
 export const get_company_profile = handler({
@@ -30,8 +29,7 @@ export const get_company_profile = handler({
   inputSchema: toolInputSchemas.get_company_profile,
   outputSchema: toolOutputSchemas.get_company_profile,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_company_profile", input);
-    return getOrFetch("get_company_profile", input, async () => {
+    return resolveToolPayload("get_company_profile", input, ctx, async () => {
       const merged = await fetchAndMergeProviders(input);
       return enrichWithWeb(merged);
     });

@@ -5,7 +5,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchFinnhubPeers } from "../providers/finnhub";
 import { fetchYahooChart, fetchYahooFundamentals } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
@@ -18,7 +18,6 @@ import {
 } from "./factor-math";
 import { logReturns, realizedVolAnnualized } from "./regime-math";
 import {
-  pickMode,
   toolInputSchemas,
   toolOutputSchemas,
   type ToolInput,
@@ -166,8 +165,7 @@ export const get_factor_ranks = handler({
   inputSchema: toolInputSchemas.get_factor_ranks,
   outputSchema: toolOutputSchemas.get_factor_ranks,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_factor_ranks", input);
-    return getOrFetch("get_factor_ranks", input, async () => {
+    return resolveToolPayload("get_factor_ranks", input, ctx, async () => {
       try {
         return await fetchLive(input);
       } catch {

@@ -9,13 +9,12 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { GICS_TO_ETF } from "../../lib/sector-resolution";
 import { fetchYahooChart, fetchYahooCompanyProfile } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { trailingReturn } from "../indicators-math";
 import {
-  pickMode,
   toolInputSchemas,
   toolOutputSchemas,
   type ToolInput,
@@ -98,8 +97,7 @@ export const get_sector_context = handler({
   inputSchema: toolInputSchemas.get_sector_context,
   outputSchema: toolOutputSchemas.get_sector_context,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_sector_context", input);
-    return getOrFetch("get_sector_context", input, async () => {
+    return resolveToolPayload("get_sector_context", input, ctx, async () => {
       try {
         return await fetchLive(input);
       } catch {
