@@ -56,28 +56,50 @@ function todayIsoDate(): string {
 
 /** Find an existing session whose `metadata` matches the tuple on all four
  *  fields. Strict equality — legacy sessions with partial metadata never
- *  match. An exact `dataSource` match wins first; only when none exists does
- *  a record-run session (`dataSource: "record"`, written by the CLI recorder
- *  — never a UI option) read as live, so opening one keeps the header toggle
- *  on "live" without letting it shadow a live session that shares the rest
- *  of the tuple. */
+ *  match. A record-run session (`dataSource: "record"`, written by the CLI
+ *  recorder — never a UI option) reads as live, so opening one keeps the
+ *  header toggle on "live".
+ *
+ *  `preferId` is the currently-selected session: if it still matches the
+ *  tuple (exactly or via the record→live normalization), it wins. This keeps
+ *  an opened record row selected even when a live run shares the same
+ *  ticker/date/costPreset — without it, the live run's exact match would
+ *  shadow the record row the user clicked. With no preference, an exact
+ *  `dataSource` match wins before the normalized one. */
+function matchesTuple(
+  summary: SessionSummary,
+  tuple: AnalyzeTuple,
+  normalizeRecord: boolean,
+): boolean {
+  const md = summary.metadata;
+  const source =
+    normalizeRecord && md?.dataSource === "record" ? "live" : md?.dataSource;
+  return (
+    md?.ticker === tuple.ticker &&
+    md?.date === tuple.date &&
+    md?.costPreset === tuple.costPreset &&
+    source === tuple.dataSource
+  );
+}
+
 function findSessionForTuple(
   sessions: ReadonlyArray<SessionSummary>,
   tuple: AnalyzeTuple,
+  preferId?: string,
 ): string | undefined {
-  const match = (normalizeRecord: boolean): string | undefined =>
-    sessions.find((s) => {
-      const md = s.metadata;
-      const source =
-        normalizeRecord && md?.dataSource === "record" ? "live" : md?.dataSource;
-      return (
-        md?.ticker === tuple.ticker &&
-        md?.date === tuple.date &&
-        md?.costPreset === tuple.costPreset &&
-        source === tuple.dataSource
-      );
-    })?.id;
-  return match(false) ?? match(true);
+  if (preferId !== undefined) {
+    const preferred = sessions.find((s) => s.id === preferId);
+    if (
+      preferred !== undefined &&
+      (matchesTuple(preferred, tuple, false) ||
+        matchesTuple(preferred, tuple, true))
+    ) {
+      return preferId;
+    }
+  }
+  const find = (normalizeRecord: boolean): string | undefined =>
+    sessions.find((s) => matchesTuple(s, tuple, normalizeRecord))?.id;
+  return find(false) ?? find(true);
 }
 
 /** Auto-derived session title using the middle dot (U+00B7) separator.
@@ -236,8 +258,8 @@ function TradingDeskApp(): ReactElement {
     [ticker, date, costPreset, dataSource],
   );
   const matchedSessionId = useMemo(
-    () => findSessionForTuple(flow.sessions, tuple),
-    [flow.sessions, tuple],
+    () => findSessionForTuple(flow.sessions, tuple, flow.activeSessionId),
+    [flow.sessions, tuple, flow.activeSessionId],
   );
   // True when the current inputs map to an existing run (drives the run
   // button label: "re-run" for an existing session, "Run" for a fresh one).
@@ -322,10 +344,10 @@ function TradingDeskApp(): ReactElement {
           setCostPreset(t.costPreset);
         }
         // A record-run row restores the toggle to "live" (record is never a UI
-        // option). `findSessionForTuple` prefers an exact dataSource match and
-        // only falls back to this record→live normalization — so the tuple-sync
-        // effect resolves to this session unless a live session shares the same
-        // ticker/date/costPreset, in which case the exact match wins.
+        // option). We then `selectSession(id)` below; because the tuple-sync
+        // effect prefers the already-selected session when it matches the tuple,
+        // this record row stays open even if a live run shares the same
+        // ticker/date/costPreset.
         const source = t.dataSource === "record" ? "live" : t.dataSource;
         if (source === "fixture" || source === "live") {
           setDataSource(source);

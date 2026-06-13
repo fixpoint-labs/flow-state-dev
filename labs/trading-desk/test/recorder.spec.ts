@@ -123,6 +123,19 @@ describe("recordFixture", () => {
     expect(existsSync(path.join(path.dirname(tmpRoot), "NVDA"))).toBe(false);
   });
 
+  it("rejects a parent-segment ticker (`..`) that the character class allows", async () => {
+    await expect(
+      recordFixture(
+        "get_balance_sheet",
+        { ticker: "..", date: "2026-06-01" },
+        balanceSheet,
+        { rootDir: tmpRoot },
+      ),
+    ).rejects.toThrow(/Invalid fixture ticker/);
+    // The traversal target — one level above the corpus root — must not exist.
+    expect(existsSync(path.join(tmpRoot, "..", "2026-06-01"))).toBe(false);
+  });
+
   it("writes the zod-parsed payload — unknown extra keys are stripped", async () => {
     await recordFixture(
       "get_balance_sheet",

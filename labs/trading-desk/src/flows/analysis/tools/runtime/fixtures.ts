@@ -54,11 +54,13 @@ export function assertFixtureDate(date: string): void {
  * Validate a ticker before it is used as a path segment. The ticker is
  * user-controlled input, so anything outside the real-ticker shape
  * (1–15 chars of letters, digits, `.`, `-`) throws here — before any
- * filesystem access. This inherently rejects `/`, `..`, and the empty
- * string. The `_macro` sentinel never passes through this check.
+ * filesystem access. The character class permits `.` for tickers like
+ * `BRK.A`, so a `..` traversal segment is rejected explicitly. This rejects
+ * `/`, `..`, and the empty string. The `_macro` sentinel never passes
+ * through this check.
  */
 export function assertFixtureTicker(ticker: string): void {
-  if (!/^[A-Za-z0-9.\-]{1,15}$/.test(ticker)) {
+  if (!/^[A-Za-z0-9.\-]{1,15}$/.test(ticker) || ticker.includes("..")) {
     throw new Error(
       `Invalid fixture ticker "${ticker}" — expected 1-15 characters of letters, digits, ".", or "-".`,
     );

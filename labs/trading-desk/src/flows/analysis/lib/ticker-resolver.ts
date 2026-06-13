@@ -20,7 +20,7 @@
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { fetchFinnhubFundamentals, hasFinnhubKey } from "../tools/providers/finnhub";
-import { FIXTURE_ROOT } from "../tools/runtime/fixtures";
+import { assertFixtureDate, FIXTURE_ROOT } from "../tools/runtime/fixtures";
 import { fetchYahooFundamentals } from "../tools/providers/yahoo";
 
 const FIXTURE_PROBE_FILE = "fundamentals.json";
@@ -46,6 +46,16 @@ export type ResolveTickerResult = {
 async function resolveFixture(
   input: ResolveTickerInput,
 ): Promise<ResolveTickerResult> {
+  // The date is a user-controlled path segment, same as in `loadFixture`. A
+  // malformed value is treated as unresolvable rather than reaching `path.join`.
+  try {
+    assertFixtureDate(input.date);
+  } catch {
+    return {
+      resolved: false,
+      reason: `Invalid fixture date "${input.date}" — expected YYYY-MM-DD.`,
+    };
+  }
   const filePath = path.join(
     FIXTURE_ROOT,
     input.ticker,

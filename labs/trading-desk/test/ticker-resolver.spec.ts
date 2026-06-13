@@ -43,4 +43,14 @@ describe("resolveTicker record mode", () => {
     expect(record).toEqual({ resolved: true, reason: null });
     expect(fetchYahooFundamentals).toHaveBeenCalledWith(input);
   });
+
+  it("treats a malformed fixture date as unresolvable without probing the path", async () => {
+    const result = await resolveTicker({
+      ticker: "NVDA",
+      date: "../etc",
+      dataSource: "fixture",
+    });
+    expect(result.resolved).toBe(false);
+    expect(result.reason).toMatch(/YYYY-MM-DD/);
+  });
 });

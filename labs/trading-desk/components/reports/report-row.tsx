@@ -92,8 +92,10 @@ export function ReportRow({
   onOpen: (id: string) => void;
 }): ReactElement {
   const subtitle = subtitleFor(row);
-  // Record runs style as live — they carry live-fetched data.
-  const isLive = row.dataSource !== "fixture";
+  // Record runs style as live — they carry live-fetched data. Match the two
+  // live-data values explicitly so legacy rows with no `dataSource` keep
+  // fixture styling instead of flipping to live.
+  const isLive = row.dataSource === "live" || row.dataSource === "record";
   return (
     <button
       type="button"
