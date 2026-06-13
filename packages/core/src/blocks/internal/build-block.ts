@@ -15,6 +15,7 @@ import type { DefinedResource } from "../../types/resource";
 import type { DefinedResourceCollection } from "../../types/resource-collection";
 import type { JsonObject } from "../../schema/common";
 import type { CapabilityRef } from "../../capability/types";
+import { getBaseCapability } from "../../capability/merge";
 import { toError } from "./utils";
 import { emitToolOutputAround } from "./emit-tool-output";
 
@@ -193,6 +194,28 @@ export function buildBlock<
           await ctx._loadDeclaredResources?.(options.ownDeclaredResources, {
             loadLazySingles: true
           });
+        }
+
+        // Build `ctx.cap.<name>` accessors for the capabilities THIS block
+        // declares, so a block that lists `uses: [cap]` reaches its own
+        // capability accessors regardless of nesting depth. Additive and
+        // skip-by-name: accessors provided by an ancestor are inherited
+        // untouched (the server's executeBlock builds the root block's set,
+        // and parents pass their ctx down), and a block only constructs the
+        // caps it adds. Without this, nested blocks — which run only through
+        // this core path, never the server's executeBlock — would see an
+        // empty ctx.cap even though they declared the capability.
+        const blockCaps = (runtimeConfig as { __resolvedCapabilities?: CapabilityRef[] })
+          .__resolvedCapabilities;
+        if (blockCaps !== undefined && blockCaps.length > 0) {
+          const capCtx = ctx as { cap?: Record<string, unknown> };
+          const capObj = capCtx.cap ?? (capCtx.cap = {});
+          for (const capRef of blockCaps) {
+            const base = getBaseCapability(capRef);
+            if (base.fns !== undefined && !(base.name in capObj)) {
+              capObj[base.name] = base.fns(ctx);
+            }
+          }
         }
 
         // Fire the `added` phase trace hook before running connectInput. The
