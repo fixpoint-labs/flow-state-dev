@@ -126,6 +126,16 @@ const flowstate = createFlowState({
   // Schema/recovery scans on cold start can exhaust the serverless pool before
   // real requests are served.
   detectInterruptedOnStartup: false,
+  // Durable execution (FIX-140/141). Builds the checkpoint durability provider
+  // from the active profile's stores, so actions marked `durable: true` (e.g.
+  // chat-agent's `requestApproval` HITL gate) get ctx.suspend() and
+  // checkpoint-based resume. The retention sweeper bounds checkpoint/suspension/
+  // lease growth; a 60s cadence here makes its effect observable in dev.
+  durable: true,
+  durabilityRetention: { sweepIntervalMs: 60_000 },
+  // Enable the gated debug endpoints (incl. the DevTool Suspensions list) for
+  // local dev only. Deployed (DB present) stays fail-closed / env-gated.
+  debugEndpointsEnabled: databaseUrl ? undefined : true,
   // FSD_BULLMQ_DISPATCH=1 routes all action dispatches through the BullMQ
   // queue instead of running in-process. Requires REDIS_URL. The adapter
   // wires the dispatcher and the co-located worker against the same resolved

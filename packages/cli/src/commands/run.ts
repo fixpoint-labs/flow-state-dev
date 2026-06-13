@@ -28,6 +28,7 @@ import {
   type FlowImportFailure,
 } from "../resolve-flow";
 import { loadFsdevConfig } from "../load-config";
+import { forceModelResolver } from "../model-override";
 import { parseInputArg } from "../parse-input";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
@@ -216,18 +217,6 @@ function createCliLogger(level: RuntimeLoggerLevel | "silent"): RuntimeLogger {
     warn: emit("warn"),
     error: emit("error")
   };
-}
-
-/**
- * Wraps a model resolver so every generator resolves to `modelId` (the
- * `--model` override), while delegating `resolveId` to the base resolver so the
- * base's gateways/providers still apply. Used for both the config resolver and
- * the bare default resolver.
- */
-function forceModelResolver(base: ModelResolver, modelId: string): ModelResolver {
-  const override = ((_modelId: string, blockName?: string) => base(modelId, blockName)) as ModelResolver;
-  override.resolveId = (id: string) => base.resolveId(id);
-  return override;
 }
 
 /** Resolves the effective stderr log level from command options. */

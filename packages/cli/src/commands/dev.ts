@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Command } from "commander";
-import type { FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   createFlowApiRouter,
   createFlowRegistry,
@@ -30,6 +30,7 @@ import {
   type FlowImportFailure,
 } from "../resolve-flow";
 import { loadFsdevConfig } from "../load-config";
+import { forceModelResolver } from "../model-override";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR, EXIT_CONFIG_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 import { loadEnvFiles } from "../load-env";
@@ -131,7 +132,19 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     // serve() resolves getRouter() (triggering store init) and disposes the
     // FlowState on close(), so the dev command owns no stores in this path.
     serveApp = loaded.flowState;
-    flowNames = loaded.flowState.meta.flowKeys;
+    // Resolve the runtime now so the banner lists flow KINDS (what `fsdev run`
+    // takes as its argument), not the config's map keys. getRuntime is memoized,
+    // so serve() reuses this resolution rather than initializing stores twice.
+    let runtime;
+    try {
+      runtime = await loaded.flowState.getRuntime();
+    } catch (err) {
+      throw new CliError(
+        `Failed to initialize fsdev config ${loaded.path}: ${err instanceof Error ? err.message : String(err)}`,
+        EXIT_CONFIG_ERROR,
+      );
+    }
+    flowNames = [...new Set(runtime.registry.list().map((f) => f.kind))];
     dataLine = `config: ${loaded.path}`;
   } else {
     // --- discovery path: scan flows, build a router over local SQLite ---
@@ -167,15 +180,10 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     await mkdir(".fsdev/data", { recursive: true });
     const stores = createSQLiteStores({ filename: ".fsdev/data/fsdev.db" });
 
-    let modelResolver: ModelResolver | undefined;
-    if (options.model !== undefined) {
-      const defaultResolver = createModelResolver();
-      const override = ((_modelId: string, blockName?: string) => {
-        return defaultResolver(options.model!, blockName);
-      }) as ModelResolver;
-      override.resolveId = (modelId: string) => defaultResolver.resolveId(modelId);
-      modelResolver = override;
-    }
+    const modelResolver =
+      options.model !== undefined
+        ? forceModelResolver(createModelResolver(), options.model)
+        : undefined;
 
     serveApp = createFlowApiRouter({
       registry,
