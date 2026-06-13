@@ -1,20 +1,30 @@
 /**
  * Tests for the `get_social_sentiment` router. Covers the three dispatch
  * routes (fixture / Grok / unavailable) plus direct execution of the two
- * handler-kind routes. The Grok generator's end-to-end behavior is
- * verified by manual smoke test — building a model-stubbing harness for
- * a single generator is out of scope here.
+ * handler-kind routes, plus record mode (the live route chained with a
+ * recording tail). The Grok generator's end-to-end behavior is verified
+ * by manual smoke test — building a model-stubbing harness for a single
+ * generator is out of scope here, so the record tail is exercised
+ * end-to-end through the unavailable route (the tail is route-agnostic)
+ * and the Grok outcome is asserted at the wrapping seam. The recorder is
+ * mocked; its filesystem behavior is covered by recorder.spec.ts.
  */
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _routesForTest,
   get_social_sentiment,
 } from "../src/flows/analysis/tools/data/get_social_sentiment";
+import { recordFixture } from "../src/flows/analysis/tools/runtime/recorder";
+
+vi.mock("../src/flows/analysis/tools/runtime/recorder", () => ({
+  recordFixture: vi.fn(async () => undefined),
+}));
 
 const originalCwd = process.cwd();
 beforeEach(() => {
   process.chdir(path.resolve(__dirname, ".."));
+  vi.clearAllMocks();
 });
 afterEach(() => {
   process.chdir(originalCwd);
@@ -25,7 +35,7 @@ afterEach(() => {
 // `ctx.session.state.dataSource` via `pickMode`. Other ctx fields are
 // not touched on the dispatch path.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ctx(dataSource: "fixture" | "live"): any {
+function ctx(dataSource: "fixture" | "live" | "record"): any {
   return { session: { state: { dataSource } } };
 }
 
@@ -113,6 +123,55 @@ describe("get_social_sentiment leaf routes", () => {
       expect(typeof p.excerpt).toBe("string");
       expect(["positive", "negative", "neutral"]).toContain(p.polarity);
     }
+  });
+});
+
+describe("get_social_sentiment record mode", () => {
+  it("records the unavailable payload and passes it through (no XAI key)", async () => {
+    const input = { ticker: "NVDA", date: "2026-05-06" };
+    const route = await selectRoute(input, ctx("record"));
+    expect(route.name).toBe("get_social_sentiment.unavailable");
+
+    // Run the selected route: the unavailable handler chained with the
+    // recording tail. The tail must persist the `source: "unavailable"`
+    // payload (a recorded provider miss replays as a miss, BP-020) and
+    // return the payload unchanged.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const out = await (route as any).run(input, ctx("record"));
+
+    expect(out.source).toBe("unavailable");
+    expect(out.ticker).toBe("NVDA");
+    expect(recordFixture).toHaveBeenCalledTimes(1);
+    expect(recordFixture).toHaveBeenCalledWith("get_social_sentiment", input, out);
+  });
+
+  it("chains the recording tail onto the xai route (XAI key set)", async () => {
+    process.env.XAI_API_KEY = "test-key";
+    const input = { ticker: "NVDA", date: "2026-05-06" };
+
+    // Live mode returns the bare adapted route — no recording wrapper.
+    const liveRoute = await selectRoute(input, ctx("live"));
+    expect(liveRoute).toBe(_routesForTest.grokAdaptedRoute);
+
+    // Record mode returns a `connectOutput`-wrapped block: the same `.name`
+    // (so router candidate validation still matches) but a new reference
+    // carrying the recording tail. The tail is the same route-agnostic
+    // mapper exercised end-to-end by the unavailable-outcome test above;
+    // running the Grok generator itself needs a model harness (out of
+    // scope — see file header).
+    const recordRoute = await selectRoute(input, ctx("record"));
+    expect(recordRoute.name).toBe("get_social_sentiment.xai");
+    expect(recordRoute).not.toBe(_routesForTest.grokAdaptedRoute);
+  });
+
+  it("fixture mode never records — the fixture route is returned bare", async () => {
+    // A record run never re-records what it replays; only the live
+    // outcomes persist. Fixture mode keeps the untouched fixture route.
+    const route = await selectRoute(
+      { ticker: "NVDA", date: "2026-05-06" },
+      ctx("fixture"),
+    );
+    expect(route).toBe(_routesForTest.fixtureRoute);
   });
 });
 
