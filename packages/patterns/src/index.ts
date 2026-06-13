@@ -1,5 +1,20 @@
 export { defaultPatternRegistry } from "./skill-registry";
 
+export {
+  cachedCollection,
+  createCachedFetchCapability,
+  getOrCompute,
+  invalidateCached,
+  jsonValueSchema,
+} from "./cached-fetch";
+export type {
+  CacheEnvelope,
+  CachedCollectionOptions,
+  CachedFetchAccessor,
+  CreateCachedFetchCapabilityOptions,
+  GetOrComputeOptions,
+} from "./cached-fetch";
+
 export * from "./rlm";
 export {
   parallelTasks,

@@ -67,6 +67,10 @@
     "./debate": {
       "types": "./dist/debate/index.d.ts",
       "default": "./src/debate/index.ts"
+    },
+    "./cached-fetch": {
+      "types": "./dist/cached-fetch/index.d.ts",
+      "default": "./src/cached-fetch/index.ts"
     }
   },
   "license": "MIT",
@@ -118,6 +122,10 @@
       "./debate": {
         "types": "./dist/debate/index.d.ts",
         "default": "./dist/debate/index.js"
+      },
+      "./cached-fetch": {
+        "types": "./dist/cached-fetch/index.d.ts",
+        "default": "./dist/cached-fetch/index.js"
       }
     }
   },
