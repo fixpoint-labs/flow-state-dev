@@ -9,28 +9,15 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { AnchoredPath } from "@flow-state-dev/core/types";
-import type { ResourceTemplate } from "@flow-state-dev/core/resource-template";
 import { moduleDir } from "@flow-state-dev/core/prompt-file/node";
 
-/** True when `value` is an `AnchoredPath` (`{ path, importerUrl? }`). A
+/** True when `value` is an `AnchoredPath` (`{ path, importerUrl }`). A
  * parsed `ResourceTemplate` never matches — it has no `path` field. */
 export function isAnchoredPath(value: unknown): value is AnchoredPath {
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { path?: unknown }).path === "string"
-  );
-}
-
-/** True when a `contentTemplate` value is already a parsed
- * `ResourceTemplate`, as opposed to an unresolved string path or
- * `AnchoredPath` awaiting resolution. */
-export function isParsedResourceTemplate(value: unknown): value is ResourceTemplate {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { source?: unknown }).source === "string" &&
-    typeof (value as { sections?: unknown }).sections === "object"
   );
 }
 
@@ -57,11 +44,11 @@ export function resolveContentPath(
     return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
   }
   if (path.isAbsolute(value.path)) return value.path;
-  const anchor = value.importerUrl !== undefined ? moduleDir(value.importerUrl) : undefined;
+  const anchor = moduleDir(value.importerUrl);
   const candidates = [
-    anchor !== undefined ? path.resolve(anchor, value.path) : undefined,
+    ...(anchor !== undefined ? [path.resolve(anchor, value.path)] : []),
     path.resolve(process.cwd(), value.path),
-  ].filter((c): c is string => c !== undefined);
+  ];
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }

@@ -328,7 +328,7 @@ const load = createPromptLoader(PROMPT_ROOT);
 const analyst = generator({ name: "analyst", model, prompt: load("analyst.prompt.md") });
 ```
 
-**Resource content templates.** The same `.md` format can render resource content against state. The Node subpath exports `loadResourceTemplate(specifier, importerUrl, options?)` and the isomorphic subpath exports `parseResourceTemplate(text, options?)` and `renderResourceTemplate(template, state)`. Wire them via `contentTemplate` (build-time file — a parsed template, a working-directory-relative string path, or an `AnchoredPath` resolved relative to the declaring module) or `contentTemplateRef` (live-editable resource) on `defineResource()` and `defineResourceCollection()`. See the [Resource content from Markdown templates](https://flow-state.dev/docs/advanced/resource-templates-markdown) reference.
+**Resource content templates.** The same `.md` format can render resource content against state. The Node subpath exports `loadResourceTemplate(specifier, importerUrl, options?)` and the isomorphic subpath exports `parseResourceTemplate(text, options?)`, `renderResourceTemplate(template, state)`, and the `isResourceTemplate(value)` guard. Wire them via `contentTemplate` (build-time file — a parsed template, a working-directory-relative string path, or an `AnchoredPath` resolved relative to the declaring module) or `contentTemplateRef` (live-editable resource) on `defineResource()` and `defineResourceCollection()`. See the [Resource content from Markdown templates](https://flow-state.dev/docs/advanced/resource-templates-markdown) reference.
 
 ### Voice Provider
 

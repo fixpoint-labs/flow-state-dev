@@ -9,7 +9,6 @@
  */
 
 import { readFileSync } from "node:fs";
-import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
   CollectionHookContext,
@@ -33,13 +32,10 @@ import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type { ContentScopeType, ContentStore, ResourceStateStore } from "../stores/types";
 import { resourceStorageKeys } from "../resources/storage-keys";
-import {
-  isAnchoredPath,
-  isParsedResourceTemplate,
-  resolveContentPath,
-} from "../resources/content-paths";
+import { isAnchoredPath, resolveContentPath } from "../resources/content-paths";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import {
+  isResourceTemplate,
   parseResourceTemplate,
   renderResourceTemplate,
 } from "@flow-state-dev/core/resource-template";
@@ -630,7 +626,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
       },
       async readContentRaw(): Promise<string | null> {
-        if (isParsedResourceTemplate(nsConfig.contentTemplate)) {
+        if (isResourceTemplate(nsConfig.contentTemplate)) {
           return nsConfig.contentTemplate.source;
         }
         if (nsConfig.contentTemplateRef !== undefined) {
@@ -642,7 +638,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
-        if (isParsedResourceTemplate(nsConfig.contentTemplate)) {
+        if (isResourceTemplate(nsConfig.contentTemplate)) {
           return renderResourceTemplate(nsConfig.contentTemplate, readState());
         }
         if (nsConfig.contentTemplateRef !== undefined) {
@@ -1138,7 +1134,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         await notifySingleChange(prev);
       },
       async readContentRaw(): Promise<string | null> {
-        if (isParsedResourceTemplate(config.contentTemplate)) {
+        if (isResourceTemplate(config.contentTemplate)) {
           return config.contentTemplate.source;
         }
         if (config.contentTemplateRef !== undefined) {
@@ -1150,7 +1146,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
-        if (isParsedResourceTemplate(config.contentTemplate)) {
+        if (isResourceTemplate(config.contentTemplate)) {
           return renderResourceTemplate(config.contentTemplate, readState());
         }
         if (config.contentTemplateRef !== undefined) {

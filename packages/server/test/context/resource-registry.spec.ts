@@ -184,6 +184,18 @@ describe("resolveStringContentTemplates", () => {
     expect(template.sections.system).toContain("{{ state.role }}");
   });
 
+  it("prefers the module-relative candidate when the file exists at both", () => {
+    // fixtures/precedence-template.md exists BOTH relative to this spec file
+    // (name: module-copy) and relative to the package root, the test cwd
+    // (name: cwd-copy). The module-relative candidate must win — this pins
+    // the candidate ordering, the headline contract of anchored paths.
+    const config = makeResourceConfig({
+      contentTemplate: { path: "./fixtures/precedence-template.md", importerUrl: import.meta.url },
+    });
+    resolveStringContentTemplates({ doc: config });
+    expect((config.contentTemplate as { name?: string }).name).toBe("module-copy");
+  });
+
   it("falls back to cwd when the anchor is a bundler-rewritten URL", () => {
     // Path exists relative to the package root (the test cwd) but the anchor
     // is unusable — the cwd candidate must carry it.

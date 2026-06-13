@@ -155,7 +155,7 @@ export type AnchoredPath = {
   /** Relative or absolute file path. */
   path: string;
   /** The declaring module's `import.meta.url`, anchoring a relative `path`. */
-  importerUrl?: string;
+  importerUrl: string;
 };
 
 export type ResourceConfig<TState extends JsonObject = JsonObject> = {

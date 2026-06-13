@@ -86,7 +86,7 @@ If your flow needs to load from any working directory — `fsdev run` at the rep
 contentTemplate: { path: "./report.prompt.md", importerUrl: import.meta.url },
 ```
 
-The server resolves the path relative to the declaring module first and falls back to the working directory when the anchor is unusable (some bundlers rewrite `import.meta.url`) or the file isn't there. If neither location has the file, the error names both paths it tried. The same anchored form works for `contentFile`.
+The server resolves the path relative to the declaring module first and falls back to the working directory when the anchor is unusable (some bundlers rewrite `import.meta.url`) or the file isn't there. When no candidate has the file, the error lists each path it tried. The same anchored form works for `contentFile`.
 
 `readContent()` renders the template against the current state. `readContentRaw()` returns the raw template source. No `render` function needed.
 

@@ -22,8 +22,8 @@ import type { StoreRegistry } from "../stores/types";
 import { mergeScopeReads, resourceScopeIds } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
 import { resourceStorageKeys } from "./storage-keys";
-import { isParsedResourceTemplate } from "./content-paths";
 import {
+  isResourceTemplate,
   parseResourceTemplate,
   renderResourceTemplate,
 } from "@flow-state-dev/core/resource-template";
@@ -164,7 +164,7 @@ export async function renderContent(
   state: JsonObject,
   templateRaw?: string
 ): Promise<string | null> {
-  if ("contentTemplate" in config && isParsedResourceTemplate(config.contentTemplate)) {
+  if ("contentTemplate" in config && isResourceTemplate(config.contentTemplate)) {
     return renderResourceTemplate(config.contentTemplate, state);
   }
   if ("contentTemplateRef" in config && config.contentTemplateRef !== undefined) {
