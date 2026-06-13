@@ -3,10 +3,9 @@
  *   - `stableSerialize` — deterministic bytes regardless of key insertion
  *     order, array order preserved, 2-space indent, trailing newline
  *   - `recordFixture` — corpus path layout ({rootDir}/{ticker|_macro}/{date}/
- *     {fixtureFileName}), date validation before any write, zod-parsed
- *     payloads (unknown keys stripped, schema violations throw)
- *   - round-trip — a recorded payload replays through `loadFixture` with
- *     `source: "fixture"`
+ *     {fixtureFileName}), date + ticker path-segment validation before any
+ *     write, zod-parsed payloads (unknown keys stripped, schema violations
+ *     throw)
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import path from "node:path";
@@ -16,7 +15,6 @@ import {
   recordFixture,
   stableSerialize,
 } from "../src/flows/analysis/tools/runtime/recorder";
-import { loadFixture } from "../src/flows/analysis/tools/runtime/fixtures";
 
 describe("stableSerialize", () => {
   it("produces identical bytes for identical logical objects with different key insertion orders", () => {
@@ -112,6 +110,19 @@ describe("recordFixture", () => {
     expect(existsSync(path.join(tmpRoot, "NVDA"))).toBe(false);
   });
 
+  it("throws on a path-traversal ticker before writing anything", async () => {
+    await expect(
+      recordFixture(
+        "get_balance_sheet",
+        { ticker: "../NVDA", date: "2026-06-01" },
+        balanceSheet,
+        { rootDir: tmpRoot },
+      ),
+    ).rejects.toThrow(/Invalid fixture ticker/);
+    expect(existsSync(path.join(tmpRoot, "NVDA"))).toBe(false);
+    expect(existsSync(path.join(path.dirname(tmpRoot), "NVDA"))).toBe(false);
+  });
+
   it("writes the zod-parsed payload — unknown extra keys are stripped", async () => {
     await recordFixture(
       "get_balance_sheet",
@@ -139,18 +150,4 @@ describe("recordFixture", () => {
     ).rejects.toThrow();
   });
 
-  it("round-trips: a recorded payload replays via loadFixture with source: \"fixture\"", async () => {
-    await recordFixture(
-      "get_balance_sheet",
-      { ticker: "NVDA", date: "2026-06-01" },
-      balanceSheet,
-      { rootDir: tmpRoot },
-    );
-    const replayed = await loadFixture(
-      "get_balance_sheet",
-      { ticker: "NVDA", date: "2026-06-01" },
-      { rootDir: tmpRoot },
-    );
-    expect(replayed).toEqual({ ...balanceSheet, source: "fixture" });
-  });
 });

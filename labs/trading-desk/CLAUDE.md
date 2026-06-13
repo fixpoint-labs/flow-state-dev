@@ -135,7 +135,7 @@ src/flows/portfolio/             The `portfolio` flow — owns the account/holdi
   extract-holdings-generator.ts  broker-agnostic LLM transcription (statement text → strict rows)
   extract-holdings-action.ts     sequencer: decode bytes → extractPdfText → generator → commit pdfImport
 
-fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
+fixtures/<TICKER>/<DATE>/        date-addressed snapshots for fixture mode (`FIXTURE_SNAPSHOT` is the default date)
 ```
 
 ### Conventions enforced by this layout
@@ -709,17 +709,18 @@ preset to participate in the cost gate.
 
 ## Adding a new tool
 
-Tools follow the per-tool-file pattern. Each tool file owns its mode
-branch, provider preference, and fallback chain.
+Tools follow the per-tool-file pattern. Each tool file owns its provider
+preference and fallback chain; mode dispatch (fixture / live / record)
+lives in `tools/runtime/resolve.ts` — every tool's `execute` funnels
+through `resolveToolPayload`.
 
 ```ts
 // tools/data/get_my_tool.ts
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchFromProviderA } from "../providers/providerA";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_my_tool = handler({
   name: "get_my_tool",
@@ -727,8 +728,7 @@ export const get_my_tool = handler({
   inputSchema: toolInputSchemas.get_my_tool,
   outputSchema: toolOutputSchemas.get_my_tool,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_my_tool", input);
-    return getOrFetch("get_my_tool", input, async () => {
+    return resolveToolPayload("get_my_tool", input, ctx, async () => {
       try { return await fetchFromProviderA(input); } catch {}
       return emptyPayload("get_my_tool", input);
     });
@@ -745,9 +745,9 @@ Then:
 3. Re-export from `tools/index.ts`.
 4. Add to the appropriate analyst's `tools: [...]` list in
    `agents/analysts/analysts.ts`.
-5. Add a curated fixture JSON under
-   `fixtures/<TICKER>/2026-05-06/<tool-file-name>.json` so fixture mode
-   still works.
+5. Record a snapshot for the tool (run with `dataSource: "record"`) so
+   fixture mode still works, or hand-author the fixture JSON per
+   `fixtures/README.md` for edge cases.
 
 If the tool needs a new external API, add its fetch helper to a new
 `tools/providers/<provider>.ts` file (one per provider). Keep it stateless — read
@@ -806,7 +806,9 @@ Fixture mode reads from `fixtures/{TICKER}/{DATE}/` for the requested
 `args.date`. The loader is date-addressed: each `{TICKER}/{DATE}/` directory
 is one snapshot. `FIXTURE_SNAPSHOT` (`"2026-05-06"`) is the default date for
 the curated corpus, not a pin — requesting an unknown ticker or date throws
-`FixtureMissingError` loudly, never a silent fallback. The returned payload
+`FixtureMissingError` loudly, never a silent fallback (in a full run the
+pre-flight guard stops with `unresolvable-ticker` before the loader ever
+throws). The returned payload
 carries the fixture's own `asOf` field, so analysts see the actual data date.
 
 Providers recorded as `source: "unavailable"` survive replay. The loader

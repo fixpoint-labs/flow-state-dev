@@ -56,23 +56,28 @@ function todayIsoDate(): string {
 
 /** Find an existing session whose `metadata` matches the tuple on all four
  *  fields. Strict equality — legacy sessions with partial metadata never
- *  match. A record-run session (`dataSource: "record"`, written by the CLI
- *  recorder — never a UI option) reads as live here, so opening one keeps the
- *  header toggle on "live" and still resolves back to the opened session. */
+ *  match. An exact `dataSource` match wins first; only when none exists does
+ *  a record-run session (`dataSource: "record"`, written by the CLI recorder
+ *  — never a UI option) read as live, so opening one keeps the header toggle
+ *  on "live" without letting it shadow a live session that shares the rest
+ *  of the tuple. */
 function findSessionForTuple(
   sessions: ReadonlyArray<SessionSummary>,
   tuple: AnalyzeTuple,
 ): string | undefined {
-  return sessions.find((s) => {
-    const md = s.metadata;
-    const source = md?.dataSource === "record" ? "live" : md?.dataSource;
-    return (
-      md?.ticker === tuple.ticker &&
-      md?.date === tuple.date &&
-      md?.costPreset === tuple.costPreset &&
-      source === tuple.dataSource
-    );
-  })?.id;
+  const match = (normalizeRecord: boolean): string | undefined =>
+    sessions.find((s) => {
+      const md = s.metadata;
+      const source =
+        normalizeRecord && md?.dataSource === "record" ? "live" : md?.dataSource;
+      return (
+        md?.ticker === tuple.ticker &&
+        md?.date === tuple.date &&
+        md?.costPreset === tuple.costPreset &&
+        source === tuple.dataSource
+      );
+    })?.id;
+  return match(false) ?? match(true);
 }
 
 /** Auto-derived session title using the middle dot (U+00B7) separator.
@@ -317,8 +322,10 @@ function TradingDeskApp(): ReactElement {
           setCostPreset(t.costPreset);
         }
         // A record-run row restores the toggle to "live" (record is never a UI
-        // option); `findSessionForTuple` applies the same normalization, so the
-        // tuple-sync effect still resolves to exactly this session.
+        // option). `findSessionForTuple` prefers an exact dataSource match and
+        // only falls back to this record→live normalization — so the tuple-sync
+        // effect resolves to this session unless a live session shares the same
+        // ticker/date/costPreset, in which case the exact match wins.
         const source = t.dataSource === "record" ? "live" : t.dataSource;
         if (source === "fixture" || source === "live") {
           setDataSource(source);

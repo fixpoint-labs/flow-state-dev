@@ -16,7 +16,7 @@ import {
   type ToolName,
   type ToolOutput,
 } from "../schemas";
-import { assertFixtureDate, FIXTURE_ROOT } from "./fixtures";
+import { assertFixtureDate, assertFixtureTicker, FIXTURE_ROOT } from "./fixtures";
 
 /**
  * Serialize a payload deterministically: recursive key sort (arrays keep
@@ -52,8 +52,11 @@ export interface RecordFixtureOptions {
  * `{rootDir}/{ticker ?? "_macro"}/{args.date}/{fixtureFileName(tool)}`.
  * Writes the zod-parsed payload (the tool's output schema `.parse`) so the
  * file holds exactly what the pipeline consumed. Throws if `args.date` is
- * not YYYY-MM-DD (before any filesystem access). Write failures propagate —
- * in record mode an unrecorded payload is a failed run, not a warning.
+ * not YYYY-MM-DD, or if a provided `args.ticker` is not a valid path
+ * segment (before any filesystem access; the `_macro` sentinel for
+ * no-ticker payloads is a literal and is not validated). Write failures
+ * propagate — in record mode an unrecorded payload is a failed run, not a
+ * warning.
  *
  * Concurrent identical writes (parallel analysts sharing a tool after the
  * inflight-collapsed fetch) target the same path with identical bytes —
@@ -68,6 +71,7 @@ export async function recordFixture<T extends ToolName>(
   options: RecordFixtureOptions = {},
 ): Promise<void> {
   assertFixtureDate(args.date);
+  if (args.ticker !== undefined) assertFixtureTicker(args.ticker);
   const schema: z.ZodTypeAny = toolOutputSchemas[tool];
   const parsed: unknown = schema.parse(payload);
   const dir = path.join(

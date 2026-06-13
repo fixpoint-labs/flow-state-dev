@@ -27,7 +27,7 @@ import { recordFixture } from "../src/flows/analysis/tools/runtime/recorder";
 import { loadFixture } from "../src/flows/analysis/tools/runtime/fixtures";
 import { emptyPayload } from "../src/flows/analysis/tools/empty-payloads";
 import { resolveTicker } from "../src/flows/analysis/lib/ticker-resolver";
-import type { ToolOutput } from "../src/flows/analysis/tools/schemas";
+import { fixtureFileName, type ToolOutput } from "../src/flows/analysis/tools/schemas";
 
 const DATE = "2026-06-12";
 
@@ -133,6 +133,15 @@ describe("record → replay round-trip", () => {
 });
 
 describe("pre-flight guard against the date-addressed corpus", () => {
+  it("the resolver's fixture probe file matches the recorded fundamentals file name", () => {
+    // Coupling pin: the ticker-resolver probes `fundamentals.json`
+    // (FIXTURE_PROBE_FILE, module-private) to admit a snapshot, and a
+    // RECORDED corpus is admissible only because the recorder writes
+    // `get_fundamentals` to that same file name. If either side renames,
+    // recorded snapshots silently stop resolving — this pins the pair.
+    expect(fixtureFileName("get_fundamentals")).toBe("fundamentals.json");
+  });
+
   it("fixture mode admits a corpus-backed ticker/date and rejects an absent one", async () => {
     // Read-only probe of the real checked-in corpus: NVDA has a curated
     // 2026-05-06 snapshot; 2099-01-01 has none. A recorded snapshot is

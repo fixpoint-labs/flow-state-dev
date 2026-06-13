@@ -51,6 +51,21 @@ export function assertFixtureDate(date: string): void {
 }
 
 /**
+ * Validate a ticker before it is used as a path segment. The ticker is
+ * user-controlled input, so anything outside the real-ticker shape
+ * (1–15 chars of letters, digits, `.`, `-`) throws here — before any
+ * filesystem access. This inherently rejects `/`, `..`, and the empty
+ * string. The `_macro` sentinel never passes through this check.
+ */
+export function assertFixtureTicker(ticker: string): void {
+  if (!/^[A-Za-z0-9.\-]{1,15}$/.test(ticker)) {
+    throw new Error(
+      `Invalid fixture ticker "${ticker}" — expected 1-15 characters of letters, digits, ".", or "-".`,
+    );
+  }
+}
+
+/**
  * Load one tool's fixture payload for the requested `args.date` snapshot
  * (`{rootDir}/{ticker}/{date}/{tool-file}.json`; no `ticker` → `_macro`).
  * Validates the date before any filesystem access; a missing file throws
