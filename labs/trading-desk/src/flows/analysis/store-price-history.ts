@@ -39,6 +39,8 @@ export const storePriceHistory = handler({
     let payload: RawPayload | null = null;
     try {
       const raw =
+        // `"record"` intentionally takes the live (warm-cache) branch — a
+        // record run fetched live during Phase 1.
         dataSource === "fixture"
           ? await loadFixture("get_price_history", args)
           : await getOrFetch("get_price_history", args, async () => {

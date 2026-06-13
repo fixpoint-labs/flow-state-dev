@@ -16,6 +16,8 @@ import { buildValuationSpine } from "./lib/valuation-spine";
 import { valuationSpineResource } from "./valuation-spine-resource";
 import { sessionStateSchema } from "./state";
 
+// `"record"` intentionally takes the live branch: a record run fetched live,
+// so its payloads sit in the same warm cache.
 function pickMode(state: { dataSource: string }): "fixture" | "live" {
   return state.dataSource === "fixture" ? "fixture" : "live";
 }

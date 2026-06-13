@@ -56,18 +56,21 @@ function todayIsoDate(): string {
 
 /** Find an existing session whose `metadata` matches the tuple on all four
  *  fields. Strict equality — legacy sessions with partial metadata never
- *  match. */
+ *  match. A record-run session (`dataSource: "record"`, written by the CLI
+ *  recorder — never a UI option) reads as live here, so opening one keeps the
+ *  header toggle on "live" and still resolves back to the opened session. */
 function findSessionForTuple(
   sessions: ReadonlyArray<SessionSummary>,
   tuple: AnalyzeTuple,
 ): string | undefined {
   return sessions.find((s) => {
     const md = s.metadata;
+    const source = md?.dataSource === "record" ? "live" : md?.dataSource;
     return (
       md?.ticker === tuple.ticker &&
       md?.date === tuple.date &&
       md?.costPreset === tuple.costPreset &&
-      md?.dataSource === tuple.dataSource
+      source === tuple.dataSource
     );
   })?.id;
 }
@@ -313,8 +316,12 @@ function TradingDeskApp(): ReactElement {
         if (t.costPreset === "fast" || t.costPreset === "full") {
           setCostPreset(t.costPreset);
         }
-        if (t.dataSource === "fixture" || t.dataSource === "live") {
-          setDataSource(t.dataSource);
+        // A record-run row restores the toggle to "live" (record is never a UI
+        // option); `findSessionForTuple` applies the same normalization, so the
+        // tuple-sync effect still resolves to exactly this session.
+        const source = t.dataSource === "record" ? "live" : t.dataSource;
+        if (source === "fixture" || source === "live") {
+          setDataSource(source);
         }
       }
       flow.selectSession(id);

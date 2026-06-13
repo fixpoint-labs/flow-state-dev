@@ -92,7 +92,8 @@ export function ReportRow({
   onOpen: (id: string) => void;
 }): ReactElement {
   const subtitle = subtitleFor(row);
-  const isLive = row.dataSource === "live";
+  // Record runs style as live — they carry live-fetched data.
+  const isLive = row.dataSource !== "fixture";
   return (
     <button
       type="button"
