@@ -149,6 +149,38 @@ describe("createSessionClient", () => {
     );
   });
 
+  it("lists debug suspensions with status filter and parses the response", async () => {
+    const suspensions = [
+      {
+        suspensionId: "sus_1",
+        requestId: "req_1",
+        flowKind: "demo",
+        actionName: "run",
+        userId: "devuser",
+        reason: "human_approval",
+        message: "Approve?",
+        status: "pending",
+        blockInstanceId: "b1",
+        stepIndex: 0,
+        createdAt: 1
+      }
+    ];
+    const fetcher = vi.fn<ClientFetch>(async () =>
+      createJsonResponse({ suspensions })
+    );
+    const client = createSessionClient({ fetcher });
+
+    const result = await client.debug.listSuspensions("sess_1", {
+      status: "pending"
+    });
+
+    expect(result.suspensions).toHaveLength(1);
+    expect(result.suspensions[0]?.suspensionId).toBe("sus_1");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "/api/flows/sessions/sess_1/debug/suspensions?status=pending"
+    );
+  });
+
   it("supports snapshot query options for items and clientData filters", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse(SNAPSHOT));
     const client = createSessionClient({ fetcher });

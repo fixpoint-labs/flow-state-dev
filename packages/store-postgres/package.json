@@ -54,6 +54,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
     "pg": "^8.13.0"
   },

@@ -239,22 +239,50 @@ const REQUEST_RUNONCE_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_request_runonce_request_id ON request_runonce(request_id)"
 ];
 
-// FIX-140: suspension records for durable execution. Identity is
+// FIX-140 / FIX-141: suspension records for durable execution. Identity is
 // (request_id, suspension_id); `data` is JSONB storing the full
-// SuspensionRecord. Scalar columns enable indexed queries.
+// SuspensionRecord. Scalar columns enable indexed queries. `status` /
+// `resolved_at` (FIX-141) are denormalized from the blob so the retention
+// sweeper's `pruneTerminalBefore` can bound an indexed DELETE by
+// (status, resolved_at) instead of scanning every row.
 const SUSPENSION_RECORDS_TABLE = `
 CREATE TABLE IF NOT EXISTS suspension_records (
   request_id    TEXT NOT NULL,
   suspension_id TEXT NOT NULL,
   data          JSONB NOT NULL,
   created_at    BIGINT NOT NULL,
+  status        TEXT,
+  resolved_at   BIGINT,
   PRIMARY KEY (request_id, suspension_id)
 );
 `;
 
+// FIX-141: add the denormalized status / resolved_at columns to a pre-FIX-141
+// `suspension_records` table. Guarded on table existence because migrations run
+// BEFORE the CREATE TABLE DDL — on a fresh database the table doesn't exist yet
+// (the CREATE TABLE above already includes the columns), so this no-ops there.
+const ADD_SUSPENSION_STATUS_COLUMNS_MIGRATION = `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = current_schema() AND table_name = 'suspension_records'
+  ) THEN
+    EXECUTE 'ALTER TABLE suspension_records ADD COLUMN IF NOT EXISTS status TEXT';
+    EXECUTE 'ALTER TABLE suspension_records ADD COLUMN IF NOT EXISTS resolved_at BIGINT';
+    -- Backfill from the JSONB blob: terminal records resolved before the
+    -- upgrade are never re-set(), so without this their scalar columns stay
+    -- NULL and pruneTerminalBefore never reaps them. Guarded by status IS NULL
+    -- so it only touches un-backfilled rows and is safe to re-run.
+    EXECUTE 'UPDATE suspension_records SET status = data->>''status'', resolved_at = (data->>''resolvedAt'')::bigint WHERE status IS NULL';
+  END IF;
+END $$;
+`;
+
 const SUSPENSION_RECORDS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_suspension_records_request_id ON suspension_records(request_id)",
-  "CREATE INDEX IF NOT EXISTS idx_suspension_records_created_at ON suspension_records(created_at)"
+  "CREATE INDEX IF NOT EXISTS idx_suspension_records_created_at ON suspension_records(created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_suspension_records_status_resolved ON suspension_records(status, resolved_at)"
 ];
 
 // FIX-140: lease records for preventing concurrent resume. One active
@@ -321,7 +349,11 @@ const PROJECT_TO_ORG_MIGRATIONS = [
 
   // FIX-438: ensure `active_requests.source` exists on pre-FIX-438 schemas.
   // Idempotent on fresh databases.
-  ADD_ACTIVE_REQUESTS_SOURCE_MIGRATION
+  ADD_ACTIVE_REQUESTS_SOURCE_MIGRATION,
+
+  // FIX-141: ensure `suspension_records.status` / `resolved_at` exist on
+  // pre-FIX-141 schemas. Idempotent on fresh databases.
+  ADD_SUSPENSION_STATUS_COLUMNS_MIGRATION
 ];
 
 /**

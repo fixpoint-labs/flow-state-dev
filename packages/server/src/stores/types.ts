@@ -511,6 +511,12 @@ export interface CheckpointStore {
 
   /** Remove the checkpoint when its sequencer reaches terminal state. */
   delete(requestId: string, blockInstanceId: string): Promise<void>;
+
+  /**
+   * Remove every checkpoint for `requestId` across all blockInstanceIds.
+   * Idempotent — a request with no checkpoints is a no-op, never an error.
+   */
+  deleteForRequest(requestId: string): Promise<void>;
 }
 
 /**
@@ -564,6 +570,15 @@ export interface SuspensionStore {
 
   /** Delete all suspensions for a request. */
   deleteForRequest(requestId: string): Promise<void>;
+
+  /**
+   * Delete suspensions in a TERMINAL status (approved | rejected | timed_out |
+   * expired) whose `resolvedAt` is non-null and strictly less than `cutoffMs`,
+   * up to `limit` rows. Pending suspensions are never touched. Returns the
+   * number of rows actually deleted so a sweeper can loop until it observes a
+   * partial batch (`deleted < limit`). Idempotent — nothing matching returns 0.
+   */
+  pruneTerminalBefore(cutoffMs: number, limit: number): Promise<number>;
 }
 
 /**
