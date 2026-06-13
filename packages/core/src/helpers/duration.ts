@@ -1,6 +1,10 @@
 /**
- * Minimal duration string parser for retention policy configuration.
- * Supports: ms, s, m, h, d units. Accepts numbers as pass-through (milliseconds).
+ * Duration-string parser shared across the framework.
+ *
+ * Converts human-friendly duration strings (`"30s"`, `"5m"`, `"2h"`, `"7d"`)
+ * or raw millisecond numbers into milliseconds. Lives in core so any package
+ * — server retention policies, the patterns cached-fetch surface — can express
+ * freshness/age windows as strings without each maintaining its own parser.
  */
 
 const DURATION_RE = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d)$/;
@@ -16,6 +20,7 @@ const MULTIPLIERS: Record<string, number> = {
 /**
  * Parse a duration value into milliseconds.
  * Accepts a number (returned as-is) or a duration string like '30s', '5m', '2h', '7d'.
+ * Throws on a malformed string.
  */
 export function parseDuration(value: number | string): number {
   if (typeof value === "number") return value;

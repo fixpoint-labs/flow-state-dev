@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDuration } from "../src/utils/duration";
+import { parseDuration } from "../src/helpers/duration";
 
 describe("parseDuration", () => {
   it("passes through numeric values as milliseconds", () => {

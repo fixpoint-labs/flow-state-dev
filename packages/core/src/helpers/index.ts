@@ -11,6 +11,7 @@ export { cloneValue } from "./clone";
 export { mapLimit } from "./concurrency";
 export { deepEqual, looseDeepEqual } from "./deep-equal";
 export { deepMerge } from "./deep-merge";
+export { parseDuration } from "./duration";
 export { warnDeprecated, __resetDeprecationWarningsForTests } from "./deprecation";
 export { sanitizeToolName } from "./tool-name";
 export {

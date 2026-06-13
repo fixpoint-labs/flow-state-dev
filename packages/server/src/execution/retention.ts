@@ -5,7 +5,7 @@
  */
 import type { RetentionPolicy } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../stores/types";
-import { parseDuration } from "../utils/duration";
+import { parseDuration } from "@flow-state-dev/core";
 
 /**
  * Pre-resolved retention policy with maxAge converted to milliseconds.

@@ -97,6 +97,7 @@ export type {
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
 export { mapLimit } from "./helpers/concurrency";
+export { parseDuration } from "./helpers/duration";
 export { lifecycleSchema } from "./helpers/lifecycle-schema";
 export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
 export { resolveTracingLevel } from "./helpers/tracing-level";
