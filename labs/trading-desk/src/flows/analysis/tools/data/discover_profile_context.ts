@@ -6,7 +6,7 @@
  * See `discover_fundamentals_context.ts` for the discipline.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { discoverWeb, PROFILE_QUERY } from "../runtime/discover";
 import { loadFixture } from "../runtime/fixtures";
 import { emptyPayload, skippedDiscoveryPayload } from "../empty-payloads";
@@ -19,6 +19,7 @@ export const discover_profile_context = handler({
     "product, or regulatory context for the given ticker.",
   inputSchema: toolInputSchemas.discover_profile_context,
   outputSchema: toolOutputSchemas.discover_profile_context,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (ctx.session.state.costPreset !== "full") {
       return skippedDiscoveryPayload("discover_profile_context", input);
@@ -26,7 +27,7 @@ export const discover_profile_context = handler({
     if (pickMode(ctx) === "fixture") {
       return loadFixture("discover_profile_context", input);
     }
-    return getOrFetch("discover_profile_context", input, async () => {
+    return ctx.cap.cache.getOrFetch("discover_profile_context", input, async () => {
       try {
         return await discoverWeb({
           ticker: input.ticker,

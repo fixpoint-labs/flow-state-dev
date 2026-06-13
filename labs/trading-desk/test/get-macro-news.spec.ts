@@ -16,7 +16,6 @@ import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { get_macro_news } from "../src/flows/analysis/tools/data/get_macro_news";
 import { fetchFinnhubMacroNews } from "../src/flows/analysis/tools/providers/finnhub";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const fixtureFlow = defineFlow({
@@ -42,7 +41,6 @@ function sessionFor(dataSource: "fixture" | "live") {
 const originalCwd = process.cwd();
 beforeEach(() => {
   process.chdir(path.resolve(__dirname, ".."));
-  _resetCache();
 });
 afterEach(() => {
   process.chdir(originalCwd);

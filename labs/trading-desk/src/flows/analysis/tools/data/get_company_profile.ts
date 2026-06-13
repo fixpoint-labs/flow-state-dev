@@ -15,7 +15,7 @@
  * thrown error. Fixture mode: curated per-ticker JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { fetchFinnhubCompanyProfile, hasFinnhubKey } from "../providers/finnhub";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchWebsiteMetaDescription, searchCompanyWeb } from "../providers/web";
@@ -29,9 +29,10 @@ export const get_company_profile = handler({
   description: "Business-identity profile (name, sector, industry, scale) for a ticker.",
   inputSchema: toolInputSchemas.get_company_profile,
   outputSchema: toolOutputSchemas.get_company_profile,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_company_profile", input);
-    return getOrFetch("get_company_profile", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_company_profile", input, async () => {
       const merged = await fetchAndMergeProviders(input);
       return enrichWithWeb(merged);
     });

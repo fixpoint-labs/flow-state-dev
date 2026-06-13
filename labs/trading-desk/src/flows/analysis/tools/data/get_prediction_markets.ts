@@ -26,7 +26,7 @@
  * that already carries both tiers.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchYahooCompanyProfile } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
@@ -229,9 +229,10 @@ export const get_prediction_markets = handler({
     "Two-tier Polymarket prediction markets for the ticker: direct ticker markets plus a sector/macro backdrop, each with a yes-side probability (0..1), liquidity, end date, and question text. Carries a deterministic coverageQuality tag (rich | thin | absent) so thin coverage degrades gracefully instead of manufacturing precision.",
   inputSchema: toolInputSchemas.get_prediction_markets,
   outputSchema: toolOutputSchemas.get_prediction_markets,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_prediction_markets", input);
-    return getOrFetch("get_prediction_markets", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_prediction_markets", input, async () => {
       const themes = await resolveBackdropThemes(input);
       try {
         return await fetchPolymarketTop(input, themes);

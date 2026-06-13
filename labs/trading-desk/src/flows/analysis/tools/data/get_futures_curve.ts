@@ -12,7 +12,7 @@
  * missing key or a fully unpriced basket → `source: "unavailable"` (BP-020).
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { mapLimit } from "../../lib/concurrency";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchFuturesFrontNext, hasMassiveKey } from "../providers/massive";
@@ -112,9 +112,10 @@ export const get_futures_curve = handler({
     "for ES/NQ/CL/GC/ZN, contango/backwardation, and a composite risk tone.",
   inputSchema: toolInputSchemas.get_futures_curve,
   outputSchema: toolOutputSchemas.get_futures_curve,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_futures_curve", input);
-    return getOrFetch("get_futures_curve", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_futures_curve", input, async () => {
       if (!hasMassiveKey()) return emptyPayload("get_futures_curve", input);
       try {
         return await fetchLive(input);

@@ -8,7 +8,8 @@
  * pattern `get_prediction_markets` uses), cache-deduped by `getOrFetch`.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import type { CachedFetchAccessor } from "@flow-state-dev/patterns";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { GICS_TO_ETF } from "../../lib/sector-resolution";
 import { fetchYahooChart, fetchYahooCompanyProfile } from "../providers/yahoo";
@@ -38,12 +39,13 @@ async function fetchReturn1m(
 }
 
 async function fetchLive(
+  cache: CachedFetchAccessor,
   input: ToolInput<"get_sector_context">,
 ): Promise<ToolOutput<"get_sector_context">> {
   let sector: string | null = null;
   let industry: string | null = null;
   try {
-    const profile = await getOrFetch(
+    const profile = await cache.getOrFetch(
       "yahoo-profile-sector",
       { ticker: input.ticker },
       () => fetchYahooCompanyProfile(input),
@@ -97,11 +99,12 @@ export const get_sector_context = handler({
     "computed relative-strength and sector-vs-market deltas.",
   inputSchema: toolInputSchemas.get_sector_context,
   outputSchema: toolOutputSchemas.get_sector_context,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_sector_context", input);
-    return getOrFetch("get_sector_context", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_sector_context", input, async () => {
       try {
-        return await fetchLive(input);
+        return await fetchLive(ctx.cap.cache, input);
       } catch {
         return emptyPayload("get_sector_context", input);
       }

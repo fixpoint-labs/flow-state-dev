@@ -11,7 +11,7 @@
  * from.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchYahooChart } from "../providers/yahoo";
 import { fetchFinnhubCandles, hasFinnhubKey } from "../providers/finnhub";
@@ -24,11 +24,12 @@ export const compute_indicators = handler({
   description: "RSI, MACD, ATR, SMA50/200, and trend label for a ticker.",
   inputSchema: toolInputSchemas.compute_indicators,
   outputSchema: toolOutputSchemas.compute_indicators,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("compute_indicators", input);
-    return getOrFetch("compute_indicators", input, async () => {
+    return ctx.cap.cache.getOrFetch("compute_indicators", input, async () => {
       const priceInput = { ticker: input.ticker, date: input.date, range: "1y" as const };
-      const prices = await getOrFetch("get_price_history", priceInput, async () => {
+      const prices = await ctx.cap.cache.getOrFetch("get_price_history", priceInput, async () => {
         if (hasFinnhubKey()) {
           try { return await fetchFinnhubCandles(priceInput); } catch {}
         }

@@ -15,7 +15,7 @@
  * payload; `unavailable` is reported only when every series fails.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { mapLimit } from "../../lib/concurrency";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchFredSeries } from "../providers/fred";
@@ -49,9 +49,10 @@ export const get_macro_indicators = handler({
   description: "CPI, unemployment, fed-funds, 10y yield, oil — date-keyed snapshot.",
   inputSchema: toolInputSchemas.get_macro_indicators,
   outputSchema: toolOutputSchemas.get_macro_indicators,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_macro_indicators", input);
-    return getOrFetch("get_macro_indicators", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_macro_indicators", input, async () => {
       const key = process.env.FRED_API_KEY?.trim();
       if (!key) return emptyPayload("get_macro_indicators", input);
       try {

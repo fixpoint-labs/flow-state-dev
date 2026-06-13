@@ -7,7 +7,8 @@
  * period for the change-based Piotroski criteria.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import type { CachedFetchAccessor } from "@flow-state-dev/patterns";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchEdgarFinancialsHistory } from "../providers/edgar";
 import { fetchYahooFinancialsHistory } from "../providers/yahoo";
@@ -42,6 +43,7 @@ function toStatementPeriod(fp: FinancialPeriod): StatementPeriod {
 }
 
 async function fetchLive(
+  cache: CachedFetchAccessor,
   input: ToolInput<"get_quant_composites">,
 ): Promise<ToolOutput<"get_quant_composites">> {
   // EDGAR first (authoritative US filings, multi-period, no key); Yahoo
@@ -49,13 +51,13 @@ async function fetchLive(
   let periods: FinancialPeriod[] = [];
   let source: "edgar" | "yahoo" = "edgar";
   try {
-    periods = await getOrFetch("edgar-financials-history", { ticker: input.ticker }, () =>
+    periods = await cache.getOrFetch("edgar-financials-history", { ticker: input.ticker }, () =>
       fetchEdgarFinancialsHistory(input.ticker),
     );
   } catch {
     try {
       source = "yahoo";
-      periods = await getOrFetch("yahoo-financials-history", { ticker: input.ticker }, () =>
+      periods = await cache.getOrFetch("yahoo-financials-history", { ticker: input.ticker }, () =>
         fetchYahooFinancialsHistory(input.ticker),
       );
     } catch {
@@ -105,11 +107,12 @@ export const get_quant_composites = handler({
     "F-Score (financial strength) from quarterly statements.",
   inputSchema: toolInputSchemas.get_quant_composites,
   outputSchema: toolOutputSchemas.get_quant_composites,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_quant_composites", input);
-    return getOrFetch("get_quant_composites", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_quant_composites", input, async () => {
       try {
-        return await fetchLive(input);
+        return await fetchLive(ctx.cap.cache, input);
       } catch {
         return emptyPayload("get_quant_composites", input);
       }

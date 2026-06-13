@@ -9,7 +9,7 @@
  * tool — narrows it to sector/theme-relevant signal.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { fetchFinnhubMarketNews, hasFinnhubKey } from "../providers/finnhub";
 import { loadFixture } from "../runtime/fixtures";
 import { emptyPayload } from "../empty-payloads";
@@ -21,9 +21,10 @@ export const get_market_news = handler({
     "Recent general market-news headlines (market-wide, not ticker-specific).",
   inputSchema: toolInputSchemas.get_market_news,
   outputSchema: toolOutputSchemas.get_market_news,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_market_news", input);
-    return getOrFetch("get_market_news", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_market_news", input, async () => {
       if (hasFinnhubKey()) {
         try {
           return await fetchFinnhubMarketNews(input);

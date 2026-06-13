@@ -4,7 +4,7 @@
  * See `discover_fundamentals_context.ts` for the discipline.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { discoverWeb, TECHNICAL_QUERY } from "../runtime/discover";
 import { loadFixture } from "../runtime/fixtures";
 import { emptyPayload, skippedDiscoveryPayload } from "../empty-payloads";
@@ -17,6 +17,7 @@ export const discover_technical_context = handler({
     "(chart structure, support/resistance, breakout calls) for the ticker.",
   inputSchema: toolInputSchemas.discover_technical_context,
   outputSchema: toolOutputSchemas.discover_technical_context,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (ctx.session.state.costPreset !== "full") {
       return skippedDiscoveryPayload("discover_technical_context", input);
@@ -24,7 +25,7 @@ export const discover_technical_context = handler({
     if (pickMode(ctx) === "fixture") {
       return loadFixture("discover_technical_context", input);
     }
-    return getOrFetch("discover_technical_context", input, async () => {
+    return ctx.cap.cache.getOrFetch("discover_technical_context", input, async () => {
       try {
         return await discoverWeb({
           ticker: input.ticker,

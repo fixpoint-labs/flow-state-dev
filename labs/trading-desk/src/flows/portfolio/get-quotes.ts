@@ -6,8 +6,8 @@
  * There is no standalone quote tool. The canonical current-price source is the
  * last bar's `close` from `get_price_history`, which exists in both fixture and
  * live modes. This handler reuses that tool's fetch idiom DIRECTLY — it calls
- * `loadFixture` (fixture mode) / `getOrFetch` (live mode), exactly like
- * `compute-spine.ts`, NOT `get_price_history.run()`. Calling provider functions
+ * `loadFixture` (fixture mode) / `ctx.cap.cache.getOrFetch` (live mode), exactly
+ * like `compute-spine.ts`, NOT `get_price_history.run()`. Calling provider functions
  * from a handler is BP-011-safe; calling a block from a handler is not.
  *
  * Real-money trust gates:
@@ -19,8 +19,9 @@
  *    fixture mode that is the pinned snapshot date, not "now".
  */
 import { handler } from "@flow-state-dev/core";
+import type { CachedFetchAccessor } from "@flow-state-dev/patterns";
 import { z } from "zod";
-import { getOrFetch } from "../analysis/tools/runtime/cache";
+import { analysisCache } from "../shared/cache-capability";
 import { mapLimit, sleep } from "../analysis/lib/concurrency";
 import { loadFixture } from "../analysis/tools/runtime/fixtures";
 import { fetchFinnhubCandles, hasFinnhubKey } from "../analysis/tools/providers/finnhub";
@@ -67,6 +68,7 @@ function lastClose(payload: {
  *  branch + provider chain. Any failure returns a null price (never fabricated,
  *  never a silent fixture fallback in live mode). */
 async function resolveQuote(
+  cache: CachedFetchAccessor,
   ticker: string,
   date: string,
   mode: "fixture" | "live",
@@ -77,7 +79,7 @@ async function resolveQuote(
       const { price, asOf } = lastClose(payload);
       return { ticker, price, asOf };
     }
-    const payload = await getOrFetch(
+    const payload = await cache.getOrFetch(
       "get_price_history",
       { ticker, date, range: "1mo" },
       async () => {
@@ -127,6 +129,7 @@ export const getQuotes = handler({
   inputSchema: getQuotesInputSchema,
   outputSchema: getQuotesOutputSchema,
   resources: { portfolioQuotes: portfolioQuotesResource },
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     const mode = input.dataSource === "live" ? "live" : "fixture";
     // Fixture-mode price lookups ignore the date (pinned snapshot); live mode
@@ -137,7 +140,7 @@ export const getQuotes = handler({
     // once trips Yahoo's throttle and drops a random subset to "—". mapLimit
     // caps in-flight requests and preserves the requested order.
     const quotes = await mapLimit(unique, QUOTE_CONCURRENCY, (ticker) =>
-      resolveQuote(ticker, date, mode),
+      resolveQuote(ctx.cap.cache, ticker, date, mode),
     );
     await ctx.resources.portfolioQuotes.patchState({
       dataSource: mode,

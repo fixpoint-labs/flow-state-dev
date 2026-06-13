@@ -5,7 +5,7 @@
  * short-circuit before fixture branch; live failure stays "unavailable").
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { discoverWeb, SENTIMENT_QUERY } from "../runtime/discover";
 import { loadFixture } from "../runtime/fixtures";
 import { emptyPayload, skippedDiscoveryPayload } from "../empty-payloads";
@@ -18,6 +18,7 @@ export const discover_sentiment_context = handler({
     "context (forum chatter, analyst commentary) for the given ticker.",
   inputSchema: toolInputSchemas.discover_sentiment_context,
   outputSchema: toolOutputSchemas.discover_sentiment_context,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (ctx.session.state.costPreset !== "full") {
       return skippedDiscoveryPayload("discover_sentiment_context", input);
@@ -25,7 +26,7 @@ export const discover_sentiment_context = handler({
     if (pickMode(ctx) === "fixture") {
       return loadFixture("discover_sentiment_context", input);
     }
-    return getOrFetch("discover_sentiment_context", input, async () => {
+    return ctx.cap.cache.getOrFetch("discover_sentiment_context", input, async () => {
       try {
         return await discoverWeb({
           ticker: input.ticker,

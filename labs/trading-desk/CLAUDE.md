@@ -87,7 +87,6 @@ src/flows/analysis/
     indicators-math.ts           pure RSI/MACD/ATR/SMA functions
     index.ts                     barrel re-export
     runtime/                     tool runtime (was lib/)
-      cache.ts                   process-wide TTL cache (getOrFetch)
       fixtures.ts                loadFixture(tool, args)
       discover.ts                web-search → DiscoveryPayload shape
     providers/                   external API clients — stateless, throw on failure (was ../providers/)
@@ -153,11 +152,11 @@ fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
   the group.
 - **`tools/` is the self-contained catalog.** `tools/data/` is one file per
   data tool, `tools/providers/` is external API clients (stateless,
-  throw-on-failure, no caching — callers wrap with `getOrFetch` from
-  `tools/runtime/cache.ts`), `tools/runtime/` is the cache + fixtures +
-  discovery runtime. A flow-coupled tool (one that imports flow internals, like
-  `find_counter_evidence`) stays with its consumer under `agents/`, NOT in the
-  catalog.
+  throw-on-failure, no caching — callers wrap with `ctx.cap.cache.getOrFetch`
+  from the shared `analysisCache` capability, `src/flows/shared/cache-capability.ts`),
+  `tools/runtime/` is the fixtures + discovery runtime. A flow-coupled tool (one
+  that imports flow internals, like `find_counter_evidence`) stays with its
+  consumer under `agents/`, NOT in the catalog.
 - **`orchestration/` is the only code that knows execution order.** `stages.ts`
   assembles each group's setup tap + step into a stage; `analyze.ts` chains the
   stages behind the guards; `flow.ts` is `defineFlow` only. Import direction is
@@ -299,8 +298,8 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   extraction progress to the dialog is a documented follow-up — the phase UX is
   currently a static "extracting" state.
 - **Prices** come from `getQuotes` — a read handler that reuses
-  `get_price_history`'s fetch idiom directly (`loadFixture` / `getOrFetch`, NOT
-  `block.run()` — BP-011-safe) and takes the last bar's `close`. A missing /
+  `get_price_history`'s fetch idiom directly (`loadFixture` / `ctx.cap.cache.getOrFetch`,
+  NOT `block.run()` — BP-011-safe) and takes the last bar's `close`. A missing /
   unavailable price degrades to `null` (UI shows `—`), never a fabricated number;
   live mode never silently substitutes fixture data. Because `sendAction` returns
   a request envelope (NOT the handler output) in this runtime, `getQuotes` writes
@@ -595,7 +594,7 @@ branch, provider preference, and fallback chain.
 ```ts
 // tools/data/get_my_tool.ts
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchFromProviderA } from "../providers/providerA";
 import { emptyPayload } from "../empty-payloads";
@@ -606,15 +605,25 @@ export const get_my_tool = handler({
   description: "...",
   inputSchema: toolInputSchemas.get_my_tool,
   outputSchema: toolOutputSchemas.get_my_tool,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_my_tool", input);
-    return getOrFetch("get_my_tool", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_my_tool", input, async () => {
       try { return await fetchFromProviderA(input); } catch {}
       return emptyPayload("get_my_tool", input);
     });
   },
 });
 ```
+
+The tool-fetch cache is the shared `analysisCache` capability
+(`src/flows/shared/cache-capability.ts`, the framework's cached-fetch
+capability). Listing it in `uses` auto-installs its collection and exposes the
+accessor at `ctx.cap.cache`; the `getOrFetch(tool, args, fetcher)` key shape is
+unchanged from the old runtime cache. If the fetcher lives in a module-level
+helper (no `ctx` in scope), pass `ctx.cap.cache` (typed `CachedFetchAccessor`
+from `@flow-state-dev/patterns`) in as the helper's first argument rather than
+importing a free function.
 
 Then:
 
@@ -632,7 +641,7 @@ Then:
 If the tool needs a new external API, add its fetch helper to a new
 `tools/providers/<provider>.ts` file (one per provider). Keep it stateless — read
 keys from env, throw on any failure, no caching (the tool handler wraps the
-call with `getOrFetch`). A tool that imports flow internals (memo keys, a
+call with `ctx.cap.cache.getOrFetch`). A tool that imports flow internals (memo keys, a
 flow resource) is **flow-coupled** — it stays with its consumer under
 `agents/<group>/tools/`, NOT in the catalog (see `find_counter_evidence`).
 

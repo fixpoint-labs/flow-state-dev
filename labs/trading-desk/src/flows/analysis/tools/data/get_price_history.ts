@@ -3,7 +3,7 @@
  * fallback. Fixture: curated NVDA JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { fetchFinnhubCandles, hasFinnhubKey } from "../providers/finnhub";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchYahooChart } from "../providers/yahoo";
@@ -15,9 +15,10 @@ export const get_price_history = handler({
   description: "Daily OHLCV bars for a ticker over the requested range.",
   inputSchema: toolInputSchemas.get_price_history,
   outputSchema: toolOutputSchemas.get_price_history,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_price_history", input);
-    return getOrFetch("get_price_history", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_price_history", input, async () => {
       if (hasFinnhubKey()) {
         try { return await fetchFinnhubCandles(input); } catch {}
       }

@@ -3,7 +3,7 @@
  * Yahoo `quoteSummary` fallback. Fixture: curated NVDA JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { fetchFinnhubFundamentals, hasFinnhubKey } from "../providers/finnhub";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchYahooFundamentals } from "../providers/yahoo";
@@ -15,9 +15,10 @@ export const get_fundamentals = handler({
   description: "Snapshot of valuation, growth, margins for a ticker.",
   inputSchema: toolInputSchemas.get_fundamentals,
   outputSchema: toolOutputSchemas.get_fundamentals,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_fundamentals", input);
-    return getOrFetch("get_fundamentals", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_fundamentals", input, async () => {
       if (hasFinnhubKey()) {
         try { return await fetchFinnhubFundamentals(input); } catch {}
       }

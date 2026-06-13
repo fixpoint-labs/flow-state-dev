@@ -5,7 +5,7 @@
  * discovery tools.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { discoverWeb, DISCLOSURE_QUERY } from "../runtime/discover";
 import { loadFixture } from "../runtime/fixtures";
 import { emptyPayload, skippedDiscoveryPayload } from "../empty-payloads";
@@ -19,6 +19,7 @@ export const discover_disclosure_context = handler({
     "relevant to the given ticker.",
   inputSchema: toolInputSchemas.discover_disclosure_context,
   outputSchema: toolOutputSchemas.discover_disclosure_context,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (ctx.session.state.costPreset !== "full") {
       return skippedDiscoveryPayload("discover_disclosure_context", input);
@@ -26,7 +27,7 @@ export const discover_disclosure_context = handler({
     if (pickMode(ctx) === "fixture") {
       return loadFixture("discover_disclosure_context", input);
     }
-    return getOrFetch("discover_disclosure_context", input, async () => {
+    return ctx.cap.cache.getOrFetch("discover_disclosure_context", input, async () => {
       try {
         return await discoverWeb({
           ticker: input.ticker,

@@ -12,7 +12,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { get_cross_asset_flow } from "../src/flows/analysis/tools/data/get_cross_asset_flow";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 import { emptyPayload } from "../src/flows/analysis/tools/empty-payloads";
 import { crossAssetFlowSchema } from "../src/flows/analysis/tools/schemas";
 import { sessionStateSchema } from "../src/flows/analysis/state";
@@ -38,7 +37,6 @@ function sessionFor(dataSource: "fixture" | "live") {
 const originalCwd = process.cwd();
 beforeEach(() => {
   process.chdir(path.resolve(__dirname, ".."));
-  _resetCache();
 });
 afterEach(() => {
   process.chdir(originalCwd);

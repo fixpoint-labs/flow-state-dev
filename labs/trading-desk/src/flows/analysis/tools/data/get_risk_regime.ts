@@ -3,7 +3,8 @@
  * sector ETF, then computes beta, realized-vol regime, and correlation.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import type { CachedFetchAccessor } from "@flow-state-dev/patterns";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { resolveSector } from "../../lib/sector-resolution";
 import { fetchYahooChart } from "../providers/yahoo";
@@ -28,34 +29,39 @@ const BROAD_MARKET_TICKER = "SPY";
 const SHORT_WINDOW = 21;
 const CORR_WINDOW = 63;
 
-async function fetchReturns(ticker: string, date: string): Promise<number[]> {
-  const chart = await getOrFetch("get_price_history", { ticker, date, range: "1y" }, () =>
+async function fetchReturns(
+  cache: CachedFetchAccessor,
+  ticker: string,
+  date: string,
+): Promise<number[]> {
+  const chart = await cache.getOrFetch("get_price_history", { ticker, date, range: "1y" }, () =>
     fetchYahooChart({ ticker, date, range: "1y" }),
   );
   return logReturns(chart.bars.map((b) => b.close));
 }
 
 async function fetchLive(
+  cache: CachedFetchAccessor,
   input: ToolInput<"get_risk_regime">,
 ): Promise<ToolOutput<"get_risk_regime">> {
-  const { sectorEtf } = await resolveSector(input.ticker, input.date);
+  const { sectorEtf } = await resolveSector(cache, input.ticker, input.date);
 
   let nameReturns: number[];
   try {
-    nameReturns = await fetchReturns(input.ticker, input.date);
+    nameReturns = await fetchReturns(cache, input.ticker, input.date);
   } catch {
     return emptyPayload("get_risk_regime", input);
   }
 
   let spyReturns: number[] = [];
   try {
-    spyReturns = await fetchReturns(BROAD_MARKET_TICKER, input.date);
+    spyReturns = await fetchReturns(cache, BROAD_MARKET_TICKER, input.date);
   } catch {}
 
   let sectorReturns: number[] = [];
   if (sectorEtf) {
     try {
-      sectorReturns = await fetchReturns(sectorEtf, input.date);
+      sectorReturns = await fetchReturns(cache, sectorEtf, input.date);
     } catch {}
   }
 
@@ -88,11 +94,12 @@ export const get_risk_regime = handler({
     "regime percentile, and correlation regime.",
   inputSchema: toolInputSchemas.get_risk_regime,
   outputSchema: toolOutputSchemas.get_risk_regime,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_risk_regime", input);
-    return getOrFetch("get_risk_regime", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_risk_regime", input, async () => {
       try {
-        return await fetchLive(input);
+        return await fetchLive(ctx.cap.cache, input);
       } catch {
         return emptyPayload("get_risk_regime", input);
       }

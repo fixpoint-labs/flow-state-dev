@@ -3,7 +3,7 @@
  * (14-day window). Fixture: curated NVDA JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { fetchFinnhubCompanyNews, hasFinnhubKey } from "../providers/finnhub";
 import { loadFixture } from "../runtime/fixtures";
 import { emptyPayload } from "../empty-payloads";
@@ -14,9 +14,10 @@ export const search_news = handler({
   description: "Recent company-relevant news headlines for a ticker.",
   inputSchema: toolInputSchemas.search_news,
   outputSchema: toolOutputSchemas.search_news,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("search_news", input);
-    return getOrFetch("search_news", input, async () => {
+    return ctx.cap.cache.getOrFetch("search_news", input, async () => {
       if (hasFinnhubKey()) {
         try { return await fetchFinnhubCompanyNews(input); } catch {}
       }

@@ -4,7 +4,7 @@
  * (EDGAR is free and requires only a User-Agent).
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchEdgarFilings } from "../providers/edgar-filings";
 import { emptyPayload } from "../empty-payloads";
@@ -19,11 +19,12 @@ export const get_sec_filings = handler({
     "restatement, covenant, litigation, dilution).",
   inputSchema: toolInputSchemas.get_sec_filings,
   outputSchema: toolOutputSchemas.get_sec_filings,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") {
       return loadFixture("get_sec_filings", input);
     }
-    return getOrFetch("get_sec_filings", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_sec_filings", input, async () => {
       try {
         return await fetchEdgarFilings(input.ticker, input.date);
       } catch {

@@ -5,7 +5,7 @@
  * compare against the name's own move.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchFinnhubPeers } from "../providers/finnhub";
 import { fetchYahooChart } from "../providers/yahoo";
@@ -92,9 +92,10 @@ export const get_sector_peers = handler({
     "relative comparison.",
   inputSchema: toolInputSchemas.get_sector_peers,
   outputSchema: toolOutputSchemas.get_sector_peers,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_sector_peers", input);
-    return getOrFetch("get_sector_peers", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_sector_peers", input, async () => {
       try {
         return await fetchLive(input);
       } catch {

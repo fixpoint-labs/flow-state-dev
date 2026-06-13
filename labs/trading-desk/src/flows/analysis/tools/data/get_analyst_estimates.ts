@@ -4,7 +4,7 @@
  * estimates, price targets, rating actions) wired in PR2.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import {
   fetchFinnhubRecommendations,
@@ -21,11 +21,12 @@ export const get_analyst_estimates = handler({
     "and recent rating actions for a ticker.",
   inputSchema: toolInputSchemas.get_analyst_estimates,
   outputSchema: toolOutputSchemas.get_analyst_estimates,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") {
       return loadFixture("get_analyst_estimates", input);
     }
-    return getOrFetch("get_analyst_estimates", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_analyst_estimates", input, async () => {
       try {
         const [ratingsDistribution, earningsSurprises] = await Promise.all([
           fetchFinnhubRecommendations(input.ticker).catch(() => null),

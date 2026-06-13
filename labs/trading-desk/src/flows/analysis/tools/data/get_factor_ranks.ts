@@ -4,7 +4,8 @@
  * exposures, and returns the target's percentile rank within the cross-section.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import type { CachedFetchAccessor } from "@flow-state-dev/patterns";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchFinnhubPeers } from "../providers/finnhub";
 import { fetchYahooChart, fetchYahooFundamentals } from "../providers/yahoo";
@@ -36,7 +37,11 @@ type NameData = {
   lowVol: number | null;
 };
 
-async function fetchNameData(ticker: string, date: string): Promise<NameData> {
+async function fetchNameData(
+  cache: CachedFetchAccessor,
+  ticker: string,
+  date: string,
+): Promise<NameData> {
   let momentum: number | null = null;
   let value: number | null = null;
   let quality: number | null = null;
@@ -44,7 +49,7 @@ async function fetchNameData(ticker: string, date: string): Promise<NameData> {
   let lowVol: number | null = null;
 
   try {
-    const chart = await getOrFetch("get_price_history", { ticker, date, range: "1y" }, () =>
+    const chart = await cache.getOrFetch("get_price_history", { ticker, date, range: "1y" }, () =>
       fetchYahooChart({ ticker, date, range: "1y" }),
     );
     const closes = chart.bars.map((b) => b.close);
@@ -56,7 +61,7 @@ async function fetchNameData(ticker: string, date: string): Promise<NameData> {
   } catch {}
 
   try {
-    const fundamentals = await getOrFetch("get_fundamentals", { ticker, date }, () =>
+    const fundamentals = await cache.getOrFetch("get_fundamentals", { ticker, date }, () =>
       fetchYahooFundamentals({ ticker, date }),
     );
     value = fundamentals.operatingMargin !== 0 ? fundamentals.operatingMargin : null;
@@ -109,6 +114,7 @@ function rankFactor(
 }
 
 async function fetchLive(
+  cache: CachedFetchAccessor,
   input: ToolInput<"get_factor_ranks">,
 ): Promise<ToolOutput<"get_factor_ranks">> {
   let peerTickers: string[];
@@ -122,7 +128,7 @@ async function fetchLive(
   const allTickers = [input.ticker, ...capped];
 
   const nameDataResults = await Promise.allSettled(
-    allTickers.map((t) => fetchNameData(t, input.date)),
+    allTickers.map((t) => fetchNameData(cache, t, input.date)),
   );
 
   const allNames = nameDataResults
@@ -165,11 +171,12 @@ export const get_factor_ranks = handler({
     "low-vol percentiles of the name within its peer set.",
   inputSchema: toolInputSchemas.get_factor_ranks,
   outputSchema: toolOutputSchemas.get_factor_ranks,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_factor_ranks", input);
-    return getOrFetch("get_factor_ranks", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_factor_ranks", input, async () => {
       try {
-        return await fetchLive(input);
+        return await fetchLive(ctx.cap.cache, input);
       } catch {
         return emptyPayload("get_factor_ranks", input);
       }

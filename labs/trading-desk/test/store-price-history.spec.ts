@@ -21,7 +21,6 @@ import { testFlow } from "@flow-state-dev/testing";
 import { storePriceHistory } from "../src/flows/analysis/store-price-history";
 import { priceHistoryResource } from "../src/flows/analysis/price-history-resource";
 import { sessionStateSchema } from "../src/flows/analysis/state";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 
 const priceFlow = defineFlow({
   kind: "trading-desk-price-history-test",
@@ -61,7 +60,6 @@ async function readSlice(
 
 describe("storePriceHistory tap", () => {
   it("fixture mode: patches a thinned { date, close } series + provenance source", async () => {
-    _resetCache();
     const stores = createInMemoryStores();
     const sessionId = "prices-fixture";
 
@@ -93,7 +91,6 @@ describe("storePriceHistory tap", () => {
   });
 
   it("live mode cache miss: leaves the resource null — no fetch, no substitution", async () => {
-    _resetCache();
     const stores = createInMemoryStores();
     const sessionId = "prices-live-miss";
 

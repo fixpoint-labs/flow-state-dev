@@ -4,7 +4,7 @@
  * Extracted from `get_sector_context.ts` for reuse by the Quant Analyst's
  * risk-regime tool (needs the sector ETF for sector-relative beta/correlation).
  */
-import { getOrFetch } from "../tools/runtime/cache";
+import type { CachedFetchAccessor } from "@flow-state-dev/patterns";
 import { fetchYahooCompanyProfile } from "../tools/providers/yahoo";
 
 /** GICS sector → Select Sector SPDR ETF. Covers the 11 standard GICS
@@ -26,13 +26,14 @@ export const GICS_TO_ETF: Record<string, string> = {
 /** Resolve a ticker's sector and map it to a sector ETF.
  *  Uses a soft Yahoo profile fetch (cache-deduped). Returns nulls on failure. */
 export async function resolveSector(
+  cache: CachedFetchAccessor,
   ticker: string,
   date: string,
 ): Promise<{ sector: string | null; industry: string | null; sectorEtf: string | null }> {
   let sector: string | null = null;
   let industry: string | null = null;
   try {
-    const profile = await getOrFetch(
+    const profile = await cache.getOrFetch(
       "yahoo-profile-sector",
       { ticker },
       () => fetchYahooCompanyProfile({ ticker, date }),

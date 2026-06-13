@@ -6,7 +6,8 @@
  * other multi-provider tools.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import type { CachedFetchAccessor } from "@flow-state-dev/patterns";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchFinnhubShortInterest, hasFinnhubKey } from "../providers/finnhub";
 import {
@@ -27,6 +28,7 @@ import {
  *  approximate %-of-float derived from volume and market cap (Yahoo supplies
  *  both directly; this path only runs when Yahoo has no short interest). */
 async function fetchFinnhubLive(
+  cache: CachedFetchAccessor,
   input: ToolInput<"get_short_interest">,
 ): Promise<ToolOutput<"get_short_interest">> {
   if (!hasFinnhubKey()) return emptyPayload("get_short_interest", input);
@@ -34,7 +36,7 @@ async function fetchFinnhubLive(
   let shortInterest: number;
   let settlementDate: string;
   try {
-    const si = await getOrFetch("finnhub-short-interest", { ticker: input.ticker }, () =>
+    const si = await cache.getOrFetch("finnhub-short-interest", { ticker: input.ticker }, () =>
       fetchFinnhubShortInterest(input.ticker),
     );
     shortInterest = si.shortInterest;
@@ -46,7 +48,7 @@ async function fetchFinnhubLive(
   // Compute days-to-cover from average daily volume (last 1 month)
   let avgDailyVolume: number | null = null;
   try {
-    const chart = await getOrFetch("get_price_history", { ticker: input.ticker, date: input.date, range: "1mo" }, () =>
+    const chart = await cache.getOrFetch("get_price_history", { ticker: input.ticker, date: input.date, range: "1mo" }, () =>
       fetchYahooChart({ ticker: input.ticker, date: input.date, range: "1mo" }),
     );
     const volumes = chart.bars.map((b) => b.volume).filter((v) => v > 0);
@@ -58,7 +60,7 @@ async function fetchFinnhubLive(
   // Get market cap for % of float approximation
   let marketCap: number | null = null;
   try {
-    const fundamentals = await getOrFetch("get_fundamentals", { ticker: input.ticker, date: input.date }, () =>
+    const fundamentals = await cache.getOrFetch("get_fundamentals", { ticker: input.ticker, date: input.date }, () =>
       fetchYahooFundamentals({ ticker: input.ticker, date: input.date }),
     );
     marketCap = fundamentals.marketCap;
@@ -75,7 +77,7 @@ async function fetchFinnhubLive(
     // Very rough: assume ~$50 avg price per share for large-cap
     // Better: get the actual share price from recent close
     try {
-      const chart = await getOrFetch("get_price_history", { ticker: input.ticker, date: input.date, range: "1mo" }, () =>
+      const chart = await cache.getOrFetch("get_price_history", { ticker: input.ticker, date: input.date, range: "1mo" }, () =>
         fetchYahooChart({ ticker: input.ticker, date: input.date, range: "1mo" }),
       );
       const lastClose = chart.bars[chart.bars.length - 1]?.close;
@@ -106,9 +108,10 @@ export const get_short_interest = handler({
     "float, days-to-cover, and settlement date.",
   inputSchema: toolInputSchemas.get_short_interest,
   outputSchema: toolOutputSchemas.get_short_interest,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_short_interest", input);
-    return getOrFetch("get_short_interest", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_short_interest", input, async () => {
       // Yahoo first (free, no key, ADR coverage); Finnhub backstops; empty only
       // when neither answers.
       try {
@@ -117,7 +120,7 @@ export const get_short_interest = handler({
         // fall through to Finnhub
       }
       try {
-        return await fetchFinnhubLive(input);
+        return await fetchFinnhubLive(ctx.cap.cache, input);
       } catch {
         return emptyPayload("get_short_interest", input);
       }

@@ -4,7 +4,7 @@
  * fallback. Fixture: curated per-ticker JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchEdgarBalanceSheet } from "../providers/edgar";
 import { fetchYahooBalanceSheet } from "../providers/yahoo";
@@ -16,9 +16,10 @@ export const get_balance_sheet = handler({
   description: "Latest balance sheet for a ticker (totals only).",
   inputSchema: toolInputSchemas.get_balance_sheet,
   outputSchema: toolOutputSchemas.get_balance_sheet,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_balance_sheet", input);
-    return getOrFetch("get_balance_sheet", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_balance_sheet", input, async () => {
       // EDGAR first (authoritative, no key); Yahoo backstops non-US filers and
       // EDGAR outages; empty payload only when both fail.
       try {

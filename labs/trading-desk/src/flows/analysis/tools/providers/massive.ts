@@ -10,7 +10,7 @@
  * `get_futures_curve`) and the pure `options-math` / `futures-math` modules —
  * mirroring `get_cross_asset_flow` over `fred.ts`, not the inline-normalize shape
  * of `finnhub.ts`. The provider stays a stateless client; no caching (the tool
- * wraps with `getOrFetch`).
+ * wraps with `ctx.cap.cache.getOrFetch`).
  *
  * Massive bills per asset-class product (options, futures bought separately), so
  * a key without the right product entitlement 401s — which surfaces, correctly,

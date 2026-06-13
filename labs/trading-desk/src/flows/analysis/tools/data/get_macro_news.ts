@@ -10,7 +10,7 @@
  * convention as `get_macro_indicators` and `get_market_news`.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { fetchFinnhubMacroNews, hasFinnhubKey } from "../providers/finnhub";
 import { loadFixture } from "../runtime/fixtures";
 import { emptyPayload } from "../empty-payloads";
@@ -23,9 +23,10 @@ export const get_macro_news = handler({
     "Always on, not gated by cost preset — complements discover_macro_context.",
   inputSchema: toolInputSchemas.get_macro_news,
   outputSchema: toolOutputSchemas.get_macro_news,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_macro_news", input);
-    return getOrFetch("get_macro_news", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_macro_news", input, async () => {
       if (hasFinnhubKey()) {
         try {
           return await fetchFinnhubMacroNews(input);

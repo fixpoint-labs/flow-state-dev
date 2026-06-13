@@ -16,7 +16,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 import { discover_fundamentals_context } from "../src/flows/analysis/tools/data/discover_fundamentals_context";
 import { discover_sentiment_context } from "../src/flows/analysis/tools/data/discover_sentiment_context";
 import { discover_technical_context } from "../src/flows/analysis/tools/data/discover_technical_context";
@@ -66,7 +65,6 @@ function sessionFor(
 const originalCwd = process.cwd();
 beforeEach(() => {
   process.chdir(path.resolve(__dirname, ".."));
-  _resetCache();
   mockResolveProvider.mockReset();
 });
 afterEach(() => {

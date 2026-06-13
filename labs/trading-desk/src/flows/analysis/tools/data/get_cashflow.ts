@@ -5,7 +5,7 @@
  * mapper handles its own sign convention). Fixture: curated per-ticker JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchEdgarCashflow } from "../providers/edgar";
 import { fetchYahooCashflow } from "../providers/yahoo";
@@ -17,9 +17,10 @@ export const get_cashflow = handler({
   description: "Trailing cash-flow statement for a ticker.",
   inputSchema: toolInputSchemas.get_cashflow,
   outputSchema: toolOutputSchemas.get_cashflow,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_cashflow", input);
-    return getOrFetch("get_cashflow", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_cashflow", input, async () => {
       // EDGAR first (authoritative, no key); Yahoo backstops non-US filers and
       // EDGAR outages; empty payload only when both fail.
       try {

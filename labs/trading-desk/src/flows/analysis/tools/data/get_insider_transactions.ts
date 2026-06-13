@@ -8,7 +8,7 @@
  * `unavailable` as missing signal, not bearish.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { fetchFinnhubInsiderTransactions, hasFinnhubKey } from "../providers/finnhub";
 import { loadFixture } from "../runtime/fixtures";
 import { emptyPayload } from "../empty-payloads";
@@ -19,9 +19,10 @@ export const get_insider_transactions = handler({
   description: "Recent insider Form 4 transactions for a ticker (90-day window).",
   inputSchema: toolInputSchemas.get_insider_transactions,
   outputSchema: toolOutputSchemas.get_insider_transactions,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_insider_transactions", input);
-    return getOrFetch("get_insider_transactions", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_insider_transactions", input, async () => {
       if (hasFinnhubKey()) {
         try { return await fetchFinnhubInsiderTransactions(input); } catch {}
       }

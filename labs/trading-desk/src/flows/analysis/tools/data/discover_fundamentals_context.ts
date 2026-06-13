@@ -17,7 +17,7 @@
  * the gap honestly.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { discoverWeb, FUNDAMENTALS_QUERY } from "../runtime/discover";
 import { loadFixture } from "../runtime/fixtures";
 import { emptyPayload, skippedDiscoveryPayload } from "../empty-payloads";
@@ -30,6 +30,7 @@ export const discover_fundamentals_context = handler({
     "(earnings color, guidance, business-mix shifts) for the given ticker.",
   inputSchema: toolInputSchemas.discover_fundamentals_context,
   outputSchema: toolOutputSchemas.discover_fundamentals_context,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (ctx.session.state.costPreset !== "full") {
       return skippedDiscoveryPayload("discover_fundamentals_context", input);
@@ -37,7 +38,7 @@ export const discover_fundamentals_context = handler({
     if (pickMode(ctx) === "fixture") {
       return loadFixture("discover_fundamentals_context", input);
     }
-    return getOrFetch("discover_fundamentals_context", input, async () => {
+    return ctx.cap.cache.getOrFetch("discover_fundamentals_context", input, async () => {
       try {
         return await discoverWeb({
           ticker: input.ticker,

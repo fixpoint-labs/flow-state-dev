@@ -5,7 +5,7 @@
  * leaves YoY null). Fixture: curated per-ticker JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchEdgarIncomeStatement } from "../providers/edgar";
 import { fetchYahooIncomeStatement } from "../providers/yahoo";
@@ -17,9 +17,10 @@ export const get_income_statement = handler({
   description: "Trailing income statement for a ticker.",
   inputSchema: toolInputSchemas.get_income_statement,
   outputSchema: toolOutputSchemas.get_income_statement,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_income_statement", input);
-    return getOrFetch("get_income_statement", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_income_statement", input, async () => {
       // EDGAR first (authoritative, no key); Yahoo backstops non-US filers and
       // EDGAR outages; empty payload only when both fail.
       try {

@@ -16,7 +16,8 @@
  * `get_price_history` cache key, so a warm bar series is not re-fetched.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import type { CachedFetchAccessor } from "@flow-state-dev/patterns";
+import { analysisCache } from "../../../shared/cache-capability";
 import { mapLimit } from "../../lib/concurrency";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchFredSeries, hasFredKey } from "../providers/fred";
@@ -65,9 +66,13 @@ const NFCI_DEADBAND = 0.02;
 
 /** Trailing-window return for one ticker, reusing the shared price-history
  *  cache. Returns null on any failure (the leg simply doesn't price). */
-async function fetchReturn(ticker: string, date: string): Promise<number | null> {
+async function fetchReturn(
+  cache: CachedFetchAccessor,
+  ticker: string,
+  date: string,
+): Promise<number | null> {
   try {
-    const chart = await getOrFetch(
+    const chart = await cache.getOrFetch(
       "get_price_history",
       { ticker, date, range: WINDOW_RANGE },
       () => fetchYahooChart({ ticker, date, range: WINDOW_RANGE }),
@@ -80,11 +85,13 @@ async function fetchReturn(ticker: string, date: string): Promise<number | null>
 
 /** NFCI level + trend from FRED. Null when no key or the series can't be read —
  *  the cross-asset backbone stands without it. */
-async function fetchLiquidity(): Promise<ToolOutput<"get_cross_asset_flow">["liquidity"]> {
+async function fetchLiquidity(
+  cache: CachedFetchAccessor,
+): Promise<ToolOutput<"get_cross_asset_flow">["liquidity"]> {
   if (!hasFredKey()) return null;
   const key = process.env.FRED_API_KEY!.trim();
   try {
-    const obs = await getOrFetch("get_cross_asset_flow:nfci", { series: NFCI_SERIES }, () =>
+    const obs = await cache.getOrFetch("get_cross_asset_flow:nfci", { series: NFCI_SERIES }, () =>
       fetchFredSeries(NFCI_SERIES, NFCI_OBS, key),
     );
     if (obs.length === 0) return null;
@@ -107,6 +114,7 @@ async function fetchLiquidity(): Promise<ToolOutput<"get_cross_asset_flow">["liq
 }
 
 async function fetchLive(
+  cache: CachedFetchAccessor,
   input: ToolInput<"get_cross_asset_flow">,
 ): Promise<ToolOutput<"get_cross_asset_flow">> {
   // One fetch per unique ticker (name + SPY + every basket leg), bounded.
@@ -118,7 +126,7 @@ async function fetchLive(
     ]),
   );
   const returns = await mapLimit(tickers, BASKET_CONCURRENCY, (t) =>
-    fetchReturn(t, input.date),
+    fetchReturn(cache, t, input.date),
   );
   const returnByTicker = new Map(tickers.map((t, i) => [t, returns[i]]));
 
@@ -144,7 +152,7 @@ async function fetchLive(
   const nameVsBroadMarket =
     nameReturn !== null && broadMarketReturn !== null ? nameReturn - broadMarketReturn : null;
 
-  const liquidity = await fetchLiquidity();
+  const liquidity = await fetchLiquidity(cache);
 
   const anyReturnResolved = returns.some((r) => r !== null);
   const source = anyReturnResolved ? "yahoo" : liquidity ? "fred" : "unavailable";
@@ -172,11 +180,12 @@ export const get_cross_asset_flow = handler({
     "the broad tape, and the Chicago Fed NFCI financial-conditions trend.",
   inputSchema: toolInputSchemas.get_cross_asset_flow,
   outputSchema: toolOutputSchemas.get_cross_asset_flow,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_cross_asset_flow", input);
-    return getOrFetch("get_cross_asset_flow", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_cross_asset_flow", input, async () => {
       try {
-        return await fetchLive(input);
+        return await fetchLive(ctx.cap.cache, input);
       } catch {
         return emptyPayload("get_cross_asset_flow", input);
       }

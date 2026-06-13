@@ -2,9 +2,10 @@
  * Post-Phase-1 tap: persists a thinned price-history slice to the session-scoped
  * `priceHistoryResource` for the Summary page's price overlay.
  *
- * Reads the SAME warm tool cache (`getOrFetch`) the Phase 1 technical analyst's
- * `get_price_history` populated — no extra network call in live mode, no
- * `block.run()` (BP-011). In fixture mode reads directly from `loadFixture`.
+ * Reads the SAME warm tool-fetch cache (`ctx.cap.cache`, the `analysisCache`
+ * capability) the Phase 1 technical analyst's `get_price_history` populated — no
+ * extra network call in live mode, no `block.run()` (BP-011). In fixture mode
+ * reads directly from `loadFixture`.
  * Modeled on `computeAndStoreSpine` (compute-spine.ts).
  *
  * It is a `.tap()`: no output, no `return input` (BP-012/BP-014). On any miss
@@ -14,7 +15,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { getOrFetch } from "./tools/runtime/cache";
+import { analysisCache } from "../shared/cache-capability";
 import { loadFixture } from "./tools/runtime/fixtures";
 import {
   priceHistoryResource,
@@ -28,6 +29,7 @@ export const storePriceHistory = handler({
   outputSchema: z.void(),
   sessionStateSchema,
   resources: { priceHistory: priceHistoryResource },
+  uses: [analysisCache],
   execute: async (_input, ctx) => {
     const { ticker, date, dataSource } = ctx.session.state;
     const args = { ticker, date };
@@ -41,7 +43,7 @@ export const storePriceHistory = handler({
       const raw =
         dataSource === "fixture"
           ? await loadFixture("get_price_history", args)
-          : await getOrFetch("get_price_history", args, async () => {
+          : await ctx.cap.cache.getOrFetch("get_price_history", args, async () => {
               throw new Error("cache miss — expected warm cache after Phase 1");
             });
       payload = raw as RawPayload;

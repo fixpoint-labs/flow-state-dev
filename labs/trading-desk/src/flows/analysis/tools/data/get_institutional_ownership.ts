@@ -7,7 +7,7 @@
  * mode (BP-020).
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import {
   fetchFinnhubInstitutionalOwnership,
@@ -24,9 +24,10 @@ export const get_institutional_ownership = handler({
     "accumulation/distribution direction. Quarterly, ~45-day lag.",
   inputSchema: toolInputSchemas.get_institutional_ownership,
   outputSchema: toolOutputSchemas.get_institutional_ownership,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_institutional_ownership", input);
-    return getOrFetch("get_institutional_ownership", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_institutional_ownership", input, async () => {
       if (!hasFinnhubKey()) return emptyPayload("get_institutional_ownership", input);
       try {
         return await fetchFinnhubInstitutionalOwnership(input);

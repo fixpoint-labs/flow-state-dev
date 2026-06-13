@@ -11,7 +11,7 @@
  * options) stays `source: "massive"` with null derived fields.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { analysisCache } from "../../../shared/cache-capability";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchOptionChainSnapshot, hasMassiveKey } from "../providers/massive";
 import {
@@ -70,9 +70,10 @@ export const get_options_chain = handler({
     "structure, 25-delta skew, and put/call open-interest balance.",
   inputSchema: toolInputSchemas.get_options_chain,
   outputSchema: toolOutputSchemas.get_options_chain,
+  uses: [analysisCache],
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_options_chain", input);
-    return getOrFetch("get_options_chain", input, async () => {
+    return ctx.cap.cache.getOrFetch("get_options_chain", input, async () => {
       if (!hasMassiveKey()) return emptyPayload("get_options_chain", input);
       try {
         return await fetchLive(input);
