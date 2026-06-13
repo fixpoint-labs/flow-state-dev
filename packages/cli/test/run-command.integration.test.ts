@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { executeRunCommand, type FlowRunResult, type FlowEvent } from "../src/commands/run";
-import { discoverFlows } from "../src/resolve-flow";
+import { discoverFlows, getSearchedDirs } from "../src/resolve-flow";
 import { CliError } from "../src/resolve-block";
 import { EXIT_DISCOVERY_ERROR, EXIT_INVALID_ARGS } from "../src/exit-codes";
 
@@ -231,6 +231,19 @@ describe("monorepo flow discovery", () => {
     expect(result.flow.kind).toBe("nested");
     expect(result.flow.action).toBe("process");
     expect(result.output).toEqual({ result: "nested: from-monorepo" });
+  });
+
+  it("discovers flows from labs/*/src/flows/ in monorepo structure", async () => {
+    const flows = await discoverFlows(fixturesDir);
+    const kinds = flows.map((f) => f.kind);
+
+    // Monorepo-scanned flow (labs/sample-lab/src/flows/labbed-flow/)
+    expect(kinds).toContain("labbed");
+  });
+
+  it("includes labs/ directories in getSearchedDirs", () => {
+    const searched = getSearchedDirs({ cwd: fixturesDir });
+    expect(searched).toContain("labs/sample-lab/src/flows");
   });
 
   it("deduplicates flows by kind (first discovered wins)", async () => {

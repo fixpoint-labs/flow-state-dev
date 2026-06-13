@@ -1174,6 +1174,12 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         }
 
         await options.persistResourceContentKey(storageKey, content);
+        // Content-only change carries no state delta. Fire the seam so the
+        // FIX-739 client projection refreshes, but pass no 4th arg: the reactive
+        // dispatcher skips content-only changes (reactive bindings react to state
+        // mutations, not content writes). Mirrors the collection-instance content
+        // path (FIX-756 parity).
+        await options.onResourceChanged?.(storageKey, "updated");
       }
     };
 

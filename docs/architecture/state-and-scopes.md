@@ -392,7 +392,7 @@ const scopeId = resolveResourceScopeId(userId, flow.kind, isolated); // bare id,
 State and resource mutations emit streaming events:
 
 - `state_change` items track each scope operation
-- `resource_change` items track resource mutations
+- `resource_change` items track resource mutations. Content writes (`writeContent`) emit on both single resources and collection instances (FIX-756 parity) — always without a delta, since content carries no state projection; clients take the batched-refetch path for content
 - `state_snapshot` items capture the full sequencer state at each step boundary (initial + after every step)
 - `state_change` and `resource_change` items are **invalidation signals** — clients should refetch snapshots for source-of-truth reads
 - In production mode, these items are transient (stream-only, not persisted)

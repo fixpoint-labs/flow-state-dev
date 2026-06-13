@@ -21,6 +21,7 @@ import { ResourceChangeItemView } from "./resource-change-item";
 import { ToolOutputItemView } from "./block-tool-output-item";
 import { RouterDecisionItemView } from "./router-decision-item";
 import { SourceItemView } from "./source-item";
+import { SuspensionItemView } from "./suspension-item";
 // FIX-573: BlockDebugItemView is gone with the unified block_trace lifecycle.
 import { useDebug } from "../../context/debug-context";
 import { useSelection } from "../../context/selection-context";
@@ -119,6 +120,8 @@ function ItemContent({ item }: { item: DevtoolItem }) {
       return <RouterDecisionItemView item={item} />;
     case "source":
       return <SourceItemView item={item} />;
+    case "suspension":
+      return <SuspensionItemView item={item} />;
     case "state_snapshot":
       return <StateSnapshotItemView item={item} />;
     default:

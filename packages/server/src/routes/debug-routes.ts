@@ -11,6 +11,10 @@
  */
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
+import type {
+  SuspensionFilter,
+  SuspensionStatus
+} from "@flow-state-dev/core/types";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { jsonResponse } from "./route-utils";
 import {
@@ -154,6 +158,50 @@ export async function handleDebugListResources(
     return jsonResponse(404, { error: "session_not_found" });
   }
   return jsonResponse(200, tree);
+}
+
+const VALID_SUSPENSION_STATUSES: ReadonlySet<SuspensionStatus> = new Set([
+  "pending",
+  "approved",
+  "rejected",
+  "timed_out",
+  "expired"
+]);
+
+/**
+ * List durable-execution suspensions for a session (FIX-141 operator UI).
+ * Reads directly from `ctx.stores.suspensions` — when durability is not
+ * configured the store is empty and this naturally returns `{ suspensions: [] }`.
+ *
+ * Query params: `status` (one of the SuspensionStatus values), `flowKind`,
+ * `userId`, `limit`. Any present param narrows the filter; `sessionId` is always
+ * bound from the route. Unrecognized `status` values are ignored (no filter
+ * applied for status) rather than 400ing, keeping the debug surface permissive.
+ */
+export async function handleDebugListSuspensions(
+  request: Request,
+  route: Extract<ParsedFlowRoute, { kind: "debug_list_suspensions" }>,
+  ctx: DebugRouteContext
+): Promise<Response> {
+  const denied = assertDebugAllowed(request, ctx.debug);
+  if (denied !== null) return denied;
+  const params = new URL(request.url).searchParams;
+  const filter: SuspensionFilter = { sessionId: route.sessionId };
+  const status = params.get("status");
+  if (status !== null && VALID_SUSPENSION_STATUSES.has(status as SuspensionStatus)) {
+    filter.status = status as SuspensionStatus;
+  }
+  const flowKind = params.get("flowKind");
+  if (flowKind !== null && flowKind.length > 0) filter.flowKind = flowKind;
+  const userId = params.get("userId");
+  if (userId !== null && userId.length > 0) filter.userId = userId;
+  const limitParam = params.get("limit");
+  if (limitParam !== null) {
+    const limit = Number.parseInt(limitParam, 10);
+    if (Number.isFinite(limit) && limit > 0) filter.limit = limit;
+  }
+  const suspensions = await ctx.stores.suspensions.list(filter);
+  return jsonResponse(200, { suspensions });
 }
 
 export async function handleDebugListCollectionItems(

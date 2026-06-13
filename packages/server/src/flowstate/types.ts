@@ -180,6 +180,27 @@ export interface CreateFlowStateOptions<
   staleSweepThresholdMs?: number;
 
   /**
+   * Enable durable execution. When `true`, `createFlowState` builds the
+   * default `createCheckpointDurabilityProvider` from its own resolved stores
+   * and installs it on the runtime, so actions marked `durable: true` get
+   * checkpoint-based crash recovery and `ctx.suspend()` HITL suspend/resume.
+   * Requires a persistent store profile for recovery to survive a restart
+   * (in-memory works for a single process). Default: false.
+   *
+   * Power users needing a custom `DurabilityProvider` should use the
+   * lower-level `createFlowApiRouter` (which accepts one via `runtimeConfig`).
+   */
+  durable?: boolean;
+
+  /**
+   * Retention policy for the durability sweeper (FIX-141). Only takes effect
+   * alongside durability (`durable: true` or a custom provider). Enforces
+   * suspension expiry and prunes aged-out suspensions, leases, and orphaned
+   * checkpoints on a cadence.
+   */
+  durabilityRetention?: RuntimeConfig["durabilityRetention"];
+  
+  /**
    * Low-level escape hatch: a pre-built FlowDispatcher controlling where
    * flow actions execute. Default: in-process (runAction called directly).
    * Most deployments should use `worker` instead — it wires the dispatcher

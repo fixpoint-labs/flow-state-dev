@@ -52,6 +52,7 @@ import {
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
 import {
   handleDebugListResources,
+  handleDebugListSuspensions,
   handleDebugListCollectionItems,
   handleDebugGetResourceContent,
   handleDebugGetCollectionItemContent,
@@ -515,6 +516,14 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           stores,
           debug: debugConfig,
           tenantId
+        });
+      }
+
+      if (route.kind === "debug_list_suspensions") {
+        return await handleDebugListSuspensions(request, route, {
+          registry: options.registry,
+          stores,
+          debug: debugConfig
         });
       }
 

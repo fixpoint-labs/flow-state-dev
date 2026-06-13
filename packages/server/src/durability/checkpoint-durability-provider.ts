@@ -30,5 +30,9 @@ export function createCheckpointDurabilityProvider(
         lease ? stores.leases.release(reqId, lease.leaseId) : undefined,
       ]);
     },
+
+    cleanupCheckpoints: (reqId) => stores.checkpoints.deleteForRequest(reqId),
+    pruneSuspensions: (cutoffMs, limit) =>
+      stores.suspensions.pruneTerminalBefore(cutoffMs, limit),
   };
 }

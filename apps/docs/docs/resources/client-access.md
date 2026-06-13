@@ -397,6 +397,12 @@ When a resource changes during streaming (e.g., a tool creates an artifact), the
 
 That batched-at-completion default is the right call for most resources. It avoids a burst of per-change HTTP fetches during artifact-heavy turns, and it never ships content you didn't ask for.
 
+### Which mutations announce
+
+- **Collections** announce every instance mutation, whatever their `client` config: state writes (`patchState`, `setState`, `updateState`), lifecycle changes (`create`, `upsert`, `delete`, including capacity evictions), and content writes (`writeContent`).
+- **Single resources** announce only when `live: true`. State writes carry the projected delta; content writes don't (content has no state projection), so a content write falls back to the batched refetch even on a live resource.
+- **Non-live single resources** don't stream change events at all — their state and content still load through snapshots and the content endpoint.
+
 ### Opt-in mid-stream updates with `live: true`
 
 Some UIs need the change *now*, not at completion: a navigator that renders a memo moving through `pending → writing → published` as the agent works. For those, set `live: true` on the resource's `client` config:

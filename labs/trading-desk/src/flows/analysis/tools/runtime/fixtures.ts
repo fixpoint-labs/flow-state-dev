@@ -13,6 +13,7 @@
  */
 import path from "node:path";
 import { readFile } from "node:fs/promises";
+import { APP_ROOT } from "../../lib/app-root";
 import {
   FixtureMissingError,
   fixtureFileName,
@@ -20,11 +21,10 @@ import {
   type ToolOutput,
 } from "../schemas";
 
-// Anchor at `process.cwd()`, which Next.js dev / Next.js build / vitest all
-// set to the trading-desk package directory. `import.meta.url` is unreliable
-// here because Turbopack rewrites it to a virtual path during bundling, so a
-// relative walk via the file location lands inside `.next/`.
-export const FIXTURE_ROOT = path.resolve(process.cwd(), "fixtures");
+// Anchored at the package root resolved in `lib/app-root.ts` (module-relative
+// first, cwd fallback for Turbopack-bundled runtimes), so fixture loading
+// works from any working directory — not just the app dir.
+export const FIXTURE_ROOT = path.join(APP_ROOT, "fixtures");
 
 export const FIXTURE_SNAPSHOT = "2026-05-06";
 

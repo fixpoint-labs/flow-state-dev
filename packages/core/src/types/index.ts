@@ -197,6 +197,11 @@ export type {
   SuspensionRecord,
   SuspensionStatus
 } from "./suspension";
+export {
+  TERMINAL_SUSPENSION_STATUSES,
+  isTerminalSuspensionStatus,
+  matchesSuspensionFilter
+} from "./suspension";
 
 export type { SequencerCheckpoint } from "./checkpoints";
 

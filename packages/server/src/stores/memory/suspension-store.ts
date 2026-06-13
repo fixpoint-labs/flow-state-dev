@@ -2,7 +2,12 @@
  * In-memory SuspensionStore implementation for development and testing.
  */
 
-import type { SuspensionFilter, SuspensionRecord } from "@flow-state-dev/core/types";
+import {
+  isTerminalSuspensionStatus,
+  matchesSuspensionFilter,
+  type SuspensionFilter,
+  type SuspensionRecord
+} from "@flow-state-dev/core/types";
 import type { SuspensionStore } from "../types";
 
 export class InMemorySuspensionStore implements SuspensionStore {
@@ -24,25 +29,14 @@ export class InMemorySuspensionStore implements SuspensionStore {
   }
 
   async list(filter?: SuspensionFilter): Promise<SuspensionRecord[]> {
-    let results = Array.from(this.data.values());
+    const results = Array.from(this.data.values())
+      .filter((r) => matchesSuspensionFilter(r, filter))
+      // Sort newest-first to match the filesystem/SQLite/Postgres adapters
+      // (which order by created_at DESC) so `limit` keeps the same end across
+      // every store and the DevTool list orders identically in dev and prod.
+      .sort((a, b) => b.createdAt - a.createdAt);
 
-    if (filter?.flowKind) {
-      results = results.filter((r) => r.flowKind === filter.flowKind);
-    }
-    if (filter?.userId) {
-      results = results.filter((r) => r.userId === filter.userId);
-    }
-    if (filter?.sessionId) {
-      results = results.filter((r) => r.sessionId === filter.sessionId);
-    }
-    if (filter?.status) {
-      results = results.filter((r) => r.status === filter.status);
-    }
-    if (filter?.limit !== undefined) {
-      results = results.slice(0, filter.limit);
-    }
-
-    return results;
+    return filter?.limit !== undefined ? results.slice(0, filter.limit) : results;
   }
 
   async deleteForRequest(requestId: string): Promise<void> {
@@ -51,6 +45,22 @@ export class InMemorySuspensionStore implements SuspensionStore {
         this.data.delete(key);
       }
     }
+  }
+
+  async pruneTerminalBefore(cutoffMs: number, limit: number): Promise<number> {
+    let deleted = 0;
+    for (const [key, record] of this.data) {
+      if (deleted >= limit) break;
+      if (
+        isTerminalSuspensionStatus(record.status) &&
+        record.resolvedAt !== undefined &&
+        record.resolvedAt < cutoffMs
+      ) {
+        this.data.delete(key);
+        deleted += 1;
+      }
+    }
+    return deleted;
   }
 }
 
