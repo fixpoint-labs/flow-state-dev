@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolve } from "node:path";
 import { executeDevCommand } from "../src/commands/dev";
 import { CliError } from "../src/resolve-block";
-import { EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR } from "../src/exit-codes";
+import { EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR, EXIT_CONFIG_ERROR } from "../src/exit-codes";
 
 const appConfigDir = resolve(import.meta.dirname, "fixtures-config", "app");
+const getRuntimeThrowsDir = resolve(import.meta.dirname, "fixtures-config", "getruntime-throws");
 
 // These cases all error before `serve()` binds a port, so they exercise the
 // config-vs-discovery wiring decision without starting a long-lived server
@@ -57,5 +58,15 @@ describe("fsdev dev with fsdev.config.ts", () => {
     expect(err).toBeInstanceOf(CliError);
     expect(err.exitCode).toBe(EXIT_DISCOVERY_ERROR);
     expect(err.message).toContain("No flows found");
+  });
+
+  it("disposes the config FlowState when getRuntime() fails (no leaked pools)", async () => {
+    const g = globalThis as unknown as { __fsdevDisposeCalls: number };
+    g.__fsdevDisposeCalls = 0;
+    const err = await executeDevCommand({ cwd: getRuntimeThrowsDir, open: false }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
+    // The init-failure path released the store adapter rather than leaking it.
+    expect(g.__fsdevDisposeCalls).toBeGreaterThan(0);
   });
 });

@@ -31,6 +31,9 @@ const CONFIG_FILENAMES = [
   "fsdev.config.mjs",
 ] as const;
 
+/** Monotonic suffix making each import URL unique even within the same ms. */
+let loadCounter = 0;
+
 /** Inputs for {@link loadFsdevConfig}. */
 export interface LoadConfigOptions {
   /** Directory to search for the config file (config search is cwd-only). */
@@ -124,8 +127,9 @@ export async function loadFsdevConfig(
 
   // Cache-bust so repeated loads in one process (sequential test runs, a future
   // watch mode) get a fresh, undisposed FlowState rather than the module cache's
-  // already-disposed handle from a prior run.
-  const url = `${pathToFileURL(absPath).href}?t=${Date.now()}`;
+  // already-disposed handle from a prior run. A monotonic counter guarantees
+  // uniqueness even for two loads within the same millisecond.
+  const url = `${pathToFileURL(absPath).href}?t=${Date.now()}-${loadCounter++}`;
 
   let mod: { default?: unknown };
   try {

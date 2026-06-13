@@ -139,6 +139,9 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     try {
       runtime = await loaded.flowState.getRuntime();
     } catch (err) {
+      // Store init opened (or partially opened) the app's pools before it
+      // rejected; dispose so connections aren't leaked until process exit.
+      await loaded.flowState.dispose().catch(() => {});
       throw new CliError(
         `Failed to initialize fsdev config ${loaded.path}: ${err instanceof Error ? err.message : String(err)}`,
         EXIT_CONFIG_ERROR,
@@ -223,6 +226,13 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     // The dev command owns shutdown, so opt out of serve's signal handlers and
     // drive a single teardown path below.
     handleSignals: false,
+  }).catch(async (err: unknown) => {
+    // serve() failed to bind (e.g. EADDRINUSE). Ownership of the resolved
+    // runtime never transferred to the handle, so release it here: dispose the
+    // config's FlowState, or close the discovery path's SQLite stores.
+    if (loaded !== undefined) await loaded.flowState.dispose().catch(() => {});
+    else closeStores?.();
+    throw err;
   });
 
   process.stderr.write("\n");
