@@ -385,7 +385,7 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // FIX-682: add the nullable `tenant_id` column to pre-isolation `sessions`,
   // `requests`, and `active_requests` tables. Existing rows read back as
   // no-tenant. Idempotent — no-op once the column exists.
-  ADD_TENANT_ID_MIGRATION
+  ADD_TENANT_ID_MIGRATION,
   // FIX-141: ensure `suspension_records.status` / `resolved_at` exist on
   // pre-FIX-141 schemas. Idempotent on fresh databases.
   ADD_SUSPENSION_STATUS_COLUMNS_MIGRATION
