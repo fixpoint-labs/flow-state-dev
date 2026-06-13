@@ -60,6 +60,35 @@ export const flowstate = createFlowState({
 
 `stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary`, the catch-all state store. Swap `inMemoryStores()` for a persistent adapter when you're ready. See [Server Setup](/docs/server/setup).
 
+## Sharing config with the CLI
+
+The `fsdev` CLI can run your flows with this same wiring, your models and your stores, if it can find the FlowState. Move the `createFlowState` call into an `fsdev.config.ts` at your project root and have it default-export the handle:
+
+```ts title="fsdev.config.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import chatFlow from "./src/flows/hello-chat/flow";
+
+export default createFlowState({
+  flows: { chatFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
+});
+```
+
+Then re-export it from the server entry your route handler imports, so both sides reference one object:
+
+```ts title="lib/flowstate.ts"
+export { default as flowstate } from "../fsdev.config";
+```
+
+Now `fsdev run` uses the app's registry, resolver, and stores instead of CLI defaults:
+
+```bash
+pnpm fsdev run hello-chat chat -i '{"message":"hi"}'
+```
+
+Note the config's import chain uses relative paths (`./src/flows/...`), not the `@/` alias. Native TypeScript stripping ignores `tsconfig` path aliases. See [App Configuration](/docs/cli/configuration) for runtime requirements and caveats.
+
 ## Create the API route
 
 The framework expects a single catch-all route. It handles routing internally. You don't create separate routes for actions, streams, or state.
