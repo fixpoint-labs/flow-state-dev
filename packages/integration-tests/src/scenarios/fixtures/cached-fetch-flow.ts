@@ -3,25 +3,18 @@
  *
  * A single handler block lists the `createCachedFetchCapability` capability in
  * `uses` and calls `ctx.cap.cache.getOrCompute(...)` for each requested key. The
- * capability auto-installs its user-scoped cache collection, so this fixture
- * verifies the end-to-end registry path: capability resolution, collection
- * install, real persistence (read-through + cross-request via a shared store),
- * and count eviction — none of which the stub-based unit tests exercise.
+ * handler runs as a nested sequencer step (not the root action block), so this
+ * fixture verifies that a nested block reaches its own capability accessor — the
+ * end-to-end path: capability resolution, collection auto-install, real
+ * persistence (read-through within a request and cross-request via a shared
+ * store), and count eviction.
  *
  * `counters.fetches` records how many times the underlying fetcher actually
- * ran, so a test can assert cache hits by counting fetches rather than
- * inspecting internal state.
+ * ran, so a test can assert cache hits by counting fetches.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { createCachedFetchCapability, getOrCompute } from "@flow-state-dev/patterns";
+import { createCachedFetchCapability } from "@flow-state-dev/patterns";
 import { z } from "zod";
-
-async function getOrComputeViaRef(ref: any, key: string): Promise<string> {
-  return getOrCompute(ref, key, async () => {
-    counters.fetches += 1;
-    return `value-for-${key}-${counters.fetches}`;
-  }, { staleAfter: "5m" });
-}
 
 /** Test seam: number of times the fetcher actually executed across a run. */
 export const counters = { fetches: 0 };
@@ -53,12 +46,16 @@ const fetchHandler = handler({
     count: z.number(),
   }),
   execute: async (input, ctx) => {
-    const ref = (ctx as { resources: Record<string, any> }).resources.cacheStore;
     const values: string[] = [];
     for (const key of input.keys) {
-      const value = await getOrComputeViaRef(ref, key);
-      values.push(value);
+      const value = await ctx.cap.cache.getOrCompute(key, async () => {
+        counters.fetches += 1;
+        return `value-for-${key}-${counters.fetches}`;
+      });
+      values.push(value as string);
     }
+    // Read the live instance count straight off the auto-installed collection.
+    const ref = ctx.resources.cacheStore as unknown as { count(): Promise<number> };
     const count = await ref.count();
     return { values, count };
   },

@@ -340,7 +340,7 @@ function deriveScopeId(scope: "session" | "user" | "org", ctx: BlockContext): st
  */
 export function createCachedFetchCapability(
   options: CreateCachedFetchCapabilityOptions,
-): DefinedCapability {
+): DefinedCapability<string, CachedFetchAccessor> {
   const name = options.name ?? "cache";
   const scope = options.scope ?? "user";
   const resourceKey = `${name}Store`;
@@ -412,5 +412,5 @@ export function createCachedFetchCapability(
           invalidateCached(ref as ResourceCollectionRef<CacheEnvelope<JsonValue>>, keyOrPrefix),
       };
     },
-  }) as DefinedCapability;
+  }) as DefinedCapability<string, CachedFetchAccessor>;
 }
