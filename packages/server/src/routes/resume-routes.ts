@@ -133,6 +133,9 @@ export async function handleResumeSuspension(
       input: originalRequest.input,
       sessionId: suspension.sessionId,
       requestId: newRequestId,
+      // Resume in the original tenant so the run resolves the same
+      // tenant-namespaced session key (FIX-682).
+      tenantId: originalRequest.tenantId,
       principal: { userId: suspension.userId },
       metadata: {
         resumeOf: route.requestId,

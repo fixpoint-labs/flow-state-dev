@@ -60,6 +60,79 @@ export function resolveOrgStorageKey(
 }
 
 /**
+ * Tenant-namespaced session storage key (FIX-682). Bare `sessionId` for
+ * single-tenant requests (no tenant header, or an empty one); when a tenant is
+ * present, `${tenantId}:${sessionId}`. Used for the session record key and the
+ * session-scoped content / resource-state `scopeId`, so two tenants sharing a
+ * session id never collide on one record.
+ *
+ * Mirrors the user/org storage-key convention above — the `:` separator and the
+ * "bare unless namespaced" shape are identical, and the same caveat applies:
+ * ids must not contain `:` ambiguously (an existing, accepted constraint).
+ * The empty-string guard makes an empty `x-tenant-id` header behave exactly
+ * like an absent one (bare keys).
+ */
+export function resolveSessionStorageKey(
+  sessionId: string,
+  tenantId: string | undefined
+): string {
+  return tenantId !== undefined && tenantId.length > 0
+    ? `${tenantId}:${sessionId}`
+    : sessionId;
+}
+
+/**
+ * Inverse of {@link resolveSessionStorageKey} (FIX-682): recover the bare
+ * session id from a tenant-namespaced storage key. Used to shape HTTP
+ * responses so clients receive the id they passed in (the namespaced key is an
+ * internal storage detail; surfacing it would make clients double-namespace on
+ * follow-up calls). A no-op when there is no tenant or the prefix is absent.
+ */
+export function toBareSessionId(
+  storageKey: string,
+  tenantId: string | undefined
+): string {
+  if (tenantId === undefined || tenantId.length === 0) return storageKey;
+  const prefix = `${tenantId}:`;
+  return storageKey.startsWith(prefix) ? storageKey.slice(prefix.length) : storageKey;
+}
+
+/**
+ * Whether a stored record's tenant matches a request's tenant (FIX-682),
+ * treating `undefined` and absent identically (single-tenant). The canonical
+ * tenant-binding predicate: the `${tenantId}:${sessionId}` key is ambiguous
+ * when the caller controls `sessionId`, so a key collision must never be acted
+ * on across the boundary. Used by the session binding guard, the route session
+ * loader, the `latestRequestId` update, and resource/debug reads — one
+ * predicate keeps the rule greppable.
+ */
+export function tenantMatches(
+  recordTenantId: string | undefined,
+  requestTenantId: string | undefined
+): boolean {
+  return (recordTenantId ?? undefined) === (requestTenantId ?? undefined);
+}
+
+/**
+ * Tenant list-filter predicate (FIX-682) with present-vs-absent semantics:
+ * - When the `tenantId` key is **absent** from `options`, every record passes
+ *   (admin/debug "list everything" callers stay unfiltered).
+ * - When the key is **present** (including an explicit `undefined`), the record
+ *   must exact-match — `undefined` matches only records with no tenant.
+ *
+ * Used by the in-memory / filesystem store list filters. The SQLite adapter
+ * cannot import this (type-only boundary to `@flow-state-dev/server`) and
+ * implements the same predicate as a NULL-safe `tenant_id IS ?` clause.
+ */
+export function matchesTenantFilter(
+  options: { tenantId?: string } | undefined,
+  recordTenantId: string | undefined
+): boolean {
+  if (options === undefined || !("tenantId" in options)) return true;
+  return recordTenantId === options.tenantId;
+}
+
+/**
  * Effective isolation for a single resource: its own `flowIsolation` when
  * set, otherwise the scope's flow-level default. Resource-level declarations
  * always win (FIX-435), in both the opt-in and opt-out directions.

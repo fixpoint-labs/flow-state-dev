@@ -70,11 +70,17 @@ import {
   resolveUserStorageKey,
   resolveOrgStorageKey,
   resolveResourceIsolation,
-  resolveResourceScopeId
+  resolveResourceScopeId,
+  resolveSessionStorageKey,
+  tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
-import { OrgBindingMismatchError, UserBindingMismatchError } from "./binding-errors";
+import {
+  OrgBindingMismatchError,
+  TenantBindingMismatchError,
+  UserBindingMismatchError
+} from "./binding-errors";
 import {
   outputItemToSessionItem,
   createSessionItemViews,
@@ -486,6 +492,16 @@ export async function createExecutionContext<
   const sessionId = options.sessionId ?? `ephemeral_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const requestId = options.requestId;
 
+  // Tenant-namespaced session storage key (FIX-682). Bare `sessionId` for
+  // single-tenant requests; `${tenantId}:${sessionId}` when a tenant is
+  // present. This is the key used for the session record and the session-scoped
+  // content/resource-state `scopeId`, so two tenants sharing a session id never
+  // collide. The bare `sessionId` is preserved for the public identity
+  // (`ctx.session.identity.id`), emitted events, and the request record's
+  // (bare) `sessionId` field; request history isolates by the `tenantId` filter
+  // instead of a namespaced field.
+  const sessionKey = resolveSessionStorageKey(sessionId, options.tenantId);
+
   // Storage keys — namespaced by flowKind when the flow opts into per-flow
   // isolation for user/org scope. Bare identity ids otherwise. See
   // `packages/server/src/stores/scope-keys.ts` and FIX-431.
@@ -507,7 +523,7 @@ export async function createExecutionContext<
   // records don't depend on each other for the initial load.
   const [loadedUser, loadedSession, loadedOrg, loadedRequest, priorRequests] = await Promise.all([
     stores.user.get(userKey),
-    stores.session.get(sessionId),
+    stores.session.get(sessionKey),
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     stores.request.get(requestId),
     // The N most-recently-started completed requests — `status:"completed"`
@@ -516,6 +532,10 @@ export async function createExecutionContext<
     // out-of-order metadata writes. `items` reconstruct cross-turn history.
     stores.request.list({
       sessionId,
+      // Always pass the tenant (possibly undefined) so history exact-matches
+      // this tenant and never crosses into another tenant's requests for the
+      // same bare session id (FIX-682).
+      tenantId: options.tenantId,
       status: "completed",
       limit: historyWindowTurns,
       orderBy: "startedAtMs",
@@ -568,10 +588,11 @@ export async function createExecutionContext<
   let sessionRecord = loadedSession;
   if (sessionRecord === undefined) {
     sessionRecord = {
-      id: sessionId,
+      id: sessionKey,
       flowKind: flow.kind,
       userId,
       orgId: options.orgId,
+      tenantId: options.tenantId,
       state: (options.sessionState ?? {}) as TSessionState,
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
       version: 0,
@@ -588,6 +609,21 @@ export async function createExecutionContext<
     // route this user's actions against another user's data.
     if (sessionRecord.userId !== userId) {
       throw new UserBindingMismatchError(sessionId, sessionRecord.userId, userId);
+    }
+
+    // Tenant binding (FIX-682). The session storage key is
+    // `${tenantId}:${sessionId}`, which is ambiguous when the caller controls
+    // `sessionId`: omitting the tenant header while passing
+    // `sessionId = "${otherTenant}:${id}"` resolves to another tenant's key.
+    // The loaded record's stored `tenantId` is authoritative — reject when it
+    // differs from this request's tenant so a key collision can never read or
+    // mutate across the tenant boundary.
+    if (!tenantMatches(sessionRecord.tenantId, options.tenantId)) {
+      throw new TenantBindingMismatchError(
+        sessionId,
+        sessionRecord.tenantId,
+        options.tenantId
+      );
     }
   }
 
@@ -777,7 +813,7 @@ export async function createExecutionContext<
   // per-resource bucket. `undefined` when the scope is absent this request
   // (org with no orgId).
   const scopeIdentityId = (scope: ContentScopeType): string | undefined =>
-    scope === "session" ? sessionId : scope === "user" ? userId : resolvedOrgId;
+    scope === "session" ? sessionKey : scope === "user" ? userId : resolvedOrgId;
 
   // Per scope: which storage keys (singles) and collection prefixes are
   // isolated. Built once from the full config maps so any read/write can map a
@@ -839,7 +875,7 @@ export async function createExecutionContext<
     scope: ContentScopeType,
     config: ResourceConfig | ResourceCollectionConfig
   ): string | undefined => {
-    if (scope === "session") return sessionId;
+    if (scope === "session") return sessionKey;
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
     const isolated = resolveResourceIsolation(
@@ -861,7 +897,7 @@ export async function createExecutionContext<
     scope: ContentScopeType,
     storageKey: string
   ): string | undefined => {
-    if (scope === "session") return sessionId;
+    if (scope === "session") return sessionKey;
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
     const buckets = isolationBuckets[scope];
@@ -928,7 +964,7 @@ export async function createExecutionContext<
 
   const wave1Start = Date.now();
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
-    loadDeclaredScopeContent(stores.content, "session", sessionId, sessionFlowLevelConfigs),
+    loadDeclaredScopeContent(stores.content, "session", sessionKey, sessionFlowLevelConfigs),
     loadScopeContentByBuckets("user", userFlowLevelConfigs),
     resolvedOrgId !== undefined
       ? loadScopeContentByBuckets("org", orgFlowLevelConfigs)
@@ -954,7 +990,7 @@ export async function createExecutionContext<
   // per-scope caches; in-execution reads/writes hit the cache and persist
   // per-key, never rewriting the whole scope record.
   const [sessionStateFromStore, userStateFromStore, orgStateFromStore] = await Promise.all([
-    loadDeclaredResourceState(stores.resourceState, "session", sessionId, sessionFlowLevelConfigs),
+    loadDeclaredResourceState(stores.resourceState, "session", sessionKey, sessionFlowLevelConfigs),
     loadScopeStateByBuckets("user", userFlowLevelConfigs),
     resolvedOrgId !== undefined
       ? loadScopeStateByBuckets("org", orgFlowLevelConfigs)
@@ -993,7 +1029,11 @@ export async function createExecutionContext<
       flowKind: flow.kind,
       actionName: options.actionName,
       userId,
-      sessionId: sessionRecord?.id,
+      // Bare session id (not the namespaced session key) — request history
+      // isolates by the `tenantId` field, and recovery re-derives the key from
+      // (bare sessionId + tenantId). See FIX-682.
+      sessionId,
+      tenantId: options.tenantId,
       orgId: orgRecord?.orgId,
       source: options.source ?? "http",
       status: "in_progress",
@@ -1580,7 +1620,7 @@ export async function createExecutionContext<
 
   const sessionResources = createScopeResourceRegistry({
     scope: "session",
-    scopeId: sessionId,
+    scopeId: sessionKey,
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
     readResourceContent: readSessionResourceContent,
@@ -1754,7 +1794,9 @@ export async function createExecutionContext<
     {
       identity: {
         type: "session" as const,
-        id: sessionRef.current.id,
+        // Bare session id — `sessionRef.current.id` is the tenant-namespaced
+        // storage key (FIX-682); handlers and clients see the id they passed in.
+        id: sessionId,
         userId: sessionRef.current.userId,
         orgId: sessionRef.current.orgId,
         tenantId: options.tenantId
@@ -1836,7 +1878,8 @@ export async function createExecutionContext<
 
         await response.emit({
           type: "session.metadata.changed",
-          sessionId: sessionRef.current.id,
+          // Bare session id, not the namespaced storage key (FIX-682).
+          sessionId,
           ...(input.title !== undefined ? { title: input.title } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.tags !== undefined ? { tags: input.tags } : {}),
@@ -2005,7 +2048,7 @@ export async function createExecutionContext<
     flowKind: flow.kind,
     actionName: options.actionName,
     userId,
-    sessionId: sessionRecord?.id,
+    sessionId,
     orgId: orgRecord?.orgId
   };
   const capturedErrors = new Set<unknown>();

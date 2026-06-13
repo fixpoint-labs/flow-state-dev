@@ -233,6 +233,17 @@ See the [authentication reference](https://flow-state.dev/docs/server/authentica
 for the full contract, resolution order, and `requireUser: false`
 semantics.
 
+## Multi-tenant isolation
+
+Pass a tenant id on the `x-tenant-id` header (configurable via
+`createFlowApiRouter({ tenantIdHeader })`) and session storage namespaces by
+tenant automatically: two tenants sharing a session id get distinct session
+records, state, session-scoped resources, and request history. User and org
+scopes stay shared across tenants by design. Single-tenant apps that never
+send the header are unaffected — keys are unchanged and no migration runs.
+Read the value in a block via `ctx.session.identity.tenantId`. See the
+[state and scopes guide](https://flow-state.dev/docs/fundamentals/state-and-scopes#multi-tenant-isolation).
+
 ## Store configuration
 
 ```ts

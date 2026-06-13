@@ -29,6 +29,13 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   flowKind: string;
   userId: string;
   orgId?: string;
+  /**
+   * Bare tenant id this session belongs to (FIX-682). The session record's
+   * `id` is already tenant-namespaced (`${tenantId}:${sessionId}`); this field
+   * keeps the bare tenant for cross-reference and `SessionListOptions.tenantId`
+   * filtering. Undefined for single-tenant sessions.
+   */
+  tenantId?: string;
   title?: string;
   description?: string;
   tags?: string[];
@@ -44,6 +51,14 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   userId: string;
   sessionId?: string;
   orgId?: string;
+  /**
+   * Bare tenant id this request ran under (FIX-682). `sessionId` stays bare;
+   * isolation of cross-turn history comes from filtering `request.list` by
+   * (`sessionId`, `tenantId`) rather than from namespacing the `sessionId`
+   * field — which keeps request recovery a clean pass-through. Undefined for
+   * single-tenant requests.
+   */
+  tenantId?: string;
   /**
    * Provenance of the inbound transport that produced this request.
    * Set from `InboundRequestEnvelope.source` (FIX-438). Open string —
@@ -83,6 +98,11 @@ export type OrgRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<
 export type SessionListOptions = {
   flowKind?: string;
   userId?: string;
+  /**
+   * Tenant filter (FIX-682). See {@link RequestListOptions.tenantId} for the
+   * present-vs-absent exact-match semantics — they are identical here.
+   */
+  tenantId?: string;
   limit?: number;
   offset?: number;
 };
@@ -91,6 +111,20 @@ export type RequestListOptions = {
   flowKind?: string;
   sessionId?: string;
   userId?: string;
+  /**
+   * Tenant filter (FIX-682). Exact-match isolation with deliberate
+   * present-vs-absent semantics, because tenant records and no-tenant records
+   * can share a bare `sessionId`:
+   * - When the `tenantId` key is **present on the options object** (including an
+   *   explicit `undefined`), the store exact-matches it — `undefined` matches
+   *   only records with no tenant. This is what isolates cross-turn history.
+   * - When the key is **absent**, no tenant filtering is applied (admin/debug
+   *   "list everything" callers keep working).
+   *
+   * `createExecutionContext` and the tenant-isolated routes always pass the key
+   * (carrying the current request's tenant, possibly `undefined`).
+   */
+  tenantId?: string;
   status?: RequestStatus;
   limit?: number;
   offset?: number;
@@ -381,6 +415,12 @@ export type ActiveRequestEntry = {
   sessionId?: string;
   userId: string;
   orgId?: string;
+  /**
+   * Bare tenant id this request runs under (FIX-682). Carried so recovery can
+   * re-dispatch the retry within the same tenant's session. Undefined for
+   * single-tenant requests.
+   */
+  tenantId?: string;
   /** Inbound transport provenance — see `RequestRecord.source`. */
   source: string;
   input?: unknown;

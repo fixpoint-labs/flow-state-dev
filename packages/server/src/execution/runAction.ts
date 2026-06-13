@@ -15,6 +15,7 @@ import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
 import { createExecutionContext } from "../context/createExecutionContext";
+import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestWorkPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
@@ -527,6 +528,8 @@ export async function runActionInternal<
     sessionId: options.sessionId,
     userId: options.userId,
     orgId: options.orgId,
+    // Carry the tenant so recovery re-dispatches the retry in-tenant (FIX-682).
+    tenantId: options.tenantId,
     source,
     input: options.input,
     metadata: options.metadata,
@@ -547,10 +550,17 @@ export async function runActionInternal<
 
   // --- Update session's latestRequestId for auto-resume discovery ---
   if (options.sessionId !== undefined) {
-    const session = await options.stores.session.get(options.sessionId);
-    if (session !== undefined) {
+    // Tenant-namespaced key (FIX-682) so this lands on the same record the
+    // execution context reads/writes; a bare key would miss a tenant session.
+    const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
+    const session = await options.stores.session.get(sessionKey);
+    // Tenant-binding guard (FIX-682): this write runs before
+    // createExecutionContext's binding check, so without it a no-tenant caller
+    // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
+    // latestRequestId (an auto-resume hijack) even though the run then fails.
+    if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
       await options.stores.session.set(
-        options.sessionId,
+        sessionKey,
         { ...session, latestRequestId: requestId, updatedAt: Date.now() },
         "any"
       );
@@ -1160,7 +1170,8 @@ export async function runActionInternal<
             options.sessionId,
             requestId,
             resolvedRetention,
-            completedAt
+            completedAt,
+            options.tenantId
           );
         } catch (err) {
           logRuntimeEvent(logger, "warn", "[flow-state] retention eviction failed", {

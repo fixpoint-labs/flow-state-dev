@@ -161,6 +161,7 @@ export {
 } from "./stores/subscribe-helpers";
 export {
   OrgBindingMismatchError,
+  TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./context/binding-errors";
 

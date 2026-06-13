@@ -39,6 +39,8 @@ export interface DebugRouteContext {
   registry: FlowRegistry;
   stores: StoreRegistry;
   debug: ResolvedDebugConfig;
+  /** Tenant id from the request header (FIX-682); namespaces session lookups. */
+  tenantId?: string;
 }
 
 const DEFAULT_COUNT_LIMIT = 1000;
@@ -149,7 +151,8 @@ export async function handleDebugListResources(
   const tree = await buildDebugResourceTree({
     sessionId: route.sessionId,
     ctx: { registry: ctx.registry, stores: ctx.stores },
-    countLimit: ctx.debug.countLimit
+    countLimit: ctx.debug.countLimit,
+    tenantId: ctx.tenantId
   });
   if (tree === null) {
     return jsonResponse(404, { error: "session_not_found" });
@@ -226,7 +229,8 @@ export async function handleDebugListCollectionItems(
     limit: limit as number | null,
     cursor,
     topicFilter: topic,
-    ctx: { registry: ctx.registry, stores: ctx.stores }
+    ctx: { registry: ctx.registry, stores: ctx.stores },
+    tenantId: ctx.tenantId
   });
   if (result.ok) return jsonResponse(200, result.data);
   if (result.kind === "session_not_found") {
@@ -258,7 +262,8 @@ export async function handleDebugGetResourceContent(
     sessionId: route.sessionId,
     ref: route.ref,
     topic: null,
-    ctx: { registry: ctx.registry, stores: ctx.stores }
+    ctx: { registry: ctx.registry, stores: ctx.stores },
+    tenantId: ctx.tenantId
   });
   return contentResponse(result, route.ref, null);
 }
@@ -277,7 +282,8 @@ export async function handleDebugGetCollectionItemContent(
     sessionId: route.sessionId,
     ref: route.ref,
     topic: route.topic,
-    ctx: { registry: ctx.registry, stores: ctx.stores }
+    ctx: { registry: ctx.registry, stores: ctx.stores },
+    tenantId: ctx.tenantId
   });
   return contentResponse(result, route.ref, route.topic);
 }
