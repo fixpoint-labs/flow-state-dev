@@ -34,7 +34,7 @@ Config options:
 
 - **stateSchema** — Zod schema for structured metadata
 - **content** — initial content body (a string: markdown, code, prose, anything)
-- **contentFile** — load initial content from a file path (mutually exclusive with `content`)
+- **contentFile** — load initial content from a file path (mutually exclusive with `content`). A bare string resolves from the working directory; pass `{ path, importerUrl: import.meta.url }` to resolve relative to the declaring module instead
 - **render** — template renderer: `(content, state) => string` for interpolating state into content
 - **writable** — whether blocks can modify the resource
 - **llmReadable**, **llmWritable** — control whether generators can read/write the content
