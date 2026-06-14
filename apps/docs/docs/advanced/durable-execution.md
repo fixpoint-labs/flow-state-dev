@@ -151,13 +151,13 @@ A tool declares an `approval` object. It lives on any block used as a generator 
 
 ```ts
 approval?: {
-  required?: boolean | ((args) => boolean | Promise<boolean>);
-  message?: string | ((args) => string);
+  required?: boolean | ((args, ctx) => boolean | Promise<boolean>);
+  message?: string | ((args, ctx) => string);
   render?: { component: string; props?: Record<string, unknown> };
 };
 ```
 
-`required` decides whether the call needs sign-off. A boolean gates the tool unconditionally. A predicate receives the parsed tool arguments and decides per call — gate a `transfer` tool only when the amount is over a threshold, for example. `message` is the prompt shown in the approval UI, static or derived from the call's arguments. `render` names a component the client resolves through its `RendererRegistry` to draw a custom approval panel.
+`required` decides whether the call needs sign-off. A boolean gates the tool unconditionally. A predicate receives the parsed tool arguments and the block context, and decides per call — gate a `transfer` tool only when the amount is over a threshold, or read session or user state from `ctx` to gate based on who is acting. `message` is the prompt shown in the approval UI, static or derived from the call's arguments and context. `render` names a component the client resolves through its `RendererRegistry` to draw a custom approval panel.
 
 The tool owns its own approval UI. Two tools in the same generator can each declare a different `message` and `render`. A `send-email` tool draws an email confirmation panel; a `transfer` tool draws an amount-and-recipient panel. Neither has to know about the other, and adding a third gated tool means adding one more `approval` block, not editing a central policy.
 

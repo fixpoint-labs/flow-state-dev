@@ -510,10 +510,20 @@ export type ToolApprovalConfig =
   | "manual"
   | "all"
   | {
-      /** Tool names (or a predicate) to auto-approve even if they declare `approval.required`. */
-      autoApprove?: string[] | ((call: ToolApprovalRequest) => boolean | Promise<boolean>);
-      /** Tool names (or a predicate) to require approval for, beyond what the tools declare. */
-      require?: string[] | ((call: ToolApprovalRequest) => boolean | Promise<boolean>);
+      /**
+       * Tool names (or a predicate over the call and block context) to
+       * auto-approve even if they declare `approval.required`.
+       */
+      autoApprove?:
+        | string[]
+        | ((call: ToolApprovalRequest, ctx: BlockContext) => boolean | Promise<boolean>);
+      /**
+       * Tool names (or a predicate over the call and block context) to require
+       * approval for, beyond what the tools declare.
+       */
+      require?:
+        | string[]
+        | ((call: ToolApprovalRequest, ctx: BlockContext) => boolean | Promise<boolean>);
       /** Auto-expire each approval after this many ms (maps to the suspension's expiry). */
       timeoutMs?: number;
     };
@@ -726,24 +736,29 @@ function compileToolsForModel(tools: GeneratorTool[]): GeneratorModelTool[] {
   }));
 }
 
-/** Resolve a tool's own `approval.required` for the given args. */
+/** Resolve a tool's own `approval.required` for the given args + context. */
 async function resolveToolRequired(
-  required: boolean | ((args: never) => boolean | Promise<boolean>) | undefined,
-  args: unknown
+  required: boolean | ((args: never, ctx: BlockContext) => boolean | Promise<boolean>) | undefined,
+  args: unknown,
+  ctx: BlockContext
 ): Promise<boolean> {
   if (required === undefined || required === false) return false;
   if (required === true) return true;
-  return required(args as never);
+  return required(args as never, ctx);
 }
 
-/** Whether a name-list-or-predicate handling rule matches the given call. */
+/** Whether a name-list-or-predicate handling rule matches the given call + context. */
 async function matchesHandlingRule(
-  rule: string[] | ((call: ToolApprovalRequest) => boolean | Promise<boolean>) | undefined,
-  call: ToolApprovalRequest
+  rule:
+    | string[]
+    | ((call: ToolApprovalRequest, ctx: BlockContext) => boolean | Promise<boolean>)
+    | undefined,
+  call: ToolApprovalRequest,
+  ctx: BlockContext
 ): Promise<boolean> {
   if (rule === undefined) return false;
   if (Array.isArray(rule)) return rule.includes(call.toolName);
-  return rule(call);
+  return rule(call, ctx);
 }
 
 /**
@@ -754,10 +769,17 @@ async function matchesHandlingRule(
  * a matching `require` force approval; otherwise the tool's own declaration is
  * honored. `autoApprove` wins over `require`. Returns `undefined` when the tool
  * can never gate, so the default (no-approval) compilation path is untouched.
+ *
+ * Predicates (the tool's `approval.required`, and the generator's `autoApprove`
+ * / `require`) receive the block context so a gating decision can read request
+ * state (session/user/scope), not just the call arguments. The context is the
+ * generator's, captured at compile time and live when the AI SDK evaluates
+ * `needsApproval` during the model turn.
  */
 function resolveToolNeedsApproval(
   tool: GeneratorTool,
-  toolApproval: ToolApprovalConfig | undefined
+  toolApproval: ToolApprovalConfig | undefined,
+  ctx: BlockContext
 ): GeneratorModelTool["needsApproval"] {
   const required = tool.config.approval?.required;
   const name = tool.name;
@@ -771,7 +793,7 @@ function resolveToolNeedsApproval(
   if (toolApproval === undefined || toolApproval === "manual") {
     if (required === undefined || required === false) return undefined;
     if (required === true) return true;
-    return (args: unknown) => required(args as never);
+    return (args: unknown) => required(args as never, ctx);
   }
 
   // Object policy: autoApprove / require overrides, then the tool default.
@@ -782,9 +804,9 @@ function resolveToolNeedsApproval(
   }
   return async (args: unknown): Promise<boolean> => {
     const call: ToolApprovalRequest = { toolName: name, arguments: args, description };
-    if (await matchesHandlingRule(cfg.autoApprove, call)) return false;
-    if (await matchesHandlingRule(cfg.require, call)) return true;
-    return resolveToolRequired(required, args);
+    if (await matchesHandlingRule(cfg.autoApprove, call, ctx)) return false;
+    if (await matchesHandlingRule(cfg.require, call, ctx)) return true;
+    return resolveToolRequired(required, args, ctx);
   };
 }
 
@@ -808,7 +830,7 @@ function compileToolsWithExecute(
   const statusGuard = { active: 0, saved: "" };
   return tools.map((tool) => {
     const modelOutputMapper = asRuntime(tool)._modelOutputMapper;
-    const needsApproval = resolveToolNeedsApproval(tool, toolApproval);
+    const needsApproval = resolveToolNeedsApproval(tool, toolApproval, ctx);
     return {
       name: tool.name,
       description: tool.description,
@@ -894,7 +916,7 @@ async function suspendForToolApproval(
     const approval = toolsByName.get(c.toolName)?.config.approval;
     const message =
       typeof approval?.message === "function"
-        ? approval.message(c.args as never)
+        ? approval.message(c.args as never, ctx)
         : approval?.message;
     return {
       approvalId: c.approvalId,

@@ -813,12 +813,13 @@ export interface BlockConfig<
   approval?: {
     /**
      * Whether a call requires approval. A boolean applies unconditionally; a
-     * predicate receives the parsed tool arguments (so the tool can gate on
-     * what the model is asking it to do). Default `undefined` (not required).
+     * predicate receives the parsed tool arguments and the block context (so
+     * the tool can gate on what the model is asking *and* on request state —
+     * session/user/scope state via `ctx`). Default `undefined` (not required).
      */
-    required?: boolean | ((args: TInput) => boolean | Promise<boolean>);
-    /** Human-readable prompt for the approval UI; a function receives the call's arguments. */
-    message?: string | ((args: TInput) => string);
+    required?: boolean | ((args: TInput, ctx: BlockContext) => boolean | Promise<boolean>);
+    /** Human-readable prompt for the approval UI; a function receives the call's arguments and context. */
+    message?: string | ((args: TInput, ctx: BlockContext) => string);
     /** Component descriptor for a custom approval UI (resolved via the client RendererRegistry). */
     render?: { component: string; props?: Record<string, unknown> };
   };

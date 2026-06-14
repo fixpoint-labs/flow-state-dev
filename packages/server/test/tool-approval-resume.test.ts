@@ -14,7 +14,7 @@ import { MockLanguageModelV3 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 import { createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
-import type { ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
+import type { BlockContext, ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 
 function createDurableStores() {
   const stores = createInMemoryStores();
@@ -228,5 +228,63 @@ describe("tool-approval suspend/resume (FIX-275)", () => {
     expect(result.output).toBe("Email sent.");
     expect(await provider.listSuspended({ status: "pending" })).toHaveLength(0);
     expect(result.items.find((i) => i.type === "suspension")).toBeUndefined();
+  });
+
+  it("approval.required predicate receives (args, ctx) so it can gate on request state", async () => {
+    // The predicate is evaluated by the AI SDK before the tool runs; it must
+    // see the call arguments AND the block context (session/user/scope state).
+    let seenArgs: unknown;
+    let seenCtx: unknown;
+    const executed = vi.fn(async () => ({ ok: true }));
+    const sendEmail = handler({
+      name: "send_email",
+      inputSchema: z.object({ to: z.string() }),
+      outputSchema: z.object({ ok: z.boolean() }),
+      approval: {
+        required: (args, ctx) => {
+          seenArgs = args;
+          seenCtx = ctx;
+          return ctx.request.identity.userId === "u1"; // gate based on request-scope state
+        }
+      },
+      execute: async () => executed()
+    });
+
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: toolCallStream("tc_1", "send_email", { to: "a@b.com" }) })
+    });
+    const agent = generator({
+      name: "agent",
+      model: wrapAiSdkModel(model, "anthropic/claude-sonnet-4-6"),
+      prompt: "Email a@b.com.",
+      tools: [sendEmail],
+      maxIterations: 5
+    });
+    const flow = defineFlow({
+      kind: "tool-approval-ctx-test",
+      actions: {
+        run: { block: sequencer({ name: "s", durable: true }).step(agent), inputSchema: z.any() }
+      }
+    })();
+
+    const { stores, provider } = createDurableStores();
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+
+    // Gated (predicate returned true because ctx.userId === "u1").
+    expect(executed).not.toHaveBeenCalled();
+    expect((await provider.listSuspended({ status: "pending" }))[0]?.reason).toBe("tool_approval");
+    expect((await stores.request.get(result.requestId!))?.status).toBe("suspended");
+    // The predicate saw both the call args and a real context.
+    expect(seenArgs).toEqual({ to: "a@b.com" });
+    expect(seenCtx).toBeDefined();
+    expect((seenCtx as BlockContext).request.identity.userId).toBe("u1");
   });
 });

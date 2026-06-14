@@ -128,7 +128,7 @@ const transfer = handler({
 });
 ```
 
-`approval.required` decides whether the call needs sign-off — `true` gates every call, or a predicate that receives the parsed tool arguments and decides per call. `approval.message` is the prompt shown in the approval UI, and `approval.render` names a custom component for it. Because each tool declares its own `message` and `render`, a generator can hold several gated tools that each present a different approval panel, with no central policy to edit.
+`approval.required` decides whether the call needs sign-off — `true` gates every call, or a predicate that receives the parsed tool arguments and the block context and decides per call (gate on the arguments, or read session or user state from `ctx`). `approval.message` is the prompt shown in the approval UI, and `approval.render` names a custom component for it. Because each tool declares its own `message` and `render`, a generator can hold several gated tools that each present a different approval panel, with no central policy to edit.
 
 When a generator calls a gated tool, the model turn ends, the request suspends, and a human approves or denies before the call executes. This takes effect only when the calling generator runs with a `DurabilityProvider` configured — a gated call without one fails fast.
 

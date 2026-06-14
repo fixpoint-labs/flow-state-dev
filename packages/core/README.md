@@ -49,7 +49,7 @@ const counter = handler({
 });
 ```
 
-Any block used as a generator tool (handlers included) accepts an `approval?: { required?, message?, render? }` object. `required` (`boolean | ((args) => boolean | Promise<boolean>)`) decides whether the call needs sign-off — a boolean gates unconditionally, a predicate decides per call from the parsed arguments. `message` (`string | ((args) => string)`) is the prompt shown in the approval UI, and `render` (`{ component, props? }`) names a custom approval component resolved through the client `RendererRegistry`. The tool owns its approval UI, so each tool in a generator can present its own panel. The generator's `toolApproval` handling policy can override `required`. See [Requiring approval](https://flow-state.dev/docs/tools/overview#requiring-approval).
+Any block used as a generator tool (handlers included) accepts an `approval?: { required?, message?, render? }` object. `required` (`boolean | ((args, ctx) => boolean | Promise<boolean>)`) decides whether the call needs sign-off — a boolean gates unconditionally, a predicate decides per call from the parsed arguments and the block context (so it can read session/user/scope state). `message` (`string | ((args, ctx) => string)`) is the prompt shown in the approval UI, and `render` (`{ component, props? }`) names a custom approval component resolved through the client `RendererRegistry`. The tool owns its approval UI, so each tool in a generator can present its own panel. The generator's `toolApproval` handling policy can override `required`. See [Requiring approval](https://flow-state.dev/docs/tools/overview#requiring-approval).
 
 **A sequencer that composes them into a pipeline with error recovery:**
 
