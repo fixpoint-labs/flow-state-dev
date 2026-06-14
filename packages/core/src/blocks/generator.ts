@@ -911,6 +911,25 @@ async function suspendForToolApproval(
     );
   }
 
+  // Topology guard (FIX-275 v1): tool-approval resume relies on the durable
+  // sequencer's skip-and-inject replaying ONLY the gating generator (which
+  // continues via its persisted turn, not a fresh model call). That holds when
+  // the generator is the action block itself (path "root") or a direct step of
+  // the action's root durable sequencer (path "root/<segment>"). Nested deeper,
+  // resume re-executes the enclosing inner sequencer from scratch and replays
+  // its sibling steps' model calls — so fail loudly here, before suspending,
+  // rather than silently double-billing on resume.
+  const blockPath = ctx._blockIdentity?.blockPath;
+  if (blockPath !== undefined && blockPath.split("/").length > 2) {
+    throw new Error(
+      `Generator "${blockName}" uses tool approval but is nested below the durable ` +
+        `action's root sequencer (block path: "${blockPath}"). v1 supports a generator ` +
+        `that is the action block or a direct step of its root durable sequencer; nesting ` +
+        `deeper would replay sibling steps (and their model calls) on resume. Hoist the ` +
+        `generator to a top-level step, or gate the tool from a root-level generator.`
+    );
+  }
+
   // Enrich each pending call with its tool's own approval presentation.
   const toolCalls = calls.map((c) => {
     const approval = toolsByName.get(c.toolName)?.config.approval;
@@ -945,9 +964,12 @@ async function suspendForToolApproval(
     timeoutMs,
     resumeState: {
       kind: "tool_approval",
+      // Versioned: this is internal, serialized provider-turn state. Bump when
+      // the persisted shape changes so a resume can detect/refuse stale records.
+      version: TOOL_APPROVAL_RESUME_VERSION,
       // Match on the structural block path, not the instance id — the latter
       // embeds the requestId, which changes on resume (a new request).
-      blockPath: ctx._blockIdentity?.blockPath,
+      blockPath,
       requestMessages: generation.requestMessages ?? [],
       responseMessages: generation.responseMessages ?? [],
       approvals: calls.map((c) => ({
@@ -963,8 +985,11 @@ async function suspendForToolApproval(
   );
 }
 
+const TOOL_APPROVAL_RESUME_VERSION = 1;
+
 type ToolApprovalResumeState = {
   kind: "tool_approval";
+  version?: number;
   blockPath?: string;
   requestMessages?: unknown[];
   responseMessages?: unknown[];
@@ -994,6 +1019,16 @@ function resolveToolApprovalContinuation(
 
   const rs = suspension.resumeState as ToolApprovalResumeState | undefined;
   if (rs?.kind !== "tool_approval") return undefined;
+  // Refuse a persisted turn written by an incompatible version (e.g. a record
+  // created before a deploy that changed the serialized shape) rather than
+  // replaying it wrong.
+  if (rs.version !== undefined && rs.version !== TOOL_APPROVAL_RESUME_VERSION) {
+    throw new Error(
+      `Generator tool-approval resume state version ${rs.version} is not supported ` +
+        `(expected ${TOOL_APPROVAL_RESUME_VERSION}); the suspension predates an ` +
+        `incompatible change. Re-run the request instead of resuming.`
+    );
+  }
   if (
     rs.blockPath !== undefined &&
     rs.blockPath !== ctx._blockIdentity?.blockPath

@@ -66,6 +66,9 @@ function buildFlow(
   toolApproval?: Parameters<typeof generator>[0]["toolApproval"]
 ) {
   const executed = vi.fn(async (input: { to: string }) => ({ sent: true, to: input.to }));
+  // Model-call counters: `stream` is the tool-call-producing turn; proving it
+  // stays at 1 across suspend/resume is the no-replay invariant at the model seam.
+  const modelCalls = { stream: 0, generate: 0 };
 
   const sendEmail = handler({
     name: "send_email",
@@ -75,27 +78,29 @@ function buildFlow(
     execute: async (input) => executed(input)
   });
 
-  let streamCall = 0;
   const model = new MockLanguageModelV3({
     // First streamed turn requests the tool; if it isn't gated (auto-approve),
     // the tool runs and the next streamed turn produces final text.
     doStream: async () => {
-      streamCall += 1;
+      modelCalls.stream += 1;
       return {
         stream:
-          streamCall === 1
+          modelCalls.stream === 1
             ? toolCallStream("tc_1", "send_email", { to: "a@b.com" })
             : textStream(finalText)
       };
     },
     // The resumed turn completes via the non-streaming path: after the approved
     // tool runs (or a denial is materialized), the model produces final text.
-    doGenerate: async () => ({
-      content: [{ type: "text" as const, text: finalText }],
-      finishReason: { unified: "stop", raw: undefined },
-      usage: USAGE,
-      warnings: []
-    })
+    doGenerate: async () => {
+      modelCalls.generate += 1;
+      return {
+        content: [{ type: "text" as const, text: finalText }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: USAGE,
+        warnings: []
+      };
+    }
   });
 
   const agent = generator({
@@ -117,7 +122,7 @@ function buildFlow(
     }
   })();
 
-  return { flow, executed };
+  return { flow, executed, modelCalls };
 }
 
 async function suspendOnce(flow: ReturnType<typeof buildFlow>["flow"]) {
@@ -164,8 +169,10 @@ describe("tool-approval suspend/resume (FIX-275)", () => {
   });
 
   it("approving resumes and executes the tool, completing without replaying the model call", async () => {
-    const { flow, executed } = buildFlow("Email sent.");
+    const { flow, executed, modelCalls } = buildFlow("Email sent.");
     const { stores, provider, result } = await suspendOnce(flow);
+    // After the initial run: the tool-call-producing turn ran exactly once.
+    expect(modelCalls.stream).toBe(1);
     const record = (await provider.listSuspended({ status: "pending" }))[0]!;
 
     const resumeContext: ResumeContext = {
@@ -188,6 +195,11 @@ describe("tool-approval suspend/resume (FIX-275)", () => {
     expect(executed).toHaveBeenCalledTimes(1);
     expect(resumed.error).toBeUndefined();
     expect(resumed.output).toBe("Email sent.");
+    // No-replay invariant at the model seam: the tool-call-producing turn was
+    // NOT re-run on resume (still 1); only the post-decision continuation step
+    // ran (1 generate call). A replay would show stream === 2.
+    expect(modelCalls.stream).toBe(1);
+    expect(modelCalls.generate).toBe(1);
   });
 
   it("rejecting resumes and lets the model adapt without executing the tool", async () => {
@@ -286,5 +298,57 @@ describe("tool-approval suspend/resume (FIX-275)", () => {
     expect(seenArgs).toEqual({ to: "a@b.com" });
     expect(seenCtx).toBeDefined();
     expect((seenCtx as BlockContext).request.identity.userId).toBe("u1");
+  });
+
+  it("fails loudly when a gating generator is nested below the root durable sequencer", async () => {
+    // Resume relies on the root sequencer's skip-and-inject replaying only the
+    // gating generator. A generator nested in an inner sequencer would have its
+    // siblings replayed on resume, so a gated call must fail before suspending.
+    const executed = vi.fn(async () => ({ ok: true }));
+    const risky = handler({
+      name: "risky",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      approval: { required: true },
+      execute: async () => executed()
+    });
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: toolCallStream("tc_1", "risky", {}) })
+    });
+    const agent = generator({
+      name: "nestedAgent",
+      model: wrapAiSdkModel(model, "anthropic/claude-sonnet-4-6"),
+      prompt: "Use the risky tool.",
+      tools: [risky],
+      maxIterations: 5
+    });
+    const flow = defineFlow({
+      kind: "nested-tool-approval-test",
+      actions: {
+        run: {
+          // Generator nested one sequencer deeper than the durable root.
+          block: sequencer({ name: "rootSeq", durable: true }).step(
+            sequencer({ name: "innerSeq" }).step(agent)
+          ),
+          inputSchema: z.any()
+        }
+      }
+    })();
+
+    const { stores, provider } = createDurableStores();
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+
+    expect(executed).not.toHaveBeenCalled();
+    expect(await provider.listSuspended({ status: "pending" })).toHaveLength(0);
+    expect(result.error).toBeDefined();
+    expect(String(result.error)).toContain("nested below the durable");
   });
 });
