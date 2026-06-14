@@ -19,6 +19,8 @@ export type {
   GeneratorSlotReference,
   GeneratorTool,
   GeneratorToolResult,
+  ToolApprovalConfig,
+  ToolApprovalRequest,
   ToolsSlot,
   InstructionsSlot,
   PromptSlot,

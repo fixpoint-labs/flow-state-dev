@@ -1,6 +1,7 @@
 import { generateText, streamText, Output, stepCountIs } from "ai";
 import type {
   CachingConfig,
+  GeneratorApprovalRequest,
   GeneratorModel,
   GeneratorModelResult,
   GeneratorModelSource,
@@ -9,6 +10,7 @@ import type {
   GeneratorModelToolCall,
   GeneratorSearchConfig,
   GeneratorStepResult,
+  ModelContinuation,
   ModelResolver,
   PrepareStepFn,
   ProviderTool
@@ -252,6 +254,87 @@ function ensureUniqueAlias(
   return `${candidate}_${suffix}`;
 }
 
+/**
+ * Build the message list for a tool-approval resume (FIX-275). Appends a
+ * tool-role message carrying the human approval decisions as
+ * `tool-approval-response` parts; the AI SDK pairs each to its pending tool
+ * call by `approvalId`. `ToolContent` accepts approval-response parts
+ * alongside tool-result parts, so a single tool message is valid.
+ */
+function buildContinuationMessages(continuation: ModelContinuation): unknown[] {
+  if (continuation.approvalResponses.length === 0) {
+    return continuation.messages;
+  }
+  const approvalMessage = {
+    role: "tool" as const,
+    content: continuation.approvalResponses.map((response) => {
+      const part: Record<string, unknown> = {
+        type: "tool-approval-response",
+        approvalId: response.approvalId,
+        approved: response.approved
+      };
+      if (response.reason !== undefined) {
+        part.reason = response.reason;
+      }
+      return part;
+    })
+  };
+  return [...continuation.messages, approvalMessage];
+}
+
+/**
+ * Extract pending tool-approval requests from an AI SDK result's `content`
+ * (FIX-275). Each `tool-approval-request` content part carries an `approvalId`
+ * and the `toolCall` it gates; tool names are reverse-mapped to framework
+ * names. Returns undefined when the turn requested no approvals.
+ */
+function normalizeApprovalRequests(
+  content: unknown,
+  toolNameMap?: ToolNameMap
+): GeneratorApprovalRequest[] | undefined {
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+
+  const requests: GeneratorApprovalRequest[] = [];
+  for (const part of content) {
+    const record = asRecord(part);
+    if (record?.type !== "tool-approval-request") continue;
+
+    const approvalId =
+      typeof record.approvalId === "string" ? record.approvalId : undefined;
+    const toolCall = asRecord(record.toolCall);
+    if (approvalId === undefined || toolCall === undefined) continue;
+
+    const toolCallId =
+      typeof toolCall.toolCallId === "string" ? toolCall.toolCallId : undefined;
+    const toolName =
+      typeof toolCall.toolName === "string" ? toolCall.toolName : undefined;
+    if (toolCallId === undefined || toolName === undefined) continue;
+
+    requests.push({
+      approvalId,
+      toolCallId,
+      toolName: resolveOriginalToolName(toolName, toolNameMap),
+      args: toolCall.input ?? toolCall.args ?? {}
+    });
+  }
+
+  return requests.length === 0 ? undefined : requests;
+}
+
+/**
+ * Pull the provider's response messages (assistant tool-call message plus any
+ * completed sibling tool results) for tool-approval persistence. These carry
+ * the alias tool names the model saw and are replayed verbatim on resume, so
+ * they are NOT reverse-mapped here.
+ */
+function extractResponseMessages(result: Record<string, unknown>): unknown[] | undefined {
+  const response = asRecord(result.response);
+  const messages = response?.messages;
+  return Array.isArray(messages) ? messages : undefined;
+}
+
 function normalizeFinishReason(value: unknown): string | undefined {
   if (typeof value === "string") {
     return value;
@@ -329,9 +412,21 @@ function buildAiSdkRequest(
     providerOptions?: Record<string, unknown>;
     prepareStep?: PrepareStepFn;
     caching?: CachingConfig;
+    continuation?: ModelContinuation;
   },
   resolveLanguageModel?: ResolveAiSdkLanguageModel
 ): { request: Record<string, unknown>; toolNameMap: ToolNameMap | undefined } {
+  // Resume of a suspended tool-approval turn (FIX-275): replay the persisted
+  // turn messages and append the human approval decisions as a tool message,
+  // instead of composing the call from `options.messages`. The SDK matches
+  // each tool-approval-response to its pending tool call by approvalId,
+  // executes the approved ones and materializes denials — without replaying
+  // the original model call.
+  const baseMessages =
+    options.continuation !== undefined
+      ? buildContinuationMessages(options.continuation)
+      : options.messages;
+
   // Historical tool-call / tool-result messages carry the framework's tool
   // names (e.g. `tf.memory/recall`). When AI SDK serialises those into
   // OpenAI's request format the toolName lands in `input[N].name`, which
@@ -340,7 +435,7 @@ function buildAiSdkRequest(
   // alias the model previously saw matches the alias it sees now.
   const request: Record<string, unknown> = {
     model: languageModel,
-    messages: sanitizeToolNamesInMessages(options.messages)
+    messages: sanitizeToolNamesInMessages(baseMessages)
   };
 
   // Compile block tools — include execute if provided (enables AI SDK auto-execution)
@@ -370,6 +465,14 @@ function buildAiSdkRequest(
         };
         if (tool.execute !== undefined) {
           entry.execute = tool.execute;
+        }
+        // Human-approval gate (FIX-275). The AI SDK calls needsApproval with
+        // the parsed args; when it resolves true the turn ends with a
+        // tool-approval-request instead of executing. Boolean and predicate
+        // forms both pass through (the predicate's extra `options` arg is
+        // ignored by our (args) signature).
+        if (tool.needsApproval !== undefined) {
+          entry.needsApproval = tool.needsApproval;
         }
         // Forward the block's `mapModelOutput` mapper as the AI SDK's
         // `toModelOutput`. The AI SDK invokes it when materialising tool-
@@ -588,6 +691,7 @@ function normalizeGenerateResult(
     parseStructuredOutputFromText(text);
 
   const rawProviderMeta = result.providerMetadata ?? result.experimental_providerMetadata;
+  const approvalRequests = normalizeApprovalRequests(result.content, toolNameMap);
   return {
     text,
     structuredOutput,
@@ -596,7 +700,12 @@ function normalizeGenerateResult(
     usage: normalizeUsage(result.usage, rawProviderMeta),
     providerMetadata: asProviderMetadata(rawProviderMeta),
     steps: normalizeSteps(result.steps, toolNameMap),
-    sources: normalizeSources(result.sources)
+    sources: normalizeSources(result.sources),
+    approvalRequests,
+    // Persist the turn only when it ended awaiting approval — the generator
+    // needs it to resume without replaying the model call (FIX-275).
+    responseMessages:
+      approvalRequests !== undefined ? extractResponseMessages(result) : undefined
   };
 }
 
@@ -606,6 +715,7 @@ function normalizeFinishChunk(
 ): Omit<GeneratorModelStreamChunk, "type"> {
   const text = typeof result.text === "string" ? result.text : undefined;
   const rawProviderMeta = result.providerMetadata ?? result.experimental_providerMetadata;
+  const approvalRequests = normalizeApprovalRequests(result.content, toolNameMap);
   return {
     finishReason: normalizeFinishReason(result.finishReason),
     usage: normalizeUsage(result.usage, rawProviderMeta),
@@ -615,7 +725,10 @@ function normalizeFinishChunk(
       finishReason: normalizeFinishReason(result.finishReason),
       usage: normalizeUsage(result.usage, rawProviderMeta),
       providerMetadata: asProviderMetadata(rawProviderMeta),
-      sources: normalizeSources(result.sources)
+      sources: normalizeSources(result.sources),
+      approvalRequests,
+      responseMessages:
+        approvalRequests !== undefined ? extractResponseMessages(result) : undefined
     }
   };
 }
@@ -809,6 +922,11 @@ function createGeneratorModelFromAiSdk(
           identityHints,
           modelId
         );
+        // Carry the compiled request messages alongside the response turn so
+        // the generator can persist the full turn for resume (FIX-275).
+        if (normalized.approvalRequests !== undefined) {
+          normalized.requestMessages = request.messages as unknown[];
+        }
         return normalized;
       } catch (err: unknown) {
         // AI SDK throws NoObjectGeneratedError / NoOutputGeneratedError when
@@ -980,6 +1098,10 @@ function createGeneratorModelFromAiSdk(
       const finishChunk = normalizeFinishChunk(finalResult, toolNameMap);
       if (finishChunk.fullResult !== undefined) {
         finishChunk.fullResult.resolvedIdentity = resolvedIdentity;
+        // Carry the compiled request messages for tool-approval resume (FIX-275).
+        if (finishChunk.fullResult.approvalRequests !== undefined) {
+          finishChunk.fullResult.requestMessages = request.messages as unknown[];
+        }
       }
       yield {
         type: "finish",

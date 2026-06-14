@@ -164,6 +164,8 @@ export type {
   ContextObject,
   GeneratorTool,
   GeneratorToolResult,
+  ToolApprovalConfig,
+  ToolApprovalRequest,
   ToolsSlot,
   InstructionsSlot,
   PromptSlot,

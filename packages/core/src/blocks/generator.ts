@@ -20,6 +20,7 @@ import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type {
   CachingConfig,
+  GeneratorApprovalRequest,
   GeneratorModel,
   GeneratorModelResult,
   GeneratorModelSource,
@@ -467,6 +468,41 @@ export interface GeneratorConfig<
   caching?: ResolvableCachingConfig<TInput, TCtx>;
   /** When true (default), auto-inject tool name+description pairs into the system context. */
   describeTools?: boolean;
+  /**
+   * Per-tool-call human approval (FIX-275). Declares which tool calls require
+   * a human to approve them before they execute. When a matching call is
+   * requested, the model turn ends, the request suspends with the full call
+   * details, and a human approves or rejects via the resume endpoint.
+   * Requires the action to run with a configured `DurabilityProvider`.
+   */
+  toolApproval?: ToolApprovalConfig;
+}
+
+/**
+ * A tool call presented to a `toolApproval` policy predicate (FIX-275). Carries
+ * what a gating decision needs: the framework tool name, the parsed arguments,
+ * and the tool's description.
+ */
+export interface ToolApprovalRequest {
+  toolName: string;
+  arguments: unknown;
+  description?: string;
+}
+
+/**
+ * Generator-level tool-approval policy (FIX-275). `policy` selects which calls
+ * gate: `"all"` gates every call, `"none"` (default) gates only tools that set
+ * `requiresApproval: true`, and a predicate decides per call. A tool's own
+ * `requiresApproval` always wins over the policy.
+ */
+export interface ToolApprovalConfig {
+  policy?: "all" | "none" | ((call: ToolApprovalRequest) => boolean | Promise<boolean>);
+  /** Component descriptor for a custom approval UI (resolved via the client RendererRegistry). */
+  render?: { component: string; props?: Record<string, unknown> };
+  /** Suspension message, or a function over the pending calls. Defaults to a generated summary. */
+  message?: string | ((calls: ToolApprovalRequest[]) => string);
+  /** Auto-expire the approval after this many ms (maps to the suspension's expiry). */
+  timeoutMs?: number;
 }
 
 
@@ -678,9 +714,37 @@ function compileToolsForModel(tools: GeneratorTool[]): GeneratorModelTool[] {
 }
 
 /**
+ * Resolve the effective `needsApproval` value to stamp on a compiled tool
+ * (FIX-275). A tool's own `requiresApproval` wins over the generator policy:
+ * an explicit `true`/`false`/predicate is authoritative; only `undefined`
+ * defers to the policy. Returns `undefined` when the tool can never gate, so
+ * the default (no-approval) compilation path is untouched.
+ */
+function resolveToolNeedsApproval(
+  tool: GeneratorTool,
+  toolApproval: ToolApprovalConfig | undefined
+): GeneratorModelTool["needsApproval"] {
+  const explicit = tool.config.requiresApproval;
+  if (explicit === false) return undefined;
+  if (explicit === true) return true;
+  if (typeof explicit === "function") {
+    return (args: unknown) => explicit(args as never);
+  }
+  // No tool-level flag — defer to the generator policy.
+  const policy = toolApproval?.policy ?? "none";
+  if (policy === "none") return undefined;
+  if (policy === "all") return true;
+  return (args: unknown) =>
+    policy({ toolName: tool.name, arguments: args, description: tool.description });
+}
+
+/**
  * Compile tools WITH execute wrappers. Each tool's `run()` is wrapped
  * via `buildToolExecutor` (cache/retry/status-guard/observer/scope/envelope).
- * The AI SDK auto-executes these during its multi-step loop.
+ * The AI SDK auto-executes these during its multi-step loop. When a tool is
+ * gated by the generator's `toolApproval` policy or its own `requiresApproval`
+ * flag, a `needsApproval` predicate is stamped so the SDK ends the turn with a
+ * tool-approval-request instead of executing (FIX-275).
  */
 function compileToolsWithExecute(
   tools: GeneratorTool[],
@@ -689,10 +753,12 @@ function compileToolsWithExecute(
   generatorBlockName: string,
   itemVisibility: ItemVisibility | undefined,
   agentName: string | undefined,
+  toolApproval: ToolApprovalConfig | undefined,
 ): GeneratorModelTool[] {
   const statusGuard = { active: 0, saved: "" };
   return tools.map((tool) => {
     const modelOutputMapper = asRuntime(tool)._modelOutputMapper;
+    const needsApproval = resolveToolNeedsApproval(tool, toolApproval);
     return {
       name: tool.name,
       description: tool.description,
@@ -703,6 +769,7 @@ function compileToolsWithExecute(
               modelOutputMapper(output as never, ctx),
           }
         : {}),
+      ...(needsApproval !== undefined ? { needsApproval } : {}),
       execute: buildToolExecutor(
         tool,
         { flowTools, generatorBlockName, itemVisibility, agentName, statusGuard },
@@ -710,6 +777,94 @@ function compileToolsWithExecute(
       ),
     };
   });
+}
+
+/**
+ * JSON Schema for the resume payload of a tool-approval suspension (FIX-275):
+ * a per-call `decisions` array. Validated by the resume endpoint and rendered
+ * by approval UIs. `action: "reject"` on the endpoint is a shorthand that does
+ * not require this payload.
+ */
+const TOOL_APPROVAL_RESUME_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    decisions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          toolCallId: { type: "string" },
+          approved: { type: "boolean" },
+          reason: { type: "string" }
+        },
+        required: ["toolCallId", "approved"],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ["decisions"],
+  additionalProperties: false
+};
+
+/** Default human-readable message for a tool-approval suspension. */
+function defaultToolApprovalMessage(calls: GeneratorApprovalRequest[]): string {
+  if (calls.length === 1) {
+    return `Approve tool call: ${calls[0]!.toolName}`;
+  }
+  const names = calls.map((c) => c.toolName).join(", ");
+  return `Approve ${calls.length} tool calls: ${names}`;
+}
+
+/**
+ * Suspend the generator for human approval of one or more gated tool calls
+ * (FIX-275). Persists the serialized model turn in the suspension's internal
+ * `resumeState` so the resumed generator continues without replaying the model
+ * call. Throws `SuspensionError` (via `ctx.suspend`); never returns.
+ */
+async function suspendForToolApproval(
+  ctx: BlockContext,
+  generation: GeneratorModelResult,
+  toolApproval: ToolApprovalConfig | undefined,
+  blockName: string
+): Promise<never> {
+  const calls = generation.approvalRequests ?? [];
+  if (ctx.suspend === undefined) {
+    throw new Error(
+      `Generator "${blockName}" requested tool approval but no DurabilityProvider ` +
+        `is configured. Tool approval requires durable execution.`
+    );
+  }
+  const requests: ToolApprovalRequest[] = calls.map((c) => ({
+    toolName: c.toolName,
+    arguments: c.args
+  }));
+  const message =
+    typeof toolApproval?.message === "function"
+      ? toolApproval.message(requests)
+      : toolApproval?.message ?? defaultToolApprovalMessage(calls);
+
+  await ctx.suspend({
+    reason: "tool_approval",
+    message,
+    data: { toolCalls: calls },
+    resumeSchema: TOOL_APPROVAL_RESUME_SCHEMA,
+    render: toolApproval?.render,
+    timeoutMs: toolApproval?.timeoutMs,
+    resumeState: {
+      kind: "tool_approval",
+      requestMessages: generation.requestMessages ?? [],
+      responseMessages: generation.responseMessages ?? [],
+      approvals: calls.map((c) => ({
+        approvalId: c.approvalId,
+        toolCallId: c.toolCallId,
+        toolName: c.toolName
+      }))
+    }
+  });
+  // ctx.suspend always throws SuspensionError; this is unreachable.
+  throw new Error(
+    `Generator "${blockName}": ctx.suspend did not throw for tool approval`
+  );
 }
 
 
@@ -1165,6 +1320,16 @@ async function executeStreamingGeneration<TInput, TOutput>(
     }
   }
 
+  // Tool approval (FIX-275): a gated tool call ended the turn awaiting
+  // approval. Suspend before emitting the empty-assistant envelope or parsing
+  // output — a gated turn produces no final text/candidate.
+  if (
+    finalResult?.approvalRequests !== undefined &&
+    finalResult.approvalRequests.length > 0
+  ) {
+    await suspendForToolApproval(ctx, finalResult, config.toolApproval, blockName);
+  }
+
   // If no text deltas arrived, still finalize reasoning and emit a message
   // envelope so downstream consumers see a completed assistant turn.
   if (!messageEmitted) {
@@ -1616,7 +1781,7 @@ export function generator<
       // without (model suggests calls but doesn't execute them).
       const compiledTools = toolBlocks.length > 0
         ? (runTools
-            ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName, itemVisibility, agentName)
+            ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName, itemVisibility, agentName, normalizedConfig.toolApproval)
             : compileToolsForModel(toolBlocks))
         : [];
 
@@ -1709,6 +1874,14 @@ export function generator<
         });
       } catch (err) {
         surfaceModelCallError(err, ctx, blockName);
+      }
+
+      // Tool approval (FIX-275): the model requested one or more gated tools
+      // and the turn ended awaiting approval. Suspend with the full call
+      // details before parsing output — a gated turn produces no final
+      // candidate, so this must run before the did-not-produce-output throw.
+      if (generation.approvalRequests !== undefined && generation.approvalRequests.length > 0) {
+        await suspendForToolApproval(ctx, generation, normalizedConfig.toolApproval, blockName);
       }
 
       const candidate = resolveGenerationCandidate(generation);
