@@ -170,11 +170,12 @@ export async function getOrCompute<TValue extends JsonValue>(
   if (inflight !== undefined) return inflight as Promise<TValue>;
 
   const run = (async (): Promise<TValue> => {
+    let value: TValue;
     try {
-      const value = await fetcher();
-      await ref.upsert(key, { value, storedAt: now() } as Partial<CacheEnvelope<TValue>>);
-      return value;
+      value = await fetcher();
     } catch (err) {
+      // Stale-on-error covers FETCHER failures only. A stale entry within the
+      // grace window is served; otherwise the original error propagates.
       if (
         envelope !== undefined &&
         mayServeStaleOnError(now() - envelope.storedAt, staleAfterMs, options.staleIfError)
@@ -183,6 +184,11 @@ export async function getOrCompute<TValue extends JsonValue>(
       }
       throw err;
     }
+    // Fetch succeeded — persist and return the FRESH value. A write failure
+    // propagates rather than masquerading as a stale-serve (the upstream
+    // source was reached; serving old data here would be silently wrong).
+    await ref.upsert(key, { value, storedAt: now() } as Partial<CacheEnvelope<TValue>>);
+    return value;
   })();
 
   pending.set(key, run);
@@ -323,13 +329,18 @@ export interface CreateCachedFetchCapabilityOptions {
   processDedup?: boolean;
 }
 
-/** Derive the scope-instance id used to key cross-request dedup. */
-function deriveScopeId(scope: "session" | "user" | "org", ctx: BlockContext): string {
+/**
+ * Derive the scope-instance id used to key cross-request dedup. Returns
+ * `undefined` when the scope's identity is unresolved — the caller then skips
+ * process-level dedup entirely rather than collapsing every identity-less
+ * request onto a shared key, which would leak one tenant's fetch to another.
+ */
+function deriveScopeId(scope: "session" | "user" | "org", ctx: BlockContext): string | undefined {
   const identity = (ctx.session as { identity?: { id?: string; userId?: string; orgId?: string } } | undefined)
     ?.identity;
-  if (scope === "org") return identity?.orgId ?? "unknown-org";
-  if (scope === "user") return identity?.userId ?? "unknown-user";
-  return identity?.id ?? "unknown-session";
+  if (scope === "org") return identity?.orgId;
+  if (scope === "user") return identity?.userId;
+  return identity?.id;
 }
 
 /**
@@ -381,7 +392,9 @@ export function createCachedFetchCapability(
       });
 
       const withDedup = <T>(key: string, run: () => Promise<T>): Promise<T> => {
-        if (!processDedup) return run();
+        // Skip cross-request dedup when the scope identity is unresolved —
+        // sharing a flight across distinct identity-less callers would leak data.
+        if (!processDedup || scopeId === undefined) return run();
         const dedupKey = `${scope}:${scopeId}:${key}`;
         const inflight = processPending.get(dedupKey);
         if (inflight !== undefined) return inflight as Promise<T>;

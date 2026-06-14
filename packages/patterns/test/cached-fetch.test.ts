@@ -229,6 +229,21 @@ describe("getOrCompute", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(ref._store.get("k")).toEqual({ value: "repaired", storedAt: 50 });
   });
+
+  it("does not serve stale when the fetch succeeds but the write fails", async () => {
+    // A stale entry exists and staleIfError is the permissive default — but the
+    // fetcher SUCCEEDS, so the (failing) persistence must not fall back to stale.
+    const ref = stubCollection({ k: { value: "stale", storedAt: 0 } });
+    ref.upsert = (async () => {
+      throw new Error("store write failed");
+    }) as never;
+    const fetcher = vi.fn(async () => "fresh");
+
+    await expect(
+      getOrCompute(ref, "k", fetcher, { staleAfter: 1000, staleIfError: true, now: () => 1_000_000 }),
+    ).rejects.toThrow("store write failed");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("invalidateCached", () => {
@@ -382,6 +397,26 @@ describe("createCachedFetchCapability", () => {
     const a = accessorA.getOrCompute("k", fetcher, { now: () => 0 });
     const b = accessorB.getOrCompute("k", fetcher, { now: () => 0 });
     gate.resolve("each");
+    await Promise.all([a, b]);
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not dedup across identity-less callers (no cross-tenant leak)", async () => {
+    const cap = createCachedFetchCapability({ name: "cache", scope: "user", staleAfter: 1000, processDedup: true });
+    const gate = deferred<string>();
+    const fetcher = vi.fn(() => gate.promise);
+
+    // User scope, but neither context carries a userId — scope id is unresolved,
+    // so process dedup must be skipped rather than collapsing both onto one key.
+    const ctxNoIdentity = (ref: ResourceCollectionRef<CacheEnvelope>) =>
+      ({ resources: { cacheStore: ref }, session: { identity: { id: "session-x" } } } as never);
+    const accessorA = cap.fns!(ctxNoIdentity(stubCollection()));
+    const accessorB = cap.fns!(ctxNoIdentity(stubCollection()));
+
+    const a = accessorA.getOrCompute("k", fetcher, { now: () => 0 });
+    const b = accessorB.getOrCompute("k", fetcher, { now: () => 0 });
+    gate.resolve("isolated");
     await Promise.all([a, b]);
 
     expect(fetcher).toHaveBeenCalledTimes(2);
