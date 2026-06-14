@@ -21,11 +21,13 @@ import type { DeclaredResourceEntry } from "../types/block";
 import type {
   CachingConfig,
   GeneratorApprovalRequest,
+  GeneratorApprovalResponse,
   GeneratorModel,
   GeneratorModelResult,
   GeneratorModelSource,
   GeneratorModelTool,
   GeneratorSearchConfig,
+  ModelContinuation,
   ModelIdentity,
   PrepareStepFn,
   ProviderTool
@@ -852,6 +854,7 @@ async function suspendForToolApproval(
     timeoutMs: toolApproval?.timeoutMs,
     resumeState: {
       kind: "tool_approval",
+      blockInstanceId: ctx._blockIdentity?.blockInstanceId,
       requestMessages: generation.requestMessages ?? [],
       responseMessages: generation.responseMessages ?? [],
       approvals: calls.map((c) => ({
@@ -865,6 +868,81 @@ async function suspendForToolApproval(
   throw new Error(
     `Generator "${blockName}": ctx.suspend did not throw for tool approval`
   );
+}
+
+type ToolApprovalResumeState = {
+  kind: "tool_approval";
+  blockInstanceId?: string;
+  requestMessages?: unknown[];
+  responseMessages?: unknown[];
+  approvals?: Array<{ approvalId: string; toolCallId: string; toolName: string }>;
+};
+
+/**
+ * Detect that this generator is resuming a tool-approval suspension and build
+ * the model continuation from the persisted turn plus the human decisions
+ * (FIX-275). Matches on the suspension's internal `resumeState.kind` and this
+ * generator's `blockInstanceId`. Consumes the resume context so a later
+ * `ctx.suspend()` in this request suspends fresh. Returns `undefined` when not
+ * resuming a tool-approval suspension for this block.
+ *
+ * Decisions come from the `ResumeContext`: `action: "reject"` denies every
+ * pending call; otherwise the per-call `decisions` array is matched by
+ * `toolCallId`, and any pending call without a decision fails closed (denied).
+ */
+function resolveToolApprovalContinuation(
+  ctx: BlockContext
+): ModelContinuation | undefined {
+  const resume = ctx._resumeState;
+  const suspension = resume?.suspension;
+  const resumeContext = resume?.resumeContext;
+  if (suspension === undefined || resumeContext === undefined) return undefined;
+
+  const rs = suspension.resumeState as ToolApprovalResumeState | undefined;
+  if (rs?.kind !== "tool_approval") return undefined;
+  if (
+    rs.blockInstanceId !== undefined &&
+    rs.blockInstanceId !== ctx._blockIdentity?.blockInstanceId
+  ) {
+    return undefined;
+  }
+
+  ctx._consumeResumeContext?.();
+
+  const approvals = rs.approvals ?? [];
+  const decisionByCallId = new Map<string, { approved: boolean; reason?: string }>();
+  if (resumeContext.action === "reject") {
+    const reason =
+      typeof resumeContext.data === "string" ? resumeContext.data : undefined;
+    for (const approval of approvals) {
+      decisionByCallId.set(approval.toolCallId, { approved: false, reason });
+    }
+  } else {
+    const decisions =
+      (resumeContext.data as {
+        decisions?: Array<{ toolCallId: string; approved: boolean; reason?: string }>;
+      } | undefined)?.decisions ?? [];
+    for (const decision of decisions) {
+      decisionByCallId.set(decision.toolCallId, {
+        approved: decision.approved,
+        reason: decision.reason
+      });
+    }
+  }
+
+  const approvalResponses: GeneratorApprovalResponse[] = approvals.map((approval) => {
+    const decision = decisionByCallId.get(approval.toolCallId);
+    return {
+      approvalId: approval.approvalId,
+      approved: decision?.approved ?? false,
+      reason: decision?.reason
+    };
+  });
+
+  return {
+    messages: [...(rs.requestMessages ?? []), ...(rs.responseMessages ?? [])],
+    approvalResponses
+  };
 }
 
 
@@ -1107,7 +1185,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
   agentName: string | undefined,
   prepareStep?: PrepareStepFn,
   resolvedProviderOpts?: Record<string, unknown>,
-  resolvedCaching?: CachingConfig
+  resolvedCaching?: CachingConfig,
+  continuation?: ModelContinuation
 ): Promise<TOutput> {
   const emit = itemVisibility !== undefined;
   const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -1151,7 +1230,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
     maxSteps,
     providerOptions: resolvedProviderOpts,
     caching: resolvedCaching,
-    prepareStep
+    prepareStep,
+    continuation
   })) {
     if (chunk.resolvedIdentity !== undefined) {
       resolvedIdentity = chunk.resolvedIdentity;
@@ -1793,6 +1873,12 @@ export function generator<
       const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
       const canStream = (itemVisibility !== undefined || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
 
+      // Tool approval resume (FIX-275): when this generator is resuming a
+      // tool-approval suspension, replay the persisted turn plus the human
+      // decisions instead of composing a fresh model call — so the original
+      // model call is never replayed. Undefined on an ordinary turn.
+      const approvalContinuation = resolveToolApprovalContinuation(ctx);
+
       // Emit debug capture for devtool inspection before the LLM call. Use
       // the same combined-system-message assembly the model sees so the
       // devtool view matches the real prompt rather than a flat join.
@@ -1841,9 +1927,12 @@ export function generator<
             ctx,
             itemVisibility,
             agentName,
-            prepareStepFn,
+            // Disable prepareStep on a continuation resume (its system-prefix
+            // slicing would corrupt the replayed turn).
+            approvalContinuation !== undefined ? undefined : prepareStepFn,
             resolvedProviderOpts,
-            resolvedCaching
+            resolvedCaching,
+            approvalContinuation
           );
         } catch (err) {
           surfaceModelCallError(err, ctx, blockName);
@@ -1870,7 +1959,10 @@ export function generator<
           maxSteps,
           providerOptions: resolvedProviderOpts,
           caching: resolvedCaching,
-          prepareStep: prepareStepFn
+          // prepareStep re-slices messages by the composed system-prefix count,
+          // which doesn't exist for a continuation; disable it on resume.
+          prepareStep: approvalContinuation !== undefined ? undefined : prepareStepFn,
+          continuation: approvalContinuation
         });
       } catch (err) {
         surfaceModelCallError(err, ctx, blockName);

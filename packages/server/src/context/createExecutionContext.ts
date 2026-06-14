@@ -2575,6 +2575,14 @@ export async function createExecutionContext<
         const suspensionId = generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });
       },
+      // FIX-275: mark the resume context as consumed. A block that resumes
+      // without calling ctx.suspend() — the generator tool-approval gate reads
+      // the decisions off _resumeState and re-enters the model loop directly —
+      // calls this so a later ctx.suspend() in the same request suspends fresh
+      // instead of receiving the stale decisions as resume data.
+      _consumeResumeContext: () => {
+        resumeConsumed = true;
+      },
       saveCheckpoint: undefined,
       // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
       // as running `taskId`. The task-board worker body calls this once per

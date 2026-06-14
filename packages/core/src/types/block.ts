@@ -434,6 +434,29 @@ export interface BlockContext<
    */
   saveCheckpoint?(): Promise<void>;
 
+  /**
+   * @internal Resume state populated by the runtime when re-invoking after a
+   * suspension (FIX-275). Carries the loaded `SuspensionRecord` and the
+   * `ResumeContext` (the human decisions) so a block that resumes without
+   * calling `ctx.suspend()` — the generator tool-approval gate — can read its
+   * internal `resumeState` and continue. Sequencer-step suspensions also carry
+   * `stepIndex`/`state`/`stepInput` for skip-and-inject.
+   */
+  _resumeState?: {
+    suspension?: import("../types/suspension").SuspensionRecord;
+    resumeContext?: import("../types/suspension").ResumeContext;
+    stepIndex?: number;
+    state?: Record<string, unknown>;
+    stepInput?: unknown;
+  };
+
+  /**
+   * @internal Mark the resume context consumed (FIX-275). Called by a block
+   * that handles a resume without invoking `ctx.suspend()`, so a later
+   * `ctx.suspend()` in the same request suspends fresh.
+   */
+  _consumeResumeContext?(): void;
+
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
     onBlockStart?: (blockName: string, blockKind: string, input: unknown, transient?: boolean) => void;
