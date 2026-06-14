@@ -1,4 +1,4 @@
-import { router } from "@/lib/server";
+import { getRouter } from "@/lib/server";
 import { type NextRequest } from "next/server";
 
 // Force dynamic rendering — required for SSE streaming. Without this, Next.js
@@ -9,15 +9,15 @@ type RouteContext = { params: Promise<{ path: string[] }> };
 
 export async function GET(req: NextRequest, ctx: RouteContext) {
   const params = await ctx.params;
-  return router.GET(req, { params });
+  return (await getRouter()).GET(req, { params });
 }
 
 export async function POST(req: NextRequest, ctx: RouteContext) {
   const params = await ctx.params;
-  return router.POST(req, { params });
+  return (await getRouter()).POST(req, { params });
 }
 
 export async function DELETE(req: NextRequest, ctx: RouteContext) {
   const params = await ctx.params;
-  return router.DELETE(req, { params });
+  return (await getRouter()).DELETE(req, { params });
 }

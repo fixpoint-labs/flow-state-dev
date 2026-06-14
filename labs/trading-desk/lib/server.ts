@@ -1,22 +1,12 @@
-import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
 import { createXai } from "@ai-sdk/xai";
 import { createModelResolver } from "@flow-state-dev/core/models";
-import {
-  createFilesystemStores,
-  createFlowApiRouter,
-  createFlowRegistry,
-} from "@flow-state-dev/server";
+import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
+import { createPostgresStores } from "@flow-state-dev/store-postgres";
 import analysisFlow from "@/src/flows/analysis/flow";
 import portfolioFlow from "@/src/flows/portfolio/flow";
 import { hasXaiKey } from "@/src/flows/analysis/tools/providers/xai";
-
-// Filesystem-backed stores so analysis history survives `pnpm dev` restarts.
-// Defaults to `<example>/.fsdev/data` (covered by the root `.gitignore`'s
-// `**/.fsdev/**` rule). Override with `FSDEV_DATA_DIR` for testing or to
-// redirect storage to a sandbox path.
-const dataDir =
-  process.env.FSDEV_DATA_DIR ?? path.join(process.cwd(), ".fsdev", "data");
+import { getBacking } from "@/lib/portfolio-db";
 
 // Pass the OpenAI provider instance explicitly: the resolver's dynamic
 // require() path doesn't work under Next.js bundling. The flow emits
@@ -54,11 +44,30 @@ const registry = createFlowRegistry();
 registry.register(analysisFlow);
 registry.register(portfolioFlow);
 
-export const router = createFlowApiRouter({
-  registry,
-  modelResolver,
-  stores: createFilesystemStores({ rootDir: dataDir, developmentOnly: true }),
-  onError: (error, context) => {
-    console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
-  },
-});
+type FlowApiRouter = ReturnType<typeof createFlowApiRouter>;
+
+let routerPromise: Promise<FlowApiRouter> | null = null;
+
+// Build the router lazily. The Postgres-backed store is async, and the embedded
+// PGlite dev backing must apply its `app.*` migrations before first use. The
+// store and the app's portfolio repository share one backing (`getBacking`), so
+// they share a single connection budget. Memoized: the backing and store are
+// created exactly once per process, on the first request.
+async function buildRouter(): Promise<FlowApiRouter> {
+  const { storesOptions } = await getBacking();
+  const stores = await createPostgresStores(storesOptions);
+  return createFlowApiRouter({
+    registry,
+    modelResolver,
+    stores,
+    onError: (error, context) => {
+      console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
+    },
+  });
+}
+
+/** The flow API router, built once on first call. Route handlers `await` this. */
+export function getRouter(): Promise<FlowApiRouter> {
+  routerPromise ??= buildRouter();
+  return routerPromise;
+}
