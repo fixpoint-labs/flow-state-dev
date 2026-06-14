@@ -46,7 +46,7 @@ const modelResolver = createModelResolver({
     utility: ["vercel/google/gemini-3.1-flash-lite", "vercel/openai/gpt-5.4-nano"],
     fast: ["vercel/google/gemini-3.1-flash-lite", "vercel/openai/gpt-5.4-nano"],
     'fast-reasoning': ["vercel/xai/grok-4.3", "vercel/openai/gpt-5.4-mini"],
-    'fast-high-reasoning': ["vercel/gemini-3.5-flash", "vercel/openai/gpt-5.4-mini"],
+    'fast-high-reasoning': ["vercel/google/gemini-3.5-flash", "vercel/openai/gpt-5.4-mini"],
     full: ["vercel/google/gemini-3.5-flash-lite", "vercel/openai/gpt-5.4-nano"],
     'full-reasoning': ["vercel/google/gemini-3.5-flash", "vercel/openai/gpt-5.4-mini"],
     'full-high-reasoning': ["vercel/google/gemini-3.1-pro-preview", "vercel/openai/gpt-5.5"],
