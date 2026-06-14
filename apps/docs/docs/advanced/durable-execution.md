@@ -141,6 +141,127 @@ The resume dispatch creates a new request with a `resumeOf` reference pointing a
 
 Execution continues normally from there. The new request has its own `requestId` and generates its own SSE stream.
 
+## Tool approval
+
+`ctx.suspend()` pauses an explicit step you wrote. Tool approval pauses a tool call the model chose to make. When a generator runs inside a durable action and the model calls a gated tool, the turn ends, the request suspends, and a human approves or denies the call before the agent continues. Reach for it when a model can take an action with real consequences — sending an email, moving money, deleting a record — and you want a person in the loop on exactly those calls without writing an approval step by hand.
+
+There are two places to opt in. A tool block declares `requiresApproval`. A generator declares a `toolApproval` policy. The tool-level setting wins.
+
+`requiresApproval` lives on any block used as a generator tool (handlers included):
+
+```ts
+requiresApproval?: boolean | ((args) => boolean | Promise<boolean>);
+```
+
+A boolean gates the tool unconditionally. A predicate receives the parsed tool arguments and decides per call — gate a `transfer` tool only when the amount is over a threshold, for example.
+
+`toolApproval` sets the generator's policy and the approval UI:
+
+```ts
+interface ToolApprovalConfig {
+  policy?: "all" | "none" | ((call: ToolApprovalRequest) => boolean | Promise<boolean>);
+  render?: { component: string; props?: Record<string, unknown> };
+  message?: string | ((calls: ToolApprovalRequest[]) => string);
+  timeoutMs?: number;
+}
+
+interface ToolApprovalRequest { toolName: string; arguments: unknown; description?: string; }
+```
+
+`policy: "all"` gates every tool call. `"none"` (the default) gates only tools that set `requiresApproval: true`. A predicate decides per call from the tool name and arguments. `render` names a component the client resolves through its `RendererRegistry` to draw the approval UI; `message` is the human-readable prompt; `timeoutMs` maps to the suspension's expiry.
+
+Precedence is simple: an explicit `requiresApproval` on the tool overrides the generator's policy. `requiresApproval: true` forces approval even under `policy: "none"`; `requiresApproval: false` exempts the tool even under `policy: "all"`.
+
+### A gated tool in a durable action
+
+```ts
+import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const sendEmail = handler({
+  name: "send-email",
+  inputSchema: z.object({ to: z.string(), body: z.string() }),
+  outputSchema: z.object({ sent: z.boolean() }),
+  requiresApproval: true, // a human signs off before this ever runs
+  execute: async (input) => {
+    await deliver(input.to, input.body);
+    return { sent: true };
+  },
+});
+
+const assistant = generator({
+  name: "assistant",
+  model: "openai/gpt-5.4-mini",
+  prompt: "Draft and send emails on the user's behalf.",
+  history: true,
+  user: (input: { message: string }) => input.message,
+  tools: [sendEmail],
+  toolApproval: {
+    message: "Approve sending this email?",
+    render: { component: "email-approval" },
+  },
+  itemVisibility: { client: true, history: true },
+});
+
+const flow = defineFlow({
+  kind: "assistant",
+  actions: {
+    chat: {
+      block: sequencer({ name: "chat", durable: true }).step(assistant),
+      inputSchema: z.object({ message: z.string() }),
+    },
+  },
+});
+```
+
+The gating generator must be a direct step of the root durable sequencer (or the action root itself), and the action must run with a configured `DurabilityProvider` — the same precondition as `ctx.suspend()`. A gated call without a provider fails fast rather than silently executing.
+
+### What the client sees
+
+When the model calls a gated tool, that model turn ends and the request suspends with `reason: "tool_approval"`. A `suspension` item lands on the stream carrying `data.toolCalls` — one entry per pending call:
+
+```jsonc
+{
+  "type": "suspension",
+  "reason": "tool_approval",
+  "message": "Approve sending this email?",
+  "data": {
+    "toolCalls": [
+      { "approvalId": "appr_1", "toolCallId": "call_abc", "toolName": "send-email", "args": { "to": "a@b.com", "body": "..." } }
+    ]
+  },
+  "render": { "component": "email-approval" }
+}
+```
+
+The `render` hint is whatever you configured on `toolApproval`. The client resolves the component through its `RendererRegistry` and draws an approval panel from the pending calls. See [SSE protocol — suspension items](../streaming/items.md#suspension-items) for the full item shape.
+
+### Resolving the approval
+
+A human resolves through the same resume endpoint as any suspension, with a per-call decisions payload:
+
+```json
+{
+  "decisions": [
+    { "toolCallId": "call_abc", "approved": true },
+    { "toolCallId": "call_def", "approved": false, "reason": "wrong recipient" }
+  ]
+}
+```
+
+On approve, the tool executes and the agent continues from there. On reject, the model receives a denial as the tool result and adapts — it might apologize, pick a different action, or ask a clarifying question. A rejected tool is not a hard failure. Posting `action: "reject"` on the endpoint denies every pending call in one shot.
+
+The model call that requested the tools is never replayed. Resume re-enters after the model's decision, runs the approved tools, and feeds their results (and any denials) back into the conversation.
+
+### Limits
+
+This is a v1. The edges worth knowing:
+
+- **Approvals batch per model turn.** Every gated call the model made in one turn surfaces together and resolves together. You can't approve one and leave the rest pending across separate resumes.
+- **`timeoutMs` expiry means the gate closed.** Once the suspension expires, the approval can no longer be granted — there's no automatic continuation. Treat expiry as a denial path and handle it with a rescue on `SuspensionTimeoutError`.
+- **Provider-executed tools aren't gated.** Native web search and other provider-side tools run inside the model call at the provider; they never reach the block tool loop where gating happens.
+- **The gating generator must be a direct step of the root durable sequencer** (or the action root). A generator buried inside a nested sub-sequencer can't gate, because resume re-enters at the root.
+
 ## Error handling
 
 Three errors are relevant to durable execution:

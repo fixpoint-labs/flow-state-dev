@@ -245,6 +245,39 @@ switch (event.type) {
 
 `content.audio.delta` is excluded from `Last-Event-ID` replay for the same reason as `content.delta`: per-chunk persistence would 10–100x the event-log size for sub-second TTS, and the durable `OutputAudioContent` snapshot already lets the client pick up at the next semantic boundary. On reconnect the client receives any `content.added` it missed (with the snapshot if synthesis finished) and resumes from live deltas; chunks emitted during the disconnect window are lost. This matches every comparable system — OpenAI Realtime, ElevenLabs WS, Cartesia, LiveKit.
 
+## Suspension items
+
+When a durable action pauses for an external decision — a human approval gate, a tool the model called that needs sign-off — the runtime emits a `suspension` item just before the SSE stream closes. It carries everything the client needs to render an approval UI and post a resume. Unlike `status`, it persists, so a client that opens the session later still sees the pending gate.
+
+```jsonc
+{
+  "type": "suspension",
+  "id": "item_suspension_7",
+  "status": "in_progress",
+  "suspensionStatus": "pending",
+  "reason": "tool_approval",
+  "message": "Approve sending this email?",
+  "data": {
+    "toolCalls": [
+      { "approvalId": "appr_1", "toolCallId": "call_abc", "toolName": "send-email", "args": { "to": "a@b.com" } }
+    ]
+  },
+  "resumeSchema": { "type": "object", "properties": { "decisions": { "type": "array" } } },
+  "render": { "component": "email-approval" }
+}
+```
+
+Field by field:
+
+- **`reason`** — machine-readable category. `"human_approval"`, `"human_input"`, `"external_event"`, or any custom string from `ctx.suspend()`. The value `"tool_approval"` is emitted when a generator's tool loop pauses on a gated tool call.
+- **`suspensionStatus`** — lifecycle of the gate: `pending`, then `resolved`, `rejected`, or `expired` once acted on.
+- **`message`** — the human-readable prompt to show.
+- **`data`** — arbitrary metadata from the suspension. For `reason: "tool_approval"`, it carries `toolCalls`: one entry per pending call with `approvalId`, `toolCallId`, `toolName`, and `args`.
+- **`resumeSchema`** — JSON Schema for the resume payload the flow expects back. For tool approval that's the per-call `{ decisions: [{ toolCallId, approved, reason? }] }` shape.
+- **`render`** — optional `{ component, props? }` hint the client resolves through its renderer registry to draw the approval UI.
+
+Resolving a suspension posts to the resume endpoint, which re-dispatches the original action. For a tool approval, an approved call executes and the agent continues; a rejected call surfaces a denial result to the model, which adapts rather than failing hard. See [Durable execution](/docs/advanced/durable-execution#tool-approval) for the full suspend, approve, and resume lifecycle.
+
 ## Generator identity
 
 Every auto-emitted item from a generator is stamped with the producing generator's `itemVisibility` and `agentName`. Identity governs conversational-item visibility and gives the client and downstream tooling enough information to route and render each item appropriately.

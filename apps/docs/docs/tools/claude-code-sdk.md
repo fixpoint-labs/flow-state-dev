@@ -121,9 +121,13 @@ const agent = claudeCodeAgent({
 });
 ```
 
-This is the interim story. Routing approvals through flow-state-dev's own
-human-in-the-loop suspend and resume is a follow-up; `onToolApproval` is the seam
-that work will plug into.
+flow-state-dev has its own durable tool approval for generator tool loops — a
+gated tool call suspends the request and a human approves or denies through the
+resume endpoint. See [Durable execution — Tool
+approval](../advanced/durable-execution.md#tool-approval). That path doesn't apply
+here: the Claude Code agent owns its own loop, so it can't pause at a
+flow-state-dev suspension boundary mid-run. `onToolApproval` is the in-process
+seam for gating its tools, deciding allow or deny synchronously as the SDK asks.
 
 ## Error handling
 

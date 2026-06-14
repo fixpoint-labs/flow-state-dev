@@ -34,6 +34,8 @@ const agent = generator({
 
 The `prompt` (and `user`) slots can also be authored in a separate `.md` file with YAML frontmatter and a LiquidJS body. Load it with `loadPromptFile(...)` and spread `definePromptFile(pf)` into the generator config. See the [Prompts as Markdown](https://flow-state.dev/docs/advanced/generator-prompts-markdown) reference.
 
+A generator accepts `toolApproval?: ToolApprovalConfig` to gate tool calls behind a human decision: `policy` (`"all" | "none" | (call) => boolean | Promise<boolean>`, default `"none"`), plus optional `render`, `message`, and `timeoutMs`. `"none"` gates only tools that opt in via `requiresApproval`; `"all"` gates every call. When a gated tool is called the model turn ends and the request suspends (`reason: "tool_approval"`) until resolved through the resume endpoint. Requires a `DurabilityProvider`. See [Durable execution — Tool approval](https://flow-state.dev/docs/advanced/durable-execution#tool-approval).
+
 **A handler that validates and transforms:**
 
 ```ts
@@ -46,6 +48,8 @@ const counter = handler({
   },
 });
 ```
+
+Any block used as a generator tool (handlers included) accepts `requiresApproval?: boolean | ((args) => boolean | Promise<boolean>)`. A boolean gates the tool unconditionally; a predicate receives the parsed tool arguments and decides per call. An explicit value overrides the generator's `toolApproval` policy — `true` forces approval even under `"none"`, `false` exempts the tool even under `"all"`. See [Requiring approval](https://flow-state.dev/docs/tools/overview#requiring-approval).
 
 **A sequencer that composes them into a pipeline with error recovery:**
 

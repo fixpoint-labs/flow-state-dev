@@ -177,12 +177,14 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 | `state_change` | Auto on state mutations | ✓ | — | Structural | Transient in prod / persistent in dev |
 | `resource_change` | Auto on resource mutations | ✓ | — | Structural | Transient by default |
 | `error` | Runtime (terminal failure) | ✓ | — | Structural | Persistent |
-| `suspension` | `ctx.suspend()` (durable actions, on suspend/resume) | ✓ | ✓ | Structural | Persistent |
+| `suspension` | `ctx.suspend()` and gated generator tool calls (durable actions, on suspend/resume) | ✓ | ✓ | Structural | Persistent |
 | `block_trace` | Every block (auto, lifecycle: in_progress → updates → terminal) | — | — | Trace | Persistent |
 | `router_decision` | Router (auto, on selection) | — | — | Trace | Persistent |
 | `state_snapshot` | Sequencer (at step boundaries) | — | — | Trace | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
 
 **Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Visibility category` = how `resolveItemVisibility(item)` determines visibility. Conversational types use `item.itemVisibility` (default `{ client: true, history: true }`). Structural types have fixed per-type defaults. Trace types always resolve to `{ client: false, history: false }`.
+
+**`suspension.reason`** is the machine-readable suspension category: the author-supplied values from `ctx.suspend()` (`human_approval`, `human_input`, `external_event`, or any custom string) plus `tool_approval`, emitted when a generator's tool loop pauses on a gated tool call. For `reason: "tool_approval"` the item carries `data.toolCalls` (one entry per pending call: `approvalId`, `toolCallId`, `toolName`, `args`) and the resume payload is per-call (`{ decisions: [{ toolCallId, approved, reason? }] }`). A rejected call surfaces a denial tool result to the model (which adapts) rather than failing the request. See [blocks.md → Tool approval](./blocks.md#tool-approval-gated-turn-contract) and [execution-and-errors.md → Durable execution](./execution-and-errors.md#durable-execution-suspend-and-resume).
 
 ## Status slot semantics
 

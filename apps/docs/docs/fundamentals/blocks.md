@@ -149,6 +149,21 @@ const agent = generator({
 
 When the LLM calls `deep-research`, the framework runs the full sequencer pipeline, collects the output, and feeds it back as the tool result — all within the generator's tool loop. Your tools can be as sophisticated as any other part of your workflow.
 
+#### Tool approval
+
+A tool can require a human to approve a call before it runs. Set `requiresApproval` on the tool block, or a `toolApproval` policy on the generator:
+
+```ts
+const assistant = generator({
+  name: "assistant",
+  tools: [sendEmail, deleteRecord],
+  toolApproval: { policy: "all", message: "Approve this action?" },
+  // ...
+});
+```
+
+`policy: "all"` gates every tool call; `"none"` (the default) gates only tools that set `requiresApproval: true`. When a gated tool is called, the model turn ends and the request suspends until a human approves or denies. This needs a `DurabilityProvider` configured on the runtime. See [Tool approval](../advanced/durable-execution.md#tool-approval) for the full lifecycle and [Requiring approval](../tools/overview.md#requiring-approval) for the tool-level flag.
+
 #### Showing a deterministic call as a tool: `.asTool()`
 
 Sometimes you already know what the tool inputs are. An analyst-style flow may fetch its data up front (deterministic, parallel, no LLM in the loop) and only call the LLM for synthesis. The fetches no longer go through a generator's tool loop, so they no longer produce the tool pills the LLM-driven path produces. The transcript shows nothing for the work that just happened.

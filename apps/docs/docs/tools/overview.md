@@ -107,6 +107,27 @@ Don't mark a tool cacheable if it mutates state, depends on time or randomness n
 
 The cross-task observation flow that pairs with this layer is documented in the [Flow policy](/docs/patterns/flow-policy) guide — observations get recorded whether or not the tool is cacheable.
 
+## Requiring approval
+
+A tool can demand a human sign-off before it runs. Declare `requiresApproval` on the tool block:
+
+```ts
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const transfer = handler({
+  name: "transfer-funds",
+  inputSchema: z.object({ to: z.string(), amount: z.number() }),
+  outputSchema: z.object({ confirmation: z.string() }),
+  requiresApproval: (args) => args.amount > 1000, // gate large transfers only
+  execute: async (input) => ({ confirmation: await sendTransfer(input) }),
+});
+```
+
+Pass `true` to gate every call, or a predicate that receives the parsed tool arguments and decides per call. When a generator calls a gated tool, the model turn ends, the request suspends, and a human approves or denies before the call executes.
+
+This takes effect only when the calling generator runs with a `DurabilityProvider` configured — a gated call without one fails fast. See [Durable execution — Tool approval](/docs/advanced/durable-execution#tool-approval) for the generator-level `toolApproval` policy, the suspension shape, and how a human resolves it.
+
 ## Installation
 
 The tools package is part of the monorepo. For external projects:

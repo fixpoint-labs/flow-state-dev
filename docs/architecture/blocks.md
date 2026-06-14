@@ -272,6 +272,15 @@ The file is YAML frontmatter (strict-validated) over a body split into line-anch
 - Runtime compiles tool blocks into provider-native tool definitions internally
 - Tool execution invokes `tool.run(args, ctx)`, not direct function calls
 
+#### Tool approval (gated-turn contract)
+
+A tool block declares `requiresApproval?: boolean | ((args) => boolean | Promise<boolean>)`; a generator declares a `toolApproval` policy (`"all" | "none"` — default `"none"` — or a per-call predicate). The tool-level flag wins over the policy. When a called tool resolves as needing approval, the gated-turn contract applies:
+
+- **`needsApproval` ends the model turn.** The loop does not execute the gated calls. The turn's in-flight state (the assistant message that requested the tools, the pending tool calls, accumulated step results) is serialized and the runtime suspends with `reason: "tool_approval"` (see [execution-and-errors.md → Durable execution](./execution-and-errors.md#durable-execution-suspend-and-resume)).
+- **The serialized turn is persisted in `SuspensionRecord.resumeState`** alongside the per-call descriptors (`approvalId`, `toolCallId`, `toolName`, `args`).
+- **Resume re-enters via continuation, not replay.** The model call that requested the tools is never re-issued. Resume restores the serialized turn, runs the approved tools (denied calls produce a denial tool result the model adapts to), feeds the results back, and **completes the resumed turn via the non-streaming path** (`generate()`), not the streaming path.
+- Preconditions: a configured `DurabilityProvider`, and the gating generator must be a direct step of the root durable sequencer (or the action root) so resume re-enters at the right scope. A gated call without a provider fails fast. Provider-executed tools (native search) run inside the model call and are not gated.
+
 ### Output Behavior
 
 - **Text output** (default `z.string()` or no `outputSchema`): Streams via `content.delta` events, auto-emits `message` item

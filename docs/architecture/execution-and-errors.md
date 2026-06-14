@@ -355,6 +355,8 @@ The resume endpoint (`POST /:flowKind/requests/:requestId/resume`) re-invokes th
 
 `SuspensionError` is a control-flow signal, not a block failure — rescue handlers never fire for it. `SuspensionRejectedError` and `SuspensionTimeoutError` are ordinary catchable errors thrown on resume when the suspension was rejected or timed out.
 
+**`tool_approval` as a `SuspensionReason`.** Beyond the author-driven `ctx.suspend()` path, a generator's tool loop suspends with `reason: "tool_approval"` when it hits a gated tool call (see [blocks.md → Tool approval](./blocks.md#tool-approval-gated-turn-contract) for the gated-turn contract). The record carries the serialized model turn in `resumeState` and the pending calls in `data.toolCalls` (one entry per call: `approvalId`, `toolCallId`, `toolName`, `args`). The resume payload is per-call: `{ decisions: [{ toolCallId, approved, reason? }] }`; `action: "reject"` denies all pending calls. On resume the runtime re-enters the suspended turn by continuation — it does not replay the model call that requested the tools — runs approved tools, surfaces a denial tool result for each rejected call (the model adapts; not a hard failure), and finishes the turn through the non-streaming path. `timeoutMs` maps to the suspension's `expiresAt`; an expired tool-approval suspension can no longer be granted (no automatic continuation).
+
 ### Retention model
 
 Durability records (checkpoints, suspension records, leases) are reclaimed by two mechanisms with a deliberate division of labor.
