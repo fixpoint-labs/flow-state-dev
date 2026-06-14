@@ -5,6 +5,7 @@
  * propagation, and `onRetry` cause-unwrapping / scheduled-only semantics.
  */
 import { describe, expect, it } from "vitest";
+import { SuspensionError } from "@flow-state-dev/core";
 import {
   NetworkError,
   ValidationError,
@@ -29,6 +30,41 @@ describe("retryWithPolicy (p-retry backed)", () => {
       )
     ).rejects.toBeInstanceOf(ValidationError);
     expect(attempts).toBe(1);
+  });
+
+  it("never retries a SuspensionError, and preserves it raw (FIX-275)", async () => {
+    // SuspensionError is control flow, not a failure: a retry-configured
+    // durable action that suspends must not re-execute (which would replay
+    // the model call). It also must not be relabeled "Retry aborted".
+    let attempts = 0;
+    const suspension = new SuspensionError({
+      reason: "tool_approval",
+      suspensionId: "susp_1"
+    });
+    await expect(
+      retryWithPolicy(
+        async () => {
+          attempts += 1;
+          throw suspension;
+        },
+        { maxAttempts: 5, baseDelayMs: 0, maxDelayMs: 0 }
+      )
+    ).rejects.toBe(suspension);
+    expect(attempts).toBe(1);
+  });
+
+  it("classifies SuspensionError as non-retryable regardless of policy (FIX-275)", () => {
+    const suspension = new SuspensionError({
+      reason: "human_approval",
+      suspensionId: "susp_2"
+    });
+    expect(
+      isRetryableError(suspension, {
+        maxAttempts: 5,
+        baseDelayMs: 0,
+        maxDelayMs: 0
+      })
+    ).toBe(false);
   });
 
   it("preserves the original FlowError instance through rejection", async () => {

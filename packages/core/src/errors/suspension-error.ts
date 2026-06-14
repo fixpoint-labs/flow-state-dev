@@ -28,6 +28,13 @@ export interface SuspendOptions {
   resumeSchema?: ZodTypeAny | Record<string, unknown>;
   timeoutMs?: number;
   render?: { component: string; props?: Record<string, unknown> };
+  /**
+   * Server-internal state the suspending block needs to resume without
+   * re-executing completed work (FIX-275). Threaded onto the persisted
+   * `SuspensionRecord.resumeState` and never emitted to clients. Used by the
+   * generator tool-approval path to carry the serialized model turn.
+   */
+  resumeState?: Record<string, unknown>;
 }
 
 /**
@@ -52,6 +59,11 @@ export class SuspensionError extends Error {
   readonly resumeSchema?: Record<string, unknown>;
   readonly render?: { component: string; props?: Record<string, unknown> };
   readonly timeoutMs?: number;
+  /**
+   * Server-internal turn state for resume (FIX-275). Read by runAction when
+   * building the SuspensionRecord; never emitted to clients.
+   */
+  readonly resumeState?: Record<string, unknown>;
 
   /** @internal Stamped by the sequencer so runAction can build a SuspensionRecord. */
   _stepIndex?: number;
@@ -69,6 +81,7 @@ export class SuspensionError extends Error {
     this.resumeSchema = normalizeResumeSchema(options.resumeSchema);
     this.render = options.render;
     this.timeoutMs = options.timeoutMs;
+    this.resumeState = options.resumeState;
   }
 }
 

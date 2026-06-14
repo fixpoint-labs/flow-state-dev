@@ -765,6 +765,21 @@ export interface BlockConfig<
    * No effect when the block is used outside a generator's tool slot.
    */
   cacheable?: BlockCacheableConfig | true;
+
+  /**
+   * Per-tool human-approval gate (FIX-275). When this block is installed as a
+   * generator tool, controls whether each invocation requires human approval
+   * before executing. A boolean applies unconditionally; a predicate receives
+   * the parsed tool arguments. An explicit value overrides the calling
+   * generator's `toolApproval` policy — `true` forces approval even under
+   * policy `"none"`, `false` exempts the tool even under policy `"all"`.
+   * Default `undefined` (defer to the generator's policy).
+   *
+   * Requires the generator to run with a configured `DurabilityProvider`; a
+   * gated call in a non-durable context fails fast. No effect when the block
+   * is used outside a generator's tool slot.
+   */
+  requiresApproval?: boolean | ((args: TInput) => boolean | Promise<boolean>);
 }
 
 /**

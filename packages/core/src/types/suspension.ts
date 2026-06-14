@@ -54,6 +54,17 @@ export interface SuspensionRecord {
   resolvedAt?: number;
   resolvedBy?: string;
   resumeData?: unknown;
+
+  /**
+   * Server-internal state the suspended block needs to resume without
+   * re-executing completed work. Never included in the `SuspensionItem`
+   * emitted to clients (it may carry large or sensitive payloads). For
+   * tool-approval suspensions (FIX-275) this carries the serialized model
+   * turn — the compiled request messages plus the assistant tool-call /
+   * sibling-result messages — so a resumed generator continues the turn
+   * without replaying the LLM call. Deleted with the record on cleanup.
+   */
+  resumeState?: Record<string, unknown>;
 }
 
 /**

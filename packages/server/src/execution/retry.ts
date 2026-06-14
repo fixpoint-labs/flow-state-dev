@@ -7,6 +7,7 @@
  */
 import pRetry, { AbortError, type FailedAttemptError } from "p-retry";
 import type { RetryPolicy } from "@flow-state-dev/core/types";
+import { SuspensionError } from "@flow-state-dev/core";
 import { FlowError } from "../errors/flow-error";
 
 /**
@@ -60,6 +61,15 @@ export function isRetryableError(
   policy: ResolvedRetryPolicy | undefined
 ): boolean {
   if (policy === undefined) {
+    return false;
+  }
+
+  // SuspensionError is a control-flow signal (ctx.suspend / tool-approval
+  // gate), not a failure. Retrying it would re-execute the action and replay
+  // the model call (FIX-275). Classify it non-retryable so retryWithPolicy
+  // routes it through the AbortError path, which rejects with the original
+  // error untouched.
+  if (error instanceof SuspensionError) {
     return false;
   }
 

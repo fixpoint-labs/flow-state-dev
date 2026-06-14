@@ -62,6 +62,48 @@ export type GeneratorModelToolCall = {
   args: unknown;
 };
 
+// ---------------------------------------------------------------------------
+// Tool-call approval (FIX-275) — surfaced when a gated tool call ends the turn
+// ---------------------------------------------------------------------------
+
+/**
+ * A tool call the model requested that requires human approval before it
+ * runs. Surfaced on {@link GeneratorModelResult.approvalRequests} when the
+ * model turn ended awaiting approval. `toolName`/`args` are the framework
+ * tool name and parsed arguments (reverse-mapped from provider aliases).
+ */
+export type GeneratorApprovalRequest = {
+  /** Provider approval id; round-trips back on the matching response. */
+  approvalId: string;
+  toolCallId: string;
+  toolName: string;
+  args: unknown;
+};
+
+/**
+ * A human decision on a previously-surfaced {@link GeneratorApprovalRequest},
+ * fed back through the resolver's `continuation` option on resume. `approved`
+ * false materializes a denial tool result the model adapts to; `reason` is
+ * surfaced to the model as the denial's steering context.
+ */
+export type GeneratorApprovalResponse = {
+  approvalId: string;
+  approved: boolean;
+  reason?: string;
+};
+
+/**
+ * Replay payload for resuming a suspended tool-approval turn (FIX-275).
+ * `messages` is the persisted turn (request messages + the assistant
+ * tool-call/sibling-result messages); `approvalResponses` are the human
+ * decisions the adapter appends as a tool message before re-entering the
+ * model loop.
+ */
+export type ModelContinuation = {
+  messages: unknown[];
+  approvalResponses: GeneratorApprovalResponse[];
+};
+
 export type GeneratorModelUsage = {
   promptTokens: number;
   completionTokens: number;
@@ -159,6 +201,26 @@ export type GeneratorModelResult = {
    * items and on `BlockTraceItem`.
    */
   resolvedIdentity?: ModelIdentity;
+  /**
+   * Tool-call approval requests surfaced when the model called one or more
+   * gated tools and the turn ended awaiting human approval (FIX-275). Empty
+   * or undefined on an ordinary turn. When present, the generator suspends
+   * instead of parsing output.
+   */
+  approvalRequests?: GeneratorApprovalRequest[];
+  /**
+   * The serialized model messages produced this turn (assistant tool-call
+   * message plus any completed sibling tool results), from the provider's
+   * response. Carried only when `approvalRequests` is present so a resumed
+   * turn can continue from this exact state without replaying the model call.
+   */
+  responseMessages?: unknown[];
+  /**
+   * The compiled model messages sent on this call. Paired with
+   * `responseMessages` to reconstruct the full turn on resume. Carried only
+   * when `approvalRequests` is present.
+   */
+  requestMessages?: unknown[];
 };
 
 export type GeneratorModelTool = {
@@ -173,6 +235,15 @@ export type GeneratorModelTool = {
    * block's `mapModelOutput` declaration.
    */
   toModelOutput?: (output: unknown) => string | Promise<string>;
+  /**
+   * Human-approval gate for this tool (FIX-275). Forwarded to the AI SDK as
+   * the tool's `needsApproval`: a boolean, or a predicate over the parsed
+   * arguments. When it resolves true the SDK ends the turn with a
+   * tool-approval-request instead of executing. The generator stamps this
+   * from its `toolApproval` policy combined with the block's
+   * `requiresApproval` flag. Omitted when the tool can never gate.
+   */
+  needsApproval?: boolean | ((args: unknown) => boolean | Promise<boolean>);
 };
 
 export type GeneratorModelStreamChunk = {
@@ -241,6 +312,15 @@ export interface GeneratorModel {
      * defaults (auto breakpoints, 5m TTL, enabled).
      */
     caching?: CachingConfig;
+    /**
+     * Resume a previously-suspended tool-approval turn (FIX-275). When set,
+     * the adapter replays `messages` (the persisted turn) plus a tool message
+     * carrying the `approvalResponses`, instead of composing the call from
+     * the normal `messages`/slot input. The SDK then executes approved tools
+     * and materializes denial results for rejected ones — without replaying
+     * the original model call.
+     */
+    continuation?: ModelContinuation;
   }): Promise<GeneratorModelResult>;
   stream?(options: {
     messages: unknown[];
@@ -253,6 +333,8 @@ export interface GeneratorModel {
     providerOptions?: Record<string, unknown>;
     prepareStep?: PrepareStepFn;
     caching?: CachingConfig;
+    /** Resume a suspended tool-approval turn (FIX-275). See {@link GeneratorModel.generate}. */
+    continuation?: ModelContinuation;
   }): AsyncIterable<GeneratorModelStreamChunk>;
   /**
    * Resolves a provider-native search tool from normalized config.
