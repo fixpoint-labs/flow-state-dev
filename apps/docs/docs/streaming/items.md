@@ -281,7 +281,7 @@ Field by field:
 - **`data`** — arbitrary metadata from the suspension. For `reason: "tool_approval"`, it carries `toolCalls`: one entry per pending call with `approvalId`, `toolCallId`, `toolName`, `args`, and the per-call `message` and `render` copied from that tool's `approval` declaration. Per-call `message`/`render` live here, not at the top level, because one turn can gate two different tools with two different approval UIs.
 - **`resumeSchema`** — JSON Schema for the resume payload the flow expects back. For tool approval that's the per-call `{ decisions: [{ toolCallId, approved, reason? }] }` shape.
 
-Resolving a suspension posts to the resume endpoint, which re-dispatches the original action. For a tool approval, an approved call executes and the agent continues; a rejected call surfaces a denial result to the model, which adapts rather than failing hard. See [Durable execution](/docs/advanced/durable-execution#tool-approval) for the full suspend, approve, and resume lifecycle.
+Resolving a suspension posts to the resume endpoint, which re-dispatches the original action. For a tool approval, an approved call executes and the agent continues; a rejected call surfaces a denial result to the model, which adapts rather than failing hard. See [Tool approval](/docs/human-in-the-loop/tool-approval) for the full suspend, approve, and resume lifecycle.
 
 ## Generator identity
 

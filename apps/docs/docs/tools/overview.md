@@ -132,7 +132,7 @@ const transfer = handler({
 
 When a generator calls a gated tool, the model turn ends, the request suspends, and a human approves or denies before the call executes. This takes effect only when the calling generator runs with a `DurabilityProvider` configured — a gated call without one fails fast.
 
-The generator can override these declarations with its `toolApproval` handling policy: `"auto"` runs everything without gating, `"all"` gates everything, and the object form auto-approves or requires specific tools. The generator's policy wins over the tool's declaration. See [Durable execution — Tool approval](/docs/advanced/durable-execution#tool-approval) for the full handling policy, the suspension shape, and how a human resolves it.
+The generator can override these declarations with its `toolApproval` handling policy: `"auto"` runs everything without gating, `"all"` gates everything, and the object form auto-approves or requires specific tools. The generator's policy wins over the tool's declaration. See [Tool approval](/docs/human-in-the-loop/tool-approval) for the full handling policy, the suspension shape, and how a human resolves it.
 
 ## Installation
 

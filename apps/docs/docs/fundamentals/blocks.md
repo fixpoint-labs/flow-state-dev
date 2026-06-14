@@ -172,7 +172,7 @@ const assistant = generator({
 });
 ```
 
-`toolApproval: "manual"` (the default) honors each tool's `approval.required`. `"auto"` runs every call without gating; `"all"` gates every call; the object form (`{ autoApprove, require }`) overrides specific tools. The generator's policy wins over the tool's declaration. When a gated tool is called, the model turn ends and the request suspends until a human approves or denies. This needs a `DurabilityProvider` configured on the runtime. See [Tool approval](../advanced/durable-execution.md#tool-approval) for the full lifecycle and [Requiring approval](../tools/overview.md#requiring-approval) for the tool-level `approval` object.
+`toolApproval: "manual"` (the default) honors each tool's `approval.required`. `"auto"` runs every call without gating; `"all"` gates every call; the object form (`{ autoApprove, require }`) overrides specific tools. The generator's policy wins over the tool's declaration. When a gated tool is called, the model turn ends and the request suspends until a human approves or denies. This needs a `DurabilityProvider` configured on the runtime. See [Tool approval](../human-in-the-loop/tool-approval.md) for the full lifecycle and [Requiring approval](../tools/overview.md#requiring-approval) for the tool-level `approval` object.
 
 #### Showing a deterministic call as a tool: `.asTool()`
 

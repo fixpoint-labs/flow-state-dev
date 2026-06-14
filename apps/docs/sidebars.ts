@@ -89,6 +89,14 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: "category",
+          label: "Human-in-the-loop",
+          items: [
+            "human-in-the-loop/overview",
+            "human-in-the-loop/tool-approval",
+          ],
+        },
+        {
+          type: "category",
           label: "Client",
           items: [
             "client/overview",
