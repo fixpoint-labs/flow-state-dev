@@ -135,7 +135,10 @@ describe("computeExpectedReturn", () => {
 // ── Fair Value ──────────────────────────────────────────────────────
 
 describe("computeFairValue", () => {
-  it("NVDA: computes justified PE and fair value", () => {
+  it("NVDA: high-growth name is outside the Gordon domain → honest n/a, never a collapsed figure", () => {
+    // FIX-778 regression: growth capped at 25% vs the 9% hurdle means the
+    // single-stage Gordon model does not apply. The old code emitted
+    // justifiedPE 0.4856 / fairValue $21B / MoS −139.0 here.
     const er = computeExpectedReturn(nvdaStatements);
     const fv = computeFairValue({
       fundamentals: nvdaFundamentals as any,
@@ -143,10 +146,58 @@ describe("computeFairValue", () => {
       expectedReturn: er,
       sector: "Technology",
     });
+    expect(fv.method).toBe("none");
+    expect(fv.justifiedPE).toBeNull();
+    expect(fv.fairValue).toBeNull();
+    expect(fv.marginOfSafety).toBeNull();
+    expect(fv.available).toBe(false);
+  });
+
+  it("AAPL: mature grower gets a sane justified PE from the sustainable payout at the hurdle rate", () => {
+    // FIX-778 regression: pins the hurdle-discounted, 1 − g/ROE payout math.
+    // g = 5%, ROE = 1.65 → payout ≈ 0.970, justified PE ≈ 25.45× (vs trailing
+    // 31.2×), fair cap ≈ $2,293B, MoS ≈ −22.6%. The old code emitted a 3.5×
+    // justified PE and a −782% margin of safety.
+    const er = computeExpectedReturn(aaplStatements);
+    const fv = computeFairValue({
+      fundamentals: aaplFundamentals as any,
+      incomeStatement: aaplIncome as any,
+      expectedReturn: er,
+      sector: "Technology",
+    });
     expect(fv.method).toBe("justified-pe");
-    expect(fv.justifiedPE).toBeGreaterThan(0);
-    expect(fv.fairValue).toBeGreaterThan(0);
     expect(fv.available).toBe(true);
+    expect(fv.justifiedPE).toBeCloseTo(25.45, 1);
+    expect(fv.fairValue).toBeCloseTo(2292.5, 0);
+    expect(fv.marginOfSafety).toBeCloseTo(-0.2257, 3);
+  });
+
+  it("r − g spread below 200bps → n/a (denominator blow-up gate)", () => {
+    const er = computeExpectedReturn(aaplStatements);
+    const erOverride = { ...er, sustainableGrowth: 0.08 }; // hurdle 9% − 8% = 1pp
+    const fv = computeFairValue({
+      fundamentals: aaplFundamentals as any,
+      incomeStatement: aaplIncome as any,
+      expectedReturn: erOverride,
+      sector: "Technology",
+    });
+    expect(fv.method).toBe("none");
+    expect(fv.fairValue).toBeNull();
+    expect(fv.available).toBe(false);
+  });
+
+  it("ROE ≤ g → n/a (growth not fundable from retention, implied payout ≤ 0)", () => {
+    const er = computeExpectedReturn(aaplStatements);
+    const erOverride = { ...er, sustainableGrowth: 0.05 };
+    const fv = computeFairValue({
+      fundamentals: { ...aaplFundamentals, returnOnEquity: 0.04 } as any,
+      incomeStatement: aaplIncome as any,
+      expectedReturn: erOverride,
+      sector: "Technology",
+    });
+    expect(fv.method).toBe("none");
+    expect(fv.fairValue).toBeNull();
+    expect(fv.available).toBe(false);
   });
 
   it("JPM: uses equity-multiples for financials, no fair value computed", () => {
@@ -395,6 +446,97 @@ describe("modelImpliedRating", () => {
     expect(nvdaEnv.relativeRating).toBeDefined();
     expect(["Buy", "Hold", "Sell"]).toContain(nvdaEnv.absoluteRating);
     expect(["Overweight", "Equal Weight", "Underweight"]).toContain(nvdaEnv.relativeRating);
+  });
+});
+
+// ── FIX-778: MoS floor fires only on valid readings ────────────────
+
+describe("FIX-778 regression — low-payout growth envelope", () => {
+  const baseEr = {
+    shareholderYield: 0.022,
+    sustainableGrowth: 0.25,
+    expectedReturn: 0.272,
+    hurdle: HURDLE_RATE,
+    excessReturn: 0.182,
+    basis: "fcf" as const,
+    lowConfidence: false,
+  };
+  const unavailableFv = {
+    justifiedPE: null,
+    fairValue: null,
+    marginOfSafety: null,
+    method: "none" as const,
+    available: false,
+  };
+  const supportiveSs = {
+    score: 67,
+    value: 70,
+    quality: 75,
+    factor: 60,
+    momentum: 60,
+    evidenceBasis: "sufficient" as const,
+  };
+
+  it("strong excess return + unavailable MoS → absolute Buy, return-anchored rationale", () => {
+    const env = modelImpliedRating({
+      expectedReturn: baseEr,
+      fairValue: unavailableFv,
+      setupScore: supportiveSs,
+    });
+    expect(env.absoluteRating).toBe("Buy");
+    expect(env.rationale).toContain("margin of safety unavailable");
+    expect(env.rationale).toContain("return-anchored");
+  });
+
+  it("strong excess return + VALID MoS below 25% → the Hold floor still binds", () => {
+    const env = modelImpliedRating({
+      expectedReturn: baseEr,
+      fairValue: { ...unavailableFv, justifiedPE: 20, fairValue: 1000, marginOfSafety: 0.10, method: "justified-pe" as const, available: true },
+      setupScore: supportiveSs,
+    });
+    expect(env.absoluteRating).toBe("Hold");
+    expect(env.rationale).toContain("margin of safety 10% < 25%");
+  });
+
+  it("strong excess return + valid MoS ≥ 25% → Buy (unchanged confirmation path)", () => {
+    const env = modelImpliedRating({
+      expectedReturn: baseEr,
+      fairValue: { ...unavailableFv, justifiedPE: 20, fairValue: 5000, marginOfSafety: 0.30, method: "justified-pe" as const, available: true },
+      setupScore: supportiveSs,
+    });
+    expect(env.absoluteRating).toBe("Buy");
+  });
+
+  it("the NVDA-shaped case can clear Hold: implied rating is above Hold", () => {
+    // The issue's acceptance criterion: a high-growth, low-payout name with a
+    // strong excess return and supportive setup is no longer locked out of Buy.
+    const env = modelImpliedRating({
+      expectedReturn: baseEr,
+      fairValue: unavailableFv,
+      setupScore: supportiveSs,
+    });
+    const ladder: FinalRating[] = ["Sell", "Underweight", "Hold", "Overweight", "Buy"];
+    expect(ladder.indexOf(env.implied)).toBeGreaterThan(ladder.indexOf("Hold"));
+    expect(env.ceiling).toBe("Buy");
+  });
+
+  it("NVDA fixture end-to-end: spine carries no absurd figures and the envelope is Buy-capable", () => {
+    const spine = buildValuationSpine({
+      ticker: "NVDA",
+      asOf: "2026-05-06",
+      ...nvdaStatements,
+      sector: "Technology",
+      quantComposites: nvdaQuantComposites,
+      factorRanks: nvdaFactorRanks,
+      technicals: nvdaIndicators,
+      valuation: computeValuation(nvdaStatements as any),
+    });
+    expect(spine.fairValue.available).toBe(false);
+    expect(spine.fairValue.marginOfSafety).toBeNull();
+    expect(spine.envelope.absoluteRating).toBe("Buy");
+    expect(spine.envelope.ceiling).toBe("Buy");
+    // The old defect printed "margin of safety -13902% < 25%" here.
+    expect(spine.envelope.rationale).not.toMatch(/-\d{3,}%/);
   });
 });
 

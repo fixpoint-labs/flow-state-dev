@@ -52,6 +52,15 @@ export interface DurabilityProvider {
    * separately via request.cleanupCheckpointsOnTerminal.
    */
   cleanup(requestId: string): Promise<void>;
+
+  /** Delete all checkpoints for a request (delegates to CheckpointStore.deleteForRequest). */
+  cleanupCheckpoints(requestId: string): Promise<void>;
+
+  /**
+   * Prune terminal suspensions resolved before cutoffMs, up to `limit`.
+   * Returns the count deleted (delegates to SuspensionStore.pruneTerminalBefore).
+   */
+  pruneSuspensions(cutoffMs: number, limit: number): Promise<number>;
 }
 
 export interface LeaseOptions {

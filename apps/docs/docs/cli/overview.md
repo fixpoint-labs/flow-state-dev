@@ -33,7 +33,9 @@ Session reuse: pass `--session <id>` to continue an existing session. State from
 
 ## Flow discovery
 
-The CLI auto-discovers flows from conventional directories: `src/flows/`, `flows/`. In monorepos, it also scans one level under `packages/`, `examples/`, and `apps/`. Override with `--flow-dir` (repeatable) to point at custom locations. When `--flow-dir` is used, default discovery is skipped and only the specified directories are searched.
+The CLI auto-discovers flows from conventional directories: `src/flows/`, `flows/`. In monorepos, it also scans one level under `packages/`, `examples/`, `apps/`, and `labs/`. Override with `--flow-dir` (repeatable) to point at custom locations. When `--flow-dir` is used, default discovery is skipped and only the specified directories are searched.
+
+When a discovered flow module fails to import, the CLI prints a warning to stderr and lists the failed module in the "not found" error, so a broken flow is distinguishable from a missing one.
 
 ## Model overrides
 

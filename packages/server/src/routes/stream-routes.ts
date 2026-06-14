@@ -11,6 +11,7 @@ import { canTranscribe, VoiceError } from "@flow-state-dev/core/types";
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
+import { resolveSessionStorageKey } from "../stores/scope-keys";
 import {
   createClientEventFilter,
   filterClientEvents
@@ -190,10 +191,14 @@ export async function handleRequestStream(
     });
   }
 
-  // Terminal request: completed-request flat-string replay.
+  // Terminal request: completed-request flat-string replay. The request record
+  // keeps a bare sessionId + tenantId (FIX-682); namespace the lookup from the
+  // record itself so no request header is needed on the attach path.
   const session =
     requestRecord.sessionId !== undefined
-      ? await ctx.stores.session.get(requestRecord.sessionId)
+      ? await ctx.stores.session.get(
+          resolveSessionStorageKey(requestRecord.sessionId, requestRecord.tenantId)
+        )
       : undefined;
 
   const cursor = resolveRequestReplayCursor({

@@ -337,6 +337,11 @@ function portfolioDecision(
       suggestedAccount: "",
       convictionBasis: "",
     },
+    mandateFit: {
+      rewardToRiskRead: "",
+      sizeStance: "",
+      mandateOverrideReason: "",
+    },
   };
 }
 

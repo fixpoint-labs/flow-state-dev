@@ -9,7 +9,6 @@
  */
 
 import { readFileSync } from "node:fs";
-import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
   CollectionHookContext,
@@ -30,10 +29,13 @@ import {
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type { ContentScopeType, ContentStore, ResourceStateStore } from "../stores/types";
 import { resourceStorageKeys } from "../resources/storage-keys";
+import { isAnchoredPath, resolveContentPath } from "../resources/content-paths";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import {
+  isResourceTemplate,
   parseResourceTemplate,
   renderResourceTemplate,
 } from "@flow-state-dev/core/resource-template";
@@ -63,6 +65,20 @@ function asJsonValue(value: unknown): JsonValue {
   }
 
   return out;
+}
+
+/**
+ * FIX-751: the state delta a mutation threads to `onResourceChanged` as its 4th
+ * arg, used by the reactive dispatcher to build the `ResourceChange` payload.
+ * `state` is the post-mutation state (omit for `deleted`); `prevState` the
+ * pre-mutation state (omit for `created`); `evicted` is `true` only for a
+ * capacity-driven removal. Declared once here and imported type-only by the
+ * dispatcher and the execution context so the shape can't drift.
+ */
+export interface ResourceChangeDelta {
+  state?: JsonObject;
+  prevState?: JsonObject;
+  evicted?: boolean;
 }
 
 function updateObjectState(
@@ -221,14 +237,17 @@ export function normalizeScopeResourceContent(
       continue;
     }
 
-    if (typeof config.contentFile === "string") {
+    const contentFile = config.contentFile;
+    if (typeof contentFile === "string" || isAnchoredPath(contentFile)) {
+      // Bare strings resolve from the working directory; anchored paths
+      // resolve relative to their declaring module first (see content-paths).
+      const filePath = resolveContentPath(contentFile, "contentFile", accessor);
       try {
-        // contentFile is resolved relative to process.cwd()
-        normalized[storageKey] = readFileSync(config.contentFile, "utf8");
+        normalized[storageKey] = readFileSync(filePath, "utf8");
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(
-          `Failed to load contentFile for resource "${accessor}" (path: ${config.contentFile}): ${message}`
+          `Failed to load contentFile for resource "${accessor}" (path: ${filePath}): ${message}`
         );
       }
     }
@@ -248,26 +267,26 @@ export function normalizeScopeResourceContent(
 }
 
 /**
- * Resolve string `contentTemplate` paths into parsed `ResourceTemplate`
- * objects in-place. Called once per execution context so downstream code
- * always sees a `ResourceTemplate`, never a raw path string.
+ * Resolve string and anchored-path `contentTemplate` values into parsed
+ * `ResourceTemplate` objects in-place. Called once per execution context so
+ * downstream code always sees a `ResourceTemplate`, never a raw path. Bare
+ * strings resolve from the working directory; `AnchoredPath` values resolve
+ * relative to their declaring module first (see `resolveContentPath`).
  */
 export function resolveStringContentTemplates(
   configs: Record<string, ResourceConfig | ResourceCollectionConfig>
 ): void {
-  const cwdUrl = pathToFileURL(path.resolve(process.cwd(), "_")).href;
   for (const [accessor, config] of Object.entries(configs)) {
-    if (typeof config.contentTemplate !== "string") continue;
-    const filePath = path.isAbsolute(config.contentTemplate)
-      ? config.contentTemplate
-      : path.resolve(process.cwd(), config.contentTemplate);
+    const contentTemplate = config.contentTemplate;
+    if (typeof contentTemplate !== "string" && !isAnchoredPath(contentTemplate)) continue;
+    const filePath = resolveContentPath(contentTemplate, "contentTemplate", accessor);
     try {
       (config as { contentTemplate: unknown }).contentTemplate =
-        loadResourceTemplate(filePath, cwdUrl);
+        loadResourceTemplate(filePath, pathToFileURL(filePath).href);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       throw new Error(
-        `Failed to load contentTemplate for resource "${accessor}" (path: ${config.contentTemplate}): ${message}`
+        `Failed to load contentTemplate for resource "${accessor}" (path: ${filePath}): ${message}`
       );
     }
   }
@@ -439,8 +458,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     onResourceChanged?: (
       resourcePath: string,
       changeType: "created" | "updated" | "deleted",
-      projection?: { delta: JsonValue }
-    ) => void;
+      projection?: { delta: JsonValue },
+      // FIX-751: state delta for the reactive dispatcher (see ResourceChangeDelta).
+      // Awaitable so reactive blocks run inline within the mutating turn.
+      change?: ResourceChangeDelta
+    ) => void | Promise<void>;
     /**
      * FIX-688: on-demand loaders for `prefetchMode: 'lazy'` collections. When
      * present, lazy collection accessors ensure the target instance/prefix is
@@ -547,7 +569,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       return parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
     };
 
-    return {
+    const ref: ResourceRef<JsonObject> = {
       path: storageKey,
       scope: options.scope,
       uri: `${options.scope}/${storageKey}`,
@@ -570,7 +592,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             nsHookCtx
           );
         }
-        options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()));
+        await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
       },
       async setState(nextState: JsonObject): Promise<void> {
         const prev = readState();
@@ -583,13 +605,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             nsHookCtx
           );
         }
-        options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()));
+        await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
       },
       async updateState(
         updater: (state: JsonObject) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
+        // Pass the updater a fresh clone so an in-place mutation can't alias
+        // `prev` — `prev` is the pre-mutation state for the hook and reactive payload.
         const prev = readState();
-        const next = await updater(prev);
+        const next = await updater(readState());
         await persistNamespaceInstanceState(storageKey, nsConfig, next);
         if (nsConfig.onInstanceUpdated && nsHookCtx) {
           await nsConfig.onInstanceUpdated(
@@ -599,10 +623,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             nsHookCtx
           );
         }
-        options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()));
+        await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
       },
       async readContentRaw(): Promise<string | null> {
-        if (nsConfig.contentTemplate !== undefined && typeof nsConfig.contentTemplate !== "string") {
+        if (isResourceTemplate(nsConfig.contentTemplate)) {
           return nsConfig.contentTemplate.source;
         }
         if (nsConfig.contentTemplateRef !== undefined) {
@@ -614,7 +638,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
-        if (nsConfig.contentTemplate !== undefined && typeof nsConfig.contentTemplate !== "string") {
+        if (isResourceTemplate(nsConfig.contentTemplate)) {
           return renderResourceTemplate(nsConfig.contentTemplate, readState());
         }
         if (nsConfig.contentTemplateRef !== undefined) {
@@ -634,9 +658,24 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async writeContent(content: string): Promise<void> {
         await options.persistResourceContentKey(storageKey, content);
-        options.onResourceChanged?.(storageKey, "updated");
+        // Content-only change carries no state delta. Fire the seam so the
+        // FIX-739 client projection refreshes, but pass no 4th arg: the reactive
+        // dispatcher skips content-only changes (reactive bindings react to state
+        // mutations, not content writes).
+        await options.onResourceChanged?.(storageKey, "updated");
       }
     };
+
+    // Attach the typed-edge API when the collection declared an `edges` slot,
+    // so each instance ref carries `.edges` backed by its own state.
+    if (nsConfig.edges) {
+      (ref as { edges?: unknown }).edges = createResourceEdgeApi(
+        ref as never,
+        nsConfig.edges === true ? {} : nsConfig.edges
+      );
+    }
+
+    return ref;
   }
 
   // Storage key for each accessor. Dual-registered aliases collapse to a
@@ -749,7 +788,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
                 );
               }
               // Evict one instance — persists the deletion
-              await evictInstance(nsConfig, resources, eviction, lruAccess, options.deleteResourceKey, hookCtx);
+              await evictInstance(nsConfig, resources, eviction, lruAccess, options.deleteResourceKey, hookCtx, options.onResourceChanged);
             }
           }
 
@@ -787,12 +826,12 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             if (nsConfig.onInstanceUpdated) {
               await nsConfig.onInstanceUpdated(storageKey, state, prevState ?? {}, hookCtx);
             }
-            options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, state));
+            await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, state), { state, prevState, evicted: false });
           } else {
             if (nsConfig.onInstanceCreated) {
               await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
             }
-            options.onResourceChanged?.(storageKey, "created", await liveProjection(nsConfig, state));
+            await options.onResourceChanged?.(storageKey, "created", await liveProjection(nsConfig, state), { state, prevState: undefined, evicted: false });
           }
 
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
@@ -862,7 +901,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             if (nsConfig.onInstanceUpdated) {
               await nsConfig.onInstanceUpdated(storageKey, postState, prev, hookCtx);
             }
-            options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, postState));
+            await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, postState), { state: postState, prevState: prev, evicted: false });
             return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
           }
 
@@ -900,6 +939,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             return;
           }
 
+          // Capture the about-to-be-deleted state before the per-key delete so
+          // the reactive `deleted` payload can carry it as `prevState`.
+          const deletedPrevState = cloneValue(resources[storageKey] as JsonObject) as JsonObject;
+
           await deleteNamespaceInstance(storageKey);
           lruAccess.delete(storageKey);
 
@@ -911,10 +954,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           // tombstones the item mid-stream without a refetch; the collection's
           // count / list membership reconcile on the next snapshot. Non-live
           // deletes carry no delta and fall through to the batched-refetch path.
-          options.onResourceChanged?.(
+          await options.onResourceChanged?.(
             storageKey,
             "deleted",
-            nsConfig.client?.live === true ? { delta: null } : undefined
+            nsConfig.client?.live === true ? { delta: null } : undefined,
+            { state: undefined, prevState: deletedPrevState, evicted: false }
           );
         },
 
@@ -1033,14 +1077,25 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     // Static single resources don't emit resource_change on state mutation by
     // default (only collections do). A `client.live: true` single resource opts
     // into emission so its projected delta merges into the client snapshot
-    // mid-stream (FIX-739); non-live singles stay silent, preserving prior
-    // behaviour.
-    const emitLiveSingle = async (): Promise<void> => {
-      if (config.client?.live !== true) return;
-      options.onResourceChanged?.(
+    // mid-stream (FIX-739); non-live singles stay silent on the streaming side.
+    //
+    // FIX-751: a single with `reactTo` also needs the seam to fire so its
+    // reactive block runs, even when it isn't live. So we fire whenever the
+    // resource is live OR declares `reactTo`. The live `projection` stays gated
+    // on `client.live` (only live resources compute a delta); the `change`
+    // delta carries `{ state, prevState }` so the dispatcher can build the
+    // payload. `prev` is the pre-mutation state, captured by the caller.
+    const notifySingleChange = async (prev: JsonObject): Promise<void> => {
+      if (config.client?.live !== true && config.reactTo === undefined) return;
+      const projection =
+        config.client?.live === true
+          ? await liveProjection(config, readState())
+          : undefined;
+      await options.onResourceChanged?.(
         storageKey,
         "updated",
-        await liveProjection(config, readState())
+        projection,
+        { state: readState(), prevState: prev, evicted: false }
       );
     };
 
@@ -1053,28 +1108,33 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return readState();
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
+        const prev = readState();
         await persistResourceState(
           storageKey,
           config,
-          updateObjectState(readState(), updates)
+          updateObjectState(prev, updates)
         );
-        await emitLiveSingle();
+        await notifySingleChange(prev);
       },
       async setState(nextState: JsonObject): Promise<void> {
+        const prev = readState();
         await persistResourceState(storageKey, config, nextState);
-        await emitLiveSingle();
+        await notifySingleChange(prev);
       },
       async updateState(
         updater: (
           state: JsonObject
         ) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
+        // Pass the updater a fresh clone so an in-place mutation can't alias
+        // `prev` — `prev` is the pre-mutation `prevState` for the reactive payload.
+        const prev = readState();
         const next = await updater(readState());
         await persistResourceState(storageKey, config, next);
-        await emitLiveSingle();
+        await notifySingleChange(prev);
       },
       async readContentRaw(): Promise<string | null> {
-        if (config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
+        if (isResourceTemplate(config.contentTemplate)) {
           return config.contentTemplate.source;
         }
         if (config.contentTemplateRef !== undefined) {
@@ -1086,7 +1146,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
-        if (config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
+        if (isResourceTemplate(config.contentTemplate)) {
           return renderResourceTemplate(config.contentTemplate, readState());
         }
         if (config.contentTemplateRef !== undefined) {
@@ -1118,8 +1178,24 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         }
 
         await options.persistResourceContentKey(storageKey, content);
+        // Content-only change carries no state delta. Fire the seam so the
+        // FIX-739 client projection refreshes, but pass no 4th arg: the reactive
+        // dispatcher skips content-only changes (reactive bindings react to state
+        // mutations, not content writes). Mirrors the collection-instance content
+        // path (FIX-756 parity).
+        await options.onResourceChanged?.(storageKey, "updated");
       }
     };
+
+    // Attach the typed-edge API when the resource declared an `edges` slot.
+    // It reads/writes through this ref's own state via `updateState`, so edge
+    // writes persist and emit `onResourceChanged` like any other state write.
+    if (config.edges) {
+      (handles[resourceName] as { edges?: unknown }).edges = createResourceEdgeApi(
+        handles[resourceName] as never,
+        config.edges === true ? {} : config.edges
+      );
+    }
   }
 
   return {
@@ -1155,7 +1231,16 @@ async function evictInstance(
   policy: "lru" | "oldest",
   lruAccess: Map<string, number>,
   deleteResourceKey: (key: string) => Promise<void>,
-  hookCtx: CollectionHookContext
+  hookCtx: CollectionHookContext,
+  // FIX-751: fired after the per-key delete with `evicted: true` so a reactive
+  // `deleted` binding can distinguish a capacity eviction from an explicit
+  // delete. Omitted by callers that don't wire the seam (mock registries).
+  onResourceChanged?: (
+    resourcePath: string,
+    changeType: "created" | "updated" | "deleted",
+    projection?: { delta: JsonValue },
+    change?: ResourceChangeDelta
+  ) => void | Promise<void>
 ): Promise<void> {
   const keys = Object.keys(resources).filter((k) =>
     matchesPattern(nsConfig.pattern, k)
@@ -1176,6 +1261,10 @@ async function evictInstance(
     evictKey = keys[0]!;
   }
 
+  // Capture the evicted state before the delete so the reactive `deleted`
+  // payload can carry it as `prevState`.
+  const evictedPrevState = cloneValue(resources[evictKey] as JsonObject) as JsonObject;
+
   // Per-key delete: removes evictKey from the durable store and the live cache
   // in place, leaving sibling instances untouched.
   await deleteResourceKey(evictKey);
@@ -1184,4 +1273,13 @@ async function evictInstance(
   if (nsConfig.onInstanceDeleted) {
     await nsConfig.onInstanceDeleted(evictKey, hookCtx);
   }
+
+  // A live collection streams evictions too (delta `null`) so the client
+  // tombstones the item mid-stream, matching the explicit `delete()` path.
+  await onResourceChanged?.(
+    evictKey,
+    "deleted",
+    nsConfig.client?.live === true ? { delta: null } : undefined,
+    { state: undefined, prevState: evictedPrevState, evicted: true }
+  );
 }

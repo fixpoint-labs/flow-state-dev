@@ -55,6 +55,13 @@ export type {
   ToolCacheStore,
 } from "./blocks/tool-cache";
 export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
+export { normalizeReactiveBinding, resourceChangeSchema } from "./types/resource-change";
+export type {
+  ReactiveBinding,
+  ReactiveBindings,
+  ResourceChange,
+  ResourceChangeKind,
+} from "./types/resource-change";
 export type {
   InitialSkill,
   MatchedSkill,
@@ -123,6 +130,10 @@ export {
   router,
   sequencer
 } from "./blocks";
+// Block-level rescue resolution (FIX-742). Exported so the server's top-level
+// `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow
+// children are rescued by the core `executeBlock` seam.
+export { runRescue } from "./blocks/sequencer";
 export { defineFlow } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath } from "./tools/resource-tools";

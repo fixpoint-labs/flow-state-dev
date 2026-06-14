@@ -1,9 +1,11 @@
 import type { ZodTypeAny } from "zod";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { ScopeType } from "./scope";
-import type { ResourceRef, CollectionClientConfig, StateOf } from "./resource";
+import type { AnchoredPath, ResourceRef, CollectionClientConfig, StateOf } from "./resource";
 import type { ResourceTemplate } from "../resource-template/resource-template";
+import type { EdgeSlotConfig } from "../graph";
 import type { ProjectedClient } from "../helpers/client-projection";
+import type { ReactiveBindings } from "./resource-change";
 
 // Re-export pattern utilities for consumers
 export {
@@ -69,13 +71,23 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    */
   prefetchMode?: "eager" | "lazy";
 
-  /** A role-tagged Markdown template applied to each instance. Accepts a parsed `ResourceTemplate` or a file path resolved at server startup. */
-  contentTemplate?: ResourceTemplate | string;
+  /** A role-tagged Markdown template applied to each instance. Accepts a parsed `ResourceTemplate` or a file path resolved at server startup — bare string from the working directory, `AnchoredPath` relative to the declaring module first. */
+  contentTemplate?: ResourceTemplate | string | AnchoredPath;
   /** Path of another resource whose raw content is a template for each instance. */
   contentTemplateRef?: string;
 
   /** Client visibility configuration. Omit to keep the collection invisible to clients. */
   client?: CollectionClientConfig<TState>;
+
+  /**
+   * Declare a typed-edge graph on each instance of this collection. `true` =
+   * defaults; object = curated vocabulary / size cap. Attaches an `.edges` API
+   * to each live instance ref backed by that instance's own state.
+   * `defineResourceCollection` injects an `edges` field into the instance
+   * `stateSchema` (the same way `defineResource` does for single resources), so
+   * callers do not declare it themselves.
+   */
+  edges?: boolean | EdgeSlotConfig;
 
   /**
    * Number of items to inline in the snapshot's `prefetched` window for this
@@ -98,6 +110,16 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   ) => void | Promise<void>;
   /** Fires when a specific instance is deleted (including eviction). */
   onInstanceDeleted?: (key: string, ctx: CollectionHookContext) => void | Promise<void>;
+
+  /**
+   * Bind blocks to this collection's instance mutations (FIX-751). Each present
+   * entry (`created` / `updated` / `deleted`) names a block — bare, or
+   * `{ block, when }` with an optional gate — that the server dispatcher runs
+   * with a `ResourceChange` payload when that mutation fires. Coexists with the
+   * `onInstance*` callbacks above and supersedes them for the block case: prefer
+   * `reactTo` when the reaction is itself a block to run, not just a side effect.
+   */
+  reactTo?: ReactiveBindings<TState>;
 };
 
 type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
@@ -210,8 +232,11 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
 // defineResourceCollection()
 // ---------------------------------------------------------------------------
 
+import { z } from "zod";
 import { validatePattern } from "./collection-patterns";
 import { validateClientProjection } from "../helpers/client-projection";
+import { validateReactTo } from "./resource-change";
+import { edgeListSchema } from "../graph";
 
 export function defineResourceCollection<
   const TStateSchema extends ZodTypeAny,
@@ -282,7 +307,29 @@ export function defineResourceCollection<
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
 
+  validateReactTo("defineResourceCollection()", config.reactTo);
+
+  // Edge slot injection (FIX-745): when a collection declares `edges`, extend
+  // each instance's state schema with an `edges: Edge[]` field — the same way
+  // `defineResource` does for single resources. Without this, Zod strips edge
+  // writes on persist (the field isn't in the schema), silently discarding
+  // them. Collections have no config-level `default`; the per-instance default
+  // comes from parsing the schema, so the `.default([])` on the injected field
+  // is enough to seed `edges: []` on every new instance.
+  let stateSchema = config.stateSchema as ZodTypeAny;
+  if (config.edges) {
+    if (!(stateSchema instanceof z.ZodObject)) {
+      throw new Error(
+        `defineResourceCollection() with edges requires an object stateSchema (got ${stateSchema.constructor.name})`
+      );
+    }
+    if (!("edges" in stateSchema.shape)) {
+      stateSchema = stateSchema.extend({ edges: edgeListSchema.default([]) });
+    }
+  }
+
   return Object.assign({}, config, {
+    stateSchema,
     __brand: "ResourceCollection" as const,
   }) as unknown as TConfig & DefinedResourceCollection<
     AsStateObject<TStateSchema["_output"]>,

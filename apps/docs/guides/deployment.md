@@ -114,6 +114,34 @@ Replace `REQUEST_ID` with the ID from step 2. You should see events streaming in
 
 ---
 
+## Multi-tenant isolation
+
+Serving several customers from one deployment? Route a tenant id into the `x-tenant-id` header (or set a custom name with `createFlowApiRouter({ tenantIdHeader })`), and session data isolates by tenant automatically. Two tenants using the same session id get separate sessions, state, and history.
+
+Set the header where you already enforce auth — a gateway, or your client's `fetch` wrapper. Common sources are a JWT claim, a subdomain, or an API-key-to-tenant mapping. A minimal example in front of the API:
+
+```ts
+// e.g. Next.js middleware — derive the tenant from the verified JWT
+const tenantId = getClaim(request, "tenant");
+request.headers.set("x-tenant-id", tenantId);
+```
+
+Send the same header on every call — actions, session reads, state, resources — so they all resolve the same tenant. Session and request data isolate by tenant; user and org scopes stay shared (org policy and user preferences are meant to span tenants).
+
+One constraint: tenant ids can't contain a colon (`:`) — the framework reserves it as the session-key separator, and a request with a colon in the tenant header is rejected with a 400. Use any other stable id (a uuid, an org slug, a subdomain). Session ids are unrestricted.
+
+Verify in staging that two tenants don't collide:
+
+```bash
+curl ... -H "x-tenant-id: acme"   -d '{"userId":"u","sessionId":"chat-1", ...}'
+curl ... -H "x-tenant-id: globex" -d '{"userId":"u","sessionId":"chat-1", ...}'
+# Each tenant's /state for chat-1 reflects only its own turns.
+```
+
+Single-tenant deployments do nothing here: when no header is sent, behavior and storage keys are unchanged, and there's no migration. See [State and scopes](/docs/fundamentals/state-and-scopes#multi-tenant-isolation) for what is and isn't isolated.
+
+---
+
 ## Platform guides
 
 - [Deploying to Vercel](/guides/deploying-to-vercel) — Next.js App Router on Vercel's serverless platform

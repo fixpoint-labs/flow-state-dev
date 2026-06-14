@@ -17,6 +17,9 @@ import {
   type TradingDeskView,
 } from "@/components/topbar";
 import { StatusBar } from "@/components/status-bar";
+import { BottomNav, type MobileTab } from "@/components/mobile/bottom-nav";
+import { MobileHeader } from "@/components/mobile/mobile-header";
+import { MobileStatusLine } from "@/components/mobile/mobile-status";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { NewAnalysisDialog } from "@/components/new-analysis-dialog";
 import { TranscriptPane } from "@/components/transcript/transcript-pane";
@@ -25,6 +28,7 @@ import { PastReportsPane } from "@/components/reports/past-reports-pane";
 import { PortfolioPane } from "@/components/portfolio/portfolio-pane";
 import { parseReportRow, reportRowTuple } from "@/src/flows/analysis/report-index";
 import { buildAnalyzeInput } from "@/src/flows/analysis/analyze-input";
+import type { RiskMandateId } from "@/src/flows/analysis/lib/risk-mandate";
 import type { MemoStatus } from "@/src/flows/analysis/resources";
 import {
   EMPTY_INSTRUCTIONS,
@@ -141,11 +145,20 @@ function TradingDeskApp(): ReactElement {
   // `view` enum reserves `"portfolio"` in the type (TradingDeskView) so the
   // Portfolio slice extends it without churn; only desk/reports render today.
   const [view, setView] = useState<TradingDeskView>("desk");
+  // Mobile-shell surface selection (FIX-757). Independent of the desktop
+  // `view`: both shells render (CSS-toggled at `lg`, the kitchen-sink
+  // precedent), so each keeps its own navigation state.
+  const [mobileTab, setMobileTab] = useState<MobileTab>("report");
   // Optional per-run user thesis. Frozen into session state at `seedSession`
   // (server-side); editing here after a run starts doesn't touch the running
   // session. A non-null thesis gates the Phase 6 audit.
   const [userThesis, setUserThesis] = useState("");
   const [userThesisRationale, setUserThesisRationale] = useState("");
+  // Optional per-run risk-appetite mandate override (FIX-752). `null` = house
+  // default (the seed falls back to the selected accounts' mandate). Like
+  // `selectedAccountIds`, this is a REFINEMENT, not part of the session keying
+  // tuple — re-running with a different mandate resolves the SAME report.
+  const [riskMandate, setRiskMandate] = useState<RiskMandateId | null>(null);
 
   // Pending dispatch: after `selectSession`/`createSession` updates
   // `activeSessionId`, the next render gives us a `useSession` bound to the
@@ -156,6 +169,7 @@ function TradingDeskApp(): ReactElement {
       tuple: AnalyzeTuple;
       userThesis: string | null;
       userThesisRationale: string | null;
+      riskMandate: RiskMandateId | null;
     } | null
   >(null);
 
@@ -265,12 +279,16 @@ function TradingDeskApp(): ReactElement {
       tuple,
       userThesis: frozen.userThesis,
       userThesisRationale: frozen.userThesisRationale,
+      // Freeze the mandate at click time too (the thesis-freeze precedent), so a
+      // later dropdown change doesn't reach this in-flight run.
+      riskMandate,
     });
   }, [
     tuple,
     matchedSessionId,
     userThesis,
     userThesisRationale,
+    riskMandate,
     flow,
     sessionClient,
   ]);
@@ -305,6 +323,17 @@ function TradingDeskApp(): ReactElement {
     [flow],
   );
 
+  // Mobile variant of the open-report path: same tuple-first handshake, then
+  // route the mobile shell to the Report surface (the desktop `view` write in
+  // `handleOpenReport` is harmless there).
+  const handleOpenReportMobile = useCallback(
+    (id: string) => {
+      handleOpenReport(id);
+      setMobileTab("report");
+    },
+    [handleOpenReport],
+  );
+
   // Fires once `useSession` is bound to the resolved session id. Without
   // this, calling `session.sendAction` synchronously after `selectSession`
   // would dispatch against the previously-active session because the hook's
@@ -312,7 +341,12 @@ function TradingDeskApp(): ReactElement {
   useEffect(() => {
     if (pendingDispatch === null) return;
     if (flow.activeSessionId !== pendingDispatch.sessionId) return;
-    const { tuple, userThesis: ut, userThesisRationale: utr } = pendingDispatch;
+    const {
+      tuple,
+      userThesis: ut,
+      userThesisRationale: utr,
+      riskMandate: rm,
+    } = pendingDispatch;
     setPendingDispatch(null);
     void session.sendAction("analyze", {
       ...tuple,
@@ -322,6 +356,9 @@ function TradingDeskApp(): ReactElement {
       // portfolio snapshot is now computed server-side at seed from the user-scoped
       // accounts + portfolioQuotes resources — no `portfolio` field is dispatched.
       selectedAccountIds: [],
+      // Per-run mandate override (FIX-752). Null falls back to the accounts'
+      // default at seed. Not a tuple field — it refines, never re-keys the run.
+      riskMandate: rm,
     });
   }, [pendingDispatch, flow.activeSessionId, session]);
 
@@ -335,54 +372,108 @@ function TradingDeskApp(): ReactElement {
           : "idle";
 
   return (
-    <div
-      className="grid h-screen w-screen overflow-hidden"
-      style={{ gridTemplateRows: "44px 1fr 28px" }}
-    >
-      <TopBar
-        onNewAnalysis={() => setNewAnalysisOpen(true)}
-        view={view}
-        onViewChange={setView}
-        theme={theme}
-        onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-      />
-      {view === "reports" ? (
-        <main className="flex flex-col overflow-hidden">
-          <PastReportsPane
-            sessions={flow.sessions}
-            onOpenReport={handleOpenReport}
-          />
+    <>
+      {/* Desktop shell (≥ lg) — the original fixed-viewport grid, unchanged
+          apart from the breakpoint gate. Both shells render; CSS picks one
+          (the kitchen-sink precedent — no media-query JS, no hydration risk). */}
+      <div
+        className="hidden h-screen w-screen overflow-hidden lg:grid"
+        style={{ gridTemplateRows: "44px 1fr 28px" }}
+      >
+        <TopBar
+          onNewAnalysis={() => setNewAnalysisOpen(true)}
+          view={view}
+          onViewChange={setView}
+          theme={theme}
+          onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        />
+        {view === "reports" ? (
+          <main className="flex flex-col overflow-hidden">
+            <PastReportsPane
+              sessions={flow.sessions}
+              onOpenReport={handleOpenReport}
+            />
+          </main>
+        ) : view === "portfolio" ? (
+          <main className="flex flex-col overflow-hidden">
+            {/* Portfolio actions (saveAccount, getQuotes, etc.) live on the
+                portfolio flow, so the Portfolio view gets its own
+                provider + session binding that dispatches to that flow. User-scoped
+                storage (accounts, portfolioQuotes) is shared at the storage layer —
+                no data bridge between providers is needed. */}
+            <FlowProvider flowKind="portfolio" userId={USER_ID} baseUrl="">
+              <PortfolioView />
+            </FlowProvider>
+          </main>
+        ) : (
+          <main
+            className="grid overflow-hidden"
+            style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}
+          >
+            <ThesesPane session={session} />
+            <TranscriptPane session={session} />
+          </main>
+        )}
+        <StatusBar
+          state={runState}
+          eventCount={session.items.length}
+          preset={liveCostPreset}
+          thesis={thesisBadge}
+          thesisWarning={liveUserThesisWarning ?? undefined}
+          activeInstructionCount={activeInstructionCount}
+          onOpenSettings={() => setInstructionsOpen(true)}
+          settingsDisabled={readSessionId === undefined}
+        />
+      </div>
+
+      {/* Mobile shell (< lg, FIX-757) — bottom-tab navigation over one
+          full-width surface at a time. `100svh` (not vh/dvh) keeps the chrome
+          inside the visible area when mobile browser toolbars expand. The
+          content pane content + data hooks are shared with the desktop shell;
+          only the shell and navigation differ. */}
+      <div className="flex h-svh flex-col overflow-hidden lg:hidden">
+        <MobileHeader
+          context={
+            flow.activeSessionId !== undefined ? `${ticker} · ${date}` : null
+          }
+          theme={theme}
+          onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          onOpenSettings={() => setInstructionsOpen(true)}
+          settingsDisabled={readSessionId === undefined}
+        />
+        {/* Single-cell grid so each pane stretches to fill both axes without
+            needing its own flex-1/w-full (the panes size off their container,
+            exactly as the desktop grid cells size them). */}
+        <main className="grid min-h-0 flex-1 overflow-hidden">
+          {mobileTab === "report" ? (
+            <ThesesPane session={session} />
+          ) : mobileTab === "transcript" ? (
+            <TranscriptPane session={session} />
+          ) : mobileTab === "portfolio" ? (
+            <FlowProvider flowKind="portfolio" userId={USER_ID} baseUrl="">
+              <PortfolioView />
+            </FlowProvider>
+          ) : (
+            <PastReportsPane
+              sessions={flow.sessions}
+              onOpenReport={handleOpenReportMobile}
+            />
+          )}
         </main>
-      ) : view === "portfolio" ? (
-        <main className="flex flex-col overflow-hidden">
-          {/* Portfolio actions (saveAccount, getQuotes, etc.) live on the
-              portfolio flow, so the Portfolio view gets its own
-              provider + session binding that dispatches to that flow. User-scoped
-              storage (accounts, portfolioQuotes) is shared at the storage layer —
-              no data bridge between providers is needed. */}
-          <FlowProvider flowKind="portfolio" userId={USER_ID} baseUrl="">
-            <PortfolioView />
-          </FlowProvider>
-        </main>
-      ) : (
-        <main
-          className="grid overflow-hidden"
-          style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}
-        >
-          <ThesesPane session={session} />
-          <TranscriptPane session={session} />
-        </main>
-      )}
-      <StatusBar
-        state={runState}
-        eventCount={session.items.length}
-        preset={liveCostPreset}
-        thesis={thesisBadge}
-        thesisWarning={liveUserThesisWarning ?? undefined}
-        activeInstructionCount={activeInstructionCount}
-        onOpenSettings={() => setInstructionsOpen(true)}
-        settingsDisabled={readSessionId === undefined}
-      />
+        <MobileStatusLine
+          state={runState}
+          eventCount={session.items.length}
+          preset={liveCostPreset}
+        />
+        <BottomNav
+          active={mobileTab}
+          onSelect={setMobileTab}
+          onNewAnalysis={() => setNewAnalysisOpen(true)}
+        />
+      </div>
+
+      {/* Dialogs — shared across both shells (rendered once; native <dialog>
+          presents as a centered modal on desktop and a bottom sheet below lg). */}
       {readSessionId !== undefined ? (
         <SettingsDialog
           open={instructionsOpen}
@@ -401,16 +492,24 @@ function TradingDeskApp(): ReactElement {
         onDateChange={setDate}
         onCostPresetChange={setCostPreset}
         onDataSourceChange={setDataSource}
+        riskMandate={riskMandate}
+        onRiskMandateChange={setRiskMandate}
         userThesis={userThesis}
         userThesisRationale={userThesisRationale}
         onUserThesisChange={setUserThesis}
         onUserThesisRationaleChange={setUserThesisRationale}
         onSubmit={() => {
           void handleRun();
+          // Land the mobile shell on the Report surface so the new run's
+          // stream is visible — submitting from Portfolio/History would
+          // otherwise start the run on a tab that doesn't show it. The
+          // desktop `view` is deliberately untouched (pre-existing behavior:
+          // desktop runs stream into whichever view is showing).
+          setMobileTab("report");
         }}
         isRunning={session.isStreaming}
         isExistingSession={isExistingSession}
       />
-    </div>
+    </>
   );
 }

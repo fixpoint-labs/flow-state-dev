@@ -18,6 +18,7 @@ import { analyze } from "./orchestration/analyze";
 import { setInstructions } from "./orchestration/guards";
 import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
 import { priceHistoryResource } from "./price-history-resource";
+import { rewardToRiskResource } from "./reward-to-risk-resource";
 import {
   accountsCollection,
   portfolioQuotesResource,
@@ -84,6 +85,11 @@ const analysisFlow = defineFlow({
     // Decision-of-record snapshot — written once at PM-commit; the durable
     // audit record Past Reports and outcome tracking read.
     decisionSnapshot: decisionSnapshotResource,
+    // Reward-to-risk figure (FIX-752) — derived from the scenario buckets after
+    // Phase 5a, read by the PM as `<rewardToRisk>` context and re-read by the PM
+    // commit to gate size against the active mandate. Nullable; null when the
+    // forecaster produced no usable buckets.
+    rewardToRisk: rewardToRiskResource,
     // Portfolio domain (Spine B), owned + written by the
     // `portfolio` flow. Declared here READ-ONLY: `seedSession`
     // reads the shared user-scoped `accounts` (flowIsolation: false → bare

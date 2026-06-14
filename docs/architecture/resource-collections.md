@@ -176,6 +176,16 @@ defineResourceCollection({
 
 Hook context (`CollectionHookContext`) provides `log(message)` and `scopeType`. Hooks are synchronous — they run inline during the operation and should not perform heavy I/O.
 
+### Reactive blocks (`reactTo`)
+
+The `onInstance*` hooks are plain callbacks with no handle to the mutating turn. When a mutation should run a *block* — emitting items, calling models, invoking sub-blocks, or reading and writing the originating session's resources — bind a block via `reactTo` instead. See the [Reactive blocks](/docs/resources/reactive-blocks) reference for the author-facing surface.
+
+Both the hooks and `reactTo` ride one internal post-mutation seam (`onResourceChanged`). It fires after a state mutation is persisted, is awaitable, and carries the change kind plus a `{ state, prevState, evicted }` delta. Two consumers sit on it: the client `resource_change` projection and the in-session reactive dispatcher. The contract:
+
+- The seam fires `deleted` for both an explicit `delete()` and a capacity eviction; the `evicted` flag distinguishes them. A `client.live` collection streams a `null` delta on either, so the client tombstones the instance mid-stream.
+- Single resources fire only `updated` (they have no create or delete lifecycle), and stream a client `resource_change` only when they declare `client.live`. A `reactTo`-only single runs its block without emitting a client item.
+- A content-only write (`writeContent`) is not a state change and does not run state reactions.
+
 ## Storage model
 
 Collection instances and single resources share one flat keyspace for state. A collection with pattern `files/**` stores instances under keys like `files/readme.md`, `files/src/utils.ts`. Resource state — single and collection-instance alike — is persisted per-resource in the keyed `ResourceStateStore`, separate from the scope record (see [State Storage](./resources-and-client-data.md#state-storage)). The in-execution view is still a flat map, so accessors are unchanged; the difference is that a write to one instance touches only that instance's key instead of rewriting the whole scope record.

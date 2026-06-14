@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   flow_kind   TEXT NOT NULL,
   user_id     TEXT NOT NULL,
   org_id  TEXT,
+  tenant_id   TEXT,
   version     INTEGER NOT NULL,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_flow_kind   ON sessions(flow_kind);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_flow_user   ON sessions(flow_kind, user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_tenant ON sessions(user_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at);
 `;
 
@@ -33,6 +35,7 @@ CREATE TABLE IF NOT EXISTS requests (
   user_id     TEXT NOT NULL,
   session_id  TEXT,
   org_id  TEXT,
+  tenant_id   TEXT,
   status      TEXT NOT NULL,
   version     INTEGER NOT NULL,
   created_at  INTEGER NOT NULL,
@@ -45,6 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_requests_user_id         ON requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_org_id      ON requests(org_id);
 CREATE INDEX IF NOT EXISTS idx_requests_status          ON requests(status);
 CREATE INDEX IF NOT EXISTS idx_requests_session_status  ON requests(session_id, status);
+CREATE INDEX IF NOT EXISTS idx_requests_session_tenant  ON requests(session_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_requests_flow_user       ON requests(flow_kind, user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at);
 `;
@@ -81,6 +85,7 @@ CREATE TABLE IF NOT EXISTS active_requests (
   session_id        TEXT,
   user_id           TEXT NOT NULL,
   org_id        TEXT,
+  tenant_id         TEXT,
   source            TEXT NOT NULL DEFAULT 'http',
   input             TEXT,
   metadata          TEXT,
@@ -110,6 +115,29 @@ function migrateAddActiveRequestsSource(db: Database.Database): void {
   const hasSource = cols.some((c) => c.name === "source");
   if (!hasSource) {
     db.exec("ALTER TABLE active_requests ADD COLUMN source TEXT NOT NULL DEFAULT 'http'");
+  }
+}
+
+/**
+ * Add the `tenant_id` column to pre-FIX-682 `sessions`, `requests`, and
+ * `active_requests` tables. SQLite has no `ADD COLUMN IF NOT EXISTS`, so we
+ * probe `pragma_table_info` first. The column is nullable with no default, so
+ * existing rows read back as no-tenant (single-tenant), which is the correct
+ * pre-isolation semantics. Idempotent on subsequent boots.
+ */
+function migrateAddTenantId(db: Database.Database): void {
+  for (const tableName of ["sessions", "requests", "active_requests"]) {
+    const tableExists = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get(tableName);
+    if (tableExists === undefined) continue;
+
+    const cols = db
+      .prepare("SELECT name FROM pragma_table_info(?)")
+      .all(tableName) as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "tenant_id")) {
+      db.exec(`ALTER TABLE ${tableName} ADD COLUMN tenant_id TEXT`);
+    }
   }
 }
 
@@ -254,19 +282,26 @@ CREATE TABLE IF NOT EXISTS schedule_index (
 CREATE INDEX IF NOT EXISTS idx_schedule_index_next_fire_at ON schedule_index (next_fire_at);
 `;
 
-// FIX-140: suspension records for durable execution. Identity is
+// FIX-140 / FIX-141: suspension records for durable execution. Identity is
 // (request_id, suspension_id); the `data` column stores the full
-// SuspensionRecord as JSON. Scalar columns enable indexed queries.
+// SuspensionRecord as JSON. Scalar columns enable indexed queries. `status`
+// and `resolved_at` (FIX-141) are denormalized from the blob so the retention
+// sweeper's `pruneTerminalBefore` can bound an indexed DELETE by
+// (status, resolved_at) instead of scanning every row.
 const SUSPENSION_RECORDS_TABLE = `
 CREATE TABLE IF NOT EXISTS suspension_records (
   request_id    TEXT NOT NULL,
   suspension_id TEXT NOT NULL,
   data          TEXT NOT NULL,
   created_at    INTEGER NOT NULL,
+  status        TEXT,
+  resolved_at   INTEGER,
   PRIMARY KEY (request_id, suspension_id)
 );
 CREATE INDEX IF NOT EXISTS idx_suspension_records_request_id ON suspension_records(request_id);
 CREATE INDEX IF NOT EXISTS idx_suspension_records_created_at ON suspension_records(created_at);
+CREATE INDEX IF NOT EXISTS idx_suspension_records_status_resolved
+  ON suspension_records(status, resolved_at);
 `;
 
 // FIX-140: lease records for preventing concurrent resume. One active
@@ -330,6 +365,42 @@ function migrateProjectToOrg(db: Database.Database): void {
 }
 
 /**
+ * FIX-141: add the denormalized `status` / `resolved_at` columns to a
+ * pre-FIX-141 `suspension_records` table so `pruneTerminalBefore` has an
+ * indexed access path. SQLite has no `ADD COLUMN IF NOT EXISTS`, so we probe
+ * `pragma_table_info` first. After adding the columns we backfill them from the
+ * JSON `data` blob: terminal records resolved before the upgrade are never
+ * re-`set()`, so without the backfill their scalar columns would stay NULL and
+ * `pruneTerminalBefore` (which requires a non-null terminal status) would never
+ * reap them — the retention window would silently not apply. The backfill is
+ * guarded by `status IS NULL`, so it touches only un-backfilled rows and is
+ * safe to re-run.
+ */
+function migrateAddSuspensionStatusColumns(db: Database.Database): void {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'suspension_records'")
+    .get();
+  if (tableExists === undefined) return;
+
+  const cols = db
+    .prepare("SELECT name FROM pragma_table_info('suspension_records')")
+    .all() as Array<{ name: string }>;
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has("status")) {
+    db.exec("ALTER TABLE suspension_records ADD COLUMN status TEXT");
+  }
+  if (!names.has("resolved_at")) {
+    db.exec("ALTER TABLE suspension_records ADD COLUMN resolved_at INTEGER");
+  }
+  db.exec(
+    `UPDATE suspension_records
+       SET status = json_extract(data, '$.status'),
+           resolved_at = json_extract(data, '$.resolvedAt')
+     WHERE status IS NULL`
+  );
+}
+
+/**
  * Apply per-connection PRAGMAs (busy_timeout, synchronous, cache_size,
  * temp_store, foreign_keys) plus journal_mode (persisted on the database
  * file but cheap to re-issue). Every new better-sqlite3 connection starts
@@ -358,6 +429,8 @@ export function initializeSchemaDDL(db: Database.Database): void {
   // its target columns.
   migrateProjectToOrg(db);
   migrateAddActiveRequestsSource(db);
+  migrateAddTenantId(db);
+  migrateAddSuspensionStatusColumns(db);
 
   // Create tables and indexes
   db.exec(SESSIONS_TABLE);

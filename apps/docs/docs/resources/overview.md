@@ -34,7 +34,7 @@ Config options:
 
 - **stateSchema** — Zod schema for structured metadata
 - **content** — initial content body (a string: markdown, code, prose, anything)
-- **contentFile** — load initial content from a file path (mutually exclusive with `content`)
+- **contentFile** — load initial content from a file path (mutually exclusive with `content`). A bare string resolves from the working directory; pass `{ path, importerUrl: import.meta.url }` to resolve relative to the declaring module instead
 - **render** — template renderer: `(content, state) => string` for interpolating state into content
 - **writable** — whether blocks can modify the resource
 - **llmReadable**, **llmWritable** — control whether generators can read/write the content
@@ -137,6 +137,8 @@ const filesCollection = defineResourceCollection({
 
 See [Resource Collections](/docs/resources/collections) for the full reference: patterns, runtime API, eviction, lifecycle hooks, and storage model. For a freshness-bounded cache built on top of a collection — fetch once, reference by key, treat as fresh for a window — see the [Cached Fetch](/docs/patterns/cached-fetch) pattern.
 
+To run a block when a resource or collection changes (emitting items, calling models, visible in traces), bind it with `reactTo`. See [Reactive blocks](/docs/resources/reactive-blocks).
+
 ## Block-level resource declarations
 
 Blocks declare resource dependencies with `sessionResources`, `userResources`, and `orgResources`:
@@ -214,5 +216,6 @@ See [Resource Collections](/docs/resources/collections) for how parameterized pa
 
 - **[State vs Resources](/docs/resources/storage)** — When to use resources vs scope state, scoping decisions, shared vs block-private
 - **[Resource Collections](/docs/resources/collections)** — Dynamic collections with patterns, eviction, and lifecycle hooks
+- **[Reactive blocks](/docs/resources/reactive-blocks)** — Run a block automatically when a resource changes, inside the originating turn
 - **[Client Access](/docs/resources/client-access)** — Exposing resources to the frontend: visibility config, React hooks, content endpoints
 - **[State & Scopes](/docs/fundamentals/state-and-scopes)** — Broader state model, clientData, targets

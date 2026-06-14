@@ -18,6 +18,7 @@ import {
 } from "./parseFlowRoute";
 import {
   errorStatus,
+  extractTenantId,
   jsonResponse
 } from "./route-utils";
 import { handleAbortRequest } from "./abort-routes";
@@ -51,6 +52,7 @@ import {
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
 import {
   handleDebugListResources,
+  handleDebugListSuspensions,
   handleDebugListCollectionItems,
   handleDebugGetResourceContent,
   handleDebugGetCollectionItemContent,
@@ -60,6 +62,7 @@ import {
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
+import type { FlowDispatcher } from "../transports/dispatcher";
 
 export type RequestContext = {
   method: string;
@@ -161,6 +164,8 @@ export type CreateFlowRouteHandlersOptions = {
   debugAllowedOrigins?: string[];
   debugAllowAnonymousLocal?: boolean;
   debugCountLimit?: number;
+  /** Pluggable flow dispatcher. Default: in-process via runAction. */
+  dispatcher?: FlowDispatcher;
 };
 
 const DEFAULT_SSE_HEARTBEAT_MS = 15_000;
@@ -232,7 +237,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     registry: options.registry,
     stores,
     resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
-    runtimeConfig
+    runtimeConfig,
+    dispatcher: options.dispatcher
   });
 
   // Detect interrupted requests from previous runs on startup
@@ -270,6 +276,12 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     const bootstrapPath = `/api/flows/${path.join("/")}`;
 
     try {
+      // Tenant id for every session-touching route (FIX-682). Extracted once
+      // here so session/state/resource reads namespace the session storage key
+      // the same way action dispatch does. Undefined for single-tenant
+      // requests; rejected (400) inside the try if it contains ":".
+      const tenantId = extractTenantId(request, options.tenantIdHeader);
+
       if (route.kind === "not_found") {
         return jsonResponse(404, { error: "Route not found" });
       }
@@ -320,49 +332,56 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       if (route.kind === "list_sessions") {
         return await handleListSessions(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "get_session") {
         return await handleGetSession(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "list_session_requests") {
         return await handleListSessionRequests(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "get_session_state") {
         return await handleGetSessionState(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "create_session") {
         return await handleCreateSession(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "delete_session") {
         return await handleDeleteSession(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "patch_session_metadata") {
         return await handlePatchSessionMetadata(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
@@ -430,61 +449,78 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       if (route.kind === "get_resource_content") {
         return await handleGetResourceContent(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "get_collection_item_content") {
         return await handleGetCollectionItemContent(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "create_collection_item") {
         return await handleCreateCollectionItem(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "update_resource_content") {
         return await handleUpdateResourceContent(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "delete_collection_item") {
         return await handleDeleteCollectionItem(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "list_collection_state") {
         return await handleListCollectionState(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "get_collection_item_state") {
         return await handleGetCollectionItemState(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "get_resource_manifest") {
         return await handleGetResourceManifest(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId
         });
       }
 
       if (route.kind === "debug_list_resources") {
         return await handleDebugListResources(request, route, {
+          registry: options.registry,
+          stores,
+          debug: debugConfig,
+          tenantId
+        });
+      }
+
+      if (route.kind === "debug_list_suspensions") {
+        return await handleDebugListSuspensions(request, route, {
           registry: options.registry,
           stores,
           debug: debugConfig
@@ -495,7 +531,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleDebugListCollectionItems(request, route, {
           registry: options.registry,
           stores,
-          debug: debugConfig
+          debug: debugConfig,
+          tenantId
         });
       }
 
@@ -503,7 +540,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleDebugGetResourceContent(request, route, {
           registry: options.registry,
           stores,
-          debug: debugConfig
+          debug: debugConfig,
+          tenantId
         });
       }
 
@@ -511,7 +549,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleDebugGetCollectionItemContent(request, route, {
           registry: options.registry,
           stores,
-          debug: debugConfig
+          debug: debugConfig,
+          tenantId
         });
       }
 

@@ -222,6 +222,7 @@ export type {
   WorkingMemorySystemConfig,
   EpisodicMemoryConfig,
   SemanticMemoryConfig,
+  RelationsConfig,
   DigestSystemConfig,
   MemoryCapabilityPreset,
 } from './memory-system'
@@ -243,6 +244,14 @@ export type {
 
 export {
   createRecallTool,
+  createConnectTool,
+  connectToolInputSchema,
+  connectToolDescription,
+  CONNECT_STRATEGY,
+  DEFAULT_CONNECT_DEPTH,
+  edgeToMemoryItem,
+  graphExpandCandidates,
+  GRAPH_EXPAND_CAP,
   recallToolDescription,
   recallToolInputSchema,
   capContent,
@@ -267,6 +276,9 @@ export {
 } from './tools/index'
 export type {
   CreateRecallToolOptions,
+  ConnectToolInput,
+  CreateConnectToolOptions,
+  GraphExpandOptions,
   MemoryItem,
   MemoryItemSource,
   PrepareEnvelope,

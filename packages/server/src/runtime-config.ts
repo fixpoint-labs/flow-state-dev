@@ -23,6 +23,7 @@ import type {
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "./execution/logging";
 import type { DurabilityProvider } from "./durability/types";
+import type { DurabilityRetentionConfig } from "./durability/durability-sweeper";
 import type { ErrorCaptureHandler } from "./errors/error-capture";
 
 export interface RuntimeConfig {
@@ -51,6 +52,13 @@ export interface RuntimeConfig {
   /** Durable execution provider for checkpoint-based resume and HITL suspend. */
   durabilityProvider?: DurabilityProvider;
   /**
+   * Retention policy for the durability sweeper (FIX-141). When set alongside
+   * `durabilityProvider`, the router constructs a periodic sweeper that
+   * enforces suspension expiry and prunes aged-out suspensions, leases, and
+   * orphaned checkpoints. Absent → no sweeper.
+   */
+  durabilityRetention?: DurabilityRetentionConfig;
+  /**
    * Opt-in error-capture sink (FIX-724). Routes runtime block failures to an
    * external observability service (Sentry, Datadog, ...). Forwarded to
    * `createExecutionContext`; absent → no capture.
@@ -76,6 +84,7 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     defaultSseHeartbeatMs: options.defaultSseHeartbeatMs,
     onBackgroundWork: options.onBackgroundWork,
     durabilityProvider: options.durabilityProvider,
+    durabilityRetention: options.durabilityRetention,
     errorCapture: options.errorCapture
   };
 }

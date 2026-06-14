@@ -53,6 +53,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
     "better-sqlite3": "^11.0.0"
   },

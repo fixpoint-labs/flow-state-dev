@@ -1,10 +1,21 @@
 /**
  * Fair-value computation via justified P/E multiple (Gordon growth model).
  *
- * justified_PE = payout × (1 + g) / (r − g), where r = expected return
- * and g = sustainable growth. fair_value = justified_PE × EPS. Margin of
- * safety = 1 − price / fair_value. Null when r ≤ g (Gordon undefined),
- * earnings are non-positive, or inputs are insufficient.
+ * justified_PE = payout × (1 + g) / (r − g), where r = the REQUIRED return
+ * (the desk hurdle — never the expected return, which is the IRR implied by
+ * the current price and would make fair value circular) and g = sustainable
+ * growth. Payout is the SUSTAINABLE payout implied by the stable-growth
+ * identity g = retention × ROE, i.e. payout = 1 − g/ROE — not the actual
+ * dividend payout, which collapses the multiple for low-payout compounders
+ * (FIX-778). fair_value = justified_PE × trailing earnings, a company-level
+ * figure in marketCap units ($B) — NOT a per-share price. Margin of safety
+ * = 1 − marketCap / fair_value.
+ *
+ * Nullable honesty: the method reports n/a (all nulls, available: false)
+ * whenever its assumptions don't hold — r − g spread under 200bps (Gordon
+ * blows up near r = g; high-growth names are outside the single-stage
+ * domain), ROE ≤ g (growth not fundable from retention), or non-positive
+ * earnings — rather than emitting an absurd figure.
  *
  * Financials (banks, insurance) switch to equity-multiples only — EV-based
  * metrics are meaningless for balance-sheet-intensive businesses.
@@ -21,6 +32,12 @@ type IncomeStatement = z.infer<typeof incomeStatementSchema>;
 
 export type ValuationMethod = "justified-pe" | "equity-multiples" | "none";
 
+// Minimum r − g spread (200bps): below this the Gordon denominator makes the
+// multiple hypersensitive to inputs, and at/below zero it is undefined. With
+// the 9% hurdle this also scopes the method to names growing ≤ ~7% — the
+// single-stage model's textbook domain — and bounds justified PE at ~53×.
+const MIN_GORDON_SPREAD = 0.02;
+
 const FINANCIAL_SECTORS = new Set([
   "financial services",
   "financials",
@@ -31,6 +48,7 @@ const FINANCIAL_SECTORS = new Set([
 
 export interface FairValue {
   justifiedPE: number | null;
+  /** Fair MARKET CAP in $B (marketCap units) — never a per-share price. */
   fairValue: number | null;
   marginOfSafety: number | null;
   method: ValuationMethod;
@@ -60,11 +78,14 @@ export function computeFairValue(args: {
     return { justifiedPE: null, fairValue: null, marginOfSafety: null, method, available: false };
   }
 
-  const r = er.expectedReturn!;
+  // Discount at the required return. Using er.expectedReturn here would be
+  // circular: it is the return implied by the current price.
+  const r = er.hurdle;
   const g = er.sustainableGrowth!;
 
-  // Gordon undefined when r ≤ g
-  if (r <= g) {
+  // Gordon needs r meaningfully above g; high-growth names are outside the
+  // single-stage domain and get an honest n/a instead of a collapsed figure.
+  if (r - g < MIN_GORDON_SPREAD) {
     return { justifiedPE: null, fairValue: null, marginOfSafety: null, method: "none", available: false };
   }
 
@@ -73,29 +94,32 @@ export function computeFairValue(args: {
     return { justifiedPE: null, fairValue: null, marginOfSafety: null, method, available: false };
   }
 
-  const divYield = f.dividendYield ?? 0;
-  const payout = divYield > 0 && f.marketCap > 0
-    ? Math.min(divYield * f.marketCap / netIncome, 1)
-    : 0.3; // default payout assumption when no dividend data
+  // Sustainable payout from the stable-growth identity g = retention × ROE.
+  // ROE ≤ g means retention alone cannot fund the assumed growth — the model
+  // is internally inconsistent for this name.
+  const roe = f.returnOnEquity;
+  if (roe <= 0 || roe <= g) {
+    return { justifiedPE: null, fairValue: null, marginOfSafety: null, method: "none", available: false };
+  }
+  const sustainablePayout = 1 - g / roe;
 
-  const justifiedPE = payout * (1 + g) / (r - g);
+  const justifiedPE = sustainablePayout * (1 + g) / (r - g);
 
-  // EPS approximation: netIncome / (marketCap / price). Since we don't have
-  // shares outstanding directly, use trailingPE to back out EPS if available.
-  let eps: number | null = null;
+  // Company-level trailing earnings in $B: marketCap / trailingPE keeps the
+  // earnings basis consistent with the quoted multiple; netIncome is the
+  // fallback. Either way the product below is a fair market cap, not a price.
+  let trailingEarnings: number | null = null;
   if (f.trailingPE != null && f.trailingPE > 0) {
-    // price / trailingPE = EPS (approx, in $B units matching marketCap)
-    // Actually: trailingPE = price/EPS, so EPS = marketCap/trailingPE (in $B)
-    eps = f.marketCap / f.trailingPE;
+    trailingEarnings = f.marketCap / f.trailingPE;
   } else if (netIncome > 0) {
-    eps = netIncome; // use total net income; fair value will be in $B units
+    trailingEarnings = netIncome;
   }
 
-  if (eps == null || eps <= 0) {
+  if (trailingEarnings == null || trailingEarnings <= 0) {
     return { justifiedPE, fairValue: null, marginOfSafety: null, method, available: false };
   }
 
-  const fairValue = justifiedPE * eps;
+  const fairValue = justifiedPE * trailingEarnings;
   const marginOfSafety = 1 - f.marketCap / fairValue;
 
   return {

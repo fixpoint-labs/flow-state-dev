@@ -15,6 +15,7 @@ import {
   type AgentName,
 } from "@/src/flows/analysis/registry";
 import { ThesisBody } from "./thesis-body";
+import { MandatePanel } from "./mandate-panel";
 import type {
   MemoState,
   ThesisSection,
@@ -36,10 +37,11 @@ type AcceptedAdjustment = NonNullable<
   MemoState["acceptedAdjustments"]
 >["sizing"];
 
-// Portfolio-fit + lens-convergence shapes derived from the canonical
+// Portfolio-fit + lens-convergence + mandate shapes derived from the canonical
 // `memoStateSchema` so the renderer can't drift from the resource contract.
 type PortfolioFit = NonNullable<MemoState["portfolioFit"]>;
 type LensConvergence = NonNullable<MemoState["lensConvergence"]>;
+type MandateDecision = NonNullable<MemoState["mandateDecision"]>;
 
 type ScenarioSummary = {
   name: string;
@@ -84,6 +86,9 @@ export type PmHeroProps = {
   lensConvergence: LensConvergence | null;
   // The portfolio snapshot's as-of (RISK-P3 staleness label), null when none.
   snapshotAsOf: string | null;
+  // FIX-752 — risk-appetite mandate verdict. Null on a mandate-blind run (the
+  // panel is omitted entirely, like portfolioFit / lensConvergence above).
+  mandateDecision: MandateDecision | null;
 };
 
 const METRIC_ORDER = ["rating", "ticker", "window", "size", "stop", "target"] as const;
@@ -106,6 +111,7 @@ export function PmHero({
   portfolioFit,
   lensConvergence,
   snapshotAsOf,
+  mandateDecision,
 }: PmHeroProps): ReactElement {
   const meta = AGENTS[agent];
   const idx = tierIndex(finalRating);
@@ -239,6 +245,10 @@ export function PmHero({
 
       {lensConvergence !== null ? (
         <LensConvergenceStrip convergence={lensConvergence} />
+      ) : null}
+
+      {mandateDecision !== null ? (
+        <MandatePanel decision={mandateDecision} />
       ) : null}
 
       {decisionConfidence !== null || agreesWithTrader !== null ? (
@@ -527,3 +537,4 @@ function LensConvergenceStrip({
     </section>
   );
 }
+

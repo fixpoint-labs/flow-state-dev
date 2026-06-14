@@ -35,6 +35,7 @@ import {
   useState,
   type ReactElement,
 } from "react";
+import { PanelLeft } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
 import {
   useClientData,
@@ -106,6 +107,33 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
   const userSelectedRef = useRef(false);
   const [tab, setTab] = useState<"theses" | "summary">("theses");
   const userPickedTabRef = useRef(false);
+  // Below `lg` the memo navigator opens as a slide-in drawer (FIX-757); the
+  // inline 200px sidebar would eat half a phone's width.
+  const [navOpen, setNavOpen] = useState(false);
+  const navDialogRef = useRef<HTMLDialogElement>(null);
+
+  // Drive the drawer's native <dialog> imperatively from `navOpen` — the same
+  // idiom as SettingsDialog, so ESC/focus-trap/backdrop come from the browser.
+  useEffect(() => {
+    const dialog = navDialogRef.current;
+    if (!dialog) return;
+    if (navOpen && !dialog.open) dialog.showModal();
+    if (!navOpen && dialog.open) dialog.close();
+  }, [navOpen]);
+
+  // Close the drawer if the viewport crosses up past `lg` while it is open.
+  // A modal dialog keeps the rest of the document inert from the top layer
+  // even when `lg:hidden` visually hides it, which would leave the desktop
+  // shell unreachable after a resize. Effect, not derived state: it syncs
+  // with an external system (the viewport media query).
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 64rem)");
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setNavOpen(false);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
 
   // Authoritative completion flag, read from the exposed session state. Stable
   // across a transient stream re-attach (opening a stored report can briefly
@@ -196,12 +224,56 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
       aria-label="Theses"
     >
       <MemoSidebar
+        className="hidden lg:block"
         memoStatus={memoStatus}
         selectedAgent={selectedAgent}
         onSelectAgent={handleSelectAgent}
       />
-      <div className="flex flex-1 flex-col overflow-y-auto p-6">
-        <TabSwitch tab={tab} onPick={handlePickTab} />
+      {/* Below lg the navigator opens as a native <dialog> drawer — the same
+          imperative open/close idiom as the app's other dialogs, so the focus
+          trap, ESC-to-close, and the backdrop come from the browser (a bare
+          role="dialog" div provides none of those for keyboard users). A
+          backdrop click lands on the dialog element itself (the sidebar fills
+          it), which is the standard dismiss test. */}
+      <dialog
+        ref={navDialogRef}
+        onClose={() => setNavOpen(false)}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) e.currentTarget.close();
+        }}
+        aria-label="Theses navigator"
+        className={cn(
+          "td-drawer m-0 h-full max-h-none w-[260px] max-w-[85vw] border-0 p-0",
+          "bg-transparent shadow-2xl backdrop:bg-black/40 lg:hidden",
+        )}
+      >
+        <MemoSidebar
+          className="h-full w-full"
+          memoStatus={memoStatus}
+          selectedAgent={selectedAgent}
+          onSelectAgent={(agent) => {
+            setNavOpen(false);
+            handleSelectAgent(agent);
+          }}
+        />
+      </dialog>
+      <div className="flex flex-1 flex-col overflow-y-auto p-6 max-lg:p-4">
+        <div className="mb-4 flex items-center gap-2">
+          <button
+            type="button"
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen(true)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md border px-2 py-1 lg:hidden",
+              "border-[color:var(--c-border)] text-[color:var(--c-fg-muted)]",
+              "font-mono text-[10.5px] uppercase tracking-wider",
+            )}
+          >
+            <PanelLeft className="h-3.5 w-3.5" aria-hidden />
+            Phases
+          </button>
+          <TabSwitch tab={tab} onPick={handlePickTab} />
+        </div>
         {tab === "summary" ? (
           <ReportSummary session={session} />
         ) : selectedAgent === null ? (
@@ -226,11 +298,7 @@ function TabSwitch({
   onPick: (next: "theses" | "summary") => void;
 }): ReactElement {
   return (
-    <div
-      className="mb-4 flex gap-1"
-      role="tablist"
-      aria-label="Report view"
-    >
+    <div className="flex gap-1" role="tablist" aria-label="Report view">
       {(["theses", "summary"] as const).map((value) => (
         <button
           key={value}
@@ -424,6 +492,7 @@ function PmHeroWithScenarios({
       portfolioFit={data?.portfolioFit ?? null}
       lensConvergence={data?.lensConvergence ?? null}
       snapshotAsOf={data?.portfolioFit?.snapshotAsOf ?? null}
+      mandateDecision={data?.mandateDecision ?? null}
     />
   );
 }

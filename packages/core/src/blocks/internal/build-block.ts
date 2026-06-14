@@ -7,7 +7,8 @@ import type {
   BlockKind,
   BlockRuntime,
   ConnectorFn,
-  DeclaredResources
+  DeclaredResources,
+  RescueHandlerSpec
 } from "../../types/block";
 import type { GeneratorCompletedMeta } from "../generator";
 import { asRuntime } from "../../types/block";
@@ -16,8 +17,9 @@ import type { DefinedResourceCollection } from "../../types/resource-collection"
 import type { JsonObject } from "../../schema/common";
 import type { CapabilityRef } from "../../capability/types";
 import { getBaseCapability } from "../../capability/merge";
-import { toError } from "./utils";
+import { matchesRescueHandler, toError } from "./utils";
 import { emitToolOutputAround } from "./emit-tool-output";
+import { SuspensionError } from "../../errors/suspension-error";
 
 /**
  * Extract resource declarations from a block config into a `DeclaredResources`
@@ -290,6 +292,30 @@ export function buildBlock<
           }
         }
 
+        // FIX-742: block-level rescue for the scope-less path — a block run
+        // directly via `asRuntime(block).run(...)` (e.g. a unit harness). When a
+        // server execution scope IS present, the throw propagates to core's
+        // `executeBlock`, which runs the handler with a full child scope and
+        // trace instead, so this branch deliberately defers to it. `SuspensionError`
+        // is control flow and is never rescued; sequencers handle their own
+        // chain-level rescue in the operation loop.
+        if (
+          ctx._withExecutionScope === undefined &&
+          kind !== "sequencer" &&
+          !(normalizedError instanceof SuspensionError) &&
+          runtimeConfig.rescue !== undefined &&
+          runtimeConfig.rescue.length > 0
+        ) {
+          for (const handler of runtimeConfig.rescue) {
+            if (!matchesRescueHandler(normalizedError, handler)) {
+              continue;
+            }
+            const recovered = (await asRuntime(handler.block).run(normalizedError, ctx)) as TOutput;
+            (ctx as { _didRescue?: boolean })._didRescue = true;
+            return recovered;
+          }
+        }
+
         throw normalizedError;
       }
     },
@@ -325,6 +351,29 @@ export function buildBlock<
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
         modelOutputMapper: mapper,
+      });
+    },
+    rescue(handlers: RescueHandlerSpec[]): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+      // Fold each rescue handler block's declared resources / `requiresOrg`
+      // into this block's accumulators so a handler's resources resolve at run
+      // time, mirroring the sequencer's chain-level `.rescue()`.
+      let mergedResources = options.declaredResources;
+      let mergedRequiresOrg = requiresOrg;
+      for (const handler of handlers) {
+        mergedResources = mergeDeclaredResources(mergedResources, handler.block.declaredResources);
+        if (handler.block.requiresOrg === true) {
+          mergedRequiresOrg = true;
+        }
+      }
+      return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
+        kind,
+        config: { ...runtimeConfig, rescue: handlers },
+        execute: internalExecute,
+        declaredResources: mergedResources,
+        ownDeclaredResources: options.ownDeclaredResources,
+        resolvedCapabilities: options.resolvedCapabilities,
+        requiresOrg: mergedRequiresOrg,
+        modelOutputMapper: options.modelOutputMapper,
       });
     },
     asTool(opts: AsToolOpts = {}): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {

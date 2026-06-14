@@ -127,6 +127,7 @@ export type {
 } from "./model";
 
 export type {
+  AnchoredPath,
   CollectionClientConfig,
   CollectionClientContentConfig,
   CollectionStateClientConfig,
@@ -196,6 +197,11 @@ export type {
   SuspensionReason,
   SuspensionRecord,
   SuspensionStatus
+} from "./suspension";
+export {
+  TERMINAL_SUSPENSION_STATUSES,
+  isTerminalSuspensionStatus,
+  matchesSuspensionFilter
 } from "./suspension";
 
 export type { SequencerCheckpoint } from "./checkpoints";

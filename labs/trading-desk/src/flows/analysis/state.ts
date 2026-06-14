@@ -27,6 +27,7 @@
 import { z } from "zod";
 import { citationIntegritySchema } from "./resources";
 import { portfolioContextInput } from "./flow-schema";
+import { riskMandateSchema } from "./lib/risk-mandate";
 
 export const sessionStateSchema = z.object({
   ticker: z.string().default("NVDA"),
@@ -70,6 +71,13 @@ export const sessionStateSchema = z.object({
   // Which account(s) the user is considering this position for; subset of
   // `portfolio.accounts[].id`. Empty → let the PM suggest.
   selectedAccountIds: z.array(z.string()).default([]),
+  // Per-run risk-appetite mandate (FIX-752), resolved at `seedSession` from the
+  // per-run override or the most-conservative selected-account default and frozen
+  // here as the full dial object. The reward-to-risk tap reads its `lossAversion`;
+  // the PM reads it as `<riskMandate>` context and the commit gates SIZE against
+  // it. Null → mandate-blind: no worth-it size gate, the run behaves exactly as
+  // before FIX-752.
+  riskMandate: riskMandateSchema.nullable().default(null),
 });
 
 export type SessionState = z.infer<typeof sessionStateSchema>;

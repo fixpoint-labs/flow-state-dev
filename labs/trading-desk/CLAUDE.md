@@ -110,6 +110,7 @@ src/flows/analysis/
   lib/                           pure IO-free utilities — neither tool-runtime nor recipe
     helpers.ts                   tickerDate / asDataBlock / memoLabel / attributedTools
     format.ts                    shared prompt formatters (memo, debate, contributions)
+    app-root.ts                  APP_ROOT — package root resolved once (module-relative, cwd fallback)
     prompt.ts                    loadPrompt(path) — resolves *.prompt.md relative to the flow root
     ticker-resolver.ts           pre-flight ticker probe
     concurrency.ts               mapLimit — bounded + retried fan-out
@@ -322,6 +323,55 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   session (option a) — the pane prompts the user to run an analysis first when no
   session exists. Once any session is bound, Add Account / Import work.
 
+## Responsive / mobile layout
+
+The desk branches its **shell** at the `lg` breakpoint (1024px); content
+components and data hooks are shared, never forked (FIX-757). Follows the
+kitchen-sink precedent (FIX-184): both shells render, CSS picks one — no
+`useMediaQuery`, no hydration risk.
+
+- **The two shells live in `app/page.tsx`.** Desktop (`hidden lg:grid`) is the
+  original fixed-viewport grid (`44px / 1fr / 28px` rows, TopBar + view-switched
+  main + StatusBar), unchanged. Mobile (`lg:hidden`, `height: 100svh`) stacks
+  `MobileHeader` → one full-width surface → `MobileStatusLine` → `BottomNav`.
+  The mobile `<main>` is a single-cell grid so each pane stretches to fill both
+  axes without its own sizing classes.
+- **Mobile navigation** (`components/mobile/`): `mobileTab`
+  (`"report" | "transcript" | "portfolio" | "history"`) in `page.tsx` is the
+  single source of truth; it is independent of the desktop `view` state. The
+  bottom tab bar's center **New** slot is an ACTION (opens the New Analysis
+  sheet), never a destination — it must not join the `MobileTab` union. Opening
+  a past report on mobile reuses `handleOpenReport` (tuple-first, zero model
+  spend) and then routes to the Report tab.
+- **Pane reflow rules:** `ThesesPane`'s 200px `MemoSidebar` is `hidden lg:block`
+  inline and opens as a native `<dialog>` drawer below `lg` (the "Phases"
+  button) — same imperative open/close idiom as the app's other dialogs, so
+  ESC/focus-trap/backdrop come from the browser. `HoldingsTable` renders the 8-column table only when its own
+  container is ≥ `@3xl` (a CSS container query, not a viewport breakpoint) and
+  stacks one card per holding below that — both layouts read the SAME
+  `buildHoldingRowModel` view model (`test/holdings-row-model.spec.ts`), so the
+  real-money `—`-for-missing gate and P/L coloring hold in both by
+  construction.
+- **The StatusBar splits on mobile.** Run metrics condense into
+  `MobileStatusLine`; the instructions gear moves to `MobileHeader`; the
+  not-advice disclaimer — a real-money gate — stays visible in the mobile shell
+  (it renders in `MobileStatusLine`, above the tab bar). Never ship a mobile
+  layout that hides it.
+- **Chrome conventions:** the mobile shell uses `100svh` (NOT `vh`, which
+  overflows behind mobile browser toolbars, and NOT `dvh`, which reflows on
+  scroll), plus `env(safe-area-inset-top/bottom)` on the header/tab bar.
+  `viewport-fit=cover` is set via the `viewport` export in `app/layout.tsx` —
+  removing it silently zeroes every safe-area inset.
+- **Dialogs are bottom sheets below `lg`.** Every native `<dialog>` carries
+  the `td-sheet` class; the shared sheet geometry (bottom-pinned, full-width,
+  `85svh` cap, safe-area padding) and the slide-up entry live in ONE
+  `globals.css` rule under `@media (width < 64rem)` — the exact boundary
+  Tailwind compiles `lg` to, and unlayered so it beats the dialogs' layered
+  utilities. Dialogs also carry `m-auto` so the desktop modal is actually
+  centered (Tailwind preflight zeroes the UA `dialog` margin). No drawer
+  dependency — native `<dialog>` already provides the focus trap, ESC, and
+  backdrop.
+
 ## Portfolio-aware analysis + lens pack (Slice 5)
 
 A run can carry the live portfolio so the trader and the PM size against real
@@ -413,6 +463,74 @@ evidence to produce a convergence signal the PM uses for sizing conviction.
   `MemoDoc` dispatcher for the four lens agents; `forensic-skeptic` carries a
   "structural skeptic" label (UI only) so its by-design dissent reads as expected,
   not alarming. The deterministic convergence math is untouched by the card.
+
+## Risk-appetite mandate (decision tier) — FIX-752
+
+The PM's "is the risk worth it" call runs against a variable, user-set
+**mandate** — the third decision axis (risk APPETITE) beside the philosophy
+(lenses) and mechanics (portfolio-fit) axes. The mandate moves SIZE and an
+explicit worth-it verdict; it NEVER clamps the rating (that stays the
+valuation-envelope-anchored, cross-book signal — the lens / portfolio-fit
+precedent that orthogonal axes adjust size and emit a verdict, never overwrite
+`finalRating`).
+
+- **The pack is config-as-data.** `lib/risk-mandate.ts` exports `MANDATE_PACK`
+  (three presets: `conservative-income` / `balanced` / `aggressive-growth`), the
+  `riskMandateSchema` dial shape, `resolveMandate(id)`, and
+  `mostConservativeMandate(ids)`. Adding or retuning a mandate is one edit here
+  (the `LENS_PACK` precedent). The dials: loss-aversion λ, reward-to-risk floor,
+  return hurdle, confidence floor, max-tolerable-loss (the capacity line),
+  fractional-Kelly appetite, and the two absolute size caps (soft
+  `unclearedCapPct`, hard `capacityVetoCapPct`).
+- **Resolution + freeze at seed.** `seedSession` (`orchestration/guards.ts`)
+  resolves the effective mandate: a per-run override (`analyzeInputSchema
+  .riskMandate`, a pack id) wins; else the most-conservative default among the
+  SELECTED accounts (`account.riskMandate`, an OPAQUE string the analysis flow
+  validates via `resolveMandate` — an unknown / stale id → mandate-blind, never
+  throws); else null. The resolved dial object is frozen onto `state.riskMandate`
+  (the `portfolio`-snapshot precedent — store the resolved object, not the id).
+  Null → the run is mandate-blind and behaves exactly as before FIX-752.
+  `riskMandate` does NOT join the keying tuple (the `selectedAccountIds`
+  precedent).
+- **The reward-to-risk figure is deterministic.** A post-forecast `.tap`
+  (`compute-reward-to-risk.ts`, mirroring `compute-spine.ts`) reads the committed
+  scenario buckets — which now carry a numeric `expectedReturnPct` — and the
+  frozen mandate's λ, runs the pure `lib/reward-to-risk.ts` `computeRewardToRisk`
+  (a loss-aware Gain/Loss ratio: prob-weighted upside over `λ ×` prob-weighted
+  downside, plus EV and worst-case, nullable-honest with an `evidenceBasis`
+  flag), and writes the surface-owned `rewardToRiskResource`. Null resource when
+  no usable buckets. Surfaced to the PM via the `rewardToRisk` capability preset
+  (`<rewardToRisk>`); the mandate via the `riskMandate` preset (`<riskMandate>`,
+  a frozen-state read suppressed to null when mandate-blind — the `userThesis`
+  pattern). The trader also opts into `riskMandate` (sizes with awareness) but
+  not `rewardToRisk` (it runs before Phase 5a, so the figure does not exist yet).
+- **The verdict + size gate are derived at commit; the narrative is the LLM's.**
+  The PM emits a NARRATIVE-ONLY `mandateFit` (`{ rewardToRiskRead, sizeStance,
+  mandateOverrideReason }`, three strict strings, all `""` when mandate-blind).
+  The commit (`agents/portfolio-manager/writer.ts`) derives the bright-line check
+  (the `agreesWithTrader` precedent — never trust the model for what it can
+  compute): `mandateCleared` (soft gates: reward-to-risk floor, hurdle,
+  confidence floor; a no-downside distribution clears the r/r floor) and
+  `capacityCleared` (worst case within tolerance). It then clamps
+  `portfolioFit.targetWeightPct` — the HARD capacity veto first (cap to
+  `capacityVetoCapPct`, non-overridable), then the SOFT worth-it cap (cap to
+  `unclearedCapPct`, lifted only by a non-empty `mandateOverrideReason`). The
+  derived verdict + flags + a compact figure mirror onto the PM memo as
+  `mandateDecision` (null on a mandate-blind run, so the PmHero panel reads one
+  place), and a compact subset onto the decision snapshot (the FIX-614
+  sensitivity-benchmark record). Two escape policies, matched to
+  wealth-management semantics: appetite is soft / overridable, capacity is hard /
+  non-overridable. All mandate effects are downward-only — they never inflate.
+- **Phase 4 is augmented, not replaced.** The fixed aggressive / conservative /
+  neutral triad is unchanged; the mandate connects to the threshold only through
+  the confidence floor (a Phase 4 `overconfident` calibration already pulls
+  `decisionConfidence` down, which feeds the gate). Collapsing the triad into a
+  mandate-parameterized evaluator is a deliberate, deferred follow-up.
+- **Real-money discipline.** The mandate is a documented, user-set standard, NOT
+  advice; the reward-to-risk figure traces to the scenario distribution (no
+  fabrication) and is framed as a reward-to-risk read, never a probability of
+  being right. The size caps are absolute % constants in the pack — the v1
+  simplification over a dynamic "don't add beyond current weight" rule.
 
 ## Adding a new generator
 

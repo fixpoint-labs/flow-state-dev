@@ -1,4 +1,6 @@
 import type { ZodTypeAny } from "zod";
+import { z } from "zod";
+import { edgeListSchema, type EdgeSlotConfig, type ResourceEdgeApi, type Edge } from "../graph";
 import type {
   OrgScopeHandle,
   RequestScopeHandle,
@@ -11,6 +13,8 @@ import type { ResourceCollectionRef, DefinedResourceCollection } from "./resourc
 import type { ResourceTemplate } from "../resource-template/resource-template";
 import { validateClientProjection } from "../helpers/client-projection";
 import type { ProjectedClient } from "../helpers/client-projection";
+import type { ReactiveBindings } from "./resource-change";
+import { validateReactTo } from "./resource-change";
 
 /**
  * The scope a resource is intrinsically bound to. Determines which storage
@@ -139,6 +143,21 @@ export type CollectionClientConfig<TState extends JsonObject = JsonObject> = {
   live?: boolean;
 };
 
+/**
+ * A file path carrying the declaring module's anchor. Pass `import.meta.url`
+ * as `importerUrl`; the server resolves a relative `path` against the
+ * module's directory first, falling back to the working directory when the
+ * anchor is unusable (e.g. rewritten by a bundler) or the module-relative
+ * file doesn't exist. Plain strings stay supported and resolve from the
+ * working directory only. Isomorphic-safe: both fields are plain strings.
+ */
+export type AnchoredPath = {
+  /** Relative or absolute file path. */
+  path: string;
+  /** The declaring module's `import.meta.url`, anchoring a relative `path`. */
+  importerUrl: string;
+};
+
 export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   /**
    * Logical reference name. Used as the storage namespace identifier
@@ -168,18 +187,25 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   stateSchema: ZodTypeAny;
   default?: JsonValue;
   content?: string;
-  /** Path to a file on disk to load as the content body template. Mutually exclusive with `content`. */
-  contentFile?: string;
+  /**
+   * Path to a file on disk to load as the content body template. A bare
+   * string resolves from the working directory; an {@link AnchoredPath}
+   * resolves relative to the declaring module first (pass `import.meta.url`).
+   * Mutually exclusive with `content`.
+   */
+  contentFile?: string | AnchoredPath;
   render?: (content: string, state: JsonObject) => string | Promise<string>;
   /**
-   * A role-tagged Markdown template for this resource's content. Accepts
-   * either a pre-parsed `ResourceTemplate` (from `parseResourceTemplate` /
-   * `loadResourceTemplate`) or a file path string that the server resolves
-   * at startup. The resource's content is rendered against its `state` via
-   * deterministic LiquidJS. Mutually exclusive with `content` /
+   * A role-tagged Markdown template for this resource's content. Accepts a
+   * pre-parsed `ResourceTemplate` (from `parseResourceTemplate` /
+   * `loadResourceTemplate`), or a file path that the server resolves at
+   * startup — a bare string resolves from the working directory; an
+   * {@link AnchoredPath} resolves relative to the declaring module first
+   * (pass `import.meta.url`). The resource's content is rendered against its
+   * `state` via deterministic LiquidJS. Mutually exclusive with `content` /
    * `contentFile` / `contentTemplateRef`.
    */
-  contentTemplate?: ResourceTemplate | string;
+  contentTemplate?: ResourceTemplate | string | AnchoredPath;
   /**
    * Path of another resource whose RAW content is a role-tagged Markdown
    * template. Resolved at read-time: editing the template resource or this
@@ -204,6 +230,15 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   prefetchMode?: "eager" | "lazy";
   /** Client visibility configuration. Omit to keep the resource invisible to clients. */
   client?: ResourceClientConfig<TState>;
+  /**
+   * Bind blocks to this resource's mutations (FIX-751). Each present entry
+   * (`created` / `updated` / `deleted`) names a block — bare, or
+   * `{ block, when }` with an optional gate — that the server dispatcher runs
+   * with a `ResourceChange` payload when that mutation fires.
+   */
+  reactTo?: ReactiveBindings<TState>;
+  /** Declare a typed-edge graph on this resource. `true` = defaults; object = curated vocabulary / size cap. The framework injects an `edges: Edge[]` state field (if absent) and attaches an `.edges` API to the live ref. */
+  edges?: boolean | EdgeSlotConfig;
 };
 
 export type ResourceContext<TState extends JsonObject = JsonObject> = {
@@ -211,6 +246,8 @@ export type ResourceContext<TState extends JsonObject = JsonObject> = {
   patchState(updates: Partial<TState>): Promise<void>;
   setState(nextState: TState): Promise<void>;
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>;
+  /** Typed-edge graph API — present at runtime only when the resource declared `edges`. Consumers that declared edges access it via `ctx.edges!`. */
+  edges?: ResourceEdgeApi;
 };
 
 /**
@@ -275,6 +312,8 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
   contentType?: string;
   extension?: string;
   config: Readonly<ResourceConfig>;
+  /** Typed-edge graph API — present at runtime only when the resource declared `edges`. Consumers that declared edges access it via `ref.edges!`. */
+  edges?: ResourceEdgeApi;
 }
 
 
@@ -299,6 +338,19 @@ export type StateOf<T> = T extends { stateSchema: infer S extends ZodTypeAny }
     : never;
 
 type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
+
+/**
+ * Resolves to `{ edges: Edge[] }` when a config declares a (non-false) `edges`
+ * slot, otherwise `{}`. Intersecting with `{}` is a no-op, so configs without
+ * an `edges` slot keep their inferred state unchanged.
+ *
+ * Uses a required-key probe (`{ edges: infer E }`) rather than `infer E` over
+ * the whole config, so an *unset* optional `edges` (which infers `E` including
+ * `undefined`) does not falsely trigger injection.
+ */
+type EdgesField<TConfig> = TConfig extends { edges: true | EdgeSlotConfig }
+  ? { edges: Edge[] }
+  : {};
 
 export type ContextOf<
   T,
@@ -326,7 +378,7 @@ export function defineResource<
 >(
   config: TConfig
 ): TConfig & DefinedResource<
-  AsStateObject<TStateSchema["_output"]>,
+  AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>,
   ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
 > {
   const contentSources = [
@@ -366,10 +418,39 @@ export function defineResource<
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
 
-  return config as unknown as TConfig & DefinedResource<
-    AsStateObject<TStateSchema["_output"]>,
-    ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
-  >;
+  // Single resources have no create/delete lifecycle — only `updated` fires.
+  validateReactTo("defineResource()", config.reactTo, ["updated"]);
+
+  // Edge-slot injection: when `edges` is declared, fold an `edges: Edge[]` field
+  // into the resolved state schema + default unless the resource already declares
+  // one. Build a fresh config object — never mutate the caller's `config`.
+  let stateSchema: ZodTypeAny = config.stateSchema;
+  let defaultValue = config.default;
+  if (config.edges) {
+    if (!(stateSchema instanceof z.ZodObject)) {
+      throw new Error(
+        `defineResource() with edges requires an object stateSchema (got ${stateSchema.constructor.name})`
+      );
+    }
+    if (!("edges" in stateSchema.shape)) {
+      stateSchema = stateSchema.extend({ edges: edgeListSchema.default([]) });
+    }
+    if (
+      defaultValue !== undefined &&
+      typeof defaultValue === "object" &&
+      defaultValue !== null &&
+      !Array.isArray(defaultValue) &&
+      !("edges" in (defaultValue as object))
+    ) {
+      defaultValue = { ...(defaultValue as Record<string, unknown>), edges: [] } as typeof defaultValue;
+    }
+  }
+
+  return { ...config, stateSchema, default: defaultValue } as unknown as
+    TConfig & DefinedResource<
+      AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>,
+      ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+    >;
 }
 
 function toJsonObject(value: Record<string, unknown>): JsonObject {

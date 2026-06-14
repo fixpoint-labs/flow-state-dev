@@ -284,6 +284,11 @@ function pmOutput(suggestedAccountLabel: string, targetWeightPct: number) {
         suggestedAccount: suggestedAccountLabel,
         convictionBasis: "",
       },
+      mandateFit: {
+        rewardToRiskRead: "",
+        sizeStance: "",
+        mandateOverrideReason: "",
+      },
     },
   };
 }

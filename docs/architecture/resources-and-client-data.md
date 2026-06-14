@@ -68,7 +68,7 @@ User- and org-scoped resources default to **shared** storage across every flow t
 
 ### Resource Content
 
-Resources can also carry file-like text content. Use `content` for inline templates or `contentFile` to load at startup (mutually exclusive). `contentFile` is resolved relative to `process.cwd()` — use absolute paths for predictable behavior.
+Resources can also carry file-like text content. Use `content` for inline templates or `contentFile` to load at startup (mutually exclusive). A bare-string `contentFile` resolves relative to `process.cwd()`; for cwd-independent resolution pass an anchored path — `contentFile: { path: "./doc.md", importerUrl: import.meta.url }` — which resolves relative to the declaring module first and falls back to the working directory (the same candidate semantics as prompt-file loading).
 
 - `readContent()` returns rendered content (`string`) or `null` if no content exists.
 - `readContentRaw()` returns the stored raw body (`string`) or `null`.
@@ -115,6 +115,16 @@ The lifecycle mirrors content exactly:
 3. **State routes / debug snapshot** — read resource state fresh from `ResourceStateStore`.
 
 The `Resource*Ref` API is unchanged; this is an internal storage relocation. The scope record's former inline `resources` field is no longer read or written.
+
+### Typed Edges (`edges` slot)
+
+A resource (or collection) can opt into a typed-edge graph by declaring `edges: true | { vocabulary?, maxEdges? }` on `defineResource` / `defineResourceCollection`. This is part of the resource contract, not a separate store:
+
+- **State field injection.** `defineResource` extends the resource's `stateSchema` (and default) with an `edges: Edge[]` field unless the schema already declares one; `defineResourceCollection` does the same for each instance schema. Edges therefore live *inside* the resource's own state `JsonObject` and persist through the same per-key `ResourceStateStore` path as any other state — no new storage key, no store-adapter change. The graph is opaque to the store (it's just an array in the value), so traversal is in-memory.
+- **`.edges` ref API.** When `edges` is declared, the live `ResourceRef` / `ResourceContext` (and each collection-instance ref) gains an `.edges` accessor: `add`, `supersede` (bi-temporal close, never a hard delete), `remove`, `all({ at? })`, `neighbors`, `egoGraph`, `shortestPath`, and `pruneDangling`. Mutators route through the resource's existing `updateState`, so edge writes emit the same `resource_change` events as any state write. The edge schema and pure traversal helpers are the reusable `@flow-state-dev/core/graph` primitive; the slot is what wires them onto the resource.
+- **Bounding.** `maxEdges` caps growth; the cull drops superseded tombstones first, then lowest-confidence active edges, and never evicts the edge just added (so `add()` always returns a stored edge).
+
+The first consumer is the memory `relations` tier (see `apps/docs/docs/memory/relations`), which stores typed relationships between fact subjects on the semantic resource's edge slot.
 
 ### Three-Wave Loading
 
@@ -489,7 +499,7 @@ await actions.create({ topic: 'spec.md', content: '# New Spec' })
 await actions.update({ topic: 'readme.md', content: '# Updated' })
 ```
 
-Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`.
+Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`. The `resource_change` projection rides the registry's internal post-mutation seam (`onResourceChanged`); the same seam also drives in-session reactive blocks (`reactTo`) — see [Reactive blocks](/docs/resources/reactive-blocks) and the seam contract in [Resource Collections](./resource-collections.md#reactive-blocks-reactto).
 
 ## Canonical Authority
 

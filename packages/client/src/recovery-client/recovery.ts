@@ -48,6 +48,24 @@ export type RetryRequestResult = {
   sessionId?: string;
 };
 
+export type ResumeSuspensionBody = {
+  /** Id of the pending suspension to resolve. */
+  suspensionId: string;
+  /** Whether the operator approves or rejects the suspension. */
+  action: "approve" | "reject";
+  /** Optional resume payload validated against the suspension's resumeSchema. */
+  data?: unknown;
+  /** Optional identifier of the operator resolving the suspension. */
+  resumedBy?: string;
+};
+
+export type ResumeSuspensionResult = {
+  /** Server-issued id of the newly dispatched (resumed) request. */
+  requestId: string;
+  /** The suspended request id this resume derives from. */
+  originalRequestId: string;
+};
+
 export type RecoveryClient = {
   /**
    * Sweep stale active-request entries for the given user. Returns the
@@ -62,6 +80,16 @@ export type RecoveryClient = {
    * is responsible for attaching to the new request's stream.
    */
   retry: (options: RetryRequestOptions) => Promise<RetryRequestResult>;
+  /**
+   * Resolve a pending durable-execution suspension by approving or rejecting
+   * it. POSTs to the resume endpoint, which re-dispatches the action from the
+   * suspension point and returns the new request id alongside the original.
+   */
+  resumeSuspension: (
+    flowKind: string,
+    requestId: string,
+    body: ResumeSuspensionBody
+  ) => Promise<ResumeSuspensionResult>;
 };
 
 type RetryResponseBody = {
@@ -126,12 +154,36 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
         retryOf: payload.request.retryOf,
         sessionId: payload.session?.id
       };
+    },
+
+    resumeSuspension: async (flowKind, requestId, body) => {
+      requireNonEmpty(flowKind, "flowKind");
+      requireNonEmpty(requestId, "requestId");
+      requireNonEmpty(body.suspensionId, "suspensionId");
+      if (body.action !== "approve" && body.action !== "reject") {
+        throw new Error(
+          'createRecoveryClient.resumeSuspension requires action "approve" or "reject"'
+        );
+      }
+
+      return requestJson<ResumeSuspensionResult>({
+        fetcher,
+        url: buildFlowApiUrl({
+          baseUrl: options.baseUrl,
+          path: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/resume`
+        }),
+        init: {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body)
+        }
+      });
     }
   };
 }
 
 function requireNonEmpty(value: string, name: string): void {
   if (value.trim().length === 0) {
-    throw new Error(`createRecoveryClient.retry requires a non-empty ${name}`);
+    throw new Error(`createRecoveryClient requires a non-empty ${name}`);
   }
 }

@@ -58,6 +58,8 @@ const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .rescue([{ when: [ModelError], block: fallback }]);
 ```
 
+`.rescue()` is also a method on any block. `someBlock.rescue([{ block: fallback }])` returns a block that recovers from its own failure and returns the handler's output instead of throwing — so a single step (or one `forEach` element, `parallel` branch, or `router` route) can fail in isolation while the rest of the chain continues. The chain-level `.rescue()` above is the same operation applied to the whole sequencer.
+
 A later step can check whether an earlier one was recovered with `ctx.wasRescued(blockName | blockDef)` — without the recovered value carrying any marker.
 
 Sequencers can optionally declare an `outputSchema` as a runtime contract on the composed output of the whole chain — validated on every exit path (tail, `exitIf`, `rescue`). Call `.validate()` at build time to catch structural drift early.
@@ -152,9 +154,10 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
 
 **Resources:**
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `orgResources`)
-  - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows
+  - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows. `contentFile` and file-path `contentTemplate` accept a bare string (resolved from the working directory) or an `AnchoredPath` — `{ path, importerUrl: import.meta.url }` — resolved relative to the declaring module first, with a working-directory fallback
   - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — `'lazy'` defers the load until the declaring block dispatches. Once the resource is resolved its `ref.state` getter is synchronous. Declaring `'lazy'` on a flow-level single resource throws at build time (no per-block load trigger).
-- `defineResourceNamespace(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), optional `maxInstances`/`eviction`, and lifecycle hooks
+  - `reactTo?: { created?, updated?, deleted? }` — bind a block (handler/generator/sequencer) to a mutation. Each entry is a bare block or `{ block, when }`. The block runs blocking inside the originating turn with a `ResourceChange` payload (`key`, `ref`, `kind`, `state`, `prevState`, `evicted`); type its input with `resourceChangeSchema(stateSchema)`. See the [Reactive blocks](https://flow-state.dev/docs/resources/reactive-blocks) reference.
+- `defineResourceNamespace(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), optional `maxInstances`/`eviction`, lifecycle hooks, and `reactTo` (same `{ created?, updated?, deleted? }` shape as `defineResource`; supersedes the `onInstance*` callbacks for the block case)
   - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — a loading-cost knob, not an API-shape knob. Eager preloads the whole prefix into a per-request cache so reads resolve instantly; `'lazy'` reads per access from the store. The call shape is identical in both modes: `get`/`getOptional`/`list`/`count` all return Promises (always `await` them), and the mutations `create`/`getOrCreate`/`upsert`/`delete` were already async. Flipping `prefetchMode` needs no call-site changes. `'lazy'` requires `eviction: 'none'` (a partial cache can't drive eviction) and throws at build time otherwise.
   - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `upsert()`, `list()`, `delete()`, `count()`
   - **`create(key, initial, { replace: true })`** — overwrites an existing instance instead of throwing. `setState` semantics; Zod `.default(null)` fills nullables on both the create and replace branches. `maxInstances` only checked when adding a new instance. Use for setup/reset paths.
@@ -302,6 +305,8 @@ Defaultable fields: `sessionStateSchema`, `userStateSchema`,
 
 Author a generator's prompt as a `.md` file. The isomorphic subpath exports `parsePromptFile(text, options?)`, `definePromptFile(pf)`, `isPromptFile(value)`, and the `PromptFile` / `PromptFileConfig` / `PromptFileParseError` / `PromptFileLoadError` types. The Node-only subpath exports `loadPromptFile(specifier, importerUrl, options?)`, which reads the file and auto-registers sibling `.md` files as partials; only this subpath imports `node:fs`, so browser/bundled consumers use `parsePromptFile` with raw text plus an explicit `partials` map.
 
+**Resolution rule.** Relative specifiers resolve against the caller's `import.meta.url`; absolute specifiers are used as-is (`importerUrl` ignored); `createPromptLoader` joins every `relPath` onto its absolute `baseDir`. Resolution never consults the process working directory — compute `baseDir` with `resolveBaseDir(candidates, { expect? })` (first candidate dir that exists and contains the `expect` probe; throws listing all candidates when none qualifies) composed with `moduleDir(importerUrl, relative?)` (the module's directory, or `undefined` when a bundler has rewritten `import.meta.url` to a non-`file:` URL). Module-relative candidate first, `process.cwd()`-derived fallback for bundled runtimes that pin cwd (Next.js dev/build).
+
 Two ergonomic shortcuts cut the boilerplate:
 
 - **Pass the `PromptFile` straight to `prompt`** instead of spreading `definePromptFile(pf)`. `generator({ prompt: loadPromptFile(...), model })` expands the file's `user` / `caching` / `maxTokens` / `temperature` / `name` / `description` into the config; any sibling field you set explicitly wins (same precedence as `...definePromptFile(pf), <overrides>`).
@@ -309,13 +314,21 @@ Two ergonomic shortcuts cut the boilerplate:
 
 ```ts
 import { generator } from "@flow-state-dev/core";
-import { createPromptLoader } from "@flow-state-dev/core/prompt-file/node";
+import {
+  createPromptLoader,
+  moduleDir,
+  resolveBaseDir,
+} from "@flow-state-dev/core/prompt-file/node";
 
-const load = createPromptLoader(path.resolve(process.cwd(), "src/prompts"));
+const PROMPT_ROOT = resolveBaseDir(
+  [moduleDir(import.meta.url, "./prompts"), path.resolve(process.cwd(), "src/prompts")],
+  { expect: "_partials" },
+);
+const load = createPromptLoader(PROMPT_ROOT);
 const analyst = generator({ name: "analyst", model, prompt: load("analyst.prompt.md") });
 ```
 
-**Resource content templates.** The same `.md` format can render resource content against state. The Node subpath exports `loadResourceTemplate(specifier, importerUrl, options?)` and the isomorphic subpath exports `parseResourceTemplate(text, options?)` and `renderResourceTemplate(template, state)`. Wire them via `contentTemplate` (build-time file) or `contentTemplateRef` (live-editable resource) on `defineResource()` and `defineResourceCollection()`. See the [Resource content from Markdown templates](https://flow-state.dev/docs/advanced/resource-templates-markdown) reference.
+**Resource content templates.** The same `.md` format can render resource content against state. The Node subpath exports `loadResourceTemplate(specifier, importerUrl, options?)` and the isomorphic subpath exports `parseResourceTemplate(text, options?)`, `renderResourceTemplate(template, state)`, and the `isResourceTemplate(value)` guard. Wire them via `contentTemplate` (build-time file — a parsed template, a working-directory-relative string path, or an `AnchoredPath` resolved relative to the declaring module) or `contentTemplateRef` (live-editable resource) on `defineResource()` and `defineResourceCollection()`. See the [Resource content from Markdown templates](https://flow-state.dev/docs/advanced/resource-templates-markdown) reference.
 
 ### Voice Provider
 
@@ -370,6 +383,12 @@ State-shape primitives shared across the framework. All three operate on the sam
 - **`cloneValue(value)`** — structural deep copy via the platform `structuredClone`, falling back to a JSON round-trip. Stores clone records on read/write so callers can't mutate stored state through a retained reference.
 - **`deepMerge(base, override)`** — recursive merge returning a new object. Scalars and arrays in `override` replace; nested plain objects merge; `base` is never mutated.
 - **`deepEqual(a, b)`** — structural equality powering the state-write no-op guard. Primitives compared by `Object.is` (NaN-equal-NaN, `+0 != -0`); plain objects and arrays compared recursively. Rejects non-JSON shapes (Map, Set, functions) with a `TypeError`. `looseDeepEqual` is the throw-free variant.
+
+### Graph (`@flow-state-dev/core/graph`)
+
+A reusable typed-edge primitive for relational state. `edgeSchema` describes a directed, typed, bi-temporal `Edge` (`from`/`to`/`type`/`confidence`/`validFrom`/`validUntil`/`source`), and pure traversal helpers walk a plain `Edge[]`: `egoGraph`, `shortestPath`, `neighbors`, `traverse`, `activeAt`, plus `nodeRef`/`parseNodeRef` for `"namespace:key"` node ids. All traversals are depth-bounded and cycle-safe.
+
+Resources opt into a first-class edge graph with `defineResource({ edges: true })` (or `{ vocabulary, maxEdges }`): the framework stores an `edges` array in the resource's state and exposes an `.edges` API (`add`, `supersede`, `remove`, `all`, `neighbors`, `egoGraph`, `shortestPath`, `pruneDangling`) on the live resource reference. Resources without `edges` are unaffected.
 
 ## Sequencer instance state
 

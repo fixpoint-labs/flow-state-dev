@@ -133,6 +133,16 @@ pipeline
 - Rescue failure propagates to the next matching handler or bubbles up
 - Rescue boundaries only handle failures from steps **before** them in the sequencer
 
+### Block-level rescue (`block.rescue`, FIX-742)
+
+`.rescue(handlers)` is also a method on every block, stored as `config.rescue`. When a block carrying it throws a non-`SuspensionError`, the first matching handler runs with the block's own scoped context and its output replaces the throw, so the enclosing chain / `forEach` / `parallel` / `router` continues. This is the same recovery operation as the chain-level rescue above, applied at block scope rather than sequencer scope — a leaf step continues the chain; a whole sequencer recovers as a unit.
+
+It is honored at the block-execution seam so the handler inherits the executing block's context (sequencer state included):
+- **Child invocations** (every in-flow composition): core's `executeBlock` catch (`packages/core/src/blocks/sequencer.ts`) runs the handler via the kernel at a `…/rescue[i]` path, giving it a full child trace, then stamps `_didRescue` on the scoped context.
+- **Scope-less direct runs** (`asRuntime(block).run(...)`, e.g. a unit harness): `build-block`'s `run()` catch recovers inline.
+
+`SuspensionError` is never rescued (control flow). Sequencer blocks are excluded from this seam — they keep their operation-loop rescue so a sub-sequencer handler runs in the sequencer's own state scope — which prevents double-handling.
+
 ### Rescue registry (`ctx.wasRescued`)
 
 A downstream block can ask whether a prior block in the same sequencer scope threw and was recovered, via the public `ctx.wasRescued(target)` query (`target` is a block name or definition). This keeps rescue's shape-preserving contract intact — the recovered value carries no marker — while still letting a later step branch on "was this recovered?".
@@ -140,7 +150,7 @@ A downstream block can ask whether a prior block in the same sequencer scope thr
 The rescued bit is a transient flag on each block's sibling-result entry, never persisted into snapshots. It is per-iteration correct under `.loopBack` because the descending sibling search consults the **most recent** matching entry, and nested rescues are tracked at the scope where the rescued block ran as a sibling (the scope whose `_withExecutionScope` invoked it).
 
 The write → stamp → read chain:
-1. **Write** — when a `.rescue()` handler recovers an error, `runSequencerOperations`' catch sets `ctx._didRescue = true` on the rescued block's scoped context before returning the recovered value (`packages/core/src/blocks/sequencer.ts`).
+1. **Write** — when a `.rescue()` handler recovers an error, `ctx._didRescue = true` is set on the rescued block's scoped context before the recovered value is returned. For chain-level rescue this happens in `runSequencerOperations`' catch; for block-level rescue it happens in `executeBlock`'s catch (both `packages/core/src/blocks/sequencer.ts`, via the shared `runRescue` helper).
 2. **Stamp** — after the child returns, `_withExecutionScope`'s success branch copies `_didRescue` onto that block's `SiblingRegistryEntry.result.rescued` (`packages/server/src/context/createExecutionContext.ts`).
 3. **Read** — `ctx.wasRescued(target)` resolves `target` by name and returns `result.rescued === true` for the most-recent matching sibling, mirroring `getBlockResult`'s search. Returns `false` for a clean run, a never-dispatched step, an unknown name, or a call outside a sequencer; never throws.
 
@@ -344,6 +354,18 @@ When a block calls `ctx.suspend()` inside a durable action, the runtime:
 The resume endpoint (`POST /:flowKind/requests/:requestId/resume`) re-invokes the action with `_resumeState` on the execution context. The sequencer skips completed steps (injecting cached outputs) and re-executes the step that suspended. On this re-run, `ctx.suspend()` returns the `resumeData` provided by the external actor instead of throwing.
 
 `SuspensionError` is a control-flow signal, not a block failure — rescue handlers never fire for it. `SuspensionRejectedError` and `SuspensionTimeoutError` are ordinary catchable errors thrown on resume when the suspension was rejected or timed out.
+
+### Retention model
+
+Durability records (checkpoints, suspension records, leases) are reclaimed by two mechanisms with a deliberate division of labor.
+
+**The `cleanup()` seam runs eagerly on the success path.** When a durable request completes, `runAction` calls `DurabilityProvider.cleanup(requestId)` for its own records (and `cleanupCheckpoints` when `cleanupCheckpointsOnTerminal` is set). The resume path cleans the original request the same way. This is the common case and needs no background work.
+
+**The durability sweeper is the backstop** for everything `cleanup()` misses: a process that crashed before completion, a suspension that expired unanswered, a lease whose holder died. It is an opt-in periodic job (`createDurabilitySweeper`, configured via `RuntimeConfig.durabilityRetention`), modeled on the stale-request sweeper — `setInterval` + `unref`, an `inFlight` guard, idempotent `dispose`. Each tick takes a single-holder sentinel lease (reusing `LeaseStore`) so co-located hosts serialize, enforces suspension expiry (`pending` past `expiresAt` → `expired`), prunes resolved suspensions and expired leases past their windows, and prunes orphaned checkpoints.
+
+The two record kinds are treated asymmetrically by design. **Checkpoints are disposable infrastructure** — they exist only to resume an interrupted run, so a terminal run's checkpoints can be dropped. **Suspension records are audit-bearing** — they are the evidence of an approval decision. Note the current behavior: the eager `cleanup()` seam still deletes a *completed* request's suspension records immediately (including on the non-resumed completion path), so the sweeper's retention *window* applies to the records the eager path does not reach — suspensions of requests that failed, aborted, or expired without completing. Reconciling the eager path with the audit window (so resolved suspensions survive the window on the success path too) is a tracked follow-up; until then, treat the window as a backstop for non-completed terminal records rather than a guarantee for every resolved suspension.
+
+The load-bearing invariant: **the sweeper never age-prunes checkpoints of an `in_progress` or `suspended` request.** Orphan detection is anchored on a request's terminal/interrupt timestamp, not its creation time, so a flow legitimately parked on a slow HITL gate is never misclassified as abandoned. Only `completed`/`failed`/`aborted` requests (past `checkpointMaxAgeMs`) and `interrupted` requests (past `orphanCheckpointThresholdMs`) are eligible.
 
 ### Out of scope
 

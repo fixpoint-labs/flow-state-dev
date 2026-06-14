@@ -1,11 +1,22 @@
 /**
  * Portfolio-manager commit handler (runs second in Phase 5, terminal).
  *
- *   - `commitPortfolioManagerMemo` — derives two structural fields at
- *     commit time (`agreesWithTrader` from the trader memo's direction vs
- *     the PM's final rating; `upstreamReferences` from the canonical key
- *     maps), enforces trader-dependency lineage, publishes the memo, then
- *     flips `session.runComplete` so the navigator renders a terminal state.
+ *   - `commitPortfolioManagerMemo` — the terminal commit. It does several
+ *     deterministic jobs the LLM is NOT trusted with, then publishes the memo,
+ *     writes the durable decision snapshot, and flips `session.runComplete`:
+ *       1. derives `agreesWithTrader` (trader direction vs the PM's rating) and
+ *          `upstreamReferences` (from the canonical key maps);
+ *       2. enforces trader-dependency lineage (throws `lineage-violation` →
+ *          memo flips to `error`);
+ *       3. clamps `finalRating` to the FIX-715 valuation envelope (logged escape);
+ *       4. derives the FIX-728 portfolio-fit echo fields (current weight, delta,
+ *          validated suggested account);
+ *       5. applies the FIX-752 risk-mandate SIZE gate — derives the worth-it
+ *          verdict and clamps `targetWeightPct` (hard capacity veto, then soft
+ *          worth-it cap); the mandate never touches `finalRating`.
+ *
+ * The mandate gate and the valuation clamp are independent: the valuation
+ * envelope bounds the rating; the mandate bounds the size. Both only reduce.
  *
  * The `runComplete` patch is inline at the end of the PM handler — not
  * abstracted into a factory callback. This is the cleanest expression of
@@ -32,9 +43,13 @@ import {
 import { clampRatingToBand } from "../../lib/rating-engine";
 import { publishMemo } from "../_recipe/memo-writer";
 import type { ReportDecisionMeta } from "../../report-index";
-import { memoResources } from "../../resources";
+import { memoResources, type MandateDecision } from "../../resources";
 import { sessionStateSchema } from "../../state";
 import { valuationSpineResource, type ValuationSpineState } from "../../valuation-spine-resource";
+import {
+  rewardToRiskResource,
+  type RewardToRiskState,
+} from "../../reward-to-risk-resource";
 import {
   lensConvergenceResource,
   type LensConvergenceState,
@@ -73,6 +88,10 @@ export const commitPortfolioManagerMemo = handler({
     // Slice 5 — read the deterministic convergence read to mirror it onto the
     // memo (so the PmHero strip reads one place). Nullable; null on `fast` runs.
     lensConvergence: lensConvergenceResource,
+    // FIX-752 — the scenario-derived reward-to-risk figure, gated against the
+    // frozen mandate to clamp size + derive the worth-it verdict. Null when the
+    // forecaster produced no usable buckets (→ mandate-blind decision).
+    rewardToRisk: rewardToRiskResource,
   },
   execute: async (decision, ctx) => {
     // `agreesWithTrader` is computed, not LLM-emitted. If the trader memo
@@ -170,7 +189,77 @@ export const commitPortfolioManagerMemo = handler({
           .filter((h) => h.ticker.toUpperCase() === tickerUpper && h.weightPct != null)
           .reduce((s, h) => s + (h.weightPct ?? 0), 0)
       : 0;
-    const weightDeltaPct = decision.portfolioFit.targetWeightPct - currentWeightPct;
+
+    // ── Risk-mandate worth-it size gate (FIX-752) ──────────────────────
+    // The mandate steers SIZE and emits a derived verdict; it NEVER clamps the
+    // rating (that stays the valuation-anchored, cross-book-comparable name
+    // signal). All mandate effects are downward-only. The bright-line verdict and
+    // the clamp are derived here from the figure + the frozen dials — never
+    // trusted from the LLM (the agreesWithTrader precedent); the PM's `mandateFit`
+    // supplies only the narrative + an optional override reason.
+    const mandate = ctx.session.state.riskMandate;
+    const rr = ctx.resources.rewardToRisk?.state as
+      | RewardToRiskState
+      | null
+      | undefined;
+    let targetWeightPct = decision.portfolioFit.targetWeightPct;
+    let mandateDecision: MandateDecision | null = null;
+
+    if (mandate != null && rr != null && rr.evidenceBasis != null) {
+      // Soft gates (appetite/tolerance). A no-downside distribution treats the
+      // reward-to-risk floor as cleared (the GLR is undefined there).
+      const rrCleared =
+        rr.noDownside ||
+        (rr.lossAdjustedGlr != null && rr.lossAdjustedGlr >= mandate.rewardToRiskFloor);
+      const hurdleCleared =
+        rr.expectedValuePct != null && rr.expectedValuePct >= mandate.hurdleReturnPct;
+      const confidenceCleared = decision.decisionConfidence >= mandate.confidenceFloor;
+      const cleared = rrCleared && hurdleCleared && confidenceCleared;
+      // Hard capacity line: the worst-case bucket must be within tolerance. A
+      // null worst case fails CLOSED — today it only arises when no figure was
+      // computed (the gate is then skipped above), but a hard safety gate must
+      // never silently pass an unknown worst case.
+      const capacityCleared =
+        rr.worstCaseReturnPct != null &&
+        rr.worstCaseReturnPct >= -mandate.maxTolerableLossPct;
+      const override = decision.mandateFit.mandateOverrideReason.trim().length > 0;
+
+      let sizeClamped = false;
+      // Capacity veto first — non-overridable, the strongest line (capacity
+      // vetoes appetite). capacityVetoCapPct ≤ unclearedCapPct, so this also
+      // subsumes the soft cap on a capacity breach.
+      if (!capacityCleared && targetWeightPct > mandate.capacityVetoCapPct) {
+        targetWeightPct = mandate.capacityVetoCapPct;
+        sizeClamped = true;
+      }
+      // Soft worth-it cap — lifted only by a stated override reason.
+      if (!cleared && !override && targetWeightPct > mandate.unclearedCapPct) {
+        targetWeightPct = mandate.unclearedCapPct;
+        sizeClamped = true;
+      }
+
+      const verdict: "clears" | "fails" =
+        capacityCleared && (cleared || override) ? "clears" : "fails";
+
+      mandateDecision = {
+        mandateId: mandate.id,
+        mandateLabel: mandate.label,
+        verdict,
+        cleared,
+        capacityVetoed: !capacityCleared,
+        sizeClamped,
+        lossAdjustedGlr: rr.lossAdjustedGlr,
+        expectedValuePct: rr.expectedValuePct,
+        worstCaseReturnPct: rr.worstCaseReturnPct,
+        noDownside: rr.noDownside,
+        evidenceBasis: rr.evidenceBasis,
+        rewardToRiskRead: decision.mandateFit.rewardToRiskRead,
+        sizeStance: decision.mandateFit.sizeStance,
+        overrideReason: decision.mandateFit.mandateOverrideReason,
+      };
+    }
+
+    const weightDeltaPct = targetWeightPct - currentWeightPct;
     // Validate the LLM's suggested account LABEL against the real account list.
     // A hallucinated / absent label (or no portfolio) resolves to "" — never
     // invent an account the user does not have (real-money gate §1.8).
@@ -222,9 +311,12 @@ export const commitPortfolioManagerMemo = handler({
         absoluteRating,
         relativeRating,
         // Slice 5 — portfolio-fit verdict with the four derived echo fields.
+        // `targetWeightPct` is the mandate-gated value (FIX-752): the LLM's size
+        // after the worth-it/capacity clamps, so the published size, the delta,
+        // and the decision snapshot all agree.
         portfolioFit: {
           action: decision.portfolioFit.action,
-          targetWeightPct: decision.portfolioFit.targetWeightPct,
+          targetWeightPct,
           sizingRationale: decision.portfolioFit.sizingRationale,
           concentrationRisk: decision.portfolioFit.concentrationRisk,
           convictionBasis: decision.portfolioFit.convictionBasis,
@@ -237,6 +329,9 @@ export const commitPortfolioManagerMemo = handler({
           snapshotAsOf: portfolio?.snapshotAsOf ?? null,
         },
         lensConvergence,
+        // FIX-752 — the mandate decision mirror for the PmHero panel. Null on a
+        // mandate-blind run.
+        mandateDecision,
       },
     );
 
@@ -267,6 +362,13 @@ export const commitPortfolioManagerMemo = handler({
       targetPrice: traderState?.targetPrice ?? null,
       sizePct: traderState?.sizePct ?? null,
       holdingPeriod: traderState?.holdingPeriod ?? null,
+      // Risk-mandate decision (FIX-752) — the FIX-614 sensitivity-benchmark
+      // record. Null on a mandate-blind run.
+      mandateId: mandateDecision?.mandateId ?? null,
+      mandateVerdict: mandateDecision?.verdict ?? null,
+      rewardToRiskLossAdjustedGlr: mandateDecision?.lossAdjustedGlr ?? null,
+      worstCaseReturnPct: mandateDecision?.worstCaseReturnPct ?? null,
+      capacityVetoed: mandateDecision?.capacityVetoed ?? null,
       decidedAt,
       outcomeRealizedPrice: null,
       outcomeAsOf: null,

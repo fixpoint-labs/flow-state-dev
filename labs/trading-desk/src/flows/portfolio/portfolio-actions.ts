@@ -72,6 +72,9 @@ export const saveAccount = handler({
     type: accountTypeSchema,
     currency: z.string().length(3).default("USD"),
     cashBalance: z.number().default(0),
+    // The account's default risk-appetite mandate id (FIX-752), or null. Opaque
+    // string — validated downstream by the analysis flow, not here.
+    riskMandate: z.string().nullable().default(null),
   }),
   outputSchema: z.object({ accountId: z.string() }),
   resources: portfolioResources,
@@ -88,6 +91,7 @@ export const saveAccount = handler({
         type: input.type,
         currency: input.currency,
         cashBalance: input.cashBalance,
+        riskMandate: input.riskMandate,
         updatedAt: now,
       },
       // create-only: set the audit floor, the id, and an empty holdings array

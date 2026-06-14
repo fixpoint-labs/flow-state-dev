@@ -108,12 +108,13 @@ export function createPostgresRequestStore(
 
   const base = createPgRecordStore<RequestRecord, RequestListOptions>(executor, {
     tableName: "requests",
-    columns: ["flow_kind", "user_id", "session_id", "org_id", "status"],
+    columns: ["flow_kind", "user_id", "session_id", "org_id", "tenant_id", "status"],
     toRow: (record) => [
       record.flowKind,
       record.userId,
       record.sessionId ?? null,
       record.orgId ?? null,
+      record.tenantId ?? null,
       record.status
     ],
     toWhere: (options, nextParam = 1) => {
@@ -132,6 +133,13 @@ export function createPostgresRequestStore(
       if (options?.userId !== undefined) {
         parts.push(`user_id = $${p++}`);
         params.push(options.userId);
+      }
+      // Tenant filter (FIX-682): present (incl. explicit undefined) → NULL-safe
+      // exact match; absent → no filter. Isolates cross-turn history between
+      // two tenants sharing a bare session id.
+      if (options !== undefined && "tenantId" in options) {
+        parts.push(`tenant_id IS NOT DISTINCT FROM $${p++}`);
+        params.push(options.tenantId ?? null);
       }
       if (options?.status !== undefined) {
         parts.push(`status = $${p++}`);

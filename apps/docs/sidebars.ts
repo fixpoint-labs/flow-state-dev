@@ -51,6 +51,8 @@ const sidebars: SidebarsConfig = {
             "resources/overview",
             "resources/storage",
             "resources/collections",
+            "resources/reactive-blocks",
+            "resources/edges",
             "resources/client-access",
             "resources/manifest",
           ],
@@ -158,6 +160,7 @@ const sidebars: SidebarsConfig = {
             "tools/crawl",
             "tools/bash",
             "tools/claude-code-cli",
+            "tools/claude-code-sdk",
           ],
         },
         {
@@ -186,6 +189,7 @@ const sidebars: SidebarsConfig = {
           items: [
             "memory/overview",
             "memory/configuration",
+            "memory/relations",
             "memory/recall-tool",
             "memory/hygiene",
           ],

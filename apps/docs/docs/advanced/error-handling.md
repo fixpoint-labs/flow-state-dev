@@ -82,7 +82,7 @@ To catch drift before the flow runs at all, call `.validate()` on the sequencer 
 
 ## Recovering with rescue
 
-To handle a failure inline rather than letting it bubble, use the sequencer's `.rescue()` branch. See [Composing blocks](/docs/sequencers/composing-blocks) for the full DSL. The rescue branch receives the thrown error, so you can read `error.code` to route on the failure category and `error.details` to consume the structured payload.
+To handle a failure inline rather than letting it bubble, use `.rescue()`. It's a method on any block — put it on a single step to recover that step and continue the chain, or on a whole sequencer to recover the chain as a unit. See [Composing blocks](/docs/sequencers/composing-blocks#per-step-rescue-recover-and-continue) for the full DSL. The rescue handler receives the thrown error, so you can read `error.code` to route on the failure category and `error.details` to consume the structured payload.
 
 ## Querying rescue status
 

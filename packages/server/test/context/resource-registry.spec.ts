@@ -171,6 +171,62 @@ describe("resolveStringContentTemplates", () => {
     const config = makeResourceConfig({ contentTemplate: "/nonexistent/template.md" });
     expect(() => resolveStringContentTemplates({ doc: config })).toThrow(/Failed to load contentTemplate/);
   });
+
+  it("resolves an anchored path relative to the declaring module, not cwd", () => {
+    // "./fixtures/..." does not exist relative to the test cwd (the package
+    // root) — only relative to this spec file. Module-relative must win.
+    const config = makeResourceConfig({
+      contentTemplate: { path: "./fixtures/anchored-template.md", importerUrl: import.meta.url },
+    });
+    resolveStringContentTemplates({ doc: config });
+    const template = config.contentTemplate as { name?: string; sections: { system: string } };
+    expect(template.name).toBe("anchored");
+    expect(template.sections.system).toContain("{{ state.role }}");
+  });
+
+  it("prefers the module-relative candidate when the file exists at both", () => {
+    // fixtures/precedence-template.md exists BOTH relative to this spec file
+    // (name: module-copy) and relative to the package root, the test cwd
+    // (name: cwd-copy). The module-relative candidate must win — this pins
+    // the candidate ordering, the headline contract of anchored paths.
+    const config = makeResourceConfig({
+      contentTemplate: { path: "./fixtures/precedence-template.md", importerUrl: import.meta.url },
+    });
+    resolveStringContentTemplates({ doc: config });
+    expect((config.contentTemplate as { name?: string }).name).toBe("module-copy");
+  });
+
+  it("falls back to cwd when the anchor is a bundler-rewritten URL", () => {
+    // Path exists relative to the package root (the test cwd) but the anchor
+    // is unusable — the cwd candidate must carry it.
+    const config = makeResourceConfig({
+      contentTemplate: {
+        path: "./test/context/fixtures/anchored-template.md",
+        importerUrl: "turbopack://[project]/flows/x.js",
+      },
+    });
+    resolveStringContentTemplates({ doc: config });
+    expect((config.contentTemplate as { name?: string }).name).toBe("anchored");
+  });
+
+  it("throws naming every candidate when an anchored path matches nothing", () => {
+    const config = makeResourceConfig({
+      contentTemplate: { path: "./does-not-exist.md", importerUrl: import.meta.url },
+    });
+    expect(() => resolveStringContentTemplates({ doc: config })).toThrow(
+      /Failed to resolve contentTemplate[\s\S]*Tried:/
+    );
+  });
+});
+
+describe("normalizeScopeResourceContent — anchored contentFile", () => {
+  it("loads an anchored contentFile relative to the declaring module", () => {
+    const config = makeResourceConfig({
+      contentFile: { path: "./fixtures/anchored-content.txt", importerUrl: import.meta.url },
+    });
+    const result = normalizeScopeResourceContent({ doc: config }, undefined);
+    expect(result.doc).toBe("anchored file content\n");
+  });
 });
 
 describe("filterFlowLevelEager", () => {
@@ -295,16 +351,24 @@ describe("createScopeResourceRegistry — static resources", () => {
     const ref = registry.get("doc");
     await ref.writeContent("new content");
     expect(await ref.readContent()).toBe("new content");
+    // Parity with the collection-instance content path (FIX-756): exactly one
+    // emission, with no projection delta and no state delta (exact arity).
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith("doc", "updated");
   });
 
   it("writeContent throws for read-only resources", async () => {
+    const onChange = vi.fn();
     const config = makeResourceConfig({ writable: false });
     const registry = makeRegistry({
       configs: { doc: config },
-      initialState: { doc: {} }
+      initialState: { doc: {} },
+      onResourceChanged: onChange
     });
     const ref = registry.get("doc");
     await expect(ref.writeContent("fail")).rejects.toThrow(/read-only/);
+    // The guard throws before persist — a failed write must not announce.
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 
@@ -433,6 +497,24 @@ describe("createScopeResourceRegistry — collections", () => {
     expect(onUpdated.mock.calls[0][0]).toBe("items/doc1");
   });
 
+  it("instance writeContent persists content and emits change (FIX-756 parity)", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*");
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      onResourceChanged: onChange
+    });
+    await (registry as any).items.create("doc1", {});
+    const ref = await (registry as any).items.get("doc1");
+    onChange.mockClear();
+
+    await ref.writeContent("body");
+    // Content-only write: exactly one emission, no projection delta and no
+    // state delta (exact arity) — the client falls back to a batched refetch.
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated");
+  });
+
   it("instance setState replaces state and fires onInstanceUpdated", async () => {
     const onUpdated = vi.fn();
     const nsConfig = makeCollectionConfig("items/*", {
@@ -483,15 +565,28 @@ describe("createScopeResourceRegistry — lifecycle hooks", () => {
     });
 
     await (registry as any).items.create("doc1", {});
-    // Non-live collection: third (projection) arg is undefined.
-    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "created", undefined);
+    // Non-live collection: third (projection) arg is undefined. The fourth
+    // (change) arg carries the state delta for the reactive dispatcher (FIX-751).
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "created", undefined, {
+      state: { v: 0 },
+      prevState: undefined,
+      evicted: false
+    });
 
     const ref = await (registry as any).items.get("doc1");
     await ref.patchState({ v: 1 });
-    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated", undefined);
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated", undefined, {
+      state: { v: 1 },
+      prevState: { v: 0 },
+      evicted: false
+    });
 
     await (registry as any).items.delete("doc1");
-    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "deleted", undefined);
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "deleted", undefined, {
+      state: undefined,
+      prevState: { v: 1 },
+      evicted: false
+    });
     expect(onChange).toHaveBeenCalledTimes(3);
   });
 });
@@ -509,25 +604,27 @@ describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
     });
 
     await (registry as any).memos.create("m1", { status: "pending" });
-    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "created", {
+    // Assert only the projection (3rd) arg here — the 4th change arg is covered
+    // by the non-live test above; live projection is the focus of this case.
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "created", {
       delta: { status: "pending" } // `secret` excluded by the projection
-    });
+    }]);
 
     const ref = await (registry as any).memos.get("m1");
     await ref.patchState({ status: "writing" });
-    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "updated", {
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "updated", {
       delta: { status: "writing" }
-    });
+    }]);
 
     await (registry as any).memos.upsert("m1", { status: "published" });
-    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "updated", {
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "updated", {
       delta: { status: "published" }
-    });
+    }]);
 
     // Deletes on a live collection carry a null delta so the client drops the
     // item without a refetch.
     await (registry as any).memos.delete("m1");
-    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "deleted", { delta: null });
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "deleted", { delta: null }]);
   });
 
   it("omits the delete delta for a non-live collection", async () => {
@@ -539,7 +636,7 @@ describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
     const registry = makeRegistry({ configs: { memos: nsConfig }, onResourceChanged: onChange });
     await (registry as any).memos.create("m1", { status: "pending" });
     await (registry as any).memos.delete("m1");
-    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "deleted", undefined);
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "deleted", undefined]);
   });
 
   it("omits the delta for a non-live collection (batched-refetch path)", async () => {
@@ -551,7 +648,7 @@ describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
     const registry = makeRegistry({ configs: { memos: nsConfig }, onResourceChanged: onChange });
 
     await (registry as any).memos.create("m1", { status: "pending" });
-    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "created", undefined);
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "created", undefined]);
   });
 
   it("emits a live delta for a live single resource (and nothing for non-live)", async () => {
@@ -567,7 +664,7 @@ describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
       onResourceChanged: onLive
     });
     await liveReg.get("doc").patchState({ status: "writing" });
-    expect(onLive).toHaveBeenLastCalledWith("doc", "updated", { delta: { status: "writing" } });
+    expect(onLive.mock.lastCall?.slice(0, 3)).toEqual(["doc", "updated", { delta: { status: "writing" } }]);
 
     const onSilent = vi.fn();
     const silentReg = makeRegistry({
@@ -584,6 +681,27 @@ describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
     expect(onSilent).not.toHaveBeenCalled();
   });
 
+  it("emits with no projection delta for a live single-resource content write (FIX-756)", async () => {
+    const onChange = vi.fn();
+    const registry = makeRegistry({
+      configs: {
+        doc: makeResourceConfig({
+          stateSchema: z.object({ status: z.string().default("pending") }).passthrough(),
+          client: { expose: ["status"], live: true }
+        })
+      },
+      initialState: { doc: { status: "pending" } },
+      onResourceChanged: onChange
+    });
+
+    await registry.get("doc").writeContent("body");
+    // Content carries no state projection — even for a live resource the
+    // emission has exact arity (key, "updated"): no delta is ever computed
+    // from state on a content-only write.
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith("doc", "updated");
+  });
+
   it("degrades to no delta when a live client.data projection throws", async () => {
     const onChange = vi.fn();
     const nsConfig = makeCollectionConfig("memos/*", {
@@ -598,7 +716,7 @@ describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
 
     // The mutation must still succeed; the delta degrades to undefined.
     await (registry as any).memos.create("m1", { status: "pending" });
-    expect(onChange).toHaveBeenLastCalledWith("memos/m1", "created", undefined);
+    expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "created", undefined]);
   });
 });
 
@@ -624,6 +742,27 @@ describe("createScopeResourceRegistry — LRU eviction", () => {
 
     const a = await (registry as any).items.getOptional("a");
     expect(a).toBeDefined();
+  });
+
+  it("eviction on a live collection fires a deleted change with null delta (FIX-751)", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", {
+      maxInstances: 1,
+      eviction: "oldest",
+      client: { live: true } as ResourceCollectionConfig["client"]
+    });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/a": {} },
+      onResourceChanged: onChange
+    });
+
+    // Creating "b" evicts "a"; the eviction must tombstone the live client the
+    // same way an explicit delete does (projection `{ delta: null }`).
+    await (registry as any).items.create("b", {});
+    const deletedCall = onChange.mock.calls.find((c) => c[1] === "deleted");
+    expect(deletedCall).toBeDefined();
+    expect(deletedCall![2]).toEqual({ delta: null });
   });
 
   it("throws when maxInstances reached with eviction=none", async () => {
@@ -705,5 +844,62 @@ describe("createScopeResourceRegistry — upsert", () => {
       { v: 0, label: "scaffold" }
     );
     expect(ref.state).toEqual({ v: 10, label: "scaffold" });
+  });
+});
+
+describe("createScopeResourceRegistry — edges slot", () => {
+  it("attaches an .edges API to a static resource ref when edges is declared", async () => {
+    const config = makeResourceConfig({
+      edges: true,
+      stateSchema: z.object({ facts: z.array(z.string()), edges: z.array(z.any()).default([]) }).passthrough(),
+      default: { facts: [], edges: [] }
+    });
+    const registry = makeRegistry({ configs: { kb: config } });
+    const ref = registry.get("kb");
+    expect(ref.edges).toBeDefined();
+
+    await ref.edges!.add({ from: "a", to: "b", type: "drives" });
+    await ref.edges!.add({ from: "b", to: "c", type: "drives" });
+
+    expect((ref.state as any).edges).toHaveLength(2);
+    const path = ref.edges!.shortestPath("a", "c", { depth: 3 });
+    expect(path).not.toBeNull();
+    expect(path).toHaveLength(2);
+  });
+
+  it("passes an object edges config through to the API (vocabulary enforced)", async () => {
+    const config = makeResourceConfig({
+      edges: { vocabulary: ["drives"] },
+      stateSchema: z.object({ edges: z.array(z.any()).default([]) }).passthrough(),
+      default: { edges: [] }
+    });
+    const registry = makeRegistry({ configs: { kb: config } });
+    const ref = registry.get("kb");
+    await expect(ref.edges!.add({ from: "a", to: "b", type: "owns" })).rejects.toThrow(/vocabulary/);
+  });
+
+  it("does not attach .edges when edges is not declared", () => {
+    const config = makeResourceConfig({
+      stateSchema: z.object({ facts: z.array(z.string()) }).passthrough()
+    });
+    const registry = makeRegistry({ configs: { kb: config } });
+    expect(registry.get("kb").edges).toBeUndefined();
+  });
+
+  it("attaches an .edges API to collection instances when declared", async () => {
+    const nsConfig = makeCollectionConfig("graphs/*", {
+      edges: true,
+      stateSchema: z.object({ edges: z.array(z.any()).default([]) }).passthrough()
+    });
+    const registry = makeRegistry({
+      configs: { graphs: nsConfig },
+      initialState: { "graphs/g1": { edges: [] } }
+    });
+    // Resolve a concrete instance ref (createNamespaceInstanceRef is where the
+    // collection-side edge wiring lives).
+    const inst = await (registry as any).graphs.upsert("g1", {});
+    expect(inst.edges).toBeDefined();
+    await inst.edges.add({ from: "x", to: "y", type: "rel" });
+    expect((inst.state as any).edges).toHaveLength(1);
   });
 });

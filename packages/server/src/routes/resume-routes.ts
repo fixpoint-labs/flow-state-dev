@@ -81,6 +81,21 @@ export async function handleResumeSuspension(
     });
   }
 
+  // Enforce expiry at the endpoint, not just in the sweeper. The sweeper flips
+  // pending -> expired only every sweepIntervalMs (and only when retention is
+  // configured), so without this check an expired gate stays approvable between
+  // ticks — or forever if retention is off. Mark it expired now and reject.
+  if (suspension.expiresAt != null && suspension.expiresAt <= Date.now()) {
+    await provider.suspend({
+      ...suspension,
+      status: "expired",
+      resolvedAt: Date.now()
+    });
+    return jsonResponse(410, {
+      error: `Suspension "${suspensionId}" expired at ${suspension.expiresAt}`
+    });
+  }
+
   const lease = await provider.acquireLease(route.requestId, {
     holder: generateId("resume"),
     durationMs: 60_000
@@ -118,6 +133,9 @@ export async function handleResumeSuspension(
       input: originalRequest.input,
       sessionId: suspension.sessionId,
       requestId: newRequestId,
+      // Resume in the original tenant so the run resolves the same
+      // tenant-namespaced session key (FIX-682).
+      tenantId: originalRequest.tenantId,
       principal: { userId: suspension.userId },
       metadata: {
         resumeOf: route.requestId,

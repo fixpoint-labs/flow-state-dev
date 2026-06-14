@@ -1,9 +1,10 @@
 # @flow-state-dev/claude-code
 
-Claude Code integration for flow-state-dev. The `/cli` entry point dispatches a
-cloud coding task by shelling out to your local `claude` CLI; the in-process
-Agent SDK surface will live at `/sdk` (separate, optional `@anthropic-ai/claude-code`
-dependency). The `/cli` path has no Anthropic SDK dependency — it shells out.
+Claude Code integration for flow-state-dev, with two entry points. The `/cli`
+entry dispatches a cloud coding task by shelling out to your local `claude` CLI
+(no Anthropic SDK dependency). The `/sdk` entry runs a Claude Code agent
+in-process and streams its work through the flow's item stream, backed by the
+optional `@anthropic-ai/claude-agent-sdk` peer dependency.
 
 ## Installation
 
@@ -40,7 +41,7 @@ const dispatch = claudeRemoteDispatch();
 // seq.step(dispatch) with input { instructions: "..." }
 ```
 
-## How it works
+## How it works (CLI)
 
 `claude --remote "<instructions>"` creates a cloud session on claude.ai that
 clones your repo's GitHub remote at the current branch (push first — the cloud VM
@@ -83,6 +84,44 @@ dispatches.
 - Dispatches the current branch as pushed to GitHub; push local commits first.
 - The exact `claude --remote` stdout shape is undocumented; the parser is
   defensive and falls back to retaining raw output if it can't find a URL.
+
+## Quick start (SDK)
+
+The `/sdk` entry runs a Claude Code agent in-process. Install the optional peer:
+
+```bash
+pnpm add @flow-state-dev/claude-code @anthropic-ai/claude-agent-sdk
+```
+
+Attach the capability so a generator can hand work to the agent, or use the block
+directly as a sequencer step:
+
+```ts
+import { generator } from "@flow-state-dev/core";
+import { createClaudeCodeAgentCapability } from "@flow-state-dev/claude-code/sdk";
+
+const orchestrator = generator({
+  name: "orchestrator",
+  model: "openai/gpt-5.4-mini",
+  uses: [createClaudeCodeAgentCapability()],
+});
+```
+
+The agent's messages, reasoning, tool calls, and sub-agents become flow-state-dev
+items as it runs, and its session persists across requests. See the
+[Claude Code SDK agent guide](https://flow-state.dev/docs/tools/claude-code-sdk)
+for the full surface.
+
+## Choosing `/cli` or `/sdk`
+
+| | `/cli` | `/sdk` |
+|--|--------|--------|
+| Execution | Fire-and-forget cloud session | In-process agent |
+| Dependency | None (shells out to `claude`) | Optional `@anthropic-ai/claude-agent-sdk` peer |
+| Auth | claude.ai subscription | Anthropic credentials |
+| Progress | Watch via `/tasks`, claude.ai, mobile | Streamed live as flow-state-dev items |
+| Session | Cloud session handle | Persistent, resumed across requests |
+| Reach for it when | Offloading long autonomous work | A real agent in the loop, observed step by step |
 
 ## Running tests
 

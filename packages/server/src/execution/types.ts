@@ -92,6 +92,17 @@ export type RunActionOptions<
   retry?: RetryPolicy;
   responseEmitter?: ResponseEmitter;
   /**
+   * Starting sequence number for the internally-created `ResponseEmitter` —
+   * the first emitted event gets `startSequenceNumber + 1`. Queue consumers
+   * that re-run an action under the same `requestId` (e.g. a BullMQ retry
+   * attempt) pass the last persisted sequence number so the per-request
+   * event log stays strictly increasing across attempts; tailing clients
+   * filter on `sequence_number > cursor` and would otherwise never see the
+   * retry's events. Ignored when `responseEmitter` is provided — the
+   * caller's emitter owns numbering.
+   */
+  startSequenceNumber?: number;
+  /**
    * Live-subscription convenience for callers that run a flow outside the HTTP
    * transport (jobs, cron, queue consumers) and want to observe items as they
    * happen without assembling their own `ResponseEmitter`. Called for every

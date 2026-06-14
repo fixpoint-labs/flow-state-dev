@@ -228,6 +228,12 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       sessionId: p.sessionId
     }))
   ],
+  debug_list_suspensions: [
+    entry("GET", "/sessions/:sessionId/debug/suspensions", (p) => ({
+      kind: "debug_list_suspensions",
+      sessionId: p.sessionId
+    }))
+  ],
   debug_list_collection_items: [
     entry("GET", "/sessions/:sessionId/debug/resources/:ref/items", (p) => ({
       kind: "debug_list_collection_items",

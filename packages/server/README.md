@@ -233,6 +233,17 @@ See the [authentication reference](https://flow-state.dev/docs/server/authentica
 for the full contract, resolution order, and `requireUser: false`
 semantics.
 
+## Multi-tenant isolation
+
+Pass a tenant id on the `x-tenant-id` header (configurable via
+`createFlowApiRouter({ tenantIdHeader })`) and session storage namespaces by
+tenant automatically: two tenants sharing a session id get distinct session
+records, state, session-scoped resources, and request history. User and org
+scopes stay shared across tenants by design. Single-tenant apps that never
+send the header are unaffected — keys are unchanged and no migration runs.
+Read the value in a block via `ctx.session.identity.tenantId`. See the
+[state and scopes guide](https://flow-state.dev/docs/fundamentals/state-and-scopes#multi-tenant-isolation).
+
 ## Store configuration
 
 ```ts
@@ -325,7 +336,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 **Runtime:**
 - `renderTemplate` — Handlebars-style template rendering utility for resource content
 - `createExecutionContext` — Build a block execution context
-- `runAction` — Execute a flow action end-to-end. Also the sanctioned non-HTTP entry point (jobs, cron, queue consumers): pass an `onItem` callback to observe items live, and read `requestId` back off the result to correlate logs or attach a stream
+- `runAction` — Execute a flow action end-to-end. Also the sanctioned non-HTTP entry point (jobs, cron, queue consumers): pass an `onItem` callback to observe items live, and read `requestId` back off the result to correlate logs or attach a stream. Queue consumers re-running an action under the same `requestId` (retry attempts) pass `startSequenceNumber` — the last persisted sequence number — so the per-request event log stays strictly increasing across attempts
 - `executeBlock` — Execute a single block with context
 
 **Stores:**
@@ -356,6 +367,18 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 **Cross-flow schema validation:**
 
 `FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `org.stateSchema`, and user/org resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateOrgState: true` on `defineFlow`) are namespaced by `flowKind` in storage and skip the registry check. See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and the [state and scopes reference](https://flow-state.dev/docs/fundamentals/state-and-scopes) for the full model.
+
+**Execution backend (worker adapters):**
+- `WorkerAdapter` / `WorkerHandle` / `WorkerMode` — Contract for the `worker` option on `createFlowState`. An adapter (e.g. `bullmqWorker` from `@flow-state-dev/bullmq`) provides the dispatch side and/or the processing side; `createFlowState` hands both the same resolved `{ registry, stores, runtimeConfig }` so the worker can never run against different stores than the router. `mode` picks the deployment shape: `"colocated"` (default), `"dispatch-only"` (web container), `"worker-only"` (worker container — call `ready()` to start consuming). `dispose()` drains the worker before closing stores
+
+**Dispatcher (pluggable execution backend):**
+- `FlowDispatcher` — Interface controlling where flow actions execute. Default: in-process. Implementations route execution to external workers (e.g., BullMQ)
+- `DispatchEnvelope` — Serializable subset of `InboundRequestEnvelope` carried over the queue
+- `FlowDispatchHandle` — Handle returned by `dispatch()`: `requestId`, `finished` promise, `abort()` hook
+- `createInProcessDispatcher` — Default dispatcher that calls `runAction` in the current process
+- `StreamBridge` / `StreamPublisher` / `StreamSubscriber` — Bridges live SSE events between a remote worker and the web process. The worker writes events to the bridge; the web process reads them and forwards to SSE
+- `StreamEvent` — Single event published through the bridge, matching the SSE event shape
+- Pass `dispatcher` to `createFlowState` or `createFlowApiRouter` to route all action dispatches through an external queue. Most deployments should prefer the `worker` option — the adapter wires the dispatcher and the worker together; `dispatcher` is the low-level escape hatch (mutually exclusive with `worker`)
 
 **Errors:**
 - `FlowError` and canonical subclasses
@@ -431,10 +454,13 @@ interface CheckpointStore {
   write(checkpoint: SequencerCheckpoint): Promise<void>;
   latest(requestId: string, blockInstanceId: string): Promise<SequencerCheckpoint | null>;
   delete(requestId: string, blockInstanceId: string): Promise<void>;
+  deleteForRequest(requestId: string): Promise<void>;
 }
 ```
 
-Memory, filesystem, SQLite, and Postgres adapters all ship with first-class implementations. Custom registries can wrap a third-party KV store; storage is constant per sequencer regardless of step count, so the implementation needs no enumeration or pruning.
+`deleteForRequest` removes every checkpoint for a request in one call (all `blockInstanceId`s) — used by the retention sweeper to reclaim checkpoints of a crashed run whose per-instance terminal deletes never fired.
+
+Memory, filesystem, SQLite, and Postgres adapters all ship with first-class implementations. Per-sequencer storage is constant regardless of step count.
 
 By default the final checkpoint is retained after terminal completion (success / error / abort) for post-mortem inspection. Set `flow.request.cleanupCheckpointsOnTerminal: true` on a flow to make terminal frames trigger an immediate `delete()`.
 
@@ -455,9 +481,31 @@ const provider = createCheckpointDurabilityProvider({
 { durabilityProvider: provider }
 ```
 
-The interface has 8 methods: `saveCheckpoint`, `loadCheckpoint`, `suspend`, `loadSuspension`, `listSuspended`, `acquireLease`, `releaseLease`, and `cleanup`. `createCheckpointDurabilityProvider` delegates each to the matching store from `StoreRegistry`.
+The interface methods are `saveCheckpoint`, `loadCheckpoint`, `suspend`, `loadSuspension`, `listSuspended`, `acquireLease`, `releaseLease`, `cleanup`, plus the retention seams `cleanupCheckpoints` (delegates to `CheckpointStore.deleteForRequest`) and `pruneSuspensions` (delegates to `SuspensionStore.pruneTerminalBefore`). `createCheckpointDurabilityProvider` delegates each to the matching store from `StoreRegistry`.
 
 `SuspensionStore` and `LeaseStore` ship with in-memory, filesystem, SQLite, and Postgres adapters. See the [Durable Execution guide](https://flow-state.dev/docs/advanced/durable-execution) for usage patterns.
+
+### Durability retention
+
+Durability records accumulate on long-lived hosts: a completed run's checkpoints are dead weight, a resolved suspension is only worth keeping for a window, and a crashed run leaves records that `cleanup()` never fires for. `createDurabilitySweeper` is an opt-in periodic job that reclaims them, modeled on the stale-request sweeper (`setInterval` + `unref`, `inFlight` guard, idempotent `dispose`, no-op handle when disabled).
+
+Configure it via `RuntimeConfig.durabilityRetention` (forwarded by `createFlowState` and `createFlowApiRouter`). The sweeper is built only when both a `durabilityProvider` and a `durabilityRetention` policy are present.
+
+```ts
+createFlowState({
+  // ...
+  durabilityProvider: createCheckpointDurabilityProvider(stores),
+  durabilityRetention: {
+    sweepIntervalMs: 600_000,                // sweep cadence; 0 disables. Default 10min.
+    checkpointMaxAgeMs: 86_400_000,          // terminal-run checkpoint backstop. Default 24h.
+    suspensionTerminalMaxAgeMs: 604_800_000, // resolved-suspension window. Default 7d.
+    orphanCheckpointThresholdMs: 86_400_000, // abandoned-interrupted threshold. Default 24h.
+    batchLimit: 1000,                        // max deletes per store per tick. Default 1000.
+  },
+});
+```
+
+Each tick takes a single-holder sentinel lease (co-located hosts serialize), enforces suspension expiry (`pending` past `expiresAt` → `expired`), prunes resolved suspensions and expired leases past their windows, and prunes orphaned checkpoints. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
 
 ## Connection resilience
 

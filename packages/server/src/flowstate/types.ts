@@ -13,6 +13,7 @@ import type {
   VoiceProvider
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
+import type { FlowDispatcher } from "../transports/dispatcher";
 import type { CapabilitySlot, StoresConfig } from "../stores/store-adapter";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
@@ -39,6 +40,54 @@ export interface FlowStateModelsConfig {
 export interface FlowStateVoiceConfig {
   /** Voice provider for TTS and STT. */
   provider?: VoiceProvider;
+}
+
+/**
+ * Which sides of an execution backend this process runs.
+ *
+ * - `"colocated"` — dispatch and process in one process. The local-dev
+ *   default: actions route through the backend's queue and a worker in the
+ *   same process consumes them against the same resolved runtime.
+ * - `"dispatch-only"` — enqueue only (the web process in a separated
+ *   deployment). A dedicated worker process consumes the queue.
+ * - `"worker-only"` — process only (a dedicated worker container). Build
+ *   the same `createFlowState(...)` from shared config and call `ready()`;
+ *   no dispatcher is installed and the router is typically never served.
+ */
+export type WorkerMode = "colocated" | "dispatch-only" | "worker-only";
+
+/** Handle for a started worker; `close()` drains and stops it. */
+export interface WorkerHandle {
+  close(): Promise<void>;
+}
+
+/**
+ * An execution-backend adapter for the `worker` option of `createFlowState`.
+ *
+ * Adapter packages (e.g. `@flow-state-dev/bullmq`) return an object whose
+ * shape satisfies this interface. `createFlowState` resolves the runtime
+ * once and hands the SAME `{ registry, stores, runtimeConfig }` to both
+ * sides, so the dispatch path and the worker can never disagree on stores —
+ * the invariant that makes streaming, refresh, and the devtool read what
+ * the worker writes.
+ */
+export interface WorkerAdapter {
+  /** Which sides this process runs. Default `"colocated"`. */
+  readonly mode?: WorkerMode;
+  /**
+   * Build the dispatch side (enqueue + live-event bridge). Installed as the
+   * router's `FlowDispatcher` unless mode is `"worker-only"`.
+   */
+  createDispatcher(runtime: FlowStateRuntime): FlowDispatcher;
+  /**
+   * Start the processing side against the resolved runtime. Called during
+   * runtime init unless mode is `"dispatch-only"`. The returned handle is
+   * closed by `FlowState.dispose()` before store adapters are disposed, so
+   * in-flight jobs drain against open stores.
+   */
+  startWorker(runtime: FlowStateRuntime): WorkerHandle;
+  /** Release backend resources (queues, connections). Called by `dispose()`. */
+  close?(): Promise<void>;
 }
 
 export interface CreateFlowStateOptions<
@@ -129,6 +178,46 @@ export interface CreateFlowStateOptions<
   staleSweepIntervalMs?: number;
   /** Heartbeat-age threshold (ms) for the stale-request sweeper. Default 60000. */
   staleSweepThresholdMs?: number;
+
+  /**
+   * Enable durable execution. When `true`, `createFlowState` builds the
+   * default `createCheckpointDurabilityProvider` from its own resolved stores
+   * and installs it on the runtime, so actions marked `durable: true` get
+   * checkpoint-based crash recovery and `ctx.suspend()` HITL suspend/resume.
+   * Requires a persistent store profile for recovery to survive a restart
+   * (in-memory works for a single process). Default: false.
+   *
+   * Power users needing a custom `DurabilityProvider` should use the
+   * lower-level `createFlowApiRouter` (which accepts one via `runtimeConfig`).
+   */
+  durable?: boolean;
+
+  /**
+   * Retention policy for the durability sweeper (FIX-141). Only takes effect
+   * alongside durability (`durable: true` or a custom provider). Enforces
+   * suspension expiry and prunes aged-out suspensions, leases, and orphaned
+   * checkpoints on a cadence.
+   */
+  durabilityRetention?: RuntimeConfig["durabilityRetention"];
+  
+  /**
+   * Low-level escape hatch: a pre-built FlowDispatcher controlling where
+   * flow actions execute. Default: in-process (runAction called directly).
+   * Most deployments should use `worker` instead — it wires the dispatcher
+   * AND the processing side from one adapter. Mutually exclusive with
+   * `worker`.
+   */
+  dispatcher?: FlowDispatcher;
+
+  /**
+   * Execution-backend adapter (e.g. `bullmqWorker(...)` from
+   * `@flow-state-dev/bullmq`). Wires the dispatch side and/or the worker
+   * side per the adapter's `mode`, both against the same resolved runtime.
+   * Worker startup happens on first `ready()` / `getRouter()` /
+   * `getRuntime()` — call `ready()` eagerly in processes that must consume
+   * the queue from boot. Mutually exclusive with `dispatcher`.
+   */
+  worker?: WorkerAdapter;
 }
 
 /**
