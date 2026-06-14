@@ -259,11 +259,17 @@ When a durable action pauses for an external decision — a human approval gate,
   "message": "Approve sending this email?",
   "data": {
     "toolCalls": [
-      { "approvalId": "appr_1", "toolCallId": "call_abc", "toolName": "send-email", "args": { "to": "a@b.com" } }
+      {
+        "approvalId": "appr_1",
+        "toolCallId": "call_abc",
+        "toolName": "send-email",
+        "args": { "to": "a@b.com" },
+        "message": "Approve sending this email?",
+        "render": { "component": "email-approval" }
+      }
     ]
   },
-  "resumeSchema": { "type": "object", "properties": { "decisions": { "type": "array" } } },
-  "render": { "component": "email-approval" }
+  "resumeSchema": { "type": "object", "properties": { "decisions": { "type": "array" } } }
 }
 ```
 
@@ -271,10 +277,9 @@ Field by field:
 
 - **`reason`** — machine-readable category. `"human_approval"`, `"human_input"`, `"external_event"`, or any custom string from `ctx.suspend()`. The value `"tool_approval"` is emitted when a generator's tool loop pauses on a gated tool call.
 - **`suspensionStatus`** — lifecycle of the gate: `pending`, then `resolved`, `rejected`, or `expired` once acted on.
-- **`message`** — the human-readable prompt to show.
-- **`data`** — arbitrary metadata from the suspension. For `reason: "tool_approval"`, it carries `toolCalls`: one entry per pending call with `approvalId`, `toolCallId`, `toolName`, and `args`.
+- **`message`** — the human-readable prompt to show. For a single gated tool call it's that tool's prompt; for several it's a generated summary.
+- **`data`** — arbitrary metadata from the suspension. For `reason: "tool_approval"`, it carries `toolCalls`: one entry per pending call with `approvalId`, `toolCallId`, `toolName`, `args`, and the per-call `message` and `render` copied from that tool's `approval` declaration. Per-call `message`/`render` live here, not at the top level, because one turn can gate two different tools with two different approval UIs.
 - **`resumeSchema`** — JSON Schema for the resume payload the flow expects back. For tool approval that's the per-call `{ decisions: [{ toolCallId, approved, reason? }] }` shape.
-- **`render`** — optional `{ component, props? }` hint the client resolves through its renderer registry to draw the approval UI.
 
 Resolving a suspension posts to the resume endpoint, which re-dispatches the original action. For a tool approval, an approved call executes and the agent continues; a rejected call surfaces a denial result to the model, which adapts rather than failing hard. See [Durable execution](/docs/advanced/durable-execution#tool-approval) for the full suspend, approve, and resume lifecycle.
 

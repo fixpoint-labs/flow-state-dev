@@ -151,18 +151,28 @@ When the LLM calls `deep-research`, the framework runs the full sequencer pipeli
 
 #### Tool approval
 
-A tool can require a human to approve a call before it runs. Set `requiresApproval` on the tool block, or a `toolApproval` policy on the generator:
+A tool can require a human to approve a call before it runs. The tool declares whether it needs approval and how that approval looks, via an `approval` object. The generator sets the handling policy via `toolApproval`:
 
 ```ts
+const sendEmail = handler({
+  name: "send-email",
+  approval: {
+    required: true,
+    message: "Approve sending this email?",
+    render: { component: "email-approval" },
+  },
+  // ...
+});
+
 const assistant = generator({
   name: "assistant",
   tools: [sendEmail, deleteRecord],
-  toolApproval: { policy: "all", message: "Approve this action?" },
+  toolApproval: "manual",   // default — honor each tool's approval.required
   // ...
 });
 ```
 
-`policy: "all"` gates every tool call; `"none"` (the default) gates only tools that set `requiresApproval: true`. When a gated tool is called, the model turn ends and the request suspends until a human approves or denies. This needs a `DurabilityProvider` configured on the runtime. See [Tool approval](../advanced/durable-execution.md#tool-approval) for the full lifecycle and [Requiring approval](../tools/overview.md#requiring-approval) for the tool-level flag.
+`toolApproval: "manual"` (the default) honors each tool's `approval.required`. `"auto"` runs every call without gating; `"all"` gates every call; the object form (`{ autoApprove, require }`) overrides specific tools. The generator's policy wins over the tool's declaration. When a gated tool is called, the model turn ends and the request suspends until a human approves or denies. This needs a `DurabilityProvider` configured on the runtime. See [Tool approval](../advanced/durable-execution.md#tool-approval) for the full lifecycle and [Requiring approval](../tools/overview.md#requiring-approval) for the tool-level `approval` object.
 
 #### Showing a deterministic call as a tool: `.asTool()`
 

@@ -45,26 +45,49 @@ function toolCallStream(toolCallId: string, toolName: string, input: unknown) {
   ]);
 }
 
+function textStream(text: string) {
+  return streamOf([
+    { type: "stream-start", warnings: [] },
+    { type: "text-start", id: "t1" },
+    { type: "text-delta", id: "t1", delta: text },
+    { type: "text-end", id: "t1" },
+    { type: "finish", finishReason: { unified: "stop", raw: undefined }, usage: USAGE }
+  ]);
+}
+
 
 /**
  * Build a durable single-generator flow whose generator calls a gated tool on
  * its first model turn and produces final text on the next. `executed` records
  * whether the gated tool actually ran.
  */
-function buildFlow(finalText: string) {
+function buildFlow(
+  finalText: string,
+  toolApproval?: Parameters<typeof generator>[0]["toolApproval"]
+) {
   const executed = vi.fn(async (input: { to: string }) => ({ sent: true, to: input.to }));
 
   const sendEmail = handler({
     name: "send_email",
     inputSchema: z.object({ to: z.string() }),
     outputSchema: z.object({ sent: z.boolean(), to: z.string() }),
-    requiresApproval: true,
+    approval: { required: true, message: "Approve sending this email?" },
     execute: async (input) => executed(input)
   });
 
+  let streamCall = 0;
   const model = new MockLanguageModelV3({
-    // The initial gated turn streams a tool call (→ suspend).
-    doStream: async () => ({ stream: toolCallStream("tc_1", "send_email", { to: "a@b.com" }) }),
+    // First streamed turn requests the tool; if it isn't gated (auto-approve),
+    // the tool runs and the next streamed turn produces final text.
+    doStream: async () => {
+      streamCall += 1;
+      return {
+        stream:
+          streamCall === 1
+            ? toolCallStream("tc_1", "send_email", { to: "a@b.com" })
+            : textStream(finalText)
+      };
+    },
     // The resumed turn completes via the non-streaming path: after the approved
     // tool runs (or a denial is materialized), the model produces final text.
     doGenerate: async () => ({
@@ -80,7 +103,8 @@ function buildFlow(finalText: string) {
     model: wrapAiSdkModel(model, "anthropic/claude-sonnet-4-6"),
     prompt: "Email a@b.com.",
     tools: [sendEmail],
-    maxIterations: 5
+    maxIterations: 5,
+    ...(toolApproval !== undefined ? { toolApproval } : {})
   });
 
   const flow = defineFlow({
@@ -191,5 +215,18 @@ describe("tool-approval suspend/resume (FIX-275)", () => {
     expect(executed).not.toHaveBeenCalled();
     expect(resumed.error).toBeUndefined();
     expect(resumed.output).toBe("Understood, I won't send it.");
+  });
+
+  it("generator toolApproval 'auto' overrides a tool's required and runs without suspending", async () => {
+    // Generator handling wins: a tool that declares approval.required is
+    // auto-approved by an autonomous generator, executing without a suspension.
+    const { flow, executed } = buildFlow("Email sent.", "auto");
+    const { provider, result } = await suspendOnce(flow);
+
+    expect(executed).toHaveBeenCalledTimes(1);
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe("Email sent.");
+    expect(await provider.listSuspended({ status: "pending" })).toHaveLength(0);
+    expect(result.items.find((i) => i.type === "suspension")).toBeUndefined();
   });
 });

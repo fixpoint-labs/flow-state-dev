@@ -34,7 +34,7 @@ const agent = generator({
 
 The `prompt` (and `user`) slots can also be authored in a separate `.md` file with YAML frontmatter and a LiquidJS body. Load it with `loadPromptFile(...)` and spread `definePromptFile(pf)` into the generator config. See the [Prompts as Markdown](https://flow-state.dev/docs/advanced/generator-prompts-markdown) reference.
 
-A generator accepts `toolApproval?: ToolApprovalConfig` to gate tool calls behind a human decision: `policy` (`"all" | "none" | (call) => boolean | Promise<boolean>`, default `"none"`), plus optional `render`, `message`, and `timeoutMs`. `"none"` gates only tools that opt in via `requiresApproval`; `"all"` gates every call. When a gated tool is called the model turn ends and the request suspends (`reason: "tool_approval"`) until resolved through the resume endpoint. Requires a `DurabilityProvider`. See [Durable execution — Tool approval](https://flow-state.dev/docs/advanced/durable-execution#tool-approval).
+A generator accepts `toolApproval` to set the handling policy over its tools' approval declarations: `"manual"` (default — honor each tool's `approval.required`), `"auto"` (auto-approve every call), `"all"` (require approval for every call), or `{ autoApprove?, require?, timeoutMs? }` to override specific tools by name or predicate. The generator's policy wins over the tool's declaration: `"auto"`/`autoApprove` exempts a tool even if it set `required: true`; `"all"`/`require` forces approval even on a tool that asks for none; `autoApprove` wins over `require`. When a gated tool is called the model turn ends and the request suspends (`reason: "tool_approval"`) until resolved through the resume endpoint. Requires a `DurabilityProvider`. See [Durable execution — Tool approval](https://flow-state.dev/docs/advanced/durable-execution#tool-approval).
 
 **A handler that validates and transforms:**
 
@@ -49,7 +49,7 @@ const counter = handler({
 });
 ```
 
-Any block used as a generator tool (handlers included) accepts `requiresApproval?: boolean | ((args) => boolean | Promise<boolean>)`. A boolean gates the tool unconditionally; a predicate receives the parsed tool arguments and decides per call. An explicit value overrides the generator's `toolApproval` policy — `true` forces approval even under `"none"`, `false` exempts the tool even under `"all"`. See [Requiring approval](https://flow-state.dev/docs/tools/overview#requiring-approval).
+Any block used as a generator tool (handlers included) accepts an `approval?: { required?, message?, render? }` object. `required` (`boolean | ((args) => boolean | Promise<boolean>)`) decides whether the call needs sign-off — a boolean gates unconditionally, a predicate decides per call from the parsed arguments. `message` (`string | ((args) => string)`) is the prompt shown in the approval UI, and `render` (`{ component, props? }`) names a custom approval component resolved through the client `RendererRegistry`. The tool owns its approval UI, so each tool in a generator can present its own panel. The generator's `toolApproval` handling policy can override `required`. See [Requiring approval](https://flow-state.dev/docs/tools/overview#requiring-approval).
 
 **A sequencer that composes them into a pipeline with error recovery:**
 

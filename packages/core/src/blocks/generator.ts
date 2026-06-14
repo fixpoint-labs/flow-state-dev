@@ -471,19 +471,21 @@ export interface GeneratorConfig<
   /** When true (default), auto-inject tool name+description pairs into the system context. */
   describeTools?: boolean;
   /**
-   * Per-tool-call human approval (FIX-275). Declares which tool calls require
-   * a human to approve them before they execute. When a matching call is
-   * requested, the model turn ends, the request suspends with the full call
-   * details, and a human approves or rejects via the resume endpoint.
-   * Requires the action to run with a configured `DurabilityProvider`.
+   * Generator-level tool-approval handling policy (FIX-275). This governs HOW
+   * the generator handles approval across its tools — the override layer — not
+   * which tools are sensitive (each tool declares its own `approval`) nor how
+   * an approval is presented (also the tool's `approval`). When a gated call is
+   * requested, the model turn ends, the request suspends with the call details,
+   * and a human approves or rejects via the resume endpoint. Requires the
+   * action to run with a configured `DurabilityProvider`.
    */
   toolApproval?: ToolApprovalConfig;
 }
 
 /**
- * A tool call presented to a `toolApproval` policy predicate (FIX-275). Carries
- * what a gating decision needs: the framework tool name, the parsed arguments,
- * and the tool's description.
+ * A tool call presented to a `toolApproval` `autoApprove` / `require` predicate
+ * (FIX-275). Carries what a handling decision needs: the framework tool name,
+ * the parsed arguments, and the tool's description.
  */
 export interface ToolApprovalRequest {
   toolName: string;
@@ -492,20 +494,29 @@ export interface ToolApprovalRequest {
 }
 
 /**
- * Generator-level tool-approval policy (FIX-275). `policy` selects which calls
- * gate: `"all"` gates every call, `"none"` (default) gates only tools that set
- * `requiresApproval: true`, and a predicate decides per call. A tool's own
- * `requiresApproval` always wins over the policy.
+ * Generator-level tool-approval handling policy (FIX-275). The generator's
+ * policy overrides each tool's own `approval.required` declaration:
+ *
+ * - `"manual"` (default): honor each tool's `approval.required`.
+ * - `"auto"`: auto-approve every tool call (fully autonomous; ignores tool-level
+ *   approval declarations).
+ * - `"all"`: require approval for every tool call (even tools that don't ask).
+ * - object: auto-approve and/or require specific tools by name or predicate,
+ *   with an optional approval expiry. `autoApprove` wins over `require` and over
+ *   a tool's own `approval.required`.
  */
-export interface ToolApprovalConfig {
-  policy?: "all" | "none" | ((call: ToolApprovalRequest) => boolean | Promise<boolean>);
-  /** Component descriptor for a custom approval UI (resolved via the client RendererRegistry). */
-  render?: { component: string; props?: Record<string, unknown> };
-  /** Suspension message, or a function over the pending calls. Defaults to a generated summary. */
-  message?: string | ((calls: ToolApprovalRequest[]) => string);
-  /** Auto-expire the approval after this many ms (maps to the suspension's expiry). */
-  timeoutMs?: number;
-}
+export type ToolApprovalConfig =
+  | "auto"
+  | "manual"
+  | "all"
+  | {
+      /** Tool names (or a predicate) to auto-approve even if they declare `approval.required`. */
+      autoApprove?: string[] | ((call: ToolApprovalRequest) => boolean | Promise<boolean>);
+      /** Tool names (or a predicate) to require approval for, beyond what the tools declare. */
+      require?: string[] | ((call: ToolApprovalRequest) => boolean | Promise<boolean>);
+      /** Auto-expire each approval after this many ms (maps to the suspension's expiry). */
+      timeoutMs?: number;
+    };
 
 
 
@@ -715,38 +726,75 @@ function compileToolsForModel(tools: GeneratorTool[]): GeneratorModelTool[] {
   }));
 }
 
+/** Resolve a tool's own `approval.required` for the given args. */
+async function resolveToolRequired(
+  required: boolean | ((args: never) => boolean | Promise<boolean>) | undefined,
+  args: unknown
+): Promise<boolean> {
+  if (required === undefined || required === false) return false;
+  if (required === true) return true;
+  return required(args as never);
+}
+
+/** Whether a name-list-or-predicate handling rule matches the given call. */
+async function matchesHandlingRule(
+  rule: string[] | ((call: ToolApprovalRequest) => boolean | Promise<boolean>) | undefined,
+  call: ToolApprovalRequest
+): Promise<boolean> {
+  if (rule === undefined) return false;
+  if (Array.isArray(rule)) return rule.includes(call.toolName);
+  return rule(call);
+}
+
 /**
  * Resolve the effective `needsApproval` value to stamp on a compiled tool
- * (FIX-275). A tool's own `requiresApproval` wins over the generator policy:
- * an explicit `true`/`false`/predicate is authoritative; only `undefined`
- * defers to the policy. Returns `undefined` when the tool can never gate, so
- * the default (no-approval) compilation path is untouched.
+ * (FIX-275). The generator's handling policy overrides the tool's own
+ * `approval.required` declaration (the generator is the orchestration/trust
+ * boundary): `"auto"` and a matching `autoApprove` exempt the tool; `"all"` and
+ * a matching `require` force approval; otherwise the tool's own declaration is
+ * honored. `autoApprove` wins over `require`. Returns `undefined` when the tool
+ * can never gate, so the default (no-approval) compilation path is untouched.
  */
 function resolveToolNeedsApproval(
   tool: GeneratorTool,
   toolApproval: ToolApprovalConfig | undefined
 ): GeneratorModelTool["needsApproval"] {
-  const explicit = tool.config.requiresApproval;
-  if (explicit === false) return undefined;
-  if (explicit === true) return true;
-  if (typeof explicit === "function") {
-    return (args: unknown) => explicit(args as never);
+  const required = tool.config.approval?.required;
+  const name = tool.name;
+  const description = tool.description;
+
+  // Blanket string policies.
+  if (toolApproval === "auto") return undefined; // auto-approve all → never gate
+  if (toolApproval === "all") return true; // require all → always gate
+
+  // Default / "manual": honor the tool's own declaration.
+  if (toolApproval === undefined || toolApproval === "manual") {
+    if (required === undefined || required === false) return undefined;
+    if (required === true) return true;
+    return (args: unknown) => required(args as never);
   }
-  // No tool-level flag — defer to the generator policy.
-  const policy = toolApproval?.policy ?? "none";
-  if (policy === "none") return undefined;
-  if (policy === "all") return true;
-  return (args: unknown) =>
-    policy({ toolName: tool.name, arguments: args, description: tool.description });
+
+  // Object policy: autoApprove / require overrides, then the tool default.
+  const cfg = toolApproval;
+  // Static exemption — autoApprove wins, so a statically-listed tool never gates.
+  if (Array.isArray(cfg.autoApprove) && cfg.autoApprove.includes(name)) {
+    return undefined;
+  }
+  return async (args: unknown): Promise<boolean> => {
+    const call: ToolApprovalRequest = { toolName: name, arguments: args, description };
+    if (await matchesHandlingRule(cfg.autoApprove, call)) return false;
+    if (await matchesHandlingRule(cfg.require, call)) return true;
+    return resolveToolRequired(required, args);
+  };
 }
 
 /**
  * Compile tools WITH execute wrappers. Each tool's `run()` is wrapped
  * via `buildToolExecutor` (cache/retry/status-guard/observer/scope/envelope).
  * The AI SDK auto-executes these during its multi-step loop. When a tool is
- * gated by the generator's `toolApproval` policy or its own `requiresApproval`
- * flag, a `needsApproval` predicate is stamped so the SDK ends the turn with a
- * tool-approval-request instead of executing (FIX-275).
+ * gated — by its own `approval.required` or the generator's `toolApproval`
+ * handling policy — a `needsApproval` predicate is stamped so the SDK ends the
+ * turn with a tool-approval-request instead of executing (FIX-275).
  */
 function compileToolsWithExecute(
   tools: GeneratorTool[],
@@ -819,14 +867,18 @@ function defaultToolApprovalMessage(calls: GeneratorApprovalRequest[]): string {
 
 /**
  * Suspend the generator for human approval of one or more gated tool calls
- * (FIX-275). Persists the serialized model turn in the suspension's internal
- * `resumeState` so the resumed generator continues without replaying the model
- * call. Throws `SuspensionError` (via `ctx.suspend`); never returns.
+ * (FIX-275). Each pending call carries its own `message`/`render`, resolved
+ * from the calling tool's `approval` config — so a turn that gates two
+ * different tools surfaces two different approval UIs. Persists the serialized
+ * model turn in the suspension's internal `resumeState` so the resumed
+ * generator continues without replaying the model call. Throws
+ * `SuspensionError` (via `ctx.suspend`); never returns.
  */
 async function suspendForToolApproval(
   ctx: BlockContext,
   generation: GeneratorModelResult,
   toolApproval: ToolApprovalConfig | undefined,
+  toolsByName: Map<string, GeneratorTool>,
   blockName: string
 ): Promise<never> {
   const calls = generation.approvalRequests ?? [];
@@ -836,22 +888,39 @@ async function suspendForToolApproval(
         `is configured. Tool approval requires durable execution.`
     );
   }
-  const requests: ToolApprovalRequest[] = calls.map((c) => ({
-    toolName: c.toolName,
-    arguments: c.args
-  }));
-  const message =
-    typeof toolApproval?.message === "function"
-      ? toolApproval.message(requests)
-      : toolApproval?.message ?? defaultToolApprovalMessage(calls);
+
+  // Enrich each pending call with its tool's own approval presentation.
+  const toolCalls = calls.map((c) => {
+    const approval = toolsByName.get(c.toolName)?.config.approval;
+    const message =
+      typeof approval?.message === "function"
+        ? approval.message(c.args as never)
+        : approval?.message;
+    return {
+      approvalId: c.approvalId,
+      toolCallId: c.toolCallId,
+      toolName: c.toolName,
+      args: c.args,
+      ...(message !== undefined ? { message } : {}),
+      ...(approval?.render !== undefined ? { render: approval.render } : {})
+    };
+  });
+
+  // Top-level message: the single tool's prompt when there's one call, else a
+  // summary. Per-call render lives on each `toolCalls` entry, not at the top.
+  const topMessage =
+    toolCalls.length === 1 && typeof toolCalls[0]!.message === "string"
+      ? (toolCalls[0]!.message as string)
+      : defaultToolApprovalMessage(calls);
+  const timeoutMs =
+    typeof toolApproval === "object" ? toolApproval.timeoutMs : undefined;
 
   await ctx.suspend({
     reason: "tool_approval",
-    message,
-    data: { toolCalls: calls },
+    message: topMessage,
+    data: { toolCalls },
     resumeSchema: TOOL_APPROVAL_RESUME_SCHEMA,
-    render: toolApproval?.render,
-    timeoutMs: toolApproval?.timeoutMs,
+    timeoutMs,
     resumeState: {
       kind: "tool_approval",
       // Match on the structural block path, not the instance id — the latter
@@ -1186,6 +1255,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
   ctx: BlockContext,
   itemVisibility: ItemVisibility | undefined,
   agentName: string | undefined,
+  toolsByName: Map<string, GeneratorTool>,
   prepareStep?: PrepareStepFn,
   resolvedProviderOpts?: Record<string, unknown>,
   resolvedCaching?: CachingConfig
@@ -1408,7 +1478,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     finalResult?.approvalRequests !== undefined &&
     finalResult.approvalRequests.length > 0
   ) {
-    await suspendForToolApproval(ctx, finalResult, config.toolApproval, blockName);
+    await suspendForToolApproval(ctx, finalResult, config.toolApproval, toolsByName, blockName);
   }
 
   // If no text deltas arrived, still finalize reasoning and emit a message
@@ -1865,6 +1935,9 @@ export function generator<
             ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName, itemVisibility, agentName, normalizedConfig.toolApproval)
             : compileToolsForModel(toolBlocks))
         : [];
+      // Lookup for resolving each gated call's tool-level approval presentation
+      // (message/render) at suspension time (FIX-275).
+      const toolsByName = new Map(toolBlocks.map((t) => [t.name, t] as const));
 
       // Streaming path: text output + model supports streaming. We stream
       // whenever tools are present (so tool `execute` closures fire) or
@@ -1933,6 +2006,7 @@ export function generator<
             ctx,
             itemVisibility,
             agentName,
+            toolsByName,
             prepareStepFn,
             resolvedProviderOpts,
             resolvedCaching
@@ -1983,7 +2057,7 @@ export function generator<
       // details before parsing output — a gated turn produces no final
       // candidate, so this must run before the did-not-produce-output throw.
       if (generation.approvalRequests !== undefined && generation.approvalRequests.length > 0) {
-        await suspendForToolApproval(ctx, generation, normalizedConfig.toolApproval, blockName);
+        await suspendForToolApproval(ctx, generation, normalizedConfig.toolApproval, toolsByName, blockName);
       }
 
       const candidate = resolveGenerationCandidate(generation);

@@ -109,7 +109,7 @@ The cross-task observation flow that pairs with this layer is documented in the 
 
 ## Requiring approval
 
-A tool can demand a human sign-off before it runs. Declare `requiresApproval` on the tool block:
+A tool can demand a human sign-off before it runs. The tool owns both the decision and the UI: declare an `approval` object on the tool block.
 
 ```ts
 import { handler } from "@flow-state-dev/core";
@@ -119,14 +119,20 @@ const transfer = handler({
   name: "transfer-funds",
   inputSchema: z.object({ to: z.string(), amount: z.number() }),
   outputSchema: z.object({ confirmation: z.string() }),
-  requiresApproval: (args) => args.amount > 1000, // gate large transfers only
+  approval: {
+    required: (args) => args.amount > 1000,   // gate large transfers only
+    message: (args) => `Approve transfer of $${args.amount}?`,
+    render: { component: "transfer-approval" },
+  },
   execute: async (input) => ({ confirmation: await sendTransfer(input) }),
 });
 ```
 
-Pass `true` to gate every call, or a predicate that receives the parsed tool arguments and decides per call. When a generator calls a gated tool, the model turn ends, the request suspends, and a human approves or denies before the call executes.
+`approval.required` decides whether the call needs sign-off — `true` gates every call, or a predicate that receives the parsed tool arguments and decides per call. `approval.message` is the prompt shown in the approval UI, and `approval.render` names a custom component for it. Because each tool declares its own `message` and `render`, a generator can hold several gated tools that each present a different approval panel, with no central policy to edit.
 
-This takes effect only when the calling generator runs with a `DurabilityProvider` configured — a gated call without one fails fast. See [Durable execution — Tool approval](/docs/advanced/durable-execution#tool-approval) for the generator-level `toolApproval` policy, the suspension shape, and how a human resolves it.
+When a generator calls a gated tool, the model turn ends, the request suspends, and a human approves or denies before the call executes. This takes effect only when the calling generator runs with a `DurabilityProvider` configured — a gated call without one fails fast.
+
+The generator can override these declarations with its `toolApproval` handling policy: `"auto"` runs everything without gating, `"all"` gates everything, and the object form auto-approves or requires specific tools. The generator's policy wins over the tool's declaration. See [Durable execution — Tool approval](/docs/advanced/durable-execution#tool-approval) for the full handling policy, the suspension shape, and how a human resolves it.
 
 ## Installation
 

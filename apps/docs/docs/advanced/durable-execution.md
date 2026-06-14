@@ -145,32 +145,41 @@ Execution continues normally from there. The new request has its own `requestId`
 
 `ctx.suspend()` pauses an explicit step you wrote. Tool approval pauses a tool call the model chose to make. When a generator runs inside a durable action and the model calls a gated tool, the turn ends, the request suspends, and a human approves or denies the call before the agent continues. Reach for it when a model can take an action with real consequences — sending an email, moving money, deleting a record — and you want a person in the loop on exactly those calls without writing an approval step by hand.
 
-There are two places to opt in. A tool block declares `requiresApproval`. A generator declares a `toolApproval` policy. The tool-level setting wins.
+Two layers decide what happens. The tool declares whether it needs approval and how that approval looks. The generator sets the handling policy that orchestrates those declarations.
 
-`requiresApproval` lives on any block used as a generator tool (handlers included):
+A tool declares an `approval` object. It lives on any block used as a generator tool (handlers included):
 
 ```ts
-requiresApproval?: boolean | ((args) => boolean | Promise<boolean>);
+approval?: {
+  required?: boolean | ((args) => boolean | Promise<boolean>);
+  message?: string | ((args) => string);
+  render?: { component: string; props?: Record<string, unknown> };
+};
 ```
 
-A boolean gates the tool unconditionally. A predicate receives the parsed tool arguments and decides per call — gate a `transfer` tool only when the amount is over a threshold, for example.
+`required` decides whether the call needs sign-off. A boolean gates the tool unconditionally. A predicate receives the parsed tool arguments and decides per call — gate a `transfer` tool only when the amount is over a threshold, for example. `message` is the prompt shown in the approval UI, static or derived from the call's arguments. `render` names a component the client resolves through its `RendererRegistry` to draw a custom approval panel.
 
-`toolApproval` sets the generator's policy and the approval UI:
+The tool owns its own approval UI. Two tools in the same generator can each declare a different `message` and `render`. A `send-email` tool draws an email confirmation panel; a `transfer` tool draws an amount-and-recipient panel. Neither has to know about the other, and adding a third gated tool means adding one more `approval` block, not editing a central policy.
+
+The generator declares a `toolApproval` handling policy:
 
 ```ts
-interface ToolApprovalConfig {
-  policy?: "all" | "none" | ((call: ToolApprovalRequest) => boolean | Promise<boolean>);
-  render?: { component: string; props?: Record<string, unknown> };
-  message?: string | ((calls: ToolApprovalRequest[]) => string);
-  timeoutMs?: number;
-}
+toolApproval?:
+  | "manual"   // default: honor each tool's approval.required
+  | "auto"     // auto-approve every call, ignoring tool-level approval
+  | "all"      // require approval for every call, even tools that don't ask
+  | {
+      autoApprove?: string[] | ((call: ToolApprovalRequest) => boolean | Promise<boolean>);
+      require?: string[] | ((call: ToolApprovalRequest) => boolean | Promise<boolean>);
+      timeoutMs?: number;
+    };
 
 interface ToolApprovalRequest { toolName: string; arguments: unknown; description?: string; }
 ```
 
-`policy: "all"` gates every tool call. `"none"` (the default) gates only tools that set `requiresApproval: true`. A predicate decides per call from the tool name and arguments. `render` names a component the client resolves through its `RendererRegistry` to draw the approval UI; `message` is the human-readable prompt; `timeoutMs` maps to the suspension's expiry.
+`"manual"` is the default and honors each tool's `approval.required`. `"auto"` runs every call without gating, even tools that set `required: true` — full autonomy. `"all"` gates every call, even tools that declare no approval. The object form is the targeted override: `autoApprove` exempts named tools (an array of tool names) or tools matching a predicate; `require` forces approval for named tools or matching tools beyond what they declare; `timeoutMs` sets the suspension's expiry.
 
-Precedence is simple: an explicit `requiresApproval` on the tool overrides the generator's policy. `requiresApproval: true` forces approval even under `policy: "none"`; `requiresApproval: false` exempts the tool even under `policy: "all"`.
+Precedence: the generator's handling policy wins over the tool's declaration. The generator is the trust boundary, so it has final say. `"auto"` or a matching `autoApprove` exempts a tool even if it set `required: true`. `"all"` or a matching `require` forces approval even on a tool that asks for none. Otherwise the tool's own `approval.required` is honored. When a tool matches both `autoApprove` and `require`, `autoApprove` wins.
 
 ### A gated tool in a durable action
 
@@ -182,7 +191,11 @@ const sendEmail = handler({
   name: "send-email",
   inputSchema: z.object({ to: z.string(), body: z.string() }),
   outputSchema: z.object({ sent: z.boolean() }),
-  requiresApproval: true, // a human signs off before this ever runs
+  approval: {
+    required: true,                              // or (args) => args.to.endsWith("@external.com")
+    message: "Approve sending this email?",
+    render: { component: "email-approval" },
+  },
   execute: async (input) => {
     await deliver(input.to, input.body);
     return { sent: true };
@@ -196,10 +209,7 @@ const assistant = generator({
   history: true,
   user: (input: { message: string }) => input.message,
   tools: [sendEmail],
-  toolApproval: {
-    message: "Approve sending this email?",
-    render: { component: "email-approval" },
-  },
+  toolApproval: "manual",   // default — honor each tool. Or "auto" / { autoApprove: ["send-email"] }
   itemVisibility: { client: true, history: true },
 });
 
@@ -218,7 +228,7 @@ The gating generator must be a direct step of the root durable sequencer (or the
 
 ### What the client sees
 
-When the model calls a gated tool, that model turn ends and the request suspends with `reason: "tool_approval"`. A `suspension` item lands on the stream carrying `data.toolCalls` — one entry per pending call:
+When the model calls a gated tool, that model turn ends and the request suspends with `reason: "tool_approval"`. A `suspension` item lands on the stream carrying `data.toolCalls` — one entry per pending call. Each entry carries its own `message` and `render`, copied from that tool's `approval` declaration, because a single turn can gate two different tools with two different approval UIs:
 
 ```jsonc
 {
@@ -227,14 +237,20 @@ When the model calls a gated tool, that model turn ends and the request suspends
   "message": "Approve sending this email?",
   "data": {
     "toolCalls": [
-      { "approvalId": "appr_1", "toolCallId": "call_abc", "toolName": "send-email", "args": { "to": "a@b.com", "body": "..." } }
+      {
+        "approvalId": "appr_1",
+        "toolCallId": "call_abc",
+        "toolName": "send-email",
+        "args": { "to": "a@b.com", "body": "..." },
+        "message": "Approve sending this email?",
+        "render": { "component": "email-approval" }
+      }
     ]
-  },
-  "render": { "component": "email-approval" }
+  }
 }
 ```
 
-The `render` hint is whatever you configured on `toolApproval`. The client resolves the component through its `RendererRegistry` and draws an approval panel from the pending calls. See [SSE protocol — suspension items](../streaming/items.md#suspension-items) for the full item shape.
+The top-level `message` is the single tool's prompt when one call is gated, or a generated summary when several are. There is no top-level `render` — each gated call carries its own. The client resolves each entry's component through its `RendererRegistry` and draws a panel per pending call. See [SSE protocol — suspension items](../streaming/items.md#suspension-items) for the full item shape.
 
 ### Resolving the approval
 

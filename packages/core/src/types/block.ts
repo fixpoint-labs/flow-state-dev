@@ -800,19 +800,28 @@ export interface BlockConfig<
   cacheable?: BlockCacheableConfig | true;
 
   /**
-   * Per-tool human-approval gate (FIX-275). When this block is installed as a
-   * generator tool, controls whether each invocation requires human approval
-   * before executing. A boolean applies unconditionally; a predicate receives
-   * the parsed tool arguments. An explicit value overrides the calling
-   * generator's `toolApproval` policy — `true` forces approval even under
-   * policy `"none"`, `false` exempts the tool even under policy `"all"`.
-   * Default `undefined` (defer to the generator's policy).
+   * Tool-level human-approval config (FIX-275). When this block is installed
+   * as a generator tool, the tool itself declares whether a call needs human
+   * approval before it runs and how that approval is presented. The calling
+   * generator's `toolApproval` handling policy can override `required` (e.g.
+   * auto-approve a trusted tool, or require approval for everything).
    *
    * Requires the generator to run with a configured `DurabilityProvider`; a
    * gated call in a non-durable context fails fast. No effect when the block
    * is used outside a generator's tool slot.
    */
-  requiresApproval?: boolean | ((args: TInput) => boolean | Promise<boolean>);
+  approval?: {
+    /**
+     * Whether a call requires approval. A boolean applies unconditionally; a
+     * predicate receives the parsed tool arguments (so the tool can gate on
+     * what the model is asking it to do). Default `undefined` (not required).
+     */
+    required?: boolean | ((args: TInput) => boolean | Promise<boolean>);
+    /** Human-readable prompt for the approval UI; a function receives the call's arguments. */
+    message?: string | ((args: TInput) => string);
+    /** Component descriptor for a custom approval UI (resolved via the client RendererRegistry). */
+    render?: { component: string; props?: Record<string, unknown> };
+  };
 }
 
 /**
