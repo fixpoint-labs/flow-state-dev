@@ -9,6 +9,13 @@
  * `db:generate` (the committed-SQL path) does not connect to a database; the
  * `dbCredentials.url` is only consulted by connecting commands (`migrate`/`push`)
  * and falls back to a local placeholder so generation works with no env set.
+ *
+ * No `migrations` key: the runtime migrators (dev in-process, deploy script)
+ * apply migrations using drizzle's default `drizzle.__drizzle_migrations`
+ * journal. Pinning the journal to the `app` schema would make the migrator
+ * pre-create `app`, colliding with migration 0000's `CREATE SCHEMA "app"`.
+ * `schemaFilter` already scopes the app TABLES to `app`; we only run
+ * `drizzle-kit generate` (file-based) here, never `drizzle-kit migrate`.
  */
 import { defineConfig } from "drizzle-kit";
 
@@ -17,7 +24,6 @@ export default defineConfig({
   schema: "./src/db/schema.ts",
   out: "./src/db/migrations",
   schemaFilter: ["app"],
-  migrations: { schema: "app", table: "__drizzle_migrations" },
   dbCredentials: {
     url:
       process.env.FSD_DB_URL ??

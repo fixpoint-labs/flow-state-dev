@@ -40,6 +40,11 @@ export async function createMigratedPgliteDb(
   migrationsFolder: string,
 ): Promise<Db> {
   const db = drizzlePglite(pglite, { schema });
+  // Uses drizzle's default `drizzle.__drizzle_migrations` journal (matching the
+  // deploy migrator and `drizzle.config.ts`, which does not pin a journal). The
+  // journal must stay OUT of the `app` schema: migration 0000 runs
+  // `CREATE SCHEMA "app"`, so pinning the journal to `app` would pre-create the
+  // schema and collide. The app tables still live in `app` via `pgSchema`.
   await migratePglite(db, { migrationsFolder });
   return db as unknown as Db;
 }

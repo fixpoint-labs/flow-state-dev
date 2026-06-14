@@ -76,7 +76,10 @@ export interface PortfolioRepository {
   deleteHolding(accountId: string, ticker: string): Promise<void>;
 }
 
-/** Coerce a Drizzle `numeric` (string) to a JS number; pass `null` through. */
+/** Coerce a Drizzle `numeric` (string) to a JS number; pass `null` through.
+ *  Note: this narrows arbitrary-precision `numeric` to a JS double — fine for
+ *  this app's display-approximation money/quantities (RISK-P5), but a future
+ *  exact-decimal consumer (tax lots) should read the string, not this. */
 function toNumber(value: string | null): number | null {
   return value === null ? null : Number(value);
 }
@@ -157,7 +160,7 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             currency: values.currency,
             cashBalance: values.cashBalance,
             riskMandate: values.riskMandate,
-            updatedAt: new Date().toISOString(),
+            updatedAt: sql`now()`,
           },
         })
         .returning();
@@ -194,7 +197,7 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
               quantity: sql`excluded.quantity`,
               costBasis: sql`excluded.cost_basis`,
               acquiredDate: sql`excluded.acquired_date`,
-              updatedAt: new Date().toISOString(),
+              updatedAt: sql`now()`,
             },
           });
       });

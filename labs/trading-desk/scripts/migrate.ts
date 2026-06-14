@@ -32,7 +32,11 @@ const pool = new Pool({ connectionString: url });
 try {
   // Framework public.* schema: constructing the store runs its idempotent init.
   await createPostgresStores({ pool });
-  // App-owned app.* tables: versioned, ordered migrations.
+  // App-owned app.* tables: versioned, ordered migrations. Uses drizzle's
+  // default `drizzle.__drizzle_migrations` journal — the dev migrator and
+  // `drizzle.config.ts` agree on it, so there is a single journal location.
+  // The journal stays out of `app` because migration 0000 runs
+  // `CREATE SCHEMA "app"` and must not collide with a pre-created schema.
   await migrate(drizzle(pool), {
     migrationsFolder: path.join(process.cwd(), "src", "db", "migrations"),
   });

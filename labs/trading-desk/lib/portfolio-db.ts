@@ -48,7 +48,12 @@ async function buildBacking(): Promise<Backing> {
   if (url) {
     const pool = new Pool({ connectionString: url, max: 10 });
     return {
-      storesOptions: { pool, liveTailPool: null },
+      // Deploy runs `scripts/migrate.ts` as a pre-deploy step, so the framework
+      // `public.*` schema already exists: skip the runtime init. This avoids
+      // repeating the advisory-lock DDL on every cold start across pooled
+      // connections (the kitchen-sink / Vercel deploy posture). The dev PGlite
+      // branch below keeps init on — it has no separate framework migrate step.
+      storesOptions: { pool, liveTailPool: null, skipSchemaInit: true },
       repository: createPortfolioRepository(createDb(pool)),
     };
   }
