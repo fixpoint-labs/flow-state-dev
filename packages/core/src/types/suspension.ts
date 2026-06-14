@@ -20,6 +20,7 @@ export type SuspensionReason =
   | "human_approval"
   | "human_input"
   | "external_event"
+  | "tool_approval"
   | (string & {});
 
 export interface SuspensionRecord {

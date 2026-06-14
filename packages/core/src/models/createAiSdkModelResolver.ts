@@ -715,7 +715,9 @@ function normalizeFinishChunk(
 ): Omit<GeneratorModelStreamChunk, "type"> {
   const text = typeof result.text === "string" ? result.text : undefined;
   const rawProviderMeta = result.providerMetadata ?? result.experimental_providerMetadata;
-  const approvalRequests = normalizeApprovalRequests(result.content, toolNameMap);
+  // Tool-approval requests are NOT extracted here: on the streaming result
+  // `content`/`response` are promises, so the stream method resolves and
+  // populates them after the loop (FIX-275). See the `stream` finish handling.
   return {
     finishReason: normalizeFinishReason(result.finishReason),
     usage: normalizeUsage(result.usage, rawProviderMeta),
@@ -725,10 +727,7 @@ function normalizeFinishChunk(
       finishReason: normalizeFinishReason(result.finishReason),
       usage: normalizeUsage(result.usage, rawProviderMeta),
       providerMetadata: asProviderMetadata(rawProviderMeta),
-      sources: normalizeSources(result.sources),
-      approvalRequests,
-      responseMessages:
-        approvalRequests !== undefined ? extractResponseMessages(result) : undefined
+      sources: normalizeSources(result.sources)
     }
   };
 }

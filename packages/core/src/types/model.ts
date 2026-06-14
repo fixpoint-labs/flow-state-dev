@@ -333,8 +333,6 @@ export interface GeneratorModel {
     providerOptions?: Record<string, unknown>;
     prepareStep?: PrepareStepFn;
     caching?: CachingConfig;
-    /** Resume a suspended tool-approval turn (FIX-275). See {@link GeneratorModel.generate}. */
-    continuation?: ModelContinuation;
   }): AsyncIterable<GeneratorModelStreamChunk>;
   /**
    * Resolves a provider-native search tool from normalized config.

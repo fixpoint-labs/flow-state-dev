@@ -884,9 +884,11 @@ type ToolApprovalResumeState = {
  * Detect that this generator is resuming a tool-approval suspension and build
  * the model continuation from the persisted turn plus the human decisions
  * (FIX-275). Matches on the suspension's internal `resumeState.kind` and this
- * generator's `blockInstanceId`. Consumes the resume context so a later
- * `ctx.suspend()` in this request suspends fresh. Returns `undefined` when not
- * resuming a tool-approval suspension for this block.
+ * generator's `blockPath` (the requestId-independent structural path).
+ * Consumes the resume context so a later `ctx.suspend()` in this request
+ * suspends fresh. Returns `undefined` when this generator is not the one that
+ * suspended — including a downstream generator that runs fresh on the resumed
+ * request, which is correct: only the suspended generator continues a turn.
  *
  * Decisions come from the `ResumeContext`: `action: "reject"` denies every
  * pending call; otherwise the per-call `decisions` array is matched by
