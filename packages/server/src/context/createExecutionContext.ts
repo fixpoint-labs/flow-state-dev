@@ -64,7 +64,7 @@ import {
   type ErrorCaptureIdentity
 } from "../errors/error-capture";
 import { SuspensionError, SuspensionRejectedError } from "@flow-state-dev/core";
-import type { ResumeContext } from "@flow-state-dev/core/types";
+import type { ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
   resolveUserStorageKey,
@@ -2334,6 +2334,12 @@ export async function createExecutionContext<
 
   let resumeConsumed = false;
 
+  // FIX-275: the loaded SuspensionRecord for the in-flight resume, shared
+  // across every scope built by `createContext` (the generator tool-approval
+  // gate reads it from a nested child scope). runAction sets it via
+  // `_setResumeSuspension` after loading the record.
+  let resumeSuspension: SuspensionRecord | undefined;
+
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
     siblingRegistry: SiblingRegistryEntry[] | undefined,
@@ -2583,6 +2589,15 @@ export async function createExecutionContext<
       _consumeResumeContext: () => {
         resumeConsumed = true;
       },
+      // FIX-275: tool-approval resume channel. These read closure state shared
+      // by every scope, so a generator running in a nested child scope can see
+      // the loaded suspension (its persisted turn) and the resume decisions.
+      _resumeSuspension: () => resumeSuspension,
+      _setResumeSuspension: (record: SuspensionRecord | undefined) => {
+        resumeSuspension = record;
+      },
+      _resumeContext: () =>
+        options.metadata?.resumeContext as ResumeContext | undefined,
       saveCheckpoint: undefined,
       // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
       // as running `taskId`. The task-board worker body calls this once per

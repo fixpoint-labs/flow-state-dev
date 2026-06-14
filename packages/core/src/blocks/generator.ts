@@ -854,7 +854,9 @@ async function suspendForToolApproval(
     timeoutMs: toolApproval?.timeoutMs,
     resumeState: {
       kind: "tool_approval",
-      blockInstanceId: ctx._blockIdentity?.blockInstanceId,
+      // Match on the structural block path, not the instance id — the latter
+      // embeds the requestId, which changes on resume (a new request).
+      blockPath: ctx._blockIdentity?.blockPath,
       requestMessages: generation.requestMessages ?? [],
       responseMessages: generation.responseMessages ?? [],
       approvals: calls.map((c) => ({
@@ -872,7 +874,7 @@ async function suspendForToolApproval(
 
 type ToolApprovalResumeState = {
   kind: "tool_approval";
-  blockInstanceId?: string;
+  blockPath?: string;
   requestMessages?: unknown[];
   responseMessages?: unknown[];
   approvals?: Array<{ approvalId: string; toolCallId: string; toolName: string }>;
@@ -893,16 +895,15 @@ type ToolApprovalResumeState = {
 function resolveToolApprovalContinuation(
   ctx: BlockContext
 ): ModelContinuation | undefined {
-  const resume = ctx._resumeState;
-  const suspension = resume?.suspension;
-  const resumeContext = resume?.resumeContext;
+  const suspension = ctx._resumeSuspension?.();
+  const resumeContext = ctx._resumeContext?.();
   if (suspension === undefined || resumeContext === undefined) return undefined;
 
   const rs = suspension.resumeState as ToolApprovalResumeState | undefined;
   if (rs?.kind !== "tool_approval") return undefined;
   if (
-    rs.blockInstanceId !== undefined &&
-    rs.blockInstanceId !== ctx._blockIdentity?.blockInstanceId
+    rs.blockPath !== undefined &&
+    rs.blockPath !== ctx._blockIdentity?.blockPath
   ) {
     return undefined;
   }
@@ -1185,8 +1186,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
   agentName: string | undefined,
   prepareStep?: PrepareStepFn,
   resolvedProviderOpts?: Record<string, unknown>,
-  resolvedCaching?: CachingConfig,
-  continuation?: ModelContinuation
+  resolvedCaching?: CachingConfig
 ): Promise<TOutput> {
   const emit = itemVisibility !== undefined;
   const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -1230,8 +1230,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     maxSteps,
     providerOptions: resolvedProviderOpts,
     caching: resolvedCaching,
-    prepareStep,
-    continuation
+    prepareStep
   })) {
     if (chunk.resolvedIdentity !== undefined) {
       resolvedIdentity = chunk.resolvedIdentity;
@@ -1876,8 +1875,13 @@ export function generator<
       // Tool approval resume (FIX-275): when this generator is resuming a
       // tool-approval suspension, replay the persisted turn plus the human
       // decisions instead of composing a fresh model call — so the original
-      // model call is never replayed. Undefined on an ordinary turn.
+      // model call is never replayed. Undefined on an ordinary turn. The
+      // resumed turn completes via the non-streaming path (`generate`): it
+      // executes the approved tools / materializes denials and returns the
+      // final result in one call, which keeps the continuation contract
+      // identical across providers and avoids streaming-replay edge cases.
       const approvalContinuation = resolveToolApprovalContinuation(ctx);
+      const canStreamTurn = canStream && approvalContinuation === undefined;
 
       // Emit debug capture for devtool inspection before the LLM call. Use
       // the same combined-system-message assembly the model sees so the
@@ -1913,7 +1917,7 @@ export function generator<
         ctx
       );
 
-      if (canStream) {
+      if (canStreamTurn) {
         try {
           return await executeStreamingGeneration(
             model,
@@ -1927,12 +1931,9 @@ export function generator<
             ctx,
             itemVisibility,
             agentName,
-            // Disable prepareStep on a continuation resume (its system-prefix
-            // slicing would corrupt the replayed turn).
-            approvalContinuation !== undefined ? undefined : prepareStepFn,
+            prepareStepFn,
             resolvedProviderOpts,
-            resolvedCaching,
-            approvalContinuation
+            resolvedCaching
           );
         } catch (err) {
           surfaceModelCallError(err, ctx, blockName);
@@ -1953,7 +1954,14 @@ export function generator<
           messages,
           tools: compiledTools.length > 0 ? compiledTools : undefined,
           providerTools: resolvedProviderTools.length > 0 ? resolvedProviderTools : undefined,
-          outputSchema,
+          // A tool-approval resume completes via this non-streaming path even
+          // for text generators (which normally stream). Don't impose a
+          // structured-output wrapper on a text turn — let the model return
+          // plain text, resolved as the candidate below.
+          outputSchema:
+            approvalContinuation !== undefined && isTextOutputSchema(outputSchema)
+              ? undefined
+              : outputSchema,
           maxTokens: normalizedConfig.maxTokens,
           signal: ctx.signal,
           maxSteps,

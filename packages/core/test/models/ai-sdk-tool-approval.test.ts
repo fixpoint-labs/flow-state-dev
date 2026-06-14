@@ -13,8 +13,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { MockLanguageModelV3 } from "ai/test";
-import { createAiSdkModelResolver } from "../../src/models";
-import type { GeneratorModelTool } from "../../src/types";
+import { createAiSdkModelResolver, wrapAiSdkModel } from "../../src/models";
+import type { GeneratorModelResult, GeneratorModelTool } from "../../src/types";
+
+function streamOf(parts: unknown[]) {
+  return new ReadableStream({
+    start(c) {
+      for (const p of parts) c.enqueue(p);
+      c.close();
+    }
+  });
+}
+const STREAM_USAGE = { inputTokens: { total: 10 }, outputTokens: { total: 2 } };
 
 function toolCallContent(toolCallId: string, toolName: string, input: unknown) {
   return {
@@ -167,5 +177,45 @@ describe("createAiSdkModelResolver — tool approval (FIX-275)", () => {
     // Rejected: the tool never runs; the model produces an adapted answer.
     expect(execute).not.toHaveBeenCalled();
     expect(resumed.text).toBe("Understood, I won't send it.");
+  });
+
+  it("streaming: a needsApproval tool surfaces the approval request on the finish chunk", async () => {
+    // The initial gated turn may stream; the generator reads approval requests
+    // off the finish chunk's fullResult (the resumed turn itself completes via
+    // the non-streaming `generate` path, covered above).
+    const execute = vi.fn(async () => ({ sent: true }));
+    const gated: GeneratorModelTool = {
+      name: "send_email",
+      description: "Send an email",
+      parameters: z.object({ to: z.string() }),
+      execute,
+      needsApproval: true
+    };
+
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: streamOf([
+          { type: "stream-start", warnings: [] },
+          { type: "tool-call", toolCallId: "tc_1", toolName: "send_email", input: JSON.stringify({ to: "a@b.com" }) },
+          { type: "finish", finishReason: { unified: "tool-calls", raw: undefined }, usage: STREAM_USAGE }
+        ])
+      })
+    });
+
+    const generator = wrapAiSdkModel(model, "anthropic/claude-sonnet-4-6");
+    let final: GeneratorModelResult | undefined;
+    for await (const chunk of generator.stream!({
+      messages: [{ role: "user", content: "email a@b.com" }],
+      tools: [gated],
+      maxSteps: 5
+    })) {
+      if (chunk.type === "finish") final = chunk.fullResult;
+    }
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(final?.approvalRequests).toHaveLength(1);
+    expect(final!.approvalRequests![0]!.toolName).toBe("send_email");
+    expect(Array.isArray(final?.responseMessages)).toBe(true);
+    expect(Array.isArray(final?.requestMessages)).toBe(true);
   });
 });

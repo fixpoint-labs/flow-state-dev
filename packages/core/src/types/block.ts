@@ -435,20 +435,30 @@ export interface BlockContext<
   saveCheckpoint?(): Promise<void>;
 
   /**
-   * @internal Resume state populated by the runtime when re-invoking after a
-   * suspension (FIX-275). Carries the loaded `SuspensionRecord` and the
-   * `ResumeContext` (the human decisions) so a block that resumes without
-   * calling `ctx.suspend()` — the generator tool-approval gate — can read its
-   * internal `resumeState` and continue. Sequencer-step suspensions also carry
-   * `stepIndex`/`state`/`stepInput` for skip-and-inject.
+   * @internal Sequencer skip-and-inject resume state, set by the runtime on
+   * the action-root context when re-invoking after a suspension (FIX-140).
+   * Read by the sequencer to skip completed steps. (Tool-approval resume on a
+   * nested generator uses the closure-backed `_resumeSuspension` /
+   * `_resumeContext` accessors instead, which reach child scopes.)
    */
   _resumeState?: {
-    suspension?: import("../types/suspension").SuspensionRecord;
-    resumeContext?: import("../types/suspension").ResumeContext;
     stepIndex?: number;
     state?: Record<string, unknown>;
     stepInput?: unknown;
   };
+
+  /**
+   * @internal The loaded SuspensionRecord for the in-flight resume (FIX-275),
+   * available in every scope. A generator handling a tool-approval resume
+   * reads its internal `resumeState` (the persisted turn) from here.
+   */
+  _resumeSuspension?(): import("../types/suspension").SuspensionRecord | undefined;
+
+  /** @internal The ResumeContext (human decisions) for the in-flight resume (FIX-275). */
+  _resumeContext?(): import("../types/suspension").ResumeContext | undefined;
+
+  /** @internal Set the loaded suspension for the in-flight resume (FIX-275; runtime only). */
+  _setResumeSuspension?(record: import("../types/suspension").SuspensionRecord | undefined): void;
 
   /**
    * @internal Mark the resume context consumed (FIX-275). Called by a block

@@ -847,13 +847,15 @@ export async function runActionInternal<
     if (provider !== undefined) {
       const suspension = await provider.loadSuspension(resumeOf, resumeContext.suspensionId);
       if (suspension !== null) {
-        // Always expose the loaded suspension + the resume decisions so a
-        // resumed block (e.g. a generator handling tool approval, FIX-275)
-        // can read its internal resumeState and continue without replaying
-        // its work. Root-level blocks have no sequencer steps to skip
-        // (stepIndex -1); only sequencer-step suspensions populate the
-        // skip-and-inject fields below.
-        const resumeState: Record<string, unknown> = { suspension, resumeContext };
+        // Expose the loaded suspension to every scope so a resumed block that
+        // does not call ctx.suspend() — the generator tool-approval gate
+        // (FIX-275) — can read its internal resumeState (the persisted turn)
+        // and continue without replaying its work.
+        ctx._setResumeSuspension?.(suspension);
+
+        // Sequencer-step suspensions also populate skip-and-inject state on
+        // the action-root context for the sequencer to skip completed steps.
+        // Root-level blocks have no steps to skip (stepIndex -1).
         if (suspension.stepIndex >= 0) {
           // Load the checkpoint from the original request to get the sequencer state.
           const checkpoint = await options.stores.checkpoints.latest(
@@ -863,11 +865,12 @@ export async function runActionInternal<
           // Skip steps 0..stepIndex-1 (completed before suspension).
           // Step at stepIndex (the one that called ctx.suspend()) re-executes;
           // this time ctx.suspend() returns resumeData instead of throwing.
-          resumeState.stepIndex = suspension.stepIndex - 1;
-          resumeState.state = checkpoint?.state as Record<string, unknown> | undefined;
-          resumeState.stepInput = suspension.stepInput;
+          (ctx as any)._resumeState = {
+            stepIndex: suspension.stepIndex - 1,
+            state: checkpoint?.state as Record<string, unknown> | undefined,
+            stepInput: suspension.stepInput
+          };
         }
-        (ctx as any)._resumeState = resumeState;
       }
     }
   }

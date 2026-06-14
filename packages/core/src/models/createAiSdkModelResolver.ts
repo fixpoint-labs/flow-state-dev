@@ -1098,9 +1098,27 @@ function createGeneratorModelFromAiSdk(
       const finishChunk = normalizeFinishChunk(finalResult, toolNameMap);
       if (finishChunk.fullResult !== undefined) {
         finishChunk.fullResult.resolvedIdentity = resolvedIdentity;
-        // Carry the compiled request messages for tool-approval resume (FIX-275).
-        if (finishChunk.fullResult.approvalRequests !== undefined) {
-          finishChunk.fullResult.requestMessages = request.messages as unknown[];
+        // Tool approval (FIX-275): on the streaming result `content` and
+        // `response` are promises, so the synchronous extraction in
+        // normalizeFinishChunk no-ops. Resolve them here and surface the
+        // approval requests + serialized turn for the generator to suspend on.
+        try {
+          const content = await (finalResult as Record<string, unknown>).content;
+          const approvalRequests = normalizeApprovalRequests(content, toolNameMap);
+          if (approvalRequests !== undefined) {
+            const response = asRecord(
+              await (finalResult as Record<string, unknown>).response
+            );
+            const messages = response?.messages;
+            finishChunk.fullResult.approvalRequests = approvalRequests;
+            finishChunk.fullResult.responseMessages = Array.isArray(messages)
+              ? messages
+              : undefined;
+            finishChunk.fullResult.requestMessages = request.messages as unknown[];
+          }
+        } catch {
+          // Awaiting content/response can reject if the stream errored; that
+          // path is already handled by the try/catch around `await result`.
         }
       }
       yield {
