@@ -19,10 +19,7 @@ import { setInstructions } from "./orchestration/guards";
 import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
 import { priceHistoryResource } from "./price-history-resource";
 import { rewardToRiskResource } from "./reward-to-risk-resource";
-import {
-  accountsCollection,
-  portfolioQuotesResource,
-} from "../portfolio/portfolio-resources";
+import { portfolioQuotesResource } from "../portfolio/portfolio-resources";
 import {
   memosCollection,
   phase2Contributions,
@@ -90,13 +87,12 @@ const analysisFlow = defineFlow({
     // commit to gate size against the active mandate. Nullable; null when the
     // forecaster produced no usable buckets.
     rewardToRisk: rewardToRiskResource,
-    // Portfolio domain (Spine B), owned + written by the
-    // `portfolio` flow. Declared here READ-ONLY: `seedSession`
-    // reads the shared user-scoped `accounts` (flowIsolation: false → bare
-    // `{userId}`) and the last-known `portfolioQuotes` to compute the per-run
-    // portfolio snapshot. Declaring them makes `resolveUserStorageKey` derive
-    // the same bare key both flows use — no client bridge.
-    accounts: accountsCollection,
+    // Last-known quotes cache (Spine B), owned + written by the `portfolio`
+    // flow. Declared here READ-ONLY: `seedSession` reads the shared user-scoped
+    // `portfolioQuotes` (flowIsolation: false → bare `{userId}`) to price the
+    // per-run portfolio snapshot. Accounts + holdings are no longer resources —
+    // `seedSession` reads them from the app-owned tables via the repository
+    // (FIX-772).
     portfolioQuotes: portfolioQuotesResource,
   },
 });

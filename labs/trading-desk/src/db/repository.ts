@@ -111,6 +111,41 @@ function mapHolding(row: typeof holdings.$inferSelect): HoldingRow {
   };
 }
 
+/**
+ * Project a flat {@link getPortfolio} result into the inline-holdings
+ * {@link AccountState} shape the analysis seed (`build-portfolio-context`) and
+ * the Portfolio UI consume. Pure — no DB access — so the seed and the read API
+ * route share one nesting rule. Holdings are grouped by account; an account
+ * with none gets an empty array.
+ */
+export function toAccountStates(portfolio: {
+  accounts: AccountRow[];
+  holdings: HoldingRow[];
+}): AccountState[] {
+  const byAccount = new Map<string, Holding[]>();
+  for (const h of portfolio.holdings) {
+    const list = byAccount.get(h.accountId) ?? [];
+    list.push({
+      ticker: h.ticker,
+      quantity: h.quantity,
+      costBasis: h.costBasis,
+      acquiredDate: h.acquiredDate,
+    });
+    byAccount.set(h.accountId, list);
+  }
+  return portfolio.accounts.map((a) => ({
+    accountId: a.accountId,
+    name: a.name,
+    type: a.type,
+    currency: a.currency,
+    cashBalance: a.cashBalance,
+    holdings: byAccount.get(a.accountId) ?? [],
+    riskMandate: a.riskMandate,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+  }));
+}
+
 /** Build a {@link PortfolioRepository} over a Drizzle handle (real Postgres in
  *  deployment, embedded PGlite in dev or tests). */
 export function createPortfolioRepository(db: Db): PortfolioRepository {
