@@ -49,6 +49,8 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 
 When you change flow logic, the default verification path is `fsdev run`, not `pnpm test` and not opening kitchen-sink in a browser. The CLI runs the full `runAction` engine against the same stores and execution context the production server uses, with structured NDJSON events on stdout and `[flow-state] *` runtime logs on stderr. It is the fastest way to confirm a change works as intended.
 
+When the app under test ships an `fsdev.config.ts` (FIX-784), `fsdev run` uses its wiring — the app's model resolver and store profiles — instead of CLI defaults. Run it from the app directory, since config search is cwd-only (`cd apps/kitchen-sink && pnpm fsdev run ...`). The repo-root invocation stays on directory discovery.
+
 **Pick the right tool for the kind of change:**
 
 | You changed… | Reach for |
