@@ -52,6 +52,7 @@ const spineFlow = defineFlow({
   actions: {
     fillAndCompute: { block: fillFinancials },
     seed: { block: seedSession },
+    fetchFundamentals: { block: get_fundamentals },
   },
   session: { stateSchema: sessionStateSchema },
   resources: {
@@ -149,5 +150,52 @@ describe("financials data spine", () => {
 
     const afterSeed = await stores.resourceState.getAll("session", sessionId);
     expect(afterSeed["financialsData"]).toEqual({});
+  });
+
+  it("a non-subject ticker fetches directly and never overwrites the subject's spine payload", async () => {
+    const stores = createInMemoryStores();
+    const sessionId = "financials-cross-ticker";
+
+    // Subject = NVDA. Populate the spine.
+    const fill = await testFlow({
+      flow: spineFlow,
+      action: "fillAndCompute",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: { ticker: "NVDA", date: "2026-05-06" },
+      seed: { session: { state: baseState } },
+    });
+    expect(fill.error).toBeUndefined();
+    const subjectFundamentals = (
+      (await stores.resourceState.getAll("session", sessionId))["financialsData"] as {
+        fundamentals?: unknown;
+      }
+    ).fundamentals;
+    expect(subjectFundamentals).toBeTruthy();
+
+    // A call for a DIFFERENT ticker (AAPL) on the same NVDA session — e.g. a
+    // hypothetical peer lookup. The fixed spine key must NOT hand back NVDA's
+    // payload labeled as AAPL.
+    const cross = await testFlow({
+      flow: spineFlow,
+      action: "fetchFundamentals",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: { ticker: "AAPL", date: "2026-05-06" },
+    });
+    expect(cross.error).toBeUndefined();
+
+    // It returned AAPL's data (different from NVDA's)...
+    expect(cross.output).toBeTruthy();
+    expect(cross.output).not.toEqual(subjectFundamentals);
+    // ...and the subject's spine payload is untouched (not overwritten with AAPL).
+    const afterCross = (
+      (await stores.resourceState.getAll("session", sessionId))["financialsData"] as {
+        fundamentals?: unknown;
+      }
+    ).fundamentals;
+    expect(afterCross).toEqual(subjectFundamentals);
   });
 });

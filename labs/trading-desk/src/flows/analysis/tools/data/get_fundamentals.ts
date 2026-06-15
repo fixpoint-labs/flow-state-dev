@@ -22,14 +22,23 @@ export const get_fundamentals = handler({
   // a miss, replacing the process TTL cache for this subject-scoped payload.
   execute: async (input, ctx) => {
     const mode = pickMode(ctx);
-    const payload = await ctx.resources.financialsData.getOrPatchState("fundamentals", async () => {
+    const loadFundamentals = async () => {
       if (mode === "fixture") return loadFixture("get_fundamentals", input);
       if (hasFinnhubKey()) {
         try { return await fetchFinnhubFundamentals(input); } catch {}
       }
       try { return await fetchYahooFundamentals(input); } catch {}
       return emptyPayload("get_fundamentals", input);
-    });
+    };
+    // The spine holds the session SUBJECT's data, addressed by field name (one
+    // session = one ticker). Tools run with the subject's tickerDate, so
+    // input.ticker is the subject — but guard on it so the tool always honors its
+    // input: a call for any other ticker fetches directly and never returns the
+    // subject's payload mislabeled (real-money gate: no silent wrong data).
+    if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
+      return loadFundamentals();
+    }
+    const payload = await ctx.resources.financialsData.getOrPatchState("fundamentals", loadFundamentals);
     return payload!;
   },
 });

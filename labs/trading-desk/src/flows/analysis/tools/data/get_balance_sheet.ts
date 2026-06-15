@@ -20,7 +20,7 @@ export const get_balance_sheet = handler({
   // Write-through to the session financials spine (see get_fundamentals).
   execute: async (input, ctx) => {
     const mode = pickMode(ctx);
-    const payload = await ctx.resources.financialsData.getOrPatchState("balanceSheet", async () => {
+    const loadBalanceSheet = async () => {
       if (mode === "fixture") return loadFixture("get_balance_sheet", input);
       // EDGAR first (authoritative, no key); Yahoo backstops non-US filers and
       // EDGAR outages; empty payload only when both fail.
@@ -31,7 +31,12 @@ export const get_balance_sheet = handler({
         return await fetchYahooBalanceSheet(input);
       } catch {}
       return emptyPayload("get_balance_sheet", input);
-    });
+    };
+    // Subject-only spine guard (see get_fundamentals).
+    if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
+      return loadBalanceSheet();
+    }
+    const payload = await ctx.resources.financialsData.getOrPatchState("balanceSheet", loadBalanceSheet);
     return payload!;
   },
 });

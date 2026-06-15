@@ -21,7 +21,7 @@ export const get_income_statement = handler({
   // Write-through to the session financials spine (see get_fundamentals).
   execute: async (input, ctx) => {
     const mode = pickMode(ctx);
-    const payload = await ctx.resources.financialsData.getOrPatchState("incomeStatement", async () => {
+    const loadIncomeStatement = async () => {
       if (mode === "fixture") return loadFixture("get_income_statement", input);
       // EDGAR first (authoritative, no key); Yahoo backstops non-US filers and
       // EDGAR outages; empty payload only when both fail.
@@ -32,7 +32,12 @@ export const get_income_statement = handler({
         return await fetchYahooIncomeStatement(input);
       } catch {}
       return emptyPayload("get_income_statement", input);
-    });
+    };
+    // Subject-only spine guard (see get_fundamentals).
+    if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
+      return loadIncomeStatement();
+    }
+    const payload = await ctx.resources.financialsData.getOrPatchState("incomeStatement", loadIncomeStatement);
     return payload!;
   },
 });
