@@ -207,8 +207,7 @@ export function buildBlock<
         // caps it adds. Without this, nested blocks — which run only through
         // this core path, never the server's executeBlock — would see an
         // empty ctx.cap even though they declared the capability.
-        const blockCaps = (runtimeConfig as { __resolvedCapabilities?: CapabilityRef[] })
-          .__resolvedCapabilities;
+        const blockCaps = options.resolvedCapabilities;
         if (blockCaps !== undefined && blockCaps.length > 0) {
           const capCtx = ctx as { cap?: Record<string, unknown> };
           const capObj = capCtx.cap ?? (capCtx.cap = {});
