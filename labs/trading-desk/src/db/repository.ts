@@ -59,8 +59,11 @@ export interface PortfolioRepository {
   /** Create or update an account. The update path never touches holdings (they
    *  are a separate table) and preserves `created_at`. */
   upsertAccount(input: AccountInput): Promise<AccountRow>;
-  /** Delete an account and, via the FK cascade, all of its holdings. */
-  deleteAccount(id: string): Promise<void>;
+  /** Delete an account (and, via the FK cascade, its holdings) — only when it
+   *  belongs to `userId`. Scoping the mutation to the household is the security
+   *  boundary the old user-scoped resource delete enforced implicitly; a delete
+   *  for another user's account is a no-op. */
+  deleteAccount(id: string, userId: string): Promise<void>;
   /**
    * Write imported holdings for one account, transactionally.
    * - `upsert` (the non-destructive default): each row replaces the matching
@@ -72,8 +75,9 @@ export interface PortfolioRepository {
    *   rows (delete-all + insert), atomically — no partial-state window.
    */
   upsertHoldings(accountId: string, rows: CanonicalRow[], mode: ImportMode): Promise<void>;
-  /** Remove a single position. */
-  deleteHolding(accountId: string, ticker: string): Promise<void>;
+  /** Remove a single position — only when its account belongs to `userId` (the
+   *  same household-scoping security boundary as {@link deleteAccount}). */
+  deleteHolding(accountId: string, ticker: string, userId: string): Promise<void>;
 }
 
 /** Coerce a Drizzle `numeric` (string) to a JS number; pass `null` through.
@@ -202,8 +206,8 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
       return mapAccount(row);
     },
 
-    async deleteAccount(id) {
-      await db.delete(accounts).where(eq(accounts.id, id));
+    async deleteAccount(id, userId) {
+      await db.delete(accounts).where(and(eq(accounts.id, id), eq(accounts.userId, userId)));
     },
 
     async upsertHoldings(accountId, rows, mode) {
@@ -238,10 +242,24 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
       });
     },
 
-    async deleteHolding(accountId, ticker) {
+    async deleteHolding(accountId, ticker, userId) {
+      // Scope to the household: the holding is deleted only when its account
+      // belongs to userId (the subquery yields the account id only then).
       await db
         .delete(holdings)
-        .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, ticker)));
+        .where(
+          and(
+            eq(holdings.accountId, accountId),
+            eq(holdings.ticker, ticker),
+            inArray(
+              holdings.accountId,
+              db
+                .select({ id: accounts.id })
+                .from(accounts)
+                .where(and(eq(accounts.id, accountId), eq(accounts.userId, userId))),
+            ),
+          ),
+        );
     },
   };
 }

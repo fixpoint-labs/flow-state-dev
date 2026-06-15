@@ -90,11 +90,24 @@ describe("accounts", () => {
   it("deletes an account and cascades its holdings", async () => {
     await repo.upsertAccount(account());
     await repo.upsertHoldings("acc-1", [row("AAPL", 10)], "upsert");
-    await repo.deleteAccount("acc-1");
+    await repo.deleteAccount("acc-1", "devuser");
 
     const portfolio = await repo.getPortfolio("devuser");
     expect(portfolio.accounts).toHaveLength(0);
     expect(portfolio.holdings).toHaveLength(0); // cascade removed the holding
+  });
+
+  it("scopes deletes to the household — another user cannot delete the account", async () => {
+    await repo.upsertAccount(account({ userId: "devuser" }));
+    await repo.upsertHoldings("acc-1", [row("AAPL", 10)], "upsert");
+
+    // A different caller's userId must not delete devuser's account or holding.
+    await repo.deleteAccount("acc-1", "intruder");
+    await repo.deleteHolding("acc-1", "AAPL", "intruder");
+
+    const portfolio = await repo.getPortfolio("devuser");
+    expect(portfolio.accounts).toHaveLength(1);
+    expect(portfolio.holdings.map((h) => h.ticker)).toEqual(["AAPL"]);
   });
 });
 
@@ -150,7 +163,7 @@ describe("deleteHolding", () => {
     await repo.upsertAccount(account());
     await repo.upsertHoldings("acc-1", [row("AAPL", 10), row("MSFT", 5)], "upsert");
 
-    await repo.deleteHolding("acc-1", "AAPL");
+    await repo.deleteHolding("acc-1", "AAPL", "devuser");
     const { holdings } = await repo.getPortfolio("devuser");
     expect(holdings.map((h) => h.ticker)).toEqual(["MSFT"]);
   });

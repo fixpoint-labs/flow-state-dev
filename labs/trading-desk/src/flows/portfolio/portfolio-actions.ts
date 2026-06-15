@@ -103,9 +103,11 @@ export const deleteAccount = handler({
   name: "delete-account",
   inputSchema: z.object({ accountId: z.string() }),
   outputSchema: z.void(),
-  execute: async (input) => {
+  execute: async (input, ctx) => {
     const repo = await getRepository();
-    await repo.deleteAccount(input.accountId);
+    // Scoped to the caller's household — a delete for someone else's account
+    // is a no-op (restores the old user-scoped resource-delete boundary).
+    await repo.deleteAccount(input.accountId, userId(ctx));
   },
 });
 
@@ -118,9 +120,9 @@ export const deleteHolding = handler({
   name: "delete-holding",
   inputSchema: z.object({ accountId: z.string(), ticker: z.string() }),
   outputSchema: z.void(),
-  execute: async (input) => {
+  execute: async (input, ctx) => {
     const repo = await getRepository();
-    await repo.deleteHolding(input.accountId, input.ticker.toUpperCase());
+    await repo.deleteHolding(input.accountId, input.ticker.toUpperCase(), userId(ctx));
   },
 });
 

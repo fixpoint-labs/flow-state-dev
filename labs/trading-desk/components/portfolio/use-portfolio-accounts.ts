@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useFlowContext } from "@flow-state-dev/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useFlowContext, type SessionView } from "@flow-state-dev/react";
 import type { AccountState } from "@/src/flows/portfolio/portfolio-schema";
 
 /**
@@ -9,13 +9,16 @@ import type { AccountState } from "@/src/flows/portfolio/portfolio-schema";
  * tables via the read API route (FIX-772). Accounts are no longer an FSD
  * resource, so this replaces `useResourceCollectionList(session, "accounts")`.
  *
- * `refetch` is called after every write action so the pane reflects the change.
- * The resource model's `resource_change`-driven auto-refresh is now an explicit
- * refetch — which the pane already did after each action, so no behavior is lost.
- * Reads no longer require a bound session (the API route takes `userId`); the
- * pane still gates on a session for writes and the quotes resource.
+ * Convergence after a write: `session.sendAction(...)` resolves at the SSE
+ * response headers, BEFORE the handler's DB write commits, and accounts emit no
+ * `resource_change` event to auto-invalidate (they aren't resources). So an
+ * explicit `refetch()` right after `sendAction` can read stale rows. To restore
+ * the convergence the old collection hook had, this also refetches when an
+ * in-flight action on `session` finishes (the true→false edge of `isStreaming`)
+ * — the write commits as the request completes, so that edge is the correct
+ * settle point. The explicit `refetch` stays for immediacy; this is the backstop.
  */
-export function usePortfolioAccounts(): {
+export function usePortfolioAccounts(session: SessionView): {
   accounts: AccountState[];
   refetch: () => void;
 } {
@@ -43,6 +46,14 @@ export function usePortfolioAccounts(): {
   useEffect(() => {
     refetch();
   }, [refetch]);
+
+  // Backstop: refetch when an in-flight action on this session completes, so a
+  // write's committed result lands even though `sendAction` resolved earlier.
+  const wasStreaming = useRef(false);
+  useEffect(() => {
+    if (wasStreaming.current && !session.isStreaming) refetch();
+    wasStreaming.current = session.isStreaming;
+  }, [session.isStreaming, refetch]);
 
   return { accounts, refetch };
 }

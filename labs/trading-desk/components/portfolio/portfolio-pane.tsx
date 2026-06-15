@@ -62,7 +62,7 @@ export function PortfolioPane({
   session,
   hasSession,
 }: PortfolioPaneProps): ReactElement {
-  const { accounts, refetch: refetchAccounts } = usePortfolioAccounts();
+  const { accounts, refetch: refetchAccounts } = usePortfolioAccounts(session);
   const { clientData: quotesData } = useResource(session, "portfolioQuotes");
 
   const [addOpen, setAddOpen] = useState(false);
