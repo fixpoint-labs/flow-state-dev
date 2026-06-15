@@ -9,7 +9,6 @@
  */
 
 import { readFileSync } from "node:fs";
-import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
   CollectionHookContext,
@@ -33,8 +32,10 @@ import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type { ContentScopeType, ContentStore, ResourceStateStore } from "../stores/types";
 import { resourceStorageKeys } from "../resources/storage-keys";
+import { isAnchoredPath, resolveContentPath } from "../resources/content-paths";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import {
+  isResourceTemplate,
   parseResourceTemplate,
   renderResourceTemplate,
 } from "@flow-state-dev/core/resource-template";
@@ -236,14 +237,17 @@ export function normalizeScopeResourceContent(
       continue;
     }
 
-    if (typeof config.contentFile === "string") {
+    const contentFile = config.contentFile;
+    if (typeof contentFile === "string" || isAnchoredPath(contentFile)) {
+      // Bare strings resolve from the working directory; anchored paths
+      // resolve relative to their declaring module first (see content-paths).
+      const filePath = resolveContentPath(contentFile, "contentFile", accessor);
       try {
-        // contentFile is resolved relative to process.cwd()
-        normalized[storageKey] = readFileSync(config.contentFile, "utf8");
+        normalized[storageKey] = readFileSync(filePath, "utf8");
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(
-          `Failed to load contentFile for resource "${accessor}" (path: ${config.contentFile}): ${message}`
+          `Failed to load contentFile for resource "${accessor}" (path: ${filePath}): ${message}`
         );
       }
     }
@@ -263,26 +267,26 @@ export function normalizeScopeResourceContent(
 }
 
 /**
- * Resolve string `contentTemplate` paths into parsed `ResourceTemplate`
- * objects in-place. Called once per execution context so downstream code
- * always sees a `ResourceTemplate`, never a raw path string.
+ * Resolve string and anchored-path `contentTemplate` values into parsed
+ * `ResourceTemplate` objects in-place. Called once per execution context so
+ * downstream code always sees a `ResourceTemplate`, never a raw path. Bare
+ * strings resolve from the working directory; `AnchoredPath` values resolve
+ * relative to their declaring module first (see `resolveContentPath`).
  */
 export function resolveStringContentTemplates(
   configs: Record<string, ResourceConfig | ResourceCollectionConfig>
 ): void {
-  const cwdUrl = pathToFileURL(path.resolve(process.cwd(), "_")).href;
   for (const [accessor, config] of Object.entries(configs)) {
-    if (typeof config.contentTemplate !== "string") continue;
-    const filePath = path.isAbsolute(config.contentTemplate)
-      ? config.contentTemplate
-      : path.resolve(process.cwd(), config.contentTemplate);
+    const contentTemplate = config.contentTemplate;
+    if (typeof contentTemplate !== "string" && !isAnchoredPath(contentTemplate)) continue;
+    const filePath = resolveContentPath(contentTemplate, "contentTemplate", accessor);
     try {
       (config as { contentTemplate: unknown }).contentTemplate =
-        loadResourceTemplate(filePath, cwdUrl);
+        loadResourceTemplate(filePath, pathToFileURL(filePath).href);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       throw new Error(
-        `Failed to load contentTemplate for resource "${accessor}" (path: ${config.contentTemplate}): ${message}`
+        `Failed to load contentTemplate for resource "${accessor}" (path: ${filePath}): ${message}`
       );
     }
   }
@@ -622,7 +626,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
       },
       async readContentRaw(): Promise<string | null> {
-        if (nsConfig.contentTemplate !== undefined && typeof nsConfig.contentTemplate !== "string") {
+        if (isResourceTemplate(nsConfig.contentTemplate)) {
           return nsConfig.contentTemplate.source;
         }
         if (nsConfig.contentTemplateRef !== undefined) {
@@ -634,7 +638,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
-        if (nsConfig.contentTemplate !== undefined && typeof nsConfig.contentTemplate !== "string") {
+        if (isResourceTemplate(nsConfig.contentTemplate)) {
           return renderResourceTemplate(nsConfig.contentTemplate, readState());
         }
         if (nsConfig.contentTemplateRef !== undefined) {
@@ -1130,7 +1134,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         await notifySingleChange(prev);
       },
       async readContentRaw(): Promise<string | null> {
-        if (config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
+        if (isResourceTemplate(config.contentTemplate)) {
           return config.contentTemplate.source;
         }
         if (config.contentTemplateRef !== undefined) {
@@ -1142,7 +1146,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
-        if (config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
+        if (isResourceTemplate(config.contentTemplate)) {
           return renderResourceTemplate(config.contentTemplate, readState());
         }
         if (config.contentTemplateRef !== undefined) {

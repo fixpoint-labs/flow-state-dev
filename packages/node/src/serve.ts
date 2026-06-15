@@ -20,6 +20,7 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import {
   disposeFlowApiRouter,
+  isFlowState,
   type FlowApiRouter,
   type FlowState,
 } from "@flow-state-dev/server";
@@ -84,11 +85,6 @@ const MIME_TYPES: Record<string, string> = {
   ".ttf": "font/ttf",
   ".map": "application/json",
 };
-
-/** Discriminate a `FlowState` handle from a pre-built `FlowApiRouter`. */
-function isFlowState(app: FlowState | FlowApiRouter): app is FlowState {
-  return typeof (app as FlowState).getRouter === "function";
-}
 
 function resolvePort(port: number | undefined): number {
   if (port !== undefined) return port;

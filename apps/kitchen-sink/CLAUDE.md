@@ -30,7 +30,9 @@ unchanged rebuild is a near-instant cache hit.
 
 Three layers, picked by the kind of change you made:
 
-- **Flow logic changes** (blocks, sequencers, routers, capabilities, tool loops): `pnpm fsdev run kitchen-sink chat-agent -i '{"message":"...","mode":"ask"}'` from the repo root. Use `--session <id>` to test multi-turn behavior, `--model <id>` to swap models, and `--capture <path>` to dump the full stream + result to a file. Stderr carries `[flow-state] *` runtime logs by default; pass `--quiet` to suppress.
+- **Flow logic changes** (blocks, sequencers, routers, capabilities, tool loops): `pnpm fsdev run chat-agent run -i '{"message":"hi","mode":"ask"}'` from the repo root. The command is `fsdev run <flowKind> <action>` — here the flow kind is `chat-agent` and the action is `run` (not `kitchen-sink chat-agent`, which would parse `kitchen-sink` as a non-existent flow kind). Use `--session <id>` to test multi-turn behavior, `--model <id>` to swap models, and `--capture <path>` to dump the full stream + result to a file. Stderr carries `[flow-state] *` runtime logs by default; pass `--quiet` to suppress.
+
+  Kitchen-sink now ships an `fsdev.config.ts` (FIX-784), and `lib/flowstate.ts` re-exports it. The same command works both from the repo root (via directory discovery, with default stores and resolver) and from the app directory, where the config applies the app's real wiring — its intent ladder and gateway, its store profiles — instead of CLI defaults: `cd apps/kitchen-sink && pnpm fsdev run chat-agent run -i '{"message":"hi","mode":"ask"}'`. Config search is cwd-only.
 - **Unit-level changes** (helpers, types, schemas): `pnpm --filter kitchen-sink test`.
 - **UI changes** (renderers, streaming display, prompt input): `pnpm dev` then verify in the browser.
 
@@ -45,9 +47,9 @@ Don't mix these — the CLI is faster than the browser for everything below the 
 - `components/chat-agent/` — chat-agent-specific renderers (e.g. `ChatAgentMessage`).
 - `components/` (top level) — shared app UI (sidebar, mode selector, etc.).
 - `app/page.tsx` — landing page that mounts chat-agent for now. When a second flow lands, this becomes a flow index.
-- `lib/flowstate.ts` — `createFlowState` runtime assembly (flows, model intents, voice, store profiles, error sink). The reference setup for the FlowState API.
+- `lib/flowstate.ts` — re-exports the FlowState from `fsdev.config.ts` (which holds the `createFlowState` runtime assembly: flows, model intents, voice, store profiles, error sink). The reference setup for the FlowState API, now shared with the `fsdev` CLI via the root config.
 
-To add a new flow: drop it under `flows/<name>/`, register it in `lib/flowstate.ts`, and mount it from `app/<name>/page.tsx`.
+To add a new flow: drop it under `flows/<name>/`, register it in `fsdev.config.ts`, and mount it from `app/<name>/page.tsx`.
 
 ## Capabilities
 

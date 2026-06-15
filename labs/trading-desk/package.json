@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "build": "next build",
     "start": "next start",
+    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
     "test": "vitest run --root . --passWithNoTests",
     "test:watch": "vitest --root . --passWithNoTests",
     "db:generate": "drizzle-kit generate",
@@ -49,7 +50,7 @@
     "@types/react-dom": "^19.2.3",
     "drizzle-kit": "^0.31.10",
     "tailwindcss": "^4.2.0",
-    "tsx": "^4.22.4",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

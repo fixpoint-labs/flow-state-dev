@@ -40,7 +40,7 @@ export type {
   StoreAdapter,
   StoresConfig
 } from "./stores";
-export { createFlowState } from "./flowstate/createFlowState";
+export { createFlowState, isFlowState } from "./flowstate/createFlowState";
 export type {
   CreateFlowStateOptions,
   FlowState,

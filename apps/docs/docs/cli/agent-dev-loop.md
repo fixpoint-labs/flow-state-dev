@@ -28,6 +28,8 @@ pnpm fsdev run kitchen-sink chat-agent \
 jq -c 'select(.type=="item_added" and .item.kind=="tool_call")' /tmp/chat-run.json
 ```
 
+When the app under test ships an `fsdev.config.ts`, `fsdev run` uses its models and stores instead of CLI defaults, so the loop exercises your real resolver and persistence. Run it from the app directory; config search is cwd-only. See [App Configuration](./configuration).
+
 ## Reading the output
 
 Stderr and stdout are separate channels on purpose. Stderr is for humans and agents skimming the run; stdout is for tools that parse it.

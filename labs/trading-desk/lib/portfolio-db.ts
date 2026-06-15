@@ -21,7 +21,12 @@
  */
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import type { PostgresStoreOptions, QueryExecutor } from "@flow-state-dev/store-postgres";
+import type { StoreAdapter } from "@flow-state-dev/server";
+import {
+  createPostgresStores,
+  type PostgresStoreOptions,
+  type QueryExecutor,
+} from "@flow-state-dev/store-postgres";
 import { Pool } from "pg";
 import { createDb, createMigratedPgliteDb } from "@/src/db/client";
 import { createPortfolioRepository, type PortfolioRepository } from "@/src/db/repository";
@@ -85,3 +90,24 @@ export function getBacking(): Promise<Backing> {
 export async function getRepository(): Promise<PortfolioRepository> {
   return (await getBacking()).repository;
 }
+
+/**
+ * Framework store adapter for `createFlowState` (FIX-772) — realizes the FSD
+ * store over the shared backing. The runtime calls `resolve()` lazily on first
+ * use (first `getRouter()` / `ready()`), so the Postgres/PGlite init and the
+ * `app.*` migrations happen then, not at config-module load. The app repository
+ * shares the same backing via `getBacking`'s memoization, so the store and the
+ * portfolio tables live on one pool / PGlite instance.
+ */
+let resolvedStores: Awaited<ReturnType<typeof createPostgresStores>> | null = null;
+export const portfolioStoreAdapter: StoreAdapter = {
+  capabilities: ["primary"],
+  async resolve() {
+    const { storesOptions } = await getBacking();
+    resolvedStores = await createPostgresStores(storesOptions);
+    return resolvedStores;
+  },
+  async dispose() {
+    await resolvedStores?.close();
+  },
+};

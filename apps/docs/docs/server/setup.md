@@ -25,6 +25,8 @@ export const flowstate = createFlowState({
 
 Keep this file separate from your route handler. The route imports `flowstate` and mounts it. That split lets the same configured runtime be reused by tests, a CLI, or more than one route.
 
+Move this config object to an `fsdev.config.ts` at your project root that default-exports it, and the `fsdev` CLI runs your flows with the same wiring, your models and stores rather than CLI defaults. See [App Configuration](/docs/cli/configuration).
+
 ## The createFlowState factory
 
 `createFlowState(options)` builds the runtime synchronously and returns a `FlowState` handle. The handle exposes:
@@ -227,3 +229,5 @@ The client connects to the SSE stream using the `requestId` to receive real-time
 ## Lower-level APIs
 
 `createFlowState` wraps two lower-level functions, `createFlowRegistry` and `createFlowApiRouter`. They still exist for custom transports and advanced wiring. Most users want `createFlowState`. See the [Server API](/docs/api/server) reference if you need the lower-level surface.
+
+Default-exporting the `createFlowState` handle from an `fsdev.config.ts` at your project root lets `fsdev run` and `fsdev dev` reuse this exact wiring from the terminal. See [App Configuration](/docs/cli/configuration).

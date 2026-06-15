@@ -37,6 +37,8 @@ The CLI auto-discovers flows from conventional directories: `src/flows/`, `flows
 
 When a discovered flow module fails to import, the CLI prints a warning to stderr and lists the failed module in the "not found" error, so a broken flow is distinguishable from a missing one.
 
+When an `fsdev.config.ts` is present at your project root, the CLI skips auto-discovery and uses the app's own wiring instead: its flow registry, model resolver, and store profiles, the same ones your server uses. See [App Configuration](./configuration) for the convention.
+
 ## Model overrides
 
 Use `-m` to swap models without code changes. Pass a model ID (e.g. `gpt-4o-mini`, `claude-3-haiku`). All generator blocks in the run use the overridden model. Useful for testing with cheaper or faster models during development.
