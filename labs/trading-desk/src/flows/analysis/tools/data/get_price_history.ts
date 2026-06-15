@@ -36,7 +36,6 @@ export const get_price_history = handler({
     if (!isSubject || input.range !== SUMMARY_PRICE_RANGE) {
       return getOrFetch("get_price_history", input, loadPriceBars);
     }
-    const payload = await ctx.resources.technicalData.getOrPatchState("priceBars", loadPriceBars);
-    return payload!;
+    return (await ctx.resources.technicalData.getOrPatchState("priceBars", loadPriceBars))!;
   },
 });

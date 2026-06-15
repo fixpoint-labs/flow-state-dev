@@ -41,8 +41,7 @@ export const get_company_profile = handler({
     if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
       return loadCompanyProfile();
     }
-    const payload = await ctx.resources.profileData.getOrPatchState("companyProfile", loadCompanyProfile);
-    return payload!;
+    return (await ctx.resources.profileData.getOrPatchState("companyProfile", loadCompanyProfile))!;
   },
 });
 

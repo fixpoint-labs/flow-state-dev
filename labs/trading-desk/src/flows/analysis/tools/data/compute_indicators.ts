@@ -51,7 +51,6 @@ export const compute_indicators = handler({
     if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
       return loadIndicators();
     }
-    const payload = await ctx.resources.technicalData.getOrPatchState("indicators", loadIndicators);
-    return payload!;
+    return (await ctx.resources.technicalData.getOrPatchState("indicators", loadIndicators))!;
   },
 });

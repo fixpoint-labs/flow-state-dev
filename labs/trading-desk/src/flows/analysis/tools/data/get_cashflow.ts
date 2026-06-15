@@ -37,7 +37,6 @@ export const get_cashflow = handler({
     if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
       return loadCashflow();
     }
-    const payload = await ctx.resources.financialsData.getOrPatchState("cashflow", loadCashflow);
-    return payload!;
+    return (await ctx.resources.financialsData.getOrPatchState("cashflow", loadCashflow))!;
   },
 });

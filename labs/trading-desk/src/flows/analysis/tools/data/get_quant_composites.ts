@@ -116,7 +116,6 @@ export const get_quant_composites = handler({
     if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
       return loadQuantComposites();
     }
-    const payload = await ctx.resources.quantData.getOrPatchState("quantComposites", loadQuantComposites);
-    return payload!;
+    return (await ctx.resources.quantData.getOrPatchState("quantComposites", loadQuantComposites))!;
   },
 });

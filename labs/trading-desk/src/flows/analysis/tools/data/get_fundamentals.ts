@@ -38,7 +38,9 @@ export const get_fundamentals = handler({
     if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
       return loadFundamentals();
     }
-    const payload = await ctx.resources.financialsData.getOrPatchState("fundamentals", loadFundamentals);
-    return payload!;
+    // getOrPatchState is typed `Payload | undefined` (the field is optional on
+    // the resource — absent until first fetched); our loader always resolves to a
+    // payload, so the non-null assertion is sound.
+    return (await ctx.resources.financialsData.getOrPatchState("fundamentals", loadFundamentals))!;
   },
 });

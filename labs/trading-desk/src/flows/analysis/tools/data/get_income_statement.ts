@@ -37,7 +37,6 @@ export const get_income_statement = handler({
     if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
       return loadIncomeStatement();
     }
-    const payload = await ctx.resources.financialsData.getOrPatchState("incomeStatement", loadIncomeStatement);
-    return payload!;
+    return (await ctx.resources.financialsData.getOrPatchState("incomeStatement", loadIncomeStatement))!;
   },
 });

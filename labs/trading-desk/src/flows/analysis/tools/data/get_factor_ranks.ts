@@ -183,7 +183,6 @@ export const get_factor_ranks = handler({
     if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
       return loadFactorRanks();
     }
-    const payload = await ctx.resources.quantData.getOrPatchState("factorRanks", loadFactorRanks);
-    return payload!;
+    return (await ctx.resources.quantData.getOrPatchState("factorRanks", loadFactorRanks))!;
   },
 });

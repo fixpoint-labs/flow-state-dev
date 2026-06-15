@@ -36,7 +36,6 @@ export const get_balance_sheet = handler({
     if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
       return loadBalanceSheet();
     }
-    const payload = await ctx.resources.financialsData.getOrPatchState("balanceSheet", loadBalanceSheet);
-    return payload!;
+    return (await ctx.resources.financialsData.getOrPatchState("balanceSheet", loadBalanceSheet))!;
   },
 });
