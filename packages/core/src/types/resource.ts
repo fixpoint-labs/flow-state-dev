@@ -317,9 +317,10 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
    * `undefined` stores nothing and the next call recomputes.
    *
    * No time-based freshness: this is a per-resource (e.g. per-session) data
-   * spine, not a cache. Concurrent misses on the same key each run `compute`
-   * (last write wins) — call sites that fan out the same key concurrently and
-   * must coalesce the underlying fetch should still dedupe upstream.
+   * spine, not a cache. The runtime ref single-flights concurrent misses on the
+   * same key within a request — they share one `compute` call rather than each
+   * firing its own — so a fanned-out read of the same key issues one upstream
+   * fetch. (Distinct keys still compute in parallel; they never block each other.)
    */
   getOrPatchState<K extends keyof TState & string>(
     key: K,

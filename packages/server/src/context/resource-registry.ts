@@ -504,6 +504,32 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     return result;
   }
 
+  // Single-flight for `getOrPatchState`: concurrent misses on the same resource
+  // field share one `compute()` rather than each firing its own (the `inflight`
+  // map the old hand-rolled tool caches used). The compute still runs outside the
+  // write lock, so distinct fields never block on each other's I/O; only an
+  // identical concurrent miss waits. Cleared when the compute settles, so a later
+  // call reads the now-stored value as a hit. Keyed by storage key + field.
+  const getOrPatchInflight = new Map<string, Promise<JsonValue>>();
+  function singleFlightGetOrPatch(
+    storageKey: string,
+    readState: () => JsonObject,
+    ref: Pick<ResourceRef<JsonObject>, "state" | "patchState">,
+    key: string,
+    compute: () => JsonValue | Promise<JsonValue>
+  ): Promise<JsonValue> {
+    const existing = readState()[key];
+    if (existing !== undefined) return Promise.resolve(existing);
+    const flightKey = `${storageKey} ${key}`;
+    const pending = getOrPatchInflight.get(flightKey);
+    if (pending !== undefined) return pending;
+    const run = applyGetOrPatchState(ref, key, compute).finally(() => {
+      getOrPatchInflight.delete(flightKey);
+    });
+    getOrPatchInflight.set(flightKey, run);
+    return run;
+  }
+
   /**
    * Compute the live projection payload for a mutation, or `undefined` when the
    * resource hasn't opted into `client.live`. Reuses `resolveClientProjection`
@@ -650,7 +676,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         });
       },
       getOrPatchState(key: string, compute: () => JsonValue | Promise<JsonValue>): Promise<JsonValue> {
-        return applyGetOrPatchState(ref, key, compute);
+        return singleFlightGetOrPatch(storageKey, readState, ref, key, compute);
       },
       async readContentRaw(): Promise<string | null> {
         if (isResourceTemplate(nsConfig.contentTemplate)) {
@@ -1167,7 +1193,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         });
       },
       getOrPatchState(key: string, compute: () => JsonValue | Promise<JsonValue>): Promise<JsonValue> {
-        return applyGetOrPatchState(handles[resourceName] as ResourceRef<JsonObject>, key, compute);
+        return singleFlightGetOrPatch(storageKey, readState, handles[resourceName] as ResourceRef<JsonObject>, key, compute);
       },
       async readContentRaw(): Promise<string | null> {
         if (isResourceTemplate(config.contentTemplate)) {

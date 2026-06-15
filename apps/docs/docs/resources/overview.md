@@ -166,7 +166,7 @@ const fundamentals = await ctx.resources.financials.getOrPatchState(
 );
 ```
 
-This is a per-resource data spine, not a cache — there's no time-based expiry. A session-scoped resource keeps one stable copy of the data a run used, addressable by name, that any later block reads without re-fetching. A stored `null` counts as present (the callback won't re-run); a `compute` that returns `undefined` stores nothing. There's no built-in single-flight, so if you fan out the same key concurrently and must coalesce the upstream call, dedupe it at the fetch site.
+This is a per-resource data spine, not a cache — there's no time-based expiry. A session-scoped resource keeps one stable copy of the data a run used, addressable by name, that any later block reads without re-fetching. A stored `null` counts as present (the callback won't re-run); a `compute` that returns `undefined` stores nothing. Concurrent misses on the same key within a request are single-flighted — they share one `compute` call, so fanning the same key out across parallel blocks issues a single upstream fetch. Distinct keys still compute in parallel and never block each other.
 
 ## Automatic resource collection
 
