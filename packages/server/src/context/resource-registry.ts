@@ -28,7 +28,7 @@ import {
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
-import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type { ContentScopeType, ContentStore, ResourceStateStore } from "../stores/types";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -625,6 +625,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         }
         await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
       },
+      getOrPatchState(key: string, compute: () => JsonValue | Promise<JsonValue>): Promise<JsonValue> {
+        return applyGetOrPatchState(ref, key, compute);
+      },
       async readContentRaw(): Promise<string | null> {
         if (isResourceTemplate(nsConfig.contentTemplate)) {
           return nsConfig.contentTemplate.source;
@@ -1132,6 +1135,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         const next = await updater(readState());
         await persistResourceState(storageKey, config, next);
         await notifySingleChange(prev);
+      },
+      getOrPatchState(key: string, compute: () => JsonValue | Promise<JsonValue>): Promise<JsonValue> {
+        return applyGetOrPatchState(handles[resourceName] as ResourceRef<JsonObject>, key, compute);
       },
       async readContentRaw(): Promise<string | null> {
         if (isResourceTemplate(config.contentTemplate)) {

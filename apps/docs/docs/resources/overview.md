@@ -155,6 +155,19 @@ const planManager = handler({
 
 The block brings its own resource requirements. No need to repeat them in the flow definition.
 
+### Fetch once, share by name: `getOrPatchState`
+
+When several blocks in a run need the same fetched or computed value, write it into a resource the first time and let everyone else read that copy. `getOrPatchState(key, compute)` does exactly that: it returns `state[key]` if it's already there, and otherwise runs `compute`, stores the result under `key`, and returns it. The callback runs only on a miss, so the fetch happens once.
+
+```ts
+const fundamentals = await ctx.resources.financials.getOrPatchState(
+  "fundamentals",
+  () => fetchFundamentals(ticker),
+);
+```
+
+This is a per-resource data spine, not a cache — there's no time-based expiry. A session-scoped resource keeps one stable copy of the data a run used, addressable by name, that any later block reads without re-fetching. A stored `null` counts as present (the callback won't re-run); a `compute` that returns `undefined` stores nothing. There's no built-in single-flight, so if you fan out the same key concurrently and must coalesce the upstream call, dedupe it at the fetch site.
+
 ## Automatic resource collection
 
 Sequencers merge `declaredResources` from all child blocks. `defineFlow` collects resources from action blocks and merges them into the flow's scope configs. Flow-level resource declarations take priority over block-level ones. Blocks are self-documenting: their resource needs bubble up automatically.

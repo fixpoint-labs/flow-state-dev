@@ -41,7 +41,7 @@ export type {
   SchemaOutput
 } from "./schema/common";
 
-export { defineResource, resource } from "./types/resource";
+export { applyGetOrPatchState, defineResource, resource } from "./types/resource";
 export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
 export {
   bindToolCacheStore,
