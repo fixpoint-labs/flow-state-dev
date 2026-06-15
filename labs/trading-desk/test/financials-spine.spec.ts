@@ -24,19 +24,27 @@ import { get_fundamentals } from "../src/flows/analysis/tools/data/get_fundament
 import { get_balance_sheet } from "../src/flows/analysis/tools/data/get_balance_sheet";
 import { get_income_statement } from "../src/flows/analysis/tools/data/get_income_statement";
 import { get_cashflow } from "../src/flows/analysis/tools/data/get_cashflow";
+import { get_quant_composites } from "../src/flows/analysis/tools/data/get_quant_composites";
+import { get_factor_ranks } from "../src/flows/analysis/tools/data/get_factor_ranks";
+import { compute_indicators } from "../src/flows/analysis/tools/data/compute_indicators";
+import { get_company_profile } from "../src/flows/analysis/tools/data/get_company_profile";
 import { computeAndStoreSpine } from "../src/flows/analysis/compute-spine";
 import { seedSession } from "../src/flows/analysis/orchestration/guards";
 import { financialsDataResource } from "../src/flows/analysis/financials-data-resource";
+import { quantDataResource } from "../src/flows/analysis/quant-data-resource";
+import { technicalDataResource } from "../src/flows/analysis/technical-data-resource";
+import { profileDataResource } from "../src/flows/analysis/profile-data-resource";
 import { valuationSpineResource } from "../src/flows/analysis/valuation-spine-resource";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 
-// Fetch the four financials into the spine, then compute the valuation off it.
-// The tools run in `.parallel` — exactly how the fundamentals analyst fans them
-// out — so all four patch the shared `financialsData` resource concurrently.
-// Per-resource write serialization must keep every field; without it the
-// read-modify-write patches clobber each other and compute-spine sees nulls.
-const fillFinancials = sequencer({
-  name: "fill-financials",
+// Fetch all eight Phase-1 valuation inputs into their per-domain spines, then
+// compute the valuation off them. The tools run in `.parallel` — exactly how
+// the analysts fan them out — so the four financials tools patch the shared
+// `financialsData` resource concurrently (per-resource write serialization must
+// keep every field, or compute-spine sees nulls), while the quant / technical /
+// profile tools populate their own spines.
+const fillInputs = sequencer({
+  name: "fill-inputs",
   inputSchema: z.object({ ticker: z.string(), date: z.string() }),
 })
   .parallel({
@@ -44,19 +52,26 @@ const fillFinancials = sequencer({
     balanceSheet: get_balance_sheet,
     incomeStatement: get_income_statement,
     cashflow: get_cashflow,
+    quantComposites: get_quant_composites,
+    factorRanks: get_factor_ranks,
+    indicators: compute_indicators,
+    companyProfile: get_company_profile,
   })
   .step(computeAndStoreSpine);
 
 const spineFlow = defineFlow({
   kind: "trading-desk-financials-spine-test",
   actions: {
-    fillAndCompute: { block: fillFinancials },
+    fillAndCompute: { block: fillInputs },
     seed: { block: seedSession },
     fetchFundamentals: { block: get_fundamentals },
   },
   session: { stateSchema: sessionStateSchema },
   resources: {
     financialsData: financialsDataResource,
+    quantData: quantDataResource,
+    technicalData: technicalDataResource,
+    profileData: profileDataResource,
     valuationSpine: valuationSpineResource,
   },
 })({ id: "test" });
@@ -83,7 +98,7 @@ const baseState = {
 };
 
 describe("financials data spine", () => {
-  it("parallel tools write all four payloads into financialsData without clobber; the tap reads them to build valuationSpine", async () => {
+  it("parallel tools fill the four per-domain spines without clobber; the tap reads all eight inputs to build valuationSpine", async () => {
     const stores = createInMemoryStores();
     const sessionId = "financials-spine-fixture";
 
@@ -101,18 +116,30 @@ describe("financials data spine", () => {
 
     const resources = await stores.resourceState.getAll("session", sessionId);
 
-    // 1. Each tool wrote its payload into the spine (one named field per tool).
+    // 1. Each tool wrote its payload into its domain spine (one field per tool).
     const financials = resources["financialsData"] as Record<string, unknown> | undefined;
-    expect(financials).toBeTruthy();
     expect(financials?.fundamentals).toBeTruthy();
     expect(financials?.balanceSheet).toBeTruthy();
     expect(financials?.incomeStatement).toBeTruthy();
     expect(financials?.cashflow).toBeTruthy();
+    const quant = resources["quantData"] as Record<string, unknown> | undefined;
+    expect(quant?.quantComposites).toBeTruthy();
+    expect(quant?.factorRanks).toBeTruthy();
+    const tech = resources["technicalData"] as Record<string, unknown> | undefined;
+    expect(tech?.indicators).toBeTruthy();
+    const profile = resources["profileData"] as Record<string, unknown> | undefined;
+    expect(profile?.companyProfile).toBeTruthy();
 
-    // 2. The tap read those off the spine (not a warm cache) and produced the
-    //    valuation spine for the same subject.
-    const spine = resources["valuationSpine"] as { ticker?: string; envelope?: unknown } | null | undefined;
+    // 2. The tap read all eight inputs off the spines (not a warm cache) and
+    //    produced the valuation spine for the same subject — with a setup score
+    //    that only resolves when the quant / factor / technical inputs are present.
+    const spine = resources["valuationSpine"] as {
+      ticker?: string;
+      envelope?: unknown;
+      setupScore?: { evidenceBasis?: string };
+    } | null | undefined;
     expect(spine).toBeTruthy();
+    expect(spine?.setupScore?.evidenceBasis).toBe("sufficient");
     expect(spine?.ticker).toBe("NVDA");
     expect(spine?.envelope).toBeTruthy();
   });

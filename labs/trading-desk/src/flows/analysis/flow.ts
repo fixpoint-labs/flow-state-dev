@@ -19,6 +19,9 @@ import { setInstructions } from "./orchestration/guards";
 import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
 import { priceHistoryResource } from "./price-history-resource";
 import { financialsDataResource } from "./financials-data-resource";
+import { quantDataResource } from "./quant-data-resource";
+import { technicalDataResource } from "./technical-data-resource";
+import { profileDataResource } from "./profile-data-resource";
 import { rewardToRiskResource } from "./reward-to-risk-resource";
 import {
   accountsCollection,
@@ -80,6 +83,12 @@ const analysisFlow = defineFlow({
     // the process TTL cache for these subject-scoped payloads). Declared at the
     // root so nested tool handlers resolve it from `ctx.resources`.
     financialsData: financialsDataResource,
+    // Quant / technical / profile spines — the other Phase 1 payloads the
+    // valuation tap re-reads (composites + factor ranks, indicators, profile),
+    // written by their tools via `getOrPatchState`. Same per-domain pattern.
+    quantData: quantDataResource,
+    technicalData: technicalDataResource,
+    profileData: profileDataResource,
     // Valuation spine — computed after Phase 1, read by Phases 2–5.
     valuationSpine: valuationSpineResource,
     // Lens convergence — computed deterministically after the phase-2b lens

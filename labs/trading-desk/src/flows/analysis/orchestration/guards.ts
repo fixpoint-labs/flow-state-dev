@@ -26,6 +26,9 @@ import { analyzeInputSchema } from "../flow-schema";
 import { resolveTicker } from "../lib/ticker-resolver";
 import { memoResources } from "../resources";
 import { financialsDataResource } from "../financials-data-resource";
+import { quantDataResource } from "../quant-data-resource";
+import { technicalDataResource } from "../technical-data-resource";
+import { profileDataResource } from "../profile-data-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
@@ -56,6 +59,9 @@ export const seedSession = handler({
     accounts: accountsCollection,
     portfolioQuotes: portfolioQuotesResource,
     financialsData: financialsDataResource,
+    quantData: quantDataResource,
+    technicalData: technicalDataResource,
+    profileData: profileDataResource,
     ...memoResources,
   },
   execute: async (input, ctx) => {
@@ -73,8 +79,12 @@ export const seedSession = handler({
     // would skip their fetch on every re-run (the old process cache aged out
     // after its TTL; the spine persists for the session's life). Resetting to
     // `{}` makes every field absent — a miss the tools recompute. Idempotent on
-    // a first run (state is already `{}`, so the write is skipped).
+    // a first run (state is already `{}`, so the write is skipped). The quant /
+    // technical / profile spines are reset for the same reason.
     await ctx.resources.financialsData.setState({});
+    await ctx.resources.quantData.setState({});
+    await ctx.resources.technicalData.setState({});
+    await ctx.resources.profileData.setState({});
 
     // Freeze the per-run thesis at seed time so editing the form mid-run
     // can't affect the session that's already analyzing. A non-null
