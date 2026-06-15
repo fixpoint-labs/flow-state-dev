@@ -14,6 +14,7 @@ import type { ToolName } from "./tools/schemas";
 import { computeValuation } from "./lib/valuation";
 import { buildValuationSpine } from "./lib/valuation-spine";
 import { valuationSpineResource } from "./valuation-spine-resource";
+import { financialsDataResource } from "./financials-data-resource";
 import { sessionStateSchema } from "./state";
 
 function pickMode(state: { dataSource: string }): "fixture" | "live" {
@@ -42,18 +43,23 @@ export const computeAndStoreSpine = handler({
   inputSchema: z.unknown(),
   outputSchema: z.void(),
   sessionStateSchema,
-  resources: { valuationSpine: valuationSpineResource },
+  resources: { valuationSpine: valuationSpineResource, financialsData: financialsDataResource },
   execute: async (_input, ctx) => {
     const { ticker, date, dataSource } = ctx.session.state;
     const mode = pickMode({ dataSource });
     const args = { ticker, date };
 
-    const [fundamentals, balanceSheet, incomeStatement, cashflow, quantComposites, factorRanks, indicators, companyProfile] =
+    // The four financials payloads are read from the session financials spine —
+    // the fundamentals analyst's tools wrote them there in Phase 1. No re-fetch,
+    // no dependence on a warm process cache: this tap reads the stable copy.
+    const fin = ctx.resources.financialsData.state;
+    const fundamentals = (fin.fundamentals ?? null) as any;
+    const balanceSheet = (fin.balanceSheet ?? null) as any;
+    const incomeStatement = (fin.incomeStatement ?? null) as any;
+    const cashflow = (fin.cashflow ?? null) as any;
+
+    const [quantComposites, factorRanks, indicators, companyProfile] =
       await Promise.all([
-        loadPayload<any>("get_fundamentals", args, mode),
-        loadPayload<any>("get_balance_sheet", args, mode),
-        loadPayload<any>("get_income_statement", args, mode),
-        loadPayload<any>("get_cashflow", args, mode),
         loadPayload<any>("get_quant_composites", args, mode),
         loadPayload<any>("get_factor_ranks", args, mode),
         loadPayload<any>("compute_indicators", args, mode),
