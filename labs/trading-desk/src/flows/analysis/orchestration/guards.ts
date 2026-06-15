@@ -25,6 +25,7 @@ import { ALL_MEMO_KEYS, PHASE_1_MEMO_KEYS } from "../registry";
 import { analyzeInputSchema } from "../flow-schema";
 import { resolveTicker } from "../lib/ticker-resolver";
 import { memoResources } from "../resources";
+import { financialsDataResource } from "../financials-data-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
@@ -54,6 +55,7 @@ export const seedSession = handler({
   resources: {
     accounts: accountsCollection,
     portfolioQuotes: portfolioQuotesResource,
+    financialsData: financialsDataResource,
     ...memoResources,
   },
   execute: async (input, ctx) => {
@@ -64,6 +66,15 @@ export const seedSession = handler({
     for (const { collectionKey } of Object.values(ALL_MEMO_KEYS)) {
       await ctx.resources.memos.delete(collectionKey);
     }
+
+    // Reset the financials data spine so a re-run on the same session refetches
+    // rather than reusing a prior run's payloads. `getOrPatchState` treats a
+    // present field as a hit, so without this clear the Phase 1 financials tools
+    // would skip their fetch on every re-run (the old process cache aged out
+    // after its TTL; the spine persists for the session's life). Resetting to
+    // `{}` makes every field absent — a miss the tools recompute. Idempotent on
+    // a first run (state is already `{}`, so the write is skipped).
+    await ctx.resources.financialsData.setState({});
 
     // Freeze the per-run thesis at seed time so editing the form mid-run
     // can't affect the session that's already analyzing. A non-null

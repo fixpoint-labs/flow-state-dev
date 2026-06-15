@@ -25,25 +25,33 @@ import { get_balance_sheet } from "../src/flows/analysis/tools/data/get_balance_
 import { get_income_statement } from "../src/flows/analysis/tools/data/get_income_statement";
 import { get_cashflow } from "../src/flows/analysis/tools/data/get_cashflow";
 import { computeAndStoreSpine } from "../src/flows/analysis/compute-spine";
+import { seedSession } from "../src/flows/analysis/orchestration/guards";
 import { financialsDataResource } from "../src/flows/analysis/financials-data-resource";
 import { valuationSpineResource } from "../src/flows/analysis/valuation-spine-resource";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 
 // Fetch the four financials into the spine, then compute the valuation off it.
+// The tools run in `.parallel` — exactly how the fundamentals analyst fans them
+// out — so all four patch the shared `financialsData` resource concurrently.
+// Per-resource write serialization must keep every field; without it the
+// read-modify-write patches clobber each other and compute-spine sees nulls.
 const fillFinancials = sequencer({
   name: "fill-financials",
   inputSchema: z.object({ ticker: z.string(), date: z.string() }),
 })
-  .tap(get_fundamentals)
-  .tap(get_balance_sheet)
-  .tap(get_income_statement)
-  .tap(get_cashflow)
+  .parallel({
+    fundamentals: get_fundamentals,
+    balanceSheet: get_balance_sheet,
+    incomeStatement: get_income_statement,
+    cashflow: get_cashflow,
+  })
   .step(computeAndStoreSpine);
 
 const spineFlow = defineFlow({
   kind: "trading-desk-financials-spine-test",
   actions: {
     fillAndCompute: { block: fillFinancials },
+    seed: { block: seedSession },
   },
   session: { stateSchema: sessionStateSchema },
   resources: {
@@ -51,6 +59,17 @@ const spineFlow = defineFlow({
     valuationSpine: valuationSpineResource,
   },
 })({ id: "test" });
+
+const seedInput = {
+  ticker: "NVDA",
+  date: "2026-05-06",
+  costPreset: "fast" as const,
+  dataSource: "fixture" as const,
+  userThesis: null,
+  userThesisRationale: null,
+  selectedAccountIds: [] as string[],
+  riskMandate: null,
+};
 
 const baseState = {
   ticker: "NVDA",
@@ -63,7 +82,7 @@ const baseState = {
 };
 
 describe("financials data spine", () => {
-  it("tools write the subject's payloads into financialsData; the tap reads them to build valuationSpine", async () => {
+  it("parallel tools write all four payloads into financialsData without clobber; the tap reads them to build valuationSpine", async () => {
     const stores = createInMemoryStores();
     const sessionId = "financials-spine-fixture";
 
@@ -95,5 +114,40 @@ describe("financials data spine", () => {
     expect(spine).toBeTruthy();
     expect(spine?.ticker).toBe("NVDA");
     expect(spine?.envelope).toBeTruthy();
+  });
+
+  it("seedSession resets financialsData so a re-run refetches instead of reusing stale payloads", async () => {
+    const stores = createInMemoryStores();
+    const sessionId = "financials-rerun";
+
+    // First run populates the spine through the real path (valid fixture data).
+    const first = await testFlow({
+      flow: spineFlow,
+      action: "fillAndCompute",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: { ticker: "NVDA", date: "2026-05-06" },
+      seed: { session: { state: baseState } },
+    });
+    expect(first.error).toBeUndefined();
+    const afterFill = await stores.resourceState.getAll("session", sessionId);
+    expect((afterFill["financialsData"] as Record<string, unknown>)?.fundamentals).toBeTruthy();
+
+    // Re-running the analysis on the same session seeds first — which must clear
+    // the spine so the Phase 1 tools refetch rather than treat the prior run's
+    // payloads as hits (the old TTL cache aged out; the spine does not).
+    const second = await testFlow({
+      flow: spineFlow,
+      action: "seed",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: seedInput,
+    });
+    expect(second.error).toBeUndefined();
+
+    const afterSeed = await stores.resourceState.getAll("session", sessionId);
+    expect(afterSeed["financialsData"]).toEqual({});
   });
 });
