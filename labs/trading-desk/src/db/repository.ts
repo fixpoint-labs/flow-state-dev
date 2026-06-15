@@ -201,8 +201,18 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             riskMandate: values.riskMandate,
             updatedAt: sql`now()`,
           },
+          // Ownership guard: only update when the existing row belongs to the
+          // caller. A conflict on another user's account id leaves their row
+          // untouched (no row returned) — the household boundary the old
+          // user-scoped resource upsert enforced.
+          setWhere: eq(accounts.userId, values.userId),
         })
         .returning();
+      if (row === undefined) {
+        throw new Error(
+          `Account ${input.id} is not owned by the requesting user.`,
+        );
+      }
       return mapAccount(row);
     },
 

@@ -109,6 +109,18 @@ describe("accounts", () => {
     expect(portfolio.accounts).toHaveLength(1);
     expect(portfolio.holdings.map((h) => h.ticker)).toEqual(["AAPL"]);
   });
+
+  it("scopes the upsert update to the owner — another user cannot overwrite the account", async () => {
+    await repo.upsertAccount(account({ name: "Taxable" }));
+
+    // A different caller supplying the same account id must not clobber it.
+    await expect(
+      repo.upsertAccount(account({ userId: "intruder", name: "HACKED" })),
+    ).rejects.toThrow();
+
+    const [a] = await repo.getAccountsForUser("devuser");
+    expect(a.name).toBe("Taxable"); // victim's account is untouched
+  });
 });
 
 describe("upsertHoldings — upsert mode", () => {
