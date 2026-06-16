@@ -5,21 +5,25 @@
  * leaves YoY null). Fixture: curated per-ticker JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchEdgarIncomeStatement } from "../providers/edgar";
 import { fetchYahooIncomeStatement } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { financialsDataResource } from "../../financials-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
 
 export const get_income_statement = handler({
   name: "get_income_statement",
   description: "Trailing income statement for a ticker.",
   inputSchema: toolInputSchemas.get_income_statement,
   outputSchema: toolOutputSchemas.get_income_statement,
+  resources: { financialsData: financialsDataResource },
+  // Write-through to the session financials spine (see get_fundamentals).
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_income_statement", input);
-    return getOrFetch("get_income_statement", input, async () => {
+    const mode = pickMode(ctx);
+    const loadIncomeStatement = async () => {
+      if (mode === "fixture") return loadFixture("get_income_statement", input);
       // EDGAR first (authoritative, no key); Yahoo backstops non-US filers and
       // EDGAR outages; empty payload only when both fail.
       try {
@@ -29,6 +33,14 @@ export const get_income_statement = handler({
         return await fetchYahooIncomeStatement(input);
       } catch {}
       return emptyPayload("get_income_statement", input);
+    };
+    return writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.financialsData,
+      field: "incomeStatement",
+      tool: "get_income_statement",
+      input,
+      load: loadIncomeStatement,
     });
   },
 });

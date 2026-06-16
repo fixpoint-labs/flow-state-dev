@@ -247,4 +247,4 @@ export type {
   ActionInputSchema
 } from "../schema/action-schema";
 
-export { defineResource, resource } from "./resource";
+export { applyGetOrPatchState, defineResource, resource } from "./resource";

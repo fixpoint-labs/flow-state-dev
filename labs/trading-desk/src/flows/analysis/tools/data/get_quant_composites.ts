@@ -14,13 +14,9 @@ import { fetchYahooFinancialsHistory } from "../providers/yahoo";
 import type { FinancialPeriod } from "../providers/financials-history";
 import { emptyPayload } from "../empty-payloads";
 import { altmanZDoublePrime, piotroskiFScore, type StatementPeriod } from "./composite-math";
-import {
-  pickMode,
-  toolInputSchemas,
-  toolOutputSchemas,
-  type ToolInput,
-  type ToolOutput,
-} from "../schemas";
+import { pickMode, toolInputSchemas, toolOutputSchemas, type ToolInput, type ToolOutput } from "../schemas";
+import { quantDataResource } from "../../quant-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
 
 function toStatementPeriod(fp: FinancialPeriod): StatementPeriod {
   return {
@@ -105,14 +101,25 @@ export const get_quant_composites = handler({
     "F-Score (financial strength) from quarterly statements.",
   inputSchema: toolInputSchemas.get_quant_composites,
   outputSchema: toolOutputSchemas.get_quant_composites,
+  resources: { quantData: quantDataResource },
+  // Write-through to the session quant spine (see get_fundamentals). The internal
+  // edgar/yahoo financials-history fetches stay on the process cache.
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_quant_composites", input);
-    return getOrFetch("get_quant_composites", input, async () => {
+    const loadQuantComposites = async () => {
+      if (pickMode(ctx) === "fixture") return loadFixture("get_quant_composites", input);
       try {
         return await fetchLive(input);
       } catch {
         return emptyPayload("get_quant_composites", input);
       }
+    };
+    return writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.quantData,
+      field: "quantComposites",
+      tool: "get_quant_composites",
+      input,
+      load: loadQuantComposites,
     });
   },
 });

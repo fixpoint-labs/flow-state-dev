@@ -20,6 +20,20 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { createExecutionContext, createInMemoryStores } from "../../src";
 import { createInternalResponseEmitter } from "../../src/streaming/response-emitter";
 
+/**
+ * Reject after `ms` so a deadlocked write fails the test fast instead of hanging
+ * the whole run until the suite-level timeout.
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`timed out after ${ms}ms: ${label}`)), ms)
+    ),
+  ]);
+}
+
+
 const fileSchema = z.object({
   language: z.string(),
   status: z.string().default("draft"),
@@ -424,6 +438,52 @@ describe("reactive dispatch: non-live single streaming + updateState aliasing", 
     expect(seen).toHaveLength(1);
     expect(seen[0]!.state).toMatchObject({ status: "published" });
     expect(seen[0]!.prevState).toMatchObject({ status: "draft" });
+  });
+});
+
+describe("reactive dispatch: re-entrant same-resource mutation", () => {
+  const mirrorSchema = z.object({
+    status: z.string().default("draft"),
+    mirror: z.string().default(""),
+  });
+
+  it("a reactTo block that patches its OWN resource completes (no write-chain deadlock)", async () => {
+    // Documented, cascade-bounded pattern: a reactive block mutates a resource,
+    // re-entering the dispatcher. Here the binding mirrors `status` into `mirror`
+    // by patching the SAME single resource. The re-entrant patch must not chain
+    // behind — and wait on — the in-progress write that is awaiting it. The `when`
+    // guard terminates the cascade after one bounce (mirror catches up to status).
+    const mirror = handler({
+      name: "mirror-status",
+      inputSchema: resourceChangeSchema(mirrorSchema),
+      execute: async (change: ResourceChange, ctx) => {
+        const state = change.state as { status: string; mirror: string } | null;
+        if (state !== null && state.mirror !== state.status) {
+          await (ctx.resources.doc as any).patchState({ mirror: state.status });
+        }
+        return "done";
+      },
+    });
+    const doc = defineResource({
+      scope: "session",
+      ref: "doc",
+      stateSchema: mirrorSchema,
+      reactTo: { updated: { block: mirror, when: (c) => c.state?.mirror !== c.state?.status } },
+    });
+
+    const { ctx } = await createCtx({ doc });
+
+    // On the pre-fix code the inner patchState deadlocks behind the outer one;
+    // the timeout converts that hang into a fast failure.
+    await expect(
+      withTimeout((ctx.resources.doc as any).patchState({ status: "published" }), 2000, "self-mutating patchState")
+    ).resolves.toBeUndefined();
+
+    // The self-mutation actually ran: the reactive block mirrored status → mirror.
+    expect((ctx.resources.doc as any).state).toMatchObject({
+      status: "published",
+      mirror: "published",
+    });
   });
 });
 
