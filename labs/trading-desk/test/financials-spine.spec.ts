@@ -15,11 +15,29 @@
  * read back via `stores.resourceState.getAll`, the same inspection path the
  * price-history and past-reports specs use.
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { testFlow } from "@flow-state-dev/testing";
+import { makeTestRepository } from "./_helpers/portfolio-repo";
+import type { PortfolioRepository } from "@/src/db/repository";
+
+// `seedSession` reads accounts/holdings from the app-owned repository (FIX-772).
+// Mock it to a fresh in-memory PGlite per test so the `seed` action doesn't open
+// the persisted `.fsdev/pglite` dir (which fails on a clean CI checkout). This
+// spec doesn't seed accounts — an empty repo makes the run portfolio-blind,
+// which is irrelevant to the financials-reset behavior under test.
+const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
+vi.mock("@/lib/portfolio-db", () => ({
+  getRepository: async () => {
+    if (!repoState.repo) throw new Error("test repository not initialized");
+    return repoState.repo;
+  },
+}));
+beforeEach(async () => {
+  repoState.repo = await makeTestRepository();
+});
 import { get_fundamentals } from "../src/flows/analysis/tools/data/get_fundamentals";
 import { get_balance_sheet } from "../src/flows/analysis/tools/data/get_balance_sheet";
 import { get_income_statement } from "../src/flows/analysis/tools/data/get_income_statement";

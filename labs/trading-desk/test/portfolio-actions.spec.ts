@@ -12,18 +12,34 @@
  * honest; and getQuotes degrades a missing fixture to a null price (never a
  * fabricated number).
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { testFlow } from "@flow-state-dev/testing";
-// The portfolio actions moved to the `portfolio` flow (FIX-736);
-// build that flow to exercise them. The `accounts` collection is shared
-// (flowIsolation: false → bare `{userId}`), so the state assertions below read
-// the same key regardless of which flow wrote them.
+import { makeTestRepository } from "./_helpers/portfolio-repo";
+import {
+  toAccountStates,
+  type AccountRow,
+  type PortfolioRepository,
+} from "@/src/db/repository";
+
+// The portfolio actions moved to the `portfolio` flow (FIX-736) and now read/
+// write accounts + holdings through the app-owned repository (FIX-772) rather
+// than an FSD resource. Mock the repo to a fresh in-memory PGlite instance per
+// test; the dispatched actions and the assertion reads below share it, so the
+// reads observe exactly what the actions wrote.
+const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
+vi.mock("@/lib/portfolio-db", () => ({
+  getRepository: async () => {
+    if (!repoState.repo) throw new Error("test repository not initialized");
+    return repoState.repo;
+  },
+}));
+
 import portfolioFlow from "../src/flows/portfolio/flow";
 
 const USER_ID = "devuser";
-// accounts collection is now user-scoped with flowIsolation: false, so state
-// keys at bare {userId} rather than {userId}:trading-desk.
+// portfolioQuotes is still user-scoped (flowIsolation: false), keyed at bare
+// {userId}; the getQuotes test reads it there.
 const USER_KEY = USER_ID;
 
 type StoredHolding = {
@@ -31,31 +47,17 @@ type StoredHolding = {
   quantity: number;
   costBasis: number | null;
 };
-type StoredAccount = {
-  accountId: string;
-  name?: string;
-  type?: string;
-  holdings: StoredHolding[];
-};
 
-/** Read all user-scoped resource state (the `accounts` collection lives here,
- *  keyed by its storage path, e.g. `accounts/{accountId}`). */
-async function userResources(
-  stores: ReturnType<typeof createInMemoryStores>,
-): Promise<Record<string, Record<string, unknown>>> {
-  return (await stores.resourceState.getAll("user", USER_KEY)) as Record<
-    string,
-    Record<string, unknown>
-  >;
+/** Read all of a user's accounts (account-level fields) from the repository. */
+async function userAccounts(): Promise<AccountRow[]> {
+  return repoState.repo!.getAccountsForUser(USER_ID);
 }
 
-/** Read one account record's holdings (or undefined if the account is absent). */
-async function holdingsOf(
-  stores: ReturnType<typeof createInMemoryStores>,
-  accountId: string,
-): Promise<StoredHolding[] | undefined> {
-  const resources = await userResources(stores);
-  const account = resources[`accounts/${accountId}`] as StoredAccount | undefined;
+/** Read one account record's holdings (or undefined if the account is absent),
+ *  via the repository's inline-holdings projection. */
+async function holdingsOf(accountId: string): Promise<StoredHolding[] | undefined> {
+  const portfolio = await repoState.repo!.getPortfolio(USER_ID);
+  const account = toAccountStates(portfolio).find((a) => a.accountId === accountId);
   return account?.holdings;
 }
 
@@ -73,6 +75,10 @@ async function createAccount(
     input: { accountId, name, type: "taxable" },
   });
 }
+
+beforeEach(async () => {
+  repoState.repo = await makeTestRepository();
+});
 
 const A1 = "acct-roth";
 const A2 = "acct-taxable";
@@ -94,7 +100,7 @@ describe("importHoldings action", () => {
     });
     expect(result.status).toBe("completed");
 
-    const holdings = await holdingsOf(stores, A1);
+    const holdings = await holdingsOf(A1);
     expect(holdings).toContainEqual(
       expect.objectContaining({ ticker: "NVDA", quantity: 10, costBasis: 100 }),
     );
@@ -129,8 +135,8 @@ describe("importHoldings action", () => {
     expect(report.updated).toBe(0);
     expect(report.deleted).toBe(0);
     expect(report.warnings.join(" ")).toMatch(/not found/i);
-    const resources = await userResources(stores);
-    expect(resources[`accounts/no-such-account`]).toBeUndefined();
+    const accounts = await userAccounts();
+    expect(accounts.find((a) => a.accountId === "no-such-account")).toBeUndefined();
   });
 
   it("upsert replaces the named ticker but leaves other holdings untouched", async () => {
@@ -162,7 +168,7 @@ describe("importHoldings action", () => {
     });
     expect(second.status).toBe("completed");
 
-    const holdings = await holdingsOf(stores, A1);
+    const holdings = await holdingsOf(A1);
     expect(holdings).toContainEqual(
       expect.objectContaining({ ticker: "NVDA", quantity: 99, costBasis: 120 }),
     );
@@ -200,7 +206,7 @@ describe("importHoldings action", () => {
     });
     expect(replace.status).toBe("completed");
 
-    const holdings = await holdingsOf(stores, A1);
+    const holdings = await holdingsOf(A1);
     expect(holdings).toEqual([
       expect.objectContaining({ ticker: "TSLA", quantity: 7 }),
     ]);
@@ -237,8 +243,8 @@ describe("importHoldings action", () => {
       },
     });
 
-    const a1 = await holdingsOf(stores, A1);
-    const a2 = await holdingsOf(stores, A2);
+    const a1 = await holdingsOf(A1);
+    const a2 = await holdingsOf(A2);
     expect(a1).toContainEqual(
       expect.objectContaining({ ticker: "NVDA", quantity: 10, costBasis: 100 }),
     );
@@ -277,15 +283,14 @@ describe("saveAccount", () => {
     });
     expect(edit.status).toBe("completed");
 
-    const resources = await userResources(stores);
-    const account = resources[`accounts/${A1}`] as StoredAccount & {
-      name: string;
-      cashBalance: number;
-    };
-    expect(account.name).toBe("Renamed");
-    expect(account.cashBalance).toBe(500);
-    // The holding was NOT wiped by the metadata edit.
-    expect(account.holdings).toContainEqual(
+    const accounts = await userAccounts();
+    const account = accounts.find((a) => a.accountId === A1);
+    expect(account?.name).toBe("Renamed");
+    expect(account?.cashBalance).toBe(500);
+    // The holding was NOT wiped by the metadata edit (holdings are a separate
+    // table, so an account upsert never touches positions).
+    const holdings = await holdingsOf(A1);
+    expect(holdings).toContainEqual(
       expect.objectContaining({ ticker: "NVDA", quantity: 10 }),
     );
   });
@@ -315,7 +320,7 @@ describe("deleteHolding", () => {
     });
     expect(del.status).toBe("completed");
 
-    const holdings = await holdingsOf(stores, A1);
+    const holdings = await holdingsOf(A1);
     expect(holdings?.map((h) => h.ticker)).toEqual(["AAPL"]);
   });
 });
@@ -336,14 +341,12 @@ describe("deleteAccount", () => {
       },
     });
 
-    let resources = await userResources(stores);
-    expect(resources[`accounts/${A1}`]).toMatchObject({
+    const accountsBefore = await userAccounts();
+    expect(accountsBefore.find((a) => a.accountId === A1)).toMatchObject({
       accountId: A1,
       name: "My Roth IRA",
     });
-    expect((resources[`accounts/${A1}`] as StoredAccount).holdings).toHaveLength(
-      1,
-    );
+    expect(await holdingsOf(A1)).toHaveLength(1);
 
     await testFlow({
       flow: portfolioFlow,
@@ -352,8 +355,12 @@ describe("deleteAccount", () => {
       stores,
       input: { accountId: A1 },
     });
-    resources = await userResources(stores);
-    expect(resources[`accounts/${A1}`]).toBeUndefined();
+    const accountsAfter = await userAccounts();
+    expect(accountsAfter.find((a) => a.accountId === A1)).toBeUndefined();
+    // The FK cascade dropped the account's holdings too: getPortfolio returns
+    // no holding rows for the deleted account.
+    const { holdings } = await repoState.repo!.getPortfolio(USER_ID);
+    expect(holdings.some((h) => h.accountId === A1)).toBe(false);
   });
 });
 

@@ -300,6 +300,7 @@ export {
   unifiedObservationsSchema,
   consolidationOutputSchema,
   pruneOutputSchema,
+  buildObserveContext,
   memorySystemObserve,
   memorySystemReflect,
   memorySystemTick,

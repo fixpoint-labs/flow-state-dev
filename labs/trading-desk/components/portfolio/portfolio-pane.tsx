@@ -4,9 +4,9 @@
  * import control, and a refresh-prices action.
  *
  * Data path:
- *  - Accounts come from the user-scoped `accounts` collection via
- *    `useResourceCollectionList`. Holdings ride inline in each account record
- *    (`account.holdings`) — there is no separate holdings collection.
+ *  - Accounts (with inline holdings) come from the app-owned tables via the
+ *    `/api/portfolio/accounts` read route (`usePortfolioAccounts`, FIX-772) —
+ *    accounts are no longer an FSD resource. `refetch` after each write action.
  *  - Prices come from the `getQuotes` action: dispatch → `session.refresh()` →
  *    read the `portfolioQuotes` resource via `useResource`. `sendAction` does
  *    not return handler output in this runtime, so the resource is the channel.
@@ -29,21 +29,16 @@ import {
 } from "react";
 import { Plus, Upload, FileText, RefreshCw } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
-import {
-  useResource,
-  useResourceCollectionList,
-} from "@flow-state-dev/react";
+import { useResource } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
-import type {
-  AccountState,
-  Holding,
-} from "@/src/flows/portfolio/portfolio-schema";
+import type { Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import type { PortfolioQuotesState } from "@/src/flows/portfolio/portfolio-resources";
 import { AccountSection } from "./account-section";
 import { AddAccountDialog, type NewAccountDraft } from "./add-account-dialog";
 import { ImportCsvDialog, type ImportSubmit } from "./import-csv-dialog";
 import { ImportPdfDialog } from "./import-pdf-dialog";
+import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import {
   DASH,
   formatMoney,
@@ -67,9 +62,7 @@ export function PortfolioPane({
   session,
   hasSession,
 }: PortfolioPaneProps): ReactElement {
-  const accountsList = useResourceCollectionList(session, "accounts", {
-    limit: 50,
-  });
+  const { accounts, refetch: refetchAccounts } = usePortfolioAccounts(session);
   const { clientData: quotesData } = useResource(session, "portfolioQuotes");
 
   const [addOpen, setAddOpen] = useState(false);
@@ -80,15 +73,6 @@ export function PortfolioPane({
   );
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
 
-  // Project collection items to typed state. `item.clientData` carries full
-  // state (collections declare `client.state.read: true`).
-  const accounts = useMemo<AccountState[]>(
-    () =>
-      accountsList.items
-        .map((it) => it.clientData as AccountState | undefined)
-        .filter((a): a is AccountState => a !== undefined),
-    [accountsList.items],
-  );
   // Holdings ride inline in each account record. Index them by accountId for
   // the per-account sections, and flatten them for the price fetch.
   const holdingsByAccount = useMemo(() => {
@@ -177,12 +161,12 @@ export function PortfolioPane({
     async (draft: NewAccountDraft) => {
       try {
         await session.sendAction("saveAccount", { accountId: null, ...draft });
-        accountsList.refetch();
+        refetchAccounts();
       } catch (err) {
         console.error("[trading-desk] saveAccount failed", err);
       }
     },
-    [session, accountsList],
+    [session, refetchAccounts],
   );
 
   const handleImport = useCallback(
@@ -191,51 +175,52 @@ export function PortfolioPane({
         await session.sendAction("importHoldings", submit);
         // Holdings ride along inside the account record, so refetching accounts
         // is enough — there is no separate holdings list to refresh.
-        accountsList.refetch();
+        refetchAccounts();
         await fetchPrices();
       } catch (err) {
         console.error("[trading-desk] importHoldings failed", err);
       }
     },
-    [session, accountsList, fetchPrices],
+    [session, refetchAccounts, fetchPrices],
   );
 
   const handleDeleteHolding = useCallback(
     async (accountId: string, ticker: string) => {
       try {
         await session.sendAction("deleteHolding", { accountId, ticker });
-        accountsList.refetch();
+        refetchAccounts();
       } catch (err) {
         console.error("[trading-desk] deleteHolding failed", err);
       }
     },
-    [session, accountsList],
+    [session, refetchAccounts],
   );
 
   const handleDeleteAccount = useCallback(
     async (accountId: string) => {
       try {
         await session.sendAction("deleteAccount", { accountId });
-        accountsList.refetch();
+        refetchAccounts();
       } catch (err) {
         console.error("[trading-desk] deleteAccount failed", err);
       }
     },
-    [session, accountsList],
+    [session, refetchAccounts],
   );
 
-  // Empty-state: no bound session OR no accounts yet. Spec §12.1 recommendation
-  // (a) would auto-create a junk session; we take the honest empty-state CTA
-  // instead — Add Account works the moment a session exists (one is bound once
-  // any analysis has run, or the user can run one first).
+  // Empty-state: no bound session. Reads no longer need one (accounts come from
+  // the API route), but the write actions (add / import / delete) and the live
+  // price fetch still dispatch through a session. Spec §12.1 recommendation (a)
+  // would auto-create a junk session; we take the honest empty-state CTA instead
+  // — a session is bound once any analysis has run.
   if (!hasSession) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
         <p className="text-sm text-[color:var(--c-fg)]">No session yet</p>
         <p className="max-w-md text-xs text-[color:var(--c-fg-muted)]">
-          The portfolio reads user-scoped data through a session snapshot. Run an
-          analysis first (New Analysis), then return here to add accounts and
-          import holdings.
+          Adding accounts, importing holdings, and refreshing prices run through a
+          session. Run an analysis first (New Analysis), then return here to manage
+          the portfolio.
         </p>
       </div>
     );

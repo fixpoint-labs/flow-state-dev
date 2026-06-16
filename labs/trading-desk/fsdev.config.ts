@@ -2,24 +2,21 @@
  * fsdev config — the single runtime wiring for the trading desk, consumed by
  * both the Next.js route handler (via `lib/server.ts`) and the `fsdev` CLI.
  *
- * Run an analysis headlessly, against the same `.fsdev/data` the app reads:
+ * Stores are Postgres-backed (FIX-772): embedded PGlite in local dev (no Docker,
+ * persisted under `.fsdev/pglite`) and real Postgres via `DATABASE_URL` in
+ * deployment, shared with the app-owned portfolio repository on one backing.
+ *
+ * Run an analysis headlessly, against the same database the app reads:
  *   pnpm fsdev run analysis analyze -i '{"ticker":"NVDA","dataSource":"fixture"}'
  */
-import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
 import { createXai } from "@ai-sdk/xai";
 import { createModelResolver } from "@flow-state-dev/core/models";
-import { createFlowState, filesystemStores } from "@flow-state-dev/server";
+import { createFlowState } from "@flow-state-dev/server";
 import analysisFlow from "./src/flows/analysis/flow";
 import portfolioFlow from "./src/flows/portfolio/flow";
 import { hasXaiKey } from "./src/flows/analysis/tools/providers/xai";
-
-// Filesystem-backed stores so analysis history survives `pnpm dev` restarts and
-// so CLI runs appear in the app's Past Reports view. Defaults to
-// `<app>/.fsdev/data` (covered by the root `.gitignore`'s `**/.fsdev/**` rule).
-// Override with `FSDEV_DATA_DIR` for testing or to redirect to a sandbox path.
-const dataDir =
-  process.env.FSDEV_DATA_DIR ?? path.join(process.cwd(), ".fsdev", "data");
+import { portfolioStoreAdapter } from "./lib/portfolio-db";
 
 // Pass the OpenAI provider instance explicitly: the resolver's dynamic
 // require() path doesn't work under Next.js bundling. The flow emits
@@ -56,7 +53,11 @@ const modelResolver = createModelResolver({
 export default createFlowState({
   flows: { analysis: analysisFlow, portfolio: portfolioFlow },
   modelResolver,
-  stores: { default: { primary: filesystemStores({ rootDir: dataDir, developmentOnly: true }) } },
+  // Postgres-backed framework store (FIX-772), shared with the portfolio
+  // repository over one backing (PGlite in dev, a `pg.Pool` in deploy). The
+  // adapter resolves lazily, so the DB init + `app.*` migrations run on first
+  // request, not at config-module load.
+  stores: { default: { primary: portfolioStoreAdapter } },
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },

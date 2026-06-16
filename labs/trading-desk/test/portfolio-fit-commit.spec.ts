@@ -15,10 +15,28 @@
  * Runs on `fast` so the phase-2b lens pack is cost-gated off (no convergence) —
  * the portfolio-fit derivation is independent of the lens pack.
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
+import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
+import type { PortfolioRepository } from "@/src/db/repository";
+
+// Accounts + holdings moved to the app-owned repository (FIX-772). Mock the
+// repo to a fresh in-memory PGlite instance per test; seedSession computes the
+// portfolio snapshot from the seeded accounts + the portfolioQuotes resource.
+const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
+vi.mock("@/lib/portfolio-db", () => ({
+  getRepository: async () => {
+    if (!repoState.repo) throw new Error("test repository not initialized");
+    return repoState.repo;
+  },
+}));
+
 import analysisFlow from "../src/flows/analysis/flow";
+
+beforeEach(async () => {
+  repoState.repo = await makeTestRepository();
+});
 
 const ticker = "NVDA";
 const date = "2026-05-06";
@@ -340,27 +358,26 @@ const USER_ID = "test-user";
 const rothAccountId = "acc-roth";
 const taxableAccountId = "acc-tax";
 
-const storedRothAccount = {
-  accountId: rothAccountId,
-  name: "Roth IRA",
-  type: "Roth",
-  currency: "USD",
-  cashBalance: 5000,
-  holdings: [{ ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null }],
-  createdAt: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z",
-};
-
-const storedTaxableAccount = {
-  accountId: taxableAccountId,
-  name: "Taxable Brokerage",
-  type: "taxable",
-  currency: "USD",
-  cashBalance: 93000,
-  holdings: [],
-  createdAt: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z",
-};
+/** Seed the two accounts into the (mocked) repository. Roth holds NVDA × 10;
+ *  Taxable is cash-only. Both are in scope so the Taxable label appears in
+ *  `portfolio.accounts` for the label-validation assertions. */
+async function seedPortfolio(): Promise<void> {
+  await seedAccount(repoState.repo!, {
+    accountId: rothAccountId,
+    userId: USER_ID,
+    name: "Roth IRA",
+    type: "Roth",
+    cashBalance: 5000,
+    holdings: [{ ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null }],
+  });
+  await seedAccount(repoState.repo!, {
+    accountId: taxableAccountId,
+    userId: USER_ID,
+    name: "Taxable Brokerage",
+    type: "taxable",
+    cashBalance: 93000,
+  });
+}
 
 /** Quotes giving NVDA price = 200 so that 10 shares → mv 2000 / nav 100000 = 2%. */
 const storedQuotes = {
@@ -369,12 +386,8 @@ const storedQuotes = {
   quotes: [{ ticker: "NVDA", price: 200, asOf: "2026-05-06" }],
 };
 
-/** User resources seeding for tests that need a portfolio. */
-const userResourcesWithPortfolio = {
-  [`accounts/${rothAccountId}`]: storedRothAccount,
-  [`accounts/${taxableAccountId}`]: storedTaxableAccount,
-  portfolioQuotes: storedQuotes,
-};
+/** Quotes still live as a user-scoped resource (unchanged by FIX-772). */
+const userResourcesWithQuotes = { portfolioQuotes: storedQuotes };
 
 type PmMemo = {
   status?: string;
@@ -395,6 +408,8 @@ async function runAndReadPmMemo(opts: {
   targetWeightPct: number;
 }): Promise<PmMemo | undefined> {
   const stores = createInMemoryStores();
+  // Seed accounts into the repository (FIX-772); quotes stay a user resource.
+  if (opts.hasPortfolio) await seedPortfolio();
   const result = await testFlow({
     flow: analysisFlow,
     action: "analyze",
@@ -406,12 +421,12 @@ async function runAndReadPmMemo(opts: {
       date,
       costPreset: "fast" as const,
       dataSource: "fixture" as const,
-      // Portfolio snapshot is now computed server-side from user resources.
+      // Portfolio snapshot is now computed server-side from the repo + quotes.
       // `selectedAccountIds: []` includes all accounts (both Roth + Taxable).
       selectedAccountIds: [],
     },
-    // Seed user-scoped accounts + quotes so seedSession can compute the snapshot.
-    seed: opts.hasPortfolio ? { user: { resources: userResourcesWithPortfolio } } : undefined,
+    // Seed user-scoped quotes so seedSession can compute market values.
+    seed: opts.hasPortfolio ? { user: { resources: userResourcesWithQuotes } } : undefined,
     generators: {
       ...upstreamMocks(),
       "portfolio-manager-generator": mockGenerator({
