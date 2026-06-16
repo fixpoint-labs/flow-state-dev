@@ -3,11 +3,13 @@
  *
  * The portfolio domain (Spine B) is the system of record for what the user
  * owns and the write surface for it: the account/holdings mutations, the price
- * fetch, and the PDF-import extraction. Its resources are user-scoped shared
- * (`flowIsolation: false` → bare `{userId}`), so the report flow
- * (`trading-desk`) reads the same `accounts` + `portfolioQuotes` at seed without
- * a client bridge. This is the bare `defineFlow` contract — actions, resources,
- * and the (empty) session-state shape.
+ * fetch, and the PDF-import extraction. Accounts + holdings live in the
+ * app-owned relational tables (FIX-772); the write actions reach them via the
+ * repository. The remaining resources are user-scoped shared
+ * (`flowIsolation: false` → bare `{userId}`): the `portfolioQuotes` cache the
+ * analysis flow reads at seed, and the per-session `pdfImport` scratch. This is
+ * the bare `defineFlow` contract — actions, resources, and the (empty)
+ * session-state shape.
  */
 import { defineFlow } from "@flow-state-dev/core";
 import {
@@ -19,7 +21,6 @@ import {
 import { getQuotes } from "./get-quotes";
 import { extractHoldingsFromPdf } from "./extract-holdings-action";
 import {
-  accountsCollection,
   pdfImportResource,
   portfolioQuotesResource,
 } from "./portfolio-resources";
@@ -43,12 +44,9 @@ const portfolioFlow = defineFlow({
   session: { stateSchema: sessionStateSchema },
 
   resources: {
-    // The system of record — one user-scoped collection keyed by accountId
-    // (flowIsolation: false → bare `{userId}`, shared across flows). Holdings
-    // live inline in each account record.
-    accounts: accountsCollection,
     // User-scoped per-user last-known-quotes cache written by `getQuotes`
-    // (readable cross-flow by the report flow at seed).
+    // (readable cross-flow by the report flow at seed). Accounts + holdings are
+    // not resources — they live in the app-owned tables (FIX-772).
     portfolioQuotes: portfolioQuotesResource,
     // Transient per-session PDF-extraction channel written by
     // `extractHoldingsFromPdf`; the import dialog reads it via `useResource`.

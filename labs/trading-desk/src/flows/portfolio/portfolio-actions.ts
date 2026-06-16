@@ -2,34 +2,36 @@
  * Portfolio write actions — `saveAccount`, `deleteAccount`, `importHoldings`,
  * `deleteHolding`.
  *
- * Each is a SINGLE handler (BP-011-safe): it only touches resource refs, which
- * a handler may do — that is not calling a block. None composes another block,
- * so no sequencer is needed. State-mutation-only actions (`deleteAccount`,
- * `deleteHolding`) return `void` (BP-012, never `return input` per BP-014);
- * `saveAccount` and `importHoldings` return a real transformation (the new id /
- * the import report), which the UI needs as feedback.
+ * Each is a SINGLE handler (BP-011-safe): it does I/O against the app-owned
+ * portfolio repository (FIX-772), which a handler may do — that is not calling a
+ * block. None composes another block, so no sequencer is needed. State-mutation-
+ * only actions (`deleteAccount`, `deleteHolding`) return `void` (BP-012, never
+ * `return input` per BP-014); `saveAccount` and `importHoldings` return a real
+ * transformation (the new id / the import report), which the UI needs as
+ * feedback.
  *
- * Holdings live inline in the account record (`accountStateSchema.holdings`), so
- * every write here is a single write to one `accounts/{accountId}` record — no
- * separate holdings collection, no `{accountId}__{ticker}` composite keys.
+ * Accounts and holdings live in the relational `app.accounts` / `app.holdings`
+ * tables, reached through `getRepository()`. Holdings are real rows keyed
+ * `(account_id, ticker)`, so a metadata edit never touches positions and a
+ * delete cascades via the FK — no inline-array rewrite.
  *
- * Import merge semantics (spec §3.4) operate on the account's `holdings` array:
- *  - `upsert` (default): each parsed row replaces the matching ticker's
- *    quantity/cost/date in place; tickers already in the account but not in the
- *    CSV are left untouched; new tickers are appended.
- *  - `replace-account`: set `holdings` to exactly the parsed rows. Atomic now —
- *    it is one record write (the prior per-row delete-then-create non-atomicity,
- *    RISK-P6, dissolves with the single-collection model).
+ * Import merge semantics are unchanged and owned by the repository
+ * (`upsertHoldings`):
+ *  - `upsert` (default): each parsed row replaces the matching ticker in place;
+ *    tickers absent from the CSV are left untouched; new tickers are inserted.
+ *  - `replace-account`: the account's holdings become exactly the parsed rows,
+ *    atomically (delete-all + insert in one transaction — the prior RISK-P6
+ *    non-atomicity is gone).
  *
  * No generator output schemas here — the parser is deterministic TS, so BP-016
- * has no surface (the resource-state schemas are NOT added to the strict walker;
- * they use `.default()`, which strict mode correctly rejects).
+ * has no surface.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { getRepository } from "@/lib/portfolio-db";
 import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
-import { accountTypeSchema, type Holding } from "./portfolio-schema";
-import { pdfImportResource, portfolioResources } from "./portfolio-resources";
+import { accountTypeSchema } from "./portfolio-schema";
+import { pdfImportResource } from "./portfolio-resources";
 
 /** Import feedback. Handler output (not a generator output) so a fixed-shape
  *  object is fine; `errors`/`warnings` carry the per-row + import-level notes
@@ -49,20 +51,20 @@ export const importReportSchema = z.object({
 });
 export type ImportReport = z.infer<typeof importReportSchema>;
 
-/** ISO now, shared by every create/update audit stamp in this file. */
-function nowIso(): string {
-  return new Date().toISOString();
+/** The caller's resolved user id — the household key the repository scopes on.
+ *  `requireUser: true` guarantees a user at runtime; the `"unknown_user"`
+ *  fallback matches the framework's own key resolution and satisfies the type. */
+function userId(ctx: { request: { identity: { userId?: string } } }): string {
+  return ctx.request.identity.userId ?? "unknown_user";
 }
 
 /**
- * Create or update an account. Generates a UUID + timestamps on first save;
- * preserves `createdAt` and bumps `updatedAt` on update. Returns the id so the
- * UI can select the new account.
+ * Create or update an account. Generates a UUID on first save; the repository
+ * preserves `createdAt` and bumps `updatedAt` on update, and owns the audit
+ * timestamps. Returns the id so the UI can select the new account.
  *
- * Holdings are NOT in the metadata-edit surface: the update branch patches only
- * the metadata fields (name/type/currency/cashBalance/updatedAt), so the
- * existing `holdings` array is preserved — a metadata edit never wipes
- * positions. The create branch seeds `holdings: []` for a fresh account.
+ * Holdings are a separate table, so an account upsert never touches positions —
+ * a metadata edit preserves them by construction (no inline `holdings` to omit).
  */
 export const saveAccount = handler({
   name: "save-account",
@@ -77,87 +79,58 @@ export const saveAccount = handler({
     riskMandate: z.string().nullable().default(null),
   }),
   outputSchema: z.object({ accountId: z.string() }),
-  resources: portfolioResources,
   execute: async (input, ctx) => {
     const accountId = input.accountId ?? crypto.randomUUID();
-    const now = nowIso();
-    await ctx.resources.accounts.upsert(
-      accountId,
-      // update branch: a partial patch that omits `holdings`, so an existing
-      // account's positions survive a metadata edit untouched.
-      {
-        accountId,
-        name: input.name,
-        type: input.type,
-        currency: input.currency,
-        cashBalance: input.cashBalance,
-        riskMandate: input.riskMandate,
-        updatedAt: now,
-      },
-      // create-only: set the audit floor, the id, and an empty holdings array
-      // when the account is new.
-      { accountId, createdAt: now, updatedAt: now, holdings: [] },
-    );
+    const repo = await getRepository();
+    await repo.upsertAccount({
+      id: accountId,
+      userId: userId(ctx),
+      name: input.name,
+      type: input.type,
+      currency: input.currency,
+      cashBalance: input.cashBalance,
+      riskMandate: input.riskMandate,
+    });
     return { accountId };
   },
 });
 
 /**
- * Delete an account. Holdings ride along inside the record, so deleting the
- * account drops its positions in the same write — no separate cleanup loop.
- * Touching resource refs from a handler is BP-011-safe.
+ * Delete an account. The FK cascade drops its holdings in the same statement —
+ * no separate cleanup loop. Doing repository I/O from a handler is BP-011-safe.
  */
 export const deleteAccount = handler({
   name: "delete-account",
   inputSchema: z.object({ accountId: z.string() }),
   outputSchema: z.void(),
-  resources: portfolioResources,
   execute: async (input, ctx) => {
-    await ctx.resources.accounts.delete(input.accountId);
+    const repo = await getRepository();
+    // Scoped to the caller's household — a delete for someone else's account
+    // is a no-op (restores the old user-scoped resource-delete boundary).
+    await repo.deleteAccount(input.accountId, userId(ctx));
   },
 });
 
 /**
- * Delete one holding: read the account, drop the matching ticker from its
- * `holdings` array, and write the account back. State-mutation-only (BP-012);
- * a no-op if the account or the ticker is absent.
+ * Delete one holding by `(account, ticker)`. State-mutation-only (BP-012); a
+ * no-op when the row is absent. Tickers are stored upper-case (the CSV parser
+ * normalizes), so the input is upper-cased to match.
  */
 export const deleteHolding = handler({
   name: "delete-holding",
   inputSchema: z.object({ accountId: z.string(), ticker: z.string() }),
   outputSchema: z.void(),
-  resources: portfolioResources,
   execute: async (input, ctx) => {
-    const account = await ctx.resources.accounts.getOptional(input.accountId);
-    if (account === undefined) return;
-    const ticker = input.ticker.toUpperCase();
-    const holdings = (account.state.holdings as Holding[]).filter(
-      (h) => h.ticker !== ticker,
-    );
-    await account.patchState({ holdings, updatedAt: nowIso() });
+    const repo = await getRepository();
+    await repo.deleteHolding(input.accountId, input.ticker.toUpperCase(), userId(ctx));
   },
 });
 
-/** Map a parsed canonical row to a stored {@link Holding}. */
-function rowToHolding(row: {
-  ticker: string;
-  quantity: number;
-  costBasis: number | null;
-  acquiredDate: string | null;
-}): Holding {
-  return {
-    ticker: row.ticker,
-    quantity: row.quantity,
-    costBasis: row.costBasis,
-    acquiredDate: row.acquiredDate,
-  };
-}
-
 /**
  * Import a CSV into a target account. Parses (server-side re-parse, never trusts
- * the client preview), merges the rows into the account's inline `holdings`
- * array per the mode, optionally patches the account's cash balance, writes the
- * account ONCE, and returns the authoritative import report.
+ * the client preview), writes the rows through the repository per the merge mode,
+ * optionally updates the account's cash balance, and returns the authoritative
+ * import report.
  *
  * The target account must already exist (the UI only enables import when an
  * account is selected). If it does not, nothing is imported and the report
@@ -165,9 +138,7 @@ function rowToHolding(row: {
  *
  * Also resets the `pdfImport` scratch resource on completion. The PDF import flow
  * routes its confirmed rows through this same action, so a finished import is
- * where the now-consumed extraction is cleared — without it a stale extraction is
- * read as the current one on the next PDF import (it surfaced the prior PDF's
- * holdings). A no-op for the CSV path (the resource is already null).
+ * where the now-consumed extraction is cleared (a no-op for the CSV path).
  */
 export const importHoldings = handler({
   name: "import-holdings",
@@ -178,13 +149,15 @@ export const importHoldings = handler({
     cashBalance: z.number().nullable().default(null),
   }),
   outputSchema: importReportSchema,
-  resources: { ...portfolioResources, pdfImport: pdfImportResource },
+  resources: { pdfImport: pdfImportResource },
   execute: async (input, ctx) => {
-    const now = nowIso();
+    const uid = userId(ctx);
+    const repo = await getRepository();
+    const { accounts, holdings } = await repo.getPortfolio(uid);
+    const account = accounts.find((a) => a.accountId === input.accountId);
 
     // Edge guard: import requires an existing account. Clear the scratch (a PDF
     // import may have populated it) and report the miss without touching state.
-    const account = await ctx.resources.accounts.getOptional(input.accountId);
     if (account === undefined) {
       await ctx.resources.pdfImport.setState(null);
       return {
@@ -202,50 +175,32 @@ export const importHoldings = handler({
     const errors: RowError[] = [...parsed.errors];
     const warnings: string[] = [...parsed.warnings];
 
-    const existing = account.state.holdings as Holding[];
-    const parsedHoldings = parsed.rows.map(rowToHolding);
-
+    // Report counts: compare the parsed rows against the account's existing
+    // tickers. The repository owns the actual write (upsert-in-place / atomic
+    // replace); these counts are the UI-facing summary of the change.
+    const existingTickers = new Set(
+      holdings.filter((h) => h.accountId === input.accountId).map((h) => h.ticker),
+    );
+    const parsedTickers = new Set(parsed.rows.map((r) => r.ticker));
     let imported = 0;
     let updated = 0;
-    let deleted = 0;
-    let nextHoldings: Holding[];
-
-    if (input.mode === "replace-account") {
-      // Full-snapshot replace: the account's holdings become exactly the parsed
-      // rows. Atomic — one record write (the prior per-row delete-then-create
-      // race, RISK-P6, no longer exists).
-      const existingTickers = new Set(existing.map((h) => h.ticker));
-      for (const h of parsedHoldings) {
-        if (existingTickers.has(h.ticker)) updated += 1;
-        else imported += 1;
-      }
-      deleted = existing.filter(
-        (h) => !parsedHoldings.some((p) => p.ticker === h.ticker),
-      ).length;
-      nextHoldings = parsedHoldings;
-    } else {
-      // Upsert: a parsed row replaces the matching ticker in place; tickers not
-      // in the CSV are left untouched; new tickers are appended.
-      const byTicker = new Map(existing.map((h) => [h.ticker, h]));
-      for (const h of parsedHoldings) {
-        if (byTicker.has(h.ticker)) updated += 1;
-        else imported += 1;
-        byTicker.set(h.ticker, h);
-      }
-      nextHoldings = [...byTicker.values()];
+    for (const r of parsed.rows) {
+      if (existingTickers.has(r.ticker)) updated += 1;
+      else imported += 1;
     }
+    const deleted =
+      input.mode === "replace-account"
+        ? [...existingTickers].filter((t) => !parsedTickers.has(t)).length
+        : 0;
 
-    // One write: the merged holdings, plus the cash balance when the dialog
-    // supplied it (cash is not carried by the row format).
-    await account.patchState({
-      holdings: nextHoldings,
-      updatedAt: now,
-      ...(input.cashBalance !== null ? { cashBalance: input.cashBalance } : {}),
-    });
+    // Holdings + optional cash balance write in one repository transaction, so
+    // the import is atomic (no window where new holdings carry stale cash). The
+    // repository re-checks `uid` ownership inside that transaction (defense in
+    // depth) on top of the edge guard above.
+    await repo.upsertHoldings(input.accountId, uid, parsed.rows, input.mode, input.cashBalance);
 
     // Clear the consumed PDF extraction scratch (no-op on the CSV path —
-    // already null). `setState(null)` replaces the whole nullable state;
-    // `patchState` (a partial merge) cannot express null.
+    // already null). `setState(null)` replaces the whole nullable state.
     await ctx.resources.pdfImport.setState(null);
 
     return { imported, updated, deleted, errors, warnings };

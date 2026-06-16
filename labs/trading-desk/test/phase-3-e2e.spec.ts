@@ -7,12 +7,31 @@
  *   - a trader-generator failure isolates: only `memos/p3/trader` flips to
  *     `error` while Phase 1 / Phase 2 memos still publish (per-step rescue).
  */
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
+import { makeTestRepository } from "./_helpers/portfolio-repo";
+import type { PortfolioRepository } from "@/src/db/repository";
+
+// Collateral: this spec drives the analyze pipeline but does not test the
+// portfolio. The repository (FIX-772) is mocked to an empty in-memory instance
+// so `seedSession` runs portfolio-blind (no accounts → portfolio: null), the
+// prior default. One repo for the file (beforeAll) — fast, never mutated.
+const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
+vi.mock("@/lib/portfolio-db", () => ({
+  getRepository: async () => {
+    if (!repoState.repo) throw new Error("test repository not initialized");
+    return repoState.repo;
+  },
+}));
+
 import analysisFlow from "../src/flows/analysis/flow";
 import { ALL_MEMO_KEYS } from "../src/flows/analysis/registry";
 import { latestMemoStatus } from "./_helpers/memo-status";
+
+beforeAll(async () => {
+  repoState.repo = await makeTestRepository();
+});
 
 const ticker = "NVDA";
 const date = "2026-05-06";

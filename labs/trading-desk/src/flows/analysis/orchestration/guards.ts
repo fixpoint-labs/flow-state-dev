@@ -34,12 +34,11 @@ import { valuationSpineResource } from "../valuation-spine-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
-import {
-  accountsCollection,
-  portfolioQuotesResource,
-} from "../../portfolio/portfolio-resources";
+import { portfolioQuotesResource } from "../../portfolio/portfolio-resources";
 import { buildPortfolioContext } from "../build-portfolio-context";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
+import { getRepository } from "@/lib/portfolio-db";
+import { toAccountStates } from "@/src/db/repository";
 
 /**
  * Patches session state from action input and clears any memos a prior run
@@ -58,7 +57,6 @@ export const seedSession = handler({
   outputSchema: analyzeInputSchema,
   sessionStateSchema,
   resources: {
-    accounts: accountsCollection,
     portfolioQuotes: portfolioQuotesResource,
     financialsData: financialsDataResource,
     quantData: quantDataResource,
@@ -113,10 +111,17 @@ export const seedSession = handler({
         ? "Thesis too short to audit (under 20 characters) — Phase 6 skipped."
         : null;
 
-    // Portfolio snapshot, computed server-side from the shared user-scoped
-    // accounts + last-known quotes (replaces the client-built dispatch input).
-    const accountRefs = await ctx.resources.accounts.list();
-    const allAccounts = accountRefs.map((r) => r.state); // ResourceRef.state is a SYNC getter — do NOT await
+    // Portfolio snapshot, computed server-side from the app-owned accounts +
+    // holdings (read via the repository, FIX-772) and the last-known quotes
+    // resource. `toAccountStates` nests holdings into the inline-array shape
+    // `buildPortfolioContext` consumes — same snapshot as the prior resource read.
+    const allAccounts = toAccountStates(
+      await (await getRepository()).getPortfolio(
+        // `requireUser: true` guarantees a user; the fallback matches the
+        // framework's key resolution and satisfies the optional type.
+        ctx.request.identity.userId ?? "unknown_user",
+      ),
+    );
     const scoped = input.selectedAccountIds.length
       ? allAccounts.filter((a) => input.selectedAccountIds.includes(a.accountId))
       : allAccounts;

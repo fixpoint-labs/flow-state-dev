@@ -123,15 +123,25 @@ src/flows/portfolio/             The `portfolio` flow — owns the account/holdi
   state.ts                       sessionStateSchema (minimal; this flow has no run state)
   portfolio-schema.ts            pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
   portfolio-csv.ts               pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
-  portfolio-resources.ts         BP-019 leaf: accountsCollection + portfolioQuotesResource + pdfImportResource
-                                   — all user-scoped shared (flowIsolation: false → bare {userId}), EXCEPT
-                                   pdfImport which is session-scoped (transient per-import scratch channel)
+  portfolio-resources.ts         BP-019 leaf: portfolioQuotesResource (user-scoped shared) + pdfImportResource
+                                   (session-scoped scratch). Accounts/holdings are NOT resources — they live in
+                                   the app-owned tables (FIX-772; see src/db/ + lib/portfolio-db.ts below).
   portfolio-actions.ts           saveAccount / deleteAccount / importHoldings / deleteHolding handlers
+                                   (call the portfolio repository, not a resource)
   get-quotes.ts                  getQuotes read handler (last-close per ticker, fixture/live, null degrades)
   portfolio-pdf.ts               pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
   extract-pdf-text.server.ts     NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
   extract-holdings-generator.ts  broker-agnostic LLM transcription (statement text → strict rows)
   extract-holdings-action.ts     sequencer: decode bytes → extractPdfText → generator → commit pdfImport
+
+src/db/                          App-owned relational layer (FIX-772) — accounts + holdings, NOT a resource
+  schema.ts                      Drizzle `app` Postgres schema: accounts + holdings tables
+  client.ts                      createDb (node-postgres, deploy) + createMigratedPgliteDb (embedded dev)
+  repository.ts                  createPortfolioRepository + toAccountStates — the typed data-access surface
+  migrations/                    drizzle-kit generated SQL + journal (run in-process on PGlite dev, via
+                                 scripts/migrate.ts on deploy)
+lib/portfolio-db.ts              getBacking() (PGlite dev / shared pg.Pool deploy) + getRepository() singleton
+app/api/portfolio/accounts/      GET route: read accounts+holdings via the repository (the UI read path)
 
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
@@ -197,9 +207,9 @@ in `app/page.tsx` (`view: "desk" | "reports"`, with `"portfolio"` reserved on
 to the row's tuple **before** `selectSession`, so the tuple-sync effect resolves
 back to the opened session and never re-dispatches or mis-keys the run. The
 stored report rehydrates through the existing `useSession` + `ThesesPane` read
-path. Persistence is `developmentOnly: true` filesystem store — history does not
-survive an ephemeral/serverless redeploy; swap the `lib/server.ts` `stores:`
-seam for a real store before relying on it.
+path. Persistence is Postgres-shaped (FIX-772): embedded PGlite in dev (persisted
+under `.fsdev/pglite`, survives restarts) and real Postgres via `DATABASE_URL` in
+deployment. The store backing is wired in `lib/portfolio-db.ts` / `lib/server.ts`.
 
 ## Summary view
 
@@ -255,23 +265,28 @@ The app has a **Portfolio** view (TopBar nav → `components/portfolio/`) backed
 the `portfolio` flow (`src/flows/portfolio/`). It is the durable record of what
 the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
 
-- **Data model — one collection; holdings live inside the account.** `accounts`
-  (`accounts/*`, keyed `accountId`) is the only collection — user-scoped +
-  **`flowIsolation: false`**, so it persists under bare `{userId}` on the
-  filesystem store (shared across flows; no `{userId}:portfolio` or similar
-  namespace). This is required so the analysis flow's `seedSession` can read the
-  same accounts without a client bridge (see BP-027). Each account record carries
-  its positions inline as `accountStateSchema.holdings: Holding[]` (a `Holding`
-  is exactly a `CanonicalRow`). The per-account record is the write unit: an
-  import is ONE write to one account, not one write per ticker. That suits this
-  small, rarely-changing, batch-written JSON — there is no concurrent-row-write
-  race to isolate, so the earlier per-holding-key scheme was over-modeled. The
-  same ticker in two accounts is simply two entries, one per account's array.
-- **Schemas are RESOURCE STATE, not generator outputs.** `.default()` /
-  `.nullable()` are fine (BP-016 only constrains generator outputs). Do NOT add
-  them to `output-schemas-strict.spec.ts`. Cost basis is **average cost
-  (informational)**, forward-compatible to tax-lots; tax-lots / realized P/L /
-  dividends are documented future seams, not built.
+- **Data model — app-owned relational tables (FIX-772).** Accounts and holdings
+  are NO LONGER an FSD resource. They live in real Postgres tables in a dedicated
+  `app` schema: `app.accounts` (PK `id` = the old `accountId`, `user_id` is the
+  household key) and `app.holdings` (one row per `(account_id, ticker)`, FK to
+  accounts with `ON DELETE CASCADE`, `holdings_ticker_idx` for the cross-account
+  rollup). They are reached through the typed **portfolio repository**
+  (`src/db/repository.ts`, `getRepository()` from `lib/portfolio-db.ts`). The same
+  ticker in two accounts is two rows — exactly the cross-account query shape the
+  household / sleeves / review-loop work needs. The store backing is Postgres in
+  both dev (embedded PGlite at `.fsdev/pglite`, no Docker) and deployment (real
+  Postgres via `DATABASE_URL`), shared with the framework store on one pool/
+  instance; `lib/portfolio-db.ts` owns that backing. See the FIX-772 spec and the
+  `src/db/` layer (`schema.ts`, `client.ts`, `repository.ts`, `migrations/`).
+- **Domain types vs persistence.** `accountStateSchema` / `holdingSchema`
+  (`portfolio-schema.ts`) are now DOMAIN types — input/CSV validation and the
+  inline-holdings `AccountState` shape the repository projects (`toAccountStates`)
+  for the seed + UI. The Drizzle tables (`src/db/schema.ts`) are the persistence.
+  These zod schemas are NOT generator outputs, so `.default()` / `.nullable()`
+  are fine (BP-016 only constrains generator outputs) — do NOT add them to
+  `output-schemas-strict.spec.ts`. Cost basis is **average cost (informational)**,
+  forward-compatible to tax-lots; tax-lots / realized P/L / dividends are
+  documented future seams, not built.
 - **CSV import** (`portfolio-csv.ts`) is a PURE, browser-safe parser: a synonym
   table maps real brokerage headers, bad rows are REPORTED (with 1-based row
   numbers) never thrown, duplicate tickers merge to a quantity-weighted average
@@ -380,10 +395,11 @@ positions, and a pack of documented-methodology investor LENSES re-reads the
 evidence to produce a convergence signal the PM uses for sizing conviction.
 
 - **The portfolio snapshot is built SERVER-SIDE at `seedSession`.** The analysis
-  flow's `seedSession` handler reads the shared user-scoped `accounts` collection
-  and the shared user-scoped `portfolioQuotes` resource (both owned by the
-  `portfolio` flow; both declared on the analysis flow with `flowIsolation: false`
-  so they resolve to the same bare `{userId}` key). It calls
+  flow's `seedSession` handler reads accounts + holdings from the app-owned
+  repository (`getRepository().getPortfolio(userId)`, FIX-772; `toAccountStates`
+  nests them into the inline-array shape) and the shared user-scoped
+  `portfolioQuotes` resource (still resource-backed, `flowIsolation: false` →
+  bare `{userId}`, owned by the `portfolio` flow). It calls
   `build-portfolio-context.ts` (a pure leaf) to compute the snapshot:
   per-holding `marketValue = quantity × live quote`, `totalNav = Σ known
   marketValue + Σ cash`, `weightPct = marketValue / totalNav`. A ticker with no

@@ -19,7 +19,12 @@ const nextConfig = {
   // (the client web worker URL, then the server "fake worker" chunk), so
   // externalizing it is the belt-and-suspenders that avoids the class entirely.
   // See src/flows/portfolio/extract-pdf-text.server.ts.
-  serverExternalPackages: ["unpdf"],
+  //
+  // `pg` (dynamic/native optional requires) and `@electric-sql/pglite` (a WASM
+  // build with its own fs/worker loading) are the portfolio backing's drivers
+  // (FIX-772). Like unpdf, they are server-only and load cleanest from
+  // node_modules at runtime rather than through the bundler.
+  serverExternalPackages: ["unpdf", "pg", "@electric-sql/pglite"],
   turbopack: {
     root: resolve(__dirname, "../../"),
   },

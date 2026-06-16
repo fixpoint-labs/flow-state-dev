@@ -6,25 +6,36 @@
  * Drives `seedSession` directly via `testBlock` (the seed-portfolio-snapshot
  * shape), seeding user-scoped accounts that carry a `riskMandate` default.
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
+import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
+import type { PortfolioRepository } from "@/src/db/repository";
+
+// Accounts + holdings moved to the app-owned repository (FIX-772). Mock the
+// repo to a fresh in-memory PGlite instance per test; seedSession reads the
+// effective mandate from the seeded accounts.
+const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
+vi.mock("@/lib/portfolio-db", () => ({
+  getRepository: async () => {
+    if (!repoState.repo) throw new Error("test repository not initialized");
+    return repoState.repo;
+  },
+}));
+
 import { seedSession } from "../src/flows/analysis/orchestration/guards";
 import type { RiskMandateId } from "../src/flows/analysis/lib/risk-mandate";
 import flow from "../src/flows/analysis/flow";
 
+/** testBlock's default request userId — the household key seedSession resolves. */
+const TEST_USER = "test-user";
+
 function account(id: string, riskMandate: string | null) {
-  return {
-    accountId: id,
-    name: id,
-    type: "taxable",
-    currency: "USD",
-    cashBalance: 1000,
-    holdings: [],
-    riskMandate,
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  };
+  return { accountId: id, riskMandate };
 }
+
+beforeEach(async () => {
+  repoState.repo = await makeTestRepository();
+});
 
 const baseInput = {
   ticker: "NVDA",
@@ -41,14 +52,19 @@ async function seedWith(opts: {
   input?: Partial<typeof baseInput>;
   accounts?: Array<ReturnType<typeof account>>;
 }) {
-  const resources: Record<string, unknown> = {};
   for (const acc of opts.accounts ?? []) {
-    resources[`accounts/${acc.accountId}`] = acc;
+    await seedAccount(repoState.repo!, {
+      accountId: acc.accountId,
+      userId: TEST_USER,
+      name: acc.accountId,
+      type: "taxable",
+      cashBalance: 1000,
+      riskMandate: acc.riskMandate,
+    });
   }
   const result = await testBlock(seedSession, {
     input: { ...baseInput, ...opts.input },
     flow,
-    user: { resources },
   });
   expect(result.error).toBeNull();
   return result.state.session as { riskMandate?: { id: string } | null };

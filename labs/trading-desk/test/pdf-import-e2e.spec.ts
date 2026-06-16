@@ -37,12 +37,24 @@ vi.mock(
   }),
 );
 
+import { beforeEach } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
-// The PDF-import + holdings actions moved to the `portfolio` flow
-// (FIX-736); build that flow to exercise them end-to-end. The `accounts`
-// collection is shared (flowIsolation: false → bare `{userId}`), so the state
-// reads below resolve the same key regardless of the writing flow.
+import { makeTestRepository } from "./_helpers/portfolio-repo";
+import { toAccountStates, type PortfolioRepository } from "@/src/db/repository";
+
+// Accounts + holdings moved to the app-owned repository (FIX-772). Mock the
+// repo to a fresh in-memory PGlite instance per test; the dispatched actions
+// (saveAccount, importHoldings) and the holdings assertions below share it.
+const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
+vi.mock("@/lib/portfolio-db", () => ({
+  getRepository: async () => {
+    if (!repoState.repo) throw new Error("test repository not initialized");
+    return repoState.repo;
+  },
+}));
+
+// The PDF-import + holdings actions moved to the `portfolio` flow (FIX-736).
 import portfolioFlow from "../src/flows/portfolio/flow";
 import {
   canonicalRowsToCsv,
@@ -50,15 +62,22 @@ import {
   type PdfExtraction,
 } from "../src/flows/portfolio/portfolio-pdf";
 
+beforeEach(async () => {
+  repoState.repo = await makeTestRepository();
+});
+
 /** A base64 string standing in for an uploaded PDF. Its bytes are irrelevant —
  *  `extractPdfText` is mocked — but the decode step requires non-empty bytes. */
 const PDF_BASE64 = Buffer.from("%PDF-1.4 fake bytes").toString("base64");
 
 const USER_ID = "devuser";
-// accounts collection is now user-scoped with flowIsolation: false, so state
-// keys at bare {userId} rather than {userId}:trading-desk.
-const USER_KEY = USER_ID;
 const ACCOUNT = "acct-pdf";
+
+/** Read one account record's inline holdings from the (mocked) repository. */
+async function holdingsOf(accountId: string) {
+  const portfolio = await repoState.repo!.getPortfolio(USER_ID);
+  return toAccountStates(portfolio).find((a) => a.accountId === accountId)?.holdings ?? [];
+}
 
 /** Create the target account — `importHoldings` requires an existing account. */
 async function createAccount(
@@ -117,15 +136,10 @@ describe("extractHoldingsFromPdf action", () => {
     expect(extraction?.rows).toHaveLength(4);
     expect(extraction?.statedTotal).toBe(3926.84);
 
-    // The action imported NOTHING — no account record (and thus no holdings)
-    // was written by the extract step.
-    const userResources = (await stores.resourceState.getAll(
-      "user",
-      USER_KEY,
-    )) as Record<string, unknown>;
-    expect(
-      Object.keys(userResources).some((k) => k.startsWith("accounts/")),
-    ).toBe(false);
+    // The action imported NOTHING — no account (and thus no holdings) was
+    // written by the extract step.
+    const accounts = await repoState.repo!.getAccountsForUser(USER_ID);
+    expect(accounts).toHaveLength(0);
   });
 });
 
@@ -151,20 +165,7 @@ describe("confirmed PDF rows flow into the EXISTING importHoldings", () => {
     });
     expect(result.status).toBe("completed");
 
-    const userResources = (await stores.resourceState.getAll(
-      "user",
-      USER_KEY,
-    )) as Record<
-      string,
-      {
-        holdings?: Array<{
-          ticker: string;
-          quantity: number;
-          costBasis: number | null;
-        }>;
-      }
-    >;
-    const holdings = userResources[`accounts/${ACCOUNT}`]?.holdings ?? [];
+    const holdings = await holdingsOf(ACCOUNT);
 
     // Real holdings landed with costBasis null (a snapshot carries no cost).
     expect(holdings).toContainEqual(
