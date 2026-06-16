@@ -29,6 +29,8 @@ import { financialsDataResource } from "../financials-data-resource";
 import { quantDataResource } from "../quant-data-resource";
 import { technicalDataResource } from "../technical-data-resource";
 import { profileDataResource } from "../profile-data-resource";
+import { priceHistoryResource } from "../price-history-resource";
+import { valuationSpineResource } from "../valuation-spine-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
@@ -62,6 +64,8 @@ export const seedSession = handler({
     quantData: quantDataResource,
     technicalData: technicalDataResource,
     profileData: profileDataResource,
+    priceHistory: priceHistoryResource,
+    valuationSpine: valuationSpineResource,
     ...memoResources,
   },
   execute: async (input, ctx) => {
@@ -85,6 +89,16 @@ export const seedSession = handler({
     await ctx.resources.quantData.setState({});
     await ctx.resources.technicalData.setState({});
     await ctx.resources.profileData.setState({});
+
+    // Reset the DERIVED surfaces too, so a re-run that fails to recompute them
+    // (e.g. compute-spine returns early on missing financials, or the price tap
+    // hits a spine miss and returns) doesn't leave the prior run's valuation
+    // envelope or price chart on screen. compute-spine / store-price-history
+    // re-patch the full object on a successful run. (A reset nullable single
+    // persists as {}; the Summary reads guard on a required field, so it degrades
+    // exactly as for an unwritten resource.)
+    await ctx.resources.priceHistory.setState(null);
+    await ctx.resources.valuationSpine.setState(null);
 
     // Freeze the per-run thesis at seed time so editing the form mid-run
     // can't affect the session that's already analyzing. A non-null

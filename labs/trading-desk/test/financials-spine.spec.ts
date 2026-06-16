@@ -28,13 +28,16 @@ import { get_quant_composites } from "../src/flows/analysis/tools/data/get_quant
 import { get_factor_ranks } from "../src/flows/analysis/tools/data/get_factor_ranks";
 import { compute_indicators } from "../src/flows/analysis/tools/data/compute_indicators";
 import { get_company_profile } from "../src/flows/analysis/tools/data/get_company_profile";
+import { get_price_history } from "../src/flows/analysis/tools/data/get_price_history";
 import { computeAndStoreSpine } from "../src/flows/analysis/compute-spine";
+import { storePriceHistory } from "../src/flows/analysis/store-price-history";
 import { seedSession } from "../src/flows/analysis/orchestration/guards";
 import { financialsDataResource } from "../src/flows/analysis/financials-data-resource";
 import { quantDataResource } from "../src/flows/analysis/quant-data-resource";
 import { technicalDataResource } from "../src/flows/analysis/technical-data-resource";
 import { profileDataResource } from "../src/flows/analysis/profile-data-resource";
 import { valuationSpineResource } from "../src/flows/analysis/valuation-spine-resource";
+import { priceHistoryResource } from "../src/flows/analysis/price-history-resource";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 
 // Fetch all eight Phase-1 valuation inputs into their per-domain spines, then
@@ -56,8 +59,14 @@ const fillInputs = sequencer({
     factorRanks: get_factor_ranks,
     indicators: compute_indicators,
     companyProfile: get_company_profile,
+    // The technical analyst's price fetch — populates technicalData.priceBars
+    // (subject + summary range) that store-price-history then thins.
+    priceBars: get_price_history,
   })
-  .step(computeAndStoreSpine);
+  .step(computeAndStoreSpine)
+  // Persist the derived price chart too, so the re-run reset test has both
+  // derived surfaces (valuationSpine + priceHistory) populated to clear.
+  .step(storePriceHistory);
 
 const spineFlow = defineFlow({
   kind: "trading-desk-financials-spine-test",
@@ -73,6 +82,7 @@ const spineFlow = defineFlow({
     technicalData: technicalDataResource,
     profileData: profileDataResource,
     valuationSpine: valuationSpineResource,
+    priceHistory: priceHistoryResource,
   },
 })({ id: "test" });
 
@@ -161,10 +171,15 @@ describe("financials data spine", () => {
     expect(first.error).toBeUndefined();
     const afterFill = await stores.resourceState.getAll("session", sessionId);
     expect((afterFill["financialsData"] as Record<string, unknown>)?.fundamentals).toBeTruthy();
+    // The derived surfaces are populated by the run (compute-spine + the price tap).
+    expect(afterFill["valuationSpine"]).toBeTruthy();
+    expect(afterFill["priceHistory"]).toBeTruthy();
 
     // Re-running the analysis on the same session seeds first — which must clear
-    // the spine so the Phase 1 tools refetch rather than treat the prior run's
-    // payloads as hits (the old TTL cache aged out; the spine does not).
+    // the raw spine so the Phase 1 tools refetch rather than treat the prior run's
+    // payloads as hits (the old TTL cache aged out; the spine does not), AND clear
+    // the derived surfaces so a re-run that fails to recompute can't leave the
+    // prior run's valuation envelope / price chart on screen.
     const second = await testFlow({
       flow: spineFlow,
       action: "seed",
@@ -177,6 +192,12 @@ describe("financials data spine", () => {
 
     const afterSeed = await stores.resourceState.getAll("session", sessionId);
     expect(afterSeed["financialsData"]).toEqual({});
+    // The derived surfaces are cleared: the prior run's valuation envelope and
+    // price chart are gone. (A reset nullable single persists as {} — the
+    // documented "nullable single surfaces as {}" form; the Summary's spine/chart
+    // reads guard on a required field, so {} degrades exactly like null.)
+    expect(afterSeed["valuationSpine"]).toEqual({});
+    expect(afterSeed["priceHistory"]).toEqual({});
   });
 
   it("a non-subject ticker fetches directly and never overwrites the subject's spine payload", async () => {
