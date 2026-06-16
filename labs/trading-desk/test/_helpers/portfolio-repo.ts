@@ -58,6 +58,6 @@ export async function seedAccount(
     riskMandate: account.riskMandate ?? null,
   });
   if (account.holdings && account.holdings.length > 0) {
-    await repo.upsertHoldings(account.accountId, account.holdings, "replace-account");
+    await repo.upsertHoldings(account.accountId, account.userId, account.holdings, "replace-account");
   }
 }

@@ -151,8 +151,9 @@ export const importHoldings = handler({
   outputSchema: importReportSchema,
   resources: { pdfImport: pdfImportResource },
   execute: async (input, ctx) => {
+    const uid = userId(ctx);
     const repo = await getRepository();
-    const { accounts, holdings } = await repo.getPortfolio(userId(ctx));
+    const { accounts, holdings } = await repo.getPortfolio(uid);
     const account = accounts.find((a) => a.accountId === input.accountId);
 
     // Edge guard: import requires an existing account. Clear the scratch (a PDF
@@ -193,8 +194,10 @@ export const importHoldings = handler({
         : 0;
 
     // Holdings + optional cash balance write in one repository transaction, so
-    // the import is atomic (no window where new holdings carry stale cash).
-    await repo.upsertHoldings(input.accountId, parsed.rows, input.mode, input.cashBalance);
+    // the import is atomic (no window where new holdings carry stale cash). The
+    // repository re-checks `uid` ownership inside that transaction (defense in
+    // depth) on top of the edge guard above.
+    await repo.upsertHoldings(input.accountId, uid, parsed.rows, input.mode, input.cashBalance);
 
     // Clear the consumed PDF extraction scratch (no-op on the CSV path —
     // already null). `setState(null)` replaces the whole nullable state.

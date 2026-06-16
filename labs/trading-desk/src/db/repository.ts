@@ -65,7 +65,13 @@ export interface PortfolioRepository {
    *  for another user's account is a no-op. */
   deleteAccount(id: string, userId: string): Promise<void>;
   /**
-   * Write imported holdings for one account, transactionally.
+   * Write imported holdings for one account, transactionally — only when the
+   * account belongs to `userId`. The ownership check is a DB-level guard inside
+   * the transaction (the same household boundary {@link deleteAccount} /
+   * {@link deleteHolding} / {@link upsertAccount} enforce): an import targeting
+   * an account the caller doesn't own throws and writes nothing, so a future
+   * caller that skips the app-level check fails loudly instead of writing to an
+   * arbitrary account.
    * - `upsert` (the non-destructive default): each row replaces the matching
    *   `(account_id, ticker)` in place; tickers absent from the import are left
    *   untouched; new tickers are inserted. The quantity-weighted-average dedupe
@@ -80,6 +86,7 @@ export interface PortfolioRepository {
    */
   upsertHoldings(
     accountId: string,
+    userId: string,
     rows: CanonicalRow[],
     mode: ImportMode,
     cashBalance?: number | null,
@@ -229,7 +236,7 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
       await db.delete(accounts).where(and(eq(accounts.id, id), eq(accounts.userId, userId)));
     },
 
-    async upsertHoldings(accountId, rows, mode, cashBalance) {
+    async upsertHoldings(accountId, userId, rows, mode, cashBalance) {
       const values = rows.map((r) => ({
         accountId,
         ticker: r.ticker,
@@ -238,9 +245,20 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         acquiredDate: r.acquiredDate,
       }));
       // Holdings write + optional cash update in ONE transaction, so an import
-      // never leaves new holdings paired with stale cash. The caller
-      // (`importHoldings`) has already verified the account belongs to the user.
+      // never leaves new holdings paired with stale cash.
       await db.transaction(async (tx) => {
+        // Household guard (defense in depth): the insert path can't be scoped
+        // by a WHERE clause the way the deletes/cash-update are, so confirm
+        // ownership up front and let the whole transaction roll back if the
+        // account isn't the caller's. `importHoldings` already checks, so the
+        // normal path always passes; this catches a future caller that skips it.
+        const [owner] = await tx
+          .select({ id: accounts.id })
+          .from(accounts)
+          .where(and(eq(accounts.id, accountId), eq(accounts.userId, userId)));
+        if (owner === undefined) {
+          throw new Error(`Account ${accountId} is not owned by the requesting user.`);
+        }
         if (mode === "replace-account") {
           await tx.delete(holdings).where(eq(holdings.accountId, accountId));
           if (values.length > 0) await tx.insert(holdings).values(values);

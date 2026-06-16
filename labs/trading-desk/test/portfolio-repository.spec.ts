@@ -15,6 +15,9 @@
  *   5. `getPortfolio` returns accounts joined to holdings, the same ticker in
  *      two accounts as two rows (the cross-account rollup input), and every
  *      numeric column coerced to a JS `number` (never a Drizzle string).
+ *   6. Every mutation is household-scoped at the DB layer — another user cannot
+ *      delete, overwrite, or import into an account they don't own (the IDOR
+ *      boundary the old user-scoped resource enforced implicitly).
  *
  * Runs on embedded PGlite — the same engine the dev backing uses — with no
  * Docker (the `packages/store-postgres` test precedent).
@@ -89,7 +92,7 @@ describe("accounts", () => {
 
   it("deletes an account and cascades its holdings", async () => {
     await repo.upsertAccount(account());
-    await repo.upsertHoldings("acc-1", [row("AAPL", 10)], "upsert");
+    await repo.upsertHoldings("acc-1", "devuser", [row("AAPL", 10)], "upsert");
     await repo.deleteAccount("acc-1", "devuser");
 
     const portfolio = await repo.getPortfolio("devuser");
@@ -99,7 +102,7 @@ describe("accounts", () => {
 
   it("scopes deletes to the household — another user cannot delete the account", async () => {
     await repo.upsertAccount(account({ userId: "devuser" }));
-    await repo.upsertHoldings("acc-1", [row("AAPL", 10)], "upsert");
+    await repo.upsertHoldings("acc-1", "devuser", [row("AAPL", 10)], "upsert");
 
     // A different caller's userId must not delete devuser's account or holding.
     await repo.deleteAccount("acc-1", "intruder");
@@ -128,13 +131,14 @@ describe("upsertHoldings — upsert mode", () => {
     await repo.upsertAccount(account());
     await repo.upsertHoldings(
       "acc-1",
+      "devuser",
       [row("AAPL", 10, 150), row("MSFT", 5, 300)],
       "upsert",
     );
   });
 
   it("replaces a matching ticker in place and leaves others untouched", async () => {
-    await repo.upsertHoldings("acc-1", [row("AAPL", 25, 160)], "upsert");
+    await repo.upsertHoldings("acc-1", "devuser", [row("AAPL", 25, 160)], "upsert");
     const { holdings } = await repo.getPortfolio("devuser");
     const byTicker = Object.fromEntries(holdings.map((h) => [h.ticker, h]));
     expect(byTicker.AAPL.quantity).toBe(25); // replaced in place, not 10 + 25
@@ -144,7 +148,7 @@ describe("upsertHoldings — upsert mode", () => {
   });
 
   it("inserts a new ticker alongside the existing ones", async () => {
-    await repo.upsertHoldings("acc-1", [row("NVDA", 3)], "upsert");
+    await repo.upsertHoldings("acc-1", "devuser", [row("NVDA", 3)], "upsert");
     const { holdings } = await repo.getPortfolio("devuser");
     expect(holdings.map((h) => h.ticker).sort()).toEqual(["AAPL", "MSFT", "NVDA"]);
   });
@@ -153,18 +157,18 @@ describe("upsertHoldings — upsert mode", () => {
 describe("upsertHoldings — replace-account mode", () => {
   it("overwrites the account's holdings with exactly the imported rows", async () => {
     await repo.upsertAccount(account());
-    await repo.upsertHoldings("acc-1", [row("AAPL", 10), row("MSFT", 5)], "upsert");
+    await repo.upsertHoldings("acc-1", "devuser", [row("AAPL", 10), row("MSFT", 5)], "upsert");
 
-    await repo.upsertHoldings("acc-1", [row("TSLA", 2)], "replace-account");
+    await repo.upsertHoldings("acc-1", "devuser", [row("TSLA", 2)], "replace-account");
     const { holdings } = await repo.getPortfolio("devuser");
     expect(holdings.map((h) => h.ticker)).toEqual(["TSLA"]);
   });
 
   it("clears the account when given no rows", async () => {
     await repo.upsertAccount(account());
-    await repo.upsertHoldings("acc-1", [row("AAPL", 10)], "upsert");
+    await repo.upsertHoldings("acc-1", "devuser", [row("AAPL", 10)], "upsert");
 
-    await repo.upsertHoldings("acc-1", [], "replace-account");
+    await repo.upsertHoldings("acc-1", "devuser", [], "replace-account");
     const { holdings } = await repo.getPortfolio("devuser");
     expect(holdings).toHaveLength(0);
   });
@@ -176,7 +180,7 @@ describe("upsertHoldings — cash balance", () => {
   });
 
   it("updates the account's cash in the same write as the holdings", async () => {
-    await repo.upsertHoldings("acc-1", [row("AAPL", 10, 150)], "upsert", 2500);
+    await repo.upsertHoldings("acc-1", "devuser", [row("AAPL", 10, 150)], "upsert", 2500);
     const { accounts, holdings } = await repo.getPortfolio("devuser");
     expect(accounts[0].cashBalance).toBe(2500); // cash moved with the import
     expect(typeof accounts[0].cashBalance).toBe("number");
@@ -184,27 +188,57 @@ describe("upsertHoldings — cash balance", () => {
   });
 
   it("leaves cash untouched when no balance is given", async () => {
-    await repo.upsertHoldings("acc-1", [row("AAPL", 10, 150)], "upsert");
+    await repo.upsertHoldings("acc-1", "devuser", [row("AAPL", 10, 150)], "upsert");
     const { accounts } = await repo.getPortfolio("devuser");
     expect(accounts[0].cashBalance).toBe(1000); // unchanged — undefined means "don't touch"
 
-    await repo.upsertHoldings("acc-1", [row("MSFT", 5)], "upsert", null);
+    await repo.upsertHoldings("acc-1", "devuser", [row("MSFT", 5)], "upsert", null);
     const after = await repo.getPortfolio("devuser");
     expect(after.accounts[0].cashBalance).toBe(1000); // null is also "don't touch"
   });
 
   it("updates cash on a replace-account import too", async () => {
-    await repo.upsertHoldings("acc-1", [row("TSLA", 2)], "replace-account", 750);
+    await repo.upsertHoldings("acc-1", "devuser", [row("TSLA", 2)], "replace-account", 750);
     const { accounts, holdings } = await repo.getPortfolio("devuser");
     expect(accounts[0].cashBalance).toBe(750);
     expect(holdings.map((h) => h.ticker)).toEqual(["TSLA"]);
   });
 });
 
+describe("upsertHoldings — household scoping", () => {
+  it("rejects an import into an account the caller does not own, writing nothing", async () => {
+    await repo.upsertAccount(account({ userId: "devuser" }));
+    await repo.upsertHoldings("acc-1", "devuser", [row("AAPL", 10, 150)], "upsert", 1000);
+
+    // An intruder targeting devuser's account id is rejected at the DB guard,
+    // and the transaction rolls back — no holdings, no cash change.
+    await expect(
+      repo.upsertHoldings("acc-1", "intruder", [row("TSLA", 99)], "upsert", 999),
+    ).rejects.toThrow();
+
+    const { accounts, holdings } = await repo.getPortfolio("devuser");
+    expect(holdings.map((h) => h.ticker)).toEqual(["AAPL"]); // intruder's row never landed
+    expect(accounts[0].cashBalance).toBe(1000); // cash untouched
+  });
+
+  it("rejects a replace-account import the caller does not own without clearing holdings", async () => {
+    await repo.upsertAccount(account({ userId: "devuser" }));
+    await repo.upsertHoldings("acc-1", "devuser", [row("AAPL", 10)], "upsert");
+
+    // The destructive delete-all must not run for a non-owner.
+    await expect(
+      repo.upsertHoldings("acc-1", "intruder", [], "replace-account"),
+    ).rejects.toThrow();
+
+    const { holdings } = await repo.getPortfolio("devuser");
+    expect(holdings.map((h) => h.ticker)).toEqual(["AAPL"]); // not wiped
+  });
+});
+
 describe("deleteHolding", () => {
   it("removes exactly one (account, ticker) row", async () => {
     await repo.upsertAccount(account());
-    await repo.upsertHoldings("acc-1", [row("AAPL", 10), row("MSFT", 5)], "upsert");
+    await repo.upsertHoldings("acc-1", "devuser", [row("AAPL", 10), row("MSFT", 5)], "upsert");
 
     await repo.deleteHolding("acc-1", "AAPL", "devuser");
     const { holdings } = await repo.getPortfolio("devuser");
@@ -216,8 +250,8 @@ describe("getPortfolio", () => {
   it("returns the same ticker across two accounts as two rows, numerics as numbers", async () => {
     await repo.upsertAccount(account({ id: "acc-1", name: "Taxable" }));
     await repo.upsertAccount(account({ id: "acc-2", name: "IRA", type: "IRA" }));
-    await repo.upsertHoldings("acc-1", [row("AAPL", 10, 150.25)], "upsert");
-    await repo.upsertHoldings("acc-2", [row("AAPL", 4, 148.5)], "upsert");
+    await repo.upsertHoldings("acc-1", "devuser", [row("AAPL", 10, 150.25)], "upsert");
+    await repo.upsertHoldings("acc-2", "devuser", [row("AAPL", 4, 148.5)], "upsert");
 
     const { accounts, holdings } = await repo.getPortfolio("devuser");
     expect(accounts).toHaveLength(2);
