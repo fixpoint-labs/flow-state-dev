@@ -170,6 +170,37 @@ describe("upsertHoldings — replace-account mode", () => {
   });
 });
 
+describe("upsertHoldings — cash balance", () => {
+  beforeEach(async () => {
+    await repo.upsertAccount(account({ cashBalance: 1000 }));
+  });
+
+  it("updates the account's cash in the same write as the holdings", async () => {
+    await repo.upsertHoldings("acc-1", [row("AAPL", 10, 150)], "upsert", 2500);
+    const { accounts, holdings } = await repo.getPortfolio("devuser");
+    expect(accounts[0].cashBalance).toBe(2500); // cash moved with the import
+    expect(typeof accounts[0].cashBalance).toBe("number");
+    expect(holdings.map((h) => h.ticker)).toEqual(["AAPL"]); // and the holding landed
+  });
+
+  it("leaves cash untouched when no balance is given", async () => {
+    await repo.upsertHoldings("acc-1", [row("AAPL", 10, 150)], "upsert");
+    const { accounts } = await repo.getPortfolio("devuser");
+    expect(accounts[0].cashBalance).toBe(1000); // unchanged — undefined means "don't touch"
+
+    await repo.upsertHoldings("acc-1", [row("MSFT", 5)], "upsert", null);
+    const after = await repo.getPortfolio("devuser");
+    expect(after.accounts[0].cashBalance).toBe(1000); // null is also "don't touch"
+  });
+
+  it("updates cash on a replace-account import too", async () => {
+    await repo.upsertHoldings("acc-1", [row("TSLA", 2)], "replace-account", 750);
+    const { accounts, holdings } = await repo.getPortfolio("devuser");
+    expect(accounts[0].cashBalance).toBe(750);
+    expect(holdings.map((h) => h.ticker)).toEqual(["TSLA"]);
+  });
+});
+
 describe("deleteHolding", () => {
   it("removes exactly one (account, ticker) row", async () => {
     await repo.upsertAccount(account());

@@ -73,8 +73,17 @@ export interface PortfolioRepository {
    *   CSV parser — this never averages existing vs. imported quantities.
    * - `replace-account`: the account's holdings become exactly the imported
    *   rows (delete-all + insert), atomically — no partial-state window.
+   *
+   * `cashBalance`, when provided (not `null`/`undefined`), is written to the
+   * account row in the SAME transaction, so an import's holdings and its cash
+   * update commit together — no window where new holdings carry stale cash.
    */
-  upsertHoldings(accountId: string, rows: CanonicalRow[], mode: ImportMode): Promise<void>;
+  upsertHoldings(
+    accountId: string,
+    rows: CanonicalRow[],
+    mode: ImportMode,
+    cashBalance?: number | null,
+  ): Promise<void>;
   /** Remove a single position — only when its account belongs to `userId` (the
    *  same household-scoping security boundary as {@link deleteAccount}). */
   deleteHolding(accountId: string, ticker: string, userId: string): Promise<void>;
@@ -220,7 +229,7 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
       await db.delete(accounts).where(and(eq(accounts.id, id), eq(accounts.userId, userId)));
     },
 
-    async upsertHoldings(accountId, rows, mode) {
+    async upsertHoldings(accountId, rows, mode, cashBalance) {
       const values = rows.map((r) => ({
         accountId,
         ticker: r.ticker,
@@ -228,27 +237,35 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         costBasis: r.costBasis === null ? null : String(r.costBasis),
         acquiredDate: r.acquiredDate,
       }));
+      // Holdings write + optional cash update in ONE transaction, so an import
+      // never leaves new holdings paired with stale cash. The caller
+      // (`importHoldings`) has already verified the account belongs to the user.
       await db.transaction(async (tx) => {
         if (mode === "replace-account") {
           await tx.delete(holdings).where(eq(holdings.accountId, accountId));
           if (values.length > 0) await tx.insert(holdings).values(values);
-          return;
+        } else if (values.length > 0) {
+          await tx
+            .insert(holdings)
+            .values(values)
+            .onConflictDoUpdate({
+              target: [holdings.accountId, holdings.ticker],
+              // `excluded` is the row that would have been inserted — apply its
+              // values in place, leaving non-imported tickers untouched.
+              set: {
+                quantity: sql`excluded.quantity`,
+                costBasis: sql`excluded.cost_basis`,
+                acquiredDate: sql`excluded.acquired_date`,
+                updatedAt: sql`now()`,
+              },
+            });
         }
-        if (values.length === 0) return;
-        await tx
-          .insert(holdings)
-          .values(values)
-          .onConflictDoUpdate({
-            target: [holdings.accountId, holdings.ticker],
-            // `excluded` is the row that would have been inserted — apply its
-            // values in place, leaving non-imported tickers untouched.
-            set: {
-              quantity: sql`excluded.quantity`,
-              costBasis: sql`excluded.cost_basis`,
-              acquiredDate: sql`excluded.acquired_date`,
-              updatedAt: sql`now()`,
-            },
-          });
+        if (cashBalance !== undefined && cashBalance !== null) {
+          await tx
+            .update(accounts)
+            .set({ cashBalance: String(cashBalance), updatedAt: sql`now()` })
+            .where(eq(accounts.id, accountId));
+        }
       });
     },
 

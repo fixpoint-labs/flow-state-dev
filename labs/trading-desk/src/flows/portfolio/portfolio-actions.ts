@@ -192,22 +192,9 @@ export const importHoldings = handler({
         ? [...existingTickers].filter((t) => !parsedTickers.has(t)).length
         : 0;
 
-    await repo.upsertHoldings(input.accountId, parsed.rows, input.mode);
-
-    // Cash is per-account, not carried by the row format; update it via the
-    // account record when the dialog supplied a value. The repository preserves
-    // every other field and `createdAt`.
-    if (input.cashBalance !== null) {
-      await repo.upsertAccount({
-        id: account.accountId,
-        userId: account.userId,
-        name: account.name,
-        type: account.type,
-        currency: account.currency,
-        cashBalance: input.cashBalance,
-        riskMandate: account.riskMandate,
-      });
-    }
+    // Holdings + optional cash balance write in one repository transaction, so
+    // the import is atomic (no window where new holdings carry stale cash).
+    await repo.upsertHoldings(input.accountId, parsed.rows, input.mode, input.cashBalance);
 
     // Clear the consumed PDF extraction scratch (no-op on the CSV path —
     // already null). `setState(null)` replaces the whole nullable state.
