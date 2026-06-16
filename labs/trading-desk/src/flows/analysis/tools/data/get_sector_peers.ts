@@ -5,14 +5,12 @@
  * compare against the name's own move.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchFinnhubPeers } from "../providers/finnhub";
 import { fetchYahooChart } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { trailingReturn } from "../indicators-math";
 import {
-  pickMode,
   toolInputSchemas,
   toolOutputSchemas,
   type ToolInput,
@@ -93,8 +91,7 @@ export const get_sector_peers = handler({
   inputSchema: toolInputSchemas.get_sector_peers,
   outputSchema: toolOutputSchemas.get_sector_peers,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_sector_peers", input);
-    return getOrFetch("get_sector_peers", input, async () => {
+    return resolveToolPayload("get_sector_peers", input, ctx, async () => {
       try {
         return await fetchLive(input);
       } catch {

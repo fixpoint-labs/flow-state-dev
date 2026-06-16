@@ -4,9 +4,9 @@
  * fixture mode returns the fixture (which carries a sample transcript).
  */
 import { handler } from "@flow-state-dev/core";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_earnings_transcript = handler({
   name: "get_earnings_transcript",
@@ -16,10 +16,9 @@ export const get_earnings_transcript = handler({
   inputSchema: toolInputSchemas.get_earnings_transcript,
   outputSchema: toolOutputSchemas.get_earnings_transcript,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") {
-      return loadFixture("get_earnings_transcript", input);
-    }
     // PR1: always return unavailable in live mode. PR2 wires FMP.
-    return emptyPayload("get_earnings_transcript", input);
+    return resolveToolPayload("get_earnings_transcript", input, ctx, async () => {
+      return emptyPayload("get_earnings_transcript", input);
+    });
   },
 });

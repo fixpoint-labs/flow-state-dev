@@ -69,7 +69,7 @@ export const analyzeInputSchema = z.object({
   ticker: z.string().min(1).default("NVDA"),
   date: z.string().min(1).default("2026-05-06"),
   costPreset: z.enum(["fast", "full"]).default("fast"),
-  dataSource: z.enum(["fixture", "live"]).default("fixture"),
+  dataSource: z.enum(["fixture", "live", "record"]).default("fixture"),
   // Optional per-run user thesis. The pipeline (P1–P5) never sees these —
   // they feed the Phase 6 post-decision audit only. A non-null `userThesis`
   // gates Phase 6; null skips it entirely.

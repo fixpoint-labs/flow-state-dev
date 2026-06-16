@@ -12,9 +12,8 @@
  * missing key or a fully unpriced basket → `source: "unavailable"` (BP-020).
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
 import { mapLimit } from "../../lib/concurrency";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchFuturesFrontNext, hasMassiveKey } from "../providers/massive";
 import {
   changePct,
@@ -25,7 +24,6 @@ import {
 } from "./futures-math";
 import { emptyPayload } from "../empty-payloads";
 import {
-  pickMode,
   toolInputSchemas,
   toolOutputSchemas,
   type ToolInput,
@@ -113,8 +111,7 @@ export const get_futures_curve = handler({
   inputSchema: toolInputSchemas.get_futures_curve,
   outputSchema: toolOutputSchemas.get_futures_curve,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_futures_curve", input);
-    return getOrFetch("get_futures_curve", input, async () => {
+    return resolveToolPayload("get_futures_curve", input, ctx, async () => {
       if (!hasMassiveKey()) return emptyPayload("get_futures_curve", input);
       try {
         return await fetchLive(input);

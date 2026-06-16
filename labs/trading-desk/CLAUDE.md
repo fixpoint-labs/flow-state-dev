@@ -89,6 +89,8 @@ src/flows/analysis/
     runtime/                     tool runtime (was lib/)
       cache.ts                   process-wide TTL cache (getOrFetch)
       fixtures.ts                loadFixture(tool, args)
+      recorder.ts                recordFixture — stable-serialize + write to corpus
+      resolve.ts                 resolveToolPayload — single dispatch for fixture/live/record
       discover.ts                web-search → DiscoveryPayload shape
     providers/                   external API clients — stateless, throw on failure (was ../providers/)
       finnhub.ts                 Finnhub fetch helpers (incl. institutional ownership)
@@ -134,6 +136,7 @@ src/flows/portfolio/             The `portfolio` flow — owns the account/holdi
   extract-holdings-generator.ts  broker-agnostic LLM transcription (statement text → strict rows)
   extract-holdings-action.ts     sequencer: decode bytes → extractPdfText → generator → commit pdfImport
 
+fixtures/<TICKER>/<DATE>/        date-addressed snapshots for fixture mode (`FIXTURE_SNAPSHOT` is the default date)
 src/db/                          App-owned relational layer (FIX-772) — accounts + holdings, NOT a resource
   schema.ts                      Drizzle `app` Postgres schema: accounts + holdings tables
   client.ts                      createDb (node-postgres, deploy) + createMigratedPgliteDb (embedded dev)
@@ -723,17 +726,18 @@ preset to participate in the cost gate.
 
 ## Adding a new tool
 
-Tools follow the per-tool-file pattern. Each tool file owns its mode
-branch, provider preference, and fallback chain.
+Tools follow the per-tool-file pattern. Each tool file owns its provider
+preference and fallback chain; mode dispatch (fixture / live / record)
+lives in `tools/runtime/resolve.ts` — every tool's `execute` funnels
+through `resolveToolPayload`.
 
 ```ts
 // tools/data/get_my_tool.ts
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchFromProviderA } from "../providers/providerA";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_my_tool = handler({
   name: "get_my_tool",
@@ -741,8 +745,7 @@ export const get_my_tool = handler({
   inputSchema: toolInputSchemas.get_my_tool,
   outputSchema: toolOutputSchemas.get_my_tool,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_my_tool", input);
-    return getOrFetch("get_my_tool", input, async () => {
+    return resolveToolPayload("get_my_tool", input, ctx, async () => {
       try { return await fetchFromProviderA(input); } catch {}
       return emptyPayload("get_my_tool", input);
     });
@@ -759,9 +762,9 @@ Then:
 3. Re-export from `tools/index.ts`.
 4. Add to the appropriate analyst's `tools: [...]` list in
    `agents/analysts/analysts.ts`.
-5. Add a curated fixture JSON under
-   `fixtures/<TICKER>/2026-05-06/<tool-file-name>.json` so fixture mode
-   still works.
+5. Record a snapshot for the tool (run with `dataSource: "record"`) so
+   fixture mode still works, or hand-author the fixture JSON per
+   `fixtures/README.md` for edge cases.
 
 If the tool needs a new external API, add its fetch helper to a new
 `tools/providers/<provider>.ts` file (one per provider). Keep it stateless — read
@@ -814,23 +817,35 @@ of them with no consumer. Keep it a plain chain.
 
 ## Fixture mode
 
-Fixtures are a single pinned snapshot at `2026-05-06` (the
-`FIXTURE_SNAPSHOT` constant in
-[`tools/runtime/fixtures.ts`](src/flows/analysis/tools/runtime/fixtures.ts)). The
-loader ignores `args.date` and always reads from the snapshot directory. The
-returned payload carries the fixture's own `asOf` field, so analysts see the
-actual data date.
+`dataSource` accepts three values: `fixture`, `live`, and `record`.
 
-When adding a new ticker to fixture coverage:
+Fixture mode reads from `fixtures/{TICKER}/{DATE}/` for the requested
+`args.date`. The loader is date-addressed: each `{TICKER}/{DATE}/` directory
+is one snapshot. `FIXTURE_SNAPSHOT` (`"2026-05-06"`) is the default date for
+the curated corpus, not a pin — requesting an unknown ticker or date throws
+`FixtureMissingError` loudly, never a silent fallback (in a full run the
+pre-flight guard stops with `unresolvable-ticker` before the loader ever
+throws). The returned payload
+carries the fixture's own `asOf` field, so analysts see the actual data date.
 
-1. Create `fixtures/<TICKER>/2026-05-06/`.
-2. Drop in one JSON per tool (see existing `fixtures/NVDA/2026-05-06/` for
-   the shape — names match `fixtureFileName(tool)`). The Phase 1 file set
-   includes `insider-transactions.json` (90 days of Form 4 rows for the
-   news analyst).
-3. The framework needs no other registration.
+Providers recorded as `source: "unavailable"` survive replay. The loader
+preserves the `"unavailable"` tag so a recorded provider miss stays a miss;
+any other source tag (`"yahoo"`, `"finnhub"`, etc.) replays as `"fixture"`.
+
+To add a new ticker to fixture coverage, record it:
+
+```bash
+pnpm fsdev run analysis analyze -i '{"ticker":"XOM","date":"2026-06-12","dataSource":"record","costPreset":"full"}'
+```
+
+See [`fixtures/README.md`](fixtures/README.md) for the full record-mode
+workflow and the hand-authoring fallback for edge cases.
 
 ## Live mode
+
+Record mode (`dataSource: "record"`) runs the same provider chain as live mode,
+so the same API keys apply. Use `costPreset: "full"` when recording to ensure
+the eight `discover_*` tools run and the fixture corpus is complete.
 
 Live mode wires Finnhub → Yahoo → FRED → Polymarket as the upstream
 providers, plus the `fetch` tool from `@flow-state-dev/tools` for article

@@ -24,6 +24,7 @@ import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import type { ToolInput, ToolOutput } from "../schemas";
 import { profileDataResource } from "../../profile-data-resource";
 import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { recordIfRecording } from "../runtime/resolve";
 
 export const get_company_profile = handler({
   name: "get_company_profile",
@@ -38,7 +39,7 @@ export const get_company_profile = handler({
       const merged = await fetchAndMergeProviders(input);
       return enrichWithWeb(merged);
     };
-    return writeSubjectSpine({
+    const payload = await writeSubjectSpine({
       toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
       resource: ctx.resources.profileData,
       field: "companyProfile",
@@ -46,6 +47,7 @@ export const get_company_profile = handler({
       input,
       load: loadCompanyProfile,
     });
+    return recordIfRecording("get_company_profile", input, ctx, payload);
   },
 });
 

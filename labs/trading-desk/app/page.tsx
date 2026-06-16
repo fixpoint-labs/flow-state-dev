@@ -55,8 +55,10 @@ function todayIsoDate(): string {
 }
 
 /** Find an existing session whose `metadata` matches the tuple on all four
- *  fields. Strict equality — legacy sessions with partial metadata never
- *  match. */
+ *  fields (ticker / date / costPreset / dataSource). Strict equality — legacy
+ *  sessions with partial metadata never match. Each `dataSource` value
+ *  (`fixture` / `live` / `record`) keys its own report, so a Live + Record run
+ *  is a distinct session from a plain Live run of the same ticker/date/preset. */
 function findSessionForTuple(
   sessions: ReadonlyArray<SessionSummary>,
   tuple: AnalyzeTuple,
@@ -313,7 +315,14 @@ function TradingDeskApp(): ReactElement {
         if (t.costPreset === "fast" || t.costPreset === "full") {
           setCostPreset(t.costPreset);
         }
-        if (t.dataSource === "fixture" || t.dataSource === "live") {
+        // Restore the toggle to the row's own data source so the tuple-sync
+        // effect resolves to exactly this session. Record is a first-class
+        // toggle state (a Live + Record run), so it restores as itself.
+        if (
+          t.dataSource === "fixture" ||
+          t.dataSource === "live" ||
+          t.dataSource === "record"
+        ) {
           setDataSource(t.dataSource);
         }
       }

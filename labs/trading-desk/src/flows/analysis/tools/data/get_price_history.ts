@@ -10,6 +10,7 @@ import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { technicalDataResource, SUMMARY_PRICE_RANGE } from "../../technical-data-resource";
 import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { recordIfRecording } from "../runtime/resolve";
 
 export const get_price_history = handler({
   name: "get_price_history",
@@ -34,7 +35,7 @@ export const get_price_history = handler({
     };
     // Only the subject's canonical summary-range series goes to the spine; every
     // other (ticker, range) stays on the args-keyed cache (the helper's else arm).
-    return writeSubjectSpine({
+    const payload = await writeSubjectSpine({
       toSpine:
         input.ticker === (ctx.session.state as { ticker?: string }).ticker &&
         input.range === SUMMARY_PRICE_RANGE,
@@ -44,5 +45,6 @@ export const get_price_history = handler({
       input,
       load: loadPriceBars,
     });
+    return recordIfRecording("get_price_history", input, ctx, payload);
   },
 });

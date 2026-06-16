@@ -8,18 +8,19 @@
  *
  * Definition of "resolvable" by mode:
  *   - fixture: the per-ticker fixture directory contains the canonical
- *     `fundamentals.json` snapshot. Missing → unresolvable. (The macro
- *     sentinel ticker `_macro` is never validated through this path —
- *     callers only resolve real tickers.)
+ *     `fundamentals.json` snapshot for the requested date. Missing →
+ *     unresolvable. (The macro sentinel ticker `_macro` is never validated
+ *     through this path — callers only resolve real tickers.)
  *   - live: at least one wired fundamentals provider returns without
  *     throwing. Every provider throwing → unresolvable. We do not gate on
  *     non-zero values because the empty-payload fallback is what we are
  *     trying to detect upstream of, not after.
+ *   - record: same as live — a record run resolves tickers live.
  */
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { fetchFinnhubFundamentals, hasFinnhubKey } from "../tools/providers/finnhub";
-import { FIXTURE_ROOT, FIXTURE_SNAPSHOT } from "../tools/runtime/fixtures";
+import { assertFixtureDate, FIXTURE_ROOT } from "../tools/runtime/fixtures";
 import { fetchYahooFundamentals } from "../tools/providers/yahoo";
 
 const FIXTURE_PROBE_FILE = "fundamentals.json";
@@ -27,12 +28,12 @@ const FIXTURE_PROBE_FILE = "fundamentals.json";
 export type ResolveTickerInput = {
   ticker: string;
   /**
-   * Used only in live mode (passed through to the provider fetch). Fixture
-   * mode ignores it — fixtures are a single pinned snapshot at
-   * `FIXTURE_SNAPSHOT`, matching the same behavior in `loadFixture`.
+   * In fixture mode this addresses the snapshot directory probed
+   * (`{ticker}/{date}/fundamentals.json`, matching `loadFixture`); in
+   * live/record mode it passes through to the provider fetch.
    */
   date: string;
-  dataSource: "fixture" | "live";
+  dataSource: "fixture" | "live" | "record";
 };
 
 export type ResolveTickerResult = {
@@ -41,12 +42,24 @@ export type ResolveTickerResult = {
   reason: string | null;
 };
 
-/** Probe the fixture snapshot for a single canonical file. */
-async function resolveFixture(ticker: string): Promise<ResolveTickerResult> {
+/** Probe the requested date's fixture snapshot for a single canonical file. */
+async function resolveFixture(
+  input: ResolveTickerInput,
+): Promise<ResolveTickerResult> {
+  // The date is a user-controlled path segment, same as in `loadFixture`. A
+  // malformed value is treated as unresolvable rather than reaching `path.join`.
+  try {
+    assertFixtureDate(input.date);
+  } catch {
+    return {
+      resolved: false,
+      reason: `Invalid fixture date "${input.date}" — expected YYYY-MM-DD.`,
+    };
+  }
   const filePath = path.join(
     FIXTURE_ROOT,
-    ticker,
-    FIXTURE_SNAPSHOT,
+    input.ticker,
+    input.date,
     FIXTURE_PROBE_FILE,
   );
   try {
@@ -55,7 +68,7 @@ async function resolveFixture(ticker: string): Promise<ResolveTickerResult> {
   } catch {
     return {
       resolved: false,
-      reason: `No fixture data for ticker ${ticker}. Fixtures cover NVDA, AAPL, JPM at snapshot ${FIXTURE_SNAPSHOT}.`,
+      reason: `No fixture snapshot for ticker ${input.ticker} at ${input.date}. Pick a recorded ticker/date or run with live data.`,
     };
   }
 }
@@ -84,7 +97,9 @@ async function resolveLive(
 export function resolveTicker(
   input: ResolveTickerInput,
 ): Promise<ResolveTickerResult> {
+  // Record mode resolves live: a record run fetches from the live providers
+  // (and persists the results), so the resolvability question is the live one.
   return input.dataSource === "fixture"
-    ? resolveFixture(input.ticker)
+    ? resolveFixture(input)
     : resolveLive(input);
 }

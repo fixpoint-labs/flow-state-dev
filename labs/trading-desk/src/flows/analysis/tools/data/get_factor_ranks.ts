@@ -26,6 +26,7 @@ import {
 } from "../schemas";
 import { quantDataResource } from "../../quant-data-resource";
 import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { recordIfRecording } from "../runtime/resolve";
 
 const MAX_PEERS = 6;
 
@@ -180,7 +181,7 @@ export const get_factor_ranks = handler({
         return emptyPayload("get_factor_ranks", input);
       }
     };
-    return writeSubjectSpine({
+    const payload = await writeSubjectSpine({
       toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
       resource: ctx.resources.quantData,
       field: "factorRanks",
@@ -188,5 +189,6 @@ export const get_factor_ranks = handler({
       input,
       load: loadFactorRanks,
     });
+    return recordIfRecording("get_factor_ranks", input, ctx, payload);
   },
 });

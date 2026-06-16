@@ -11,6 +11,7 @@ import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { financialsDataResource } from "../../financials-data-resource";
 import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { recordIfRecording } from "../runtime/resolve";
 
 export const get_balance_sheet = handler({
   name: "get_balance_sheet",
@@ -33,7 +34,7 @@ export const get_balance_sheet = handler({
       } catch {}
       return emptyPayload("get_balance_sheet", input);
     };
-    return writeSubjectSpine({
+    const payload = await writeSubjectSpine({
       toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
       resource: ctx.resources.financialsData,
       field: "balanceSheet",
@@ -41,5 +42,6 @@ export const get_balance_sheet = handler({
       input,
       load: loadBalanceSheet,
     });
+    return recordIfRecording("get_balance_sheet", input, ctx, payload);
   },
 });

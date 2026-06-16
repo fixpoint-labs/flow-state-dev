@@ -10,6 +10,7 @@ import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { financialsDataResource } from "../../financials-data-resource";
 import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { recordIfRecording } from "../runtime/resolve";
 
 export const get_fundamentals = handler({
   name: "get_fundamentals",
@@ -34,7 +35,7 @@ export const get_fundamentals = handler({
     // Subject → financials spine (the stable per-session copy the valuation tap
     // re-reads); any other ticker → process cache. The helper owns the gate and
     // the real-money "never return another ticker's payload mislabeled" guard.
-    return writeSubjectSpine({
+    const payload = await writeSubjectSpine({
       toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
       resource: ctx.resources.financialsData,
       field: "fundamentals",
@@ -42,5 +43,6 @@ export const get_fundamentals = handler({
       input,
       load: loadFundamentals,
     });
+    return recordIfRecording("get_fundamentals", input, ctx, payload);
   },
 });

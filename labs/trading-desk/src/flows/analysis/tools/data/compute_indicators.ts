@@ -20,6 +20,7 @@ import { computeIndicators, type Bar } from "../indicators-math";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { technicalDataResource } from "../../technical-data-resource";
 import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { recordIfRecording } from "../runtime/resolve";
 
 export const compute_indicators = handler({
   name: "compute_indicators",
@@ -48,7 +49,7 @@ export const compute_indicators = handler({
         ...computed,
       };
     };
-    return writeSubjectSpine({
+    const payload = await writeSubjectSpine({
       toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
       resource: ctx.resources.technicalData,
       field: "indicators",
@@ -56,5 +57,6 @@ export const compute_indicators = handler({
       input,
       load: loadIndicators,
     });
+    return recordIfRecording("compute_indicators", input, ctx, payload);
   },
 });

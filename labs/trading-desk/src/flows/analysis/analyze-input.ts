@@ -12,12 +12,14 @@
  */
 import type { AnalyzeInput } from "./flow-schema";
 
-/** The four user-visible inputs that identify one analysis run. */
+/** The four user-visible inputs that identify one analysis run. `"record"`
+ *  is never offered in the UI — it appears only on tuples parsed back from
+ *  record-run session metadata. */
 export type AnalyzeTuple = {
   ticker: string;
   date: string;
   costPreset: "fast" | "full";
-  dataSource: "fixture" | "live";
+  dataSource: "fixture" | "live" | "record";
 };
 
 /** Build the `analyze` action payload. `ticker`/`date` pass through as-is

@@ -17,6 +17,7 @@ import { altmanZDoublePrime, piotroskiFScore, type StatementPeriod } from "./com
 import { pickMode, toolInputSchemas, toolOutputSchemas, type ToolInput, type ToolOutput } from "../schemas";
 import { quantDataResource } from "../../quant-data-resource";
 import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { recordIfRecording } from "../runtime/resolve";
 
 function toStatementPeriod(fp: FinancialPeriod): StatementPeriod {
   return {
@@ -113,7 +114,7 @@ export const get_quant_composites = handler({
         return emptyPayload("get_quant_composites", input);
       }
     };
-    return writeSubjectSpine({
+    const payload = await writeSubjectSpine({
       toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
       resource: ctx.resources.quantData,
       field: "quantComposites",
@@ -121,5 +122,6 @@ export const get_quant_composites = handler({
       input,
       load: loadQuantComposites,
     });
+    return recordIfRecording("get_quant_composites", input, ctx, payload);
   },
 });

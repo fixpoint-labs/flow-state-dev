@@ -9,11 +9,10 @@
  * tool — narrows it to sector/theme-relevant signal.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
 import { fetchFinnhubMarketNews, hasFinnhubKey } from "../providers/finnhub";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_market_news = handler({
   name: "get_market_news",
@@ -22,8 +21,7 @@ export const get_market_news = handler({
   inputSchema: toolInputSchemas.get_market_news,
   outputSchema: toolOutputSchemas.get_market_news,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_market_news", input);
-    return getOrFetch("get_market_news", input, async () => {
+    return resolveToolPayload("get_market_news", input, ctx, async () => {
       if (hasFinnhubKey()) {
         try {
           return await fetchFinnhubMarketNews(input);

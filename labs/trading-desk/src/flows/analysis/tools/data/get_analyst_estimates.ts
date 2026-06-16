@@ -4,14 +4,13 @@
  * estimates, price targets, rating actions) wired in PR2.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import {
   fetchFinnhubRecommendations,
   fetchFinnhubEarningsSurprises,
 } from "../providers/finnhub";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_analyst_estimates = handler({
   name: "get_analyst_estimates",
@@ -22,10 +21,7 @@ export const get_analyst_estimates = handler({
   inputSchema: toolInputSchemas.get_analyst_estimates,
   outputSchema: toolOutputSchemas.get_analyst_estimates,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") {
-      return loadFixture("get_analyst_estimates", input);
-    }
-    return getOrFetch("get_analyst_estimates", input, async () => {
+    return resolveToolPayload("get_analyst_estimates", input, ctx, async () => {
       try {
         const [ratingsDistribution, earningsSurprises] = await Promise.all([
           fetchFinnhubRecommendations(input.ticker).catch(() => null),

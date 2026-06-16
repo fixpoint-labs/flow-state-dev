@@ -7,7 +7,11 @@
  *
  * Live mode prefers Grok when `XAI_API_KEY` is set; otherwise it returns
  * `unavailable` (BP-020: no silent fallback to fixture data). Fixture mode
- * is unchanged.
+ * is unchanged. Record mode is live behavior plus persistence: the chosen
+ * live route is chained with a `connectOutput` tail (built inside the
+ * router's `execute`, per BP-013) that writes the payload into the fixture
+ * corpus — this tool routes to a generator on the live path, so it cannot
+ * funnel through `resolveToolPayload` like the handler-only tools.
  *
  * The Grok generator's `outputSchema` forces representative-post evidence
  * for grounding rigor. Posts pass through `connectOutput` to the public
@@ -20,6 +24,7 @@ import { xai } from "@ai-sdk/xai";
 import { z } from "zod";
 import { tradingDesk } from "../../capability";
 import { loadFixture } from "../runtime/fixtures";
+import { recordFixture } from "../runtime/recorder";
 import {
   XAI_SENTIMENT_MODEL,
   hasXaiKey,
@@ -172,11 +177,27 @@ export const get_social_sentiment = router({
   // `packages/skills/src/run-skill-tool.ts:185`.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   routes: [fixtureRoute, grokAdaptedRoute as any, unavailableRoute],
-  execute: (_input, ctx) => {
-    if (pickMode(ctx) === "fixture") return fixtureRoute;
-    if (!hasXaiKey()) return unavailableRoute;
+  execute: (input, ctx) => {
+    const mode = pickMode(ctx);
+    if (mode === "fixture") return fixtureRoute;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return grokAdaptedRoute as any;
+    const liveRoute: any = hasXaiKey() ? grokAdaptedRoute : unavailableRoute;
+    if (mode !== "record") return liveRoute;
+    // Record mode: the live route plus a recording tail built here (BP-013
+    // — output adaptation lives inside the router's execute). The tail
+    // awaits the route's public-schema payload, persists it into the
+    // fixture corpus keyed by the tool input's ticker/date, and passes it
+    // through unchanged. Both live outcomes record — a Grok payload AND
+    // the `source: "unavailable"` skeleton, so a recorded provider miss
+    // replays as a miss (BP-020). `connectOutput` preserves the inner
+    // block's `.name`, so the wrapped route still matches the declared
+    // route candidates by name.
+    return liveRoute.connectOutput(
+      async (payload: ToolOutput<"get_social_sentiment">) => {
+        await recordFixture("get_social_sentiment", input, payload);
+        return payload;
+      },
+    );
   },
 });
 

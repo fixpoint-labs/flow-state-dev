@@ -33,7 +33,7 @@ export const sessionStateSchema = z.object({
   ticker: z.string().default("NVDA"),
   date: z.string().default("2026-05-06"),
   costPreset: z.enum(["fast", "full"]).default("fast"),
-  dataSource: z.enum(["fixture", "live"]).default("fixture"),
+  dataSource: z.enum(["fixture", "live", "record"]).default("fixture"),
   activePhase: z
     .enum([
       "idle",

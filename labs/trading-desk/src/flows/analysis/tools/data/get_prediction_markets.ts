@@ -26,12 +26,10 @@
  * that already carries both tiers.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchYahooCompanyProfile } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import {
-  pickMode,
   toolInputSchemas,
   toolOutputSchemas,
   type ToolInput,
@@ -230,8 +228,7 @@ export const get_prediction_markets = handler({
   inputSchema: toolInputSchemas.get_prediction_markets,
   outputSchema: toolOutputSchemas.get_prediction_markets,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_prediction_markets", input);
-    return getOrFetch("get_prediction_markets", input, async () => {
+    return resolveToolPayload("get_prediction_markets", input, ctx, async () => {
       const themes = await resolveBackdropThemes(input);
       try {
         return await fetchPolymarketTop(input, themes);
