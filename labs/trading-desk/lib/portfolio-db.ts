@@ -52,6 +52,14 @@ async function buildBacking(): Promise<Backing> {
   const url = databaseUrl();
   if (url) {
     const pool = new Pool({ connectionString: url, max: 10 });
+    // node-postgres emits 'error' on the Pool when an *idle* client drops (a
+    // Postgres restart, a TCP/idle timeout). With no listener that surfaces as
+    // an unhandled EventEmitter error and takes the whole process down — and
+    // this pool is long-lived on a persistent server. Log and swallow: the pool
+    // discards the dead client and the next checkout gets a fresh one.
+    pool.on("error", (err) => {
+      console.error("[portfolio-db] idle pool client error:", err);
+    });
     return {
       // Deploy runs `scripts/migrate.ts` as a pre-deploy step, so the framework
       // `public.*` schema already exists: skip the runtime init. This avoids
