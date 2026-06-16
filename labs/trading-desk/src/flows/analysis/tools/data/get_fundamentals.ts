@@ -9,6 +9,7 @@ import { fetchYahooFundamentals } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { financialsDataResource } from "../../financials-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
 
 export const get_fundamentals = handler({
   name: "get_fundamentals",
@@ -30,17 +31,16 @@ export const get_fundamentals = handler({
       try { return await fetchYahooFundamentals(input); } catch {}
       return emptyPayload("get_fundamentals", input);
     };
-    // The spine holds the session SUBJECT's data, addressed by field name (one
-    // session = one ticker). Tools run with the subject's tickerDate, so
-    // input.ticker is the subject — but guard on it so the tool always honors its
-    // input: a call for any other ticker fetches directly and never returns the
-    // subject's payload mislabeled (real-money gate: no silent wrong data).
-    if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
-      return loadFundamentals();
-    }
-    // getOrPatchState is typed `Payload | undefined` (the field is optional on
-    // the resource — absent until first fetched); our loader always resolves to a
-    // payload, so the non-null assertion is sound.
-    return (await ctx.resources.financialsData.getOrPatchState("fundamentals", loadFundamentals))!;
+    // Subject → financials spine (the stable per-session copy the valuation tap
+    // re-reads); any other ticker → process cache. The helper owns the gate and
+    // the real-money "never return another ticker's payload mislabeled" guard.
+    return writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.financialsData,
+      field: "fundamentals",
+      tool: "get_fundamentals",
+      input,
+      load: loadFundamentals,
+    });
   },
 });

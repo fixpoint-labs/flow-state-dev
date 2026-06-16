@@ -23,6 +23,7 @@ import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import type { ToolInput, ToolOutput } from "../schemas";
 import { profileDataResource } from "../../profile-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
 
 export const get_company_profile = handler({
   name: "get_company_profile",
@@ -37,11 +38,14 @@ export const get_company_profile = handler({
       const merged = await fetchAndMergeProviders(input);
       return enrichWithWeb(merged);
     };
-    // Subject-only spine guard (see get_fundamentals).
-    if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
-      return loadCompanyProfile();
-    }
-    return (await ctx.resources.profileData.getOrPatchState("companyProfile", loadCompanyProfile))!;
+    return writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.profileData,
+      field: "companyProfile",
+      tool: "get_company_profile",
+      input,
+      load: loadCompanyProfile,
+    });
   },
 });
 

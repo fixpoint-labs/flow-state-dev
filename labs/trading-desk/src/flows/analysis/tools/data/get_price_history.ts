@@ -3,13 +3,13 @@
  * fallback. Fixture: curated NVDA JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
 import { fetchFinnhubCandles, hasFinnhubKey } from "../providers/finnhub";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchYahooChart } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { technicalDataResource, SUMMARY_PRICE_RANGE } from "../../technical-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
 
 export const get_price_history = handler({
   name: "get_price_history",
@@ -32,10 +32,17 @@ export const get_price_history = handler({
       try { return await fetchYahooChart(input); } catch {}
       return emptyPayload("get_price_history", input);
     };
-    const isSubject = input.ticker === (ctx.session.state as { ticker?: string }).ticker;
-    if (!isSubject || input.range !== SUMMARY_PRICE_RANGE) {
-      return getOrFetch("get_price_history", input, loadPriceBars);
-    }
-    return (await ctx.resources.technicalData.getOrPatchState("priceBars", loadPriceBars))!;
+    // Only the subject's canonical summary-range series goes to the spine; every
+    // other (ticker, range) stays on the args-keyed cache (the helper's else arm).
+    return writeSubjectSpine({
+      toSpine:
+        input.ticker === (ctx.session.state as { ticker?: string }).ticker &&
+        input.range === SUMMARY_PRICE_RANGE,
+      resource: ctx.resources.technicalData,
+      field: "priceBars",
+      tool: "get_price_history",
+      input,
+      load: loadPriceBars,
+    });
   },
 });

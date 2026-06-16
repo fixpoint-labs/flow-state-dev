@@ -11,6 +11,7 @@ import { fetchYahooCashflow } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { financialsDataResource } from "../../financials-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
 
 export const get_cashflow = handler({
   name: "get_cashflow",
@@ -33,10 +34,13 @@ export const get_cashflow = handler({
       } catch {}
       return emptyPayload("get_cashflow", input);
     };
-    // Subject-only spine guard (see get_fundamentals).
-    if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
-      return loadCashflow();
-    }
-    return (await ctx.resources.financialsData.getOrPatchState("cashflow", loadCashflow))!;
+    return writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.financialsData,
+      field: "cashflow",
+      tool: "get_cashflow",
+      input,
+      load: loadCashflow,
+    });
   },
 });

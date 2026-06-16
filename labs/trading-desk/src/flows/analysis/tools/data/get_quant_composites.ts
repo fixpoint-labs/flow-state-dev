@@ -16,6 +16,7 @@ import { emptyPayload } from "../empty-payloads";
 import { altmanZDoublePrime, piotroskiFScore, type StatementPeriod } from "./composite-math";
 import { pickMode, toolInputSchemas, toolOutputSchemas, type ToolInput, type ToolOutput } from "../schemas";
 import { quantDataResource } from "../../quant-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
 
 function toStatementPeriod(fp: FinancialPeriod): StatementPeriod {
   return {
@@ -112,10 +113,13 @@ export const get_quant_composites = handler({
         return emptyPayload("get_quant_composites", input);
       }
     };
-    // Subject-only spine guard (see get_fundamentals).
-    if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
-      return loadQuantComposites();
-    }
-    return (await ctx.resources.quantData.getOrPatchState("quantComposites", loadQuantComposites))!;
+    return writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.quantData,
+      field: "quantComposites",
+      tool: "get_quant_composites",
+      input,
+      load: loadQuantComposites,
+    });
   },
 });

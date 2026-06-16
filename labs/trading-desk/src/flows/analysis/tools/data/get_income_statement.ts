@@ -11,6 +11,7 @@ import { fetchYahooIncomeStatement } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { financialsDataResource } from "../../financials-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
 
 export const get_income_statement = handler({
   name: "get_income_statement",
@@ -33,10 +34,13 @@ export const get_income_statement = handler({
       } catch {}
       return emptyPayload("get_income_statement", input);
     };
-    // Subject-only spine guard (see get_fundamentals).
-    if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
-      return loadIncomeStatement();
-    }
-    return (await ctx.resources.financialsData.getOrPatchState("incomeStatement", loadIncomeStatement))!;
+    return writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.financialsData,
+      field: "incomeStatement",
+      tool: "get_income_statement",
+      input,
+      load: loadIncomeStatement,
+    });
   },
 });

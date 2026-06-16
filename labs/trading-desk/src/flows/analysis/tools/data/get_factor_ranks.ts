@@ -25,6 +25,7 @@ import {
   type ToolOutput,
 } from "../schemas";
 import { quantDataResource } from "../../quant-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
 
 const MAX_PEERS = 6;
 
@@ -179,10 +180,13 @@ export const get_factor_ranks = handler({
         return emptyPayload("get_factor_ranks", input);
       }
     };
-    // Subject-only spine guard (see get_fundamentals).
-    if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
-      return loadFactorRanks();
-    }
-    return (await ctx.resources.quantData.getOrPatchState("factorRanks", loadFactorRanks))!;
+    return writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.quantData,
+      field: "factorRanks",
+      tool: "get_factor_ranks",
+      input,
+      load: loadFactorRanks,
+    });
   },
 });

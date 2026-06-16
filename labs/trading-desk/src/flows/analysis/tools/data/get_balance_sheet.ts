@@ -10,6 +10,7 @@ import { fetchYahooBalanceSheet } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { financialsDataResource } from "../../financials-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
 
 export const get_balance_sheet = handler({
   name: "get_balance_sheet",
@@ -32,10 +33,13 @@ export const get_balance_sheet = handler({
       } catch {}
       return emptyPayload("get_balance_sheet", input);
     };
-    // Subject-only spine guard (see get_fundamentals).
-    if (input.ticker !== (ctx.session.state as { ticker?: string }).ticker) {
-      return loadBalanceSheet();
-    }
-    return (await ctx.resources.financialsData.getOrPatchState("balanceSheet", loadBalanceSheet))!;
+    return writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.financialsData,
+      field: "balanceSheet",
+      tool: "get_balance_sheet",
+      input,
+      load: loadBalanceSheet,
+    });
   },
 });
