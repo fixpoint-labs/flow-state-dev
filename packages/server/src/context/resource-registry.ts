@@ -28,7 +28,7 @@ import {
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
-import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type { ContentScopeType, ContentStore, ResourceStateStore } from "../stores/types";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -486,6 +486,50 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
   const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
   const configs = options.configs ?? {};
 
+  // Serialize mutating writes per storage key. A resource write is a
+  // read-modify-write (`prev = readState()` → persist the merge), and
+  // `persistResourceKey` updates the in-request cache only AFTER awaiting the
+  // store — so two concurrent writers to the SAME resource both read the
+  // pre-write cache and the second clobbers the first's fields. Chaining each
+  // mutation behind the prior one for that storage key makes every `prev` read
+  // see the committed result, so parallel writers to distinct fields compose.
+  // This is the single-resource analog of the FIX-744 distinct-key collection
+  // fix. The stored tail swallows rejections so one failed write can't wedge the
+  // chain; the caller still receives the real result/rejection.
+  const resourceWriteChains = new Map<string, Promise<unknown>>();
+  function serializeResourceWrite<T>(storageKey: string, run: () => Promise<T>): Promise<T> {
+    const tail = resourceWriteChains.get(storageKey) ?? Promise.resolve();
+    const result = tail.then(run, run);
+    resourceWriteChains.set(storageKey, result.then(undefined, () => undefined));
+    return result;
+  }
+
+  // Single-flight for `getOrPatchState`: concurrent misses on the same resource
+  // field share one `compute()` rather than each firing its own (the `inflight`
+  // map the old hand-rolled tool caches used). The compute still runs outside the
+  // write lock, so distinct fields never block on each other's I/O; only an
+  // identical concurrent miss waits. Cleared when the compute settles, so a later
+  // call reads the now-stored value as a hit. Keyed by storage key + field.
+  const getOrPatchInflight = new Map<string, Promise<JsonValue>>();
+  function singleFlightGetOrPatch(
+    storageKey: string,
+    readState: () => JsonObject,
+    ref: Pick<ResourceRef<JsonObject>, "state" | "patchState">,
+    key: string,
+    compute: () => JsonValue | Promise<JsonValue>
+  ): Promise<JsonValue> {
+    const existing = readState()[key];
+    if (existing !== undefined) return Promise.resolve(existing);
+    const flightKey = `${storageKey} ${key}`;
+    const pending = getOrPatchInflight.get(flightKey);
+    if (pending !== undefined) return pending;
+    const run = applyGetOrPatchState(ref, key, compute).finally(() => {
+      getOrPatchInflight.delete(flightKey);
+    });
+    getOrPatchInflight.set(flightKey, run);
+    return run;
+  }
+
   /**
    * Compute the live projection payload for a mutation, or `undefined` when the
    * resource hasn't opted into `client.live`. Reuses `resolveClientProjection`
@@ -569,6 +613,23 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       return parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
     };
 
+    // Post-write side effects (instance-updated hook + change/reactive dispatch)
+    // for the three instance write ops. Runs AFTER the serialized write releases,
+    // with the `post` snapshot captured at write time — so the write lock never
+    // spans arbitrary hook/reactive execution, and a reactive block may patch this
+    // same instance without the re-entrant write deadlocking behind the in-flight one.
+    const notifyInstanceChange = async (prev: JsonObject, post: JsonObject): Promise<void> => {
+      if (nsConfig.onInstanceUpdated && nsHookCtx) {
+        await nsConfig.onInstanceUpdated(storageKey, post, prev, nsHookCtx);
+      }
+      await options.onResourceChanged?.(
+        storageKey,
+        "updated",
+        await liveProjection(nsConfig, post),
+        { state: post, prevState: prev, evicted: false }
+      );
+    };
+
     const ref: ResourceRef<JsonObject> = {
       path: storageKey,
       scope: options.scope,
@@ -578,52 +639,46 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return readState();
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
-        const prev = readState();
-        await persistNamespaceInstanceState(
-          storageKey,
-          nsConfig,
-          updateObjectState(prev, updates)
-        );
-        if (nsConfig.onInstanceUpdated && nsHookCtx) {
-          await nsConfig.onInstanceUpdated(
+        let prev!: JsonObject;
+        let post!: JsonObject;
+        await serializeResourceWrite(storageKey, async () => {
+          prev = readState();
+          await persistNamespaceInstanceState(
             storageKey,
-            readState(),
-            prev,
-            nsHookCtx
+            nsConfig,
+            updateObjectState(prev, updates)
           );
-        }
-        await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
+          post = readState();
+        });
+        await notifyInstanceChange(prev, post);
       },
       async setState(nextState: JsonObject): Promise<void> {
-        const prev = readState();
-        await persistNamespaceInstanceState(storageKey, nsConfig, nextState);
-        if (nsConfig.onInstanceUpdated && nsHookCtx) {
-          await nsConfig.onInstanceUpdated(
-            storageKey,
-            readState(),
-            prev,
-            nsHookCtx
-          );
-        }
-        await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
+        let prev!: JsonObject;
+        let post!: JsonObject;
+        await serializeResourceWrite(storageKey, async () => {
+          prev = readState();
+          await persistNamespaceInstanceState(storageKey, nsConfig, nextState);
+          post = readState();
+        });
+        await notifyInstanceChange(prev, post);
       },
       async updateState(
         updater: (state: JsonObject) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
-        // Pass the updater a fresh clone so an in-place mutation can't alias
-        // `prev` — `prev` is the pre-mutation state for the hook and reactive payload.
-        const prev = readState();
-        const next = await updater(readState());
-        await persistNamespaceInstanceState(storageKey, nsConfig, next);
-        if (nsConfig.onInstanceUpdated && nsHookCtx) {
-          await nsConfig.onInstanceUpdated(
-            storageKey,
-            readState(),
-            prev,
-            nsHookCtx
-          );
-        }
-        await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, readState()), { state: readState(), prevState: prev, evicted: false });
+        let prev!: JsonObject;
+        let post!: JsonObject;
+        await serializeResourceWrite(storageKey, async () => {
+          // Pass the updater a fresh clone so an in-place mutation can't alias
+          // `prev` — `prev` is the pre-mutation state for the hook and reactive payload.
+          prev = readState();
+          const next = await updater(readState());
+          await persistNamespaceInstanceState(storageKey, nsConfig, next);
+          post = readState();
+        });
+        await notifyInstanceChange(prev, post);
+      },
+      getOrPatchState(key: string, compute: () => JsonValue | Promise<JsonValue>): Promise<JsonValue> {
+        return singleFlightGetOrPatch(storageKey, readState, ref, key, compute);
       },
       async readContentRaw(): Promise<string | null> {
         if (isResourceTemplate(nsConfig.contentTemplate)) {
@@ -1085,17 +1140,23 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     // on `client.live` (only live resources compute a delta); the `change`
     // delta carries `{ state, prevState }` so the dispatcher can build the
     // payload. `prev` is the pre-mutation state, captured by the caller.
-    const notifySingleChange = async (prev: JsonObject): Promise<void> => {
+    // Fire AFTER the serialized write releases — never inside the per-key write
+    // lock. The payload + projection use the `post` snapshot captured at write
+    // time (so they stay consistent under concurrent writes), and dispatching
+    // outside the lock lets a reactive `reactTo` block legally patch this same
+    // resource: the re-entrant write acquires a fresh chain slot instead of
+    // chaining behind — and deadlocking on — the write that is awaiting it.
+    const notifySingleChange = async (prev: JsonObject, post: JsonObject): Promise<void> => {
       if (config.client?.live !== true && config.reactTo === undefined) return;
       const projection =
         config.client?.live === true
-          ? await liveProjection(config, readState())
+          ? await liveProjection(config, post)
           : undefined;
       await options.onResourceChanged?.(
         storageKey,
         "updated",
         projection,
-        { state: readState(), prevState: prev, evicted: false }
+        { state: post, prevState: prev, evicted: false }
       );
     };
 
@@ -1108,30 +1169,48 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return readState();
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
-        const prev = readState();
-        await persistResourceState(
-          storageKey,
-          config,
-          updateObjectState(prev, updates)
-        );
-        await notifySingleChange(prev);
+        let prev!: JsonObject;
+        let post!: JsonObject;
+        await serializeResourceWrite(storageKey, async () => {
+          prev = readState();
+          await persistResourceState(
+            storageKey,
+            config,
+            updateObjectState(prev, updates)
+          );
+          post = readState();
+        });
+        await notifySingleChange(prev, post);
       },
       async setState(nextState: JsonObject): Promise<void> {
-        const prev = readState();
-        await persistResourceState(storageKey, config, nextState);
-        await notifySingleChange(prev);
+        let prev!: JsonObject;
+        let post!: JsonObject;
+        await serializeResourceWrite(storageKey, async () => {
+          prev = readState();
+          await persistResourceState(storageKey, config, nextState);
+          post = readState();
+        });
+        await notifySingleChange(prev, post);
       },
       async updateState(
         updater: (
           state: JsonObject
         ) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
-        // Pass the updater a fresh clone so an in-place mutation can't alias
-        // `prev` — `prev` is the pre-mutation `prevState` for the reactive payload.
-        const prev = readState();
-        const next = await updater(readState());
-        await persistResourceState(storageKey, config, next);
-        await notifySingleChange(prev);
+        let prev!: JsonObject;
+        let post!: JsonObject;
+        await serializeResourceWrite(storageKey, async () => {
+          // Pass the updater a fresh clone so an in-place mutation can't alias
+          // `prev` — `prev` is the pre-mutation `prevState` for the reactive payload.
+          prev = readState();
+          const next = await updater(readState());
+          await persistResourceState(storageKey, config, next);
+          post = readState();
+        });
+        await notifySingleChange(prev, post);
+      },
+      getOrPatchState(key: string, compute: () => JsonValue | Promise<JsonValue>): Promise<JsonValue> {
+        return singleFlightGetOrPatch(storageKey, readState, handles[resourceName] as ResourceRef<JsonObject>, key, compute);
       },
       async readContentRaw(): Promise<string | null> {
         if (isResourceTemplate(config.contentTemplate)) {

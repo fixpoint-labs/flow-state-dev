@@ -66,6 +66,115 @@ function makeRegistry(options: {
   });
 }
 
+describe("concurrent resource writes", () => {
+  it("serializes per-resource writes so parallel patches to distinct fields don't clobber", async () => {
+    const state: Record<string, JsonObject> = {};
+    const registry = createScopeResourceRegistry({
+      scope: "session",
+      scopeId: "sess_1",
+      configs: {
+        spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
+      },
+      readResources: () => state,
+      readResourceContent: () => ({}),
+      // Mirror the real `createExecutionContext` persist: the in-request cache is
+      // written only AFTER the store await. Without per-resource serialization,
+      // concurrent read-modify-write patches each read the pre-write cache and
+      // the last writer clobbers the others' fields.
+      persistResourceKey: async (key, value) => {
+        await Promise.resolve();
+        state[key] = value;
+      },
+      deleteResourceKey: async (key) => { delete state[key]; },
+      persistResourceContentKey: async () => {},
+      deleteResourceContentKey: async () => {},
+    });
+
+    const ref = registry.get("spine");
+    await Promise.all([
+      ref.patchState({ a: 1 }),
+      ref.patchState({ b: 2 }),
+      ref.patchState({ c: 3 }),
+    ]);
+
+    expect(ref.state).toEqual({ a: 1, b: 2, c: 3 });
+  });
+
+  it("getOrPatchState fills distinct keys concurrently without losing fields", async () => {
+    const state: Record<string, JsonObject> = {};
+    const registry = createScopeResourceRegistry({
+      scope: "session",
+      scopeId: "sess_1",
+      configs: {
+        spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
+      },
+      readResources: () => state,
+      readResourceContent: () => ({}),
+      persistResourceKey: async (key, value) => {
+        await Promise.resolve();
+        state[key] = value;
+      },
+      deleteResourceKey: async (key) => { delete state[key]; },
+      persistResourceContentKey: async () => {},
+      deleteResourceContentKey: async () => {},
+    });
+
+    const ref = registry.get("spine");
+    const [x, y] = await Promise.all([
+      ref.getOrPatchState("x", async () => 10),
+      ref.getOrPatchState("y", async () => 20),
+    ]);
+
+    expect(x).toBe(10);
+    expect(y).toBe(20);
+    expect(ref.state).toEqual({ x: 10, y: 20 });
+  });
+
+  it("getOrPatchState coalesces concurrent misses on the same key to a single compute (single-flight)", async () => {
+    const state: Record<string, JsonObject> = {};
+    const registry = createScopeResourceRegistry({
+      scope: "session",
+      scopeId: "sess_1",
+      configs: {
+        spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
+      },
+      readResources: () => state,
+      readResourceContent: () => ({}),
+      persistResourceKey: async (key, value) => {
+        await Promise.resolve();
+        state[key] = value;
+      },
+      deleteResourceKey: async (key) => { delete state[key]; },
+      persistResourceContentKey: async () => {},
+      deleteResourceContentKey: async () => {},
+    });
+
+    const ref = registry.get("spine");
+    let computeCalls = 0;
+    const compute = async () => {
+      computeCalls += 1;
+      await Promise.resolve();
+      return 7;
+    };
+
+    const results = await Promise.all([
+      ref.getOrPatchState("v", compute),
+      ref.getOrPatchState("v", compute),
+      ref.getOrPatchState("v", compute),
+    ]);
+
+    // One upstream compute, shared by all three concurrent misses.
+    expect(results).toEqual([7, 7, 7]);
+    expect(computeCalls).toBe(1);
+    expect(ref.state).toEqual({ v: 7 });
+
+    // A later call reads the stored value as a hit — compute is not re-run.
+    const after = await ref.getOrPatchState("v", compute);
+    expect(after).toBe(7);
+    expect(computeCalls).toBe(1);
+  });
+});
+
 describe("normalizeStateDefault", () => {
   it("returns {} when no schema is provided", () => {
     expect(normalizeStateDefault(undefined)).toEqual({});

@@ -1,36 +1,40 @@
 /**
- * Tests for the price-history tap (Slice 3, spec 06 §4).
+ * Tests for the price-history tap (Slice 3, spec 06 §4; FIX-758 spine migration).
  *
  * Intent encoded:
- *   1. In fixture mode the tap patches the `priceHistory` resource from the
- *      pinned fixture, thinning each bar to { date, close } and echoing the
- *      provenance `source` tag. This is what lets the Summary draw a real
- *      series with zero re-run.
- *   2. On a live cache MISS the tap leaves the resource null — it never fetches
- *      (no extra network), never substitutes fixture data (BP-020), so the
- *      Summary degrades to trade-levels-only rather than showing a fake line.
+ *   1. The tap reads the subject's price bars off the `technicalData` spine —
+ *      the technical analyst's `get_price_history` wrote them there in Phase 1 —
+ *      and patches the `priceHistory` resource, thinning each bar to
+ *      { date, close } and echoing the provenance `source`. This is what lets
+ *      the Summary draw a real series with zero re-run.
+ *   2. When the spine field is absent (the analyst never populated it) the tap
+ *      leaves the resource null — it never fetches (no extra network), never
+ *      substitutes fixture data (BP-020), so the Summary degrades to
+ *      trade-levels-only rather than showing a fake line.
  *
  * Driven through `testFlow` against an in-memory store, then the persisted
- * single-resource state is read back via `stores.resourceState.getAll` (the
- * same inspection path the past-reports spine test uses).
+ * single-resource state is read back via `stores.resourceState.getAll`.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { testFlow } from "@flow-state-dev/testing";
 import { storePriceHistory } from "../src/flows/analysis/store-price-history";
+import { get_price_history } from "../src/flows/analysis/tools/data/get_price_history";
 import { priceHistoryResource } from "../src/flows/analysis/price-history-resource";
+import { technicalDataResource } from "../src/flows/analysis/technical-data-resource";
 import { sessionStateSchema } from "../src/flows/analysis/state";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 
 const priceFlow = defineFlow({
   kind: "trading-desk-price-history-test",
   actions: {
+    fetchPrices: { block: get_price_history },
     storePrices: { block: storePriceHistory },
   },
   session: { stateSchema: sessionStateSchema },
   resources: {
     priceHistory: priceHistoryResource,
+    technicalData: technicalDataResource,
   },
 })({ id: "test" });
 
@@ -60,11 +64,23 @@ async function readSlice(
 }
 
 describe("storePriceHistory tap", () => {
-  it("fixture mode: patches a thinned { date, close } series + provenance source", async () => {
-    _resetCache();
+  it("fixture mode: reads the spine's price bars, patches a thinned { date, close } series + provenance source", async () => {
     const stores = createInMemoryStores();
     const sessionId = "prices-fixture";
 
+    // Phase 1: the technical analyst's get_price_history populates the spine.
+    const fetched = await testFlow({
+      flow: priceFlow,
+      action: "fetchPrices",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: { ticker: "NVDA", date: "2026-05-06" },
+      seed: { session: { state: baseState } },
+    });
+    expect(fetched.error).toBeUndefined();
+
+    // Post-Phase-1 tap reads the spine and thins it.
     const result = await testFlow({
       flow: priceFlow,
       action: "storePrices",
@@ -72,7 +88,6 @@ describe("storePriceHistory tap", () => {
       sessionId,
       stores,
       input: {},
-      seed: { session: { state: baseState } },
     });
     expect(result.error).toBeUndefined();
     expect(result.status).toBe("completed");
@@ -92,11 +107,11 @@ describe("storePriceHistory tap", () => {
     expect(typeof first?.date).toBe("string");
   });
 
-  it("live mode cache miss: leaves the resource null — no fetch, no substitution", async () => {
-    _resetCache();
+  it("spine miss: leaves the resource null — no fetch, no substitution", async () => {
     const stores = createInMemoryStores();
-    const sessionId = "prices-live-miss";
+    const sessionId = "prices-spine-miss";
 
+    // No fetchPrices ran, so technicalData.priceBars is absent.
     const result = await testFlow({
       flow: priceFlow,
       action: "storePrices",
@@ -111,7 +126,7 @@ describe("storePriceHistory tap", () => {
     expect(result.error).toBeUndefined();
     expect(result.status).toBe("completed");
 
-    // Cold cache in live mode → the tap's fetcher throws → resource stays null.
+    // Spine field absent → the tap leaves the resource null.
     const slice = await readSlice(stores, sessionId);
     expect(slice == null).toBe(true);
   });
