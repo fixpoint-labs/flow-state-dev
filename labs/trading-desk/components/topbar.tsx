@@ -15,7 +15,10 @@ import { cn } from "@/lib/utils";
 import { FlowStateMark } from "@/components/flow-state-mark";
 
 export type CostPreset = "fast" | "full";
-export type DataSourceMode = "fixture" | "live";
+// `record` runs the live provider chain AND writes every tool payload to the
+// fixture corpus (FIX-787), so the run replays offline afterward. It keys its
+// own report, distinct from a plain `live` run.
+export type DataSourceMode = "fixture" | "live" | "record";
 
 /** The in-page views the TopBar nav toggles between. All three render a nav
  *  item: Desk (analysis), Past Reports, and Portfolio (BUILD_PLAN §8 contract). */

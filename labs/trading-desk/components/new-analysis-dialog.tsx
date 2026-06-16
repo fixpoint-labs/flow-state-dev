@@ -49,6 +49,12 @@ const DATA_SOURCE_OPTIONS = [
     title:
       "Live data — Yahoo for prices/fundamentals (no key); FINNHUB_API_KEY required for news",
   },
+  {
+    value: "record" as const,
+    label: "live + record",
+    title:
+      "Live data, and write every tool response to the fixture corpus so this run can be replayed offline (needs the live API keys)",
+  },
 ];
 
 /** The minimum thesis length the server treats as auditable. Mirrors the

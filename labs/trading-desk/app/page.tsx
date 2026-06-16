@@ -55,51 +55,23 @@ function todayIsoDate(): string {
 }
 
 /** Find an existing session whose `metadata` matches the tuple on all four
- *  fields. Strict equality — legacy sessions with partial metadata never
- *  match. A record-run session (`dataSource: "record"`, written by the CLI
- *  recorder — never a UI option) reads as live, so opening one keeps the
- *  header toggle on "live".
- *
- *  `preferId` is the currently-selected session: if it still matches the
- *  tuple (exactly or via the record→live normalization), it wins. This keeps
- *  an opened record row selected even when a live run shares the same
- *  ticker/date/costPreset — without it, the live run's exact match would
- *  shadow the record row the user clicked. With no preference, an exact
- *  `dataSource` match wins before the normalized one. */
-function matchesTuple(
-  summary: SessionSummary,
-  tuple: AnalyzeTuple,
-  normalizeRecord: boolean,
-): boolean {
-  const md = summary.metadata;
-  const source =
-    normalizeRecord && md?.dataSource === "record" ? "live" : md?.dataSource;
-  return (
-    md?.ticker === tuple.ticker &&
-    md?.date === tuple.date &&
-    md?.costPreset === tuple.costPreset &&
-    source === tuple.dataSource
-  );
-}
-
+ *  fields (ticker / date / costPreset / dataSource). Strict equality — legacy
+ *  sessions with partial metadata never match. Each `dataSource` value
+ *  (`fixture` / `live` / `record`) keys its own report, so a Live + Record run
+ *  is a distinct session from a plain Live run of the same ticker/date/preset. */
 function findSessionForTuple(
   sessions: ReadonlyArray<SessionSummary>,
   tuple: AnalyzeTuple,
-  preferId?: string,
 ): string | undefined {
-  if (preferId !== undefined) {
-    const preferred = sessions.find((s) => s.id === preferId);
-    if (
-      preferred !== undefined &&
-      (matchesTuple(preferred, tuple, false) ||
-        matchesTuple(preferred, tuple, true))
-    ) {
-      return preferId;
-    }
-  }
-  const find = (normalizeRecord: boolean): string | undefined =>
-    sessions.find((s) => matchesTuple(s, tuple, normalizeRecord))?.id;
-  return find(false) ?? find(true);
+  return sessions.find((s) => {
+    const md = s.metadata;
+    return (
+      md?.ticker === tuple.ticker &&
+      md?.date === tuple.date &&
+      md?.costPreset === tuple.costPreset &&
+      md?.dataSource === tuple.dataSource
+    );
+  })?.id;
 }
 
 /** Auto-derived session title using the middle dot (U+00B7) separator.
@@ -258,8 +230,8 @@ function TradingDeskApp(): ReactElement {
     [ticker, date, costPreset, dataSource],
   );
   const matchedSessionId = useMemo(
-    () => findSessionForTuple(flow.sessions, tuple, flow.activeSessionId),
-    [flow.sessions, tuple, flow.activeSessionId],
+    () => findSessionForTuple(flow.sessions, tuple),
+    [flow.sessions, tuple],
   );
   // True when the current inputs map to an existing run (drives the run
   // button label: "re-run" for an existing session, "Run" for a fresh one).
@@ -343,14 +315,15 @@ function TradingDeskApp(): ReactElement {
         if (t.costPreset === "fast" || t.costPreset === "full") {
           setCostPreset(t.costPreset);
         }
-        // A record-run row restores the toggle to "live" (record is never a UI
-        // option). We then `selectSession(id)` below; because the tuple-sync
-        // effect prefers the already-selected session when it matches the tuple,
-        // this record row stays open even if a live run shares the same
-        // ticker/date/costPreset.
-        const source = t.dataSource === "record" ? "live" : t.dataSource;
-        if (source === "fixture" || source === "live") {
-          setDataSource(source);
+        // Restore the toggle to the row's own data source so the tuple-sync
+        // effect resolves to exactly this session. Record is a first-class
+        // toggle state (a Live + Record run), so it restores as itself.
+        if (
+          t.dataSource === "fixture" ||
+          t.dataSource === "live" ||
+          t.dataSource === "record"
+        ) {
+          setDataSource(t.dataSource);
         }
       }
       flow.selectSession(id);

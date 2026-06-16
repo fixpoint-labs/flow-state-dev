@@ -14,6 +14,8 @@ Hand-curated JSON fixtures keyed by `(ticker, date)`. The fixture
 ## Recording fixtures
 
 Run the `analyze` action with `dataSource: "record"` to produce a new snapshot.
+In the running app, pick **"live + record"** in the New Analysis dialog's source
+toggle; from the CLI, pass `dataSource: "record"` (below).
 Every tool payload is fetched live and written to `fixtures/{TICKER}/{DATE}/`.
 Macro-indicator tools write to `fixtures/_macro/{DATE}/` because they are
 ticker-agnostic. After the run, replay it with `dataSource: "fixture"` and the
