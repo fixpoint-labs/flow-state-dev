@@ -10,15 +10,39 @@
  * catchable by rescue handlers.
  */
 
+import type { ZodTypeAny } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import type { SuspensionReason } from "../types/suspension";
 
 export interface SuspendOptions {
   reason: SuspensionReason;
   message?: string;
   data?: Record<string, unknown>;
-  resumeSchema?: Record<string, unknown>;
+  /**
+   * Shape of the payload the resolver supplies on resume. Pass a Zod schema
+   * (the framework's schema language) or a pre-built JSON Schema object; either
+   * is normalized to a plain, serializable JSON Schema for storage and DevTool
+   * rendering. A raw Zod instance must never reach the stores — it carries
+   * functions that fail structured-clone and JSON serialization.
+   */
+  resumeSchema?: ZodTypeAny | Record<string, unknown>;
   timeoutMs?: number;
   render?: { component: string; props?: Record<string, unknown> };
+}
+
+/**
+ * Normalize a `resumeSchema` to a plain JSON Schema. Detects a Zod schema by
+ * its `safeParse` method and converts it; a value that is already a plain
+ * object (or undefined) passes through unchanged.
+ */
+function normalizeResumeSchema(
+  schema: ZodTypeAny | Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (schema === undefined || schema === null) return undefined;
+  if (typeof (schema as { safeParse?: unknown }).safeParse === "function") {
+    return zodToJsonSchema(schema as ZodTypeAny) as Record<string, unknown>;
+  }
+  return schema as Record<string, unknown>;
 }
 
 export class SuspensionError extends Error {
@@ -42,7 +66,7 @@ export class SuspensionError extends Error {
     this.suspensionId = options.suspensionId;
     this.reason = options.reason;
     this.data = options.data;
-    this.resumeSchema = options.resumeSchema;
+    this.resumeSchema = normalizeResumeSchema(options.resumeSchema);
     this.render = options.render;
     this.timeoutMs = options.timeoutMs;
   }

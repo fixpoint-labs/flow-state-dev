@@ -306,7 +306,27 @@ const router = createFlowApiRouter({
 });
 ```
 
-The axis is optional. Single-tenant apps never send the header and `tenantId` stays `undefined`. Today the value is informational only — it does not yet namespace store keys, so two tenants sharing a session id still share a session record. Tenant-scoped store-key isolation (deriving `${tenantId}:${sessionId}` and threading it through the session, content, and request stores) is tracked separately.
+The axis is optional. Single-tenant apps never send the header and `tenantId` stays `undefined`.
+
+### Store-key isolation
+
+When a `tenantId` is present, it namespaces session storage so two tenants sharing a session id never share data:
+
+- The **session record** key and the **session-scoped** content / resource-state `scopeId` become `${tenantId}:${sessionId}` (via `resolveSessionStorageKey`). The session store is fetched by primary key, so the tenant lives in the key.
+- **Request records** keep a bare `sessionId` and carry a separate `tenantId` field. Cross-turn history isolates by filtering `request.list({ sessionId, tenantId })`, not by namespacing the field — which keeps request recovery a clean pass-through (recovery re-derives the key from the bare `sessionId` + `tenantId`). The `tenantId` list filter exact-matches when present (an explicit `undefined` matches only no-tenant records) and is skipped when absent.
+- **User and org** scopes stay shared across tenants by design — org-level policy and quota, and user preferences, are meant to span tenants.
+
+The public session id stays bare everywhere it surfaces: `ctx.session.identity.id`, emitted events, and HTTP responses all return `sessionId`, never the namespaced key.
+
+Single-tenant apps are unaffected: `resolveSessionStorageKey(sessionId, undefined) === sessionId`, so every key is byte-identical to a deployment without the axis. There is no migration for the common case. Persistence adapters add a nullable `tenant_id` column (SQLite/Postgres) via an idempotent `ADD COLUMN` migration; existing rows read back as no-tenant.
+
+### Key ambiguity and the binding check
+
+The `${tenantId}:${sessionId}` scheme is ambiguous because session ids may themselves contain `:` (chat ids like `slack:C123:...`) and both the tenant header and the session id are caller-supplied — tenant `acme` + session `chat-1` resolves to the same key as a *no-tenant* request using session id `acme:chat-1`. The key alone therefore can't isolate. Every load-and-act path closes this with a **tenant-binding check** (`tenantMatches`): the loaded record's stored `tenantId` must equal the request's, or the operation is rejected (`createExecutionContext` throws `TenantBindingMismatchError`; routes return 404; `session.create` keeps a raw existence check so a colliding id 409s rather than overwriting). To remove the ambiguity at the source, tenant ids themselves may not contain `:` (rejected with 400 at header extraction); session ids still may.
+
+### What `requestId` gates, not tenant
+
+Stream attach (`GET .../requests/:id/stream`) and suspension resume are authorized by `requestId` alone — an unguessable capability token — and are **not** re-checked against the tenant header. This is the pre-existing request-as-capability model and is deliberate: a `requestId` is only obtainable by the caller who created it. Resume re-dispatches under the original request's stored `tenantId`, so a resumed run still lands in the correct tenant's session. Session, state, and resource reads (addressed by the caller-supplied `sessionId`) do enforce the tenant binding, because their identifier is guessable.
 
 ## Cross-Flow State: Shared vs Isolated
 

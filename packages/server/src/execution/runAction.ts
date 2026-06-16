@@ -15,6 +15,7 @@ import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
 import { createExecutionContext } from "../context/createExecutionContext";
+import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestWorkPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
@@ -527,6 +528,8 @@ export async function runActionInternal<
     sessionId: options.sessionId,
     userId: options.userId,
     orgId: options.orgId,
+    // Carry the tenant so recovery re-dispatches the retry in-tenant (FIX-682).
+    tenantId: options.tenantId,
     source,
     input: options.input,
     metadata: options.metadata,
@@ -547,10 +550,17 @@ export async function runActionInternal<
 
   // --- Update session's latestRequestId for auto-resume discovery ---
   if (options.sessionId !== undefined) {
-    const session = await options.stores.session.get(options.sessionId);
-    if (session !== undefined) {
+    // Tenant-namespaced key (FIX-682) so this lands on the same record the
+    // execution context reads/writes; a bare key would miss a tenant session.
+    const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
+    const session = await options.stores.session.get(sessionKey);
+    // Tenant-binding guard (FIX-682): this write runs before
+    // createExecutionContext's binding check, so without it a no-tenant caller
+    // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
+    // latestRequestId (an auto-resume hijack) even though the run then fails.
+    if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
       await options.stores.session.set(
-        options.sessionId,
+        sessionKey,
         { ...session, latestRequestId: requestId, updatedAt: Date.now() },
         "any"
       );
@@ -571,6 +581,11 @@ export async function runActionInternal<
   // termination ensures the last write/delete completes before the action
   // returns. (FIX-401)
   const cleanupCheckpointsOnTerminal = options.flow.request?.cleanupCheckpointsOnTerminal === true;
+  // Set whenever a durable state_snapshot frame is seen — the precise signal
+  // that this request exercised durable execution (a `sequencer({ durable })`
+  // step ran). Used by the terminal-completion cleanup wire (FIX-141) to
+  // decide whether to clean up this request's own durability artifacts.
+  let sawDurableFrame = false;
   const checkpointChains = new Map<string, Promise<void>>();
   const checkpointKey = (id: string) => `${requestId}:${id}`;
   function chainCheckpoint(blockInstanceId: string, op: () => Promise<void>): void {
@@ -606,6 +621,7 @@ export async function runActionInternal<
     onItemDone: (item) => {
       if (item.type === "state_snapshot") {
         if (item.durable) {
+          sawDurableFrame = true;
           const requestIdForCheckpoint = item.requestId;
           const blockInstanceId = item.provenance.blockInstanceId;
           const parentBlockInstanceId = item.provenance.parentBlockInstanceId ?? null;
@@ -1106,6 +1122,43 @@ export async function runActionInternal<
       }
     }
 
+    // Non-resumed durable completion: clean up THIS request's own durability
+    // artifacts (suspension records + lease) when it completes on the first
+    // run (never suspended/resumed). The `resumeOf` block above already cleans
+    // the original request on the resume path, so this branch is mutually
+    // exclusive with it (guarded by `resumeOf === undefined`) — no double-clean.
+    //
+    // "Durable" here means the request actually exercised durability:
+    // `action.durable` is the documented action-level opt-in (it's what makes
+    // ctx.suspend() / crash recovery available and is the reliable signal even
+    // for this in-process path). `sawDurableFrame` additionally covers the
+    // route/streaming path where a `sequencer({ durable: true })` emits durable
+    // state_snapshot frames through the checkpoint hook. Gating on real durable
+    // activity avoids touching the stores for purely transient requests, where
+    // `cleanup` would be a no-op anyway.
+    //
+    // Checkpoints are removed only when the flow opts into
+    // `cleanupCheckpointsOnTerminal` (per-instance terminal deletes during the
+    // run already handle the common case; this is the catch-up for any survivors).
+    const usedDurability = action.durable === true || sawDurableFrame;
+    if (
+      resumeOf === undefined &&
+      usedDurability &&
+      terminalStatus === "completed" &&
+      options.runtimeConfig.durabilityProvider !== undefined
+    ) {
+      try {
+        await options.runtimeConfig.durabilityProvider.cleanup(requestId);
+        if (cleanupCheckpointsOnTerminal) {
+          await options.runtimeConfig.durabilityProvider.cleanupCheckpoints(requestId);
+        }
+      } catch (err) {
+        logRuntimeEvent(logger, "warn", "[flow-state] durability cleanup failed", {
+          requestId, error: String(err)
+        });
+      }
+    }
+
     if (terminalStatus === "completed") {
       await emitActionLifecycleSeam(internalSeams, "completed", metadata);
 
@@ -1117,7 +1170,8 @@ export async function runActionInternal<
             options.sessionId,
             requestId,
             resolvedRetention,
-            completedAt
+            completedAt,
+            options.tenantId
           );
         } catch (err) {
           logRuntimeEvent(logger, "warn", "[flow-state] retention eviction failed", {

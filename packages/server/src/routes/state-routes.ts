@@ -20,6 +20,7 @@ import {
   getPositiveInteger,
   getString,
   jsonResponse,
+  loadTenantSession,
   parseClientDataFilter,
   sortItems
 } from "./route-utils";
@@ -30,6 +31,8 @@ const DEFAULT_STATE_ITEMS_LIMIT = 100;
 type StateRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
+  /** Tenant id from the request header (FIX-682); namespaces the session key. */
+  tenantId?: string;
 };
 
 export async function handleGetSessionState(
@@ -37,7 +40,11 @@ export async function handleGetSessionState(
   route: Extract<ParsedFlowRoute, { kind: "get_session_state" }>,
   ctx: StateRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await loadTenantSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId
+  );
   if (session === undefined) {
     return jsonResponse(404, {
       error: `Unknown session "${route.sessionId}"`
@@ -81,7 +88,11 @@ export async function handleGetSessionState(
   let totalItems = 0;
   if (includeItems) {
     const requests = await ctx.stores.request.list({
-      sessionId: session.id,
+      // Request records key on the BARE session id; isolate by the tenant
+      // filter (FIX-682). `session.id` here is the namespaced storage key, so
+      // it must not be used as the request filter.
+      sessionId: route.sessionId,
+      tenantId: ctx.tenantId,
       withItems: true
     });
     aggregatedItems = [];
@@ -221,7 +232,8 @@ export async function handleGetSessionState(
   // FIX-579: dropped `internalState` field (was gated by `?include=internal_state`).
   // The DevTool no longer relies on raw scope state from this endpoint.
   return jsonResponse(200, {
-    sessionId: session.id,
+    // Bare session id — `session.id` is the namespaced storage key (FIX-682).
+    sessionId: route.sessionId,
     flowKind: session.flowKind,
     clientData: {
       session:

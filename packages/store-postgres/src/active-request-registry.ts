@@ -17,6 +17,7 @@ function serializeEntry(entry: ActiveRequestEntry): unknown[] {
     entry.sessionId ?? null,
     entry.userId,
     entry.orgId ?? null,
+    entry.tenantId ?? null,
     entry.source,
     entry.input !== undefined ? JSON.stringify(entry.input) : null,
     entry.metadata !== undefined ? JSON.stringify(entry.metadata) : null,
@@ -51,6 +52,9 @@ function deserializeRow(row: Record<string, unknown>): ActiveRequestEntry {
   if (row.org_id !== null) {
     entry.orgId = row.org_id as string;
   }
+  if (row.tenant_id !== null && row.tenant_id !== undefined) {
+    entry.tenantId = row.tenant_id as string;
+  }
   if (row.input !== null) {
     entry.input = JSON.parse(row.input as string);
   }
@@ -70,14 +74,15 @@ export function createPostgresActiveRequestRegistry(
       await executor.query(
         `INSERT INTO active_requests
           (request_id, flow_kind, action_name, session_id, user_id, org_id,
-           source, input, metadata, started_at, last_heartbeat_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           tenant_id, source, input, metadata, started_at, last_heartbeat_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT(request_id) DO UPDATE SET
           flow_kind = EXCLUDED.flow_kind,
           action_name = EXCLUDED.action_name,
           session_id = EXCLUDED.session_id,
           user_id = EXCLUDED.user_id,
           org_id = EXCLUDED.org_id,
+          tenant_id = EXCLUDED.tenant_id,
           source = EXCLUDED.source,
           input = EXCLUDED.input,
           metadata = EXCLUDED.metadata,

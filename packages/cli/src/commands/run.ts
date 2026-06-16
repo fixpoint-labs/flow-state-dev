@@ -13,6 +13,7 @@ import {
   createResponseEmitter,
   type ExecutionResult,
   type RequestStreamEventWithId,
+  type RuntimeConfig,
   type RuntimeLogger,
   type RuntimeLoggerLevel,
   type StoreRegistry
@@ -26,9 +27,11 @@ import {
   type DiscoverFlowsOptions,
   type FlowImportFailure,
 } from "../resolve-flow";
+import { loadFsdevConfig } from "../load-config";
+import { forceModelResolver } from "../model-override";
 import { parseInputArg } from "../parse-input";
 import { CliError } from "../resolve-block";
-import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
+import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 import { loadEnvFiles } from "../load-env";
 
 /** NDJSON event types emitted to stdout during flow execution. */
@@ -102,6 +105,8 @@ export function registerRunCommand(program: Command): void {
     .option("--seed-user <json>", "Seed user-level state (JSON or file path)")
     .option("--seed-org <json>", "Seed org-level state (JSON or file path)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
+    .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
+    .option("--no-config", "Ignore fsdev.config.* and use directory discovery")
     .option("--format <format>", "Output format", "json")
     .option("--quiet", "Suppress runtime logs on stderr (NDJSON on stdout still emitted)")
     .option("--log-level <level>", "Stderr log level: debug | info | warn | error (default: info)")
@@ -132,6 +137,11 @@ export interface RunCommandOptions {
   seedUser?: string;
   seedOrg?: string;
   flowDir?: string[];
+  /**
+   * fsdev config selection. A string is an explicit `--config <path>`; `false`
+   * is `--no-config`; `true`/absent means search for `fsdev.config.*` in cwd.
+   */
+  config?: string | boolean;
   format?: string;
   /** Suppress all runtime logs on stderr. */
   quiet?: boolean;
@@ -266,207 +276,273 @@ export async function executeRunCommand(
   actionName: string,
   options: RunCommandInternalOptions,
 ): Promise<FlowRunResult> {
-  // 0. Load .env.local files (walks up from cwd)
+  // 0. Load .env.local files (walks up from cwd). Must run before importing an
+  // fsdev.config.* so the config's providers see the app's env (gateway keys).
   const cwd = options.cwd ?? process.cwd();
   loadEnvFiles(cwd);
 
-  // 1. Discover flows from conventional directories. Import failures are
-  // collected and warned to stderr unconditionally (not gated by --quiet):
-  // they're diagnostics about broken modules, the same category as CliError
-  // output, and stderr keeps stdout NDJSON-pure.
-  const failures: FlowImportFailure[] = [];
-  const discoverOptions: DiscoverFlowsOptions = {
-    cwd: options.cwd,
-    ...(options.flowDir !== undefined ? { flowDirs: options.flowDir } : {}),
-    onImportFailed: (failure) => failures.push(failure),
-  };
-  const flows = await discoverFlows(discoverOptions);
-  for (const failure of failures) {
-    process.stderr.write(formatImportFailureWarning(failure));
-  }
+  // 1. Resolve the runtime source. When the app ships an fsdev.config.*, the CLI
+  // runs the app's own wiring (registry, stores, model resolver); otherwise it
+  // falls back to directory discovery and CLI defaults. `--no-config` forces the
+  // legacy path; `--config <path>` names an explicit file.
+  const useConfig = options.config !== false;
+  const configPath = typeof options.config === "string" ? options.config : undefined;
+  const loaded = useConfig ? await loadFsdevConfig({ cwd, configPath }) : undefined;
 
-  const flow = flows.find((f) => f.kind === flowKind);
-  if (flow === undefined) {
-    const available = flows.map((f) => f.kind).join(", ") || "(none found)";
-    const searched = getSearchedDirs(discoverOptions).join(", ");
-    throw new CliError(
-      `Flow "${flowKind}" not found. Available flows: ${available}\n` +
-      `Searched: ${searched}` + formatFailedImportSection(failures),
-      EXIT_DISCOVERY_ERROR,
-    );
-  }
-
-  // 2. Validate action exists on flow
-  const actionConfig = flow.actions[actionName];
-  if (actionConfig === undefined) {
-    const available = Object.keys(flow.actions).join(", ") || "(none)";
-    throw new CliError(
-      `Action "${actionName}" not found on flow "${flowKind}". Available actions: ${available}`,
-      EXIT_INVALID_ARGS,
-    );
-  }
-
-  // 3. Parse input
-  const input = parseInputArg({ input: options.input, inputFile: options.inputFile });
-
-  // 4. Set up stores. `fsdev run` is a local one-shot runner, so the
-  // filesystem store is acknowledged development-only (FIX-406 6A).
-  const stores =
-    options.stores ??
-    createFilesystemStores({ rootDir: ".fsdev/data", developmentOnly: true });
-
-  // 4b. Parse and apply seed state
-  const sessionId = options.session ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-
-  if (options.seedSession !== undefined) {
-    const seedData = parseSeedArg(options.seedSession, "session") as JsonObject;
-    const existing = await stores.session.get(sessionId);
-    if (existing !== undefined) {
-      await stores.session.set(sessionId, {
-        ...existing,
-        state: { ...existing.state, ...seedData },
-        updatedAt: Date.now(),
-      }, "any");
-    } else {
-      await stores.session.set(sessionId, {
-        id: sessionId,
-        flowKind: flowKind,
-        userId: "cli-user",
-        state: seedData,
-        version: 0,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        journal: [],
-      }, "any");
-    }
-  }
-
-  // 5. Set up model resolver (override all generators when --model is set)
-  let modelResolver: ModelResolver | undefined;
-  if (options.model !== undefined) {
-    const defaultResolver = createModelResolver();
-    const override = ((_modelId: string, blockName?: string) => {
-      return defaultResolver(options.model!, blockName);
-    }) as ModelResolver;
-    override.resolveId = (modelId: string) => defaultResolver.resolveId(modelId);
-    modelResolver = override;
-  }
-
-  // 6. Create response emitter with NDJSON streaming.
-  //    When --capture is set, also collect every emitted event for the on-disk payload.
-  const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const captureEnabled = options.capture !== undefined && options.capture !== "";
-  const capturedEvents: FlowEvent[] = [];
-  const recordEvent = (event: FlowEvent): void => {
-    if (captureEnabled) capturedEvents.push(event);
-    emitNdjson(event);
-  };
-  const responseEmitter = createResponseEmitter({
-    requestId,
-    onEvent: (event) => {
-      const ndjsonEvent = mapStreamEventToNdjson(event);
-      if (ndjsonEvent !== undefined) {
-        recordEvent(ndjsonEvent);
-      }
-    },
-  });
-
-  // 6b. Construct the stderr runtime logger (suppressible via --quiet, level via --log-level).
-  const logLevel = resolveLogLevel(options);
-  const logger = createCliLogger(logLevel);
-
-  // 7. Execute flow action
-  const startMs = Date.now();
-  let result: ExecutionResult;
-  let error: { message: string; stack?: string } | undefined;
-  let success = true;
+  // Dispose the config's FlowState once the run settles (closes the app's pools,
+  // drains a started worker). Failures are warned, never masking the run result.
+  const disposeConfig =
+    loaded !== undefined
+      ? async () => {
+          try {
+            await loaded.flowState.dispose();
+          } catch (err) {
+            process.stderr.write(
+              `Warning: failed to dispose fsdev config: ${err instanceof Error ? err.message : String(err)}\n`,
+            );
+          }
+        }
+      : undefined;
 
   try {
-    result = await runAction({
-      flow: flow as FlowInstance,
-      actionName,
-      input: input ?? {},
-      userId: "cli-user",
-      sessionId,
-      stores,
-      responseEmitter,
-      runtimeConfig: {
-        modelResolver,
-        logger,
+    let flow: FlowInstance;
+    let stores: StoreRegistry;
+    let baseRuntimeConfig: RuntimeConfig | undefined;
+
+    if (loaded !== undefined) {
+      // --- config path: take the app's registry/stores/runtimeConfig ---
+      if (options.flowDir !== undefined) {
+        throw new CliError(
+          "--flow-dir bypasses fsdev.config.*; pass --no-config to use directory discovery.",
+          EXIT_INVALID_ARGS,
+        );
+      }
+      let runtime;
+      try {
+        runtime = await loaded.flowState.getRuntime();
+      } catch (err) {
+        throw new CliError(
+          `Failed to initialize fsdev config ${loaded.path}: ${err instanceof Error ? err.message : String(err)}`,
+          EXIT_CONFIG_ERROR,
+        );
+      }
+      const found = runtime.registry.get(flowKind);
+      if (found === undefined) {
+        const kinds = [...new Set(runtime.registry.list().map((f) => f.kind))].join(", ") || "(none)";
+        throw new CliError(
+          `Flow "${flowKind}" not found in fsdev config (${loaded.path}). Available flows: ${kinds}`,
+          EXIT_DISCOVERY_ERROR,
+        );
+      }
+      flow = found;
+      stores = options.stores ?? runtime.stores;
+      baseRuntimeConfig = runtime.runtimeConfig;
+    } else {
+      // --- discovery path: scan conventional directories, CLI defaults ---
+      // Import failures are warned to stderr unconditionally (not gated by
+      // --quiet): diagnostics about broken modules, the same category as
+      // CliError output, and stderr keeps stdout NDJSON-pure.
+      const failures: FlowImportFailure[] = [];
+      const discoverOptions: DiscoverFlowsOptions = {
+        cwd: options.cwd,
+        ...(options.flowDir !== undefined ? { flowDirs: options.flowDir } : {}),
+        onImportFailed: (failure) => failures.push(failure),
+      };
+      const flows = await discoverFlows(discoverOptions);
+      for (const failure of failures) {
+        process.stderr.write(formatImportFailureWarning(failure));
+      }
+      const found = flows.find((f) => f.kind === flowKind);
+      if (found === undefined) {
+        const available = flows.map((f) => f.kind).join(", ") || "(none found)";
+        const searched = getSearchedDirs(discoverOptions).join(", ");
+        throw new CliError(
+          `Flow "${flowKind}" not found. Available flows: ${available}\n` +
+          `Searched: ${searched}` + formatFailedImportSection(failures),
+          EXIT_DISCOVERY_ERROR,
+        );
+      }
+      flow = found;
+      // `fsdev run` is a local one-shot runner, so the filesystem store is
+      // acknowledged development-only (FIX-406 6A).
+      stores =
+        options.stores ??
+        createFilesystemStores({ rootDir: ".fsdev/data", developmentOnly: true });
+    }
+
+    // 2. Validate action exists on flow
+    const actionConfig = flow.actions[actionName];
+    if (actionConfig === undefined) {
+      const available = Object.keys(flow.actions).join(", ") || "(none)";
+      throw new CliError(
+        `Action "${actionName}" not found on flow "${flowKind}". Available actions: ${available}`,
+        EXIT_INVALID_ARGS,
+      );
+    }
+
+    // 3. Parse input
+    const input = parseInputArg({ input: options.input, inputFile: options.inputFile });
+
+    // 4. Parse and apply seed state
+    const sessionId = options.session ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+    if (options.seedSession !== undefined) {
+      const seedData = parseSeedArg(options.seedSession, "session") as JsonObject;
+      const existing = await stores.session.get(sessionId);
+      if (existing !== undefined) {
+        await stores.session.set(sessionId, {
+          ...existing,
+          state: { ...existing.state, ...seedData },
+          updatedAt: Date.now(),
+        }, "any");
+      } else {
+        await stores.session.set(sessionId, {
+          id: sessionId,
+          flowKind: flowKind,
+          userId: "cli-user",
+          state: seedData,
+          version: 0,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          journal: [],
+        }, "any");
+      }
+    }
+
+    // 5. Resolve the effective model resolver. With a config, `--model` wraps
+    // the app's resolver so its gateways/providers still apply; without one it
+    // wraps a bare default resolver. No `--model` leaves the config's resolver
+    // (or undefined in the discovery path).
+    let modelResolver: ModelResolver | undefined;
+    if (loaded !== undefined) {
+      const base = baseRuntimeConfig?.modelResolver ?? createModelResolver();
+      modelResolver = options.model !== undefined ? forceModelResolver(base, options.model) : base;
+    } else if (options.model !== undefined) {
+      modelResolver = forceModelResolver(createModelResolver(), options.model);
+    }
+
+    // 6. Create response emitter with NDJSON streaming.
+    //    When --capture is set, also collect every emitted event for the on-disk payload.
+    const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const captureEnabled = options.capture !== undefined && options.capture !== "";
+    const capturedEvents: FlowEvent[] = [];
+    const recordEvent = (event: FlowEvent): void => {
+      if (captureEnabled) capturedEvents.push(event);
+      emitNdjson(event);
+    };
+    const responseEmitter = createResponseEmitter({
+      requestId,
+      onEvent: (event) => {
+        const ndjsonEvent = mapStreamEventToNdjson(event);
+        if (ndjsonEvent !== undefined) {
+          recordEvent(ndjsonEvent);
+        }
       },
     });
 
-    if (result.error !== undefined) {
+    // 6b. Construct the stderr runtime logger (suppressible via --quiet, level via --log-level).
+    const logLevel = resolveLogLevel(options);
+    const logger = createCliLogger(logLevel);
+
+    // 7. Execute the flow action. With a config, forward the app's runtimeConfig
+    // (durability, middleware, settings, ...), overriding only the logger (CLI
+    // stderr discipline) and the model resolver (per --model).
+    const runtimeConfig: RuntimeConfig =
+      baseRuntimeConfig !== undefined
+        ? { ...baseRuntimeConfig, modelResolver, logger }
+        : { modelResolver, logger };
+
+    const startMs = Date.now();
+    let result: ExecutionResult;
+    let error: { message: string; stack?: string } | undefined;
+    let success = true;
+
+    try {
+      result = await runAction({
+        flow,
+        actionName,
+        input: input ?? {},
+        userId: "cli-user",
+        sessionId,
+        stores,
+        responseEmitter,
+        runtimeConfig,
+      });
+
+      if (result.error !== undefined) {
+        success = false;
+        error = {
+          message: result.error.message,
+          stack: result.error.stack,
+        };
+      }
+    } catch (err) {
       success = false;
+      result = { output: undefined, items: [], durationMs: Date.now() - startMs };
       error = {
-        message: result.error.message,
-        stack: result.error.stack,
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
       };
     }
-  } catch (err) {
-    success = false;
-    result = { output: undefined, items: [], durationMs: Date.now() - startMs };
-    error = {
-      message: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : undefined,
-    };
-  }
 
-  const durationMs = Date.now() - startMs;
+    const durationMs = Date.now() - startMs;
 
-  // 8. Emit terminal NDJSON event
-  if (success) {
-    recordEvent({
-      type: "flow_complete",
-      output: result.output ?? null,
-      durationMs,
-      items: result.items.length,
-    });
-  } else {
-    recordEvent({
-      type: "error",
-      message: error!.message,
-    });
-  }
-
-  const runResult: FlowRunResult = {
-    success,
-    flow: { kind: flowKind, action: actionName },
-    output: result.output ?? null,
-    execution: { durationMs, itemCount: result.items.length },
-    ...(error !== undefined ? { error } : {}),
-  };
-
-  const exitCode = success ? EXIT_SUCCESS : EXIT_EXECUTION_ERROR;
-
-  // 9. Optional --capture: write structured run payload to disk.
-  //    Capture failures are surfaced on stderr but don't override the run's exit code.
-  if (captureEnabled) {
-    try {
-      writeCaptureFile(options.capture!, {
-        command: {
-          flow: flowKind,
-          action: actionName,
-          input: input ?? null,
-          model: options.model ?? null,
-          session: options.session ?? null,
-          seedSession: options.seedSession ?? null,
-          seedUser: options.seedUser ?? null,
-          seedOrg: options.seedOrg ?? null,
-        },
-        events: capturedEvents,
-        result: { ...runResult, exitCode },
+    // 8. Emit terminal NDJSON event
+    if (success) {
+      recordEvent({
+        type: "flow_complete",
+        output: result.output ?? null,
+        durationMs,
+        items: result.items.length,
       });
-    } catch (err) {
-      process.stderr.write(
-        `Failed to write --capture file: ${err instanceof Error ? err.message : String(err)}\n`
-      );
+    } else {
+      recordEvent({
+        type: "error",
+        message: error!.message,
+      });
     }
+
+    const runResult: FlowRunResult = {
+      success,
+      flow: { kind: flowKind, action: actionName },
+      output: result.output ?? null,
+      execution: { durationMs, itemCount: result.items.length },
+      ...(error !== undefined ? { error } : {}),
+    };
+
+    const exitCode = success ? EXIT_SUCCESS : EXIT_EXECUTION_ERROR;
+
+    // 9. Optional --capture: write structured run payload to disk.
+    //    Capture failures are surfaced on stderr but don't override the run's exit code.
+    if (captureEnabled) {
+      try {
+        writeCaptureFile(options.capture!, {
+          command: {
+            flow: flowKind,
+            action: actionName,
+            input: input ?? null,
+            model: options.model ?? null,
+            session: options.session ?? null,
+            seedSession: options.seedSession ?? null,
+            seedUser: options.seedUser ?? null,
+            seedOrg: options.seedOrg ?? null,
+          },
+          events: capturedEvents,
+          result: { ...runResult, exitCode },
+        });
+      } catch (err) {
+        process.stderr.write(
+          `Failed to write --capture file: ${err instanceof Error ? err.message : String(err)}\n`
+        );
+      }
+    }
+
+    process.exitCode = exitCode;
+
+    return runResult;
+  } finally {
+    await disposeConfig?.();
   }
-
-  process.exitCode = exitCode;
-
-  return runResult;
 }
 
 /**

@@ -66,6 +66,115 @@ function makeRegistry(options: {
   });
 }
 
+describe("concurrent resource writes", () => {
+  it("serializes per-resource writes so parallel patches to distinct fields don't clobber", async () => {
+    const state: Record<string, JsonObject> = {};
+    const registry = createScopeResourceRegistry({
+      scope: "session",
+      scopeId: "sess_1",
+      configs: {
+        spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
+      },
+      readResources: () => state,
+      readResourceContent: () => ({}),
+      // Mirror the real `createExecutionContext` persist: the in-request cache is
+      // written only AFTER the store await. Without per-resource serialization,
+      // concurrent read-modify-write patches each read the pre-write cache and
+      // the last writer clobbers the others' fields.
+      persistResourceKey: async (key, value) => {
+        await Promise.resolve();
+        state[key] = value;
+      },
+      deleteResourceKey: async (key) => { delete state[key]; },
+      persistResourceContentKey: async () => {},
+      deleteResourceContentKey: async () => {},
+    });
+
+    const ref = registry.get("spine");
+    await Promise.all([
+      ref.patchState({ a: 1 }),
+      ref.patchState({ b: 2 }),
+      ref.patchState({ c: 3 }),
+    ]);
+
+    expect(ref.state).toEqual({ a: 1, b: 2, c: 3 });
+  });
+
+  it("getOrPatchState fills distinct keys concurrently without losing fields", async () => {
+    const state: Record<string, JsonObject> = {};
+    const registry = createScopeResourceRegistry({
+      scope: "session",
+      scopeId: "sess_1",
+      configs: {
+        spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
+      },
+      readResources: () => state,
+      readResourceContent: () => ({}),
+      persistResourceKey: async (key, value) => {
+        await Promise.resolve();
+        state[key] = value;
+      },
+      deleteResourceKey: async (key) => { delete state[key]; },
+      persistResourceContentKey: async () => {},
+      deleteResourceContentKey: async () => {},
+    });
+
+    const ref = registry.get("spine");
+    const [x, y] = await Promise.all([
+      ref.getOrPatchState("x", async () => 10),
+      ref.getOrPatchState("y", async () => 20),
+    ]);
+
+    expect(x).toBe(10);
+    expect(y).toBe(20);
+    expect(ref.state).toEqual({ x: 10, y: 20 });
+  });
+
+  it("getOrPatchState coalesces concurrent misses on the same key to a single compute (single-flight)", async () => {
+    const state: Record<string, JsonObject> = {};
+    const registry = createScopeResourceRegistry({
+      scope: "session",
+      scopeId: "sess_1",
+      configs: {
+        spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
+      },
+      readResources: () => state,
+      readResourceContent: () => ({}),
+      persistResourceKey: async (key, value) => {
+        await Promise.resolve();
+        state[key] = value;
+      },
+      deleteResourceKey: async (key) => { delete state[key]; },
+      persistResourceContentKey: async () => {},
+      deleteResourceContentKey: async () => {},
+    });
+
+    const ref = registry.get("spine");
+    let computeCalls = 0;
+    const compute = async () => {
+      computeCalls += 1;
+      await Promise.resolve();
+      return 7;
+    };
+
+    const results = await Promise.all([
+      ref.getOrPatchState("v", compute),
+      ref.getOrPatchState("v", compute),
+      ref.getOrPatchState("v", compute),
+    ]);
+
+    // One upstream compute, shared by all three concurrent misses.
+    expect(results).toEqual([7, 7, 7]);
+    expect(computeCalls).toBe(1);
+    expect(ref.state).toEqual({ v: 7 });
+
+    // A later call reads the stored value as a hit — compute is not re-run.
+    const after = await ref.getOrPatchState("v", compute);
+    expect(after).toBe(7);
+    expect(computeCalls).toBe(1);
+  });
+});
+
 describe("normalizeStateDefault", () => {
   it("returns {} when no schema is provided", () => {
     expect(normalizeStateDefault(undefined)).toEqual({});
@@ -170,6 +279,62 @@ describe("resolveStringContentTemplates", () => {
   it("throws when a string contentTemplate path does not exist", () => {
     const config = makeResourceConfig({ contentTemplate: "/nonexistent/template.md" });
     expect(() => resolveStringContentTemplates({ doc: config })).toThrow(/Failed to load contentTemplate/);
+  });
+
+  it("resolves an anchored path relative to the declaring module, not cwd", () => {
+    // "./fixtures/..." does not exist relative to the test cwd (the package
+    // root) — only relative to this spec file. Module-relative must win.
+    const config = makeResourceConfig({
+      contentTemplate: { path: "./fixtures/anchored-template.md", importerUrl: import.meta.url },
+    });
+    resolveStringContentTemplates({ doc: config });
+    const template = config.contentTemplate as { name?: string; sections: { system: string } };
+    expect(template.name).toBe("anchored");
+    expect(template.sections.system).toContain("{{ state.role }}");
+  });
+
+  it("prefers the module-relative candidate when the file exists at both", () => {
+    // fixtures/precedence-template.md exists BOTH relative to this spec file
+    // (name: module-copy) and relative to the package root, the test cwd
+    // (name: cwd-copy). The module-relative candidate must win — this pins
+    // the candidate ordering, the headline contract of anchored paths.
+    const config = makeResourceConfig({
+      contentTemplate: { path: "./fixtures/precedence-template.md", importerUrl: import.meta.url },
+    });
+    resolveStringContentTemplates({ doc: config });
+    expect((config.contentTemplate as { name?: string }).name).toBe("module-copy");
+  });
+
+  it("falls back to cwd when the anchor is a bundler-rewritten URL", () => {
+    // Path exists relative to the package root (the test cwd) but the anchor
+    // is unusable — the cwd candidate must carry it.
+    const config = makeResourceConfig({
+      contentTemplate: {
+        path: "./test/context/fixtures/anchored-template.md",
+        importerUrl: "turbopack://[project]/flows/x.js",
+      },
+    });
+    resolveStringContentTemplates({ doc: config });
+    expect((config.contentTemplate as { name?: string }).name).toBe("anchored");
+  });
+
+  it("throws naming every candidate when an anchored path matches nothing", () => {
+    const config = makeResourceConfig({
+      contentTemplate: { path: "./does-not-exist.md", importerUrl: import.meta.url },
+    });
+    expect(() => resolveStringContentTemplates({ doc: config })).toThrow(
+      /Failed to resolve contentTemplate[\s\S]*Tried:/
+    );
+  });
+});
+
+describe("normalizeScopeResourceContent — anchored contentFile", () => {
+  it("loads an anchored contentFile relative to the declaring module", () => {
+    const config = makeResourceConfig({
+      contentFile: { path: "./fixtures/anchored-content.txt", importerUrl: import.meta.url },
+    });
+    const result = normalizeScopeResourceContent({ doc: config }, undefined);
+    expect(result.doc).toBe("anchored file content\n");
   });
 });
 

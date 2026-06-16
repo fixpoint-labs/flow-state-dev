@@ -144,6 +144,99 @@ describe("InMemorySuspensionStore", () => {
 
     expect(await store.list()).toHaveLength(1);
   });
+
+  describe("retention filters (FIX-141)", () => {
+    it("list({ createdBefore }) returns only records created before the cutoff", async () => {
+      const store = createInMemorySuspensionStore();
+      await store.set(makeRecord({ suspensionId: "old", requestId: "r1", createdAt: 100 }));
+      await store.set(makeRecord({ suspensionId: "new", requestId: "r2", createdAt: 300 }));
+
+      const results = await store.list({ createdBefore: 200 });
+      expect(results.map((r) => r.suspensionId)).toEqual(["old"]);
+    });
+
+    it("list({ resolvedBefore }) matches only records with resolvedAt < cutoff, never unresolved", async () => {
+      const store = createInMemorySuspensionStore();
+      await store.set(makeRecord({ suspensionId: "pending", requestId: "r1", status: "pending" }));
+      await store.set(
+        makeRecord({ suspensionId: "early", requestId: "r2", status: "approved", resolvedAt: 100 })
+      );
+      await store.set(
+        makeRecord({ suspensionId: "late", requestId: "r3", status: "approved", resolvedAt: 300 })
+      );
+
+      const results = await store.list({ resolvedBefore: 200 });
+      expect(results.map((r) => r.suspensionId)).toEqual(["early"]);
+    });
+
+    it("list combines resolvedBefore with status", async () => {
+      const store = createInMemorySuspensionStore();
+      await store.set(
+        makeRecord({ suspensionId: "rejected", requestId: "r1", status: "rejected", resolvedAt: 100 })
+      );
+      await store.set(
+        makeRecord({ suspensionId: "approved", requestId: "r2", status: "approved", resolvedAt: 100 })
+      );
+
+      const results = await store.list({ resolvedBefore: 200, status: "rejected" });
+      expect(results.map((r) => r.suspensionId)).toEqual(["rejected"]);
+    });
+  });
+
+  describe("pruneTerminalBefore (FIX-141)", () => {
+    async function seed() {
+      const store = createInMemorySuspensionStore();
+      // terminal, resolved before cutoff — eligible
+      await store.set(
+        makeRecord({ suspensionId: "t1", requestId: "r1", status: "approved", resolvedAt: 100 })
+      );
+      await store.set(
+        makeRecord({ suspensionId: "t2", requestId: "r2", status: "rejected", resolvedAt: 150 })
+      );
+      // terminal but resolved AFTER cutoff — not eligible
+      await store.set(
+        makeRecord({ suspensionId: "t3", requestId: "r3", status: "expired", resolvedAt: 500 })
+      );
+      // pending — never eligible even with an (impossible) early resolvedAt
+      await store.set(
+        makeRecord({ suspensionId: "p1", requestId: "r4", status: "pending", resolvedAt: 50 })
+      );
+      return store;
+    }
+
+    it("deletes only terminal records resolved before the cutoff and returns the count", async () => {
+      const store = await seed();
+
+      const deleted = await store.pruneTerminalBefore(200, 100);
+
+      expect(deleted).toBe(2);
+      expect(await store.get("r1", "t1")).toBeNull();
+      expect(await store.get("r2", "t2")).toBeNull();
+      // resolved after cutoff survives
+      expect(await store.get("r3", "t3")).not.toBeNull();
+      // pending survives
+      expect(await store.get("r4", "p1")).not.toBeNull();
+    });
+
+    it("respects limit and returns the number actually deleted", async () => {
+      const store = await seed();
+
+      const deleted = await store.pruneTerminalBefore(200, 1);
+
+      expect(deleted).toBe(1);
+      // one of the two eligible records remains
+      const remaining = await store.list({ status: "approved" });
+      const stillRejected = await store.list({ status: "rejected" });
+      expect(remaining.length + stillRejected.length).toBe(1);
+    });
+
+    it("returns 0 when nothing matches", async () => {
+      const store = createInMemorySuspensionStore();
+      await store.set(makeRecord({ status: "pending" }));
+
+      expect(await store.pruneTerminalBefore(Date.now() + 1000, 100)).toBe(0);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

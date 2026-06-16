@@ -109,12 +109,13 @@ export function createSQLiteRequestStore(
 
   const base = createSQLiteRecordStore<RequestRecord, RequestListOptions>(db, {
     tableName: "requests",
-    columns: ["flow_kind", "user_id", "session_id", "org_id", "status"],
+    columns: ["flow_kind", "user_id", "session_id", "org_id", "tenant_id", "status"],
     toRow: (record) => [
       record.flowKind,
       record.userId,
       record.sessionId ?? null,
       record.orgId ?? null,
+      record.tenantId ?? null,
       record.status
     ],
     toWhere: (options) => {
@@ -132,6 +133,13 @@ export function createSQLiteRequestStore(
       if (options?.userId !== undefined) {
         parts.push("user_id = ?");
         params.push(options.userId);
+      }
+      // Tenant filter (FIX-682): present (incl. explicit undefined) → exact
+      // match via NULL-safe `IS`; absent → no filter. This is what isolates
+      // cross-turn history between two tenants sharing a bare session id.
+      if (options !== undefined && "tenantId" in options) {
+        parts.push("tenant_id IS ?");
+        params.push(options.tenantId ?? null);
       }
       if (options?.status !== undefined) {
         parts.push("status = ?");

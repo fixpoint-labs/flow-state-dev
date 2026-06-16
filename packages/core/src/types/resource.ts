@@ -143,6 +143,21 @@ export type CollectionClientConfig<TState extends JsonObject = JsonObject> = {
   live?: boolean;
 };
 
+/**
+ * A file path carrying the declaring module's anchor. Pass `import.meta.url`
+ * as `importerUrl`; the server resolves a relative `path` against the
+ * module's directory first, falling back to the working directory when the
+ * anchor is unusable (e.g. rewritten by a bundler) or the module-relative
+ * file doesn't exist. Plain strings stay supported and resolve from the
+ * working directory only. Isomorphic-safe: both fields are plain strings.
+ */
+export type AnchoredPath = {
+  /** Relative or absolute file path. */
+  path: string;
+  /** The declaring module's `import.meta.url`, anchoring a relative `path`. */
+  importerUrl: string;
+};
+
 export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   /**
    * Logical reference name. Used as the storage namespace identifier
@@ -172,18 +187,25 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   stateSchema: ZodTypeAny;
   default?: JsonValue;
   content?: string;
-  /** Path to a file on disk to load as the content body template. Mutually exclusive with `content`. */
-  contentFile?: string;
+  /**
+   * Path to a file on disk to load as the content body template. A bare
+   * string resolves from the working directory; an {@link AnchoredPath}
+   * resolves relative to the declaring module first (pass `import.meta.url`).
+   * Mutually exclusive with `content`.
+   */
+  contentFile?: string | AnchoredPath;
   render?: (content: string, state: JsonObject) => string | Promise<string>;
   /**
-   * A role-tagged Markdown template for this resource's content. Accepts
-   * either a pre-parsed `ResourceTemplate` (from `parseResourceTemplate` /
-   * `loadResourceTemplate`) or a file path string that the server resolves
-   * at startup. The resource's content is rendered against its `state` via
-   * deterministic LiquidJS. Mutually exclusive with `content` /
+   * A role-tagged Markdown template for this resource's content. Accepts a
+   * pre-parsed `ResourceTemplate` (from `parseResourceTemplate` /
+   * `loadResourceTemplate`), or a file path that the server resolves at
+   * startup — a bare string resolves from the working directory; an
+   * {@link AnchoredPath} resolves relative to the declaring module first
+   * (pass `import.meta.url`). The resource's content is rendered against its
+   * `state` via deterministic LiquidJS. Mutually exclusive with `content` /
    * `contentFile` / `contentTemplateRef`.
    */
-  contentTemplate?: ResourceTemplate | string;
+  contentTemplate?: ResourceTemplate | string | AnchoredPath;
   /**
    * Path of another resource whose RAW content is a role-tagged Markdown
    * template. Resolved at read-time: editing the template resource or this
@@ -284,6 +306,26 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
   patchState(updates: Partial<TState>): Promise<void>;
   setState(nextState: TState): Promise<void>;
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>;
+  /**
+   * Get-or-compute over this resource's state. Reads `state[key]`; if it is
+   * absent (`undefined`), runs `compute`, patches the returned value under
+   * `key`, and returns it. The callback runs only on a miss, so an expensive
+   * fetch/compute happens at most once per stored key for this resource's
+   * lifetime — and downstream readers get the same stored copy without
+   * re-deriving it. A value already present (including `null`) is a hit and is
+   * returned without invoking `compute`; a `compute` that resolves to
+   * `undefined` stores nothing and the next call recomputes.
+   *
+   * No time-based freshness: this is a per-resource (e.g. per-session) data
+   * spine, not a cache. The runtime ref single-flights concurrent misses on the
+   * same key within a request — they share one `compute` call rather than each
+   * firing its own — so a fanned-out read of the same key issues one upstream
+   * fetch. (Distinct keys still compute in parallel; they never block each other.)
+   */
+  getOrPatchState<K extends keyof TState & string>(
+    key: K,
+    compute: () => TState[K] | Promise<TState[K]>
+  ): Promise<TState[K]>;
   readContent(): Promise<string | null>;
   readContentRaw(): Promise<string | null>;
   writeContent(content: string): Promise<void>;
@@ -429,6 +471,33 @@ export function defineResource<
       AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>,
       ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
     >;
+}
+
+/**
+ * Shared implementation of {@link ResourceRef.getOrPatchState}. Reads the key
+ * off the ref's live `state` getter; on a miss runs `compute` and persists the
+ * value through the ref's own `patchState`, so the normal change / reactive /
+ * client-projection seams fire exactly as a direct patch would. Factored out so
+ * every `ResourceRef` builder wires identical get-or-compute semantics instead
+ * of each re-deriving them. `undefined` from `compute` is left unstored.
+ */
+export async function applyGetOrPatchState<
+  TState extends JsonObject,
+  K extends keyof TState & string
+>(
+  ref: Pick<ResourceRef<TState>, "state" | "patchState">,
+  key: K,
+  compute: () => TState[K] | Promise<TState[K]>
+): Promise<TState[K]> {
+  const existing = ref.state[key];
+  if (existing !== undefined) return existing as TState[K];
+  const value = await compute();
+  if (value !== undefined) {
+    const updates: Partial<TState> = {};
+    updates[key] = value;
+    await ref.patchState(updates);
+  }
+  return value;
 }
 
 function toJsonObject(value: Record<string, unknown>): JsonObject {

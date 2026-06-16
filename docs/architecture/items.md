@@ -177,6 +177,7 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 | `state_change` | Auto on state mutations | ✓ | — | Structural | Transient in prod / persistent in dev |
 | `resource_change` | Auto on resource mutations | ✓ | — | Structural | Transient by default |
 | `error` | Runtime (terminal failure) | ✓ | — | Structural | Persistent |
+| `suspension` | `ctx.suspend()` (durable actions, on suspend/resume) | ✓ | ✓ | Structural | Persistent |
 | `block_trace` | Every block (auto, lifecycle: in_progress → updates → terminal) | — | — | Trace | Persistent |
 | `router_decision` | Router (auto, on selection) | — | — | Trace | Persistent |
 | `state_snapshot` | Sequencer (at step boundaries) | — | — | Trace | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |

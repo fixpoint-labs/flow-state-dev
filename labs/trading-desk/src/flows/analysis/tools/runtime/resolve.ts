@@ -36,3 +36,26 @@ export async function resolveToolPayload<T extends ToolName>(
   if (mode === "record") await recordFixture(tool, args, payload);
   return payload;
 }
+
+/**
+ * Record the consumer-visible payload to the corpus when the run is in record
+ * mode, then return it unchanged (a pass-through in fixture/live mode).
+ *
+ * The subject-spine tools (FIX-758) cache through `writeSubjectSpine` — the
+ * session data spine for the subject, the process cache for everyone else —
+ * rather than the bare `getOrFetch` that `resolveToolPayload` owns, so they
+ * can't funnel through it. They keep the fixture branch inside their own `load`
+ * closure (so fixture payloads still populate the spine), then call this on the
+ * payload `writeSubjectSpine` returned to get the same record-mode capture. A
+ * record-mode spine hit still records (idempotent), and a recorder failure
+ * propagates — matching `resolveToolPayload`.
+ */
+export async function recordIfRecording<T extends ToolName>(
+  tool: T,
+  args: ToolInput<T>,
+  ctx: { session: { state: Record<string, unknown> } },
+  payload: ToolOutput<T>,
+): Promise<ToolOutput<T>> {
+  if (pickMode(ctx) === "record") await recordFixture(tool, args, payload);
+  return payload;
+}

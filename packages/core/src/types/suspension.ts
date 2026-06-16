@@ -56,6 +56,51 @@ export interface SuspensionRecord {
   resumeData?: unknown;
 }
 
+/**
+ * Suspension statuses that are past the pending phase. A suspension in any of
+ * these has been resolved (or aged out) and carries a `resolvedAt`, making it
+ * eligible for retention pruning. `pending` is the sole non-terminal status.
+ */
+export const TERMINAL_SUSPENSION_STATUSES: readonly SuspensionStatus[] = [
+  "approved",
+  "rejected",
+  "timed_out",
+  "expired"
+];
+
+/** True when `status` is a resolved/aged-out (non-pending) suspension status. */
+export function isTerminalSuspensionStatus(status: SuspensionStatus): boolean {
+  return TERMINAL_SUSPENSION_STATUSES.includes(status);
+}
+
+/**
+ * Apply a `SuspensionFilter` to a single record. Shared by every adapter that
+ * filters suspensions in JS (memory, filesystem, the SQLite list path) so the
+ * `flowKind`/`userId`/`sessionId`/`status`/`createdBefore`/`resolvedBefore`
+ * semantics stay identical across stores. `limit` is a result-set bound, not a
+ * per-record predicate, so it is NOT applied here — callers slice after sorting.
+ */
+export function matchesSuspensionFilter(
+  record: SuspensionRecord,
+  filter?: SuspensionFilter
+): boolean {
+  if (filter === undefined) return true;
+  if (filter.flowKind !== undefined && record.flowKind !== filter.flowKind) return false;
+  if (filter.userId !== undefined && record.userId !== filter.userId) return false;
+  if (filter.sessionId !== undefined && record.sessionId !== filter.sessionId) return false;
+  if (filter.status !== undefined && record.status !== filter.status) return false;
+  if (filter.createdBefore !== undefined && !(record.createdAt < filter.createdBefore)) {
+    return false;
+  }
+  if (
+    filter.resolvedBefore !== undefined &&
+    !(record.resolvedAt !== undefined && record.resolvedAt < filter.resolvedBefore)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export interface ResumeContext {
   suspensionId: string;
   action: "approve" | "reject";
@@ -69,4 +114,11 @@ export interface SuspensionFilter {
   sessionId?: string;
   status?: SuspensionStatus;
   limit?: number;
+  /** Match records whose `createdAt` is strictly less than this timestamp (ms). */
+  createdBefore?: number;
+  /**
+   * Match records that have a non-null `resolvedAt` strictly less than this
+   * timestamp (ms). Records with no `resolvedAt` never match.
+   */
+  resolvedBefore?: number;
 }

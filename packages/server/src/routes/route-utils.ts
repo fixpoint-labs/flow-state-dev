@@ -11,7 +11,8 @@ import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-st
 import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
-import type { RequestRecord, SessionRecord } from "../stores/types";
+import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
+import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { sortItemsChronologically } from "../utils/sort";
@@ -35,6 +36,57 @@ export function jsonResponse(status: number, body: unknown): Response {
 
 export function emptyResponse(status: number): Response {
   return new Response(null, { status });
+}
+
+/** Default HTTP header carrying the tenant id (FIX-406 6D). */
+export const DEFAULT_TENANT_ID_HEADER = "x-tenant-id";
+
+/**
+ * Read the tenant id from the configurable HTTP header (FIX-682). Returns
+ * `undefined` when the header is absent or empty — an empty header is treated
+ * as single-tenant (bare keys), matching `resolveSessionStorageKey`. The
+ * canonical extraction point so action dispatch and every session-touching
+ * route namespace consistently.
+ *
+ * Rejects a tenant id containing `:` (400). The session storage key is
+ * `${tenantId}:${sessionId}` and session ids legitimately contain `:`, so a
+ * tenant id with a `:` would make the key ambiguous (tenant `a` + session
+ * `b:c` collides with tenant `a:b` + session `c`). Tenant ids are
+ * deployment-controlled, so this is a cheap config guard that removes the
+ * ambiguity class outright — the binding check still prevents any data leak.
+ */
+export function extractTenantId(
+  request: Request,
+  tenantIdHeader?: string
+): string | undefined {
+  const value = request.headers.get(tenantIdHeader ?? DEFAULT_TENANT_ID_HEADER);
+  if (value === null || value.length === 0) return undefined;
+  if (value.includes(":")) {
+    throw new ValidationError(
+      `Tenant id must not contain ":" (received "${value}"). The session storage key reserves ":" as a separator.`
+    );
+  }
+  return value;
+}
+
+/**
+ * Load a session for the calling tenant, returning `undefined` unless the
+ * stored record's tenant matches the request's (FIX-682). The
+ * `${tenantId}:${sessionId}` storage key is ambiguous when the caller controls
+ * `sessionId` — omitting the header while passing `sessionId =
+ * "${otherTenant}:${id}"` collides on another tenant's key. Verifying the
+ * stored `tenantId` closes that bypass; callers treat `undefined` as
+ * not-found, so a cross-tenant probe gets a 404, never another tenant's data.
+ */
+export async function loadTenantSession(
+  store: SessionStore,
+  sessionId: string,
+  tenantId: string | undefined
+): Promise<SessionRecord | undefined> {
+  const record = await store.get(resolveSessionStorageKey(sessionId, tenantId));
+  if (record === undefined) return undefined;
+  if (!tenantMatches(record.tenantId, tenantId)) return undefined;
+  return record;
 }
 
 /**

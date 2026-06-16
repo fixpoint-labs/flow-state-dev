@@ -12,20 +12,27 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../runtime/cache";
-import { resolveToolPayload } from "../runtime/resolve";
+import { loadFixture } from "../runtime/fixtures";
 import { fetchYahooChart } from "../providers/yahoo";
 import { fetchFinnhubCandles, hasFinnhubKey } from "../providers/finnhub";
 import { emptyPayload } from "../empty-payloads";
 import { computeIndicators, type Bar } from "../indicators-math";
-import { toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { technicalDataResource } from "../../technical-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { recordIfRecording } from "../runtime/resolve";
 
 export const compute_indicators = handler({
   name: "compute_indicators",
   description: "RSI, MACD, ATR, SMA50/200, and trend label for a ticker.",
   inputSchema: toolInputSchemas.compute_indicators,
   outputSchema: toolOutputSchemas.compute_indicators,
+  resources: { technicalData: technicalDataResource },
+  // Write-through to the session technical spine (see get_fundamentals). The
+  // internal 1-year price_history fetch stays on the args-keyed process cache.
   execute: async (input, ctx) => {
-    return resolveToolPayload("compute_indicators", input, ctx, async () => {
+    const loadIndicators = async () => {
+      if (pickMode(ctx) === "fixture") return loadFixture("compute_indicators", input);
       const priceInput = { ticker: input.ticker, date: input.date, range: "1y" as const };
       const prices = await getOrFetch("get_price_history", priceInput, async () => {
         if (hasFinnhubKey()) {
@@ -41,6 +48,15 @@ export const compute_indicators = handler({
         asOf: input.date,
         ...computed,
       };
+    };
+    const payload = await writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.technicalData,
+      field: "indicators",
+      tool: "compute_indicators",
+      input,
+      load: loadIndicators,
     });
+    return recordIfRecording("compute_indicators", input, ctx, payload);
   },
 });

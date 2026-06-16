@@ -34,7 +34,7 @@ Config options:
 
 - **stateSchema** — Zod schema for structured metadata
 - **content** — initial content body (a string: markdown, code, prose, anything)
-- **contentFile** — load initial content from a file path (mutually exclusive with `content`)
+- **contentFile** — load initial content from a file path (mutually exclusive with `content`). A bare string resolves from the working directory; pass `{ path, importerUrl: import.meta.url }` to resolve relative to the declaring module instead
 - **render** — template renderer: `(content, state) => string` for interpolating state into content
 - **writable** — whether blocks can modify the resource
 - **llmReadable**, **llmWritable** — control whether generators can read/write the content
@@ -154,6 +154,19 @@ const planManager = handler({
 ```
 
 The block brings its own resource requirements. No need to repeat them in the flow definition.
+
+### Fetch once, share by name: `getOrPatchState`
+
+When several blocks in a run need the same fetched or computed value, write it into a resource the first time and let everyone else read that copy. `getOrPatchState(key, compute)` does exactly that: it returns `state[key]` if it's already there, and otherwise runs `compute`, stores the result under `key`, and returns it. The callback runs only on a miss, so the fetch happens once.
+
+```ts
+const fundamentals = await ctx.resources.financials.getOrPatchState(
+  "fundamentals",
+  () => fetchFundamentals(ticker),
+);
+```
+
+This is a per-resource data spine, not a cache — there's no time-based expiry. A session-scoped resource keeps one stable copy of the data a run used, addressable by name, that any later block reads without re-fetching. A stored `null` counts as present (the callback won't re-run); a `compute` that returns `undefined` stores nothing. Concurrent misses on the same key within a request are single-flighted — they share one `compute` call, so fanning the same key out across parallel blocks issues a single upstream fetch. Distinct keys still compute in parallel and never block each other.
 
 ## Automatic resource collection
 

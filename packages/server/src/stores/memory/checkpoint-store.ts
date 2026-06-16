@@ -26,6 +26,13 @@ export class InMemoryCheckpointStore implements CheckpointStore {
   async delete(requestId: string, blockInstanceId: string): Promise<void> {
     this.data.delete(this.key(requestId, blockInstanceId));
   }
+
+  async deleteForRequest(requestId: string): Promise<void> {
+    const prefix = `${requestId}:`;
+    for (const key of this.data.keys()) {
+      if (key.startsWith(prefix)) this.data.delete(key);
+    }
+  }
 }
 
 export function createInMemoryCheckpointStore(): CheckpointStore {

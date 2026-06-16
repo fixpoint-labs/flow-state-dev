@@ -25,6 +25,12 @@ import { ALL_MEMO_KEYS, PHASE_1_MEMO_KEYS } from "../registry";
 import { analyzeInputSchema } from "../flow-schema";
 import { resolveTicker } from "../lib/ticker-resolver";
 import { memoResources } from "../resources";
+import { financialsDataResource } from "../financials-data-resource";
+import { quantDataResource } from "../quant-data-resource";
+import { technicalDataResource } from "../technical-data-resource";
+import { profileDataResource } from "../profile-data-resource";
+import { priceHistoryResource } from "../price-history-resource";
+import { valuationSpineResource } from "../valuation-spine-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
@@ -54,6 +60,12 @@ export const seedSession = handler({
   resources: {
     accounts: accountsCollection,
     portfolioQuotes: portfolioQuotesResource,
+    financialsData: financialsDataResource,
+    quantData: quantDataResource,
+    technicalData: technicalDataResource,
+    profileData: profileDataResource,
+    priceHistory: priceHistoryResource,
+    valuationSpine: valuationSpineResource,
     ...memoResources,
   },
   execute: async (input, ctx) => {
@@ -64,6 +76,29 @@ export const seedSession = handler({
     for (const { collectionKey } of Object.values(ALL_MEMO_KEYS)) {
       await ctx.resources.memos.delete(collectionKey);
     }
+
+    // Reset the financials data spine so a re-run on the same session refetches
+    // rather than reusing a prior run's payloads. `getOrPatchState` treats a
+    // present field as a hit, so without this clear the Phase 1 financials tools
+    // would skip their fetch on every re-run (the old process cache aged out
+    // after its TTL; the spine persists for the session's life). Resetting to
+    // `{}` makes every field absent — a miss the tools recompute. Idempotent on
+    // a first run (state is already `{}`, so the write is skipped). The quant /
+    // technical / profile spines are reset for the same reason.
+    await ctx.resources.financialsData.setState({});
+    await ctx.resources.quantData.setState({});
+    await ctx.resources.technicalData.setState({});
+    await ctx.resources.profileData.setState({});
+
+    // Reset the DERIVED surfaces too, so a re-run that fails to recompute them
+    // (e.g. compute-spine returns early on missing financials, or the price tap
+    // hits a spine miss and returns) doesn't leave the prior run's valuation
+    // envelope or price chart on screen. compute-spine / store-price-history
+    // re-patch the full object on a successful run. (A reset nullable single
+    // persists as {}; the Summary reads guard on a required field, so it degrades
+    // exactly as for an unwritten resource.)
+    await ctx.resources.priceHistory.setState(null);
+    await ctx.resources.valuationSpine.setState(null);
 
     // Freeze the per-run thesis at seed time so editing the form mid-run
     // can't affect the session that's already analyzing. A non-null

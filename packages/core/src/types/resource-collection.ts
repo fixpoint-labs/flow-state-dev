@@ -1,7 +1,7 @@
 import type { ZodTypeAny } from "zod";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { ScopeType } from "./scope";
-import type { ResourceRef, CollectionClientConfig, StateOf } from "./resource";
+import type { AnchoredPath, ResourceRef, CollectionClientConfig, StateOf } from "./resource";
 import type { ResourceTemplate } from "../resource-template/resource-template";
 import type { EdgeSlotConfig } from "../graph";
 import type { ProjectedClient } from "../helpers/client-projection";
@@ -71,8 +71,8 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    */
   prefetchMode?: "eager" | "lazy";
 
-  /** A role-tagged Markdown template applied to each instance. Accepts a parsed `ResourceTemplate` or a file path resolved at server startup. */
-  contentTemplate?: ResourceTemplate | string;
+  /** A role-tagged Markdown template applied to each instance. Accepts a parsed `ResourceTemplate` or a file path resolved at server startup — bare string from the working directory, `AnchoredPath` relative to the declaring module first. */
+  contentTemplate?: ResourceTemplate | string | AnchoredPath;
   /** Path of another resource whose raw content is a template for each instance. */
   contentTemplateRef?: string;
 

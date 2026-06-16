@@ -125,6 +125,45 @@ describe("project → org schema migration (postgres)", () => {
     await pglite.close();
   });
 
+  it("FIX-682: adds tenant_id to existing sessions/requests/active_requests", async () => {
+    const pglite = new PGlite();
+    await pglite.exec(`
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, user_id TEXT NOT NULL,
+        org_id TEXT, version INTEGER NOT NULL,
+        created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, data JSONB NOT NULL
+      );
+      CREATE TABLE requests (
+        id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, user_id TEXT NOT NULL,
+        session_id TEXT, org_id TEXT, status TEXT NOT NULL,
+        version INTEGER NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
+        data JSONB NOT NULL
+      );
+      CREATE TABLE active_requests (
+        request_id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, action_name TEXT NOT NULL,
+        session_id TEXT, user_id TEXT NOT NULL, org_id TEXT, source TEXT NOT NULL DEFAULT 'http',
+        input TEXT, metadata TEXT,
+        started_at BIGINT NOT NULL, last_heartbeat_at BIGINT NOT NULL
+      );
+    `);
+    await pglite.query(
+      `INSERT INTO sessions (id, flow_kind, user_id, version, created_at, updated_at, data) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      ["sess_legacy", "demo", "alice", 0, 1, 1, JSON.stringify({ state: {} })]
+    );
+
+    await initializeSchema(pgliteExecutor(pglite));
+
+    expect(await columnExists(pglite, "sessions", "tenant_id")).toBe(true);
+    expect(await columnExists(pglite, "requests", "tenant_id")).toBe(true);
+    expect(await columnExists(pglite, "active_requests", "tenant_id")).toBe(true);
+    // Existing rows read back as no-tenant (NULL).
+    const row = await pglite.query<{ tenant_id: string | null }>(
+      `SELECT tenant_id FROM sessions WHERE id = 'sess_legacy'`
+    );
+    expect(row.rows[0]?.tenant_id).toBeNull();
+    await pglite.close();
+  });
+
   it("is idempotent — second call is a no-op", async () => {
     const pglite = new PGlite();
     await pglite.exec(`
