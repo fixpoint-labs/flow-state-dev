@@ -51,15 +51,6 @@ export type {
 } from "./decomposer";
 
 export {
-  composer,
-  composerOutputSchema
-} from "./composer";
-
-export type {
-  ComposerConfig
-} from "./composer";
-
-export {
   analyzer,
   analyzerFindingSchema,
   analyzerOutputSchema
@@ -68,15 +59,6 @@ export {
 export type {
   AnalyzerConfig
 } from "./analyzer";
-
-export {
-  synthesizer,
-  synthesizerOutputSchema
-} from "./synthesizer";
-
-export type {
-  SynthesizerConfig
-} from "./synthesizer";
 
 export {
   intentClassifier
