@@ -186,11 +186,13 @@ function createGoalContextEnricher<TState>(
     execute: async (planOutput, ctx) => {
       const goal = (ctx.sequencer?.state as { goal?: string } | undefined)?.goal ?? "";
       return {
-        tasks: planOutput.tasks.map((t) =>
-          typeof t.context === "string" && t.context.length > 0
-            ? t
-            : { ...t, context: goal },
-        ),
+        tasks: planOutput.tasks.map((t) => {
+          const hasContext = typeof t.context === "string" && t.context.length > 0;
+          // Only fill from a non-empty goal — mirrors the applyReplan guard so
+          // a gap-task never gets a literal empty-string `context` key.
+          if (hasContext || goal.length === 0) return t;
+          return { ...t, context: goal };
+        }),
       };
     },
   });
