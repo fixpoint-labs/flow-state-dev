@@ -366,12 +366,41 @@ describe("createInboundTransportHost", () => {
       expect(storesAtDispatch).toEqual({ active: true, status: "in_progress" });
     });
 
+    it("rejects `accepted` only after the dispatcher accepts the job", async () => {
+      // `accepted` must cover the enqueue, not just the store writes — the
+      // response path acks the 202 on it, so the enqueue has to be inside.
+      let dispatchCalled = false;
+      const dispatcher: FlowDispatcher = {
+        dispatch: vi.fn(async (env: { requestId: string }) => {
+          dispatchCalled = true;
+          return {
+            requestId: env.requestId,
+            finished: new Promise<never>(() => {}),
+            abort: () => {}
+          };
+        }),
+        close: vi.fn(async () => {})
+      };
+      const { host } = buildHost({ dispatcher });
+
+      const handle = host.dispatch({
+        source: "http",
+        flowKind: "host-test",
+        action: "run",
+        input: { value: "x" },
+        sessionId: "s_acc",
+        principal: { userId: "u_acc" }
+      });
+
+      await handle.accepted;
+      expect(dispatchCalled).toBe(true);
+    });
+
     it("terminates the in_progress record when the enqueue fails, leaving no orphan", async () => {
-      // Materialization succeeds (record + entry written), then the dispatcher
-      // hand-off rejects. The record must not linger in_progress: the dispatch
-      // teardown deregisters the activeRequests entry, so without cleanup the
-      // stale-request sweeper would have nothing to reap and the record would
-      // stay in_progress forever.
+      // The writes succeed, then the dispatcher hand-off rejects. `accepted`
+      // covers the enqueue, so it rejects — and the record must not linger
+      // in_progress: the dispatch teardown deregisters the activeRequests entry,
+      // so without cleanup the stale-request sweeper would have nothing to reap.
       const dispatcher: FlowDispatcher = {
         dispatch: vi.fn(async () => {
           throw new Error("enqueue failed");
@@ -389,9 +418,7 @@ describe("createInboundTransportHost", () => {
         principal: { userId: "u_fail" }
       });
 
-      await handle.materialized;
-      expect((await stores.request.get(handle.requestId))?.status).toBe("in_progress");
-
+      await expect(handle.accepted).rejects.toThrow("enqueue failed");
       await expect(handle.finished).rejects.toThrow("enqueue failed");
 
       expect((await stores.request.get(handle.requestId))?.status).toBe("failed");

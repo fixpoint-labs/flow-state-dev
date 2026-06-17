@@ -172,14 +172,14 @@ export async function handleExecuteAction(
     throw error;
   }
 
-  // For external dispatch, hold the ack until the enqueue-time store writes
-  // (activeRequests + the in_progress record) settle, so the request is
-  // discoverable by the time the client opens GET .../stream and a store-write
-  // failure becomes a failed POST rather than an ack for a request that never
-  // runs (FIX-828). Undefined and a no-op for in-process dispatch.
-  if (handle.materialized !== undefined) {
+  // For external dispatch, hold the ack until the request is accepted: writes
+  // committed AND the dispatcher accepted the job. So a 202 means "discoverable
+  // and enqueued", and a store-write or enqueue failure becomes a failed POST
+  // rather than an ack for a request that never runs (FIX-828). Undefined and a
+  // no-op for in-process dispatch.
+  if (handle.accepted !== undefined) {
     try {
-      await handle.materialized;
+      await handle.accepted;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return jsonResponse(500, { error: "DispatchFailed", message });

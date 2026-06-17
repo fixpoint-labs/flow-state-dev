@@ -110,15 +110,17 @@ export interface DispatchHandle {
   /** Resolves when the action completes (success, failure, or abort). */
   readonly finished: Promise<ExecutionResult>;
   /**
-   * Resolves once the enqueue-time store writes (`activeRequests` entry + the
-   * `in_progress` record) have committed, for external dispatchers. Adapters
+   * Resolves once an externally-dispatched request has been *accepted*: the
+   * enqueue-time store writes (`activeRequests` entry + the `in_progress`
+   * record) have committed AND the dispatcher has accepted the job. Adapters
    * that ack a request before the client opens `GET …/stream` (the `202` path)
-   * should await this so the request is discoverable by attach time, and so a
-   * store-write failure surfaces as a failed dispatch rather than an ack for a
-   * request that never becomes discoverable. `undefined` for in-process
-   * dispatch, where the record is written during execution. (FIX-828)
+   * await this, so the ack means "discoverable and enqueued" — a store-write or
+   * an enqueue failure rejects it (and is surfaced as a failed POST / reverted
+   * resume) instead of acking a request that never runs. It does not wait for
+   * execution to finish. `undefined` for in-process dispatch, where the record
+   * is written during execution. (FIX-828)
    */
-  readonly materialized?: Promise<void>;
+  readonly accepted?: Promise<void>;
 }
 
 /**

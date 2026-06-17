@@ -143,11 +143,13 @@ export async function handleResumeSuspension(
       }
     });
 
-    // Hold the ack until enqueue-time writes settle so the resumed request is
-    // discoverable before the client attaches (external dispatch only; no-op
-    // for in-process). A failure reverts the suspension via the catch below.
-    if (handle.materialized !== undefined) {
-      await handle.materialized;
+    // Hold the ack until the resumed request is accepted: writes committed AND
+    // the dispatcher accepted the job (external dispatch only; no-op for
+    // in-process). This keeps the enqueue inside the try, so an enqueue failure
+    // reverts the suspension to pending via the catch below instead of leaving
+    // it resolved with no worker job.
+    if (handle.accepted !== undefined) {
+      await handle.accepted;
     }
 
     const accept = request.headers.get("accept") ?? "";

@@ -168,9 +168,10 @@ export function createInboundTransportHost(
     // (carries non-serializable context); external dispatchers use the
     // generic dispatch interface.
     let finished: Promise<ExecutionResult>;
-    // Set for external dispatch only: resolves once the enqueue-time store
-    // writes commit (see the external branch). Left undefined for in-process.
-    let materialized: Promise<void> | undefined;
+    // Set for external dispatch only: resolves once the request is accepted —
+    // enqueue-time store writes committed AND the dispatcher accepted the job
+    // (see the external branch). Left undefined for in-process.
+    let accepted: Promise<void> | undefined;
     if ("dispatchLocal" in effectiveDispatcher) {
       const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
         dispatchEnvelope,
@@ -204,11 +205,15 @@ export function createInboundTransportHost(
       // staleness threshold (default 30s). That false-positive window is the
       // accepted tradeoff of enqueue-time registration.
       const ts = Date.now();
-      // Exposed on the handle so the response path can hold the 202 until the
-      // request is discoverable (and so a store-write failure fails the POST,
-      // per the dispatch error contract). Both writes are fired now; the
-      // enqueue is gated on them.
-      materialized = Promise.all([
+      // `acceptance` resolves once the request is accepted: the enqueue-time
+      // writes commit AND the dispatcher accepts the job. The response path
+      // awaits the exposed `accepted` view before acking, so the 202 means
+      // "discoverable and enqueued" — not merely "record written". Crucially the
+      // enqueue (`effectiveDispatcher.dispatch`) is inside this promise, so an
+      // enqueue failure rejects the ack (failing the POST / reverting the
+      // resume) rather than landing in the detached `finished` chain after a 202
+      // already went out.
+      const acceptance = Promise.all([
         stores.activeRequests.register({
           requestId,
           flowKind: dispatchEnvelope.flowKind,
@@ -228,24 +233,22 @@ export function createInboundTransportHost(
           createInitialRequestRecord(dispatchEnvelope, ts),
           "any"
         )
-      ]).then(() => undefined);
-
-      finished = materialized
+      ])
         .then(() => effectiveDispatcher.dispatch(dispatchEnvelope))
-        .then(
-          (handle) => handle.finished,
-          async (error: unknown) => {
-            // Materialization or the enqueue failed: the job is not running and
-            // never will. Terminate the in_progress record we may have written
-            // — `Promise.all` can reject after one write already landed, and a
-            // failed enqueue leaves a fully-written record — so it doesn't
-            // outlive the job. The `finally` below only deregisters the
-            // activeRequests entry, which would otherwise leave the sweeper
-            // nothing to reap and the record stuck in_progress forever.
-            await terminateUnenqueuedRequest(stores, requestId);
-            throw error;
-          }
-        );
+        .catch(async (error: unknown) => {
+          // Materialization or the enqueue failed: the job is not running and
+          // never will. Terminate the in_progress record we may have written —
+          // `Promise.all` can reject after one write already landed, and a
+          // failed enqueue leaves a fully-written record — so it doesn't outlive
+          // the job. The `finally` below only deregisters the activeRequests
+          // entry, which would otherwise leave the sweeper nothing to reap and
+          // the record stuck in_progress forever.
+          await terminateUnenqueuedRequest(stores, requestId);
+          throw error;
+        });
+
+      accepted = acceptance.then(() => undefined);
+      finished = acceptance.then((handle) => handle.finished);
     }
 
     finished = finished.finally(() => {
@@ -260,12 +263,19 @@ export function createInboundTransportHost(
       onBackgroundWork(finished);
     }
 
+    // The HTTP 202 path awaits `accepted`, not `finished`, so a fire-and-forget
+    // external dispatch can leave `finished` unobserved. Mark it handled to
+    // avoid an unhandled rejection (e.g. an enqueue failure, which is already
+    // surfaced to the caller via `accepted`). This only registers an extra
+    // rejection handler — callers that await `finished` still observe it.
+    void finished.catch(() => {});
+
     return {
       requestId,
       responseEmitter,
       liveStream,
       finished: finished as Promise<ExecutionResult>,
-      materialized
+      accepted
     };
   };
 
