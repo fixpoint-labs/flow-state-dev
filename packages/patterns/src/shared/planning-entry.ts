@@ -34,12 +34,15 @@ export interface PlanningEntryStateShape {
 /**
  * How each task's `context` is populated when the planner didn't supply one
  * (FIX-827). `"goal"` (default) copies the (synthesized) goal into every
- * gap-task — free, deterministic, and the fix for the dropped-data bug.
- * `false` leaves context empty (pre-FIX-827 behavior). A `BlockDefinition`
- * runs once over `{ goal, tasks }` and returns `{ tasks }` with `context`
- * filled, so a cheap model or a deterministic step can differentiate per
- * task in a single call. A planner-emitted `context` always wins; the
- * enricher only fills the gaps.
+ * gap-task — free, deterministic, and the fix for the dropped-data bug; in
+ * this mode a planner-emitted `context` always wins and only the gaps are
+ * filled. `false` leaves context empty (pre-FIX-827 behavior).
+ *
+ * A `BlockDefinition` runs once over `{ goal, tasks }` (the tasks include any
+ * planner-emitted `context`) and returns `{ tasks }`, so a cheap model or a
+ * deterministic step can differentiate per task in a single call. The custom
+ * block owns the returned contexts — it is not post-filtered, so it should
+ * preserve planner-emitted `context` itself if that's the desired behavior.
  */
 export type TaskContextSupply = "goal" | false | BlockDefinition<any, any>;
 

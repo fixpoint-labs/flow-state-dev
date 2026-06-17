@@ -122,9 +122,14 @@ export function createApplyReplan(options: ApplyReplanOptions) {
             : taskContext !== false && goal.length > 0
               ? goal
               : undefined;
+        // Preserve a passthrough `title` the same way createSeedTasksFromPlan
+        // does, so a custom replanner/evaluator emitting one doesn't silently
+        // lose it (the default replanner schema still omits title — Non-Goal).
+        const emittedTitle = (t as { title?: unknown }).title;
         return {
           ...(remappedId !== undefined ? { id: remappedId } : {}),
           goal: t.goal,
+          ...(typeof emittedTitle === "string" ? { title: emittedTitle } : {}),
           deps: remappedDeps,
           ...(typeof t.priority === "number" ? { priority: t.priority } : {}),
           ...(context !== undefined ? { context } : {}),

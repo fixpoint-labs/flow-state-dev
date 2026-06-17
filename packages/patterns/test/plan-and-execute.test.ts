@@ -583,6 +583,64 @@ describe("plan-and-execute pattern", () => {
       expect(output.tasks.find((t: any) => t.id === "added")).toBeDefined();
     });
 
+    it("preserves a passthrough title on replanned tasks (FIX-827)", async () => {
+      const planner = createDeterministicPlanner([{ id: "s1", goal: "Initial" }]);
+
+      // A custom evaluator emits an inline task carrying a title → applyReplan
+      // seeds it. Title must survive the same way it does on initial seeding.
+      // (The default LLM evaluator/replanner schemas deliberately omit title —
+      // enriching them is a Non-Goal; this covers the custom-emitter contract.)
+      let evalCalls = 0;
+      const customEvaluator = handler({
+        name: "replan-title-eval",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          decision: z.enum(["continue", "complete", "replan"]),
+          tasks: z
+            .array(z.object({ id: z.string(), goal: z.string(), title: z.string() }))
+            .optional(),
+        }),
+        execute: () => {
+          evalCalls += 1;
+          if (evalCalls === 1) {
+            return {
+              decision: "replan" as const,
+              tasks: [{ id: "added", goal: "Added task", title: "Added label" }],
+            };
+          }
+          return { decision: "complete" as const };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "replan-title-test",
+        planner,
+        stepExecutor: echoExecutor,
+        evaluator: customEvaluator,
+        enableReplanning: true,
+        maxIterations: 5,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Test title preservation" },
+      });
+
+      expect(result.error).toBeNull();
+      const items = result.items as Array<{
+        type?: string;
+        component?: string;
+        data?: { task?: { id?: string; title?: string } };
+      }>;
+      const addedChange = items.find(
+        (i) =>
+          i.type === "component" &&
+          i.component === "task-change" &&
+          i.data?.task?.id === "added",
+      );
+      expect(addedChange?.data?.task?.title).toBe("Added label");
+    });
+
     it("auto-suffixes replanner-emitted ids that collide with existing tasks", async () => {
       // Real-world LLM replanners often re-emit an id that already lives
       // in the collection (e.g. asking to "redo task-1"). The substrate

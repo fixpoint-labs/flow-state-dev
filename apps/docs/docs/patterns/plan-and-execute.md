@@ -136,7 +136,7 @@ planAndExecute({ name: "research", taskContext: false });
 planAndExecute({ name: "research", taskContext: myEnricherBlock });
 ```
 
-A planner-emitted `context` always wins; the enricher only fills the gaps. The tradeoff: `"goal"` is simple but copies the same text into every task (more tokens, no extra call), while a `BlockDefinition` enricher can hand each task only the slice it needs — at the cost of one model call over the plan. The decomposer is also prompted to fill `context` with the concrete facts a task needs, so on a good plan the enricher has little left to do.
+In the default `"goal"` mode a planner-emitted `context` always wins — only the gaps are filled. A custom `BlockDefinition` enricher instead receives the full plan (tasks include any planner context) and owns the contexts it returns; it isn't post-filtered, so preserve planner context in your block if you want that. The tradeoff: `"goal"` is simple but copies the same text into every task (more tokens, no extra call), while a `BlockDefinition` enricher can hand each task only the slice it needs — at the cost of one model call over the plan. The decomposer is also prompted to fill `context` with the concrete facts a task needs, so on a good plan the enricher has little left to do.
 
 Replan-added tasks get the same treatment: unless `taskContext` is `false`, a replanned task without context has the goal copied in on re-seed, so workers after a replan aren't blind to the request. (The replanner's own output schema stays `{ id, goal, deps }`; a custom enricher applies to the initial plan and the replan path falls back to the goal copy.)
 

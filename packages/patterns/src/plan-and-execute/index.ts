@@ -167,11 +167,13 @@ export interface PlanAndExecuteConfig<
   /**
    * How each task's `context` is populated when the planner didn't supply
    * one. `"goal"` (default): copy the (synthesized) goal into every
-   * gap-task — free, deterministic, and the fix for workers being blind to
-   * the data their task needs. `false`: leave context empty (pre-FIX-827
-   * behavior). A `BlockDefinition`: run once over `{ goal, tasks }` to fill
-   * per-task context with a cheap model or a deterministic step. A
-   * planner-emitted `context` always wins; this only fills the gaps.
+   * gap-task — free, deterministic, the fix for workers being blind to the
+   * data their task needs, and in this mode a planner-emitted `context`
+   * always wins (only gaps are filled). `false`: leave context empty
+   * (pre-FIX-827 behavior). A `BlockDefinition`: run once over
+   * `{ goal, tasks }` to fill per-task context with a cheap model or a
+   * deterministic step; the block owns the returned contexts (it should
+   * preserve planner-emitted `context` itself if desired).
    */
   taskContext?: "goal" | false | BlockDefinition<any, any>;
 
