@@ -31,7 +31,9 @@ import { taskSchema, type Task } from "@flow-state-dev/tasks";
 
 const task: Task<{ q: string }, { a: number }> = {
   id: "t1",
-  goal: "answer the question",
+  title: "Answer the question",
+  goal: "answer the question using the provided dataset",
+  context: "Dataset rows: 2019=12, 2020=18, 2021=25",
   status: "pending",
   attempts: 0,
   input: { q: "what?" },
@@ -39,6 +41,34 @@ const task: Task<{ q: string }, { a: number }> = {
   updatedAt: Date.now(),
 };
 ```
+
+### Task title and context
+
+`title` and `context` are optional and complement `goal`:
+
+- **`title`** is a concise label, distinct from the full `goal`. Plan UIs
+  render `title ?? goal` as the row label, so a verbose self-contained
+  `goal` doesn't bloat the list.
+- **`context`** is readable per-task support text — the slice of the
+  originating request a worker needs to act on this task (values, names,
+  lists, constraints). It's data the worker renders into its prompt, not a
+  directive, and it's distinct from the generic typed `input` payload.
+
+Both round-trip through `TaskInit` and reach workers on `TaskWorkerInput`:
+
+```ts
+import type { TaskWorkerInput } from "@flow-state-dev/tasks";
+
+const worker = (input: TaskWorkerInput) => {
+  const parts = [`Task: ${input.goal}`];
+  if (input.context) parts.push(`Context: ${input.context}`);
+  return parts.join("\n");
+};
+```
+
+Plan-shaped patterns populate `context` at planning time — see the
+[Plan & Execute per-task context](https://flow-state.dev/docs/patterns/plan-and-execute)
+section and the [decomposer output shape](https://flow-state.dev/docs/patterns/utility-blocks/core).
 
 Status enum: `pending | in_progress | blocked | awaiting_review | completed |
 errored | cancelled`. `awaiting_review` is in the canonical vocabulary; v1

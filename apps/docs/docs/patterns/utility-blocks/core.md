@@ -283,9 +283,13 @@ Each `SubTask` has:
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | `string` | Stable unique identifier |
+| `title` | `string \| null` | Concise label, distinct from `goal`. `null` when a separate label adds nothing. Plan UIs render `title ?? goal` |
 | `goal` | `string` | What the task accomplishes |
+| `context` | `string \| null` | The concrete facts the task needs from the request (values, lists, constraints), copied so the worker — which only sees this task — can act on it. `null` when the goal is self-contained |
 | `deps` | `string[]` | IDs of tasks this depends on |
 | `priority` | `"high" \| "medium" \| "low"` | Execution priority hint |
+
+`title` and `context` are `nullable`, not optional (BP-016: generator outputs must be OpenAI strict-mode compatible). Consumers treat `null` as "absent". Plan-shaped patterns read `context` to give each worker the data its task needs — see [Plan & Execute per-task context](../plan-and-execute).
 
 **Example output:**
 
@@ -294,25 +298,33 @@ Each `SubTask` has:
   "tasks": [
     {
       "id": "task-1",
+      "title": "Database schema",
       "goal": "Design the database schema for user accounts and sessions",
+      "context": "Entities: users, sessions. Auth methods in scope: password, OAuth2.",
       "deps": [],
       "priority": "high"
     },
     {
       "id": "task-2",
+      "title": "Auth endpoints",
       "goal": "Implement authentication endpoints (signup, login, logout)",
+      "context": null,
       "deps": ["task-1"],
       "priority": "high"
     },
     {
       "id": "task-3",
+      "title": "Password reset",
       "goal": "Build the password reset flow with email verification",
+      "context": null,
       "deps": ["task-2"],
       "priority": "medium"
     },
     {
       "id": "task-4",
+      "title": "OAuth2 providers",
       "goal": "Add OAuth2 integration for Google and GitHub providers",
+      "context": "Providers: Google, GitHub.",
       "deps": ["task-2"],
       "priority": "low"
     }
