@@ -91,6 +91,14 @@ describe("external dispatch — enqueue-time stream discoverability (FIX-828)", 
       principal: { userId: "u_1" }
     });
 
+    // Await the enqueue-time writes structurally rather than relying on
+    // microtask ordering: `handle.materialized` resolves once activeRequests +
+    // the in_progress record have committed. This is also what the HTTP adapter
+    // awaits before acking the 202. With a truly async store the GET could
+    // otherwise arrive before the writes land — the stream-routes wait-loop is
+    // the production guard for that residual cross-instance race.
+    await handle.materialized;
+
     // The worker has not run yet; the client's GET arrives now. Pre-fix this
     // finds neither a record nor an activeRequests entry and 404s.
     const controller = new AbortController();

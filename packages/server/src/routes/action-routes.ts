@@ -172,6 +172,20 @@ export async function handleExecuteAction(
     throw error;
   }
 
+  // For external dispatch, hold the ack until the enqueue-time store writes
+  // (activeRequests + the in_progress record) settle, so the request is
+  // discoverable by the time the client opens GET .../stream and a store-write
+  // failure becomes a failed POST rather than an ack for a request that never
+  // runs (FIX-828). Undefined and a no-op for in-process dispatch.
+  if (handle.materialized !== undefined) {
+    try {
+      await handle.materialized;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return jsonResponse(500, { error: "DispatchFailed", message });
+    }
+  }
+
   // Inline streaming: when the client sends Accept: text/event-stream, return
   // the SSE stream directly from the POST response. This keeps the action
   // execution and stream delivery on the same function instance — essential

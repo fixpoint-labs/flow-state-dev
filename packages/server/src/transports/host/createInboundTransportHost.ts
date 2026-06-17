@@ -13,6 +13,7 @@ import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
 import { createResponseEmitter } from "../../streaming/response-emitter";
 import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
+import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import { generateId } from "../../utils/generate-id";
 import { OrgRequiredError, PrincipalResolutionError } from "../errors";
@@ -49,6 +50,32 @@ export type CreateInboundTransportHostOptions = {
    */
   dispatcher?: FlowDispatcher;
 };
+
+/**
+ * Terminate an enqueue-time request record whose job was never started —
+ * materialization or the dispatcher hand-off failed. Marks a still-`in_progress`
+ * record `failed` so it does not linger forever: the dispatch teardown
+ * deregisters the activeRequests entry, leaving the stale-request sweeper
+ * nothing to reap. Best-effort and idempotent — a missing or already-terminal
+ * record is left untouched. (FIX-828)
+ */
+async function terminateUnenqueuedRequest(
+  stores: StoreRegistry,
+  requestId: string
+): Promise<void> {
+  try {
+    const record = await stores.request.get(requestId);
+    if (record === undefined || isTerminalRequestStatus(record.status)) return;
+    const now = Date.now();
+    await stores.request.set(
+      requestId,
+      { ...record, status: "failed", failedAtMs: now, updatedAt: now },
+      "any"
+    );
+  } catch {
+    // Best-effort cleanup; the original dispatch error is what propagates.
+  }
+}
 
 /**
  * Build the host used by every transport adapter.
@@ -141,6 +168,9 @@ export function createInboundTransportHost(
     // (carries non-serializable context); external dispatchers use the
     // generic dispatch interface.
     let finished: Promise<ExecutionResult>;
+    // Set for external dispatch only: resolves once the enqueue-time store
+    // writes commit (see the external branch). Left undefined for in-process.
+    let materialized: Promise<void> | undefined;
     if ("dispatchLocal" in effectiveDispatcher) {
       const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
         dispatchEnvelope,
@@ -174,7 +204,11 @@ export function createInboundTransportHost(
       // staleness threshold (default 30s). That false-positive window is the
       // accepted tradeoff of enqueue-time registration.
       const ts = Date.now();
-      const materialized = Promise.all([
+      // Exposed on the handle so the response path can hold the 202 until the
+      // request is discoverable (and so a store-write failure fails the POST,
+      // per the dispatch error contract). Both writes are fired now; the
+      // enqueue is gated on them.
+      materialized = Promise.all([
         stores.activeRequests.register({
           requestId,
           flowKind: dispatchEnvelope.flowKind,
@@ -194,10 +228,24 @@ export function createInboundTransportHost(
           createInitialRequestRecord(dispatchEnvelope, ts),
           "any"
         )
-      ]);
+      ]).then(() => undefined);
+
       finished = materialized
         .then(() => effectiveDispatcher.dispatch(dispatchEnvelope))
-        .then((handle) => handle.finished);
+        .then(
+          (handle) => handle.finished,
+          async (error: unknown) => {
+            // Materialization or the enqueue failed: the job is not running and
+            // never will. Terminate the in_progress record we may have written
+            // — `Promise.all` can reject after one write already landed, and a
+            // failed enqueue leaves a fully-written record — so it doesn't
+            // outlive the job. The `finally` below only deregisters the
+            // activeRequests entry, which would otherwise leave the sweeper
+            // nothing to reap and the record stuck in_progress forever.
+            await terminateUnenqueuedRequest(stores, requestId);
+            throw error;
+          }
+        );
     }
 
     finished = finished.finally(() => {
@@ -216,7 +264,8 @@ export function createInboundTransportHost(
       requestId,
       responseEmitter,
       liveStream,
-      finished: finished as Promise<ExecutionResult>
+      finished: finished as Promise<ExecutionResult>,
+      materialized
     };
   };
 

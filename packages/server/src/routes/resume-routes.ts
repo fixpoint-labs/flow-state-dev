@@ -143,6 +143,13 @@ export async function handleResumeSuspension(
       }
     });
 
+    // Hold the ack until enqueue-time writes settle so the resumed request is
+    // discoverable before the client attaches (external dispatch only; no-op
+    // for in-process). A failure reverts the suspension via the catch below.
+    if (handle.materialized !== undefined) {
+      await handle.materialized;
+    }
+
     const accept = request.headers.get("accept") ?? "";
     if (accept.includes("text/event-stream") && handle.liveStream !== null) {
       return new Response(handle.liveStream.readable, {

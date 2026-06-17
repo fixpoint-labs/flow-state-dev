@@ -366,6 +366,38 @@ describe("createInboundTransportHost", () => {
       expect(storesAtDispatch).toEqual({ active: true, status: "in_progress" });
     });
 
+    it("terminates the in_progress record when the enqueue fails, leaving no orphan", async () => {
+      // Materialization succeeds (record + entry written), then the dispatcher
+      // hand-off rejects. The record must not linger in_progress: the dispatch
+      // teardown deregisters the activeRequests entry, so without cleanup the
+      // stale-request sweeper would have nothing to reap and the record would
+      // stay in_progress forever.
+      const dispatcher: FlowDispatcher = {
+        dispatch: vi.fn(async () => {
+          throw new Error("enqueue failed");
+        }),
+        close: vi.fn(async () => {})
+      };
+      const { host, stores } = buildHost({ dispatcher });
+
+      const handle = host.dispatch({
+        source: "http",
+        flowKind: "host-test",
+        action: "run",
+        input: { value: "x" },
+        sessionId: "s_fail",
+        principal: { userId: "u_fail" }
+      });
+
+      await handle.materialized;
+      expect((await stores.request.get(handle.requestId))?.status).toBe("in_progress");
+
+      await expect(handle.finished).rejects.toThrow("enqueue failed");
+
+      expect((await stores.request.get(handle.requestId))?.status).toBe("failed");
+      expect(await stores.activeRequests.get(handle.requestId)).toBeUndefined();
+    });
+
     it("does not pre-materialize for in-process dispatch — runAction owns the record", async () => {
       const { host, stores } = buildHost();
       const setSpy = vi.spyOn(stores.request, "set");

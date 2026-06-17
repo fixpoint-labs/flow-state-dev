@@ -109,6 +109,16 @@ export interface DispatchHandle {
   readonly liveStream: LiveRequestStream | null;
   /** Resolves when the action completes (success, failure, or abort). */
   readonly finished: Promise<ExecutionResult>;
+  /**
+   * Resolves once the enqueue-time store writes (`activeRequests` entry + the
+   * `in_progress` record) have committed, for external dispatchers. Adapters
+   * that ack a request before the client opens `GET …/stream` (the `202` path)
+   * should await this so the request is discoverable by attach time, and so a
+   * store-write failure surfaces as a failed dispatch rather than an ack for a
+   * request that never becomes discoverable. `undefined` for in-process
+   * dispatch, where the record is written during execution. (FIX-828)
+   */
+  readonly materialized?: Promise<void>;
 }
 
 /**
