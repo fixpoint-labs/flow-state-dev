@@ -852,6 +852,53 @@ describe("plan-and-execute pattern", () => {
       expect(seen).toBeUndefined();
     });
 
+    it("taskContext as a custom block fills per-task context in one pass", async () => {
+      const planner = createDeterministicPlanner([
+        { id: "s1", goal: "do A" },
+        { id: "s2", goal: "do B" },
+      ]);
+
+      // Custom enricher: receives { goal, tasks }, returns { tasks } with a
+      // per-task context derived from both the goal and the task id.
+      const customEnricher = handler({
+        name: "custom-enricher",
+        inputSchema: z.object({ goal: z.string(), tasks: z.array(z.any()) }),
+        outputSchema: z.object({ tasks: z.array(z.any()) }),
+        execute: (input: any) => ({
+          tasks: input.tasks.map((t: any) => ({
+            ...t,
+            context: `enriched:${t.id}:${input.goal}`,
+          })),
+        }),
+      });
+
+      const seen: Record<string, string> = {};
+      const capture = handler({
+        name: "ctx-custom-capture",
+        inputSchema: z.any(),
+        outputSchema: z.object({ summary: z.string(), success: z.boolean() }),
+        execute: (input: any) => {
+          seen[input.stepId] = input.context;
+          return { summary: "ok", success: true };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "ctx-custom",
+        planner,
+        stepExecutor: capture,
+        taskContext: customEnricher,
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, { input: { goal: "Build" } });
+
+      expect(result.error).toBeNull();
+      expect(seen["s1"]).toBe("enriched:s1:Build");
+      expect(seen["s2"]).toBe("enriched:s2:Build");
+    });
+
     it("threads planner-supplied context to the worker", async () => {
       const planner = handler({
         name: "ctx-planner",

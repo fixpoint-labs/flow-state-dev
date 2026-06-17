@@ -239,17 +239,6 @@ function createDefaultGoalSynthesizer<TInput extends { goal: string }>(
   inputSchema: z.ZodType<TInput>,
   model?: string,
 ) {
-  const synthStateSchema = z.object({ originalGoal: z.string().default("") });
-
-  const stashOriginal = handler({
-    name: `${name}-synthesize-goal-stash`,
-    inputSchema,
-    sequencerStateSchema: synthStateSchema,
-    execute: async (input, ctx) => {
-      await ctx.sequencer!.patchState({ originalGoal: input.goal });
-    },
-  });
-
   const goalGen = generator({
     name: `${name}-synthesize-goal`,
     inputSchema,
@@ -267,22 +256,22 @@ function createDefaultGoalSynthesizer<TInput extends { goal: string }>(
     user: (input: { goal: string }) => `Original request: ${input.goal}`,
   });
 
+  // On model failure, recover the original goal via `ctx.parent.input` — the
+  // rescue runs as a sibling step of `goalGen` under this sub-sequencer, so
+  // `parent.input` is this block's `{ goal }` input (the recall-tool idiom).
   const fallback = handler({
     name: `${name}-synthesize-goal-fallback`,
     inputSchema: z.unknown(),
     outputSchema: z.object({ goal: z.string() }),
-    sequencerStateSchema: synthStateSchema,
-    execute: async (_input, ctx) => ({
-      goal: (ctx.sequencer?.state as { originalGoal?: string } | undefined)?.originalGoal ?? "",
+    execute: async (_error, ctx) => ({
+      goal: (ctx.parent?.input as { goal?: string } | undefined)?.goal ?? "",
     }),
   });
 
   return sequencer({
     name: `${name}-synthesize`,
     inputSchema,
-    stateSchema: synthStateSchema,
   })
-    .tap(stashOriginal)
     .step(goalGen)
     .rescue([{ block: fallback }]);
 }
