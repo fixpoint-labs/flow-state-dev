@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { utility, sequencer } from "../src";
+import { utility, sequencer, assertStrictCompatible } from "../src";
+import { decomposerTaskSchema, decomposerOutputSchema } from "../src/utility/decomposer";
 import { createMockContext, runForTest } from "./helpers";
 describe("utility.decomposer", () => {
   it("returns a generator block definition", () => {
@@ -12,6 +13,41 @@ describe("utility.decomposer", () => {
     expect(block.name).toBe("task-decompose");
   });
 
+  it("default output schema is OpenAI strict-compatible (BP-016)", () => {
+    // title/context are z.string().nullable() (not optional) precisely so
+    // the schema survives makeSchemaStrict. Assert it directly so a future
+    // change to optional/record/union is caught at the seam.
+    expect(() => assertStrictCompatible(decomposerOutputSchema, "decomposerOutputSchema")).not.toThrow();
+  });
+
+  it("carries title and context through the decomposed plan (FIX-827)", async () => {
+    const block = utility.decomposer({ name: "title-context" });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate() {
+          return {
+            structuredOutput: {
+              tasks: [
+                {
+                  id: "task-1",
+                  title: "Subdomain research",
+                  goal: "Research the listed subdomains for asset info",
+                  context: "Subdomains: a.example.com, b.example.com"
+                }
+              ]
+            }
+          };
+        }
+      })
+    });
+
+    const result = await runForTest(block, "research subdomains", ctx);
+    expect(result.tasks[0]?.title).toBe("Subdomain research");
+    expect(result.tasks[0]?.context).toBe("Subdomains: a.example.com, b.example.com");
+  });
+
   it("uses default output schema for a single task", async () => {
     const block = utility.decomposer({ name: "single-task" });
 
@@ -21,7 +57,7 @@ describe("utility.decomposer", () => {
         async generate() {
           return {
             structuredOutput: {
-              tasks: [{ id: "task-1", goal: "Implement the change" }]
+              tasks: [{ id: "task-1", title: null, goal: "Implement the change", context: null }]
             }
           };
         }
@@ -29,7 +65,7 @@ describe("utility.decomposer", () => {
     });
 
     await expect(runForTest(block, "do one thing", ctx)).resolves.toEqual({
-      tasks: [{ id: "task-1", goal: "Implement the change" }]
+      tasks: [{ id: "task-1", title: null, goal: "Implement the change", context: null }]
     });
   });
 
@@ -43,9 +79,9 @@ describe("utility.decomposer", () => {
           return {
             structuredOutput: {
               tasks: [
-                { id: "task-1", goal: "Gather requirements", priority: "high" },
-                { id: "task-2", goal: "Implement feature", deps: ["task-1"], priority: "high" },
-                { id: "task-3", goal: "Write tests", deps: ["task-2"], priority: "medium" }
+                { id: "task-1", title: null, goal: "Gather requirements", context: null, priority: "high" },
+                { id: "task-2", title: null, goal: "Implement feature", context: null, deps: ["task-1"], priority: "high" },
+                { id: "task-3", title: null, goal: "Write tests", context: null, deps: ["task-2"], priority: "medium" }
               ]
             }
           };
@@ -111,8 +147,8 @@ describe("utility.decomposer", () => {
           return {
             structuredOutput: {
               tasks: [
-                { id: "task-1", goal: "Plan" },
-                { id: "task-2", goal: "Execute", deps: ["task-1"] }
+                { id: "task-1", title: null, goal: "Plan", context: null },
+                { id: "task-2", title: null, goal: "Execute", context: null, deps: ["task-1"] }
               ]
             }
           };
@@ -122,8 +158,8 @@ describe("utility.decomposer", () => {
 
     await expect(runForTest(chain, { request: "launch feature" }, ctx)).resolves.toEqual({
       tasks: [
-        { id: "task-1", goal: "Plan" },
-        { id: "task-2", goal: "Execute", deps: ["task-1"] }
+        { id: "task-1", title: null, goal: "Plan", context: null },
+        { id: "task-2", title: null, goal: "Execute", context: null, deps: ["task-1"] }
       ]
     });
   });

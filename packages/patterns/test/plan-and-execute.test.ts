@@ -79,9 +79,9 @@ const plannerMock = mockGenerator({
     {
       structuredOutput: {
         tasks: [
-          { id: "step-1", goal: "First task" },
-          { id: "step-2", goal: "Second task" },
-          { id: "step-3", goal: "Third task" },
+          { id: "step-1", title: null, goal: "First task", context: null },
+          { id: "step-2", title: null, goal: "Second task", context: null },
+          { id: "step-3", title: null, goal: "Third task", context: null },
         ],
       },
     },
@@ -786,6 +786,56 @@ describe("plan-and-execute pattern", () => {
       const output = result.output as { totalSteps: number; completedSteps: number };
       expect(output.totalSteps).toBe(2);
       expect(output.completedSteps).toBe(2);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Per-task context threading (FIX-827)
+  // -----------------------------------------------------------------------
+  describe("per-task context (FIX-827)", () => {
+    it("threads planner-supplied context to the worker", async () => {
+      const planner = handler({
+        name: "ctx-planner",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          tasks: z.array(
+            z.object({ id: z.string(), goal: z.string(), context: z.string() }),
+          ),
+        }),
+        execute: () => ({
+          tasks: [
+            {
+              id: "s1",
+              goal: "research the listed subdomains",
+              context: "Subdomains: a.example.com, b.example.com",
+            },
+          ],
+        }),
+      });
+
+      let seenContext: string | undefined;
+      const captureExecutor = handler({
+        name: "ctx-capture-executor",
+        inputSchema: z.any(),
+        outputSchema: z.object({ summary: z.string(), success: z.boolean() }),
+        execute: (input: any) => {
+          seenContext = input.context;
+          return { summary: "ok", success: true };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "ctx-thread",
+        planner,
+        stepExecutor: captureExecutor,
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, { input: { goal: "research" } });
+
+      expect(result.error).toBeNull();
+      expect(seenContext).toBe("Subdomains: a.example.com, b.example.com");
     });
   });
 

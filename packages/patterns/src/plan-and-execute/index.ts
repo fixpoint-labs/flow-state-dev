@@ -291,6 +291,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     inputSchema: z.object({
       stepId: z.string(),
       goal: z.string(),
+      context: z.string().optional(),
       dependencyResults: z.record(z.unknown()).optional(),
     }),
     outputSchema: executorOutputSchema,
@@ -300,8 +301,12 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     ...(config.search !== undefined ? { search: config.search } : {}),
     ...(config.resources !== undefined ? { resources: config.resources } : {}),
     prompt: [config.instructions, basePrompt, config.executionInstructions],
-    user: (input: { goal: string; dependencyResults?: Record<string, unknown> }) => {
+    user: (input: { goal: string; context?: string; dependencyResults?: Record<string, unknown> }) => {
       const parts = [`Task: ${input.goal}`];
+      // FIX-827: per-task support text (the request slice this task needs).
+      if (typeof input.context === "string" && input.context.length > 0) {
+        parts.push(`Context: ${input.context}`);
+      }
       if (
         input.dependencyResults &&
         Object.keys(input.dependencyResults).length > 0
@@ -379,11 +384,14 @@ function wrapWorkerForLegacyContract(
     const obj = input as {
       taskId?: string;
       goal?: string;
+      context?: string;
       deps?: Record<string, unknown>;
     };
     return {
       stepId: obj.taskId ?? "",
       goal: obj.goal ?? "",
+      // FIX-827: thread per-task context through to the legacy worker contract.
+      ...(obj.context !== undefined ? { context: obj.context } : {}),
       ...(obj.deps && Object.keys(obj.deps).length > 0
         ? { dependencyResults: obj.deps }
         : {}),

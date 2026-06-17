@@ -8,8 +8,10 @@
  *
  * - `idPrefix`: P&E uses `"step"`, others use `"task"` (default).
  * - `inputDefault`: parallelTasks always maps `input: t.goal`.
- * - `t.input` vs `t.context` precedence: `t.input ?? t.context`
- *   (supervisor compat — `context` is the planner's output field).
+ *
+ * Planner `title`/`context` map to the first-class `TaskInit.title` /
+ * `TaskInit.context` fields (FIX-827). `input` is reserved for the generic
+ * typed worker payload — planner `context` is no longer folded into it.
  *
  * `createSeedTasksFromPlan` is also consumed standalone by parallelTasks
  * (which has no `setInitialState` / `emitPlanningMeta` steps).
@@ -47,12 +49,13 @@ const seedTaskInputSchema = z.object({
     z.object({
       id: z.string().optional(),
       goal: z.string(),
+      title: z.string().nullable().optional(),
       assignee: z.string().optional(),
       deps: z.array(z.string()).optional(),
       dependencies: z.array(z.string()).optional(),
       priority: z.union([z.number(), z.string()]).optional(),
       input: z.unknown().optional(),
-      context: z.string().optional(),
+      context: z.string().nullable().optional(),
       maxAttempts: z.number().optional(),
     }).passthrough(),
   ),
@@ -87,11 +90,17 @@ export function createSeedTasksFromPlan<TState>(
       });
 
       const tasks: TaskInit[] = planOutput.tasks.map((t, i) => {
-        const resolvedInput = t.input ?? (inputDefault === "goal" ? t.goal : (t.context ?? undefined));
+        // FIX-827 (D1): planner `context` is first-class now — it no longer
+        // collapses into `input`. `input` stays the generic typed payload
+        // (parallelTasks maps `t.goal` into it; everyone else leaves it unset).
+        const resolvedInput = t.input ?? (inputDefault === "goal" ? t.goal : undefined);
 
         return {
           id: t.id ?? `${idPrefix}-${i + 1}`,
           goal: t.goal,
+          // Treat `null` as absent (decomposer emits nullable title/context).
+          ...(typeof t.title === "string" ? { title: t.title } : {}),
+          ...(typeof t.context === "string" ? { context: t.context } : {}),
           deps: t.deps ?? t.dependencies ?? [],
           ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
           ...(typeof t.priority === "number" ? { priority: t.priority } : {}),
