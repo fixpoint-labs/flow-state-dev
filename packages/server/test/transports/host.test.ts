@@ -3,7 +3,7 @@
  * HTTP server — they call `host.dispatch` and `host.resolvePrincipal`
  * directly with synthetic envelopes.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -15,8 +15,9 @@ import {
   OrgRequiredError,
   PrincipalResolutionError
 } from "../../src";
+import type { FlowDispatcher } from "../../src/transports/dispatcher";
 
-function buildHost(opts?: { withOrgFlow?: boolean }) {
+function buildHost(opts?: { withOrgFlow?: boolean; dispatcher?: FlowDispatcher }) {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
   registry.register(
@@ -56,7 +57,8 @@ function buildHost(opts?: { withOrgFlow?: boolean }) {
     registry,
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
-    runtimeConfig: {}
+    runtimeConfig: {},
+    dispatcher: opts?.dispatcher
   });
   return { host, stores, registry };
 }
@@ -320,6 +322,70 @@ describe("createInboundTransportHost", () => {
           principal: { userId: "u" }
         })
       ).rejects.toThrow(OrgRequiredError);
+    });
+  });
+
+  describe("external dispatch — enqueue-time materialization (FIX-828)", () => {
+    it("registers activeRequests + an in_progress record before handing off to the dispatcher", async () => {
+      let storesAtDispatch: { active: boolean; status?: string } | undefined;
+      // The fake worker never starts: it reads the stores at the instant it is
+      // handed the job, then leaves `finished` pending forever.
+      const dispatch = vi.fn(async (env: { requestId: string }) => {
+        const active = await stores.activeRequests.get(env.requestId);
+        const record = await stores.request.get(env.requestId);
+        storesAtDispatch = { active: active !== undefined, status: record?.status };
+        return {
+          requestId: env.requestId,
+          finished: new Promise<never>(() => {}),
+          abort: () => {}
+        };
+      });
+      const dispatcher: FlowDispatcher = { dispatch, close: vi.fn(async () => {}) };
+      const { host, stores } = buildHost({ dispatcher });
+
+      const handle = host.dispatch({
+        source: "http",
+        flowKind: "host-test",
+        action: "run",
+        input: { value: "x" },
+        sessionId: "s_ext",
+        principal: { userId: "u_ext" }
+      });
+
+      // The record + registry entry are present immediately after dispatch
+      // returns — the GET stream route can resolve them without waiting.
+      const record = await stores.request.get(handle.requestId);
+      expect(record?.status).toBe("in_progress");
+      expect(record?.sessionId).toBe("s_ext");
+      expect(record?.userId).toBe("u_ext");
+      expect(await stores.activeRequests.get(handle.requestId)).toBeDefined();
+
+      // And the writes landed before the dispatcher was handed the job: the
+      // fake reads both stores at the instant it is invoked.
+      await vi.waitFor(() => expect(storesAtDispatch).toBeDefined());
+      expect(storesAtDispatch).toEqual({ active: true, status: "in_progress" });
+    });
+
+    it("does not pre-materialize for in-process dispatch — runAction owns the record", async () => {
+      const { host, stores } = buildHost();
+      const setSpy = vi.spyOn(stores.request, "set");
+
+      const handle = host.dispatch({
+        source: "http",
+        flowKind: "host-test",
+        action: "run",
+        input: { value: "x" },
+        sessionId: "s_inproc",
+        principal: { userId: "u_inproc" }
+      });
+
+      // The host did not write the record synchronously; in-process dispatch
+      // defers record creation to runAction/createExecutionContext.
+      expect(setSpy).not.toHaveBeenCalled();
+
+      await handle.finished;
+      // After execution the record exists — written by the runtime, not the host.
+      expect(await stores.request.get(handle.requestId)).toBeDefined();
     });
   });
 });

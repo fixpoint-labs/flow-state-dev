@@ -13,6 +13,7 @@ import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
 import { createResponseEmitter } from "../../streaming/response-emitter";
 import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
+import { createInitialRequestRecord } from "../../context/initial-request-record";
 import { generateId } from "../../utils/generate-id";
 import { OrgRequiredError, PrincipalResolutionError } from "../errors";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
@@ -154,8 +155,48 @@ export function createInboundTransportHost(
       );
       finished = handle.finished;
     } else {
-      finished = effectiveDispatcher
-        .dispatch(dispatchEnvelope)
+      // External dispatchers (BullMQ, etc.) run in a separate process and only
+      // register the request once the worker starts `runAction`. A client GET
+      // .../stream that arrives first would find no record and 404. Materialize
+      // the activeRequests entry and an `in_progress` record here, at enqueue
+      // time, so the stream route resolves a live record and tails events
+      // immediately (FIX-828). The shared `createInitialRequestRecord` builder
+      // constructs this stub the same way the worker would, so the worker
+      // adopts it as-is and skips its own write. Gating the dispatcher hand-off
+      // on these writes means a store failure fails the dispatch rather than
+      // enqueueing a job with no discoverable record (no orphan). Resume and the
+      // Vercel adapter route through here too, so both inherit the fix.
+      //
+      // `lastHeartbeatAt` is stamped at enqueue, and nothing heartbeats until
+      // the worker claims the job and re-registers (runAction). So the
+      // request-recovery sweeper reaps this entry if the worker never starts —
+      // but also if a backed-up queue delays worker-start past the sweeper's
+      // staleness threshold (default 30s). That false-positive window is the
+      // accepted tradeoff of enqueue-time registration.
+      const ts = Date.now();
+      const materialized = Promise.all([
+        stores.activeRequests.register({
+          requestId,
+          flowKind: dispatchEnvelope.flowKind,
+          actionName: dispatchEnvelope.actionName,
+          sessionId: dispatchEnvelope.sessionId,
+          userId: dispatchEnvelope.userId,
+          orgId: dispatchEnvelope.orgId,
+          tenantId: dispatchEnvelope.tenantId,
+          source: dispatchEnvelope.source ?? "http",
+          input: dispatchEnvelope.input,
+          metadata: dispatchEnvelope.metadata,
+          startedAt: ts,
+          lastHeartbeatAt: ts
+        }),
+        stores.request.set(
+          requestId,
+          createInitialRequestRecord(dispatchEnvelope, ts),
+          "any"
+        )
+      ]);
+      finished = materialized
+        .then(() => effectiveDispatcher.dispatch(dispatchEnvelope))
         .then((handle) => handle.finished);
     }
 
