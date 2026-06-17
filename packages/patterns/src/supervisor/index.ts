@@ -35,6 +35,7 @@ import {
   type SupervisorInput,
 } from "./schemas";
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
+import { resolveGoalSynthesisStep } from "../shared/planning-entry";
 import { buildReviewedWorker } from "./blocks/reviewer-check";
 import { createSynthesize } from "./blocks/synthesize";
 import { createLabelFailedReviews } from "./blocks/label-failed-reviews";
@@ -91,6 +92,25 @@ export interface SupervisorConfig<
   uses?: UsesSlot;
   reviewerVisibility?: ItemVisibility;
   synthesizerVisibility?: ItemVisibility;
+
+  // -------------------------------------------------------------------------
+  // FIX-827 additions (thin forward to the shared planning-entry layer)
+  // -------------------------------------------------------------------------
+
+  /**
+   * How each task's `context` is populated when the planner didn't supply
+   * one. `"goal"` (default) copies the goal into every gap-task; `false`
+   * leaves it empty; a `BlockDefinition` fills per-task context in one call.
+   * A planner-emitted `context` always wins.
+   */
+  taskContext?: "goal" | false | BlockDefinition<any, any>;
+
+  /**
+   * Synthesize a self-contained goal from conversation before planning.
+   * `false` (default) uses the input goal verbatim; `true` runs a built-in
+   * synthesizer; a `BlockDefinition` supplies a custom one.
+   */
+  synthesizeGoal?: boolean | BlockDefinition<any, any>;
 }
 
 /** Default reviewer — generator over `ReviewerInput → ReviewerVerdict`. */
@@ -332,6 +352,15 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     name,
     planner: activePlanner,
     maxAttemptsPerTask,
+    ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
+  });
+
+  // FIX-827: optional goal synthesis at the pipeline top (before
+  // `stampOuterGoal`) so the synthesized goal reaches the outer state the
+  // synthesizer reads, as well as the planner.
+  const synthesizeGoalStep = resolveGoalSynthesisStep(config.synthesizeGoal, {
+    name,
+    inputSchema: supervisorInputSchema,
   });
   const cascadeSkipDependents = createCascadeSkipDependents({ name });
   const labelFailedReviews = createLabelFailedReviews({ name });
@@ -349,15 +378,18 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     },
   });
 
-  return sequencer({
+  // Loosely typed so the optional synthesis prefix can change the chain shape.
+  let pipeline: any = sequencer({
     name,
     inputSchema: supervisorInputSchema,
     stateSchema: supervisorStateSchema,
-  })
+  });
+  if (synthesizeGoalStep !== undefined) pipeline = pipeline.step(synthesizeGoalStep);
+  return pipeline
     .tap(stampOuterGoal)
     .step(captureAndPlan)
     .step(board.block)
     .tap(cascadeSkipDependents)
     .tap(labelFailedReviews)
-    .step(synthesize);
+    .step(synthesize) as SequencerDefinition<any, any>;
 }

@@ -51,6 +51,7 @@ import {
   type PlanAndExecuteState,
 } from "./schemas";
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
+import { resolveGoalSynthesisStep } from "../shared/planning-entry";
 import { createEvaluateProgress } from "./blocks/evaluate-progress";
 import { createApplyReplan } from "./blocks/apply-replan";
 import { createSynthesize, normalizeOutputStatus } from "./blocks/synthesize";
@@ -158,6 +159,30 @@ export interface PlanAndExecuteConfig<
    * fan out independent dep-free steps within a single drain.
    */
   maxConcurrency?: number;
+
+  // -------------------------------------------------------------------------
+  // FIX-827 additions
+  // -------------------------------------------------------------------------
+
+  /**
+   * How each task's `context` is populated when the planner didn't supply
+   * one. `"goal"` (default): copy the (synthesized) goal into every
+   * gap-task — free, deterministic, and the fix for workers being blind to
+   * the data their task needs. `false`: leave context empty (pre-FIX-827
+   * behavior). A `BlockDefinition`: run once over `{ goal, tasks }` to fill
+   * per-task context with a cheap model or a deterministic step. A
+   * planner-emitted `context` always wins; this only fills the gaps.
+   */
+  taskContext?: "goal" | false | BlockDefinition<any, any>;
+
+  /**
+   * Synthesize a self-contained goal from conversation before planning.
+   * `false` (default): use the input goal verbatim. `true`: run a built-in
+   * history-aware synthesizer so history-dependent requests ("now do that
+   * for all of them") plan, replan, and synthesize against a coherent
+   * objective. A `BlockDefinition`: supply a custom synthesizer.
+   */
+  synthesizeGoal?: boolean | BlockDefinition<any, any>;
 
   // -------------------------------------------------------------------------
   // Shared defaults — applied to default blocks only.
@@ -638,6 +663,16 @@ export function planAndExecute<
     name,
     planner,
     maxAttemptsPerTask,
+    ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
+  });
+
+  // FIX-827: optional goal synthesis. Composed at the pipeline top (before
+  // `stampOuterGoal`) so the synthesized goal reaches BOTH the outer state
+  // — which the replanner and synthesizer read — and the planner.
+  const synthesizeGoalStep = resolveGoalSynthesisStep(config.synthesizeGoal, {
+    name,
+    inputSchema: planAndExecuteInputSchema,
+    model: config.model,
   });
 
   // Single uniform worker — every task routes through `adaptedWorker`.
@@ -674,7 +709,9 @@ export function planAndExecute<
 
   // captureAndPlan stamps `goal` on its OWN inner sequencer state — that
   // doesn't reach the outer pipeline's state where evaluator and synthesize
-  // read from. Mirror the goal here so downstream blocks see it.
+  // read from. Mirror the goal here so downstream blocks see it. When goal
+  // synthesis ran first, the chain value carries the synthesized goal, so
+  // this stamps the synthesized goal into the outer state too (FIX-827).
   const stampOuterGoal = handler({
     name: `${name}-stamp-outer-goal`,
     inputSchema: planAndExecuteInputSchema,
@@ -684,11 +721,14 @@ export function planAndExecute<
     },
   });
 
-  const pipeline = sequencer({
+  // Loosely typed so the optional synthesis prefix can change the chain shape.
+  let pipeline: any = sequencer({
     name,
     inputSchema: planAndExecuteInputSchema,
     stateSchema: planAndExecuteStateSchema,
-  })
+  });
+  if (synthesizeGoalStep !== undefined) pipeline = pipeline.step(synthesizeGoalStep);
+  pipeline = pipeline
     .tap(stampOuterGoal)
     .step(captureAndPlan)
     .step(board.block)
@@ -698,23 +738,23 @@ export function planAndExecute<
     // didn't pre-bake the new tasks. Pre-baked `tasks` bypasses the
     // LLM call and goes straight to applyReplan.
     .stepIf(
-      (d) =>
+      (d: unknown) =>
         (d as { decision?: string }).decision === "replan" &&
         !Array.isArray((d as { tasks?: unknown }).tasks),
       replanner,
     )
     .stepIf(
-      (d) => Array.isArray((d as { tasks?: unknown }).tasks),
+      (d: unknown) => Array.isArray((d as { tasks?: unknown }).tasks),
       applyReplan,
     )
-    .map((d) => ({
+    .map((d: unknown) => ({
       decision: (d as { decision?: string }).decision ?? "continue",
     }))
     .loopBack(board.block.name, {
-      when: (r) => (r as { decision?: string }).decision !== "complete",
+      when: (r: unknown) => (r as { decision?: string }).decision !== "complete",
       maxIterations,
     })
-    .step(synthesize) as SequencerDefinition<any, any>;
+    .step(synthesize);
 
-  return pipeline;
+  return pipeline as SequencerDefinition<any, any>;
 }
