@@ -899,6 +899,59 @@ describe("plan-and-execute pattern", () => {
       expect(seen["s2"]).toBe("enriched:s2:Build");
     });
 
+    it("fills replanned tasks' context with the goal too (FIX-827)", async () => {
+      // The replan loop re-enters the board directly, so applyReplan applies
+      // the same goal→context gap-fill the planning-entry enricher does.
+      const planner = createDeterministicPlanner([{ id: "s1", goal: "initial" }]);
+      const evaluatorMock = mockGenerator({
+        name: "replan-ctx-evaluate-llm",
+        script: [
+          { structuredOutput: { decision: "replan", reasoning: "more" } },
+          { structuredOutput: { decision: "complete", reasoning: "done" } },
+        ],
+      });
+      const replannerMock = mockGenerator({
+        name: "replan-ctx-replanner",
+        script: [
+          { structuredOutput: { tasks: [{ id: "extra-1", goal: "replanned task" }] } },
+        ],
+      });
+
+      const seen: Record<string, string | undefined> = {};
+      const capture = handler({
+        name: "replan-ctx-capture",
+        inputSchema: z.any(),
+        outputSchema: z.object({ summary: z.string(), success: z.boolean() }),
+        execute: (input: any) => {
+          seen[input.stepId] = input.context;
+          return { summary: "ok", success: true };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "replan-ctx",
+        planner,
+        stepExecutor: capture,
+        enableReplanning: true,
+        maxIterations: 5,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Build the thing" },
+        generators: {
+          "replan-ctx-evaluate-llm": evaluatorMock,
+          "replan-ctx-replanner": replannerMock,
+        },
+      });
+
+      expect(result.error).toBeNull();
+      // Initial task — context filled by the planning-entry enricher.
+      expect(seen["s1"]).toBe("Build the thing");
+      // Replanned task — context filled by applyReplan on re-seed.
+      expect(seen["extra-1"]).toBe("Build the thing");
+    });
+
     it("threads planner-supplied context to the worker", async () => {
       const planner = handler({
         name: "ctx-planner",

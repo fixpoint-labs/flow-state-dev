@@ -702,7 +702,11 @@ export function planAndExecute<
   });
 
   const cascadeSkipDependents = createCascadeSkipDependents({ name });
-  const applyReplan = createApplyReplan({ name, maxAttemptsPerTask });
+  const applyReplan = createApplyReplan({
+    name,
+    maxAttemptsPerTask,
+    ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
+  });
   const synthesize = createSynthesize({ name, synthesizer });
 
   // ------- Assemble pipeline -----------------------------------------------

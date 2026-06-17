@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { utility, sequencer, assertStrictCompatible } from "../src";
-import { decomposerTaskSchema, decomposerOutputSchema } from "../src/utility/decomposer";
+import { decomposerOutputSchema } from "../src/utility/decomposer";
 import { createMockContext, runForTest } from "./helpers";
 describe("utility.decomposer", () => {
   it("returns a generator block definition", () => {
