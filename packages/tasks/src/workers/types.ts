@@ -26,6 +26,15 @@ import type { BlockDefinition } from "@flow-state-dev/core/types";
 export type TaskWorkerInput<TIn = unknown> = {
   taskId: string;
   goal: string;
+  /** Concise label for the task, distinct from `goal`. Mirrors `Task.title`. */
+  title?: string;
+  /**
+   * Readable per-task support text — the request/conversation slice the
+   * worker needs to act on this task. Mirrors `Task.context`. Distinct
+   * from the generic typed `input` payload below: `context` is prose data
+   * the worker renders into its prompt, not a typed directive.
+   */
+  context?: string;
   input?: TIn;
   /**
    * Dep outputs keyed by dep task id, materialized from the collection

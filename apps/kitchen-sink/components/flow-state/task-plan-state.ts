@@ -51,6 +51,10 @@ export type TaskStatus =
 export type Task = {
   id: string;
   goal: string;
+  /** Concise label, distinct from `goal`. Rendered as the row label when present. */
+  title?: string;
+  /** Readable per-task support text handed to the worker. */
+  context?: string;
   status: TaskStatus;
   attempts?: number;
   maxAttempts?: number;
