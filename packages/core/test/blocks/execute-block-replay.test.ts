@@ -75,6 +75,20 @@ describe("executeBlock resume replay", () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
+  it("clears the one-shot input hint on replay so it can't leak to a later sibling", async () => {
+    const block = handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute: async () => "fresh" });
+    const ctx = createMockContext();
+    // The dispatching op stashes a one-shot input hint before each child.
+    (ctx as any)._pendingChildInputHint = { kind: "inline", value: "stashed" };
+    (ctx as any)._replayLog = buildReplayLog([completedTrace("root/step[0]", "cached")]);
+
+    await executeBlock(block, "in", ctx, "root/step[0]");
+
+    // Replayed block consumed its dispatch — the hint must not linger for the
+    // next non-replayed sibling.
+    expect((ctx as any)._pendingChildInputHint).toBeUndefined();
+  });
+
   it("short-circuits before the execution-scope hook on replay", async () => {
     const execute = vi.fn(async () => "fresh");
     const block = handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute });

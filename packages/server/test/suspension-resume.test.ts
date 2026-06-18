@@ -4,7 +4,8 @@
  * Verifies the ctx.suspend() → suspended status → resume endpoint → flow
  * completion lifecycle for durable actions.
  */
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { buildReplayLog, defineFlow, handler, parseBlockInstanceId, sequencer } from "@flow-state-dev/core";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores, runAction } from "../src";
@@ -116,6 +117,56 @@ describe("ctx.suspend() — initial suspension", () => {
     expect(suspItem.reason).toBe("human_input");
     expect(suspItem.message).toBe("Please provide feedback");
     expect(suspItem.resumeSchema).toBeDefined();
+  });
+
+  it("records the nested suspending block's identity so the ReplayLog can recover it (FIX-811)", async () => {
+    const approvalStep = handler({
+      name: "approvalStep",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+
+    const flow = defineFlow({
+      kind: "nested-suspend-identity",
+      actions: {
+        ask: {
+          block: sequencer({ name: "askSeq", durable: true }).step(approvalStep),
+          inputSchema: z.any()
+        }
+      }
+    })();
+
+    const { stores, provider } = createDurableStores();
+
+    const result = await runAction({
+      flow,
+      actionName: "ask",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+
+    // The suspending block is nested below the root sequencer, so the outer ctx
+    // has no identity — the id must come from the error stamp, not "unknown".
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    expect(suspension.blockInstanceId).not.toBe("unknown");
+    const parsed = parseBlockInstanceId(suspension.blockInstanceId);
+    expect(parsed).toBeDefined();
+    expect(parsed!.requestId).toBe(result.requestId);
+
+    const suspItem = result.items.find((i) => i.type === "suspension") as any;
+    expect(suspItem.blockInstanceId).toBe(suspension.blockInstanceId);
+
+    // The ReplayLog (built from the item log alone) recovers the pending
+    // suspension keyed by the suspending block's logical path.
+    const replayLog = buildReplayLog(result.items as RuntimeItem[]);
+    const pending = replayLog.pendingSuspension();
+    expect(pending).toBeDefined();
+    expect(pending!.suspensionId).toBe(suspension.suspensionId);
+    expect(pending!.blockLogicalId).toBe(`${parsed!.requestId}:${parsed!.path}`);
   });
 });
 

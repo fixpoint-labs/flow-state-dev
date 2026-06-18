@@ -911,6 +911,11 @@ export async function runActionInternal<
     } catch (suspendError) {
       if (suspendError instanceof SuspensionError) {
         const provider = options.runtimeConfig.durabilityProvider;
+        // The suspending block's identity is stamped on the error at the
+        // innermost scope (FIX-811); the outer ctx usually has no
+        // `_blockIdentity` for a nested suspension. Prefer the stamped value.
+        const suspendingBlockInstanceId =
+          suspendError._blockInstanceId ?? ctx._blockIdentity?.blockInstanceId ?? "unknown";
         if (provider !== undefined) {
           const stepIndex = suspendError._stepIndex ?? -1;
           const record: SuspensionRecord = {
@@ -926,7 +931,7 @@ export async function runActionInternal<
             resumeSchema: suspendError.resumeSchema,
             render: suspendError.render,
             status: "pending",
-            blockInstanceId: ctx._blockIdentity?.blockInstanceId ?? "unknown",
+            blockInstanceId: suspendingBlockInstanceId,
             stepIndex,
             stepInput: suspendError._currentValue,
             createdAt: Date.now(),
@@ -951,7 +956,7 @@ export async function runActionInternal<
           // Carry the suspending block's identity into the log so the resume
           // runtime can recover its logical path (FIX-811). Mirrors the
           // SuspensionRecord.blockInstanceId above.
-          blockInstanceId: ctx._blockIdentity?.blockInstanceId ?? "unknown",
+          blockInstanceId: suspendingBlockInstanceId,
           requestId,
           itemIndex: getResponseItemCount(response),
           provenance: RUNTIME_PROVENANCE,

@@ -59,6 +59,14 @@ export class SuspensionError extends Error {
   _currentValue?: unknown;
   /** @internal Snapshot of sequencer state at the point of suspension. */
   _sequencerState?: Record<string, unknown>;
+  /**
+   * @internal `blockInstanceId` of the block that suspended, stamped at the
+   * innermost execution scope (where the identity is known) as the error
+   * propagates up (FIX-811). The outer request ctx usually has no
+   * `_blockIdentity` for a nested suspension, so this is the reliable source for
+   * the SuspensionRecord / `suspension` item identity and the resume logical path.
+   */
+  _blockInstanceId?: string;
 
   constructor(options: SuspendOptions & { suspensionId: string }) {
     super(options.message ?? `Flow suspended: ${options.reason}`);

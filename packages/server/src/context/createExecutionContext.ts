@@ -2881,6 +2881,15 @@ export async function createExecutionContext<
           // request rebuilt from the checkpoint, so this run's bookkeeping is
           // discarded anyway.
           if (error instanceof SuspensionError) {
+            // FIX-811: stamp the suspending block's instance id at the innermost
+            // scope to see the error (where identity is known). The first
+            // (innermost) writer wins; outer scopes must not overwrite it. This
+            // is the reliable source for the suspension record/item identity —
+            // the outer request ctx usually has no `_blockIdentity` for a nested
+            // suspension.
+            if (error._blockInstanceId === undefined) {
+              error._blockInstanceId = resolvedParent.instanceId;
+            }
             throw error;
           }
           siblingEntry.result.status = "failed";

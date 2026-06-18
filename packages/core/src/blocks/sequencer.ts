@@ -416,13 +416,27 @@ export async function executeBlock(
   const requestId = ctx.request.identity.id;
   const instanceId = buildBlockInstanceId(requestId, path, 0);
 
+  // Pull the input descriptor stashed by the calling op (FIX-573). Forwarded
+  // onto the scoped child ctx as `_blockInputHint` so build-block.ts's
+  // `added`-phase capture can stamp the right BlockValue source. Cleared
+  // after one read so it can't leak across siblings.
+  const pendingInputHint =
+    (ctx as { _pendingChildInputHint?: BlockValueInternal<unknown> })._pendingChildInputHint;
+  if (pendingInputHint !== undefined) {
+    (ctx as { _pendingChildInputHint?: BlockValueInternal<unknown> })._pendingChildInputHint = undefined;
+  }
+
   // Resume replay (FIX-811): when a request continues under its own id, a block
   // whose logical path already produced a committed output on a prior run is
   // injected rather than re-executed. Returning here skips the block body
   // entirely — no model call, no `emit`, no state mutation — and emits no
   // duplicate trace, because the recorded output IS the canonical one. Keyed on
   // the attempt-independent logical id (`${requestId}:${path}`). Inert when no
-  // ReplayLog is present (the normal, non-resume path).
+  // ReplayLog is present (the normal, non-resume path), which the server only
+  // builds at re-entry (Step 3). Placed AFTER the one-shot `_pendingChildInputHint`
+  // read+clear so a replayed child never leaks the stashed hint to a later
+  // sibling. (Wiring replayed blocks into the sibling registry for
+  // `ctx.getBlockOutput()` is owned by the Step 3 server re-entry path.)
   const replayLog = (ctx as { _replayLog?: ReplayLog })._replayLog;
   if (replayLog !== undefined) {
     const cached = replayLog.getCompletedOutput(`${requestId}:${path}`);
@@ -433,15 +447,6 @@ export async function executeBlock(
     }
   }
 
-  // Pull the input descriptor stashed by the calling op (FIX-573). Forwarded
-  // onto the scoped child ctx as `_blockInputHint` so build-block.ts's
-  // `added`-phase capture can stamp the right BlockValue source. Cleared
-  // after one read so it can't leak across siblings.
-  const pendingInputHint =
-    (ctx as { _pendingChildInputHint?: BlockValueInternal<unknown> })._pendingChildInputHint;
-  if (pendingInputHint !== undefined) {
-    (ctx as { _pendingChildInputHint?: BlockValueInternal<unknown> })._pendingChildInputHint = undefined;
-  }
   const run = async (scopedCtx: BlockContext): Promise<unknown> => {
     if (pendingInputHint !== undefined) {
       (scopedCtx as { _blockInputHint?: BlockValueInternal<unknown> })._blockInputHint = pendingInputHint;
