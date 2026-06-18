@@ -438,7 +438,13 @@ const approvalGateStep = handler({
     // makes it THROW SuspensionRejectedError. So reaching past ctx.suspend means
     // approved — don't key off a data field.
     try {
-      ctx.runOnce?.(`approve-${input.request}`, async () => ctx.emit.message(`Approve action: "${input.request}"?`));
+      // Emit the prompt directly — do NOT wrap it in ctx.runOnce. On resume the
+      // gate re-runs from the top and re-emits this; the canonical item-log view
+      // (collapseToCanonicalLog) drops the superseded run-1 copy so history /
+      // useSession / the DevTool stream show it once. runOnce is for *awaited*
+      // side effects (e.g. "charge the card once"), not emits — wrapping an emit
+      // (especially unawaited, before a suspend) double-emits out of order.
+      ctx.emit.message(`Approve action: "${input.request}"?`);
       const data = (await ctx.suspend!({
         reason: "human_approval",
         message: `Approve action: "${input.request}"?`,

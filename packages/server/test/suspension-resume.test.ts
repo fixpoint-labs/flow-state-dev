@@ -1303,6 +1303,144 @@ describe("same-request continuation (FIX-811)", () => {
     expect(await stores.leases.get(requestId)).toBeNull();
   });
 
+  it("releases the continuation lease when crash-recovery continuation fails before the in_progress transition (FIX-811)", async () => {
+    // Crash recovery (`continue`, no resumeContext) acquires a lease exactly like
+    // resume, then the run starts detached. A pre-transition failure here never
+    // reaches the route's catch, and there is no suspension to revert — so the
+    // recovery path must STILL release the lease, or the next continue 409s until
+    // the 60s TTL. This is the gap the resume-only revert left.
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const flow = defineFlow({
+      kind: "fix811-crash-lease",
+      actions: {
+        run: {
+          block: sequencer({ name: "seq", durable: true }).step(gate),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-crash-lease" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    // Simulate a crash mid-flight: flip the suspended record to interrupted.
+    const suspended = await stores.request.get(requestId);
+    await stores.request.set(
+      requestId,
+      { ...suspended!, status: "interrupted", interruptedAt: Date.now() },
+      "any"
+    );
+
+    // Acquire the continuation lease as handleContinueRequest would.
+    const lease = await stores.leases.acquire(requestId, {
+      holder: "continue-test",
+      durationMs: 60_000
+    });
+    expect(lease).not.toBeNull();
+
+    // Force a pre-transition failure: the checkpoint restore throws.
+    vi.spyOn(stores.checkpoints, "latest").mockRejectedValueOnce(new Error("checkpoint boom"));
+
+    await expect(
+      runAction({
+        flow,
+        actionName: "run",
+        input: {},
+        userId: "u1",
+        requestId,
+        stores,
+        replayMode: true, // crash recovery: replayMode, NO resumeContext
+        runtimeConfig: { durabilityProvider: provider }
+      })
+    ).rejects.toThrow(/checkpoint boom/);
+
+    // Never crossed the point of no return, so the record stays interrupted —
+    // and the lease is released so the next continue acquires cleanly.
+    expect((await stores.request.get(requestId))?.status).toBe("interrupted");
+    expect(await stores.leases.get(requestId)).toBeNull();
+  });
+
+  it("canonical view shows a re-run block's emit once after crash-recovery continuation (FIX-811)", async () => {
+    // Crash recovery re-runs the interrupted in-flight block with NO
+    // suspension_resume marker, so the resolved-suspension rule never fires for
+    // it. A user-visible item the block emitted before the crash stays in the
+    // physical log next to the re-emitted copy; the canonical view must still
+    // collapse to one, keyed on the re-run's second block_trace (Rule 3).
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_i, ctx) => {
+        ctx.emit.message("Working on it");
+        return ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+      }
+    });
+    const flow = defineFlow({
+      kind: "fix811-crash-canonical",
+      actions: {
+        run: {
+          block: sequencer({ name: "seq", durable: true }).step(gate),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-crash-canonical" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    // Simulate a crash mid-flight.
+    const suspended = await stores.request.get(requestId);
+    await stores.request.set(
+      requestId,
+      { ...suspended!, status: "interrupted", interruptedAt: Date.now() },
+      "any"
+    );
+
+    // Continue under the same id — no resumeContext. The gate re-runs, re-emits
+    // "Working on it", and re-suspends (crash recovery resolves no gate).
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    await finished;
+
+    const record = await stores.request.get(requestId);
+    const physical = (record!.items ?? []).filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "assistant"
+    );
+    // Both runs' copies are retained physically (forensics).
+    expect(physical.length).toBe(2);
+
+    // The canonical view collapses to one despite no suspension_resume.
+    const canonical = collapseToCanonicalLog(record!.items ?? []).filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "assistant"
+    );
+    expect(canonical.length).toBe(1);
+  });
+
   it("re-suspends at later gates on a multi-gate legacy resume instead of skipping them (FIX-811)", async () => {
     // The legacy two-request path threads a bare `resumeContext` (no
     // `pendingBlockLogicalId`) directly to runAction. The payload must be

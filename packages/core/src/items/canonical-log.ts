@@ -47,9 +47,9 @@ function suspensionLogicalId(item: OutputItem): string | undefined {
 /**
  * Collapse a request's physical item log to its canonical view.
  *
- * Two superseding rules, both keyed by the logical block path:
+ * Three superseding rules, all keyed by the logical block path:
  *
- * 1. **Re-run emissions.** For every `suspension` that has a matching
+ * 1. **Resume re-run emissions.** For every `suspension` that has a matching
  *    `suspension_resume` (a resolved cycle), the block at that suspension's
  *    logical path re-ran on continuation. Its run-1 emissions are exactly the
  *    items it owns at an `itemIndex` below the suspension's — drop them; the
@@ -61,6 +61,16 @@ function suspensionLogicalId(item: OutputItem): string | undefined {
  *    keep only the canonical one — the `completed` trace with the highest
  *    `itemIndex` (or, absent any completed, the highest-index trace) — and drop
  *    the run-1 partial(s).
+ * 3. **Crash-recovery re-run emissions.** The `continue` path (FIX-811 crash
+ *    recovery) re-runs the interrupted in-flight block with NO `suspension` /
+ *    `suspension_resume` marker, so Rule 1 never fires for it — its run-1
+ *    emissions would otherwise survive next to the re-emitted run-2 copies. A
+ *    re-run is visible as more than one `block_trace` on a logical path; the
+ *    canonical (latest) trace's `itemIndex` is the start of the surviving run
+ *    (traces reserve their index at block start). Use it as the supersession
+ *    boundary, merged with Rule 1's so the later boundary wins. A block that ran
+ *    once (one trace) — including a completed block injected from the log on
+ *    replay — has no boundary and is left untouched.
  *
  * Order and identity of the surviving items are preserved. A request that never
  * suspended is returned unchanged (no resolved suspensions, no duplicate
@@ -91,11 +101,15 @@ export function collapseToCanonicalLog<T extends OutputItem>(items: readonly T[]
   // Rule 2: logical path -> the id of its canonical block_trace. `block_trace`
   // is an internal (RuntimeItem) type absent from the public `OutputItem`
   // union, so compare the widened string to avoid narrowing the branch away.
+  // `traceCount` tracks how many traces each logical path has, so Rule 3 can
+  // tell a re-run (>1) from a single run.
   const canonicalTrace = new Map<string, { id: string; itemIndex: number; completed: boolean }>();
+  const traceCount = new Map<string, number>();
   for (const item of items) {
     if ((item.type as string) !== "block_trace") continue;
     const logicalId = logicalIdOf(item.provenance?.blockInstanceId);
     if (logicalId === undefined) continue;
+    traceCount.set(logicalId, (traceCount.get(logicalId) ?? 0) + 1);
     const completed = item.status === "completed";
     const prior = canonicalTrace.get(logicalId);
     if (prior === undefined) {
@@ -108,6 +122,22 @@ export function collapseToCanonicalLog<T extends OutputItem>(items: readonly T[]
       (completed && !prior.completed) ||
       (completed === prior.completed && item.itemIndex > prior.itemIndex);
     if (better) canonicalTrace.set(logicalId, { id: item.id, itemIndex: item.itemIndex, completed });
+  }
+
+  // Rule 3: for every logical path that re-ran (more than one trace), use its
+  // canonical trace's itemIndex — the start of the surviving run — as the
+  // supersession boundary, taking the later of it and any Rule-1 boundary. This
+  // is what catches crash-recovery `continue` (no suspension marker); for the
+  // resume path the run-2 trace starts after `suspension_resume`, so it agrees
+  // with (and never precedes) Rule 1.
+  for (const [logicalId, count] of traceCount) {
+    if (count < 2) continue;
+    const canonical = canonicalTrace.get(logicalId);
+    if (canonical === undefined) continue;
+    const prior = supersededBefore.get(logicalId);
+    if (prior === undefined || canonical.itemIndex > prior) {
+      supersededBefore.set(logicalId, canonical.itemIndex);
+    }
   }
 
   if (supersededBefore.size === 0 && canonicalTrace.size === 0) return [...items];

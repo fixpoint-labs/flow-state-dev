@@ -879,46 +879,58 @@ export async function runActionInternal<
   // stays `suspended` and the run never transitions it.
 
   // PRE-transition failure recovery (FIX-811). A same-request continuation
-  // marks the suspension `approved`/`rejected` and returns 202 BEFORE this
-  // detached run reaches its point of no return (`suspended → in_progress`).
-  // If a pre-transition step here throws (buildReplayLog, createExecutionContext,
-  // or the checkpoint restore), the resume route's catch never runs — so without
-  // this revert the suspension would stay resolved while the request stays
-  // `suspended`, leaving it un-retryable (the resume guard requires `pending`).
-  // Reverting the suspension to `pending` (and leaving the record `suspended`,
-  // never `failed`, since we never crossed the point of no return) keeps the
-  // resume re-attemptable. Best-effort and idempotent: revert errors are
-  // swallowed. Only call this for pre-transition failures.
-  async function revertSuspensionToPending(): Promise<void> {
+  // (resume OR crash-recovery `continue`) acquires a lease and returns 202/SSE
+  // BEFORE this detached run reaches its point of no return
+  // (`suspended/interrupted → in_progress`). If a pre-transition step here throws
+  // (buildReplayLog, createExecutionContext, or the checkpoint restore), the
+  // route's catch never runs — it already returned — so the lease and (for the
+  // resume path) the resolved suspension would both linger. Two best-effort,
+  // idempotent recoveries, leaving the record where it was (`suspended` /
+  // `interrupted`, never `failed`, since we never crossed the point of no return):
+  //
+  //   1. Resume only: revert the suspension `approved`/`rejected` → `pending` so
+  //      the resume stays re-attemptable (its guard requires `pending`).
+  //   2. Both paths: release the continuation lease keyed on this request id —
+  //      otherwise it lingers until its 60s TTL and the next resume/continue
+  //      attempt 409s even though the request is back to a retryable state.
+  //
+  // Crash recovery has no `resumeContext` / no suspension to revert, but it DOES
+  // hold a lease (recovery-routes.ts `handleContinueRequest`), so the release
+  // must run for it too — that gap is what this guards. Only call for
+  // pre-transition failures.
+  async function recoverFromPreTransitionFailure(): Promise<void> {
+    if (!isReplayMode) return;
     const provider = options.runtimeConfig.durabilityProvider;
-    if (!isReplayMode || resumeContextRaw === undefined || provider === undefined) {
-      return;
-    }
-    try {
-      const suspension = await provider.loadSuspension(
-        requestId,
-        resumeContextRaw.suspensionId
-      );
-      if (suspension !== null) {
-        await provider.suspend({
-          ...suspension,
-          status: "pending",
-          resolvedAt: undefined,
-          resolvedBy: undefined,
-          resumeData: undefined
-        });
+
+    // (1) Resume path: revert the resolved suspension back to pending.
+    if (provider !== undefined && resumeContextRaw !== undefined) {
+      try {
+        const suspension = await provider.loadSuspension(
+          requestId,
+          resumeContextRaw.suspensionId
+        );
+        if (suspension !== null) {
+          await provider.suspend({
+            ...suspension,
+            status: "pending",
+            resolvedAt: undefined,
+            resolvedBy: undefined,
+            resumeData: undefined
+          });
+        }
+      } catch {
+        // Best-effort: a revert failure must not mask the original error.
       }
-      // Release the resume lease the route acquired on this request id. The
-      // route already returned after starting this detached run, so its catch
-      // won't fire for a pre-transition failure here — without this the lease
-      // lingers until its 60s TTL and the next resume attempt 409s even though
-      // the suspension is now back to `pending` and retryable (FIX-811).
+    }
+
+    // (2) Both paths: release the continuation lease.
+    try {
       const lease = await options.stores.leases.get(requestId);
       if (lease !== null) {
         await options.stores.leases.release(requestId, lease.leaseId);
       }
     } catch {
-      // Best-effort: a revert failure must not mask the original error.
+      // Best-effort: a release failure must not mask the original error.
     }
   }
 
@@ -1037,7 +1049,7 @@ export async function runActionInternal<
     // so the resume stays re-attemptable (FIX-811). Then clean up the abort
     // controller / heartbeat (as the prior createExecutionContext catch did)
     // and rethrow so `finished` rejects.
-    await revertSuspensionToPending();
+    await recoverFromPreTransitionFailure();
     deregisterAbortController(requestId);
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
     throw setupError;
