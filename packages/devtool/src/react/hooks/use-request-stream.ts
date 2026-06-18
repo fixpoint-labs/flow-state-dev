@@ -153,6 +153,19 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         } else if (event.type === "request.in_progress") {
           state.status = "in_progress";
           setStreamStatus("streaming");
+        } else if (event.type === "request.suspended") {
+          // FIX-811: a request that pauses at a ctx.suspend() gate streams
+          // `request.suspended` then closes. Without this branch the DevTool
+          // left the badge on "in_progress" until a manual refresh, hiding the
+          // approval gate. Stop the live spinner; the segment is done until resume.
+          state.status = "suspended";
+          setStreamStatus("completed");
+        } else if (event.type === "request.interrupted") {
+          state.status = "interrupted";
+          setStreamStatus("disconnected");
+        } else if (event.type === "request.aborted") {
+          state.status = "aborted";
+          setStreamStatus("completed");
         }
         state.terminalEvents.push(event);
         flushNow();

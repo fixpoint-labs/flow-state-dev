@@ -286,6 +286,20 @@ function PanelContent({ className }: { className?: string }) {
     [activeFlowKind, effectiveSessionId, sendAction],
   );
 
+  // After a suspension is resolved, re-attach the live stream to the continued
+  // (same-id) request so its progress to terminal renders without a manual
+  // refresh (FIX-811). Mirrors a dispatch: subscribe + lock live ON; the
+  // terminal-status effect above clears `dispatchedRequestId` and refreshes the
+  // request list when the continuation settles.
+  const handleResumed = useCallback(
+    (requestId: string) => {
+      setActiveRequestId(requestId);
+      setDispatchedRequestId(requestId);
+      void refreshRequests();
+    },
+    [refreshRequests],
+  );
+
   // The Resume button is only meaningful for the *current* tail of the
   // session — `latestRequest` comes from `useLiveMode` so the same scan
   // drives both the Live badge state and this gate.
@@ -483,6 +497,7 @@ function PanelContent({ className }: { className?: string }) {
               <SuspensionsView
                 key={effectiveSessionId ?? "none"}
                 sessionId={effectiveSessionId}
+                onResumed={handleResumed}
               />
             </TabsContent>
 
