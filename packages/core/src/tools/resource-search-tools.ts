@@ -12,9 +12,10 @@
 // grep and search read content, so they gate on `llmReadable` for parity with
 // `readResourceContentTool` and search the *rendered* content (`readContent()`,
 // the same bytes that tool returns) — so they find what the agent can actually
-// read, including resources whose body is a state-rendered template. Scoped calls
-// push their prefix into `collection.list(prefix)` to avoid loading out-of-scope
-// instances. Lexical only — no embeddings (semantic recall is the memory / RAG job).
+// read, including resources whose body is a state-rendered template. Scoping is
+// applied to full resource paths after listing (see `matchesPrefix`); these tools
+// enumerate the collections they search, so they suit bounded, curated content.
+// Lexical only — no embeddings (semantic recall is the memory / RAG job).
 // ---------------------------------------------------------------------------
 
 import { z } from "zod";
@@ -32,16 +33,13 @@ const MAX_SNIPPET_LENGTH = 200;
  * resources plus every instance of every collection. Collection instances are
  * themselves `ResourceRef`s, so callers treat the two uniformly.
  *
- * `prefix` is pushed into `collection.list(prefix)` so a scoped grep/search does
- * not enumerate (and, for lazy stores, load) instances outside the requested
- * path. It is a best-effort narrowing hint only — callers still apply the
- * authoritative `matchesPrefix` boundary filter, since a store may return a
- * `startsWith` superset (or ignore the hint entirely).
+ * Lists each collection in full and lets callers scope with `matchesPrefix` on the
+ * resulting full paths. We deliberately do NOT push a prefix into
+ * `collection.list(prefix)`: that argument is collection-relative (the store
+ * prepends the pattern prefix), so a full-path scope would resolve to the wrong
+ * key space and silently return nothing. Suited to bounded, curated collections.
  */
-async function collectAllResources(
-  ctx: BlockContext,
-  prefix?: string,
-): Promise<ResourceRef<any>[]> {
+async function collectAllResources(ctx: BlockContext): Promise<ResourceRef<any>[]> {
   const registry = ctx.resources;
   if (registry === undefined) return [];
 
@@ -50,7 +48,7 @@ async function collectAllResources(
     // ResourceCollectionRef has a `pattern` + `create`; a ResourceRef does not.
     if ("pattern" in entry && "create" in entry) {
       const collection = entry as unknown as ResourceCollectionRef<any>;
-      const instances = await collection.list(prefix);
+      const instances = await collection.list();
       for (const instance of instances) out.push(instance);
     } else {
       out.push(entry as ResourceRef<any>);
@@ -191,7 +189,7 @@ export function resourceSearchTools() {
     execute: async (input, ctx) => {
       const matcher = compileMatcher(input.pattern);
       const matches: Array<{ path: string; line: number; snippet: string }> = [];
-      const resources = (await collectAllResources(ctx, input.prefix ?? undefined)).filter(isLlmReadable);
+      const resources = (await collectAllResources(ctx)).filter(isLlmReadable);
 
       for (const ref of resources) {
         if (input.prefix !== null && !matchesPrefix(ref.path, input.prefix)) continue;
@@ -239,7 +237,7 @@ export function resourceSearchTools() {
         .filter((term) => term.length > 0);
       if (terms.length === 0) return { results: [] };
 
-      const resources = (await collectAllResources(ctx, input.prefix ?? undefined)).filter(isLlmReadable);
+      const resources = (await collectAllResources(ctx)).filter(isLlmReadable);
       const scored: Array<{ path: string; score: number; snippet: string }> = [];
 
       for (const ref of resources) {

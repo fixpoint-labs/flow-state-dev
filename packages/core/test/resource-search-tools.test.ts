@@ -199,7 +199,11 @@ describe("grepResourceContent", () => {
     expect(miss.matches).toEqual([]);
   });
 
-  it("pushes the prefix into collection.list so scoped calls don't enumerate the whole collection", async () => {
+  it("lists collections without a relative prefix and scopes on full paths", async () => {
+    // The real ResourceCollectionRef.list(prefix) treats prefix as collection-RELATIVE
+    // (it prepends the pattern prefix), so handing it a full path like "concepts/react/"
+    // would resolve to the wrong key space and return nothing. These tools list with no
+    // argument and scope via matchesPrefix on the returned full paths instead.
     const seen: Array<string | undefined> = [];
     const ctx = createMockContext({
       resources: {
@@ -210,18 +214,26 @@ describe("grepResourceContent", () => {
             create: async () => {},
             list: async (prefix?: string) => {
               seen.push(prefix);
-              return [refOf({ path: "concepts/react/hooks", content: "x" })];
+              // Mimic the store: a (relative) prefix prepends the pattern prefix.
+              const all = [
+                refOf({ path: "concepts/react/hooks", content: "needle" }),
+                refOf({ path: "concepts/vue", content: "needle" }),
+              ];
+              if (prefix === undefined) return all;
+              const full = `concepts/${prefix}`;
+              return all.filter((r) => r.path.startsWith(full));
             },
           },
         ],
         get: (() => undefined) as any,
       } as any,
     });
-    await runForTest(grepResourceContent,
-      { pattern: "x", prefix: "concepts/react/", maxResults: 1 },
+    const { matches } = await runForTest(grepResourceContent,
+      { pattern: "needle", prefix: "concepts/react/", maxResults: 50 },
       ctx,
     );
-    expect(seen).toEqual(["concepts/react/"]);
+    expect(seen).toEqual([undefined]);
+    expect(matches.map((m) => m.path)).toEqual(["concepts/react/hooks"]);
   });
 
   it("bounds results by maxResults", async () => {
