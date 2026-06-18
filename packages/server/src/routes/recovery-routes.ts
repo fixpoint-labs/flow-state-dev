@@ -6,6 +6,7 @@ import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost } from "../transports/types";
 import { detectInterruptedRequests, retryRequest } from "../execution/request-recovery";
 import { jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
+import { generateId } from "../utils/generate-id";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
 
@@ -136,12 +137,37 @@ export async function handleContinueRequest(
     });
   }
 
+  // The route is session-scoped; continuing mutates an existing record's
+  // lifecycle, so the path's sessionId must match the record's — otherwise the
+  // scoping is cosmetic and a caller could continue any request by id under any
+  // session path.
+  if (originalRecord.sessionId !== route.sessionId) {
+    return jsonResponse(400, {
+      error: `Session mismatch: request "${route.requestId}" does not belong to session "${route.sessionId}"`
+    });
+  }
+
   // Continue is for crash-interrupted requests only. A `suspended` record is
   // resolved through the resume endpoint (it carries a pending gate); terminal
   // and still-running records have nothing to continue.
   if (originalRecord.status !== "interrupted") {
     return jsonResponse(409, {
       error: `Request "${route.requestId}" has status "${originalRecord.status}" and cannot be continued (only "interrupted" requests continue; use /resume for "suspended", /retry for a fresh run)`
+    });
+  }
+
+  // Exclusive-continuation lease, mirroring the resume route (resume-routes.ts):
+  // two callers that both pass the status check above must not both re-enter and
+  // re-run the in-flight block twice under the same id. The lease is released by
+  // runAction at its terminal / re-suspension (the same path the resume lease
+  // takes); only a setup failure before that needs the explicit release below.
+  const lease = await ctx.stores.leases.acquire(route.requestId, {
+    holder: generateId("continue"),
+    durationMs: 60_000
+  });
+  if (lease === null) {
+    return jsonResponse(409, {
+      error: "Concurrent continuation in progress. Try again later."
     });
   }
 
@@ -165,6 +191,9 @@ export async function handleContinueRequest(
 
     return jsonResponse(202, { requestId: route.requestId });
   } catch (error) {
+    // Setup failed before the detached run took ownership of the lease release;
+    // free it so a retry isn't blocked until the TTL.
+    await ctx.stores.leases.release(route.requestId, lease.leaseId).catch(() => {});
     const message = error instanceof Error ? error.message : String(error);
     return jsonResponse(500, { error: message });
   }

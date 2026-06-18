@@ -290,8 +290,24 @@ export function createItemStore(): ItemStore {
   let ownershipIndex = new Map<string, Set<string>>();
   const deltaQueue = new Map<string, ContentDeltaAccumulator>();
 
+  // Memoized canonical view (FIX-811). The collapse is O(n); caching it keeps
+  // `getSorted` and `getOwnedBy` from rebuilding+rescanning the whole log on
+  // every call (a React render can call `getOwnedBy` once per displayed block).
+  // Invalidated (set to null) by every mutation below; recomputed lazily.
+  let canonicalCache: OutputItem[] | null = null;
+  const invalidateCanonical = (): void => {
+    canonicalCache = null;
+  };
+  const canonical = (): OutputItem[] => {
+    if (canonicalCache === null) {
+      canonicalCache = collapseToCanonicalLog(buildItemsFromMap(sortedIds, itemsById));
+    }
+    return canonicalCache;
+  };
+
   const store: ItemStore = {
     loadSnapshot(items: OutputItem[]): void {
+      invalidateCanonical();
       itemsById = new Map<string, OutputItem>();
       sortedIds = [];
       ownershipIndex = new Map<string, Set<string>>();
@@ -305,6 +321,7 @@ export function createItemStore(): ItemStore {
     },
 
     clear(): void {
+      invalidateCanonical();
       itemsById = new Map();
       sortedIds = [];
       ownershipIndex = new Map();
@@ -331,6 +348,7 @@ export function createItemStore(): ItemStore {
 
       itemsById.set(item.id, item);
       trackOwnership(ownershipIndex, item);
+      invalidateCanonical();
 
       if (isNew) {
         sortedIds = insertSortedItemId(sortedIds, item, itemsById);
@@ -355,6 +373,7 @@ export function createItemStore(): ItemStore {
 
       itemsById.delete(id);
       sortedIds = sortedIds.filter((sid) => sid !== id);
+      invalidateCanonical();
 
       const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
       if (ownedBy !== undefined) {
@@ -394,6 +413,7 @@ export function createItemStore(): ItemStore {
       }
 
       deltaQueue.clear();
+      if (hasChanges) invalidateCanonical();
       return hasChanges;
     },
 
@@ -405,16 +425,18 @@ export function createItemStore(): ItemStore {
       if (updated === existing) return false;
 
       itemsById.set(itemId, updated);
+      invalidateCanonical();
       return true;
     },
 
     getSorted(): OutputItem[] {
-      // Collapse to the canonical view (FIX-811): once a resume's
-      // `suspension_resume` arrives on the stream, the suspending block's
-      // superseded run-1 emissions are dropped so the live view shows each
-      // emission once. A no-op until a suspension is resolved (no resolved
-      // suspensions, no duplicate traces → returns the list unchanged).
-      return collapseToCanonicalLog(buildItemsFromMap(sortedIds, itemsById));
+      // Memoized canonical view (FIX-811): once a resume's `suspension_resume`
+      // arrives on the stream, the suspending block's superseded run-1
+      // emissions are dropped so the live view shows each emission once. A no-op
+      // until a suspension is resolved. The collapse (the O(n) scan) is cached
+      // until the next mutation; we return a fresh copy so the documented
+      // "new array each call" contract holds and no caller can mutate the cache.
+      return [...canonical()];
     },
 
     getById(id: string): OutputItem | undefined {
@@ -424,10 +446,12 @@ export function createItemStore(): ItemStore {
     getOwnedBy(ownedBy: string): OutputItem[] {
       const ids = ownershipIndex.get(ownedBy);
       if (ids === undefined || ids.size === 0) return [];
-      // Filter the CANONICAL list (FIX-811) so a resumed block's superseded
-      // run-1 emissions don't surface here while `getSorted()` shows each
-      // emission once — `getOwnedItems` must stay consistent with `items`.
-      return collapseToCanonicalLog(buildItemsFromMap(sortedIds, itemsById)).filter(
+      // Filter the memoized CANONICAL list (FIX-811) so a resumed block's
+      // superseded run-1 emissions don't surface here while `getSorted()` shows
+      // each emission once — `getOwnedItems` must stay consistent with `items`.
+      // Reuses the same cache as `getSorted`, so this no longer recomputes the
+      // collapse per call.
+      return canonical().filter(
         (item) => (item as OutputItem & { ownedBy?: string }).ownedBy === ownedBy
       );
     },
