@@ -249,12 +249,21 @@ function PanelContent({ className }: { className?: string }) {
   }, [streamRequestId, streamItems, effectiveSessionId]);
 
   const requestGroups: RequestGroup[] = useMemo(() => {
+    // The live stream is authoritative for the request it's watching (FIX-811).
+    // The session-requests list is a snapshot that only refetches on terminal /
+    // refresh, so a mid-flight transition on the watched request — in_progress →
+    // suspended, then in_progress → completed across a resume — must read from
+    // `streamState`, not the stale list row. Every other request uses its list
+    // status. `created` is normalized to `in_progress` for display.
+    const liveStreamStatus =
+      streamState?.status === "created" ? "in_progress" : streamState?.status;
     const groups: RequestGroup[] = [];
     for (const req of requests) {
+      const isStreamed = req.id === streamRequestId && liveStreamStatus !== undefined;
       groups.push({
         requestId: req.id,
         action: req.actionName,
-        status: req.status,
+        status: isStreamed ? liveStreamStatus : req.status,
         startedAt: req.startedAtMs ?? req.createdAt,
         duration: req.completedAtMs && req.startedAtMs ? req.completedAtMs - req.startedAtMs : undefined,
         items: liveItems.get(req.id) ?? req.items ?? [],
@@ -266,13 +275,13 @@ function PanelContent({ className }: { className?: string }) {
       groups.push({
         requestId: activeRequestId,
         action: lastResponse?.request.actionName ?? "action",
-        status: streamState?.status === "created" ? "in_progress" : (streamState?.status ?? "in_progress"),
+        status: liveStreamStatus ?? "in_progress",
         startedAt: Date.now(),
         items: liveItems.get(activeRequestId) ?? [],
       });
     }
     return groups;
-  }, [requests, liveItems, activeRequestId, lastResponse, streamState]);
+  }, [requests, liveItems, activeRequestId, lastResponse, streamState, streamRequestId]);
 
   const handleSendAction = useCallback(
     async (action: string, input: unknown) => {
@@ -310,18 +319,21 @@ function PanelContent({ className }: { className?: string }) {
     if (!latestRequest || !effectiveSessionId) return;
     setIsResuming(true);
     try {
-      const result = await recoveryClient.retry({
+      // Crash recovery continues the SAME request under its own id (FIX-811) —
+      // completed blocks replay from the durable log and the in-flight one
+      // re-runs. (Starting over with a new id is the separate retry mode.)
+      const result = await recoveryClient.continue({
         flowKind: latestRequest.flowKind,
         sessionId: effectiveSessionId,
         requestId: latestRequest.id,
       });
-      // Treat the retry like a user-dispatched request: lock Live ON and
-      // subscribe to the new stream id.
-      setActiveRequestId(result.newRequestId);
-      setDispatchedRequestId(result.newRequestId);
+      // Re-attach: lock Live ON and subscribe to the continued (same) id so its
+      // progress to terminal renders without a manual refresh.
+      setActiveRequestId(result.requestId);
+      setDispatchedRequestId(result.requestId);
       void refreshRequests();
     } catch (err) {
-      console.error("[devtool] resume failed", err);
+      console.error("[devtool] continue failed", err);
     } finally {
       setIsResuming(false);
     }
