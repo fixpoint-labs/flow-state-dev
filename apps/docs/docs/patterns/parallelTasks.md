@@ -161,18 +161,21 @@ const architectureBlock = parallelTasks({
 
 ## Custom synthesizer
 
-By default, `utility.combiner` merges worker results deterministically (no LLM call). To synthesize results with an LLM, swap in `utility.synthesizer`:
+By default, `utility.combiner` merges worker results deterministically (no LLM call). To synthesize results with an LLM, supply a `generator()` with a `user` projection over the completed worker outputs (the slot receives them as `unknown[]`):
 
 ```ts
 import { parallelTasks } from "@flow-state-dev/patterns";
-import { utility } from "@flow-state-dev/core";
+import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
 
 const reportBlock = parallelTasks({
   name: "report",
   worker: sectionWorker,
-  synthesizer: utility.synthesizer({
+  synthesizer: generator({
     name: "report-synthesizer",
     outputSchema: z.object({ report: z.string() }),
+    prompt: "Combine the section drafts into one coherent, non-redundant report.",
+    user: (results: unknown[]) => JSON.stringify(results, null, 2),
   }),
 });
 ```
