@@ -63,6 +63,28 @@ export const AllCompleted: Story = {
     ),
 };
 
+export const WithTitles: Story = {
+  render: () =>
+    wrap(
+      buildItems([
+        {
+          id: "t1",
+          title: "Audit routes",
+          goal: "Audit every existing route under /api and record its auth requirements",
+          status: "completed",
+        },
+        {
+          id: "t2",
+          title: "Draft routing layer",
+          goal: "Draft the new routing layer that consolidates the audited routes",
+          status: "in_progress",
+        },
+        // No title — falls back to the full goal.
+        { id: "t3", goal: "Migrate auth middleware", status: "pending" },
+      ]),
+    ),
+};
+
 export const Empty: Story = {
   render: () => wrap([makeBoardMeta({ collectionId: COLLECTION })]),
 };

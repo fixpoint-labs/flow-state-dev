@@ -33,6 +33,22 @@ describe("task schema", () => {
     expect(parsed.attempts).toBe(0);
   });
 
+  it("round-trips optional title and context (FIX-827)", () => {
+    const task = baseTask({
+      title: "Audit routes",
+      context: "The 25 subdomains: a.example.com, b.example.com, …",
+    });
+    const parsed = taskSchema.parse(task);
+    expect(parsed.title).toBe("Audit routes");
+    expect(parsed.context).toBe("The 25 subdomains: a.example.com, b.example.com, …");
+  });
+
+  it("title and context are optional — a task without them still parses", () => {
+    const parsed = taskSchema.parse(baseTask());
+    expect(parsed.title).toBeUndefined();
+    expect(parsed.context).toBeUndefined();
+  });
+
   it("status enum locks the seven canonical statuses", () => {
     const values = taskStatusSchema.options;
     expect(new Set(values)).toEqual(

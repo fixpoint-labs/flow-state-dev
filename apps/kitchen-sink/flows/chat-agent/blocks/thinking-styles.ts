@@ -346,6 +346,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     inputSchema: z.object({
       taskId: z.string(),
       goal: z.string(),
+      context: z.string().optional(),
       input: z.unknown().optional(),
       deps: z.record(z.unknown()).optional(),
       attempts: z.number().int().nonnegative().default(0),
@@ -368,7 +369,11 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     ].join("\n"),
     user: (input) => {
       const parts = [`Task: ${input.goal}`];
-      if (typeof input.input === "string") parts.push(`\nContext: ${input.input}`);
+      // FIX-827: prefer the first-class `context` field; fall back to the
+      // legacy `input`-as-context hack transitionally.
+      const context =
+        input.context ?? (typeof input.input === "string" ? input.input : undefined);
+      if (typeof context === "string") parts.push(`\nContext: ${context}`);
       if (input.deps !== undefined && Object.keys(input.deps).length > 0) {
         const sections = Object.entries(input.deps).map(([depId, value]) => {
           if (typeof value === "string") return `From ${depId}:\n${value}`;

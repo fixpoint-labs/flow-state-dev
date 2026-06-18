@@ -27,12 +27,23 @@ import {
   type TaskInit,
 } from "@flow-state-dev/tasks";
 import { planAndExecuteStateSchema } from "../schemas";
+import type { TaskContextSupply } from "../../shared/planning-entry";
 
 export interface ApplyReplanOptions {
   /** Pattern name (also used as the request collection id). */
   name: string;
   /** Default `maxAttempts` to stamp on tasks that don't carry one. */
   maxAttemptsPerTask: number;
+  /**
+   * Per-task context supply for replanned tasks (FIX-827). The replan loop
+   * re-enters the board directly, bypassing the planning-entry enricher, so
+   * this applies the same gap-fill here: unless `false`, a replanned task
+   * without context gets the goal copied in. A custom-block `taskContext`
+   * also uses the deterministic goal-fill on the replan path (re-running a
+   * custom enricher mid-loop is a documented fast-follow); the replanner
+   * schema itself stays `{ id, goal, deps }` (Non-Goal). Default `"goal"`.
+   */
+  taskContext?: TaskContextSupply;
 }
 
 /**
@@ -41,7 +52,7 @@ export interface ApplyReplanOptions {
  * `tasks: TaskInit[]` array.
  */
 export function createApplyReplan(options: ApplyReplanOptions) {
-  const { name, maxAttemptsPerTask } = options;
+  const { name, maxAttemptsPerTask, taskContext = "goal" } = options;
   const collectionId = name;
 
   return handler({
@@ -93,16 +104,35 @@ export function createApplyReplan(options: ApplyReplanOptions) {
         taken.add(candidate);
       }
 
+      // Mirror the planning-entry context enricher on the replan path: unless
+      // disabled, a replanned task without context gets the goal copied in, so
+      // its worker isn't blind to the request the way initial tasks aren't.
+      const goal =
+        (ctx.sequencer?.state as { goal?: string } | undefined)?.goal ?? "";
+
       const tasks: TaskInit[] = input.tasks.map((t) => {
         const remappedId =
           t.id !== undefined ? idRemap.get(t.id) : undefined;
         const rawDeps = t.deps ?? t.dependencies ?? [];
         const remappedDeps = rawDeps.map((d) => idRemap.get(d) ?? d);
+        const emittedContext = (t as { context?: unknown }).context;
+        const context =
+          typeof emittedContext === "string" && emittedContext.length > 0
+            ? emittedContext
+            : taskContext !== false && goal.length > 0
+              ? goal
+              : undefined;
+        // Preserve a passthrough `title` the same way createSeedTasksFromPlan
+        // does, so a custom replanner/evaluator emitting one doesn't silently
+        // lose it (the default replanner schema still omits title — Non-Goal).
+        const emittedTitle = (t as { title?: unknown }).title;
         return {
           ...(remappedId !== undefined ? { id: remappedId } : {}),
           goal: t.goal,
+          ...(typeof emittedTitle === "string" ? { title: emittedTitle } : {}),
           deps: remappedDeps,
           ...(typeof t.priority === "number" ? { priority: t.priority } : {}),
+          ...(context !== undefined ? { context } : {}),
           ...(t.input !== undefined ? { input: t.input } : {}),
           maxAttempts: t.maxAttempts ?? maxAttemptsPerTask,
         };

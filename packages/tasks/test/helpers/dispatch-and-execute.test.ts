@@ -56,6 +56,37 @@ describe("dispatchAndExecuteBlock", () => {
     expect(c.get("t")?.output).toEqual({ y: 4 });
   });
 
+  it("packs title and context onto the worker input (FIX-827)", async () => {
+    const c = buildCollection();
+    await c.addTask({
+      id: "t",
+      goal: "research the listed subdomains",
+      title: "Subdomain research",
+      context: "Subdomains: a.example.com, b.example.com, c.example.com",
+    });
+
+    let seen: { title?: string; context?: string; goal?: string } | undefined;
+    const worker = handler({
+      name: "worker",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: (input: { title?: string; context?: string; goal?: string }) => {
+        seen = input;
+        return { ok: true };
+      },
+    });
+
+    await runForTest(
+      dispatchAndExecuteBlock({ collection: c, dispatcher: fifoDispatcher, workers: worker }),
+      undefined,
+      fakeCtx
+    );
+
+    expect(seen?.goal).toBe("research the listed subdomains");
+    expect(seen?.title).toBe("Subdomain research");
+    expect(seen?.context).toBe("Subdomains: a.example.com, b.example.com, c.example.com");
+  });
+
   it("returns claimed=false when nothing is pending", async () => {
     const c = buildCollection();
     const worker = handler({

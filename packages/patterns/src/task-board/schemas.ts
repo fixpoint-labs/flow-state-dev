@@ -112,6 +112,8 @@ export type ClaimResult = {
 export const taskWorkerInputSchema = z.object({
   taskId: z.string(),
   goal: z.string(),
+  title: z.string().optional(),
+  context: z.string().optional(),
   input: z.unknown().optional(),
   attempts: z.number().int().nonnegative(),
   feedback: z.string().optional(),

@@ -110,11 +110,45 @@ When you provide a custom `stepExecutor`, the executor receives:
 {
   stepId: string;
   goal: string;
+  context?: string;  // per-task support text (see "Per-task context" below)
   dependencyResults?: Record<string, unknown>; // keyed by dependency task ID
 }
 ```
 
-`dependencyResults` contains the results of all completed tasks that the current task depends on, so you can build on prior work.
+`dependencyResults` contains the results of all completed tasks that the current task depends on, so you can build on prior work. `context` carries the per-task support text the planner (or the context enricher) attached to this task.
+
+## Per-task context
+
+A worker only ever sees its own task. By default the planner writes a short instruction into each task's `goal`, but the original request — the actual values, lists, and constraints a task needs — never reaches the worker unless the planner happens to copy them into that one string. At any real scale it doesn't. (Paste 25 subdomains and ask for info on each, and you get tasks like "research the listed subdomains" with no subdomains attached.)
+
+Each task carries a `context` field for exactly this: readable support text the worker renders into its prompt. There are three ways it gets filled, controlled by `taskContext`:
+
+```ts
+// Default. Copy the goal into every task that the planner left without
+// context. Free (no extra model call) and deterministic.
+planAndExecute({ name: "research", taskContext: "goal" });
+
+// Opt out — tasks get only the context the planner emitted, if any.
+planAndExecute({ name: "research", taskContext: false });
+
+// Custom enricher — run once over the whole plan to fill per-task context.
+// Receives { goal, tasks } and returns { tasks } with context filled.
+planAndExecute({ name: "research", taskContext: myEnricherBlock });
+```
+
+In the default `"goal"` mode a planner-emitted `context` always wins — only the gaps are filled. A custom `BlockDefinition` enricher instead receives the full plan (tasks include any planner context) and owns the contexts it returns; it isn't post-filtered, so preserve planner context in your block if you want that. The tradeoff: `"goal"` is simple but copies the same text into every task (more tokens, no extra call), while a `BlockDefinition` enricher can hand each task only the slice it needs — at the cost of one model call over the plan. The decomposer is also prompted to fill `context` with the concrete facts a task needs, so on a good plan the enricher has little left to do.
+
+Replan-added tasks get the same treatment: unless `taskContext` is `false`, a replanned task without context has the goal copied in on re-seed, so workers after a replan aren't blind to the request. (The replanner's own output schema stays `{ id, goal, deps }`; a custom enricher applies to the initial plan and the replan path falls back to the goal copy.)
+
+## Synthesizing the goal from conversation
+
+When a request depends on earlier conversation ("now do that for all of them"), the literal latest message is a poor goal to plan, replan, and synthesize against. `synthesizeGoal` rewrites it into a self-contained objective before planning:
+
+```ts
+planAndExecute({ name: "research", synthesizeGoal: true });
+```
+
+This runs a history-aware generator that resolves references against the conversation and preserves the concrete facts. The rewritten goal flows to the planner and into the pipeline state the replanner and synthesizer read, so all three reason about the same coherent objective. It's off by default (the input goal is used verbatim). Synthesis is an enhancement, not a correctness gate — if the model call fails, the run falls back to the original goal and continues. Pass a `BlockDefinition` instead of `true` to supply your own synthesizer (it must return `{ ...input, goal }`).
 
 ## Config reference
 
@@ -154,6 +188,18 @@ planAndExecute({
   // drain). Bump to fan out independent dep-free steps within a single
   // drain.
   maxConcurrency?: number;
+
+  // How each task's `context` is populated when the planner didn't supply
+  // one. "goal" (default): copy the goal into every gap-task. false: leave
+  // empty. BlockDefinition: run once over { goal, tasks } to fill per-task
+  // context. See "Per-task context".
+  taskContext?: "goal" | false | BlockDefinition;
+
+  // Synthesize a self-contained goal from conversation before planning.
+  // false (default): use the input goal verbatim. true: built-in
+  // history-aware synthesizer. BlockDefinition: custom synthesizer.
+  // See "Synthesizing the goal from conversation".
+  synthesizeGoal?: boolean | BlockDefinition;
 
   // Final synthesis step. Receives the completed plan shape and produces
   // the final result. Pass false to skip synthesis and return the raw plan.
@@ -371,4 +417,5 @@ Pre-migration the pattern emitted `plan-meta` and `plan-task` items. Those have 
 - [Task Board](./task-board) — the substrate that powers Plan & Execute's task dispatch and replan re-entry
 - [Parallel Tasks](./parallelTasks) — parallel execution, no dependencies, single pass
 - [Supervisor](./supervisor) — parallel execution with quality review loop
+- [Decomposer](./utility-blocks/core) — the default planner, including the `title`/`context` output fields
 - [Patterns Overview](./overview) — when to use which pattern

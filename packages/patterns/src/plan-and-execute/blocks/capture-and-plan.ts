@@ -6,7 +6,10 @@
  * and the P&E schemas.
  */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import { createPlanningEntry } from "../../shared/planning-entry";
+import {
+  createPlanningEntry,
+  type TaskContextSupply,
+} from "../../shared/planning-entry";
 import {
   planAndExecuteInputSchema,
   planAndExecuteStateSchema,
@@ -22,6 +25,8 @@ export interface CaptureAndPlanOptions {
    * `1` (no retries) preserves pre-migration behavior.
    */
   maxAttemptsPerTask: number;
+  /** Per-task context supply (FIX-827). Default `"goal"`. */
+  taskContext?: TaskContextSupply;
 }
 
 /**
@@ -29,7 +34,7 @@ export interface CaptureAndPlanOptions {
  * of the plan-and-execute pipeline before the first board drain.
  */
 export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
-  const { name, planner, maxAttemptsPerTask } = options;
+  const { name, planner, maxAttemptsPerTask, taskContext } = options;
 
   return createPlanningEntry({
     name,
@@ -39,5 +44,6 @@ export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
     maxAttemptsPerTask,
     activeStatusMessage: "Planning the steps",
     idPrefix: "step",
+    ...(taskContext !== undefined ? { taskContext } : {}),
   });
 }

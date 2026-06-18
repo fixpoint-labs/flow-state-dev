@@ -47,6 +47,8 @@ export function buildInitialTask<TInput, TOutput>(
   return {
     id: init.id ?? generateTaskId(),
     goal: init.goal,
+    title: init.title,
+    context: init.context,
     status: init.status ?? "pending",
     attempts: 0,
     maxAttempts: init.maxAttempts,

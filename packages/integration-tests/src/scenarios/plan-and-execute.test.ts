@@ -26,9 +26,9 @@ describe("plan-and-execute", () => {
             {
               structuredOutput: {
                 tasks: [
-                  { id: "a", goal: "Thing A" },
-                  { id: "b", goal: "Thing B" },
-                  { id: "c", goal: "Thing C" }
+                  { id: "a", title: null, goal: "Thing A", context: null },
+                  { id: "b", title: null, goal: "Thing B", context: null },
+                  { id: "c", title: null, goal: "Thing C", context: null }
                 ]
               }
             }

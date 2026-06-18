@@ -601,7 +601,7 @@ function TaskPlanRow({
   const goalRow = (
     <div className="flex flex-wrap items-baseline gap-x-1">
       <span className={cn("text-xs leading-snug", config.goalClassName)}>
-        {task.goal}
+        {task.title ?? task.goal}
       </span>
       {assigneeBadge}
       {retryBadge}

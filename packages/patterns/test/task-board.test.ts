@@ -190,6 +190,39 @@ describe("taskBoard - basic drain", () => {
     expect(final.get("c")).toBe("completed");
   });
 
+  it("packs title and context onto the worker input (FIX-827)", async () => {
+    let seen: { title?: string; context?: string; goal?: string } | undefined;
+    const capturingWorker = handler({
+      name: "capture",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: (input) => {
+        seen = { title: input.title, context: input.context, goal: input.goal };
+        return { ok: true };
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "ctx-pack",
+      collection: { collectionId: "ctx-pack" },
+      workers: capturingWorker,
+      initialTasks: [
+        {
+          id: "a",
+          goal: "research the listed subdomains",
+          title: "Subdomain research",
+          context: "Subdomains: a.example.com, b.example.com",
+        },
+      ],
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+    expect(seen?.goal).toBe("research the listed subdomains");
+    expect(seen?.title).toBe("Subdomain research");
+    expect(seen?.context).toBe("Subdomains: a.example.com, b.example.com");
+  });
+
   it("processes 12 tasks in parallel with concurrency=4", async () => {
     const trace: string[] = [];
     const inits = Array.from({ length: 12 }, (_, i) => ({

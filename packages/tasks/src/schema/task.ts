@@ -13,6 +13,20 @@ import { taskStatusSchema, type TaskStatus } from "./task-status";
 export const taskSchema = z.object({
   id: z.string(),
   goal: z.string(),
+  /**
+   * Concise human-readable label for the task, distinct from the full
+   * `goal`. Optional. Plan UIs render `title ?? goal` so the task list
+   * stays scannable when `goal` is a verbose self-contained objective.
+   */
+  title: z.string().optional(),
+  /**
+   * Readable per-task support text — the slice of the originating
+   * request / conversation a worker needs to act on this task. Optional.
+   * Distinct from the generic typed `input` payload: `context` is prose
+   * data a worker reads, not a directive. Plan-shaped patterns populate
+   * it at planning time (see `@flow-state-dev/patterns` planning-entry).
+   */
+  context: z.string().optional(),
 
   status: taskStatusSchema,
   attempts: z.number().int().nonnegative().default(0),
