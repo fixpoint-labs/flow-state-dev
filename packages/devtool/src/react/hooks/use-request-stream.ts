@@ -50,6 +50,15 @@ export type UseRequestStreamOptions = {
   startingAfter?: number;
   lastEventId?: string;
   enabled?: boolean;
+  /**
+   * Bump to force a fresh reconnect for the SAME request id. A same-request
+   * continuation (FIX-811) re-enters under its original id, so the id alone
+   * doesn't change and the connect effect wouldn't otherwise re-run. After a
+   * suspend the prior stream has already closed (the server treats `suspended`
+   * as terminal and ends the wire); without this the resumed run never
+   * re-attaches and its progress to terminal only shows on a full page reload.
+   */
+  reconnectToken?: number;
   onSessionMetadataChanged?: () => void;
 };
 
@@ -62,7 +71,7 @@ export type UseRequestStreamResult = {
 };
 
 export function useRequestStream(options: UseRequestStreamOptions): UseRequestStreamResult {
-  const { flowKind, requestId, startingAfter, lastEventId, enabled = true, onSessionMetadataChanged } = options;
+  const { flowKind, requestId, startingAfter, lastEventId, enabled = true, reconnectToken, onSessionMetadataChanged } = options;
   const { baseUrl } = useDevTool();
   const [streamState, setStreamState] = useState<StreamState | null>(null);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>("idle");
@@ -280,7 +289,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         rafRef.current = null;
       }
     };
-  }, [flowKind, requestId, startingAfter, lastEventId, enabled, baseUrl, close, scheduleFlush, flushNow, onSessionMetadataChanged]);
+  }, [flowKind, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, close, scheduleFlush, flushNow, onSessionMetadataChanged]);
 
   const items = useMemo(
     () => streamState
