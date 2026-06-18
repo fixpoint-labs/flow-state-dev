@@ -761,6 +761,77 @@ describe("same-request continuation (FIX-811)", () => {
     expect((after!.items ?? []).some((i) => i.type === "suspension_resume")).toBe(false);
   });
 
+  it("restores the root sequencer accumulator on crash-recovery continuation (FIX-811)", async () => {
+    // A completed pre-step writes accumulator state into the checkpoint; on
+    // crash recovery it is INJECTED from the log (its mutation does not re-run),
+    // so the only way the re-run gate can observe `tally === 5` is the root
+    // checkpoint being restored. Without the restore the accumulator restarts at 0.
+    const stateSchema = z.object({ tally: z.number().default(0) });
+    const bump = handler({
+      name: "bump",
+      inputSchema: z.any(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async (_input, ctx) => {
+        ctx.sequencer!.patchState({ tally: (ctx.sequencer!.state as { tally: number }).tally + 5 });
+        return { ok: true };
+      }
+    });
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({
+          reason: "human_approval",
+          message: "Approve?",
+          data: { tally: (ctx.sequencer!.state as { tally: number }).tally }
+        })
+    });
+    const flow = defineFlow({
+      kind: "fix811-crash-state",
+      actions: {
+        run: {
+          block: sequencer({ name: "stateSeq", durable: true, stateSchema }).step(bump).step(gate),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-crash-state" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    const [firstSusp] = await provider.listSuspended({ status: "pending" });
+    expect((firstSusp.data as { tally: number }).tally).toBe(5);
+
+    // Crash: flip to interrupted, then continue with no resumeContext.
+    const rec = await stores.request.get(requestId);
+    await stores.request.set(
+      requestId,
+      { ...rec!, status: "interrupted", interruptedAt: Date.now() },
+      "any"
+    );
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    await finished;
+
+    // The re-run gate observed the restored accumulator, not a fresh 0.
+    const pending = await provider.listSuspended({ status: "pending" });
+    const reSuspension = pending.find((s) => s.suspensionId !== firstSusp.suspensionId);
+    expect(reSuspension).toBeDefined();
+    expect((reSuspension!.data as { tally: number }).tally).toBe(5);
+  });
+
   it("canonical view shows a HITL block's pre-suspension emit once after resume (FIX-811)", async () => {
     // A gate that emits an approval message BEFORE it suspends. On resume the
     // gate re-runs and re-emits the message with a fresh id, so the physical log
@@ -770,7 +841,7 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_i, ctx) => {
-        await ctx.emitMessage("Please approve");
+        ctx.emit.message("Please approve");
         return ctx.suspend!({ reason: "human_approval", message: "Approve?" });
       }
     });

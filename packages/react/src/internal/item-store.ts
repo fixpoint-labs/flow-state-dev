@@ -424,13 +424,12 @@ export function createItemStore(): ItemStore {
     getOwnedBy(ownedBy: string): OutputItem[] {
       const ids = ownershipIndex.get(ownedBy);
       if (ids === undefined || ids.size === 0) return [];
-      const result: OutputItem[] = [];
-      for (const id of ids) {
-        const item = itemsById.get(id);
-        if (item !== undefined) result.push(item);
-      }
-      result.sort(compareItemOrder);
-      return result;
+      // Filter the CANONICAL list (FIX-811) so a resumed block's superseded
+      // run-1 emissions don't surface here while `getSorted()` shows each
+      // emission once — `getOwnedItems` must stay consistent with `items`.
+      return collapseToCanonicalLog(buildItemsFromMap(sortedIds, itemsById)).filter(
+        (item) => (item as OutputItem & { ownedBy?: string }).ownedBy === ownedBy
+      );
     },
 
     size(): number {

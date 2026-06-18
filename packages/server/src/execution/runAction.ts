@@ -10,7 +10,7 @@ import type {
   Middleware,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -1003,6 +1003,28 @@ export async function runActionInternal<
           );
           (ctx as any)._resumeState = {
             state: checkpoint?.state as Record<string, unknown> | undefined
+          };
+        }
+      }
+    } else if (isReplayMode && resumeContext === undefined) {
+      // Crash-recovery continuation (FIX-811): there is no suspension record to
+      // name the durable sequencer's checkpoint key, so restore the ROOT
+      // sequencer's accumulator state from its deterministic instance id
+      // (`${requestId}:root:0`). The action block itself is the durable
+      // sequencer in the common case, so this recovers its `stateSchema`
+      // accumulator rather than restarting it empty while block outputs replay
+      // from the log. A durable sequencer NESTED inside another is the
+      // documented limitation (its non-root checkpoint is not restored here).
+      const provider = options.runtimeConfig.durabilityProvider;
+      if (provider !== undefined) {
+        const rootInstanceId = buildBlockInstanceId(requestId, ROOT_BLOCK_PATH, 0);
+        const checkpoint = await options.stores.checkpoints.latest(
+          requestId,
+          rootInstanceId
+        );
+        if (checkpoint !== null) {
+          (ctx as any)._resumeState = {
+            state: checkpoint.state as Record<string, unknown> | undefined
           };
         }
       }
