@@ -2562,12 +2562,15 @@ export async function createExecutionContext<
         // The suspending block's logical id is the attempt-independent prefix
         // of its blockInstanceId — `${requestId}:${path}`. `parentChain.parent`
         // is the scope this `suspend` was created for (the calling block). The
-        // root context has no parentChain, so a suspend at the action root has
-        // no logical id (its gate can only be matched by the legacy fallback).
-        const callerLogicalId =
-          parentChain?.parent !== undefined
-            ? `${requestRef.current.id}:${parentChain.parent.path}`
-            : undefined;
+        // root context has no parentChain; default its path to ROOT_BLOCK_PATH
+        // ("root") so a `ctx.suspend()` reached on the root context still
+        // produces a defined logical id that matches the `pendingBlockLogicalId`
+        // a same-request replay threads (which is `${requestId}:root` for a
+        // root-level gate). Without this default the root gate's id was
+        // undefined and the resolving gate never matched, so the run re-suspended
+        // forever (FIX-811).
+        const callerPath = parentChain?.parent?.path ?? "root";
+        const callerLogicalId = `${requestRef.current.id}:${callerPath}`;
 
         if (resumeCtx !== undefined) {
           // Per-gate matching (FIX-811): only the gate whose logical id matches

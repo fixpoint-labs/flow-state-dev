@@ -74,12 +74,24 @@ export async function continueRequest(
   const sseHeartbeatMs =
     flow.request?.sseHeartbeatMs ?? runtimeConfig.defaultSseHeartbeatMs;
 
+  // Continue the existing per-request event sequence (FIX-811): seed the
+  // re-entry emitter from the suspended request's last persisted sequence so
+  // its `request.created` / `request.in_progress` / item events keep climbing
+  // instead of restarting at 1. Restarting would collide with the suspend-run
+  // events in stores keyed by `(requestId, sequence_number)` and break SSE
+  // cursor resume (a client at sequence N must receive N+1…). `continueRequest`
+  // owns the prior id, so sourcing the seed here (not from caller options) is
+  // correct.
+  const priorEvents = await stores.request.getEvents(requestId);
+  const lastSeq = priorEvents.reduce((m, e) => Math.max(m, e.sequence_number), 0);
+
   const liveStream =
     options.responseEmitter === undefined
       ? createLiveRequestStream({
           requestId,
           maxBufferSize: runtimeConfig.maxResponseBufferSize,
-          sseHeartbeatMs
+          sseHeartbeatMs,
+          startSequenceNumber: lastSeq
         })
       : null;
 
@@ -118,6 +130,11 @@ export async function continueRequest(
     stores,
     responseEmitter,
     replayMode: true,
+    // Honoured only when runAction creates its own emitter; here a
+    // `responseEmitter` is always supplied (the LiveRequestStream, already
+    // seeded above, or a BYO emitter whose owner controls numbering), so this
+    // is belt-and-suspenders for the seam where runAction owns the emitter.
+    startSequenceNumber: lastSeq,
     metadata: { ...record.metadata, resumeContext },
     runtimeConfig
   }) as Promise<ExecutionResult>;
@@ -125,6 +142,14 @@ export async function continueRequest(
   // Close the live stream once the run settles so the SSE connection ends.
   const settled = finished.finally(() => {
     if (liveStream !== null) liveStream.close();
+    // Safety-net deregister, mirroring `dispatch`'s `finished.finally`. On a
+    // successful run `runAction` already deregistered at its terminal, so this
+    // is an idempotent no-op. On a PRE-transition failure (e.g. `buildReplayLog`
+    // or the checkpoint restore throws) `runAction` rejects without ever
+    // entering its own deregister path, which would otherwise leave a live
+    // active-request/heartbeat entry on a request that never went `in_progress`
+    // (FIX-811).
+    void stores.activeRequests.deregister(requestId).catch(() => {});
   });
   // Callers that consume `liveStream` may not await `finished`; mark handled.
   void settled.catch(() => {});

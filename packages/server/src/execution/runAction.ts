@@ -869,26 +869,68 @@ export async function runActionInternal<
     resumeContextRaw !== undefined &&
     (options.replayMode === true || priorRecord?.status === "suspended");
 
-  let replayLog: ReplayLog | undefined;
-  let effectiveMetadata = options.metadata;
-  if (isReplayMode && priorRecord !== undefined) {
-    const priorItems = (priorRecord.items ?? []) as RuntimeItem[];
-    // The full prior log (pre-suspension items + the `suspension` item) that
-    // every persist must preserve under the merge — assigned before any item
-    // is emitted so incremental persists never truncate it.
-    priorItemsForMerge = priorItems as readonly OutputItem[];
-    replayLog = buildReplayLog(priorItems);
-    const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
-    // Thread the resolving gate's logical id so ctx.suspend() returns the
-    // resume payload at exactly that gate and re-suspends at any other.
-    effectiveMetadata = {
-      ...options.metadata,
-      resumeContext: { ...resumeContextRaw, pendingBlockLogicalId }
-    };
+  // PRE-transition failure recovery (FIX-811). A same-request continuation
+  // marks the suspension `approved`/`rejected` and returns 202 BEFORE this
+  // detached run reaches its point of no return (`suspended → in_progress`).
+  // If a pre-transition step here throws (buildReplayLog, createExecutionContext,
+  // or the checkpoint restore), the resume route's catch never runs — so without
+  // this revert the suspension would stay resolved while the request stays
+  // `suspended`, leaving it un-retryable (the resume guard requires `pending`).
+  // Reverting the suspension to `pending` (and leaving the record `suspended`,
+  // never `failed`, since we never crossed the point of no return) keeps the
+  // resume re-attemptable. Best-effort and idempotent: revert errors are
+  // swallowed. Only call this for pre-transition failures.
+  async function revertSuspensionToPending(): Promise<void> {
+    const provider = options.runtimeConfig.durabilityProvider;
+    if (!isReplayMode || resumeContextRaw === undefined || provider === undefined) {
+      return;
+    }
+    try {
+      const suspension = await provider.loadSuspension(
+        requestId,
+        resumeContextRaw.suspensionId
+      );
+      if (suspension !== null) {
+        await provider.suspend({
+          ...suspension,
+          status: "pending",
+          resolvedAt: undefined,
+          resolvedBy: undefined,
+          resumeData: undefined
+        });
+      }
+    } catch {
+      // Best-effort: a revert failure must not mask the original error.
+    }
   }
 
+  // Resume mode bookkeeping is declared before the pre-transition try so the
+  // values survive into the post-transition body. `resumeOf` (legacy
+  // two-request path) is independent of replay metadata; `resumeContext` /
+  // `checkpointSourceId` are assigned inside the try once `effectiveMetadata`
+  // is built.
+  const resumeOf = options.metadata?.resumeOf as string | undefined;
+  let resumeContext: ResumeContext | undefined;
+  let replayLog: ReplayLog | undefined;
+  let effectiveMetadata = options.metadata;
   let ctx: ExecutionContext;
   try {
+    if (isReplayMode && priorRecord !== undefined) {
+      const priorItems = (priorRecord.items ?? []) as RuntimeItem[];
+      // The full prior log (pre-suspension items + the `suspension` item) that
+      // every persist must preserve under the merge — assigned before any item
+      // is emitted so incremental persists never truncate it.
+      priorItemsForMerge = priorItems as readonly OutputItem[];
+      replayLog = buildReplayLog(priorItems);
+      const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
+      // Thread the resolving gate's logical id so ctx.suspend() returns the
+      // resume payload at exactly that gate and re-suspends at any other.
+      effectiveMetadata = {
+        ...options.metadata,
+        resumeContext: { ...resumeContextRaw, pendingBlockLogicalId }
+      };
+    }
+
     ctx = await createExecutionContext({
       flow: options.flow,
       actionName: options.actionName,
@@ -911,41 +953,48 @@ export async function runActionInternal<
       durabilityEnabled: options.runtimeConfig.durabilityProvider !== undefined,
       errorCapture: options.runtimeConfig.errorCapture
     });
+
+    // Resume mode: load the suspension record + checkpoint to restore the durable
+    // sequencer's accumulator state. `resumeOf` (legacy two-request path) reads
+    // from the ORIGINAL request id; same-request replay (FIX-811) reads from this
+    // request's own id. Step skipping is no longer positional — completed blocks
+    // are injected per-logical-path via `ctx._replayLog` (set below in replay
+    // mode); this only restores sequencer state.
+    resumeContext = effectiveMetadata?.resumeContext as ResumeContext | undefined;
+    const checkpointSourceId = isReplayMode ? requestId : resumeOf;
+    if (checkpointSourceId !== undefined && resumeContext !== undefined) {
+      const provider = options.runtimeConfig.durabilityProvider;
+      if (provider !== undefined) {
+        const suspension = await provider.loadSuspension(
+          checkpointSourceId,
+          resumeContext.suspensionId
+        );
+        if (suspension !== null && suspension.stepIndex >= 0) {
+          // The suspension's `blockInstanceId` is the durable sequencer's
+          // checkpoint key. In replay mode the request id is unchanged, so the
+          // checkpoint lives under this same id.
+          const checkpoint = await options.stores.checkpoints.latest(
+            checkpointSourceId,
+            suspension.blockInstanceId
+          );
+          (ctx as any)._resumeState = {
+            state: checkpoint?.state as Record<string, unknown> | undefined
+          };
+        }
+      }
+    }
   } catch (setupError) {
+    // This catch covers every PRE-transition step (buildReplayLog,
+    // createExecutionContext, checkpoint restore). The record has NOT crossed
+    // the point of no return, so leave it `suspended` (never `failed`) and, for
+    // a replay continuation, revert the resolved suspension back to `pending`
+    // so the resume stays re-attemptable (FIX-811). Then clean up the abort
+    // controller / heartbeat (as the prior createExecutionContext catch did)
+    // and rethrow so `finished` rejects.
+    await revertSuspensionToPending();
     deregisterAbortController(requestId);
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
     throw setupError;
-  }
-
-  // Resume mode: load the suspension record + checkpoint to restore the durable
-  // sequencer's accumulator state. `resumeOf` (legacy two-request path) reads
-  // from the ORIGINAL request id; same-request replay (FIX-811) reads from this
-  // request's own id. Step skipping is no longer positional — completed blocks
-  // are injected per-logical-path via `ctx._replayLog` (set below in replay
-  // mode); this only restores sequencer state.
-  const resumeOf = options.metadata?.resumeOf as string | undefined;
-  const resumeContext = effectiveMetadata?.resumeContext as ResumeContext | undefined;
-  const checkpointSourceId = isReplayMode ? requestId : resumeOf;
-  if (checkpointSourceId !== undefined && resumeContext !== undefined) {
-    const provider = options.runtimeConfig.durabilityProvider;
-    if (provider !== undefined) {
-      const suspension = await provider.loadSuspension(
-        checkpointSourceId,
-        resumeContext.suspensionId
-      );
-      if (suspension !== null && suspension.stepIndex >= 0) {
-        // The suspension's `blockInstanceId` is the durable sequencer's
-        // checkpoint key. In replay mode the request id is unchanged, so the
-        // checkpoint lives under this same id.
-        const checkpoint = await options.stores.checkpoints.latest(
-          checkpointSourceId,
-          suspension.blockInstanceId
-        );
-        (ctx as any)._resumeState = {
-          state: checkpoint?.state as Record<string, unknown> | undefined
-        };
-      }
-    }
   }
 
   // Replay mode: assign the ReplayLog so the core executor injects completed

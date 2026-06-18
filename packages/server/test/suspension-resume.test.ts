@@ -781,4 +781,216 @@ describe("same-request continuation (FIX-811)", () => {
     await finished;
     expect((await stores.request.get(requestId))?.status).toBe("completed");
   });
+
+  it("resolves a ctx.suspend() called directly from a bare root handler (Bug 1)", async () => {
+    // The action block is a BARE handler (no sequencer wrapper), so the suspend
+    // is reached from the ROOT scope where `parentChain.parent` is undefined.
+    // Before the fix the resolving gate's callerLogicalId was undefined and
+    // never matched `pendingBlockLogicalId`, so the root gate re-suspended
+    // forever instead of returning the resume payload.
+    const rootHandler = handler({
+      name: "rootApproval",
+      inputSchema: z.object({ amount: z.number() }),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        const decision = await ctx.suspend!({
+          reason: "human_approval",
+          message: "Approve?"
+        });
+        return { approved: true, decision };
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "fix811-root-suspend",
+      actions: {
+        transfer: {
+          // Durable at the action level so ctx.suspend() is available without
+          // a sequencer wrapper.
+          block: rootHandler,
+          durable: true,
+          inputSchema: z.object({ amount: z.number() })
+        }
+      }
+    })({ id: "fix811-root-suspend" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "transfer",
+      input: { amount: 500 },
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    const finished = await resolve(
+      flow,
+      stores,
+      provider,
+      requestId,
+      suspension,
+      "approve",
+      { note: "ok" }
+    );
+    const resumed = await finished;
+
+    // The root gate resolved — record completed and the resume payload reached
+    // the handler's output.
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+    expect(resumed.output).toEqual({ approved: true, decision: { note: "ok" } });
+  });
+
+  it("continues the prior event sequence without restarting at 1 (Bug 2)", async () => {
+    const approvalStep = handler({
+      name: "approvalStep",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const flow = defineFlow({
+      kind: "fix811-seq-continuity",
+      actions: {
+        ask: {
+          block: sequencer({ name: "askSeq", durable: true }).step(approvalStep),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-seq-continuity" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "ask",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    const preSuspendEvents = await stores.request.getEvents(requestId);
+    const preSuspensionMax = preSuspendEvents.reduce(
+      (m, e) => Math.max(m, e.sequence_number),
+      0
+    );
+    expect(preSuspensionMax).toBeGreaterThan(0);
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    const finished = await resolve(flow, stores, provider, requestId, suspension, "approve");
+    await finished;
+
+    // Every post-resume event must continue strictly above the pre-suspension
+    // max — no restart at sequence 1, no collision with the suspend-run events.
+    const afterEvents = await stores.request.getEvents(requestId);
+    const postResume = afterEvents.filter((e) => e.sequence_number > preSuspensionMax);
+    expect(postResume.length).toBeGreaterThan(0);
+    // The full log is strictly increasing with no duplicate sequence numbers.
+    const seqs = afterEvents.map((e) => e.sequence_number);
+    expect(new Set(seqs).size).toBe(seqs.length);
+    for (let i = 1; i < seqs.length; i += 1) {
+      expect(seqs[i]).toBeGreaterThan(seqs[i - 1]);
+    }
+  });
+
+  it("reverts to pending and deregisters on a pre-transition failure, then a retry completes (Bugs 3 & 4)", async () => {
+    const approvalStep = handler({
+      name: "approvalStep",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const flow = defineFlow({
+      kind: "fix811-pretransition-revert",
+      actions: {
+        ask: {
+          block: sequencer({ name: "askSeq", durable: true }).step(approvalStep),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-pretransition-revert" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "ask",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+
+    // Inject a PRE-TRANSITION failure: checkpoint restore (stores.checkpoints
+    // .latest) runs before the suspended → in_progress transition. A throwing
+    // double surfaces a failure that the detached runAction must recover from
+    // by reverting the suspension and leaving the record suspended.
+    let failNext = true;
+    const throwingStores: StoreRegistry = {
+      ...stores,
+      checkpoints: {
+        ...stores.checkpoints,
+        latest: async (rid: string, bid: string) => {
+          if (failNext) throw new Error("injected pre-transition failure");
+          return stores.checkpoints.latest(rid, bid);
+        }
+      }
+    };
+
+    // Mark the suspension resolved (mirrors `resolve`).
+    await provider.suspend({
+      ...suspension,
+      status: "approved",
+      resolvedAt: Date.now(),
+      resolvedBy: "reviewer",
+      resumeData: { note: "ok" }
+    });
+
+    const { finished } = await continueRequest({
+      requestId,
+      stores: throwingStores,
+      flowRegistry: registryFor(flow),
+      resumeContext: {
+        suspensionId: suspension.suspensionId,
+        action: "approve",
+        data: { note: "ok" },
+        resumedBy: "reviewer"
+      },
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    await expect(finished).rejects.toThrow(/injected pre-transition failure/);
+
+    // (a) Suspension reverted to pending — retryable.
+    const reloaded = await provider.loadSuspension(requestId, suspension.suspensionId);
+    expect(reloaded?.status).toBe("pending");
+    expect(reloaded?.resolvedAt).toBeUndefined();
+    expect(reloaded?.resumeData).toBeUndefined();
+
+    // (b) Request record still suspended — never crossed the point of no return.
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+
+    // (c) Active-request entry deregistered — no leaked heartbeat (Bug 3).
+    expect(await stores.activeRequests.get(requestId)).toBeUndefined();
+
+    // (d) A subsequent valid continuation completes.
+    failNext = false;
+    const reloadedPending = await provider.loadSuspension(requestId, suspension.suspensionId);
+    const retry = await resolve(
+      flow,
+      stores,
+      provider,
+      requestId,
+      reloadedPending!,
+      "approve",
+      { note: "ok" }
+    );
+    await retry;
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+  });
 });
