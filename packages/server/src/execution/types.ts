@@ -103,6 +103,16 @@ export type RunActionOptions<
    */
   startSequenceNumber?: number;
   /**
+   * Starting item index for the internally-created `ResponseEmitter` — the next
+   * emitted item gets `startItemIndex + (items so far)`. A same-request
+   * continuation (FIX-811) passes the suspended request's last persisted item
+   * index so re-entry items continue after the prior log instead of restarting
+   * at `0` (which would mis-order them on stores that sort by item index).
+   * Ignored when `responseEmitter` is provided — the caller's emitter owns
+   * index assignment.
+   */
+  startItemIndex?: number;
+  /**
    * Live-subscription convenience for callers that run a flow outside the HTTP
    * transport (jobs, cron, queue consumers) and want to observe items as they
    * happen without assembling their own `ResponseEmitter`. Called for every
@@ -112,6 +122,17 @@ export type RunActionOptions<
    * are isolated and never break the run.
    */
   onItem?: (item: OutputItem, kind: "added" | "updated" | "done") => void;
+  /**
+   * Same-request continuation flag (FIX-811). Set by `continueRequest` when a
+   * suspended/interrupted request re-enters under its OWN id. Triggers replay
+   * mode: prior persisted items are loaded into a `ReplayLog` so completed
+   * blocks are injected (not re-run), a `suspension_resume` audit item is
+   * emitted, and the terminal write merges prior + re-entry items. Inferred as
+   * `true` when a `resumeContext` is present and the existing record is
+   * `suspended`, so callers that thread a resumeContext for a same-id record
+   * get replay even without setting this explicitly.
+   */
+  replayMode?: boolean;
   /**
    * Instance-level options forwarded verbatim through the execution chain
    * (resolvers, settings, middleware, logger, tracing). See

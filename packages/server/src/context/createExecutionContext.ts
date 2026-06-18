@@ -1450,7 +1450,17 @@ export async function createExecutionContext<
   // assigned once `response` is constructed below; until then no scope op
   // can run.
   const responseRef: { current: unknown } = { current: undefined };
-  let emittedItemCount = 0;
+  // Per-run item-index counter. Seeded from the response emitter's current
+  // count so a same-request continuation (FIX-811) continues after the prior
+  // persisted log instead of restarting at 0 — the emitter carries the prior
+  // log's length as its `baseItemIndex`, and is empty at context construction,
+  // so this reads back exactly that base (0 on a fresh run). Both block-emitted
+  // items and runtime items reserved via `_reserveItemIndex` draw from this one
+  // counter so their indices stay distinct and monotonic across the resume.
+  let emittedItemCount =
+    typeof options.response?.getItemCount === "function"
+      ? options.response.getItemCount()
+      : 0;
 
   const requestOps = createScopeStateOps(requestContainer, {
     persist: createScopePersist<TRequestState, RequestRecord>(
@@ -2271,6 +2281,16 @@ export async function createExecutionContext<
   // because every nested ctx shares the same `_runtimeHooks` reference.
   const blockTraceMap = new Map<string, BlockTraceItem>();
 
+  // Run-scoped guard for the legacy resume fallback (FIX-811). When a bare
+  // `resumeContext` (no `pendingBlockLogicalId`) is threaded — the pre-Step-3
+  // two-request / direct-`runAction` path — the payload must be consumed at the
+  // FIRST gate reached and re-suspend at every later gate. Without this shared
+  // flag a multi-gate legacy resume would re-inject the same approval at every
+  // gate and skip required approvals. Lives in the outer closure so all
+  // per-scope `suspend` closures (each built by `createContext`) share it. The
+  // Step-3 same-request path sets `pendingBlockLogicalId` and never touches it.
+  let legacyResumeConsumed = false;
+
   // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
   // with the same key share a single fn() invocation. Sits in front of the
   // RequestStore so the wrapped side effect cannot fire twice in a race
@@ -2332,8 +2352,6 @@ export async function createExecutionContext<
     });
     return promise;
   };
-
-  let resumeConsumed = false;
 
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
@@ -2559,14 +2577,55 @@ export async function createExecutionContext<
       // store ref so it works across every scoped child context.
       idempotencyKey: undefined,
       runOnce,
+      // Shares the per-run synchronous item-index counter with block-emitted
+      // items so runtime items (e.g. runAction's `suspension_resume`) get a
+      // distinct, monotonic index that continues the prior log on resume.
+      _reserveItemIndex: () => emittedItemCount++,
       suspend: async (suspendOpts) => {
         const resumeCtx = options.metadata?.resumeContext as ResumeContext | undefined;
-        if (resumeCtx !== undefined && !resumeConsumed) {
-          resumeConsumed = true;
-          if (resumeCtx.action === "reject") {
-            throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
+        // The suspending block's logical id is the attempt-independent prefix
+        // of its blockInstanceId — `${requestId}:${path}`. `parentChain.parent`
+        // is the scope this `suspend` was created for (the calling block). The
+        // root context has no parentChain; default its path to ROOT_BLOCK_PATH
+        // ("root") so a `ctx.suspend()` reached on the root context still
+        // produces a defined logical id that matches the `pendingBlockLogicalId`
+        // a same-request replay threads (which is `${requestId}:root` for a
+        // root-level gate). Without this default the root gate's id was
+        // undefined and the resolving gate never matched, so the run re-suspended
+        // forever (FIX-811).
+        const callerPath = parentChain?.parent?.path ?? "root";
+        const callerLogicalId = `${requestRef.current.id}:${callerPath}`;
+
+        if (resumeCtx !== undefined) {
+          // Per-gate matching (FIX-811): only the gate whose logical id matches
+          // the suspension being resolved returns the resume payload. Every
+          // other gate reached during the same replay falls through and
+          // re-suspends, which is what makes multi-gate and loop-iteration
+          // flows resume one gate at a time without a shared "consumed" flag.
+          const isResolvingGate =
+            resumeCtx.pendingBlockLogicalId !== undefined &&
+            resumeCtx.pendingBlockLogicalId === callerLogicalId;
+
+          // Legacy fallback: the old two-request resume path threaded a
+          // resumeContext without `pendingBlockLogicalId`. Preserve its
+          // first-reached-gate-consumes behavior there — but ONLY once per run,
+          // via the shared `legacyResumeConsumed` flag, so a multi-gate legacy
+          // resume re-suspends at later gates instead of re-injecting the same
+          // payload and skipping their approvals (FIX-811). The Step-3
+          // same-request continuation always sets `pendingBlockLogicalId` (see
+          // runAction), so this branch is dead on that path — it exists only for
+          // callers that pass a bare resumeContext directly to runAction.
+          const isLegacyFirstGate =
+            resumeCtx.pendingBlockLogicalId === undefined && !legacyResumeConsumed;
+
+          if (isResolvingGate || isLegacyFirstGate) {
+            // Mark the legacy payload consumed so later gates re-suspend.
+            if (isLegacyFirstGate) legacyResumeConsumed = true;
+            if (resumeCtx.action === "reject") {
+              throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
+            }
+            return resumeCtx.data;
           }
-          return resumeCtx.data;
         }
         if (!options.durabilityEnabled) {
           throw new Error(
@@ -2604,6 +2663,23 @@ export async function createExecutionContext<
       // `errorCapture` handler is configured so callers incur zero overhead.
       _captureError: errorCapture !== undefined ? captureError : undefined,
       _loadDeclaredResources: loadDeclaredResourcesIntoCache,
+      // Resume replay (FIX-811): register a completed sibling entry for a block
+      // the core executor short-circuited (its output came from the ReplayLog,
+      // not a fresh run). The replay path returns BEFORE `_withExecutionScope`,
+      // so without this a later sibling's `ctx.getBlockOutput(replayedBlock)`
+      // would find no entry. This does NOT open a scope, run the body, or emit a
+      // trace — the recorded trace from the prior run is canonical, and emitting
+      // another would duplicate it. `parentStateContainer` is left undefined;
+      // `getBlockOutput`/`getBlockResult` read only `parent` + `result.output`,
+      // and `getTarget` (which would dereference the container) is never used to
+      // reach a replayed leaf.
+      _registerReplayedChild: (parent: ExecutionParent, output: unknown): void => {
+        childSiblingRegistry.push({
+          parent,
+          parentStateContainer: undefined,
+          result: { status: "completed", output }
+        });
+      },
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal) => {
         const resolvedParent: ExecutionParent = {
           ...parent,
@@ -2758,6 +2834,29 @@ export async function createExecutionContext<
         // FIX-406 6H: propagate the request's tracing level so sequencers in
         // any nested scope gate observability snapshots consistently.
         (childContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
+        // Resume replay (FIX-811): propagate the ReplayLog down every nested
+        // scope so the core `executeBlock` replay short-circuit fires for blocks
+        // anywhere in the tree, not just direct children of the root sequencer.
+        // Read from the parent `context` (set by runAction on the root ctx) so a
+        // late assignment still reaches descendants. `_resumeState` is
+        // deliberately NOT propagated — it carries the root sequencer's restored
+        // checkpoint state only; nested-sequencer state restore is a follow-up.
+        const inheritedReplayLog = (context as { _replayLog?: unknown })._replayLog;
+        if (inheritedReplayLog !== undefined) {
+          (childContext as { _replayLog?: unknown })._replayLog = inheritedReplayLog;
+        }
+        // Propagate `_resumeState` (the restored checkpoint state) to the ROOT
+        // block's scope only — `parentChain === undefined` marks the root-level
+        // dispatch. The root durable sequencer reads it to `setState` before
+        // running children. Deeper scopes do NOT inherit it, so a nested durable
+        // sequencer isn't wrongly seeded with the root's state (nested-sequencer
+        // accumulator restore is a documented follow-up, FIX-811).
+        if (parentChain === undefined) {
+          const inheritedResumeState = (context as { _resumeState?: unknown })._resumeState;
+          if (inheritedResumeState !== undefined) {
+            (childContext as { _resumeState?: unknown })._resumeState = inheritedResumeState;
+          }
+        }
 
         // Capture start time before execution — this is the only trace cost paid
         // unconditionally. Item construction and emission happen post-execution.

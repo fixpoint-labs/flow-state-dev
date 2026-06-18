@@ -246,7 +246,12 @@ describe("external dispatch — enqueue failure at the route boundary (FIX-828)"
     expect((await stores.request.get(requestId))?.status).toBe("failed");
   });
 
-  it("resume route reverts the suspension to pending when the enqueue fails", async () => {
+  it("resume route reverts the suspension to pending when continuation setup fails", async () => {
+    // FIX-811: resume re-enters the request in-process via `host.continueRequest`
+    // (no external enqueue). A continuation-setup failure BEFORE the
+    // point-of-no-return must rethrow and revert the suspension to pending so the
+    // operator can retry — the same revert semantics the prior external-dispatch
+    // path guaranteed, now on the in-process continuation path.
     const registry = buildRegistry();
     const stores = createInMemoryStores();
     const provider = createCheckpointDurabilityProvider({
@@ -255,7 +260,7 @@ describe("external dispatch — enqueue failure at the route boundary (FIX-828)"
       leases: stores.leases
     });
 
-    const requestId = "req_resume_enqueue_fail";
+    const requestId = "req_resume_continue_fail";
     const suspendedRecord: RequestRecord = {
       id: requestId,
       flowKind: FLOW_KIND,
@@ -289,12 +294,18 @@ describe("external dispatch — enqueue failure at the route boundary (FIX-828)"
       registry,
       stores,
       resolvePrincipal: defaultBodyUserIdPrincipalResolver,
-      runtimeConfig: {},
-      dispatcher: failingExternalDispatcher()
+      runtimeConfig: {}
     });
+    // Force a pre-transition continuation failure.
+    const failingHost = {
+      ...host,
+      continueRequest: vi.fn(async () => {
+        throw new Error("continuation setup failed");
+      })
+    };
 
     const ctx = {
-      host,
+      host: failingHost,
       registry,
       stores,
       durabilityProvider: provider,
@@ -311,16 +322,13 @@ describe("external dispatch — enqueue failure at the route boundary (FIX-828)"
       }
     );
 
-    // The enqueue fails inside the resume try-block, so the handler rethrows and
-    // the suspension is reverted to pending — the operator can retry. Pre-fix it
-    // landed in the detached finished chain and the suspension stayed approved.
     await expect(
       handleResumeSuspension(
         request,
         { kind: "resume_suspension", flowKind: FLOW_KIND, requestId },
         ctx
       )
-    ).rejects.toThrow("enqueue failed");
+    ).rejects.toThrow("continuation setup failed");
 
     expect((await provider.loadSuspension(requestId, "sus_1"))?.status).toBe("pending");
   });

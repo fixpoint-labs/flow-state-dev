@@ -286,6 +286,14 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * Persist the current items for an in-progress request.
    * Non-blocking from the caller's perspective — the backend handles async flushing.
    * Callers should call flushItems() before writing terminal status.
+   *
+   * Merge-by-id contract (FIX-811): persisting items MUST union the supplied
+   * items into the stored set by `id` (last-write-wins per id), never replacing
+   * the full set. Order is preserved — existing items keep their position, new
+   * ids append. This lets a same-request continuation (suspend → resume under
+   * the same id) persist only its post-resume items while a `get` still returns
+   * the full pause→continue history. The in-memory adapter's no-op satisfies
+   * this trivially (items live on the record); persistent adapters UPSERT.
    */
   persistItems(requestId: string, items: OutputItem[]): void;
 

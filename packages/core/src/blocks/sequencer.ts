@@ -43,14 +43,17 @@ import { mapLimit } from "../helpers/concurrency";
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
 /**
- * Resume state injected by runAction when re-invoking a durable action.
- * Carried on ctx._resumeState so the sequencer can skip completed steps.
+ * Resume state injected by runAction when re-invoking a durable action. Carried
+ * on `ctx._resumeState` so a re-entered durable sequencer restores its
+ * accumulator state from the saved checkpoint before running children.
+ *
+ * Step skipping is NOT positional anymore (FIX-811): completed blocks are
+ * injected per-logical-path via `ctx._replayLog` in `executeBlock`, so this
+ * carries only the restored `state`. Both the same-request continuation path
+ * and the legacy two-request resume path populate it for the state restore.
  */
 export type ResumeState = {
-  stepIndex: number;
   state?: Record<string, unknown>;
-  /** The input value that was about to be passed to the step that suspended. */
-  stepInput?: unknown;
 };
 
 /** Output schema for `.waitForCondition` — a single boolean `timedOut` flag. */
@@ -443,6 +446,26 @@ export async function executeBlock(
     if (cached !== undefined && cached.kind === "inline") {
       // `buildReplayLog` materialises recorded outputs to `inline`, so the
       // value is read directly with no live item lookup.
+      //
+      // Register a completed sibling entry so a later sibling can still read
+      // this block's output via `ctx.getBlockOutput()` — the short-circuit
+      // returns before `_withExecutionScope`, which is the only other path that
+      // populates the sibling registry. The descriptor mirrors the one
+      // `_withExecutionScope` builds below (name/kind/instanceId/path/transient);
+      // `getBlockOutput` keys on `parent.name`. No-op in unit contexts.
+      const registerReplayed = (ctx as {
+        _registerReplayedChild?: (p: import("../types/block").ExecutionParent, o: unknown) => void;
+      })._registerReplayedChild;
+      registerReplayed?.(
+        {
+          name: block.name,
+          kind: block.kind,
+          instanceId,
+          path,
+          transient: block.transient || undefined
+        },
+        cached.value
+      );
       return cached.value;
     }
   }
@@ -741,11 +764,11 @@ function runSequencerOperations(
     let lastStateJson: string | undefined;
     let currentStepIndex = -1;
 
-    // Resume mode: when `_resumeState` is present on ctx, skip completed steps
-    // and inject cached outputs. The resume state is populated by runAction when
-    // re-invoking a durable action after suspension or crash.
+    // Resume mode: when `_resumeState` is present on ctx, restore this
+    // sequencer's accumulator state from the saved checkpoint before running
+    // children. Step skipping is driven per-logical-path by `ctx._replayLog` in
+    // `executeBlock` (FIX-811), not positionally here.
     const resumeState = (ctx as { _resumeState?: ResumeState })._resumeState;
-    const resumeStepIndex = resumeState?.stepIndex ?? -1;
 
     // Log-as-source-of-truth resume (FIX-811): under same-request continuation
     // the requestId and blockInstanceId are unchanged, so a durable baseline
@@ -780,16 +803,6 @@ function runSequencerOperations(
           const operation = operations[index];
           runtime.stepHistory.push(operation.name);
           currentStepIndex = index;
-
-          // Skip completed steps in resume mode. On the last skipped step,
-          // set currentValue to stepInput so the re-executed step receives
-          // the same input it saw on the original run.
-          if (resumeState !== undefined && index <= resumeStepIndex) {
-            if (index === resumeStepIndex && resumeState.stepInput !== undefined) {
-              currentValue = resumeState.stepInput;
-            }
-            continue;
-          }
 
           const result = await operation.run(currentValue, ctx, runtime, index);
           currentValue = result.value;
@@ -874,6 +887,13 @@ function runSequencerOperations(
           error._sequencerState = ctx.sequencer !== undefined
             ? (typeof ctx.sequencer.state === "object" ? { ...ctx.sequencer.state as Record<string, unknown> } : undefined)
             : undefined;
+          // Stamp the nearest enclosing (this) sequencer's checkpoint key on the
+          // first catch only, so resume loads the right accumulator checkpoint
+          // (FIX-811). Only durable sequencers checkpoint, so gate on it; the
+          // first sequencer to catch is the innermost, which owns the state.
+          if (durable && error._sequencerInstanceId === undefined && ctx._blockIdentity?.blockInstanceId !== undefined) {
+            error._sequencerInstanceId = ctx._blockIdentity.blockInstanceId;
+          }
           throw error;
         }
         const normalizedError = toError(error);

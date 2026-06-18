@@ -336,6 +336,12 @@ export function createSQLiteRequestStore(
     },
 
     persistItems(requestId: string, items: OutputItem[]): void {
+      // Merge-by-id (FIX-811): writes are UPSERTs keyed on (request_id, item_id),
+      // never a full-set replace — so two `persistItems` calls with disjoint
+      // item sets leave `get` returning the ordered union. This is what lets a
+      // same-request continuation persist only its post-resume items while a GET
+      // still returns the full pause→continue history. See `RequestStore`.
+      //
       // Validate synchronously, before scheduling the coalesced write. A throw
       // from inside the queueMicrotask callback would escape as an
       // uncaughtException (crashing the process) rather than failing the
