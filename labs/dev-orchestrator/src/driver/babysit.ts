@@ -310,10 +310,13 @@ export async function babysit(options: BabysitOptions): Promise<BabysitResult> {
   /**
    * Resume a satisfied suspension: acquire the resume lease (mirrors the HTTP
    * resume route's concurrency guard), mark the suspension resolved, then
-   * re-enter the same request via `continueRequest`. The framework releases the
-   * lease on settle; the `finally` is a defensive (idempotent) no-op. A rejected
-   * `finished` propagates to the loop's per-tick error boundary. Returns the
-   * settled outcome, the final output, and any in-flow error.
+   * re-enter the same request via `continueRequest`. If the continuation setup
+   * fails (or rejects), the suspension is restored to `pending` so a later tick
+   * re-attempts the resume rather than finding no pending record and re-running
+   * the stage from scratch — mirroring the HTTP resume route's revert-on-failure.
+   * The framework releases the lease on settle; the `finally` is a defensive
+   * (idempotent) no-op. Returns the settled outcome, the final output, and any
+   * in-flow error.
    */
   async function resumeParked(
     parked: SuspensionRecord,
@@ -322,6 +325,7 @@ export async function babysit(options: BabysitOptions): Promise<BabysitResult> {
     const lease = await provider.acquireLease(parked.requestId, { holder: processId, durationMs: RESUME_LEASE_MS });
     if (lease === null) return { outcome: "conflict", output: undefined };
 
+    let markedResolved = false;
     try {
       await provider.suspend({
         ...parked,
@@ -330,6 +334,7 @@ export async function babysit(options: BabysitOptions): Promise<BabysitResult> {
         resolvedBy: ORCHESTRATOR_USER,
         resumeData: decision.data,
       });
+      markedResolved = true;
       const { finished } = await continueRequest({
         requestId: parked.requestId,
         stores,
@@ -348,6 +353,15 @@ export async function babysit(options: BabysitOptions): Promise<BabysitResult> {
         output: settled.output,
         error: settled.error,
       };
+    } catch (err) {
+      // Continuation failed before/while re-entering. Restore the original
+      // pending record so the resume is re-attempted, not lost. (runAction's own
+      // recovery also reverts on a post-transition failure; this restore is
+      // idempotent with it.)
+      if (markedResolved) {
+        await provider.suspend({ ...parked, status: "pending" }).catch(() => {});
+      }
+      throw err;
     } finally {
       await provider.releaseLease(parked.requestId, lease.leaseId).catch(() => {});
     }

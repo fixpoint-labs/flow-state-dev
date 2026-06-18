@@ -12,6 +12,7 @@ import { createInMemoryStores, createCheckpointDurabilityProvider } from "@flow-
 import type { ResolveClaudeCli } from "@flow-state-dev/claude-code/cli";
 import { babysit } from "../../src/driver/babysit";
 import { buildDevOrchestratorFlow } from "../../src/flow/flow";
+import type { HumanGate } from "../../src/driver/human-gate";
 import { LinearStatusClient, type LinearTransport } from "../../src/signals/linear";
 import { GitHubSignalClient, type GhExec } from "../../src/signals/github";
 
@@ -164,6 +165,48 @@ describe("babysit — gate rejection stops instead of re-parking", () => {
     expect(board.comments.some((c) => c.includes("Spec rejected"))).toBe(true);
     // It did not spin: the loop terminated well under the tick budget.
     expect(result.ticks).toBeLessThan(20);
+  });
+});
+
+describe("babysit — attended approval advances the board", () => {
+  it("records an out-of-band (stdin-style) approval on the board so the stage isn't re-run", async () => {
+    const board = mutableBoard("Ready to Spec");
+    const claude = spyResolveClaudeCli();
+    const flow = buildDevOrchestratorFlow({
+      linear: board.client,
+      repoRoot: "/repo",
+      resolveClaudeCli: claude.resolve,
+    });
+    const { stores, provider } = durableStores();
+
+    // The spec is authored (board → In Spec Review), then the human approves via
+    // the gate WITHOUT moving the board — the --attended/stdin case.
+    const advances = ["In Spec Review"];
+    const sleep = vi.fn(async () => {
+      const next = advances.shift();
+      if (next !== undefined) board.set(next);
+    });
+    const stdinApproval: HumanGate = {
+      poll: async () => ({ ready: true, reject: false, note: "approved at stdin", timedOut: false }),
+    };
+
+    const result = await babysit({
+      issueId: "FIX-11",
+      flow,
+      stores,
+      provider,
+      linear: board.client,
+      github: unusedGithub,
+      humanGate: stdinApproval,
+      sleep,
+      now: () => 1_000,
+      maxTicks: 20,
+    });
+
+    // The board was advanced to Spec Approved (recording the approval), and the
+    // driver stopped at the implement boundary instead of re-parking forever.
+    expect(board.get()).toBe("Spec Approved");
+    expect(result.reason).toContain("implement");
   });
 });
 

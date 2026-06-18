@@ -52,7 +52,15 @@ function fakeLinear(initial: string) {
       comments.push(body);
     },
   };
-  return { client: new LinearStatusClient(transport), comments, transitions, getState: () => state };
+  return {
+    client: new LinearStatusClient(transport),
+    comments,
+    transitions,
+    getState: () => state,
+    set: (s: string) => {
+      state = s;
+    },
+  };
 }
 
 /** A `claude` resolver stub that records each dispatch and returns canned output. */
@@ -144,11 +152,43 @@ describe("spec stage — three-phase durable cycle", () => {
     });
     const final = await afterGate;
     expect(final.output).toMatchObject({ gate: "approved", note: "looks good" });
-    // Q4: approve only records (comments); it does not write Spec Approved itself.
-    expect(linear.transitions).toEqual([]);
+    // The orchestrator records the approval on the board (idempotent under
+    // poll-Linear; the necessary advance under --attended). The board ends at
+    // Spec Approved so the next driver tick proceeds rather than re-running.
+    expect(linear.getState()).toBe("Spec Approved");
     expect(linear.comments.some((c) => c.includes("Spec approved"))).toBe(true);
     // Dispatch was never re-run across the two resumes (checkpoint replay).
     expect(claude.exec).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-write the board on approve when the human already advanced it (Q4 idempotent)", async () => {
+    const linear = fakeLinear("Ready to Spec");
+    const claude = fakeResolveClaudeCli();
+    const flow = buildDevOrchestratorFlow({
+      linear: linear.client,
+      repoRoot: "/repo",
+      resolveClaudeCli: claude.resolve,
+    });
+    const { stores, provider } = durableStores();
+
+    const initial = await runAction({
+      flow,
+      actionName: "spec",
+      input: { issueId: "FIX-1b", skipDispatch: false },
+      userId: "orchestrator",
+      sessionId: "orchestrator:FIX-1b",
+      stores,
+      runtimeConfig: orchestratorRuntimeConfig(provider),
+    });
+    const parked = (await provider.listSuspended({ status: "pending" }))[0];
+    await (await resolve(flow, stores, provider, initial.requestId!, parked, "approve", signal));
+    const gate = (await provider.listSuspended({ status: "pending" }))[0];
+
+    // The human moved the board to Spec Approved (poll-Linear flow) before approve.
+    linear.set("Spec Approved");
+    await (await resolve(flow, stores, provider, initial.requestId!, gate, "approve", { note: null }));
+    // transitionTo skips the write because the board is already at the target.
+    expect(linear.transitions).toEqual([]);
   });
 
   it("bounces the issue to In Spec Dev when the spec gate is rejected", async () => {
@@ -194,7 +234,7 @@ describe("spec stage — skipDispatch", () => {
     });
     const { stores, provider } = durableStores();
 
-    const initial = await runAction({
+    await runAction({
       flow,
       actionName: "spec",
       input: { issueId: "FIX-3", skipDispatch: true },

@@ -30,6 +30,7 @@ import { dispatchStage, stageCommandMarker, stageInstruction } from "../dispatch
 
 /** Board states this stage waits on / writes. Constants for the spec stage. */
 const SPEC_PARK_TARGET = "In Spec Review";
+const SPEC_APPROVE_STATE = "Spec Approved";
 const SPEC_REJECT_STATE = "In Spec Dev";
 
 /** Caller input for the spec action. */
@@ -119,8 +120,13 @@ export function buildSpecStage(options: SpecStageOptions) {
   });
 
   // Forward record/transition (.tap — side-effect only, BP-012). Per decision
-  // Q4 the human moves the board to Spec Approved (the orchestrator records it),
-  // so the approve path only comments; only the reject path writes (a bounce).
+  // Q4 the human signals approval by advancing the board; the orchestrator
+  // records it. The record write is idempotent `transitionTo(Spec Approved)`: a
+  // no-op under the poll-Linear gate (the human already advanced the board,
+  // which is what made the gate ready), and the necessary advance under
+  // `--attended` (the human approved on stdin and the board hasn't moved) — so
+  // the board ends at Spec Approved either way and the next tick doesn't re-run
+  // the stage. The reject path bounces the issue back one state.
   const transitionAfterSpec = handler({
     name: "transition-after-spec",
     inputSchema: gateResultSchema,
@@ -129,6 +135,7 @@ export function buildSpecStage(options: SpecStageOptions) {
       const issueId = (ctx.sequencer!.state as z.infer<typeof specStageStateSchema>).issueId;
       const note = input.note ? `: ${input.note}` : "";
       if (input.gate === "approved") {
+        await linear.transitionTo(issueId, SPEC_APPROVE_STATE);
         await linear.comment(issueId, `✅ Spec approved${note}. Proceeding to implementation.`);
       } else {
         await linear.transitionTo(issueId, SPEC_REJECT_STATE);
