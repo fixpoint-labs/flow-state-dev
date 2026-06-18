@@ -1168,24 +1168,34 @@ export async function runActionInternal<
         await registry.deregister(requestId).catch(() => {});
         if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
-        // Release the resumeOf lease so the original request can be resumed
-        // again (targeting this new suspension).
-        if (resumeOf !== undefined) {
+        // Release the resume lease so the request can be resumed again at the
+        // NEXT gate. Legacy two-request resume keyed the lease on `resumeOf`;
+        // same-request continuation (FIX-811) keys it on this request id itself
+        // (the resume route acquires it on `requestId`, and `resumeOf` is
+        // undefined here). Without this, a re-suspension strands the lease until
+        // its 60s TTL and the next approval 409s. Awaited before `finished`
+        // resolves so the next resume POST sees a released lease (the terminal
+        // path releases via `durabilityProvider.cleanup`).
+        const reSuspendLeaseKey = resumeOf ?? (isReplayMode ? requestId : undefined);
+        if (reSuspendLeaseKey !== undefined) {
           try {
-            const lease = await options.stores.leases.get(resumeOf);
+            const lease = await options.stores.leases.get(reSuspendLeaseKey);
             if (lease !== null) {
-              await options.stores.leases.release(resumeOf, lease.leaseId);
+              await options.stores.leases.release(reSuspendLeaseKey, lease.leaseId);
             }
           } catch (err) {
             logRuntimeEvent(logger, "warn", "[flow-state] lease release failed on re-suspend", {
-              requestId, resumeOf, error: String(err)
+              requestId, leaseKey: reSuspendLeaseKey, error: String(err)
             });
           }
         }
 
         return {
           output: undefined,
-          items: response.getItems(),
+          // Return the same merged list we persist (FIX-811): in replay mode
+          // `response` holds only post-resume items, so a programmatic caller
+          // awaiting `finished` must see prior ∪ re-entry, not just the tail.
+          items: itemsToPersist(),
           durationMs: Date.now() - startedAt,
           requestId
         };
@@ -1327,7 +1337,16 @@ export async function runActionInternal<
     // Checkpoints are removed only when the flow opts into
     // `cleanupCheckpointsOnTerminal` (per-instance terminal deletes during the
     // run already handle the common case; this is the catch-up for any survivors).
-    const usedDurability = action.durable === true || sawDurableFrame;
+    //
+    // `isReplayMode` (FIX-811): a same-request continuation re-enters with
+    // `resumeOf === undefined` but does NOT re-emit durable frames (completed
+    // steps are injected from the log), so `sawDurableFrame` stays false on
+    // resume. A replay is durable by definition — the request was suspended —
+    // so force cleanup here to release the resume lease and delete the resolved
+    // suspension records on terminal completion. Without it both linger until
+    // their TTL, and the resume route's lease (keyed on this request id) would
+    // strand a spurious 409 against an already-completed request.
+    const usedDurability = action.durable === true || sawDurableFrame || isReplayMode;
     if (
       resumeOf === undefined &&
       usedDurability &&
@@ -1393,7 +1412,9 @@ export async function runActionInternal<
 
     return {
       output: result.output,
-      items: response.getItems(),
+      // Merged prior ∪ re-entry items in replay mode (FIX-811); identical to
+      // `response.getItems()` on a normal run.
+      items: itemsToPersist(),
       durationMs: Date.now() - startedAt,
       requestId
     };
@@ -1547,7 +1568,9 @@ export async function runActionInternal<
 
     return {
       output: undefined,
-      items: response.getItems(),
+      // Merged prior ∪ re-entry items in replay mode (FIX-811); identical to
+      // `response.getItems()` on a normal run.
+      items: itemsToPersist(),
       durationMs: Date.now() - startedAt,
       requestId,
       error: signalAborted ? undefined : applyNormalizedErrorSeam(

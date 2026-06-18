@@ -489,6 +489,14 @@ describe("same-request continuation (FIX-811)", () => {
     );
     expect(preTraceIdx).toBeGreaterThanOrEqual(0);
     expect(preTraceIdx).toBeLessThan(suspIdx);
+
+    // P2 (FIX-811): the returned ExecutionResult must carry the SAME full log
+    // that was persisted — not just the post-resume tail the replay emitter
+    // holds. A programmatic caller awaiting `finished` would otherwise see a
+    // list that disagrees with `GET`.
+    expect(resumed.items.map((i) => i.type)).toEqual(types);
+    expect(resumed.items.some((i) => i.type === "suspension")).toBe(true);
+    expect(resumed.items.some((i) => i.type === "suspension_resume")).toBe(true);
   });
 
   it("emits a suspension_resume item with resolution / resolvedBy / resumeData", async () => {
@@ -668,6 +676,80 @@ describe("same-request continuation (FIX-811)", () => {
     const record = await stores.request.get(requestId);
     const resumeItems = (record!.items ?? []).filter((i) => i.type === "suspension_resume");
     expect(resumeItems.length).toBe(2);
+  });
+
+  it("releases the resume lease after re-suspension so the next gate is resumable (FIX-811)", async () => {
+    // Reproduces the route's lease lifecycle, which the helper-based tests skip:
+    // the resume route acquires a lease on the request id BEFORE re-entering.
+    // Same-request continuation runs with `resumeOf === undefined`, so the
+    // legacy `resumeOf`-keyed release in runAction never fires — the lease must
+    // be released by `continueRequest` on settle, or a re-suspension at gate B
+    // strands it until its 60s TTL and the next approval 409s.
+    const gateA = handler({
+      name: "gateA",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Gate A?" })
+    });
+    const gateB = handler({
+      name: "gateB",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Gate B?" })
+    });
+    const done = handler({
+      name: "done",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: async () => "both gates passed"
+    });
+    const flow = defineFlow({
+      kind: "fix811-lease",
+      actions: {
+        run: {
+          block: sequencer({ name: "leaseSeq", durable: true }).step(gateA).step(gateB).step(done),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-lease" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    // Resolve gate A exactly as the route does: take the lease first, mark the
+    // suspension resolved, re-enter, then await settle.
+    const [suspA] = await provider.listSuspended({ status: "pending" });
+    const leaseA = await provider.acquireLease(requestId, {
+      holder: "resume-test-A",
+      durationMs: 60_000
+    });
+    expect(leaseA).not.toBeNull();
+    await (await resolve(flow, stores, provider, requestId, suspA, "approve"));
+
+    // Re-suspended at gate B, and the gate-A lease must be gone.
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+    expect(await stores.leases.get(requestId)).toBeNull();
+
+    // The next gate's lease therefore acquires cleanly (no spurious 409).
+    const [suspB] = await provider.listSuspended({ status: "pending" });
+    const leaseB = await provider.acquireLease(requestId, {
+      holder: "resume-test-B",
+      durationMs: 60_000
+    });
+    expect(leaseB).not.toBeNull();
+    const resumed = await (await resolve(flow, stores, provider, requestId, suspB, "approve"));
+    expect(resumed.output).toBe("both gates passed");
+
+    // And it is released again on terminal completion.
+    expect(await stores.leases.get(requestId)).toBeNull();
   });
 
   it("preserves accumulator state across a suspend/resume cycle on one request", async () => {
