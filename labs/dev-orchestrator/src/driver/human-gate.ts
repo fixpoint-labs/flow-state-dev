@@ -12,7 +12,7 @@
 import { createInterface } from "node:readline";
 import type { SuspensionRecord } from "@flow-state-dev/core/types";
 import type { LinearStatusClient } from "../signals/linear";
-import { isAtOrPast, type LinearStateName } from "../types";
+import { isAtOrPast, LINEAR_LIFECYCLE, type LinearStateName } from "../types";
 
 /** The decision a gate poll returns. `reject` is only meaningful when `ready`. */
 export interface HumanGateDecision {
@@ -47,9 +47,12 @@ function gateKindOf(parked: SuspensionRecord): string {
 
 /**
  * Default gate: the human advances the Linear board to signal a decision. Ready
- * + approve once the board reaches the gate's approve state; ready + reject if
- * the human sent it back below the gate's threshold; otherwise wait until the
- * (long) watchdog elapses.
+ * + approve once the board reaches the gate's approve state; ready + reject only
+ * when the human sent it back to a KNOWN lifecycle state below the gate's
+ * threshold; otherwise wait until the (long) watchdog elapses. An unrecognized
+ * state (a custom/workspace label like "Blocked") is neither approve nor
+ * reject — it falls through to waiting, so a non-lifecycle move never silently
+ * bounces the spec.
  */
 export function createLinearHumanGate(): HumanGate {
   return {
@@ -59,7 +62,7 @@ export function createLinearHumanGate(): HumanGate {
       if (state !== null && isAtOrPast(state, thresholds.approve)) {
         return { ready: true, reject: false, note: null, timedOut: false };
       }
-      if (state !== null && !isAtOrPast(state, thresholds.rejectBelow)) {
+      if (state !== null && LINEAR_LIFECYCLE.includes(state) && !isAtOrPast(state, thresholds.rejectBelow)) {
         return {
           ready: true,
           reject: true,
