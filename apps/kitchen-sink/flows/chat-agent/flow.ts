@@ -438,11 +438,13 @@ const approvalGateStep = handler({
     // makes it THROW SuspensionRejectedError. So reaching past ctx.suspend means
     // approved — don't key off a data field.
     try {
+      ctx.runOnce?.(`approve-${input.request}`, async () => ctx.emit.message(`Approve action: "${input.request}"?`));
       const data = (await ctx.suspend!({
         reason: "human_approval",
         message: `Approve action: "${input.request}"?`,
         resumeSchema: approvalResumeSchema,
       })) as z.infer<typeof approvalResumeSchema> | undefined;
+      ctx.emit.message(`Approved${data?.note ? ` — ${data.note}` : ""}. Proceeding with "${input.request}".`);
       return `Approved${data?.note ? ` — ${data.note}` : ""}. Proceeding with "${input.request}".`;
     } catch (err) {
       if (err instanceof SuspensionRejectedError) {
