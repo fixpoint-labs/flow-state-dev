@@ -150,15 +150,14 @@ describe("ctx.suspend() — initial suspension", () => {
     });
 
     // The suspending block is nested below the root sequencer, so the outer ctx
-    // has no identity — the id must come from the error stamp, not "unknown".
+    // has no identity — the leaf id must come from the error stamp. It lands on
+    // the suspension *item* (the ReplayLog's source), not the record, whose
+    // `blockInstanceId` is the sequencer checkpoint key.
     const [suspension] = await provider.listSuspended({ status: "pending" });
-    expect(suspension.blockInstanceId).not.toBe("unknown");
-    const parsed = parseBlockInstanceId(suspension.blockInstanceId);
+    const suspItem = result.items.find((i) => i.type === "suspension") as any;
+    const parsed = parseBlockInstanceId(suspItem.blockInstanceId);
     expect(parsed).toBeDefined();
     expect(parsed!.requestId).toBe(result.requestId);
-
-    const suspItem = result.items.find((i) => i.type === "suspension") as any;
-    expect(suspItem.blockInstanceId).toBe(suspension.blockInstanceId);
 
     // The ReplayLog (built from the item log alone) recovers the pending
     // suspension keyed by the suspending block's logical path.

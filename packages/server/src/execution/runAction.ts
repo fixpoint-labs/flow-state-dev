@@ -913,7 +913,11 @@ export async function runActionInternal<
         const provider = options.runtimeConfig.durabilityProvider;
         // The suspending block's identity is stamped on the error at the
         // innermost scope (FIX-811); the outer ctx usually has no
-        // `_blockIdentity` for a nested suspension. Prefer the stamped value.
+        // `_blockIdentity` for a nested suspension. Used for the resume audit
+        // item only — NOT for the SuspensionRecord, whose `blockInstanceId` is
+        // the durable sequencer's checkpoint key consumed by the positional
+        // resume path below (`stores.checkpoints.latest`). Overloading that
+        // field with the leaf id would break checkpoint restore.
         const suspendingBlockInstanceId =
           suspendError._blockInstanceId ?? ctx._blockIdentity?.blockInstanceId ?? "unknown";
         if (provider !== undefined) {
@@ -931,7 +935,7 @@ export async function runActionInternal<
             resumeSchema: suspendError.resumeSchema,
             render: suspendError.render,
             status: "pending",
-            blockInstanceId: suspendingBlockInstanceId,
+            blockInstanceId: ctx._blockIdentity?.blockInstanceId ?? "unknown",
             stepIndex,
             stepInput: suspendError._currentValue,
             createdAt: Date.now(),
@@ -953,9 +957,10 @@ export async function runActionInternal<
           data: suspendError.data,
           resumeSchema: suspendError.resumeSchema,
           render: suspendError.render,
-          // Carry the suspending block's identity into the log so the resume
-          // runtime can recover its logical path (FIX-811). Mirrors the
-          // SuspensionRecord.blockInstanceId above.
+          // Carry the suspending (leaf) block's identity into the log so the
+          // resume runtime can recover its logical path (FIX-811). This is the
+          // ReplayLog's source — distinct from the SuspensionRecord's
+          // checkpoint key above.
           blockInstanceId: suspendingBlockInstanceId,
           requestId,
           itemIndex: getResponseItemCount(response),
