@@ -223,6 +223,7 @@ const sidebars: SidebarsConfig = {
         "advanced/error-handling",
         "advanced/error-capture",
         "advanced/idempotency",
+        "advanced/block-memoization-and-replay",
         "advanced/durable-execution",
         "advanced/voice",
         "advanced/sequencer-side-chains",

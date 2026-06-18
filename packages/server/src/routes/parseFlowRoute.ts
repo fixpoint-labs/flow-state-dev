@@ -20,6 +20,7 @@ export type ParsedFlowRoute =
   | { kind: "user_stream"; userId: string }
   | { kind: "transcribe" }
   | { kind: "retry_request"; flowKind: string; sessionId: string; requestId: string }
+  | { kind: "continue_request"; flowKind: string; sessionId: string; requestId: string }
   | { kind: "active_requests" }
   | { kind: "check_interrupted_requests"; userId: string }
   | { kind: "get_resource_content"; sessionId: string; ref: string }

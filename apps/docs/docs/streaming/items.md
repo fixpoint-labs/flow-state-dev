@@ -184,6 +184,41 @@ Both approaches produce the same result. `Last-Event-ID` is the standard SSE hea
 
 Why: streaming a message token-by-token to disk would require a disk round-trip per token. Multiple concurrent streams would serialize behind a single per-request queue and the request would freeze. Snapping to the latest snapshot keeps the live experience smooth and bounds disk I/O to the natural write rate.
 
+### Resuming across a suspension
+
+A request that paused with `ctx.suspend()` resumes on the same request id and the same SSE stream. The item log continues by sequence number across the pause, so a client at sequence N reconnects with `Last-Event-ID: N` once the request is back `in_progress` and receives N+1 onward — the same cursor mechanism as any other reconnect. See [Durable execution](/docs/advanced/durable-execution#continuous-item-log-across-resume) for the full lifecycle.
+
+## The `suspension` / `suspension_resume` pair
+
+When a block suspends, the runtime emits a `suspension` item. When the request later resumes, it emits a `suspension_resume` item recording the continuation. Both ride the client stream and persist on the request record; neither enters LLM conversation history.
+
+| Type | Emitted when | Client | History |
+|------|--------------|:------:|:-------:|
+| `suspension` | A block calls `ctx.suspend()` | ✓ | — |
+| `suspension_resume` | The request resumes the suspension | ✓ | — |
+
+`suspension_resume` is a client-visible audit row, not part of the model's conversation. Its fields:
+
+```ts
+type SuspensionResumeItem = {
+  type: "suspension_resume";
+  suspensionId: string;
+  resolution: "approved" | "rejected";
+  resolvedBy?: string;
+  resumeData?: unknown;
+  resolvedAt: number;
+};
+```
+
+`resumeData` is the payload `ctx.suspend()` returns on continuation. It is client-visible and persisted, so don't put secrets in it.
+
+A log fragment across one cycle:
+
+```jsonc
+{ "type": "suspension",        "suspensionId": "susp_abc123", "reason": "human_approval" }
+{ "type": "suspension_resume", "suspensionId": "susp_abc123", "resolution": "approved", "resolvedBy": "user_xyz" }
+```
+
 ## `content.audio.delta` — streaming TTS audio chunks
 
 When the configured voice provider supports streaming TTS, the server emits `content.audio.delta` events carrying base64-encoded audio chunks for an in-flight `OutputAudioContent` part. These are live-only — they do not replay on reconnect. The durable representation is the eventual `OutputAudioContent` delivered via `content.added`.

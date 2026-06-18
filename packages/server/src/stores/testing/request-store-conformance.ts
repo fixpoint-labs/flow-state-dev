@@ -9,9 +9,9 @@
  * cases that need different windows pass `pollIntervalMs`.
  */
 import { describe, expect, it } from "vitest";
-import type { RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { StoreSubscriptionError } from "../../errors/store-subscription-error";
-import type { RequestStore } from "../types";
+import type { RequestRecord, RequestStore } from "../types";
 
 const DEFAULT_POLL_INTERVAL_MS = 100;
 
@@ -298,7 +298,98 @@ export function createRequestStoreConformanceTests(
     }
   });
 
+  describe(`${name} (RequestStore same-request item persistence conformance)`, () => {
+    async function withStore(
+      run: (store: RequestStore) => Promise<void>
+    ): Promise<void> {
+      const store = await createStore();
+      try {
+        await run(store);
+      } finally {
+        if (cleanup !== undefined) await cleanup(store);
+      }
+    }
+
+    // A get-returns-merged check across a same-request continuation (FIX-811).
+    // The runtime persists incrementally via `persistItems` AND writes the
+    // merged set onto the record at each transition via `set`; both adapter
+    // mechanisms (the in-memory record-backed no-op and a persistent store's
+    // UPSERT) must surface the full ordered log on a subsequent `get`.
+    it("get returns the full ordered item log after a continuation appends items", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_merge_conformance";
+        const pre = [makeItem(requestId, 0), makeItem(requestId, 1)];
+        const post = [makeItem(requestId, 2), makeItem(requestId, 3)];
+
+        // Pre-suspension run: persist the pre items and snapshot them onto the
+        // record (the suspend transition).
+        store.persistItems(requestId, pre);
+        await store.flushItems(requestId);
+        await store.set(requestId, makeRecord(requestId, "suspended", pre), "any");
+
+        // Continuation: persist the FULL merged set (prior ∪ re-entry) and
+        // snapshot it onto the record (the terminal transition).
+        const merged = [...pre, ...post];
+        store.persistItems(requestId, merged);
+        await store.flushItems(requestId);
+        await store.set(
+          requestId,
+          makeRecord(requestId, "completed", merged),
+          "any"
+        );
+
+        const reread = await store.get(requestId);
+        const ids = (reread?.items ?? []).map((item) => item.id);
+        expect(ids).toEqual(merged.map((item) => item.id));
+        // No id appears twice — the append merges by id, it does not duplicate.
+        expect(new Set(ids).size).toBe(ids.length);
+      });
+    });
+  });
+
   // Reference for downstream tests that want to assert overflow behavior
   // directly on the BoundedQueue rather than through the iterator.
   void StoreSubscriptionError;
+}
+
+/** Build a minimal `message` `OutputItem` for the persistence conformance cases. */
+function makeItem(requestId: string, itemIndex: number): OutputItem {
+  return {
+    id: `item_${requestId}_${itemIndex}`,
+    type: "message",
+    status: "completed",
+    requestId,
+    itemIndex,
+    provenance: {
+      blockName: "test-block",
+      blockInstanceId: `${requestId}:root:0`,
+      phase: "main"
+    },
+    ts: itemIndex * 100,
+    role: "assistant",
+    content: [{ type: "text", text: `item ${itemIndex}` }]
+  } as unknown as OutputItem;
+}
+
+/** Build a minimal `RequestRecord` carrying `items`, for the persistence cases. */
+function makeRecord(
+  requestId: string,
+  status: RequestRecord["status"],
+  items: OutputItem[]
+): RequestRecord {
+  const now = Date.now();
+  return {
+    id: requestId,
+    state: {},
+    version: 0,
+    createdAt: now,
+    updatedAt: now,
+    flowKind: "test-flow",
+    actionName: "test-action",
+    userId: "u_conformance",
+    source: "http",
+    status,
+    startedAtMs: now,
+    items
+  };
 }

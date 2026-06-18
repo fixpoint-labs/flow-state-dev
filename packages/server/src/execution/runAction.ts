@@ -866,9 +866,17 @@ export async function runActionInternal<
   if (resumeContextRaw !== undefined || options.replayMode === true) {
     priorRecord = await options.stores.request.get(requestId).catch(() => undefined);
   }
+  // Replay mode covers two continuation shapes (FIX-811):
+  //  - suspension resume: a `resumeContext` re-enters a `suspended` record
+  //    (explicit `replayMode` from `continueRequest`, or the legacy bare path
+  //    inferred from the record being `suspended`);
+  //  - crash recovery: `continueRequest` re-enters an `interrupted` record with
+  //    NO `resumeContext` — the explicit `replayMode` flag drives it.
+  // Either way replay injects completed blocks from the durable log instead of
+  // re-running them.
   isReplayMode =
-    resumeContextRaw !== undefined &&
-    (options.replayMode === true || priorRecord?.status === "suspended");
+    options.replayMode === true ||
+    (resumeContextRaw !== undefined && priorRecord?.status === "suspended");
 
   // PRE-transition failure recovery (FIX-811). A same-request continuation
   // marks the suspension `approved`/`rejected` and returns 202 BEFORE this
@@ -932,13 +940,19 @@ export async function runActionInternal<
       // is emitted so incremental persists never truncate it.
       priorItemsForMerge = priorItems as readonly OutputItem[];
       replayLog = buildReplayLog(priorItems);
-      const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
-      // Thread the resolving gate's logical id so ctx.suspend() returns the
-      // resume payload at exactly that gate and re-suspends at any other.
-      effectiveMetadata = {
-        ...options.metadata,
-        resumeContext: { ...resumeContextRaw, pendingBlockLogicalId }
-      };
+      // Crash-recovery continuation (FIX-811) replays with NO resumeContext: it
+      // re-enters an `interrupted` request, injects its completed blocks from
+      // the log, and re-runs the in-flight one — there is no gate to resolve, so
+      // leave `resumeContext` absent. Only a suspension resume threads the
+      // resolving gate's logical id so `ctx.suspend()` returns the payload at
+      // exactly that gate and re-suspends at any other.
+      if (resumeContextRaw !== undefined) {
+        const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
+        effectiveMetadata = {
+          ...options.metadata,
+          resumeContext: { ...resumeContextRaw, pendingBlockLogicalId }
+        };
+      }
     }
 
     ctx = await createExecutionContext({
@@ -1008,19 +1022,23 @@ export async function runActionInternal<
   }
 
   // Replay mode: assign the ReplayLog so the core executor injects completed
-  // blocks, transition the record across the point-of-no-return, and emit the
-  // `suspension_resume` audit item. Everything above this point (flow resolve,
-  // ReplayLog build, heartbeat re-register, checkpoint restore) can fail while
-  // leaving the record `suspended`; once we emit `in_progress` below, any later
-  // failure is a durable terminal `failed`.
-  if (isReplayMode && replayLog !== undefined && resumeContext !== undefined) {
+  // blocks, and transition the record across the point-of-no-return. Everything
+  // above this point (flow resolve, ReplayLog build, heartbeat re-register,
+  // checkpoint restore) can fail while leaving the record `suspended` /
+  // `interrupted`; once we emit `in_progress` below, any later failure is a
+  // durable terminal `failed`. A suspension resume additionally emits the
+  // `suspension_resume` audit item; crash recovery (no `resumeContext`) does
+  // not — it just continues the interrupted run.
+  if (isReplayMode && replayLog !== undefined) {
     (ctx as any)._replayLog = replayLog;
 
-    // Point of no return: suspended → in_progress.
+    // Point of no return: suspended / interrupted → in_progress.
     await patchRequestRecord(options.stores, requestId, { status: "in_progress" });
     ctx.requestRuntime.status = "in_progress";
     await response.emitRequestStatus("in_progress");
+  }
 
+  if (isReplayMode && replayLog !== undefined && resumeContext !== undefined) {
     // Audit item, positioned immediately after the `suspension` it resolves
     // (it is the first item appended to the re-entry emitter).
     const resumeItem: SuspensionResumeItem = {

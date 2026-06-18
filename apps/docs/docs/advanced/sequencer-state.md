@@ -118,7 +118,9 @@ DSL callbacks — `.map`, `.tap`, `.tapIf`, `.stepIf`, `.workIf`, `.forEach`, `.
 
 Sequencer state has a different lifetime from the persistence scopes — but it is **not** purely in-memory.
 
-At every step boundary, durable sequencers checkpoint their state via the `CheckpointStore` (FIX-401). Each write is keyed by `(requestId, blockInstanceId)` and overwrites the prior record — latest-only semantics, so storage is constant per sequencer regardless of step count. The Phase 2 resume runtime (FIX-141) reads the latest checkpoint to pick up after an interrupted request.
+At every step boundary, durable sequencers checkpoint their state via the `CheckpointStore` (FIX-401). Each write is keyed by `(requestId, blockInstanceId)` and overwrites the prior record — latest-only semantics, so storage is constant per sequencer regardless of step count. The resume runtime reads the latest checkpoint to pick up after an interrupted request.
+
+The checkpoint (`state_snapshot`) restores accumulator state only — the sequencer's `stateSchema` fields. It is not what decides which steps to re-run. Skipping a completed step is a separate mechanism: the runtime replays the step's recorded `block_trace` output, keyed by its logical path (`${requestId}:${path}`), not by a positional step index. Keying on the logical path is what lets a resume tolerate code changes between suspend and resume. See [Block memoization and replay](/docs/advanced/block-memoization-and-replay).
 
 Sequencers default to `durable: true`. Opt out for tests or single-shot ephemeral pipelines where checkpointing is unwanted overhead:
 

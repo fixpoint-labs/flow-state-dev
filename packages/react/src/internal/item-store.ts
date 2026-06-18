@@ -10,6 +10,76 @@ import type {
   ReasoningItem
 } from "@flow-state-dev/core/items";
 
+// Mirrors `collapseToCanonicalLog` from `@flow-state-dev/core/items` — inlined
+// because this package may only import types from core (same reason
+// `resolveItemVisibility` is mirrored in `useSession`). Keep in sync with the
+// core source, which is the authority. Collapses a resumed request's superseded
+// re-emissions: once a `suspension_resume` arrives, the suspending block's
+// run-1 emissions (below the suspension's item index) are dropped so the live
+// view shows each emission once. No-op until a suspension resolves.
+function logicalIdOfInstance(blockInstanceId: string | undefined): string | undefined {
+  if (blockInstanceId === undefined) return undefined;
+  const lastColon = blockInstanceId.lastIndexOf(":");
+  if (lastColon <= 0) return undefined;
+  const attempt = Number(blockInstanceId.slice(lastColon + 1));
+  if (!Number.isInteger(attempt) || attempt < 0) return undefined;
+  return blockInstanceId.slice(0, lastColon);
+}
+
+function collapseToCanonicalLog(items: OutputItem[]): OutputItem[] {
+  const resumed = new Set<string>();
+  for (const item of items) {
+    if (item.type === "suspension_resume") {
+      const id = (item as { suspensionId?: string }).suspensionId;
+      if (id !== undefined) resumed.add(id);
+    }
+  }
+  const supersededBefore = new Map<string, number>();
+  for (const item of items) {
+    if (item.type !== "suspension") continue;
+    const suspId = (item as { suspensionId?: string }).suspensionId;
+    if (suspId === undefined || !resumed.has(suspId)) continue;
+    const logicalId = logicalIdOfInstance(
+      (item as { blockInstanceId?: string }).blockInstanceId ?? item.provenance?.blockInstanceId
+    );
+    if (logicalId === undefined) continue;
+    const prior = supersededBefore.get(logicalId);
+    if (prior === undefined || item.itemIndex > prior) supersededBefore.set(logicalId, item.itemIndex);
+  }
+
+  const canonicalTrace = new Map<string, { id: string; itemIndex: number; completed: boolean }>();
+  for (const item of items) {
+    if ((item.type as string) !== "block_trace") continue;
+    const logicalId = logicalIdOfInstance(item.provenance?.blockInstanceId);
+    if (logicalId === undefined) continue;
+    const completed = item.status === "completed";
+    const prior = canonicalTrace.get(logicalId);
+    if (
+      prior === undefined ||
+      (completed && !prior.completed) ||
+      (completed === prior.completed && item.itemIndex > prior.itemIndex)
+    ) {
+      canonicalTrace.set(logicalId, { id: item.id, itemIndex: item.itemIndex, completed });
+    }
+  }
+
+  if (supersededBefore.size === 0 && canonicalTrace.size === 0) return items;
+
+  return items.filter((item) => {
+    if ((item.type as string) === "block_trace") {
+      const logicalId = logicalIdOfInstance(item.provenance?.blockInstanceId);
+      if (logicalId === undefined) return true;
+      const canonical = canonicalTrace.get(logicalId);
+      return canonical === undefined || canonical.id === item.id;
+    }
+    if (item.type === "suspension" || item.type === "suspension_resume") return true;
+    const logicalId = logicalIdOfInstance(item.provenance?.blockInstanceId);
+    if (logicalId === undefined) return true;
+    const boundary = supersededBefore.get(logicalId);
+    return boundary === undefined || item.itemIndex >= boundary;
+  });
+}
+
 /** Buffered text delta waiting to be flushed into an item's content. */
 export type ContentDeltaAccumulator = {
   itemId: string;
@@ -339,7 +409,12 @@ export function createItemStore(): ItemStore {
     },
 
     getSorted(): OutputItem[] {
-      return buildItemsFromMap(sortedIds, itemsById);
+      // Collapse to the canonical view (FIX-811): once a resume's
+      // `suspension_resume` arrives on the stream, the suspending block's
+      // superseded run-1 emissions are dropped so the live view shows each
+      // emission once. A no-op until a suspension is resolved (no resolved
+      // suspensions, no duplicate traces → returns the list unchanged).
+      return collapseToCanonicalLog(buildItemsFromMap(sortedIds, itemsById));
     },
 
     getById(id: string): OutputItem | undefined {

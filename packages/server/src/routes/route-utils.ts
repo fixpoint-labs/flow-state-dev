@@ -10,6 +10,7 @@ import type {
 import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
+import { collapseToCanonicalLog } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
@@ -534,7 +535,11 @@ export function buildReplayEvents(record: RequestRecord, session?: SessionRecord
 
   let seq = 2;
   if (record.items !== undefined) {
-    for (const item of record.items) {
+    // Seed from the canonical view (FIX-811): this empty-cursor fallback
+    // reconstructs the stream from the items record, so it must drop a resumed
+    // request's superseded run-1 emissions just like the GET history does. The
+    // append-only event log (the primary replay source) is never collapsed.
+    for (const item of collapseToCanonicalLog(record.items)) {
       events.push({
         stream: "request",
         type: "item.added",

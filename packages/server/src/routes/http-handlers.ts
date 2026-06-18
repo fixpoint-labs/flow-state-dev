@@ -27,6 +27,7 @@ import { handleGetRequestStatus } from "./request-status-routes";
 import { handleExecuteAction } from "./action-routes";
 import {
   handleCheckInterruptedRequests,
+  handleContinueRequest,
   handleListActiveRequests,
   handleRetryRequest
 } from "./recovery-routes";
@@ -401,6 +402,15 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "retry_request") {
         return await handleRetryRequest(request, route, {
+          registry: options.registry,
+          stores,
+          runtimeConfig
+        });
+      }
+
+      if (route.kind === "continue_request") {
+        return await handleContinueRequest(request, route, {
+          host,
           registry: options.registry,
           stores,
           runtimeConfig
