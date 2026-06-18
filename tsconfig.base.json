@@ -15,6 +15,9 @@
     "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": {
+      "@flow-state-dev/claude-code": ["packages/claude-code/src/index.ts"],
+      "@flow-state-dev/claude-code/cli": ["packages/claude-code/src/cli/index.ts"],
+      "@flow-state-dev/claude-code/sdk": ["packages/claude-code/src/sdk/index.ts"],
       "@flow-state-dev/core": ["packages/core/src/index.ts"],
       "@flow-state-dev/core/types": ["packages/core/src/types/index.ts"],
       "@flow-state-dev/core/items": ["packages/core/src/items/index.ts"],

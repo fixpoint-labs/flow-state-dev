@@ -1,0 +1,26 @@
+{
+  "name": "@flow-state-dev/dev-orchestrator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Single-issue dev-loop orchestrator POC: drive a Linear issue through spec → implement → review by dispatching Claude Code and gating on durable suspensions.",
+  "scripts": {
+    "babysit": "tsx src/driver/bin.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest --passWithNoTests"
+  },
+  "dependencies": {
+    "@flow-state-dev/claude-code": "workspace:*",
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/store-sqlite": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.4"
+  }
+}
