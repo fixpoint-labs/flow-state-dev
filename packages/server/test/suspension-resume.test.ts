@@ -761,6 +761,57 @@ describe("same-request continuation (FIX-811)", () => {
     expect((after!.items ?? []).some((i) => i.type === "suspension_resume")).toBe(false);
   });
 
+  it("ctx.runOnce dedups a side effect in the suspending block across resume (FIX-811)", async () => {
+    // The suspending block re-runs on resume. A side effect it guards with
+    // ctx.runOnce BEFORE suspending must NOT fire again: the in-process memo is
+    // fresh on the re-entry, but runOnce's durable backstop is keyed by the
+    // request id — which same-request continuation preserves — so the re-run
+    // reads the stored result instead of re-executing fn(). This is the
+    // supported way to soften the block-re-execution edge.
+    let charges = 0;
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        await ctx.runOnce!("charge", async () => {
+          charges += 1;
+          return { charged: true };
+        });
+        return ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+      }
+    });
+    const flow = defineFlow({
+      kind: "fix811-runonce",
+      actions: {
+        run: {
+          block: sequencer({ name: "seq", durable: true }).step(gate),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-runonce" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    expect(charges).toBe(1);
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    const resumed = await (await resolve(flow, stores, provider, requestId, suspension, "approve"));
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+    expect(resumed.requestId).toBe(requestId);
+
+    // The guarded side effect fired exactly once despite the gate re-running.
+    expect(charges).toBe(1);
+  });
+
   it("restores the root sequencer accumulator on crash-recovery continuation (FIX-811)", async () => {
     // A completed pre-step writes accumulator state into the checkpoint; on
     // crash recovery it is INJECTED from the log (its mutation does not re-run),

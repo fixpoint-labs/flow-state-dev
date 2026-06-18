@@ -63,11 +63,11 @@ const notifyAndWait = handler({
 });
 ```
 
-Now the re-run on resume hits the `runOnce` memo and skips `sendEmail`.
+Now the gate re-runs on resume, but `sendEmail` does not fire again. Here is why, and it is the part worth understanding. The re-run happens in a fresh execution, so `runOnce`'s in-process memo is empty. What saves you is its durable backstop: `runOnce` records each result keyed by `(requestId, key)`, and a resumed request keeps the **same** `requestId`. So the re-run looks the key up, finds the result the first run stored, and returns it without calling `fn`. Same-request continuation is exactly what makes this work — the stable id is the join key.
 
-Be precise about what this guarantees. `runOnce` keeps an in-process memo that fires `fn` exactly once per process — concurrent calls with the same key share one inflight promise, and the memo is set the instant `fn` resolves, before any store write. The store write is best-effort bookkeeping for cross-process durability. If that write fails, or the process crashes before it lands, a later crash recovery in a *different* process starts with an empty memo and can re-fire the guarded effect.
+Be precise about the two layers. Within one process, the in-process memo fires `fn` exactly once: concurrent calls with the same key share one inflight promise, and the memo is set the instant `fn` resolves, before any store write. Across a resume (or a crash recovery), the durable record under the stable `requestId` is what dedups — the memo is gone, the record carries the result.
 
-So `runOnce` is not crash-proof on its own. For exactly-once across process crashes, pair it with provider-key idempotency: pass `ctx.idempotencyKey` to the external API so the provider de-dups even if your guard is gone. See [Idempotency and `runOnce`](./idempotency.md) for that pairing.
+The one remaining gap is narrow: the durable write happens *after* `fn` resolves, so if the process crashes in the window between `fn` completing and that write landing, a later crash recovery starts with neither the memo nor the record and can re-fire the effect. For exactly-once even across that window, pair `runOnce` with provider-key idempotency: pass `ctx.idempotencyKey` to the external API so the provider de-dups even if your guard is gone. See [Idempotency and `runOnce`](./idempotency.md) for that pairing.
 
 `runOnce` is a handler primitive. Generators and the composition layer don't get it.
 
