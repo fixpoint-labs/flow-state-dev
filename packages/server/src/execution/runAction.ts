@@ -473,6 +473,17 @@ export async function runActionInternal<
     startSequenceNumber: options.startSequenceNumber
   });
 
+  // Same-request continuation (FIX-811): the re-entry emitter holds only
+  // post-resume items, but every persist — incremental AND terminal — must
+  // write the FULL pause→continue log so a replace-style store (e.g.
+  // filesystem) never truncates the pre-suspension history mid-run, and a crash
+  // between resume and completion keeps the whole log. Assigned once replay mode
+  // is determined below; until then `itemsToPersist()` is the live items as-is.
+  let isReplayMode = false;
+  let priorItemsForMerge: readonly OutputItem[] = [];
+  const itemsToPersist = (): OutputItem[] =>
+    isReplayMode ? mergeItemsById(priorItemsForMerge, response.getItems()) : response.getItems();
+
   if (options.onItem !== undefined) {
     // Fan every item to the caller's listener, transient ones included (they
     // are live-only and absent from the persisted log). subscribeToItems
@@ -692,7 +703,7 @@ export async function runActionInternal<
         return;
       }
       if (item.transient === true) return;
-      options.stores.request.persistItems(requestId, response.getItems());
+      options.stores.request.persistItems(requestId, itemsToPersist());
     },
     // FIX-479: incremental items-snapshot checkpoint while streaming text.
     // content.delta events no longer enter the persisted events log; the
@@ -704,7 +715,7 @@ export async function runActionInternal<
     onItemUpdate: (item) => {
       if (item.type === "state_snapshot") return;
       if (item.transient === true) return;
-      options.stores.request.persistItems(requestId, response.getItems());
+      options.stores.request.persistItems(requestId, itemsToPersist());
     }
   });
 
@@ -854,7 +865,7 @@ export async function runActionInternal<
   if (resumeContextRaw !== undefined || options.replayMode === true) {
     priorRecord = await options.stores.request.get(requestId).catch(() => undefined);
   }
-  const isReplayMode =
+  isReplayMode =
     resumeContextRaw !== undefined &&
     (options.replayMode === true || priorRecord?.status === "suspended");
 
@@ -862,6 +873,10 @@ export async function runActionInternal<
   let effectiveMetadata = options.metadata;
   if (isReplayMode && priorRecord !== undefined) {
     const priorItems = (priorRecord.items ?? []) as RuntimeItem[];
+    // The full prior log (pre-suspension items + the `suspension` item) that
+    // every persist must preserve under the merge — assigned before any item
+    // is emitted so incremental persists never truncate it.
+    priorItemsForMerge = priorItems as readonly OutputItem[];
     replayLog = buildReplayLog(priorItems);
     const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
     // Thread the resolving gate's logical id so ctx.suspend() returns the
@@ -966,16 +981,6 @@ export async function runActionInternal<
     await response.emitItemAdded(resumeItem);
     await response.emitItemDone(resumeItem);
   }
-
-  // Terminal/suspend record writes use the merged log on a continued request so
-  // a GET returns the full pause→continue history; on a first run they use the
-  // live items as-is. Snapshot the prior items once — `priorRecord` is the
-  // pre-continuation read.
-  const priorItemsForMerge: readonly OutputItem[] = (priorRecord?.items ?? []) as OutputItem[];
-  const terminalItems = (): OutputItem[] =>
-    isReplayMode
-      ? mergeItemsById(priorItemsForMerge, response.getItems())
-      : response.getItems();
 
   const metadata = createExecutionMetadata(ctx, {
     scope: "request"
@@ -1097,7 +1102,7 @@ export async function runActionInternal<
 
         await patchRequestRecord(options.stores, requestId, {
           status: "suspended",
-          items: terminalItems()
+          items: itemsToPersist()
         });
         ctx.requestRuntime.status = "suspended";
         await response.emitRequestStatus("suspended");
@@ -1221,7 +1226,7 @@ export async function runActionInternal<
     await flushTraces();
 
     const completedAt = Date.now();
-    const items = terminalItems();
+    const items = itemsToPersist();
     await patchRequestRecord(options.stores, requestId, {
       status: terminalStatus,
       completedAtMs: completedAt,
@@ -1372,7 +1377,7 @@ export async function runActionInternal<
         await patchRequestRecord(options.stores, requestId, {
           status: "aborted",
           abortedAt,
-          items: terminalItems()
+          items: itemsToPersist()
         });
 
         ctx.requestRuntime.status = "aborted";
@@ -1404,7 +1409,7 @@ export async function runActionInternal<
         await patchRequestRecord(options.stores, requestId, {
           status: "interrupted",
           interruptedAt: Date.now(),
-          items: terminalItems()
+          items: itemsToPersist()
         });
 
         ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
@@ -1446,7 +1451,7 @@ export async function runActionInternal<
       await patchRequestRecord(options.stores, requestId, {
         status: "failed",
         failedAtMs: failedAt,
-        items: terminalItems()
+        items: itemsToPersist()
       });
 
       ctx.requestRuntime.status = "failed";
