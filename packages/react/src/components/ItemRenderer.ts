@@ -43,7 +43,10 @@ export type ItemRendererProps = {
 /** Item types that are never rendered on the client. */
 const NON_RENDERABLE_TYPES = new Set([
   "state_change",
-  "resource_change"
+  "resource_change",
+  // Audit record of a resolved suspension (FIX-811). Client-visible for the
+  // log, but apps render their resume UI off the `suspension` item, not this.
+  "suspension_resume"
 ]);
 
 // ---------------------------------------------------------------------------

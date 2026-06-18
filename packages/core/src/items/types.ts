@@ -525,7 +525,9 @@ export type StateSnapshotItem = OutputItemBase & {
 /**
  * Emitted when a block calls ctx.suspend() in a durable action. Carries
  * the suspension metadata so clients can render a resume UI. Visibility:
- * client=true, history=true (visible to client, LLM context, and devtool).
+ * client=true, history=false — a structural item that falls through to
+ * `STRUCTURAL_DEFAULT` in `resolveItemVisibility` (client-visible, not in
+ * LLM history). Persisted, so a `GET` returns it as part of the audit trail.
  */
 export type SuspensionItem = OutputItemBase & {
   type: "suspension";
@@ -537,6 +539,41 @@ export type SuspensionItem = OutputItemBase & {
   resumeSchema?: Record<string, unknown>;
   render?: { component: string; props?: Record<string, unknown> };
   resumeData?: unknown;
+  /**
+   * `blockInstanceId` of the block that suspended (FIX-811). The item itself is
+   * emitted with runtime provenance, so this carries the suspending block's
+   * identity into the log — the resume runtime recovers the logical path from
+   * here (log-as-source-of-truth) to match the resolving `ctx.suspend()` call.
+   */
+  blockInstanceId?: string;
+};
+
+/**
+ * Emitted into the resumed request's log when a suspension is resolved and the
+ * same request continues (FIX-811). The durable audit counterpart to
+ * {@link SuspensionItem}: where `suspension` records the pause, this records the
+ * continuation. Positioned immediately after the `suspension` item it resolves.
+ *
+ * Visibility: client=true, history=false — structural, falling through to
+ * `STRUCTURAL_DEFAULT`. Non-transient, so a `GET` returns the full
+ * pause→continue history for one request id.
+ *
+ * `resumeData` is the typed payload the resolver injected (the value
+ * `ctx.suspend()` returns on continuation). It is client-visible and persisted,
+ * so consumers must not place secrets there.
+ */
+export type SuspensionResumeItem = OutputItemBase & {
+  type: "suspension_resume";
+  /** The suspension this continuation resolves. */
+  suspensionId: string;
+  /** How the suspension was resolved. Reuses the suspension status vocabulary. */
+  resolution: SuspensionStatus;
+  /** Identity that resolved the suspension (the resume endpoint's `resumedBy`). */
+  resolvedBy?: string;
+  /** The typed payload injected on resume — what `ctx.suspend()` returns. */
+  resumeData?: unknown;
+  /** When the suspension was resolved (ms epoch). */
+  resolvedAt: number;
 };
 
 export type OutputItem =
@@ -550,4 +587,5 @@ export type OutputItem =
   | ErrorItem
   | StateChangeItem
   | ResourceChangeItem
-  | SuspensionItem;
+  | SuspensionItem
+  | SuspensionResumeItem;

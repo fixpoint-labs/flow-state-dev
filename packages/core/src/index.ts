@@ -122,6 +122,11 @@ export {
   ROOT_BLOCK_PATH
 } from "./blocks/internal/block-instance-id";
 export { resolveActiveStatusMessage } from "./blocks/internal/resolve-active-status-message";
+// Log-as-source-of-truth resume read model (FIX-811). Exported so the server
+// can build a ReplayLog from a request's persisted items at re-entry and assign
+// it to `ctx._replayLog`; the core `executeBlock` seam consumes the interface.
+export { buildReplayLog } from "./blocks/internal/replay-log";
+export type { ReplayLog } from "./blocks/internal/replay-log";
 export {
   generator,
   handler,

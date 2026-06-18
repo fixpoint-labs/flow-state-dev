@@ -19,6 +19,7 @@ import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../err
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
+import type { ReplayLog } from "./internal/replay-log";
 import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
 import { runBackground, runChild } from "./internal/sequencer-kernel";
 import type { DeclaredResources } from "../types/block";
@@ -414,6 +415,7 @@ export async function executeBlock(
   const startedAt = Date.now();
   const requestId = ctx.request.identity.id;
   const instanceId = buildBlockInstanceId(requestId, path, 0);
+
   // Pull the input descriptor stashed by the calling op (FIX-573). Forwarded
   // onto the scoped child ctx as `_blockInputHint` so build-block.ts's
   // `added`-phase capture can stamp the right BlockValue source. Cleared
@@ -423,6 +425,28 @@ export async function executeBlock(
   if (pendingInputHint !== undefined) {
     (ctx as { _pendingChildInputHint?: BlockValueInternal<unknown> })._pendingChildInputHint = undefined;
   }
+
+  // Resume replay (FIX-811): when a request continues under its own id, a block
+  // whose logical path already produced a committed output on a prior run is
+  // injected rather than re-executed. Returning here skips the block body
+  // entirely — no model call, no `emit`, no state mutation — and emits no
+  // duplicate trace, because the recorded output IS the canonical one. Keyed on
+  // the attempt-independent logical id (`${requestId}:${path}`). Inert when no
+  // ReplayLog is present (the normal, non-resume path), which the server only
+  // builds at re-entry (Step 3). Placed AFTER the one-shot `_pendingChildInputHint`
+  // read+clear so a replayed child never leaks the stashed hint to a later
+  // sibling. (Wiring replayed blocks into the sibling registry for
+  // `ctx.getBlockOutput()` is owned by the Step 3 server re-entry path.)
+  const replayLog = (ctx as { _replayLog?: ReplayLog })._replayLog;
+  if (replayLog !== undefined) {
+    const cached = replayLog.getCompletedOutput(`${requestId}:${path}`);
+    if (cached !== undefined && cached.kind === "inline") {
+      // `buildReplayLog` materialises recorded outputs to `inline`, so the
+      // value is read directly with no live item lookup.
+      return cached.value;
+    }
+  }
+
   const run = async (scopedCtx: BlockContext): Promise<unknown> => {
     if (pendingInputHint !== undefined) {
       (scopedCtx as { _blockInputHint?: BlockValueInternal<unknown> })._blockInputHint = pendingInputHint;
@@ -723,6 +747,15 @@ function runSequencerOperations(
     const resumeState = (ctx as { _resumeState?: ResumeState })._resumeState;
     const resumeStepIndex = resumeState?.stepIndex ?? -1;
 
+    // Log-as-source-of-truth resume (FIX-811): under same-request continuation
+    // the requestId and blockInstanceId are unchanged, so a durable baseline
+    // snapshot carrying the sequencer's default/empty accumulator state would
+    // clobber the saved checkpoint (the checkpoint store is latest-only, not
+    // version-gated) before the resume runtime restores from it. Suppress the
+    // durable baseline emit on re-entry; per-step snapshots after restore still
+    // write normally.
+    const replayMode = (ctx as { _replayLog?: ReplayLog })._replayLog !== undefined;
+
     try {
       try {
         // Emit initial state snapshot before any steps execute. For durable
@@ -733,7 +766,7 @@ function runSequencerOperations(
           lastStepName,
           lastStepIndex,
           undefined,
-          durable,
+          durable && !replayMode,
           snapshotVersion,
           stateSchema
         );
