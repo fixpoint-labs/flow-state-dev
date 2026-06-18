@@ -100,6 +100,8 @@ describe("resolveItemVisibility", () => {
       "container",
       "error",
       "source",
+      "suspension",
+      "suspension_resume",
     ]) {
       it(`${structType} → {client:true, history:false}`, () => {
         const item = makeItem({ type: structType } as any);
