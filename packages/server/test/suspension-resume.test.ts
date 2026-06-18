@@ -883,6 +883,114 @@ describe("same-request continuation (FIX-811)", () => {
     expect((reSuspension!.data as { tally: number }).tally).toBe(5);
   });
 
+  it("does not re-emit the action userMessage on resume (FIX-811)", async () => {
+    // `action.userMessage` echoes the initial caller input as a user-role
+    // message at request start. It has runtime provenance (no logical owner),
+    // so the canonical collapse can't dedup it — the runtime must not re-emit it
+    // on the continuation, or the user sees their request twice.
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.object({ request: z.string() }),
+      outputSchema: z.string(),
+      execute: async (_input, ctx) => {
+        await ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+        return "done";
+      }
+    });
+    const flow = defineFlow({
+      kind: "fix811-usermsg",
+      actions: {
+        ask: {
+          block: sequencer({ name: "seq", durable: true }).step(gate),
+          inputSchema: z.object({ request: z.string() }),
+          userMessage: (input: { request: string }) => `Requesting approval: ${input.request}`
+        }
+      }
+    })({ id: "fix811-usermsg" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "ask",
+      input: { request: "deploy" },
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    const userMsgs0 = (await stores.request.get(requestId))!.items!.filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "user"
+    );
+    expect(userMsgs0.length).toBe(1);
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    await (await resolve(flow, stores, provider, requestId, suspension, "approve"));
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+
+    // Still exactly one user message after resume — both in the physical log
+    // (not re-emitted) and in the canonical view.
+    const record = await stores.request.get(requestId);
+    const userMsgs = (record!.items ?? []).filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "user"
+    );
+    expect(userMsgs.length).toBe(1);
+    const canonicalUserMsgs = collapseToCanonicalLog(record!.items ?? []).filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "user"
+    );
+    expect(canonicalUserMsgs.length).toBe(1);
+  });
+
+  it("does not re-emit the action userMessage on crash-recovery continuation (FIX-811)", async () => {
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.object({ request: z.string() }),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const flow = defineFlow({
+      kind: "fix811-usermsg-crash",
+      actions: {
+        ask: {
+          block: sequencer({ name: "seq", durable: true }).step(gate),
+          inputSchema: z.object({ request: z.string() }),
+          userMessage: (input: { request: string }) => `Requesting approval: ${input.request}`
+        }
+      }
+    })({ id: "fix811-usermsg-crash" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "ask",
+      input: { request: "deploy" },
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    // Crash → interrupted, then continue with no resumeContext.
+    const rec = await stores.request.get(requestId);
+    await stores.request.set(
+      requestId,
+      { ...rec!, status: "interrupted", interruptedAt: Date.now() },
+      "any"
+    );
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    await finished;
+
+    const userMsgs = (await stores.request.get(requestId))!.items!.filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "user"
+    );
+    expect(userMsgs.length).toBe(1);
+  });
+
   it("canonical view shows a HITL block's pre-suspension emit once after resume (FIX-811)", async () => {
     // A gate that emits an approval message BEFORE it suspends. On resume the
     // gate re-runs and re-emits the message with a fresh id, so the physical log

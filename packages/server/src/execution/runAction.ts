@@ -745,6 +745,21 @@ export async function runActionInternal<
   await response.emitRequestCreated();
   await response.emitRequestStatus("in_progress");
 
+  // Same-request continuation detection (FIX-811), computed BEFORE the
+  // request-start emits below so a continuation does not re-echo the initial
+  // user message. `resumeContextRaw` / `priorRecord` are also consumed later by
+  // the ReplayLog build and checkpoint restore. Replay covers suspension resume
+  // (a `resumeContext` re-enters a `suspended` record) and crash recovery
+  // (`continueRequest` re-enters an `interrupted` record with no resumeContext).
+  const resumeContextRaw = options.metadata?.resumeContext as ResumeContext | undefined;
+  let priorRecord: RequestRecord | undefined;
+  if (resumeContextRaw !== undefined || options.replayMode === true) {
+    priorRecord = await options.stores.request.get(requestId).catch(() => undefined);
+  }
+  isReplayMode =
+    options.replayMode === true ||
+    (resumeContextRaw !== undefined && priorRecord?.status === "suspended");
+
   // Parse input and emit user message early too. If parsing fails, we still
   // need the execution context for proper error handling, so we defer the
   // throw until after context creation.
@@ -753,7 +768,13 @@ export async function runActionInternal<
   try {
     parsedInput = parseActionInput(action, options.input);
 
-    if (action.userMessage !== undefined) {
+    // Skip the user-message echo on a continuation (FIX-811): it represents the
+    // INITIAL caller input and is already in the merged prior log, so emitting
+    // it again on resume / crash recovery would double it. It carries runtime
+    // provenance (no logical block owner), so the canonical-log collapse — which
+    // dedups by block ownership — cannot remove the duplicate; the only correct
+    // place to prevent it is here, at the source.
+    if (action.userMessage !== undefined && !isReplayMode) {
       const text = action.userMessage(parsedInput);
       const userItem: MessageItem = {
         id: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
@@ -848,35 +869,14 @@ export async function runActionInternal<
     fireBackground();
   }
 
-  // --- Same-request continuation: replay mode (FIX-811) ---
-  // A suspended/interrupted request that re-enters under its OWN id replays
-  // already-completed blocks from its durable item log instead of re-running
-  // them. Detection: an explicit `replayMode` flag (set by continueRequest), or
-  // — for callers that just thread a resumeContext at the same id — a present
-  // resumeContext with the existing record still `suspended`.
-  //
-  // Built BEFORE createExecutionContext so the augmented `resumeContext`
-  // (carrying `pendingBlockLogicalId`) is the one the execution context's
-  // `ctx.suspend()` closes over, and so the ReplayLog can be assigned to the
-  // context the moment it exists. A flow-resolve / ReplayLog-build failure here
-  // is BEFORE the point-of-no-return: the record stays `suspended` and the run
-  // never transitions it.
-  const resumeContextRaw = options.metadata?.resumeContext as ResumeContext | undefined;
-  let priorRecord: RequestRecord | undefined;
-  if (resumeContextRaw !== undefined || options.replayMode === true) {
-    priorRecord = await options.stores.request.get(requestId).catch(() => undefined);
-  }
-  // Replay mode covers two continuation shapes (FIX-811):
-  //  - suspension resume: a `resumeContext` re-enters a `suspended` record
-  //    (explicit `replayMode` from `continueRequest`, or the legacy bare path
-  //    inferred from the record being `suspended`);
-  //  - crash recovery: `continueRequest` re-enters an `interrupted` record with
-  //    NO `resumeContext` — the explicit `replayMode` flag drives it.
-  // Either way replay injects completed blocks from the durable log instead of
-  // re-running them.
-  isReplayMode =
-    options.replayMode === true ||
-    (resumeContextRaw !== undefined && priorRecord?.status === "suspended");
+  // Same-request continuation (FIX-811): `isReplayMode` / `resumeContextRaw` /
+  // `priorRecord` were determined above (before the request-start emits, so the
+  // user-message echo can be skipped on a continuation). The ReplayLog build and
+  // checkpoint restore below consume them; building the augmented `resumeContext`
+  // BEFORE createExecutionContext is what lets the execution context's
+  // `ctx.suspend()` close over `pendingBlockLogicalId`. A flow-resolve /
+  // ReplayLog-build failure here is BEFORE the point-of-no-return: the record
+  // stays `suspended` and the run never transitions it.
 
   // PRE-transition failure recovery (FIX-811). A same-request continuation
   // marks the suspension `approved`/`rejected` and returns 202 BEFORE this
