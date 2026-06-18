@@ -46,7 +46,8 @@ function suspensionItem(
   suspensionId: string,
   itemIndex: number,
 ): RuntimeItem {
-  const blockInstanceId = `${REQ}:${path}:0`;
+  // Real suspension items are emitted with RUNTIME provenance; the suspending
+  // block's identity is carried on the `blockInstanceId` field, not provenance.
   return {
     id: `susp_${suspensionId}`,
     type: "suspension",
@@ -55,9 +56,10 @@ function suspensionItem(
     suspensionStatus: "pending",
     reason: "human_approval",
     message: "approve?",
+    blockInstanceId: `${REQ}:${path}:0`,
     requestId: REQ,
     itemIndex,
-    provenance: baseProv(blockInstanceId),
+    provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" as const },
     ts: 0,
   } as RuntimeItem;
 }

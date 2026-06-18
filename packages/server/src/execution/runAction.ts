@@ -948,6 +948,10 @@ export async function runActionInternal<
           data: suspendError.data,
           resumeSchema: suspendError.resumeSchema,
           render: suspendError.render,
+          // Carry the suspending block's identity into the log so the resume
+          // runtime can recover its logical path (FIX-811). Mirrors the
+          // SuspensionRecord.blockInstanceId above.
+          blockInstanceId: ctx._blockIdentity?.blockInstanceId ?? "unknown",
           requestId,
           itemIndex: getResponseItemCount(response),
           provenance: RUNTIME_PROVENANCE,

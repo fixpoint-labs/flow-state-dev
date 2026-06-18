@@ -539,6 +539,13 @@ export type SuspensionItem = OutputItemBase & {
   resumeSchema?: Record<string, unknown>;
   render?: { component: string; props?: Record<string, unknown> };
   resumeData?: unknown;
+  /**
+   * `blockInstanceId` of the block that suspended (FIX-811). The item itself is
+   * emitted with runtime provenance, so this carries the suspending block's
+   * identity into the log — the resume runtime recovers the logical path from
+   * here (log-as-source-of-truth) to match the resolving `ctx.suspend()` call.
+   */
+  blockInstanceId?: string;
 };
 
 /**

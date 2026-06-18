@@ -85,8 +85,11 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
         output: { kind: "inline", value: resolved },
       });
     } else if (item.type === "suspension") {
-      const susp = item as RuntimeItem & { suspensionId: string };
-      const logicalId = logicalIdOf(item.provenance.blockInstanceId);
+      const susp = item as RuntimeItem & { suspensionId: string; blockInstanceId?: string };
+      // The suspension item is emitted with runtime provenance, so the
+      // suspending block's identity is carried on the item's `blockInstanceId`
+      // field; fall back to provenance for older/hand-built records.
+      const logicalId = logicalIdOf(susp.blockInstanceId ?? item.provenance.blockInstanceId);
       if (logicalId === undefined) continue;
       suspensions.push({ logicalId, suspensionId: susp.suspensionId, itemIndex: item.itemIndex });
     } else if (item.type === "suspension_resume") {
