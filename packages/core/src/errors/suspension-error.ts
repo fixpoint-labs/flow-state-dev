@@ -67,6 +67,15 @@ export class SuspensionError extends Error {
    * the SuspensionRecord / `suspension` item identity and the resume logical path.
    */
   _blockInstanceId?: string;
+  /**
+   * @internal `blockInstanceId` of the nearest enclosing durable sequencer —
+   * the checkpoint key under which its accumulator state was saved (FIX-811).
+   * Stamped by that sequencer's suspension catch, where its identity is known.
+   * runAction uses this as the SuspensionRecord's `blockInstanceId` so resume
+   * loads the right checkpoint. Distinct from `_blockInstanceId` (the leaf that
+   * called `ctx.suspend()`), which keys the replay logical path.
+   */
+  _sequencerInstanceId?: string;
 
   constructor(options: SuspendOptions & { suspensionId: string }) {
     super(options.message ?? `Flow suspended: ${options.reason}`);

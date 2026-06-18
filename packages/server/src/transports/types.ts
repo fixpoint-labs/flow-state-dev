@@ -24,6 +24,22 @@ import type { LiveRequestStream } from "../streaming/live-stream";
 import type { StoreRegistry } from "../stores/types";
 import type { RuntimeLogger } from "../execution/logging";
 import type { ExecutionResult } from "../execution/types";
+import type {
+  ContinueRequestOptions,
+  ContinueRequestResult
+} from "../execution/request-continuation";
+
+/**
+ * Host-level continuation options (FIX-811). The host supplies
+ * `stores`/`flowRegistry`/`runtimeConfig` from its own wiring, so callers pass
+ * only the request id, the resolution, and optional streaming context.
+ */
+export type HostContinueRequestOptions = Pick<
+  ContinueRequestOptions,
+  "requestId" | "resumeContext" | "signal" | "responseEmitter"
+>;
+
+export type { ContinueRequestResult } from "../execution/request-continuation";
 
 export type {
   InboundSource,
@@ -198,6 +214,19 @@ export interface InboundTransportHost {
    * adapter-owned and use `host.stores` / `host.registry` directly.
    */
   dispatch(envelope: InboundRequestEnvelope): DispatchHandle;
+
+  /**
+   * Continue a suspended request under its OWN id (FIX-811). Unlike `dispatch`,
+   * which starts a fresh run, this re-enters the existing request: completed
+   * blocks replay from the durable log, the resolving `ctx.suspend()` returns
+   * the resume payload, and the record transitions `suspended → in_progress →
+   * terminal` in place — no second request is created. Wraps `continueRequest`
+   * with the host's registry/stores/runtimeConfig. Rejects for a missing record
+   * or unregistered flow.
+   */
+  continueRequest(
+    options: HostContinueRequestOptions
+  ): Promise<ContinueRequestResult>;
 
   /**
    * Validate async flow-level pre-conditions before dispatch. Must be

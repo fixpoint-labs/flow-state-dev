@@ -447,6 +447,28 @@ describe("SQLite store adapter", () => {
       expect(got!.items!.map((i) => i.id)).toEqual(["a", "b", "c"]);
     });
 
+    it("merges two DISJOINT persistItems sets into the ordered union (FIX-811)", async () => {
+      // Same-request continuation persists only its post-resume items. The store
+      // must union them with the prior set by id (never full-replace), so a GET
+      // returns the full ordered history.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_disjoint");
+      const a = makeMessageItem("req_disjoint", "a", 0, "x") as unknown as OutputItem;
+      const b = makeMessageItem("req_disjoint", "b", 1, "y") as unknown as OutputItem;
+      store.persistItems("req_disjoint", [a, b]);
+      await store.flushItems("req_disjoint");
+
+      // Second call carries a DISJOINT set — the continuation's new items only.
+      const c = makeMessageItem("req_disjoint", "c", 2, "z") as unknown as OutputItem;
+      const d = makeMessageItem("req_disjoint", "d", 3, "w") as unknown as OutputItem;
+      store.persistItems("req_disjoint", [c, d]);
+      await store.flushItems("req_disjoint");
+
+      expect(itemCount("req_disjoint")).toBe(4);
+      const got = await store.get("req_disjoint");
+      expect(got!.items!.map((i) => i.id)).toEqual(["a", "b", "c", "d"]);
+    });
+
     it("refines an item in place when the same id is re-emitted with new content", async () => {
       // Intent: re-emitting an item under the same id overwrites the row and
       // updates its sequence — no duplicate row.

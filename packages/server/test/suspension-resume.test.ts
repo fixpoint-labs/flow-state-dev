@@ -7,10 +7,12 @@
 import { buildReplayLog, defineFlow, handler, parseBlockInstanceId, sequencer } from "@flow-state-dev/core";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { z } from "zod";
-import { describe, expect, it } from "vitest";
-import { createInMemoryStores, runAction } from "../src";
+import { describe, expect, it, vi } from "vitest";
+import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
-import type { SuspensionRecord } from "@flow-state-dev/core/types";
+import type { DurabilityProvider } from "../src/durability/types";
+import type { StoreRegistry } from "../src/stores/types";
+import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 
 function createDurableStores() {
@@ -365,5 +367,418 @@ describe("suspension without durability provider", () => {
 
     const request = await stores.request.get(result.requestId!);
     expect(request?.status).toBe("failed");
+  });
+});
+
+describe("same-request continuation (FIX-811)", () => {
+  /** Register a flow under its kind so `continueRequest` can resolve it. */
+  function registryFor(flow: FlowInstance) {
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    return registry;
+  }
+
+  /**
+   * Resolve a pending suspension via the same-request continuation path:
+   * mark the suspension resolved, then re-enter the SAME request id.
+   */
+  async function resolve(
+    flow: FlowInstance,
+    stores: StoreRegistry,
+    provider: DurabilityProvider,
+    requestId: string,
+    suspension: SuspensionRecord,
+    action: "approve" | "reject",
+    data?: unknown
+  ) {
+    await provider.suspend({
+      ...suspension,
+      status: action === "approve" ? "approved" : "rejected",
+      resolvedAt: Date.now(),
+      resumeData: data
+    });
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      resumeContext: { suspensionId: suspension.suspensionId, action, data, resumedBy: "reviewer" },
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    return finished;
+  }
+
+  it("resumes the SAME request id with the full ordered item log and no orphan request", async () => {
+    const preStep = handler({
+      name: "preStep",
+      inputSchema: z.object({ amount: z.number() }),
+      outputSchema: z.object({ amount: z.number(), prepared: z.boolean() }),
+      execute: async (input) => ({ amount: input.amount, prepared: true })
+    });
+    const approvalStep = handler({
+      name: "approvalStep",
+      inputSchema: z.object({ amount: z.number(), prepared: z.boolean() }),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const confirmStep = handler({
+      name: "confirmStep",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: async (input) => `confirmed:${JSON.stringify(input)}`
+    });
+
+    const flow = defineFlow({
+      kind: "fix811-same-id",
+      actions: {
+        transfer: {
+          block: sequencer({ name: "transferSeq", durable: true })
+            .step(preStep)
+            .step(approvalStep)
+            .step(confirmStep),
+          inputSchema: z.object({ amount: z.number() })
+        }
+      }
+    })({ id: "fix811-same-id" });
+
+    const { stores, provider } = createDurableStores();
+
+    const initial = await runAction({
+      flow,
+      actionName: "transfer",
+      input: { amount: 500 },
+      userId: "u1",
+      sessionId: "s1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    const finished = await resolve(
+      flow,
+      stores,
+      provider,
+      requestId,
+      suspension,
+      "approve",
+      { note: "ok" }
+    );
+    const resumed = await finished;
+
+    // Same request id — continuation re-entered, not a new request.
+    expect(resumed.requestId).toBe(requestId);
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+    expect(resumed.output).toContain("confirmed");
+
+    // No orphan: exactly one request record exists.
+    const allRequests = await stores.request.list();
+    expect(allRequests.length).toBe(1);
+
+    // GET returns pre + suspension + suspension_resume + post, in order.
+    const record = await stores.request.get(requestId);
+    const types = (record!.items ?? []).map((i) => i.type);
+    const suspIdx = types.indexOf("suspension");
+    const resumeIdx = types.indexOf("suspension_resume");
+    expect(suspIdx).toBeGreaterThanOrEqual(0);
+    expect(resumeIdx).toBe(suspIdx + 1);
+    // The pre-suspension block_trace exists and precedes the suspension.
+    const preTraceIdx = (record!.items ?? []).findIndex(
+      (i) => i.type === "block_trace" && (i as any).blockName === "preStep"
+    );
+    expect(preTraceIdx).toBeGreaterThanOrEqual(0);
+    expect(preTraceIdx).toBeLessThan(suspIdx);
+  });
+
+  it("emits a suspension_resume item with resolution / resolvedBy / resumeData", async () => {
+    const approvalStep = handler({
+      name: "approvalStep",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const flow = defineFlow({
+      kind: "fix811-resume-item",
+      actions: {
+        ask: {
+          block: sequencer({ name: "askSeq", durable: true }).step(approvalStep),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-resume-item" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "ask",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+
+    const finished = await resolve(
+      flow,
+      stores,
+      provider,
+      requestId,
+      suspension,
+      "approve",
+      { decision: "yes" }
+    );
+    await finished;
+
+    const record = await stores.request.get(requestId);
+    const resumeItem = (record!.items ?? []).find(
+      (i) => i.type === "suspension_resume"
+    ) as any;
+    expect(resumeItem).toBeDefined();
+    expect(resumeItem.resolution).toBe("approved");
+    expect(resumeItem.resolvedBy).toBe("reviewer");
+    expect(resumeItem.resumeData).toEqual({ decision: "yes" });
+    expect(resumeItem.suspensionId).toBe(suspension.suspensionId);
+  });
+
+  it("replays a completed pre-suspension block instead of re-executing it", async () => {
+    const preSpy = vi.fn(async (input: { value: number }) => ({ doubled: input.value * 2 }));
+    const preStep = handler({
+      name: "preStep",
+      inputSchema: z.object({ value: z.number() }),
+      outputSchema: z.object({ doubled: z.number() }),
+      execute: preSpy
+    });
+    const approvalStep = handler({
+      name: "approvalStep",
+      inputSchema: z.object({ doubled: z.number() }),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const readerStep = handler({
+      name: "readerStep",
+      inputSchema: z.any(),
+      outputSchema: z.object({ readDoubled: z.number() }),
+      execute: async (_input, ctx) => {
+        const pre = ctx.getBlockOutput!(preStep) as { doubled: number } | undefined;
+        return { readDoubled: pre?.doubled ?? -1 };
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "fix811-replay",
+      actions: {
+        run: {
+          block: sequencer({ name: "runSeq", durable: true })
+            .step(preStep)
+            .step(approvalStep)
+            .step(readerStep),
+          inputSchema: z.object({ value: z.number() })
+        }
+      }
+    })({ id: "fix811-replay" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: { value: 21 },
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    expect(preSpy).toHaveBeenCalledTimes(1);
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    const finished = await resolve(flow, stores, provider, requestId, suspension, "approve");
+    const resumed = await finished;
+
+    // preStep replayed from the log — its execute was NOT called a second time.
+    expect(preSpy).toHaveBeenCalledTimes(1);
+    // A later sibling read the replayed block's output via ctx.getBlockOutput.
+    expect(resumed.output).toEqual({ readDoubled: 42 });
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+  });
+
+  it("resumes two sequential gates one at a time (per-call matching, no shared flag)", async () => {
+    const gateA = handler({
+      name: "gateA",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "Gate A?" })
+    });
+    const gateB = handler({
+      name: "gateB",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "Gate B?" })
+    });
+    const done = handler({
+      name: "done",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: async () => "both gates passed"
+    });
+
+    const flow = defineFlow({
+      kind: "fix811-multigate",
+      actions: {
+        run: {
+          block: sequencer({ name: "gatesSeq", durable: true })
+            .step(gateA)
+            .step(gateB)
+            .step(done),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-multigate" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    // Resolve gate A → must re-suspend at gate B (still suspended).
+    const [suspA] = await provider.listSuspended({ status: "pending" });
+    await (await resolve(flow, stores, provider, requestId, suspA, "approve"));
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+
+    const pendingAfterA = await provider.listSuspended({ status: "pending" });
+    expect(pendingAfterA.length).toBe(1);
+    expect(pendingAfterA[0].suspensionId).not.toBe(suspA.suspensionId);
+
+    // Resolve gate B → completes.
+    const finishedB = await resolve(flow, stores, provider, requestId, pendingAfterA[0], "approve");
+    const resumed = await finishedB;
+    expect(resumed.output).toBe("both gates passed");
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+
+    const record = await stores.request.get(requestId);
+    const resumeItems = (record!.items ?? []).filter((i) => i.type === "suspension_resume");
+    expect(resumeItems.length).toBe(2);
+  });
+
+  it("preserves accumulator state across a suspend/resume cycle on one request", async () => {
+    const stateSchema = z.object({ tally: z.number().default(0) });
+    // Mutate state in a pre-step (replayed, runs once), then suspend in a
+    // separate step (re-runs on resume). This isolates the state-restore
+    // assertion from the suspending step's documented re-execution.
+    const bump = handler({
+      name: "bump",
+      inputSchema: z.any(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async (_input, ctx) => {
+        ctx.sequencer!.patchState({ tally: (ctx.sequencer!.state as any).tally + 5 });
+        return { ok: true };
+      }
+    });
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const report = handler({
+      name: "report",
+      inputSchema: z.any(),
+      outputSchema: z.object({ tally: z.number() }),
+      execute: async (_input, ctx) => ({ tally: (ctx.sequencer!.state as any).tally })
+    });
+
+    const flow = defineFlow({
+      kind: "fix811-state",
+      actions: {
+        run: {
+          block: sequencer({ name: "stateSeq", durable: true, stateSchema })
+            .step(bump)
+            .step(gate)
+            .step(report),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-state" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    const finished = await resolve(flow, stores, provider, requestId, suspension, "approve");
+    const resumed = await finished;
+
+    // The +5 mutation from before the suspension survived the re-entry.
+    expect(resumed.output).toEqual({ tally: 5 });
+  });
+
+  it("leaves the record suspended when continuation fails before the in_progress transition", async () => {
+    const approvalStep = handler({
+      name: "approvalStep",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const flow = defineFlow({
+      kind: "fix811-ponr",
+      actions: {
+        ask: {
+          block: sequencer({ name: "askSeq", durable: true }).step(approvalStep),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-ponr" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "ask",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+
+    // Make flow-resolve fail BEFORE the point of no return: continueRequest
+    // throws synchronously (returned promise rejects) for an unknown flow.
+    const emptyRegistry = createFlowRegistry();
+    await expect(
+      continueRequest({
+        requestId,
+        stores,
+        flowRegistry: emptyRegistry,
+        resumeContext: { suspensionId: suspension.suspensionId, action: "approve" },
+        runtimeConfig: { durabilityProvider: provider }
+      })
+    ).rejects.toThrow();
+
+    // Record is untouched — still suspended and re-attemptable.
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+
+    // A subsequent valid continuation succeeds.
+    const finished = await resolve(flow, stores, provider, requestId, suspension, "approve");
+    await finished;
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
   });
 });

@@ -113,6 +113,17 @@ export type RunActionOptions<
    */
   onItem?: (item: OutputItem, kind: "added" | "updated" | "done") => void;
   /**
+   * Same-request continuation flag (FIX-811). Set by `continueRequest` when a
+   * suspended/interrupted request re-enters under its OWN id. Triggers replay
+   * mode: prior persisted items are loaded into a `ReplayLog` so completed
+   * blocks are injected (not re-run), a `suspension_resume` audit item is
+   * emitted, and the terminal write merges prior + re-entry items. Inferred as
+   * `true` when a `resumeContext` is present and the existing record is
+   * `suspended`, so callers that thread a resumeContext for a same-id record
+   * get replay even without setting this explicitly.
+   */
+  replayMode?: boolean;
+  /**
    * Instance-level options forwarded verbatim through the execution chain
    * (resolvers, settings, middleware, logger, tracing). See
    * {@link RuntimeConfig}.

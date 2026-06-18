@@ -106,6 +106,15 @@ export interface ResumeContext {
   action: "approve" | "reject";
   data?: unknown;
   resumedBy?: string;
+  /**
+   * Logical block path (`${requestId}:${path}`) of the suspension being
+   * resolved. `ctx.suspend()` matches on it so only the resolving gate returns
+   * the resume payload (or throws on reject); every other gate reached during
+   * the same replay re-suspends normally. Set by the server at re-entry from
+   * the ReplayLog's `pendingSuspension()`. Absent on the legacy two-request
+   * path, where `ctx.suspend()` falls back to first-gate matching (FIX-811).
+   */
+  pendingBlockLogicalId?: string;
 }
 
 export interface SuspensionFilter {

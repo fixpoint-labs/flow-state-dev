@@ -11,6 +11,11 @@ export {
 export { applyRetentionPolicy, resolveRetentionPolicy } from "./retention";
 export type { ResolvedRetentionPolicy } from "./retention";
 export { runAction } from "./runAction";
+export { continueRequest } from "./request-continuation";
+export type {
+  ContinueRequestOptions,
+  ContinueRequestResult
+} from "./request-continuation";
 export {
   abortRequest,
   hasActiveAbortController,

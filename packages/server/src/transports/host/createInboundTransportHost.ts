@@ -12,6 +12,10 @@ import type { ExecutionResult } from "../../execution/types";
 import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
 import { createResponseEmitter } from "../../streaming/response-emitter";
+import {
+  continueRequest as continueRequestImpl,
+  type ContinueRequestResult
+} from "../../execution/request-continuation";
 import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
@@ -24,6 +28,7 @@ import {
 } from "./in-process-dispatcher";
 import type {
   DispatchHandle,
+  HostContinueRequestOptions,
   InboundRequestEnvelope,
   InboundTransportHost,
   PrincipalResolutionContext,
@@ -279,6 +284,19 @@ export function createInboundTransportHost(
     };
   };
 
+  const continueRequest = (
+    opts: HostContinueRequestOptions
+  ): Promise<ContinueRequestResult> =>
+    continueRequestImpl({
+      requestId: opts.requestId,
+      resumeContext: opts.resumeContext,
+      signal: opts.signal,
+      responseEmitter: opts.responseEmitter,
+      stores,
+      flowRegistry: registry,
+      runtimeConfig
+    });
+
   const validateDispatch = async (
     envelope: InboundRequestEnvelope
   ): Promise<void> => {
@@ -371,6 +389,7 @@ export function createInboundTransportHost(
     middleware: runtimeConfig.middleware,
     logger: runtimeConfig.logger,
     dispatch,
+    continueRequest,
     validateDispatch,
     resolvePrincipal: resolve
   };

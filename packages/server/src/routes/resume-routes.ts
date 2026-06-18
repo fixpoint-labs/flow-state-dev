@@ -114,8 +114,6 @@ export async function handleResumeSuspension(
     resumedBy
   };
 
-  const newRequestId = generateId("req");
-
   try {
     const now = Date.now();
     await provider.suspend({
@@ -126,31 +124,15 @@ export async function handleResumeSuspension(
       resumeData
     });
 
-    const handle = ctx.host.dispatch({
-      source: "http",
-      flowKind: route.flowKind,
-      action: suspension.actionName,
-      input: originalRequest.input,
-      sessionId: suspension.sessionId,
-      requestId: newRequestId,
-      // Resume in the original tenant so the run resolves the same
-      // tenant-namespaced session key (FIX-682).
-      tenantId: originalRequest.tenantId,
-      principal: { userId: suspension.userId },
-      metadata: {
-        resumeOf: route.requestId,
-        resumeContext
-      }
+    // Same-request continuation (FIX-811): re-enter the ORIGINAL request id. No
+    // second request is created. `continueRequest` rejects synchronously (well,
+    // its returned promise) for a missing record / unknown flow — but those are
+    // already guarded above (404 paths), so a rejection here is a genuine
+    // setup failure handled by the catch below.
+    const handle = await ctx.host.continueRequest({
+      requestId: route.requestId,
+      resumeContext
     });
-
-    // Hold the ack until the resumed request is accepted: writes committed AND
-    // the dispatcher accepted the job (external dispatch only; no-op for
-    // in-process). This keeps the enqueue inside the try, so an enqueue failure
-    // reverts the suspension to pending via the catch below instead of leaving
-    // it resolved with no worker job.
-    if (handle.accepted !== undefined) {
-      await handle.accepted;
-    }
 
     const accept = request.headers.get("accept") ?? "";
     if (accept.includes("text/event-stream") && handle.liveStream !== null) {
@@ -160,18 +142,20 @@ export async function handleResumeSuspension(
           ...SSE_HEADERS,
           "cache-control": "no-cache, no-transform",
           "x-accel-buffering": "no",
-          "x-request-id": handle.requestId,
-          "x-original-request-id": route.requestId
+          "x-request-id": handle.requestId
         }
       });
     }
 
     return jsonResponse(202, {
-      requestId: newRequestId,
-      originalRequestId: route.requestId
+      requestId: route.requestId
     });
   } catch (error) {
-    // Revert suspension to pending so the operator can retry.
+    // Setup failed before the point-of-no-return (continueRequest threw, or the
+    // status transition never happened). Revert the suspension to pending so the
+    // operator can retry, and release the lease. Once runAction crosses into
+    // `in_progress` a failure is a durable terminal `failed` and does not reach
+    // here (continueRequest's `finished` carries it, not awaited above).
     await provider.suspend({ ...suspension, status: "pending" }).catch(() => {});
     await provider.releaseLease(route.requestId, lease.leaseId);
     throw error;

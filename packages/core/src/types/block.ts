@@ -507,6 +507,17 @@ export interface BlockContext<
   ): Promise<TValue>;
 
   /**
+   * @internal Resume replay (FIX-811). Register a completed sibling entry for a
+   * block whose output was injected from the ReplayLog instead of re-run. The
+   * core `executeBlock` replay short-circuit calls this before returning the
+   * cached output so a later sibling's `ctx.getBlockOutput(replayedBlock)`
+   * resolves. Trace-free and scope-free: it neither runs the body nor emits a
+   * trace (the prior run's trace is canonical). No-op in unit contexts that
+   * don't provide it.
+   */
+  _registerReplayedChild?(parent: ExecutionParent, output: unknown): void;
+
+  /**
    * @internal Top up the per-scope resource caches with an action's or block's
    * declared resources at dispatch time (FIX-688 Waves 2 & 3). Loads only the
    * eager entries not already cached; with `loadLazySingles: true` (per-block
