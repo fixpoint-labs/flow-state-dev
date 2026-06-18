@@ -3,19 +3,27 @@ import { resourceSearchTools } from "../src/tools/resource-search-tools";
 import type { BlockContext } from "../src/types/block";
 import { createMockContext, runForTest } from "./helpers";
 
-type MockResource = { path: string; content?: string | null; llmReadable?: boolean };
+type MockResource = {
+  path: string;
+  content?: string | null;
+  rendered?: string | null;
+  llmReadable?: boolean;
+};
 type MockCollection = { pattern: string; instances: MockResource[] };
 
 function refOf(r: MockResource): any {
-  const content = r.content === undefined ? null : r.content;
+  const raw = r.content === undefined ? null : r.content;
+  // `rendered` defaults to the raw body, so a plain (non-templated) resource
+  // reads identically through readContent and readContentRaw.
+  const rendered = r.rendered === undefined ? raw : r.rendered;
   return {
     path: r.path,
     scope: "org",
     uri: `org/${r.path}`,
     state: {},
     config: { llmReadable: r.llmReadable ?? true },
-    readContentRaw: async () => content,
-    readContent: async () => content,
+    readContentRaw: async () => raw,
+    readContent: async () => rendered,
   };
 }
 
@@ -153,6 +161,69 @@ describe("grepResourceContent", () => {
     expect(matches.map((m) => m.path)).toEqual(["concepts/a"]);
   });
 
+  it("treats prefix as a path boundary, not a string prefix (no sibling leak)", async () => {
+    const ctx = makeCtx([], [
+      {
+        pattern: "**",
+        instances: [
+          { path: "concept/a", content: "needle" },
+          { path: "concepts/react", content: "needle" },
+        ],
+      },
+    ]);
+    const { matches } = await runForTest(grepResourceContent,
+      { pattern: "needle", prefix: "concept", maxResults: 50 },
+      ctx,
+    );
+    expect(matches.map((m) => m.path)).toEqual(["concept/a"]);
+  });
+
+  it("searches rendered content, not the raw template source", async () => {
+    const ctx = makeCtx([], [
+      {
+        pattern: "personas/**",
+        instances: [{ path: "personas/analyst", content: "Hello {{ state.name }}", rendered: "Hello Alice" }],
+      },
+    ]);
+    const hit = await runForTest(grepResourceContent,
+      { pattern: "Alice", prefix: null, maxResults: 50 },
+      ctx,
+    );
+    expect(hit.matches.map((m) => m.path)).toEqual(["personas/analyst"]);
+
+    // The template token only exists in the raw body, never in rendered output.
+    const miss = await runForTest(grepResourceContent,
+      { pattern: "state\\.name", prefix: null, maxResults: 50 },
+      ctx,
+    );
+    expect(miss.matches).toEqual([]);
+  });
+
+  it("pushes the prefix into collection.list so scoped calls don't enumerate the whole collection", async () => {
+    const seen: Array<string | undefined> = [];
+    const ctx = createMockContext({
+      resources: {
+        list: () => [
+          {
+            pattern: "concepts/**",
+            scope: "org",
+            create: async () => {},
+            list: async (prefix?: string) => {
+              seen.push(prefix);
+              return [refOf({ path: "concepts/react/hooks", content: "x" })];
+            },
+          },
+        ],
+        get: (() => undefined) as any,
+      } as any,
+    });
+    await runForTest(grepResourceContent,
+      { pattern: "x", prefix: "concepts/react/", maxResults: 1 },
+      ctx,
+    );
+    expect(seen).toEqual(["concepts/react/"]);
+  });
+
   it("bounds results by maxResults", async () => {
     const ctx = makeCtx([], [
       { pattern: "c/**", instances: [{ path: "c/a", content: "x\nx\nx\nx" }] },
@@ -262,6 +333,39 @@ describe("searchResources", () => {
       ctx,
     );
     expect(results.map((r) => r.path)).toEqual(["concepts/a"]);
+  });
+
+  it("treats prefix as a path boundary, not a string prefix (no sibling leak)", async () => {
+    const ctx = makeCtx([], [
+      {
+        pattern: "**",
+        instances: [
+          { path: "concept/a", content: "hooks" },
+          { path: "concepts/react", content: "hooks" },
+        ],
+      },
+    ]);
+    const { results } = await runForTest(searchResources,
+      { query: "hooks", prefix: "concept", limit: 10 },
+      ctx,
+    );
+    expect(results.map((r) => r.path)).toEqual(["concept/a"]);
+  });
+
+  it("ranks on rendered content, not the raw template source", async () => {
+    const ctx = makeCtx([], [
+      {
+        pattern: "personas/**",
+        instances: [
+          { path: "personas/analyst", content: "You are {{ state.role }}", rendered: "You are Alice, an analyst" },
+        ],
+      },
+    ]);
+    const { results } = await runForTest(searchResources,
+      { query: "analyst", prefix: null, limit: 10 },
+      ctx,
+    );
+    expect(results.map((r) => r.path)).toEqual(["personas/analyst"]);
   });
 
   it("bounds results by limit", async () => {

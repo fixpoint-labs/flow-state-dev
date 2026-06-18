@@ -73,7 +73,7 @@ Resources that don't match at all are dropped. Scope with `prefix` and cap with 
 
 ## Limits and readability
 
-`grepResourceContent` and `searchResources` read content, so they only see resources marked `llmReadable` — the same gate as [`readResourceContentTool`](/docs/resources/overview). A resource the LLM can't read won't appear in their results. `globResources` lists paths regardless.
+`grepResourceContent` and `searchResources` read content, so they only see resources marked `llmReadable` — the same gate as [`readResourceContentTool`](/docs/resources/overview). A resource the LLM can't read won't appear in their results. `globResources` lists paths regardless. They match the *rendered* content — the same text `readResourceContentTool` returns — so a resource whose body is a state-driven template is found by the words it renders to, not by its template source.
 
 All three identify each resource by its storage `path` (for example `concepts/react`) — the same key `readResource` and `listResources` accept, so a path from a search result feeds straight back into them. Note that `readResourceContentTool`, if you pair it to pull full content, currently addresses resources by their scope-qualified URI (`session/concepts/react`) instead, so you'll need the URI form there.
 

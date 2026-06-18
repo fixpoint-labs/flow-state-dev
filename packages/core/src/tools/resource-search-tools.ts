@@ -10,9 +10,11 @@
 // All three enumerate both static resources and collection instances (both are
 // `ResourceRef`s). Glob is a path-discovery tool (ungated, like `listResources`);
 // grep and search read content, so they gate on `llmReadable` for parity with
-// `readResourceContentTool`, and they search the raw, un-rendered body
-// (`readContentRaw()`) — deterministic and cheaper than rendering every resource.
-// Lexical only — no embeddings (semantic recall is the memory / RAG surface's job).
+// `readResourceContentTool` and search the *rendered* content (`readContent()`,
+// the same bytes that tool returns) — so they find what the agent can actually
+// read, including resources whose body is a state-rendered template. Scoped calls
+// push their prefix into `collection.list(prefix)` to avoid loading out-of-scope
+// instances. Lexical only — no embeddings (semantic recall is the memory / RAG job).
 // ---------------------------------------------------------------------------
 
 import { z } from "zod";
@@ -29,8 +31,17 @@ const MAX_SNIPPET_LENGTH = 200;
  * Flatten the resource registry into a single list of `ResourceRef`s — static
  * resources plus every instance of every collection. Collection instances are
  * themselves `ResourceRef`s, so callers treat the two uniformly.
+ *
+ * `prefix` is pushed into `collection.list(prefix)` so a scoped grep/search does
+ * not enumerate (and, for lazy stores, load) instances outside the requested
+ * path. It is a best-effort narrowing hint only — callers still apply the
+ * authoritative `matchesPrefix` boundary filter, since a store may return a
+ * `startsWith` superset (or ignore the hint entirely).
  */
-async function collectAllResources(ctx: BlockContext): Promise<ResourceRef<any>[]> {
+async function collectAllResources(
+  ctx: BlockContext,
+  prefix?: string,
+): Promise<ResourceRef<any>[]> {
   const registry = ctx.resources;
   if (registry === undefined) return [];
 
@@ -39,7 +50,7 @@ async function collectAllResources(ctx: BlockContext): Promise<ResourceRef<any>[
     // ResourceCollectionRef has a `pattern` + `create`; a ResourceRef does not.
     if ("pattern" in entry && "create" in entry) {
       const collection = entry as unknown as ResourceCollectionRef<any>;
-      const instances = await collection.list();
+      const instances = await collection.list(prefix);
       for (const instance of instances) out.push(instance);
     } else {
       out.push(entry as ResourceRef<any>);
@@ -51,6 +62,19 @@ async function collectAllResources(ctx: BlockContext): Promise<ResourceRef<any>[
 /** Content exposure gate — mirrors `readResourceContentTool`'s `llmReadable` contract. */
 function isLlmReadable(ref: ResourceRef<any>): boolean {
   return ref.config?.llmReadable === true;
+}
+
+/**
+ * Path-boundary prefix test. Matches the path itself or anything beneath it as a
+ * path segment (`concepts`, `concepts/react`), never a sibling that merely shares
+ * leading characters (`conceptsX`). This is what callers mean by "under this path",
+ * and unlike a bare `startsWith` it won't leak `concepts/*` into a `concept` scope.
+ */
+function matchesPrefix(path: string, prefix: string): boolean {
+  if (prefix === "") return true;
+  if (path === prefix) return true;
+  const boundary = prefix.endsWith("/") ? prefix : `${prefix}/`;
+  return path.startsWith(boundary);
 }
 
 /** Truncate a snippet to `MAX_SNIPPET_LENGTH`, appending an ellipsis when cut. */
@@ -152,7 +176,7 @@ export function resourceSearchTools() {
         .string()
         .nullable()
         .default(null)
-        .describe("Restrict to resources whose path starts with this prefix"),
+        .describe("Restrict to resources at or under this path prefix (matched on a path boundary, not a bare string prefix)"),
       maxResults: z.number().int().positive().default(50).describe("Maximum number of matches to return"),
     }),
     outputSchema: z.object({
@@ -167,11 +191,11 @@ export function resourceSearchTools() {
     execute: async (input, ctx) => {
       const matcher = compileMatcher(input.pattern);
       const matches: Array<{ path: string; line: number; snippet: string }> = [];
-      const resources = (await collectAllResources(ctx)).filter(isLlmReadable);
+      const resources = (await collectAllResources(ctx, input.prefix ?? undefined)).filter(isLlmReadable);
 
       for (const ref of resources) {
-        if (input.prefix !== null && !ref.path.startsWith(input.prefix)) continue;
-        const content = await ref.readContentRaw();
+        if (input.prefix !== null && !matchesPrefix(ref.path, input.prefix)) continue;
+        const content = await ref.readContent();
         if (content === null || content === "") continue;
 
         const lines = content.split("\n");
@@ -196,7 +220,7 @@ export function resourceSearchTools() {
         .string()
         .nullable()
         .default(null)
-        .describe("Restrict to resources whose path starts with this prefix"),
+        .describe("Restrict to resources at or under this path prefix (matched on a path boundary, not a bare string prefix)"),
       limit: z.number().int().positive().default(10).describe("Maximum number of results to return"),
     }),
     outputSchema: z.object({
@@ -215,12 +239,12 @@ export function resourceSearchTools() {
         .filter((term) => term.length > 0);
       if (terms.length === 0) return { results: [] };
 
-      const resources = (await collectAllResources(ctx)).filter(isLlmReadable);
+      const resources = (await collectAllResources(ctx, input.prefix ?? undefined)).filter(isLlmReadable);
       const scored: Array<{ path: string; score: number; snippet: string }> = [];
 
       for (const ref of resources) {
-        if (input.prefix !== null && !ref.path.startsWith(input.prefix)) continue;
-        const content = await ref.readContentRaw();
+        if (input.prefix !== null && !matchesPrefix(ref.path, input.prefix)) continue;
+        const content = await ref.readContent();
         if (content === null || content === "") continue;
 
         const lower = content.toLowerCase();
