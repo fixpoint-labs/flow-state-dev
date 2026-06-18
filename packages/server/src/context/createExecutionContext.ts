@@ -2580,7 +2580,6 @@ export async function createExecutionContext<
           // flows resume one gate at a time without a shared "consumed" flag.
           const isResolvingGate =
             resumeCtx.pendingBlockLogicalId !== undefined &&
-            callerLogicalId !== undefined &&
             resumeCtx.pendingBlockLogicalId === callerLogicalId;
 
           // Legacy fallback: the old two-request resume path threaded a
