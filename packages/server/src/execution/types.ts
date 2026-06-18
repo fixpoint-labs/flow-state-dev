@@ -103,6 +103,16 @@ export type RunActionOptions<
    */
   startSequenceNumber?: number;
   /**
+   * Starting item index for the internally-created `ResponseEmitter` — the next
+   * emitted item gets `startItemIndex + (items so far)`. A same-request
+   * continuation (FIX-811) passes the suspended request's last persisted item
+   * index so re-entry items continue after the prior log instead of restarting
+   * at `0` (which would mis-order them on stores that sort by item index).
+   * Ignored when `responseEmitter` is provided — the caller's emitter owns
+   * index assignment.
+   */
+  startItemIndex?: number;
+  /**
    * Live-subscription convenience for callers that run a flow outside the HTTP
    * transport (jobs, cron, queue consumers) and want to observe items as they
    * happen without assembling their own `ResponseEmitter`. Called for every

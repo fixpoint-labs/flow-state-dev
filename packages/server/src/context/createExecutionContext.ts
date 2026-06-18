@@ -1450,7 +1450,17 @@ export async function createExecutionContext<
   // assigned once `response` is constructed below; until then no scope op
   // can run.
   const responseRef: { current: unknown } = { current: undefined };
-  let emittedItemCount = 0;
+  // Per-run item-index counter. Seeded from the response emitter's current
+  // count so a same-request continuation (FIX-811) continues after the prior
+  // persisted log instead of restarting at 0 — the emitter carries the prior
+  // log's length as its `baseItemIndex`, and is empty at context construction,
+  // so this reads back exactly that base (0 on a fresh run). Both block-emitted
+  // items and runtime items reserved via `_reserveItemIndex` draw from this one
+  // counter so their indices stay distinct and monotonic across the resume.
+  let emittedItemCount =
+    typeof options.response?.getItemCount === "function"
+      ? options.response.getItemCount()
+      : 0;
 
   const requestOps = createScopeStateOps(requestContainer, {
     persist: createScopePersist<TRequestState, RequestRecord>(
@@ -2271,6 +2281,16 @@ export async function createExecutionContext<
   // because every nested ctx shares the same `_runtimeHooks` reference.
   const blockTraceMap = new Map<string, BlockTraceItem>();
 
+  // Run-scoped guard for the legacy resume fallback (FIX-811). When a bare
+  // `resumeContext` (no `pendingBlockLogicalId`) is threaded — the pre-Step-3
+  // two-request / direct-`runAction` path — the payload must be consumed at the
+  // FIRST gate reached and re-suspend at every later gate. Without this shared
+  // flag a multi-gate legacy resume would re-inject the same approval at every
+  // gate and skip required approvals. Lives in the outer closure so all
+  // per-scope `suspend` closures (each built by `createContext`) share it. The
+  // Step-3 same-request path sets `pendingBlockLogicalId` and never touches it.
+  let legacyResumeConsumed = false;
+
   // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
   // with the same key share a single fn() invocation. Sits in front of the
   // RequestStore so the wrapped side effect cannot fire twice in a race
@@ -2557,6 +2577,10 @@ export async function createExecutionContext<
       // store ref so it works across every scoped child context.
       idempotencyKey: undefined,
       runOnce,
+      // Shares the per-run synchronous item-index counter with block-emitted
+      // items so runtime items (e.g. runAction's `suspension_resume`) get a
+      // distinct, monotonic index that continues the prior log on resume.
+      _reserveItemIndex: () => emittedItemCount++,
       suspend: async (suspendOpts) => {
         const resumeCtx = options.metadata?.resumeContext as ResumeContext | undefined;
         // The suspending block's logical id is the attempt-independent prefix
@@ -2584,13 +2608,19 @@ export async function createExecutionContext<
 
           // Legacy fallback: the old two-request resume path threaded a
           // resumeContext without `pendingBlockLogicalId`. Preserve its
-          // first-reached-gate-consumes behavior there. The Step-3 same-request
-          // continuation always sets `pendingBlockLogicalId` (see runAction),
-          // so this branch is dead on that path — it exists only for callers
-          // that pass a bare resumeContext directly to runAction.
-          const isLegacyFirstGate = resumeCtx.pendingBlockLogicalId === undefined;
+          // first-reached-gate-consumes behavior there — but ONLY once per run,
+          // via the shared `legacyResumeConsumed` flag, so a multi-gate legacy
+          // resume re-suspends at later gates instead of re-injecting the same
+          // payload and skipping their approvals (FIX-811). The Step-3
+          // same-request continuation always sets `pendingBlockLogicalId` (see
+          // runAction), so this branch is dead on that path — it exists only for
+          // callers that pass a bare resumeContext directly to runAction.
+          const isLegacyFirstGate =
+            resumeCtx.pendingBlockLogicalId === undefined && !legacyResumeConsumed;
 
           if (isResolvingGate || isLegacyFirstGate) {
+            // Mark the legacy payload consumed so later gates re-suspend.
+            if (isLegacyFirstGate) legacyResumeConsumed = true;
             if (resumeCtx.action === "reject") {
               throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
             }

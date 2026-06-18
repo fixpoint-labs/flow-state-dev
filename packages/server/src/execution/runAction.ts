@@ -470,7 +470,8 @@ export async function runActionInternal<
   const response = options.responseEmitter ?? createInternalResponseEmitter({
     requestId,
     internalSeams: undefined,
-    startSequenceNumber: options.startSequenceNumber
+    startSequenceNumber: options.startSequenceNumber,
+    startItemIndex: options.startItemIndex
   });
 
   // Same-request continuation (FIX-811): the re-entry emitter holds only
@@ -899,6 +900,15 @@ export async function runActionInternal<
           resumeData: undefined
         });
       }
+      // Release the resume lease the route acquired on this request id. The
+      // route already returned after starting this detached run, so its catch
+      // won't fire for a pre-transition failure here — without this the lease
+      // lingers until its 60s TTL and the next resume attempt 409s even though
+      // the suspension is now back to `pending` and retryable (FIX-811).
+      const lease = await options.stores.leases.get(requestId);
+      if (lease !== null) {
+        await options.stores.leases.release(requestId, lease.leaseId);
+      }
     } catch {
       // Best-effort: a revert failure must not mask the original error.
     }
@@ -1023,7 +1033,12 @@ export async function runActionInternal<
       resumeData: resumeContext.data,
       resolvedAt: Date.now(),
       requestId,
-      itemIndex: getResponseItemCount(response),
+      // Reserve from the per-run synchronous counter (FIX-811) so this leading
+      // runtime item and the block items that follow share one monotonic
+      // sequence that continues the prior log — `getResponseItemCount` (emitter
+      // size) would restart the runtime counter independently of the block
+      // counter and collide with the first replayed block's index.
+      itemIndex: ctx._reserveItemIndex?.() ?? getResponseItemCount(response),
       provenance: RUNTIME_PROVENANCE,
       ts: Date.now()
     };
@@ -1136,7 +1151,11 @@ export async function runActionInternal<
           // checkpoint key above.
           blockInstanceId: suspendingBlockInstanceId,
           requestId,
-          itemIndex: getResponseItemCount(response),
+          // Reserve from the per-run synchronous counter (FIX-811) so a
+          // re-suspension's index continues the shared sequence rather than
+          // reading the (async-lagging) emitter size. Identical to the emitter
+          // count on a normal run, where this is the terminal item.
+          itemIndex: ctx._reserveItemIndex?.() ?? getResponseItemCount(response),
           provenance: RUNTIME_PROVENANCE,
           ts: Date.now()
         };

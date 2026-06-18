@@ -85,13 +85,27 @@ export async function continueRequest(
   const priorEvents = await stores.request.getEvents(requestId);
   const lastSeq = priorEvents.reduce((m, e) => Math.max(m, e.sequence_number), 0);
 
+  // Continue the per-request ITEM index too (FIX-811). The re-entry emitter
+  // starts empty, so without a seed its first item (`suspension_resume`) and
+  // every post-resume item would restart at index 0 and collide with the
+  // pre-suspension log. Stores that read items `ORDER BY` their index (e.g.
+  // SQLite) would then surface the resume items ahead of the original history,
+  // breaking the `pre + suspension + suspension_resume + post` ordering. Seed
+  // from the prior log's max item index + 1 so re-entry items append after it.
+  const priorItems = record.items ?? [];
+  const nextItemIndex = priorItems.reduce(
+    (m, it) => Math.max(m, (it.itemIndex ?? -1) + 1),
+    0
+  );
+
   const liveStream =
     options.responseEmitter === undefined
       ? createLiveRequestStream({
           requestId,
           maxBufferSize: runtimeConfig.maxResponseBufferSize,
           sseHeartbeatMs,
-          startSequenceNumber: lastSeq
+          startSequenceNumber: lastSeq,
+          startItemIndex: nextItemIndex
         })
       : null;
 
@@ -135,6 +149,7 @@ export async function continueRequest(
     // seeded above, or a BYO emitter whose owner controls numbering), so this
     // is belt-and-suspenders for the seam where runAction owns the emitter.
     startSequenceNumber: lastSeq,
+    startItemIndex: nextItemIndex,
     metadata: { ...record.metadata, resumeContext },
     runtimeConfig
   }) as Promise<ExecutionResult>;

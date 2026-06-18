@@ -497,6 +497,17 @@ describe("same-request continuation (FIX-811)", () => {
     expect(resumed.items.map((i) => i.type)).toEqual(types);
     expect(resumed.items.some((i) => i.type === "suspension")).toBe(true);
     expect(resumed.items.some((i) => i.type === "suspension_resume")).toBe(true);
+
+    // Item indices continue across the resume (FIX-811): re-entry items must not
+    // restart at 0 and collide with the pre-suspension log, or a store that
+    // orders items by index (e.g. SQLite `ORDER BY sequence ASC`) would surface
+    // `suspension_resume` ahead of the original history. Assert all indices are
+    // distinct and strictly increasing in persisted order.
+    const indices = (record!.items ?? []).map((i) => i.itemIndex ?? -1);
+    expect(new Set(indices).size).toBe(indices.length);
+    for (let k = 1; k < indices.length; k++) {
+      expect(indices[k]).toBeGreaterThan(indices[k - 1]);
+    }
   });
 
   it("emits a suspension_resume item with resolution / resolvedBy / resumeData", async () => {
@@ -862,6 +873,135 @@ describe("same-request continuation (FIX-811)", () => {
     const finished = await resolve(flow, stores, provider, requestId, suspension, "approve");
     await finished;
     expect((await stores.request.get(requestId))?.status).toBe("completed");
+  });
+
+  it("releases the resume lease when continuation fails before the in_progress transition (FIX-811)", async () => {
+    // The route acquires a lease then returns 202 BEFORE this detached run hits
+    // its point of no return, so a pre-transition failure here never reaches the
+    // route's catch — runAction's recovery path must release the lease, or the
+    // next (now-valid) resume attempt 409s until the 60s TTL.
+    const approvalStep = handler({
+      name: "approvalStep",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const flow = defineFlow({
+      kind: "fix811-ponr-lease",
+      actions: {
+        ask: {
+          block: sequencer({ name: "askSeq", durable: true }).step(approvalStep),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-ponr-lease" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "ask",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+
+    const lease = await provider.acquireLease(requestId, {
+      holder: "resume-test",
+      durationMs: 60_000
+    });
+    expect(lease).not.toBeNull();
+    await provider.suspend({ ...suspension, status: "approved", resolvedAt: Date.now() });
+
+    // Force a pre-transition failure: the checkpoint restore throws.
+    vi.spyOn(stores.checkpoints, "latest").mockRejectedValueOnce(new Error("checkpoint boom"));
+
+    await expect(
+      runAction({
+        flow,
+        actionName: "ask",
+        input: {},
+        userId: "u1",
+        requestId,
+        stores,
+        replayMode: true,
+        metadata: { resumeContext: { suspensionId: suspension.suspensionId, action: "approve" } },
+        runtimeConfig: { durabilityProvider: provider }
+      })
+    ).rejects.toThrow(/checkpoint boom/);
+
+    // Record stays suspended, the suspension is reverted to pending, AND the
+    // lease is released so a retry acquires cleanly.
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+    const reverted = await provider.loadSuspension(requestId, suspension.suspensionId);
+    expect(reverted?.status).toBe("pending");
+    expect(await stores.leases.get(requestId)).toBeNull();
+  });
+
+  it("re-suspends at later gates on a multi-gate legacy resume instead of skipping them (FIX-811)", async () => {
+    // The legacy two-request path threads a bare `resumeContext` (no
+    // `pendingBlockLogicalId`) directly to runAction. The payload must be
+    // consumed at the FIRST gate only — gate B must re-suspend, not re-consume
+    // the same approval and skip its gate.
+    const gateA = handler({
+      name: "gateA",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Gate A?" })
+    });
+    const gateB = handler({
+      name: "gateB",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Gate B?" })
+    });
+    const done = handler({
+      name: "done",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: async () => "both gates passed"
+    });
+    const flow = defineFlow({
+      kind: "fix811-legacy-multigate",
+      actions: {
+        run: {
+          block: sequencer({ name: "gatesSeq", durable: true }).step(gateA).step(gateB).step(done),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-legacy-multigate" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const [suspA] = await provider.listSuspended({ status: "pending" });
+    await provider.suspend({ ...suspA, status: "approved", resolvedAt: Date.now() });
+
+    // Legacy resume: bare resumeContext, new request id (no replayMode).
+    const resumed = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider },
+      metadata: {
+        resumeOf: initial.requestId,
+        resumeContext: { suspensionId: suspA.suspensionId, action: "approve" }
+      }
+    });
+
+    // Re-suspended at gate B, not completed (which would mean gate B was skipped).
+    expect((await stores.request.get(resumed.requestId!))?.status).toBe("suspended");
+    expect(resumed.output).toBeUndefined();
   });
 
   it("resolves a ctx.suspend() called directly from a bare root handler (Bug 1)", async () => {
