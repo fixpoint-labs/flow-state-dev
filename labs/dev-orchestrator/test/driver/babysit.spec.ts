@@ -242,6 +242,77 @@ describe("babysit — error boundary", () => {
   });
 });
 
+describe("babysit — timeline hygiene and bad records", () => {
+  it("does not re-announce a parked suspension after a restart", async () => {
+    const board = mutableBoard("Ready to Spec");
+    const claude = spyResolveClaudeCli();
+    const flow = buildDevOrchestratorFlow({
+      linear: board.client,
+      repoRoot: "/repo",
+      resolveClaudeCli: claude.resolve,
+    });
+    const { stores, provider } = durableStores();
+    const shared = {
+      issueId: "FIX-13",
+      flow,
+      stores,
+      provider,
+      linear: board.client,
+      github: unusedGithub,
+      sleep: vi.fn(async () => {}),
+      now: () => 1_000,
+    };
+
+    // Run 1: dispatch, park, and announce the wait once (tick 2 finds the park).
+    await babysit({ ...shared, maxTicks: 2 });
+    expect(board.comments.filter((c) => c.includes("⏸")).length).toBe(1);
+
+    // Run 2 (restart, same stores): the park is seeded into `announced`, so no
+    // duplicate "⏸" comment is posted to the timeline.
+    await babysit({ ...shared, maxTicks: 2 });
+    expect(board.comments.filter((c) => c.includes("⏸")).length).toBe(1);
+  });
+
+  it("stops immediately on a malformed watch spec instead of burning error retries", async () => {
+    const board = mutableBoard("Ready to Spec");
+    const flow = buildDevOrchestratorFlow({ linear: board.client, repoRoot: "/repo" });
+    const { stores, provider } = durableStores();
+
+    // Inject a pending agent-wait suspension whose watch spec is malformed.
+    await provider.suspend({
+      suspensionId: "susp_bad",
+      requestId: "req_bad",
+      flowKind: "dev-orchestrator",
+      actionName: "spec",
+      sessionId: "orchestrator:FIX-14",
+      userId: "dev-orchestrator",
+      reason: "external_event",
+      message: "waiting",
+      data: { watch: { nonsense: true } },
+      status: "pending",
+      blockInstanceId: "req_bad:root",
+      stepIndex: 0,
+      createdAt: Date.now(),
+    });
+
+    const result = await babysit({
+      issueId: "FIX-14",
+      flow,
+      stores,
+      provider,
+      linear: board.client,
+      github: unusedGithub,
+      sleep: vi.fn(async () => {}),
+      now: () => Date.now(),
+      maxConsecutiveErrors: 5,
+      maxTicks: 10,
+    });
+
+    expect(result.reason).toContain("malformed watch spec");
+    expect(result.ticks).toBe(1); // stopped on the first poll, not after 5 retries
+  });
+});
+
 describe("babysit — restart idempotency", () => {
   it("does not re-dispatch across an interrupt-and-rerun (dispatch replays from checkpoint)", async () => {
     const board = mutableBoard("Ready to Spec");

@@ -149,7 +149,11 @@ export async function babysit(options: BabysitOptions): Promise<BabysitResult> {
   flowRegistry.register(flow as never);
 
   // Announce each new park/gate once so the timeline isn't spammed every tick.
-  const announced = new Set<string>();
+  // Seed from suspensions already parked at startup (e.g. after a restart) so a
+  // prior run's "⏸ waiting…" comments aren't duplicated on the Linear timeline.
+  const announced = new Set<string>(
+    (await provider.listSuspended({ status: "pending", sessionId })).map((r) => r.suspensionId),
+  );
   let stagesCompleted = 0;
   let ticks = 0;
   let consecutiveErrors = 0;
@@ -188,10 +192,15 @@ export async function babysit(options: BabysitOptions): Promise<BabysitResult> {
     const pending = await provider.listSuspended({ status: "pending", sessionId });
     if (pending.length > 1) {
       // Single-sequencer-per-issue should never produce >1 pending; surface the
-      // anomaly. The newest is polled below; the others linger until swept.
+      // anomaly. The most recent is polled below; the others linger until swept.
       log({ issueId, warning: "multiple pending suspensions", count: pending.length, tick: ticks });
     }
-    const parked = pending[0];
+    // Poll the most recent pending suspension (the current gate). Selected by
+    // createdAt so it doesn't depend on the store's list ordering.
+    const parked = pending.reduce<SuspensionRecord | undefined>(
+      (newest, record) => (newest === undefined || record.createdAt > newest.createdAt ? record : newest),
+      undefined,
+    );
 
     if (parked !== undefined) {
       if (!announced.has(parked.suspensionId)) {
@@ -202,6 +211,11 @@ export async function babysit(options: BabysitOptions): Promise<BabysitResult> {
       const decision = await pollParked(parked);
       log({ issueId, linearState: state, waitingOn: describeWait(parked), ready: decision.ready, tick: ticks });
 
+      if (decision.fatal !== undefined) {
+        // A non-retryable defect in the suspension record (e.g. a malformed
+        // watch spec). Stop immediately rather than burning error-budget ticks.
+        return stop(decision.fatal, `⚠️ ${decision.fatal}. Stopping for human attention.`);
+      }
       if (decision.timedOut) {
         return stop(
           "watchdog timeout",
@@ -273,10 +287,14 @@ export async function babysit(options: BabysitOptions): Promise<BabysitResult> {
     return null;
   }
 
-  /** Poll a parked suspension's signal (agent completion or human gate). */
+  /**
+   * Poll a parked suspension's signal (agent completion or human gate). A
+   * non-retryable defect in the record (e.g. a malformed watch spec) is returned
+   * as `fatal` so the caller stops immediately instead of retrying it every tick.
+   */
   async function pollParked(
     parked: SuspensionRecord,
-  ): Promise<{ ready: boolean; reject: boolean; timedOut: boolean; data: unknown }> {
+  ): Promise<{ ready: boolean; reject: boolean; timedOut: boolean; data: unknown; fatal?: string }> {
     if (parked.reason === "human_approval") {
       const decision = await humanGate.poll(parked, {
         issueId,
@@ -292,8 +310,17 @@ export async function babysit(options: BabysitOptions): Promise<BabysitResult> {
       };
     }
 
-    const watch = watchSpecSchema.parse((parked.data as { watch?: unknown } | undefined)?.watch);
-    const completion = await evaluateCompletion(watch, clients, {
+    const parsedWatch = watchSpecSchema.safeParse((parked.data as { watch?: unknown } | undefined)?.watch);
+    if (!parsedWatch.success) {
+      return {
+        ready: false,
+        reject: false,
+        timedOut: false,
+        data: null,
+        fatal: "malformed watch spec on the suspension record",
+      };
+    }
+    const completion = await evaluateCompletion(parsedWatch.data, clients, {
       issueId,
       createdAt: parked.createdAt,
       now: now(),
