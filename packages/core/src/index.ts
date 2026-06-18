@@ -142,6 +142,7 @@ export { defineFlow } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath } from "./tools/resource-tools";
 export { resourceTools } from "./tools/resource-tools";
+export { resourceSearchTools } from "./tools/resource-search-tools";
 export {
   DEFAULT_MODEL_LOOKUP,
   findModelEntry,

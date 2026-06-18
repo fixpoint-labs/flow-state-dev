@@ -54,6 +54,7 @@ const sidebars: SidebarsConfig = {
             "resources/reactive-blocks",
             "resources/edges",
             "resources/client-access",
+            "resources/searching",
             "resources/manifest",
           ],
         },
