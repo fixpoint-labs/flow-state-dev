@@ -62,6 +62,20 @@ describe("executeBlock resume replay", () => {
     expect(emit).not.toHaveBeenCalled();
   });
 
+  it("replays a completed block whose recorded output was undefined (void steps not re-run)", async () => {
+    const execute = vi.fn(async () => "fresh");
+    const block = handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute });
+    const ctx = createMockContext();
+    // A completed trace with no `output` field — a void / side-effect-only block.
+    const voidTrace = { ...completedTrace("root/step[0]", null), output: undefined } as RuntimeItem;
+    (ctx as any)._replayLog = buildReplayLog([voidTrace]);
+
+    const out = await executeBlock(block, "in", ctx, "root/step[0]");
+
+    expect(out).toBeUndefined();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it("executes a block whose path has no committed output, even under a ReplayLog", async () => {
     const execute = vi.fn(async () => "fresh");
     const block = handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute });

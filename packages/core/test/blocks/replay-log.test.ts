@@ -110,6 +110,18 @@ describe("buildReplayLog", () => {
       expect(log.getCompletedOutput(`${REQ}:root/step[9]`)).toBeUndefined();
     });
 
+    it("treats a completed block with no output as a hit, not a miss", () => {
+      // A void / side-effect-only block records a `completed` trace with no
+      // `output`. It must read as a hit (inline undefined) so replay injects it
+      // rather than re-running the body — distinct from a genuine cache miss.
+      const log = buildReplayLog([blockTrace("root/step[0]", "completed", 0)]);
+      expect(log.getCompletedOutput(`${REQ}:root/step[0]`)).toEqual({
+        kind: "inline",
+        value: undefined,
+      });
+      expect(log.getCompletedOutput(`${REQ}:root/step[9]`)).toBeUndefined();
+    });
+
     it("selects the completed trace even when an in_progress partial precedes it", () => {
       // run-1 partial (in_progress) then the canonical completed trace.
       const log = buildReplayLog([
