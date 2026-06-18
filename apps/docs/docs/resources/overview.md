@@ -218,4 +218,5 @@ See [Resource Collections](/docs/resources/collections) for how parameterized pa
 - **[Resource Collections](/docs/resources/collections)** — Dynamic collections with patterns, eviction, and lifecycle hooks
 - **[Reactive blocks](/docs/resources/reactive-blocks)** — Run a block automatically when a resource changes, inside the originating turn
 - **[Client Access](/docs/resources/client-access)** — Exposing resources to the frontend: visibility config, React hooks, content endpoints
+- **[Searching resources](/docs/resources/searching)** — Finding resources by path (glob), content (grep), or relevance (lexical search)
 - **[State & Scopes](/docs/fundamentals/state-and-scopes)** — Broader state model, clientData, targets
