@@ -76,6 +76,7 @@ import {
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
+import { createInitialRequestRecord } from "./initial-request-record";
 import {
   OrgBindingMismatchError,
   TenantBindingMismatchError,
@@ -1024,27 +1025,27 @@ export async function createExecutionContext<
 
   let requestRecord = loadedRequest;
   if (requestRecord === undefined) {
-    requestRecord = {
-      id: requestId,
-      flowKind: flow.kind,
-      actionName: options.actionName,
-      userId,
-      // Bare session id (not the namespaced session key) — request history
-      // isolates by the `tenantId` field, and recovery re-derives the key from
-      // (bare sessionId + tenantId). See FIX-682.
-      sessionId,
-      tenantId: options.tenantId,
-      orgId: orgRecord?.orgId,
-      source: options.source ?? "http",
-      status: "in_progress",
-      startedAtMs: now,
-      metadata: options.metadata,
-      input: options.input,
-      state: (options.requestState ?? {}) as TRequestState,
-      version: 0,
-      createdAt: now,
-      updatedAt: now
-    };
+    // Bare session id (not the namespaced session key) — request history
+    // isolates by the `tenantId` field, and recovery re-derives the key from
+    // (bare sessionId + tenantId). See FIX-682. Shared with the enqueue-time
+    // materialization in `createInboundTransportHost` so the host stub and the
+    // worker-built record are identical by construction (FIX-828).
+    requestRecord = createInitialRequestRecord<TRequestState>(
+      {
+        requestId,
+        flowKind: flow.kind,
+        actionName: options.actionName,
+        userId,
+        sessionId,
+        tenantId: options.tenantId,
+        orgId: orgRecord?.orgId,
+        source: options.source,
+        metadata: options.metadata,
+        input: options.input,
+        requestState: options.requestState
+      },
+      now
+    );
     await stores.request.set(requestRecord.id, requestRecord, "any");
   } else if (requestRecord.source === undefined) {
     // Pre-FIX-438 records read from a store that hasn't been migrated

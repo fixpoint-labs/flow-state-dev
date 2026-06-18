@@ -143,6 +143,15 @@ export async function handleResumeSuspension(
       }
     });
 
+    // Hold the ack until the resumed request is accepted: writes committed AND
+    // the dispatcher accepted the job (external dispatch only; no-op for
+    // in-process). This keeps the enqueue inside the try, so an enqueue failure
+    // reverts the suspension to pending via the catch below instead of leaving
+    // it resolved with no worker job.
+    if (handle.accepted !== undefined) {
+      await handle.accepted;
+    }
+
     const accept = request.headers.get("accept") ?? "";
     if (accept.includes("text/event-stream") && handle.liveStream !== null) {
       return new Response(handle.liveStream.readable, {

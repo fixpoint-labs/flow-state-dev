@@ -3,7 +3,7 @@
  * HTTP server — they call `host.dispatch` and `host.resolvePrincipal`
  * directly with synthetic envelopes.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -15,8 +15,9 @@ import {
   OrgRequiredError,
   PrincipalResolutionError
 } from "../../src";
+import type { FlowDispatcher } from "../../src/transports/dispatcher";
 
-function buildHost(opts?: { withOrgFlow?: boolean }) {
+function buildHost(opts?: { withOrgFlow?: boolean; dispatcher?: FlowDispatcher }) {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
   registry.register(
@@ -56,7 +57,8 @@ function buildHost(opts?: { withOrgFlow?: boolean }) {
     registry,
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
-    runtimeConfig: {}
+    runtimeConfig: {},
+    dispatcher: opts?.dispatcher
   });
   return { host, stores, registry };
 }
@@ -320,6 +322,129 @@ describe("createInboundTransportHost", () => {
           principal: { userId: "u" }
         })
       ).rejects.toThrow(OrgRequiredError);
+    });
+  });
+
+  describe("external dispatch — enqueue-time materialization (FIX-828)", () => {
+    it("registers activeRequests + an in_progress record before handing off to the dispatcher", async () => {
+      let storesAtDispatch: { active: boolean; status?: string } | undefined;
+      // The fake worker never starts: it reads the stores at the instant it is
+      // handed the job, then leaves `finished` pending forever.
+      const dispatch = vi.fn(async (env: { requestId: string }) => {
+        const active = await stores.activeRequests.get(env.requestId);
+        const record = await stores.request.get(env.requestId);
+        storesAtDispatch = { active: active !== undefined, status: record?.status };
+        return {
+          requestId: env.requestId,
+          finished: new Promise<never>(() => {}),
+          abort: () => {}
+        };
+      });
+      const dispatcher: FlowDispatcher = { dispatch, close: vi.fn(async () => {}) };
+      const { host, stores } = buildHost({ dispatcher });
+
+      const handle = host.dispatch({
+        source: "http",
+        flowKind: "host-test",
+        action: "run",
+        input: { value: "x" },
+        sessionId: "s_ext",
+        principal: { userId: "u_ext" }
+      });
+
+      // The record + registry entry are present immediately after dispatch
+      // returns — the GET stream route can resolve them without waiting.
+      const record = await stores.request.get(handle.requestId);
+      expect(record?.status).toBe("in_progress");
+      expect(record?.sessionId).toBe("s_ext");
+      expect(record?.userId).toBe("u_ext");
+      expect(await stores.activeRequests.get(handle.requestId)).toBeDefined();
+
+      // And the writes landed before the dispatcher was handed the job: the
+      // fake reads both stores at the instant it is invoked.
+      await vi.waitFor(() => expect(storesAtDispatch).toBeDefined());
+      expect(storesAtDispatch).toEqual({ active: true, status: "in_progress" });
+    });
+
+    it("rejects `accepted` only after the dispatcher accepts the job", async () => {
+      // `accepted` must cover the enqueue, not just the store writes — the
+      // response path acks the 202 on it, so the enqueue has to be inside.
+      let dispatchCalled = false;
+      const dispatcher: FlowDispatcher = {
+        dispatch: vi.fn(async (env: { requestId: string }) => {
+          dispatchCalled = true;
+          return {
+            requestId: env.requestId,
+            finished: new Promise<never>(() => {}),
+            abort: () => {}
+          };
+        }),
+        close: vi.fn(async () => {})
+      };
+      const { host } = buildHost({ dispatcher });
+
+      const handle = host.dispatch({
+        source: "http",
+        flowKind: "host-test",
+        action: "run",
+        input: { value: "x" },
+        sessionId: "s_acc",
+        principal: { userId: "u_acc" }
+      });
+
+      await handle.accepted;
+      expect(dispatchCalled).toBe(true);
+    });
+
+    it("terminates the in_progress record when the enqueue fails, leaving no orphan", async () => {
+      // The writes succeed, then the dispatcher hand-off rejects. `accepted`
+      // covers the enqueue, so it rejects — and the record must not linger
+      // in_progress: the dispatch teardown deregisters the activeRequests entry,
+      // so without cleanup the stale-request sweeper would have nothing to reap.
+      const dispatcher: FlowDispatcher = {
+        dispatch: vi.fn(async () => {
+          throw new Error("enqueue failed");
+        }),
+        close: vi.fn(async () => {})
+      };
+      const { host, stores } = buildHost({ dispatcher });
+
+      const handle = host.dispatch({
+        source: "http",
+        flowKind: "host-test",
+        action: "run",
+        input: { value: "x" },
+        sessionId: "s_fail",
+        principal: { userId: "u_fail" }
+      });
+
+      await expect(handle.accepted).rejects.toThrow("enqueue failed");
+      await expect(handle.finished).rejects.toThrow("enqueue failed");
+
+      expect((await stores.request.get(handle.requestId))?.status).toBe("failed");
+      expect(await stores.activeRequests.get(handle.requestId)).toBeUndefined();
+    });
+
+    it("does not pre-materialize for in-process dispatch — runAction owns the record", async () => {
+      const { host, stores } = buildHost();
+      const setSpy = vi.spyOn(stores.request, "set");
+
+      const handle = host.dispatch({
+        source: "http",
+        flowKind: "host-test",
+        action: "run",
+        input: { value: "x" },
+        sessionId: "s_inproc",
+        principal: { userId: "u_inproc" }
+      });
+
+      // The host did not write the record synchronously; in-process dispatch
+      // defers record creation to runAction/createExecutionContext.
+      expect(setSpy).not.toHaveBeenCalled();
+
+      await handle.finished;
+      // After execution the record exists — written by the runtime, not the host.
+      expect(await stores.request.get(handle.requestId)).toBeDefined();
     });
   });
 });

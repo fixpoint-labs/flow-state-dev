@@ -233,6 +233,19 @@ Hidden invariants preserved:
 - **`addEventObserver` carve-out**: TTS subscribes via `response.addEventObserver`; untouched by FIX-569. Two independent consumers of the emitter push chain.
 - **Single-SSE-writer**: TTS observers read; only the SSE wire writes. The conformance test asserts each event reaches both consumers exactly once.
 
+## Attach Contract
+
+The attach handshake has one shape regardless of where execution runs:
+
+- **In-process** — the POST returns an inline SSE response (`200`) and streams directly.
+- **External dispatch** — the POST returns `202 Accepted` with `{ requestId }`; the client opens `GET /requests/:id/stream`, which tails via `subscribeToEvents`.
+
+**Enqueue-time discoverability.** For external dispatch, the worker runs in a separate process and would otherwise only register the request when it starts `runAction` — so a GET arriving first would find no record and 404. The transport host closes this gap: before handing off to an external dispatcher, `createInboundTransportHost.dispatch` writes the `activeRequests` entry and an `in_progress` request record at enqueue time. This extends *first-event persistence* — discoverability no longer waits for the worker, only for the enqueue. The GET then resolves the record and waits at sequence 0 for the first event. A shared `createInitialRequestRecord` builder constructs this stub the same way the worker would, so the worker adopts it and skips its own write.
+
+Resume rides the same path: `resume-routes` re-dispatches a suspended request through `host.dispatch` with a fresh request id, so the resumed request is pre-registered too. A genuinely unknown request id still returns 404.
+
+The tradeoff of enqueue-time registration is that the `activeRequests` heartbeat clock starts at enqueue, not at worker-start. The stale-request sweeper reaps the entry and marks the record interrupted when the worker never starts — and also if a backed-up queue delays worker-start past the staleness threshold (default 30s). The worker resets the heartbeat when it claims the job.
+
 ## Emission Rules by Block Kind
 
 All blocks can emit explicitly via `ctx` methods. Additionally:

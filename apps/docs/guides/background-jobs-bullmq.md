@@ -101,7 +101,15 @@ process.on("SIGTERM", () => void flowstate.dispose());
 
 That's the complete local setup. Actions now route through the BullMQ queue, and a worker in the same process consumes them. The framework hands both sides the same resolved flow registry, stores, and runtime config — there is no way to wire the worker against different stores than the web runtime, which is the classic mistake in queue setups (the worker's output silently disappears from streaming, refresh, and the devtool).
 
-Live streaming still works: the worker persists events to the shared stores, and SSE clients tail them through the regular request-stream endpoint.
+### Live streaming
+
+Streaming works the same as in-process, with no client changes. The browser sends the action, gets back a request id, and opens `GET /requests/:id/stream` to tail events. The worker persists events to the shared stores; the stream endpoint tails them from there.
+
+**Request discoverability.** Attach is available the moment you enqueue. When an action routes to the queue, the web process registers the in-progress request in the store right away, before the worker claims the job. So a `GET /requests/:id/stream` that arrives before the worker starts resolves an existing record and waits at sequence 0 for the first event, instead of 404ing. A genuinely unknown request id still returns 404.
+
+**Durability across retries.** The request id and sequence-number resume are stable across worker retries. A client that reconnects with `Last-Event-ID` replays from where it left off — no client code needed.
+
+For the full attach and resume contract, see [Streaming](/docs/streaming/overview) and [Connection resilience](/docs/server/connection-resilience).
 
 ### Next.js dev note (HMR)
 
