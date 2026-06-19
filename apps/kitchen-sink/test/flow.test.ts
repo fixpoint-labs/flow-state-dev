@@ -9,8 +9,8 @@ import {
   testBlock,
   testRouter
 } from "@flow-state-dev/testing";
-import { thinkingStyleRouter } from "../flows/chat-agent/flow";
-import { artifactsCollection } from "../flows/chat-agent/blocks/artifacts";
+import { thinkingStyleRouter } from "../flows/chat-agent/run/thinking-styles";
+import { artifactsCollection } from "../flows/chat-agent/save-artifact";
 
 function collectSourceFiles(dir: string): string[] {
   const entries = readdirSync(dir);

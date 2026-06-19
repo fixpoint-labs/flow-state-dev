@@ -24,7 +24,7 @@ import {
   runAction
 } from "@flow-state-dev/server";
 import { createMockModelResolver } from "@flow-state-dev/testing";
-import { approvalGate, approvalGateInput } from "../flows/chat-agent/flow";
+import { approvalGate, approvalGateInput } from "../flows/chat-agent/approval-gate";
 
 // The approval pipeline calls no model. A mock resolver keeps runAction from
 // building the default resolver, which validates the ambient FSDEV_INTENT_*

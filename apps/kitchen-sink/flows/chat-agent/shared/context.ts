@@ -2,7 +2,10 @@
  * Shared context functions for chat-agent generators.
  *
  * These are re-evaluated before each step of the tool loop (via prepareStep),
- * so generators always see fresh state — e.g. artifacts created mid-turn.
+ * so generators always see fresh state — e.g. artifacts created mid-turn. The
+ * thinking-style router threads `artifactListContext` into every pipeline's
+ * generator `context` so workers see the same artifact inventory the primary
+ * assistant does.
  */
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
@@ -13,8 +16,7 @@ export { voiceContext } from "@flow-state-dev/server";
 // Shared memory interface
 // ---------------------------------------------------------------------------
 // All generator factories take this shape so the same `mem` object from
-// flow.ts can be passed to createChatGenerator, createCreateGenerator, and
-// createPlanDemo without adapters.
+// run/cognition.ts can be passed to the thinking-style router without adapters.
 
 export interface GeneratorMemory {
   contextFormatter: BlockDefinition<any, any> | ((input: unknown, ctx: any) => string | undefined | Promise<string | undefined>);

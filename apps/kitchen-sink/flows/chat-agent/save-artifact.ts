@@ -1,18 +1,19 @@
 /**
- * Artifact system — resource definition, capability, and tool blocks.
+ * The `saveArtifact` action — artifact tools + resource collection.
  *
- * Artifacts are session-scoped resources with metadata in state and document
- * body stored as resource content. The capability bundles resources, context,
- * and tools under a single `uses: [artifactsCapability]` declaration.
- *
- * writeArtifact: upserts the resource then immediately summarizes the new content,
- * so the summary is always current without a separate background sweep.
+ * Artifacts are session-scoped resources with metadata in state and the
+ * document body stored as resource content. This file owns the action surface:
+ * the `updateArtifact`/`writeArtifact` tool (upsert → background summarize), the
+ * `readArtifact` tool, the summarizer, and the `artifactsCollection` resource
+ * they read/write. The generator-facing `artifactsCapability` (inventory
+ * context + tool bundle) is a thin adapter over these in
+ * `shared/capabilities/artifacts.ts`.
  */
-import { defineCapability, defineResourceCollection, handler, sequencer, utility } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { handler, sequencer, utility } from "@flow-state-dev/core";
+import { defineResourceCollection } from "@flow-state-dev/core";
 import path from "node:path";
 import { z } from "zod";
-import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../lib/models";
+import { DEFAULT_KITCHEN_SINK_MODEL } from "../../lib/models";
 
 // ---------------------------------------------------------------------------
 // Resource definition
@@ -53,35 +54,6 @@ export const artifactsCollection = defineResourceCollection({
 
 export const artifactResources = {
   artifacts: artifactsCollection,
-};
-
-// ---------------------------------------------------------------------------
-// Capability
-// ---------------------------------------------------------------------------
-
-/**
- * Context formatter that shows the artifact inventory (title + summary)
- * so the LLM knows what artifacts exist without reading full content.
- */
-const artifactListContext = async (_input: unknown, ctx: any) => {
-  const artifacts = ctx.resources.artifacts as ResourceCollectionRef<{
-    title: string;
-    summary: string;
-    updatedAt: number;
-  }>;
-  const instances = await artifacts.list();
-  if (instances.length === 0) {
-    return "No artifacts exist yet in this session.";
-  }
-  const list = instances
-    .map((ref: any) => {
-      const id = ref.path.replace("artifacts/", "");
-      const title = ref.state.title ?? "Untitled";
-      const summary = ref.state.summary ? ` — ${ref.state.summary}` : "";
-      return `- ${id}: ${title}${summary}`;
-    })
-    .join("\n");
-  return `Current artifacts:\n${list}`;
 };
 
 // ---------------------------------------------------------------------------
@@ -132,7 +104,7 @@ export const readArtifact = handler({
 });
 
 // ---------------------------------------------------------------------------
-// Write artifact (sequencer — the LLM-callable tool)
+// Write artifact (sequencer — the LLM-callable tool + the saveArtifact action)
 // ---------------------------------------------------------------------------
 
 export const updateArtifactInputSchema = z.object({
@@ -203,41 +175,5 @@ export const writeArtifact = sequencer({
   .tap(upsertArtifact)
   .work(summarizeArtifact);
 
-// Keep updateArtifact as an alias so flow.ts and saveArtifact action don't break.
+// Keep updateArtifact as an alias so flow.ts and the saveArtifact action don't break.
 export const updateArtifact = writeArtifact;
-
-// ---------------------------------------------------------------------------
-// Capability definition
-// ---------------------------------------------------------------------------
-
-/**
- * Artifact capability — session resources + LLM context + tools.
- *
- * Required surface (always installed):
- *   - `artifactsCollection` resource in session scope
- *
- * Presets (opt-in/opt-out):
- *   - `inventory` (default: on) — context formatter showing artifact list
- *   - `tools` (default: on) — readArtifact + writeArtifact as generator tools
- */
-export const artifactsCapability = defineCapability({
-  name: "artifacts",
-  resources: artifactResources,
-
-  presets: {
-    /**
-     * Context formatter: artifact title + summary inventory for the LLM.
-     *
-     * Object-form so the inventory lands inside an `<artifacts>` tag and
-     * any other capability contributing to `artifacts` aggregates with it.
-     */
-    inventory: {
-      context: { artifacts: artifactListContext },
-    },
-    /** Generator tools: read and write artifacts. */
-    tools: {
-      tools: [readArtifact, writeArtifact],
-    },
-    default: ["inventory", "tools"],
-  },
-});

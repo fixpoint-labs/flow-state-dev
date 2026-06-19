@@ -40,7 +40,7 @@ Don't mix these — the CLI is faster than the browser for everything below the 
 
 ## Layout
 
-- `flows/chat-agent/` — flow-specific code (flow.ts, blocks, schemas, prompts). Exports `chatAgentFlow` (`kind: "chat-agent"`).
+- `flows/chat-agent/` — flow-specific code, organized by-action: `flow.ts` (defineFlow only), `shared/` (schemas, context, capabilities, prompt loader), `run/` (the chat turn — assistant, thinking styles, cognition, bias check), and single-file root actions (`save-artifact.ts`, `approval-gate.ts`, `task-queue-demo.ts`, `settings.ts`). Prompts are co-located `*.prompt.md` templates. Exports `chatAgentFlow` (`kind: "chat-agent"`).
 - `flows/rich-text-component/` — flow-specific code (flow.ts, generators, schemas, prompts, memory). Exports `richTextComponentFlow` (`kind: "rich-text-component"`). Non-agentic: 8 discrete text-transform actions. The `personalize` action reads user-scoped episodic + semantic memories captured by chat-agent. It only consumes memory, so it wires in `createMemoryCapability` (read-side) configured with the same tiers — not `system()` (no flow-isolation, so storage is shared by `userId`).
 - `flows/weekly-digest/` — reference wiring for scheduled actions. One static schedule (`monday-summary`) plus a dynamic resource-collection resolver backed by `defineScheduleCollection` + `createPostgresScheduleIndex`. The `scheduleDigest` action lets a caller add per-user dynamic schedules at runtime.
 - `components/flow-state/` — shared item-renderer UI (installed from `@flow-state-dev/ui`).
@@ -55,8 +55,8 @@ To add a new flow: drop it under `flows/<name>/`, register it in `fsdev.config.t
 
 This app uses `defineCapability()` to bundle related resources, context formatters, and tools into reusable units.
 
-- **`artifactsCapability`** (`flows/chat-agent/blocks/artifacts.ts`) — artifact resources + inventory context + read/write tools.
-- **`featuresCapability`** (`flows/chat-agent/blocks/features-capability.ts`) — feature-flag-gated tool selection. Conditionally includes `bashCapability` (from `@flow-state-dev/tools/bash`) when the bash feature is enabled. When bash is available, it replaces `readArtifact`/`updateArtifact` as the single artifact creation path.
+- **`artifactsCapability`** (`flows/chat-agent/shared/capabilities/artifacts.ts`) — artifact resources + inventory context + read/write tools.
+- **`featuresCapability`** (`flows/chat-agent/shared/capabilities/features.ts`) — feature-flag-gated tool selection. Conditionally includes `bashCapability` (from `@flow-state-dev/tools/bash`) when the bash feature is enabled. When bash is available, it replaces `readArtifact`/`updateArtifact` as the single artifact creation path.
 - **`bashCapability`** (framework: `createBashCapability()` from `@flow-state-dev/tools/bash`) — bash tool blocks + environment-aware context guidance. Adapts prompt based on provider config (network access, python, just-bash vs local).
 
 Generators and pattern factories declare `uses: [featuresCapability]` — one line replaces manual tools/context/resources plumbing.

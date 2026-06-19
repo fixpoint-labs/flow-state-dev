@@ -31,8 +31,8 @@ import {
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactsCapability } from "./artifacts";
-import { selectBashProvider } from "./bash-tools";
-import { mcpCapability } from "../../../lib/mcp";
+import { selectBashProvider } from "./bash";
+import { mcpCapability } from "../../../../lib/mcp";
 import { agentRegistry, materializeAgent } from "../agents";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,7 +53,7 @@ const crawlTool = crawl();
 // invocation. Top-level await is supported here (Next.js, ESM).
 const skillsDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../../skills",
+  "../../../../skills",
 );
 const { skills: initialSkills, errors: skillsLoadErrors } =
   await readSkillsDirectory(skillsDir);
