@@ -49,6 +49,28 @@ export function isTerminalRequestStreamEvent(
 }
 
 /**
+ * Whether an event ends a `subscribeToEvents` iterator, honoring
+ * `followThroughSuspend` (FIX-811). When set, `request.suspended` is a
+ * checkpoint rather than a terminal, so a same-request continuation can be
+ * streamed through to its real terminal — the true terminals still end the
+ * iterator. Every backend's subscription loop uses this instead of
+ * {@link isTerminalRequestStreamEvent} directly so the behavior is uniform
+ * (enforced by the request-store conformance suite).
+ */
+export function endsRequestStream(
+  event: RequestStreamEvent,
+  options?: { followThroughSuspend?: boolean }
+): boolean {
+  if (
+    event.type === "request.suspended" &&
+    options?.followThroughSuspend === true
+  ) {
+    return false;
+  }
+  return isTerminalRequestStreamEvent(event);
+}
+
+/**
  * Build an in-iterator `request.interrupted` event for liveness-timeout
  * surfacing. Not persisted — this represents the subscriber's view of an
  * apparent originating-process death, not durable state.
@@ -116,7 +138,7 @@ export async function* pollEvents(
   for (const event of initial) {
     yield event;
     lastSeen = event.sequence_number;
-    if (isTerminalRequestStreamEvent(event)) return;
+    if (endsRequestStream(event, options)) return;
   }
 
   let lastTickAt = Date.now();
@@ -131,7 +153,7 @@ export async function* pollEvents(
       for (const event of next) {
         yield event;
         lastSeen = event.sequence_number;
-        if (isTerminalRequestStreamEvent(event)) return;
+        if (endsRequestStream(event, options)) return;
       }
     } else if (Date.now() - lastTickAt > livenessMs) {
       yield synthesizeRequestInterrupted(requestId, lastSeen ?? 0);

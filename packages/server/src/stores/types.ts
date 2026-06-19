@@ -390,6 +390,18 @@ export interface SubscribeToEventsOptions {
    * `1000`.
    */
   maxPendingEvents?: number;
+  /**
+   * When `true`, a `request.suspended` event is treated as a checkpoint, not
+   * a stream terminal: the iterator yields it and keeps following the request
+   * (FIX-811). Set by the attach route only when a continuation lease is held,
+   * so a same-request continuation (resume / crash-recovery `continue`) can be
+   * streamed through to its real terminal. The true terminals
+   * (`completed`/`failed`/`incomplete`/`aborted`) still end the iterator, and
+   * the route closes the wire if a later suspension lands with the lease gone
+   * (the continuation re-suspended). Default `false` — a paused request's
+   * stream still ends at `suspended`.
+   */
+  followThroughSuspend?: boolean;
 }
 
 export interface UserStore extends DeltaStoreOps<UserRecord> {

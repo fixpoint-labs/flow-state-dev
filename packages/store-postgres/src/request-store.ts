@@ -19,8 +19,8 @@
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import {
   abortableSleep,
+  endsRequestStream,
   isTerminalRequestStatus,
-  isTerminalRequestStreamEvent,
   pollEvents,
   synthesizeRequestInterrupted,
   StoreSubscriptionError,
@@ -495,7 +495,7 @@ async function* subscribeViaListen(
   for (const event of initial) {
     yield event;
     lastSeen = event.sequence_number;
-    if (isTerminalRequestStreamEvent(event)) return;
+    if (endsRequestStream(event, options)) return;
   }
 
   let attempt = 0;
@@ -538,7 +538,7 @@ async function* subscribeViaListen(
       for (const event of gap) {
         yield event;
         lastSeen = event.sequence_number;
-        if (isTerminalRequestStreamEvent(event)) return;
+        if (endsRequestStream(event, options)) return;
       }
       if (gap.length > 0) lastTickAt = Date.now();
 
@@ -577,7 +577,7 @@ async function* subscribeViaListen(
             for (const event of next) {
               yield event;
               lastSeen = event.sequence_number;
-              if (isTerminalRequestStreamEvent(event)) return;
+              if (endsRequestStream(event, options)) return;
             }
           }
         } else if (Date.now() - lastTickAt > livenessMs) {

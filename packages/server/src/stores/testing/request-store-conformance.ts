@@ -83,6 +83,21 @@ export function makeRequestCompletedEvent(
   } as unknown as RequestStreamEvent;
 }
 
+/** Build a `request.suspended` event (a stream terminal unless followed through). */
+export function makeRequestSuspendedEvent(
+  requestId: string,
+  sequenceNumber: number
+): RequestStreamEvent {
+  return {
+    stream: "request",
+    type: "request.suspended",
+    status: "suspended",
+    requestId,
+    sequence_number: sequenceNumber,
+    ts: sequenceNumber * 100
+  } as unknown as RequestStreamEvent;
+}
+
 /**
  * Register the shared `RequestStore.subscribeToEvents` conformance cases
  * against a backend. Call inside a test file's top-level scope.
@@ -243,6 +258,67 @@ export function createRequestStoreConformanceTests(
         // Iterator stops after `request.completed` (seq 2). Event 3 is
         // post-terminal; subscribers don't receive it.
         expect(seen).toEqual([1, 2]);
+      });
+    });
+
+    it("request.suspended ends the iterator by default", async () => {
+      await withStore(async (store) => {
+        store.persistEvents("r1", [makeRequestStreamEvent("r1", 1)]);
+        store.persistEvents("r1", [makeRequestSuspendedEvent("r1", 2)]);
+        store.persistEvents("r1", [makeRequestStreamEvent("r1", 3)]);
+        await store.flushEvents("r1");
+
+        const controller = new AbortController();
+        const iter = store.subscribeToEvents("r1", {
+          fromSequence: 0,
+          signal: controller.signal,
+          livenessTimeoutMs: 60_000
+        });
+        const seen: number[] = [];
+        for await (const event of iter) {
+          seen.push(event.sequence_number);
+        }
+        controller.abort();
+        // Stops after `request.suspended` (seq 2); seq 3 is never delivered.
+        expect(seen).toEqual([1, 2]);
+      });
+    });
+
+    it("followThroughSuspend streams past request.suspended to the real terminal (FIX-811)", async () => {
+      await withStore(async (store) => {
+        // The pre-suspension run, then the continuation events, then completion.
+        store.persistEvents("r1", [makeRequestStreamEvent("r1", 1)]);
+        store.persistEvents("r1", [makeRequestSuspendedEvent("r1", 2)]);
+        await store.flushEvents("r1");
+
+        const controller = new AbortController();
+        const iter = store.subscribeToEvents("r1", {
+          fromSequence: 0,
+          signal: controller.signal,
+          livenessTimeoutMs: 60_000,
+          followThroughSuspend: true
+        });
+
+        const collect: Promise<number[]> = (async () => {
+          const out: number[] = [];
+          for await (const event of iter) {
+            out.push(event.sequence_number);
+            if (event.type === "request.completed") break;
+          }
+          return out;
+        })();
+
+        // The continuation resumes and completes after the subscriber attached.
+        await new Promise((resolve) => setTimeout(resolve, liveTolerance));
+        store.persistEvents("r1", [makeRequestStreamEvent("r1", 3)]);
+        await store.flushEvents("r1");
+        store.persistEvents("r1", [makeRequestCompletedEvent("r1", 4)]);
+        await store.flushEvents("r1");
+
+        const seen = await collect;
+        controller.abort();
+        // Followed through the suspension (seq 2) to the continuation + terminal.
+        expect(seen).toEqual([1, 2, 3, 4]);
       });
     });
 
