@@ -68,6 +68,7 @@ function suspensionResumeItem(
   path: string,
   suspensionId: string,
   itemIndex: number,
+  extra?: { resolution?: "approved" | "rejected"; resumeData?: unknown; resolvedBy?: string },
 ): RuntimeItem {
   const blockInstanceId = `${REQ}:${path}:0`;
   return {
@@ -75,7 +76,9 @@ function suspensionResumeItem(
     type: "suspension_resume",
     status: "completed",
     suspensionId,
-    resolution: "approved",
+    resolution: extra?.resolution ?? "approved",
+    resumeData: extra?.resumeData,
+    resolvedBy: extra?.resolvedBy,
     resolvedAt: 0,
     requestId: REQ,
     itemIndex,
@@ -198,6 +201,53 @@ describe("buildReplayLog", () => {
         blockLogicalId: `${REQ}:root/step[3]`,
         suspensionId: "susp_b",
       });
+    });
+  });
+
+  describe("resolvedResumes", () => {
+    it("returns nothing for a path with no resolved suspension", () => {
+      const log = buildReplayLog([suspensionItem("root/step[2]", "susp_a", 0)]);
+      expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([]);
+      expect(log.resolvedResumes(`${REQ}:root/step[9]`)).toEqual([]);
+    });
+
+    it("returns the recorded resume data for a resolved gate, but not the pending one", () => {
+      // Gate 1 (step[2]) resolved with a signal; gate 2 (step[3]) still pending.
+      // This is the cold-restart shape: resuming gate 2 must replay gate 1's
+      // resolution, while gate 2 itself has no recorded resume yet.
+      const log = buildReplayLog([
+        suspensionItem("root/step[2]", "susp_a", 0),
+        suspensionResumeItem("root/step[2]", "susp_a", 1, { resumeData: { observed: "In Spec Review" } }),
+        suspensionItem("root/step[3]", "susp_b", 2),
+      ]);
+      expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
+        { data: { observed: "In Spec Review" }, rejected: false, suspensionId: "susp_a", resolvedBy: undefined },
+      ]);
+      expect(log.resolvedResumes(`${REQ}:root/step[3]`)).toEqual([]);
+    });
+
+    it("returns multiple resolutions for one path in original suspend order (loop)", () => {
+      const log = buildReplayLog([
+        suspensionItem("root/step[1]", "susp_1", 0),
+        suspensionResumeItem("root/step[1]", "susp_1", 1, { resumeData: "first" }),
+        suspensionItem("root/step[1]", "susp_2", 2),
+        suspensionResumeItem("root/step[1]", "susp_2", 3, { resumeData: "second" }),
+      ]);
+      expect(log.resolvedResumes(`${REQ}:root/step[1]`).map((r) => r.data)).toEqual(["first", "second"]);
+    });
+
+    it("marks a rejected resolution and carries resolvedBy for error reconstruction", () => {
+      const log = buildReplayLog([
+        suspensionItem("root/step[2]", "susp_a", 0),
+        suspensionResumeItem("root/step[2]", "susp_a", 1, {
+          resolution: "rejected",
+          resumeData: { note: "no" },
+          resolvedBy: "reviewer",
+        }),
+      ]);
+      expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
+        { data: { note: "no" }, rejected: true, suspensionId: "susp_a", resolvedBy: "reviewer" },
+      ]);
     });
   });
 });

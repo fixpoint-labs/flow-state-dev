@@ -23,6 +23,18 @@ import type { RuntimeItem } from "../../items/internal";
 import { parseBlockInstanceId } from "./block-instance-id";
 import { buildItemLookup, resolveBlockValueInternal } from "../../items/resolve-value";
 
+/** A suspension that was already resolved on a prior continuation. */
+export interface ResolvedResume {
+  /** The payload the resolving caller passed back (`ctx.suspend()`'s return). */
+  data: unknown;
+  /** True when the resolution was a rejection (re-throw `SuspensionRejectedError`). */
+  rejected: boolean;
+  /** The original suspension id (for reconstructing a rejection error). */
+  suspensionId: string;
+  /** Who resolved it (for reconstructing a rejection error). */
+  resolvedBy: string | undefined;
+}
+
 /**
  * Read model the resume runtime consults per logical block path. Built once at
  * re-entry by {@link buildReplayLog}.
@@ -43,6 +55,17 @@ export interface ReplayLog {
    * resolving block by logical path across N suspend/resume cycles.
    */
   pendingSuspension(): { blockLogicalId: string; suspensionId: string } | undefined;
+  /**
+   * The suspensions at a logical block path that were ALREADY resolved on a
+   * prior continuation, in original suspend order. A `ctx.suspend()` re-reached
+   * during replay that is NOT the current pending gate consults this and returns
+   * the recorded resolution instead of re-suspending — so a multi-gate sequencer
+   * resumed at a later gate replays the earlier (already-resolved) gates rather
+   * than bouncing back to them. Empty when the gate has no prior resolution.
+   * This does not depend on a `completed` block trace, so it is robust to suspend
+   * blocks whose trace stays `in_progress` because they re-run on every replay.
+   */
+  resolvedResumes(blockLogicalId: string): readonly ResolvedResume[];
 }
 
 /** Strip the trailing `:${attempt}` from a blockInstanceId, yielding its logical id. */
@@ -67,6 +90,11 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
   const completed = new Map<string, { itemIndex: number; output: BlockValueInternal<unknown> }>();
   const suspensions: Array<{ logicalId: string; suspensionId: string; itemIndex: number }> = [];
   const resumedIds = new Set<string>();
+  /** Resolution payloads keyed by the suspension id they resolved. */
+  const resumeBySuspension = new Map<
+    string,
+    { data: unknown; rejected: boolean; resolvedBy: string | undefined }
+  >();
 
   for (const item of items) {
     if (item.type === "block_trace") {
@@ -93,8 +121,18 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
       if (logicalId === undefined) continue;
       suspensions.push({ logicalId, suspensionId: susp.suspensionId, itemIndex: item.itemIndex });
     } else if (item.type === "suspension_resume") {
-      const resume = item as RuntimeItem & { suspensionId: string };
+      const resume = item as RuntimeItem & {
+        suspensionId: string;
+        resolution?: string;
+        resumeData?: unknown;
+        resolvedBy?: string;
+      };
       resumedIds.add(resume.suspensionId);
+      resumeBySuspension.set(resume.suspensionId, {
+        data: resume.resumeData,
+        rejected: resume.resolution === "rejected",
+        resolvedBy: resume.resolvedBy,
+      });
     }
   }
 
@@ -110,8 +148,29 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
     }
   }
 
+  // Already-resolved suspensions, grouped by logical path in original suspend
+  // order (the `suspension` item index), with their recorded resolution. A
+  // gate re-reached during replay that is not the pending target replays these
+  // in order rather than re-suspending.
+  const resolvedByLogical = new Map<string, ResolvedResume[]>();
+  const orderedSuspensions = [...suspensions].sort((a, b) => a.itemIndex - b.itemIndex);
+  for (const s of orderedSuspensions) {
+    const resume = resumeBySuspension.get(s.suspensionId);
+    if (resume === undefined) continue; // unresolved (the pending gate) — skip
+    const list = resolvedByLogical.get(s.logicalId) ?? [];
+    list.push({
+      data: resume.data,
+      rejected: resume.rejected,
+      suspensionId: s.suspensionId,
+      resolvedBy: resume.resolvedBy,
+    });
+    resolvedByLogical.set(s.logicalId, list);
+  }
+
+  const noResolved: readonly ResolvedResume[] = [];
   return {
     getCompletedOutput: (blockLogicalId) => completed.get(blockLogicalId)?.output,
     pendingSuspension: () => pending,
+    resolvedResumes: (blockLogicalId) => resolvedByLogical.get(blockLogicalId) ?? noResolved,
   };
 }

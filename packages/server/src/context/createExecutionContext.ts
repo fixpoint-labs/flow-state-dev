@@ -2291,6 +2291,16 @@ export async function createExecutionContext<
   // Step-3 same-request path sets `pendingBlockLogicalId` and never touches it.
   let legacyResumeConsumed = false;
 
+  // Run-scoped cursor for replaying ALREADY-resolved gates across a restart. On
+  // a continuation that replays the sequencer from the top, a `ctx.suspend()`
+  // re-reached at a gate that was resolved on a PRIOR continuation must return
+  // its recorded resolution (in original order) instead of re-suspending —
+  // otherwise a multi-gate sequencer resumed at a later gate bounces back to the
+  // earlier one forever. Keyed by logical block id; the value counts how many of
+  // that gate's recorded resolutions this replay has consumed. Shared across all
+  // per-scope `suspend` closures, like `legacyResumeConsumed`.
+  const resolvedResumeCursor = new Map<string, number>();
+
   // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
   // with the same key share a single fn() invocation. Sits in front of the
   // RequestStore so the wrapped side effect cannot fire twice in a race
@@ -2595,6 +2605,38 @@ export async function createExecutionContext<
         // forever (FIX-811).
         const callerPath = parentChain?.parent?.path ?? "root";
         const callerLogicalId = `${requestRef.current.id}:${callerPath}`;
+
+        // Replay already-resolved gates across a restart. On a continuation that
+        // replays the sequencer from the top, a `ctx.suspend()` re-reached at a
+        // gate that was resolved on a PRIOR continuation returns its recorded
+        // resolution (in original order) instead of re-suspending. Without this,
+        // a multi-gate sequencer resumed at a LATER gate replays through the
+        // earlier (already-resolved) gate, which — not being the current pending
+        // target — re-suspends, bouncing the request back forever. This reads the
+        // durable suspension/resume log (not a `completed` block trace), so it is
+        // robust to suspend blocks whose trace stays `in_progress` because they
+        // re-run on every replay. Runs on any replay (resume or crash-recovery).
+        const replayLog = (
+          context as {
+            _replayLog?: {
+              resolvedResumes?: (
+                id: string
+              ) => readonly { data: unknown; rejected: boolean; suspensionId: string; resolvedBy: string | undefined }[];
+            };
+          }
+        )._replayLog;
+        if (replayLog?.resolvedResumes !== undefined) {
+          const resolved = replayLog.resolvedResumes(callerLogicalId);
+          const consumed = resolvedResumeCursor.get(callerLogicalId) ?? 0;
+          if (consumed < resolved.length) {
+            resolvedResumeCursor.set(callerLogicalId, consumed + 1);
+            const entry = resolved[consumed];
+            if (entry.rejected) {
+              throw new SuspensionRejectedError(entry.suspensionId, entry.resolvedBy, entry.data);
+            }
+            return entry.data;
+          }
+        }
 
         if (resumeCtx !== undefined) {
           // Per-gate matching (FIX-811): only the gate whose logical id matches
