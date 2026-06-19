@@ -36,15 +36,25 @@ type ReadEventsFn = (
   fromSequence?: number
 ) => Promise<RequestStreamEvent[]>;
 
-/** Whether an event marks the end of a request event stream. */
-function isTerminalRequestStreamEvent(event: RequestStreamEvent): boolean {
+/**
+ * Whether an event ends a subscriber's stream. Local mirror of the server's
+ * `endsRequestStream` (store-sqlite may only type-import from server). When
+ * `followThroughSuspend` is set, `request.suspended` is a checkpoint rather
+ * than a terminal so a same-request continuation streams through to its real
+ * terminal (FIX-811).
+ */
+function endsRequestStream(
+  event: RequestStreamEvent,
+  followThroughSuspend: boolean
+): boolean {
   switch (event.type) {
     case "request.completed":
     case "request.failed":
     case "request.aborted":
     case "request.incomplete":
-    case "request.suspended":
       return true;
+    case "request.suspended":
+      return !followThroughSuspend;
     case "request.interrupted":
       return (event as { status?: string }).status === "interrupted";
     default:
@@ -79,6 +89,8 @@ type Subscriber = {
   capacity: number;
   /** Set when a terminal (real or synthesized) event has been queued. */
   terminated: boolean;
+  /** Follow through `request.suspended` (continuation in flight) — FIX-811. */
+  followThroughSuspend: boolean;
   /** Set when delivery failed (overflow or read error); the generator throws it. */
   error: Error | undefined;
   /** Resolver that unblocks the awaiting generator; no-op when not waiting. */
@@ -180,7 +192,9 @@ export function createLiveTailRegistry(
         for (const e of relevant) s.buffer.push(e);
         s.lastSeen = relevant[relevant.length - 1].sequence_number;
         s.lastTickAt = now;
-        if (relevant.some(isTerminalRequestStreamEvent)) s.terminated = true;
+        if (relevant.some((e) => endsRequestStream(e, s.followThroughSuspend))) {
+          s.terminated = true;
+        }
         s.wake();
       } else if (now - s.lastTickAt > s.livenessMs) {
         s.buffer.push(synthesizeRequestInterrupted(requestId, s.lastSeen ?? 0));
@@ -218,7 +232,7 @@ export function createLiveTailRegistry(
     for (const event of initial) {
       yield event;
       lastSeen = event.sequence_number;
-      if (isTerminalRequestStreamEvent(event)) return;
+      if (endsRequestStream(event, options.followThroughSuspend === true)) return;
     }
     if (options.signal?.aborted) return;
 
@@ -230,6 +244,7 @@ export function createLiveTailRegistry(
       buffer: [],
       capacity: options.maxPendingEvents ?? DEFAULT_MAX_PENDING_EVENTS,
       terminated: false,
+      followThroughSuspend: options.followThroughSuspend === true,
       error: undefined,
       wake: () => {}
     };
@@ -267,7 +282,7 @@ export function createLiveTailRegistry(
         while (sub.buffer.length > 0) {
           const event = sub.buffer.shift() as RequestStreamEvent;
           yield event;
-          if (isTerminalRequestStreamEvent(event)) return;
+          if (endsRequestStream(event, sub.followThroughSuspend)) return;
         }
       }
     } finally {

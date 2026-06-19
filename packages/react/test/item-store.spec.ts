@@ -398,3 +398,43 @@ describe("createItemStore — getSorted identity", () => {
     expect(first).not.toBe(second);
   });
 });
+
+// ---------------------------------------------------------------------------
+// createItemStore — canonical collapse (Rule 3: crash-recovery re-run)
+// ---------------------------------------------------------------------------
+
+describe("createItemStore — canonical collapse (crash recovery)", () => {
+  it("drops a re-run block's run-1 emission when it ran twice with no suspension_resume", () => {
+    // The crash-recovery `continue` path re-runs the in-flight block with no
+    // suspension_resume marker; only a second block_trace signals the re-run.
+    // getSorted() must collapse to the surviving run's emission (Rule 3),
+    // matching the core canonical view — otherwise useSession shows both copies.
+    const gate = "req_1:root/step[0]:0";
+    const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
+    const store = createItemStore();
+    store.loadSnapshot([
+      makeItem({ id: "t1", type: "block_trace", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
+      makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov }),
+      makeItem({ id: "t2", type: "block_trace", status: "completed", itemIndex: 2, ts: 1002, provenance: prov }),
+      makeItem({ id: "m2", type: "message", itemIndex: 3, ts: 1003, provenance: prov })
+    ]);
+
+    const ids = store.getSorted().map((i) => i.id);
+    expect(ids).toContain("m2"); // run-2 emission (canonical)
+    expect(ids).not.toContain("m1"); // run-1 emission (superseded)
+    expect(ids).toContain("t2"); // canonical trace
+    expect(ids).not.toContain("t1"); // superseded trace
+  });
+
+  it("leaves a single-run block untouched", () => {
+    const gate = "req_1:root/step[0]:0";
+    const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
+    const store = createItemStore();
+    store.loadSnapshot([
+      makeItem({ id: "t1", type: "block_trace", status: "completed", itemIndex: 0, ts: 1000, provenance: prov }),
+      makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov })
+    ]);
+    const ids = store.getSorted().map((i) => i.id);
+    expect(ids).toEqual(["t1", "m1"]);
+  });
+});

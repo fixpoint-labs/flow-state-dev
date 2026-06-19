@@ -127,6 +127,9 @@ export { resolveActiveStatusMessage } from "./blocks/internal/resolve-active-sta
 // it to `ctx._replayLog`; the core `executeBlock` seam consumes the interface.
 export { buildReplayLog } from "./blocks/internal/replay-log";
 export type { ReplayLog } from "./blocks/internal/replay-log";
+// Canonical item-log view (FIX-811): collapse a resumed request's superseded
+// re-emissions for the read paths (GET history, useSession, SSE replay seed).
+export { collapseToCanonicalLog } from "./items/canonical-log";
 export {
   generator,
   handler,

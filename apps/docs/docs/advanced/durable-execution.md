@@ -112,7 +112,7 @@ The original SSE connection closes cleanly. Nothing blocks a thread.
 
 ## Resuming a suspended request
 
-The resume endpoint accepts a decision on a suspended request and re-dispatches the original action:
+The resume endpoint accepts a decision on a suspended request and continues it:
 
 ```
 POST /:flowKind/requests/:requestId/resume
@@ -131,15 +131,53 @@ Request body:
 
 `action` must be `"approve"` or `"reject"`. `data` carries the payload that `ctx.suspend()` will return on the resumed step. `resumedBy` is optional — it's stored on the suspension record for audit purposes.
 
+Resume continues the **same** request id. There is no new linked request. The record's status walks `suspended → in_progress → terminal` as the continuation runs (and `interrupted → in_progress → terminal` on crash recovery). A `GET` on the request returns the whole pause-and-continue history on one record, not two records joined by a reference.
+
 The endpoint acquires an exclusive lease before re-dispatching, so concurrent resume attempts on the same request get a `409` rather than a double execution.
 
-On success the endpoint returns `202` with the new `requestId`. If the caller includes `Accept: text/event-stream`, the response streams the resumed execution directly.
+On success the endpoint returns `202` with the same `requestId`. If the caller includes `Accept: text/event-stream`, the response streams the continued execution directly.
+
+A deliberate "start over from scratch" is a separate operation. RETRY mode runs the action again under a new request id. Resume is for picking up where a pause left off; retry is for discarding the prior attempt.
 
 ### Skip-and-inject: how resume works under the hood
 
-The resume dispatch creates a new request with a `resumeOf` reference pointing at the original. When `runAction` initializes, it loads the suspension record and the checkpoint saved at the suspension point. The sequencer state is restored from that checkpoint. Steps before the suspension step are skipped using their cached outputs. The suspension step re-runs — but this time `ctx.suspend()` sees a `ResumeContext` and returns `resumeData` instead of throwing.
+The resume dispatch re-invokes the action on the original request. `runAction` loads the suspension record, the checkpoint saved at the suspension point, and the request's item log. Sequencer state is restored from the checkpoint. Blocks that already finished are skipped — the runtime injects each one's recorded output from the item log instead of re-executing. The suspending block re-runs, and this time `ctx.suspend()` returns `resumeData` instead of throwing.
 
-Execution continues normally from there. The new request has its own `requestId` and generates its own SSE stream.
+Execution continues from there on the same request id and the same SSE stream. See [Continuous item log across resume](#continuous-item-log-across-resume) for what the log looks like across the cycle, and [Block memoization on resume](#block-memoization-on-resume) for the rules on side effects.
+
+## Continuous item log across resume
+
+The item log is not reset on resume. It is appended across the pause. One full cycle leaves a single ordered log on one request:
+
+1. Items produced before the suspension.
+2. The `suspension` item emitted when the block paused.
+3. A `suspension_resume` item recording the continuation (an audit row — who resolved it, how, and the resume payload).
+4. Items produced after the block resumed.
+
+Sequence numbers stay monotonic across the whole thing. An item-log sequence for one approve cycle:
+
+```jsonc
+{ "seq": 1, "type": "message",           "text": "Drafted the summary." }
+{ "seq": 2, "type": "suspension",        "suspensionId": "susp_abc123", "reason": "human_approval" }
+// --- request pauses here, SSE stream closes, status = "suspended" ---
+// --- resume endpoint called; status walks suspended → in_progress ---
+{ "seq": 3, "type": "suspension_resume", "suspensionId": "susp_abc123", "resolution": "approved", "resolvedBy": "user_xyz" }
+{ "seq": 4, "type": "message",           "text": "Published." }
+```
+
+Because the log continues by sequence number, the SSE stream continues by cursor too. A client that was at sequence N when the request suspended reconnects with `Last-Event-ID: N` (or `?starting_after=N`) once the request is back `in_progress` and receives sequence N+1 onward. No replay of the pre-suspension items is needed.
+
+## Block memoization on resume
+
+Skipping completed blocks is *memoization*: the runtime injects each finished block's recorded output from the item log rather than running it again. The suspending block itself re-runs.
+
+The consequence to plan for: a side effect that isn't captured in a block's output fires again when that block re-executes. The suspending block is the one that re-executes on resume, so its side effects are the ones to guard. Wrap them in `ctx.runOnce(key, fn)`, and for exactly-once across process crashes pair that with provider-key idempotency.
+
+See [Block memoization and replay](./block-memoization-and-replay.md) for the full side-effect rules, the `runOnce` guarantees and their limits, and control-flow determinism.
+
+## Multiple suspend/resume cycles
+
+A request can suspend and resume more than once. Each cycle appends to the same log: another `suspension` item, another `suspension_resume` item, and the post-resume items, all under the same request id with continuous sequence numbers. The audit of every pause lives on the item log as the `suspension` / `suspension_resume` pairs, in order, so the full decision trail for a multi-gate flow reads top to bottom on one record.
 
 ## Error handling
 

@@ -10,7 +10,7 @@ import type {
   Middleware,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -745,6 +745,21 @@ export async function runActionInternal<
   await response.emitRequestCreated();
   await response.emitRequestStatus("in_progress");
 
+  // Same-request continuation detection (FIX-811), computed BEFORE the
+  // request-start emits below so a continuation does not re-echo the initial
+  // user message. `resumeContextRaw` / `priorRecord` are also consumed later by
+  // the ReplayLog build and checkpoint restore. Replay covers suspension resume
+  // (a `resumeContext` re-enters a `suspended` record) and crash recovery
+  // (`continueRequest` re-enters an `interrupted` record with no resumeContext).
+  const resumeContextRaw = options.metadata?.resumeContext as ResumeContext | undefined;
+  let priorRecord: RequestRecord | undefined;
+  if (resumeContextRaw !== undefined || options.replayMode === true) {
+    priorRecord = await options.stores.request.get(requestId).catch(() => undefined);
+  }
+  isReplayMode =
+    options.replayMode === true ||
+    (resumeContextRaw !== undefined && priorRecord?.status === "suspended");
+
   // Parse input and emit user message early too. If parsing fails, we still
   // need the execution context for proper error handling, so we defer the
   // throw until after context creation.
@@ -753,7 +768,13 @@ export async function runActionInternal<
   try {
     parsedInput = parseActionInput(action, options.input);
 
-    if (action.userMessage !== undefined) {
+    // Skip the user-message echo on a continuation (FIX-811): it represents the
+    // INITIAL caller input and is already in the merged prior log, so emitting
+    // it again on resume / crash recovery would double it. It carries runtime
+    // provenance (no logical block owner), so the canonical-log collapse — which
+    // dedups by block ownership — cannot remove the duplicate; the only correct
+    // place to prevent it is here, at the source.
+    if (action.userMessage !== undefined && !isReplayMode) {
       const text = action.userMessage(parsedInput);
       const userItem: MessageItem = {
         id: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
@@ -848,69 +869,68 @@ export async function runActionInternal<
     fireBackground();
   }
 
-  // --- Same-request continuation: replay mode (FIX-811) ---
-  // A suspended/interrupted request that re-enters under its OWN id replays
-  // already-completed blocks from its durable item log instead of re-running
-  // them. Detection: an explicit `replayMode` flag (set by continueRequest), or
-  // — for callers that just thread a resumeContext at the same id — a present
-  // resumeContext with the existing record still `suspended`.
-  //
-  // Built BEFORE createExecutionContext so the augmented `resumeContext`
-  // (carrying `pendingBlockLogicalId`) is the one the execution context's
-  // `ctx.suspend()` closes over, and so the ReplayLog can be assigned to the
-  // context the moment it exists. A flow-resolve / ReplayLog-build failure here
-  // is BEFORE the point-of-no-return: the record stays `suspended` and the run
-  // never transitions it.
-  const resumeContextRaw = options.metadata?.resumeContext as ResumeContext | undefined;
-  let priorRecord: RequestRecord | undefined;
-  if (resumeContextRaw !== undefined || options.replayMode === true) {
-    priorRecord = await options.stores.request.get(requestId).catch(() => undefined);
-  }
-  isReplayMode =
-    resumeContextRaw !== undefined &&
-    (options.replayMode === true || priorRecord?.status === "suspended");
+  // Same-request continuation (FIX-811): `isReplayMode` / `resumeContextRaw` /
+  // `priorRecord` were determined above (before the request-start emits, so the
+  // user-message echo can be skipped on a continuation). The ReplayLog build and
+  // checkpoint restore below consume them; building the augmented `resumeContext`
+  // BEFORE createExecutionContext is what lets the execution context's
+  // `ctx.suspend()` close over `pendingBlockLogicalId`. A flow-resolve /
+  // ReplayLog-build failure here is BEFORE the point-of-no-return: the record
+  // stays `suspended` and the run never transitions it.
 
   // PRE-transition failure recovery (FIX-811). A same-request continuation
-  // marks the suspension `approved`/`rejected` and returns 202 BEFORE this
-  // detached run reaches its point of no return (`suspended → in_progress`).
-  // If a pre-transition step here throws (buildReplayLog, createExecutionContext,
-  // or the checkpoint restore), the resume route's catch never runs — so without
-  // this revert the suspension would stay resolved while the request stays
-  // `suspended`, leaving it un-retryable (the resume guard requires `pending`).
-  // Reverting the suspension to `pending` (and leaving the record `suspended`,
-  // never `failed`, since we never crossed the point of no return) keeps the
-  // resume re-attemptable. Best-effort and idempotent: revert errors are
-  // swallowed. Only call this for pre-transition failures.
-  async function revertSuspensionToPending(): Promise<void> {
+  // (resume OR crash-recovery `continue`) acquires a lease and returns 202/SSE
+  // BEFORE this detached run reaches its point of no return
+  // (`suspended/interrupted → in_progress`). If a pre-transition step here throws
+  // (buildReplayLog, createExecutionContext, or the checkpoint restore), the
+  // route's catch never runs — it already returned — so the lease and (for the
+  // resume path) the resolved suspension would both linger. Two best-effort,
+  // idempotent recoveries, leaving the record where it was (`suspended` /
+  // `interrupted`, never `failed`, since we never crossed the point of no return):
+  //
+  //   1. Resume only: revert the suspension `approved`/`rejected` → `pending` so
+  //      the resume stays re-attemptable (its guard requires `pending`).
+  //   2. Both paths: release the continuation lease keyed on this request id —
+  //      otherwise it lingers until its 60s TTL and the next resume/continue
+  //      attempt 409s even though the request is back to a retryable state.
+  //
+  // Crash recovery has no `resumeContext` / no suspension to revert, but it DOES
+  // hold a lease (recovery-routes.ts `handleContinueRequest`), so the release
+  // must run for it too — that gap is what this guards. Only call for
+  // pre-transition failures.
+  async function recoverFromPreTransitionFailure(): Promise<void> {
+    if (!isReplayMode) return;
     const provider = options.runtimeConfig.durabilityProvider;
-    if (!isReplayMode || resumeContextRaw === undefined || provider === undefined) {
-      return;
-    }
-    try {
-      const suspension = await provider.loadSuspension(
-        requestId,
-        resumeContextRaw.suspensionId
-      );
-      if (suspension !== null) {
-        await provider.suspend({
-          ...suspension,
-          status: "pending",
-          resolvedAt: undefined,
-          resolvedBy: undefined,
-          resumeData: undefined
-        });
+
+    // (1) Resume path: revert the resolved suspension back to pending.
+    if (provider !== undefined && resumeContextRaw !== undefined) {
+      try {
+        const suspension = await provider.loadSuspension(
+          requestId,
+          resumeContextRaw.suspensionId
+        );
+        if (suspension !== null) {
+          await provider.suspend({
+            ...suspension,
+            status: "pending",
+            resolvedAt: undefined,
+            resolvedBy: undefined,
+            resumeData: undefined
+          });
+        }
+      } catch {
+        // Best-effort: a revert failure must not mask the original error.
       }
-      // Release the resume lease the route acquired on this request id. The
-      // route already returned after starting this detached run, so its catch
-      // won't fire for a pre-transition failure here — without this the lease
-      // lingers until its 60s TTL and the next resume attempt 409s even though
-      // the suspension is now back to `pending` and retryable (FIX-811).
+    }
+
+    // (2) Both paths: release the continuation lease.
+    try {
       const lease = await options.stores.leases.get(requestId);
       if (lease !== null) {
         await options.stores.leases.release(requestId, lease.leaseId);
       }
     } catch {
-      // Best-effort: a revert failure must not mask the original error.
+      // Best-effort: a release failure must not mask the original error.
     }
   }
 
@@ -932,13 +952,19 @@ export async function runActionInternal<
       // is emitted so incremental persists never truncate it.
       priorItemsForMerge = priorItems as readonly OutputItem[];
       replayLog = buildReplayLog(priorItems);
-      const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
-      // Thread the resolving gate's logical id so ctx.suspend() returns the
-      // resume payload at exactly that gate and re-suspends at any other.
-      effectiveMetadata = {
-        ...options.metadata,
-        resumeContext: { ...resumeContextRaw, pendingBlockLogicalId }
-      };
+      // Crash-recovery continuation (FIX-811) replays with NO resumeContext: it
+      // re-enters an `interrupted` request, injects its completed blocks from
+      // the log, and re-runs the in-flight one — there is no gate to resolve, so
+      // leave `resumeContext` absent. Only a suspension resume threads the
+      // resolving gate's logical id so `ctx.suspend()` returns the payload at
+      // exactly that gate and re-suspends at any other.
+      if (resumeContextRaw !== undefined) {
+        const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
+        effectiveMetadata = {
+          ...options.metadata,
+          resumeContext: { ...resumeContextRaw, pendingBlockLogicalId }
+        };
+      }
     }
 
     ctx = await createExecutionContext({
@@ -992,6 +1018,28 @@ export async function runActionInternal<
           };
         }
       }
+    } else if (isReplayMode && resumeContext === undefined) {
+      // Crash-recovery continuation (FIX-811): there is no suspension record to
+      // name the durable sequencer's checkpoint key, so restore the ROOT
+      // sequencer's accumulator state from its deterministic instance id
+      // (`${requestId}:root:0`). The action block itself is the durable
+      // sequencer in the common case, so this recovers its `stateSchema`
+      // accumulator rather than restarting it empty while block outputs replay
+      // from the log. A durable sequencer NESTED inside another is the
+      // documented limitation (its non-root checkpoint is not restored here).
+      const provider = options.runtimeConfig.durabilityProvider;
+      if (provider !== undefined) {
+        const rootInstanceId = buildBlockInstanceId(requestId, ROOT_BLOCK_PATH, 0);
+        const checkpoint = await options.stores.checkpoints.latest(
+          requestId,
+          rootInstanceId
+        );
+        if (checkpoint !== null) {
+          (ctx as any)._resumeState = {
+            state: checkpoint.state as Record<string, unknown> | undefined
+          };
+        }
+      }
     }
   } catch (setupError) {
     // This catch covers every PRE-transition step (buildReplayLog,
@@ -1001,26 +1049,30 @@ export async function runActionInternal<
     // so the resume stays re-attemptable (FIX-811). Then clean up the abort
     // controller / heartbeat (as the prior createExecutionContext catch did)
     // and rethrow so `finished` rejects.
-    await revertSuspensionToPending();
+    await recoverFromPreTransitionFailure();
     deregisterAbortController(requestId);
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
     throw setupError;
   }
 
   // Replay mode: assign the ReplayLog so the core executor injects completed
-  // blocks, transition the record across the point-of-no-return, and emit the
-  // `suspension_resume` audit item. Everything above this point (flow resolve,
-  // ReplayLog build, heartbeat re-register, checkpoint restore) can fail while
-  // leaving the record `suspended`; once we emit `in_progress` below, any later
-  // failure is a durable terminal `failed`.
-  if (isReplayMode && replayLog !== undefined && resumeContext !== undefined) {
+  // blocks, and transition the record across the point-of-no-return. Everything
+  // above this point (flow resolve, ReplayLog build, heartbeat re-register,
+  // checkpoint restore) can fail while leaving the record `suspended` /
+  // `interrupted`; once we emit `in_progress` below, any later failure is a
+  // durable terminal `failed`. A suspension resume additionally emits the
+  // `suspension_resume` audit item; crash recovery (no `resumeContext`) does
+  // not — it just continues the interrupted run.
+  if (isReplayMode && replayLog !== undefined) {
     (ctx as any)._replayLog = replayLog;
 
-    // Point of no return: suspended → in_progress.
+    // Point of no return: suspended / interrupted → in_progress.
     await patchRequestRecord(options.stores, requestId, { status: "in_progress" });
     ctx.requestRuntime.status = "in_progress";
     await response.emitRequestStatus("in_progress");
+  }
 
+  if (isReplayMode && replayLog !== undefined && resumeContext !== undefined) {
     // Audit item, positioned immediately after the `suspension` it resolves
     // (it is the first item appended to the re-entry emitter).
     const resumeItem: SuspensionResumeItem = {

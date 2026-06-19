@@ -15,6 +15,7 @@
  */
 import { useEffect, useMemo, useRef } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import { collapseToCanonicalLog } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "../../lib/item-types";
 import { Inbox } from "lucide-react";
 import { ItemRenderer } from "../items/item-renderer";
@@ -82,10 +83,22 @@ export function StreamView({
         .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0))
         .map((group) => {
           const isDone = group.status === "completed" || group.status === "failed" || group.status === "incomplete";
+          // Collapse the physical log to its canonical view (FIX-811) so a
+          // resumed/continued request's superseded re-emissions (e.g. a HITL
+          // gate's approval prompt, re-emitted when the block re-runs) show once
+          // here — matching `useSession` / GET history. The collapse needs the
+          // full item list (block_trace, suspension, suspension_resume drive the
+          // boundaries), so it runs before the STREAM_TYPES filter. The Trace
+          // view consumes the raw `requestGroups` elsewhere, so superseded
+          // traces stay visible there for forensics. `DevtoolItem` is the
+          // RuntimeItem superset the collapse is documented to accept.
+          const canonical = collapseToCanonicalLog(
+            group.items as unknown as readonly OutputItem[]
+          ) as unknown as DevtoolItem[];
           return {
             ...group,
             totalTokens: aggregateTokenUsage(group.items).totalTokens,
-            items: group.items.filter((item) =>
+            items: canonical.filter((item) =>
               STREAM_TYPES.has(item.type) && !(isDone && item.transient)
             ),
           };

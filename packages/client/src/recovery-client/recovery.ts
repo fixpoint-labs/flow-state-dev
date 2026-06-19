@@ -48,6 +48,18 @@ export type RetryRequestResult = {
   sessionId?: string;
 };
 
+export type ContinueRequestOptions = {
+  flowKind: string;
+  sessionId: string;
+  /** The interrupted request to continue under its own id. */
+  requestId: string;
+};
+
+export type ContinueRequestResult = {
+  /** The continued request's id — the SAME id, not a new one. */
+  requestId: string;
+};
+
 export type ResumeSuspensionBody = {
   /** Id of the pending suspension to resolve. */
   suspensionId: string;
@@ -80,6 +92,13 @@ export type RecoveryClient = {
    * is responsible for attaching to the new request's stream.
    */
   retry: (options: RetryRequestOptions) => Promise<RetryRequestResult>;
+  /**
+   * Continue a crash-interrupted request under its OWN id (FIX-811). Unlike
+   * {@link RecoveryClient.retry}, no new request is created: completed blocks
+   * replay from the durable log and the in-flight block re-runs, transitioning
+   * `interrupted → in_progress → terminal` in place. Returns the same id.
+   */
+  continue: (options: ContinueRequestOptions) => Promise<ContinueRequestResult>;
   /**
    * Resolve a pending durable-execution suspension by approving or rejecting
    * it. POSTs to the resume endpoint, which re-dispatches the action from the
@@ -154,6 +173,23 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
         retryOf: payload.request.retryOf,
         sessionId: payload.session?.id
       };
+    },
+
+    continue: async ({ flowKind, sessionId, requestId }) => {
+      requireNonEmpty(flowKind, "flowKind");
+      requireNonEmpty(sessionId, "sessionId");
+      requireNonEmpty(requestId, "requestId");
+
+      const payload = await requestJson<{ requestId: string }>({
+        fetcher,
+        url: buildFlowApiUrl({
+          baseUrl: options.baseUrl,
+          path: `/api/flows/${encodeURIComponent(flowKind)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/continue`
+        }),
+        init: { method: "POST" }
+      });
+
+      return { requestId: payload.requestId };
     },
 
     resumeSuspension: async (flowKind, requestId, body) => {

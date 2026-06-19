@@ -19,7 +19,7 @@ import { withRequestSourceDefault } from "../shared";
 import { matchesTenantFilter } from "../scope-keys";
 import { BoundedQueue } from "../../utils/bounded-queue";
 import { StoreSubscriptionError } from "../../errors/store-subscription-error";
-import { isTerminalRequestStreamEvent } from "../subscribe-helpers";
+import { endsRequestStream } from "../subscribe-helpers";
 
 const DEFAULT_MAX_PENDING_EVENTS = 1000;
 
@@ -153,7 +153,7 @@ export class InMemoryRequestStore implements RequestStore {
       for (const event of catchUp) {
         yield event;
         lastEmitted = event.sequence_number;
-        if (isTerminalRequestStreamEvent(event)) return;
+        if (endsRequestStream(event, options)) return;
       }
 
       // Drain anything that arrived between the catch-up read and the
@@ -163,7 +163,7 @@ export class InMemoryRequestStore implements RequestStore {
       for (const event of gap) {
         yield event;
         lastEmitted = event.sequence_number;
-        if (isTerminalRequestStreamEvent(event)) return;
+        if (endsRequestStream(event, options)) return;
       }
 
       while (!options.signal?.aborted) {
@@ -175,7 +175,7 @@ export class InMemoryRequestStore implements RequestStore {
         if (next.sequence_number <= lastEmitted) continue;
         yield next;
         lastEmitted = next.sequence_number;
-        if (isTerminalRequestStreamEvent(next)) return;
+        if (endsRequestStream(next, options)) return;
       }
     } finally {
       subscribers.delete(callback);

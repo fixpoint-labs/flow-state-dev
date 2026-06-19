@@ -16,6 +16,27 @@ describe("parseFlowRoute — recovery routes", () => {
     });
   });
 
+  it("parses continue_request route", () => {
+    // POST /api/flows/:flowKind/sessions/:sessionId/requests/:requestId/continue
+    const route = parseFlowRoute("POST", [
+      "chat", "sessions", "sess_1", "requests", "req_1", "continue"
+    ]);
+
+    expect(route).toEqual({
+      kind: "continue_request",
+      flowKind: "chat",
+      sessionId: "sess_1",
+      requestId: "req_1"
+    });
+  });
+
+  it("does not match continue with wrong method", () => {
+    const route = parseFlowRoute("GET", [
+      "chat", "sessions", "sess_1", "requests", "req_1", "continue"
+    ]);
+    expect(route.kind).toBe("not_found");
+  });
+
   it("parses active_requests route", () => {
     // GET /api/flows/active-requests
     const route = parseFlowRoute("GET", ["active-requests"]);

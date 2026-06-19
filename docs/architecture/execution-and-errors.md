@@ -351,7 +351,9 @@ When a block calls `ctx.suspend()` inside a durable action, the runtime:
 3. Emits a `SuspensionItem` on the response stream.
 4. Sets the request status to `"suspended"` and closes the SSE stream.
 
-The resume endpoint (`POST /:flowKind/requests/:requestId/resume`) re-invokes the action with `_resumeState` on the execution context. The sequencer skips completed steps (injecting cached outputs) and re-executes the step that suspended. On this re-run, `ctx.suspend()` returns the `resumeData` provided by the external actor instead of throwing.
+The resume endpoint (`POST /:flowKind/requests/:requestId/resume`) re-invokes the action on the **same** request id (FIX-811). The record's status walks `suspended → in_progress → terminal` (and `interrupted → in_progress → terminal` on crash recovery); no new linked request is spawned. The item log continues by sequence number across the pause, and the resume audit is appended to it as a `suspension_resume` item (the durable record of who resolved the suspension, the `resolution`, and the `resumeData` injected on continuation).
+
+Completed blocks are not re-executed. The runtime replays each one's recorded `block_trace` output, keyed by the block's logical path (`${requestId}:${path}` — the attempt-independent prefix of a `blockInstanceId`, so replay tolerates code changes and retries between suspend and resume). The division of labor: the **item log** is the source of truth for block outputs (what replay reads), while `state_snapshot` restores accumulator state only (the sequencer's `stateSchema` fields). The suspending block re-runs because it has no committed output yet; on this re-run, `ctx.suspend()` returns the `resumeData` provided by the external actor instead of throwing.
 
 `SuspensionError` is a control-flow signal, not a block failure — rescue handlers never fire for it. `SuspensionRejectedError` and `SuspensionTimeoutError` are ordinary catchable errors thrown on resume when the suspension was rejected or timed out.
 

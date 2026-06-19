@@ -45,6 +45,8 @@ export type {
 
 export { resolveItemVisibility } from "./resolve-visibility";
 
+export { collapseToCanonicalLog } from "./canonical-log";
+
 export {
   attributeItemsToTasks,
   itemsForTask,

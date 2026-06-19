@@ -3,8 +3,10 @@
  */
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
+import type { InboundTransportHost } from "../transports/types";
 import { detectInterruptedRequests, retryRequest } from "../execution/request-recovery";
-import { jsonResponse, parseJsonBody } from "./route-utils";
+import { jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
+import { generateId } from "../utils/generate-id";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
 
@@ -13,6 +15,10 @@ type RecoveryRouteContext = {
   stores: StoreRegistry;
   /** Instance-level runtime options (resolvers, voice provider, middleware, logger, …). */
   runtimeConfig: RuntimeConfig;
+};
+
+type ContinueRouteContext = RecoveryRouteContext & {
+  host: InboundTransportHost;
 };
 
 export async function handleRetryRequest(
@@ -97,6 +103,97 @@ export async function handleRetryRequest(
         : undefined
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse(500, { error: message });
+  }
+}
+
+/**
+ * Continue an interrupted request under its OWN id (FIX-811 crash recovery).
+ *
+ * Where `retry` re-dispatches a fresh request from scratch (a new id; see
+ * FIX-637's resume-vs-retry contract), `continue` re-enters the SAME request:
+ * completed blocks are injected from the durable item log and the in-flight
+ * block re-runs, transitioning `interrupted → in_progress → terminal` in place.
+ * The stale sweeper still only *marks* records `interrupted`; continuing is this
+ * explicit, client-driven action.
+ *
+ * Mirrors the resume route's response shaping: streams over SSE when the client
+ * asks for it, otherwise returns 202 with the same request id.
+ */
+export async function handleContinueRequest(
+  request: Request,
+  route: Extract<ParsedFlowRoute, { kind: "continue_request" }>,
+  ctx: ContinueRouteContext
+): Promise<Response> {
+  const originalRecord = await ctx.stores.request.get(route.requestId);
+  if (originalRecord === undefined) {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  }
+
+  if (originalRecord.flowKind !== route.flowKind) {
+    return jsonResponse(400, {
+      error: `Flow kind mismatch: request belongs to "${originalRecord.flowKind}", not "${route.flowKind}"`
+    });
+  }
+
+  // The route is session-scoped; continuing mutates an existing record's
+  // lifecycle, so the path's sessionId must match the record's — otherwise the
+  // scoping is cosmetic and a caller could continue any request by id under any
+  // session path.
+  if (originalRecord.sessionId !== route.sessionId) {
+    return jsonResponse(400, {
+      error: `Session mismatch: request "${route.requestId}" does not belong to session "${route.sessionId}"`
+    });
+  }
+
+  // Continue is for crash-interrupted requests only. A `suspended` record is
+  // resolved through the resume endpoint (it carries a pending gate); terminal
+  // and still-running records have nothing to continue.
+  if (originalRecord.status !== "interrupted") {
+    return jsonResponse(409, {
+      error: `Request "${route.requestId}" has status "${originalRecord.status}" and cannot be continued (only "interrupted" requests continue; use /resume for "suspended", /retry for a fresh run)`
+    });
+  }
+
+  // Exclusive-continuation lease, mirroring the resume route (resume-routes.ts):
+  // two callers that both pass the status check above must not both re-enter and
+  // re-run the in-flight block twice under the same id. The lease is released by
+  // runAction at its terminal / re-suspension (the same path the resume lease
+  // takes); only a setup failure before that needs the explicit release below.
+  const lease = await ctx.stores.leases.acquire(route.requestId, {
+    holder: generateId("continue"),
+    durationMs: 60_000
+  });
+  if (lease === null) {
+    return jsonResponse(409, {
+      error: "Concurrent continuation in progress. Try again later."
+    });
+  }
+
+  try {
+    // Same-id re-entry with no resumeContext — replay injects completed blocks
+    // and re-runs the in-flight one.
+    const handle = await ctx.host.continueRequest({ requestId: route.requestId });
+
+    const accept = request.headers.get("accept") ?? "";
+    if (accept.includes("text/event-stream") && handle.liveStream !== null) {
+      return new Response(handle.liveStream.readable, {
+        status: 200,
+        headers: {
+          ...SSE_HEADERS,
+          "cache-control": "no-cache, no-transform",
+          "x-accel-buffering": "no",
+          "x-request-id": handle.requestId
+        }
+      });
+    }
+
+    return jsonResponse(202, { requestId: route.requestId });
+  } catch (error) {
+    // Setup failed before the detached run took ownership of the lease release;
+    // free it so a retry isn't blocked until the TTL.
+    await ctx.stores.leases.release(route.requestId, lease.leaseId).catch(() => {});
     const message = error instanceof Error ? error.message : String(error);
     return jsonResponse(500, { error: message });
   }

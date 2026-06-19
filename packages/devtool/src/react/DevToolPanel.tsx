@@ -41,6 +41,7 @@ import { useSessionRequests } from "./hooks/use-session-requests";
 import { useReplay } from "./hooks/use-replay";
 import { useLiveMode } from "./hooks/use-live-mode";
 import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
+import { pickFurthestStatus } from "./lib/request-status";
 
 const NAV_EXPANDED_WIDTH = 300;
 const NAV_COLLAPSED_WIDTH = 64;
@@ -133,6 +134,11 @@ function PanelContent({ className }: { className?: string }) {
   }, [effectiveSessionId]);
 
   const streamRequestId = replayState.requestId ?? activeRequestId;
+  // Bumped to force the stream to re-attach to the SAME request id after a
+  // same-request continuation (FIX-811). Resume/continue re-enter under the
+  // original id, so without this the connect effect (keyed on the id) wouldn't
+  // re-run and the resumed run's progress would only show on a page reload.
+  const [streamReconnectToken, setStreamReconnectToken] = useState(0);
   const handleSessionMetadataChanged = useCallback(() => {
     setSessionRefreshKey((k) => k + 1);
     setStateRefreshKey((k) => k + 1);
@@ -144,6 +150,7 @@ function PanelContent({ className }: { className?: string }) {
     startingAfter: replayState.startingAfter,
     lastEventId: replayState.lastEventId,
     enabled: !!streamRequestId,
+    reconnectToken: streamReconnectToken,
     onSessionMetadataChanged: handleSessionMetadataChanged,
   });
 
@@ -249,12 +256,31 @@ function PanelContent({ className }: { className?: string }) {
   }, [streamRequestId, streamItems, effectiveSessionId]);
 
   const requestGroups: RequestGroup[] = useMemo(() => {
+    // Reconcile the watched request's status between the live stream and the
+    // session-requests snapshot (FIX-811). The snapshot only refetches on
+    // terminal / refresh, so a mid-flight transition (in_progress → suspended)
+    // must read from `streamState`. But `streamState` persists after the wire
+    // closes — a suspended-run stream freezes at `suspended` — so it must NOT
+    // override a fresher status the store already has once the stream settles.
+    // Rule: while the stream is actively connected it's the real-time truth;
+    // once it settles, show whichever side is furthest along. Every other
+    // request uses its list status. `created` normalizes to `in_progress`.
+    const liveStreamStatus =
+      streamState?.status === "created" ? "in_progress" : streamState?.status;
+    const streamIsLive =
+      streamStatus === "streaming" || streamStatus === "connecting";
     const groups: RequestGroup[] = [];
     for (const req of requests) {
+      const isWatched = req.id === streamRequestId && liveStreamStatus !== undefined;
+      const status = isWatched
+        ? streamIsLive
+          ? liveStreamStatus
+          : pickFurthestStatus(liveStreamStatus, req.status)
+        : req.status;
       groups.push({
         requestId: req.id,
         action: req.actionName,
-        status: req.status,
+        status,
         startedAt: req.startedAtMs ?? req.createdAt,
         duration: req.completedAtMs && req.startedAtMs ? req.completedAtMs - req.startedAtMs : undefined,
         items: liveItems.get(req.id) ?? req.items ?? [],
@@ -266,13 +292,13 @@ function PanelContent({ className }: { className?: string }) {
       groups.push({
         requestId: activeRequestId,
         action: lastResponse?.request.actionName ?? "action",
-        status: streamState?.status === "created" ? "in_progress" : (streamState?.status ?? "in_progress"),
+        status: liveStreamStatus ?? "in_progress",
         startedAt: Date.now(),
         items: liveItems.get(activeRequestId) ?? [],
       });
     }
     return groups;
-  }, [requests, liveItems, activeRequestId, lastResponse, streamState]);
+  }, [requests, liveItems, activeRequestId, lastResponse, streamState, streamStatus, streamRequestId]);
 
   const handleSendAction = useCallback(
     async (action: string, input: unknown) => {
@@ -286,6 +312,22 @@ function PanelContent({ className }: { className?: string }) {
     [activeFlowKind, effectiveSessionId, sendAction],
   );
 
+  // After a suspension is resolved, re-attach the live stream to the continued
+  // (same-id) request. The request stream follows the continuation through the
+  // resume (the server keeps the wire open while the continuation lease is held,
+  // FIX-811), so the post-resume output renders without a manual refresh.
+  const handleResumed = useCallback(
+    (requestId: string) => {
+      setActiveRequestId(requestId);
+      setDispatchedRequestId(requestId);
+      // Force a reconnect: the id is unchanged (same-request continuation), so
+      // the stream's connect effect won't re-run on the id alone.
+      setStreamReconnectToken((t) => t + 1);
+      void refreshRequests();
+    },
+    [refreshRequests],
+  );
+
   // The Resume button is only meaningful for the *current* tail of the
   // session — `latestRequest` comes from `useLiveMode` so the same scan
   // drives both the Live badge state and this gate.
@@ -296,18 +338,24 @@ function PanelContent({ className }: { className?: string }) {
     if (!latestRequest || !effectiveSessionId) return;
     setIsResuming(true);
     try {
-      const result = await recoveryClient.retry({
+      // Crash recovery continues the SAME request under its own id (FIX-811) —
+      // completed blocks replay from the durable log and the in-flight one
+      // re-runs. (Starting over with a new id is the separate retry mode.)
+      const result = await recoveryClient.continue({
         flowKind: latestRequest.flowKind,
         sessionId: effectiveSessionId,
         requestId: latestRequest.id,
       });
-      // Treat the retry like a user-dispatched request: lock Live ON and
-      // subscribe to the new stream id.
-      setActiveRequestId(result.newRequestId);
-      setDispatchedRequestId(result.newRequestId);
+      // Re-attach: lock Live ON and subscribe to the continued (same) id so its
+      // progress to terminal renders without a manual refresh. Bump the token
+      // too — the id is unchanged for an in-place continuation, so the connect
+      // effect won't re-run on the id alone.
+      setActiveRequestId(result.requestId);
+      setDispatchedRequestId(result.requestId);
+      setStreamReconnectToken((t) => t + 1);
       void refreshRequests();
     } catch (err) {
-      console.error("[devtool] resume failed", err);
+      console.error("[devtool] continue failed", err);
     } finally {
       setIsResuming(false);
     }
@@ -483,6 +531,7 @@ function PanelContent({ className }: { className?: string }) {
               <SuspensionsView
                 key={effectiveSessionId ?? "none"}
                 sessionId={effectiveSessionId}
+                onResumed={handleResumed}
               />
             </TabsContent>
 

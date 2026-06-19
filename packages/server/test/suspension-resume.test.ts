@@ -4,7 +4,7 @@
  * Verifies the ctx.suspend() → suspended status → resume endpoint → flow
  * completion lifecycle for durable actions.
  */
-import { buildReplayLog, defineFlow, handler, parseBlockInstanceId, sequencer } from "@flow-state-dev/core";
+import { buildReplayLog, collapseToCanonicalLog, defineFlow, handler, parseBlockInstanceId, sequencer } from "@flow-state-dev/core";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
@@ -689,6 +689,369 @@ describe("same-request continuation (FIX-811)", () => {
     expect(resumeItems.length).toBe(2);
   });
 
+  it("continues an interrupted request under its own id, replaying completed blocks (FIX-811 crash recovery)", async () => {
+    // Crash recovery re-enters the SAME id with NO resumeContext: completed
+    // blocks replay from the durable log (not re-run), the in-flight block
+    // re-runs. We materialize an interrupted state by suspending, then flipping
+    // the record to `interrupted` (as the stale sweeper would after a crash),
+    // and continue without resolving the gate.
+    let preRuns = 0;
+    const preStep = handler({
+      name: "preStep",
+      inputSchema: z.any(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async () => {
+        preRuns += 1;
+        return { ok: true };
+      }
+    });
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const flow = defineFlow({
+      kind: "fix811-crash",
+      actions: {
+        run: {
+          block: sequencer({ name: "seq", durable: true }).step(preStep).step(gate),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-crash" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    expect(preRuns).toBe(1);
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+
+    // Simulate a crash mid-flight: the record is now `interrupted`.
+    const suspended = await stores.request.get(requestId);
+    await stores.request.set(
+      requestId,
+      { ...suspended!, status: "interrupted", interruptedAt: Date.now() },
+      "any"
+    );
+
+    // Continue under the same id — no resumeContext (crash recovery).
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    await finished;
+
+    // preStep was injected from the log, not re-run; the gate re-ran (and
+    // re-suspended, since there is no resolution). Same request id throughout.
+    expect(preRuns).toBe(1);
+    const after = await stores.request.get(requestId);
+    expect(after?.status).toBe("suspended");
+    expect((await stores.request.list()).length).toBe(1);
+    // No `suspension_resume` — crash recovery resolves no gate.
+    expect((after!.items ?? []).some((i) => i.type === "suspension_resume")).toBe(false);
+  });
+
+  it("ctx.runOnce dedups a side effect in the suspending block across resume (FIX-811)", async () => {
+    // The suspending block re-runs on resume. A side effect it guards with
+    // ctx.runOnce BEFORE suspending must NOT fire again: the in-process memo is
+    // fresh on the re-entry, but runOnce's durable backstop is keyed by the
+    // request id — which same-request continuation preserves — so the re-run
+    // reads the stored result instead of re-executing fn(). This is the
+    // supported way to soften the block-re-execution edge.
+    let charges = 0;
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        await ctx.runOnce!("charge", async () => {
+          charges += 1;
+          return { charged: true };
+        });
+        return ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+      }
+    });
+    const flow = defineFlow({
+      kind: "fix811-runonce",
+      actions: {
+        run: {
+          block: sequencer({ name: "seq", durable: true }).step(gate),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-runonce" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    expect(charges).toBe(1);
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    const resumed = await (await resolve(flow, stores, provider, requestId, suspension, "approve"));
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+    expect(resumed.requestId).toBe(requestId);
+
+    // The guarded side effect fired exactly once despite the gate re-running.
+    expect(charges).toBe(1);
+  });
+
+  it("restores the root sequencer accumulator on crash-recovery continuation (FIX-811)", async () => {
+    // A completed pre-step writes accumulator state into the checkpoint; on
+    // crash recovery it is INJECTED from the log (its mutation does not re-run),
+    // so the only way the re-run gate can observe `tally === 5` is the root
+    // checkpoint being restored. Without the restore the accumulator restarts at 0.
+    const stateSchema = z.object({ tally: z.number().default(0) });
+    const bump = handler({
+      name: "bump",
+      inputSchema: z.any(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async (_input, ctx) => {
+        ctx.sequencer!.patchState({ tally: (ctx.sequencer!.state as { tally: number }).tally + 5 });
+        return { ok: true };
+      }
+    });
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({
+          reason: "human_approval",
+          message: "Approve?",
+          data: { tally: (ctx.sequencer!.state as { tally: number }).tally }
+        })
+    });
+    const flow = defineFlow({
+      kind: "fix811-crash-state",
+      actions: {
+        run: {
+          block: sequencer({ name: "stateSeq", durable: true, stateSchema }).step(bump).step(gate),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-crash-state" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    const [firstSusp] = await provider.listSuspended({ status: "pending" });
+    expect((firstSusp.data as { tally: number }).tally).toBe(5);
+
+    // Crash: flip to interrupted, then continue with no resumeContext.
+    const rec = await stores.request.get(requestId);
+    await stores.request.set(
+      requestId,
+      { ...rec!, status: "interrupted", interruptedAt: Date.now() },
+      "any"
+    );
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    await finished;
+
+    // The re-run gate observed the restored accumulator, not a fresh 0.
+    const pending = await provider.listSuspended({ status: "pending" });
+    const reSuspension = pending.find((s) => s.suspensionId !== firstSusp.suspensionId);
+    expect(reSuspension).toBeDefined();
+    expect((reSuspension!.data as { tally: number }).tally).toBe(5);
+  });
+
+  it("does not re-emit the action userMessage on resume (FIX-811)", async () => {
+    // `action.userMessage` echoes the initial caller input as a user-role
+    // message at request start. It has runtime provenance (no logical owner),
+    // so the canonical collapse can't dedup it — the runtime must not re-emit it
+    // on the continuation, or the user sees their request twice.
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.object({ request: z.string() }),
+      outputSchema: z.string(),
+      execute: async (_input, ctx) => {
+        await ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+        return "done";
+      }
+    });
+    const flow = defineFlow({
+      kind: "fix811-usermsg",
+      actions: {
+        ask: {
+          block: sequencer({ name: "seq", durable: true }).step(gate),
+          inputSchema: z.object({ request: z.string() }),
+          userMessage: (input: { request: string }) => `Requesting approval: ${input.request}`
+        }
+      }
+    })({ id: "fix811-usermsg" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "ask",
+      input: { request: "deploy" },
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    const userMsgs0 = (await stores.request.get(requestId))!.items!.filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "user"
+    );
+    expect(userMsgs0.length).toBe(1);
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    await (await resolve(flow, stores, provider, requestId, suspension, "approve"));
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+
+    // Still exactly one user message after resume — both in the physical log
+    // (not re-emitted) and in the canonical view.
+    const record = await stores.request.get(requestId);
+    const userMsgs = (record!.items ?? []).filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "user"
+    );
+    expect(userMsgs.length).toBe(1);
+    const canonicalUserMsgs = collapseToCanonicalLog(record!.items ?? []).filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "user"
+    );
+    expect(canonicalUserMsgs.length).toBe(1);
+  });
+
+  it("does not re-emit the action userMessage on crash-recovery continuation (FIX-811)", async () => {
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.object({ request: z.string() }),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const flow = defineFlow({
+      kind: "fix811-usermsg-crash",
+      actions: {
+        ask: {
+          block: sequencer({ name: "seq", durable: true }).step(gate),
+          inputSchema: z.object({ request: z.string() }),
+          userMessage: (input: { request: string }) => `Requesting approval: ${input.request}`
+        }
+      }
+    })({ id: "fix811-usermsg-crash" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "ask",
+      input: { request: "deploy" },
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    // Crash → interrupted, then continue with no resumeContext.
+    const rec = await stores.request.get(requestId);
+    await stores.request.set(
+      requestId,
+      { ...rec!, status: "interrupted", interruptedAt: Date.now() },
+      "any"
+    );
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    await finished;
+
+    const userMsgs = (await stores.request.get(requestId))!.items!.filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "user"
+    );
+    expect(userMsgs.length).toBe(1);
+  });
+
+  it("canonical view shows a HITL block's pre-suspension emit once after resume (FIX-811)", async () => {
+    // A gate that emits an approval message BEFORE it suspends. On resume the
+    // gate re-runs and re-emits the message with a fresh id, so the physical log
+    // carries two copies; the canonical view must show exactly one.
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_i, ctx) => {
+        ctx.emit.message("Please approve");
+        return ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+      }
+    });
+    const done = handler({
+      name: "done",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: async () => "done"
+    });
+    const flow = defineFlow({
+      kind: "fix811-hitl-canonical",
+      actions: {
+        run: {
+          block: sequencer({ name: "seq", durable: true }).step(gate).step(done),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-hitl-canonical" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    await (await resolve(flow, stores, provider, requestId, suspension, "approve"));
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+
+    const record = await stores.request.get(requestId);
+    const physicalMessages = (record!.items ?? []).filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "assistant"
+    );
+    // The physical log retains both runs' copies (forensics).
+    expect(physicalMessages.length).toBe(2);
+
+    // The canonical view collapses to one.
+    const canonical = collapseToCanonicalLog(record!.items ?? []);
+    const canonicalMessages = canonical.filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "assistant"
+    );
+    expect(canonicalMessages.length).toBe(1);
+    // The suspension / suspension_resume audit pair survives the collapse.
+    expect(canonical.filter((i) => i.type === "suspension").length).toBe(1);
+    expect(canonical.filter((i) => i.type === "suspension_resume").length).toBe(1);
+  });
+
   it("releases the resume lease after re-suspension so the next gate is resumable (FIX-811)", async () => {
     // Reproduces the route's lease lifecycle, which the helper-based tests skip:
     // the resume route acquires a lease on the request id BEFORE re-entering.
@@ -938,6 +1301,144 @@ describe("same-request continuation (FIX-811)", () => {
     const reverted = await provider.loadSuspension(requestId, suspension.suspensionId);
     expect(reverted?.status).toBe("pending");
     expect(await stores.leases.get(requestId)).toBeNull();
+  });
+
+  it("releases the continuation lease when crash-recovery continuation fails before the in_progress transition (FIX-811)", async () => {
+    // Crash recovery (`continue`, no resumeContext) acquires a lease exactly like
+    // resume, then the run starts detached. A pre-transition failure here never
+    // reaches the route's catch, and there is no suspension to revert — so the
+    // recovery path must STILL release the lease, or the next continue 409s until
+    // the 60s TTL. This is the gap the resume-only revert left.
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const flow = defineFlow({
+      kind: "fix811-crash-lease",
+      actions: {
+        run: {
+          block: sequencer({ name: "seq", durable: true }).step(gate),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-crash-lease" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    // Simulate a crash mid-flight: flip the suspended record to interrupted.
+    const suspended = await stores.request.get(requestId);
+    await stores.request.set(
+      requestId,
+      { ...suspended!, status: "interrupted", interruptedAt: Date.now() },
+      "any"
+    );
+
+    // Acquire the continuation lease as handleContinueRequest would.
+    const lease = await stores.leases.acquire(requestId, {
+      holder: "continue-test",
+      durationMs: 60_000
+    });
+    expect(lease).not.toBeNull();
+
+    // Force a pre-transition failure: the checkpoint restore throws.
+    vi.spyOn(stores.checkpoints, "latest").mockRejectedValueOnce(new Error("checkpoint boom"));
+
+    await expect(
+      runAction({
+        flow,
+        actionName: "run",
+        input: {},
+        userId: "u1",
+        requestId,
+        stores,
+        replayMode: true, // crash recovery: replayMode, NO resumeContext
+        runtimeConfig: { durabilityProvider: provider }
+      })
+    ).rejects.toThrow(/checkpoint boom/);
+
+    // Never crossed the point of no return, so the record stays interrupted —
+    // and the lease is released so the next continue acquires cleanly.
+    expect((await stores.request.get(requestId))?.status).toBe("interrupted");
+    expect(await stores.leases.get(requestId)).toBeNull();
+  });
+
+  it("canonical view shows a re-run block's emit once after crash-recovery continuation (FIX-811)", async () => {
+    // Crash recovery re-runs the interrupted in-flight block with NO
+    // suspension_resume marker, so the resolved-suspension rule never fires for
+    // it. A user-visible item the block emitted before the crash stays in the
+    // physical log next to the re-emitted copy; the canonical view must still
+    // collapse to one, keyed on the re-run's second block_trace (Rule 3).
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_i, ctx) => {
+        ctx.emit.message("Working on it");
+        return ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+      }
+    });
+    const flow = defineFlow({
+      kind: "fix811-crash-canonical",
+      actions: {
+        run: {
+          block: sequencer({ name: "seq", durable: true }).step(gate),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "fix811-crash-canonical" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    // Simulate a crash mid-flight.
+    const suspended = await stores.request.get(requestId);
+    await stores.request.set(
+      requestId,
+      { ...suspended!, status: "interrupted", interruptedAt: Date.now() },
+      "any"
+    );
+
+    // Continue under the same id — no resumeContext. The gate re-runs, re-emits
+    // "Working on it", and re-suspends (crash recovery resolves no gate).
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    await finished;
+
+    const record = await stores.request.get(requestId);
+    const physical = (record!.items ?? []).filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "assistant"
+    );
+    // Both runs' copies are retained physically (forensics).
+    expect(physical.length).toBe(2);
+
+    // The canonical view collapses to one despite no suspension_resume.
+    const canonical = collapseToCanonicalLog(record!.items ?? []).filter(
+      (i) => i.type === "message" && (i as { role?: string }).role === "assistant"
+    );
+    expect(canonical.length).toBe(1);
   });
 
   it("re-suspends at later gates on a multi-gate legacy resume instead of skipping them (FIX-811)", async () => {

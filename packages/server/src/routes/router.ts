@@ -147,6 +147,18 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       })
     )
   ],
+  continue_request: [
+    entry(
+      "POST",
+      "/:flowKind/sessions/:sessionId/requests/:requestId/continue",
+      (p) => ({
+        kind: "continue_request",
+        flowKind: p.flowKind,
+        sessionId: p.sessionId,
+        requestId: p.requestId
+      })
+    )
+  ],
   get_resource_content: [
     entry("GET", "/sessions/:sessionId/resources/:ref/content", (p) => ({
       kind: "get_resource_content",

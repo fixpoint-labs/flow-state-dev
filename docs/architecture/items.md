@@ -25,7 +25,7 @@ Items fall into three visibility categories based on their `type`:
 
 **Conversational types** (`message`, `reasoning`, `tool_output`) use `item.itemVisibility` if present, otherwise default to `{ client: true, history: true }`.
 
-**Structural types** (everything else: `component`, `container`, `source`, `status`, `state_change`, `resource_change`, `error`) default to `{ client: true, history: false }`.
+**Structural types** (everything else: `component`, `container`, `source`, `status`, `state_change`, `resource_change`, `error`, `suspension`, `suspension_resume`) default to `{ client: true, history: false }`.
 
 ### The `itemVisibility` field
 

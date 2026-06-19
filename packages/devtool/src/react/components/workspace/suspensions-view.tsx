@@ -23,6 +23,13 @@ import { Button } from "../ui/button";
 
 type Props = {
   sessionId: string | null;
+  /**
+   * Called after a suspension is resolved (approve/reject), with the request id
+   * that just resumed. The panel uses it to re-attach its live stream to the
+   * continued (same-id) request so its progress to terminal shows without a
+   * manual page refresh (FIX-811).
+   */
+  onResumed?: (requestId: string) => void;
 };
 
 const STATUS_FILTERS: Array<{ value: SuspensionStatus | "all"; label: string }> = [
@@ -38,7 +45,7 @@ const STATUS_FILTERS: Array<{ value: SuspensionStatus | "all"; label: string }> 
  * Top-level suspensions panel. Owns the status filter and the selected-row
  * state; delegates fetching to `useListSuspensions`.
  */
-export function SuspensionsView({ sessionId }: Props) {
+export function SuspensionsView({ sessionId, onResumed }: Props) {
   const [statusFilter, setStatusFilter] = useState<SuspensionStatus | "all">(
     "all"
   );
@@ -136,6 +143,7 @@ export function SuspensionsView({ sessionId }: Props) {
             key={selected.suspensionId}
             record={selected}
             onResolved={refresh}
+            onResumed={onResumed}
           />
         )}
       </div>
@@ -180,10 +188,12 @@ function SuspensionRow({
  */
 function SuspensionDetail({
   record,
-  onResolved
+  onResolved,
+  onResumed
 }: {
   record: SuspensionRecord;
   onResolved: () => Promise<void>;
+  onResumed?: (requestId: string) => void;
 }) {
   const { resume, isResuming, error } = useResumeSuspension();
   const [dataText, setDataText] = useState("");
@@ -212,6 +222,11 @@ function SuspensionDetail({
         data
       });
       await onResolved();
+      // Same-request continuation (FIX-811): the resolved request now resumes
+      // under its own id. Hand it to the panel so it re-attaches its live stream
+      // and follows the continuation to terminal — otherwise the request's
+      // status only updates on a manual refresh.
+      onResumed?.(record.requestId);
     } catch {
       // `error` from the hook surfaces the failure inline; swallow here so a
       // rejected resume (404/409/422) doesn't bubble as an unhandled rejection.

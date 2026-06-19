@@ -146,6 +146,8 @@ For reference, here's the complete registry:
 | `state_change` | State mutation notification (scope: `request` / `session` / `user` / `org` / `block_instance`) | ✓ | — | Production |
 | `resource_change` | Resource mutation notification | ✓ | — | Always |
 | `error` | Terminal request error | ✓ | — | — |
+| `suspension` | A block paused for external input (`ctx.suspend()`) | ✓ | — | — |
+| `suspension_resume` | Audit of a resumed suspension (same request id) | ✓ | — | — |
 | `block_trace` | Execution record | — | — | — |
 | `router_decision` | Route selection record | — | — | — |
 | `state_snapshot` | Sequencer state snapshot | — | — | Always |
