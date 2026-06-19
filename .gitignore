@@ -24,3 +24,4 @@ docs/internal/design-memos/*
 .tmp/*
 # Turborepo
 .turbo
+**/.dev-orchestrator/

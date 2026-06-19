@@ -19,6 +19,7 @@ import path from "node:path";
 import { loadEnvFiles } from "@flow-state-dev/cli/load-env";
 import { buildDevOrchestratorFlow } from "../flow/flow";
 import { createOrchestratorRuntime } from "./runtime";
+import { resolvePtyClaudeCli } from "./claude-cli-pty";
 import { babysit } from "./babysit";
 import { createStdinHumanGate, createLinearHumanGate } from "./human-gate";
 import { LinearStatusClient, createLinearGraphQLTransport } from "../signals/linear";
@@ -77,7 +78,13 @@ async function main(): Promise<void> {
   const linear = new LinearStatusClient(createLinearGraphQLTransport({ apiKey }));
   const github = new GitHubSignalClient(defaultGhExec);
   const runtime = createOrchestratorRuntime(args.dbPath);
-  const flow = buildDevOrchestratorFlow({ linear, repoRoot: process.cwd() });
+  // Production dispatch runs `claude --remote` under a PTY (script(1)); without
+  // it the CLI rejects `--remote` on a piped stdout. See claude-cli-pty.ts.
+  const flow = buildDevOrchestratorFlow({
+    linear,
+    repoRoot: process.cwd(),
+    resolveClaudeCli: resolvePtyClaudeCli,
+  });
 
   console.log(`[orchestrator] babysitting ${args.issueId} (db: ${args.dbPath})`);
 

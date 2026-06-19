@@ -162,9 +162,9 @@ export function buildSpecStage(options: SpecStageOptions) {
     })
     // Idempotent dispatch: skip when entering mid-stage or already dispatched.
     .stepIf(
-      (input: z.infer<typeof specStageInputSchema>, ctx) =>
+      (input, ctx) =>
         !input.skipDispatch && !hasInFlightDispatch(ctx, stageCommandMarker("spec", input.issueId)),
-      (input: z.infer<typeof specStageInputSchema>) => ({
+      (input) => ({
         instructions: stageInstruction("spec", input.issueId),
       }),
       dispatch,
