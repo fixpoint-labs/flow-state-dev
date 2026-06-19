@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@flow-state-dev/claude-code": "workspace:*",
+    "@flow-state-dev/cli": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",

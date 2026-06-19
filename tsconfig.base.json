@@ -35,6 +35,7 @@
       "@flow-state-dev/chat-sdk": ["packages/chat-sdk/src/index.ts"],
       "@flow-state-dev/chat-sdk/testing": ["packages/chat-sdk/src/testing.ts"],
       "@flow-state-dev/cli": ["packages/cli/src/index.ts"],
+      "@flow-state-dev/cli/load-env": ["packages/cli/src/load-env.ts"],
       "@flow-state-dev/patterns": ["packages/patterns/src/index.ts"],
       "@flow-state-dev/patterns/rlm": ["packages/patterns/src/rlm/index.ts"],
       "@flow-state-dev/tasks": ["packages/tasks/src/index.ts"],

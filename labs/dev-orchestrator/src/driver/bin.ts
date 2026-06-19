@@ -16,6 +16,7 @@
  */
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import { loadEnvFiles } from "@flow-state-dev/cli/load-env";
 import { buildDevOrchestratorFlow } from "../flow/flow";
 import { createOrchestratorRuntime } from "./runtime";
 import { babysit } from "./babysit";
@@ -57,6 +58,13 @@ function parseArgs(argv: string[]): ParsedArgs {
 }
 
 async function main(): Promise<void> {
+  // Load .env.local (walking up from cwd; existing env wins) before reading any
+  // config — same mechanism and precedence as `fsdev run` / `fsdev dev`.
+  const loaded = loadEnvFiles(process.cwd());
+  if (loaded.length > 0) {
+    console.log(`[orchestrator] loaded env from: ${loaded.join(", ")}`);
+  }
+
   const args = parseArgs(process.argv.slice(2));
 
   const apiKey = process.env.LINEAR_MCP_API_KEY;

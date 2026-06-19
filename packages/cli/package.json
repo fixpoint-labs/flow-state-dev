@@ -30,6 +30,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./load-env": {
+      "types": "./dist/load-env.d.ts",
+      "default": "./src/load-env.ts"
     }
   },
   "license": "MIT",
@@ -45,6 +49,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./load-env": {
+        "types": "./dist/load-env.d.ts",
+        "default": "./dist/load-env.js"
       }
     }
   },

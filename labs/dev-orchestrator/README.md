@@ -59,6 +59,11 @@ Flags:
 - `claude` on `PATH` — cloud dispatch (`claude --remote`).
 - `gh` on `PATH` — GitHub PR / checks signals (implement/review stages).
 
+Variables can be set in the shell or in a `.env.local` file. On startup `babysit`
+loads `.env.local`, walking up from the working directory (so a repo-root
+`.env.local` works), and never overrides a variable already set in the
+environment — the same mechanism and precedence as `fsdev run` / `fsdev dev`.
+
 ## Safety bar
 
 The orchestrator auto-advances **forward only** through non-destructive states
