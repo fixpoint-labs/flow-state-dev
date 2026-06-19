@@ -283,7 +283,15 @@ function PanelContent({ className }: { className?: string }) {
         status,
         startedAt: req.startedAtMs ?? req.createdAt,
         duration: req.completedAtMs && req.startedAtMs ? req.completedAtMs - req.startedAtMs : undefined,
-        items: liveItems.get(req.id) ?? req.items ?? [],
+        // Live items win only while the stream is actively connected. Once it
+        // settles, the durable store items (collapsed canonical log, which
+        // includes a continuation's post-resume emits) win — the frozen live
+        // snapshot must not mask them, mirroring the status reconciliation. A
+        // same-id GET stream can't follow a continuation, so the store is the
+        // reliable post-resume source (FIX-811).
+        items: isWatched && streamIsLive
+          ? (liveItems.get(req.id) ?? req.items ?? [])
+          : (req.items ?? liveItems.get(req.id) ?? []),
         source: req.source,
         metadata: req.metadata,
       });
@@ -312,11 +320,26 @@ function PanelContent({ className }: { className?: string }) {
     [activeFlowKind, effectiveSessionId, sendAction],
   );
 
+  // A same-id GET stream can't follow a continuation: attaching while the record
+  // is still `suspended` yields a one-shot replay of the pre-suspension run, and
+  // attaching mid-flight breaks on the run-1 `request.suspended` in catch-up. So
+  // after a resume/continue we poll the request list to terminal — the store's
+  // collapsed items (which include the continuation's post-resume emits) then
+  // surface via `requestGroups` (which prefers store items once not streaming).
+  // Bounded burst; harmless extra refreshes if it settles early (FIX-811).
+  const pollContinuationToTerminal = useCallback(
+    async () => {
+      for (let i = 0; i < 8; i += 1) {
+        await new Promise((r) => setTimeout(r, 750));
+        await refreshRequests();
+      }
+    },
+    [refreshRequests],
+  );
+
   // After a suspension is resolved, re-attach the live stream to the continued
-  // (same-id) request so its progress to terminal renders without a manual
-  // refresh (FIX-811). Mirrors a dispatch: subscribe + lock live ON; the
-  // terminal-status effect above clears `dispatchedRequestId` and refreshes the
-  // request list when the continuation settles.
+  // (same-id) request and poll the store to terminal so the continuation's
+  // post-resume emits render without a manual refresh (FIX-811).
   const handleResumed = useCallback(
     (requestId: string) => {
       setActiveRequestId(requestId);
@@ -325,8 +348,9 @@ function PanelContent({ className }: { className?: string }) {
       // the stream's connect effect won't re-run on the id alone.
       setStreamReconnectToken((t) => t + 1);
       void refreshRequests();
+      void pollContinuationToTerminal();
     },
-    [refreshRequests],
+    [refreshRequests, pollContinuationToTerminal],
   );
 
   // The Resume button is only meaningful for the *current* tail of the
@@ -355,12 +379,13 @@ function PanelContent({ className }: { className?: string }) {
       setDispatchedRequestId(result.requestId);
       setStreamReconnectToken((t) => t + 1);
       void refreshRequests();
+      void pollContinuationToTerminal();
     } catch (err) {
       console.error("[devtool] continue failed", err);
     } finally {
       setIsResuming(false);
     }
-  }, [latestRequest, effectiveSessionId, recoveryClient, refreshRequests]);
+  }, [latestRequest, effectiveSessionId, recoveryClient, refreshRequests, pollContinuationToTerminal]);
 
   const handleReplayFull = useCallback(
     (requestId: string) => {

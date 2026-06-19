@@ -13,10 +13,12 @@ import type {
 // Mirrors `collapseToCanonicalLog` from `@flow-state-dev/core/items` — inlined
 // because this package may only import types from core (same reason
 // `resolveItemVisibility` is mirrored in `useSession`). Keep in sync with the
-// core source, which is the authority. Collapses a resumed request's superseded
-// re-emissions: once a `suspension_resume` arrives, the suspending block's
-// run-1 emissions (below the suspension's item index) are dropped so the live
-// view shows each emission once. No-op until a suspension resolves.
+// core source, which is the authority. Collapses a resumed/continued request's
+// superseded re-emissions so the live view shows each emission once: Rule 1
+// (resolved suspension boundary), Rule 2 (canonical block_trace), and Rule 3
+// (crash-recovery re-run — a logical path with more than one block_trace, where
+// the canonical trace's item index bounds the surviving run; no
+// `suspension_resume` is emitted on the crash path). No-op for a single run.
 function logicalIdOfInstance(blockInstanceId: string | undefined): string | undefined {
   if (blockInstanceId === undefined) return undefined;
   const lastColon = blockInstanceId.lastIndexOf(":");
@@ -48,10 +50,12 @@ function collapseToCanonicalLog(items: OutputItem[]): OutputItem[] {
   }
 
   const canonicalTrace = new Map<string, { id: string; itemIndex: number; completed: boolean }>();
+  const traceCount = new Map<string, number>();
   for (const item of items) {
     if ((item.type as string) !== "block_trace") continue;
     const logicalId = logicalIdOfInstance(item.provenance?.blockInstanceId);
     if (logicalId === undefined) continue;
+    traceCount.set(logicalId, (traceCount.get(logicalId) ?? 0) + 1);
     const completed = item.status === "completed";
     const prior = canonicalTrace.get(logicalId);
     if (
@@ -60,6 +64,20 @@ function collapseToCanonicalLog(items: OutputItem[]): OutputItem[] {
       (completed === prior.completed && item.itemIndex > prior.itemIndex)
     ) {
       canonicalTrace.set(logicalId, { id: item.id, itemIndex: item.itemIndex, completed });
+    }
+  }
+
+  // Rule 3: a logical path that re-ran (more than one trace) but has no
+  // resolved-suspension boundary — the crash-recovery `continue` shape — uses
+  // its canonical trace's item index (the start of the surviving run) as the
+  // supersession boundary, taking the later of it and any Rule-1 boundary.
+  for (const [logicalId, count] of traceCount) {
+    if (count < 2) continue;
+    const canonical = canonicalTrace.get(logicalId);
+    if (canonical === undefined) continue;
+    const prior = supersededBefore.get(logicalId);
+    if (prior === undefined || canonical.itemIndex > prior) {
+      supersededBefore.set(logicalId, canonical.itemIndex);
     }
   }
 
