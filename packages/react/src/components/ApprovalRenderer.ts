@@ -14,7 +14,7 @@
  * When used inline without FlowContext.flowKind and without onApprove/onReject,
  * the buttons render disabled and a console.warn is emitted (dev-only guidance).
  */
-import { createElement, useState, useMemo, useCallback, type ReactNode } from "react";
+import { createElement, useState, useMemo, useCallback, useEffect, type ReactNode } from "react";
 import { createRecoveryClient } from "@flow-state-dev/client";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
@@ -72,13 +72,19 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
   const hasHandlers = onApprove !== undefined || onReject !== undefined;
   const canResume = hasHandlers || (flowKind !== undefined && flowKind.length > 0);
 
-  if (!canResume) {
-    // Dev-only guidance: the card renders disabled when flowKind is unavailable.
-    console.warn(
-      "[ApprovalRenderer] Cannot resume suspension without flowKind on <FlowProvider>. " +
-        "Either set flowKind on the provider, or supply onApprove/onReject handlers."
-    );
-  }
+  // Warn once on mount when the card has no way to call resume. useEffect
+  // keeps this out of SSR and prevents a flood on every re-render.
+  useEffect(() => {
+    if (!canResume) {
+      console.warn(
+        "[ApprovalRenderer] Cannot resume suspension without flowKind on <FlowProvider>. " +
+          "Either set flowKind on the provider, or supply onApprove/onReject handlers."
+      );
+    }
+    // Deliberately not re-running when canResume changes — the guidance fires
+    // once on mount so the dev sees it without a flood on re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAction = useCallback(
     async (action: "approve" | "reject") => {

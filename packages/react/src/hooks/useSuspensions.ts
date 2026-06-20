@@ -84,11 +84,11 @@ export function deriveSuspensions(
   options: UseSuspensionsOptions = {},
   inFlight: ReadonlySet<string> = new Set()
 ): { suspensions: SuspensionView[]; pending: SuspensionView[] } {
-  const resumeIndex = new Map<string, ReturnType<typeof toResumeFields>>();
+  const resumeIndex = new Map<string, SuspensionResumeItem>();
   for (const item of items) {
     if (isSuspensionResumeItem(item)) {
       const resumeItem = item as SuspensionResumeItem;
-      resumeIndex.set(resumeItem.suspensionId, toResumeFields(resumeItem));
+      resumeIndex.set(resumeItem.suspensionId, resumeItem);
     }
   }
 
@@ -112,18 +112,6 @@ export function deriveSuspensions(
   return {
     suspensions,
     pending: suspensions.filter((view) => view.pending)
-  };
-}
-
-function toResumeFields(item: {
-  resolution: SuspensionStatus;
-  resumeData?: unknown;
-  resolvedBy?: string;
-}): { resolution: SuspensionStatus; resumeData?: unknown; resolvedBy?: string } {
-  return {
-    resolution: item.resolution,
-    resumeData: item.resumeData,
-    resolvedBy: item.resolvedBy
   };
 }
 

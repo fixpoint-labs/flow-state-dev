@@ -150,36 +150,20 @@ describe("ItemRenderer dispatch", () => {
 });
 
 describe("suspension RendererRegistry slot", () => {
-  it("resolveRenderer returns a custom suspension renderer", () => {
-    const customCard = () => "custom";
-    const registry: RendererRegistry = { suspension: customCard };
-    expect(resolveRenderer(registry, "suspension")).toBe(customCard);
-  });
-
-  it("resolveRenderer returns false when suspension is suppressed", () => {
-    const registry: RendererRegistry = { suspension: false };
-    expect(resolveRenderer(registry, "suspension")).toBe(false);
-  });
-
-  it("resolveRenderer returns undefined when no suspension renderer is registered", () => {
+  it("resolveRenderer returns undefined when no suspension renderer is registered (falls through to built-in)", () => {
+    // undefined → ItemRenderer uses the BUILT_IN_FALLBACKS ApprovalRenderer entry.
     const registry: RendererRegistry = {};
     expect(resolveRenderer(registry, "suspension")).toBeUndefined();
   });
 
-  it("resolveRenderer returns the ApprovalRenderer built-in for suspension when no registry is set", () => {
-    // When no custom renderer is registered, resolveRenderer returns undefined,
-    // and ItemRenderer falls through to the BUILT_IN_FALLBACKS which renders ApprovalRenderer.
-    // We verify the resolution contract at the registry level (pure; no React context needed).
-    const registry: RendererRegistry = {};
-    expect(resolveRenderer(registry, "suspension")).toBeUndefined();
-  });
-
-  it("resolveRenderer returns false for suppressed suspension, which suppresses inline rendering", () => {
+  it("resolveRenderer returns false when suspension is suppressed (headless layout)", () => {
+    // false → ItemRenderer returns null; consumer uses useSuspensions for custom layout.
     const registry: RendererRegistry = { suspension: false };
     expect(resolveRenderer(registry, "suspension")).toBe(false);
   });
 
   it("resolveRenderer returns the custom suspension component", () => {
+    // Custom component wins over the built-in ApprovalRenderer fallback.
     const customCard = (props: { item: SuspensionItem }) => `custom:${props.item.suspensionId}`;
     const registry: RendererRegistry = { suspension: customCard };
     expect(resolveRenderer(registry, "suspension")).toBe(customCard);

@@ -71,7 +71,7 @@ describe("deriveSuspensions", () => {
     expect(view.resolvedBy).toBeUndefined();
   });
 
-  it("resolves a suspension from its matching suspension_resume item", () => {
+  it("resolves a suspension from its matching suspension_resume item (approved)", () => {
     const result = deriveSuspensions([suspension(), resume()]);
 
     expect(result.pending).toHaveLength(0);
@@ -80,6 +80,21 @@ describe("deriveSuspensions", () => {
     expect(view.status).toBe("approved");
     expect(view.resumeData).toEqual({ ok: true });
     expect(view.resolvedBy).toBe("user_1");
+  });
+
+  it("resolves a suspension from its matching suspension_resume item (rejected)", () => {
+    // A rejection also moves the suspension out of pending — status tracks the
+    // resolution so the UI can show "Rejected" rather than hiding the item.
+    const result = deriveSuspensions([
+      suspension(),
+      resume({ resolution: "rejected", resumeData: undefined, resolvedBy: "op_2" })
+    ]);
+
+    expect(result.pending).toHaveLength(0);
+    const view = result.suspensions[0];
+    expect(view.pending).toBe(false);
+    expect(view.status).toBe("rejected");
+    expect(view.resolvedBy).toBe("op_2");
   });
 
   it("filters by requestId", () => {
