@@ -6,10 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import {
-  createInboundTransportConformanceTests,
-  createMockTransportHost
-} from "@flow-state-dev/testing/conformance";
+import { createInboundTransportConformanceTests } from "@flow-state-dev/testing/conformance";
 import {
   createFlowApiRouter,
   createFlowRegistry,

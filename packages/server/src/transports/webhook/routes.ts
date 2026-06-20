@@ -87,7 +87,7 @@ export async function handleWebhook(
   }
 
   // 5. Route: declarative `on` wins; `route` is the fallback escape hatch.
-  const routed = routeEvent(sub, event);
+  const routed = routeEvent(sub, event, host.logger);
   if (routed === null) {
     return jsonResponse(202, { status: "ignored", provider, eventType });
   }
@@ -196,16 +196,47 @@ type Routed =
  * Match an event to an action. A declarative `on[eventType]` binding whose
  * `when` predicate passes wins; otherwise the imperative `route` is consulted.
  * Returns `null` when nothing matches (the event is acknowledged and ignored).
+ *
+ * Matching is best-effort: a throwing `when` predicate or `route` function is a
+ * benign routing-logic bug, so it's treated as a non-match (logged), not a 5xx
+ * — a 5xx would make providers retry an event that can never route. This
+ * mirrors the chat transport's "throwing `when` is a non-match" stance. Throws
+ * from `input`/`sessionId` (the post-match invocation phase) stay a hard 500.
  */
-function routeEvent(sub: WebhookSubscriptionConfig, event: WebhookInboundEvent): Routed | null {
+function routeEvent(
+  sub: WebhookSubscriptionConfig,
+  event: WebhookInboundEvent,
+  logger: InboundTransportHost["logger"]
+): Routed | null {
   if (event.eventType !== null && sub.on !== undefined) {
     const binding = sub.on[event.eventType];
-    if (binding !== undefined && (binding.when ? binding.when(event) : true)) {
-      return { kind: "binding", binding };
+    if (binding !== undefined) {
+      let matched: boolean;
+      try {
+        matched = binding.when ? binding.when(event) : true;
+      } catch (err) {
+        logger?.warn?.("webhook `when` predicate threw — treating as non-match", {
+          provider: event.provider,
+          eventType: event.eventType,
+          error: errorMessage(err)
+        });
+        matched = false;
+      }
+      if (matched) return { kind: "binding", binding };
     }
   }
   if (sub.route !== undefined) {
-    const result = sub.route(event);
+    let result: WebhookRouteResult | null;
+    try {
+      result = sub.route(event);
+    } catch (err) {
+      logger?.warn?.("webhook `route` threw — acknowledging and ignoring event", {
+        provider: event.provider,
+        eventType: event.eventType,
+        error: errorMessage(err)
+      });
+      return null;
+    }
     if (result !== null && result !== undefined) {
       return { kind: "route", result };
     }

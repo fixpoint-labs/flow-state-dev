@@ -185,6 +185,60 @@ describe("handleWebhook", () => {
     expect(dispatched[0]!.input).toEqual({ invoiceId: "routed" });
   });
 
+  it("treats a throwing `when` predicate as a non-match (202, no dispatch, no 5xx)", async () => {
+    const flow = defineFlow({
+      kind: "billing",
+      actions: { recordPayment: { block: noop } },
+      authentication: { defaultUserId: "system", requireUser: false },
+      webhooks: {
+        stripe: {
+          on: {
+            "invoice.paid": {
+              action: "recordPayment",
+              input: () => ({}),
+              when: () => {
+                throw new Error("predicate bug");
+              }
+            }
+          }
+        }
+      }
+    })({ id: "billing" });
+    const { host, dispatched } = captureHost(flow);
+    const res = await handleWebhook(
+      stripeRequest({ type: "invoice.paid", id: "e", data: {} }),
+      { params },
+      host,
+      { stripe: stripeProvider }
+    );
+    expect(res.status).toBe(202);
+    expect(dispatched).toHaveLength(0);
+  });
+
+  it("acknowledges and ignores when the `route` escape hatch throws", async () => {
+    const flow = defineFlow({
+      kind: "billing",
+      actions: { recordPayment: { block: noop } },
+      authentication: { defaultUserId: "system", requireUser: false },
+      webhooks: {
+        stripe: {
+          route: () => {
+            throw new Error("route bug");
+          }
+        }
+      }
+    })({ id: "billing" });
+    const { host, dispatched } = captureHost(flow);
+    const res = await handleWebhook(
+      stripeRequest({ type: "charge.created", id: "e", data: {} }),
+      { params },
+      host,
+      { stripe: stripeProvider }
+    );
+    expect(res.status).toBe(202);
+    expect(dispatched).toHaveLength(0);
+  });
+
   it("echoes a handshake body (Slack url_verification) without dispatching", async () => {
     const { host, dispatched } = captureHost(billingFlow());
     const provider: WebhookProviderDefinition = {
