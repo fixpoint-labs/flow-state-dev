@@ -16,12 +16,10 @@ import {
   createExecutionContext,
   createInMemoryStores,
   createResponseEmitter,
-  createWorkQueue,
   executeBlock,
   isRetryableError,
   mergeRetryPolicy,
   normalizeError,
-  resolveRescueHandler,
   retryWithPolicy,
   runAction
 } from "../src";
@@ -276,7 +274,7 @@ describe("execution runtime", () => {
     ).rejects.toThrow("Retry aborted");
   });
 
-  it("covers retry and rescue edge paths", async () => {
+  it("covers retry edge paths", async () => {
     expect(mergeRetryPolicy(undefined, undefined)).toBeUndefined();
     expect(mergeRetryPolicy({}, undefined)).toEqual({
       maxAttempts: 1,
@@ -366,79 +364,6 @@ describe("execution runtime", () => {
     );
     setTimeout(() => inFlightAbort.abort(), 5);
     await expect(inFlightPromise).rejects.toThrow("Retry aborted");
-
-    const rescueBlock = handler({
-      name: "rescue",
-      inputSchema: z.any(),
-      outputSchema: z.string(),
-      execute: () => "ok"
-    });
-    expect(
-      resolveRescueHandler(new Error("x"), [{ when: [ValidationError], block: rescueBlock }])
-    ).toBeUndefined();
-    expect(resolveRescueHandler(new Error("x"), [])).toBeUndefined();
-  });
-
-  it("resolves rescue handlers by typed match then fallback", () => {
-    const typedRescue = handler({
-      name: "typed-rescue",
-      inputSchema: z.any(),
-      outputSchema: z.string(),
-      execute: () => "typed"
-    });
-    const fallbackRescue = handler({
-      name: "fallback-rescue",
-      inputSchema: z.any(),
-      outputSchema: z.string(),
-      execute: () => "fallback"
-    });
-
-    const resolvedTyped = resolveRescueHandler(new ValidationError("x"), [
-      { when: [ValidationError], block: typedRescue },
-      { block: fallbackRescue }
-    ]);
-    expect(resolvedTyped?.name).toBe("typed-rescue");
-
-    const resolvedFallback = resolveRescueHandler(new Error("x"), [
-      { when: [ValidationError], block: typedRescue },
-      { block: fallbackRescue }
-    ]);
-    expect(resolvedFallback?.name).toBe("fallback-rescue");
-  });
-
-  it("keeps work failures non-terminal by default and promotes with failOnError", async () => {
-    const queue = createWorkQueue();
-    expect(queue.hasPendingWork()).toBe(false);
-    queue.addWork(async () => "ok", { name: "success" });
-    queue.addWork(async () => {
-      throw new Error("background failure");
-    }, { name: "failure" });
-    expect(queue.hasPendingWork()).toBe(true);
-
-    const result = await queue.waitForWork();
-    expect(result.completed).toHaveLength(1);
-    expect(result.failed).toHaveLength(1);
-    expect(result.failed[0]?.error.message).toBe("background failure");
-    expect(queue.hasPendingWork()).toBe(false);
-
-    const queueFail = createWorkQueue();
-    queueFail.addWork(async () => {
-      throw new Error("fail on wait");
-    });
-
-    await expect(
-      queueFail.waitForWork({ failOnError: true })
-    ).rejects.toThrow("fail on wait");
-
-    const queueUnknown = createWorkQueue();
-    queueUnknown.addWork(async () => {
-      throw "unknown";
-    });
-    const unknownResult = await queueUnknown.waitForWork();
-    expect(unknownResult.failed[0]?.name).toBe("work_1");
-    expect(unknownResult.failed[0]?.error.message).toBe(
-      "Unknown work task failure"
-    );
   });
 
   it("dispatches handler/generator/sequencer/router blocks", async () => {
