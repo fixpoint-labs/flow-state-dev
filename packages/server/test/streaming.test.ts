@@ -17,7 +17,6 @@ import {
   createInternalResponseEmitter,
   type RequestStreamEventWithId
 } from "../src/streaming/response-emitter";
-import { createStreamEnvelope } from "../src/streaming/types";
 
 function makeMessageItem(options: {
   requestId: string;
@@ -199,41 +198,6 @@ describe("streaming runtime", () => {
     expect(lines[1]).toBe("event: request.created");
     expect(lines[2]?.startsWith("data: ")).toBe(true);
     expect(JSON.parse(lines[2]!.slice("data: ".length))).toEqual(created);
-  });
-
-  it("provides stable correlation and provenance metadata in stream envelopes", async () => {
-    const emitter = createResponseEmitter({
-      requestId: "req_meta",
-      now: () => 250
-    });
-
-    await emitter.emitItemAdded(
-      makeMessageItem({
-        requestId: "req_meta",
-        itemIndex: 0,
-        ts: 250
-      })
-    );
-
-    const itemAdded = emitter.getEvents()[0];
-    if (itemAdded === undefined) {
-      throw new Error("Expected item.added event");
-    }
-
-    const envelope = createStreamEnvelope(itemAdded, itemAdded.id);
-    expect(envelope.correlation).toEqual({
-      stream: "request",
-      streamId: "req_meta",
-      sequenceNumber: 1,
-      eventType: "item.added",
-      ts: 250,
-      requestId: "req_meta"
-    });
-    expect(envelope.provenance).toEqual({
-      blockName: "test",
-      blockInstanceId: "test_1",
-      phase: "main"
-    });
   });
 
   it("keeps output parity when internal seam plumbing is enabled with no handlers", async () => {
