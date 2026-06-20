@@ -80,6 +80,38 @@ describe("validateChatConfig", () => {
     } as unknown as ChatConfig;
     expect(() => validateChatConfig("demo", chat, actions)).toThrow(/`when`/);
   });
+
+  it("accepts an inline `block` binding (chat-only handler)", () => {
+    const chat: ChatConfig = {
+      on: { mention: { block: noopHandler, input: () => ({ text: "hi" }) } }
+    };
+    expect(() => validateChatConfig("demo", chat, actions)).not.toThrow();
+  });
+
+  it("rejects a binding declaring both `action` and `block`", () => {
+    const chat: ChatConfig = {
+      on: { mention: { action: "reply", block: noopHandler, input: () => ({}) } }
+    };
+    expect(() => validateChatConfig("demo", chat, actions)).toThrow(
+      /exactly one of `action`.*or `block`/
+    );
+  });
+
+  it("rejects a binding declaring neither `action` nor `block`", () => {
+    const chat = {
+      on: { mention: { input: () => ({}) } }
+    } as unknown as ChatConfig;
+    expect(() => validateChatConfig("demo", chat, actions)).toThrow(
+      /exactly one of `action`.*or `block`/
+    );
+  });
+
+  it("rejects a `block` that is not a block definition", () => {
+    const chat = {
+      on: { mention: { block: "nope", input: () => ({}) } }
+    } as unknown as ChatConfig;
+    expect(() => validateChatConfig("demo", chat, actions)).toThrow(/not a block definition/);
+  });
 });
 
 describe("defineFlow with chat config", () => {

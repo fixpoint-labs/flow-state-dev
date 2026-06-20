@@ -59,6 +59,17 @@ export async function handleExecuteAction(
     });
   }
 
+  // Internal actions (e.g. handlers synthesized for an inline webhook/chat
+  // binding `block`) are dispatch-only — they have no public HTTP surface, so
+  // they 404 like any unknown action. This keeps a webhook-only handler off
+  // the action endpoint, where it would bypass the transport's signature
+  // verification.
+  if (flow.actions[route.actionName]?.internal === true) {
+    return jsonResponse(404, {
+      error: `Unknown action "${route.actionName}"`
+    });
+  }
+
   const body = await parseJsonBody(request);
   const sessionId = route.sessionId ?? getString(body.sessionId);
   const metadata = asObject(body.metadata);

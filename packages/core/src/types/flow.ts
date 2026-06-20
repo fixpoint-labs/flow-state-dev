@@ -197,6 +197,15 @@ export type ActionConfig<
    * (transient — crashes lose request state).
    */
   durable?: boolean;
+  /**
+   * Internal actions are dispatch-only: the runtime can run them (so inbound
+   * transports can dispatch them with full lifecycle/state/items/observability),
+   * but client-facing transports — HTTP and MCP — never expose them. Set
+   * automatically for the inline `block` declared on a webhook/chat binding, so
+   * a webhook-only handler isn't reachable on the public action endpoint (which
+   * would bypass signature verification). Default: false.
+   */
+  internal?: boolean;
 };
 
 /**

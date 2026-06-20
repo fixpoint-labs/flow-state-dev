@@ -72,6 +72,9 @@ export function resolveExposedActions(
   const result = new Map<string, { actionKey: string; action: ActionConfig }>();
 
   for (const [actionKey, action] of Object.entries(actions)) {
+    // Internal actions (e.g. handlers synthesized for an inline webhook/chat
+    // binding `block`) are dispatch-only and never exposed as MCP tools.
+    if (action.internal) continue;
     if (action.mcp?.enabled === false) continue;
 
     const overrideName = action.mcp?.name;

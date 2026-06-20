@@ -112,6 +112,46 @@ describe("handleWebhook", () => {
     });
   });
 
+  it("dispatches the synthesized internal action for an inline `block` binding", async () => {
+    // FIX-439: a webhook-only handler declared inline via `block` is lowered
+    // into an internal action named `__wh.<provider>.<eventKey>`. The route
+    // dispatches that action exactly like a referenced one — the inline block
+    // gets the full dispatch runtime without widening the flow's public actions.
+    const flow = defineFlow({
+      kind: "billing",
+      actions: { recordPayment: { block: noop } },
+      authentication: { defaultUserId: "system", requireUser: false },
+      webhooks: {
+        stripe: {
+          on: {
+            "invoice.paid": {
+              block: handler({
+                name: "handle-paid-inline",
+                inputSchema: z.object({ invoiceId: z.string() }),
+                execute: () => undefined
+              }),
+              input: (e: WebhookInboundEvent<{ data: { object: { id: string } } }>) => ({
+                invoiceId: e.payload.data.object.id
+              })
+            }
+          }
+        }
+      }
+    })({ id: "billing" });
+    const { host, dispatched } = captureHost(flow);
+    const res = await handleWebhook(
+      stripeRequest({ type: "invoice.paid", id: "evt_1", data: { object: { id: "in_1" } } }),
+      { params },
+      host,
+      { stripe: stripeProvider }
+    );
+
+    expect(res.status).toBe(202);
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]!.action).toBe("__wh.stripe.invoice.paid");
+    expect(dispatched[0]!.input).toEqual({ invoiceId: "in_1" });
+  });
+
   it("rejects an invalid signature with 401 and never dispatches", async () => {
     const { host, dispatched } = captureHost(billingFlow());
     const res = await handleWebhook(

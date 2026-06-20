@@ -6,6 +6,8 @@
  * metadata stamp, and the `streamToThread` precedence chain.
  */
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, ChatEventBinding } from "@flow-state-dev/core";
 import type {
   InboundTransportHost,
@@ -101,6 +103,43 @@ describe("dispatchChatEvent — flow-level subscriptions", () => {
     const { host, calls } = makeHost(flows);
     await dispatchChatEvent(host, baseOptions, mentionEvent(), buildChatSubscriptionIndex(flows));
     expect(calls[0].input).toEqual({ text: "async" });
+  });
+
+  it("dispatches the synthesized internal action for an inline `block` binding", async () => {
+    // FIX-439: a chat-only handler declared inline via `block` is lowered by
+    // `defineFlow` into an internal action named `__chat.<eventKey>`. Built
+    // through a real flow (not the hand-rolled `flow()` fixture) so the
+    // subscription index reads the synthesized config. Dispatch sees only the
+    // rewritten action reference — the inline block is invisible here.
+    const realFlow = defineFlow({
+      kind: "support",
+      actions: {},
+      chat: {
+        on: {
+          mention: {
+            block: handler({
+              name: "handle-mention-inline",
+              inputSchema: z.object({ text: z.string() }),
+              execute: () => undefined
+            }),
+            input: () => ({ text: "hi" })
+          }
+        }
+      }
+    })({ id: "support" });
+
+    expect(realFlow.actions["__chat.mention"]?.internal).toBe(true);
+
+    const flows = [realFlow];
+    const { host, calls } = makeHost(flows);
+    await dispatchChatEvent(host, baseOptions, mentionEvent(), buildChatSubscriptionIndex(flows));
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      flowKind: "support",
+      action: "__chat.mention",
+      input: { text: "hi" },
+    });
   });
 
   it("broadcasts to two flows subscribing to the same event", async () => {

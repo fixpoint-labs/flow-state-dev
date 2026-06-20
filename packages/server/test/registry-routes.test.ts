@@ -908,4 +908,76 @@ describe("createFlowApiRouter", () => {
       expect(response.status).toBe(202);
     });
   });
+
+  // FIX-439: a webhook/chat inline `block` binding synthesizes an internal
+  // action. Internal actions are dispatch-only — they must stay off the public
+  // HTTP surface so a webhook-only handler can't be invoked on the action
+  // endpoint (which would bypass signature verification).
+  describe("internal actions are hidden from the HTTP surface", () => {
+    function makeWebhookBlockFlow(): FlowInstance {
+      return defineFlow({
+        kind: "wh-internal",
+        actions: {
+          run: {
+            inputSchema: z.object({ value: z.string() }),
+            block: handler<{ value: string }, { ok: true }>({
+              name: "wh-internal-run",
+              execute: () => ({ ok: true })
+            })
+          }
+        },
+        webhooks: {
+          stripe: {
+            on: {
+              "invoice.paid": {
+                block: handler<{ id: string }, { ok: true }>({
+                  name: "wh-internal-paid",
+                  execute: () => ({ ok: true })
+                }),
+                input: () => ({ id: "in_1" })
+              }
+            }
+          }
+        }
+      })({ id: "wh-internal" });
+    }
+
+    it("omits the synthesized internal action from list_flows metadata", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeWebhookBlockFlow());
+      const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
+
+      const response = await router.GET(new Request("http://localhost/api/flows"), {
+        params: { path: [] }
+      });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        flows: Array<{ actions: string[]; actionSchemas: Record<string, unknown> }>;
+      };
+      const flow = body.flows.find((f) => (f as { kind: string }).kind === "wh-internal");
+      // Only the public `run` action is listed; the synthesized
+      // `__wh.stripe.invoice.paid` internal action is hidden.
+      expect(flow?.actions).toEqual(["run"]);
+      expect(Object.keys(flow?.actionSchemas ?? {})).toEqual(["run"]);
+    });
+
+    it("returns 404 when the internal action is invoked on the action endpoint", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeWebhookBlockFlow());
+      const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
+
+      const response = await router.POST(
+        new Request("http://localhost/api/flows/wh-internal/actions/__wh.stripe.invoice.paid", {
+          method: "POST",
+          body: JSON.stringify({ userId: "u1", input: { id: "in_1" } })
+        }),
+        {
+          params: { path: ["wh-internal", "actions", "__wh.stripe.invoice.paid"] }
+        }
+      );
+      expect(response.status).toBe(404);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toContain("Unknown action");
+    });
+  });
 });

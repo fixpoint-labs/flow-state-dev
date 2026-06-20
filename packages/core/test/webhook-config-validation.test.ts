@@ -107,6 +107,42 @@ describe("validateWebhookConfig", () => {
     } as unknown as WebhookConfig;
     expect(() => validateWebhookConfig("billing", webhooks, actions)).toThrow(/`when`/);
   });
+
+  it("accepts an inline `block` binding (webhook-only handler)", () => {
+    const webhooks: WebhookConfig = {
+      stripe: { on: { "invoice.paid": { block: noopHandler, input: () => ({}) } } }
+    };
+    expect(() => validateWebhookConfig("billing", webhooks, actions)).not.toThrow();
+  });
+
+  it("rejects a binding declaring both `action` and `block`", () => {
+    const webhooks: WebhookConfig = {
+      stripe: {
+        on: { "invoice.paid": { action: "recordPayment", block: noopHandler, input: () => ({}) } }
+      }
+    };
+    expect(() => validateWebhookConfig("billing", webhooks, actions)).toThrow(
+      /exactly one of `action`.*or `block`/
+    );
+  });
+
+  it("rejects a binding declaring neither `action` nor `block`", () => {
+    const webhooks = {
+      stripe: { on: { "invoice.paid": { input: () => ({}) } } }
+    } as unknown as WebhookConfig;
+    expect(() => validateWebhookConfig("billing", webhooks, actions)).toThrow(
+      /exactly one of `action`.*or `block`/
+    );
+  });
+
+  it("rejects a `block` that is not a block definition", () => {
+    const webhooks = {
+      stripe: { on: { "invoice.paid": { block: "nope", input: () => ({}) } } }
+    } as unknown as WebhookConfig;
+    expect(() => validateWebhookConfig("billing", webhooks, actions)).toThrow(
+      /not a block definition/
+    );
+  });
 });
 
 describe("defineWebhookBinding", () => {

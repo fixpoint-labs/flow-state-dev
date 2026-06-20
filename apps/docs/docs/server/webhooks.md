@@ -103,7 +103,9 @@ const billingFlow = defineFlow({
 A binding has four fields:
 
 - **`action`** — the flow action to run. Must be a key in `actions`;
-  `defineFlow` throws at registration if it isn't.
+  `defineFlow` throws at registration if it isn't. Provide this *or* `block`.
+- **`block`** — an inline webhook-only handler, in place of `action`. See
+  [Webhook-only handlers](#webhook-only-handlers) below.
 - **`input`** — maps the event to the action's input. May be async. The result
   is validated against the action's `inputSchema`, the same way an HTTP body is.
 - **`sessionId`** (optional) — derives the session id from the event. May be
@@ -112,6 +114,33 @@ A binding has four fields:
 - **`when`** (optional) — a synchronous predicate. A falsy result skips the
   binding, the event is acknowledged and ignored. Use it to narrow a coarse
   event type to a sub-action, e.g. `when: (e) => e.payload.action === "opened"`.
+
+### Webhook-only handlers
+
+Some handlers exist only to service a webhook. Adding them to the flow's public
+`actions` would expose them on the HTTP action endpoint and as MCP tools, where
+they'd run without the webhook's signature check. To keep a handler private to
+its webhook, give the binding a `block` instead of an `action`:
+
+```ts
+webhooks: {
+  stripe: {
+    on: {
+      "invoice.paid": defineWebhookBinding<StripeEvent>({
+        block: recordPaymentPipeline, // a handler/sequencer/router/generator
+        input: (e) => ({ invoiceId: e.payload.data.object.id }),
+      }),
+    },
+  },
+},
+```
+
+A binding declares exactly one of `action` or `block`; declaring both, or
+neither, throws at registration. The block runs through the full dispatch
+runtime — lifecycle, state, items, request records, DevTool — exactly like a
+named action. The only difference is reach: it has no HTTP or MCP surface, so it
+can only fire through this verified webhook. It does not appear in the flow's
+listed actions, and a `POST` to its action path returns 404.
 
 The event handed to a binding is a `WebhookInboundEvent`:
 

@@ -23,6 +23,8 @@
  * narrowed via `defineWebhookBinding<TPayload>()`.
  */
 
+import type { BlockDefinition } from "./block";
+
 /**
  * The normalized inbound webhook event handed to a flow's webhook bindings.
  * The adapter builds it after verifying the signature and parsing the body.
@@ -45,17 +47,27 @@ export interface WebhookInboundEvent<TPayload = unknown> {
 /**
  * Binding from one event-type key to one action. Mirrors `ChatEventBinding`.
  *
- * `input` and `sessionId` may return a value or a Promise — the adapter
- * awaits before constructing the dispatch envelope. `when` is synchronous:
- * the adapter evaluates it in the hot path before any async work so the
- * no-match case stays cheap.
+ * Provide exactly one of `action` (reference a public flow action) or `block`
+ * (an inline "webhook-only" handler). `input` and `sessionId` may return a
+ * value or a Promise — the adapter awaits before constructing the dispatch
+ * envelope. `when` is synchronous: the adapter evaluates it in the hot path
+ * before any async work so the no-match case stays cheap.
  */
 export interface WebhookEventBinding {
   /**
-   * Action to invoke when this binding matches. Must be a key in
-   * `flow.actions`; validated at registration via `validateWebhookConfig`.
+   * Public flow action to invoke when this binding matches. Must be a key in
+   * `flow.actions`; validated at registration. Provide this OR `block`.
    */
-  action: string;
+  action?: string;
+  /**
+   * Inline "webhook-only" handler. The framework runs it through the full
+   * dispatch runtime (lifecycle, state, items, request records, DevTool), but
+   * does NOT expose it as a public action — so it has no HTTP/MCP surface and
+   * can only be reached through a verified webhook. Use this for handlers that
+   * exist solely to service a webhook, instead of widening the flow's public
+   * `actions`. Provide this OR `action`.
+   */
+  block?: BlockDefinition;
   /**
    * Map the inbound event to the action's input. May return a value or a
    * Promise. The result is validated against the action's `inputSchema` by
@@ -122,7 +134,8 @@ export type WebhookConfig = Record<string, WebhookSubscriptionConfig>;
  * variance that prevents a typed binding from being assignable directly.)
  */
 export function defineWebhookBinding<TPayload = unknown>(binding: {
-  action: string;
+  action?: string;
+  block?: BlockDefinition;
   input: (event: WebhookInboundEvent<TPayload>) => unknown | Promise<unknown>;
   sessionId?: (event: WebhookInboundEvent<TPayload>) => string | Promise<string> | undefined;
   when?: (event: WebhookInboundEvent<TPayload>) => boolean;
@@ -200,11 +213,27 @@ export function validateWebhookConfig(
         );
       }
 
-      if (!(binding.action in actions)) {
-        const known = Object.keys(actions).join(", ") || "<none>";
+      const hasAction = binding.action !== undefined;
+      const hasBlock = binding.block !== undefined;
+      if (hasAction === hasBlock) {
         throw new Error(
-          `Flow "${flowKind}" webhook subscription "${provider}.${eventKey}" references ` +
-            `action "${binding.action}" but no such action is declared. Defined actions: ${known}.`
+          `Flow "${flowKind}" webhook subscription "${provider}.${eventKey}" must declare ` +
+            `exactly one of \`action\` (a flow action name) or \`block\` (an inline handler).`
+        );
+      }
+      if (hasAction) {
+        if (typeof binding.action !== "string" || !(binding.action in actions)) {
+          const known = Object.keys(actions).join(", ") || "<none>";
+          throw new Error(
+            `Flow "${flowKind}" webhook subscription "${provider}.${eventKey}" references ` +
+              `action "${String(binding.action)}" but no such action is declared. Defined actions: ${known}.`
+          );
+        }
+      }
+      if (hasBlock && (binding.block === null || typeof binding.block !== "object")) {
+        throw new Error(
+          `Flow "${flowKind}" webhook subscription "${provider}.${eventKey}" has a \`block\` ` +
+            `that is not a block definition (handler/generator/sequencer/router).`
         );
       }
 

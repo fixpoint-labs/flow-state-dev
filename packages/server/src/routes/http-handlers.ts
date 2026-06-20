@@ -289,19 +289,27 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "list_flows") {
         return jsonResponse(200, {
-          flows: options.registry.list().map((flow) => ({
-            id: flow.id,
-            kind: flow.kind,
-            requireUser: flow.requireUser,
-            requiresOrg: flow.requiresOrg,
-            actions: Object.keys(flow.actions),
-            actionSchemas: Object.fromEntries(
-              Object.entries(flow.actions).map(([name, config]) => [
-                name,
-                serializeActionSchema(config.inputSchema ?? config.block.inputSchema)
-              ])
-            )
-          }))
+          flows: options.registry.list().map((flow) => {
+            // Internal actions (e.g. handlers synthesized for an inline
+            // webhook/chat binding `block`) are dispatch-only and never part of
+            // the public surface, so they're omitted from the listing.
+            const publicActions = Object.entries(flow.actions).filter(
+              ([, config]) => config.internal !== true
+            );
+            return {
+              id: flow.id,
+              kind: flow.kind,
+              requireUser: flow.requireUser,
+              requiresOrg: flow.requiresOrg,
+              actions: publicActions.map(([name]) => name),
+              actionSchemas: Object.fromEntries(
+                publicActions.map(([name, config]) => [
+                  name,
+                  serializeActionSchema(config.inputSchema ?? config.block.inputSchema)
+                ])
+              )
+            };
+          })
         });
       }
 

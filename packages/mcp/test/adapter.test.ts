@@ -105,6 +105,35 @@ describe("resolveExposedActions", () => {
     expect([...exposed.keys()]).toEqual(["record_payment"]);
   });
 
+  it("excludes internal actions synthesized for inline webhook bindings", () => {
+    // FIX-439: a webhook inline `block` binding synthesizes an internal
+    // action. Internal actions are dispatch-only and must never be exposed
+    // as MCP tools.
+    const flow = defineFlow({
+      kind: "billing",
+      mcp: { enabled: true },
+      actions: {
+        recordPayment: {
+          inputSchema: z.object({ amount: z.number() }),
+          block: noopBlock,
+          description: "Record a payment for an invoice."
+        }
+      },
+      webhooks: {
+        stripe: {
+          on: {
+            "invoice.paid": { block: noopBlock, input: () => ({}) }
+          }
+        }
+      }
+    });
+    // The synthesized `__wh.stripe.invoice.paid` action exists on the flow...
+    expect(flow.actions["__wh.stripe.invoice.paid"]?.internal).toBe(true);
+    // ...but is not exposed as an MCP tool.
+    const exposed = resolveExposedActions(flow.kind, flow.actions);
+    expect([...exposed.keys()]).toEqual(["record_payment"]);
+  });
+
   it("honors per-action mcp.name overrides", () => {
     const flow = defineFlow({
       kind: "demo",

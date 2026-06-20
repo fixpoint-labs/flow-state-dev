@@ -133,7 +133,11 @@ export async function handleWebhook(
   let sessionId: string | undefined;
   try {
     if (routed.kind === "binding") {
-      action = routed.binding.action;
+      // `action` is always set here: `defineFlow` synthesizes an internal
+      // action for any inline `block` binding and rewrites the binding to
+      // reference it, so the config this adapter reads never carries a bare
+      // `block`.
+      action = routed.binding.action!;
       input = await routed.binding.input(event);
       sessionId = routed.binding.sessionId ? await routed.binding.sessionId(event) : undefined;
     } else {

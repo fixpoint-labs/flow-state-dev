@@ -303,9 +303,12 @@ async function runOneSubscription(
     sessionId = event.thread?.id;
   }
 
+  // `action` is always set here: `defineFlow` synthesizes an internal action
+  // for any inline `block` binding and rewrites the binding to reference it,
+  // so the config this adapter reads never carries a bare `block`.
   await executeDispatch(host, options, event, {
     flowKind: entry.flowKind,
-    action: entry.binding.action,
+    action: entry.binding.action!,
     input,
     sessionId,
     subscriptionKey: entry.eventKey,

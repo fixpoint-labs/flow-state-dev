@@ -90,12 +90,39 @@ const supportFlow = defineFlow({
 A binding has four fields:
 
 - **`action`** — the flow action to run. Must be a key in `actions`;
-  `defineFlow` throws at registration if it isn't.
+  `defineFlow` throws at registration if it isn't. Provide this *or* `block`.
+- **`block`** — an inline chat-only handler, in place of `action`. See
+  [Chat-only handlers](#chat-only-handlers) below.
 - **`input`** — maps the event to the action's input. May be async.
 - **`sessionId`** (optional) — derives the session id from the event. May be
   async. Defaults to the originating thread's id.
 - **`when`** (optional) — a synchronous predicate. A falsy result skips the
   binding; other bindings still evaluate.
+
+### Chat-only handlers
+
+When a handler exists only to service a chat event, adding it to the flow's
+public `actions` would also expose it on the HTTP action endpoint and as an MCP
+tool. To keep it private to the subscription, give the binding a `block`
+instead of an `action`:
+
+```ts
+chat: {
+  on: {
+    mention: defineChatBinding({
+      block: replyBlock, // a handler/sequencer/router/generator
+      input: (event) => ({ text: event.message?.text ?? "" }),
+    }),
+  },
+},
+```
+
+A binding declares exactly one of `action` or `block`; declaring both, or
+neither, throws at registration. The block runs through the full dispatch
+runtime — lifecycle, state, items, request records — exactly like a named
+action, but it has no HTTP or MCP surface, so it can only fire through this chat
+subscription. It does not appear in the flow's listed actions. This mirrors the
+[webhook transport's webhook-only handlers](./webhooks.md#webhook-only-handlers).
 
 ### Typed events with `defineChatBinding`
 
