@@ -10,7 +10,7 @@
  */
 
 import type { ResourceContext } from '@flow-state-dev/core'
-import { tokenOverlap } from './helpers'
+import { tokenOverlap } from '@flow-state-dev/core/helpers'
 import type { ResolvedHygieneConfig } from '../janitor-blocks'
 import type { RankedMemoryItem } from '../provider'
 import type { WorkingMemoryState } from '../working-memory'

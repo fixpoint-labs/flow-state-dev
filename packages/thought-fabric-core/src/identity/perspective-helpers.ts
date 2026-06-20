@@ -8,7 +8,7 @@
  */
 
 import type { ResourceContext } from '@flow-state-dev/core'
-import { shortId } from '../helpers'
+import { shortId } from '@flow-state-dev/core/helpers'
 import type {
   PerspectiveInstance,
   PerspectiveSalience,
