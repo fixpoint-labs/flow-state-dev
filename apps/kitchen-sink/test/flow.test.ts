@@ -10,7 +10,7 @@ import {
   testRouter
 } from "@flow-state-dev/testing";
 import { thinkingStyleRouter } from "../flows/chat-agent/run/thinking-styles";
-import { artifactsCollection } from "../flows/chat-agent/save-artifact";
+import { artifactsCollection } from "../flows/chat-agent/shared/capabilities/artifacts";
 
 function collectSourceFiles(dir: string): string[] {
   const entries = readdirSync(dir);

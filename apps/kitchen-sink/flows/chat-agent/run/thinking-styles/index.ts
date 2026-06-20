@@ -20,17 +20,21 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 
+import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
+import {
+  debate,
+  createModerator,
+  createDebateTranscript,
+} from "@flow-state-dev/patterns/debate";
+
 import type { InstructionsSlot, PipelineConfig } from "./pipelines/config";
-import { createPaePipeline } from "./pipelines/plan-and-execute";
 import { createSupervisorPipeline } from "./pipelines/supervisor";
 import { createRoutedSpecialistsPipeline } from "./pipelines/routed-specialists";
 import { createEventedActorsPipeline } from "./pipelines/evented-actors";
-import { createDebatePipeline } from "./pipelines/debate";
 
 import { assistantGenerator } from "../assistant/assistant";
 import { resolveModePrompt } from "../assistant/mode-prompt";
 import { mem } from "../cognition";
-import { artifactListContext } from "../../shared/context";
 import { featuresCapability } from "../../shared/capabilities/features";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../../lib/models";
 
@@ -60,10 +64,77 @@ export interface ThinkingStyleRouterConfig {
   instructions?: InstructionsSlot;
 }
 
+// ---------------------------------------------------------------------------
+// Trivial pipelines — pure pattern-config wrappers, inlined here.
+// ---------------------------------------------------------------------------
+// plan-and-execute and moderated-debate add no custom blocks of their own, so
+// they live alongside the factory rather than in their own file. The three
+// pipelines that DO define bespoke generators/handlers (supervisor,
+// routed-specialists, evented-actors) keep their own `pipelines/` modules.
+
+/** Build the `pae-thinking` pipeline from the resolved router config. */
+function createPaePipeline(config: PipelineConfig) {
+  return planAndExecute({
+    name: "pae-thinking",
+    model: config.modelId as any,
+    instructions: config.instructions,
+    context: config.context,
+    history: config.history,
+    search: true,
+    uses: config.uses,
+    enableReplanning: true,
+  });
+}
+
+/**
+ * Build the `kitchen-sink-debate` pipeline from the resolved router config.
+ *
+ * The debaters are configured by `stance` / `role` (not custom prompt files),
+ * and the pattern's default synthesizer projects the raw debate output into a
+ * single primary-agent response — so there's no bespoke block to define.
+ */
+function createDebatePipeline(config: PipelineConfig) {
+  const { modelId, context, workerContext, uses, workerUses, instructions } = config;
+
+  const debateTranscript = createDebateTranscript();
+  const debateRosterNames = ["advocate", "skeptic"] as const;
+
+  return debate({
+    name: "kitchen-sink-debate",
+    transcript: debateTranscript,
+    debaters: [
+      {
+        name: "advocate",
+        stance: "Argue for the proposition.",
+        role: "Argues in favor of the proposition under discussion.",
+      },
+      {
+        name: "skeptic",
+        stance: "Argue against the proposition.",
+        role: "Argues against the proposition under discussion.",
+      },
+    ],
+    maxRounds: 2,
+    model: modelId as any,
+    moderator: createModerator({
+      name: "kitchen-sink-debate",
+      rosterNames: [...debateRosterNames],
+      transcript: debateTranscript,
+      ...(modelId !== undefined ? { model: modelId as any } : {}),
+      context: workerContext,
+      ...(workerUses ? { uses: workerUses as any } : {}),
+    }),
+    context,
+    ...(uses ? { uses: uses as any } : {}),
+    instructions,
+  });
+}
+
 /**
  * Build the thinking-style router and its pipelines from `config`. The
  * `assistantGenerator` is reused as the `default` pipeline; the other five are
- * built by the per-pattern builders in `pipelines/`.
+ * built by `createPaePipeline` / `createDebatePipeline` (above) and the
+ * per-pattern builders in `pipelines/`.
  */
 export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const { assistantGenerator, modelId, context, uses, instructions } = config;
@@ -125,16 +196,20 @@ export const { thinkingStyleRouter } = createThinkingStyleRouter({
   modelId: (_input: any, ctx: any) =>
     ctx.user?.state.selectedModel ?? DEFAULT_KITCHEN_SINK_MODEL,
   history: { limit: 8 },
-  context: { memory: mem.contextFormatter, artifacts: artifactListContext },
+  // Artifacts inventory is NOT threaded here — `featuresCapability` already
+  // installs `artifactsCapability`'s inventory preset via `uses`, so the
+  // `<artifacts>` tag arrives through the capability for both primary and
+  // worker generators. Only `memory` needs manual threading (it isn't part of
+  // featuresCapability).
+  context: { memory: mem.contextFormatter },
   uses: [featuresCapability],
   // Worker generators in the supervisor / routed-specialists / evented-actors
   // pipelines disable the digest + working memory section presets so the
   // parent's memory blob isn't replicated into every worker prompt. The
   // recall tool stays installed (default-on `recall` preset) so workers can
-  // still look up specifics on demand. workerContext drops the `memory` key
-  // for the same reason — the formerly manual installation would otherwise
-  // re-inject the formatter regardless of preset.
+  // still look up specifics on demand. workerContext is empty so it drops the
+  // parent's `memory` key — artifacts still arrive via workerUses' capability.
   workerUses: [featuresCapability],
-  workerContext: { artifacts: artifactListContext },
+  workerContext: {},
   instructions: resolveModePrompt,
 });

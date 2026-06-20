@@ -6,8 +6,9 @@
  * resources, clientData, and tool-use. This file is the flow's public surface —
  * the `defineFlow` action map plus session/user/resources/voice/request wiring.
  * The implementation lives by action: `run/` (the chat turn), `shared/`
- * (schemas, context, capabilities reused across actions), and the single-file
- * root actions (`save-artifact`, `approval-gate`, `task-queue-demo`, `settings`).
+ * (schemas, capabilities reused across actions — artifacts is a capability that
+ * also owns the `saveArtifact` action), and the single-file root actions
+ * (`approval-gate`, `task-queue-demo`, `settings`).
  *
  * Pipeline (see run/run.ts):
  *   applyRequestedMode → applyFeatures → skillActivator → resolveThinkingStyle
@@ -17,7 +18,7 @@
 import { defineFlow } from "@flow-state-dev/core";
 
 import { runSequencer } from "./run/run";
-import { updateArtifact } from "./save-artifact";
+import { updateArtifact } from "./shared/capabilities/artifacts";
 import { setSelectedModelHandler, setThinkingEnabledHandler } from "./settings";
 import { taskQueueDemo } from "./task-queue-demo";
 import { approvalGate } from "./approval-gate";

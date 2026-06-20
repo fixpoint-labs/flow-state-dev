@@ -6,7 +6,7 @@ import {
   readArtifact,
   updateArtifact,
   artifactsCollection
-} from "../flows/chat-agent/save-artifact";
+} from "../flows/chat-agent/shared/capabilities/artifacts";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 
 type ArtifactState = { title: string; summary: string; updatedAt: number };

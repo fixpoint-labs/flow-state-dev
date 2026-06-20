@@ -97,7 +97,6 @@ const messageSchema = z.object({ message: z.string() });
 export const keywordHandler = handler({
   name: "keyword-style-handler",
   inputSchema: messageSchema,
-  outputSchema: z.object({ matched: z.boolean() }),
   sequencerStateSchema: autoClassifyStateSchema,
   sessionStateSchema: thinkingStyleSessionStateSchema,
   execute: async (input, ctx) => {
@@ -123,11 +122,7 @@ export const keywordHandler = handler({
       if (matched !== ctx.session.state.thinkingStyle) {
         await ctx.session.patchState({ thinkingStyle: matched });
       }
-      return { matched: true };
     }
-
-    // returning the match is for tracing purposes, we don't use the output
-    return { matched: false };
   },
 });
 
@@ -188,7 +183,6 @@ export const classifierBlock = utility.intentClassifier({
 const applyClassifiedStyle = handler({
   name: "apply-classified-style",
   inputSchema: classifierOutputSchema,
-  outputSchema: z.object({ style: thinkingStyleSchema }),
   sessionStateSchema: thinkingStyleSessionStateSchema,
   execute: async (input, ctx) => {
     const parsed = thinkingStyleSchema.safeParse(input.category);
@@ -199,8 +193,6 @@ const applyClassifiedStyle = handler({
     if (style !== ctx.session.state.thinkingStyle) {
       await ctx.session.patchState({ thinkingStyle: style });
     }
-    // returning the style is for tracing purposes, we don't use the output
-    return { style };
   },
 });
 
