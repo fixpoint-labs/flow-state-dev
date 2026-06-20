@@ -140,7 +140,10 @@ const BUILT_IN_FALLBACKS: Record<string, ((item: OutputItem) => ReactNode) | und
   reasoning: (item) => renderReasoningFallback(item as ReasoningItem),
   status: (item) => renderStatusFallback(item as StatusItem),
   error: (item) => renderErrorFallback(item as ErrorItem),
-  tool_output: (item) => renderBlockToolOutputFallback(item as ToolOutputItem)
+  tool_output: (item) => renderBlockToolOutputFallback(item as ToolOutputItem),
+  // Default approval card for suspension items — suppressed by renderers.suspension=false,
+  // overridden by a registered custom component, otherwise renders inline.
+  suspension: (item) => createElement(ApprovalRenderer, { item: item as SuspensionItem })
 };
 
 // ---------------------------------------------------------------------------
