@@ -20,10 +20,12 @@ import type {
   MessageItem,
   OutputItem,
   ReasoningItem,
-  StatusItem
+  StatusItem,
+  SuspensionItem
 } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
 import { resolveRenderer } from "../registry/block-renderers";
+import { ApprovalRenderer } from "./ApprovalRenderer";
 
 // ---------------------------------------------------------------------------
 // Props
