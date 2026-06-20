@@ -31,6 +31,7 @@ import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
 import { validateSchedulesConfig } from "../types/schedules";
 import { validateChatConfig } from "../types/chat";
+import { validateWebhookConfig } from "../types/webhooks";
 import { warnDeprecated } from "../helpers/deprecation";
 import { introspectStateKeys } from "../helpers/zod-introspect";
 
@@ -544,6 +545,9 @@ function createFlowInstance(
   const chat = definition.chat;
   validateChatConfig(kind, chat, actions);
 
+  const webhooks = definition.webhooks;
+  validateWebhookConfig(kind, webhooks, actions);
+
   return {
     id: options?.id ?? kind,
     kind,
@@ -563,6 +567,7 @@ function createFlowInstance(
     middleware: options?.middleware ?? definition.middleware,
     mcp,
     chat,
+    webhooks,
     schedules,
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator,
@@ -615,6 +620,7 @@ export function defineFlow<
     middleware: baseInstance.middleware,
     mcp: baseInstance.mcp,
     chat: baseInstance.chat,
+    webhooks: baseInstance.webhooks,
     schedules: baseInstance.schedules,
     tokenCounter: baseInstance.tokenCounter,
     costEstimator: baseInstance.costEstimator,

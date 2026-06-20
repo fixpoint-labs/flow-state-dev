@@ -24,6 +24,8 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
   → [Inbound Transports](../architecture/inbound-transports.md)
 - Scheduled actions: `schedules` config on `defineFlow` (`static` map + dynamic `resolve` hook), `ScheduleConfig`, dispatch route `POST /api/flows/:kind/schedules/:scheduleId/dispatch`
   → [Scheduled Actions](../architecture/scheduled-actions.md)
+- Webhook receivers: `webhooks` config on `defineFlow` (`WebhookConfig` = per-provider `{ on, route }`, `WebhookSubscriptionConfig`, `WebhookEventBinding`), framework-owned `WebhookInboundEvent` (`core`), host-side `WebhookProviderDefinition` (`server`, carries `verify` + crypto), route `POST /api/flows/:kind/webhooks/:provider`, `source: "webhook"`
+  → [Webhook Transport](../architecture/webhook-transport.md)
 
 ## Sequencer Surface (21 methods)
 

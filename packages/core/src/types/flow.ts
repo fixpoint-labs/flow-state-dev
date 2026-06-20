@@ -15,6 +15,7 @@ import type {
 } from "./resource-collection";
 import type { SchedulesConfig } from "./schedules";
 import type { ChatConfig } from "./chat";
+import type { WebhookConfig } from "./webhooks";
 import type { CASOptions } from "./state";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
@@ -390,6 +391,15 @@ export type FlowDefinition<
   chat?: ChatConfig;
 
   /**
+   * Per-flow webhook-transport subscriptions. When set, the
+   * `@flow-state-dev/server` webhook adapter mounts
+   * `POST /api/flows/:kind/webhooks/:provider` and routes verified inbound
+   * events to the named actions. The flow declares routing only; the host
+   * supplies signature verification and payload mechanics at adapter mount.
+   */
+  webhooks?: WebhookConfig;
+
+  /**
    * Per-flow scheduled-action config. When set, the
    * `@flow-state-dev/scheduled` adapter mounts
    * `POST /api/flows/:kind/schedules/:scheduleId/dispatch` for this flow.
@@ -445,6 +455,7 @@ export type FlowInstanceOptions<
   middleware?: Middleware[];
   mcp?: McpConfig;
   chat?: ChatConfig;
+  webhooks?: WebhookConfig;
   schedules?: SchedulesConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
@@ -483,6 +494,7 @@ export type FlowInstance<
   middleware?: Middleware[];
   mcp?: McpConfig;
   chat?: ChatConfig;
+  webhooks?: WebhookConfig;
   schedules?: SchedulesConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
@@ -524,6 +536,7 @@ export type FlowType<
   middleware?: Middleware[];
   mcp?: McpConfig;
   chat?: ChatConfig;
+  webhooks?: WebhookConfig;
   schedules?: SchedulesConfig;
   isolateUserState: boolean;
   isolateOrgState: boolean;

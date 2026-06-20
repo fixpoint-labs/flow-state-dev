@@ -178,6 +178,17 @@ unambiguous at runtime. Every request carries a `source` field on its
 `RequestRecord` for provenance — `http` for the default adapter, set by
 each custom transport for its own.
 
+`createWebhookTransportAdapter({ providers })` mounts
+`POST /api/flows/:kind/webhooks/:provider` and routes verified inbound
+webhooks (Stripe, GitHub, Slack Events, any signed POST) to the action a flow
+declared in its `webhooks` config. The flow declares routing only; the host
+supplies signature verification and payload mechanics per provider at the
+mount, keeping secrets out of the flow definition. `stripeWebhookVerifier`,
+`githubWebhookVerifier`, `slackWebhookVerifier`, and `createWebhookVerifier`
+cover the common signature formats; each accepts a string secret or a
+`() => string` getter. See the
+[webhook receivers reference](https://flow-state.dev/docs/server/webhooks).
+
 See the [inbound transports reference](https://flow-state.dev/docs/advanced/inbound-transports)
 for the full contract reference and a walk-through of authoring a custom
 adapter.

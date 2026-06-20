@@ -219,6 +219,14 @@ export { validateScheduleConfig, validateSchedulesConfig } from "./types/schedul
 export type { ChatConfig, ChatEventBinding } from "./types/chat";
 export { validateChatConfig } from "./types/chat";
 export type {
+  WebhookConfig,
+  WebhookEventBinding,
+  WebhookInboundEvent,
+  WebhookRouteResult,
+  WebhookSubscriptionConfig
+} from "./types/webhooks";
+export { defineWebhookBinding, validateWebhookConfig } from "./types/webhooks";
+export type {
   TokenCounter,
 } from "./types/tokens";
 export type {

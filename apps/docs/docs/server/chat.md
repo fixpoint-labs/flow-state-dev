@@ -15,6 +15,10 @@ If you're building anything past a single-flow demo, the part that matters
 is this: a flow declares which chat events trigger which of its actions,
 directly on the flow definition. You read one file to know what fires it.
 
+This is the transport for real-time conversation. For asynchronous
+service-to-service notifications — Slack's Events API, Stripe, GitHub — use
+the [webhook transport](./webhooks.md) instead.
+
 ## Install and mount
 
 ```bash

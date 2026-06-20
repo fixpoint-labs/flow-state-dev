@@ -178,6 +178,14 @@ covers.
 `toleranceSeconds`. For GitHub-style `sha256=<hex>` headers, use
 `format: "raw"` with `prefix: "sha256="`.
 
+If you're mounting the [webhook transport](./webhooks.md), you usually don't
+write this resolver at all. The webhook adapter does signature verification
+itself, per provider, at the mount — `stripeWebhookVerifier`,
+`githubWebhookVerifier`, `slackWebhookVerifier`, and `createWebhookVerifier`
+wrap the same HMAC machinery shown here. Reach for `createHmacVerifier` inside
+`resolvePrincipal` only when you're handling a signed POST through the plain
+HTTP transport rather than the webhook transport.
+
 ### MCP / API token over Authorization header
 
 ```ts

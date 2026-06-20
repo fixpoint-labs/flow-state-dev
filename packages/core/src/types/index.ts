@@ -81,6 +81,16 @@ export type { ChatConfig, ChatEventBinding } from "./chat";
 export { validateChatConfig } from "./chat";
 
 export type {
+  WebhookConfig,
+  WebhookEventBinding,
+  WebhookInboundEvent,
+  WebhookRouteResult,
+  WebhookSubscriptionConfig
+} from "./webhooks";
+
+export { defineWebhookBinding, validateWebhookConfig } from "./webhooks";
+
+export type {
   CompositeVoiceProviderConfig,
   ListVoicesCapable,
   SpeakCapable,
