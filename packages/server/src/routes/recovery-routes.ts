@@ -21,6 +21,22 @@ type ContinueRouteContext = RecoveryRouteContext & {
   host: InboundTransportHost;
 };
 
+/**
+ * True when the named action exists on the flow and is marked `internal`
+ * (dispatch-only). Used by the retry/continue routes to keep an internal
+ * action — e.g. a webhook/chat-only handler synthesized from an inline binding
+ * block — off the public re-dispatch surface, matching the action endpoint.
+ * A missing flow returns false: there's nothing to re-dispatch, and the
+ * downstream recovery path reports that on its own.
+ */
+function isInternalAction(
+  registry: FlowRegistry,
+  flowKind: string,
+  actionName: string
+): boolean {
+  return registry.get(flowKind)?.actions[actionName]?.internal === true;
+}
+
 export async function handleRetryRequest(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "retry_request" }>,
@@ -55,6 +71,17 @@ export async function handleRetryRequest(
     return jsonResponse(400, {
       error: `Flow kind mismatch: request belongs to "${originalRecord.flowKind}", not "${route.flowKind}"`
     });
+  }
+
+  // An internal action (e.g. a webhook/chat-only handler synthesized from an
+  // inline binding `block`) is dispatch-only: it must not be re-runnable from a
+  // public HTTP surface. Retry is the sharpest case — `inputOverride` would feed
+  // the handler attacker-controlled input without the transport's signature
+  // check. Hide it like the action endpoint does (`handleExecuteAction`),
+  // returning the same not-found shape as a missing record so internal-action
+  // requests are indistinguishable from nonexistent ones here.
+  if (isInternalAction(ctx.registry, originalRecord.flowKind, originalRecord.actionName)) {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
   // Parse optional input override
@@ -135,6 +162,12 @@ export async function handleContinueRequest(
     return jsonResponse(400, {
       error: `Flow kind mismatch: request belongs to "${originalRecord.flowKind}", not "${route.flowKind}"`
     });
+  }
+
+  // Internal actions are dispatch-only and must not be re-entered from a public
+  // HTTP surface — see `handleRetryRequest`. Treat as not found.
+  if (isInternalAction(ctx.registry, originalRecord.flowKind, originalRecord.actionName)) {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
   // The route is session-scoped; continuing mutates an existing record's

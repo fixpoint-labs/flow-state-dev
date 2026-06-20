@@ -279,52 +279,51 @@ function synthesizeTransportActions(
     synthesized[name] = { block, internal: true };
   };
 
+  // Validation guarantees `action` XOR `block`, so a present `block` is always
+  // the inline form. Rewrite each such binding to reference its synthesized
+  // action; pass action-form bindings through untouched.
   let nextChat = chat;
   if (chat?.on !== undefined) {
     const rewrittenOn: Record<string, ChatEventBinding> = {};
-    let changed = false;
     for (const [eventKey, binding] of Object.entries(chat.on)) {
-      if (binding.block !== undefined && binding.action === undefined) {
+      if (binding.block !== undefined) {
         const name = `__chat.${eventKey}`;
         register(name, binding.block);
         const { block: _block, action: _action, ...rest } = binding;
         rewrittenOn[eventKey] = { ...rest, action: name };
-        changed = true;
       } else {
         rewrittenOn[eventKey] = binding;
       }
     }
-    if (changed) nextChat = { ...chat, on: rewrittenOn };
+    nextChat = { ...chat, on: rewrittenOn };
   }
 
   let nextWebhooks = webhooks;
   if (webhooks !== undefined) {
     const rewrittenProviders: WebhookConfig = {};
-    let changed = false;
     for (const [provider, sub] of Object.entries(webhooks)) {
       if (sub.on === undefined) {
         rewrittenProviders[provider] = sub;
         continue;
       }
       const rewrittenOn: Record<string, WebhookEventBinding> = {};
-      let providerChanged = false;
       for (const [eventKey, binding] of Object.entries(sub.on)) {
-        if (binding.block !== undefined && binding.action === undefined) {
+        if (binding.block !== undefined) {
           const name = `__wh.${provider}.${eventKey}`;
           register(name, binding.block);
           const { block: _block, action: _action, ...rest } = binding;
           rewrittenOn[eventKey] = { ...rest, action: name };
-          providerChanged = true;
         } else {
           rewrittenOn[eventKey] = binding;
         }
       }
-      rewrittenProviders[provider] = providerChanged ? { ...sub, on: rewrittenOn } : sub;
-      if (providerChanged) changed = true;
+      rewrittenProviders[provider] = { ...sub, on: rewrittenOn };
     }
-    if (changed) nextWebhooks = rewrittenProviders;
+    nextWebhooks = rewrittenProviders;
   }
 
+  // Nothing synthesized → return the inputs unchanged so flows without inline
+  // blocks are wholly unaffected (the rewritten copies above are discarded).
   if (Object.keys(synthesized).length === 0) {
     return { actions, chat, webhooks };
   }

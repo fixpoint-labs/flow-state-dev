@@ -979,5 +979,79 @@ describe("createFlowApiRouter", () => {
       const body = (await response.json()) as { error: string };
       expect(body.error).toContain("Unknown action");
     });
+
+    // A webhook dispatch persists a retryable request record for its internal
+    // action. The retry endpoint must not re-run it — re-dispatch there carries
+    // no signature check and accepts an `inputOverride`, which would let an HTTP
+    // caller feed a webhook-only handler arbitrary input.
+    it("returns 404 when retrying a failed internal-action request", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeWebhookBlockFlow());
+      const stores = createInMemoryStores();
+      const router = createFlowApiRouter({ registry, stores });
+
+      const now = Date.now();
+      await stores.request.set(
+        "req_wh",
+        {
+          id: "req_wh",
+          flowKind: "wh-internal",
+          actionName: "__wh.stripe.invoice.paid",
+          sessionId: "sess_wh",
+          userId: "system",
+          status: "failed",
+          startedAtMs: now,
+          state: {},
+          version: 0,
+          createdAt: now,
+          updatedAt: now
+        },
+        "any"
+      );
+
+      const response = await router.POST(
+        new Request("http://localhost/api/flows/wh-internal/sessions/sess_wh/requests/req_wh/retry", {
+          method: "POST",
+          body: JSON.stringify({ inputOverride: { id: "attacker" } })
+        }),
+        { params: { path: ["wh-internal", "sessions", "sess_wh", "requests", "req_wh", "retry"] } }
+      );
+      expect(response.status).toBe(404);
+    });
+
+    it("returns 404 when continuing an interrupted internal-action request", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeWebhookBlockFlow());
+      const stores = createInMemoryStores();
+      const router = createFlowApiRouter({ registry, stores });
+
+      const now = Date.now();
+      await stores.request.set(
+        "req_wh2",
+        {
+          id: "req_wh2",
+          flowKind: "wh-internal",
+          actionName: "__wh.stripe.invoice.paid",
+          sessionId: "sess_wh2",
+          userId: "system",
+          status: "interrupted",
+          startedAtMs: now,
+          state: {},
+          version: 0,
+          createdAt: now,
+          updatedAt: now
+        },
+        "any"
+      );
+
+      const response = await router.POST(
+        new Request("http://localhost/api/flows/wh-internal/sessions/sess_wh2/requests/req_wh2/continue", {
+          method: "POST",
+          body: "{}"
+        }),
+        { params: { path: ["wh-internal", "sessions", "sess_wh2", "requests", "req_wh2", "continue"] } }
+      );
+      expect(response.status).toBe(404);
+    });
   });
 });

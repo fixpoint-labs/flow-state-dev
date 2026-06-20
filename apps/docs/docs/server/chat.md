@@ -119,10 +119,10 @@ chat: {
 
 A binding declares exactly one of `action` or `block`; declaring both, or
 neither, throws at registration. The block runs through the full dispatch
-runtime — lifecycle, state, items, request records — exactly like a named
-action, but it has no HTTP or MCP surface, so it can only fire through this chat
-subscription. It does not appear in the flow's listed actions. This mirrors the
-[webhook transport's webhook-only handlers](./webhooks.md#webhook-only-handlers).
+runtime — lifecycle, state, items, request records, DevTool — exactly like a
+named action, but it has no HTTP or MCP surface, so it can only fire through this
+chat subscription. It does not appear in the flow's listed actions. This mirrors
+the [webhook transport's webhook-only handlers](./webhooks.md#webhook-only-handlers).
 
 ### Typed events with `defineChatBinding`
 
