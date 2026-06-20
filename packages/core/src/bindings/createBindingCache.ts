@@ -1,4 +1,4 @@
-import type { BindingCacheOptions, BindingProvider } from "@flow-state-dev/core";
+import type { BindingCacheOptions, BindingProvider } from "../types/binding";
 
 type CacheEntry<T> = {
   binding: T;

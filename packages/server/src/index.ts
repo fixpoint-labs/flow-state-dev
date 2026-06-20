@@ -170,7 +170,6 @@ export {
   type TTSEmitterHook
 } from "./voice";
 
-export { createBindingCache, type CachedBindingProvider } from "./bindings";
 export * from "./middleware";
 
 export { createCheckpointDurabilityProvider } from "./durability/checkpoint-durability-provider";
