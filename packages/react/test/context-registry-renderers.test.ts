@@ -11,24 +11,6 @@ import {
   type RendererRegistry
 } from "../src/registry/block-renderers";
 
-// Minimal SuspensionItem fixture for registry/ItemRenderer tests.
-function makeSuspensionItem(overrides: Partial<SuspensionItem> = {}): SuspensionItem {
-  return {
-    id: "sus_1",
-    type: "suspension",
-    suspensionId: "susp_abc",
-    suspensionStatus: "pending",
-    reason: "human_approval",
-    message: "Please approve this action.",
-    status: "completed",
-    requestId: "req_1",
-    itemIndex: 0,
-    provenance: { blockName: "gate", blockInstanceId: "gate_1", phase: "main" },
-    ts: 1000,
-    ...overrides
-  };
-}
-
 describe("FlowContext legacy helpers", () => {
   it("sets, reads, and restores context values", () => {
     setFlowContext({

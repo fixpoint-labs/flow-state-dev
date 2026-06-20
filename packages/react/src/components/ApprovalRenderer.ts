@@ -34,13 +34,22 @@ export interface ApprovalRendererProps {
   /** The suspension item to render an approval card for. */
   item: SuspensionItem;
   /**
+   * When true, both buttons are disabled and show a resolved state. Use this
+   * when a `suspension_resume` item has already arrived for this suspension
+   * (e.g. pass `!view.pending` from a `useSuspensions` result) to prevent
+   * duplicate resume calls.
+   */
+  isResolved?: boolean;
+  /**
    * Optional override for the approve action. When supplied, replaces the
-   * component's internal resumeSuspension call.
+   * component's internal resumeSuspension call. Only the Approve button is
+   * enabled when this is provided without a matching `flowKind`.
    */
   onApprove?: (data?: unknown) => void | Promise<unknown>;
   /**
    * Optional override for the reject action. When supplied, replaces the
-   * component's internal resumeSuspension call.
+   * component's internal resumeSuspension call. Only the Reject button is
+   * enabled when this is provided without a matching `flowKind`.
    */
   onReject?: (data?: unknown) => void | Promise<unknown>;
 }
@@ -55,9 +64,13 @@ export interface ApprovalRendererProps {
  * Reads FlowContext for resume credentials. If FlowContext.flowKind is absent
  * and no onApprove/onReject handlers are supplied, buttons render disabled with
  * a console.warn (cannot resume without flowKind on <FlowProvider>).
+ *
+ * Pass `isResolved={!view.pending}` from a `useSuspensions` result to disable
+ * both buttons once the suspension has been resolved, preventing duplicate
+ * resume calls (which would otherwise result in 409 responses).
  */
 export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
-  const { item, onApprove, onReject } = props;
+  const { item, isResolved = false, onApprove, onReject } = props;
   const { flowKind, baseUrl, userId } = useFlowContext();
 
   const [isResolving, setIsResolving] = useState(false);
@@ -68,9 +81,12 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
     [baseUrl]
   );
 
-  // When no handlers supplied, check we have a flowKind to call resume with.
-  const hasHandlers = onApprove !== undefined || onReject !== undefined;
-  const canResume = hasHandlers || (flowKind !== undefined && flowKind.length > 0);
+  // Compute per-action capability so a single supplied handler doesn't enable
+  // the other button (e.g. onApprove only → Reject stays disabled).
+  const hasFlowKind = flowKind !== undefined && flowKind.length > 0;
+  const canApprove = !isResolved && (onApprove !== undefined || hasFlowKind);
+  const canReject = !isResolved && (onReject !== undefined || hasFlowKind);
+  const canResume = canApprove || canReject;
 
   // Warn once on mount when the card has no way to call resume. useEffect
   // keeps this out of SSR and prevents a flood on every re-render.
@@ -88,7 +104,8 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
 
   const handleAction = useCallback(
     async (action: "approve" | "reject") => {
-      if (!canResume) return;
+      const actionAllowed = action === "approve" ? canApprove : canReject;
+      if (!actionAllowed) return;
 
       if (action === "approve" && onApprove !== undefined) {
         await onApprove();
@@ -100,12 +117,12 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
       }
 
       // Self-contained path: call the recovery client directly.
-      if (flowKind === undefined || flowKind.length === 0) return;
+      if (!hasFlowKind) return;
 
       setIsResolving(true);
       setResolveError(null);
       try {
-        await recoveryClient.resumeSuspension(flowKind, item.requestId, {
+        await recoveryClient.resumeSuspension(flowKind!, item.requestId, {
           suspensionId: item.suspensionId,
           action,
           resumedBy: userId
@@ -116,10 +133,11 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
         setIsResolving(false);
       }
     },
-    [canResume, flowKind, item.requestId, item.suspensionId, userId, recoveryClient, onApprove, onReject]
+    [canApprove, canReject, hasFlowKind, flowKind, item.requestId, item.suspensionId, userId, recoveryClient, onApprove, onReject]
   );
 
-  const isDisabled = !canResume || isResolving;
+  const isApproveDisabled = !canApprove || isResolving;
+  const isRejectDisabled = !canReject || isResolving;
 
   return createElement(
     "div",
@@ -147,7 +165,8 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
       { style: { color: "red", fontSize: 12, margin: "0 0 8px 0" } },
       resolveError
     ),
-    // Approve / Reject buttons
+    // Approve / Reject buttons — each uses its own per-action disabled state so
+    // supplying only onApprove doesn't falsely enable the Reject button.
     createElement(
       "div",
       { style: { display: "flex", gap: 8 } },
@@ -155,14 +174,14 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
         "button",
         {
           type: "button",
-          disabled: isDisabled,
+          disabled: isApproveDisabled,
           onClick: () => { void handleAction("approve"); },
           style: {
             padding: "4px 12px",
             borderRadius: 4,
             border: "1px solid #d1d5db",
-            background: isDisabled ? "#f3f4f6" : "#fff",
-            cursor: isDisabled ? "not-allowed" : "pointer",
+            background: isApproveDisabled ? "#f3f4f6" : "#fff",
+            cursor: isApproveDisabled ? "not-allowed" : "pointer",
             fontSize: 13
           }
         },
@@ -172,14 +191,14 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
         "button",
         {
           type: "button",
-          disabled: isDisabled,
+          disabled: isRejectDisabled,
           onClick: () => { void handleAction("reject"); },
           style: {
             padding: "4px 12px",
             borderRadius: 4,
             border: "1px solid #d1d5db",
-            background: isDisabled ? "#f3f4f6" : "#fff",
-            cursor: isDisabled ? "not-allowed" : "pointer",
+            background: isRejectDisabled ? "#f3f4f6" : "#fff",
+            cursor: isRejectDisabled ? "not-allowed" : "pointer",
             fontSize: 13
           }
         },
