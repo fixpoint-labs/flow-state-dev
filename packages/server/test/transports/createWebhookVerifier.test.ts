@@ -166,4 +166,22 @@ describe("createWebhookVerifier", () => {
     // Secret getter is memoized after the first call.
     expect(calls).toBe(1);
   });
+
+  it("memoizes the slackWebhookVerifier getter secret across calls", () => {
+    let calls = 0;
+    const verify = slackWebhookVerifier(() => {
+      calls += 1;
+      return SECRET;
+    });
+    const now = Math.floor(Date.now() / 1000);
+    const base = new TextEncoder().encode(`v0:${now}:`);
+    const payload = new Uint8Array(base.length + BODY.length);
+    payload.set(base, 0);
+    payload.set(BODY, base.length);
+    const sig = `v0=${createHmac("sha256", SECRET).update(payload).digest("hex")}`;
+    const h = headers({ "x-slack-signature": sig, "x-slack-request-timestamp": String(now) });
+    expect(verify(BODY, h)).toBe(true);
+    expect(verify(BODY, h)).toBe(true);
+    expect(calls).toBe(1);
+  });
 });

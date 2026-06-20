@@ -100,6 +100,9 @@ export function slackWebhookVerifier(
 ): WebhookVerifier {
   const toleranceSeconds = options.toleranceSeconds ?? 300;
   const now = options.now ?? (() => Math.floor(Date.now() / 1000));
+  // Resolve a getter secret once, matching createWebhookVerifier's memoization,
+  // so a secrets-manager-backed getter isn't hit on every inbound webhook.
+  let resolvedSecret: string | undefined;
   return (rawBody, headers) => {
     const signature = headers.get("x-slack-signature");
     const timestampHeader = headers.get("x-slack-request-timestamp");
@@ -120,7 +123,9 @@ export function slackWebhookVerifier(
     signedPayload.set(prefix, 0);
     signedPayload.set(rawBody, prefix.length);
 
-    const resolvedSecret = typeof secret === "function" ? secret() : secret;
+    if (resolvedSecret === undefined) {
+      resolvedSecret = typeof secret === "function" ? secret() : secret;
+    }
     const expected = `v0=${createHmac("sha256", resolvedSecret).update(signedPayload).digest("hex")}`;
     return constantTimeStringEqual(signature, expected);
   };

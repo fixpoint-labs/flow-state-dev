@@ -79,8 +79,20 @@ export async function handleWebhook(
   };
 
   // 4. Provider handshake (e.g. Slack url_verification) short-circuits dispatch.
+  //    A throwing `acknowledge` is treated as "no handshake" and routing
+  //    continues — consistent with the other pre-dispatch callbacks, never a 5xx.
   if (def.acknowledge) {
-    const ack = def.acknowledge(event);
+    let ack: BodyInit | null;
+    try {
+      ack = def.acknowledge(event);
+    } catch (err) {
+      host.logger?.warn?.("webhook `acknowledge` threw — skipping handshake", {
+        provider,
+        eventType,
+        error: errorMessage(err)
+      });
+      ack = null;
+    }
     if (ack !== null) {
       return new Response(ack, { status: 200 });
     }
@@ -175,9 +187,21 @@ export async function handleWebhook(
 
   // Wait for durable request recording (when the dispatcher surfaces it) before
   // acking, so a crash after the 202 doesn't silently drop the delivery. The
-  // action itself still runs asynchronously; we never await `finished`.
+  // action itself still runs asynchronously; we never await `finished`. A
+  // rejection means the request was not durably recorded (the action did not
+  // durably start), so a 503 lets the provider retry safely; the underlying
+  // error is logged rather than returned, to avoid leaking store internals.
   if (handle.accepted) {
-    await handle.accepted;
+    try {
+      await handle.accepted;
+    } catch (err) {
+      host.logger?.error?.("webhook dispatch was not durably recorded", {
+        provider,
+        eventType,
+        error: errorMessage(err)
+      });
+      return jsonResponse(503, { error: "dispatch_not_durable" });
+    }
   }
 
   return jsonResponse(202, {

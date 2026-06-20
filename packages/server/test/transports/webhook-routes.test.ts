@@ -259,6 +259,52 @@ describe("handleWebhook", () => {
     expect(dispatched).toHaveLength(0);
   });
 
+  it("does not 500 when `acknowledge` throws — falls through to routing", async () => {
+    const { host, dispatched } = captureHost(billingFlow());
+    const provider: WebhookProviderDefinition = {
+      ...stripeProvider,
+      acknowledge: () => {
+        throw new Error("ack bug");
+      }
+    };
+    const res = await handleWebhook(
+      stripeRequest({ type: "invoice.paid", id: "evt_1", data: { object: { id: "in_1", customer: "cus_9" } } }),
+      { params },
+      host,
+      { stripe: provider }
+    );
+    expect(res.status).toBe(202);
+    expect(dispatched).toHaveLength(1);
+  });
+
+  it("returns 503 when handle.accepted rejects (durable recording failed)", async () => {
+    const flow = billingFlow();
+    const host = {
+      registry: {
+        get: (kind: string) => (kind === flow.kind ? flow : undefined),
+        list: () => [flow]
+      },
+      stores: createInMemoryStores(),
+      resolvePrincipal: async () => ({ userId: "system" }),
+      validateDispatch: async () => undefined,
+      dispatch: () => ({
+        requestId: "req_1",
+        accepted: Promise.reject(new Error("durable write failed")),
+        finished: Promise.resolve({}),
+        liveStream: null,
+        responseEmitter: {}
+      })
+    } as unknown as InboundTransportHost;
+    const res = await handleWebhook(
+      stripeRequest({ type: "invoice.paid", id: "e", data: { object: { id: "in", customer: "c" } } }),
+      { params },
+      host,
+      { stripe: stripeProvider }
+    );
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: "dispatch_not_durable" });
+  });
+
   it("returns 404 for an unknown flow", async () => {
     const { host } = captureHost(billingFlow());
     const res = await handleWebhook(
