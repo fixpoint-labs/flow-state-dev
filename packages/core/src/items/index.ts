@@ -54,6 +54,8 @@ export {
 } from "./task-attribution";
 
 export {
+  isSuspensionItem,
+  isSuspensionResumeItem,
   whenAnyItem,
   whenResourceChanged,
   whenResourceMatching
