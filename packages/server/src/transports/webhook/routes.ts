@@ -66,9 +66,32 @@ export async function handleWebhook(
     return jsonResponse(400, { error: "invalid_payload" });
   }
 
-  // 3. Build the normalized event.
-  const eventType = def.eventType ? def.eventType(payload, req.headers) : null;
-  const deliveryId = def.deliveryId ? def.deliveryId(payload, req.headers) : undefined;
+  // 3. Build the normalized event. A throwing eventType/deliveryId extractor is
+  //    treated as "not extracted" (logged), consistent with the other host
+  //    callbacks — never a 5xx — and it keeps the `acknowledge` handshake below
+  //    reachable even when the extractor isn't null-safe.
+  let eventType: string | null = null;
+  if (def.eventType) {
+    try {
+      eventType = def.eventType(payload, req.headers);
+    } catch (err) {
+      host.logger?.warn?.("webhook `eventType` extractor threw — treating as null", {
+        provider,
+        error: errorMessage(err)
+      });
+    }
+  }
+  let deliveryId: string | undefined;
+  if (def.deliveryId) {
+    try {
+      deliveryId = def.deliveryId(payload, req.headers);
+    } catch (err) {
+      host.logger?.warn?.("webhook `deliveryId` extractor threw — omitting", {
+        provider,
+        error: errorMessage(err)
+      });
+    }
+  }
   const event: WebhookInboundEvent = {
     provider,
     eventType,
@@ -168,14 +191,27 @@ export async function handleWebhook(
   }
 
   if (sessionId !== undefined) {
-    await ensureSessionForWebhook({
-      stores: host.stores,
-      sessionId,
-      flowKind,
-      principal,
-      provider,
-      eventType
-    });
+    try {
+      await ensureSessionForWebhook({
+        stores: host.stores,
+        sessionId,
+        flowKind,
+        principal,
+        provider,
+        eventType
+      });
+    } catch (err) {
+      // The session store is unavailable; the action can't run coherently
+      // without its session. A 503 lets the provider retry once the store
+      // recovers; the underlying error is logged, not leaked in the body.
+      host.logger?.error?.("webhook session upsert failed", {
+        provider,
+        eventType,
+        sessionId,
+        error: errorMessage(err)
+      });
+      return jsonResponse(503, { error: "session_unavailable" });
+    }
   }
 
   let handle;

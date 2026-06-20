@@ -305,6 +305,85 @@ describe("handleWebhook", () => {
     expect(await res.json()).toMatchObject({ error: "dispatch_not_durable" });
   });
 
+  it("treats a throwing `eventType` extractor as null and keeps the handshake reachable", async () => {
+    const { host, dispatched } = captureHost(billingFlow());
+    const provider: WebhookProviderDefinition = {
+      verify: () => true,
+      eventType: () => {
+        throw new Error("eventType bug");
+      },
+      acknowledge: (e) =>
+        (e.payload as { type: string }).type === "url_verification"
+          ? (e.payload as { challenge: string }).challenge
+          : null
+    };
+    const res = await handleWebhook(
+      stripeRequest({ type: "url_verification", challenge: "abc123" }),
+      { params },
+      host,
+      { stripe: provider }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("abc123");
+    expect(dispatched).toHaveLength(0);
+  });
+
+  it("omits deliveryId and still dispatches when the `deliveryId` extractor throws", async () => {
+    const { host, dispatched } = captureHost(billingFlow());
+    const provider: WebhookProviderDefinition = {
+      verify: () => true,
+      eventType: (p) => (p as { type: string }).type,
+      deliveryId: () => {
+        throw new Error("deliveryId bug");
+      }
+    };
+    await handleWebhook(
+      stripeRequest({ type: "invoice.paid", id: "evt_1", data: { object: { id: "in_1", customer: "cus_9" } } }),
+      { params },
+      host,
+      { stripe: provider }
+    );
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]!.metadata).toEqual({
+      webhook: { provider: "stripe", eventType: "invoice.paid" }
+    });
+  });
+
+  it("returns 503 when the session store fails during ensure-session", async () => {
+    const flow = billingFlow();
+    const host = {
+      registry: {
+        get: (kind: string) => (kind === flow.kind ? flow : undefined),
+        list: () => [flow]
+      },
+      stores: {
+        session: {
+          get: async () => {
+            throw new Error("store down");
+          },
+          set: async () => undefined
+        }
+      },
+      resolvePrincipal: async () => ({ userId: "system" }),
+      validateDispatch: async () => undefined,
+      dispatch: () => ({
+        requestId: "req_1",
+        accepted: Promise.resolve(),
+        finished: Promise.resolve({}),
+        liveStream: null,
+        responseEmitter: {}
+      })
+    } as unknown as InboundTransportHost;
+    const res = await handleWebhook(
+      stripeRequest({ type: "invoice.paid", id: "e", data: { object: { id: "in", customer: "cus_9" } } }),
+      { params },
+      host,
+      { stripe: stripeProvider }
+    );
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: "session_unavailable" });
+  });
+
   it("returns 404 for an unknown flow", async () => {
     const { host } = captureHost(billingFlow());
     const res = await handleWebhook(
