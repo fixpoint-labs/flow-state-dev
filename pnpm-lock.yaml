@@ -565,9 +565,6 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
-      '@flow-state-dev/server':
-        specifier: workspace:*
-        version: link:../server
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing
