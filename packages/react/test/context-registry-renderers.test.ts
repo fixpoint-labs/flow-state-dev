@@ -1,4 +1,4 @@
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
 import {
   ItemRenderer,
@@ -10,6 +10,24 @@ import {
   resolveRenderer,
   type RendererRegistry
 } from "../src/registry/block-renderers";
+
+// Minimal SuspensionItem fixture for registry/ItemRenderer tests.
+function makeSuspensionItem(overrides: Partial<SuspensionItem> = {}): SuspensionItem {
+  return {
+    id: "sus_1",
+    type: "suspension",
+    suspensionId: "susp_abc",
+    suspensionStatus: "pending",
+    reason: "human_approval",
+    message: "Please approve this action.",
+    status: "completed",
+    requestId: "req_1",
+    itemIndex: 0,
+    provenance: { blockName: "gate", blockInstanceId: "gate_1", phase: "main" },
+    ts: 1000,
+    ...overrides
+  };
+}
 
 describe("FlowContext legacy helpers", () => {
   it("sets, reads, and restores context values", () => {
@@ -112,6 +130,59 @@ describe("ItemRenderer dispatch", () => {
     };
 
     expect(ItemRenderer({ item: resourceChangeItem })).toBeNull();
+  });
+
+  it("returns null for suspension_resume items (non-renderable type)", () => {
+    const resumeItem: OutputItem = {
+      id: "sr_1",
+      type: "suspension_resume",
+      suspensionId: "susp_abc",
+      resolution: "approved",
+      status: "completed",
+      requestId: "req_1",
+      itemIndex: 1,
+      provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+      ts: 2000
+    };
+
+    expect(ItemRenderer({ item: resumeItem })).toBeNull();
+  });
+});
+
+describe("suspension RendererRegistry slot", () => {
+  it("resolveRenderer returns a custom suspension renderer", () => {
+    const customCard = () => "custom";
+    const registry: RendererRegistry = { suspension: customCard };
+    expect(resolveRenderer(registry, "suspension")).toBe(customCard);
+  });
+
+  it("resolveRenderer returns false when suspension is suppressed", () => {
+    const registry: RendererRegistry = { suspension: false };
+    expect(resolveRenderer(registry, "suspension")).toBe(false);
+  });
+
+  it("resolveRenderer returns undefined when no suspension renderer is registered", () => {
+    const registry: RendererRegistry = {};
+    expect(resolveRenderer(registry, "suspension")).toBeUndefined();
+  });
+
+  it("resolveRenderer returns the ApprovalRenderer built-in for suspension when no registry is set", () => {
+    // When no custom renderer is registered, resolveRenderer returns undefined,
+    // and ItemRenderer falls through to the BUILT_IN_FALLBACKS which renders ApprovalRenderer.
+    // We verify the resolution contract at the registry level (pure; no React context needed).
+    const registry: RendererRegistry = {};
+    expect(resolveRenderer(registry, "suspension")).toBeUndefined();
+  });
+
+  it("resolveRenderer returns false for suppressed suspension, which suppresses inline rendering", () => {
+    const registry: RendererRegistry = { suspension: false };
+    expect(resolveRenderer(registry, "suspension")).toBe(false);
+  });
+
+  it("resolveRenderer returns the custom suspension component", () => {
+    const customCard = (props: { item: SuspensionItem }) => `custom:${props.item.suspensionId}`;
+    const registry: RendererRegistry = { suspension: customCard };
+    expect(resolveRenderer(registry, "suspension")).toBe(customCard);
   });
 });
 

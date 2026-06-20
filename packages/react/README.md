@@ -191,6 +191,48 @@ Low-level hook for direct action execution without session management.
 
 Low-level hook for subscribing to a request's SSE stream with reactive item/status views.
 
+### `useSuspensions(session, options?)`
+
+Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` by `suspensionId` and exposes `approve`/`reject` callbacks.
+
+```tsx
+const { pending, approve, reject, error } = useSuspensions(session, {
+  reasons: ["human_approval"],  // optional filter
+});
+
+// Render headless approval UI
+pending.map(({ item }) => (
+  <ApprovalSidebar
+    key={item.suspensionId}
+    message={item.message}
+    onApprove={() => approve(item.suspensionId)}
+    onReject={() => reject(item.suspensionId)}
+  />
+));
+```
+
+Returns `{ suspensions, pending, approve, reject, error }`. Each `SuspensionView` has `{ item, status, pending, resumeData, resolvedBy, isResolving }`.
+
+### `<ApprovalRenderer>`
+
+The default approval card for `suspension` items. Used by `ItemRenderer` as the built-in fallback. Can be imported directly for headless layouts:
+
+```tsx
+import { ApprovalRenderer } from "@flow-state-dev/react";
+
+// Inline with auto-resume from FlowContext (requires flowKind on <FlowProvider>)
+<ApprovalRenderer item={suspensionItem} />
+
+// With explicit handlers from useSuspensions
+<ApprovalRenderer
+  item={suspensionItem}
+  onApprove={(data) => approve(suspensionItem.suspensionId, data)}
+  onReject={(data) => reject(suspensionItem.suspensionId, data)}
+/>
+```
+
+Suppress inline rendering and use your own layout with `renderers={{ suspension: false }}` on `<FlowProvider>`.
+
 ## Voice playback
 
 `useVoice` covers both whole-buffer playback (one buffer per `OutputAudioContent` from batch providers like OpenAI) and streaming playback (per-chunk audio via `content.audio.delta` from streaming providers). The audio player handles both modes transparently — flow authors don't change anything to opt in.

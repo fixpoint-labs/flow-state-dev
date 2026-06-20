@@ -73,6 +73,21 @@ export {
 } from "./hooks/useContainerItems";
 
 export {
+  useSuspensions,
+  deriveSuspensions,
+  resolveSuspension,
+  type ResolveSuspensionArgs,
+  type SuspensionView,
+  type UseSuspensionsOptions,
+  type UseSuspensionsResult
+} from "./hooks/useSuspensions";
+
+export {
+  ApprovalRenderer,
+  type ApprovalRendererProps
+} from "./components/ApprovalRenderer";
+
+export {
   useRequestStream,
   type RequestStreamFilter,
   type UseRequestStreamOptions,

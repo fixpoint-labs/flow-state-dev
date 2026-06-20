@@ -90,7 +90,7 @@ Create a user-scoped event stream client for cross-session notifications.
 
 ### `createRecoveryClient(options)`
 
-Create a client for the request-recovery surface — sweep stale active-request entries and re-dispatch interrupted/failed requests.
+Create a client for the request-recovery surface — sweep stale active-request entries, re-dispatch interrupted/failed requests, and resume suspended flows.
 
 ```ts
 import { createRecoveryClient } from "@flow-state-dev/client";
@@ -108,9 +108,26 @@ const { newRequestId } = await recovery.retry({
   sessionId: "sess_1",
   requestId: "req_1",
 });
+
+// Resolve a pending suspension (approve or reject).
+const result = await recovery.resumeSuspension("chat", "req_1", {
+  suspensionId: "susp_abc",
+  action: "approve",            // or "reject"
+  data: { approved: true },     // optional payload; ctx.suspend() returns this
+  resumedBy: "user_xyz",        // optional; stored on the audit record
+});
+// result.requestId — the request id that will continue (same as the input requestId)
 ```
 
 `retry` returns 409 from the server unless the original request's status is `interrupted` or `failed`.
+
+`resumeSuspension` error codes:
+- **400** — missing or invalid `action`, or no durability provider configured
+- **404** — unknown `flowKind`, `requestId`, or `suspensionId`
+- **409** — request is not currently suspended, or this suspension is already resolved, or a concurrent resume is in progress
+- **410** — the suspension has expired (`timeoutMs` elapsed)
+
+All failures throw `ClientHttpError` with a `.status` property.
 
 ## Error Handling
 

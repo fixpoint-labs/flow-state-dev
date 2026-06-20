@@ -203,8 +203,63 @@ Type for the renderers map:
 type RendererRegistry = {
   message?: ComponentType<{ item: MessageItem }> | false;
   reasoning?: ComponentType<{ item: ReasoningItem }> | false;
+  suspension?: ComponentType<{ item: SuspensionItem }> | false;
   component?: Record<string, ComponentType<{ item: ComponentItem }>>;
   container?: Record<string, ComponentType<{ item: ContainerItem }>>;
   // ... other item types
 };
 ```
+
+Pass `false` for any slot to suppress its built-in fallback renderer.
+
+## Suspensions
+
+### `useSuspensions(session, options?)`
+
+Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` item by `suspensionId`.
+
+```ts
+const {
+  suspensions,  // SuspensionView[] — all suspensions matching options
+  pending,      // SuspensionView[] — subset where pending === true
+  approve,      // (suspensionId: string, data?: unknown) => Promise<ResumeSuspensionResult>
+  reject,       // (suspensionId: string, data?: unknown) => Promise<ResumeSuspensionResult>
+  error,        // Error | null — most recent failed approve/reject call
+} = useSuspensions(session, {
+  requestId: "req_abc",          // optional: restrict to one request
+  reasons: ["human_approval"],   // optional: restrict by reason
+});
+```
+
+Each `SuspensionView` has:
+
+```ts
+interface SuspensionView {
+  item: SuspensionItem;
+  status: SuspensionStatus;   // "pending" | "approved" | "rejected" | "timed_out" | "expired"
+  pending: boolean;
+  resumeData?: unknown;
+  resolvedBy?: string;
+  isResolving: boolean;       // true while approve/reject is in flight for this suspension
+}
+```
+
+`approve` and `reject` rethrow on failure so callers can branch on the error. The last failure is also captured in `error`.
+
+### `ApprovalRenderer`
+
+The default approval card used by `ItemRenderer` for `type === "suspension"` items.
+
+```tsx
+import { ApprovalRenderer } from "@flow-state-dev/react";
+
+<ApprovalRenderer
+  item={suspensionItem}
+  onApprove={(data) => approve(item.suspensionId, data)}
+  onReject={(data) => reject(item.suspensionId, data)}
+/>
+```
+
+When used inline (inside `<ItemsRenderer>` without explicit handlers), it reads `FlowContext` for `flowKind`, `baseUrl`, and `userId` and calls the resume endpoint directly. Set `flowKind` on `<FlowProvider>` for this path to work.
+
+See [Suspensions and approvals](/docs/client/react#suspensions-and-approvals) for usage patterns.
