@@ -276,7 +276,6 @@ export {
   createAiSdkModelResolver,
   wrapAiSdkModel,
   createModelResolver,
-  createFSDProvider,
   createFallbackModel,
   isRetryableError,
   detectAvailableProviders,
@@ -293,9 +292,6 @@ export type {
   ResolveAiSdkLanguageModel,
   CreateModelResolverOptions,
   IntentDefaults,
-  FSDProviderConfig,
-  FSDProvider,
-  ModelGroupConfig,
   ModelGroupDefaults,
   GatewayConfig,
   GatewayType,
@@ -308,9 +304,6 @@ export type {
   WhenRule,
   ModelSelection,
   ProviderPreference,
-  ResolveOptions,
-  ExplainCandidate,
-  ExplainResult,
   MakeSchemaStrictOptions,
   StrictViolation
 } from "./models";
