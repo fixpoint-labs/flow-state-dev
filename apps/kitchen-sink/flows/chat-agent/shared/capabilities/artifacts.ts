@@ -18,6 +18,13 @@ import {
 /**
  * Context formatter that shows the artifact inventory (title + summary)
  * so the LLM knows what artifacts exist without reading full content.
+ *
+ * Kept local (and `ctx: any`) rather than reusing the exported
+ * `shared/context.ts` copy: the capability's `PresetContextEntry` context slot
+ * and the thinking-style router's generator `context` slot type `ctx`
+ * incompatibly, so a single shared symbol does not typecheck for both. The two
+ * are logically identical; consolidating them needs a ctx-compatible shim and
+ * is tracked as a follow-up.
  */
 const artifactListContext = async (_input: unknown, ctx: any) => {
   const artifacts = ctx.resources.artifacts as ResourceCollectionRef<{
