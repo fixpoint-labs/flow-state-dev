@@ -1037,5 +1037,43 @@ describe("createFlowApiRouter", () => {
       );
       expect(response.status).toBe(404);
     });
+
+    it("returns 404 when resuming a suspended webhook-sourced request", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeWebhookFlow());
+      const stores = createInMemoryStores();
+      const router = createFlowApiRouter({ registry, stores });
+
+      const now = Date.now();
+      await stores.request.set(
+        "req_wh3",
+        {
+          id: "req_wh3",
+          flowKind: "wh-flow",
+          actionName: "wh-flow-paid",
+          sessionId: "sess_wh3",
+          userId: "system",
+          source: "webhook",
+          status: "suspended",
+          startedAtMs: now,
+          state: {},
+          version: 0,
+          createdAt: now,
+          updatedAt: now
+        },
+        "any"
+      );
+
+      // The webhook-source guard rejects before the durability-provider check,
+      // so a webhook request 404s on the resume surface regardless of config.
+      const response = await router.POST(
+        new Request("http://localhost/api/flows/wh-flow/requests/req_wh3/resume", {
+          method: "POST",
+          body: JSON.stringify({ suspensionId: "susp_x", action: "approve", data: { ok: true } })
+        }),
+        { params: { path: ["wh-flow", "requests", "req_wh3", "resume"] } }
+      );
+      expect(response.status).toBe(404);
+    });
   });
 });

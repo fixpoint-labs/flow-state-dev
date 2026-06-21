@@ -1344,10 +1344,14 @@ export async function createExecutionContext<
   // accessor. The flow-level subset loaded at Wave 1 is skipped here (already
   // cached / prefix-seeded).
   // Form-aware: a webhook dispatch's handler lives on `flow.webhooks`, not
-  // `flow.actions`, so resolve through the shared seam (keyed on
-  // `metadata.webhook`) rather than indexing `flow.actions` directly.
-  const dispatchedActionBlock = resolveActionCore(flow, options.actionName, options.metadata)
-    ?.block as
+  // `flow.actions`, so resolve through the shared seam (gated on the webhook
+  // source + keyed on `metadata.webhook`) rather than indexing `flow.actions`.
+  const dispatchedActionBlock = resolveActionCore(
+    flow,
+    options.actionName,
+    options.source,
+    options.metadata
+  )?.block as
     | { declaredResources?: Record<string, ResourceConfig | ResourceCollectionConfig> }
     | undefined;
   if (dispatchedActionBlock?.declaredResources !== undefined) {
@@ -1727,8 +1731,12 @@ export async function createExecutionContext<
     }
 
     const totalConsumed = Object.values(byModel).reduce((acc, model) => acc + model.total, 0);
-    const maxBudget = resolveActionCore(flow, options.actionName, options.metadata)?.tokenBudget
-      ?.maxTotalTokens;
+    const maxBudget = resolveActionCore(
+      flow,
+      options.actionName,
+      options.source,
+      options.metadata
+    )?.tokenBudget?.maxTotalTokens;
 
     return {
       totalConsumed,

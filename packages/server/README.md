@@ -180,8 +180,8 @@ each custom transport for its own.
 
 `createWebhookTransportAdapter({ providers })` mounts
 `POST /api/flows/:kind/webhooks/:provider` and routes verified inbound
-webhooks (Stripe, GitHub, Slack Events, any signed POST) to the action a flow
-declared in its `webhooks` config. The flow declares routing only; the host
+webhooks (Stripe, GitHub, Slack Events, any signed POST) to the handler a flow
+bound in its `webhooks` config. The flow declares routing only; the host
 supplies signature verification and payload mechanics per provider at the
 mount, keeping secrets out of the flow definition. `stripeWebhookVerifier`,
 `githubWebhookVerifier`, `slackWebhookVerifier`, and `createWebhookVerifier`

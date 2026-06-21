@@ -152,7 +152,7 @@ export function validateWebhookConfig(
       );
     }
 
-    if (sub === null || typeof sub !== "object" || sub.on === undefined) {
+    if (sub === null || typeof sub !== "object" || sub.on === null || typeof sub.on !== "object") {
       throw new Error(
         `Flow "${flowKind}" webhook provider "${provider}" must be an object with an ` +
           `\`on\` event map.`

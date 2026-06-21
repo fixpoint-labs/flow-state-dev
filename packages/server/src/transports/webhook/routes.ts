@@ -1,11 +1,11 @@
 /**
  * Request pipeline for the webhook transport. Order of operations is
  * load-bearing: flow + provider lookup → raw body → verify → parse → build
- * event → handshake → route (declarative `on` first, then `route`) → resolve
+ * event → handshake → match the declarative `on[eventType]` binding → resolve
  * input/session → principal → validate → ensure session → fire-and-forget
- * dispatch → 202. The action runs asynchronously, so the 202 returns well
+ * dispatch → 202. The handler runs asynchronously, so the 202 returns well
  * within provider timeout budgets (Slack 3s, GitHub 10s) regardless of how
- * long the action takes.
+ * long the handler takes.
  */
 import type {
   WebhookConfig,
