@@ -11,7 +11,6 @@ import type {
   WebhookConfig,
   WebhookEventBinding,
   WebhookInboundEvent,
-  WebhookRouteResult,
   WebhookSubscriptionConfig
 } from "@flow-state-dev/core/types";
 import type { InboundRequestEnvelope, InboundTransportHost, ResolvedPrincipal } from "../types";
@@ -121,30 +120,22 @@ export async function handleWebhook(
     }
   }
 
-  // 5. Route: declarative `on` wins; `route` is the fallback escape hatch.
-  const routed = routeEvent(sub, event, host.logger);
-  if (routed === null) {
+  // 5. Match the event to a declarative `on` binding.
+  const binding = matchBinding(sub, event, host.logger);
+  if (binding === null) {
     return jsonResponse(202, { status: "ignored", provider, eventType });
   }
 
-  // 6. Resolve the action input and session id.
-  let action: string;
+  // 6. Resolve the handler's input and session id. `action` carries the
+  //    handler block's name purely as provenance on the request record — the
+  //    runtime resolves the actual handler from `flow.webhooks[provider].on`
+  //    via the `metadata.webhook` coordinate, not by this name.
+  const action = binding.block.name;
   let input: unknown;
   let sessionId: string | undefined;
   try {
-    if (routed.kind === "binding") {
-      // `action` is always set here: `defineFlow` synthesizes an internal
-      // action for any inline `block` binding and rewrites the binding to
-      // reference it, so the config this adapter reads never carries a bare
-      // `block`.
-      action = routed.binding.action!;
-      input = await routed.binding.input(event);
-      sessionId = routed.binding.sessionId ? await routed.binding.sessionId(event) : undefined;
-    } else {
-      action = routed.result.action;
-      input = routed.result.input;
-      sessionId = routed.result.sessionId;
-    }
+    input = await binding.input(event);
+    sessionId = binding.sessionId ? await binding.sessionId(event) : undefined;
   } catch (err) {
     return jsonResponse(500, { error: "route_failed", message: errorMessage(err) });
   }
@@ -252,58 +243,32 @@ export async function handleWebhook(
   });
 }
 
-type Routed =
-  | { kind: "binding"; binding: WebhookEventBinding }
-  | { kind: "route"; result: WebhookRouteResult };
-
 /**
- * Match an event to an action. A declarative `on[eventType]` binding whose
- * `when` predicate passes wins; otherwise the imperative `route` is consulted.
+ * Match an event to its declarative `on[eventType]` binding, gated by `when`.
  * Returns `null` when nothing matches (the event is acknowledged and ignored).
  *
- * Matching is best-effort: a throwing `when` predicate or `route` function is a
- * benign routing-logic bug, so it's treated as a non-match (logged), not a 5xx
- * — a 5xx would make providers retry an event that can never route. This
- * mirrors the chat transport's "throwing `when` is a non-match" stance. Throws
- * from `input`/`sessionId` (the post-match invocation phase) stay a hard 500.
+ * Matching is best-effort: a throwing `when` predicate is a benign
+ * routing-logic bug, so it's treated as a non-match (logged), not a 5xx — a
+ * 5xx would make providers retry an event that can never match. This mirrors
+ * the chat transport's "throwing `when` is a non-match" stance. Throws from
+ * `input`/`sessionId` (the post-match invocation phase) stay a hard 500.
  */
-function routeEvent(
+function matchBinding(
   sub: WebhookSubscriptionConfig,
   event: WebhookInboundEvent,
   logger: InboundTransportHost["logger"]
-): Routed | null {
-  if (event.eventType !== null && sub.on !== undefined) {
-    const binding = sub.on[event.eventType];
-    if (binding !== undefined) {
-      let matched: boolean;
-      try {
-        matched = binding.when ? binding.when(event) : true;
-      } catch (err) {
-        logger?.warn?.("webhook `when` predicate threw — treating as non-match", {
-          provider: event.provider,
-          eventType: event.eventType,
-          error: errorMessage(err)
-        });
-        matched = false;
-      }
-      if (matched) return { kind: "binding", binding };
-    }
-  }
-  if (sub.route !== undefined) {
-    let result: WebhookRouteResult | null;
-    try {
-      result = sub.route(event);
-    } catch (err) {
-      logger?.warn?.("webhook `route` threw — acknowledging and ignoring event", {
-        provider: event.provider,
-        eventType: event.eventType,
-        error: errorMessage(err)
-      });
-      return null;
-    }
-    if (result !== null && result !== undefined) {
-      return { kind: "route", result };
-    }
+): WebhookEventBinding | null {
+  if (event.eventType === null) return null;
+  const binding = sub.on[event.eventType];
+  if (binding === undefined) return null;
+  try {
+    if (binding.when ? binding.when(event) : true) return binding;
+  } catch (err) {
+    logger?.warn?.("webhook `when` predicate threw — treating as non-match", {
+      provider: event.provider,
+      eventType: event.eventType,
+      error: errorMessage(err)
+    });
   }
   return null;
 }

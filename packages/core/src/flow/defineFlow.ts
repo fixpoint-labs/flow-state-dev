@@ -30,12 +30,8 @@ import type {
 import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
 import { validateSchedulesConfig } from "../types/schedules";
-import { validateChatConfig, type ChatConfig, type ChatEventBinding } from "../types/chat";
-import {
-  validateWebhookConfig,
-  type WebhookConfig,
-  type WebhookEventBinding
-} from "../types/webhooks";
+import { validateChatConfig } from "../types/chat";
+import { validateWebhookConfig, type WebhookConfig } from "../types/webhooks";
 import { warnDeprecated } from "../helpers/deprecation";
 import { introspectStateKeys } from "../helpers/zod-introspect";
 
@@ -233,121 +229,52 @@ function mergeActions(
 }
 
 /**
- * The action map augmented with one internal action per inline-`block`
- * binding, plus the transport configs rewritten so those bindings reference
- * their synthesized action by name.
+ * Every executable block the flow declares: each caller-addressed action's
+ * block plus each webhook binding's handler block. A webhook binding is an
+ * action in webhook form, carrying its handler inline, so its block must
+ * participate in resource and `requireOrg` aggregation exactly like a
+ * `flow.actions` block — otherwise webhook-declared resources never prefetch
+ * and webhook `requireOrg` is never detected.
  */
-interface SynthesizedTransports {
-  actions: AnyActions;
-  chat: ChatConfig | undefined;
-  webhooks: WebhookConfig | undefined;
-}
-
-/**
- * Lower inline `block` bindings (`chat.on[*].block`,
- * `webhooks[provider].on[*].block`) into synthesized internal actions.
- *
- * For each binding that carries a `block` instead of an `action`, mint an
- * internal `ActionConfig` (`{ block, internal: true }`) under a reserved,
- * collision-checked name and rewrite the binding to reference it. The
- * synthesized action joins `flow.actions`, so it inherits the entire dispatch
- * runtime (lifecycle, state, items, request records, resource prefetch) for
- * free, while `internal: true` keeps it off the public HTTP and MCP surface —
- * a webhook/chat-only handler can only be reached through its verified
- * transport, never the public action endpoint.
- *
- * No-op (returns the inputs unchanged) when no binding declares a `block`.
- * Assumes `validateChatConfig`/`validateWebhookConfig` already ran, so every
- * binding declares exactly one of `action`/`block` and each `block` is an
- * object. Throws when a synthesized name collides with an existing action.
- */
-function synthesizeTransportActions(
-  flowKind: string,
+function actionBlocks(
   actions: AnyActions,
-  chat: ChatConfig | undefined,
   webhooks: WebhookConfig | undefined
-): SynthesizedTransports {
-  const synthesized: AnyActions = {};
-
-  const register = (name: string, block: BlockDefinition): void => {
-    if (name in actions || name in synthesized) {
-      throw new Error(
-        `Flow "${flowKind}" cannot synthesize internal action "${name}" for an inline ` +
-          `binding block — an action with that name already exists. Rename the conflicting action.`
-      );
-    }
-    synthesized[name] = { block, internal: true };
-  };
-
-  // Validation guarantees `action` XOR `block`, so a present `block` is always
-  // the inline form. Rewrite each such binding to reference its synthesized
-  // action; pass action-form bindings through untouched.
-  let nextChat = chat;
-  if (chat?.on !== undefined) {
-    const rewrittenOn: Record<string, ChatEventBinding> = {};
-    for (const [eventKey, binding] of Object.entries(chat.on)) {
-      if (binding.block !== undefined) {
-        const name = `__chat.${eventKey}`;
-        register(name, binding.block);
-        const { block: _block, action: _action, ...rest } = binding;
-        rewrittenOn[eventKey] = { ...rest, action: name };
-      } else {
-        rewrittenOn[eventKey] = binding;
-      }
-    }
-    nextChat = { ...chat, on: rewrittenOn };
-  }
-
-  let nextWebhooks = webhooks;
+): BlockDefinition[] {
+  const blocks: BlockDefinition[] = [];
+  for (const action of Object.values(actions)) blocks.push(action.block);
   if (webhooks !== undefined) {
-    const rewrittenProviders: WebhookConfig = {};
-    for (const [provider, sub] of Object.entries(webhooks)) {
-      if (sub.on === undefined) {
-        rewrittenProviders[provider] = sub;
-        continue;
-      }
-      const rewrittenOn: Record<string, WebhookEventBinding> = {};
-      for (const [eventKey, binding] of Object.entries(sub.on)) {
-        if (binding.block !== undefined) {
-          const name = `__wh.${provider}.${eventKey}`;
-          register(name, binding.block);
-          const { block: _block, action: _action, ...rest } = binding;
-          rewrittenOn[eventKey] = { ...rest, action: name };
-        } else {
-          rewrittenOn[eventKey] = binding;
-        }
-      }
-      rewrittenProviders[provider] = { ...sub, on: rewrittenOn };
+    for (const sub of Object.values(webhooks)) {
+      for (const binding of Object.values(sub.on)) blocks.push(binding.block);
     }
-    nextWebhooks = rewrittenProviders;
   }
-
-  // Nothing synthesized → return the inputs unchanged so flows without inline
-  // blocks are wholly unaffected (the rewritten copies above are discarded).
-  if (Object.keys(synthesized).length === 0) {
-    return { actions, chat, webhooks };
-  }
-  return { actions: { ...actions, ...synthesized }, chat: nextChat, webhooks: nextWebhooks };
+  return blocks;
 }
 
 /**
- * Collect declaredResources from all action blocks in the flow and merge
- * them together. Returns the union of all block-declared resources.
- * Same accessor key + same `defineResource()` reference deduplicates;
- * different references at the same accessor key throw at this layer.
+ * Collect declaredResources from every action block in the flow (caller +
+ * webhook) and merge them together. Returns the union of all block-declared
+ * resources. Same accessor key + same `defineResource()` reference
+ * deduplicates; different references at the same accessor key throw at this
+ * layer.
  */
-function collectBlockResources(actions: AnyActions): DeclaredResources | undefined {
+function collectBlockResources(
+  actions: AnyActions,
+  webhooks: WebhookConfig | undefined
+): DeclaredResources | undefined {
   let collected: DeclaredResources | undefined;
-  for (const action of Object.values(actions)) {
-    collected = mergeDeclaredResources(collected, action.block.declaredResources);
+  for (const block of actionBlocks(actions, webhooks)) {
+    collected = mergeDeclaredResources(collected, block.declaredResources);
   }
   return collected;
 }
 
-/** True when any action's root block (or any of its descendants) opted into `requireOrg`. */
-function collectRequiresOrg(actions: AnyActions): boolean {
-  for (const action of Object.values(actions)) {
-    if (action.block.requiresOrg) return true;
+/** True when any action block (caller or webhook) opted into `requireOrg`. */
+function collectRequiresOrg(
+  actions: AnyActions,
+  webhooks: WebhookConfig | undefined
+): boolean {
+  for (const block of actionBlocks(actions, webhooks)) {
+    if (block.requiresOrg) return true;
   }
   return false;
 }
@@ -549,9 +476,6 @@ function validateMcpConfig(
   if (mcp?.enabled !== true) return;
 
   for (const [actionName, action] of Object.entries(actions)) {
-    // Internal actions (e.g. synthesized inline-binding handlers) are never
-    // exposed via MCP, so they carry no description and must be skipped here.
-    if (action.internal) continue;
     if (action.mcp?.enabled === false) continue;
 
     if (typeof action.description !== "string" || action.description.trim().length === 0) {
@@ -586,25 +510,7 @@ function createFlowInstance(
 
   const tools = mergeToolsConfig(definition.tools, options?.tools);
   const kind = options?.kind ?? definition.kind;
-  const baseActions = mergeActions(definition.actions, options?.actions, tools);
-
-  // Validate the author-declared transport configs against the public action
-  // set BEFORE synthesizing internal actions. This enforces the `action` XOR
-  // `block` rule on the original bindings and resolves `action` references
-  // against real declared actions, not the synthesized internal ones.
-  const declaredChat = definition.chat;
-  validateChatConfig(kind, declaredChat, baseActions);
-
-  const declaredWebhooks = definition.webhooks;
-  validateWebhookConfig(kind, declaredWebhooks, baseActions);
-
-  // Lower inline `block` bindings into internal actions and rewrite those
-  // bindings to reference them. No-op when no binding carries a `block`, so
-  // flows without inline handlers are unaffected.
-  const synthesized = synthesizeTransportActions(kind, baseActions, declaredChat, declaredWebhooks);
-  const actions = synthesized.actions;
-  const chat = synthesized.chat;
-  const webhooks = synthesized.webhooks;
+  const actions = mergeActions(definition.actions, options?.actions, tools);
 
   const sessionMerged = mergeConfig(definition.session, options?.session);
   const userMerged = mergeConfig(definition.user, options?.user);
@@ -626,7 +532,17 @@ function createFlowInstance(
   const isolateUserState = options?.isolateUserState ?? definition.isolateUserState ?? false;
   const isolateOrgState = options?.isolateOrgState ?? definition.isolateOrgState ?? false;
 
-  const blockResources = collectBlockResources(actions);
+  const chat = definition.chat;
+  const webhooks = definition.webhooks;
+
+  // Validate transport configs before any aggregation walks their blocks: a
+  // webhook binding's handler block participates in resource/`requireOrg`
+  // collection, so a malformed binding must be rejected here with a clear
+  // message rather than crashing the aggregation.
+  validateChatConfig(kind, chat, actions);
+  validateWebhookConfig(kind, webhooks);
+
+  const blockResources = collectBlockResources(actions, webhooks);
   const flowOwnResources = options?.resources ?? definition.resources;
   // Accessor keys declared in the flow's OWN `resources` map, captured before
   // block-tree/capability resources bubble up and merge in (FIX-688). The
@@ -669,7 +585,7 @@ function createFlowInstance(
     id: options?.id ?? kind,
     kind,
     requireUser,
-    requiresOrg: collectRequiresOrg(actions),
+    requiresOrg: collectRequiresOrg(actions, webhooks),
     authentication,
     actions,
     session,

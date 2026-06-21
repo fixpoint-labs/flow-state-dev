@@ -116,14 +116,11 @@ interface SlackEventCallback {
 export const slackFlow = defineFlow({
   kind: "slack",
   authentication: { defaultUserId: "slack-bot", requireUser: false },
-  actions: {
-    ingestMessage: { block: ingestPipeline },
-  },
   webhooks: {
     slack: {
       on: {
         message: defineWebhookBinding<SlackEventCallback>({
-          action: "ingestMessage",
+          block: ingestPipeline,
           // Ignore the bot's own messages to avoid a loop.
           when: (e) => e.payload.event.user !== undefined,
           input: (e) => ({

@@ -105,10 +105,10 @@ describe("resolveExposedActions", () => {
     expect([...exposed.keys()]).toEqual(["record_payment"]);
   });
 
-  it("excludes internal actions synthesized for inline webhook bindings", () => {
-    // FIX-439: a webhook inline `block` binding synthesizes an internal
-    // action. Internal actions are dispatch-only and must never be exposed
-    // as MCP tools.
+  it("does not expose webhook handlers as MCP tools (they live off `flow.actions`)", () => {
+    // FIX-439: a webhook binding is an action in webhook form, living on
+    // `flow.webhooks`, never `flow.actions`. So it is structurally absent from
+    // the MCP tool surface — no filtering needed.
     const flow = defineFlow({
       kind: "billing",
       mcp: { enabled: true },
@@ -127,9 +127,6 @@ describe("resolveExposedActions", () => {
         }
       }
     });
-    // The synthesized `__wh.stripe.invoice.paid` action exists on the flow...
-    expect(flow.actions["__wh.stripe.invoice.paid"]?.internal).toBe(true);
-    // ...but is not exposed as an MCP tool.
     const exposed = resolveExposedActions(flow.kind, flow.actions);
     expect([...exposed.keys()]).toEqual(["record_payment"]);
   });

@@ -8,13 +8,13 @@ sidebar_label: Webhooks
 A webhook is an HTTP POST from an external service: Stripe telling you an
 invoice was paid, GitHub telling you a pull request opened, Slack telling you
 someone sent your bot a message. The webhook transport turns those deliveries
-into flow action invocations. The framework verifies the request is genuine,
-figures out which event it is, and routes it to the action you named — all
-declared on the flow definition.
+into flow handler runs. The framework verifies the request is genuine, figures
+out which event it is, and runs the handler you bound to it — all declared on
+the flow definition.
 
 The split that matters: the flow declares routing, and nothing else. Which
-event runs which action, how the event maps to the action's input. No secrets,
-no signature code. Verification and the provider-specific mechanics live on the
+event runs which handler, how the event maps to its input. No secrets, no
+signature code. Verification and the provider-specific mechanics live on the
 host, supplied once when you mount the adapter. A flow author reads one file to
 know what fires it; secrets stay out of that file.
 
@@ -72,8 +72,10 @@ the misconfiguration once, in development.
 ## Declaring subscriptions on the flow
 
 Put a `webhooks` map on the flow, keyed by provider name. Each provider has an
-`on` map: each key is an event type, each value binds it to an action and says
-how the event maps to that action's input. These imports come from
+`on` map: each key is an event type, each value is the handler to run and how
+the event maps to its input. A webhook binding *is an action* — it carries the
+handler `block` and its execution policy directly, the same shape an HTTP action
+carries, just addressed by the event instead of by name. These imports come from
 `@flow-state-dev/core` only — a flow definition never touches the transport
 package or a secret.
 
@@ -83,14 +85,11 @@ import { defineFlow, defineWebhookBinding } from "@flow-state-dev/core";
 const billingFlow = defineFlow({
   kind: "billing",
   authentication: { defaultUserId: "system", requireUser: false },
-  actions: {
-    recordPayment: { block: recordPaymentPipeline },
-  },
   webhooks: {
     stripe: {
       on: {
         "invoice.paid": defineWebhookBinding<StripeEvent>({
-          action: "recordPayment",
+          block: recordPaymentPipeline, // a handler/sequencer/router/generator
           input: (e) => ({ invoiceId: e.payload.data.object.id }),
           sessionId: (e) => `customer-${e.payload.data.object.customer}`,
         }),
@@ -100,47 +99,33 @@ const billingFlow = defineFlow({
 });
 ```
 
-A binding has four fields:
+A binding carries the handler plus the event mapping:
 
-- **`action`** — the flow action to run. Must be a key in `actions`;
-  `defineFlow` throws at registration if it isn't. Provide this *or* `block`.
-- **`block`** — an inline webhook-only handler, in place of `action`. See
-  [Webhook-only handlers](#webhook-only-handlers) below.
-- **`input`** — maps the event to the action's input. May be async. The result
-  is validated against the action's `inputSchema`, the same way an HTTP body is.
+- **`block`** (required) — the handler to run for the event: a handler,
+  generator, sequencer, or router.
+- **`input`** — maps the event to the handler's input. May be async. The result
+  is validated against the binding's `inputSchema` (falling back to the block's
+  own schema), the same way an HTTP body is.
 - **`sessionId`** (optional) — derives the session id from the event. May be
   async. Omit it and the webhook runs in a fresh session — a webhook has no
   thread to key on. See [Sessions](#sessions).
 - **`when`** (optional) — a synchronous predicate. A falsy result skips the
   binding, the event is acknowledged and ignored. Use it to narrow a coarse
   event type to a sub-action, e.g. `when: (e) => e.payload.action === "opened"`.
+- Plus any action-level execution policy the core action shape carries —
+  `durable`, `tokenBudget`, `onCompleted` / `onErrored`.
 
-### Webhook-only handlers
+### Webhook handlers live off `actions`
 
-Some handlers exist only to service a webhook. Adding them to the flow's public
-`actions` would expose them on the HTTP action endpoint and as MCP tools, where
-they'd run without the webhook's signature check. To keep a handler private to
-its webhook, give the binding a `block` instead of an `action`:
-
-```ts
-webhooks: {
-  stripe: {
-    on: {
-      "invoice.paid": defineWebhookBinding<StripeEvent>({
-        block: recordPaymentPipeline, // a handler/sequencer/router/generator
-        input: (e) => ({ invoiceId: e.payload.data.object.id }),
-      }),
-    },
-  },
-},
-```
-
-A binding declares exactly one of `action` or `block`; declaring both, or
-neither, throws at registration. The block runs through the full dispatch
-runtime — lifecycle, state, items, request records, DevTool — exactly like a
-named action. The only difference is reach: it has no HTTP or MCP surface, so it
-can only fire through this verified webhook. It does not appear in the flow's
-listed actions, and a `POST` to its action path returns 404.
+A webhook handler is event-addressed: it is selected by the provider's event
+type and trusted by the signature check, not named by a caller and authorized
+per principal the way an HTTP/MCP action is. So it lives on `flow.webhooks`, not
+in `flow.actions`. The practical consequence is that it has no caller-addressed
+surface at all: it does not appear in the flow's listed actions, there is no
+action endpoint to `POST` it to, and it is never exposed as an MCP tool. It runs
+only through a verified webhook. (Webhook-originated requests are likewise not
+re-runnable from the public retry/continue routes, which carry no signature
+check.)
 
 The event handed to a binding is a `WebhookInboundEvent`:
 
@@ -250,46 +235,32 @@ verifier is a pure function over `(rawBody, headers)`.
 
 ## Routing
 
-There are two ways to map an event to an action. They compose:
-
-**`on` — declarative, the primary surface.** A map from event type to binding.
-The adapter looks up `on[event.eventType]`, runs the binding's `when` predicate
-if present, and if it passes, that binding wins.
-
-**`route` — imperative, the escape hatch.** A function over the event returning
-`{ action, input, sessionId? }` or `null`. Consulted only when no `on` binding
-matched. Reach for it when the event-to-action decision is too dynamic for a
-static map.
+An event is mapped to its handler declaratively through the `on` map. The
+adapter looks up `on[event.eventType]`, runs the binding's `when` predicate if
+present, and if it passes, that binding's handler runs.
 
 ```ts
 webhooks: {
   stripe: {
     on: {
       "invoice.paid": defineWebhookBinding<StripeEvent>({
-        action: "recordPayment",
+        block: recordPaymentPipeline,
         input: (e) => ({ invoiceId: e.payload.data.object.id }),
+        // narrow a coarse event type to a sub-case
+        when: (e) => e.payload.data.object.status === "paid",
       }),
-    },
-    route: (e) => {
-      // fallback: anything not in `on`
-      if (e.eventType?.startsWith("customer.")) {
-        return { action: "syncCustomer", input: { raw: e.payload } };
-      }
-      return null; // acknowledge and ignore
     },
   },
 }
 ```
 
-Precedence is total. A matching `on` binding wins and `route` is never
-consulted. When neither matches — no `on` key for this event type, or its `when`
-failed, and `route` returned `null` — the event is acknowledged and ignored with
-a 202. Webhook providers retry on non-2xx, so ignored events return 2xx on
-purpose: you don't want a provider hammering an endpoint over an event you
-deliberately don't handle.
+When nothing matches — no `on` key for this event type, or its `when` failed —
+the event is acknowledged and ignored with a 202. Webhook providers retry on
+non-2xx, so ignored events return 2xx on purpose: you don't want a provider
+hammering an endpoint over an event you deliberately don't handle.
 
 `when` is synchronous, evaluated before any async work so the no-match case
-stays cheap. For asynchronous filtering, let the action run and reject inside
+stays cheap. For asynchronous filtering, let the handler run and reject inside
 it.
 
 ## Sessions
@@ -395,8 +366,8 @@ Three honest divergences from the chat transport:
 
 ## Minimal example
 
-The smallest end-to-end Stripe `invoice.paid` → `recordPayment`, split across
-the flow (routing) and the host (mechanics).
+The smallest end-to-end Stripe `invoice.paid` handler, split across the flow
+(routing) and the host (mechanics).
 
 The flow — routing only, no secrets:
 
@@ -411,15 +382,12 @@ interface StripeEvent {
 export const billingFlow = defineFlow({
   kind: "billing",
   authentication: { defaultUserId: "system", requireUser: false },
-  actions: {
-    recordPayment: { block: recordPaymentPipeline },
-  },
   webhooks: {
     stripe: {
       on: {
         "invoice.paid": defineWebhookBinding<StripeEvent>({
-          action: "recordPayment",
-          input: (e) => ({ invoiceId: e.data.object.id }),
+          block: recordPaymentPipeline,
+          input: (e) => ({ invoiceId: e.payload.data.object.id }),
         }),
       },
     },

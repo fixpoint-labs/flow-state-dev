@@ -190,6 +190,7 @@ export type {
   CostEstimate,
   CostEstimator,
   ActionConfig,
+  ActionCore,
   ActionMcpConfig,
   ClientDataComputeFn,
   ClientDataContext,
@@ -222,7 +223,6 @@ export type {
   WebhookConfig,
   WebhookEventBinding,
   WebhookInboundEvent,
-  WebhookRouteResult,
   WebhookSubscriptionConfig
 } from "./types/webhooks";
 export { defineWebhookBinding, validateWebhookConfig } from "./types/webhooks";

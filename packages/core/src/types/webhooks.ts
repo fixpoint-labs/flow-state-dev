@@ -1,16 +1,20 @@
 /**
  * Per-flow webhook-transport configuration types.
  *
- * A flow declares which inbound webhook events trigger which of its actions
- * directly on its definition (`webhooks: { <provider>: { on: { ... } } }`),
- * mirroring the per-flow declarative pattern Chat (`chat`), MCP (`mcp`), and
- * Scheduled (`schedules`) already use. The `@flow-state-dev/server` webhook
- * adapter discovers these declarations by reading the flow registry at
- * request time — the flowKind is carried in the URL — and dispatches the
- * matching event to the named action.
+ * A flow declares which inbound webhook events it handles directly on its
+ * definition (`webhooks: { <provider>: { on: { <eventType>: binding } } }`).
+ * Each binding *is an action in webhook form*: it carries the shared
+ * `ActionCore` (the handler block plus execution policy) inline, alongside the
+ * webhook-specific event mapping. A webhook action lives here, on
+ * `flow.webhooks`, and never in `flow.actions` — so it is event-addressed
+ * (selected by the provider's event type) and transport-authenticated (by the
+ * signature check), not caller-addressed like an HTTP/MCP action. The
+ * `@flow-state-dev/server` webhook adapter discovers these declarations by
+ * reading the flow registry at request time (the flowKind is carried in the
+ * URL) and dispatches the matching event to its handler.
  *
  * Division of labour (the webhook transport's defining trait): the *flow*
- * declares routing only — which event maps to which action — and carries no
+ * declares the handler and how the event maps to its input — and carries no
  * secrets. Signature verification and payload mechanics (how to read a
  * provider's event type, delivery id, and handshake) are supplied by the
  * *host* at adapter mount, keyed by the same provider name. See
@@ -23,7 +27,7 @@
  * narrowed via `defineWebhookBinding<TPayload>()`.
  */
 
-import type { BlockDefinition } from "./block";
+import type { ActionCore } from "./flow";
 
 /**
  * The normalized inbound webhook event handed to a flow's webhook bindings.
@@ -45,33 +49,23 @@ export interface WebhookInboundEvent<TPayload = unknown> {
 }
 
 /**
- * Binding from one event-type key to one action. Mirrors `ChatEventBinding`.
+ * A webhook event binding — an action in webhook form. It extends the shared
+ * `ActionCore` (the handler `block` plus execution policy like `durable` and
+ * `tokenBudget`) with the webhook-specific event mapping. Because it carries
+ * the core inline, the handler needs no entry in `flow.actions`: it is reached
+ * only through a verified webhook, never the public action endpoint or MCP.
  *
- * Provide exactly one of `action` (reference a public flow action) or `block`
- * (an inline "webhook-only" handler). `input` and `sessionId` may return a
- * value or a Promise — the adapter awaits before constructing the dispatch
- * envelope. `when` is synchronous: the adapter evaluates it in the hot path
- * before any async work so the no-match case stays cheap.
+ * `input` and `sessionId` may return a value or a Promise — the adapter awaits
+ * before constructing the dispatch envelope. `when` is synchronous: the adapter
+ * evaluates it in the hot path before any async work so the no-match case stays
+ * cheap.
  */
-export interface WebhookEventBinding {
+export interface WebhookEventBinding extends ActionCore {
   /**
-   * Public flow action to invoke when this binding matches. Must be a key in
-   * `flow.actions`; validated at registration. Provide this OR `block`.
-   */
-  action?: string;
-  /**
-   * Inline "webhook-only" handler. The framework runs it through the full
-   * dispatch runtime (lifecycle, state, items, request records, DevTool), but
-   * does NOT expose it as a public action — so it has no HTTP/MCP surface and
-   * can only be reached through a verified webhook. Use this for handlers that
-   * exist solely to service a webhook, instead of widening the flow's public
-   * `actions`. Provide this OR `action`.
-   */
-  block?: BlockDefinition;
-  /**
-   * Map the inbound event to the action's input. May return a value or a
-   * Promise. The result is validated against the action's `inputSchema` by
-   * the runtime, the same way HTTP request bodies are.
+   * Map the inbound event to the handler's input. May return a value or a
+   * Promise. The result is validated against the binding's `inputSchema`
+   * (falling back to `block.inputSchema`) by the runtime, the same way HTTP
+   * request bodies are.
    */
   input: (event: WebhookInboundEvent) => unknown | Promise<unknown>;
   /**
@@ -82,38 +76,24 @@ export interface WebhookEventBinding {
   sessionId?: (event: WebhookInboundEvent) => string | Promise<string> | undefined;
   /**
    * Synchronous predicate. When provided and falsy for an event, the binding
-   * does not match and no flow runs. Use it to narrow a coarse event type to
+   * does not match and no handler runs. Use it to narrow a coarse event type to
    * a sub-action, e.g. `when: (e) => e.payload.action === "opened"`.
    */
   when?: (event: WebhookInboundEvent) => boolean;
 }
 
-/** Result of the imperative `route` escape hatch. */
-export interface WebhookRouteResult {
-  action: string;
-  input: unknown;
-  sessionId?: string;
-}
-
 /**
- * Per-provider routing declared on the flow. Pure routing — no secrets, no
- * crypto. Verification and payload mechanics live on the host's
+ * Per-provider declaration on the flow. Pure routing — no secrets, no crypto.
+ * Verification and payload mechanics live on the host's
  * `WebhookProviderDefinition`, keyed by the same provider name.
  */
 export interface WebhookSubscriptionConfig {
   /**
-   * Declarative event → action map. Each key is matched by exact string
-   * equality against the host provider's extracted `eventType`. Primary
-   * surface; takes precedence over `route` when a key matches. Keys are
+   * Declarative event → handler map. Each key is matched by exact string
+   * equality against the host provider's extracted `eventType`. Keys are
    * opaque strings — a typo simply never matches.
    */
-  on?: Record<string, WebhookEventBinding>;
-  /**
-   * Imperative routing escape hatch. Consulted only when no `on` binding
-   * matched. Returns an action invocation, or `null` to acknowledge and
-   * ignore the event.
-   */
-  route?: (event: WebhookInboundEvent) => WebhookRouteResult | null;
+  on: Record<string, WebhookEventBinding>;
 }
 
 /**
@@ -128,18 +108,18 @@ export type WebhookConfig = Record<string, WebhookSubscriptionConfig>;
 
 /**
  * Construct a `WebhookEventBinding` whose handlers receive an event with a
- * typed `payload` instead of `unknown`. Place the result directly in a
- * flow's `webhooks[provider].on` map. Compile-time convenience only — the
- * runtime is a single passthrough. (The cast bridges the function-parameter
- * variance that prevents a typed binding from being assignable directly.)
+ * typed `payload` instead of `unknown`. Place the result directly in a flow's
+ * `webhooks[provider].on` map. Compile-time convenience only — the runtime is
+ * a single passthrough. (The cast bridges the function-parameter variance that
+ * prevents a typed binding from being assignable directly.)
  */
-export function defineWebhookBinding<TPayload = unknown>(binding: {
-  action?: string;
-  block?: BlockDefinition;
-  input: (event: WebhookInboundEvent<TPayload>) => unknown | Promise<unknown>;
-  sessionId?: (event: WebhookInboundEvent<TPayload>) => string | Promise<string> | undefined;
-  when?: (event: WebhookInboundEvent<TPayload>) => boolean;
-}): WebhookEventBinding {
+export function defineWebhookBinding<TPayload = unknown>(
+  binding: ActionCore & {
+    input: (event: WebhookInboundEvent<TPayload>) => unknown | Promise<unknown>;
+    sessionId?: (event: WebhookInboundEvent<TPayload>) => string | Promise<string> | undefined;
+    when?: (event: WebhookInboundEvent<TPayload>) => boolean;
+  }
+): WebhookEventBinding {
   return binding as unknown as WebhookEventBinding;
 }
 
@@ -149,19 +129,18 @@ export function defineWebhookBinding<TPayload = unknown>(binding: {
 
 /**
  * Validate a flow's `webhooks` config at registration time. No-op when
- * `webhooks` is absent. Throws when a provider declares neither `on` nor
- * `route`, a `route` is not a function, an `on` binding references an unknown
- * action, a binding's `input`/`sessionId`/`when` is present-but-not-a-function,
- * or a provider/event key is empty. Event-key spelling is NOT validated
- * against any provider vocabulary — keys are opaque strings.
+ * `webhooks` is absent. Throws when a provider declares no `on` map, an `on`
+ * binding has no `block` (a webhook binding is an action, so a handler block is
+ * required), a binding's `input`/`sessionId`/`when` is present-but-not-a-function,
+ * or a provider/event key is empty. Event-key spelling is NOT validated against
+ * any provider vocabulary — keys are opaque strings.
  *
  * Throws plain `Error`, matching `validateChatConfig` / `validateSchedulesConfig`;
  * the adapter translates a registration failure into a hard startup abort.
  */
 export function validateWebhookConfig(
   flowKind: string,
-  webhooks: WebhookConfig | undefined,
-  actions: Record<string, unknown>
+  webhooks: WebhookConfig | undefined
 ): void {
   if (webhooks === undefined) return;
 
@@ -173,30 +152,12 @@ export function validateWebhookConfig(
       );
     }
 
-    if (sub === null || typeof sub !== "object") {
+    if (sub === null || typeof sub !== "object" || sub.on === undefined) {
       throw new Error(
-        `Flow "${flowKind}" webhook provider "${provider}" must be an object with ` +
-          `at least an \`on\` map or a \`route\` function.`
+        `Flow "${flowKind}" webhook provider "${provider}" must be an object with an ` +
+          `\`on\` event map.`
       );
     }
-
-    const hasOn = sub.on !== undefined;
-    const hasRoute = sub.route !== undefined;
-    if (!hasOn && !hasRoute) {
-      throw new Error(
-        `Flow "${flowKind}" webhook provider "${provider}" declares neither \`on\` ` +
-          `nor \`route\`. Add an \`on\` event map or a \`route\` function.`
-      );
-    }
-
-    if (hasRoute && typeof sub.route !== "function") {
-      throw new Error(
-        `Flow "${flowKind}" webhook provider "${provider}" has a \`route\` that is ` +
-          `not a function. Provide a function mapping the event to an action, or omit it.`
-      );
-    }
-
-    if (sub.on === undefined) continue;
 
     for (const [eventKey, binding] of Object.entries(sub.on)) {
       if (eventKey.length === 0) {
@@ -209,38 +170,21 @@ export function validateWebhookConfig(
       if (binding === null || typeof binding !== "object") {
         throw new Error(
           `Flow "${flowKind}" webhook subscription "${provider}.${eventKey}" must be an ` +
-            `object with at least an \`action\` and \`input\`.`
+            `object with at least a \`block\` and \`input\`.`
         );
       }
 
-      const hasAction = binding.action !== undefined;
-      const hasBlock = binding.block !== undefined;
-      if (hasAction === hasBlock) {
+      if (binding.block === null || typeof binding.block !== "object") {
         throw new Error(
-          `Flow "${flowKind}" webhook subscription "${provider}.${eventKey}" must declare ` +
-            `exactly one of \`action\` (a flow action name) or \`block\` (an inline handler).`
-        );
-      }
-      if (hasAction) {
-        if (typeof binding.action !== "string" || !(binding.action in actions)) {
-          const known = Object.keys(actions).join(", ") || "<none>";
-          throw new Error(
-            `Flow "${flowKind}" webhook subscription "${provider}.${eventKey}" references ` +
-              `action "${String(binding.action)}" but no such action is declared. Defined actions: ${known}.`
-          );
-        }
-      }
-      if (hasBlock && (binding.block === null || typeof binding.block !== "object")) {
-        throw new Error(
-          `Flow "${flowKind}" webhook subscription "${provider}.${eventKey}" has a \`block\` ` +
-            `that is not a block definition (handler/generator/sequencer/router).`
+          `Flow "${flowKind}" webhook subscription "${provider}.${eventKey}" must declare a ` +
+            `\`block\` (the handler — handler/generator/sequencer/router) to run for the event.`
         );
       }
 
       if (typeof binding.input !== "function") {
         throw new Error(
           `Flow "${flowKind}" webhook subscription "${provider}.${eventKey}" must declare ` +
-            `\`input\` as a function mapping the event to the action's input.`
+            `\`input\` as a function mapping the event to the handler's input.`
         );
       }
 

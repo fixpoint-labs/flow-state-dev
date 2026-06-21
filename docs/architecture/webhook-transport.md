@@ -23,8 +23,9 @@ two existing ones:
 - **`@flow-state-dev/core`** carries the declaration surface
   (`packages/core/src/types/webhooks.ts`): `WebhookConfig`,
   `WebhookSubscriptionConfig`, `WebhookEventBinding`, `WebhookInboundEvent`,
-  `WebhookRouteResult`, `defineWebhookBinding`, and the registration-time
-  `validateWebhookConfig`. All browser-safe, no crypto.
+  `defineWebhookBinding`, and the registration-time `validateWebhookConfig`. A
+  binding extends the shared `ActionCore` (`packages/core/src/types/flow.ts`).
+  All browser-safe, no crypto.
 - **`@flow-state-dev/server`** carries the runtime
   (`packages/server/src/transports/webhook/`), next to the HTTP adapter, plus
   the signature verifiers in `transports/auth/`.
@@ -47,17 +48,26 @@ provider:
 type WebhookConfig = Record<string, WebhookSubscriptionConfig>;
 
 interface WebhookSubscriptionConfig {
-  on?: Record<string, WebhookEventBinding>;
-  route?: (event: WebhookInboundEvent) => WebhookRouteResult | null;
+  on: Record<string, WebhookEventBinding>;
 }
 
-interface WebhookEventBinding {
-  action: string;
+// A webhook binding is an action in webhook form: it extends the shared
+// ActionCore (the handler `block` plus execution policy — `durable`,
+// `tokenBudget`, `onCompleted`/`onErrored`, `inputSchema`) with the event
+// mapping. It lives on `flow.webhooks`, never `flow.actions`, so it is
+// event-addressed and has no caller-addressed (HTTP/MCP) surface.
+interface WebhookEventBinding extends ActionCore {
   input: (event: WebhookInboundEvent) => unknown | Promise<unknown>;
   sessionId?: (event: WebhookInboundEvent) => string | Promise<string> | undefined;
   when?: (event: WebhookInboundEvent) => boolean;
 }
 ```
+
+Because a webhook handler lives off `flow.actions`, the runtime resolves it from
+`flow.webhooks[provider].on[event]` via the `(provider, eventType)` coordinate
+the adapter stamps onto `metadata.webhook` (see `resolveActionCore` in
+`server`). The dispatched request records the handler block's `name` as its
+`actionName` for provenance.
 
 Unlike `ChatConfig` — where the event is typed `unknown` because `core` cannot
 import the chat-sdk's `ChatInboundEvent` without inverting the package
@@ -100,13 +110,14 @@ live, retrying provider at request time.
 ## Registration-time validation
 
 `validateWebhookConfig` runs inside `defineFlow`, alongside `validateChatConfig`
-and `validateSchedulesConfig`. No-op when `webhooks` is absent. Otherwise each
-provider must declare `on` or `route`; each `on` binding's `action` must be a
-key in `flow.actions`; `input` must be a function; `sessionId`/`when`/`route`,
-when present, must be functions; provider and event keys must be non-empty.
-Event-key spelling is *not* validated against any provider vocabulary — keys are
-opaque strings, a typo simply never matches — because hard-coding a vocabulary
-would couple `core` to provider-specific wire formats. It throws plain `Error`,
+and `validateSchedulesConfig`, and *before* the resource/`requireOrg`
+aggregation that walks each binding's handler block. No-op when `webhooks` is
+absent. Otherwise each provider must declare an `on` map; each binding must
+carry a `block` (the handler) and a function `input`; `sessionId`/`when`, when
+present, must be functions; provider and event keys must be non-empty. Event-key
+spelling is *not* validated against any provider vocabulary — keys are opaque
+strings, a typo simply never matches — because hard-coding a vocabulary would
+couple `core` to provider-specific wire formats. It throws plain `Error`,
 matching the sibling validators.
 
 ## Per-request registry lookup by flowKind-in-URL
@@ -140,9 +151,11 @@ The order in `routes.ts` (`handleWebhook`) is load-bearing:
    `WebhookInboundEvent`.
 6. **Handshake short-circuit.** If `def.acknowledge` returns non-null, respond
    200 with that body and do **not** dispatch (Slack `url_verification`).
-7. **Route.** Declarative `on[eventType]` whose `when` passes wins; else
-   `route()`; else 202 `ignored`. (Providers retry on non-2xx, so a deliberately
-   unhandled event must ack with 2xx.)
+7. **Match.** The declarative `on[eventType]` binding whose `when` passes wins;
+   else 202 `ignored`. (Providers retry on non-2xx, so a deliberately unhandled
+   event must ack with 2xx.) The dispatch envelope's `action` is the matched
+   handler block's `name` (provenance); the runtime re-resolves the handler from
+   `flow.webhooks` via `metadata.webhook`.
 8. **Resolve `input`/`sessionId`.** Awaited. A throw → 500 `route_failed`.
 9. **Resolve principal.** `host.resolvePrincipal({ source: "webhook", request,
    rawBody, envelope })`. For typical webhook flows this returns

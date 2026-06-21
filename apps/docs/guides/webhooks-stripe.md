@@ -43,14 +43,11 @@ const recordPaymentPipeline = sequencer({ name: "record-payment-pipeline" })
 export const billingFlow = defineFlow({
   kind: "billing",
   authentication: { defaultUserId: "system", requireUser: false },
-  actions: {
-    recordPayment: { block: recordPaymentPipeline },
-  },
   webhooks: {
     stripe: {
       on: {
         "invoice.paid": defineWebhookBinding<StripeEvent>({
-          action: "recordPayment",
+          block: recordPaymentPipeline,
           input: (e) => ({
             invoiceId: e.payload.data.object.id,
             amountCents: e.payload.data.object.amount_paid,

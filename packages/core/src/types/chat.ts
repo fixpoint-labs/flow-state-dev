@@ -15,36 +15,21 @@
  * parameter without inverting the dependency.
  */
 
-import type { BlockDefinition } from "./block";
-
 /**
- * Binding from one chat event-name key to one action on a flow. Mirrors
- * `WebhookEventBinding`.
+ * Binding from one chat event-name key to one action on a flow.
  *
- * Provide exactly one of `action` (reference a public flow action) or `block`
- * (an inline "chat-only" handler). `input` and `sessionId` may return a value
- * or a Promise — the chat-sdk adapter awaits the result before constructing
- * the dispatch envelope (matches the `ScheduleInputFn` precedent in
- * `./schedules`). `when` is synchronous: the adapter evaluates it in the hot
- * path before any async work so the no-match case stays cheap.
+ * `input` and `sessionId` may return a value or a Promise — the chat-sdk
+ * adapter awaits the result before constructing the dispatch envelope
+ * (matches the `ScheduleInputFn` precedent in `./schedules`). `when` is
+ * synchronous: the adapter evaluates it in the hot path before any async
+ * work so the no-match case stays cheap.
  */
 export interface ChatEventBinding {
   /**
    * Name of the flow action to invoke when this binding matches. Must be a
    * key in `flow.actions`; validated at registration via `validateChatConfig`.
-   * Provide this OR `block`.
    */
-  action?: string;
-
-  /**
-   * Inline "chat-only" handler. The framework runs it through the full
-   * dispatch runtime (lifecycle, state, items, request records, DevTool), but
-   * does NOT expose it as a public action — so it has no HTTP/MCP surface and
-   * can only be reached through this chat subscription. Use this for handlers
-   * that exist solely to service a chat event, instead of widening the flow's
-   * public `actions`. Provide this OR `action`.
-   */
-  block?: BlockDefinition;
+  action: string;
 
   /**
    * Map the inbound chat event to the action's input. May return a value or
@@ -103,10 +88,9 @@ export interface ChatConfig {
 
 /**
  * Validate a flow's `chat` config at registration time. No-op when `chat`
- * or `chat.on` is absent or empty. Throws on a binding that declares neither
- * or both of `action`/`block`, references an unknown action, carries a `block`
- * that is not an object, carries a non-function `input`/`sessionId`/`when`, or
- * is keyed by an empty string. Event-key spelling is NOT validated against the
+ * or `chat.on` is absent or empty. Throws on a binding that references an
+ * unknown action, carries a non-function `input`/`sessionId`/`when`, or is
+ * keyed by an empty string. Event-key spelling is NOT validated against the
  * SDK vocabulary — keys are opaque strings (a typo simply never matches).
  *
  * Throws plain `Error`, matching `validateScheduleConfig` /
@@ -135,27 +119,11 @@ export function validateChatConfig(
       );
     }
 
-    const hasAction = binding.action !== undefined;
-    const hasBlock = binding.block !== undefined;
-    if (hasAction === hasBlock) {
+    if (!(binding.action in actions)) {
+      const known = Object.keys(actions).join(", ") || "<none>";
       throw new Error(
-        `Flow "${flowKind}" chat subscription "${eventKey}" must declare exactly one of ` +
-          `\`action\` (a flow action name) or \`block\` (an inline handler).`
-      );
-    }
-    if (hasAction) {
-      if (typeof binding.action !== "string" || !(binding.action in actions)) {
-        const known = Object.keys(actions).join(", ") || "<none>";
-        throw new Error(
-          `Flow "${flowKind}" chat subscription "${eventKey}" references action ` +
-            `"${String(binding.action)}" but no such action is declared. Defined actions: ${known}.`
-        );
-      }
-    }
-    if (hasBlock && (binding.block === null || typeof binding.block !== "object")) {
-      throw new Error(
-        `Flow "${flowKind}" chat subscription "${eventKey}" has a \`block\` that is not a ` +
-          `block definition (handler/generator/sequencer/router).`
+        `Flow "${flowKind}" chat subscription "${eventKey}" references action ` +
+          `"${binding.action}" but no such action is declared. Defined actions: ${known}.`
       );
     }
 

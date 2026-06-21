@@ -88,9 +88,8 @@ createChatTransportAdapter({ bot });
 
 - **Keys** match `ChatInboundEvent.kind` exactly (`"mention"`, `"directMessage"`, `"reaction"`, `"slashCommand"`, …). The vocabulary is uniform across platforms, so a `mention` binding fires on every platform the bot serves. Narrow to one with `when: (e) => e.platform === "slack"`.
 - **`input`** maps the event to the action input (may be async). **`sessionId`** overrides the default thread-id derivation (may be async). **`when`** is a synchronous predicate; a falsy result skips the binding.
-- **`action` or `block`.** A binding fires a named flow `action`, or carries an inline **`block`** for a chat-only handler. An inline block runs through the full dispatch runtime but has no public HTTP or MCP surface — use it instead of widening the flow's `actions` for a handler that only services chat. Declare exactly one of the two.
 - **`defineChatBinding<T>()`** is a typing convenience — it gives `event` a `ChatInboundEvent` type. Plain object literals work too; `event` is then `unknown`.
-- Validation runs at `defineFlow`: a binding naming an action the flow doesn't declare (or declaring both/neither of `action`/`block`) throws at registration.
+- Validation runs at `defineFlow`: a binding naming an action the flow doesn't declare throws at registration.
 
 **Fan-out is broadcast.** Two flows subscribing to the same event both run, independently. **Precedence is total**: when any flow-level binding matches an event, the adapter-mount `route()`/`flowKind` is not consulted; it fires only as a fallback when nothing matched. That lets a host migrate one flow at a time.
 

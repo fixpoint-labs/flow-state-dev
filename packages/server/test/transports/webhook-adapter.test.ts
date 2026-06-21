@@ -33,9 +33,9 @@ function hostFor(flow: ReturnType<ReturnType<typeof defineFlow>>) {
 
 const stripeFlow = defineFlow({
   kind: "billing",
-  actions: { recordPayment: { block: noop } },
+  actions: {},
   authentication: { defaultUserId: "system", requireUser: false },
-  webhooks: { stripe: { on: { "invoice.paid": { action: "recordPayment", input: () => ({}) } } } }
+  webhooks: { stripe: { on: { "invoice.paid": { block: noop, input: () => ({}) } } } }
 })({ id: "billing" });
 
 describe("createWebhookTransportAdapter", () => {

@@ -157,7 +157,16 @@ export interface ActionMcpConfig {
   name?: string;
 }
 
-export type ActionConfig<
+/**
+ * The shared core of an action: the executable unit (a block) plus its
+ * execution policy, independent of how the action is addressed or
+ * authenticated. Every form of action builds on this core — the
+ * caller-addressed `ActionConfig` (HTTP/MCP) and event-addressed transport
+ * bindings such as `WebhookEventBinding` — so the runtime dispatches, runs,
+ * and records them all the same way. Generalizing the core is what lets a
+ * webhook handler be a first-class action without living in `flow.actions`.
+ */
+export type ActionCore<
   TBlock extends BlockDefinition = BlockDefinition,
 > = {
   block: TBlock;
@@ -169,16 +178,6 @@ export type ActionConfig<
    * contract, escape hatches like `z.unknown()`).
    */
   inputSchema?: TBlock["inputSchema"];
-  /**
-   * Human-readable description. Required when the action is exposed via
-   * MCP — the text becomes the LLM-facing tool description and must
-   * communicate (1) what the tool does, (2) when to use it vs. siblings,
-   * (3) preconditions and side effects, (4) what each argument means.
-   * Used by the devtool for tooltips even when MCP is not enabled.
-   */
-  description?: string;
-  /** Per-action MCP overrides. */
-  mcp?: ActionMcpConfig;
   onCompleted?: BlockDefinition<any, any>;
   onErrored?: BlockDefinition<any, any>;
   userMessage?: (input: TBlock["inputSchema"]["_output"]) => string;
@@ -197,15 +196,29 @@ export type ActionConfig<
    * (transient — crashes lose request state).
    */
   durable?: boolean;
+};
+
+/**
+ * A caller-addressed action: the shared `ActionCore` plus the exposure
+ * metadata for the client-facing HTTP and MCP surfaces, where a caller names
+ * the action and a principal is authorized per request. Lives in
+ * `FlowDefinition.actions`. Event-addressed handlers (webhooks) are a
+ * different form — they carry the core inline on their transport binding and
+ * never enter this map.
+ */
+export type ActionConfig<
+  TBlock extends BlockDefinition = BlockDefinition,
+> = ActionCore<TBlock> & {
   /**
-   * Internal actions are dispatch-only: the runtime can run them (so inbound
-   * transports can dispatch them with full lifecycle/state/items/observability),
-   * but client-facing transports — HTTP and MCP — never expose them. Set
-   * automatically for the inline `block` declared on a webhook/chat binding, so
-   * a webhook-only handler isn't reachable on the public action endpoint (which
-   * would bypass signature verification). Default: false.
+   * Human-readable description. Required when the action is exposed via
+   * MCP — the text becomes the LLM-facing tool description and must
+   * communicate (1) what the tool does, (2) when to use it vs. siblings,
+   * (3) preconditions and side effects, (4) what each argument means.
+   * Used by the devtool for tooltips even when MCP is not enabled.
    */
-  internal?: boolean;
+  description?: string;
+  /** Per-action MCP overrides. */
+  mcp?: ActionMcpConfig;
 };
 
 /**

@@ -909,19 +909,20 @@ describe("createFlowApiRouter", () => {
     });
   });
 
-  // FIX-439: a webhook/chat inline `block` binding synthesizes an internal
-  // action. Internal actions are dispatch-only — they must stay off the public
-  // HTTP surface so a webhook-only handler can't be invoked on the action
-  // endpoint (which would bypass signature verification).
-  describe("internal actions are hidden from the HTTP surface", () => {
-    function makeWebhookBlockFlow(): FlowInstance {
+  // FIX-439: a webhook binding is an action in webhook form — it lives on
+  // `flow.webhooks`, never `flow.actions`, so it has no caller-addressed HTTP
+  // surface. And a webhook-originated request must not be re-runnable from the
+  // public retry/continue routes (which carry no signature check), so those
+  // routes 404 webhook-sourced records.
+  describe("webhook handlers stay off the caller-addressed surface", () => {
+    function makeWebhookFlow(): FlowInstance {
       return defineFlow({
-        kind: "wh-internal",
+        kind: "wh-flow",
         actions: {
           run: {
             inputSchema: z.object({ value: z.string() }),
             block: handler<{ value: string }, { ok: true }>({
-              name: "wh-internal-run",
+              name: "wh-flow-run",
               execute: () => ({ ok: true })
             })
           }
@@ -931,7 +932,7 @@ describe("createFlowApiRouter", () => {
             on: {
               "invoice.paid": {
                 block: handler<{ id: string }, { ok: true }>({
-                  name: "wh-internal-paid",
+                  name: "wh-flow-paid",
                   execute: () => ({ ok: true })
                 }),
                 input: () => ({ id: "in_1" })
@@ -939,12 +940,12 @@ describe("createFlowApiRouter", () => {
             }
           }
         }
-      })({ id: "wh-internal" });
+      })({ id: "wh-flow" });
     }
 
-    it("omits the synthesized internal action from list_flows metadata", async () => {
+    it("lists only the caller-addressed actions; the webhook handler is absent", async () => {
       const registry = createFlowRegistry();
-      registry.register(makeWebhookBlockFlow());
+      registry.register(makeWebhookFlow());
       const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
 
       const response = await router.GET(new Request("http://localhost/api/flows"), {
@@ -952,41 +953,22 @@ describe("createFlowApiRouter", () => {
       });
       expect(response.status).toBe(200);
       const body = (await response.json()) as {
-        flows: Array<{ actions: string[]; actionSchemas: Record<string, unknown> }>;
+        flows: Array<{ kind: string; actions: string[]; actionSchemas: Record<string, unknown> }>;
       };
-      const flow = body.flows.find((f) => (f as { kind: string }).kind === "wh-internal");
-      // Only the public `run` action is listed; the synthesized
-      // `__wh.stripe.invoice.paid` internal action is hidden.
+      const flow = body.flows.find((f) => f.kind === "wh-flow");
+      // The webhook handler is event-addressed (on `flow.webhooks`), so it
+      // never appears in the listing — only the public `run` action does.
       expect(flow?.actions).toEqual(["run"]);
       expect(Object.keys(flow?.actionSchemas ?? {})).toEqual(["run"]);
     });
 
-    it("returns 404 when the internal action is invoked on the action endpoint", async () => {
+    // A webhook dispatch persists a request record (source: "webhook"). The
+    // retry endpoint must not re-run it — re-dispatch there carries no signature
+    // check and accepts an `inputOverride`, which would let an HTTP caller feed a
+    // webhook handler arbitrary input.
+    it("returns 404 when retrying a failed webhook-sourced request", async () => {
       const registry = createFlowRegistry();
-      registry.register(makeWebhookBlockFlow());
-      const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
-
-      const response = await router.POST(
-        new Request("http://localhost/api/flows/wh-internal/actions/__wh.stripe.invoice.paid", {
-          method: "POST",
-          body: JSON.stringify({ userId: "u1", input: { id: "in_1" } })
-        }),
-        {
-          params: { path: ["wh-internal", "actions", "__wh.stripe.invoice.paid"] }
-        }
-      );
-      expect(response.status).toBe(404);
-      const body = (await response.json()) as { error: string };
-      expect(body.error).toContain("Unknown action");
-    });
-
-    // A webhook dispatch persists a retryable request record for its internal
-    // action. The retry endpoint must not re-run it — re-dispatch there carries
-    // no signature check and accepts an `inputOverride`, which would let an HTTP
-    // caller feed a webhook-only handler arbitrary input.
-    it("returns 404 when retrying a failed internal-action request", async () => {
-      const registry = createFlowRegistry();
-      registry.register(makeWebhookBlockFlow());
+      registry.register(makeWebhookFlow());
       const stores = createInMemoryStores();
       const router = createFlowApiRouter({ registry, stores });
 
@@ -995,10 +977,11 @@ describe("createFlowApiRouter", () => {
         "req_wh",
         {
           id: "req_wh",
-          flowKind: "wh-internal",
-          actionName: "__wh.stripe.invoice.paid",
+          flowKind: "wh-flow",
+          actionName: "wh-flow-paid",
           sessionId: "sess_wh",
           userId: "system",
+          source: "webhook",
           status: "failed",
           startedAtMs: now,
           state: {},
@@ -1010,18 +993,18 @@ describe("createFlowApiRouter", () => {
       );
 
       const response = await router.POST(
-        new Request("http://localhost/api/flows/wh-internal/sessions/sess_wh/requests/req_wh/retry", {
+        new Request("http://localhost/api/flows/wh-flow/sessions/sess_wh/requests/req_wh/retry", {
           method: "POST",
           body: JSON.stringify({ inputOverride: { id: "attacker" } })
         }),
-        { params: { path: ["wh-internal", "sessions", "sess_wh", "requests", "req_wh", "retry"] } }
+        { params: { path: ["wh-flow", "sessions", "sess_wh", "requests", "req_wh", "retry"] } }
       );
       expect(response.status).toBe(404);
     });
 
-    it("returns 404 when continuing an interrupted internal-action request", async () => {
+    it("returns 404 when continuing an interrupted webhook-sourced request", async () => {
       const registry = createFlowRegistry();
-      registry.register(makeWebhookBlockFlow());
+      registry.register(makeWebhookFlow());
       const stores = createInMemoryStores();
       const router = createFlowApiRouter({ registry, stores });
 
@@ -1030,10 +1013,11 @@ describe("createFlowApiRouter", () => {
         "req_wh2",
         {
           id: "req_wh2",
-          flowKind: "wh-internal",
-          actionName: "__wh.stripe.invoice.paid",
+          flowKind: "wh-flow",
+          actionName: "wh-flow-paid",
           sessionId: "sess_wh2",
           userId: "system",
+          source: "webhook",
           status: "interrupted",
           startedAtMs: now,
           state: {},
@@ -1045,11 +1029,11 @@ describe("createFlowApiRouter", () => {
       );
 
       const response = await router.POST(
-        new Request("http://localhost/api/flows/wh-internal/sessions/sess_wh2/requests/req_wh2/continue", {
+        new Request("http://localhost/api/flows/wh-flow/sessions/sess_wh2/requests/req_wh2/continue", {
           method: "POST",
           body: "{}"
         }),
-        { params: { path: ["wh-internal", "sessions", "sess_wh2", "requests", "req_wh2", "continue"] } }
+        { params: { path: ["wh-flow", "sessions", "sess_wh2", "requests", "req_wh2", "continue"] } }
       );
       expect(response.status).toBe(404);
     });

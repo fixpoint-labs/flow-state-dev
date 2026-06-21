@@ -1,7 +1,13 @@
 /**
- * Tests for the webhook request pipeline (FIX-439). A dispatch-capturing mock
- * host lets each test assert the exact envelope the route built; a real host
- * at the end exercises end-to-end principal resolution and session creation.
+ * Tests for the webhook request pipeline (FIX-439). A webhook binding is an
+ * action in webhook form — it carries its handler `block` inline and lives on
+ * `flow.webhooks`, never `flow.actions`. The dispatched envelope's `action` is
+ * the handler block's name (provenance); the runtime resolves the actual
+ * handler from `flow.webhooks[provider].on[event]` via `metadata.webhook`.
+ *
+ * A dispatch-capturing mock host lets each test assert the exact envelope the
+ * route built; a real host at the end exercises end-to-end resolution,
+ * principal resolution, and session creation.
  */
 import { describe, it, expect } from "vitest";
 import { createHmac } from "node:crypto";
@@ -24,8 +30,8 @@ import type { InboundRequestEnvelope, InboundTransportHost } from "../../src/tra
 import type { WebhookProviderDefinition } from "../../src/transports/webhook/createWebhookTransportAdapter";
 import { handleWebhook } from "../../src/transports/webhook/routes";
 
-const noop = handler({
-  name: "record",
+const recordBlock = handler({
+  name: "record-payment",
   inputSchema: z.object({ invoiceId: z.string().optional() }),
   execute: () => undefined
 });
@@ -33,13 +39,13 @@ const noop = handler({
 function billingFlow() {
   return defineFlow({
     kind: "billing",
-    actions: { recordPayment: { block: noop }, refundPayment: { block: noop } },
+    actions: {},
     authentication: { defaultUserId: "system", requireUser: false },
     webhooks: {
       stripe: {
         on: {
           "invoice.paid": defineWebhookBinding<{ data: { object: { id: string; customer: string } } }>({
-            action: "recordPayment",
+            block: recordBlock,
             input: (e) => ({ invoiceId: e.payload.data.object.id }),
             sessionId: (e) => `customer-${e.payload.data.object.customer}`
           })
@@ -90,7 +96,7 @@ function captureHost(flow: ReturnType<typeof billingFlow>) {
 describe("handleWebhook", () => {
   const params = { flowKind: "billing", provider: "stripe" };
 
-  it("routes a verified event to the bound action with mapped input + session", async () => {
+  it("routes a verified event to the bound handler with mapped input + session", async () => {
     const { host, dispatched } = captureHost(billingFlow());
     const res = await handleWebhook(
       stripeRequest({ type: "invoice.paid", id: "evt_1", data: { object: { id: "in_1", customer: "cus_9" } } }),
@@ -103,53 +109,14 @@ describe("handleWebhook", () => {
     expect(dispatched).toHaveLength(1);
     const env = dispatched[0]!;
     expect(env.source).toBe("webhook");
-    expect(env.action).toBe("recordPayment");
+    // `action` is the handler block's name — provenance on the request record.
+    expect(env.action).toBe("record-payment");
     expect(env.input).toEqual({ invoiceId: "in_1" });
     expect(env.sessionId).toBe("customer-cus_9");
     expect(env.responseEmitter).toBeNull();
     expect(env.metadata).toEqual({
       webhook: { provider: "stripe", eventType: "invoice.paid", deliveryId: "evt_1" }
     });
-  });
-
-  it("dispatches the synthesized internal action for an inline `block` binding", async () => {
-    // FIX-439: a webhook-only handler declared inline via `block` is lowered
-    // into an internal action named `__wh.<provider>.<eventKey>`. The route
-    // dispatches that action exactly like a referenced one — the inline block
-    // gets the full dispatch runtime without widening the flow's public actions.
-    const flow = defineFlow({
-      kind: "billing",
-      actions: { recordPayment: { block: noop } },
-      authentication: { defaultUserId: "system", requireUser: false },
-      webhooks: {
-        stripe: {
-          on: {
-            "invoice.paid": {
-              block: handler({
-                name: "handle-paid-inline",
-                inputSchema: z.object({ invoiceId: z.string() }),
-                execute: () => undefined
-              }),
-              input: (e: WebhookInboundEvent<{ data: { object: { id: string } } }>) => ({
-                invoiceId: e.payload.data.object.id
-              })
-            }
-          }
-        }
-      }
-    })({ id: "billing" });
-    const { host, dispatched } = captureHost(flow);
-    const res = await handleWebhook(
-      stripeRequest({ type: "invoice.paid", id: "evt_1", data: { object: { id: "in_1" } } }),
-      { params },
-      host,
-      { stripe: stripeProvider }
-    );
-
-    expect(res.status).toBe(202);
-    expect(dispatched).toHaveLength(1);
-    expect(dispatched[0]!.action).toBe("__wh.stripe.invoice.paid");
-    expect(dispatched[0]!.input).toEqual({ invoiceId: "in_1" });
   });
 
   it("rejects an invalid signature with 401 and never dispatches", async () => {
@@ -177,64 +144,16 @@ describe("handleWebhook", () => {
     expect(dispatched).toHaveLength(0);
   });
 
-  it("prefers a declarative `on` binding over the `route` escape hatch", async () => {
-    const flow = defineFlow({
-      kind: "billing",
-      actions: { recordPayment: { block: noop }, refundPayment: { block: noop } },
-      authentication: { defaultUserId: "system", requireUser: false },
-      webhooks: {
-        stripe: {
-          on: { "invoice.paid": { action: "recordPayment", input: () => ({ invoiceId: "from-on" }) } },
-          route: () => ({ action: "refundPayment", input: { invoiceId: "from-route" } })
-        }
-      }
-    })({ id: "billing" });
-    const { host, dispatched } = captureHost(flow);
-    await handleWebhook(
-      stripeRequest({ type: "invoice.paid", id: "e", data: {} }),
-      { params },
-      host,
-      { stripe: stripeProvider }
-    );
-    expect(dispatched[0]!.action).toBe("recordPayment");
-    expect(dispatched[0]!.input).toEqual({ invoiceId: "from-on" });
-  });
-
-  it("falls back to `route` when no `on` key matches", async () => {
-    const flow = defineFlow({
-      kind: "billing",
-      actions: { recordPayment: { block: noop } },
-      authentication: { defaultUserId: "system", requireUser: false },
-      webhooks: {
-        stripe: {
-          on: { "invoice.paid": { action: "recordPayment", input: () => ({}) } },
-          route: (e: WebhookInboundEvent) =>
-            e.eventType === "charge.refunded"
-              ? { action: "recordPayment", input: { invoiceId: "routed" } }
-              : null
-        }
-      }
-    })({ id: "billing" });
-    const { host, dispatched } = captureHost(flow);
-    await handleWebhook(
-      stripeRequest({ type: "charge.refunded", id: "e", data: {} }),
-      { params },
-      host,
-      { stripe: stripeProvider }
-    );
-    expect(dispatched[0]!.input).toEqual({ invoiceId: "routed" });
-  });
-
   it("treats a throwing `when` predicate as a non-match (202, no dispatch, no 5xx)", async () => {
     const flow = defineFlow({
       kind: "billing",
-      actions: { recordPayment: { block: noop } },
+      actions: {},
       authentication: { defaultUserId: "system", requireUser: false },
       webhooks: {
         stripe: {
           on: {
             "invoice.paid": {
-              action: "recordPayment",
+              block: recordBlock,
               input: () => ({}),
               when: () => {
                 throw new Error("predicate bug");
@@ -247,30 +166,6 @@ describe("handleWebhook", () => {
     const { host, dispatched } = captureHost(flow);
     const res = await handleWebhook(
       stripeRequest({ type: "invoice.paid", id: "e", data: {} }),
-      { params },
-      host,
-      { stripe: stripeProvider }
-    );
-    expect(res.status).toBe(202);
-    expect(dispatched).toHaveLength(0);
-  });
-
-  it("acknowledges and ignores when the `route` escape hatch throws", async () => {
-    const flow = defineFlow({
-      kind: "billing",
-      actions: { recordPayment: { block: noop } },
-      authentication: { defaultUserId: "system", requireUser: false },
-      webhooks: {
-        stripe: {
-          route: () => {
-            throw new Error("route bug");
-          }
-        }
-      }
-    })({ id: "billing" });
-    const { host, dispatched } = captureHost(flow);
-    const res = await handleWebhook(
-      stripeRequest({ type: "charge.created", id: "e", data: {} }),
       { params },
       host,
       { stripe: stripeProvider }
@@ -450,8 +345,9 @@ describe("handleWebhook", () => {
 describe("handleWebhook with a real host (signed, end-to-end)", () => {
   const SECRET = "whsec_integration";
 
-  // A flow whose action mutates session state, so we can prove the webhook
-  // drove a real action run, not just session creation.
+  // A flow whose webhook handler mutates session state, so we can prove the
+  // webhook drove a real action run resolved from `flow.webhooks` (not
+  // `flow.actions`), not just session creation.
   function recordingFlow() {
     const recordPayment = handler({
       name: "record-payment",
@@ -463,13 +359,13 @@ describe("handleWebhook with a real host (signed, end-to-end)", () => {
     return defineFlow({
       kind: "billing",
       session: { stateSchema: z.object({ lastInvoice: z.string() }).partial() },
-      actions: { recordPayment: { block: recordPayment } },
+      actions: {},
       authentication: { defaultUserId: "system", requireUser: false },
       webhooks: {
         stripe: {
           on: {
             "invoice.paid": defineWebhookBinding<{ data: { object: { id: string; customer: string } } }>({
-              action: "recordPayment",
+              block: recordPayment,
               input: (e) => ({ invoiceId: e.payload.data.object.id }),
               sessionId: (e) => `customer-${e.payload.data.object.customer}`
             })
@@ -491,7 +387,7 @@ describe("handleWebhook with a real host (signed, end-to-end)", () => {
     });
   }
 
-  it("verifies a real signature, runs the action, and updates session state", async () => {
+  it("verifies a real signature, resolves the webhook handler, and updates session state", async () => {
     const registry = createFlowRegistry();
     registry.register(recordingFlow());
     const stores = createInMemoryStores();

@@ -27,6 +27,7 @@ export { asRuntime } from "./block";
 
 export type {
   ActionConfig,
+  ActionCore,
   ActionMcpConfig,
   CostEstimator,
   ClientDataComputeFn,
@@ -84,7 +85,6 @@ export type {
   WebhookConfig,
   WebhookEventBinding,
   WebhookInboundEvent,
-  WebhookRouteResult,
   WebhookSubscriptionConfig
 } from "./webhooks";
 

@@ -41,15 +41,12 @@ interface PullRequestEvent {
 export const repoFlow = defineFlow({
   kind: "repo",
   authentication: { defaultUserId: "github-bot", requireUser: false },
-  actions: {
-    reviewPullRequest: { block: reviewPipeline },
-  },
   webhooks: {
     github: {
       on: {
         // Keyed by X-GitHub-Event, narrowed to the "opened" action.
         pull_request: defineWebhookBinding<PullRequestEvent>({
-          action: "reviewPullRequest",
+          block: reviewPipeline,
           when: (e) => e.payload.action === "opened",
           input: (e) => ({
             repo: e.payload.repository.full_name,

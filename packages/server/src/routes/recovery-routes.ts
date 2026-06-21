@@ -22,20 +22,14 @@ type ContinueRouteContext = RecoveryRouteContext & {
 };
 
 /**
- * True when the named action exists on the flow and is marked `internal`
- * (dispatch-only). Used by the retry/continue routes to keep an internal
- * action — e.g. a webhook/chat-only handler synthesized from an inline binding
- * block — off the public re-dispatch surface, matching the action endpoint.
- * A missing flow returns false: there's nothing to re-dispatch, and the
- * downstream recovery path reports that on its own.
+ * Webhook-originated requests are event-addressed and transport-authenticated:
+ * their handler is reached only through a verified webhook, never the public
+ * action endpoint. The retry/continue routes are public re-dispatch surfaces
+ * (retry even accepts an `inputOverride`), so re-running a webhook request from
+ * here would bypass signature verification. Both routes reject such records,
+ * matching the FIX-439 v1 "detached completion only" scope.
  */
-function isInternalAction(
-  registry: FlowRegistry,
-  flowKind: string,
-  actionName: string
-): boolean {
-  return registry.get(flowKind)?.actions[actionName]?.internal === true;
-}
+const WEBHOOK_SOURCE = "webhook";
 
 export async function handleRetryRequest(
   request: Request,
@@ -73,14 +67,11 @@ export async function handleRetryRequest(
     });
   }
 
-  // An internal action (e.g. a webhook/chat-only handler synthesized from an
-  // inline binding `block`) is dispatch-only: it must not be re-runnable from a
-  // public HTTP surface. Retry is the sharpest case — `inputOverride` would feed
-  // the handler attacker-controlled input without the transport's signature
-  // check. Hide it like the action endpoint does (`handleExecuteAction`),
-  // returning the same not-found shape as a missing record so internal-action
-  // requests are indistinguishable from nonexistent ones here.
-  if (isInternalAction(ctx.registry, originalRecord.flowKind, originalRecord.actionName)) {
+  // Webhook requests are reachable only through a verified webhook, never this
+  // public re-dispatch surface — retry's `inputOverride` would otherwise feed
+  // the handler attacker-controlled input without a signature check. Return the
+  // same not-found shape as a missing record so they're indistinguishable here.
+  if (originalRecord.source === WEBHOOK_SOURCE) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
@@ -164,9 +155,9 @@ export async function handleContinueRequest(
     });
   }
 
-  // Internal actions are dispatch-only and must not be re-entered from a public
-  // HTTP surface — see `handleRetryRequest`. Treat as not found.
-  if (isInternalAction(ctx.registry, originalRecord.flowKind, originalRecord.actionName)) {
+  // Webhook requests must not be re-entered from a public HTTP surface — see
+  // `handleRetryRequest`. Treat as not found.
+  if (originalRecord.source === WEBHOOK_SOURCE) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
