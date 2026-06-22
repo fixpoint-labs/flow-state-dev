@@ -57,14 +57,17 @@ What separates a goal check from a dressed-up unit test:
 1. **Assert on the user-visible surface, not the implementation.** Check the emitted items / `useSession` view / the returned answer / a real side effect — not the output of the internal function that produced them. A check that asserts on `collapseToCanonicalLog()`'s return value can pass while the rendered stream double-fires; a check that asserts on what `useSession` shows cannot.
 2. **Grade against the input.** Pull the concrete facts out of the fixture and assert they survived into the output. This is what catches "the pattern ran but dropped the data." Parameterize so swapping the fixture still works — that's the held-out guarantee in code.
 3. **Use a real side effect for "exactly once" claims.** To prove a step didn't re-run, increment a real counter (a state value, a row, a file) and assert the count — not item de-duplication, which can hide a double-fire.
-4. **Drive the real path.** Default is `pnpm fsdev run <flow> <action> -i '{...}' --model <real> --capture /tmp/run.json` (run from the app dir — config search is cwd-only). The capture file is `{ command, events, result }`: the item stream is the `item_added` events (`events.filter(e => e.type === "item_added").map(e => e.item)`), and the action's final output / success flag are on `result`. Assert against those. For non-flow goals, call the public API directly. Mock only true third-party services (payment, email) you genuinely can't call.
+4. **Drive the real path.** Default is `pnpm fsdev run <flow> <action> -i '{...}' --model <real> --capture /tmp/run.json` (run from the app dir — config search is cwd-only). The capture file is `{ command, events, result }`. Read it carefully — `_template/run.mts` shows the pattern:
+   - **Take the latest snapshot of each item, not the first.** Streamed assistant text lands in later snapshots (`content.delta` is checkpointed into item snapshots, not the persisted event log), so the first `item_added` is often empty. Reduce events by `item.id`, keeping the last.
+   - **Assert on terminal/public output**, not trace internals. The action's final output and success flag are on `result`; worker/block execution items are `type: "block_trace"` with an internal `BlockValueInternal` value — don't unwrap those, prefer `result.output` or the public item that carries the value.
+   - For non-flow goals, call the public API directly. Mock only true third-party services (payment, email) you genuinely can't call.
 5. **Print an explicit verdict.** End with `PASS`/`FAIL` and the evidence inspected, so a later reader (or agent) knows the result without re-deriving the criteria. Exit non-zero on FAIL.
 
 ## Running
 
 ```bash
 # one goal
-pnpm tsx goals/plan-and-execute/carries-original-data-to-workers/run.mts
+pnpm tsx goals/<describe>/<it>/run.mts
 
 # (a goals/ sweep — pnpm goal:all — will be added once a few goals exist)
 ```

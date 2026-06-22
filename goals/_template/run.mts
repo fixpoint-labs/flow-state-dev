@@ -31,22 +31,38 @@ function runGoalCheck(): string[] {
     { stdio: "inherit" },
   );
 
-  // `fsdev run --capture` writes { command, events, result }. The item stream is
-  // the `item_added` events; the final action output is on `result`.
+  // `fsdev run --capture` writes { command, events, result }.
   const captured = JSON.parse(readFileSync("/tmp/goal-run.json", "utf8"));
   const failures: string[] = [];
   if (captured.result?.success !== true) {
     return [`flow did not complete: ${JSON.stringify(captured.result?.error ?? "unknown")}`];
   }
-  const items: any[] = (captured.events ?? [])
-    .filter((e: any) => e.type === "item_added")
-    .map((e: any) => e.item);
 
-  // 3. Assert on the user-visible surface, graded against the fixture —
-  //    NOT on an internal function's return value.
-  // e.g. for (const fact of factsFrom(input)) {
-  //   if (!itemsOrOutputContain(items, captured.result.output, fact)) failures.push(`missing: ${fact}`);
-  // }
+  // Reconstruct the FINAL state of each item: keep the latest snapshot per id.
+  // Streamed assistant text lands in later snapshots (content.delta is
+  // checkpointed into item snapshots, not the persisted event log), so the
+  // first `item_added` can be empty — taking the latest avoids a false fail.
+  const itemsById = new Map<string, any>();
+  for (const e of captured.events ?? []) {
+    if (e.item?.id) itemsById.set(e.item.id, e.item);
+  }
+  const items = [...itemsById.values()];
+
+  // 3. Assert on the user-visible surface, graded against the fixture — NOT on
+  //    implementation internals. Prefer the terminal `captured.result.output`
+  //    and completed assistant messages (type "message", role !== "user").
+  //    Note: worker/block execution items are `type: "block_trace"` with an
+  //    internal `BlockValueInternal` value — assert on public/terminal output,
+  //    not on trace internals.
+  // e.g.
+  //   const answer = [
+  //     JSON.stringify(captured.result.output ?? ""),
+  //     ...items.filter((i) => i.type === "message" && i.role !== "user")
+  //       .map((i) => String(i.content ?? i.text ?? "")),
+  //   ].join("\n");
+  //   for (const fact of factsFrom(input)) {
+  //     if (!answer.includes(fact)) failures.push(`missing: ${fact}`);
+  //   }
   void input; void items;
   return failures;
 }

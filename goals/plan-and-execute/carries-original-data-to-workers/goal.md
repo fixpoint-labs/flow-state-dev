@@ -6,9 +6,13 @@
 **Signal:** every dispatched worker's `context` contains the subdomain string for its task, AND the final synthesized answer names at least 4 of the 5 subdomains. (5 is enough to exercise the dropped-data bug; more is just waste.)
 **Anti-game:** the gameable pass is asserting the *pattern ran* — that it emitted a `TaskInit[]`, or that the board reached `complete`, or that the decomposer returned the right schema shape. All of those pass on the original (broken) behavior where workers got a bare instruction with no data. The check MUST grade against the fixture: the concrete subdomain strings have to appear in worker context and in the output. Do not assert on schema shape, item counts, or that `taskContext` was called.
 **Model:** real — openai/gpt-5.4-mini
-**Run:** `pnpm tsx goals/plan-and-execute/carries-original-data-to-workers/run.mts`
+**Run:** _runner not yet authored_ — see "Runner" below.
+
+**Runner.** This is the **contract** for the goal; the `run.mts` was removed because it can't be verified in the current environment (no inference credential) and the framework shapes it must read are easy to get wrong blind. Author it against a real `fsdev run` capture, copying `_template/run.mts`, and noting two things the first attempt got wrong:
+- The worker-execution items are `type: "block_trace"` (their completed value is a `BlockValueInternal`), **not** `block_output`. Prefer asserting on the **task-board's public output** that carries each worker's `context`, rather than unwrapping trace internals.
+- Build the final answer from the **latest snapshot of each item** (streamed text lands in later snapshots, not the first `item_added`) plus `result.output` — see `_template/run.mts`.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| _not yet run_ | | | | runner targets the app flow that composes `planAndExecute`; wire `<flow> <action>` before first run. Capture-shape + harness validated against real `fsdev run` output; a green run needs an inference-capable model credential (the dev container's gateway key 401s on generation — see README → Credentials). |
+| _not yet run_ | | | | contract only; runner to be authored + verified against a real model (see Runner above and README → Credentials) |
