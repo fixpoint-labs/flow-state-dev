@@ -11,4 +11,4 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| _not yet run_ | | | | runner targets the app flow that composes `planAndExecute`; wire `<flow> <action>` before first run |
+| _not yet run_ | | | | runner targets the app flow that composes `planAndExecute`; wire `<flow> <action>` before first run. Capture-shape + harness validated against real `fsdev run` output; a green run needs an inference-capable model credential (the dev container's gateway key 401s on generation — see README → Credentials). |

@@ -32,8 +32,16 @@ execFileSync(
   { stdio: "inherit" },
 );
 
+// `fsdev run --capture` writes { command, events, result }. The item stream is
+// the `item_added` events; the final action output is on `result`.
 const captured = JSON.parse(readFileSync("/tmp/fix-827-goal.json", "utf8"));
-const items: any[] = captured.items ?? captured.stream ?? [];
+if (captured.result?.success !== true) {
+  console.error(`FAIL — flow did not complete: ${JSON.stringify(captured.result?.error ?? "unknown")}`);
+  process.exit(1);
+}
+const items: any[] = (captured.events ?? [])
+  .filter((e: any) => e.type === "item_added")
+  .map((e: any) => e.item);
 
 // Grade against the fixture — never against hardcoded names.
 const failures: string[] = [];
@@ -50,11 +58,14 @@ for (const sub of fixture.subdomains) {
 }
 
 // 2. The final answer must name most of the specific subdomains — proving the
-//    data shaped the output, not just the plan.
-const finalText = items
-  .filter((i) => i.type === "message")
-  .map((i) => String(i.content ?? ""))
-  .join("\n");
+//    data shaped the output, not just the plan. Assistant messages only
+//    (role !== "user"), plus the action's final output.
+const finalText = [
+  ...items
+    .filter((i) => i.type === "message" && i.role !== "user")
+    .map((i) => String(i.content ?? i.text ?? "")),
+  JSON.stringify(captured.result?.output ?? ""),
+].join("\n");
 const named = fixture.subdomains.filter((s) => finalText.includes(s)).length;
 if (named < 4) {
   failures.push(`final answer named only ${named}/${fixture.subdomains.length} subdomains (need >= 4)`);

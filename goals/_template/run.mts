@@ -30,15 +30,24 @@ function runGoalCheck(): string[] {
     ],
     { stdio: "inherit" },
   );
-  const result = JSON.parse(readFileSync("/tmp/goal-run.json", "utf8"));
+
+  // `fsdev run --capture` writes { command, events, result }. The item stream is
+  // the `item_added` events; the final action output is on `result`.
+  const captured = JSON.parse(readFileSync("/tmp/goal-run.json", "utf8"));
+  const failures: string[] = [];
+  if (captured.result?.success !== true) {
+    return [`flow did not complete: ${JSON.stringify(captured.result?.error ?? "unknown")}`];
+  }
+  const items: any[] = (captured.events ?? [])
+    .filter((e: any) => e.type === "item_added")
+    .map((e: any) => e.item);
 
   // 3. Assert on the user-visible surface, graded against the fixture —
   //    NOT on an internal function's return value.
-  const failures: string[] = [];
   // e.g. for (const fact of factsFrom(input)) {
-  //   if (!outputContains(result, fact)) failures.push(`missing: ${fact}`);
+  //   if (!itemsOrOutputContain(items, captured.result.output, fact)) failures.push(`missing: ${fact}`);
   // }
-  void result;
+  void input; void items;
   return failures;
 }
 

@@ -57,7 +57,7 @@ What separates a goal check from a dressed-up unit test:
 1. **Assert on the user-visible surface, not the implementation.** Check the emitted items / `useSession` view / the returned answer / a real side effect — not the output of the internal function that produced them. A check that asserts on `collapseToCanonicalLog()`'s return value can pass while the rendered stream double-fires; a check that asserts on what `useSession` shows cannot.
 2. **Grade against the input.** Pull the concrete facts out of the fixture and assert they survived into the output. This is what catches "the pattern ran but dropped the data." Parameterize so swapping the fixture still works — that's the held-out guarantee in code.
 3. **Use a real side effect for "exactly once" claims.** To prove a step didn't re-run, increment a real counter (a state value, a row, a file) and assert the count — not item de-duplication, which can hide a double-fire.
-4. **Drive the real path.** Default is `pnpm fsdev run <flow> <action> -i '{...}' --model <real> --capture /tmp/run.json`, then assert against the captured NDJSON/result. For non-flow goals, call the public API directly. Mock only true third-party services (payment, email) you genuinely can't call.
+4. **Drive the real path.** Default is `pnpm fsdev run <flow> <action> -i '{...}' --model <real> --capture /tmp/run.json` (run from the app dir — config search is cwd-only). The capture file is `{ command, events, result }`: the item stream is the `item_added` events (`events.filter(e => e.type === "item_added").map(e => e.item)`), and the action's final output / success flag are on `result`. Assert against those. For non-flow goals, call the public API directly. Mock only true third-party services (payment, email) you genuinely can't call.
 5. **Print an explicit verdict.** End with `PASS`/`FAIL` and the evidence inspected, so a later reader (or agent) knows the result without re-deriving the criteria. Exit non-zero on FAIL.
 
 ## Running
@@ -70,6 +70,8 @@ pnpm tsx goals/plan-and-execute/carries-original-data-to-workers/run.mts
 ```
 
 Goal checks cost real model calls. Run them when you need the proof — finishing a feature, or re-checking for a regression — not on every change. They do not gate CI.
+
+**Credentials.** A goal check needs a model credential with **inference** access — a working `AI_GATEWAY_API_KEY` (Vercel AI Gateway), or a provider key the app's model resolver uses. Note that a gateway key can authenticate for *listing* models yet be rejected for *inference* (a 401 from `/v1/chat/completions`), so "the key is set" is not enough — the run has to actually generate. Some managed/CI containers only carry a listing-scope credential; run goal checks where a real inference credential is available.
 
 ## Adding a goal
 
