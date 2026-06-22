@@ -74,7 +74,7 @@ When exploring the codebase, use FSD vocabulary throughout — block / generator
 
 Before writing any code:
 
-- [ ] **State the goal** as an observable real-world outcome, and the **goal check** that will prove it (real model, out of CI — see "Two kinds of test"). The goal frames everything below: the behaviours you test are the steps to it, the goal check is how you confirm you arrived.
+- [ ] **State the goal** as an observable real-world outcome, and the **goal check** that will prove it (real model, out of CI — see "Two kinds of test"). The goal frames everything below: the behaviours you test are the steps to it, the goal check is how you confirm you arrived. If this is one of the no-goal-check cases (pure refactor, docs-only, exploratory UI/prose, diagnose-driven bug — see "Verify the goal"), state that no goal check applies and why, rather than inventing a hollow one.
 - [ ] Identify which FSD construct you're building: block (which kind?), pattern, capability, flow action
 - [ ] Identify the public surface: `inputSchema`, `outputSchema`, emitted item types, state scope reads/writes, lifecycle hooks
 - [ ] Identify deepening opportunities (see `fsd:improve-codebase-architecture`) — small interface, deep implementation

@@ -186,7 +186,9 @@ Repeat 5B.2–5B.3 for each task in order. After all tasks:
 - Run full typecheck: `pnpm typecheck`
 - Run full test suite: `pnpm test`
 - Fix any cross-task integration issues
-- **Run the goal check** if the spec's Testing Strategy names one (real model, real path — see `fsd:tdd` → "Two kinds of test"). The per-task specs are mocked and only prove the pieces; the goal check proves the assembled feature actually achieves the outcome. Confirm PASS before moving to review and record the command and verdict. If the spec documented that no goal check applies, skip this and note the documented justification instead.
+- **Prove the goal on the assembled work** (real model, real path — see `fsd:tdd` → "Two kinds of test"). The per-task specs are mocked and only prove the pieces; this step proves the whole achieves the outcome. Confirm PASS before moving to review and record the command and verdict.
+  - **Feature/Enhancement:** run the goal check the spec names. If the spec documented that no goal check applies, skip and note the documented justification.
+  - **Bug** (complex bugs route through 5B, not 5A): if the original symptom was user-visible, re-run the **original repro through the real path** (`fsdev run` against a real model) on the assembled fix and confirm it's gone — this is the bug's goal verdict Step 6 expects. For a pure type/unit regression, note "N/A — type/unit-only" with the regression test as the proof.
 
 ### Step 6: Comprehensive Review
 
