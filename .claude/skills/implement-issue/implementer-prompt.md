@@ -214,11 +214,15 @@ loop produce hours of speculative code changes.
 6. **Cleanup + goal-level proof.** Before reporting:
    - Original repro no longer reproduces
    - Regression test passes
-   - **Real-path confirmation:** if the bug was user-visible behaviour
-     (not a pure type/unit regression), confirm the fix through the real
-     path too — `fsdev run` against a real model — not only the mocked
-     regression spec, so you've proven the symptom is actually gone.
-     Report this as the goal verdict (or "N/A — type/unit-only").
+   - **Real-path confirmation (slice-level only).** If the bug is
+     user-visible AND your task contains an isolated, runnable repro,
+     confirm the fix through the real path — `fsdev run` against a real
+     model — not only the mocked regression spec, and report it as the
+     goal verdict. If the symptom only reproduces once later tasks land
+     and integration is done, do NOT run it; say the assembled proof is
+     deferred to the orchestrator (it runs it in Step 5B.4). Pure
+     type/unit regression → "N/A — type/unit-only." Never invent a PASS
+     or N/A for a repro you couldn't run.
    - All `[DEBUG-*]` instrumentation removed (`grep` the prefix)
    - Throwaway prototypes deleted
    - Commit message names the hypothesis that turned out correct — so
