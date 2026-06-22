@@ -232,9 +232,11 @@ Fix all must-fix and should-fix items. Re-run affected tests after fixes.
 
 ### Step 7: Update Linear
 
-Update the Linear issue:
+First, **compile the Key Decisions & Ramifications (top 5)** — the most consequential decisions made *during implementation* (not the spec's): a shape the spec left open, a deviation, a tradeoff under a constraint the spec didn't anticipate. For each: the decision, the alternative rejected, and the ramification — what it locks in, what it rules out, what risk it carries. If implementation was purely mechanical with no real decisions, say so rather than padding to five. This list is reused verbatim in Step 8 (presentation) and Step 9 (PR body).
+
+Then update the Linear issue:
 - Add a comment summarizing: what was implemented, approach taken, test results, the **goal-check command and its PASS verdict**, any deviations from spec
-- Include the **Key Decisions & Ramifications (top 5)** you compile in Step 8 — the durable record lives on the issue so the decisions are reviewable async, not just in chat
+- Include the **Key Decisions & Ramifications (top 5)** compiled above — the durable record lives on the issue so the decisions are reviewable async, not just in chat
 - Keep state as "In Progress" until user approves
 
 ### Step 8: Present for Review
@@ -242,7 +244,7 @@ Update the Linear issue:
 Present the completed work:
 
 1. **Summary**: what was implemented (tied back to the spec)
-2. **Key decisions & ramifications (top 5)**: the most consequential decisions made *during implementation* (not the spec's — the ones you actually made while building: a shape the spec left open, a deviation, a tradeoff under a constraint the spec didn't anticipate). For each: the decision, the alternative rejected, and the ramification — what it locks in, what it rules out, what risk it carries. This lets the user review the decisions, not just the code. If implementation was purely mechanical with no real decisions, say so explicitly rather than padding to five.
+2. **Key decisions & ramifications (top 5)**: the list compiled in Step 7 — each decision made *during implementation*, the alternative rejected, and the ramification (what it locks in, what it rules out, what risk it carries). This lets the user review the decisions, not just the code.
 3. **Changes**: files modified/created with brief descriptions
 4. **Goal check**: the goal check that was run (command/path), that it used a real model, and its PASS verdict with the evidence it checked. This is the proof the goal was met — distinct from the mocked test suite.
 5. **Deviations**: anything that differed from the spec and why
@@ -264,7 +266,7 @@ Once approved:
 2. Push: `git push -u origin fix/{ISSUE-ID}`
 3. Open PR with `gh pr create`:
    - Title: concise description (under 70 characters)
-   - Body: summary, changes, **Key Decisions & Ramifications (top 5)** (the same list from Step 8 — so reviewers evaluate the direction, not only the diff), test plan, the **goal-check command and its PASS verdict**, `Fixes FIX-{number}`
+   - Body: summary, changes, **Key Decisions & Ramifications (top 5)** (the same list compiled in Step 7 — so reviewers evaluate the direction, not only the diff), test plan, the **goal-check command and its PASS verdict**, `Fixes FIX-{number}`
 4. Update Linear issue:
    - State: "Done"
    - Attach PR URL
