@@ -53,6 +53,26 @@ const planner = generator({
 and environment. The default resolves `claude` from `PATH`; pass your own to
 point at a specific binary or to mock the subprocess in tests.
 
+### Dispatching needs a pseudo-terminal
+
+`claude --remote` only runs from a terminal. A plain subprocess pipes its
+stdout, which the CLI reads as non-interactive — it drops to local `--print`
+mode and exits with "--remote requires an interactive terminal". So the default
+resolver, a bare spawn, can't actually dispatch.
+
+Use `resolvePtyClaudeCli`. It runs `claude` under `script(1)`, which gives it a
+pseudo-terminal, and strips inherited `CLAUDE_*` / `ANTHROPIC_API_KEY` from the
+child so the cloud session authenticates as your logged-in user instead of
+stopping on a "Detected a custom API key" prompt.
+
+```ts
+import { claudeRemoteDispatch, resolvePtyClaudeCli } from "@flow-state-dev/claude-code/cli";
+
+const dispatch = claudeRemoteDispatch({ resolveClaudeCli: resolvePtyClaudeCli });
+```
+
+It needs `script(1)`, which ships on macOS and Linux.
+
 ## Dispatch as a sequencer step
 
 When the host (not the model) decides to dispatch, use the handler directly:
