@@ -63,7 +63,7 @@ Now do the actual work. Follow the project's standard development practices:
    pnpm --filter <affected-package> test
    ```
 5. If tests fail, fix them. If existing tests don't cover the fix, add targeted test coverage.
-6. **Confirm the fix against the real path when the behaviour is user-visible.** Mocked specs passing doesn't prove the symptom is gone. If the fix touches flow/generator behaviour, run it through a real model (`fsdev run`) and confirm the actual outcome the user reported is fixed — that's the goal. Pure type/unit fixes don't need this. (See `fsd:tdd` → "Two kinds of test".)
+6. **Confirm the fix against the real path when the behaviour is user-visible** and there's a runnable real path — a flow, generator, or a handler/pattern surfaced through a flow. Mocked specs passing doesn't prove the symptom is gone: run it through a real model (`fsdev run`) and confirm the actual outcome the user reported is fixed — that's the goal. Only pure type/unit fixes with no user-visible behaviour skip this. (See `fsd:tdd` → "Two kinds of test".)
 
 Work autonomously through this step. Don't ask the user for approach approval — just pick the right fix and implement it.
 
@@ -116,7 +116,7 @@ Update the Linear issue with a comment summarizing:
 - What was found (root cause)
 - What was changed (files modified, approach taken)
 - Test results
-- **Real-path verdict**: for a user-visible flow/generator fix, the `fsdev run` command and its result confirming the symptom is gone (or "N/A — type/unit-only fix"). Mocked tests passing don't prove the symptom is fixed.
+- **Real-path verdict**: for any user-visible fix with a runnable real path (flow, generator, or handler/pattern surfaced through a flow), the `fsdev run` command and its result confirming the symptom is gone (or "N/A — type/unit-only fix"). Mocked tests passing don't prove the symptom is fixed.
 
 Keep the issue in "In Progress" state — it moves to "Done" only after the user approves the commit.
 
@@ -127,7 +127,7 @@ Now — and only now — present the completed work to the user. Include:
 1. **Summary**: what was wrong and what you did to fix it
 2. **Changes made**: list of files modified with brief descriptions
 3. **Test results**: did everything pass?
-4. **Real-path verdict**: for a user-visible flow/generator fix, the `fsdev run` result confirming the reported symptom is gone (or "N/A — type/unit-only fix"). This is the proof the fix works, distinct from the test suite.
+4. **Real-path verdict**: for any user-visible fix with a runnable real path (flow, generator, or handler/pattern surfaced through a flow), the `fsdev run` result confirming the reported symptom is gone (or "N/A — type/unit-only fix"). This is the proof the fix works, distinct from the test suite.
 5. **Sub-agent findings**: any notable observations from the quality review
 6. **Related issues**: any other Linear issues affected (from impact analysis)
 
