@@ -5,13 +5,13 @@
  * are responsible for sorting.
  */
 import { createElement, Fragment, type ComponentType, type ReactNode } from "react";
-import { isSuspensionResumeItem } from "@flow-state-dev/core/items";
 import type {
   ToolOutputItem,
   ComponentItem,
   ContainerItem,
   OutputItem,
-  SuspensionItem
+  SuspensionItem,
+  SuspensionResumeItem
 } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
 import type { RendererRegistry } from "../registry/block-renderers";
@@ -228,10 +228,13 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
   // ApprovalRenderer fallback can't see the full stream, so we derive the
   // resolved set here (from the unfiltered items) and pass it down — that's what
   // lets the default card go read-only instead of offering a duplicate resume.
+  // Match the resume item by its `type` literal rather than the core runtime
+  // predicate — this package imports only TYPES from core (see the inlined
+  // TRACE_TYPES / CONVERSATIONAL_TYPES sets above).
   const resolvedSuspensionIds = new Set<string>();
   for (const it of props.items) {
-    if (isSuspensionResumeItem(it)) {
-      resolvedSuspensionIds.add(it.suspensionId);
+    if (it.type === "suspension_resume") {
+      resolvedSuspensionIds.add((it as SuspensionResumeItem).suspensionId);
     }
   }
 

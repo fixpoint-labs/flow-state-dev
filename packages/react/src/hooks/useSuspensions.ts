@@ -14,12 +14,10 @@ import {
   createRecoveryClient,
   type ResumeSuspensionResult
 } from "@flow-state-dev/client";
-import {
-  isSuspensionItem,
-  isSuspensionResumeItem,
-  type OutputItem,
-  type SuspensionItem,
-  type SuspensionResumeItem
+import type {
+  OutputItem,
+  SuspensionItem,
+  SuspensionResumeItem
 } from "@flow-state-dev/core/items";
 import type { SuspensionReason, SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
@@ -84,9 +82,11 @@ export function deriveSuspensions(
   options: UseSuspensionsOptions = {},
   inFlight: ReadonlySet<string> = new Set()
 ): { suspensions: SuspensionView[]; pending: SuspensionView[] } {
+  // Match by `type` literal — this package imports only TYPES from core, not
+  // its runtime predicates.
   const resumeIndex = new Map<string, SuspensionResumeItem>();
   for (const item of items) {
-    if (isSuspensionResumeItem(item)) {
+    if (item.type === "suspension_resume") {
       const resumeItem = item as SuspensionResumeItem;
       resumeIndex.set(resumeItem.suspensionId, resumeItem);
     }
@@ -94,7 +94,7 @@ export function deriveSuspensions(
 
   const suspensions: SuspensionView[] = [];
   for (const item of items) {
-    if (!isSuspensionItem(item)) continue;
+    if (item.type !== "suspension") continue;
     const suspItem = item as SuspensionItem;
     if (options.requestId !== undefined && suspItem.requestId !== options.requestId) continue;
     if (options.reasons !== undefined && !options.reasons.includes(suspItem.reason)) continue;
@@ -220,7 +220,7 @@ export function useSuspensions(
       (suspensionId: string, data?: unknown): Promise<ResumeSuspensionResult> => {
         const target = session.items.find(
           (item): item is SuspensionItem => {
-            if (!isSuspensionItem(item)) return false;
+            if (item.type !== "suspension") return false;
             return (item as SuspensionItem).suspensionId === suspensionId;
           }
         );
