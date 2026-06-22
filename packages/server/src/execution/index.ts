@@ -2,7 +2,6 @@
  * Public execution runtime API surface for server package consumers.
  */
 export { executeBlock } from "./executeBlock";
-export { isErrorTypeMatch, resolveRescueHandler } from "./rescue";
 export {
   isRetryableError,
   mergeRetryPolicy,
@@ -43,7 +42,6 @@ export {
   summarizeForLog
 } from "./logging";
 export type { RuntimeLogger, RuntimeLoggerLevel } from "./logging";
-export { createWorkQueue, WorkQueue } from "./work-queue";
 export { createRequestWorkPool } from "./request-work-pool";
 export type {
   ExecuteBlockContext,

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createBindingCache } from "../createBindingCache";
-import type { BindingProvider } from "@flow-state-dev/core";
+import type { BindingProvider } from "../../types/binding";
 
 type FakeBinding = { id: string; disposed?: boolean };
 

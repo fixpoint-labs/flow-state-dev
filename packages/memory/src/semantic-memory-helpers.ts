@@ -1,7 +1,8 @@
 import type { ResourceContext } from '@flow-state-dev/core'
 import type { NodeRef } from '@flow-state-dev/core/graph'
 import type { SemanticFact, SemanticMemoryState } from './semantic-memory'
-import { shortId, tokenOverlap, canonicalizeSubject } from './internal/helpers'
+import { shortId, tokenOverlap } from '@flow-state-dev/core/helpers'
+import { canonicalizeSubject } from './internal/helpers'
 import { effectiveConfidence } from './janitor'
 
 type SemRef = ResourceContext<SemanticMemoryState>

@@ -62,23 +62,6 @@ export interface IntentDefaults {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy createFSDProvider types — tombstoned in FIX-633
-// ---------------------------------------------------------------------------
-
-/** @deprecated Removed in FIX-633. Migrate to createModelResolver({ intents, intentDefaults }). */
-export type FSDProvider = never;
-/** @deprecated Removed in FIX-633. */
-export type FSDProviderConfig = never;
-/** @deprecated Removed in FIX-633. Use `{ intents: Record<string, string[]> }` on createModelResolver instead. */
-export type ModelGroupConfig = never;
-/** @deprecated Removed in FIX-633. Use ResolveModelCallOptions instead. */
-export type ResolveOptions = never;
-/** @deprecated Removed in FIX-633. */
-export type ExplainCandidate = never;
-/** @deprecated Removed in FIX-633. */
-export type ExplainResult = never;
-
-// ---------------------------------------------------------------------------
 // Provider preference (FIX-425)
 // ---------------------------------------------------------------------------
 

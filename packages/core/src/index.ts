@@ -270,13 +270,14 @@ export type { VoiceErrorKind, VoiceErrorOptions } from "./types/voice-error";
 export { VoiceError } from "./types/voice-error";
 
 export type { BindingCacheOptions, BindingProvider } from "./types/binding";
+export { createBindingCache } from "./bindings";
+export type { CachedBindingProvider } from "./bindings";
 
 // Model infrastructure (AI SDK adapters, provider detection, fallback)
 export {
   createAiSdkModelResolver,
   wrapAiSdkModel,
   createModelResolver,
-  createFSDProvider,
   createFallbackModel,
   isRetryableError,
   detectAvailableProviders,
@@ -293,9 +294,6 @@ export type {
   ResolveAiSdkLanguageModel,
   CreateModelResolverOptions,
   IntentDefaults,
-  FSDProviderConfig,
-  FSDProvider,
-  ModelGroupConfig,
   ModelGroupDefaults,
   GatewayConfig,
   GatewayType,
@@ -308,9 +306,6 @@ export type {
   WhenRule,
   ModelSelection,
   ProviderPreference,
-  ResolveOptions,
-  ExplainCandidate,
-  ExplainResult,
   MakeSchemaStrictOptions,
   StrictViolation
 } from "./models";

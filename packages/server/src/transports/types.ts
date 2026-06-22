@@ -154,23 +154,12 @@ export interface TransportRoute {
 }
 
 /**
- * Internal, reserved for v1. Will be re-evaluated when FIX-440 has concrete
- * scheduler dispatch needs.
- */
-export type Dispatcher = (
-  envelope: InboundRequestEnvelope
-) => Promise<ExecutionResult>;
-
-/**
  * Outputs returned from `adapter.createBindings`. The host's outer factory
- * wires `routes` into the public method dispatcher; `dispatchers` are
- * internal in v1.
+ * wires `routes` into the public method dispatcher.
  */
 export interface TransportBindings {
   /** HTTP routes for HTTP-shaped transports. */
   routes?: TransportRoute[];
-  /** Non-HTTP entry points keyed by name. Internal-only in v1. */
-  dispatchers?: Record<string, Dispatcher>;
   /**
    * Optional async setup hook called by the host after all adapters'
    * bindings are collected. Errors abort host startup.

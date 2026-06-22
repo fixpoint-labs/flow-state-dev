@@ -1,102 +1,34 @@
 import path from "node:path";
 import type { CASOptions } from "@flow-state-dev/core/types";
 import { ConcurrentModificationError, runWithCAS } from "./cas";
-import {
-  createFilesystemActiveRequestRegistry,
-  FilesystemActiveRequestRegistry
-} from "./filesystem/active-request-registry";
-import {
-  createFilesystemCheckpointStore,
-  FilesystemCheckpointStore
-} from "./filesystem/checkpoint-store";
-import {
-  createFilesystemContentStore,
-  FilesystemContentStore
-} from "./filesystem/content-store";
-import {
-  createFilesystemResourceStateStore,
-  FilesystemResourceStateStore
-} from "./filesystem/resource-state-store";
-import {
-  createFilesystemProjectStore,
-  FilesystemProjectStore
-} from "./filesystem/org-store";
-import {
-  createFilesystemRequestStore,
-  FilesystemRequestStore
-} from "./filesystem/request-store";
-import {
-  createFilesystemSessionStore,
-  FilesystemSessionStore
-} from "./filesystem/session-store";
-import {
-  createFilesystemTraceStore,
-  FilesystemTraceStore
-} from "./filesystem/trace-store";
+import { createFilesystemActiveRequestRegistry } from "./filesystem/active-request-registry";
+import { createFilesystemCheckpointStore } from "./filesystem/checkpoint-store";
+import { createFilesystemContentStore } from "./filesystem/content-store";
+import { createFilesystemResourceStateStore } from "./filesystem/resource-state-store";
+import { createFilesystemProjectStore } from "./filesystem/org-store";
+import { createFilesystemRequestStore } from "./filesystem/request-store";
+import { createFilesystemSessionStore } from "./filesystem/session-store";
+import { createFilesystemTraceStore } from "./filesystem/trace-store";
 export type { FilesystemTraceStoreOptions } from "./filesystem/trace-store";
-import {
-  createFilesystemSuspensionStore,
-  FilesystemSuspensionStore
-} from "./filesystem/suspension-store";
-import {
-  createFilesystemLeaseStore,
-  FilesystemLeaseStore
-} from "./filesystem/lease-store";
-import {
-  createFilesystemUserStore,
-  FilesystemUserStore
-} from "./filesystem/user-store";
-import {
-  createInMemoryActiveRequestRegistry,
-  InMemoryActiveRequestRegistry
-} from "./memory/active-request-registry";
-import {
-  createInMemoryCheckpointStore,
-  InMemoryCheckpointStore
-} from "./memory/checkpoint-store";
-import {
-  createInMemoryContentStore,
-  InMemoryContentStore
-} from "./memory/content-store";
-import {
-  createInMemoryResourceStateStore,
-  InMemoryResourceStateStore
-} from "./memory/resource-state-store";
-import {
-  createInMemoryProjectStore,
-  InMemoryProjectStore
-} from "./memory/org-store";
-import {
-  createInMemoryRequestStore,
-  InMemoryRequestStore
-} from "./memory/request-store";
-import {
-  createInMemorySessionStore,
-  InMemorySessionStore
-} from "./memory/session-store";
+import { createFilesystemSuspensionStore } from "./filesystem/suspension-store";
+import { createFilesystemLeaseStore } from "./filesystem/lease-store";
+import { createFilesystemUserStore } from "./filesystem/user-store";
+import { createInMemoryActiveRequestRegistry } from "./memory/active-request-registry";
+import { createInMemoryCheckpointStore } from "./memory/checkpoint-store";
+import { createInMemoryContentStore } from "./memory/content-store";
+import { createInMemoryResourceStateStore } from "./memory/resource-state-store";
+import { createInMemoryProjectStore } from "./memory/org-store";
+import { createInMemoryRequestStore } from "./memory/request-store";
+import { createInMemorySessionStore } from "./memory/session-store";
 import {
   createInMemoryTraceStore,
-  InMemoryTraceStore,
   type InMemoryTraceStoreOptions
 } from "./memory/trace-store";
-import {
-  createInMemoryUserStore,
-  InMemoryUserStore
-} from "./memory/user-store";
-import {
-  createInMemorySuspensionStore,
-  InMemorySuspensionStore
-} from "./memory/suspension-store";
-import {
-  createInMemoryLeaseStore,
-  InMemoryLeaseStore
-} from "./memory/lease-store";
+import { createInMemoryUserStore } from "./memory/user-store";
+import { createInMemorySuspensionStore } from "./memory/suspension-store";
+import { createInMemoryLeaseStore } from "./memory/lease-store";
 import { ScopeMutationTimeoutError } from "./scope-lock";
-import {
-  createScopeStateOps,
-  createStateContainer,
-  MemoryStateContainer
-} from "./state-container";
+import { createScopeStateOps, createStateContainer } from "./state-container";
 import type { PersistErrorHandler, StoreRegistry } from "./types";
 import type { StoreAdapter } from "./store-adapter";
 
@@ -173,29 +105,6 @@ export {
   createInMemoryUserStore,
   createInMemorySuspensionStore,
   createInMemoryLeaseStore,
-  FilesystemActiveRequestRegistry,
-  FilesystemCheckpointStore,
-  FilesystemContentStore,
-  FilesystemResourceStateStore,
-  FilesystemProjectStore,
-  FilesystemRequestStore,
-  FilesystemSessionStore,
-  FilesystemSuspensionStore,
-  FilesystemLeaseStore,
-  FilesystemTraceStore,
-  FilesystemUserStore,
-  InMemoryActiveRequestRegistry,
-  InMemoryCheckpointStore,
-  InMemoryContentStore,
-  InMemoryResourceStateStore,
-  InMemoryProjectStore,
-  InMemoryRequestStore,
-  InMemorySessionStore,
-  InMemoryTraceStore,
-  InMemoryUserStore,
-  InMemorySuspensionStore,
-  InMemoryLeaseStore,
-  MemoryStateContainer,
   runWithCAS
 };
 

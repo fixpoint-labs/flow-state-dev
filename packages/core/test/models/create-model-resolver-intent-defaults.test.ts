@@ -4,15 +4,11 @@
  * Covers per-intent `providerOptions` defaults: construction validation,
  * provider-filtered application, deep-merge with call-site options, and
  * the `defaultModel` fallback no-op.
- *
- * Also covers the `createFSDProvider` tombstone — calling it must throw
- * with a migration message pointing at the new API.
  */
 import { describe, expect, it } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
 import { createModelResolver } from "../../src/models/createModelResolver";
 import type { IntentDefaults } from "../../src/models/types";
-import { createFSDProvider } from "../../src/models/createFSDProvider";
 
 /**
  * Build a mock AI SDK provider whose generated language model captures the
@@ -241,13 +237,5 @@ describe("createModelResolver — intentDefaults resolution", () => {
     // public surface. The runtime expression is intentionally trivial.
     const _x: IntentDefaults = { providerOptions: { anthropic: { thinking: {} } } };
     expect(_x.providerOptions?.anthropic).toBeDefined();
-  });
-});
-
-describe("createFSDProvider — removed (FIX-633 tombstone)", () => {
-  it("throws with a migration message pointing at createModelResolver/intentDefaults", () => {
-    expect(() => createFSDProvider({})).toThrow(
-      /createFSDProvider has been removed.*createModelResolver.*intentDefaults/s
-    );
   });
 });
