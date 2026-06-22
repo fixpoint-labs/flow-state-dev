@@ -1,0 +1,10 @@
+{
+  "request": "Research each of these subdomains and summarize what each is for.",
+  "subdomains": [
+    "auth.internal.acme.test",
+    "billing-events.acme.test",
+    "telemetry-ingest.acme.test",
+    "feature-flags.edge.acme.test",
+    "webhooks-relay.acme.test"
+  ]
+}
