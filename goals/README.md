@@ -10,27 +10,38 @@ See `fsd:tdd` → "Two kinds of test" for where this sits in the workflow.
 
 Goals accumulate. A goal written for one PR is a **regression check** a year later — re-run it and compare against its verdict log. Keeping them together in one place (rather than scattered per-package) makes them browsable and sweepable, and reflects what they are: outcome-oriented, often spanning several packages.
 
-## Layout
+## Layout — a `describe` / `it` hierarchy
 
-One folder per goal, named `<issue-id>-<slug>` (kebab-case; drop the issue prefix if there's no issue):
+Goals are named like behavioural specs. Two levels, both kebab-case:
+
+- **`describe`** — the feature or subject under test (`plan-and-execute`, `crash-recovery`, `suspension`). The first folder level.
+- **`it`** — the behaviour this goal proves, phrased to complete the sentence "it …" (`carries-original-data-to-workers`, `continues-under-same-request-id`, `does-not-retry-loop`). The second folder level, and the goal itself.
+
+The issue number is **not** in the folder name — it ages out as a discovery key, and the point of the name is that someone looking for a goal to reuse can find it by what it proves. The issue lives in `goal.md`.
 
 ```
 goals/
-  fix-827-plan-context/
-    goal.md              # the spec + verdict log — the contract
-    run.mts              # the runnable check (real model)
-    fixtures/            # held-out inputs, seed corpora, expected snapshots
+  plan-and-execute/                      # describe: the subject
+    carries-original-data-to-workers/    # it: the behaviour — this is the goal
+      goal.md            # the spec + verdict log — the contract
+      run.mts            # the runnable check (real model)
+      fixtures/          # held-out inputs, seed corpora, expected snapshots
+  crash-recovery/
+    continues-under-same-request-id/
+      ...
   _template/             # copy this to start a new goal
 ```
 
-- **`goal.md`** is the contract. Tooling can glob `goals/*/goal.md`.
-- **`run.mts`** is the executable form of it. It lives outside any package's vitest root, so CI never runs it — that's the point. Run it with `pnpm tsx goals/<folder>/run.mts`.
+- **`goal.md`** is the contract. Tooling can glob `goals/*/*/goal.md`.
+- **`run.mts`** is the executable form of it. It lives outside any package's vitest root, so CI never runs it — that's the point. Run it with `pnpm tsx goals/<describe>/<it>/run.mts`.
 - **`fixtures/`** holds the inputs and any expected snapshots.
+- A `describe` with many behaviours may nest a further level if it genuinely helps grouping; default to two.
 
 ## The `goal.md` format
 
-Seven fields, then a verdict log. Copy `_template/goal.md`.
+A title (`<describe> › it <behaviour>`), then the fields, then a verdict log. Copy `_template/goal.md`.
 
+- **Issue** — the tracking issue (e.g. `FIX-827`), or omit if there isn't one. This is where the issue number lives, not the folder name.
 - **Outcome** — the real-world effect, in the user's terms. Not "added a block" — the thing a user would notice. If you can't phrase it as something observable, you don't have a goal yet.
 - **Input** — the fixture. State that it is **held-out**: swapping it for a different valid input must still pass a correct implementation. If the assertion only works for this exact input, it's hardcoded.
 - **Signal** — the observable pass/fail, with a threshold. An item emitted, a state value written, a return value, a side effect. Checkable without reading the model's mind.
@@ -53,7 +64,7 @@ What separates a goal check from a dressed-up unit test:
 
 ```bash
 # one goal
-pnpm tsx goals/fix-827-plan-context/run.mts
+pnpm tsx goals/plan-and-execute/carries-original-data-to-workers/run.mts
 
 # (a goals/ sweep — pnpm goal:all — will be added once a few goals exist)
 ```
@@ -62,7 +73,7 @@ Goal checks cost real model calls. Run them when you need the proof — finishin
 
 ## Adding a goal
 
-1. Copy `_template/` to `goals/<issue-id>-<slug>/`.
-2. Fill in `goal.md` — write **Anti-game** first; if you can't, stop and reshape the goal.
+1. Copy `_template/` to `goals/<describe>/<it>/` — `<describe>` is the feature, `<it>` completes "it …".
+2. Fill in `goal.md` — set the title to `<describe> › it <behaviour>`, and write **Anti-game** first; if you can't, stop and reshape the goal.
 3. Write `run.mts` against the real path; put inputs in `fixtures/`.
 4. Run it, and record the result as the first row of the verdict log.

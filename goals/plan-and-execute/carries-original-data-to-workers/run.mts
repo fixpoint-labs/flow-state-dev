@@ -3,7 +3,7 @@
  *
  * Real model, real path, out of CI. See goal.md for the contract.
  *
- * Run: pnpm tsx goals/fix-827-plan-context/run.mts
+ * Run: pnpm tsx goals/plan-and-execute/carries-original-data-to-workers/run.mts
  *
  * One thing to wire before the first run: <flow> <action> must be an app
  * flow that composes `planAndExecute` (e.g. a kitchen-sink flow). The
