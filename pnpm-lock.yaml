@@ -1010,6 +1010,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
 
   packages/tasks:
     dependencies:
