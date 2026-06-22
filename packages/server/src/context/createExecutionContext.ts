@@ -49,7 +49,7 @@ import type {
   UserRecord
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
-import type { ModelResolver } from "@flow-state-dev/core";
+import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
@@ -2616,16 +2616,8 @@ export async function createExecutionContext<
         // durable suspension/resume log (not a `completed` block trace), so it is
         // robust to suspend blocks whose trace stays `in_progress` because they
         // re-run on every replay. Runs on any replay (resume or crash-recovery).
-        const replayLog = (
-          context as {
-            _replayLog?: {
-              resolvedResumes?: (
-                id: string
-              ) => readonly { data: unknown; rejected: boolean; suspensionId: string; resolvedBy: string | undefined }[];
-            };
-          }
-        )._replayLog;
-        if (replayLog?.resolvedResumes !== undefined) {
+        const replayLog = (context as { _replayLog?: ReplayLog })._replayLog;
+        if (replayLog !== undefined) {
           const resolved = replayLog.resolvedResumes(callerLogicalId);
           const consumed = resolvedResumeCursor.get(callerLogicalId) ?? 0;
           if (consumed < resolved.length) {
