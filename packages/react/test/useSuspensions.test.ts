@@ -254,4 +254,32 @@ describe("resolveSuspension", () => {
     expect(h.setError).toHaveBeenCalledWith(err);
     expect(h.inFlight).toEqual([]);
   });
+
+  it("rethrows the same normalized Error it stores for a non-Error throw", async () => {
+    const h = harness();
+    h.resumeSuspension.mockRejectedValue("boom"); // non-Error rejection
+
+    const rejection = await resolveSuspension({
+      recoveryClient: { resumeSuspension: h.resumeSuspension },
+      flowKind: "chat",
+      item: suspension(),
+      action: "approve",
+      markStart: h.markStart,
+      markEnd: h.markEnd,
+      setError: h.setError
+    }).then(
+      () => {
+        throw new Error("expected rejection");
+      },
+      (e: unknown) => e
+    );
+
+    // The value stored in the error slot and the value rethrown must be the
+    // same object — they previously diverged for non-Error throws.
+    const stored = h.setError.mock.calls.at(-1)?.[0];
+    expect(rejection).toBeInstanceOf(Error);
+    expect(rejection).toBe(stored);
+    expect((rejection as Error).message).toBe("boom");
+    expect(h.inFlight).toEqual([]);
+  });
 });

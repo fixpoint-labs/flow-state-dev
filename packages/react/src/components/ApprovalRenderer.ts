@@ -75,6 +75,11 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
 
   const [isResolving, setIsResolving] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  // Set once this card successfully resolves its suspension, before the matching
+  // `suspension_resume` item has propagated back through `isResolved`. Prevents a
+  // second click from hitting an already-resolved suspension (a 409). The
+  // stream-derived `isResolved` takes over for the durable/replayed state.
+  const [locallyResolved, setLocallyResolved] = useState(false);
 
   const recoveryClient = useMemo(
     () => createRecoveryClient({ baseUrl }),
@@ -84,8 +89,9 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
   // Compute per-action capability so a single supplied handler doesn't enable
   // the other button (e.g. onApprove only → Reject stays disabled).
   const hasFlowKind = flowKind !== undefined && flowKind.length > 0;
-  const canApprove = !isResolved && (onApprove !== undefined || hasFlowKind);
-  const canReject = !isResolved && (onReject !== undefined || hasFlowKind);
+  const resolved = isResolved || locallyResolved;
+  const canApprove = !resolved && (onApprove !== undefined || hasFlowKind);
+  const canReject = !resolved && (onReject !== undefined || hasFlowKind);
   const canResume = canApprove || canReject;
 
   // Warn once on mount when the card has no way to call resume. useEffect
@@ -104,36 +110,42 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
 
   const handleAction = useCallback(
     async (action: "approve" | "reject") => {
+      // Guard re-entry directly, not just via the button's `disabled` attribute:
+      // between the click and the re-render that flips `isResolving`, a second
+      // click (or a programmatic call) would otherwise fire a duplicate resume
+      // and 409.
+      if (isResolving) return;
       const actionAllowed = action === "approve" ? canApprove : canReject;
       if (!actionAllowed) return;
 
-      if (action === "approve" && onApprove !== undefined) {
-        await onApprove();
-        return;
-      }
-      if (action === "reject" && onReject !== undefined) {
-        await onReject();
-        return;
-      }
-
-      // Self-contained path: call the recovery client directly.
-      if (!hasFlowKind) return;
+      const handler = action === "approve" ? onApprove : onReject;
 
       setIsResolving(true);
       setResolveError(null);
       try {
-        await recoveryClient.resumeSuspension(flowKind!, item.requestId, {
-          suspensionId: item.suspensionId,
-          action,
-          resumedBy: userId
-        });
+        if (handler !== undefined) {
+          // Override path: the parent (e.g. a useSuspensions-driven layout) owns
+          // the resume call and its own in-flight tracking.
+          await handler();
+        } else {
+          // Self-contained path: call the recovery client directly.
+          if (!hasFlowKind) return;
+          await recoveryClient.resumeSuspension(flowKind!, item.requestId, {
+            suspensionId: item.suspensionId,
+            action,
+            resumedBy: userId
+          });
+        }
+        // Success: disable the buttons immediately so a card that lingers before
+        // its `suspension_resume` item arrives can't be resolved twice.
+        setLocallyResolved(true);
       } catch (err) {
         setResolveError(err instanceof Error ? err.message : "Failed to resume suspension");
       } finally {
         setIsResolving(false);
       }
     },
-    [canApprove, canReject, hasFlowKind, flowKind, item.requestId, item.suspensionId, userId, recoveryClient, onApprove, onReject]
+    [isResolving, canApprove, canReject, hasFlowKind, flowKind, item.requestId, item.suspensionId, userId, recoveryClient, onApprove, onReject]
   );
 
   const isApproveDisabled = !canApprove || isResolving;
@@ -141,7 +153,10 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
 
   return createElement(
     "div",
-    { "data-suspension": item.suspensionId, style: { border: "1px solid #e5e7eb", borderRadius: 6, padding: 12, margin: "4px 0" } },
+    // Theme-neutral: transparent background + inherited text, mid-gray border
+    // that reads on both light and dark surfaces. Avoids the white-on-dark
+    // invisible-text trap of hardcoded light colors.
+    { "data-suspension": item.suspensionId, style: { border: "1px solid #9ca3af", borderRadius: 6, padding: 12, margin: "4px 0" } },
     // Suspension message
     createElement(
       "p",
@@ -152,10 +167,10 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
     item.data !== undefined && createElement(
       "details",
       { style: { marginBottom: 8, fontSize: 12 } },
-      createElement("summary", { style: { cursor: "pointer", color: "#6b7280" } }, "Details"),
+      createElement("summary", { style: { cursor: "pointer", color: "inherit", opacity: 0.7 } }, "Details"),
       createElement(
         "pre",
-        { style: { margin: "4px 0", fontSize: 11, whiteSpace: "pre-wrap", color: "#374151" } },
+        { style: { margin: "4px 0", fontSize: 11, whiteSpace: "pre-wrap", color: "inherit", opacity: 0.85 } },
         JSON.stringify(item.data, null, 2)
       )
     ),
@@ -179,9 +194,11 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
           style: {
             padding: "4px 12px",
             borderRadius: 4,
-            border: "1px solid #d1d5db",
-            background: isApproveDisabled ? "#f3f4f6" : "#fff",
+            border: "1px solid #9ca3af",
+            background: "transparent",
+            color: "inherit",
             cursor: isApproveDisabled ? "not-allowed" : "pointer",
+            opacity: isApproveDisabled ? 0.5 : 1,
             fontSize: 13
           }
         },
@@ -196,9 +213,11 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
           style: {
             padding: "4px 12px",
             borderRadius: 4,
-            border: "1px solid #d1d5db",
-            background: isRejectDisabled ? "#f3f4f6" : "#fff",
+            border: "1px solid #9ca3af",
+            background: "transparent",
+            color: "inherit",
             cursor: isRejectDisabled ? "not-allowed" : "pointer",
+            opacity: isRejectDisabled ? 0.5 : 1,
             fontSize: 13
           }
         },

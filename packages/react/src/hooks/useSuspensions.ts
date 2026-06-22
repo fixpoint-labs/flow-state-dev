@@ -162,9 +162,12 @@ export async function resolveSuspension(
       resumedBy: args.resumedBy
     });
   } catch (err) {
+    // Normalize once and rethrow the SAME value stored in the error slot, so a
+    // caller catching the rejection and the `error` state never diverge (they
+    // would for a non-Error throw).
     const error = err instanceof Error ? err : new Error(String(err));
     args.setError(error);
-    throw err;
+    throw error;
   } finally {
     args.markEnd(item.suspensionId);
   }
@@ -188,9 +191,15 @@ export function useSuspensions(
   const [error, setError] = useState<Error | null>(null);
 
   const { requestId, reasons } = options;
+  // Key the reasons array by value, not reference: an inline literal
+  // (`useSuspensions(session, { reasons: ["human_approval"] })`) is a new array
+  // every render, which would force deriveSuspensions to recompute each time.
+  const reasonsKey = reasons === undefined ? undefined : reasons.join(" ");
   const { suspensions, pending } = useMemo(
     () => deriveSuspensions(session.items, { requestId, reasons }, inFlight),
-    [session.items, requestId, reasons, inFlight]
+    // `reasons` is intentionally tracked via `reasonsKey` (by value, not reference).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session.items, requestId, reasonsKey, inFlight]
   );
 
   const markStart = useCallback((id: string) => {

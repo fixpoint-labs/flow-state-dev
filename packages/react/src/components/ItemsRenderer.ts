@@ -5,11 +5,13 @@
  * are responsible for sorting.
  */
 import { createElement, Fragment, type ComponentType, type ReactNode } from "react";
+import { isSuspensionResumeItem } from "@flow-state-dev/core/items";
 import type {
   ToolOutputItem,
   ComponentItem,
   ContainerItem,
-  OutputItem
+  OutputItem,
+  SuspensionItem
 } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
 import type { RendererRegistry } from "../registry/block-renderers";
@@ -222,6 +224,17 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
     groupToolCalls: toolGroupRenderer !== undefined,
   });
 
+  // Suspensions whose matching `suspension_resume` item has arrived. The inline
+  // ApprovalRenderer fallback can't see the full stream, so we derive the
+  // resolved set here (from the unfiltered items) and pass it down — that's what
+  // lets the default card go read-only instead of offering a duplicate resume.
+  const resolvedSuspensionIds = new Set<string>();
+  for (const it of props.items) {
+    if (isSuspensionResumeItem(it)) {
+      resolvedSuspensionIds.add(it.suspensionId);
+    }
+  }
+
   return stream.map((segment, index) => {
     if (segment.kind === "group") {
       const key = `tool-group-${segment.items[0]?.id ?? index}`;
@@ -231,6 +244,14 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
         createElement(toolGroupRenderer!, { items: segment.items })
       );
     }
-    return createElement(ItemRenderer, { item: segment.item, key: segment.item.id });
+    const { item } = segment;
+    if (item.type === "suspension") {
+      return createElement(ItemRenderer, {
+        item,
+        key: item.id,
+        isResolved: resolvedSuspensionIds.has((item as SuspensionItem).suspensionId)
+      });
+    }
+    return createElement(ItemRenderer, { item, key: item.id });
   });
 }
