@@ -43,7 +43,11 @@ Agent tool (general-purpose):
     **Missing requirements:**
     - Is everything the spec requires for this task actually implemented?
     - Are edge cases handled as the spec describes?
-    - Does the testing match what the spec's Testing Strategy requires?
+    - Does the testing match what the spec's Testing Strategy requires? This
+      includes the **goal check** (real model, out of CI): if this task
+      completes a goal-bearing slice, was the goal check run against a real
+      model and did it pass? Mocked specs passing is not evidence the goal
+      was met. A missing or unrun goal check on a goal-bearing slice is a FAIL.
 
     **Extra/unneeded work:**
     - Did they build anything not in the spec?

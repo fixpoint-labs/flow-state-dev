@@ -113,7 +113,7 @@ Follow the discipline picked at Step 4.1.
 5. Instrument with `[DEBUG-<short-hash>]` tags so cleanup is a single grep at the end.
 6. Apply the fix.
 7. Write the regression test (Phase 5 of diagnose) at the correct seam — the seam the spec named in Testing Strategy, or the spec's substitute if one was not provided.
-8. Run the loop again; verify the original repro no longer reproduces.
+8. Run the loop again; verify the original repro no longer reproduces. If the bug was user-visible behaviour (not a pure type/unit regression), confirm the fix through the **real path** too — `fsdev run` against a real model — not only the mocked regression spec, so you've proven the symptom is actually gone.
 9. Cleanup: grep `[DEBUG-` and remove all instrumentation. Delete throwaway harnesses.
 10. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
 11. Commit with a conventional commit message referencing the issue ID. The commit message names which hypothesis turned out correct, so the next debugger learns.
@@ -128,8 +128,9 @@ Follow the discipline picked at Step 4.1.
 5. After all tests pass, refactor while green: extract duplication, deepen modules, follow BP-011–BP-016. Never refactor while red.
 6. For generators specifically: assert schema strictness with `makeSchemaStrict` per BP-016.
 7. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
-8. Commit with a conventional commit message referencing the issue ID
-9. Skip to Step 6 (Review)
+8. **Run the goal check** named in the spec's Testing Strategy (real model, real path — see `fsd:tdd` → "Two kinds of test"). Green specs are mocked; they don't prove the goal. Run `fsdev run` against a real model or the `goal-checks/<name>.goal.mts` script and confirm PASS on the actual outcome. If it fails, the work isn't done — return to the loop. Record the command and verdict.
+9. Commit with a conventional commit message referencing the issue ID
+10. Skip to Step 6 (Review)
 
 ### Step 5B: Complex Implementation (Sub-agent Team)
 
@@ -185,6 +186,7 @@ Repeat 5B.2–5B.3 for each task in order. After all tasks:
 - Run full typecheck: `pnpm typecheck`
 - Run full test suite: `pnpm test`
 - Fix any cross-task integration issues
+- **Run the goal check** named in the spec's Testing Strategy (real model, real path — see `fsd:tdd` → "Two kinds of test"). The per-task specs are mocked and only prove the pieces; the goal check proves the assembled feature actually achieves the outcome. Confirm PASS before moving to review. Record the command and verdict.
 
 ### Step 6: Comprehensive Review
 
@@ -196,6 +198,7 @@ Launch a `general-purpose` sub-agent to:
 - Check each acceptance criterion from the spec
 - Verify edge cases from the spec's "Edge Cases" section are handled
 - Confirm the testing strategy from the spec was followed
+- **Confirm the goal check was actually run with a real model and passed** — not that mocked specs are green. The spec named a goal and a goal check (`fsd:tdd` → "Two kinds of test"); a green CI suite is not evidence the goal was met. If the goal check wasn't run, or only mocked specs exist, that is a completeness failure: the goal is unproven. Flag it as must-fix and run the goal check before presenting.
 - Flag anything in the spec that wasn't implemented
 - Flag anything implemented that wasn't in the spec
 
@@ -230,7 +233,8 @@ Fix all must-fix and should-fix items. Re-run affected tests after fixes.
 ### Step 7: Update Linear
 
 Update the Linear issue:
-- Add a comment summarizing: what was implemented, approach taken, test results, any deviations from spec
+- Add a comment summarizing: what was implemented, approach taken, test results, the **goal-check command and its PASS verdict**, any deviations from spec
+- Include the **Key Decisions & Ramifications (top 5)** you compile in Step 8 — the durable record lives on the issue so the decisions are reviewable async, not just in chat
 - Keep state as "In Progress" until user approves
 
 ### Step 8: Present for Review
@@ -238,12 +242,14 @@ Update the Linear issue:
 Present the completed work:
 
 1. **Summary**: what was implemented (tied back to the spec)
-2. **Changes**: files modified/created with brief descriptions
-3. **Deviations**: anything that differed from the spec and why
-4. **Test results**: full typecheck and test output
-5. **Review findings**: notable observations from the three reviewers
-6. **Simplifications made**: what the simplification review caught and how it was addressed
-7. **Follow-ups**: any items for future work (not in scope but worth noting)
+2. **Key decisions & ramifications (top 5)**: the most consequential decisions made *during implementation* (not the spec's — the ones you actually made while building: a shape the spec left open, a deviation, a tradeoff under a constraint the spec didn't anticipate). For each: the decision, the alternative rejected, and the ramification — what it locks in, what it rules out, what risk it carries. This lets the user review the decisions, not just the code. If implementation was purely mechanical with no real decisions, say so explicitly rather than padding to five.
+3. **Changes**: files modified/created with brief descriptions
+4. **Goal check**: the goal check that was run (command/path), that it used a real model, and its PASS verdict with the evidence it checked. This is the proof the goal was met — distinct from the mocked test suite.
+5. **Deviations**: anything that differed from the spec and why
+6. **Test results**: full typecheck and test output
+7. **Review findings**: notable observations from the three reviewers
+8. **Simplifications made**: what the simplification review caught and how it was addressed
+9. **Follow-ups**: any items for future work (not in scope but worth noting)
 
 Ask the user to review. They may:
 - **Approve** → commit, push, open PR, update Linear to "Done"
@@ -258,7 +264,7 @@ Once approved:
 2. Push: `git push -u origin fix/{ISSUE-ID}`
 3. Open PR with `gh pr create`:
    - Title: concise description (under 70 characters)
-   - Body: summary, changes, test plan, `Fixes FIX-{number}`
+   - Body: summary, changes, **Key Decisions & Ramifications (top 5)** (the same list from Step 8 — so reviewers evaluate the direction, not only the diff), test plan, the **goal-check command and its PASS verdict**, `Fixes FIX-{number}`
 4. Update Linear issue:
    - State: "Done"
    - Attach PR URL

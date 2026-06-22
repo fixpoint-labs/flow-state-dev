@@ -63,6 +63,7 @@ Now do the actual work. Follow the project's standard development practices:
    pnpm --filter <affected-package> test
    ```
 5. If tests fail, fix them. If existing tests don't cover the fix, add targeted test coverage.
+6. **Confirm the fix against the real path when the behaviour is user-visible.** Mocked specs passing doesn't prove the symptom is gone. If the fix touches flow/generator behaviour, run it through a real model (`fsdev run`) and confirm the actual outcome the user reported is fixed — that's the goal. Pure type/unit fixes don't need this. (See `fsd:tdd` → "Two kinds of test".)
 
 Work autonomously through this step. Don't ask the user for approach approval — just pick the right fix and implement it.
 

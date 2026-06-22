@@ -264,6 +264,7 @@ Once design questions are resolved, draft the implementation spec. The spec must
    - Key findings from industry research (with links)
    - How similar problems are solved in the codebase already
    - Why the chosen approach was selected over alternatives
+   - **Key Decisions & Ramifications (top 5).** The most consequential decisions this spec commits to — architecture, API shape, scope cuts, dependency choices, where a boundary is drawn. For each: the decision, the main alternative rejected, and the **ramification** — what it locks in, what it rules out, what risk or future cost it carries. This is the surface the human reviews to sign off on the *direction*, not just the mechanics. Keep it to the 5 that most shape the outcome; if everything feels equally important, you haven't found the load-bearing decisions yet.
 
 4. **Technical Design**
    - Architecture: which packages, modules, and files are involved
@@ -283,6 +284,7 @@ Once design questions are resolved, draft the implementation spec. The spec must
    - Fallback behaviors
 
 7. **Testing Strategy**
+   - **Goal & goal check (required).** State the work's **goal** as an observable real-world outcome (not "add a block" — the effect a user would care about), and specify the **goal check** that proves it: a real-LLM, out-of-CI script — `fsdev run` against a real model, or a `tsx` script under `goal-checks/` — that exercises the real path and prints PASS/FAIL on the goal. Name its pass/fail signal here so the implementer can build it. CI specs (mocked, deterministic, run every push) and the goal check (real model, run by hand to validate the work) are both required and do different jobs — see `fsd:tdd` → "Two kinds of test". A spec whose only verification is mocked specs has not said how anyone will know the goal was actually met.
    - Name the implementation discipline that will apply: **`fsd:tdd`** (red-green-refactor with tracer bullets) for features/enhancements; **`fsd:diagnose`** (build feedback loop → reproduce → hypothesise → instrument → fix + regression test) for bugs. `fsd:implement-issue` auto-routes by Linear category label — but the spec should match the discipline it'll be executed with.
    - For features (TDD): list **behaviours** to test in observable terms (items emitted, state changes, return values, lifecycle hooks fired) — not implementation steps. Each behaviour becomes a tracer-bullet cycle.
    - For bugs (diagnose): name the **seam where the feedback loop will live** (vitest spec at which level, `fsdev block` for single-block isolation, `fsdev run` with NDJSON capture for flow-level, `packages/integration-tests/` for cross-package). Name the regression test seam — Phase 5 of diagnose requires a correct seam, and the spec is where that decision happens.
@@ -384,7 +386,7 @@ Address any issues the validators surface. If there are unresolvable questions, 
 
 2. **Update issue relations and comment**:
    - Add/update any dependency relations discovered during research (using `save_issue` with `blockedBy` or `blocks`)
-   - Add a comment summarizing: "Implementation spec created/updated. Key decisions: [1-2 sentence summary]. Open questions: [list if any]."
+   - Add a comment summarizing: "Implementation spec created/updated. Open questions: [list if any]." Include the **Key Decisions & Ramifications (top 5)** from spec section 3 verbatim — the durable record lives on the issue so a reviewer can evaluate the direction without opening the full spec.
    - If open questions exist, flag the issue for discussion (don't move it to "In Progress" — it's not ready)
 
 3. **Move the issue to "In Spec Review"** with `save_issue` (set `state` to the team's "In Spec Review" workflow state). This signals the spec is ready for human review before implementation begins. Do this *after* the spec document is attached and the publishing comment is posted, so anyone navigating to the issue from the status change finds the spec already linked. If the team has no "In Spec Review" state, fall back to the closest equivalent and note it in the publishing comment.
@@ -438,7 +440,7 @@ Present the completed spec to the user:
 1. **Necessity verdict** (one line): "Build as scoped" or "Build smaller — dropped <X>." Surfacing this in the summary lets the user see that Step 3.5 actually ran and what its outcome was; future readers can audit whether the gate worked. If the verdict was anything other than "Build as scoped," you will not have reached Step 8 without user confirmation — note that confirmation here too.
 2. **TLDR**: paste the spec's TLDR section verbatim. This is the scan-first surface — the user should see exactly what they'd see opening the spec document. If you find yourself rewording it for the summary, the TLDR itself is wrong; fix it in the spec and then paste here.
 3. **Approach chosen**: 2-3 sentences on what the spec proposes and why
-4. **Key decisions**: any architectural choices made and their rationale
+4. **Key decisions & ramifications (top 5)**: paste the spec's "Key Decisions & Ramifications" list verbatim — each decision, the alternative rejected, and what it locks in. This is what the user reviews to sign off on the direction, not just the code. If you can't name five that genuinely shape the outcome, say which ones are load-bearing and why the rest are mechanical.
 5. **Documentation plan**: one or two sentences naming the docs surfaces affected, any new pages and their sidebar placement, and explicit call-out if the conclusion is "no docs changes." Never omit this — the user has flagged docs scoping as a recurring miss.
 6. **Issue reshape summary**: one or two sentences on how the Linear issue description was reframed — what implementation detail was moved out, what now leads, and whether anything was found stale/contradicted. If the issue needed no reshape because it was already PM/business-shaped, say so explicitly.
 7. **Dependencies identified**: what must land before this can start

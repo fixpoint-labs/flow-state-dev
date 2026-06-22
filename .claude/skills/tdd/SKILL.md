@@ -15,6 +15,32 @@ Tests verify behaviour through the public interface, not implementation details.
 
 See [tests.md](tests.md) for FSD-flavoured good/bad examples, and [mocking.md](mocking.md) for where the mock seams actually are in this codebase.
 
+## Two kinds of test, two different jobs
+
+FSD development uses **CI specs** and **goal checks**. They answer different questions and neither substitutes for the other.
+
+| | CI spec (`*.spec.ts`) | Goal check (`*.goal.mts`) |
+|---|---|---|
+| Question it answers | "Does this unit still behave?" | "Did we actually achieve the real-world goal?" |
+| LLM | Mocked (`mockGenerator`) | **Real model** |
+| Stores | In-memory | Real where the goal depends on it |
+| Runs in CI | Yes — over and over, every push | **No** — excluded from CI |
+| Run by | CI | The agent (you), by hand, to validate the work |
+| Determinism | Required | Not expected — assert on the goal, not exact strings |
+
+**CI specs keep their mocks.** They run hundreds of times; a real model call there would be slow, flaky, and expensive. `mockGenerator` + in-memory stores are correct for the fast loop. Everything in [mocking.md](mocking.md) about mocking only at system boundaries still applies to specs.
+
+**Goal checks prove the thing was actually built.** A mocked spec can pass while the feature does nothing useful, because the mock fed the assertion the answer it wanted. That is the failure mode the user is worried about: green tests, broken goal. The goal check removes the crutch — real model, real path, assert on the observable outcome that *is* the goal. You run it during development to confirm you reached the goal before declaring the work done. It is development-time proof, not committed coverage, and it does not gate CI.
+
+### Writing a goal check
+
+1. **State the goal as an observable outcome.** Not "add a summarizer block" — "given a 2,000-word document, the flow emits a message item whose content is a faithful 3-bullet summary of it." The goal is the real effect a user would care about, phrased so success is checkable.
+2. **Name how you'll know you got there.** The pass/fail signal: an item emitted, a state value written, a return value, a downstream side effect. It has to be checkable without reading the model's mind — assert on structure and grounded facts (the summary mentions the document's actual subject), not on exact phrasing.
+3. **Exercise the real path.** Default mechanism is `fsdev run <flow> <action> -i '{...}'` against a **real** model (see AGENTS.md → "Verifying flow changes"), capturing NDJSON with `--capture` to assert against. For non-flow goals, a small `tsx` script under `goal-checks/` next to the feature. Real LLM, real stores where the goal depends on them. Mock only true third-party services (payment, email) you genuinely cannot call.
+4. **Make the verdict explicit.** The check prints PASS/FAIL on the goal, with the evidence it inspected. An LLM running it later should be able to read the output and know whether the goal holds without re-deriving the criteria.
+
+Placement and naming: `goal-checks/<name>.goal.mts` next to the feature (or a recorded `fsdev run` command + expected outcome in the spec/PR when the check is a one-liner). The `.goal.` infix keeps it out of vitest's `*.spec`/`*.test` globs, so it never runs in CI. Keep goal checks cheap to re-run, but do not gate CI on them and do not let a passing CI suite stand in for a goal check that was never run.
+
 ## Anti-pattern: horizontal slices
 
 **Do NOT write all tests first, then all implementation.** This is horizontal slicing — treating RED as "write all the specs" and GREEN as "write all the code." It produces unreliable tests:
@@ -48,6 +74,7 @@ When exploring the codebase, use FSD vocabulary throughout — block / generator
 
 Before writing any code:
 
+- [ ] **State the goal** as an observable real-world outcome, and the **goal check** that will prove it (real model, out of CI — see "Two kinds of test"). The goal frames everything below: the behaviours you test are the steps to it, the goal check is how you confirm you arrived.
 - [ ] Identify which FSD construct you're building: block (which kind?), pattern, capability, flow action
 - [ ] Identify the public surface: `inputSchema`, `outputSchema`, emitted item types, state scope reads/writes, lifecycle hooks
 - [ ] Identify deepening opportunities (see `fsd:improve-codebase-architecture`) — small interface, deep implementation
@@ -112,6 +139,14 @@ After the refactor:
 - Cross-package: root `pnpm typecheck` (also runs the package boundary validator)
 - User-facing API change: update `packages/<pkg>/README.md` and any affected `apps/docs` page in the same change set (CLAUDE.md rule)
 - BP-007: any new file gets a header comment and doc-comment on every export
+
+### 5. Verify the goal
+
+Green specs mean the units behave. They do **not** mean you reached the goal — the mocks fed the assertions. Before declaring the work done, run the **goal check** (real model, real path — see "Two kinds of test"):
+
+- Run it (`fsdev run` against a real model, or the `goal-checks/<name>.goal.mts` script) and read the PASS/FAIL verdict on the actual outcome.
+- If it fails, the work is not done even with every spec green — go back to the loop. A failed goal check on green specs usually means a spec was asserting on a mock's output instead of the real behaviour; fix the goal first, then tighten the spec.
+- Record the goal check (its command/path and its verdict) so the next reader can re-run it.
 
 ## Per-cycle checklist
 

@@ -97,6 +97,8 @@ Agent tool (general-purpose):
     - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
     - What you implemented
     - What you tested and results
+    - **Key decisions you made (with ramifications):** any choice the spec left open that you resolved, any deviation, any tradeoff under a constraint — the decision, the alternative you rejected, and what it locks in or rules out. The orchestrator compiles these across tasks into the PR's top-5. If the task was mechanical with no real decisions, say so.
+    - **Goal check (if this task completes a goal-bearing slice):** the real-model command/path you ran and its PASS/FAIL verdict. Mocked specs don't prove the goal.
     - Files changed
     - Self-review findings (if any)
     - Concerns or blockers (if any)
@@ -149,10 +151,19 @@ Correct order:
    gating a single step (BP-015, use `.stepIf` / `.workIf` / `.tapIf`),
    repeated tool / context / resource wiring (extract a capability).
    Never refactor while red.
+5. **Verify the goal (if this task completes a goal-bearing slice).**
+   Green specs are mocked — they don't prove the goal. Run the goal
+   check from the spec's Testing Strategy against a **real** model
+   (`fsdev run`, or a `goal-checks/<name>.goal.mts` script) and confirm
+   PASS on the actual outcome. Report the command and verdict. If the
+   slice is sub-goal plumbing with no user-visible outcome yet, say so;
+   the orchestrator runs the end-to-end goal check after integration.
 
 Test placement: co-located `*.spec.ts` next to the source. For
-cross-package behaviour, `packages/integration-tests/`. See
-`fsd:write-block-tests` for the mock-context idiom.
+cross-package behaviour, `packages/integration-tests/`. Goal checks live
+in `goal-checks/` and never run in CI. See `fsd:tdd` → "Two kinds of
+test" for the split, and `fsd:write-block-tests` for the mock-context
+idiom used in CI specs.
 ```
 
 ### Diagnose block (for Bug issues)
