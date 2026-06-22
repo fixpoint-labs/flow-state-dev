@@ -151,19 +151,21 @@ Correct order:
    gating a single step (BP-015, use `.stepIf` / `.workIf` / `.tapIf`),
    repeated tool / context / resource wiring (extract a capability).
    Never refactor while red.
-5. **Verify the goal (if this task completes a goal-bearing slice).**
+5. **Verify the goal — slice-level only; defer the end-to-end check to the orchestrator.**
    A task completes a *goal-bearing slice* when its acceptance criteria
    map directly to a user-observable outcome stated in the spec's Testing
    Strategy goal (an item emitted, a state value written, a returned
-   result a user would see). Pure plumbing — types, schema, internal
-   wiring with no observable outcome yet — is not goal-bearing; say so
-   and let the orchestrator run the end-to-end check after integration.
-   Green specs are mocked — they don't prove the goal. Run the goal
-   check from the spec's Testing Strategy against a **real** model
-   (`fsdev run`, or a `goal-checks/<name>.goal.mts` script) and confirm
-   PASS on the actual outcome. Report the command and verdict. If the
-   slice is sub-goal plumbing with no user-visible outcome yet, say so;
-   the orchestrator runs the end-to-end goal check after integration.
+   result a user would see). But you implement only THIS task — the
+   spec's main goal check is usually an **end-to-end** check that depends
+   on later tasks and final integration, and it will not pass yet. Do
+   NOT run it; the orchestrator runs the end-to-end goal check after
+   integration. Run a check here only if the spec names a **slice-level**
+   goal check that is runnable after this task in isolation — if so, run
+   it against a **real** model (`fsdev run`, or a `goal-checks/<name>.goal.mts`
+   script) and report the command and PASS/FAIL verdict. Otherwise (pure
+   plumbing, or a slice whose only proof is end-to-end), say the goal
+   proof is deferred to the orchestrator. Never invent a PASS verdict for
+   a check you couldn't run.
 
 Test placement: co-located `*.spec.ts` next to the source. For
 cross-package behaviour, `packages/integration-tests/`. Goal checks live

@@ -142,11 +142,13 @@ After the refactor:
 
 ### 5. Verify the goal
 
-Green specs mean the units behave. They do **not** mean you reached the goal — the mocks fed the assertions. Before declaring the work done, run the **goal check** (real model, real path — see "Two kinds of test"):
+Green specs mean the units behave. They do **not** mean you reached the goal — the mocks fed the assertions. **When the work has a goal check** (the default for observable behaviour), run it before declaring the work done (real model, real path — see "Two kinds of test"):
 
 - Run it (`fsdev run` against a real model, or the `goal-checks/<name>.goal.mts` script) and read the PASS/FAIL verdict on the actual outcome.
 - If it fails, the work is not done even with every spec green — go back to the loop. A failed goal check on green specs usually means a spec was asserting on a mock's output instead of the real behaviour; fix the goal first, then tighten the spec.
 - Record the goal check (its command/path and its verdict) so the next reader can re-run it.
+
+**When there's no goal check to run**, don't invent one and don't fabricate a PASS. This applies to the cases where TDD itself is skipped or relaxed (see "When NOT to use TDD"): pure refactors covered by existing tests, docs-only work, exploratory UI/prose, and diagnose-driven bugs (whose real-path repro re-run is the goal-level proof). Record the reason there's no goal check instead of a verdict.
 
 ## Per-cycle checklist
 
