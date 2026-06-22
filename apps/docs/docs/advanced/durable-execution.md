@@ -179,6 +179,8 @@ See [Block memoization and replay](./block-memoization-and-replay.md) for the fu
 
 A request can suspend and resume more than once. Each cycle appends to the same log: another `suspension` item, another `suspension_resume` item, and the post-resume items, all under the same request id with continuous sequence numbers. The audit of every pause lives on the item log as the `suspension` / `suspension_resume` pairs, in order, so the full decision trail for a multi-gate flow reads top to bottom on one record.
 
+This holds across a process restart, not just an in-process pause. A continuation replays the request from the top of the action, so resuming a *later* gate re-reaches the earlier ones. Those earlier gates were already resolved on the durable log, so they replay their recorded resolutions in order instead of pausing again, and the request runs through to completion. A flow with two sequential `ctx.suspend()` gates resumed at the second gate after the server restarted completes the same as it would in one process.
+
 ## Error handling
 
 Three errors are relevant to durable execution:
