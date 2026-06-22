@@ -98,7 +98,7 @@ Agent tool (general-purpose):
     - What you implemented
     - What you tested and results
     - **Key decisions you made (with ramifications):** any choice the spec left open that you resolved, any deviation, any tradeoff under a constraint — the decision, the alternative you rejected, and what it locks in or rules out. The orchestrator compiles these across tasks into the PR's top-5. If the task was mechanical with no real decisions, say so.
-    - **Goal check (if this task completes a goal-bearing slice):** the real-model command/path you ran and its PASS/FAIL verdict. Mocked specs don't prove the goal.
+    - **Goal verdict:** for a TDD task, if the spec named a slice-level goal check runnable after this task, the real-model command/path and its PASS/FAIL verdict; if the goal proof is end-to-end, say it's deferred to the orchestrator (don't run it early or invent a PASS). For a Bug task, the real-path confirmation (`fsdev run`) that the user-visible symptom is gone, or "N/A — type/unit-only regression." Mocked specs don't prove the goal.
     - Files changed
     - Self-review findings (if any)
     - Concerns or blockers (if any)
@@ -211,9 +211,14 @@ loop produce hours of speculative code changes.
    Apply the fix. Watch it pass. Re-run the Phase 1 feedback loop
    against the original (un-minimised) scenario to confirm. If no
    correct seam exists, that itself is the finding — flag it.
-6. **Cleanup.** Before reporting:
+6. **Cleanup + goal-level proof.** Before reporting:
    - Original repro no longer reproduces
    - Regression test passes
+   - **Real-path confirmation:** if the bug was user-visible behaviour
+     (not a pure type/unit regression), confirm the fix through the real
+     path too — `fsdev run` against a real model — not only the mocked
+     regression spec, so you've proven the symptom is actually gone.
+     Report this as the goal verdict (or "N/A — type/unit-only").
    - All `[DEBUG-*]` instrumentation removed (`grep` the prefix)
    - Throwaway prototypes deleted
    - Commit message names the hypothesis that turned out correct — so

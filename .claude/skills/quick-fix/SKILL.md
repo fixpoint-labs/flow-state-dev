@@ -116,6 +116,7 @@ Update the Linear issue with a comment summarizing:
 - What was found (root cause)
 - What was changed (files modified, approach taken)
 - Test results
+- **Real-path verdict**: for a user-visible flow/generator fix, the `fsdev run` command and its result confirming the symptom is gone (or "N/A — type/unit-only fix"). Mocked tests passing don't prove the symptom is fixed.
 
 Keep the issue in "In Progress" state — it moves to "Done" only after the user approves the commit.
 
@@ -126,8 +127,9 @@ Now — and only now — present the completed work to the user. Include:
 1. **Summary**: what was wrong and what you did to fix it
 2. **Changes made**: list of files modified with brief descriptions
 3. **Test results**: did everything pass?
-4. **Sub-agent findings**: any notable observations from the quality review
-5. **Related issues**: any other Linear issues affected (from impact analysis)
+4. **Real-path verdict**: for a user-visible flow/generator fix, the `fsdev run` result confirming the reported symptom is gone (or "N/A — type/unit-only fix"). This is the proof the fix works, distinct from the test suite.
+5. **Sub-agent findings**: any notable observations from the quality review
+6. **Related issues**: any other Linear issues affected (from impact analysis)
 
 Ask the user to review the changes. They may:
 - **Approve** → proceed to commit
