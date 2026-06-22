@@ -31,7 +31,7 @@ import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
 import { validateSchedulesConfig } from "../types/schedules";
 import { validateChatConfig } from "../types/chat";
-import { validateWebhookConfig, type WebhookConfig } from "../types/webhooks";
+import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
 import { warnDeprecated } from "../helpers/deprecation";
 import { introspectStateKeys } from "../helpers/zod-introspect";
 
@@ -226,6 +226,34 @@ function mergeActions(
   }
 
   return merged;
+}
+
+/**
+ * Apply the flow's `tools` config to every webhook handler block, mirroring
+ * `mergeActions` for caller actions. A webhook binding is an action in webhook
+ * form, so a generator handler must see the flow-level `tools` (tool
+ * timeout/concurrency/retry defaults, `onToolStarted`/`onToolCompleted`
+ * observers) exactly as it would as a caller action. `withFlowTools` only
+ * rewrites a root generator block (a no-op otherwise), so non-generator
+ * handlers pass through. Returns the input unchanged when the flow declares no
+ * webhooks or no flow-level tools — those flows are wholly unaffected (same
+ * object identity). Assumes `validateWebhookConfig` already ran, so every
+ * binding has a real `block`.
+ */
+function withFlowToolsWebhooks(
+  webhooks: WebhookConfig | undefined,
+  flowTools: ToolsConfig | undefined
+): WebhookConfig | undefined {
+  if (webhooks === undefined || flowTools === undefined) return webhooks;
+  const result: WebhookConfig = {};
+  for (const [provider, sub] of Object.entries(webhooks)) {
+    const on: Record<string, WebhookEventBinding> = {};
+    for (const [eventKey, binding] of Object.entries(sub.on)) {
+      on[eventKey] = { ...binding, block: withFlowTools(binding.block, flowTools) };
+    }
+    result[provider] = { ...sub, on };
+  }
+  return result;
 }
 
 /**
@@ -533,14 +561,19 @@ function createFlowInstance(
   const isolateOrgState = options?.isolateOrgState ?? definition.isolateOrgState ?? false;
 
   const chat = definition.chat;
-  const webhooks = definition.webhooks;
 
   // Validate transport configs before any aggregation walks their blocks: a
   // webhook binding's handler block participates in resource/`requireOrg`
   // collection, so a malformed binding must be rejected here with a clear
-  // message rather than crashing the aggregation.
+  // message rather than crashing the aggregation (or the tools wrap below).
   validateChatConfig(kind, chat, actions);
-  validateWebhookConfig(kind, webhooks);
+  validateWebhookConfig(kind, definition.webhooks);
+
+  // Apply flow-level `tools` to each webhook handler block the same way
+  // `mergeActions` does for caller actions, so a webhook generator handler runs
+  // identically to its caller-action twin. Runs after validation (which
+  // guarantees a real `block`); a no-op when the flow declares no tools.
+  const webhooks = withFlowToolsWebhooks(definition.webhooks, tools);
 
   const blockResources = collectBlockResources(actions, webhooks);
   const flowOwnResources = options?.resources ?? definition.resources;
