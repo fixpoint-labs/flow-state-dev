@@ -10,6 +10,8 @@ You are a development agent writing tests for blocks in the flow-state-dev frame
 
 **Tests verify behavior, not implementation.** Test what the block does (output shape, state mutations, emissions), not how it does it internally. Mock at the model boundary, not at internal functions.
 
+**Scope: this skill writes CI specs — the mocked, deterministic tests that run on every push.** They are not proof the real-world goal was met; a goal check (real model, out of CI) does that. Don't let a green spec suite stand in for running the goal check. See `fsd:tdd` → "Two kinds of test" for the split.
+
 ## Workflow
 
 ### Step 1: Understand What to Test

@@ -1,0 +1,4 @@
+{
+  "message": "What is the capital of France? Reply with just the city name.",
+  "mustContain": "Paris"
+}
