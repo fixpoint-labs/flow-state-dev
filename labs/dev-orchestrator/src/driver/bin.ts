@@ -43,7 +43,11 @@ function parseArgs(argv: string[]): ParsedArgs {
     if (arg === "--attended") attended = true;
     else if (arg === "--from-backlog") fromBacklog = true;
     else if (arg === "--db") {
-      dbPath = argv[i + 1] ?? "";
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error("--db requires a path argument, e.g. --db .dev-orchestrator/FIX-123.sqlite");
+      }
+      dbPath = value;
       i += 1;
     } else positional.push(arg);
   }
