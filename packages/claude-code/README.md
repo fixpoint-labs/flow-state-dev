@@ -59,6 +59,23 @@ passing a resolver). `resolveClaudeCli` supplies the binary path, working
 directory, environment, and the exec function — so the binary location is
 host-controlled and the subprocess is mockable in tests.
 
+### Dispatching `--remote` needs a TTY
+
+`claude --remote` refuses to run unless stdout is a TTY, so the default
+`resolveClaudeCli` (a bare `spawn`) cannot dispatch — it exits 1 with
+"--remote requires an interactive terminal". Pass `resolvePtyClaudeCli`, which
+runs `claude` under `script(1)` (a pseudo-terminal) and scrubs inherited
+`CLAUDE_*` / `ANTHROPIC_API_KEY` state so the dispatch authenticates as your
+logged-in user rather than tripping a "Detected a custom API key" prompt:
+
+```ts
+import { claudeRemoteDispatch, resolvePtyClaudeCli } from "@flow-state-dev/claude-code/cli";
+
+const dispatch = claudeRemoteDispatch({ resolveClaudeCli: resolvePtyClaudeCli });
+```
+
+Requires `script(1)` (present on macOS and Linux).
+
 ## Session state
 
 Each dispatch appends a handle to `claudeRemoteTasks` in session state:

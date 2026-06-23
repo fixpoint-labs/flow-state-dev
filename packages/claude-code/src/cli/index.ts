@@ -22,6 +22,9 @@ export {
   type ClaudeCliExecOptions,
   type ClaudeCliExecResult,
 } from "./resolve-cli";
+// PTY-backed exec/resolver — the default bare-spawn exec cannot dispatch
+// `claude --remote` (it requires a TTY); pass `resolvePtyClaudeCli` to do so.
+export { scriptPtyClaudeCliExec, resolvePtyClaudeCli, stripAnsi } from "./pty-exec";
 export { parseRemoteDispatchOutput, type ParsedRemoteDispatch } from "./parse-output";
 export { claudeRemoteHandleSchema, type ClaudeRemoteHandle } from "./types";
 export { ClaudeCliNotFoundError, ClaudeRemoteDispatchError } from "./errors";
