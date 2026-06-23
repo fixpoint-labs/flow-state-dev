@@ -39,7 +39,7 @@ import {
   parseResourceTemplate,
   renderResourceTemplate,
 } from "@flow-state-dev/core/resource-template";
-import { loadResourceTemplate } from "@flow-state-dev/core/resource-template/node";
+import { loadResourceTemplate } from "../resource-template-loader";
 
 function asJsonValue(value: unknown): JsonValue {
   if (

@@ -52,10 +52,6 @@
       "types": "./dist/prompt/prompt-file.d.ts",
       "default": "./src/prompt/prompt-file.ts"
     },
-    "./prompt-file/node": {
-      "types": "./dist/prompt/load-prompt-file.node.d.ts",
-      "default": "./src/prompt/load-prompt-file.node.ts"
-    },
     "./models": {
       "types": "./dist/models/index.d.ts",
       "default": "./src/models/index.ts"
@@ -75,10 +71,6 @@
     "./resource-template": {
       "types": "./dist/resource-template/resource-template.d.ts",
       "default": "./src/resource-template/resource-template.ts"
-    },
-    "./resource-template/node": {
-      "types": "./dist/resource-template/load-resource-template.node.d.ts",
-      "default": "./src/resource-template/load-resource-template.node.ts"
     },
     "./errors/suspension-error": {
       "types": "./dist/errors/suspension-error.d.ts",
@@ -119,10 +111,6 @@
         "types": "./dist/prompt/prompt-file.d.ts",
         "default": "./dist/prompt/prompt-file.js"
       },
-      "./prompt-file/node": {
-        "types": "./dist/prompt/load-prompt-file.node.d.ts",
-        "default": "./dist/prompt/load-prompt-file.node.js"
-      },
       "./models": {
         "types": "./dist/models/index.d.ts",
         "default": "./dist/models/index.js"
@@ -142,10 +130,6 @@
       "./resource-template": {
         "types": "./dist/resource-template/resource-template.d.ts",
         "default": "./dist/resource-template/resource-template.js"
-      },
-      "./resource-template/node": {
-        "types": "./dist/resource-template/load-resource-template.node.d.ts",
-        "default": "./dist/resource-template/load-resource-template.node.js"
       },
       "./errors/suspension-error": {
         "types": "./dist/errors/suspension-error.d.ts",

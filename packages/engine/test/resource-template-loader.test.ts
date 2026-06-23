@@ -4,8 +4,8 @@ import { pathToFileURL } from "node:url";
 import {
   loadResourceTemplate,
   ResourceTemplateLoadError,
-} from "../src/resource-template/load-resource-template.node";
-import { renderResourceTemplate } from "../src/resource-template/resource-template";
+} from "../src/resource-template-loader";
+import { renderResourceTemplate } from "@flow-state-dev/core/resource-template";
 
 const fixtureDir = path.resolve(__dirname, "fixtures/resource-templates");
 const importerUrl = pathToFileURL(fixtureDir + "/").href;

@@ -22,7 +22,7 @@
  * consumers (`lib/prompt.ts`, `tools/runtime/fixtures.ts` — `tools/ → lib/`
  * imports have precedent in the catalog).
  */
-import { moduleDir, resolveBaseDir } from "@flow-state-dev/core/prompt-file/node";
+import { moduleDir, resolveBaseDir } from "@flow-state-dev/engine/prompt-file";
 
 /** Absolute path of the `labs/trading-desk` package directory. */
 export const APP_ROOT = resolveBaseDir(

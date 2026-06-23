@@ -300,7 +300,7 @@ Defaultable fields: `sessionStateSchema`, `userStateSchema`,
 `resources`, `outputSchema`, `uses`. `name`, `inputSchema`, `execute`, and
 `description` are excluded — those vary per block.
 
-### Prompt files (`@flow-state-dev/core/prompt-file`, `@flow-state-dev/core/prompt-file/node`)
+### Prompt files (`@flow-state-dev/core/prompt-file`, `@flow-state-dev/engine/prompt-file`)
 
 Author a generator's prompt as a `.md` file. The isomorphic subpath exports `parsePromptFile(text, options?)`, `definePromptFile(pf)`, `isPromptFile(value)`, and the `PromptFile` / `PromptFileConfig` / `PromptFileParseError` / `PromptFileLoadError` types. The Node-only subpath exports `loadPromptFile(specifier, importerUrl, options?)`, which reads the file and auto-registers sibling `.md` files as partials; only this subpath imports `node:fs`, so browser/bundled consumers use `parsePromptFile` with raw text plus an explicit `partials` map.
 
@@ -317,7 +317,7 @@ import {
   createPromptLoader,
   moduleDir,
   resolveBaseDir,
-} from "@flow-state-dev/core/prompt-file/node";
+} from "@flow-state-dev/engine/prompt-file";
 
 const PROMPT_ROOT = resolveBaseDir(
   [moduleDir(import.meta.url, "./prompts"), path.resolve(process.cwd(), "src/prompts")],

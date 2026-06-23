@@ -9,7 +9,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { AnchoredPath } from "@flow-state-dev/core/types";
-import { moduleDir } from "@flow-state-dev/core/prompt-file/node";
+import { moduleDir } from "../prompt-file-loader";
 
 /** True when `value` is an `AnchoredPath` (`{ path, importerUrl }`). A
  * parsed `ResourceTemplate` never matches — it has no `path` field. */

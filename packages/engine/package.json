@@ -35,6 +35,14 @@
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./src/testing.ts"
+    },
+    "./prompt-file": {
+      "types": "./dist/prompt-file-loader.d.ts",
+      "default": "./src/prompt-file-loader.ts"
+    },
+    "./resource-template": {
+      "types": "./dist/resource-template-loader.d.ts",
+      "default": "./src/resource-template-loader.ts"
     }
   },
   "license": "MIT",
@@ -54,6 +62,14 @@
       "./testing": {
         "types": "./dist/testing.d.ts",
         "default": "./dist/testing.js"
+      },
+      "./prompt-file": {
+        "types": "./dist/prompt-file-loader.d.ts",
+        "default": "./dist/prompt-file-loader.js"
+      },
+      "./resource-template": {
+        "types": "./dist/resource-template-loader.d.ts",
+        "default": "./dist/resource-template-loader.js"
       }
     }
   },

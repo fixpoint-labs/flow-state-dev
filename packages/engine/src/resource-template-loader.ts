@@ -14,7 +14,7 @@ import {
   parseResourceTemplate,
   type ResourceTemplate,
   type ResourceTemplatePartials,
-} from "./resource-template";
+} from "@flow-state-dev/core/resource-template";
 
 export class ResourceTemplateLoadError extends Error {
   readonly sourcePath?: string;

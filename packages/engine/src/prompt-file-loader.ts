@@ -21,7 +21,7 @@ import {
   type PromptFile,
   type PromptFileFilters,
   type PromptFilePartials,
-} from "./prompt-file";
+} from "@flow-state-dev/core/prompt-file";
 
 /**
  * Directory of the module identified by `importerUrl` (normally the caller's

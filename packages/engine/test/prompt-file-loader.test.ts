@@ -1,14 +1,14 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { BlockContext } from "../src/types/block";
+import type { BlockContext } from "@flow-state-dev/core";
 import {
   createPromptLoader,
   loadPromptFile,
   moduleDir,
   PromptFileLoadError,
   resolveBaseDir,
-} from "../src/prompt/load-prompt-file.node";
+} from "../src/prompt-file-loader";
 
 const FIXTURE_DIR = fileURLToPath(new URL("./fixtures/prompts", import.meta.url));
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
