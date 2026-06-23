@@ -1,7 +1,7 @@
 /**
  * The `run` action — the chat turn's root sequencer.
  *
- * Pipeline order (unchanged from the pre-refactor flow):
+ * Pipeline order:
  *   applyRequestedMode → applyFeatures → skillActivator → resolveThinkingStyle
  *     → thinkingStyleRouter → biasCheck (.work) → perspective capture (.workIf)
  *     → mem.captureFromItems (.work) → autoTitle (.work) → incrementRequestCount

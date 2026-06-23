@@ -2,12 +2,10 @@
  * Mode system-prompt resolution — the single source of truth for the four
  * mode prompts (ask / build / interview / debate).
  *
- * Before this consolidation the same mode→prose mapping was defined twice,
- * byte-identical: once as the assistant generator's `prompt` switch and once as
- * the thinking-style router's `instructions`. `resolveModePrompt` collapses
- * both into one resolver over four `.prompt.md` files, consumed by BOTH the
- * generator's `prompt` slot and the router's `instructions` slot — one source,
- * two consumers, guaranteed-identical text.
+ * `resolveModePrompt` resolves one of four `.prompt.md` files by the session's
+ * mode and is consumed by BOTH the assistant generator's `prompt` slot and the
+ * thinking-style router's `instructions` slot — one source, two consumers,
+ * guaranteed-identical text.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { loadPrompt } from "../../shared/prompts";

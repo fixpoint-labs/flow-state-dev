@@ -30,7 +30,7 @@ import {
 } from "@flow-state-dev/skills";
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
-import { artifactsCapability } from "./artifacts";
+import { artifactsCapability } from "../artifacts";
 import { selectBashProvider } from "./bash";
 import { mcpCapability } from "../../../../lib/mcp";
 import { agentRegistry, materializeAgent } from "../agents";

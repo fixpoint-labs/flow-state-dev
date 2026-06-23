@@ -18,7 +18,7 @@
 import { defineFlow } from "@flow-state-dev/core";
 
 import { runSequencer } from "./run/run";
-import { updateArtifact } from "./shared/capabilities/artifacts";
+import { updateArtifact } from "./shared/artifacts";
 import { setSelectedModelHandler, setThinkingEnabledHandler } from "./settings";
 import { taskQueueDemo } from "./task-queue-demo";
 import { approvalGate } from "./approval-gate";
