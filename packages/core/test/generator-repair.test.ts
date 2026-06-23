@@ -209,4 +209,44 @@ describe("generator — structured output repair", () => {
     >;
     expect(result).toEqual({ decision: "continue", reasoning: "ok" });
   });
+
+  it("passes ctx.signal to the coercion call and reports its usage", async () => {
+    const primary = fixedTextModel(
+      "primary",
+      JSON.stringify({ action: "complete", reason: "ok" }),
+    );
+
+    const usage = { inputTokens: 12, outputTokens: 4, totalTokens: 16 };
+    let coercionSawSignal: AbortSignal | undefined;
+    const coercion = {
+      modelId: "coercion-model",
+      async generate(opts: { signal?: AbortSignal }) {
+        coercionSawSignal = opts.signal;
+        return { text: JSON.stringify({ decision: "complete", reasoning: "ok" }), usage };
+      },
+    } as unknown as GeneratorModel;
+
+    const controller = new AbortController();
+    const reported: Array<{ model: string; usage?: unknown }> = [];
+    const ctx = createMockContext({
+      signal: controller.signal,
+      _runtimeHooks: { onGeneratorModelResult: (p: { model: string; usage?: unknown }) => reported.push(p) },
+    } as any);
+
+    const block = generator({
+      name: "evaluator",
+      model: primary,
+      outputSchema: verdictSchema,
+      repair: { coerce: { model: coercion } },
+      prompt: "decide",
+    });
+
+    const result = (await runForTest(block, { value: "x" }, ctx)) as z.infer<typeof verdictSchema>;
+    expect(result).toEqual({ decision: "complete", reasoning: "ok" });
+    // Cancellation propagates into the repair call.
+    expect(coercionSawSignal).toBe(controller.signal);
+    // The coercion invocation's tokens reach the observability/billing hook.
+    const coercionReport = reported.find((r) => r.model === "coercion-model");
+    expect(coercionReport?.usage).toBe(usage);
+  });
 });

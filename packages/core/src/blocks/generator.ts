@@ -866,8 +866,10 @@ async function applyRepairPolicy<TInput, TOutput>(
       // Deterministic repair is exhausted. Last resort (FIX-841): one LLM
       // coercion pass that reshapes the raw output to the schema, preserving
       // content. Recovers semantic mismatches (renamed keys, wrong nesting)
-      // that no deterministic step can. Enabled by default in `auto` mode.
-      if (config.repair?.coerce !== false) {
+      // that no deterministic step can. Gated on `auto` mode explicitly (not
+      // just relying on `fail`/`rescue` having thrown earlier) so a future
+      // mode can't silently enable it.
+      if (mode === "auto" && config.repair?.coerce !== false) {
         const coerced = await attemptCoercionRepair(
           currentCandidate,
           outputSchema,
@@ -947,6 +949,19 @@ async function attemptCoercionRepair(
           content: `Schema:\n${targetSchema}\n\nValidation error:\n${error.message}\n\nOutput to fix:\n${raw}`,
         },
       ],
+      // Propagate cancellation so an aborted parent request stops the repair
+      // call instead of burning `intent/utility` tokens to completion.
+      signal: ctx.signal,
+    });
+
+    // The coercion is a separate model invocation; report its usage to the same
+    // hook the primary generation uses so its tokens are visible to billing and
+    // observability rather than silently dropped.
+    ctx._runtimeHooks?.onGeneratorModelResult?.({
+      model: model.modelId,
+      usage: result.usage,
+      providerMetadata: result.providerMetadata,
+      identity: result.resolvedIdentity,
     });
 
     // The coercion call returns plain text; run it through the deterministic
