@@ -121,7 +121,7 @@ export function tenantMatches(
  *   must exact-match — `undefined` matches only records with no tenant.
  *
  * Used by the in-memory / filesystem store list filters. The SQLite adapter
- * cannot import this (type-only boundary to `@flow-state-dev/server`) and
+ * cannot import this (type-only boundary to `@flow-state-dev/engine`) and
  * implements the same predicate as a NULL-safe `tenant_id IS ?` clause.
  */
 export function matchesTenantFilter(

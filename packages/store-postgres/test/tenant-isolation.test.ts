@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import type { RequestRecord, SessionRecord } from "@flow-state-dev/server";
+import type { RequestRecord, SessionRecord } from "@flow-state-dev/engine";
 import {
   createPostgresSessionStore,
   createPostgresRequestStore,

@@ -86,7 +86,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "@neondatabase/serverless": "^0.10.4",
     "pg": "^8.13.0"

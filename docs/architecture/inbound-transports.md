@@ -142,7 +142,7 @@ transparently. See `authentication.md`.
 ## The HTTP adapter as reference
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 
 const router = createFlowApiRouter({ registry, stores });
 ```
@@ -162,8 +162,8 @@ transport boundary lives at the action call, not at every route.
 A minimal adapter looks like this:
 
 ```ts
-import type { InboundTransportAdapter } from "@flow-state-dev/server";
-import { OrgRequiredError } from "@flow-state-dev/server";
+import type { InboundTransportAdapter } from "@flow-state-dev/engine";
+import { OrgRequiredError } from "@flow-state-dev/engine";
 
 export function createEchoAdapter(): InboundTransportAdapter {
   return {
@@ -266,7 +266,7 @@ Auth is two-phase. The dispatch endpoint runs through
 `host.resolvePrincipal` to establish the gateway principal — typically
 a system user proven via a shared scheduler secret
 (`createBearerSecretPrincipalResolver`, exported from
-`@flow-state-dev/server`). Each schedule then carries its own optional
+`@flow-state-dev/engine`). Each schedule then carries its own optional
 `principal` (the *target* user the action runs as), which wins over
 the gateway principal during dispatch. The runtime resolves
 `schedule.principal ?? gatewayPrincipal` and dispatches with that as
@@ -343,5 +343,5 @@ notification adapters plug into the same harness.
   produced by the HTTP adapter rather than hard-coded in the router.
 - `docs/architecture/streaming.md` — `LiveRequestStream` / `ResponseEmitter`
   are public types adapters consume.
-- `packages/server/README.md` — public API reference for
+- `packages/engine/README.md` — public API reference for
   `createFlowApiRouter` and the `adapters` option.

@@ -27,7 +27,7 @@ export default defineConfig({
       "@flow-state-dev/core/helpers": resolve(root, "packages/core/src/helpers/index.ts"),
       "@flow-state-dev/core/prompt-file/node": resolve(root, "packages/core/src/prompt/load-prompt-file.node.ts"),
       "@flow-state-dev/core": resolve(root, "packages/core/src/index.ts"),
-      "@flow-state-dev/server": resolve(root, "packages/server/src/index.ts"),
+      "@flow-state-dev/engine": resolve(root, "packages/engine/src/index.ts"),
       "@flow-state-dev/testing": resolve(root, "packages/testing/src/index.ts"),
     },
   },

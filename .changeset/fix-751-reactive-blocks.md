@@ -1,6 +1,6 @@
 ---
 "@flow-state-dev/core": patch
-"@flow-state-dev/server": patch
+"@flow-state-dev/engine": patch
 ---
 
 Add `reactTo` to `defineResource` and `defineResourceCollection` so a block runs automatically when a resource is created, updated, or deleted. Each binding is a block or `{ block, when }`; the block runs blocking inside the originating turn with a `ResourceChange` payload (`key`, `ref`, `kind`, `state`, `prevState`, `evicted`) and can emit items, call models, and appear in traces. Type its input with the exported `resourceChangeSchema(stateSchema)`. For background, isolated fan-out, make the reactive block a sequencer that uses `.work()`. A `when` gate filters dispatch, and a reaction that throws fails the mutating turn.

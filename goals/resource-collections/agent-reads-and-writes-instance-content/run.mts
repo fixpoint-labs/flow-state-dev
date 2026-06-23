@@ -27,7 +27,7 @@ import {
   createModelResolver,
   createResponseEmitter,
   runAction,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 
 const MODEL = process.env.FSDEV_DEFAULT_MODEL ?? "openai/gpt-5.4-mini";
 

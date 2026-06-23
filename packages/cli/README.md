@@ -279,7 +279,7 @@ Directory discovery covers a simple app whose providers are env-keyed. An app wi
 The CLI searches the current directory for `fsdev.config.{ts,mts,js,mjs}` (TS first). Pass `--config <path>` to point at an explicit file, or `--no-config` to ignore any config and force directory discovery. With a config loaded, `--model` is routed through your resolver, and `--flow-dir` is rejected (use `--no-config` if you wanted directory discovery).
 
 ```ts title="fsdev.config.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import chatFlow from "./src/flows/chat/flow";
 
 export default createFlowState({
@@ -314,7 +314,7 @@ import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/
 ## Dependencies
 
 - `@flow-state-dev/core` — block/flow type definitions
-- `@flow-state-dev/server` — execution engine, stores, streaming
+- `@flow-state-dev/engine` — execution engine, stores, streaming
 - `@flow-state-dev/testing` — isolated block execution context
 - `commander` — CLI framework
 - `@flow-state-dev/devtool` (optional peer) — pre-built DevTool UI assets for `fsdev dev`

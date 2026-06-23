@@ -8,14 +8,14 @@
  */
 import { Worker, UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
-import { runAction } from "@flow-state-dev/server";
+import { runAction } from "@flow-state-dev/engine";
 import type {
   FlowRegistry,
   StoreRegistry,
   RuntimeConfig,
   StreamBridge,
   StreamPublisher,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { resolveWorkerConnection } from "./connection";
 import type { BullmqConnectionOptions, FlowJobData, RetryConfig } from "./types";

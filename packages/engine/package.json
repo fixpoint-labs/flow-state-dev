@@ -1,5 +1,5 @@
 {
-  "name": "@flow-state-dev/server",
+  "name": "@flow-state-dev/engine",
   "version": "0.0.0",
   "description": "Execution runtime, stores, SSE streaming, and HTTP routes for flow-state-dev.",
   "keywords": [
@@ -18,7 +18,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
-    "directory": "packages/server"
+    "directory": "packages/engine"
   },
   "bugs": {
     "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"

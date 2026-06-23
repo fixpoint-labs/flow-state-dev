@@ -2,7 +2,7 @@
  * Canonical runtime error model shared across packages. Lives in core so handler
  * authors in third-party packages can throw `FlowError` (and runtime-emitted
  * subclasses like `OutputValidationError`) without depending on
- * `@flow-state-dev/server`.
+ * `@flow-state-dev/engine`.
  *
  * Server defines typed subclasses (`ValidationError`, `NetworkError`, ...) that
  * extend this base. Internal-only metadata (`blockName`, `blockInstanceId`,

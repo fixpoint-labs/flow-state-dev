@@ -1,6 +1,6 @@
 ---
 "@flow-state-dev/core": minor
-"@flow-state-dev/server": patch
+"@flow-state-dev/engine": patch
 "@flow-state-dev/tasks": patch
 "@flow-state-dev/ui": patch
 "@flow-state-dev/patterns": patch

@@ -5,7 +5,7 @@ import type {
   RequestRecord,
   SessionRecord,
   UserRecord
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { createPostgresStores, initializeSchema, type PostgresStoreRegistry } from "../src";
 import type { QueryExecutor } from "../src";
 

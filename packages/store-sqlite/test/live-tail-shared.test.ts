@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   makeRequestStreamEvent,
   makeRequestCompletedEvent
-} from "@flow-state-dev/server/testing";
+} from "@flow-state-dev/engine/testing";
 import { createSQLiteRequestStore } from "../src/request-store";
 import { initializeSchema } from "../src/schema";
 

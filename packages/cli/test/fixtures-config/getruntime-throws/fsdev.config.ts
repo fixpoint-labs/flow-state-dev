@@ -3,7 +3,7 @@
  * so `getRuntime()` fails. The adapter records dispose() calls on globalThis so
  * a test can assert the CLI disposes the FlowState on the init-failure path.
  */
-import { createFlowState, type StoreAdapter } from "@flow-state-dev/server";
+import { createFlowState, type StoreAdapter } from "@flow-state-dev/engine";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 

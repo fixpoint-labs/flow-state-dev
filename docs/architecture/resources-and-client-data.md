@@ -73,7 +73,7 @@ Resources can also carry file-like text content. Use `content` for inline templa
 - `readContent()` returns rendered content (`string`) or `null` if no content exists.
 - `readContentRaw()` returns the stored raw body (`string`) or `null`.
 - Empty content (`""`) is valid and distinct from `null`.
-- Template rendering is **opt-in** via `render`, e.g. `render: renderTemplate` from `@flow-state-dev/server`. Nested `{{#each}}` blocks are not supported. Templates longer than 512 KB are rejected.
+- Template rendering is **opt-in** via `render`, e.g. `render: renderTemplate` from `@flow-state-dev/engine`. Nested `{{#each}}` blocks are not supported. Templates longer than 512 KB are rejected.
 - LLM content access is **tool-driven and opt-in**. Add `readResourceContentTool()` / `writeResourceContentTool()` to a generator's `tools` list when you want these capabilities available.
 
 ```ts
@@ -100,7 +100,7 @@ Resource content is persisted separately from scope record metadata via `Content
 
 **Scope deletion cascades:** When a session (or other scope) is deleted, `ContentStore.deleteAll()` is called before the scope record is removed. This prevents orphaned content.
 
-See the [server README](../../packages/server/README.md) for `ContentStore` interface details and custom adapter instructions.
+See the [server README](../../packages/engine/README.md) for `ContentStore` interface details and custom adapter instructions.
 
 ### State Storage
 

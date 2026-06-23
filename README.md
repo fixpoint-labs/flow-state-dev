@@ -134,7 +134,7 @@ expect(result.output).toBeDefined();
 | Package | Purpose |
 |---------|---------|
 | [`@flow-state-dev/core`](packages/core) | Block builders, flow definitions, type contracts, item taxonomy |
-| [`@flow-state-dev/server`](packages/server) | Execution runtime, stores, SSE streaming, HTTP routes |
+| [`@flow-state-dev/engine`](packages/engine) | Execution runtime, stores, SSE streaming, HTTP routes |
 | [`@flow-state-dev/client`](packages/client) | Isomorphic API client — actions, sessions, streams |
 | [`@flow-state-dev/react`](packages/react) | React hooks and renderers |
 | [`@flow-state-dev/testing`](packages/testing) | Test harnesses and generator mocks |

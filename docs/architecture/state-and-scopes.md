@@ -112,7 +112,7 @@ The framework routes scope-state ops through the cheapest available write path o
 
 **Why multi-field patches stay on `set`:** decomposing `{ a: 1, b: 2 }` into N `patchField` calls would bump the version counter per field, multiply CAS-retry exposure under contention, and make intermediate states visible to concurrent readers. A single `set` preserves single-version semantics for one logical mutation. The cost (whole-record UPDATE) is identical to today's behavior — no regression.
 
-**Capability advertisement:** the delta verbs are optional on the `Store` interface in v1. `createScopePersist` feature-detects per call: an adapter without `patchField` (filesystem, SQLite as of v1) continues to receive `set` calls transparently. Adapters that advertise the verbs (`@flow-state-dev/server`'s in-memory adapter, `@flow-state-dev/store-postgres`) receive the delta routing. Future Upstash and Mongo adapters ship the verbs as required.
+**Capability advertisement:** the delta verbs are optional on the `Store` interface in v1. `createScopePersist` feature-detects per call: an adapter without `patchField` (filesystem, SQLite as of v1) continues to receive `set` calls transparently. Adapters that advertise the verbs (`@flow-state-dev/engine`'s in-memory adapter, `@flow-state-dev/store-postgres`) receive the delta routing. Future Upstash and Mongo adapters ship the verbs as required.
 
 **Resource content writes do not bump scope record version.** Resource content is persisted via `ContentStore`, separate from the scope record. Content writes do not update the scope record's `version` or `updatedAt` fields. The scope record version reflects state and metadata changes only.
 
@@ -272,14 +272,14 @@ Three adapters ship today:
 - **Filesystem** (local development only): Durable and human-inspectable, but its event persistence is O(N²) per request and collapses under real load. Constructing it without `developmentOnly: true` logs a one-time warning steering you to SQLite (FIX-406).
 
 ```ts
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 
 // Recommended for anything that needs to survive a restart:
 const stores = createSQLiteStores({ filename: "./data/app.db" });
 
 // Filesystem is local-dev only; acknowledge it explicitly:
-import { createFilesystemStores } from "@flow-state-dev/server";
+import { createFilesystemStores } from "@flow-state-dev/engine";
 const devStores = createFilesystemStores({ rootDir: "./data", developmentOnly: true });
 ```
 
@@ -365,7 +365,7 @@ The `UserRecord.id` / `OrgRecord.id` field holds the scope-record's (possibly na
 
 ### Storage-key derivation
 
-Key resolution is centralized in `packages/server/src/stores/scope-keys.ts`. The **scope record** keys on the flow-level flag:
+Key resolution is centralized in `packages/engine/src/stores/scope-keys.ts`. The **scope record** keys on the flow-level flag:
 
 ```ts
 export function resolveUserStorageKey(userId, flow): string {

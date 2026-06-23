@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/server": patch
+"@flow-state-dev/engine": patch
 "@flow-state-dev/client": patch
 "@flow-state-dev/devtool": patch
 ---

@@ -22,7 +22,7 @@ import {
   createFlowRegistry,
   createInMemoryStores,
   runAction
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { approvalGate, approvalGateInput } from "../flows/chat-agent/approval-gate";
 

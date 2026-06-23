@@ -23,7 +23,7 @@ import type {
   InboundTransportHost,
   TransportBindings,
   TransportRoute,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { CHAT_TRANSPORT_SOURCE, type ChatAdapterOptions } from "./types";
 import { registerEventHandlers } from "./event-handlers";
 import { buildOAuthRoutes } from "./oauth/routes";

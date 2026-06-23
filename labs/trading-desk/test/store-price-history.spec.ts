@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { storePriceHistory } from "../src/flows/analysis/store-price-history";
 import { get_price_history } from "../src/flows/analysis/tools/data/get_price_history";

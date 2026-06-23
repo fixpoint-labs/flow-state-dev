@@ -20,7 +20,7 @@ know what fires it; secrets stay out of that file.
 
 ## Install and mount
 
-The webhook transport ships inside `@flow-state-dev/server` — the declaration
+The webhook transport ships inside `@flow-state-dev/engine` — the declaration
 helpers are in `@flow-state-dev/core`, the runtime sits next to the HTTP
 adapter. There's no separate package to install.
 
@@ -28,11 +28,11 @@ adapter. There's no separate package to install.
 [`createFlowState`](./setup.md), the canonical setup entrypoint:
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import {
   createWebhookTransportAdapter,
   stripeWebhookVerifier,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 
 export const flowstate = createFlowState({
   flows: { billing: billingFlow },
@@ -201,7 +201,7 @@ import {
   githubWebhookVerifier,
   slackWebhookVerifier,
   createWebhookVerifier,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 ```
 
 - **`stripeWebhookVerifier(secret, { toleranceSeconds? })`** — reads
@@ -398,11 +398,11 @@ export const billingFlow = defineFlow({
 The host — verification and mechanics:
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import {
   createWebhookTransportAdapter,
   stripeWebhookVerifier,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { billingFlow } from "@/flows/billing";
 
 export const flowstate = createFlowState({

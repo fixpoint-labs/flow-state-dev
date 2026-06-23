@@ -338,7 +338,7 @@ export function createFlowState<
 /**
  * Structural check for a {@link FlowState} handle. Deliberately structural
  * rather than `instanceof InternalFlowState`: a config file or consumer repo
- * may resolve `@flow-state-dev/server` to a duplicated package instance
+ * may resolve `@flow-state-dev/engine` to a duplicated package instance
  * (workspace symlinks, double installs), so an identity check would reject a
  * valid handle built by a different copy of the class. Checks the four methods
  * that define the off-transport contract (`getRuntime`/`getRouter`) plus the

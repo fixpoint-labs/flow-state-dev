@@ -1,7 +1,7 @@
 /**
  * Shared `TraceStore` conformance suite. Every concrete implementation —
  * in-memory, filesystem, SQLite, future backends — runs this suite via
- * `@flow-state-dev/server/testing`. Backend-specific cases (atomic write,
+ * `@flow-state-dev/engine/testing`. Backend-specific cases (atomic write,
  * restart durability, native concurrency) live alongside each
  * implementation's tests.
  */

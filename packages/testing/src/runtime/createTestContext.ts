@@ -9,7 +9,7 @@ import {
   createResponseEmitter,
   type ExecutionContext,
   type StoreRegistry
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   StateChange,

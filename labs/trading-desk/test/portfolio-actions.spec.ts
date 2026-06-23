@@ -13,7 +13,7 @@
  * fabricated number).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import {

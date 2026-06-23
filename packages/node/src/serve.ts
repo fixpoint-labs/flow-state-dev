@@ -23,7 +23,7 @@ import {
   isFlowState,
   type FlowApiRouter,
   type FlowState,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { handleApiRequest } from "./bridge";
 
 /** Options for {@link serve}. All have sensible defaults for PaaS hosting. */

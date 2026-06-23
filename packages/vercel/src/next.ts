@@ -11,7 +11,7 @@
  * router is built inside `createFlowState`, so a handler that wraps an
  * already-built router can't inject construction-time hooks.
  */
-import type { FlowState } from "@flow-state-dev/server";
+import type { FlowState } from "@flow-state-dev/engine";
 import { createVercelHandler } from "./handler";
 
 export function createVercelNextHandler(flowstate: FlowState): ReturnType<

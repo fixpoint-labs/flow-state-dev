@@ -62,7 +62,7 @@
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
-    "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
     "@types/node": "^22.0.0",
     "zod": "^3.24.1"
   },

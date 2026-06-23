@@ -1,6 +1,6 @@
 ---
 "@flow-state-dev/core": minor
-"@flow-state-dev/server": minor
+"@flow-state-dev/engine": minor
 "@flow-state-dev/store-sqlite": minor
 "@flow-state-dev/store-postgres": minor
 ---

@@ -200,7 +200,7 @@ If you previously relied on the absence of `tool_call_progress` items from a moc
 `testFlow` accepts an optional `stores: StoreRegistry`. Pass the same registry to two calls and the second resumes from the first run's session, journal, and resource state:
 
 ```ts
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 
 const stores = createInMemoryStores();
 await testFlow({ flow, action, userId, sessionId: "s1", stores, /* ... */ });

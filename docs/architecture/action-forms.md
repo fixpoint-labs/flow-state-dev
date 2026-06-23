@@ -75,7 +75,7 @@ the handler.
 ## The resolution seam: `resolveActionCore`
 
 `resolveActionCore(flow, actionName, source, metadata)` (in
-`@flow-state-dev/server`, `execution/resolve-action-core.ts`) is the single
+`@flow-state-dev/engine`, `execution/resolve-action-core.ts`) is the single
 function that finds the core to run:
 
 ```ts

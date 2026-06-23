@@ -7,7 +7,7 @@
  * an Anthropic-only provider option toggled from user state.
  */
 import { generator } from "@flow-state-dev/core";
-import { voiceContext } from "@flow-state-dev/server";
+import { voiceContext } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { inputSchema, userStateSchema, modeSchema } from "../../shared/schemas";
 import { featuresCapability } from "../../shared/capabilities/features";

@@ -2,7 +2,7 @@
 
 Vercel deployment adapter for flow-state-dev. Wraps a flow-state-dev router into Next.js App Router handlers with Vercel-specific SSE shaping and runtime configuration.
 
-> SSE heartbeats are now provided by `@flow-state-dev/server` for every live and GET-attach stream. Configure them via `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })`. The `heartbeatMs` option on the Vercel handler is deprecated and ignored.
+> SSE heartbeats are now provided by `@flow-state-dev/engine` for every live and GET-attach stream. Configure them via `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })`. The `heartbeatMs` option on the Vercel handler is deprecated and ignored.
 
 ## Quick Start
 
@@ -15,7 +15,7 @@ Two files to deploy an FSD app to Vercel.
 **1. FlowState** (`lib/flowstate.ts`) — the runtime config:
 
 ```ts
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import myFlow from "@/flows/my-flow/flow";
 

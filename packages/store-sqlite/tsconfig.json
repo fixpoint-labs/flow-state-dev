@@ -6,5 +6,5 @@
     "outDir": "dist"
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../core" }, { "path": "../server" }, { "path": "../scheduled" }]
+  "references": [{ "path": "../core" }, { "path": "../engine" }, { "path": "../scheduled" }]
 }

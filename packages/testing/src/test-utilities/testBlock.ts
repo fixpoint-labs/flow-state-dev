@@ -1,6 +1,6 @@
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { sequencer } from "@flow-state-dev/core";
-import { executeBlock } from "@flow-state-dev/server";
+import { executeBlock } from "@flow-state-dev/engine";
 import type { OutputItem, StateChangeItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { createTestContext } from "../runtime/createTestContext";

@@ -4,7 +4,7 @@
  * same `(scopeType, scopeId, resourceKey)` addressing and the same six methods,
  * so the cases live in one generic core and each public wrapper supplies a
  * value factory. Every concrete adapter — memory, filesystem, SQLite, Postgres
- * — runs these via `@flow-state-dev/server/testing`.
+ * — runs these via `@flow-state-dev/engine/testing`.
  *
  * These cases run against a single store instance; persistence-across-restart
  * is adapter-specific (close + reopen the backing file) and lives in each

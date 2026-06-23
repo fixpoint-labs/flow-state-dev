@@ -16,7 +16,7 @@ Pure computation, in-memory state, no I/O. Always deepenable — merge the modul
 
 Dependencies that have local test stand-ins. Deepenable if the stand-in exists. The deepened module is tested with the stand-in running in the test suite. The seam is internal; no port at the module's external interface.
 
-**FSD canonical example: store adapters.** The `StoreRegistry` interface in `@flow-state-dev/server` is the seam; `@flow-state-dev/store-sqlite` and the built-in in-memory store are two real adapters. This is the textbook case of "two adapters = real seam" — the in-memory store exists *because* fast deterministic tests demand it. When deepening anything that touches persistence, the test loop uses the in-memory store via `@flow-state-dev/testing`.
+**FSD canonical example: store adapters.** The `StoreRegistry` interface in `@flow-state-dev/engine` is the seam; `@flow-state-dev/store-sqlite` and the built-in in-memory store are two real adapters. This is the textbook case of "two adapters = real seam" — the in-memory store exists *because* fast deterministic tests demand it. When deepening anything that touches persistence, the test loop uses the in-memory store via `@flow-state-dev/testing`.
 
 ### 3. Remote but owned (Ports & Adapters)
 

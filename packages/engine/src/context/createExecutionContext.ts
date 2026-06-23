@@ -506,7 +506,7 @@ export async function createExecutionContext<
 
   // Storage keys — namespaced by flowKind when the flow opts into per-flow
   // isolation for user/org scope. Bare identity ids otherwise. See
-  // `packages/server/src/stores/scope-keys.ts` and FIX-431.
+  // `packages/engine/src/stores/scope-keys.ts` and FIX-431.
   const userKey = resolveUserStorageKey(userId, flow);
   const optionsOrgId = options.orgId;
   const optionsOrgKey =

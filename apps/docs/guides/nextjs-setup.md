@@ -22,7 +22,7 @@ You'll need the framework packages: core, server, client, and react. The server 
 ## Install packages
 
 ```bash
-pnpm add @flow-state-dev/core @flow-state-dev/server @flow-state-dev/client @flow-state-dev/react zod
+pnpm add @flow-state-dev/core @flow-state-dev/engine @flow-state-dev/client @flow-state-dev/react zod
 ```
 
 `zod` is a peer dependency. Used for schema validation everywhere. The React package brings in the client automatically, but listing both keeps dependencies explicit.
@@ -48,7 +48,7 @@ pnpm add -D @flow-state-dev/testing @flow-state-dev/cli
 Describe the runtime once with `createFlowState`. Pass your flows, a model config, and where state lives. Keep it in its own file so the route handler imports a configured instance.
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import chatFlow from "@/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({
@@ -65,7 +65,7 @@ export const flowstate = createFlowState({
 The `fsdev` CLI can run your flows with this same wiring, your models and your stores, if it can find the FlowState. Move the `createFlowState` call into an `fsdev.config.ts` at your project root and have it default-export the handle:
 
 ```ts title="fsdev.config.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import chatFlow from "./src/flows/hello-chat/flow";
 
 export default createFlowState({

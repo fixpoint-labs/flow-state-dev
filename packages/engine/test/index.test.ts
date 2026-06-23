@@ -12,12 +12,12 @@ import {
   runAction,
   runWithCAS,
   serializeSSEFrame,
-  serverPackageMarker
+  enginePackageMarker
 } from "../src";
 
-describe("@flow-state-dev/server", () => {
+describe("@flow-state-dev/engine", () => {
   it("exports scaffold marker", () => {
-    expect(serverPackageMarker).toBe("@flow-state-dev/server");
+    expect(enginePackageMarker).toBe("@flow-state-dev/engine");
   });
 
   it("exports server runtime primitives", () => {

@@ -2,7 +2,7 @@
  * Bundle of instance-level options forwarded verbatim through the server
  * execution chain (`createFlowApiRouter` → `createFlowRouteHandlers` →
  * `createInboundTransportHost` → `runAction`). Internal to
- * `@flow-state-dev/server` — the type is re-exported from the package root so
+ * `@flow-state-dev/engine` — the type is re-exported from the package root so
  * sibling packages can name it, but it is not part of the public option
  * surface of `createFlowState` / `createFlowApiRouter`.
  *

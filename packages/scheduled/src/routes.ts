@@ -10,7 +10,7 @@ import {
   type InboundRequestEnvelope,
   type InboundTransportHost,
   type ResolvedPrincipal
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import {
   validateScheduleConfig,
   type ScheduleConfig,

@@ -7,7 +7,7 @@ import type {
   SessionListOptions,
   SessionRecord,
   SessionStore
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import type { QueryExecutor } from "./types";
 import { createPgRecordStore } from "./pg-store";
 

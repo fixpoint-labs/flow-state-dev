@@ -1,15 +1,15 @@
-# @flow-state-dev/server
+# @flow-state-dev/engine
 
 **The runtime. Register flows, execute actions, stream results — one config object to a complete API.**
 
 ## Installation
 
 ```bash
-pnpm add @flow-state-dev/server
+pnpm add @flow-state-dev/engine
 ```
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import myFlow from "./flows/my-flow";
 
 export const flowstate = createFlowState({
@@ -49,7 +49,7 @@ Construction is synchronous; stores initialize lazily and memoized on the first 
 `stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary` — the catch-all state store for sessions, requests, users, orgs, active requests, checkpoints, content, and traces. The `blobs`, `queue`, and `scheduler` slots are declared but forward-compatible; no backing store ships for them yet.
 
 ```ts
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 
 createFlowState({
@@ -128,7 +128,7 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 `createFlowApiRouter` and `createFlowRegistry` still exist for custom transports and advanced wiring. Most users want `createFlowState`. The sections below document the lower-level surface.
 
 ```ts
-import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/engine";
 
 const registry = createFlowRegistry();
 registry.register(myFlow);
@@ -156,7 +156,7 @@ automatically; `createFlowApiRouter` accepts an `adapters` option to mount
 additional transports onto the same host:
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 
 const router = createFlowApiRouter({
   registry,
@@ -205,7 +205,7 @@ import {
   createFlowApiRouter,
   createHmacVerifier,
   PrincipalResolutionError
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 
 const verifyStripe = createHmacVerifier({
   secret: process.env.STRIPE_WEBHOOK_SECRET!,
@@ -256,7 +256,7 @@ Read the value in a block via `ctx.session.identity.tenantId`. See the
 ## Store configuration
 
 ```ts
-import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/server";
+import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/engine";
 
 // Default: filesystem persistence
 const router = createFlowApiRouter({ registry });
@@ -311,7 +311,7 @@ Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in 
 
 ```ts
 import { createModelResolver } from "@flow-state-dev/core/models";
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 
 const router = createFlowApiRouter({
   registry,
@@ -418,7 +418,7 @@ import {
   createInMemoryContentStore,
   createInMemoryResourceStateStore,
   createInMemoryCheckpointStore
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 
 const stores: StoreRegistry = {
   session: mySessionStore,
@@ -477,7 +477,7 @@ By default the final checkpoint is retained after terminal completion (success /
 `DurabilityProvider` coordinates checkpoint-based crash recovery and HITL (human-in-the-loop) suspend/resume. Wire it onto `RuntimeConfig.durabilityProvider` to enable `ctx.suspend()` in durable actions.
 
 ```ts
-import { createCheckpointDurabilityProvider } from "@flow-state-dev/server";
+import { createCheckpointDurabilityProvider } from "@flow-state-dev/engine";
 
 const provider = createCheckpointDurabilityProvider({
   checkpoints: stores.checkpoints,
@@ -598,9 +598,9 @@ The lock is non-reentrant: a mutator that calls `atomicState` again on the same 
 ## Scripts
 
 ```bash
-pnpm --filter @flow-state-dev/server build
-pnpm --filter @flow-state-dev/server typecheck
-pnpm --filter @flow-state-dev/server test
+pnpm --filter @flow-state-dev/engine build
+pnpm --filter @flow-state-dev/engine typecheck
+pnpm --filter @flow-state-dev/engine test
 ```
 
 ## Architecture reference

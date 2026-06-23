@@ -2,7 +2,7 @@
  * Shared `RequestStore.subscribeToEvents` conformance suite. Every concrete
  * implementation — memory bus, SQLite poll, filesystem poll, Postgres
  * LISTEN/NOTIFY, PGlite poll — runs this suite via
- * `@flow-state-dev/server/testing`.
+ * `@flow-state-dev/engine/testing`.
  *
  * Mirrors the `TraceStore` conformance pattern. Polling-tolerance defaults
  * give the SQLite/filesystem/Postgres pollers room to wake up; cross-store

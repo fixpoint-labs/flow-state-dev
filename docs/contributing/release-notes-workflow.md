@@ -39,7 +39,7 @@ Fragment format:
 ```md
 ---
 "@flow-state-dev/core": patch
-"@flow-state-dev/server": patch
+"@flow-state-dev/engine": patch
 ---
 
 One user-facing sentence. Multi-paragraph or migration notes are fine
@@ -67,7 +67,7 @@ Each fragment can list multiple packages with their own bumps:
 ```md
 ---
 "@flow-state-dev/core": minor
-"@flow-state-dev/server": patch
+"@flow-state-dev/engine": patch
 "@flow-state-dev/react": patch
 ---
 

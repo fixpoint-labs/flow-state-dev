@@ -8,7 +8,7 @@
  * works on Next-on-Cloudflare and other non-Vercel Next deployments. On
  * Vercel, compose with `@flow-state-dev/vercel/next` instead.
  */
-import type { FlowApiRouter, FlowState } from "@flow-state-dev/server";
+import type { FlowApiRouter, FlowState } from "@flow-state-dev/engine";
 
 /** Next.js 15 route context — `params` is a promise. */
 type NextRouteHandlerContext = { params: Promise<{ path?: string[] }> };

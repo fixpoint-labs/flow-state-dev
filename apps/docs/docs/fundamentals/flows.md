@@ -208,7 +208,7 @@ For generators, `meta` is a `GeneratorCompletedMeta` carrying `{ model: ModelIde
 Flows are registered with a server registry to be served via HTTP:
 
 ```ts
-import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/engine";
 
 const registry = createFlowRegistry();
 registry.register(chatFlow);

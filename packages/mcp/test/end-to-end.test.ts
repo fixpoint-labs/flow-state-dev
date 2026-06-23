@@ -6,7 +6,7 @@
  *
  * No HTTP server stood up — synthetic `Request` objects are dispatched
  * through the router's POST handler, mirroring the pattern in
- * `packages/server/test/transports/host.test.ts`.
+ * `packages/engine/test/transports/host.test.ts`.
  */
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
@@ -16,7 +16,7 @@ import {
   createFlowRegistry,
   createInMemoryStores,
   disposeFlowApiRouter
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { createMcpTransportAdapter } from "../src";
 
 function buildRouter() {

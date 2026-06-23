@@ -12,7 +12,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
  *
  * @example
  * ```ts
- * import { voiceContext } from "@flow-state-dev/server";
+ * import { voiceContext } from "@flow-state-dev/engine";
  *
  * generator({
  *   name: "assistant",

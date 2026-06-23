@@ -13,7 +13,7 @@
  * failed" and "the action returned an error result" is preserved by
  * `isError`.
  */
-import type { ExecutionResult } from "@flow-state-dev/server";
+import type { ExecutionResult } from "@flow-state-dev/engine";
 
 export interface McpToolContent {
   type: "text";

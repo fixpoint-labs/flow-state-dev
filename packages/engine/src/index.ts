@@ -183,7 +183,7 @@ export type {
   DurabilitySweeper
 } from "./durability/durability-sweeper";
 
-export const serverPackageMarker = "@flow-state-dev/server";
+export const enginePackageMarker = "@flow-state-dev/engine";
 
 // ---------------------------------------------------------------------------
 // Internal resource helpers exposed for sibling-package consumption

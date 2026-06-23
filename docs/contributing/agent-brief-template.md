@@ -19,7 +19,7 @@ An issue may sit in the queue for days before an agent picks it up. Files get re
 Describe **what** the system should do, not **how** to implement it. The agent will explore the codebase fresh and make its own implementation decisions within FSD's conventions.
 
 - **Good:** "Generators that emit a `block_output` item with a `toolCall` of status `failed` must surface a `step_error` item to the client with the tool name and the underlying error message."
-- **Bad:** "In `packages/server/src/execution/runGenerator.ts` around line 240, add a check after the catch block..."
+- **Bad:** "In `packages/engine/src/execution/runGenerator.ts` around line 240, add a check after the catch block..."
 
 ### Complete acceptance criteria
 
@@ -113,7 +113,7 @@ item. No item is delivered twice; no item is silently skipped.
 
 ## Key surfaces
 
-- `createSSEStream` in `@flow-state-dev/server` — accept resume cursor,
+- `createSSEStream` in `@flow-state-dev/engine` — accept resume cursor,
   filter items below it
 - Items affected: every type with a `sequence_number` (all stream items)
 - Architecture doc: `docs/architecture/streaming.md` (cursor format is
@@ -126,7 +126,7 @@ item. No item is delivered twice; no item is silently skipped.
 - [ ] A reconnect with no cursor still delivers from the start
 - [ ] Vitest integration test covers all three cases against a mock
       client
-- [ ] `pnpm --filter @flow-state-dev/server typecheck && pnpm --filter @flow-state-dev/server test` passes
+- [ ] `pnpm --filter @flow-state-dev/engine typecheck && pnpm --filter @flow-state-dev/engine test` passes
 
 ## Out of scope
 

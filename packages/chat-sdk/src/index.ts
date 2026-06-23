@@ -11,7 +11,7 @@
  *
  *   import { Chat } from "chat";
  *   import { createSlackAdapter } from "@chat-adapter/slack";
- *   import { createFlowApiRouter } from "@flow-state-dev/server";
+ *   import { createFlowApiRouter } from "@flow-state-dev/engine";
  *   import { createChatTransportAdapter } from "@flow-state-dev/chat-sdk";
  *
  *   const bot = new Chat({

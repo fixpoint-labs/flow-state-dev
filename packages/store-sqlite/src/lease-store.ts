@@ -5,7 +5,7 @@
  * check-and-replace. Expired leases are pruned via DELETE WHERE.
  */
 import type Database from "better-sqlite3";
-import type { Lease, LeaseOptions, LeaseStore } from "@flow-state-dev/server";
+import type { Lease, LeaseOptions, LeaseStore } from "@flow-state-dev/engine";
 
 let leaseCounter = 0;
 

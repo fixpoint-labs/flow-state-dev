@@ -4,7 +4,7 @@
  * One active lease per request. Acquire uses a transaction (when the
  * executor supports it) or a serializable upsert for atomicity.
  */
-import type { Lease, LeaseOptions, LeaseStore } from "@flow-state-dev/server";
+import type { Lease, LeaseOptions, LeaseStore } from "@flow-state-dev/engine";
 import type { QueryExecutor } from "./types";
 
 let leaseCounter = 0;

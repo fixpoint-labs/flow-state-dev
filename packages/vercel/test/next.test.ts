@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FlowApiRouter, FlowState } from "@flow-state-dev/server";
+import type { FlowApiRouter, FlowState } from "@flow-state-dev/engine";
 import { createVercelNextHandler } from "../src/next";
 
 describe("createVercelNextHandler", () => {

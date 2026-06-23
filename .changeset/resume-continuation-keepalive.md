@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/server": patch
+"@flow-state-dev/engine": patch
 ---
 
 Keep the serverless function alive while a resumed request finishes.

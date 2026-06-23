@@ -1,6 +1,6 @@
 ---
 "@flow-state-dev/cli": minor
-"@flow-state-dev/server": minor
+"@flow-state-dev/engine": minor
 ---
 
 `fsdev run` and `fsdev dev` now load an `fsdev.config.ts` (or `.mts`/`.js`/`.mjs`) from the project root — a file that default-exports your `createFlowState` handle — so the CLI runs your flows with the app's own model resolver and stores, the same wiring the server uses; pass `--config <path>` to point at a specific file or `--no-config` to force directory discovery.

@@ -74,11 +74,11 @@ session, so a re-review picks up where the last left off.
 ## 2. The host verifies and reads the header
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import {
   createWebhookTransportAdapter,
   githubWebhookVerifier,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { repoFlow } from "@/flows/repo";
 
 export const flowstate = createFlowState({

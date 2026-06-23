@@ -15,7 +15,7 @@ import {
 import type {
   InboundTransportHost,
   InboundRequestEnvelope,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import {
   createInboundTransportConformanceTests,
   createMockTransportHost,

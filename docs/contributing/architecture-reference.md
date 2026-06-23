@@ -28,7 +28,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
   → [Scheduled Actions](../architecture/scheduled-actions.md)
 - Chat transport: `chat` config on `defineFlow` (`chat.on` map). `ChatEventBinding extends ActionCore` — carries `block` inline (no `action: string`); `defineChatBinding` helper. Adapter mount is bare `createChatTransportAdapter({ bot })`: the `route()`/`flowKind`/`action` mount options and `ChatRouteResult`/`ChatRouteFn` types are removed. Unmatched event = no-op ack. `source: "chat"`, namespaced `metadata.chat`.
   → [Chat Transport](../architecture/chat-transport.md)
-- Webhook receivers: `webhooks` config on `defineFlow` (`WebhookConfig` = per-provider `{ on }`, `WebhookSubscriptionConfig`, `WebhookEventBinding extends ActionCore` — the handler lives on `flow.webhooks`, never `flow.actions`), framework-owned `WebhookInboundEvent` (`core`), host-side `WebhookProviderDefinition` (`server`, carries `verify` + crypto), route `POST /api/flows/:kind/webhooks/:provider`, `source: "webhook"`
+- Webhook receivers: `webhooks` config on `defineFlow` (`WebhookConfig` = per-provider `{ on }`, `WebhookSubscriptionConfig`, `WebhookEventBinding extends ActionCore` — the handler lives on `flow.webhooks`, never `flow.actions`), framework-owned `WebhookInboundEvent` (`core`), host-side `WebhookProviderDefinition` (`engine`, carries `verify` + crypto), route `POST /api/flows/:kind/webhooks/:provider`, `source: "webhook"`
   → [Webhook Transport](../architecture/webhook-transport.md)
 
 ## Sequencer Surface (21 methods)
@@ -76,7 +76,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 - Optional `filter` predicate to target specific block kinds/names
 - `next()` may only be called once per middleware (double-call throws)
 - Middleware runs on every retry attempt
-- Types in `core`; composition logic in `server`
+- Types in `core`; composition logic in `engine`
 
 → [Middleware](../architecture/middleware.md)
 
@@ -98,7 +98,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 |---------|------|----------------|
 | `contracts` | Zero-dep shared layer (item taxonomy + leaf types) | Imports no workspace package; declares no dependencies (guarded). `core` re-exports it |
 | `core` | Isomorphic builders/types/items | No platform-specific code; value-imports `contracts` |
-| `server` | Execution/runtime/stores/streaming/routes | No dependency on react or client |
+| `engine` | Execution/runtime/stores/streaming/routes | No dependency on react or client |
 | `client` | Transport + session/request APIs | No dependency on server or react |
 | `react` | Hooks/renderers only | Wraps client; no transport logic |
 | `testing` | Deterministic harnesses + mocks | Uses core + server |

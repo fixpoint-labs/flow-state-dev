@@ -26,7 +26,7 @@ pnpm test
 | Package | Purpose |
 |---------|---------|
 | `@flow-state-dev/core` | Block builders, type contracts, item taxonomy |
-| `@flow-state-dev/server` | Execution runtime, stores, SSE streaming, HTTP routes |
+| `@flow-state-dev/engine` | Execution runtime, stores, SSE streaming, HTTP routes |
 | `@flow-state-dev/client` | Isomorphic API client |
 | `@flow-state-dev/react` | React hooks and renderers |
 | `@flow-state-dev/testing` | Test harnesses and generator mocks |

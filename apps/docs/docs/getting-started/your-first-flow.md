@@ -23,7 +23,7 @@ We'll build it in five steps. Each step is runnable on its own.
 
 ## Step 0. Prerequisites
 
-If you haven't yet, follow [Setting Up Models](/docs/getting-started/setting-up-models) to install the framework and configure an API key. The rest of this page assumes you have `@flow-state-dev/core`, `@flow-state-dev/server`, `@flow-state-dev/react`, and `zod` installed, and that one of `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is set in your environment.
+If you haven't yet, follow [Setting Up Models](/docs/getting-started/setting-up-models) to install the framework and configure an API key. The rest of this page assumes you have `@flow-state-dev/core`, `@flow-state-dev/engine`, `@flow-state-dev/react`, and `zod` installed, and that one of `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is set in your environment.
 
 ## Step 1. A generator on its own
 
@@ -173,7 +173,7 @@ For agents that need to remember things across turns, see [Memory → Overview](
 The server side is a config object plus a single route. Describe the runtime with `createFlowState`:
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import chatFlow from "@/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({

@@ -1,6 +1,6 @@
 ---
 "@flow-state-dev/core": minor
-"@flow-state-dev/server": minor
+"@flow-state-dev/engine": minor
 ---
 
 Add two `ResourceCollectionRef` APIs for the recurring "exists-or-not" patterns

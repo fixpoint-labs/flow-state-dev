@@ -17,7 +17,7 @@ import {
   type RuntimeLogger,
   type RuntimeLoggerLevel,
   type StoreRegistry
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import type { FlowInstance, ModelResolver, JsonObject } from "@flow-state-dev/core/types";
 import {
   discoverFlows,

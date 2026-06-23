@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { resolve } from "node:path";
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 import { executeRunCommand } from "../src/commands/run";
 import {
   discoverFlows,

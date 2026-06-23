@@ -249,7 +249,7 @@ Once design questions are resolved, draft the implementation spec. The spec must
    A scan-first summary that anyone opening the document can read to know exactly what's changing without reading further. Three parts, in this order:
 
    - **One-sentence statement** of what's being built / fixed / changed, in plain terms.
-   - **Bulleted list of concrete deliverables.** Each bullet is one shippable thing — a new file, a modified API, an added capability, a removed function, a docs page. Use the form `<verb> <thing> in <location>` (e.g., *"Add `resumeFromSequence` parameter to `createSSEStream()` in `packages/server/src/streaming/sse.ts`"*). Keep the list to 3–8 bullets; if the change has more deliverables than that, group by area (e.g., *"Server:"*, *"Client:"*, *"Docs:"*) and bullet within each group. Group order should mirror the Implementation Sequence (section 5) so readers can pivot from TLDR to sequence without re-mapping.
+   - **Bulleted list of concrete deliverables.** Each bullet is one shippable thing — a new file, a modified API, an added capability, a removed function, a docs page. Use the form `<verb> <thing> in <location>` (e.g., *"Add `resumeFromSequence` parameter to `createSSEStream()` in `packages/engine/src/streaming/sse.ts`"*). Keep the list to 3–8 bullets; if the change has more deliverables than that, group by area (e.g., *"Server:"*, *"Client:"*, *"Docs:"*) and bullet within each group. Group order should mirror the Implementation Sequence (section 5) so readers can pivot from TLDR to sequence without re-mapping.
    - **Size estimate.** One of: **Small** (1 file / 1 PR / <100 LOC), **Medium** (multi-file / 1 PR / 100–500 LOC), or **Large** (multi-PR / >500 LOC / multi-package). If multi-PR, name the PR split (e.g., *"Large — split as server changes, then client changes, then docs"*).
 
    **Write the TLDR last,** after the rest of the spec is drafted. It's a summary of what's below, not an outline of what's coming. Before publishing, verify every TLDR bullet traces to a specific section (3, 4, or 5) — if a bullet has no home in the spec body, either the spec is incomplete or the TLDR overpromised. Reconcile both before publishing.
@@ -453,7 +453,7 @@ If there are open questions, ask the user to resolve them. Once resolved, update
 ## Guidelines
 
 - **Depth over speed.** This is a research task. Spend the time to get it right. A thin spec is worse than no spec because it gives false confidence.
-- **Be specific.** "Update the server" is not a spec. "Add a `resumeFromSequence` parameter to `createSSEStream()` in `packages/server/src/streaming/sse.ts` that filters items below the given sequence number" is a spec.
+- **Be specific.** "Update the server" is not a spec. "Add a `resumeFromSequence` parameter to `createSSEStream()` in `packages/engine/src/streaming/sse.ts` that filters items below the given sequence number" is a spec.
 - **Follow existing patterns.** The codebase has established conventions. The spec should extend them, not invent new ones. When deviating, explain why.
 - **Research is not copying.** Industry research informs the approach but the implementation must fit this codebase's architecture, not blindly adopt an external pattern.
 - **Self-contained.** The spec must include everything an implementer needs. If they have to read 5 other documents to understand the spec, it's not done.

@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/server": minor
+"@flow-state-dev/engine": minor
 "@flow-state-dev/next": minor
 "@flow-state-dev/vercel": minor
 "@flow-state-dev/core": minor

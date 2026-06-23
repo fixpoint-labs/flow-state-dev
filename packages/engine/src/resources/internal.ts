@@ -8,7 +8,7 @@
  * right now?" do not have to reimplement scope resolution and the
  * content-store/record merge.
  *
- * These helpers are exported from `@flow-state-dev/server` under the
+ * These helpers are exported from `@flow-state-dev/engine` under the
  * `unstable_` prefix — they are deliberately not part of the long-term
  * public API surface.
  */

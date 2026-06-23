@@ -59,7 +59,7 @@ The full list of built-in presets (`tiny`, `small`, `medium`, `large`, `thinking
 You can replace any built-in preset or define a new one when you create the resolver:
 
 ```ts title="app/api/flows/[...path]/route.ts"
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
+import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import chatFlow from "@/flows/hello-chat/flow";
 

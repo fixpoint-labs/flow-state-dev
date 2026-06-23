@@ -18,7 +18,7 @@
  *      claim and drain the cascaded tasks.
  *
  * The direct verification of the filter mechanism lives in the unit
- * suites: `packages/server/test/response-emitter-subscribe-items.test.ts`
+ * suites: `packages/engine/test/response-emitter-subscribe-items.test.ts`
  * (per-listener filter behavior), `packages/core/test/sequencer-wait-for-condition.test.ts`
  * (`wakeOn` forwarding), and `packages/tasks/test/collection/predicates.test.ts`
  * (`onTaskChangeFor` matching).

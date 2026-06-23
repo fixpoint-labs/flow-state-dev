@@ -19,8 +19,8 @@
  * session row settled on. If a stricter "first writer wins" guarantee is
  * needed later, the store would need to expose a `setIfAbsent` variant.
  */
-import type { ResolvedPrincipal } from "@flow-state-dev/server";
-import type { StoreRegistry } from "@flow-state-dev/server";
+import type { ResolvedPrincipal } from "@flow-state-dev/engine";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import type { ChatInboundEvent } from "./types";
 
 export interface EnsureSessionArgs {

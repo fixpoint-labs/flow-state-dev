@@ -15,7 +15,7 @@ Build a streaming chat in five minutes. By the end you have a typed flow, a Next
 ## 1. Install
 
 ```bash
-pnpm add @flow-state-dev/core @flow-state-dev/server @flow-state-dev/react zod
+pnpm add @flow-state-dev/core @flow-state-dev/engine @flow-state-dev/react zod
 ```
 
 ## 2. Configure your model provider
@@ -85,7 +85,7 @@ The quick-start doesn't need one yet. [Your First Flow](/docs/getting-started/yo
 Describe the runtime once, then mount it with one catch-all route. That route gives you action dispatch, SSE streaming, and session state:
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import chatFlow from "@/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({

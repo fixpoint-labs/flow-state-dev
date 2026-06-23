@@ -1,6 +1,6 @@
 # @flow-state-dev/bullmq
 
-BullMQ adapter for `@flow-state-dev/server` — durable background jobs, native cron scheduling, and full-flow worker dispatch for long-lived self-hosted deployments.
+BullMQ adapter for `@flow-state-dev/engine` — durable background jobs, native cron scheduling, and full-flow worker dispatch for long-lived self-hosted deployments.
 
 Use this when you run your own infrastructure (Docker, Railway, VPS) and want Redis-backed job durability with automatic retries, dead-letter queues, and real-time streaming between workers and the web process.
 
@@ -24,7 +24,7 @@ Two deployment shapes are supported: **co-located** (web + worker in one process
 
 ```ts
 import { createBullmqRuntime } from "@flow-state-dev/bullmq";
-import { createFlowState } from "@flow-state-dev/server";
+import { createFlowState } from "@flow-state-dev/engine";
 
 const bullmq = createBullmqRuntime({
   connection: process.env.REDIS_URL ?? "redis://localhost:6379",
@@ -51,7 +51,7 @@ On the **web side**, use `createWorkerDispatcher` to route all flow dispatches t
 
 ```ts
 import { Queue } from "bullmq";
-import { createFlowState } from "@flow-state-dev/server";
+import { createFlowState } from "@flow-state-dev/engine";
 import {
   createWorkerDispatcher,
   createRedisStreamBridge,

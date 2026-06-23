@@ -9,7 +9,7 @@
  * mounted by this adapter.
  */
 import type { Chat } from "chat";
-import type { TransportRoute } from "@flow-state-dev/server";
+import type { TransportRoute } from "@flow-state-dev/engine";
 
 type AdapterWithOAuth = {
   handleOAuthCallback: (

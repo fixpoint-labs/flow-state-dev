@@ -22,7 +22,7 @@ import type {
   RequestStore,
   SetResult,
   SubscribeToEventsOptions
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { createSQLiteRecordStore } from "./sqlite-store";
 import { createLiveTailRegistry, DEFAULT_POLL_INTERVAL_MS } from "./live-tail";
 
@@ -37,7 +37,7 @@ const MAX_ITEM_ID_LENGTH = 2600;
 /**
  * Whether a request status is past the in-flight phase. Mirrors the server
  * helper of the same name, defined locally so this package keeps a TYPE-ONLY
- * dependency on `@flow-state-dev/server` (enforced by
+ * dependency on `@flow-state-dev/engine` (enforced by
  * `scripts/validate-package-boundaries.mjs`); importing the runtime helper
  * would couple the SQLite store to server runtime values.
  */

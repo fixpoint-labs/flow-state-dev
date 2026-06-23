@@ -1,4 +1,4 @@
-# @flow-state-dev/server
+# @flow-state-dev/engine
 
 ## Pre-1.0 history
 
@@ -63,7 +63,7 @@ The HTTP request signal is no longer propagated into `runAction` via `actionInpu
 
 ### 2026-05-07 — Store-driven live tail (FIX-569)
 
-The in-process active-streams registry is replaced by `RequestStore.subscribeToEvents`. SSE clients can now tail an in-flight request from any instance. `getEvents` widens with optional `fromSequence` for cursor reads. Conformance harness `createRequestStoreConformanceTests` shipped via `@flow-state-dev/server/testing`. Long-running flows are no longer at risk of registry eviction; the legacy 5-minute TTL is gone.
+The in-process active-streams registry is replaced by `RequestStore.subscribeToEvents`. SSE clients can now tail an in-flight request from any instance. `getEvents` widens with optional `fromSequence` for cursor reads. Conformance harness `createRequestStoreConformanceTests` shipped via `@flow-state-dev/engine/testing`. Long-running flows are no longer at risk of registry eviction; the legacy 5-minute TTL is gone.
 
 ### 2026-05-07 — Lazy collection state, query interface, resource manifest (FIX-427) [BREAKING]
 
@@ -75,7 +75,7 @@ New `item.updated` event with `{ itemId, patch }` shallow-merge semantics. New `
 
 ### 2026-05-07 — Filesystem trace store + dev defaults (FIX-558)
 
-New `FilesystemTraceStore` and `createFilesystemTraceStore`. Registry factories now pick `traceStore.maxRequests` from environment — 1000 when `NODE_ENV=development`, 50 otherwise; explicit config wins. New `createTraceStoreConformanceTests` helper exposed at `@flow-state-dev/server/testing`. Trace events now survive `fsdev dev` and kitchen-sink `STORE_TYPE=filesystem` restarts.
+New `FilesystemTraceStore` and `createFilesystemTraceStore`. Registry factories now pick `traceStore.maxRequests` from environment — 1000 when `NODE_ENV=development`, 50 otherwise; explicit config wins. New `createTraceStoreConformanceTests` helper exposed at `@flow-state-dev/engine/testing`. Trace events now survive `fsdev dev` and kitchen-sink `STORE_TYPE=filesystem` restarts.
 
 ### 2026-05-07 — Lift `.work()` background tasks (FIX-554) [BREAKING]
 

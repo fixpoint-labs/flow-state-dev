@@ -22,7 +22,7 @@ You declare stores on `createFlowState` as a map of named profiles. A profile ma
 The default. No configuration needed. All state, resources, and items live in memory. Fast, zero dependencies, gone when the process exits.
 
 ```ts
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 
 const flowstate = createFlowState({
   flows: { myFlow },
@@ -35,7 +35,7 @@ const flowstate = createFlowState({
 Writes state, resources, and items to JSON files in a directory. Each scope gets its own file. Good for local development when you want data to survive server restarts.
 
 ```ts
-import { createFlowState, filesystemStores } from "@flow-state-dev/server";
+import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
 
 const flowstate = createFlowState({
   flows: { myFlow },
@@ -50,7 +50,7 @@ The directory structure mirrors the scope hierarchy: each scope (session, user, 
 For production and multi-instance fleets. Stores state in PostgreSQL with `LISTEN/NOTIFY` for cross-process live tail.
 
 ```ts
-import { createFlowState } from "@flow-state-dev/server";
+import { createFlowState } from "@flow-state-dev/engine";
 import { postgresStores } from "@flow-state-dev/store-postgres";
 
 const flowstate = createFlowState({
@@ -90,7 +90,7 @@ The session store key becomes `${tenantId}:${sessionId}`; request records keep a
 
 ## Custom stores
 
-The store interface is pluggable. If you need Redis, an alternative SQL backend, or another store, implement the `StoreRegistry` shape and pass it in. The contracts are documented per-method in `@flow-state-dev/server`. A custom store isolates by tenant the same way the built-ins do: namespace records by their `id` (already tenant-prefixed for sessions) and honor the `tenantId` field on `SessionListOptions` / `RequestListOptions` (present means exact-match, including `undefined`; absent means no filter).
+The store interface is pluggable. If you need Redis, an alternative SQL backend, or another store, implement the `StoreRegistry` shape and pass it in. The contracts are documented per-method in `@flow-state-dev/engine`. A custom store isolates by tenant the same way the built-ins do: namespace records by their `id` (already tenant-prefixed for sessions) and honor the `tenantId` field on `SessionListOptions` / `RequestListOptions` (present means exact-match, including `undefined`; absent means no filter).
 
 ### Live tail
 
@@ -111,7 +111,7 @@ See the [`@flow-state-dev/store-postgres` README](https://github.com/fixpoint-la
 
 `getEvents` accepts an optional `fromSequence` for cursor reads — omitting it returns the full log (used by completed-request replay). A custom store that doesn't need cross-process tail can implement `subscribeToEvents` as an iterator that yields the catch-up via `getEvents` and then ends; clients fall back to bulk replay for completed requests.
 
-The exact interface may evolve. Check the `@flow-state-dev/server` package source for the current contract.
+The exact interface may evolve. Check the `@flow-state-dev/engine` package source for the current contract.
 
 ## Looking up sessions by metadata
 

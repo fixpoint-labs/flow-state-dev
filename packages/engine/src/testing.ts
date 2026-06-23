@@ -1,6 +1,6 @@
 /**
- * Testing entry point for `@flow-state-dev/server`. Imported as
- * `@flow-state-dev/server/testing`. Hosts conformance harnesses and
+ * Testing entry point for `@flow-state-dev/engine`. Imported as
+ * `@flow-state-dev/engine/testing`. Hosts conformance harnesses and
  * fixture builders for store-interface tests.
  */
 export {
