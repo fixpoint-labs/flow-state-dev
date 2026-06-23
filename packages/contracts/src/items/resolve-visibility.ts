@@ -1,9 +1,10 @@
 /**
  * Isomorphic resolution of an item's visibility.
  *
- * Lives in core so both server-side history assembly and client-side UI
- * filtering derive `{ client, history }` from the same truth table. Pure
- * function of `(item.type, item.itemVisibility)`.
+ * Lives in `@flow-state-dev/contracts` (re-exported from `@flow-state-dev/core/items`)
+ * so both server-side history assembly and client-side UI filtering derive
+ * `{ client, history }` from the same truth table. Pure function of
+ * `(item.type, item.itemVisibility)`.
  *
  * Rules:
  * - Structural trace types (`block_trace`, `router_decision`,

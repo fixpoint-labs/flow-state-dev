@@ -12,7 +12,7 @@
  * zod-valued `schema.ts` — that's allowed; a *value* import of the schema (or
  * of `handler`) into the renderer graph is a violation.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -31,7 +31,7 @@ function resolveRelative(fromFile: string, specifier: string): string | undefine
     path.join(base, "index.ts"),
     path.join(base, "index.tsx"),
   ];
-  return candidates.find((c) => existsSync(c) && !c.endsWith(path.sep));
+  return candidates.find((c) => existsSync(c) && statSync(c).isFile());
 }
 
 type ParsedImport = { specifier: string; typeOnly: boolean };

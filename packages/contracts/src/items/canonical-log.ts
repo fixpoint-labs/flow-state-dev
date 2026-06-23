@@ -19,8 +19,9 @@
  * never on the event stream (`${requestId}:${sequence_number}` stays monotonic
  * and append-only).
  *
- * Lives in core so server-side history assembly and client-side `useSession`
- * reconstruction collapse from the same truth.
+ * Lives in `@flow-state-dev/contracts` (re-exported from `@flow-state-dev/core/items`)
+ * so server-side history assembly and client-side `useSession` reconstruction
+ * collapse from the same truth.
  */
 import type { OutputItem } from "./types";
 import { parseBlockInstanceId } from "../block-instance-id";
