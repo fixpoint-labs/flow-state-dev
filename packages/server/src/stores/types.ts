@@ -294,6 +294,14 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * the same id) persist only its post-resume items while a `get` still returns
    * the full pause→continue history. The in-memory adapter's no-op satisfies
    * this trivially (items live on the record); persistent adapters UPSERT.
+   *
+   * Content-update contract (FIX-839): "last-write-wins per id" is by item
+   * CONTENT, not object reference. The runtime mutates a single item object in
+   * place across its lifecycle (e.g. a block_trace `in_progress → completed`),
+   * so an adapter that diffs incrementally by object reference would drop the
+   * later write and leave stale content persisted — defeating resume
+   * memoization. Re-persisting an id whose fields changed MUST write the
+   * latest content. Enforced by the cross-store conformance suite.
    */
   persistItems(requestId: string, items: OutputItem[]): void;
 
