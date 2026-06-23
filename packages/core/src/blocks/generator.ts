@@ -873,6 +873,7 @@ async function applyRepairPolicy<TInput, TOutput>(
           outputSchema,
           parsed.error,
           config.repair?.coerce,
+          state.input,
           ctx,
           blockName
         );
@@ -906,15 +907,18 @@ async function applyRepairPolicy<TInput, TOutput>(
  *
  * The model defaults to `intent/utility` (overridable via `repair.coerce.model`)
  * so repair routes through the app's cheap utility tier, independent of the
- * primary model that produced the bad output. The call requests plain JSON text
- * (no `outputSchema`) so it can't re-enter the structured-output failure path.
- * Abort-like errors propagate; any other failure is swallowed (best-effort).
+ * primary model that produced the bad output. The block's `input` is threaded
+ * through so an input-driven `coerce.model` resolver sees the same input the
+ * primary model did. The call requests plain JSON text (no `outputSchema`) so
+ * it can't re-enter the structured-output failure path. Abort-like errors
+ * propagate; any other failure is swallowed (best-effort).
  */
 async function attemptCoercionRepair(
   candidate: unknown,
   schema: ZodTypeAny,
   error: Error,
   coerce: boolean | { model?: ResolvableModel<unknown, BlockContext> } | undefined,
+  input: unknown,
   ctx: BlockContext,
   blockName: string
 ): Promise<unknown | undefined> {
@@ -923,7 +927,7 @@ async function attemptCoercionRepair(
       typeof coerce === "object" && coerce.model !== undefined
         ? coerce.model
         : DEFAULT_COERCION_MODEL;
-    const { model } = await resolveModel(repairModel, undefined, ctx, `${blockName}-repair`);
+    const { model } = await resolveModel(repairModel, input, ctx, `${blockName}-repair`);
 
     const targetSchema = JSON.stringify(zodToJsonSchema(schema));
     const raw = typeof candidate === "string" ? candidate : JSON.stringify(candidate);

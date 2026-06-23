@@ -124,6 +124,42 @@ describe("generator — structured output repair", () => {
     expect(seen).toContain("intent/utility");
   });
 
+  it("threads the block input into an input-driven coerce.model resolver", async () => {
+    // Regression: the coercion model resolver must see the same input the
+    // primary model did, so input-driven pickers select correctly.
+    const primary = fixedTextModel(
+      "primary",
+      JSON.stringify({ action: "complete", reason: "ok" }),
+    );
+    const coercion = fixedTextModel(
+      "coercion",
+      JSON.stringify({ decision: "complete", reasoning: "ok" }),
+    );
+    let receivedInput: unknown;
+
+    const block = generator({
+      name: "evaluator",
+      inputSchema: z.object({ topic: z.string() }),
+      model: primary,
+      outputSchema: verdictSchema,
+      repair: {
+        coerce: {
+          model: (input) => {
+            receivedInput = input;
+            return coercion;
+          },
+        },
+      },
+      prompt: "decide",
+    });
+
+    const result = (await runForTest(block, { topic: "weather" }, createMockContext())) as z.infer<
+      typeof verdictSchema
+    >;
+    expect(result).toEqual({ decision: "complete", reasoning: "ok" });
+    expect(receivedInput).toEqual({ topic: "weather" });
+  });
+
   it("throws without coercion when repair.coerce is false", async () => {
     const primary = fixedTextModel(
       "primary",

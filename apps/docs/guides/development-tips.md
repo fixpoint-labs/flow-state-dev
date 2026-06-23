@@ -161,7 +161,7 @@ CLI: use `--session` explicitly. Browser: `useFlow({ autoCreateSession: true })`
 
 ### Generator returns wrong structure?
 
-Check the `outputSchema`. Generators with a custom `outputSchema` use structured output mode (no streaming). The framework parses and validates the model's response. If it fails the schema, the framework repairs it — a deterministic pass (`jsonrepair`) then an LLM coercion call that reshapes the output (see [Repairing structured output](../docs/fundamentals/blocks.md#repairing-structured-output)); `repair.mode` / `repair.coerce` control this. For streaming text, use the default `z.string()` or omit `outputSchema`.
+Check the `outputSchema`. Generators with a custom `outputSchema` use structured output mode (no streaming). The framework parses and validates the model's response. If it fails the schema, the framework repairs it — a deterministic pass (`jsonrepair`) then an LLM coercion call that reshapes the output (see [Repairing structured output](/docs/fundamentals/blocks#repairing-structured-output)); `repair.mode` / `repair.coerce` control this. For streaming text, use the default `z.string()` or omit `outputSchema`.
 
 ### Tool block throws but error is unclear?
 
