@@ -139,7 +139,7 @@ describe("RequestSeparator (transport source surface)", () => {
     renderSeparator({
       ...baseProps,
       source: "scheduled",
-      metadata: { scheduleId: "monthly-invoices", origin: "static" },
+      metadata: { schedule: { scheduleId: "monthly-invoices", origin: "static" } },
     });
     expect(screen.getByText(/Scheduled\s*·\s*monthly-invoices/)).toBeInTheDocument();
   });
@@ -148,7 +148,7 @@ describe("RequestSeparator (transport source surface)", () => {
     renderSeparator({
       ...baseProps,
       source: "scheduled",
-      metadata: { scheduleId: "u_1/digest", origin: "dynamic" },
+      metadata: { schedule: { scheduleId: "u_1/digest", origin: "dynamic" } },
     });
     expect(screen.getByText("dynamic")).toBeInTheDocument();
   });
@@ -158,7 +158,7 @@ describe("RequestSeparator (transport source surface)", () => {
     renderSeparator({
       ...baseProps,
       source: "scheduled",
-      metadata: { scheduleId: longId, origin: "dynamic" },
+      metadata: { schedule: { scheduleId: longId, origin: "dynamic" } },
     });
     expect(screen.getByText(/…/)).toBeInTheDocument();
   });
@@ -168,14 +168,18 @@ describe("RequestSeparator (transport source surface)", () => {
       ...baseProps,
       source: "scheduled",
       metadata: {
-        scheduleId: "monthly-invoices",
-        origin: "static",
-        cron: "0 0 1 * *",
-        nominalFireTime: "2026-06-01T00:00:00Z",
+        schedule: {
+          scheduleId: "monthly-invoices",
+          origin: "static",
+          cron: "0 0 1 * *",
+          nominalFireTime: "2026-06-01T00:00:00Z",
+        },
       },
     });
     fireEvent.click(screen.getByText(/Scheduled/));
     expect(screen.getByText("Provenance")).toBeInTheDocument();
+    // The namespaced `schedule` slot is flattened in the provenance panel,
+    // so the cron value still renders as its own row.
     expect(screen.getByText("0 0 1 * *")).toBeInTheDocument();
   });
 });
