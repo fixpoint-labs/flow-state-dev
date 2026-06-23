@@ -3,8 +3,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  compareItemOrder,
   createClient,
   createRecoveryClient,
+  createRequestStreamStore,
   createSessionClient,
   createSSEClient,
   createSSEClientFromResponse,
@@ -35,7 +37,6 @@ import {
   isReducibleResourceChange,
   mergeResourceChangeIntoSnapshot
 } from "../internal/mergeResourceChangeIntoSnapshot";
-import { compareItemOrder, createItemStore } from "../internal/item-store";
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
@@ -349,7 +350,7 @@ export function useSession(
    * request lifecycle transitions.
    */
   const latestRequestRef = useRef<SessionRequestSummary | null>(null);
-  const storeRef = useRef(createItemStore());
+  const storeRef = useRef(createRequestStreamStore());
   /**
    * Buffer for `state_change` items received before the initial snapshot
    * lands. The reducer (`mergeStateChangeIntoSnapshot`) bails when
@@ -747,6 +748,14 @@ export function useSession(
           storeRef.current.accumulateDelta(event.itemId, event.contentIndex, event.delta);
 
           scheduleContentFlush();
+        },
+        onContentDone: (event) => {
+          // Settle the slot to its authoritative final content (drops any
+          // queued delta for it). Inherited from the shared store — the prior
+          // hand-rolled callbacks had no content.done handler.
+          if (storeRef.current.applyContentDone(event.itemId, event.contentIndex, event.content)) {
+            setItems(storeRef.current.getSorted());
+          }
         },
         onContentAudioDelta: (event) => {
           // Fan out to subscribers (useVoice or any external consumer
