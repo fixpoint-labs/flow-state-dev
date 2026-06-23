@@ -666,3 +666,62 @@ describe("createAiSdkModelResolver — tool name sanitization", () => {
     expect(sent.length).toBe(2);
   });
 });
+
+describe("createAiSdkModelResolver — structured output recovery (FIX-841)", () => {
+  const verdictSchema = z.object({
+    decision: z.enum(["continue", "replan", "complete"]),
+    reasoning: z.string(),
+  });
+
+  it("returns the raw text instead of throwing when structured output fails the schema", async () => {
+    // The model emits valid JSON under the wrong field names — the reported
+    // GLM 5.2 failure. The AI SDK can't parse it against the schema; the
+    // resolver must hand the raw text back for the generator's repair pipeline.
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: '{"action":"replan","reason":"research errored"}' }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 8, text: 8, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+
+    const resolver = createAiSdkModelResolver(() => model);
+    const result = await resolver("openai/gpt-4o-mini", "gen").generate({
+      messages: [{ role: "user", content: "decide" }],
+      outputSchema: verdictSchema,
+    });
+
+    expect(result.structuredOutput).toBeUndefined();
+    expect(result.text).toContain("replan");
+    // Usage is normalized on the recovery path (not raw-cast), so cost
+    // accounting still sees prompt/completion tokens.
+    expect(result.usage?.promptTokens).toBe(10);
+    expect(result.usage?.completionTokens).toBe(8);
+  });
+
+  it("still throws when the model produced no text to recover", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 0, text: 0, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await expect(
+      resolver("openai/gpt-4o-mini", "gen").generate({
+        messages: [{ role: "user", content: "decide" }],
+        outputSchema: verdictSchema,
+      }),
+    ).rejects.toThrow();
+  });
+});

@@ -379,6 +379,63 @@ describe("plan-and-execute pattern", () => {
       expect(output.status).toBe("completed");
     });
 
+    it("recovers off-schema evaluator output via coercion and honors the decision (FIX-841)", async () => {
+      const planner = createDeterministicPlanner([{ id: "s1", goal: "First task" }]);
+
+      // The evaluator model returns the right decision under the wrong field
+      // names on the first pass (the reported GLM 5.2 failure), then a valid
+      // verdict on the second pass so the loop exits.
+      const evaluatorMock = mockGenerator({
+        name: "coerce-test-evaluate-llm",
+        script: [
+          { structuredOutput: { action: "replan", reason: "need more work" } },
+          { structuredOutput: { decision: "complete", reasoning: "done" } },
+        ],
+      });
+
+      // The default coercion model (`intent/utility`) reshapes the off-schema
+      // output back to the schema. It returns plain text, which the repair
+      // pipeline parses.
+      const coercionMock = mockGenerator({
+        name: "intent/utility",
+        script: [{ text: JSON.stringify({ decision: "replan", reasoning: "need more work" }) }],
+      });
+
+      const replannerMock = mockGenerator({
+        name: "coerce-test-replanner",
+        script: [{ structuredOutput: { tasks: [{ id: "s2", goal: "Replanned task" }] } }],
+      });
+
+      const block = planAndExecute({
+        name: "coerce-test",
+        planner,
+        stepExecutor: echoExecutor,
+        enableReplanning: true,
+        maxIterations: 5,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Test off-schema recovery" },
+        generators: {
+          "coerce-test-evaluate-llm": evaluatorMock,
+          "coerce-test-replanner": replannerMock,
+        },
+        models: {
+          "intent/utility": coercionMock,
+        },
+      });
+
+      // The run completed instead of crashing on the off-schema verdict.
+      expect(result.error).toBeNull();
+      expect((result.output as any).status).toBe("completed");
+      // Coercion ran exactly once (only the first, off-schema pass needed it).
+      expect(coercionMock.calls.length).toBe(1);
+      // The coerced decision was "replan" — proven by the replanner running.
+      // A deterministic/canned fallback would never reach the replanner.
+      expect(replannerMock.calls.length).toBe(1);
+    });
+
     it("forces completion when maxIterations is reached", async () => {
       const planner = createDeterministicPlanner([
         { id: "s1", goal: "Task 1" },

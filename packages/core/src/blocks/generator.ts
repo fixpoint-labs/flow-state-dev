@@ -2,6 +2,8 @@ import { z, type ZodTypeAny } from "zod";
 import { OutputValidationError } from "../errors/output-validation-error";
 import { isAbortLike, rootCause } from "../errors/abort";
 import { jsonSchema } from "ai";
+import { jsonrepair } from "jsonrepair";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { getZodTypeName } from "../helpers/zod-introspect";
 import { assertStrictCompatible } from "../models/makeSchemaStrict";
 import type {
@@ -241,7 +243,22 @@ export type GeneratorRepairMode = "auto" | "rescue" | "fail";
 export interface GeneratorRepairConfig {
   mode?: GeneratorRepairMode;
   maxAttempts?: number;
+  /**
+   * LLM coercion repair (FIX-841). When the deterministic repair pass can't
+   * recover the model's structured output (e.g. it returned the right data
+   * under the wrong field names), make one model call that reshapes the raw
+   * output to the schema, preserving content. Runs only in `auto` mode and
+   * only on the path that would otherwise throw.
+   *
+   * Default: enabled, using `intent/utility`. Set `false` to disable. Pass
+   * `{ model }` to override the coercion model (any `ResolvableModel`, e.g. a
+   * concrete model id or a `GeneratorModel` instance).
+   */
+  coerce?: boolean | { model?: ResolvableModel<unknown, BlockContext> };
 }
+
+/** Default model for the LLM coercion repair pass (overridable via `repair.coerce.model`). */
+const DEFAULT_COERCION_MODEL = "intent/utility";
 
 export interface GeneratorLoopState<TInput = unknown> {
   iteration: number;
@@ -800,7 +817,16 @@ async function attemptDefaultRepair(candidate: unknown): Promise<unknown> {
     try {
       return JSON.parse(candidate);
     } catch {
-      return candidate;
+      // Structural repair (FIX-841): fix malformed-but-right-shape JSON —
+      // trailing commas, unclosed braces/strings, code fences, trailing prose.
+      // Deterministic, no model call. Falls through to the raw string when even
+      // jsonrepair can't produce parseable JSON (e.g. a renamed-key payload,
+      // which is left for LLM coercion).
+      try {
+        return JSON.parse(jsonrepair(candidate));
+      } catch {
+        return candidate;
+      }
     }
   }
 
@@ -837,6 +863,26 @@ async function applyRepairPolicy<TInput, TOutput>(
     }
 
     if (currentAttempt >= maxAttempts) {
+      // Deterministic repair is exhausted. Last resort (FIX-841): one LLM
+      // coercion pass that reshapes the raw output to the schema, preserving
+      // content. Recovers semantic mismatches (renamed keys, wrong nesting)
+      // that no deterministic step can. Enabled by default in `auto` mode.
+      if (config.repair?.coerce !== false) {
+        const coerced = await attemptCoercionRepair(
+          currentCandidate,
+          outputSchema,
+          parsed.error,
+          config.repair?.coerce,
+          ctx,
+          blockName
+        );
+        if (coerced !== undefined) {
+          const reparsed = parseOutputWithSchema<TOutput>(outputSchema, coerced, blockName, "final");
+          if (reparsed.success) {
+            return reparsed.output;
+          }
+        }
+      }
       logUnparseableCandidate(blockName, currentCandidate, parsed.error, 'generate');
       throw parsed.error;
     }
@@ -848,6 +894,66 @@ async function applyRepairPolicy<TInput, TOutput>(
     }
 
     currentAttempt += 1;
+  }
+}
+
+/**
+ * LLM coercion repair (FIX-841). Asks a model to rewrite a candidate that
+ * failed schema validation into one that conforms, preserving the original
+ * content. Returns the (deterministically re-parsed) coerced value, or
+ * `undefined` when coercion couldn't produce anything usable — in which case
+ * the caller throws the original validation error.
+ *
+ * The model defaults to `intent/utility` (overridable via `repair.coerce.model`)
+ * so repair routes through the app's cheap utility tier, independent of the
+ * primary model that produced the bad output. The call requests plain JSON text
+ * (no `outputSchema`) so it can't re-enter the structured-output failure path.
+ * Abort-like errors propagate; any other failure is swallowed (best-effort).
+ */
+async function attemptCoercionRepair(
+  candidate: unknown,
+  schema: ZodTypeAny,
+  error: Error,
+  coerce: boolean | { model?: ResolvableModel<unknown, BlockContext> } | undefined,
+  ctx: BlockContext,
+  blockName: string
+): Promise<unknown | undefined> {
+  try {
+    const repairModel: ResolvableModel<unknown, BlockContext> =
+      typeof coerce === "object" && coerce.model !== undefined
+        ? coerce.model
+        : DEFAULT_COERCION_MODEL;
+    const { model } = await resolveModel(repairModel, undefined, ctx, `${blockName}-repair`);
+
+    const targetSchema = JSON.stringify(zodToJsonSchema(schema));
+    const raw = typeof candidate === "string" ? candidate : JSON.stringify(candidate);
+
+    const result = await model.generate({
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a JSON repair function. The previous output did not match the required JSON schema. " +
+            "Rewrite it as a single JSON object that strictly matches the schema, preserving all original " +
+            "content and intent. Map renamed fields to the schema's field names. Do not invent data. " +
+            "Output only the JSON.",
+        },
+        {
+          role: "user",
+          content: `Schema:\n${targetSchema}\n\nValidation error:\n${error.message}\n\nOutput to fix:\n${raw}`,
+        },
+      ],
+    });
+
+    // The coercion call returns plain text; run it through the deterministic
+    // repair (JSON.parse / jsonrepair / unwrap) before the caller re-validates.
+    return await attemptDefaultRepair(result.text);
+  } catch (err) {
+    if (isAbortLike(err)) throw err;
+    console.warn(
+      `[generator:repair] "${blockName}" coercion repair failed: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return undefined;
   }
 }
 
