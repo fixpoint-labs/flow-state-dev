@@ -393,6 +393,18 @@ describe("createRequestStreamStore — deltas", () => {
     const updated = store.getById("msg1")! as OutputItem & { content?: Array<{ type: string; text: string }> };
     expect(updated.content![0]!.text).toBe("Hi");
   });
+
+  it("drops a delta whose item is absent at flush (orphaned/filtered) so the queue can't grow unbounded", () => {
+    const store = createRequestStreamStore();
+    store.accumulateDelta("ghost", 0, "lost");
+    expect(store.flushDeltas()).toBe(false); // no target — dropped, not retained
+
+    // The dropped delta does not resurface if an item with that id appears later.
+    store.upsert(makeItem({ id: "ghost", ts: 100, type: "message", content: [{ type: "output_text", text: "X" }] } as Partial<OutputItem> & { id: string }));
+    expect(store.flushDeltas()).toBe(false);
+    const updated = store.getById("ghost")! as OutputItem & { content?: Array<{ type: string; text: string }> };
+    expect(updated.content![0]!.text).toBe("X");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -590,11 +602,20 @@ describe("createRequestStreamStore — status/sequence layer", () => {
     expect(store.statusEvents.map((e) => e.status)).toEqual(["in_progress", "completed"]);
   });
 
-  it("returns an isolated copy of statusEvents (mutating it does not corrupt internal state)", () => {
+  it("returns an isolated copy of statusEvents (mutating the array or an element does not corrupt internal state)", () => {
     const store = createRequestStreamStore();
     store.recordStatusEvent(makeStatusEvent({ type: "request.in_progress", status: "in_progress" }));
     const snapshot = store.statusEvents;
     (snapshot as RequestStatusEvent[]).push(makeStatusEvent({ type: "request.completed", status: "completed" }));
+    (store.statusEvents[0] as RequestStatusEvent).status = "failed"; // mutate a returned event object
     expect(store.statusEvents).toHaveLength(1);
+    expect(store.statusEvents[0]!.status).toBe("in_progress");
+  });
+
+  it("setStatus reports whether the value changed", () => {
+    const store = createRequestStreamStore();
+    expect(store.setStatus("in_progress")).toBe(false); // already in_progress
+    expect(store.setStatus("completed")).toBe(true);
+    expect(store.setStatus("completed")).toBe(false);
   });
 });

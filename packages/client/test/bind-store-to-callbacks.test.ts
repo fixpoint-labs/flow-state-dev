@@ -72,22 +72,25 @@ describe("bindStoreToCallbacks — status/sequence", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("onRequestCreated sets status and signals status", () => {
+  it("onRequestCreated sets status but does not signal a no-op on a fresh store", () => {
     const store = createRequestStreamStore();
     const onChange = vi.fn();
     const cb = bindStoreToCallbacks(store, { onChange });
     cb.onRequestCreated!(requestCreated());
     expect(store.status).toBe("in_progress");
-    expect(onChange).toHaveBeenCalledWith("status");
+    expect(onChange).not.toHaveBeenCalled(); // already in_progress — no change, no flush
   });
 
-  it("onRequestStatus sets status, logs the event, and signals status", () => {
+  it("records every status event but signals only on a value change", () => {
     const store = createRequestStreamStore();
     const onChange = vi.fn();
     const cb = bindStoreToCallbacks(store, { onChange });
-    cb.onRequestStatus!(requestStatus("completed"));
+    cb.onRequestStatus!(requestStatus("in_progress")); // no change (fresh = in_progress)
+    cb.onRequestStatus!(requestStatus("completed")); // change → signal
+    cb.onRequestStatus!(requestStatus("completed")); // duplicate → no signal
     expect(store.status).toBe("completed");
-    expect(store.statusEvents.map((e) => e.status)).toEqual(["completed"]);
+    expect(store.statusEvents.map((e) => e.status)).toEqual(["in_progress", "completed", "completed"]);
+    expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("status");
   });
 });

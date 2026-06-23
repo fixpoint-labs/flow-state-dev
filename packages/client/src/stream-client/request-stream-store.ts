@@ -162,8 +162,8 @@ export type RequestStreamStore = {
   size(): number;
   /** The request's current status (default `"in_progress"`). */
   readonly status: RequestStatus;
-  /** Set the request status (from a `request.created` / `request.*` event). */
-  setStatus(status: RequestStatus): void;
+  /** Set the request status (from a `request.created` / `request.*` event). Returns true if the value changed. */
+  setStatus(status: RequestStatus): boolean;
   /** The highest sequence number recorded from the stream (the resume cursor). */
   readonly lastSequenceNumber: number;
   /** Record a stream event's sequence number, advancing the resume cursor. */
@@ -494,15 +494,21 @@ export function createRequestStreamStore(): RequestStreamStore {
       if (deltaQueue.size === 0) return false;
 
       let hasChanges = false;
-      // Only remove a delta once it has actually been applied. A delta can be
-      // buffered before its item.added, or before content.added creates the
-      // target part; in those cases the item exists (or not) but the slot isn't
-      // ready, so we keep the delta queued for a later flush rather than
-      // dropping the streamed text. (Deleting the current entry mid-iteration is
-      // safe for Map.) A delta superseded by content.done is removed there.
+      // Apply each buffered delta to its target. Keep a delta queued only when
+      // its item exists but the target content part isn't ready yet (item.added
+      // arrived with an empty content array before content.added created the
+      // slot) — applied on a later flush rather than dropping streamed text.
+      // Drop a delta whose item is not present: in the binder's ordered usage a
+      // real item.added precedes its deltas, so an absent item means the delta
+      // is orphaned (e.g. for an itemFilter-rejected item) and must not
+      // accumulate unbounded. (Deleting the current entry mid-iteration is safe
+      // for Map.) A delta superseded by content.done is removed there.
       for (const [key, queued] of deltaQueue) {
         const target = itemsById.get(queued.itemId);
-        if (target === undefined) continue; // item not present yet — keep buffered
+        if (target === undefined) {
+          deltaQueue.delete(key); // orphaned/filtered — drop so the queue can't grow unbounded
+          continue;
+        }
 
         const nextItem = updateItemWithContentDelta(target, queued.contentIndex, queued.delta);
         if (nextItem === target) continue; // target content part not ready — keep buffered
@@ -581,8 +587,10 @@ export function createRequestStreamStore(): RequestStreamStore {
       return status;
     },
 
-    setStatus(next: RequestStatus): void {
+    setStatus(next: RequestStatus): boolean {
+      if (status === next) return false;
       status = next;
+      return true;
     },
 
     get lastSequenceNumber(): number {
@@ -596,13 +604,16 @@ export function createRequestStreamStore(): RequestStreamStore {
     },
 
     get statusEvents(): readonly RequestStatusEvent[] {
-      // Fresh copy (like `getSorted`/`getOwnedBy`) so a caller can't mutate
-      // internal state through the returned array or see it change underfoot.
-      return [...statusEvents];
+      // Fresh array of cloned events so a caller can't mutate internal state
+      // through the returned array or its event objects, or see it change
+      // underfoot. Events are tiny flat objects, so the per-read clone is cheap.
+      return statusEvents.map((event) => ({ ...event }));
     },
 
     recordStatusEvent(event: RequestStatusEvent): void {
-      statusEvents.push(event);
+      // Store a shallow copy so a later mutation of the caller's event object
+      // can't reach back into the log.
+      statusEvents.push({ ...event });
     }
   };
 

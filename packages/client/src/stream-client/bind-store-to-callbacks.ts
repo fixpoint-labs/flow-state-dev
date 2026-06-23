@@ -46,13 +46,16 @@ export function bindStoreToCallbacks(
       store.recordSequence(event.sequence_number);
     },
     onRequestCreated: (event) => {
-      store.setStatus(event.status);
-      changed("status");
+      if (store.setStatus(event.status)) changed("status");
     },
     onRequestStatus: (event) => {
-      store.setStatus(event.status);
+      // Record every status event (the log/resume cursor needs the full set),
+      // but only signal a flush when the status value actually changed — a
+      // fresh store's initial `request.created` and replayed duplicate status
+      // frames are no-ops for consumers.
+      const statusChanged = store.setStatus(event.status);
       store.recordStatusEvent(event);
-      changed("status");
+      if (statusChanged) changed("status");
     },
     onItemAdded: (event) => {
       if (!passes(event.item)) return;
