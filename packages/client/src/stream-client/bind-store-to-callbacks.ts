@@ -73,8 +73,14 @@ export function bindStoreToCallbacks(
       }
     },
     onContentDelta: (event) => {
+      // Always buffer — a delta can arrive before its item.added (the buffered
+      // delta is applied on the next flush once the item exists). But only
+      // signal a flush when the item is already present: a delta for an unknown
+      // or filtered-out item can't change the snapshot, so it must not schedule
+      // a phantom flush. When the item.added lands, its onChange("item") covers
+      // the buffered delta.
       store.accumulateDelta(event.itemId, event.contentIndex, event.delta);
-      changed("content");
+      if (store.getById(event.itemId) !== undefined) changed("content");
     },
     onContentDone: (event) => {
       if (store.applyContentDone(event.itemId, event.contentIndex, event.content)) {

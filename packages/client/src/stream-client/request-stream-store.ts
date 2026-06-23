@@ -366,6 +366,49 @@ export function createRequestStreamStore(): RequestStreamStore {
     return canonicalCache;
   };
 
+  // Insert or update an item, maintaining the sorted-id list and ownership
+  // index. Shared by `upsert` and `applyItemPatch` so a patch that changes a
+  // sort key (ts/itemIndex) or `ownedBy` re-sorts and re-indexes instead of
+  // leaving those indexes stale. Returns true if sorted order changed.
+  const upsertItem = (item: OutputItem): boolean => {
+    const existing = itemsById.get(item.id);
+    const isNew = existing === undefined;
+    const orderChanged = existing !== undefined && !sameChronologicalOrder(existing, item);
+
+    // Clean up stale ownership when ownedBy changes on an existing item.
+    if (existing !== undefined) {
+      const oldOwner = (existing as OutputItem & { ownedBy?: string }).ownedBy;
+      const newOwner = (item as OutputItem & { ownedBy?: string }).ownedBy;
+      if (oldOwner !== undefined && oldOwner !== newOwner) {
+        const set = ownershipIndex.get(oldOwner);
+        if (set !== undefined) {
+          set.delete(item.id);
+          if (set.size === 0) ownershipIndex.delete(oldOwner);
+        }
+      }
+    }
+
+    itemsById.set(item.id, item);
+    trackOwnership(ownershipIndex, item);
+    invalidateCanonical();
+
+    if (isNew) {
+      sortedIds = insertSortedItemId(sortedIds, item, itemsById);
+      return true;
+    }
+
+    if (orderChanged) {
+      sortedIds = insertSortedItemId(
+        sortedIds.filter((id) => id !== item.id),
+        item,
+        itemsById
+      );
+      return true;
+    }
+
+    return false;
+  };
+
   const store: RequestStreamStore = {
     loadSnapshot(items: OutputItem[]): void {
       invalidateCanonical();
@@ -393,42 +436,7 @@ export function createRequestStreamStore(): RequestStreamStore {
     },
 
     upsert(item: OutputItem): boolean {
-      const existing = itemsById.get(item.id);
-      const isNew = existing === undefined;
-      const orderChanged = existing !== undefined && !sameChronologicalOrder(existing, item);
-
-      // Clean up stale ownership when ownedBy changes on an existing item.
-      if (existing !== undefined) {
-        const oldOwner = (existing as OutputItem & { ownedBy?: string }).ownedBy;
-        const newOwner = (item as OutputItem & { ownedBy?: string }).ownedBy;
-        if (oldOwner !== undefined && oldOwner !== newOwner) {
-          const set = ownershipIndex.get(oldOwner);
-          if (set !== undefined) {
-            set.delete(item.id);
-            if (set.size === 0) ownershipIndex.delete(oldOwner);
-          }
-        }
-      }
-
-      itemsById.set(item.id, item);
-      trackOwnership(ownershipIndex, item);
-      invalidateCanonical();
-
-      if (isNew) {
-        sortedIds = insertSortedItemId(sortedIds, item, itemsById);
-        return true;
-      }
-
-      if (orderChanged) {
-        sortedIds = insertSortedItemId(
-          sortedIds.filter((id) => id !== item.id),
-          item,
-          itemsById
-        );
-        return true;
-      }
-
-      return false;
+      return upsertItem(item);
     },
 
     applyItemPatch(itemId: string, patch: Record<string, unknown>): boolean {
@@ -441,8 +449,10 @@ export function createRequestStreamStore(): RequestStreamStore {
         sanitized[key] = patch[key];
       }
 
-      itemsById.set(itemId, { ...existing, ...sanitized } as OutputItem);
-      invalidateCanonical();
+      // Route through upsertItem so a patch touching a sort key (ts/itemIndex)
+      // or `ownedBy` re-sorts and re-indexes ownership rather than leaving the
+      // sorted-id / ownership indexes stale.
+      upsertItem({ ...existing, ...sanitized } as OutputItem);
       return true;
     },
 
@@ -512,6 +522,12 @@ export function createRequestStreamStore(): RequestStreamStore {
       const existing = itemsById.get(itemId);
       if (existing === undefined) return false;
 
+      // The authoritative `content.done` part supersedes any deltas still
+      // buffered for this slot. Drop them so a later `flushDeltas()` (e.g. a
+      // RAF-batched flush where the deltas and the done landed in the same
+      // frame) cannot append stale text on top of the final content.
+      deltaQueue.delete(`${itemId}:${contentIndex}`);
+
       const updated = updateItemWithContent(existing, contentIndex, content);
       if (updated === existing) return false;
 
@@ -564,7 +580,9 @@ export function createRequestStreamStore(): RequestStreamStore {
     },
 
     recordSequence(sequenceNumber: number): void {
-      lastSequenceNumber = sequenceNumber;
+      // High-water mark: never let the resume cursor move backward if a
+      // replayed or out-of-order event arrives after a newer one.
+      lastSequenceNumber = Math.max(lastSequenceNumber, sequenceNumber);
     },
 
     get statusEvents(): readonly RequestStatusEvent[] {

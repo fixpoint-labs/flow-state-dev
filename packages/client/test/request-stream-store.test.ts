@@ -134,6 +134,27 @@ describe("createRequestStreamStore — applyItemPatch", () => {
     const store = createRequestStreamStore();
     expect(store.applyItemPatch("missing", { status: "completed" })).toBe(false);
   });
+
+  it("re-sorts when a patch changes a sort key (ts)", () => {
+    const store = createRequestStreamStore();
+    store.upsert(makeItem({ id: "a", ts: 100 }));
+    store.upsert(makeItem({ id: "b", ts: 200 }));
+    // Move "a" after "b" via a patch.
+    store.applyItemPatch("a", { ts: 300 });
+    expect(store.getSorted().map((i) => i.id)).toEqual(["b", "a"]);
+  });
+
+  it("re-indexes ownership when a patch changes ownedBy", () => {
+    const store = createRequestStreamStore();
+    const item = makeItem({ id: "a", ts: 100 });
+    (item as OutputItem & { ownedBy?: string }).ownedBy = "scope-1";
+    store.upsert(item);
+    expect(store.getOwnedBy("scope-1")).toHaveLength(1);
+
+    store.applyItemPatch("a", { ownedBy: "scope-2" });
+    expect(store.getOwnedBy("scope-1")).toHaveLength(0);
+    expect(store.getOwnedBy("scope-2")).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -426,6 +447,22 @@ describe("createRequestStreamStore — applyContentDone", () => {
     const store = createRequestStreamStore();
     expect(store.applyContentDone("missing", 0, { type: "output_text", text: "x" })).toBe(false);
   });
+
+  it("drops buffered deltas so a later flush cannot append stale text on top", () => {
+    // RAF-batch ordering: deltas buffer, then content.done lands in the same
+    // frame, then a single flushDeltas runs. The buffered deltas must not be
+    // re-applied over the authoritative final content.
+    const store = createRequestStreamStore();
+    store.upsert(makeItem({ id: "msg1", ts: 100, type: "message", content: [{ type: "output_text", text: "" }] } as Partial<OutputItem> & { id: string }));
+
+    store.accumulateDelta("msg1", 0, "Hel");
+    store.accumulateDelta("msg1", 0, "lo");
+    store.applyContentDone("msg1", 0, { type: "output_text", text: "Hello" });
+
+    expect(store.flushDeltas()).toBe(false); // queue was cleared by content.done
+    const updated = store.getById("msg1")! as OutputItem & { content?: Array<{ type: string; text: string }> };
+    expect(updated.content![0]!.text).toBe("Hello");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -513,6 +550,13 @@ describe("createRequestStreamStore — status/sequence layer", () => {
     expect(store.lastSequenceNumber).toBe(0);
     store.recordSequence(3);
     store.recordSequence(9);
+    expect(store.lastSequenceNumber).toBe(9);
+  });
+
+  it("keeps lastSequenceNumber monotonic (a lower out-of-order value does not move it back)", () => {
+    const store = createRequestStreamStore();
+    store.recordSequence(9);
+    store.recordSequence(3);
     expect(store.lastSequenceNumber).toBe(9);
   });
 

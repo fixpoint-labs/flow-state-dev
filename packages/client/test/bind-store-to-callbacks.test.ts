@@ -183,12 +183,64 @@ describe("bindStoreToCallbacks — content", () => {
     expect(onChange).toHaveBeenCalledWith("content");
   });
 
+  it("buffers a delta for an unknown item without signaling, then applies it when the item arrives", () => {
+    const store = createRequestStreamStore();
+    const onChange = vi.fn();
+    const cb = bindStoreToCallbacks(store, { onChange });
+
+    // Delta arrives before item.added: buffered, but no phantom flush.
+    cb.onContentDelta!(contentDelta("m", 0, "Hi"));
+    expect(onChange).not.toHaveBeenCalled();
+
+    // item.added signals; the consumer's flush then applies the buffered delta.
+    cb.onItemAdded!(itemAdded(makeItem({ id: "m", ts: 100, type: "message", content: [{ type: "output_text", text: "" }] } as Partial<OutputItem> & { id: string })));
+    expect(onChange).toHaveBeenCalledWith("item");
+    expect(store.flushDeltas()).toBe(true);
+    const item = store.getById("m") as OutputItem & { content?: Array<{ text: string }> };
+    expect(item.content![0]!.text).toBe("Hi");
+  });
+
+  it("does not signal a flush for a filtered-out item's deltas", () => {
+    const store = createRequestStreamStore();
+    const onChange = vi.fn();
+    const cb = bindStoreToCallbacks(store, {
+      onChange,
+      itemFilter: (item) => item.type === "message"
+    });
+
+    // The status item is filtered out (never upserted); its deltas must not flush.
+    cb.onItemAdded!(itemAdded(makeItem({ id: "s", ts: 100, type: "status" })));
+    onChange.mockClear();
+    cb.onContentDelta!(contentDelta("s", 0, "x"));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("onContentAdded for a missing item signals nothing", () => {
     const store = createRequestStreamStore();
     const onChange = vi.fn();
     const cb = bindStoreToCallbacks(store, { onChange });
     cb.onContentAdded!(contentAdded("missing", 0, { type: "output_text", text: "hi" }));
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("does not duplicate text when deltas and content.done are batched into one flush (RAF case)", () => {
+    // The consumer flushes once per frame; deltas and the done can land in the
+    // same frame. The single deferred flushDeltas must not re-apply the deltas
+    // the content.done already superseded.
+    const store = createRequestStreamStore();
+    const cb = bindStoreToCallbacks(store);
+
+    cb.onItemAdded!(itemAdded(makeItem({ id: "m", ts: 100, type: "message", content: [{ type: "output_text", text: "" }] } as Partial<OutputItem> & { id: string })));
+    cb.onContentAdded!(contentAdded("m", 0, { type: "output_text", text: "" }));
+    cb.onContentDelta!(contentDelta("m", 0, "Hel"));
+    cb.onContentDelta!(contentDelta("m", 0, "lo"));
+    cb.onContentDone!(contentDone("m", 0, { type: "output_text", text: "Hello" }));
+
+    // Deferred single flush at the frame boundary — must be a no-op now.
+    expect(store.flushDeltas()).toBe(false);
+    const item = store.getById("m") as OutputItem & { content?: Array<{ text: string }> };
+    expect(item.content).toHaveLength(1);
+    expect(item.content![0]!.text).toBe("Hello");
   });
 
   it("onContentDone replaces the part with the final content", () => {
