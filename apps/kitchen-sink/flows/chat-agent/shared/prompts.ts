@@ -20,6 +20,7 @@ import {
   moduleDir,
   resolveBaseDir,
 } from "@flow-state-dev/core/prompt-file/node";
+import { promptFilters } from "./prompt-filters";
 
 const FLOW_ROOT = resolveBaseDir(
   [moduleDir(import.meta.url, ".."), path.resolve(process.cwd(), "flows/chat-agent")],
@@ -30,6 +31,8 @@ const FLOW_ROOT = resolveBaseDir(
  * Load a chat-agent `.prompt.md` file. The argument is relative to the
  * `flows/chat-agent` directory (e.g.
  * `"run/thinking-styles/prompts/supervisor-worker.prompt.md"`). Returns a
- * `PromptFile` whose `.prompt` slot renders the `<system>` body.
+ * `PromptFile` whose `.prompt` slot renders the `<system>` body and (when the
+ * file declares one) a `.user` slot for the `<user>` body. Templates can pipe
+ * input through the shared `promptFilters` (e.g. `{{ input.deps | normalizeDeps }}`).
  */
-export const loadPrompt = createPromptLoader(FLOW_ROOT);
+export const loadPrompt = createPromptLoader(FLOW_ROOT, { filters: promptFilters });

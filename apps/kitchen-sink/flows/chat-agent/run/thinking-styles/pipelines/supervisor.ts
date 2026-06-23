@@ -1,12 +1,15 @@
 /**
  * Supervisor pipeline — plan → dispatch workers → review → replan loop.
  *
- * Uses a dedicated worker generator: a task-focused system prompt
- * (`supervisor-worker.prompt.md`) with a TS `user:` builder that formats the
- * task goal, prior-task deps, and feedback. Workers emit silently (history:
- * false) so per-task messages don't pollute the conversation stream.
+ * Uses a dedicated worker generator whose prompt lives entirely in
+ * `supervisor-worker.prompt.md`: the `<system>` role plus a `<user>` template
+ * that lays out the task goal, prior-task deps, and feedback. The deps shape
+ * handling stays typed in TS via the `normalizeDeps` filter (see
+ * `shared/prompt-filters.ts`); the template owns the layout. Workers emit
+ * silently (history: false) so per-task messages don't pollute the stream.
  */
 import { generator } from "@flow-state-dev/core";
+import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
 import { z } from "zod";
 import { loadPrompt } from "../../../shared/prompts";
@@ -22,6 +25,11 @@ export function createSupervisorPipeline(config: PipelineConfig) {
 
   const supervisorWorker = generator({
     name: "supervisor-worker",
+    // <system> + <user> both come from the prompt file. The <user> template
+    // formats goal / context / prior-task deps / feedback (FIX-827: prefers the
+    // first-class `context` field, falling back to the legacy `input`-as-context
+    // hack) — see supervisor-worker.prompt.md.
+    ...definePromptFile(supervisorWorkerPrompt),
     model: modelId,
     inputSchema: z.object({
       taskId: z.string(),
@@ -38,46 +46,6 @@ export function createSupervisorPipeline(config: PipelineConfig) {
     ...(workerUses ? { uses: workerUses as any } : {}),
     search: true,
     itemVisibility: { client: true, history: false },
-    prompt: supervisorWorkerPrompt.prompt,
-    user: (input) => {
-      const parts = [`Task: ${input.goal}`];
-      // FIX-827: prefer the first-class `context` field; fall back to the
-      // legacy `input`-as-context hack transitionally.
-      const context =
-        input.context ?? (typeof input.input === "string" ? input.input : undefined);
-      if (typeof context === "string") parts.push(`\nContext: ${context}`);
-      if (input.deps !== undefined && Object.keys(input.deps).length > 0) {
-        const sections = Object.entries(input.deps).map(([depId, value]) => {
-          if (typeof value === "string") return `From ${depId}:\n${value}`;
-          if (value === null || typeof value !== "object") {
-            return `From ${depId}: ${JSON.stringify(value)}`;
-          }
-          const obj = value as Record<string, unknown>;
-          const summary =
-            "summary" in obj && typeof obj.summary === "string"
-              ? obj.summary
-              : JSON.stringify(value);
-          const sources = Array.isArray(obj.sources)
-            ? (obj.sources as Array<{ title?: string; url: string }>).filter(
-                (s) => typeof s?.url === "string" && s.url.length > 0,
-              )
-            : [];
-          const sourceLines = sources
-            .map((s) => `- ${s.title ? `${s.title}: ` : ""}${s.url}`)
-            .join("\n");
-          const sourcesPart =
-            sourceLines.length > 0
-              ? `\nSources used in this task:\n${sourceLines}`
-              : "";
-          return `From ${depId}:\n${summary}${sourcesPart}`;
-        });
-        parts.push(
-          `\nContext from prior tasks:\n${sections.join("\n\n---\n\n")}`,
-        );
-      }
-      if (input.feedback) parts.push(`\nPrevious feedback: ${input.feedback}`);
-      return parts.join("\n");
-    },
   });
 
   return supervisor({
