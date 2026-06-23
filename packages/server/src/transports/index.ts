@@ -78,3 +78,20 @@ export {
   type CreateHttpTransportAdapterOptions,
   HTTP_TRANSPORT_SOURCE
 } from "./http/createHttpTransportAdapter";
+
+export {
+  createWebhookVerifier,
+  githubWebhookVerifier,
+  slackWebhookVerifier,
+  stripeWebhookVerifier,
+  type CreateWebhookVerifierOptions,
+  type SlackWebhookVerifierOptions,
+  type WebhookVerifier
+} from "./auth/createWebhookVerifier";
+
+export {
+  createWebhookTransportAdapter,
+  WEBHOOK_TRANSPORT_SOURCE,
+  type CreateWebhookTransportAdapterOptions,
+  type WebhookProviderDefinition
+} from "./webhook/createWebhookTransportAdapter";

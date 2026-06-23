@@ -21,6 +21,16 @@ type ContinueRouteContext = RecoveryRouteContext & {
   host: InboundTransportHost;
 };
 
+/**
+ * Webhook-originated requests are event-addressed and transport-authenticated:
+ * their handler is reached only through a verified webhook, never the public
+ * action endpoint. The retry/continue routes are public re-dispatch surfaces
+ * (retry even accepts an `inputOverride`), so re-running a webhook request from
+ * here would bypass signature verification. Both routes reject such records,
+ * matching the FIX-439 v1 "detached completion only" scope.
+ */
+const WEBHOOK_SOURCE = "webhook";
+
 export async function handleRetryRequest(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "retry_request" }>,
@@ -55,6 +65,14 @@ export async function handleRetryRequest(
     return jsonResponse(400, {
       error: `Flow kind mismatch: request belongs to "${originalRecord.flowKind}", not "${route.flowKind}"`
     });
+  }
+
+  // Webhook requests are reachable only through a verified webhook, never this
+  // public re-dispatch surface — retry's `inputOverride` would otherwise feed
+  // the handler attacker-controlled input without a signature check. Return the
+  // same not-found shape as a missing record so they're indistinguishable here.
+  if (originalRecord.source === WEBHOOK_SOURCE) {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
   // Parse optional input override
@@ -135,6 +153,12 @@ export async function handleContinueRequest(
     return jsonResponse(400, {
       error: `Flow kind mismatch: request belongs to "${originalRecord.flowKind}", not "${route.flowKind}"`
     });
+  }
+
+  // Webhook requests must not be re-entered from a public HTTP surface — see
+  // `handleRetryRequest`. Treat as not found.
+  if (originalRecord.source === WEBHOOK_SOURCE) {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
   // The route is session-scoped; continuing mutates an existing record's

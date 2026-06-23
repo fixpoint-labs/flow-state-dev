@@ -190,6 +190,7 @@ export type {
   CostEstimate,
   CostEstimator,
   ActionConfig,
+  ActionCore,
   ActionMcpConfig,
   ClientDataComputeFn,
   ClientDataContext,
@@ -218,6 +219,13 @@ export { validateScheduleConfig, validateSchedulesConfig } from "./types/schedul
 
 export type { ChatConfig, ChatEventBinding } from "./types/chat";
 export { validateChatConfig } from "./types/chat";
+export type {
+  WebhookConfig,
+  WebhookEventBinding,
+  WebhookInboundEvent,
+  WebhookSubscriptionConfig
+} from "./types/webhooks";
+export { defineWebhookBinding, validateWebhookConfig } from "./types/webhooks";
 export type {
   TokenCounter,
 } from "./types/tokens";

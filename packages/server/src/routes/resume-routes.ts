@@ -35,6 +35,21 @@ export async function handleResumeSuspension(
     return jsonResponse(404, { error: `Unknown flow "${route.flowKind}"` });
   }
 
+  const originalRequest = await ctx.stores.request.get(route.requestId);
+  if (originalRequest === undefined) {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  }
+
+  // A webhook request is reachable only through a verified webhook, never this
+  // public surface — resuming one would re-enter the handler with
+  // caller-supplied gate data and no signature check. Reject like the
+  // retry/continue routes (and before anything else can act on the record),
+  // returning the same not-found shape as a missing record so webhook requests
+  // are indistinguishable here.
+  if (originalRequest.source === "webhook") {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  }
+
   const provider = ctx.durabilityProvider;
   if (provider === undefined) {
     return jsonResponse(400, {
@@ -56,11 +71,6 @@ export async function handleResumeSuspension(
     return jsonResponse(400, {
       error: 'Field "action" must be "approve" or "reject"'
     });
-  }
-
-  const originalRequest = await ctx.stores.request.get(route.requestId);
-  if (originalRequest === undefined) {
-    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
   if (originalRequest.status !== "suspended") {

@@ -4,12 +4,13 @@
 import type { ErrorItem, ItemProvenance, MessageItem, OutputItem, StatusItem } from "@flow-state-dev/core/items";
 import { isEphemeralContent } from "@flow-state-dev/core/items";
 import type {
-  ActionConfig,
+  ActionCore,
   BlockDefinition,
   FlowInstance,
   Middleware,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
+import { resolveActionCore } from "./resolve-action-core";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
@@ -134,29 +135,34 @@ async function drainRequestWorkPool(
 }
 
 /**
- * Resolves an action definition from a flow and validates that it exists.
+ * Resolves the action core to run from a flow and validates that it exists.
+ *
+ * Resolution is form-aware: a genuine webhook dispatch (`source === "webhook"`)
+ * carries its `(provider, eventType)` coordinate in `metadata.webhook`, so the
+ * handler is found on `flow.webhooks` rather than `flow.actions`. See
+ * `resolveActionCore` — the source gate is what stops a caller-addressed
+ * request from pivoting into a webhook handler via injected metadata.
  */
-function resolveAction<
-  TFlow extends FlowInstance,
-  TActionName extends keyof TFlow["actions"] & string
->(
-  flow: TFlow,
-  actionName: TActionName
-): ActionConfig {
-  const action = flow.actions[actionName];
+function resolveAction(
+  flow: FlowInstance,
+  actionName: string,
+  source: string | undefined,
+  metadata: Record<string, unknown> | undefined
+): ActionCore {
+  const action = resolveActionCore(flow, actionName, source, metadata);
   if (action === undefined) {
     throw new ValidationError(
       `Flow "${flow.kind}" does not define action "${actionName}"`
     );
   }
 
-  return action as ActionConfig;
+  return action;
 }
 
 /**
  * Validates and parses action input using the action's schema.
  */
-function parseActionInput(action: ActionConfig, input: unknown): unknown {
+function parseActionInput(action: ActionCore, input: unknown): unknown {
   const schema = action.inputSchema ?? action.block.inputSchema;
   const parsed = schema.safeParse(input);
   if (parsed.success) {
@@ -352,7 +358,7 @@ async function emitTerminalError(
 }
 
 
-function getActionTokenBudget(action: ActionConfig): {
+function getActionTokenBudget(action: ActionCore): {
   maxTotalTokens: number;
   warnAt?: number;
   onExceeded: "error" | "stop" | "warn";
@@ -464,7 +470,7 @@ export async function runActionInternal<
   options: RunActionInternalOptions<TFlow, TActionName>
 ): Promise<ExecutionResult> {
   const startedAt = Date.now();
-  const action = resolveAction(options.flow, options.actionName);
+  const action = resolveAction(options.flow, options.actionName, options.source, options.metadata);
   const requestId = options.requestId ?? generateId("req");
   const internalSeams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
   const response = options.responseEmitter ?? createInternalResponseEmitter({

@@ -1,0 +1,14 @@
+# webhook-transport › it runs the bound handler on a verified delivery
+
+**Issue:** FIX-439
+**Outcome:** A real provider-shaped webhook (a signed Stripe `invoice.paid` POST) arrives at the mounted webhook endpoint, gets verified, and runs the handler the flow bound to that event — end to end through the real adapter, dispatch, and a real model — leaving an effect a user would see (the payment recorded against the right session). A forged delivery runs nothing.
+**Input:** `fixtures/event.json` — an `invoiceId`, a `customer`, a free-text `memo`, and the `expectCompany` token the memo names. Held-out: the runner reads all four from the fixture and hardcodes none, so swapping in a different valid event must still pass a correct implementation. The company ("Globex") appears only in the memo and differs from the customer id, so the model must actually read the memo — echoing the customer id would fail.
+**Signal:** after the signed POST acks 202, the session keyed by the binding's `sessionId` (`customer-<id>`) carries `lastInvoice === fixture.invoiceId` (the handler ran on this payload) **and** `company` containing `fixture.expectCompany` (the real generator read the memo). The forged POST returns **401** and creates **no** session. Both must hold.
+**Anti-game:** the gameable pass is asserting the route returned **202** — it acks fire-and-forget and returns 202 even if the handler no-ops or fails async — or asserting that a session row was merely created, or that a dispatch envelope was built. The check must NOT assert on the 202 alone, the envelope, or block-trace internals; it grades the handler's payload-derived effect (`lastInvoice`, `company`) read back from the **session store**, against the held-out fixture. The forged-signature negative (401 + no effect) is what proves verification is real rather than "any POST writes state."
+**Model:** real — `openai/gpt-5.4-mini` by default; this container resolves `FSDEV_DEFAULT_MODEL` through the Vercel AI Gateway. The runner records the model it actually ran on.
+**Run:** `pnpm tsx goals/webhook-transport/runs-the-bound-handler-on-a-verified-delivery/run.mts`
+
+## Verdict log
+| Date | Commit | Model | Verdict | Notes |
+|------|--------|-------|---------|-------|
+| 2026-06-23 | e466b34c | openai/gpt-5.4-mini | PASS | Real signed Stripe `invoice.paid` POST through `createWebhookTransportAdapter` + dispatch + a real generator. Session `customer-cus_88` state `{ lastInvoice: "in_9F3A21", company: "Globex Corporation" }` — the model read "Globex" from the memo (not the `cus_88` customer id), graded against the held-out fixture. Forged signature → 401 with no session. Gateway inference confirmed (default `openai/gpt-5.4-mini` resolved and generated; the container's `FSDEV_DEFAULT_MODEL=…gpt-5-nano` is stripped by the runner because the standalone harness declares no intents). |
