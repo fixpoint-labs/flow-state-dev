@@ -239,6 +239,31 @@ describe("bindStoreToCallbacks — content", () => {
     expect(item.content![0]!.text).toBe("Z");
   });
 
+  it("drops deltas that arrive after an item is rejected, even with no item.done (no unbounded buffer)", () => {
+    const store = createRequestStreamStore();
+    const onChange = vi.fn();
+    const cb = bindStoreToCallbacks(store, {
+      onChange,
+      itemFilter: (item) => item.type === "message"
+    });
+
+    // Rejected item.added, then deltas keep streaming in afterward — and the
+    // stream aborts before any item.done that would otherwise clean them up.
+    cb.onItemAdded!(itemAdded(makeItem({ id: "s", ts: 100, type: "status" })));
+    onChange.mockClear();
+    cb.onContentDelta!(contentDelta("s", 0, "x"));
+    cb.onContentDelta!(contentDelta("s", 0, "y"));
+
+    // Nothing was buffered (and nothing signalled): a flush is a no-op, and an
+    // item with that id later entering the store picks up no stale text.
+    expect(onChange).not.toHaveBeenCalled();
+    expect(store.flushDeltas()).toBe(false);
+    store.upsert(makeItem({ id: "s", ts: 100, type: "message", content: [{ type: "output_text", text: "Z" }] } as Partial<OutputItem> & { id: string }));
+    expect(store.flushDeltas()).toBe(false);
+    const item = store.getById("s") as OutputItem & { content?: Array<{ text: string }> };
+    expect(item.content![0]!.text).toBe("Z");
+  });
+
   it("onContentAdded for a missing item signals nothing", () => {
     const store = createRequestStreamStore();
     const onChange = vi.fn();
