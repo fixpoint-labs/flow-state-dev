@@ -91,6 +91,8 @@ Author-thrown `FlowError.details` flows through verbatim, and authors may attach
 
 Lifecycle: `item.added` (status `in_progress`, input filled in, output empty) → zero or more `item.updated` patches (connector input, generator bundle, model usage) → `item.done` (terminal status, output written, timing closed). Consumers reconcile by id. Late subscribers see only the final settled row.
 
+Because that row is mutated in place — one object reference, fields changed between phases — a store's incremental item persistence MUST diff by item **content**, not object reference. A reference-identity diff never observes the `in_progress → completed` field change and leaves the persisted row at `in_progress`, which defeats resume memoization (`getCompletedOutput` short-circuits a block only when its persisted trace is `completed`). "Last-write-wins per item id" is therefore by content. The cross-store conformance suite enforces this on every adapter (FIX-839).
+
 `block_trace.output` is a `BlockValue<T>` discriminated union with three cases:
 
 - **`inline`** — the block produced novel content. Leaves (generators, handlers) and explicit transforms (`.map`, non-identity `connectOutput`) emit this kind. The payload rides on `output.value`.

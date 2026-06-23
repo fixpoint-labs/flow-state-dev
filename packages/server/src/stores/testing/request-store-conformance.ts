@@ -421,6 +421,38 @@ export function createRequestStoreConformanceTests(
         expect(new Set(ids).size).toBe(ids.length);
       });
     });
+
+    // Re-persisting an item whose fields were mutated IN PLACE (same object
+    // reference) must surface the latest content on `get` (FIX-839). The
+    // runtime advances a block_trace across its in_progress → completed
+    // lifecycle by mutating one item object; a persistence diff keyed on object
+    // reference would skip the completed write and leave the store at
+    // in_progress, defeating resume memoization. Unlike the merge case above,
+    // this reuses ONE object reference across both writes.
+    it("re-persisting an in-place-mutated item surfaces its latest content", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_inplace_conformance";
+        const item = makeItem(requestId, 0);
+
+        // Mid-run: persist the item while still in_progress.
+        (item as { status: string }).status = "in_progress";
+        store.persistItems(requestId, [item]);
+        await store.flushItems(requestId);
+
+        // Completion: mutate the SAME object in place, then re-persist and
+        // snapshot the record at the transition (persistent stores key off
+        // persistItems; the in-memory store keeps items on the record — either
+        // way `get` must surface "completed").
+        (item as { status: string }).status = "completed";
+        store.persistItems(requestId, [item]);
+        await store.flushItems(requestId);
+        await store.set(requestId, makeRecord(requestId, "suspended", [item]), "any");
+
+        const reread = await store.get(requestId);
+        const got = (reread?.items ?? []).find((i) => i.id === item.id);
+        expect(got?.status).toBe("completed");
+      });
+    });
   });
 
   // Reference for downstream tests that want to assert overflow behavior

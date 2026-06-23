@@ -497,9 +497,11 @@ describe("SQLite store adapter", () => {
       expect(seq).toBe(12);
     });
 
-    it("passing the same item reference twice issues no second write", async () => {
-      // Intent: reference-identity diffing skips unchanged items, so a
-      // re-persist of the same object does not touch the row.
+    it("re-persisting unchanged content issues no second write", async () => {
+      // Intent: content diffing skips items whose serialized form is unchanged,
+      // so re-persisting an item with no field changes does not touch the row.
+      // (A changed field — e.g. a block_trace going in_progress → completed —
+      // is re-written; that is the FIX-839 guarantee.)
       const store = freshRequestStore();
       await seedRequest(store, "req_noop");
       const item = makeMessageItem("req_noop", "a", 0, "x") as unknown as OutputItem;
