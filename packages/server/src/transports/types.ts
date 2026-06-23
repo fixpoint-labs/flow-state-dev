@@ -109,6 +109,17 @@ export interface InboundRequestEnvelope {
    * (a documented non-goal). Statically-declared bindings (HTTP actions,
    * webhooks, chat `on`, `schedules.static`) leave this unset and resolve by
    * coordinate.
+   *
+   * Scope: only `runAction.resolveAction` consumes the carried core. The two
+   * coordinate-resolution sites in `createExecutionContext` (eager-resource
+   * prefetch and the live token-budget `remaining` accessor) are not given it,
+   * so for a dynamic schedule they resolve nothing: eager block-declared
+   * resources are not prefetched (collections still lazy-load on access; eager
+   * singles are absent) and the in-flow `tokenUsage.remaining` reads
+   * `+Infinity`. Terminal token-budget enforcement is unaffected — it reads the
+   * budget off the carried core that `runAction` runs. This within-run
+   * degradation is the accepted cost of the dynamic schedule's ad-hoc path,
+   * alongside its non-recoverability; static bindings have neither limitation.
    */
   resolvedActionCore?: ActionCore;
 
