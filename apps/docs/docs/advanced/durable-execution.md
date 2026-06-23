@@ -99,7 +99,7 @@ When `ctx.suspend()` is called, the sequencer catches the resulting `SuspensionE
 
 The original SSE connection closes cleanly. Nothing blocks a thread.
 
-On the React side, `useSuspensions(session)` derives pending and resolved suspensions from the item stream and exposes `approve` and `reject` callbacks that stream the resumed continuation back into `session.items` — so the resolution renders live, no refresh. `<ApprovalRenderer>` is the built-in inline card. See [Suspensions and approvals](/docs/client/react#suspensions-and-approvals) for how to wire them.
+On the React side, `useSuspensions(session)` derives pending and resolved suspensions from the item stream and exposes `approve` and `reject` callbacks that stream the resumed continuation back into `session.items` — so the resolution renders live, no refresh. `<ApprovalRenderer>` is the built-in inline card. For a full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop); for the hook and renderer reference, see [Suspensions and approvals](/docs/client/react#suspensions-and-approvals).
 
 ### SuspendOptions
 
@@ -291,5 +291,6 @@ The tab reads through the gated debug endpoints, which are disabled by default a
 
 ## See also
 
+- [Human-in-the-Loop guide](/guides/human-in-the-loop) — building an approval gate end to end, from `ctx.suspend()` to the React card that resolves it
 - [Idempotency and `runOnce`](./idempotency.md) — for making handlers safe to re-run on retry, which complements crash recovery
 - [Error handling](./error-handling.md) — for rescue handlers and structured error flow

@@ -7,6 +7,7 @@ const sidebars: SidebarsConfig = {
     "nextjs-setup",
     "development-tips",
     "building-agents",
+    "human-in-the-loop",
     "prompts-as-markdown",
     "trading-desk-walkthrough",
     "adding-skills-to-your-app",

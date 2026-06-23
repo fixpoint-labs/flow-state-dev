@@ -8,7 +8,7 @@ Components that consume Flow State item types directly. They subscribe to sessio
 
 ## ChatAssistant
 
-A pre-wired `RendererRegistry` that maps every standard item type to its default component. The fastest way to render a working chat surface — drop it onto `FlowProvider` and you get sensible defaults for messages, reasoning, tool calls, sources, plans, and errors.
+A pre-wired `RendererRegistry` that maps every standard item type to its default component. The fastest way to render a working chat surface — drop it onto `FlowProvider` and you get sensible defaults for messages, reasoning, tool calls, sources, plans, errors, and approval gates (`suspension: Approval`).
 
 ```bash
 fsdev ui add chat-assistant
@@ -33,6 +33,16 @@ const renderers = {
   component: { plan: false },   // suppress plan rendering
 };
 ```
+
+## Approval
+
+Human-in-the-loop approval card for `suspension` items. Shows the gate's message with Approve and Reject buttons while pending, then collapses to a tinted receipt once resolved. It's included in `chatAssistantRenderers` under the `suspension` slot, so chat surfaces get it without extra wiring.
+
+```bash
+fsdev ui add approval
+```
+
+The card is presentation over the `useApproval` hook from `@flow-state-dev/react`, which owns the resume call and resolved state. It reads the resolution from `SessionItemsProvider`, so wrap your item list in one for the receipt to show on reload. For the full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop).
 
 ## SessionItemsContext
 

@@ -364,7 +364,7 @@ For a fully custom layout — modals, sidebars, toasts — suppress inline rende
 </FlowProvider>
 ```
 
-See [Durable execution](/docs/advanced/durable-execution) for the server-side setup (`ctx.suspend()`, `SuspendOptions`, the resume endpoint).
+For a full server-to-UI walkthrough (defining the gate, the `useApproval` hook, and the `Approval` card), see the [Human-in-the-Loop guide](/guides/human-in-the-loop). See [Durable execution](/docs/advanced/durable-execution) for the server-side setup (`ctx.suspend()`, `SuspendOptions`, the resume endpoint).
 
 See the [API reference](/docs/api/react#usesuspensions) for the full `useSuspensions` signature.
 
