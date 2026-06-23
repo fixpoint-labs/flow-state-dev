@@ -33,11 +33,13 @@ import { loadFsdevConfig } from "../load-config";
 import { forceModelResolver } from "../model-override";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR, EXIT_CONFIG_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
-import { loadEnvFiles } from "../load-env";
+import { loadEnvFiles, loadExplicitEnvFiles } from "../load-env";
 
 interface DevCommandOptions {
   port?: string;
   flowDir?: string[];
+  /** Explicit `--dotenv <path>` entries to load before the cwd `.env.local` walk-up. */
+  dotenv?: string[];
   model?: string;
   open?: boolean;
   /**
@@ -61,6 +63,7 @@ export function registerDevCommand(program: Command): void {
     .description("Start the DevTool dev server with auto-discovered flows")
     .option("-p, --port <port>", "Port to listen on", "4200")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
+    .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
     .option("--no-config", "Ignore fsdev.config.* and use directory discovery")
     .option("-m, --model <model>", "Override model for all generator blocks")
@@ -89,8 +92,10 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     throw new CliError(`Invalid port: ${options.port}`, EXIT_CONFIG_ERROR);
   }
 
-  // 0. Load .env.local files (before importing a config so its providers see env).
+  // 0. Load .env files before importing a config so its providers see env.
+  // Explicit --dotenv entries first (they outrank the cwd .env.local walk-up).
   const cwd = options.cwd ?? process.cwd();
+  if (options.dotenv !== undefined) loadExplicitEnvFiles(cwd, options.dotenv);
   loadEnvFiles(cwd);
 
   // 1. Resolve the runtime source. With an fsdev.config.*, the dev server serves

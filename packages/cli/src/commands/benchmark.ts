@@ -30,7 +30,7 @@ import {
   EXIT_DISCOVERY_ERROR,
   EXIT_INTERNAL_ERROR,
 } from "../exit-codes";
-import { loadEnvFiles } from "../load-env";
+import { loadEnvFiles, loadExplicitEnvFiles } from "../load-env";
 
 /** Raw commander options for `fsdev benchmark`. */
 export interface BenchmarkCommandOptions {
@@ -45,6 +45,8 @@ export interface BenchmarkCommandOptions {
   maxCost?: string;
   output?: string;
   format?: string;
+  /** Explicit `--dotenv <path>` entries to load before the cwd `.env.local` walk-up. */
+  dotenv?: string[];
 }
 
 const SCORECARD_FORMATS = ["table", "markdown", "json"] as const;
@@ -177,7 +179,9 @@ export async function executeBenchmarkCommand(
   file: string,
   options: BenchmarkCommandOptions,
 ): Promise<BenchmarkReport> {
-  loadEnvFiles(process.cwd());
+  const cwd = process.cwd();
+  if (options.dotenv !== undefined) loadExplicitEnvFiles(cwd, options.dotenv);
+  loadEnvFiles(cwd);
   const def = await loadBenchmarkDefinition(file);
   const run = buildBenchmarkRun(def, options);
 
@@ -248,6 +252,12 @@ export function registerBenchmarkCommand(program: Command): void {
     .option("--no-baseline", "Skip the single-generator baseline subject")
     .option("--max-cost <usd>", "Abort the sweep when the estimated cost exceeds this")
     .option("--output <path>", "Write the scorecard to a file instead of stdout")
+    .option(
+      "--dotenv <path>",
+      "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)",
+      (value: string, previous: string[] | undefined) => (previous ?? []).concat(value),
+      undefined,
+    )
     .option("--format <format>", "Output format: table | markdown | json", "table")
     .action(async (file: string, options: BenchmarkCommandOptions) => {
       try {

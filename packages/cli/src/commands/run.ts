@@ -32,7 +32,7 @@ import { forceModelResolver } from "../model-override";
 import { parseInputArg } from "../parse-input";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
-import { loadEnvFiles } from "../load-env";
+import { loadEnvFiles, loadExplicitEnvFiles } from "../load-env";
 
 /** NDJSON event types emitted to stdout during flow execution. */
 export type FlowEvent =
@@ -105,6 +105,7 @@ export function registerRunCommand(program: Command): void {
     .option("--seed-user <json>", "Seed user-level state (JSON or file path)")
     .option("--seed-org <json>", "Seed org-level state (JSON or file path)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
+    .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
     .option("--no-config", "Ignore fsdev.config.* and use directory discovery")
     .option("--format <format>", "Output format", "json")
@@ -137,6 +138,8 @@ export interface RunCommandOptions {
   seedUser?: string;
   seedOrg?: string;
   flowDir?: string[];
+  /** Explicit `--dotenv <path>` entries to load before the cwd `.env.local` walk-up. */
+  dotenv?: string[];
   /**
    * fsdev config selection. A string is an explicit `--config <path>`; `false`
    * is `--no-config`; `true`/absent means search for `fsdev.config.*` in cwd.
@@ -276,9 +279,12 @@ export async function executeRunCommand(
   actionName: string,
   options: RunCommandInternalOptions,
 ): Promise<FlowRunResult> {
-  // 0. Load .env.local files (walks up from cwd). Must run before importing an
-  // fsdev.config.* so the config's providers see the app's env (gateway keys).
+  // 0. Load .env files. Explicit --dotenv entries first (they outrank the
+  // walk-up and let a repo-root invocation reach an app's .env.local), then the
+  // cwd .env.local walk-up. Must run before importing an fsdev.config.* so the
+  // config's providers see the app's env (gateway keys).
   const cwd = options.cwd ?? process.cwd();
+  if (options.dotenv !== undefined) loadExplicitEnvFiles(cwd, options.dotenv);
   loadEnvFiles(cwd);
 
   // 1. Resolve the runtime source. When the app ships an fsdev.config.*, the CLI

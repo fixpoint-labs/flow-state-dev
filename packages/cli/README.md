@@ -51,6 +51,7 @@ Options:
 | `--seed-user <json\|path>` | Seed user-level state |
 | `--seed-project <json\|path>` | Seed project-level state |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
+| `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `--format <format>` | Output format (default: `json`) |
 | `--quiet` | Suppress `[flow-state] *` runtime logs on stderr |
 | `--log-level <level>` | Stderr log level: `debug \| info \| warn \| error` (default: `info`) |
@@ -140,6 +141,7 @@ Options:
 |------|-------------|
 | `-p, --port <port>` | Port to listen on (default: `4200`) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
+| `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `-m, --model <model>` | Override model for all generator blocks |
 | `--no-open` | Don't open the browser automatically |
 
@@ -240,6 +242,25 @@ single-generator  0.720±0.070   0.690±0.090          0.705±0.083
 ```
 
 See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks) for the methodology and the [walkthrough guide](https://flow-state.dev/guides/choosing-patterns-with-benchmarks) for a worked example.
+
+## Environment variables
+
+`fsdev run`, `fsdev dev`, and `fsdev benchmark` load `.env.local` before importing your config, so generator providers see your gateway and API keys.
+
+Resolution, highest precedence first:
+
+1. The real shell environment. Anything already exported always wins — a file never overwrites it.
+2. Files named with `--dotenv <path>`, in the order given.
+3. `.env.local` in the working directory, then each parent directory up to the filesystem root.
+
+The auto walk-up only climbs, so running from the repo root will not find an app's `.env.local` one level down. Point at it explicitly:
+
+```bash
+# from the repo root, load the app's env:
+fsdev run my-flow action -i '{}' --dotenv apps/my-app/.env.local
+```
+
+`--dotenv` is repeatable and resolved relative to cwd (absolute paths work too). A named file that doesn't exist is an error, unlike the silent walk-up. The flag is `--dotenv` rather than `--env-file` because Node and tsx reserve `--env-file` as a built-in flag and would intercept it before the CLI sees it.
 
 ## Flow discovery
 
