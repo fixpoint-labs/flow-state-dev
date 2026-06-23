@@ -30,7 +30,7 @@
  * or `prefers-color-scheme`, so the card ships its own minimal sheet to read well
  * on both light and dark surfaces. Consumers can override by targeting the classes.
  */
-import { createElement, useState, useMemo, useCallback, useEffect, type ReactNode } from "react";
+import { createElement, useState, useMemo, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { createRecoveryClient } from "@flow-state-dev/client";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
@@ -43,9 +43,11 @@ import { useSuspensionResolver } from "../context/SuspensionResolver";
 
 const STYLE_ELEMENT_ID = "fsd-approval-styles";
 
-// Minimal, theme-aware stylesheet. Green affirmative / red destructive, with a
-// `prefers-color-scheme` block so the surface, border, and receipt tints invert
-// on dark backgrounds instead of staying light-on-dark.
+// Minimal stylesheet. Green affirmative / red destructive. Light is the default;
+// a `[data-theme="dark"]` variant is applied when the card detects it's sitting on
+// a dark surface (see `detectSurfaceTheme`). We key off the actual surrounding
+// background rather than `prefers-color-scheme` so the card matches the *app's*
+// theme — a light app on a dark-mode OS still gets the light card.
 const APPROVAL_CSS = `
 .fsd-approval-card {
   border: 1px solid #e5e7eb;
@@ -90,17 +92,15 @@ const APPROVAL_CSS = `
 .fsd-approval-receipt-approved { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
 .fsd-approval-receipt-rejected { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
 .fsd-approval-receipt-neutral { background: rgba(127,127,127,0.08); border-color: rgba(127,127,127,0.3); color: inherit; }
-@media (prefers-color-scheme: dark) {
-  .fsd-approval-card { background: #1f2937; color: #f9fafb; border-color: #374151; box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
-  .fsd-approval-pre { background: rgba(255,255,255,0.06); }
-  .fsd-approval-error { color: #f87171; }
-  .fsd-approval-approve { background: #16a34a; }
-  .fsd-approval-approve:hover:not(:disabled) { background: #22c55e; }
-  .fsd-approval-reject { background: transparent; color: #f87171; border-color: #7f1d1d; }
-  .fsd-approval-reject:hover:not(:disabled) { background: rgba(248,113,113,0.12); border-color: #b91c1c; }
-  .fsd-approval-receipt-approved { background: rgba(22,163,74,0.15); border-color: rgba(34,197,94,0.4); color: #4ade80; }
-  .fsd-approval-receipt-rejected { background: rgba(220,38,38,0.15); border-color: rgba(248,113,113,0.4); color: #f87171; }
-}
+[data-theme="dark"].fsd-approval-card { background: #1f2937; color: #f9fafb; border-color: #374151; box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+[data-theme="dark"] .fsd-approval-pre { background: rgba(255,255,255,0.06); }
+[data-theme="dark"] .fsd-approval-error { color: #f87171; }
+[data-theme="dark"] .fsd-approval-approve { background: #16a34a; }
+[data-theme="dark"] .fsd-approval-approve:hover:not(:disabled) { background: #22c55e; }
+[data-theme="dark"] .fsd-approval-reject { background: transparent; color: #f87171; border-color: #7f1d1d; }
+[data-theme="dark"] .fsd-approval-reject:hover:not(:disabled) { background: rgba(248,113,113,0.12); border-color: #b91c1c; }
+[data-theme="dark"].fsd-approval-receipt-approved { background: rgba(22,163,74,0.15); border-color: rgba(34,197,94,0.4); color: #4ade80; }
+[data-theme="dark"].fsd-approval-receipt-rejected { background: rgba(220,38,38,0.15); border-color: rgba(248,113,113,0.4); color: #f87171; }
 `;
 
 /**
@@ -117,6 +117,37 @@ function ensureApprovalStyles(): void {
 }
 
 ensureApprovalStyles();
+
+/** Parse a CSS `rgb()`/`rgba()` color string into channels, or null. */
+function parseRgb(color: string): { r: number; g: number; b: number; a: number } | null {
+  const match = color.match(/rgba?\(([^)]+)\)/);
+  if (match === null) return null;
+  const parts = match[1].split(",").map((p) => parseFloat(p.trim()));
+  if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null;
+  return { r: parts[0], g: parts[1], b: parts[2], a: parts.length >= 4 ? parts[3] : 1 };
+}
+
+/**
+ * Decide whether the card sits on a dark surface by walking up from the mount
+ * point to the first ancestor with an opaque background and comparing its
+ * perceived luminance. Falls back to `prefers-color-scheme` only when no opaque
+ * background is found (e.g. fully transparent tree). Keys off the real
+ * surrounding background so the card matches the app's theme, not the OS's.
+ */
+function detectSurfaceTheme(el: HTMLElement | null): "light" | "dark" {
+  if (el === null || typeof window === "undefined") return "light";
+  let node: HTMLElement | null = el;
+  while (node !== null) {
+    const rgb = parseRgb(window.getComputedStyle(node).backgroundColor);
+    if (rgb !== null && rgb.a > 0) {
+      // Rec. 601 luma (0–255); < 128 reads as a dark surface.
+      const luma = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+      return luma < 128 ? "dark" : "light";
+    }
+    node = node.parentElement;
+  }
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
 
 // ---------------------------------------------------------------------------
 // Receipt outcome derivation
@@ -232,6 +263,18 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
     [baseUrl]
   );
 
+  // Match the card to its surrounding surface (light app vs dark app), not the
+  // OS color scheme. `rootRef` attaches to whichever root renders (card or
+  // receipt); detection runs once after mount, when the DOM background is
+  // measurable. Defaults to "light" for the SSR/first-paint frame.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  useEffect(() => {
+    // Start from the parent: the card/receipt paints its own background, so
+    // measuring itself would always read its own surface.
+    setTheme(detectSurfaceTheme(rootRef.current?.parentElement ?? null));
+  }, []);
+
   // Compute per-action capability so a single supplied handler doesn't enable
   // the other button (e.g. onApprove only → Reject stays disabled). A streaming
   // resolver from context enables both buttons just like a flowKind does.
@@ -316,8 +359,10 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
     return createElement(
       "div",
       {
+        ref: rootRef,
         "data-suspension": item.suspensionId,
         "data-resolved": "true",
+        "data-theme": theme,
         className: `fsd-approval-receipt ${outcome.toneClass}`
       },
       createElement("span", { className: "fsd-approval-receipt-icon", "aria-hidden": true }, outcome.icon),
@@ -333,7 +378,7 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
 
   return createElement(
     "div",
-    { "data-suspension": item.suspensionId, className: "fsd-approval-card" },
+    { ref: rootRef, "data-suspension": item.suspensionId, "data-theme": theme, className: "fsd-approval-card" },
     // Suspension message
     createElement("p", { className: "fsd-approval-msg" }, item.message),
     // Optional data summary

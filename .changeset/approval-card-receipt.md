@@ -11,9 +11,10 @@ taken on the card or from a matching `suspension_resume` item arriving in the
 stream.
 
 The pending card is also redesigned: green Approve / red Reject buttons with hover
-and focus states, and a scoped stylesheet (injected once) with a
-`prefers-color-scheme` block so the card reads on both light and dark surfaces
-instead of relying on theme-blind inline styles.
+and focus states, and a scoped stylesheet (injected once) instead of theme-blind
+inline styles. The card detects its surrounding surface (the app's actual
+background luminance, not the OS `prefers-color-scheme`) and applies a light or
+dark variant to match — so a light app on a dark-mode OS still gets the light card.
 
 - `ApprovalRenderer` gains an optional `resolution?: SuspensionStatus` prop that
   drives the receipt's outcome label/tone. `ItemRenderer` and `ItemsRenderer`
