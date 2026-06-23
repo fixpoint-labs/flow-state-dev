@@ -1,24 +1,26 @@
 ---
 "@flow-state-dev/react": minor
+"@flow-state-dev/ui": minor
 ---
 
-Polish the default approval card and collapse it to a receipt once resolved.
+Split the approval UI into logic (react) and presentation (ui), and collapse it to
+a receipt once resolved.
 
-Previously a resolved suspension left the `ApprovalRenderer` card on screen with
-its buttons merely disabled. It now collapses to a compact one-line receipt (e.g.
-`✓ Approved` / `✕ Rejected`) once the suspension resolves — either from the action
-taken on the card or from a matching `suspension_resume` item arriving in the
-stream.
+Previously a resolved suspension left the approval card on screen with its buttons
+merely disabled, and the only card was a styled component living in
+`@flow-state-dev/react` — a runtime logic package with no styling system. That card
+is now a minimal, unstyled default, and the polished card lives where presentation
+belongs.
 
-The pending card is also redesigned: green Approve / red Reject buttons with hover
-and focus states, via a scoped stylesheet (injected once) instead of theme-blind
-inline styles. The card is theme-agnostic — a neutral translucent surface plus
-`color: inherit` — so it reads on both light and dark backgrounds without any
-theme detection.
-
-- `ApprovalRenderer` gains an optional `resolution?: SuspensionStatus` prop that
-  drives the receipt's outcome label/tone. `ItemRenderer` and `ItemsRenderer`
-  thread it down from the matching `suspension_resume` item, so a reloaded log
-  shows the real outcome (not just a generic "resolved").
-- New exported helper `resolveApprovalOutcome(status)` → `{ icon, label, toneClass }`
-  (and the `ApprovalOutcome` type) for consumers building their own receipt UI.
+- `@flow-state-dev/react`: new headless `useApproval(item)` hook owns the resume
+  transport, in-flight/error state, the duplicate-resume guard, and the resolved
+  outcome. `ApprovalRenderer` is now a minimal built-in default (plain buttons, a
+  one-line text receipt once resolved) that consumes the hook — so a `suspension`
+  item still renders something actionable with zero setup. `resolveApprovalOutcome`
+  now returns `{ icon, label }` (no `toneClass`); colour is the renderer's concern.
+- `@flow-state-dev/ui`: new `Approval` component — a themeable Tailwind card with
+  green Approve / red Reject buttons that collapses to a tinted receipt. It's wired
+  into `chatAssistantRenderers` as `suspension: Approval`, so chat UIs get it
+  automatically (the same "assigned renderer type" pattern as `plan`). It reads
+  resolved state from `useSessionItems`, so wrap your item list in
+  `<SessionItemsProvider>` for the receipt to show on reload.

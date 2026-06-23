@@ -213,17 +213,35 @@ pending.map(({ item }) => (
 
 Returns `{ suspensions, pending, approve, reject, error }`. Each `SuspensionView` has `{ item, status, pending, resumeData, resolvedBy, isResolving }`.
 
+### `useApproval(item, options?)`
+
+Headless controller for a suspension approval. Owns the resume transport, in-flight/error state, the duplicate-resume guard, and the resolved outcome — no markup. Build your own approval UI on top of it:
+
+```tsx
+import { useApproval } from "@flow-state-dev/react";
+
+function MyApproval({ item }) {
+  const a = useApproval(item, { isResolved, resolution });
+  if (a.resolved) return <Receipt outcome={a.outcome} />;
+  return (
+    <>
+      <button disabled={!a.canApprove || a.isResolving} onClick={a.approve}>Approve</button>
+      <button disabled={!a.canReject || a.isResolving} onClick={a.reject}>Reject</button>
+    </>
+  );
+}
+```
+
+Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a self-contained recovery client.
+
 ### `<ApprovalRenderer>`
 
-The default approval card for `suspension` items. Used by `ItemRenderer` as the built-in fallback. Can be imported directly for headless layouts:
+The **minimal built-in default** for `suspension` items — plain, unstyled buttons so a suspension renders something actionable with zero setup, collapsing to a one-line text receipt once resolved. It's bare on purpose; for a polished, themeable card use the **`Approval` component from `@flow-state-dev/ui`** (included in `chatAssistantRenderers` as `suspension: Approval`). Both are thin views over `useApproval`.
 
 ```tsx
 import { ApprovalRenderer } from "@flow-state-dev/react";
 
-// Inline with auto-resume from FlowContext (requires flowKind on <FlowProvider>)
-<ApprovalRenderer item={suspensionItem} />
-
-// With explicit handlers from useSuspensions
+// Used automatically by ItemRenderer; or render directly with explicit handlers:
 <ApprovalRenderer
   item={suspensionItem}
   onApprove={(data) => approve(suspensionItem.suspensionId, data)}
@@ -231,9 +249,7 @@ import { ApprovalRenderer } from "@flow-state-dev/react";
 />
 ```
 
-While pending, the card shows the message and green **Approve** / red **Reject** buttons (theme-aware via an injected scoped stylesheet, so it reads on both light and dark surfaces). Once resolved — by this card, or by a matching `suspension_resume` item arriving in the stream — it collapses to a compact one-line receipt (e.g. `✓ Approved`) instead of lingering as a disabled card. `ItemRenderer`/`ItemsRenderer` thread the resolution outcome down so a reloaded log shows the real result; pass `resolution` yourself if you render the card directly.
-
-Suppress inline rendering and use your own layout with `renderers={{ suspension: false }}` on `<FlowProvider>`.
+`ItemRenderer`/`ItemsRenderer` thread the resolution outcome to this default so a reloaded log shows the real result. Suppress it with `renderers={{ suspension: false }}` on `<FlowProvider>`.
 
 ### `<SuspensionResolverProvider>`
 

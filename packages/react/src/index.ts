@@ -84,10 +84,15 @@ export {
 
 export {
   ApprovalRenderer,
-  resolveApprovalOutcome,
-  type ApprovalRendererProps,
-  type ApprovalOutcome
+  type ApprovalRendererProps
 } from "./components/ApprovalRenderer";
+export {
+  useApproval,
+  resolveApprovalOutcome,
+  type UseApprovalOptions,
+  type UseApprovalResult,
+  type ApprovalOutcome
+} from "./hooks/useApproval";
 
 export {
   useRequestStream,
