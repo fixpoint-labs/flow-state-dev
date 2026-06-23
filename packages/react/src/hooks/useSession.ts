@@ -351,6 +351,12 @@ export function useSession(
    */
   const latestRequestRef = useRef<SessionRequestSummary | null>(null);
   const storeRef = useRef(createRequestStreamStore());
+  // Item ids the filter rejected this stream. The shared store keeps deltas for
+  // not-yet-present items buffered (so early deltas survive), so a filtered item
+  // — which never enters the store — would otherwise buffer deltas forever.
+  // Mirrors the filter seam in `bindStoreToCallbacks`: drop its deltas on
+  // arrival. Reset per stream in `attachToStream`.
+  const rejectedItemIdsRef = useRef<Set<string>>(new Set());
   /**
    * Buffer for `state_change` items received before the initial snapshot
    * lands. The reducer (`mergeStateChangeIntoSnapshot`) bails when
@@ -609,6 +615,7 @@ export function useSession(
       setIsFinishing(false);
       setIsStuck(false);
       latestRequestIdAfterDropRef.current = null;
+      rejectedItemIdsRef.current.clear();
       // Baseline the watchdog at stream open so it doesn't fire instantly
       // on the first slow response.
       lastEventAtRef.current = Date.now();
@@ -713,6 +720,10 @@ export function useSession(
           }
 
           if (!passesItemFilter(event.item, filter)) {
+            // Never enters the store — drop any deltas it streams (buffered ones
+            // now, future ones via the rejected set) so they don't accumulate.
+            rejectedItemIdsRef.current.add(event.item.id);
+            storeRef.current.discardDeltas(event.item.id);
             return;
           }
 
@@ -733,6 +744,8 @@ export function useSession(
         },
         onItemDone: (event) => {
           if (!passesItemFilter(event.item, filter)) {
+            rejectedItemIdsRef.current.add(event.item.id);
+            storeRef.current.discardDeltas(event.item.id);
             return;
           }
 
@@ -745,6 +758,9 @@ export function useSession(
           }
         },
         onContentDelta: (event) => {
+          // Skip deltas for items the filter already rejected — they will never
+          // enter the store, so buffering them just grows the queue.
+          if (rejectedItemIdsRef.current.has(event.itemId)) return;
           storeRef.current.accumulateDelta(event.itemId, event.contentIndex, event.delta);
 
           scheduleContentFlush();
