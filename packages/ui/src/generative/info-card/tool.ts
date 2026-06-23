@@ -7,7 +7,7 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { InfoCardSchema, type InfoCardData } from "./schema";
-import type { GenerativeToolOptions } from "../types";
+import type { GenerativeToolOptions } from "../tool-types";
 
 const DESCRIPTION = [
   "Render a structured information card with a title, optional image, and up to 8 fact rows.",

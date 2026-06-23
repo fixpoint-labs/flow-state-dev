@@ -2,11 +2,11 @@
  * `<InfoCardRenderer />` — default renderer for the `info-card` component shape.
  *
  * Plain Tailwind classnames; no shadcn-primitive dependency so it is safe to
- * import at runtime from `@flow-state-dev/ui/generative`. Apps that want a
+ * import at runtime from `@flow-state-dev/ui/generative/renderers`. Apps that want a
  * fancier card can install the registry-distributed variant and override
  * `renderers.component["info-card"]` on FlowProvider.
  */
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { ComponentItem } from "@flow-state-dev/contracts";
 import type { InfoCardData } from "./schema";
 
 export function InfoCardRenderer({ item }: { item: ComponentItem }) {
