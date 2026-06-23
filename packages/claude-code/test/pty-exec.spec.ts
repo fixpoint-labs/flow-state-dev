@@ -76,4 +76,15 @@ describe("scriptPtyClaudeCliExec", () => {
     const result = await scriptPtyClaudeCliExec(process.execPath, ["-e", "process.exit(3)"], {});
     expect(result.code).toBe(3);
   });
+
+  it("blames script(1), not claude, when script is not on PATH", async () => {
+    // A spawn ENOENT from this exec can only mean `script(1)` is missing —
+    // `claude` runs *inside* script, so a missing claude is a non-zero exit, not
+    // an ENOENT. Left raw, claudeRemoteDispatch maps the ENOENT to "claude CLI
+    // not found" and misdirects the fix; the error must name `script` instead.
+    // A bogus PATH makes the `script` lookup fail without touching the real one.
+    await expect(
+      scriptPtyClaudeCliExec(process.execPath, ["-e", ""], { env: { PATH: "/fsd-no-such-dir" } }),
+    ).rejects.toThrow(/script\(1\)/);
+  });
 });

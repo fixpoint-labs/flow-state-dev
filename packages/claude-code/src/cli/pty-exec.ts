@@ -46,7 +46,7 @@ function scrubClaudeEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) continue;
     if (SCRUBBED_ENV_KEYS.has(key)) continue;
-    if (SCRUBBED_ENV_PREFIXES.some((p) => key === p || key.startsWith(p))) continue;
+    if (SCRUBBED_ENV_PREFIXES.some((p) => key.startsWith(p))) continue;
     out[key] = value;
   }
   return out;
@@ -92,6 +92,25 @@ function buildScriptArgs(outFile: string, command: string[]): string[] {
  */
 function hasDispatchBanner(out: string): boolean {
   return /https?:\/\/claude\.ai\/code\/\S/i.test(out) || /claude --teleport\s+\S/i.test(out);
+}
+
+/**
+ * Turn a spawn failure into a diagnosable error. A raw `ENOENT` from this exec
+ * means `script(1)` is missing — `claude` runs *inside* `script`, so a missing
+ * `claude` surfaces as a non-zero exit, never a spawn ENOENT. Left raw, the
+ * ENOENT would reach `claudeRemoteDispatch`, which maps any exec ENOENT to
+ * `ClaudeCliNotFoundError` and wrongly reports the `claude` CLI as missing —
+ * sending the host to fix the wrong dependency. Relabeling it here keeps that
+ * upstream mapping correct for the binary it actually names.
+ */
+function describeSpawnError(err: NodeJS.ErrnoException): Error {
+  if (err.code === "ENOENT") {
+    return new Error(
+      "`script(1)` was not found on PATH. The PTY-backed exec needs it to give " +
+        "`claude --remote` a terminal; it ships with macOS and most Linux distros (util-linux).",
+    );
+  }
+  return err;
 }
 
 /**
@@ -148,7 +167,10 @@ export const scriptPtyClaudeCliExec: ClaudeCliExec = (bin, args, opts) =>
     /** Detach the local attach; the cloud session keeps running server-side. */
     function detach(): void {
       child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 1_500);
+      // unref: an early-banner resolve settles the promise immediately, but this
+      // fallback would otherwise hold the event loop open ~1.5s (stalling CLI
+      // exit and test teardown) just to SIGKILL an already-dying child.
+      setTimeout(() => child.kill("SIGKILL"), 1_500).unref();
     }
 
     function settle(run: () => void): void {
@@ -183,7 +205,7 @@ export const scriptPtyClaudeCliExec: ClaudeCliExec = (bin, args, opts) =>
     child.on("error", (err) =>
       settle(() => {
         cleanup();
-        reject(err); // ENOENT (script missing) → ClaudeCliNotFoundError upstream
+        reject(describeSpawnError(err as NodeJS.ErrnoException));
       }),
     );
     child.on("close", (code) =>
