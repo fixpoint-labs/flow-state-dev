@@ -17,6 +17,21 @@ import { createScheduledTransportAdapter } from "../src";
 
 const SECRET = "scheduler-secret-do-not-share";
 
+// Event-only handler blocks. They carry the action core inline on their
+// schedule bindings (FIX-838) and are intentionally absent from `flow.actions`
+// — a scheduled handler has no caller-addressed surface.
+const generateInvoices = handler<{ topic?: string }, { ok: true }>({
+  name: "generate-invoices",
+  inputSchema: z.object({ topic: z.string().optional() }),
+  execute: () => ({ ok: true })
+});
+
+const sendDigest = handler<Record<string, never>, { ok: true }>({
+  name: "send-digest",
+  inputSchema: z.object({}),
+  execute: () => ({ ok: true })
+});
+
 function buildRouter() {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
@@ -35,19 +50,11 @@ function buildRouter() {
         static: {
           "monthly-invoices": {
             cron: "0 0 1 * *",
-            action: "generateInvoices"
+            block: generateInvoices
           }
         }
       },
-      actions: {
-        generateInvoices: {
-          inputSchema: z.object({ topic: z.string().optional() }),
-          block: handler<{ topic?: string }, { ok: true }>({
-            name: "generate-invoices",
-            execute: () => ({ ok: true })
-          })
-        }
-      }
+      actions: {}
     })()
   );
 
@@ -72,22 +79,14 @@ function buildRouter() {
           if (id === "u_1/weekly-digest") {
             return {
               cron: "0 9 * * MON",
-              action: "sendDigest",
+              block: sendDigest,
               principal: { userId: "u_1" }
             };
           }
           return null;
         }
       },
-      actions: {
-        sendDigest: {
-          inputSchema: z.object({}),
-          block: handler<Record<string, never>, { ok: true }>({
-            name: "send-digest",
-            execute: () => ({ ok: true })
-          })
-        }
-      }
+      actions: {}
     })()
   );
 
@@ -162,8 +161,8 @@ describe("scheduled adapter — end-to-end", () => {
       const record = records[0]!;
       expect(record.source).toBe("scheduled");
       expect(record.flowKind).toBe("billing");
-      expect((record.metadata as Record<string, unknown>)?.scheduleId).toBe("monthly-invoices");
-      expect((record.metadata as Record<string, unknown>)?.origin).toBe("static");
+      expect((record.metadata as { schedule: Record<string, unknown> })?.schedule?.scheduleId).toBe("monthly-invoices");
+      expect((record.metadata as { schedule: Record<string, unknown> })?.schedule?.origin).toBe("static");
     } finally {
       await disposeFlowApiRouter(router);
     }
@@ -180,7 +179,7 @@ describe("scheduled adapter — end-to-end", () => {
       const record = records[0]!;
       expect(record.source).toBe("scheduled");
       expect(record.userId).toBe("u_1");
-      expect((record.metadata as Record<string, unknown>)?.origin).toBe("dynamic");
+      expect((record.metadata as { schedule: Record<string, unknown> })?.schedule?.origin).toBe("dynamic");
     } finally {
       await disposeFlowApiRouter(router);
     }

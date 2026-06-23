@@ -48,7 +48,7 @@ describe("findScheduledRequest", () => {
       requestId: "req-1",
       flowKind: "demo",
       source: "scheduled",
-      metadata: { scheduleId: "weekly-digest" }
+      metadata: { schedule: { scheduleId: "weekly-digest" } }
     });
     const result = await findScheduledRequest(registry, "demo", "weekly-digest");
     expect(result?.requestId).toBe("req-1");
@@ -61,7 +61,7 @@ describe("findScheduledRequest", () => {
       requestId: "req-1",
       flowKind: "other",
       source: "scheduled",
-      metadata: { scheduleId: "weekly-digest" }
+      metadata: { schedule: { scheduleId: "weekly-digest" } }
     });
     const result = await findScheduledRequest(registry, "demo", "weekly-digest");
     expect(result).toBeNull();
@@ -74,7 +74,7 @@ describe("findScheduledRequest", () => {
       requestId: "req-1",
       flowKind: "demo",
       source: "scheduled",
-      metadata: { scheduleId: "daily-cleanup" }
+      metadata: { schedule: { scheduleId: "daily-cleanup" } }
     });
     const result = await findScheduledRequest(registry, "demo", "weekly-digest");
     expect(result).toBeNull();
@@ -87,7 +87,7 @@ describe("findScheduledRequest", () => {
       requestId: "req-1",
       flowKind: "demo",
       source: "http",
-      metadata: { scheduleId: "weekly-digest" }
+      metadata: { schedule: { scheduleId: "weekly-digest" } }
     });
     const result = await findScheduledRequest(registry, "demo", "weekly-digest");
     expect(result).toBeNull();

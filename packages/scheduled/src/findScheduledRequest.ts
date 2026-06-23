@@ -17,8 +17,10 @@ export async function findScheduledRequest(
   for (const entry of entries) {
     if (entry.flowKind !== flowKind) continue;
     if (entry.source !== SCHEDULED_TRANSPORT_SOURCE) continue;
-    const meta = entry.metadata as Record<string, unknown> | undefined;
-    if (meta?.scheduleId === scheduleId) return entry;
+    // Coordinate lives under the namespaced `metadata.schedule` slot (FIX-838),
+    // matching what the dispatch handler stamps.
+    const meta = entry.metadata as { schedule?: { scheduleId?: unknown } } | undefined;
+    if (meta?.schedule?.scheduleId === scheduleId) return entry;
   }
   return null;
 }

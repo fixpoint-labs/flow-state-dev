@@ -59,7 +59,7 @@ describe("defineScheduleCollection", () => {
     const coll = defineScheduleCollection({ pattern: "schedules/*", index });
     await coll.onInstanceCreated!(
       "schedules/weekly",
-      { cron: "0 0 * * 0", action: "send-digest", enabled: true },
+      { cron: "0 0 * * 0", kind: "send-digest", enabled: true },
       HOOK_CTX
     );
     expect(index.rows.size).toBe(1);
@@ -75,7 +75,7 @@ describe("defineScheduleCollection", () => {
     const coll = defineScheduleCollection({ pattern: "schedules/*", index });
     await coll.onInstanceCreated!(
       "schedules/disabled",
-      { cron: "0 0 * * 0", action: "noop", enabled: false },
+      { cron: "0 0 * * 0", kind: "noop", enabled: false },
       HOOK_CTX
     );
     expect(index.rows.size).toBe(0);
@@ -86,15 +86,15 @@ describe("defineScheduleCollection", () => {
     const coll = defineScheduleCollection({ pattern: "schedules/*", index });
     await coll.onInstanceCreated!(
       "schedules/weekly",
-      { cron: "0 0 * * 0", action: "send-digest", enabled: true },
+      { cron: "0 0 * * 0", kind: "send-digest", enabled: true },
       HOOK_CTX
     );
     expect(index.rows.size).toBe(1);
 
     await coll.onInstanceUpdated!(
       "schedules/weekly",
-      { cron: "0 0 * * 0", action: "send-digest", enabled: false },
-      { cron: "0 0 * * 0", action: "send-digest", enabled: true },
+      { cron: "0 0 * * 0", kind: "send-digest", enabled: false },
+      { cron: "0 0 * * 0", kind: "send-digest", enabled: true },
       HOOK_CTX
     );
     expect(index.rows.size).toBe(0);
@@ -105,8 +105,8 @@ describe("defineScheduleCollection", () => {
     const coll = defineScheduleCollection({ pattern: "schedules/*", index });
     await coll.onInstanceUpdated!(
       "schedules/weekly",
-      { cron: "*/5 * * * *", action: "noop", enabled: true },
-      { cron: "0 0 * * 0", action: "noop", enabled: true },
+      { cron: "*/5 * * * *", kind: "noop", enabled: true },
+      { cron: "0 0 * * 0", kind: "noop", enabled: true },
       HOOK_CTX
     );
     expect(index.rows.size).toBe(1);
@@ -118,7 +118,7 @@ describe("defineScheduleCollection", () => {
     const coll = defineScheduleCollection({ pattern: "schedules/*", index });
     await coll.onInstanceCreated!(
       "schedules/weekly",
-      { cron: "0 0 * * 0", action: "noop", enabled: true },
+      { cron: "0 0 * * 0", kind: "noop", enabled: true },
       HOOK_CTX
     );
     await coll.onInstanceDeleted!("schedules/weekly", HOOK_CTX);
@@ -130,7 +130,7 @@ describe("defineScheduleCollection", () => {
     const coll = defineScheduleCollection({ pattern: "schedules/*", index });
     await coll.onInstanceCreated!(
       "schedules/bad",
-      { cron: "not a cron", action: "noop", enabled: true },
+      { cron: "not a cron", kind: "noop", enabled: true },
       HOOK_CTX
     );
     expect(index.rows.size).toBe(0);

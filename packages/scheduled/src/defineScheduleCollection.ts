@@ -26,10 +26,16 @@ import type { ScheduleIndex, ScheduleIndexRow } from "./scheduleIndex";
  * Schema for the state stored under each schedule resource. Mirrors the
  * shape consumed by `createResourceCollectionScheduleResolver` /
  * `ScheduleResourceState`.
+ *
+ * `kind` is a handler discriminator, not a flow-action name (FIX-838): a
+ * block cannot be serialized into resource state, so the persisted row stores
+ * a string key that the resolver maps to a real block via its host-provided
+ * `blocks` map. This replaces the former `action` field — a breaking change to
+ * the persisted record shape.
  */
 const SCHEDULE_RESOURCE_SCHEMA = z.object({
   cron: z.string(),
-  action: z.string(),
+  kind: z.string(),
   input: z.unknown().optional(),
   timezone: z.string().optional(),
   onOverlap: z.enum(["skip", "allow"]).optional(),
