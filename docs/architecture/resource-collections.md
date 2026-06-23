@@ -116,6 +116,8 @@ interface ResourceRef<TState> {
 
 See [State & Scopes](./state-and-scopes.md) and [Resources & Client Data](./resources-and-client-data.md) for how these fields surface to projections.
 
+**LLM content access (FIX-842).** A collection declares `llmReadable` / `llmWritable` once on its config; the runtime stamps that config onto every instance ref (`createNamespaceInstanceRef` casts `nsConfig` onto `ref.config`), so the generic content tools (`readResourceContentTool` / `writeResourceContentTool`) and content search (`grepResourceContent` / `searchResources`) gate collection instances on the same `ref.config.llmReadable` / `.llmWritable` they use for single resources. Those tools address resources by the unique `uri` above, so resolution stays unambiguous even when two collections share a pattern in different scopes.
+
 ### Parameterized patterns
 
 When a pattern has `[name]` segments, pass an object key instead of a string:

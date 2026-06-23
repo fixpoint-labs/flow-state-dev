@@ -31,6 +31,7 @@ import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
 import { validateSchedulesConfig } from "../types/schedules";
 import { validateChatConfig } from "../types/chat";
+import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
 import { warnDeprecated } from "../helpers/deprecation";
 import { introspectStateKeys } from "../helpers/zod-introspect";
 
@@ -228,23 +229,80 @@ function mergeActions(
 }
 
 /**
- * Collect declaredResources from all action blocks in the flow and merge
- * them together. Returns the union of all block-declared resources.
- * Same accessor key + same `defineResource()` reference deduplicates;
- * different references at the same accessor key throw at this layer.
+ * Apply the flow's `tools` config to every webhook handler block, mirroring
+ * `mergeActions` for caller actions. A webhook binding is an action in webhook
+ * form, so a generator handler must see the flow-level `tools` (tool
+ * timeout/concurrency/retry defaults, `onToolStarted`/`onToolCompleted`
+ * observers) exactly as it would as a caller action. `withFlowTools` only
+ * rewrites a root generator block (a no-op otherwise), so non-generator
+ * handlers pass through. Returns the input unchanged when the flow declares no
+ * webhooks or no flow-level tools — those flows are wholly unaffected (same
+ * object identity). Assumes `validateWebhookConfig` already ran, so every
+ * binding has a real `block`.
  */
-function collectBlockResources(actions: AnyActions): DeclaredResources | undefined {
+function withFlowToolsWebhooks(
+  webhooks: WebhookConfig | undefined,
+  flowTools: ToolsConfig | undefined
+): WebhookConfig | undefined {
+  if (webhooks === undefined || flowTools === undefined) return webhooks;
+  const result: WebhookConfig = {};
+  for (const [provider, sub] of Object.entries(webhooks)) {
+    const on: Record<string, WebhookEventBinding> = {};
+    for (const [eventKey, binding] of Object.entries(sub.on)) {
+      on[eventKey] = { ...binding, block: withFlowTools(binding.block, flowTools) };
+    }
+    result[provider] = { ...sub, on };
+  }
+  return result;
+}
+
+/**
+ * Every executable block the flow declares: each caller-addressed action's
+ * block plus each webhook binding's handler block. A webhook binding is an
+ * action in webhook form, carrying its handler inline, so its block must
+ * participate in resource and `requireOrg` aggregation exactly like a
+ * `flow.actions` block — otherwise webhook-declared resources never prefetch
+ * and webhook `requireOrg` is never detected.
+ */
+function actionBlocks(
+  actions: AnyActions,
+  webhooks: WebhookConfig | undefined
+): BlockDefinition[] {
+  const blocks: BlockDefinition[] = [];
+  for (const action of Object.values(actions)) blocks.push(action.block);
+  if (webhooks !== undefined) {
+    for (const sub of Object.values(webhooks)) {
+      for (const binding of Object.values(sub.on)) blocks.push(binding.block);
+    }
+  }
+  return blocks;
+}
+
+/**
+ * Collect declaredResources from every action block in the flow (caller +
+ * webhook) and merge them together. Returns the union of all block-declared
+ * resources. Same accessor key + same `defineResource()` reference
+ * deduplicates; different references at the same accessor key throw at this
+ * layer.
+ */
+function collectBlockResources(
+  actions: AnyActions,
+  webhooks: WebhookConfig | undefined
+): DeclaredResources | undefined {
   let collected: DeclaredResources | undefined;
-  for (const action of Object.values(actions)) {
-    collected = mergeDeclaredResources(collected, action.block.declaredResources);
+  for (const block of actionBlocks(actions, webhooks)) {
+    collected = mergeDeclaredResources(collected, block.declaredResources);
   }
   return collected;
 }
 
-/** True when any action's root block (or any of its descendants) opted into `requireOrg`. */
-function collectRequiresOrg(actions: AnyActions): boolean {
-  for (const action of Object.values(actions)) {
-    if (action.block.requiresOrg) return true;
+/** True when any action block (caller or webhook) opted into `requireOrg`. */
+function collectRequiresOrg(
+  actions: AnyActions,
+  webhooks: WebhookConfig | undefined
+): boolean {
+  for (const block of actionBlocks(actions, webhooks)) {
+    if (block.requiresOrg) return true;
   }
   return false;
 }
@@ -502,7 +560,22 @@ function createFlowInstance(
   const isolateUserState = options?.isolateUserState ?? definition.isolateUserState ?? false;
   const isolateOrgState = options?.isolateOrgState ?? definition.isolateOrgState ?? false;
 
-  const blockResources = collectBlockResources(actions);
+  const chat = definition.chat;
+
+  // Validate transport configs before any aggregation walks their blocks: a
+  // webhook binding's handler block participates in resource/`requireOrg`
+  // collection, so a malformed binding must be rejected here with a clear
+  // message rather than crashing the aggregation (or the tools wrap below).
+  validateChatConfig(kind, chat, actions);
+  validateWebhookConfig(kind, definition.webhooks);
+
+  // Apply flow-level `tools` to each webhook handler block the same way
+  // `mergeActions` does for caller actions, so a webhook generator handler runs
+  // identically to its caller-action twin. Runs after validation (which
+  // guarantees a real `block`); a no-op when the flow declares no tools.
+  const webhooks = withFlowToolsWebhooks(definition.webhooks, tools);
+
+  const blockResources = collectBlockResources(actions, webhooks);
   const flowOwnResources = options?.resources ?? definition.resources;
   // Accessor keys declared in the flow's OWN `resources` map, captured before
   // block-tree/capability resources bubble up and merge in (FIX-688). The
@@ -541,14 +614,11 @@ function createFlowInstance(
   const schedules = definition.schedules;
   validateSchedulesConfig(kind, schedules, actions);
 
-  const chat = definition.chat;
-  validateChatConfig(kind, chat, actions);
-
   return {
     id: options?.id ?? kind,
     kind,
     requireUser,
-    requiresOrg: collectRequiresOrg(actions),
+    requiresOrg: collectRequiresOrg(actions, webhooks),
     authentication,
     actions,
     session,
@@ -563,6 +633,7 @@ function createFlowInstance(
     middleware: options?.middleware ?? definition.middleware,
     mcp,
     chat,
+    webhooks,
     schedules,
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator,
@@ -615,6 +686,7 @@ export function defineFlow<
     middleware: baseInstance.middleware,
     mcp: baseInstance.mcp,
     chat: baseInstance.chat,
+    webhooks: baseInstance.webhooks,
     schedules: baseInstance.schedules,
     tokenCounter: baseInstance.tokenCounter,
     costEstimator: baseInstance.costEstimator,

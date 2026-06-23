@@ -2,39 +2,48 @@ import fs from "node:fs";
 import path from "node:path";
 
 const rootDir = process.cwd();
-const packages = ["core", "server", "client", "react", "testing", "cli", "store-sqlite"];
+const packages = ["contracts", "core", "server", "client", "react", "testing", "cli", "store-sqlite"];
 
 const packageRules = {
-  core: {
+  // The zero-dependency shared layer: imports no workspace package. Its
+  // dependency-freeness is additionally guarded by contracts-zero-dep.spec.ts.
+  contracts: {
     allow: new Set([]),
+    typeOnly: new Set([]),
+    deny: new Set(["core", "server", "client", "react", "testing", "cli", "store-sqlite"])
+  },
+  core: {
+    allow: new Set(["contracts"]),
     typeOnly: new Set([])
   },
   server: {
-    allow: new Set(["core"]),
+    allow: new Set(["contracts", "core"]),
     typeOnly: new Set([]),
     deny: new Set(["client", "react"])
   },
   client: {
-    allow: new Set(["core"]),
+    // `contracts` is value-importable; `core` stays type-only for browser code.
+    allow: new Set(["contracts", "core"]),
     typeOnly: new Set(["core"]),
     deny: new Set(["server", "react"])
   },
   react: {
-    allow: new Set(["core", "client"]),
+    // `contracts` is value-importable; `core` stays type-only for browser code.
+    allow: new Set(["contracts", "core", "client"]),
     typeOnly: new Set(["core"]),
     deny: new Set(["server"])
   },
   testing: {
-    allow: new Set(["core", "server"]),
+    allow: new Set(["contracts", "core", "server"]),
     typeOnly: new Set([]),
     deny: new Set(["client", "react"])
   },
   cli: {
-    allow: new Set(["core", "server", "testing", "store-sqlite"]),
+    allow: new Set(["contracts", "core", "server", "testing", "store-sqlite"]),
     typeOnly: new Set([])
   },
   "store-sqlite": {
-    allow: new Set(["core", "server"]),
+    allow: new Set(["contracts", "core", "server"]),
     typeOnly: new Set(["server"]),
     deny: new Set(["client", "react"])
   }

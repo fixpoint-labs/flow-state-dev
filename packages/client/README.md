@@ -57,6 +57,34 @@ const stream = createSSEClient({
 });
 ```
 
+## Stream state store
+
+`createSSEClient` hands you raw event callbacks. If you want those events folded into a ready-to-render item list — sorted, with streaming text accumulated and resumed or crash-recovered duplicate emissions collapsed — without writing your own reducer, use the request stream store. It's the same accumulator the React hooks use, lifted out so non-React consumers (a Node script, a custom UI framework, the DevTool) can share one tested reducer.
+
+```ts
+import {
+  createRequestStreamStore,
+  bindStoreToCallbacks,
+  createSSEClient,
+} from "@flow-state-dev/client";
+
+const store = createRequestStreamStore();
+
+createSSEClient({
+  url: `/api/flows/my-app/requests/${requestId}/stream`,
+  ...bindStoreToCallbacks(store, {
+    onChange: () => {
+      store.flushDeltas();        // apply buffered text deltas
+      render(store.getSorted());  // your render / notify hook
+    },
+  }),
+});
+```
+
+`bindStoreToCallbacks` is the shared reducer: it maps each SSE event to a store mutation and calls `onChange("item" | "content" | "status")` so you decide when to snapshot — synchronously, or batched on an animation frame for trace-heavy views. The store buffers content deltas, so call `store.flushDeltas()` before reading `getSorted()`. The same binder works with `createSSEClientFromResponse` when you already hold a streamed POST `Response`.
+
+If you're on React you don't need this — `useSession` and `useRequestStream` wrap the store for you.
+
 ## Session management
 
 ```ts
@@ -139,6 +167,8 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
 - `createSessionClient(options)` — Session CRUD and state snapshots
 - `createSSEClient(options)` — Request stream consumer
 - `createUserSSEClient(options)` — User-level stream consumer
+- `createRequestStreamStore()` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
+- `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)
 - `createRecoveryClient(options)` — Sweep stale requests and retry interrupted/failed ones
 - `createResourceClient(options)` — Resource content fetch, CRUD, paginated state reads, and manifest
 - `client.abortRequest(requestId)` — Signal the server to abort an in-progress request

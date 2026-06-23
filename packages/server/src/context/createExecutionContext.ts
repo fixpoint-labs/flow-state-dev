@@ -52,6 +52,7 @@ import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
+import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
@@ -1342,9 +1343,17 @@ export async function createExecutionContext<
   // dispatch (Wave 3); lazy collections fetch on demand via their async
   // accessor. The flow-level subset loaded at Wave 1 is skipped here (already
   // cached / prefix-seeded).
-  const dispatchedActionBlock = (
-    flow.actions as Record<string, { block?: { declaredResources?: Record<string, ResourceConfig | ResourceCollectionConfig> } }> | undefined
-  )?.[options.actionName]?.block;
+  // Form-aware: a webhook dispatch's handler lives on `flow.webhooks`, not
+  // `flow.actions`, so resolve through the shared seam (gated on the webhook
+  // source + keyed on `metadata.webhook`) rather than indexing `flow.actions`.
+  const dispatchedActionBlock = resolveActionCore(
+    flow,
+    options.actionName,
+    options.source,
+    options.metadata
+  )?.block as
+    | { declaredResources?: Record<string, ResourceConfig | ResourceCollectionConfig> }
+    | undefined;
   if (dispatchedActionBlock?.declaredResources !== undefined) {
     await loadDeclaredResourcesIntoCache(dispatchedActionBlock.declaredResources, {
       loadLazySingles: false
@@ -1722,7 +1731,12 @@ export async function createExecutionContext<
     }
 
     const totalConsumed = Object.values(byModel).reduce((acc, model) => acc + model.total, 0);
-    const maxBudget = flow.actions[options.actionName]?.tokenBudget?.maxTotalTokens;
+    const maxBudget = resolveActionCore(
+      flow,
+      options.actionName,
+      options.source,
+      options.metadata
+    )?.tokenBudget?.maxTotalTokens;
 
     return {
       totalConsumed,

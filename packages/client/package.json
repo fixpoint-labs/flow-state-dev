@@ -53,6 +53,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@flow-state-dev/contracts": "workspace:*",
     "@flow-state-dev/core": "workspace:*"
   },
   "devDependencies": {

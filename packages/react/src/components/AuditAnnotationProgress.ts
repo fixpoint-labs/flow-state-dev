@@ -6,7 +6,11 @@
  */
 import { createElement, useState, type ReactNode } from "react";
 import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
-import { resolveBlockValueLocal as resolveValue } from "../internal/block-value-resolver";
+// Canonical BlockValue resolution from the zero-dependency contracts layer
+// (replaces the hand-mirrored `resolveBlockValueLocal`). `resolveBlockValueInternal`
+// follows `ref` outputs (FIX-480) the way the previous local resolver did.
+import { buildItemLookup } from "@flow-state-dev/contracts";
+import { resolveBlockValueInternal as resolveValue } from "@flow-state-dev/contracts/items/internal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,7 +68,7 @@ function extractAnalyzerResults(items: OutputItem[]): AnalyzerStatus[] {
       // Resolve BlockValue union to its typed payload (FIX-413).
       const output = resolveValue(
         (item as BlockTraceItem).output,
-        items,
+        buildItemLookup(items),
       ) as { results?: AnalyzerStatus[] } | undefined;
       return output?.results ?? [];
     }
@@ -82,7 +86,7 @@ function extractOverallScore(items: OutputItem[]): number | null {
     ) {
       const output = resolveValue(
         (item as BlockTraceItem).output,
-        items,
+        buildItemLookup(items),
       ) as { overallScore?: number } | undefined;
       return output?.overallScore ?? null;
     }

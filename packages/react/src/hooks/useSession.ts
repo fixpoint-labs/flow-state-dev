@@ -23,6 +23,9 @@ import type {
   SessionMetadataChangedEvent,
   StateChangeItem
 } from "@flow-state-dev/core/items";
+// Canonical helper from the zero-dependency contracts layer (value-import).
+// Previously hand-mirrored here because react may only type-import core.
+import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
 import {
   isReducibleStateChange,
@@ -35,20 +38,6 @@ import {
 import { compareItemOrder, createItemStore } from "../internal/item-store";
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
-
-// Mirrors `resolveItemVisibility` from `@flow-state-dev/core/items` —
-// inlined because this package may only import types from core.
-const TRACE_TYPES = new Set(["block_trace", "router_decision", "state_snapshot"]);
-const CONVERSATIONAL_TYPES = new Set(["message", "reasoning", "tool_output"]);
-const CONVERSATIONAL_DEFAULT: ItemVisibility = { client: true, history: true };
-const STRUCTURAL_DEFAULT: ItemVisibility = { client: true, history: false };
-const TRACE_DEFAULT: ItemVisibility = { client: false, history: false };
-function resolveItemVisibility(item: OutputItem): ItemVisibility {
-  if (TRACE_TYPES.has(item.type)) return TRACE_DEFAULT;
-  if (CONVERSATIONAL_TYPES.has(item.type)) return item.itemVisibility ?? CONVERSATIONAL_DEFAULT;
-  return STRUCTURAL_DEFAULT;
-}
-
 
 /**
  * Items subscription configuration for useSession.

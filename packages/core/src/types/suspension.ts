@@ -9,18 +9,12 @@
  * completed steps and continue from the suspension point.
  */
 
-export type SuspensionStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "timed_out"
-  | "expired";
-
-export type SuspensionReason =
-  | "human_approval"
-  | "human_input"
-  | "external_event"
-  | (string & {});
+// `SuspensionStatus` and `SuspensionReason` are pure leaf types consumed by
+// the item taxonomy, so their declarations live in the zero-dependency
+// `@flow-state-dev/contracts` layer. Re-exported here to preserve this path's
+// surface; the record/filter machinery below still references them locally.
+import type { SuspensionReason, SuspensionStatus } from "@flow-state-dev/contracts";
+export type { SuspensionReason, SuspensionStatus };
 
 export interface SuspensionRecord {
   suspensionId: string;

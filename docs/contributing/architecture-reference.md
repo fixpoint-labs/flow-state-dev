@@ -24,6 +24,8 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
   → [Inbound Transports](../architecture/inbound-transports.md)
 - Scheduled actions: `schedules` config on `defineFlow` (`static` map + dynamic `resolve` hook), `ScheduleConfig`, dispatch route `POST /api/flows/:kind/schedules/:scheduleId/dispatch`
   → [Scheduled Actions](../architecture/scheduled-actions.md)
+- Webhook receivers: `webhooks` config on `defineFlow` (`WebhookConfig` = per-provider `{ on }`, `WebhookSubscriptionConfig`, `WebhookEventBinding extends ActionCore` — the handler lives on `flow.webhooks`, never `flow.actions`), framework-owned `WebhookInboundEvent` (`core`), host-side `WebhookProviderDefinition` (`server`, carries `verify` + crypto), route `POST /api/flows/:kind/webhooks/:provider`, `source: "webhook"`
+  → [Webhook Transport](../architecture/webhook-transport.md)
 
 ## Sequencer Surface (21 methods)
 
@@ -90,7 +92,8 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 | Package | Role | Key constraint |
 |---------|------|----------------|
-| `core` | Isomorphic builders/types/items | No platform-specific code |
+| `contracts` | Zero-dep shared layer (item taxonomy + leaf types) | Imports no workspace package; declares no dependencies (guarded). `core` re-exports it |
+| `core` | Isomorphic builders/types/items | No platform-specific code; value-imports `contracts` |
 | `server` | Execution/runtime/stores/streaming/routes | No dependency on react or client |
 | `client` | Transport + session/request APIs | No dependency on server or react |
 | `react` | Hooks/renderers only | Wraps client; no transport logic |

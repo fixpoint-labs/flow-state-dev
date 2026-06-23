@@ -1,8 +1,21 @@
+/**
+ * DevTool request-stream hook. Subscribes to a request's SSE stream and drives
+ * the shared `RequestStreamStore` (the one deduplicated SSE→state reducer in
+ * `@flow-state-dev/client`) via `bindStoreToCallbacks`, exposing a
+ * `streamState` snapshot the panel renders. Item/content changes coalesce on a
+ * RAF; status transitions flush immediately so the request badge updates
+ * without a frame's lag. The DevTool always GET-streams by request id (with
+ * `?include=trace`) and shows every item — it does not pass an `itemFilter`.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
-import type { RequestStatus, RequestStreamEvent } from "@flow-state-dev/core/items";
-import { ITEM_UPDATE_INVARIANT_KEYS } from "@flow-state-dev/core/items";
-import type { RequestStreamHandle } from "@flow-state-dev/client";
+import type { OutputItem, RequestStatus, RequestStatusEvent } from "@flow-state-dev/core/items";
+import {
+  bindStoreToCallbacks,
+  createRequestStreamStore,
+  type RequestStreamChangeKind,
+  type RequestStreamHandle,
+  type RequestStreamStore,
+} from "@flow-state-dev/client";
 import { connectRequestStream } from "../lib/client";
 import { useDevTool } from "../context/devtool-context";
 
@@ -10,37 +23,35 @@ export type StreamStatus = "idle" | "connecting" | "streaming" | "completed" | "
 
 export type StreamState = {
   requestId: string;
-  status: RequestStatus | "created";
+  status: RequestStatus;
   items: Map<string, OutputItem>;
   itemOrder: string[];
   lastSequenceNumber: number;
-  contentBuffers: Map<string, string>;
-  terminalEvents: RequestStreamEvent[];
+  /** Every `request.*` status event seen, in arrival order (the resume cursor). */
+  statusEvents: RequestStatusEvent[];
 };
 
-function createEmptyStreamState(requestId: string): StreamState {
-  return {
-    requestId,
-    status: "created",
-    items: new Map(),
-    itemOrder: [],
-    lastSequenceNumber: 0,
-    contentBuffers: new Map(),
-    terminalEvents: [],
-  };
-}
-
-/** Create a deep snapshot of the mutable state for React */
-function snapshotState(state: StreamState): StreamState {
-  return {
-    requestId: state.requestId,
-    status: state.status,
-    items: new Map(state.items),
-    itemOrder: [...state.itemOrder],
-    lastSequenceNumber: state.lastSequenceNumber,
-    contentBuffers: new Map(state.contentBuffers),
-    terminalEvents: [...state.terminalEvents],
-  };
+/**
+ * Map the store's `RequestStatus` onto the panel's coarser connection-phase
+ * status. The connecting/idle/disconnected phases are owned by the hook (set
+ * imperatively around connect/error); terminal request states collapse to
+ * `completed`/`failed` for badge display.
+ */
+function deriveStreamStatus(status: RequestStatus): StreamStatus {
+  switch (status) {
+    case "completed":
+    case "incomplete":
+    case "suspended":
+    case "aborted":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "interrupted":
+      return "disconnected";
+    case "in_progress":
+    default:
+      return "streaming";
+  }
 }
 
 export type UseRequestStreamOptions = {
@@ -78,35 +89,62 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
   const [error, setError] = useState<string | null>(null);
   const handleRef = useRef<RequestStreamHandle | null>(null);
 
-  // Mutable accumulator lives outside React state.
-  // We flush snapshots into React state via RAF throttling.
-  const stateRef = useRef<StreamState | null>(null);
+  // The shared reducer lives outside React state for the whole hook lifetime;
+  // each (re)connect `clear()`s it. Snapshots are flushed into React state via
+  // RAF throttling (items/content) or immediately (status).
+  const storeRef = useRef<RequestStreamStore | null>(null);
+  if (storeRef.current === null) storeRef.current = createRequestStreamStore();
+  const requestIdRef = useRef<string | null>(null);
   const rafRef = useRef<number | null>(null);
   const isDirtyRef = useRef(false);
+
+  // Build a fresh immutable snapshot of the store for React. The store already
+  // returns fresh arrays/objects (canonical-collapsed, sorted), so no deep copy
+  // is needed — we just project the sorted view into the panel's shape.
+  const buildSnapshot = useCallback((): StreamState | null => {
+    const store = storeRef.current;
+    const rid = requestIdRef.current;
+    if (!store || rid === null) return null;
+    const items = store.getSorted();
+    const map = new Map<string, OutputItem>();
+    const itemOrder: string[] = [];
+    for (const item of items) {
+      map.set(item.id, item);
+      itemOrder.push(item.id);
+    }
+    return {
+      requestId: rid,
+      status: store.status,
+      items: map,
+      itemOrder,
+      lastSequenceNumber: store.lastSequenceNumber,
+      statusEvents: [...store.statusEvents],
+    };
+  }, []);
 
   const scheduleFlush = useCallback(() => {
     if (rafRef.current !== null) return; // already scheduled
     isDirtyRef.current = true;
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
-      if (isDirtyRef.current && stateRef.current) {
+      if (isDirtyRef.current) {
         isDirtyRef.current = false;
-        setStreamState(snapshotState(stateRef.current));
+        storeRef.current?.flushDeltas();
+        setStreamState(buildSnapshot());
       }
     });
-  }, []);
+  }, [buildSnapshot]);
 
-  /** Flush immediately for important state transitions (status changes) */
+  /** Flush immediately for important state transitions (status changes). */
   const flushNow = useCallback(() => {
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
     isDirtyRef.current = false;
-    if (stateRef.current) {
-      setStreamState(snapshotState(stateRef.current));
-    }
-  }, []);
+    storeRef.current?.flushDeltas();
+    setStreamState(buildSnapshot());
+  }, [buildSnapshot]);
 
   const close = useCallback(() => {
     if (handleRef.current) {
@@ -120,10 +158,13 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
   }, []);
 
   useEffect(() => {
+    const store = storeRef.current!;
+
     if (!enabled || !flowKind || !requestId) {
       close();
       if (!requestId) {
-        stateRef.current = null;
+        requestIdRef.current = null;
+        store.clear();
         setStreamState(null);
         setStreamStatus("idle");
       }
@@ -131,142 +172,35 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
     }
 
     close();
-    const state = createEmptyStreamState(requestId);
-    stateRef.current = state;
-    setStreamState(snapshotState(state));
+    store.clear();
+    requestIdRef.current = requestId;
+    setStreamState(buildSnapshot());
     setStreamStatus("connecting");
     setError(null);
 
-    const itemIdSet = new Set<string>();
+    // Item/content mutations coalesce on a RAF; status changes are handled by
+    // the wrapped status callbacks below (which flush immediately), so they are
+    // skipped here to avoid a redundant second flush.
+    const onChange = (kind: RequestStreamChangeKind): void => {
+      if (kind === "status") return;
+      scheduleFlush();
+    };
+
+    const binder = bindStoreToCallbacks(store, { onChange });
 
     const handle = connectRequestStream(flowKind, requestId, {
       startingAfter,
       lastEventId,
+      ...binder,
       onRequestCreated: (event) => {
-        state.status = "in_progress";
-        state.lastSequenceNumber = event.sequence_number;
+        binder.onRequestCreated?.(event);
         setStreamStatus("streaming");
         flushNow();
       },
       onRequestStatus: (event) => {
-        state.lastSequenceNumber = event.sequence_number;
-        if (event.type === "request.completed") {
-          state.status = "completed";
-          setStreamStatus("completed");
-        } else if (event.type === "request.failed") {
-          state.status = "failed";
-          setStreamStatus("failed");
-        } else if (event.type === "request.incomplete") {
-          state.status = "incomplete";
-          setStreamStatus("completed");
-        } else if (event.type === "request.in_progress") {
-          state.status = "in_progress";
-          setStreamStatus("streaming");
-        } else if (event.type === "request.suspended") {
-          // FIX-811: a request that pauses at a ctx.suspend() gate streams
-          // `request.suspended` then closes. Without this branch the DevTool
-          // left the badge on "in_progress" until a manual refresh, hiding the
-          // approval gate. Stop the live spinner; the segment is done until resume.
-          state.status = "suspended";
-          setStreamStatus("completed");
-        } else if (event.type === "request.interrupted") {
-          state.status = "interrupted";
-          setStreamStatus("disconnected");
-        } else if (event.type === "request.aborted") {
-          state.status = "aborted";
-          setStreamStatus("completed");
-        }
-        state.terminalEvents.push(event);
+        binder.onRequestStatus?.(event);
+        setStreamStatus(deriveStreamStatus(store.status));
         flushNow();
-      },
-      onItemAdded: (event) => {
-        state.lastSequenceNumber = event.sequence_number;
-        const item = event.item;
-        state.items.set(item.id, item);
-        if (!itemIdSet.has(item.id)) {
-          itemIdSet.add(item.id);
-          state.itemOrder.push(item.id);
-        }
-        scheduleFlush();
-      },
-      onItemDone: (event) => {
-        state.lastSequenceNumber = event.sequence_number;
-        const item = event.item;
-        state.items.set(item.id, item);
-        scheduleFlush();
-      },
-      onItemUpdated: (event) => {
-        state.lastSequenceNumber = event.sequence_number;
-        const existing = state.items.get(event.itemId);
-        // Out-of-order: update arrived before item.added (e.g. mid-stream
-        // reconnect). Drop silently — itemOrder isn't mutated either way.
-        if (!existing) return;
-        const sanitized: Record<string, unknown> = {};
-        for (const key of Object.keys(event.patch)) {
-          if ((ITEM_UPDATE_INVARIANT_KEYS as ReadonlyArray<string>).includes(key)) continue;
-          sanitized[key] = event.patch[key];
-        }
-        state.items.set(event.itemId, { ...existing, ...sanitized } as OutputItem);
-        scheduleFlush();
-      },
-      onContentDelta: (event) => {
-        state.lastSequenceNumber = event.sequence_number;
-        const key = `${event.itemId}:${event.contentIndex}`;
-        const existing = state.contentBuffers.get(key) ?? "";
-        state.contentBuffers.set(key, existing + event.delta);
-
-        const item = state.items.get(event.itemId);
-        if (item) {
-          // Items use either `content` (messages) or `summary` (reasoning)
-          const contentArray =
-            ("content" in item && Array.isArray(item.content)) ? item.content :
-            ("summary" in item && Array.isArray(item.summary)) ? item.summary :
-            null;
-          if (contentArray) {
-            const part = contentArray[event.contentIndex];
-            if (part && "text" in part) {
-              part.text = state.contentBuffers.get(key) ?? "";
-              state.items.set(event.itemId, { ...item });
-            }
-          }
-        }
-        scheduleFlush();
-      },
-      onContentAdded: (event) => {
-        state.lastSequenceNumber = event.sequence_number;
-        const item = state.items.get(event.itemId);
-        if (item) {
-          const contentArray =
-            ("content" in item && Array.isArray(item.content)) ? item.content :
-            ("summary" in item && Array.isArray(item.summary)) ? item.summary :
-            null;
-          if (contentArray) {
-            if (contentArray.length <= event.contentIndex) {
-              contentArray.push(event.content);
-            } else {
-              contentArray[event.contentIndex] = event.content;
-            }
-            state.items.set(event.itemId, { ...item });
-          }
-        }
-        scheduleFlush();
-      },
-      onContentDone: (event) => {
-        state.lastSequenceNumber = event.sequence_number;
-        const item = state.items.get(event.itemId);
-        if (item) {
-          const contentArray =
-            ("content" in item && Array.isArray(item.content)) ? item.content :
-            ("summary" in item && Array.isArray(item.summary)) ? item.summary :
-            null;
-          if (contentArray) {
-            contentArray[event.contentIndex] = event.content;
-            state.items.set(event.itemId, { ...item });
-          }
-        }
-        const key = `${event.itemId}:${event.contentIndex}`;
-        state.contentBuffers.delete(key);
-        scheduleFlush();
       },
       onSessionMetadataChanged: onSessionMetadataChanged
         ? () => { onSessionMetadataChanged(); }
@@ -289,7 +223,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         rafRef.current = null;
       }
     };
-  }, [flowKind, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, close, scheduleFlush, flushNow, onSessionMetadataChanged]);
+  }, [flowKind, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, close, scheduleFlush, flushNow, buildSnapshot, onSessionMetadataChanged]);
 
   const items = useMemo(
     () => streamState

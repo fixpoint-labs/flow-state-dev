@@ -1,78 +1,73 @@
+// ---------------------------------------------------------------------------
+// Generic content read/write tool blocks for the LLM tool surface.
+//
+// These address resources by their scope-qualified `uri` (`${scope}/${path}`),
+// the same handle the navigation tools (`globResources` / `grepResourceContent`
+// / `searchResources`) emit — so the agent can discover a resource with glob/grep
+// and feed the returned uri straight to read/write. The uri is unique across
+// scopes (FIX-842), so resolution is unambiguous even when two collections share
+// a pattern in different scopes. Both static resources and collection instances
+// are covered: a collection opts in with `llmReadable` / `llmWritable` on its
+// definition, which the server threads onto every instance ref's `config`.
+// ---------------------------------------------------------------------------
+
 import { z } from "zod";
-import type { BlockContext } from "../types/block";
-import type { ResourceRef } from "../types/resource";
 import { handler } from "../blocks/handler";
-
-function toResourcePath(resource: ResourceRef<any>): string {
-  return resource.uri;
-}
-
-function listResources(ctx: BlockContext): ResourceRef<any>[] {
-  const registry = ctx.resources;
-  if (registry === undefined) return [];
-
-  // Filter out collection refs — only static ResourceRefs have content
-  return registry.list().filter((entry: any): entry is ResourceRef<any> =>
-    !("pattern" in entry && "create" in entry)
-  );
-}
+import { collectReadableResources, isLlmReadable, isLlmWritable, resolveResourceByUri } from "./resource-tools";
 
 /**
- * Tool block for reading rendered resource content.
+ * Tool block for reading rendered resource content, keyed by scope-qualified uri.
  *
- * Input `path` is optional:
- * - omitted: returns available readable resource paths
- * - provided: returns rendered content for that path
+ * Input `uri` is optional:
+ * - omitted: returns the uris of every readable resource (static + collection instance)
+ * - provided: returns rendered content for that uri
  */
 export function readResourceContentTool() {
   return handler({
     name: "readResourceContent",
-    description: "Read rendered resource content. With no path, returns available readable paths.",
-    inputSchema: z.object({ path: z.string().optional() }),
+    description:
+      "Read rendered resource content by its scope-qualified uri (e.g. 'session/artifacts/memo-1'). With no uri, returns the uris you can read.",
+    inputSchema: z.object({ uri: z.string().optional() }),
     outputSchema: z.object({
-      paths: z.array(z.string()).optional(),
-      path: z.string().optional(),
+      uris: z.array(z.string()).optional(),
+      uri: z.string().optional(),
       content: z.string().nullable().optional()
     }),
     execute: async (input, ctx) => {
-      const readable = listResources(ctx).filter((resource) => resource.config.llmReadable === true);
-
-      if (input.path === undefined) {
-        return { paths: readable.map((resource) => toResourcePath(resource)).sort() };
+      if (input.uri === undefined) {
+        const readable = await collectReadableResources(ctx);
+        return { uris: readable.map((ref) => ref.uri).sort() };
       }
 
-      const resource = readable.find((entry) => toResourcePath(entry) === input.path);
-      if (resource === undefined) {
-        throw new Error(`Readable resource not found for path: ${input.path}`);
+      const ref = await resolveResourceByUri(input.uri, ctx);
+      if (ref === undefined || !isLlmReadable(ref)) {
+        throw new Error(`Readable resource not found for uri: ${input.uri}`);
       }
 
-      return {
-        path: input.path,
-        content: await resource.readContent()
-      };
+      return { uri: input.uri, content: await ref.readContent() };
     }
   });
 }
 
 /**
- * Tool block for overwriting resource content when `llmWritable` is enabled.
+ * Tool block for overwriting resource content when `llmWritable` is enabled,
+ * keyed by scope-qualified uri.
  */
 export function writeResourceContentTool() {
   return handler({
     name: "writeResourceContent",
-    description: "Overwrite resource content for an llmWritable resource path.",
-    inputSchema: z.object({ path: z.string(), content: z.string() }),
-    outputSchema: z.object({ path: z.string(), ok: z.literal(true) }),
+    description:
+      "Overwrite resource content for an llmWritable resource, addressed by its scope-qualified uri (e.g. 'session/artifacts/memo-1').",
+    inputSchema: z.object({ uri: z.string(), content: z.string() }),
+    outputSchema: z.object({ uri: z.string(), ok: z.literal(true) }),
     execute: async (input, ctx) => {
-      const resource = listResources(ctx)
-        .find((entry) => toResourcePath(entry) === input.path && entry.config.llmWritable === true);
-
-      if (resource === undefined) {
-        throw new Error(`Writable resource not found for path: ${input.path}`);
+      const ref = await resolveResourceByUri(input.uri, ctx);
+      if (ref === undefined || !isLlmWritable(ref)) {
+        throw new Error(`Writable resource not found for uri: ${input.uri}`);
       }
 
-      await resource.writeContent(input.content);
-      return { path: input.path, ok: true };
+      await ref.writeContent(input.content);
+      return { uri: input.uri, ok: true as const };
     }
   });
 }

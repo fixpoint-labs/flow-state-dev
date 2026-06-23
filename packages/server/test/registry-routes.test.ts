@@ -908,4 +908,172 @@ describe("createFlowApiRouter", () => {
       expect(response.status).toBe(202);
     });
   });
+
+  // FIX-439: a webhook binding is an action in webhook form — it lives on
+  // `flow.webhooks`, never `flow.actions`, so it has no caller-addressed HTTP
+  // surface. And a webhook-originated request must not be re-runnable from the
+  // public retry/continue routes (which carry no signature check), so those
+  // routes 404 webhook-sourced records.
+  describe("webhook handlers stay off the caller-addressed surface", () => {
+    function makeWebhookFlow(): FlowInstance {
+      return defineFlow({
+        kind: "wh-flow",
+        actions: {
+          run: {
+            inputSchema: z.object({ value: z.string() }),
+            block: handler<{ value: string }, { ok: true }>({
+              name: "wh-flow-run",
+              execute: () => ({ ok: true })
+            })
+          }
+        },
+        webhooks: {
+          stripe: {
+            on: {
+              "invoice.paid": {
+                block: handler<{ id: string }, { ok: true }>({
+                  name: "wh-flow-paid",
+                  execute: () => ({ ok: true })
+                }),
+                input: () => ({ id: "in_1" })
+              }
+            }
+          }
+        }
+      })({ id: "wh-flow" });
+    }
+
+    it("lists only the caller-addressed actions; the webhook handler is absent", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeWebhookFlow());
+      const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
+
+      const response = await router.GET(new Request("http://localhost/api/flows"), {
+        params: { path: [] }
+      });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        flows: Array<{ kind: string; actions: string[]; actionSchemas: Record<string, unknown> }>;
+      };
+      const flow = body.flows.find((f) => f.kind === "wh-flow");
+      // The webhook handler is event-addressed (on `flow.webhooks`), so it
+      // never appears in the listing — only the public `run` action does.
+      expect(flow?.actions).toEqual(["run"]);
+      expect(Object.keys(flow?.actionSchemas ?? {})).toEqual(["run"]);
+    });
+
+    // A webhook dispatch persists a request record (source: "webhook"). The
+    // retry endpoint must not re-run it — re-dispatch there carries no signature
+    // check and accepts an `inputOverride`, which would let an HTTP caller feed a
+    // webhook handler arbitrary input.
+    it("returns 404 when retrying a failed webhook-sourced request", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeWebhookFlow());
+      const stores = createInMemoryStores();
+      const router = createFlowApiRouter({ registry, stores });
+
+      const now = Date.now();
+      await stores.request.set(
+        "req_wh",
+        {
+          id: "req_wh",
+          flowKind: "wh-flow",
+          actionName: "wh-flow-paid",
+          sessionId: "sess_wh",
+          userId: "system",
+          source: "webhook",
+          status: "failed",
+          startedAtMs: now,
+          state: {},
+          version: 0,
+          createdAt: now,
+          updatedAt: now
+        },
+        "any"
+      );
+
+      const response = await router.POST(
+        new Request("http://localhost/api/flows/wh-flow/sessions/sess_wh/requests/req_wh/retry", {
+          method: "POST",
+          body: JSON.stringify({ inputOverride: { id: "attacker" } })
+        }),
+        { params: { path: ["wh-flow", "sessions", "sess_wh", "requests", "req_wh", "retry"] } }
+      );
+      expect(response.status).toBe(404);
+    });
+
+    it("returns 404 when continuing an interrupted webhook-sourced request", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeWebhookFlow());
+      const stores = createInMemoryStores();
+      const router = createFlowApiRouter({ registry, stores });
+
+      const now = Date.now();
+      await stores.request.set(
+        "req_wh2",
+        {
+          id: "req_wh2",
+          flowKind: "wh-flow",
+          actionName: "wh-flow-paid",
+          sessionId: "sess_wh2",
+          userId: "system",
+          source: "webhook",
+          status: "interrupted",
+          startedAtMs: now,
+          state: {},
+          version: 0,
+          createdAt: now,
+          updatedAt: now
+        },
+        "any"
+      );
+
+      const response = await router.POST(
+        new Request("http://localhost/api/flows/wh-flow/sessions/sess_wh2/requests/req_wh2/continue", {
+          method: "POST",
+          body: "{}"
+        }),
+        { params: { path: ["wh-flow", "sessions", "sess_wh2", "requests", "req_wh2", "continue"] } }
+      );
+      expect(response.status).toBe(404);
+    });
+
+    it("returns 404 when resuming a suspended webhook-sourced request", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeWebhookFlow());
+      const stores = createInMemoryStores();
+      const router = createFlowApiRouter({ registry, stores });
+
+      const now = Date.now();
+      await stores.request.set(
+        "req_wh3",
+        {
+          id: "req_wh3",
+          flowKind: "wh-flow",
+          actionName: "wh-flow-paid",
+          sessionId: "sess_wh3",
+          userId: "system",
+          source: "webhook",
+          status: "suspended",
+          startedAtMs: now,
+          state: {},
+          version: 0,
+          createdAt: now,
+          updatedAt: now
+        },
+        "any"
+      );
+
+      // The webhook-source guard rejects before the durability-provider check,
+      // so a webhook request 404s on the resume surface regardless of config.
+      const response = await router.POST(
+        new Request("http://localhost/api/flows/wh-flow/requests/req_wh3/resume", {
+          method: "POST",
+          body: JSON.stringify({ suspensionId: "susp_x", action: "approve", data: { ok: true } })
+        }),
+        { params: { path: ["wh-flow", "requests", "req_wh3", "resume"] } }
+      );
+      expect(response.status).toBe(404);
+    });
+  });
 });

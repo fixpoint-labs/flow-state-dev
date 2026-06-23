@@ -2,7 +2,7 @@
 
 First-party component library for AI/agentic UI patterns, distributed via a [shadcn-compatible custom registry](https://ui.shadcn.com/docs/registry).
 
-Components are copied into your project — you own them completely. The only runtime-importable surface is `@flow-state-dev/ui/generative` (the generative-UI bundle pack).
+Components are copied into your project — you own them completely. The only runtime-importable surfaces are `@flow-state-dev/ui/generative/tools` and `@flow-state-dev/ui/generative/renderers` (the generative-UI pack).
 
 For the full UI guide — overview, common components, flow-aware components, and generative UI — see [flow-state.dev/docs/ui](https://flow-state.dev/docs/ui/overview).
 
@@ -120,36 +120,41 @@ Sections render in canonical order (`pending → in_progress → blocked → awa
 
 ### Generative UI
 
-`@flow-state-dev/ui/generative` is the *only* runtime-importable surface in this package. It ships a starter pack of generative-UI shapes — each shape is a bundle of (Zod schema, React renderer, `emit*` tool block) that travels as a unit.
+The generative-UI starter pack ships a set of shapes — each shape is a Zod schema, a React renderer, and an `emit*` tool block. It has two runtime-importable entrypoints, split so the browser never pulls the tool factories (which reach `@flow-state-dev/core` and its heavy dependencies):
+
+- **`@flow-state-dev/ui/generative/tools`** — the *tool surface*. Server-side. Carries the schemas and the `handler`-based `emit*` tool factories. `generativeTools()` returns the blocks ready to drop into a generator's `tools`.
+- **`@flow-state-dev/ui/generative/renderers`** — the *renderer surface*. Browser-side. Carries only the React renderers. `generativeRenderers()` returns the `{ name → component }` registry for FlowProvider.
 
 Generators load the tool factories so the LLM can pick a rendering shape per turn; FlowProvider loads the renderers so the emitted items render in place.
 
 ```ts
 // flow.ts (server-side)
-import { generativeUI } from "@flow-state-dev/ui/generative";
+import { generativeTools } from "@flow-state-dev/ui/generative/tools";
 
 const tripGenerator = generator({
   name: "trip-concierge",
   itemVisibility: { client: true, history: true },
   prompt: TRIP_CONCIERGE_PROMPT,
-  tools: [...generativeUI.tools(), webSearch],
+  tools: [...generativeTools(), webSearch],
 });
 ```
 
 ```tsx
 // app.tsx (client-side)
-import { generativeUI } from "@flow-state-dev/ui/generative";
+import { generativeRenderers } from "@flow-state-dev/ui/generative/renderers";
 
 <FlowProvider
   flowKind="trip-concierge"
   userId={userId}
-  renderers={{ component: generativeUI.renderers() }}
+  renderers={{ component: generativeRenderers() }}
 >
   <ChatUI />
 </FlowProvider>
 ```
 
-Use `generativeUI.pick("info-card", "link-card")` to ship a tighter palette — fewer tools yields better selection accuracy on smaller models.
+Use `generativeTools.pick("info-card", "link-card")` (and the matching `generativeRenderers.pick(...)`) to ship a tighter palette — fewer tools yields better selection accuracy on smaller models.
+
+> **Migration (from the fused `generativeUI` object).** The previous single entrypoint `@flow-state-dev/ui/generative` exported one `generativeUI` object with `.tools()` / `.renderers()`. It is replaced by the two entrypoints above: `generativeUI.tools()` → `generativeTools()` (from `.../generative/tools`), `generativeUI.renderers()` → `generativeRenderers()` (from `.../generative/renderers`). This is what keeps the renderer surface free of the authoring runtime.
 
 #### Phase 1 starter shapes
 

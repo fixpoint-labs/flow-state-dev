@@ -164,14 +164,16 @@ export function createPostgresRequestStore(
   /** Holds the most recent items so the queued write always uses the latest data. */
   const latestItemSnapshots = new Map<string, OutputItem[]>();
   /**
-   * Per-request map of the item references that were last persisted to
-   * `request_items`. ResponseEmitter swaps the item reference on each
-   * item-boundary event, so reference inequality catches every boundary
-   * update. `applyDelta` mutates the inner text part in place — those
-   * token-rate updates intentionally accumulate in the events log (which
-   * captures every delta) rather than rewriting a row per keystroke.
+   * Per-request map of item id → the JSON last persisted to `request_items`.
+   * Diffing by serialized content (not object reference) keeps persistence
+   * incremental while still catching in-place field mutations: the runtime
+   * mutates a block_trace item in place across in_progress → completed (same
+   * reference, new content), so a reference compare would drop the completed
+   * write and leave the row in_progress, defeating resume memoization (FIX-839).
+   * (`applyDelta`'s in-place text growth still rewrites the row at the store's
+   * flush cadence, as before — the per-keystroke deltas live in the events log.)
    */
-  const lastPersistedItems = new Map<string, Map<string, OutputItem>>();
+  const lastPersistedItems = new Map<string, Map<string, string>>();
   const pendingEventWrites = new Map<string, Promise<void>>();
   /** Accumulates new events between coalesced writes for incremental persistence. */
   const pendingNewEvents = new Map<string, RequestStreamEvent[]>();
@@ -214,7 +216,13 @@ export function createPostgresRequestStore(
       const snapshot = latestItemSnapshots.get(requestId) ?? [];
       latestItemSnapshots.delete(requestId);
 
+      // Diff by serialized content, not object reference: the runtime mutates
+      // a block_trace item in place across in_progress → completed (same
+      // reference, new content), so a reference compare would drop the
+      // completed write and leave the row in_progress, defeating resume
+      // memoization (FIX-839).
       const priorById = lastPersistedItems.get(requestId);
+      const nextById = new Map<string, string>();
       const delta: OutputItem[] = [];
       for (const item of snapshot) {
         if (item.id.length > MAX_ITEM_ID_LENGTH) {
@@ -223,7 +231,9 @@ export function createPostgresRequestStore(
               `(Postgres B-tree index row size). Item ID prefix: ${item.id.slice(0, 64)}...`
           );
         }
-        if (priorById?.get(item.id) !== item) delta.push(item);
+        const serialized = JSON.stringify(item);
+        nextById.set(item.id, serialized);
+        if (priorById?.get(item.id) !== serialized) delta.push(item);
       }
       if (delta.length > 0) {
         // De-dup by id (ON CONFLICT errors on duplicate keys in a single
@@ -255,9 +265,7 @@ export function createPostgresRequestStore(
 
       // Reconcile from what we actually persisted. If a newer snapshot
       // arrived during the await, the next loop iteration picks it up.
-      const next = new Map<string, OutputItem>();
-      for (const item of snapshot) next.set(item.id, item);
-      lastPersistedItems.set(requestId, next);
+      lastPersistedItems.set(requestId, nextById);
     }
   }
 

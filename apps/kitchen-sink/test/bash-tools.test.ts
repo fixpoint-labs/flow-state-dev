@@ -5,7 +5,7 @@
  * opt-in/opt-out, Vercel auto-detect, and the safe `just-bash` fallback.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { selectBashProvider } from "../flows/chat-agent/blocks/bash-tools";
+import { selectBashProvider } from "../flows/chat-agent/shared/capabilities/bash";
 
 const VARS = [
   "VERCEL",
@@ -111,7 +111,7 @@ describe("selectBashProvider", () => {
     // at module-init time. If the selector ever throws, the entire flow
     // registration crashes on cold start. This test guards against that.
     await expect(
-      import("../flows/chat-agent/blocks/bash-tools"),
+      import("../flows/chat-agent/shared/capabilities/bash"),
     ).resolves.toBeDefined();
   });
 });

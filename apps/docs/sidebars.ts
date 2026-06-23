@@ -76,6 +76,7 @@ const sidebars: SidebarsConfig = {
             "server/authentication",
             "server/mcp",
             "server/chat",
+            "server/webhooks",
             {
               type: "category",
               label: "Scheduled actions",

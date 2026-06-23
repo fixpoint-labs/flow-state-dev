@@ -247,6 +247,57 @@ describe("defineFlow", () => {
     expect(onToolErrored).not.toHaveBeenCalled();
   });
 
+  it("applies flow-level tools to a webhook handler block (action in webhook form)", async () => {
+    // A webhook binding is an action in webhook form, so a generator handler
+    // must receive the flow's `tools` config (here: the onToolStarted observer)
+    // exactly as a caller-action generator does. Without normalizing webhook
+    // blocks through withFlowTools, the observer would never fire.
+    const onToolStarted = vi.fn();
+    const okTool = handler({
+      name: "ok-tool",
+      inputSchema: z.object({ text: z.string() }),
+      execute: () => ({ ran: true })
+    });
+    const webhookGenerator = generator({
+      name: "webhook-generator",
+      model: "test-model",
+      prompt: "test-prompt",
+      outputSchema: z.object({ ok: z.boolean() }),
+      tools: [okTool]
+    });
+
+    const flow = defineFlow({
+      kind: "wh-tools",
+      authentication: { defaultUserId: "system", requireUser: false },
+      actions: {},
+      tools: { onToolStarted },
+      webhooks: {
+        stripe: {
+          on: {
+            "invoice.paid": { block: webhookGenerator, input: () => ({}) }
+          }
+        }
+      }
+    });
+
+    const instance = flow({ id: "wh-tools" });
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "test-model",
+        async generate(options: any) {
+          if (options.tools?.length > 0 && options.tools[0].execute) {
+            await options.tools[0].execute({ text: "hi" });
+          }
+          return { structuredOutput: { ok: true } };
+        }
+      })
+    });
+
+    const webhookBlock = instance.webhooks!.stripe.on["invoice.paid"]!.block;
+    await runForTest(webhookBlock, {}, ctx);
+    expect(onToolStarted).toHaveBeenCalledTimes(1);
+  });
+
   it("allows instance tool hooks to override flow hooks", async () => {
     const baseStarted = vi.fn();
     const overrideStarted = vi.fn();

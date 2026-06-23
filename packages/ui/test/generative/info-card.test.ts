@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { emitInfoCardTool, InfoCardSchema } from "../../src/generative/info-card";
+import { emitInfoCardTool, InfoCardSchema } from "../../src/generative/tools";
 import { runForTest } from "../helpers";
 function makeCtx() {
   const emitComponent = vi.fn();

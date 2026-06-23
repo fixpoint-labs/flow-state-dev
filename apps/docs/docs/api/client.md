@@ -84,6 +84,32 @@ const stream = createSSEClient({
 
 Supports resume via `Last-Event-ID` or `starting_after`.
 
+### `createRequestStreamStore()` and `bindStoreToCallbacks(store, options?)`
+
+Accumulate a request's SSE events into a sorted, canonical item view outside React. `createRequestStreamStore()` returns a `RequestStreamStore`; `bindStoreToCallbacks` adapts it to the `RequestSSECallbacks` shape so you can spread it into `createSSEClient` or `createSSEClientFromResponse`.
+
+```ts
+import {
+  createRequestStreamStore,
+  bindStoreToCallbacks,
+  createSSEClient,
+} from "@flow-state-dev/client";
+
+const store = createRequestStreamStore();
+
+createSSEClient({
+  url: `/api/flows/my-app/requests/${requestId}/stream`,
+  ...bindStoreToCallbacks(store, {
+    onChange: () => {
+      store.flushDeltas();
+      render(store.getSorted());
+    },
+  }),
+});
+```
+
+`bindStoreToCallbacks` buffers content deltas, so call `store.flushDeltas()` before reading `getSorted()`. `onChange(kind)` receives `"item" | "content" | "status"` so a consumer can flush at different rates per kind, and an optional `itemFilter` gates which items reach the store. The store also tracks `status`, `lastSequenceNumber`, and the `statusEvents` log. This is the same reducer the React `useSession` / `useRequestStream` hooks wrap — reach for it directly only in non-React consumers.
+
 ### `createUserSSEClient(options)`
 
 Create a user-scoped event stream client for cross-session notifications.

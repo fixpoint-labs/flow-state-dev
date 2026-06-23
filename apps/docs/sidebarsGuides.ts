@@ -16,6 +16,11 @@ const sidebars: SidebarsConfig = {
     "routing-errors-to-sentry",
     {
       type: "category",
+      label: "Webhooks",
+      items: ["webhooks-stripe", "webhooks-github", "webhooks-slack-events"],
+    },
+    {
+      type: "category",
       label: "Deployment",
       items: [
         "deployment",
