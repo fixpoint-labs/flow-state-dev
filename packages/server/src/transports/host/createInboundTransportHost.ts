@@ -284,10 +284,10 @@ export function createInboundTransportHost(
     };
   };
 
-  const continueRequest = (
+  const continueRequest = async (
     opts: HostContinueRequestOptions
-  ): Promise<ContinueRequestResult> =>
-    continueRequestImpl({
+  ): Promise<ContinueRequestResult> => {
+    const result = await continueRequestImpl({
       requestId: opts.requestId,
       resumeContext: opts.resumeContext,
       signal: opts.signal,
@@ -296,6 +296,25 @@ export function createInboundTransportHost(
       flowRegistry: registry,
       runtimeConfig
     });
+
+    // Keep the serverless function alive until the resumed run finishes, exactly
+    // as `dispatch` does (above). The resume route returns 202 without awaiting
+    // `finished`, so on a freeze-after-response platform (Vercel: no BullMQ, the
+    // continuation runs inline via `runAction`) the inline run would stall when
+    // the response is sent and only resume when a later invocation thaws the
+    // container — the resume appears to hang for tens of seconds, the flow's
+    // remaining steps never run, and a refresh still shows `in_progress`.
+    // Registering `finished` with `onBackgroundWork` (→ Next `after()` /
+    // waitUntil) lets it run to completion. `void .catch` marks it handled: the
+    // 202 path doesn't await `finished`, so an unobserved rejection must not
+    // surface as an unhandled rejection.
+    if (onBackgroundWork !== undefined) {
+      onBackgroundWork(result.finished);
+      void result.finished.catch(() => {});
+    }
+
+    return result;
+  };
 
   const validateDispatch = async (
     envelope: InboundRequestEnvelope
