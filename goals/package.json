@@ -1,0 +1,12 @@
+{
+  "name": "@flow-state-dev/goals",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Goal-check library — real-model, out-of-CI runners that prove framework outcomes. Not a published package and not a vitest root; see README.md.",
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/server": "workspace:*",
+    "zod": "^3.25.76"
+  }
+}

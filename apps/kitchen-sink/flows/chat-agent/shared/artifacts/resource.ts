@@ -26,6 +26,11 @@ export const artifactsCollection = defineResourceCollection({
   pattern: "artifacts/**",
   scope: "session",
   stateSchema: artifactStateSchema,
+  // Expose artifact bodies to the generic content search tools
+  // (grepResourceContent / searchResources), so the agent can find artifacts by
+  // their content. Read/write still flow through bash (the mounted filesystem),
+  // so llmWritable stays off.
+  llmReadable: true,
   client: {
     content: { read: true, update: true },
     state: { read: true },

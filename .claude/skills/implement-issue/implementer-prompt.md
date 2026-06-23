@@ -161,15 +161,17 @@ Correct order:
    NOT run it; the orchestrator runs the end-to-end goal check after
    integration. Run a check here only if the spec names a **slice-level**
    goal check that is runnable after this task in isolation — if so, run
-   it against a **real** model (`fsdev run`, or a `goal-checks/<name>.goal.mts`
-   script) and report the command and PASS/FAIL verdict. Otherwise (pure
+   it against a **real** model (`fsdev run`, or `pnpm tsx
+   goals/<describe>/<it>/run.mts`) and report the command and PASS/FAIL
+   verdict. Otherwise (pure
    plumbing, or a slice whose only proof is end-to-end), say the goal
    proof is deferred to the orchestrator. Never invent a PASS verdict for
    a check you couldn't run.
 
 Test placement: co-located `*.spec.ts` next to the source. For
 cross-package behaviour, `packages/integration-tests/`. Goal checks live
-in `goal-checks/` and never run in CI. See `fsd:tdd` → "Two kinds of
+in the root `goals/` library (`goals/<describe>/<it>/`, see
+`goals/README.md`) and never run in CI. See `fsd:tdd` → "Two kinds of
 test" for the split, and `fsd:write-block-tests` for the mock-context
 idiom used in CI specs.
 ```

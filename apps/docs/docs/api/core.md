@@ -233,6 +233,8 @@ Config options:
 - `stateSchema: ZodTypeAny` — schema for each instance's state
 - `maxInstances?: number` — cap on simultaneous instances (must be >= 1)
 - `eviction?: "none" | "lru" | "oldest"` — what to do when cap is reached (default: `"none"` = throw)
+- `llmReadable?: boolean` — exposes every instance's content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`). Default `false`
+- `llmWritable?: boolean` — lets `writeResourceContentTool()` overwrite an instance body. Default `false`; independent of `llmReadable`
 - `onInstanceCreated?: (key, state, ctx) => void` — lifecycle hook
 - `onInstanceUpdated?: (key, state, prevState, ctx) => void` — lifecycle hook
 - `onInstanceDeleted?: (key, ctx) => void` — lifecycle hook
