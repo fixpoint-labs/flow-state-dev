@@ -24,6 +24,22 @@ import type { LiveRequestStream } from "../streaming/live-stream";
 import type { StoreRegistry } from "../stores/types";
 import type { RuntimeLogger } from "../execution/logging";
 import type { ExecutionResult } from "../execution/types";
+import type {
+  ContinueRequestOptions,
+  ContinueRequestResult
+} from "../execution/request-continuation";
+
+/**
+ * Host-level continuation options (FIX-811). The host supplies
+ * `stores`/`flowRegistry`/`runtimeConfig` from its own wiring, so callers pass
+ * only the request id, the resolution, and optional streaming context.
+ */
+export type HostContinueRequestOptions = Pick<
+  ContinueRequestOptions,
+  "requestId" | "resumeContext" | "signal" | "responseEmitter"
+>;
+
+export type { ContinueRequestResult } from "../execution/request-continuation";
 
 export type {
   InboundSource,
@@ -109,6 +125,18 @@ export interface DispatchHandle {
   readonly liveStream: LiveRequestStream | null;
   /** Resolves when the action completes (success, failure, or abort). */
   readonly finished: Promise<ExecutionResult>;
+  /**
+   * Resolves once an externally-dispatched request has been *accepted*: the
+   * enqueue-time store writes (`activeRequests` entry + the `in_progress`
+   * record) have committed AND the dispatcher has accepted the job. Adapters
+   * that ack a request before the client opens `GET …/stream` (the `202` path)
+   * await this, so the ack means "discoverable and enqueued" — a store-write or
+   * an enqueue failure rejects it (and is surfaced as a failed POST / reverted
+   * resume) instead of acking a request that never runs. It does not wait for
+   * execution to finish. `undefined` for in-process dispatch, where the record
+   * is written during execution. (FIX-828)
+   */
+  readonly accepted?: Promise<void>;
 }
 
 /**
@@ -126,23 +154,12 @@ export interface TransportRoute {
 }
 
 /**
- * Internal, reserved for v1. Will be re-evaluated when FIX-440 has concrete
- * scheduler dispatch needs.
- */
-export type Dispatcher = (
-  envelope: InboundRequestEnvelope
-) => Promise<ExecutionResult>;
-
-/**
  * Outputs returned from `adapter.createBindings`. The host's outer factory
- * wires `routes` into the public method dispatcher; `dispatchers` are
- * internal in v1.
+ * wires `routes` into the public method dispatcher.
  */
 export interface TransportBindings {
   /** HTTP routes for HTTP-shaped transports. */
   routes?: TransportRoute[];
-  /** Non-HTTP entry points keyed by name. Internal-only in v1. */
-  dispatchers?: Record<string, Dispatcher>;
   /**
    * Optional async setup hook called by the host after all adapters'
    * bindings are collected. Errors abort host startup.
@@ -186,6 +203,19 @@ export interface InboundTransportHost {
    * adapter-owned and use `host.stores` / `host.registry` directly.
    */
   dispatch(envelope: InboundRequestEnvelope): DispatchHandle;
+
+  /**
+   * Continue a suspended request under its OWN id (FIX-811). Unlike `dispatch`,
+   * which starts a fresh run, this re-enters the existing request: completed
+   * blocks replay from the durable log, the resolving `ctx.suspend()` returns
+   * the resume payload, and the record transitions `suspended → in_progress →
+   * terminal` in place — no second request is created. Wraps `continueRequest`
+   * with the host's registry/stores/runtimeConfig. Rejects for a missing record
+   * or unregistered flow.
+   */
+  continueRequest(
+    options: HostContinueRequestOptions
+  ): Promise<ContinueRequestResult>;
 
   /**
    * Validate async flow-level pre-conditions before dispatch. Must be

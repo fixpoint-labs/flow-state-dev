@@ -10,11 +10,10 @@
  * convention as `get_macro_indicators` and `get_market_news`.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
 import { fetchFinnhubMacroNews, hasFinnhubKey } from "../providers/finnhub";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_macro_news = handler({
   name: "get_macro_news",
@@ -24,8 +23,7 @@ export const get_macro_news = handler({
   inputSchema: toolInputSchemas.get_macro_news,
   outputSchema: toolOutputSchemas.get_macro_news,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_macro_news", input);
-    return getOrFetch("get_macro_news", input, async () => {
+    return resolveToolPayload("get_macro_news", input, ctx, async () => {
       if (hasFinnhubKey()) {
         try {
           return await fetchFinnhubMacroNews(input);

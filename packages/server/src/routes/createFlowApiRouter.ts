@@ -28,6 +28,7 @@ import {
 } from "../transports/http/createHttpTransportAdapter";
 import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
+import { createDurabilitySweeper } from "../durability/durability-sweeper";
 import type { MatchFunction } from "path-to-regexp";
 import {
   compileTransportPattern,
@@ -288,6 +289,23 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     staleThresholdMs: staleSweepThresholdMs
   });
 
+  // Server-internal durability sweeper (FIX-141): enforces suspension expiry
+  // and prunes aged-out durability artifacts. Built only when both a durability
+  // provider and a retention policy are configured; otherwise a no-op handle.
+  // Both travel on `runtimeConfig` so the durability config stays grouped
+  // (the provider is read by runAction too).
+  const durabilityProvider = runtimeConfig.durabilityProvider;
+  const durabilityRetention = runtimeConfig.durabilityRetention;
+  const durabilitySweeper =
+    durabilityProvider !== undefined && durabilityRetention !== undefined
+      ? createDurabilitySweeper({
+          provider: durabilityProvider,
+          stores: handlers.host.stores,
+          retention: durabilityRetention,
+          logger: runtimeConfig.logger
+        })
+      : { dispose: () => {} };
+
   // Built-in HTTP adapter delegates to the canonical handler. The catch-all
   // route returned by the adapter doesn't need to be wired into a custom
   // dispatcher here — the public `{ GET, POST, PATCH, DELETE }` shape is
@@ -381,8 +399,9 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // not part of the router's public shape (keeps `keyof typeof router`
   // narrow for consumers that index by HTTP method).
   const dispose = async (): Promise<void> => {
-    // Stop the sweeper first so its tick can't race with adapter teardown.
+    // Stop the sweepers first so their ticks can't race with adapter teardown.
     sweeper.dispose();
+    durabilitySweeper.dispose();
     for (let i = allBindings.length - 1; i >= 0; i--) {
       const entry = allBindings[i];
       if (entry === undefined || entry.bindings.stop === undefined) continue;

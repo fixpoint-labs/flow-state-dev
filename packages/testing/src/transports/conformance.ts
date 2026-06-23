@@ -85,6 +85,21 @@ export function createMockTransportHost(
     async resolvePrincipal(context) {
       principalCalls.push(context);
       return resolvePrincipal(context);
+    },
+    // Suspend/resume continuation is not exercised by adapter conformance —
+    // adapters call `dispatch`, not `continueRequest` (FIX-811). Return a no-op
+    // handle bound to the requested id so the type is satisfied without standing
+    // up the runtime.
+    async continueRequest(opts) {
+      return {
+        requestId: opts.requestId,
+        liveStream: null,
+        finished: Promise.resolve({
+          output: undefined,
+          items: [],
+          durationMs: 0
+        })
+      };
     }
   };
 

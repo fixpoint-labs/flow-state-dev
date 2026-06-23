@@ -30,3 +30,4 @@ export {
   compareZodSchemasStructurally,
   type ZodSchemaCompareResult,
 } from "./zod-introspect";
+export { shortId, tokenize, tokenOverlap, findBestOverlap } from "./text-match";

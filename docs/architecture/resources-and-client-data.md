@@ -68,7 +68,7 @@ User- and org-scoped resources default to **shared** storage across every flow t
 
 ### Resource Content
 
-Resources can also carry file-like text content. Use `content` for inline templates or `contentFile` to load at startup (mutually exclusive). `contentFile` is resolved relative to `process.cwd()` — use absolute paths for predictable behavior.
+Resources can also carry file-like text content. Use `content` for inline templates or `contentFile` to load at startup (mutually exclusive). A bare-string `contentFile` resolves relative to `process.cwd()`; for cwd-independent resolution pass an anchored path — `contentFile: { path: "./doc.md", importerUrl: import.meta.url }` — which resolves relative to the declaring module first and falls back to the working directory (the same candidate semantics as prompt-file loading).
 
 - `readContent()` returns rendered content (`string`) or `null` if no content exists.
 - `readContentRaw()` returns the stored raw body (`string`) or `null`.

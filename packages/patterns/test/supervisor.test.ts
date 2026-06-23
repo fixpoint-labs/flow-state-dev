@@ -12,14 +12,16 @@
  * `legacyWorkerAdapter` round-trip.
  */
 import { describe, expect, it } from "vitest";
-import { testBlock } from "@flow-state-dev/testing";
+import { testBlock, runForTest } from "@flow-state-dev/testing";
 import { handler } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   supervisor,
   reviewerVerdictSchema,
   executableTaskSchema,
   legacyWorkerAdapter,
+  type ExecutableTask,
   type ReviewerInput,
   type ReviewerVerdict,
 } from "../src/supervisor";
@@ -632,6 +634,52 @@ describe("supervisor per-task review", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Per-task context (FIX-827)
+// ---------------------------------------------------------------------------
+
+describe("supervisor per-task context (FIX-827)", () => {
+  it("passes planner-supplied context through to the worker", async () => {
+    const planner = handler({
+      name: "ctx-sup-planner",
+      inputSchema: z.any(),
+      outputSchema: z.object({
+        tasks: z.array(
+          z.object({ id: z.string(), goal: z.string(), context: z.string() }),
+        ),
+      }),
+      execute: () => ({
+        tasks: [{ id: "t1", goal: "do the thing", context: "support text" }],
+      }),
+    });
+
+    let seenContext: string | undefined;
+    const capturingWorker = handler({
+      name: "ctx-capture-worker",
+      inputSchema: z.any(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: (input: any) => {
+        seenContext = input.context;
+        return { ok: true };
+      },
+    });
+    const synth = makeDeterministicSynthesizer("ctx-sup-synth");
+
+    const sup = supervisor({
+      name: "ctx-sup",
+      worker: capturingWorker,
+      planner,
+      reviewer: false,
+      synthesizer: synth,
+    });
+
+    const result = await testBlock(sup, { input: { goal: "x" } });
+
+    expect(result.error).toBeNull();
+    expect(seenContext).toBe("support text");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Legacy worker adapter
 // ---------------------------------------------------------------------------
 
@@ -679,5 +727,49 @@ describe("legacyWorkerAdapter", () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]?.id).toBe("t1");
     expect(seen[0]?.goal).toBe("Legacy task");
+  });
+
+  it("maps TaskWorkerInput.context → ExecutableTask.context (FIX-827)", async () => {
+    const seen: ExecutableTask[] = [];
+    const legacyWorker = handler({
+      name: "lw-ctx",
+      inputSchema: executableTaskSchema,
+      outputSchema: z.null(),
+      execute: (input) => {
+        seen.push(input);
+        return null;
+      },
+    });
+    const adapted = legacyWorkerAdapter(legacyWorker);
+
+    await runForTest(
+      adapted,
+      { taskId: "t1", goal: "g", context: "first-class support", attempts: 1 } as any,
+      {} as BlockContext,
+    );
+
+    expect(seen[0]?.context).toBe("first-class support");
+  });
+
+  it("falls back to input-as-context when context is absent (transitional)", async () => {
+    const seen: ExecutableTask[] = [];
+    const legacyWorker = handler({
+      name: "lw-ctx-fallback",
+      inputSchema: executableTaskSchema,
+      outputSchema: z.null(),
+      execute: (input) => {
+        seen.push(input);
+        return null;
+      },
+    });
+    const adapted = legacyWorkerAdapter(legacyWorker);
+
+    await runForTest(
+      adapted,
+      { taskId: "t1", goal: "g", input: "legacy context", attempts: 1 } as any,
+      {} as BlockContext,
+    );
+
+    expect(seen[0]?.context).toBe("legacy context");
   });
 });

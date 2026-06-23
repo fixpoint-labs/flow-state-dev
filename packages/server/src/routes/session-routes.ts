@@ -13,13 +13,24 @@ import {
   getPositiveInteger,
   getString,
   jsonResponse,
+  loadTenantSession,
   parseJsonBody
 } from "./route-utils";
+import {
+  resolveSessionStorageKey,
+  toBareSessionId
+} from "../stores/scope-keys";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 type SessionRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
+  /**
+   * Tenant id from the request header (FIX-682). Namespaces every session
+   * storage key so a route resolves only the calling tenant's session.
+   * Undefined for single-tenant requests.
+   */
+  tenantId?: string;
 };
 
 export async function handleListSessions(
@@ -31,12 +42,19 @@ export async function handleListSessions(
   const sessions = await ctx.stores.session.list({
     flowKind: getString(url.searchParams.get("flowKind")),
     userId: getString(url.searchParams.get("userId")),
+    // Always pass the tenant (present, possibly undefined) so listing isolates
+    // to the calling tenant's sessions (FIX-682).
+    tenantId: ctx.tenantId,
     limit: getPositiveInteger(url.searchParams.get("limit")),
     offset: getPositiveInteger(url.searchParams.get("offset"))
   });
 
   return jsonResponse(200, {
-    sessions
+    // Surface bare session ids — the stored `id` is the namespaced storage key.
+    sessions: sessions.map((s) => ({
+      ...s,
+      id: toBareSessionId(s.id, ctx.tenantId)
+    }))
   });
 }
 
@@ -45,7 +63,11 @@ export async function handleGetSession(
   route: Extract<ParsedFlowRoute, { kind: "get_session" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await loadTenantSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId
+  );
   if (session === undefined) {
     return jsonResponse(404, {
       error: `Unknown session "${route.sessionId}"`
@@ -53,7 +75,8 @@ export async function handleGetSession(
   }
 
   return jsonResponse(200, {
-    session
+    // Surface the bare session id, not the namespaced storage key (FIX-682).
+    session: { ...session, id: route.sessionId }
   });
 }
 
@@ -79,7 +102,8 @@ export async function handleCreateSession(
 
   const now = Date.now();
   const sessionId = getString(body.sessionId) ?? generateId("sess");
-  const existing = await ctx.stores.session.get(sessionId);
+  const sessionKey = resolveSessionStorageKey(sessionId, ctx.tenantId);
+  const existing = await ctx.stores.session.get(sessionKey);
   if (existing !== undefined) {
     return jsonResponse(409, {
       error: `Session "${sessionId}" already exists`
@@ -112,10 +136,14 @@ export async function handleCreateSession(
   }
 
   const record: SessionRecord = {
-    id: sessionId,
+    // `id` is the tenant-namespaced storage key (FIX-682), consistent with the
+    // session record created in `createExecutionContext`. The response surfaces
+    // the bare id below.
+    id: sessionKey,
     flowKind: flow.kind,
     userId,
     orgId: getString(body.orgId),
+    tenantId: ctx.tenantId,
     title: getString(body.title),
     description: getString(body.description),
     tags: asStringArray(body.tags),
@@ -129,7 +157,7 @@ export async function handleCreateSession(
 
   await ctx.stores.session.set(record.id, record, "any");
   return jsonResponse(201, {
-    session: record
+    session: { ...record, id: sessionId }
   });
 }
 
@@ -138,7 +166,12 @@ export async function handleDeleteSession(
   route: Extract<ParsedFlowRoute, { kind: "delete_session" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
-  const existing = await ctx.stores.session.get(route.sessionId);
+  const sessionKey = resolveSessionStorageKey(route.sessionId, ctx.tenantId);
+  const existing = await loadTenantSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId
+  );
   if (existing === undefined) {
     return jsonResponse(404, {
       error: `Unknown session "${route.sessionId}"`
@@ -147,12 +180,12 @@ export async function handleDeleteSession(
 
   // Delete per-resource content and state first — if either fails, the session
   // record still exists and the operation can be retried. The reverse (orphaned
-  // content/state) is a leak.
+  // content/state) is a leak. All keyed by the namespaced session key (FIX-682).
   await Promise.all([
-    ctx.stores.content.deleteAll("session", route.sessionId),
-    ctx.stores.resourceState.deleteAll("session", route.sessionId)
+    ctx.stores.content.deleteAll("session", sessionKey),
+    ctx.stores.resourceState.deleteAll("session", sessionKey)
   ]);
-  await ctx.stores.session.delete(route.sessionId);
+  await ctx.stores.session.delete(sessionKey);
   return emptyResponse(204);
 }
 
@@ -161,7 +194,11 @@ export async function handlePatchSessionMetadata(
   route: Extract<ParsedFlowRoute, { kind: "patch_session_metadata" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await loadTenantSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId
+  );
   if (session === undefined) {
     return jsonResponse(404, {
       error: `Unknown session "${route.sessionId}"`
@@ -185,7 +222,8 @@ export async function handlePatchSessionMetadata(
   await ctx.stores.session.set(updated.id, updated, "any");
 
   return jsonResponse(200, {
-    session: updated
+    // Surface the bare session id, not the namespaced storage key (FIX-682).
+    session: { ...updated, id: route.sessionId }
   });
 }
 
@@ -194,7 +232,11 @@ export async function handleListSessionRequests(
   route: Extract<ParsedFlowRoute, { kind: "list_session_requests" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await loadTenantSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId
+  );
   if (session === undefined) {
     return jsonResponse(404, {
       error: `Unknown session "${route.sessionId}"`
@@ -207,7 +249,10 @@ export async function handleListSessionRequests(
   // item tree for requests that completed before the view was opened (FIX-733).
   const includeItems = getBooleanFlag(url.searchParams.get("include_items"));
   const requests = await ctx.stores.request.list({
+    // Request records keep a bare sessionId; isolate by the tenant filter
+    // (always present, possibly undefined) so history never crosses tenants.
     sessionId: route.sessionId,
+    tenantId: ctx.tenantId,
     status: getString(url.searchParams.get("status")) as
       | RequestStatus
       | undefined,

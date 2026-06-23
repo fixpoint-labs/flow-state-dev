@@ -53,6 +53,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
     "better-sqlite3": "^11.0.0"
   },
@@ -62,7 +63,8 @@
   "devDependencies": {
     "@flow-state-dev/scheduled": "workspace:*",
     "@types/better-sqlite3": "^7.6.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "zod": "^3.25.76"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

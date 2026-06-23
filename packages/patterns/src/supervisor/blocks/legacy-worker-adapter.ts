@@ -26,11 +26,18 @@ export function legacyWorkerAdapter(
 ) {
   if (worker.inputSchema !== executableTaskSchema) return worker;
   return worker.connectInput<TaskWorkerInput>(
-    (twi: TaskWorkerInput): ExecutableTask => ({
-      id: twi.taskId,
-      goal: twi.goal,
-      ...(typeof twi.input === "string" ? { context: twi.input } : {}),
-      ...(twi.feedback !== undefined ? { feedback: twi.feedback } : {}),
-    }),
+    (twi: TaskWorkerInput): ExecutableTask => {
+      // FIX-827: read the first-class `context` field; fall back to the
+      // legacy `input`-as-context hack transitionally so this doesn't
+      // regress callers mid-migration.
+      const context =
+        twi.context ?? (typeof twi.input === "string" ? twi.input : undefined);
+      return {
+        id: twi.taskId,
+        goal: twi.goal,
+        ...(context !== undefined ? { context } : {}),
+        ...(twi.feedback !== undefined ? { feedback: twi.feedback } : {}),
+      };
+    },
   );
 }

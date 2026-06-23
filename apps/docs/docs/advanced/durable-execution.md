@@ -112,7 +112,7 @@ The original SSE connection closes cleanly. Nothing blocks a thread.
 
 ## Resuming a suspended request
 
-The resume endpoint accepts a decision on a suspended request and re-dispatches the original action:
+The resume endpoint accepts a decision on a suspended request and continues it:
 
 ```
 POST /:flowKind/requests/:requestId/resume
@@ -131,15 +131,55 @@ Request body:
 
 `action` must be `"approve"` or `"reject"`. `data` carries the payload that `ctx.suspend()` will return on the resumed step. `resumedBy` is optional — it's stored on the suspension record for audit purposes.
 
+Resume continues the **same** request id. There is no new linked request. The record's status walks `suspended → in_progress → terminal` as the continuation runs (and `interrupted → in_progress → terminal` on crash recovery). A `GET` on the request returns the whole pause-and-continue history on one record, not two records joined by a reference.
+
 The endpoint acquires an exclusive lease before re-dispatching, so concurrent resume attempts on the same request get a `409` rather than a double execution.
 
-On success the endpoint returns `202` with the new `requestId`. If the caller includes `Accept: text/event-stream`, the response streams the resumed execution directly.
+On success the endpoint returns `202` with the same `requestId`. If the caller includes `Accept: text/event-stream`, the response streams the continued execution directly.
+
+A deliberate "start over from scratch" is a separate operation. RETRY mode runs the action again under a new request id. Resume is for picking up where a pause left off; retry is for discarding the prior attempt.
 
 ### Skip-and-inject: how resume works under the hood
 
-The resume dispatch creates a new request with a `resumeOf` reference pointing at the original. When `runAction` initializes, it loads the suspension record and the checkpoint saved at the suspension point. The sequencer state is restored from that checkpoint. Steps before the suspension step are skipped using their cached outputs. The suspension step re-runs — but this time `ctx.suspend()` sees a `ResumeContext` and returns `resumeData` instead of throwing.
+The resume dispatch re-invokes the action on the original request. `runAction` loads the suspension record, the checkpoint saved at the suspension point, and the request's item log. Sequencer state is restored from the checkpoint. Blocks that already finished are skipped — the runtime injects each one's recorded output from the item log instead of re-executing. The suspending block re-runs, and this time `ctx.suspend()` returns `resumeData` instead of throwing.
 
-Execution continues normally from there. The new request has its own `requestId` and generates its own SSE stream.
+Execution continues from there on the same request id and the same SSE stream. See [Continuous item log across resume](#continuous-item-log-across-resume) for what the log looks like across the cycle, and [Block memoization on resume](#block-memoization-on-resume) for the rules on side effects.
+
+## Continuous item log across resume
+
+The item log is not reset on resume. It is appended across the pause. One full cycle leaves a single ordered log on one request:
+
+1. Items produced before the suspension.
+2. The `suspension` item emitted when the block paused.
+3. A `suspension_resume` item recording the continuation (an audit row — who resolved it, how, and the resume payload).
+4. Items produced after the block resumed.
+
+Sequence numbers stay monotonic across the whole thing. An item-log sequence for one approve cycle:
+
+```jsonc
+{ "seq": 1, "type": "message",           "text": "Drafted the summary." }
+{ "seq": 2, "type": "suspension",        "suspensionId": "susp_abc123", "reason": "human_approval" }
+// --- request pauses here, SSE stream closes, status = "suspended" ---
+// --- resume endpoint called; status walks suspended → in_progress ---
+{ "seq": 3, "type": "suspension_resume", "suspensionId": "susp_abc123", "resolution": "approved", "resolvedBy": "user_xyz" }
+{ "seq": 4, "type": "message",           "text": "Published." }
+```
+
+Because the log continues by sequence number, the SSE stream continues by cursor too. A client that was at sequence N when the request suspended reconnects with `Last-Event-ID: N` (or `?starting_after=N`) once the request is back `in_progress` and receives sequence N+1 onward. No replay of the pre-suspension items is needed.
+
+## Block memoization on resume
+
+Skipping completed blocks is *memoization*: the runtime injects each finished block's recorded output from the item log rather than running it again. The suspending block itself re-runs.
+
+The consequence to plan for: a side effect that isn't captured in a block's output fires again when that block re-executes. The suspending block is the one that re-executes on resume, so its side effects are the ones to guard. Wrap them in `ctx.runOnce(key, fn)`, and for exactly-once across process crashes pair that with provider-key idempotency.
+
+See [Block memoization and replay](./block-memoization-and-replay.md) for the full side-effect rules, the `runOnce` guarantees and their limits, and control-flow determinism.
+
+## Multiple suspend/resume cycles
+
+A request can suspend and resume more than once. Each cycle appends to the same log: another `suspension` item, another `suspension_resume` item, and the post-resume items, all under the same request id with continuous sequence numbers. The audit of every pause lives on the item log as the `suspension` / `suspension_resume` pairs, in order, so the full decision trail for a multi-gate flow reads top to bottom on one record.
+
+This holds across a process restart, not just an in-process pause. A continuation replays the request from the top of the action, so resuming a *later* gate re-reaches the earlier ones. Those earlier gates were already resolved on the durable log, so they replay their recorded resolutions in order instead of pausing again, and the request runs through to completion. A flow with two sequential `ctx.suspend()` gates resumed at the second gate after the server restarted completes the same as it would in one process.
 
 ## Error handling
 
@@ -203,6 +243,49 @@ The standard store adapters all implement the durability tables:
 | Postgres | `@flow-state-dev/store-postgres` | Full persistence with concurrent read/write support |
 
 For production use with crash recovery as a goal, you want SQLite at minimum and Postgres when running multiple instances or on a platform that doesn't guarantee local disk persistence.
+
+## Retention and cleanup
+
+Durability writes three kinds of records: checkpoints (sequencer state at step boundaries), suspension records (one per `ctx.suspend()` call), and leases (held briefly during a resume). On a host that runs for weeks, these accumulate. A completed run's checkpoints are dead weight, a resolved approval is only worth keeping for a while, and a process that crashes before it finishes leaves records that nothing comes back to clean up.
+
+Retention is opt-in. Pass a `durabilityRetention` config alongside your provider and the runtime starts a sweeper: a periodic in-process job that runs on a fixed interval and reclaims records that are provably safe to drop.
+
+```ts
+export const flowstate = createFlowState({
+  flows: { contentReview },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: stores } },
+  durabilityProvider: createCheckpointDurabilityProvider(stores),
+  durabilityRetention: {
+    sweepIntervalMs: 600_000,                 // sweep every 10 minutes
+    checkpointMaxAgeMs: 86_400_000,           // backstop: drop terminal-run checkpoints after 24h
+    suspensionTerminalMaxAgeMs: 604_800_000,  // keep resolved suspensions 7 days, then prune
+    orphanCheckpointThresholdMs: 86_400_000,  // an interrupted run is "abandoned" after 24h
+    batchLimit: 1000,                         // max records deleted per store per tick
+  },
+});
+```
+
+Every field has a default, so `durabilityRetention: {}` is enough to turn the sweeper on with the values above. Omitting `durabilityRetention` entirely leaves records in place — nothing is deleted without you asking for it.
+
+What each tick does:
+
+- **Enforces suspension expiry.** A `pending` suspension whose `expiresAt` has passed is flipped to `expired`, so the resume endpoint rejects a stale approval gate instead of letting it hang forever.
+- **Prunes resolved suspensions** older than `suspensionTerminalMaxAgeMs` (measured from when they were resolved). The window exists so you can still inspect recent approval decisions; after it, they're removed.
+- **Prunes expired leases.**
+- **Prunes orphaned checkpoints.** Checkpoints of completed, failed, or aborted runs are dropped once they pass `checkpointMaxAgeMs`. An interrupted run keeps its checkpoints until `orphanCheckpointThresholdMs` passes, since you might still resume it.
+
+The one invariant worth internalizing: **checkpoints of an in-progress or suspended run are never pruned by age.** Those are exactly the state a crashed or paused run needs to continue, so the sweeper leaves them alone no matter how old they get. A flow parked on a slow human-approval gate for a week is safe.
+
+When you run multiple hosts against a shared store, the sweeper takes a single lease each tick so only one host sweeps at a time. Deletes are idempotent regardless, so the lease is an efficiency measure, not a correctness one.
+
+## Managing suspensions in the DevTool
+
+When a flow suspends for human input, an operator needs to see what's waiting without querying the store by hand. The DevTool has a **Suspensions** tab for this. It lists suspensions for the current session — pending ones at the top, recently resolved and expired ones below — and a detail pane shows each suspension's message, the request it belongs to, and its `resumeSchema` (the shape of the input the flow is waiting for).
+
+From the detail pane you can **approve** or **reject** a pending suspension and supply the resume data. That posts to the same resume endpoint a production client would call, so resolving from the DevTool drives the real flow forward.
+
+The tab reads through the gated debug endpoints, which are disabled by default and loopback-only. It requires a configured `durabilityProvider`; without one, the suspension store is empty and the tab shows nothing to act on.
 
 ## See also
 

@@ -27,8 +27,12 @@ fsdev run my-agent chat -i '{"message": "Hello!"}'
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
 | `--seed-user <json\|path>` | Seed user-level state |
 | `--seed-org <json\|path>` | Seed org-level state |
-| `--flow-dir <path>` | Override flow discovery root (repeatable) |
+| `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
+| `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
+| `--no-config` | Ignore any config and force directory discovery |
 | `--format <format>` | Output format (default: `json`) |
+
+When a config is loaded, `fsdev run` looks up the flow by `kind` in the config's registry and uses its stores. `--model <id>` still applies, routed through the config's own resolver (your gateways and providers stay in effect). `--flow-dir` together with a config is an error; the message suggests `--no-config` if directory discovery is what you want. The config's FlowState is disposed on exit. See [App Configuration](/docs/cli/configuration).
 
 **NDJSON events:**
 
@@ -73,13 +77,15 @@ fsdev dev
 | Flag | Description |
 |------|-------------|
 | `-p, --port <port>` | Port to listen on (default: `4200`) |
-| `--flow-dir <path>` | Override flow discovery root (repeatable) |
-| `-m, --model <model>` | Override model for all generator blocks |
+| `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
+| `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
+| `--no-config` | Ignore any config and force directory discovery |
+| `-m, --model <model>` | Override model for all generator blocks. Errors if a config is loaded. |
 | `--no-open` | Don't open the browser automatically |
 
 **Requires:** `@flow-state-dev/devtool` installed (provides the pre-built UI assets).
 
-The server discovers flows, registers them in an in-memory flow registry, creates filesystem stores at `.fsdev/data/`, and starts listening. API routes are served at `/api/flows/*`. The DevTool UI is served for all other paths. See [DevTool Setup](/docs/devtool/setup) for full details.
+Without a config, the server discovers flows, registers them in an in-memory flow registry, creates filesystem stores at `.fsdev/data/`, and starts listening. With an `fsdev.config.ts` present, it serves the app's own router (`await flowState.getRouter()`) using the config's registry, resolver, and stores. Because the config builds the router with its own resolver, `--model` together with a config is an error. API routes are served at `/api/flows/*`. The DevTool UI is served for all other paths. See [DevTool Setup](/docs/devtool/setup) and [App Configuration](/docs/cli/configuration) for full details.
 
 ### `fsdev block <specifier>`
 
@@ -125,13 +131,14 @@ flows/<flow-name>.ts            → direct file export
 
 ### Monorepo support
 
-In monorepo structures, the CLI also scans one level of subdirectories under `packages/`, `examples/`, and `apps/`:
+In monorepo structures, the CLI also scans one level of subdirectories under `packages/`, `examples/`, `apps/`, and `labs/`:
 
 ```text
 packages/*/src/flows/
 packages/*/flows/
 examples/*/src/flows/
 apps/*/src/flows/
+labs/*/src/flows/
 ```
 
 This means flows defined anywhere in your monorepo are automatically discoverable without configuration.
@@ -150,12 +157,18 @@ When `--flow-dir` is specified, only the given directories are searched — the 
 
 ### Error messages
 
-When a flow or action isn't found, the error lists what was discovered and where it searched:
+When a flow or action isn't found, the error lists what was discovered, where it searched, and any modules that were found but failed to import:
 
 ```text
 Flow "chat" not found. Available flows: echo, stateful, my-agent
 Searched: src/flows, flows, examples/hello-chat/src/flows
+1 flow module(s) failed to import:
+  /repo/examples/chat/src/flows/chat/flow.ts: Error: Cannot find package 'left-pad'
 ```
+
+A module that throws during import also produces a stderr warning at discovery time, so a broken flow is distinguishable from a missing one even when the run otherwise succeeds.
+
+Discovery is the default. When an `fsdev.config.ts` is present, the CLI uses the app's registry, resolver, and stores instead, and these directories are not scanned. See [App Configuration](/docs/cli/configuration).
 
 ## Programmatic API
 
@@ -176,7 +189,17 @@ const flows2 = await discoverFlows({
   cwd: "./my-project",
   flowDirs: ["packages/api/src/flows", "shared/flows"],
 });
+
+// Observe modules that throw during import
+const flows3 = await discoverFlows({
+  cwd: "./my-project",
+  onImportFailed: (failure) => {
+    console.warn(`${failure.filePath}: ${failure.message}`);
+  },
+});
 ```
+
+Modules that throw during import are skipped and reported through the `onImportFailed` callback; without it they are skipped silently. Each `FlowImportFailure` carries `filePath` (absolute path), `message` (normalized error text), and `cause` (the original thrown value).
 
 ### `resolveFlow(specifier)`
 

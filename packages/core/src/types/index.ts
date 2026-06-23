@@ -27,6 +27,7 @@ export { asRuntime } from "./block";
 
 export type {
   ActionConfig,
+  ActionCore,
   ActionMcpConfig,
   CostEstimator,
   ClientDataComputeFn,
@@ -81,6 +82,15 @@ export type { ChatConfig, ChatEventBinding } from "./chat";
 export { validateChatConfig } from "./chat";
 
 export type {
+  WebhookConfig,
+  WebhookEventBinding,
+  WebhookInboundEvent,
+  WebhookSubscriptionConfig
+} from "./webhooks";
+
+export { defineWebhookBinding, validateWebhookConfig } from "./webhooks";
+
+export type {
   CompositeVoiceProviderConfig,
   ListVoicesCapable,
   SpeakCapable,
@@ -127,6 +137,7 @@ export type {
 } from "./model";
 
 export type {
+  AnchoredPath,
   CollectionClientConfig,
   CollectionClientContentConfig,
   CollectionStateClientConfig,
@@ -197,6 +208,11 @@ export type {
   SuspensionRecord,
   SuspensionStatus
 } from "./suspension";
+export {
+  TERMINAL_SUSPENSION_STATUSES,
+  isTerminalSuspensionStatus,
+  matchesSuspensionFilter
+} from "./suspension";
 
 export type { SequencerCheckpoint } from "./checkpoints";
 
@@ -241,4 +257,4 @@ export type {
   ActionInputSchema
 } from "../schema/action-schema";
 
-export { defineResource, resource } from "./resource";
+export { applyGetOrPatchState, defineResource, resource } from "./resource";

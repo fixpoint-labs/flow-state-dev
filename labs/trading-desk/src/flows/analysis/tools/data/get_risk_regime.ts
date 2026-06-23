@@ -4,7 +4,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { resolveSector } from "../../lib/sector-resolution";
 import { fetchYahooChart } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
@@ -17,7 +17,6 @@ import {
   correlationRegime,
 } from "./regime-math";
 import {
-  pickMode,
   toolInputSchemas,
   toolOutputSchemas,
   type ToolInput,
@@ -89,8 +88,7 @@ export const get_risk_regime = handler({
   inputSchema: toolInputSchemas.get_risk_regime,
   outputSchema: toolOutputSchemas.get_risk_regime,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_risk_regime", input);
-    return getOrFetch("get_risk_regime", input, async () => {
+    return resolveToolPayload("get_risk_regime", input, ctx, async () => {
       try {
         return await fetchLive(input);
       } catch {

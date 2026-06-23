@@ -86,6 +86,16 @@ export class FilesystemCheckpointStore implements CheckpointStore {
       }
     }
   }
+
+  async deleteForRequest(requestId: string): Promise<void> {
+    try {
+      await rm(this.requestDir(requestId), { recursive: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
 }
 
 export function createFilesystemCheckpointStore(rootDir: string): CheckpointStore {

@@ -63,9 +63,9 @@ const plannerMock = mockGenerator({
   script: [{
     structuredOutput: {
       tasks: [
-        { id: "t1", goal: "Research topic A" },
-        { id: "t2", goal: "Research topic B" },
-        { id: "t3", goal: "Research topic C" }
+        { id: "t1", title: null, goal: "Research topic A", context: null },
+        { id: "t2", title: null, goal: "Research topic B", context: null },
+        { id: "t3", title: null, goal: "Research topic C", context: null }
       ]
     }
   }]
@@ -77,7 +77,7 @@ const singleTaskPlannerMock = mockGenerator({
   script: [{
     structuredOutput: {
       tasks: [
-        { id: "t1", goal: "Research the topic" }
+        { id: "t1", title: null, goal: "Research the topic", context: null }
       ]
     }
   }]

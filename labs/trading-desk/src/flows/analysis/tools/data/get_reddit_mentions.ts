@@ -4,9 +4,9 @@
  * `unavailable`. Fixture mode loads curated NVDA JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_reddit_mentions = handler({
   name: "get_reddit_mentions",
@@ -14,7 +14,8 @@ export const get_reddit_mentions = handler({
   inputSchema: toolInputSchemas.get_reddit_mentions,
   outputSchema: toolOutputSchemas.get_reddit_mentions,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_reddit_mentions", input);
-    return emptyPayload("get_reddit_mentions", input);
+    return resolveToolPayload("get_reddit_mentions", input, ctx, async () => {
+      return emptyPayload("get_reddit_mentions", input);
+    });
   },
 });

@@ -21,10 +21,29 @@
  *    `p2Contributions` accessor resolve to the same canonical storage key,
  *    so there is one entries array — not two (FIX-591).
  */
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
+import { makeTestRepository } from "./_helpers/portfolio-repo";
+import type { PortfolioRepository } from "@/src/db/repository";
+
+// Collateral: this spec locks the session-resource layout after an analyze run
+// and does not test the portfolio. The repository (FIX-772) is mocked to an
+// empty in-memory instance so `seedSession` runs portfolio-blind. One repo for
+// the file (beforeAll) — fast, never mutated.
+const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
+vi.mock("@/lib/portfolio-db", () => ({
+  getRepository: async () => {
+    if (!repoState.repo) throw new Error("test repository not initialized");
+    return repoState.repo;
+  },
+}));
+
 import analysisFlow from "../src/flows/analysis/flow";
+
+beforeAll(async () => {
+  repoState.repo = await makeTestRepository();
+});
 
 function analystThesis(label: string, headline: string) {
   return {

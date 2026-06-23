@@ -22,7 +22,8 @@ import {
 import type { Edge } from '@flow-state-dev/core/graph'
 import type { ResolvedRelationsConfig } from './internal/config'
 import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFIG } from './memory-system'
-import { findBestOverlap, canonicalizeSubject, edgesOf } from './internal/helpers'
+import { findBestOverlap } from '@flow-state-dev/core/helpers'
+import { canonicalizeSubject, edgesOf } from './internal/helpers'
 import { createDigestMemoryResource } from './digest-memory'
 import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks'
 import { memorySystemJanitor, type ResolvedHygieneConfig } from './janitor-blocks'
@@ -453,6 +454,44 @@ function buildEnvelopeRepair<TKeys extends string>(
 // ---------------------------------------------------------------------------
 
 /**
+ * Selects and formats the conversation messages the observer should extract
+ * memories from, for the prompt's context.
+ *
+ * Only `message` items (user turns + assistant replies) carry memorable
+ * content. Every other item type — `block_trace`, `state_change`,
+ * `router_decision`, `reasoning`, `tool_output`, and the memory subsystem's own
+ * observer/reflect output — is execution noise that pollutes the prompt and
+ * skews extraction, so the watermarked slice is narrowed to `message` items.
+ *
+ * `lastProcessedIndex` is a watermark into the *full* session item log (the
+ * reflect handler advances it over every item, regardless of type), so
+ * selection filters by the original index first, then narrows to messages —
+ * keeping the watermark and the type filter independent and correct.
+ *
+ * Returns `undefined` when no new message items exist past the watermark.
+ */
+export function buildObserveContext(
+  allItems: ReadonlyArray<Record<string, any>>,
+  lastProcessedIndex: number,
+): string | undefined {
+  const newMessages = allItems.filter(
+    (item, idx) => idx > lastProcessedIndex && item.type === 'message',
+  )
+  if (newMessages.length === 0) return undefined
+  return newMessages
+    .map((item) => {
+      const label = item.role ?? item.type ?? 'unknown'
+      const text = typeof item.payload === 'string'
+        ? item.payload
+        : typeof item.content === 'string'
+          ? item.content
+          : JSON.stringify(item.payload ?? item.content ?? item)
+      return `[${label}] ${text}`
+    })
+    .join('\n')
+}
+
+/**
  * Creates the unified observer generator.
  *
  * Reads new items from `ctx.session.items` since `lastProcessedIndex` watermark.
@@ -542,20 +581,8 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     }
 
     const allItems = ctx.session?.items?.all?.() ?? []
-    const newItems = allItems.filter((_item: any, idx: number) => idx > sysState.lastProcessedIndex)
-    if (newItems.length > 0) {
-      return newItems
-        .map((item: any) => {
-          const label = item.role ?? item.type ?? 'unknown'
-          const text = typeof item.payload === 'string'
-            ? item.payload
-            : typeof item.content === 'string'
-              ? item.content
-              : JSON.stringify(item.payload ?? item.content ?? item)
-          return `[${label}] ${text}`
-        })
-        .join('\n')
-    }
+    const formatted = buildObserveContext(allItems, sysState.lastProcessedIndex)
+    if (formatted !== undefined) return formatted
 
     if (typeof _input === 'string' && _input.trim().length > 0) {
       // Fallback: live items from the current request may not yet be

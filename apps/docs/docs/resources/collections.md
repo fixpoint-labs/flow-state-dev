@@ -384,3 +384,5 @@ See the changelog entry for the per-version detail.
 ## See also
 
 For relationships between resources or entities rather than many instances of one shape, see [Edges](./edges).
+
+To find instances by path, content, or relevance once a collection holds many of them, see [Searching resources](./searching).

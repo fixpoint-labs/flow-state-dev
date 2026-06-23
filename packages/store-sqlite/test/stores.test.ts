@@ -13,6 +13,7 @@ import type {
 import { createTraceStoreConformanceTests } from "@flow-state-dev/server/testing";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
 import { initializeSchema } from "../src/schema";
+import { createSQLiteSuspensionStore } from "../src/suspension-store";
 import { createSQLiteRequestStore } from "../src/request-store";
 
 function now() {
@@ -444,6 +445,28 @@ describe("SQLite store adapter", () => {
       expect(itemCount("req_inc")).toBe(3);
       const got = await store.get("req_inc");
       expect(got!.items!.map((i) => i.id)).toEqual(["a", "b", "c"]);
+    });
+
+    it("merges two DISJOINT persistItems sets into the ordered union (FIX-811)", async () => {
+      // Same-request continuation persists only its post-resume items. The store
+      // must union them with the prior set by id (never full-replace), so a GET
+      // returns the full ordered history.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_disjoint");
+      const a = makeMessageItem("req_disjoint", "a", 0, "x") as unknown as OutputItem;
+      const b = makeMessageItem("req_disjoint", "b", 1, "y") as unknown as OutputItem;
+      store.persistItems("req_disjoint", [a, b]);
+      await store.flushItems("req_disjoint");
+
+      // Second call carries a DISJOINT set — the continuation's new items only.
+      const c = makeMessageItem("req_disjoint", "c", 2, "z") as unknown as OutputItem;
+      const d = makeMessageItem("req_disjoint", "d", 3, "w") as unknown as OutputItem;
+      store.persistItems("req_disjoint", [c, d]);
+      await store.flushItems("req_disjoint");
+
+      expect(itemCount("req_disjoint")).toBe(4);
+      const got = await store.get("req_disjoint");
+      expect(got!.items!.map((i) => i.id)).toEqual(["a", "b", "c", "d"]);
     });
 
     it("refines an item in place when the same id is re-emitted with new content", async () => {
@@ -1206,6 +1229,141 @@ describe("SQLite store adapter", () => {
       });
       await s.checkpoints.delete("r1", "b1");
       expect(await s.checkpoints.latest("r1", "b1")).toBeNull();
+    });
+
+    it("deleteForRequest removes every checkpoint for the request, leaving others intact", async () => {
+      const s = freshStores();
+      for (const [r, b] of [["r1", "b1"], ["r1", "b2"], ["r2", "b1"]] as const) {
+        await s.checkpoints.write({
+          requestId: r,
+          blockInstanceId: b,
+          parentBlockInstanceId: null,
+          stepIndex: 0,
+          state: {},
+          version: 1,
+          createdAt: 1000
+        });
+      }
+
+      await s.checkpoints.deleteForRequest("r1");
+
+      expect(await s.checkpoints.latest("r1", "b1")).toBeNull();
+      expect(await s.checkpoints.latest("r1", "b2")).toBeNull();
+      expect(await s.checkpoints.latest("r2", "b1")).not.toBeNull();
+    });
+  });
+
+  // --- Suspension store retention (FIX-141) ---
+
+  describe("suspension store retention", () => {
+    function makeSuspension(
+      overrides?: Partial<import("@flow-state-dev/core/types").SuspensionRecord>
+    ): import("@flow-state-dev/core/types").SuspensionRecord {
+      return {
+        suspensionId: "sus_1",
+        requestId: "req_1",
+        flowKind: "chat",
+        actionName: "ask",
+        userId: "user_1",
+        reason: "human_approval",
+        message: "Approve?",
+        status: "pending",
+        blockInstanceId: "block_1",
+        stepIndex: 0,
+        createdAt: 1000,
+        ...overrides
+      };
+    }
+
+    it("list({ resolvedBefore }) returns only resolved records before the cutoff", async () => {
+      const s = freshStores();
+      await s.suspensions.set(
+        makeSuspension({ suspensionId: "pending", requestId: "r1", status: "pending" })
+      );
+      await s.suspensions.set(
+        makeSuspension({ suspensionId: "early", requestId: "r2", status: "approved", resolvedAt: 100 })
+      );
+      await s.suspensions.set(
+        makeSuspension({ suspensionId: "late", requestId: "r3", status: "approved", resolvedAt: 300 })
+      );
+
+      const results = await s.suspensions.list({ resolvedBefore: 200 });
+      expect(results.map((r) => r.suspensionId)).toEqual(["early"]);
+    });
+
+    it("list({ createdBefore }) filters by createdAt", async () => {
+      const s = freshStores();
+      await s.suspensions.set(makeSuspension({ suspensionId: "old", requestId: "r1", createdAt: 100 }));
+      await s.suspensions.set(makeSuspension({ suspensionId: "new", requestId: "r2", createdAt: 300 }));
+
+      const results = await s.suspensions.list({ createdBefore: 200 });
+      expect(results.map((r) => r.suspensionId)).toEqual(["old"]);
+    });
+
+    it("pruneTerminalBefore deletes only terminal records resolved before the cutoff", async () => {
+      const s = freshStores();
+      await s.suspensions.set(
+        makeSuspension({ suspensionId: "t1", requestId: "r1", status: "approved", resolvedAt: 100 })
+      );
+      await s.suspensions.set(
+        makeSuspension({ suspensionId: "t2", requestId: "r2", status: "expired", resolvedAt: 500 })
+      );
+      await s.suspensions.set(
+        makeSuspension({ suspensionId: "p1", requestId: "r3", status: "pending", resolvedAt: 50 })
+      );
+
+      const deleted = await s.suspensions.pruneTerminalBefore(200, 100);
+
+      expect(deleted).toBe(1);
+      expect(await s.suspensions.get("r1", "t1")).toBeNull();
+      expect(await s.suspensions.get("r2", "t2")).not.toBeNull();
+      expect(await s.suspensions.get("r3", "p1")).not.toBeNull();
+    });
+
+    it("pruneTerminalBefore respects limit and returns the count deleted", async () => {
+      const s = freshStores();
+      await s.suspensions.set(
+        makeSuspension({ suspensionId: "t1", requestId: "r1", status: "approved", resolvedAt: 100 })
+      );
+      await s.suspensions.set(
+        makeSuspension({ suspensionId: "t2", requestId: "r2", status: "rejected", resolvedAt: 100 })
+      );
+
+      expect(await s.suspensions.pruneTerminalBefore(200, 1)).toBe(1);
+      expect(await s.suspensions.list()).toHaveLength(1);
+    });
+
+    it("pruneTerminalBefore returns 0 when nothing matches", async () => {
+      const s = freshStores();
+      await s.suspensions.set(makeSuspension({ status: "pending" }));
+
+      expect(await s.suspensions.pruneTerminalBefore(Date.now() + 1000, 100)).toBe(0);
+    });
+
+    it("migration backfills legacy NULL status/resolved_at columns so they become prunable", async () => {
+      // Regression: a terminal suspension resolved before the FIX-141 migration
+      // is never re-set(), so its denormalized scalar columns would stay NULL
+      // and pruneTerminalBefore (which filters on status/resolved_at) would
+      // never reap it. Insert a row raw to simulate the pre-migration shape.
+      const db = new Database(":memory:");
+      initializeSchema(db);
+      const record = makeSuspension({
+        suspensionId: "legacy",
+        requestId: "rL",
+        status: "approved",
+        resolvedAt: 100
+      });
+      db.prepare(
+        `INSERT INTO suspension_records (request_id, suspension_id, data, created_at, status, resolved_at)
+         VALUES (?, ?, ?, ?, NULL, NULL)`
+      ).run("rL", "legacy", JSON.stringify(record), record.createdAt);
+
+      // Re-running schema init backfills the NULL scalar columns from the blob.
+      initializeSchema(db);
+
+      const store = createSQLiteSuspensionStore(db);
+      expect(await store.pruneTerminalBefore(200, 100)).toBe(1);
+      expect(await store.get("rL", "legacy")).toBeNull();
     });
   });
 

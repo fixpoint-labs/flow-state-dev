@@ -19,8 +19,8 @@
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import {
   abortableSleep,
+  endsRequestStream,
   isTerminalRequestStatus,
-  isTerminalRequestStreamEvent,
   pollEvents,
   synthesizeRequestInterrupted,
   StoreSubscriptionError,
@@ -108,12 +108,13 @@ export function createPostgresRequestStore(
 
   const base = createPgRecordStore<RequestRecord, RequestListOptions>(executor, {
     tableName: "requests",
-    columns: ["flow_kind", "user_id", "session_id", "org_id", "status"],
+    columns: ["flow_kind", "user_id", "session_id", "org_id", "tenant_id", "status"],
     toRow: (record) => [
       record.flowKind,
       record.userId,
       record.sessionId ?? null,
       record.orgId ?? null,
+      record.tenantId ?? null,
       record.status
     ],
     toWhere: (options, nextParam = 1) => {
@@ -132,6 +133,13 @@ export function createPostgresRequestStore(
       if (options?.userId !== undefined) {
         parts.push(`user_id = $${p++}`);
         params.push(options.userId);
+      }
+      // Tenant filter (FIX-682): present (incl. explicit undefined) → NULL-safe
+      // exact match; absent → no filter. Isolates cross-turn history between
+      // two tenants sharing a bare session id.
+      if (options !== undefined && "tenantId" in options) {
+        parts.push(`tenant_id IS NOT DISTINCT FROM $${p++}`);
+        params.push(options.tenantId ?? null);
       }
       if (options?.status !== undefined) {
         parts.push(`status = $${p++}`);
@@ -487,7 +495,7 @@ async function* subscribeViaListen(
   for (const event of initial) {
     yield event;
     lastSeen = event.sequence_number;
-    if (isTerminalRequestStreamEvent(event)) return;
+    if (endsRequestStream(event, options)) return;
   }
 
   let attempt = 0;
@@ -530,7 +538,7 @@ async function* subscribeViaListen(
       for (const event of gap) {
         yield event;
         lastSeen = event.sequence_number;
-        if (isTerminalRequestStreamEvent(event)) return;
+        if (endsRequestStream(event, options)) return;
       }
       if (gap.length > 0) lastTickAt = Date.now();
 
@@ -569,7 +577,7 @@ async function* subscribeViaListen(
             for (const event of next) {
               yield event;
               lastSeen = event.sequence_number;
-              if (isTerminalRequestStreamEvent(event)) return;
+              if (endsRequestStream(event, options)) return;
             }
           }
         } else if (Date.now() - lastTickAt > livenessMs) {

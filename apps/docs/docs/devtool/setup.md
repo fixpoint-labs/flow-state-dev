@@ -99,8 +99,10 @@ OPENAI_API_KEY=sk-...
 
 ## Data persistence
 
-Session data persists to `.fsdev/data/` relative to your working directory. Delete this directory to start fresh. The directory is created automatically on first use.
+By default, session data persists to `.fsdev/data/` relative to your working directory. Delete this directory to start fresh. The directory is created automatically on first use.
+
+This is the no-config default. When your project ships an `fsdev.config.ts`, stores come from the app's own wiring instead, whatever profile that config declares. See [App Configuration](/docs/cli/configuration).
 
 ## Monorepo support
 
-In monorepos, `fsdev dev` scans one level under `packages/`, `examples/`, and `apps/` for flow directories. Run it from the monorepo root to discover flows across all packages.
+In monorepos, `fsdev dev` scans one level under `packages/`, `examples/`, `apps/`, and `labs/` for flow directories. Run it from the monorepo root to discover flows across all packages.

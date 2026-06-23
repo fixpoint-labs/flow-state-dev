@@ -15,7 +15,6 @@
  * thrown error. Fixture mode: curated per-ticker JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
 import { fetchFinnhubCompanyProfile, hasFinnhubKey } from "../providers/finnhub";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchWebsiteMetaDescription, searchCompanyWeb } from "../providers/web";
@@ -23,18 +22,32 @@ import { fetchYahooCompanyProfile } from "../providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import type { ToolInput, ToolOutput } from "../schemas";
+import { profileDataResource } from "../../profile-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { recordIfRecording } from "../runtime/resolve";
 
 export const get_company_profile = handler({
   name: "get_company_profile",
   description: "Business-identity profile (name, sector, industry, scale) for a ticker.",
   inputSchema: toolInputSchemas.get_company_profile,
   outputSchema: toolOutputSchemas.get_company_profile,
+  resources: { profileData: profileDataResource },
+  // Write-through to the session profile spine (see get_fundamentals).
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_company_profile", input);
-    return getOrFetch("get_company_profile", input, async () => {
+    const loadCompanyProfile = async () => {
+      if (pickMode(ctx) === "fixture") return loadFixture("get_company_profile", input);
       const merged = await fetchAndMergeProviders(input);
       return enrichWithWeb(merged);
+    };
+    const payload = await writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.profileData,
+      field: "companyProfile",
+      tool: "get_company_profile",
+      input,
+      load: loadCompanyProfile,
     });
+    return recordIfRecording("get_company_profile", input, ctx, payload);
   },
 });
 

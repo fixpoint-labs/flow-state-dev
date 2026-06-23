@@ -1,41 +1,57 @@
 /**
- * Cross-flow portfolio sharing guard (FIX-736).
+ * Cross-flow portfolio sharing guard (FIX-736 + FIX-772).
  *
- * Proves the core mechanism of the portfolio/report flow split: data written
- * through the `portfolio` flow is readable through the
- * `trading-desk` (report) flow at bare `{userId}`.
+ * Proves the core mechanism of the portfolio/report flow split: an account
+ * written through the `portfolio` flow's `saveAccount` action is readable by
+ * the analysis (report) flow's `seedSession` — because both flows go through
+ * the SAME app-owned portfolio repository (FIX-772) for the same `{userId}`.
  *
  * HOW THE TEST PROVES IT:
- *   1. A shared `StoreRegistry` is created (one in-memory store, both flows
- *      see the same underlying data).
- *   2. `saveAccount` is run through the portfolio flow — writes
- *      `accounts/{id}` at bare `{userId}` (flowIsolation: false).
- *   3. `analyze` is run through the report flow using the SAME store instance.
- *      No `seed.user.resources` is passed — the user slot has NO manual seed.
- *      The report flow's `seedSession` reads `accounts` from the store that
- *      the portfolio flow already wrote to.
+ *   1. The repository is mocked to ONE shared in-memory PGlite instance (reset
+ *      fresh per test) — both flow calls resolve `getRepository()` to it.
+ *   2. `saveAccount` is run through the portfolio flow — writes an account row
+ *      for `{userId}` into the repo.
+ *   3. `analyze` is run through the report flow with the SAME mocked repo and
+ *      NO `seed.user.resources` for accounts. `seedSession` reads accounts +
+ *      holdings from `getPortfolio(userId)` — the repo the portfolio flow wrote.
  *   4. After `analyze` completes, `session.state.portfolio.accounts` must
  *      contain the IRA account written in step 2.
  *
  * WHY THIS IS A REAL GUARD (not a false pass):
- *   - If either resource were re-isolated (`flowIsolation: true`), the portfolio
- *     flow would write at `{userId}:portfolio` and the report flow
- *     would read at `{userId}:trading-desk` — two separate keys in the same
- *     store — and `session.state.portfolio` would be `null` (no accounts in the
- *     report flow's namespace), failing the assertion.
- *   - Because we do NOT use `seed.user.resources` for the report flow call, the
- *     only way the account can appear in `portfolio.accounts` is via the shared
- *     store path. There is no manual injection that could paper over a missing
- *     cross-flow write.
+ *   - The two flows share the repo only because they resolve the same
+ *     `getRepository()` for the same `{userId}`. We never inject accounts via
+ *     `seed.user.resources`, so the only path for the IRA to appear in
+ *     `portfolio.accounts` is the shared repository read at seed time.
+ *   - The negative case starts from a fresh, EMPTY repo (no portfolio write) —
+ *     `seedSession` reads no accounts → `portfolio: null`. If the analysis flow
+ *     somehow saw a stale or differently-keyed write, the negative would fail.
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
+import { makeTestRepository } from "./_helpers/portfolio-repo";
+import type { PortfolioRepository } from "@/src/db/repository";
+
+// Both flows resolve getRepository() to this one in-memory repo, reset fresh
+// per test (FIX-772) — the cross-flow share is now a shared repository, not a
+// shared resource key.
+const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
+vi.mock("@/lib/portfolio-db", () => ({
+  getRepository: async () => {
+    if (!repoState.repo) throw new Error("test repository not initialized");
+    return repoState.repo;
+  },
+}));
+
 import portfolioFlow from "../src/flows/portfolio/flow";
 import reportFlow from "../src/flows/analysis/flow";
 
 const USER_ID = "shared-user";
 const SESSION_ID = "cross-flow-session";
+
+beforeEach(async () => {
+  repoState.repo = await makeTestRepository();
+});
 
 // ---------------------------------------------------------------------------
 // Minimal generator mocks — just enough to run the full analyze pipeline on
@@ -331,13 +347,12 @@ function allMocks() {
 
 // ---------------------------------------------------------------------------
 
-describe("portfolio user-scoped sharing (cross-flow)", () => {
-  it("an account written via the portfolio flow is readable via the report flow (bare {userId})", async () => {
-    // ONE shared store — the single source of truth for both flow calls.
+describe("portfolio cross-flow sharing (shared repository)", () => {
+  it("an account written via the portfolio flow is readable via the report flow", async () => {
     const stores = createInMemoryStores();
 
-    // Step 1: write an IRA account through the PORTFOLIO flow.
-    // This lands at bare {userId} (flowIsolation: false → no flowKind namespace).
+    // Step 1: write an IRA account through the PORTFOLIO flow. saveAccount
+    // upserts it into the shared (mocked) repository for {userId}.
     const writeResult = await testFlow({
       flow: portfolioFlow,
       action: "saveAccount",
@@ -353,10 +368,9 @@ describe("portfolio user-scoped sharing (cross-flow)", () => {
     });
     expect(writeResult.status).toBe("completed");
 
-    // Step 2: run the REPORT flow's `analyze` using the SAME store — NO
-    // seed.user.resources. The only way portfolio.accounts can contain the
-    // IRA is if seedSession reads it from the shared store that the portfolio
-    // flow just wrote.
+    // Step 2: run the REPORT flow's `analyze` — NO seed.user.resources for
+    // accounts. The only way portfolio.accounts can contain the IRA is if
+    // seedSession reads it from the shared repository the portfolio flow wrote.
     const analyzeResult = await testFlow({
       flow: reportFlow,
       action: "analyze",
@@ -392,8 +406,8 @@ describe("portfolio user-scoped sharing (cross-flow)", () => {
   });
 
   it("is a real guard: WITHOUT the portfolio flow write, the report flow sees no accounts (null portfolio)", async () => {
-    // Separate store, no portfolio flow write — report flow reads nothing at
-    // bare {userId}, so portfolio → null.
+    // Fresh empty repo (beforeEach), no portfolio flow write — seedSession
+    // reads no accounts from the repository, so portfolio → null.
     const stores = createInMemoryStores();
 
     const analyzeResult = await testFlow({

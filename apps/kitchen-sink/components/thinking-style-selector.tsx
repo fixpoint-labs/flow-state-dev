@@ -22,7 +22,7 @@ import {
   Scale,
   ChevronDownIcon,
 } from "lucide-react";
-import type { ThinkingStyleInput } from "@/flows/chat-agent/blocks";
+import type { ThinkingStyleInput } from "@/flows/chat-agent/shared/schemas";
 
 // Action-input shape is the source of truth: the selector lets users
 // pick any value the chat-agent flow accepts on input, including "auto".

@@ -3,7 +3,7 @@
  */
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { resolveItemVisibility } from "@flow-state-dev/core/items";
+import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
@@ -20,6 +20,7 @@ import {
   getPositiveInteger,
   getString,
   jsonResponse,
+  loadTenantSession,
   parseClientDataFilter,
   sortItems
 } from "./route-utils";
@@ -30,6 +31,8 @@ const DEFAULT_STATE_ITEMS_LIMIT = 100;
 type StateRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
+  /** Tenant id from the request header (FIX-682); namespaces the session key. */
+  tenantId?: string;
 };
 
 export async function handleGetSessionState(
@@ -37,7 +40,11 @@ export async function handleGetSessionState(
   route: Extract<ParsedFlowRoute, { kind: "get_session_state" }>,
   ctx: StateRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await loadTenantSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId
+  );
   if (session === undefined) {
     return jsonResponse(404, {
       error: `Unknown session "${route.sessionId}"`
@@ -81,13 +88,22 @@ export async function handleGetSessionState(
   let totalItems = 0;
   if (includeItems) {
     const requests = await ctx.stores.request.list({
-      sessionId: session.id,
+      // Request records key on the BARE session id; isolate by the tenant
+      // filter (FIX-682). `session.id` here is the namespaced storage key, so
+      // it must not be used as the request filter.
+      sessionId: route.sessionId,
+      tenantId: ctx.tenantId,
       withItems: true
     });
     aggregatedItems = [];
     for (const req of requests) {
       if (req.items !== undefined) {
-        for (const item of req.items) {
+        // Collapse each request's physical log to its canonical view before
+        // aggregating (FIX-811): a resumed request's suspending block re-emits
+        // its pre-suspension items, and the superseded run-1 copies must not
+        // surface in session history. Per-request because logical ids are
+        // scoped by request id.
+        for (const item of collapseToCanonicalLog(req.items)) {
           if (itemTypeFilter !== undefined && !itemTypeFilter.has(item.type)) {
             continue;
           }
@@ -221,7 +237,8 @@ export async function handleGetSessionState(
   // FIX-579: dropped `internalState` field (was gated by `?include=internal_state`).
   // The DevTool no longer relies on raw scope state from this endpoint.
   return jsonResponse(200, {
-    sessionId: session.id,
+    // Bare session id — `session.id` is the namespaced storage key (FIX-682).
+    sessionId: route.sessionId,
     flowKind: session.flowKind,
     clientData: {
       session:

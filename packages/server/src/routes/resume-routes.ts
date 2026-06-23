@@ -35,6 +35,21 @@ export async function handleResumeSuspension(
     return jsonResponse(404, { error: `Unknown flow "${route.flowKind}"` });
   }
 
+  const originalRequest = await ctx.stores.request.get(route.requestId);
+  if (originalRequest === undefined) {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  }
+
+  // A webhook request is reachable only through a verified webhook, never this
+  // public surface — resuming one would re-enter the handler with
+  // caller-supplied gate data and no signature check. Reject like the
+  // retry/continue routes (and before anything else can act on the record),
+  // returning the same not-found shape as a missing record so webhook requests
+  // are indistinguishable here.
+  if (originalRequest.source === "webhook") {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  }
+
   const provider = ctx.durabilityProvider;
   if (provider === undefined) {
     return jsonResponse(400, {
@@ -58,11 +73,6 @@ export async function handleResumeSuspension(
     });
   }
 
-  const originalRequest = await ctx.stores.request.get(route.requestId);
-  if (originalRequest === undefined) {
-    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
-  }
-
   if (originalRequest.status !== "suspended") {
     return jsonResponse(409, {
       error: `Request is "${originalRequest.status}", not "suspended"`
@@ -78,6 +88,21 @@ export async function handleResumeSuspension(
   if (suspension.status !== "pending") {
     return jsonResponse(409, {
       error: `Suspension "${suspensionId}" has already been resolved (status: "${suspension.status}")`
+    });
+  }
+
+  // Enforce expiry at the endpoint, not just in the sweeper. The sweeper flips
+  // pending -> expired only every sweepIntervalMs (and only when retention is
+  // configured), so without this check an expired gate stays approvable between
+  // ticks — or forever if retention is off. Mark it expired now and reject.
+  if (suspension.expiresAt != null && suspension.expiresAt <= Date.now()) {
+    await provider.suspend({
+      ...suspension,
+      status: "expired",
+      resolvedAt: Date.now()
+    });
+    return jsonResponse(410, {
+      error: `Suspension "${suspensionId}" expired at ${suspension.expiresAt}`
     });
   }
 
@@ -99,8 +124,6 @@ export async function handleResumeSuspension(
     resumedBy
   };
 
-  const newRequestId = generateId("req");
-
   try {
     const now = Date.now();
     await provider.suspend({
@@ -111,18 +134,14 @@ export async function handleResumeSuspension(
       resumeData
     });
 
-    const handle = ctx.host.dispatch({
-      source: "http",
-      flowKind: route.flowKind,
-      action: suspension.actionName,
-      input: originalRequest.input,
-      sessionId: suspension.sessionId,
-      requestId: newRequestId,
-      principal: { userId: suspension.userId },
-      metadata: {
-        resumeOf: route.requestId,
-        resumeContext
-      }
+    // Same-request continuation (FIX-811): re-enter the ORIGINAL request id. No
+    // second request is created. `continueRequest` rejects synchronously (well,
+    // its returned promise) for a missing record / unknown flow — but those are
+    // already guarded above (404 paths), so a rejection here is a genuine
+    // setup failure handled by the catch below.
+    const handle = await ctx.host.continueRequest({
+      requestId: route.requestId,
+      resumeContext
     });
 
     const accept = request.headers.get("accept") ?? "";
@@ -133,18 +152,20 @@ export async function handleResumeSuspension(
           ...SSE_HEADERS,
           "cache-control": "no-cache, no-transform",
           "x-accel-buffering": "no",
-          "x-request-id": handle.requestId,
-          "x-original-request-id": route.requestId
+          "x-request-id": handle.requestId
         }
       });
     }
 
     return jsonResponse(202, {
-      requestId: newRequestId,
-      originalRequestId: route.requestId
+      requestId: route.requestId
     });
   } catch (error) {
-    // Revert suspension to pending so the operator can retry.
+    // Setup failed before the point-of-no-return (continueRequest threw, or the
+    // status transition never happened). Revert the suspension to pending so the
+    // operator can retry, and release the lease. Once runAction crosses into
+    // `in_progress` a failure is a durable terminal `failed` and does not reach
+    // here (continueRequest's `finished` carries it, not awaited above).
     await provider.suspend({ ...suspension, status: "pending" }).catch(() => {});
     await provider.releaseLease(route.requestId, lease.leaseId);
     throw error;

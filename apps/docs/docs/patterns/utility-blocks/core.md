@@ -23,10 +23,8 @@ const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" }
 | [`contextReducer`](#contextreducer) | generator | Reduce context via distill, denoise, or compress strategies |
 | [`memoryExtractor`](#memoryextractor) | generator | Extract durable memory candidates from conversations |
 | [`decomposer`](#decomposer) | generator | Break broad requests into structured subtasks |
-| [`composer`](#composer) | generator | Assemble coherent output from discrete parts |
 | [`summarizer`](#summarizer) | generator | Summarize at brief, detailed, or executive granularity |
 | [`combiner`](#combiner) | handler | Deterministically merge artifacts (no LLM call) |
-| [`synthesizer`](#synthesizer) | generator | Reconcile overlapping or conflicting inputs into one artifact |
 | [`analyzer`](#analyzer) | generator | Evaluate artifacts against structured criteria |
 | [`upsertResource`](#upsertresource) | handler | Get-or-create + patch a resource collection instance (no LLM call) |
 | [`intentClassifier`](#intentclassifier) | generator | Classify input into a bounded category set for routing |
@@ -39,8 +37,7 @@ Every generator-based utility defaults to `"gpt-5-mini"` and accepts a `model` o
 
 Every generator-based utility accepts an optional `itemVisibility` (`{ client: boolean; history: boolean }`) that controls how the block's output is surfaced. This maps to the [generator identity model](/docs/streaming/emitting-items).
 
-- `synthesizer` defaults to `itemVisibility: { client: true, history: true }` — its output is user-facing by convention.
-- All other utilities leave `itemVisibility` unset by default — their output flows to the next block via graph edges but is not auto-emitted to the client or history. This matches the typical use case: internal pipeline steps that feed downstream blocks.
+- All utilities leave `itemVisibility` unset by default — their output flows to the next block via graph edges but is not auto-emitted to the client or history. This matches the typical use case: internal pipeline steps that feed downstream blocks.
 - Set `itemVisibility: { client: true, history: true }` on any utility when its output should be visible to the user (e.g. using `analyzer` as a user-facing critic).
 - Set `itemVisibility: { client: false, history: false }` when the output is observability-only — visible in the devtool, not to the client or in history.
 
@@ -283,9 +280,13 @@ Each `SubTask` has:
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | `string` | Stable unique identifier |
+| `title` | `string \| null` | Concise label, distinct from `goal`. `null` when a separate label adds nothing. Plan UIs render `title ?? goal` |
 | `goal` | `string` | What the task accomplishes |
+| `context` | `string \| null` | The concrete facts the task needs from the request (values, lists, constraints), copied so the worker — which only sees this task — can act on it. `null` when the goal is self-contained |
 | `deps` | `string[]` | IDs of tasks this depends on |
 | `priority` | `"high" \| "medium" \| "low"` | Execution priority hint |
+
+`title` and `context` are `nullable`, not optional (BP-016: generator outputs must be OpenAI strict-mode compatible). Consumers treat `null` as "absent". Plan-shaped patterns read `context` to give each worker the data its task needs — see [Plan & Execute per-task context](../plan-and-execute).
 
 **Example output:**
 
@@ -294,25 +295,33 @@ Each `SubTask` has:
   "tasks": [
     {
       "id": "task-1",
+      "title": "Database schema",
       "goal": "Design the database schema for user accounts and sessions",
+      "context": "Entities: users, sessions. Auth methods in scope: password, OAuth2.",
       "deps": [],
       "priority": "high"
     },
     {
       "id": "task-2",
+      "title": "Auth endpoints",
       "goal": "Implement authentication endpoints (signup, login, logout)",
+      "context": null,
       "deps": ["task-1"],
       "priority": "high"
     },
     {
       "id": "task-3",
+      "title": "Password reset",
       "goal": "Build the password reset flow with email verification",
+      "context": null,
       "deps": ["task-2"],
       "priority": "medium"
     },
     {
       "id": "task-4",
+      "title": "OAuth2 providers",
       "goal": "Add OAuth2 integration for Google and GitHub providers",
+      "context": "Providers: Google, GitHub.",
       "deps": ["task-2"],
       "priority": "low"
     }
@@ -343,88 +352,6 @@ export const planProject = sequencer({
   .step(decompose)
   .map((output) => output.tasks.map((t) => `Task ${t.id}: ${t.goal}`))
   .forEach(summarizeTask);
-```
-
----
-
-### composer — assemble parts into a whole {#composer}
-
-When you have discrete sections — an intro, body, and conclusion from different blocks — `composer` joins them into a coherent document respecting ordering and structural constraints.
-
-**How it differs from `synthesizer`:** Composer rebuilds from discrete parts. Synthesizer reconciles overlap and conflict across independent inputs that may cover the same ground.
-
-**Common use cases:**
-- Assembling multi-section reports from parallel analysis blocks
-- Joining independently generated document sections into a coherent whole
-- Combining research findings with recommendations into a single deliverable
-- Building structured outputs from discrete pipeline stages
-
-```ts
-import { utility } from "@flow-state-dev/core";
-
-const compose = utility.composer({
-  name: "assemble-report",
-  objectives: ["Maintain chronological order", "Use consistent tone"],
-});
-```
-
-**Example output:**
-
-```json
-{
-  "composed": "# Q3 Product Review\n\nThe quarter saw significant progress across all product lines. Revenue grew 18% quarter-over-quarter, driven primarily by enterprise adoption.\n\n## Key Findings\n\nCustomer retention improved to 94%, up from 89% in Q2. The new onboarding flow reduced time-to-value by 40%.\n\n## Risk Assessment\n\nTwo critical risks require immediate attention: the pending API deprecation affects 12% of integrations, and the mobile team is understaffed for the offline sync milestone.\n\n## Recommendations\n\n1. Accelerate migration tooling for deprecated APIs\n2. Expand enterprise onboarding team by 2 headcount",
-  "structure": ["executive-summary", "key-findings", "risk-assessment", "recommendations"]
-}
-```
-
-#### Realistic example: multi-section report builder
-
-Different blocks produce different report sections. Composer assembles them into a single document:
-
-```ts title="src/flows/reports/blocks/build-report.ts"
-import { utility, sequencer } from "@flow-state-dev/core";
-import { z } from "zod";
-
-const summarizeFindings = utility.summarizer({
-  name: "findings-summary",
-  granularity: "detailed",
-});
-
-const summarizeRisks = utility.summarizer({
-  name: "risk-summary",
-  granularity: "executive",
-});
-
-const compose = utility.composer({
-  name: "final-report",
-  objectives: ["Lead with executive summary", "End with action items"],
-});
-
-export const buildReport = sequencer({
-  name: "report-builder",
-  inputSchema: z.object({
-    findings: z.string(),
-    risks: z.string(),
-  }),
-})
-  .parallel({
-    findings: {
-      connector: (input) => input.findings,
-      block: summarizeFindings,
-    },
-    risks: {
-      connector: (input) => input.risks,
-      block: summarizeRisks,
-    },
-  })
-  .map((results) => ({
-    parts: [
-      { id: "findings", content: results.findings.summary },
-      { id: "risks", content: results.risks.summary },
-    ],
-    constraints: { ordering: ["findings", "risks"] },
-  }))
-  .step(compose);
 ```
 
 ---
@@ -554,7 +481,7 @@ const merge = utility.combiner({ name: "merge-results" });
 
 Deduplication uses stable serialization (sorted object keys) — not reference equality. Merge notes document every resolution decision so the merge is auditable.
 
-**When to prefer combiner over synthesizer:** Use combiner when you need deterministic, predictable merging. Use synthesizer when inputs have semantic overlap that needs interpretive reasoning.
+**When to prefer combiner:** Use combiner when you need deterministic, predictable merging. When inputs have semantic overlap that needs interpretive reasoning, use a `generator()` with a `user` projection over the inputs instead.
 
 **Example output:**
 
@@ -697,75 +624,6 @@ Note: `upsertArtifact` is used with `.tap()` here so the original input (includi
 
 
 The summarizer receives raw content (via the connector), then `saveSummary` reads the id back from sequencer state rather than from the current chain value.
-
----
-
-### synthesizer — reconcile conflict and overlap {#synthesizer}
-
-When multiple sources cover the same ground with different perspectives or conflicting claims, `synthesizer` produces a unified artifact. It deduplicates overlapping content while explicitly resolving disagreements — unlike combiner, which uses structural rules, synthesizer uses interpretive reasoning.
-
-**Common use cases:**
-- Reconciling conflicting analyst reports or reviews
-- Unifying overlapping research from parallel agents
-- Merging multiple customer feedback themes into a single insight report
-- Producing consensus summaries from multi-source intelligence
-
-```ts
-import { utility } from "@flow-state-dev/core";
-
-const synthesize = utility.synthesizer({
-  name: "reconcile",
-  objectives: ["Prefer sources with direct evidence", "Flag unresolvable conflicts"],
-});
-```
-
-The `rationale` array explains every synthesis decision — which sources agreed, how conflicts were resolved, and what was deduplicated. This makes the output auditable even though an LLM made the decisions.
-
-**Example output:**
-
-```json
-{
-  "synthesis": "Both analysts agree the product's core UX is strong and retention metrics are trending positively. Pricing strategy is the key point of disagreement: Analyst A recommends a 15% price reduction to drive volume, while Analyst B recommends feature bundling at current price points to increase perceived value. Market data from Q3 supports the bundling approach, as competitors who cut prices saw short-term volume gains but lower LTV. Both analysts independently flagged mobile performance as the top technical priority.",
-  "rationale": [
-    "UX sentiment: both analysts positive — merged without conflict",
-    "Pricing: Analyst A recommends reduction, Analyst B recommends bundling. Weighted toward B (backed by Q3 market data)",
-    "Mobile performance: both flagged independently — deduplicated into single finding",
-    "Churn risk from competitor features mentioned only by Analyst A — preserved as-is"
-  ]
-}
-```
-
-#### Realistic example: reconciling analyst reports
-
-Two analysts independently review the same product. Their reports overlap and sometimes disagree:
-
-```ts title="src/flows/analysis/blocks/reconcile.ts"
-import { utility, sequencer } from "@flow-state-dev/core";
-import { z } from "zod";
-
-const synthesize = utility.synthesizer({
-  name: "reconcile-reviews",
-  objectives: [
-    "Surface areas of agreement first",
-    "For disagreements, present both positions with evidence",
-    "Assign higher weight to claims backed by data",
-  ],
-});
-
-export const reconcileReviews = sequencer({
-  name: "reconcile-pipeline",
-  inputSchema: z.object({
-    reviews: z.array(z.object({
-      analyst: z.string(),
-      report: z.string(),
-    })),
-  }),
-})
-  .map((input) =>
-    input.reviews.map((r) => `## ${r.analyst}\n${r.report}`).join("\n\n")
-  )
-  .step(synthesize);
-```
 
 ---
 
@@ -1111,7 +969,7 @@ These examples show how multiple utilities compose into complete workflows.
 A user asks a broad research question. The system decomposes it into subtasks, summarizes each one, checks quality, then synthesizes a final answer:
 
 ```ts title="src/flows/research/flow.ts"
-import { defineFlow, utility, sequencer } from "@flow-state-dev/core";
+import { defineFlow, utility, generator, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const inputSchema = z.object({ question: z.string() });
@@ -1131,13 +989,16 @@ const qualityGate = utility.analyzer({
   criteria: ["coverage", "accuracy", "evidence-quality"],
 });
 
-// Step 4: Synthesize into one coherent answer
-const synthesize = utility.synthesizer({
+// Step 4: Synthesize into one coherent answer with a raw generator
+const synthesize = generator({
   name: "final-answer",
-  objectives: [
-    "Produce a coherent narrative, not bullet points",
-    "Cite evidence for every major claim",
-  ],
+  outputSchema: z.object({ answer: z.string() }),
+  prompt: [
+    "Produce a coherent narrative answer, not bullet points.",
+    "Cite evidence for every major claim.",
+  ].join("\n"),
+  user: (analysis: { findings: unknown; recommendation: unknown }) =>
+    JSON.stringify(analysis, null, 2),
 });
 
 const researchPipeline = sequencer({
@@ -1183,7 +1044,7 @@ const researchFlow = defineFlow({
 export default researchFlow({ id: "default" });
 ```
 
-**Data flow:** `question` &rarr; `decomposer` &rarr; `forEach(summarizer)` &rarr; `analyzer` &rarr; `synthesizer` &rarr; final answer
+**Data flow:** `question` &rarr; `decomposer` &rarr; `forEach(summarizer)` &rarr; `analyzer` &rarr; `generator` &rarr; final answer
 
 ---
 

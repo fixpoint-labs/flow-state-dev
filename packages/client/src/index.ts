@@ -45,6 +45,10 @@ export {
   type InterruptedRequestSummary,
   type RetryRequestOptions,
   type RetryRequestResult,
+  type ContinueRequestOptions,
+  type ContinueRequestResult,
+  type ResumeSuspensionBody,
+  type ResumeSuspensionResult,
   type RecoveryClient
 } from "./recovery-client/recovery";
 
@@ -58,7 +62,11 @@ export type {
   DebugResourceClientConfig,
   DebugResourceEntry,
   DebugResourcesResponse,
+  DebugSuspensionsResponse,
   ListDebugCollectionItemsOptions,
+  ListDebugSuspensionsOptions,
+  SuspensionRecord,
+  SuspensionStatus,
   CollectionSnapshotPrefetchedItem,
   CollectionListPage,
   CollectionItemState,

@@ -97,6 +97,8 @@ Agent tool (general-purpose):
     - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
     - What you implemented
     - What you tested and results
+    - **Key decisions you made (with ramifications):** any choice the spec left open that you resolved, any deviation, any tradeoff under a constraint — the decision, the alternative you rejected, and what it locks in or rules out. The orchestrator compiles these across tasks into the PR's top-5. If the task was mechanical with no real decisions, say so.
+    - **Goal verdict:** for a TDD task, if the spec named a slice-level goal check runnable after this task, the real-model command/path and its PASS/FAIL verdict; if the goal proof is end-to-end, say it's deferred to the orchestrator (don't run it early or invent a PASS). For a Bug task, the real-path confirmation (`fsdev run`) that the user-visible symptom is gone, or "N/A — type/unit-only regression." Mocked specs don't prove the goal.
     - Files changed
     - Self-review findings (if any)
     - Concerns or blockers (if any)
@@ -149,10 +151,27 @@ Correct order:
    gating a single step (BP-015, use `.stepIf` / `.workIf` / `.tapIf`),
    repeated tool / context / resource wiring (extract a capability).
    Never refactor while red.
+5. **Verify the goal — slice-level only; defer the end-to-end check to the orchestrator.**
+   A task completes a *goal-bearing slice* when its acceptance criteria
+   map directly to a user-observable outcome stated in the spec's Testing
+   Strategy goal (an item emitted, a state value written, a returned
+   result a user would see). But you implement only THIS task — the
+   spec's main goal check is usually an **end-to-end** check that depends
+   on later tasks and final integration, and it will not pass yet. Do
+   NOT run it; the orchestrator runs the end-to-end goal check after
+   integration. Run a check here only if the spec names a **slice-level**
+   goal check that is runnable after this task in isolation — if so, run
+   it against a **real** model (`fsdev run`, or a `goal-checks/<name>.goal.mts`
+   script) and report the command and PASS/FAIL verdict. Otherwise (pure
+   plumbing, or a slice whose only proof is end-to-end), say the goal
+   proof is deferred to the orchestrator. Never invent a PASS verdict for
+   a check you couldn't run.
 
 Test placement: co-located `*.spec.ts` next to the source. For
-cross-package behaviour, `packages/integration-tests/`. See
-`fsd:write-block-tests` for the mock-context idiom.
+cross-package behaviour, `packages/integration-tests/`. Goal checks live
+in `goal-checks/` and never run in CI. See `fsd:tdd` → "Two kinds of
+test" for the split, and `fsd:write-block-tests` for the mock-context
+idiom used in CI specs.
 ```
 
 ### Diagnose block (for Bug issues)
@@ -192,9 +211,18 @@ loop produce hours of speculative code changes.
    Apply the fix. Watch it pass. Re-run the Phase 1 feedback loop
    against the original (un-minimised) scenario to confirm. If no
    correct seam exists, that itself is the finding — flag it.
-6. **Cleanup.** Before reporting:
+6. **Cleanup + goal-level proof.** Before reporting:
    - Original repro no longer reproduces
    - Regression test passes
+   - **Real-path confirmation (slice-level only).** If the bug is
+     user-visible AND your task contains an isolated, runnable repro,
+     confirm the fix through the real path — `fsdev run` against a real
+     model — not only the mocked regression spec, and report it as the
+     goal verdict. If the symptom only reproduces once later tasks land
+     and integration is done, do NOT run it; say the assembled proof is
+     deferred to the orchestrator (it runs it in Step 5B.4). Pure
+     type/unit regression → "N/A — type/unit-only." Never invent a PASS
+     or N/A for a repro you couldn't run.
    - All `[DEBUG-*]` instrumentation removed (`grep` the prefix)
    - Throwaway prototypes deleted
    - Commit message names the hypothesis that turned out correct — so

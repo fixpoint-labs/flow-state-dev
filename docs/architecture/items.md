@@ -25,7 +25,7 @@ Items fall into three visibility categories based on their `type`:
 
 **Conversational types** (`message`, `reasoning`, `tool_output`) use `item.itemVisibility` if present, otherwise default to `{ client: true, history: true }`.
 
-**Structural types** (everything else: `component`, `container`, `source`, `status`, `state_change`, `resource_change`, `error`) default to `{ client: true, history: false }`.
+**Structural types** (everything else: `component`, `container`, `source`, `status`, `state_change`, `resource_change`, `error`, `suspension`, `suspension_resume`) default to `{ client: true, history: false }`.
 
 ### The `itemVisibility` field
 
@@ -177,6 +177,8 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 | `state_change` | Auto on state mutations | ✓ | — | Structural | Transient in prod / persistent in dev |
 | `resource_change` | Auto on resource mutations | ✓ | — | Structural | Transient by default |
 | `error` | Runtime (terminal failure) | ✓ | — | Structural | Persistent |
+| `suspension` | `ctx.suspend()` (durable actions, on suspend) | ✓ | — | Structural | Persistent |
+| `suspension_resume` | Resume (durable actions, on continuation) | ✓ | — | Structural | Persistent |
 | `block_trace` | Every block (auto, lifecycle: in_progress → updates → terminal) | — | — | Trace | Persistent |
 | `router_decision` | Router (auto, on selection) | — | — | Trace | Persistent |
 | `state_snapshot` | Sequencer (at step boundaries) | — | — | Trace | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
@@ -313,7 +315,7 @@ Most new UI needs can be expressed via `component` items with a registered rende
 If a new type is genuinely needed:
 
 1. **Define the schema** in `packages/core/src/items/types.ts` and add it to the `OutputItem` union.
-2. **Decide visibility** — which category? If trace, add it to `TRACE_TYPES` in `packages/core/src/items/resolve-visibility.ts` (always `{ client: false, history: false }`). If structural, add it to `STRUCTURAL_TYPE_DEFAULTS` with fixed `client` / `history` values. If conversational, add it to `CONVERSATIONAL_TYPES` so `item.itemVisibility` governs visibility.
+2. **Decide visibility** — which category? In `packages/core/src/items/resolve-visibility.ts`: if trace, add it to `TRACE_TYPES` (always `{ client: false, history: false }`); if conversational, add it to `CONVERSATIONAL_TYPES` so `item.itemVisibility` governs visibility. Structural types need no edit — anything not in `TRACE_TYPES` or `CONVERSATIONAL_TYPES` falls through to `STRUCTURAL_DEFAULT` (`{ client: true, history: false }`).
 3. **Add a registry row** to the table in this document — all columns required.
 4. **Set persistence** — `transient: true` at emission for stream-only items.
 5. **Define kitchen sink rendering** — register a built-in fallback in `ItemRenderer.ts`, add to `NON_RENDERABLE_TYPES`, or accept the JSON dev fallback. Don't leave it implicit.

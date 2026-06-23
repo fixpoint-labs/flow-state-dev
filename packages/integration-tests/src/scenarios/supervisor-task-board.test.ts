@@ -32,9 +32,9 @@ describe("supervisor + task-board regression", () => {
             {
               structuredOutput: {
                 tasks: [
-                  { id: "t1", goal: "Research X" },
-                  { id: "t2", goal: "Research Y" },
-                  { id: "t3", goal: "Research Z" }
+                  { id: "t1", title: null, goal: "Research X", context: null },
+                  { id: "t2", title: null, goal: "Research Y", context: null },
+                  { id: "t3", title: null, goal: "Research Z", context: null }
                 ]
               }
             }

@@ -140,23 +140,22 @@ export default defineFlow({
 **Utility block factories (`utility.*`):**
 - `utility.contextReducer(config)` — Generator factory for `distill`, `denoise`, or `compress` context transformation modes with mode-specific default output schemas (`{ distilled, keyPoints }`, `{ cleaned, removedCategories? }`, `{ compressed, compressionRatio?, dropped? }`)
 - `utility.summarizer(config)` — Generator factory for brief, detailed, or executive summaries with optional focus `objectives` and a default `{ summary, keyPoints? }` output contract
-- `utility.composer(config)` — Generator factory that assembles coherent artifacts from structured parts/constraints with a default `{ composed, structure? }` output contract
 - `utility.decomposer(config)` — Generator factory that breaks broad requests into executable tasks using a default `{ tasks: [{ id, goal, deps?, priority? }] }` output contract
 - `utility.analyzer(config)` — Generator factory for artifact critique/evaluation with configurable `criteria` and a default `{ findings, score?, recommendation? }` output contract
-- `utility.synthesizer(config)` — Generator factory that reconciles overlapping or conflicting artifacts into a unified output with default `{ synthesis, rationale }` output contract
 - `utility.combiner(config)` — Handler factory for deterministic artifact merging via concatenation, deduplication, and structural normalization with default `{ combined, mergeNotes? }` output
 - `utility.intentClassifier(config)` — Generator factory for bounded intent classification with required category descriptions and default `{ category, confidence, reasoning? }` output contract
 - `utility.intentRouter(config)` — Sequencer factory that composes `intentClassifier` + `router` into classification-driven branching with category descriptions, handlers, optional `confidenceThreshold`, and optional fallback routing
 - `utility.keyedRouter(config)` — Router factory for the "pick a block from a `Record<string, Block>` by string key" case. Throws with the registered keys (or routes to `fallback`) when the selected key is unregistered. Input adaptation belongs on the routed blocks via `.connectInput` (BP-013)
 - `utility.memoryExtractor(config)` — Generator factory for stateless durable-memory extraction with a default `{ memories: Array<{ type, content, confidence?, source? }> }` output contract (`type` ∈ `fact | preference | constraint | decision`)
 
-Every generator-based utility above accepts an optional `itemVisibility` (`{ client: boolean; history: boolean }`) to control whether output is surfaced to the client/history. `synthesizer` defaults to `{ client: true, history: true }`; all others default to unset (silent — output flows only via graph edges). Set explicitly to opt in when the utility should be user-facing.
+Every generator-based utility above accepts an optional `itemVisibility` (`{ client: boolean; history: boolean }`) to control whether output is surfaced to the client/history. All default to unset (silent — output flows only via graph edges). Set explicitly to opt in when the utility should be user-facing.
 
 **Resources:**
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `orgResources`)
-  - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows
+  - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows. `contentFile` and file-path `contentTemplate` accept a bare string (resolved from the working directory) or an `AnchoredPath` — `{ path, importerUrl: import.meta.url }` — resolved relative to the declaring module first, with a working-directory fallback
   - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — `'lazy'` defers the load until the declaring block dispatches. Once the resource is resolved its `ref.state` getter is synchronous. Declaring `'lazy'` on a flow-level single resource throws at build time (no per-block load trigger).
   - `reactTo?: { created?, updated?, deleted? }` — bind a block (handler/generator/sequencer) to a mutation. Each entry is a bare block or `{ block, when }`. The block runs blocking inside the originating turn with a `ResourceChange` payload (`key`, `ref`, `kind`, `state`, `prevState`, `evicted`); type its input with `resourceChangeSchema(stateSchema)`. See the [Reactive blocks](https://flow-state.dev/docs/resources/reactive-blocks) reference.
+  - Runtime `ResourceRef` provides `state` (sync getter) plus `patchState`, `setState`, `updateState`, and **`getOrPatchState(key, compute)`** — get-or-compute over state: returns `state[key]` if present, else runs `compute`, patches the result under `key`, and returns it (callback runs only on a miss, so a fetch happens at most once per stored key and downstream readers reuse the stored copy). A stored `null` is a hit; a `compute` resolving to `undefined` stores nothing. No TTL — a per-resource data spine, not a cache. Concurrent misses on the same key within a request are single-flighted (they share one `compute`, so a fanned-out read issues one upstream fetch); distinct keys still compute in parallel.
 - `defineResourceNamespace(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), optional `maxInstances`/`eviction`, lifecycle hooks, and `reactTo` (same `{ created?, updated?, deleted? }` shape as `defineResource`; supersedes the `onInstance*` callbacks for the block case)
   - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — a loading-cost knob, not an API-shape knob. Eager preloads the whole prefix into a per-request cache so reads resolve instantly; `'lazy'` reads per access from the store. The call shape is identical in both modes: `get`/`getOptional`/`list`/`count` all return Promises (always `await` them), and the mutations `create`/`getOrCreate`/`upsert`/`delete` were already async. Flipping `prefetchMode` needs no call-site changes. `'lazy'` requires `eviction: 'none'` (a partial cache can't drive eviction) and throws at build time otherwise.
   - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `upsert()`, `list()`, `delete()`, `count()`
@@ -305,6 +304,8 @@ Defaultable fields: `sessionStateSchema`, `userStateSchema`,
 
 Author a generator's prompt as a `.md` file. The isomorphic subpath exports `parsePromptFile(text, options?)`, `definePromptFile(pf)`, `isPromptFile(value)`, and the `PromptFile` / `PromptFileConfig` / `PromptFileParseError` / `PromptFileLoadError` types. The Node-only subpath exports `loadPromptFile(specifier, importerUrl, options?)`, which reads the file and auto-registers sibling `.md` files as partials; only this subpath imports `node:fs`, so browser/bundled consumers use `parsePromptFile` with raw text plus an explicit `partials` map.
 
+**Resolution rule.** Relative specifiers resolve against the caller's `import.meta.url`; absolute specifiers are used as-is (`importerUrl` ignored); `createPromptLoader` joins every `relPath` onto its absolute `baseDir`. Resolution never consults the process working directory — compute `baseDir` with `resolveBaseDir(candidates, { expect? })` (first candidate dir that exists and contains the `expect` probe; throws listing all candidates when none qualifies) composed with `moduleDir(importerUrl, relative?)` (the module's directory, or `undefined` when a bundler has rewritten `import.meta.url` to a non-`file:` URL). Module-relative candidate first, `process.cwd()`-derived fallback for bundled runtimes that pin cwd (Next.js dev/build).
+
 Two ergonomic shortcuts cut the boilerplate:
 
 - **Pass the `PromptFile` straight to `prompt`** instead of spreading `definePromptFile(pf)`. `generator({ prompt: loadPromptFile(...), model })` expands the file's `user` / `caching` / `maxTokens` / `temperature` / `name` / `description` into the config; any sibling field you set explicitly wins (same precedence as `...definePromptFile(pf), <overrides>`).
@@ -312,13 +313,21 @@ Two ergonomic shortcuts cut the boilerplate:
 
 ```ts
 import { generator } from "@flow-state-dev/core";
-import { createPromptLoader } from "@flow-state-dev/core/prompt-file/node";
+import {
+  createPromptLoader,
+  moduleDir,
+  resolveBaseDir,
+} from "@flow-state-dev/core/prompt-file/node";
 
-const load = createPromptLoader(path.resolve(process.cwd(), "src/prompts"));
+const PROMPT_ROOT = resolveBaseDir(
+  [moduleDir(import.meta.url, "./prompts"), path.resolve(process.cwd(), "src/prompts")],
+  { expect: "_partials" },
+);
+const load = createPromptLoader(PROMPT_ROOT);
 const analyst = generator({ name: "analyst", model, prompt: load("analyst.prompt.md") });
 ```
 
-**Resource content templates.** The same `.md` format can render resource content against state. The Node subpath exports `loadResourceTemplate(specifier, importerUrl, options?)` and the isomorphic subpath exports `parseResourceTemplate(text, options?)` and `renderResourceTemplate(template, state)`. Wire them via `contentTemplate` (build-time file) or `contentTemplateRef` (live-editable resource) on `defineResource()` and `defineResourceCollection()`. See the [Resource content from Markdown templates](https://flow-state.dev/docs/advanced/resource-templates-markdown) reference.
+**Resource content templates.** The same `.md` format can render resource content against state. The Node subpath exports `loadResourceTemplate(specifier, importerUrl, options?)` and the isomorphic subpath exports `parseResourceTemplate(text, options?)`, `renderResourceTemplate(template, state)`, and the `isResourceTemplate(value)` guard. Wire them via `contentTemplate` (build-time file — a parsed template, a working-directory-relative string path, or an `AnchoredPath` resolved relative to the declaring module) or `contentTemplateRef` (live-editable resource) on `defineResource()` and `defineResourceCollection()`. See the [Resource content from Markdown templates](https://flow-state.dev/docs/advanced/resource-templates-markdown) reference.
 
 ### Voice Provider
 
@@ -423,6 +432,8 @@ Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.defa
 **Resource content handles.** `ResourceRef.readContent()` returns rendered text or `null`; `readContentRaw()` returns raw text or `null`; `writeContent()` overwrites content when writable.
 
 **LLM content tools are explicit.** Use `readResourceContentTool()` / `writeResourceContentTool()` in a generator's `tools` array when you want LLM access. These are not auto-injected.
+
+**LLM navigation tools.** `resourceSearchTools()` returns the Glob/Grep/Search trio over resources — `globResources` (path glob), `grepResourceContent` (regex/substring over content), and `searchResources` (lexical, term-frequency ranked). Grep and search gate on `llmReadable`; glob lists paths. Lexical only, not semantic. See [Searching resources](https://flow-state.dev/docs/resources/searching).
 
 **Prompt caching is on by default.** Generators accept a `caching` field; the default is `{ enabled: true, breakpoints: 'auto', ttl: '5m' }`. The AI SDK adapter stamps `providerOptions.anthropic.cacheControl` on the last system message for Anthropic-flavored providers (and opts the Vercel AI Gateway into `caching: 'auto'`); OpenAI / Google / DeepSeek cache implicitly and are left alone. Cache token counts land on `GeneratorModelUsage` as `cacheCreationInputTokens` and `cacheReadInputTokens`. See the [prompt caching guide](https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/PROMPT_CACHING.md) for the full design, audit, and manual-mode guide.
 

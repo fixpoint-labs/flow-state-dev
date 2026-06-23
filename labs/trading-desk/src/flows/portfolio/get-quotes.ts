@@ -22,7 +22,7 @@ import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { getOrFetch } from "../analysis/tools/runtime/cache";
 import { mapLimit, sleep } from "../analysis/lib/concurrency";
-import { loadFixture } from "../analysis/tools/runtime/fixtures";
+import { FIXTURE_SNAPSHOT, loadFixture } from "../analysis/tools/runtime/fixtures";
 import { fetchFinnhubCandles, hasFinnhubKey } from "../analysis/tools/providers/finnhub";
 import { fetchYahooChart } from "../analysis/tools/providers/yahoo";
 import { portfolioQuotesResource } from "./portfolio-resources";
@@ -73,7 +73,13 @@ async function resolveQuote(
 ): Promise<Quote> {
   try {
     if (mode === "fixture") {
-      const payload = await loadFixture("get_price_history", { ticker, date });
+      // Pin to the canonical snapshot: `loadFixture` is date-addressed now, and
+      // this path's `date` is "today" (the live range anchor), which no fixture
+      // directory covers.
+      const payload = await loadFixture("get_price_history", {
+        ticker,
+        date: FIXTURE_SNAPSHOT,
+      });
       const { price, asOf } = lastClose(payload);
       return { ticker, price, asOf };
     }
@@ -129,8 +135,9 @@ export const getQuotes = handler({
   resources: { portfolioQuotes: portfolioQuotesResource },
   execute: async (input, ctx) => {
     const mode = input.dataSource === "live" ? "live" : "fixture";
-    // Fixture-mode price lookups ignore the date (pinned snapshot); live mode
-    // uses today as the range anchor. A real per-ticker date is not modeled.
+    // Fixture-mode price lookups pin to FIXTURE_SNAPSHOT (in `resolveQuote`);
+    // live mode uses today as the range anchor. A real per-ticker date is not
+    // modeled.
     const date = new Intl.DateTimeFormat("en-CA").format(new Date());
     const unique = [...new Set(input.tickers.map((t) => t.toUpperCase()))];
     // Bounded fan-out (not Promise.all): a 20+ ticker portfolio fired all at

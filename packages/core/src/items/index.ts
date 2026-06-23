@@ -38,11 +38,14 @@ export type {
   SourceItem,
   StatusItem,
   SuspensionItem,
+  SuspensionResumeItem,
   StructureShape,
   ToolOutputItem
 } from "./types";
 
 export { resolveItemVisibility } from "./resolve-visibility";
+
+export { collapseToCanonicalLog } from "./canonical-log";
 
 export {
   attributeItemsToTasks,

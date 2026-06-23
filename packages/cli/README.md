@@ -251,13 +251,14 @@ flows/<flow-name>/flow.ts       → default exports a FlowInstance
 flows/<flow-name>.ts            → direct file export
 ```
 
-In monorepo structures, the CLI also scans one level of subdirectories under `packages/`, `examples/`, and `apps/`:
+In monorepo structures, the CLI also scans one level of subdirectories under `packages/`, `examples/`, `apps/`, and `labs/`:
 
 ```
 packages/*/src/flows/<flow-name>/flow.ts
 packages/*/flows/<flow-name>/flow.ts
 examples/*/src/flows/<flow-name>/flow.ts
 apps/*/src/flows/<flow-name>/flow.ts
+labs/*/src/flows/<flow-name>/flow.ts
 ```
 
 Use `--flow-dir` to override default discovery with explicit paths:
@@ -268,6 +269,27 @@ fsdev run my-flow action -i '{}' --flow-dir ./packages/api/src/flows --flow-dir 
 ```
 
 Each module must default-export a `FlowInstance` created by `defineFlow(...)({ id: "..." })`. When the same flow kind is found in multiple directories, the first discovery wins.
+
+A module that throws during import doesn't abort discovery: the CLI prints a `Warning: failed to import flow module: <path>` diagnostic to stderr and lists the failure in the "not found" error, so a broken flow is distinguishable from a missing one.
+
+## Using `fsdev.config.ts`
+
+Directory discovery covers a simple app whose providers are env-keyed. An app with intent-mapped models, a gateway, or a custom store adapter keeps that wiring in its `createFlowState` call. Put a `fsdev.config.ts` at your project root that default-exports that same FlowState handle, and `fsdev run` and `fsdev dev` use your registry, stores, and model resolver instead of CLI defaults.
+
+The CLI searches the current directory for `fsdev.config.{ts,mts,js,mjs}` (TS first). Pass `--config <path>` to point at an explicit file, or `--no-config` to ignore any config and force directory discovery. With a config loaded, `--model` is routed through your resolver, and `--flow-dir` is rejected (use `--no-config` if you wanted directory discovery).
+
+```ts title="fsdev.config.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import chatFlow from "./src/flows/chat/flow";
+
+export default createFlowState({
+  flows: { chat: chatFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
+});
+```
+
+A `.ts` config needs Node >= 22.18 (native type stripping) or tsx in a consumer repo; an `.mjs`/`.js` config works everywhere. See [App Configuration](https://flow-state.dev/docs/cli/configuration) for the full convention, runtime requirements, and caveats.
 
 ## Programmatic API
 
@@ -286,6 +308,8 @@ import {
 
 import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/cli";
 ```
+
+`discoverFlows` accepts an `onImportFailed` callback in its options object, invoked with a `FlowImportFailure` (`filePath`, `message`, `cause`) for each module that throws during import. Discovery continues with remaining modules; without the callback, failures are skipped silently.
 
 ## Dependencies
 

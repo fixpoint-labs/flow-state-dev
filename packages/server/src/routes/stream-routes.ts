@@ -11,6 +11,7 @@ import { canTranscribe, VoiceError } from "@flow-state-dev/core/types";
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
+import { resolveSessionStorageKey } from "../stores/scope-keys";
 import {
   createClientEventFilter,
   filterClientEvents
@@ -109,8 +110,22 @@ export async function handleRequestStream(
     }
   }
 
-  // Live-tail branch: a known-in-flight request streams via subscribeToEvents.
-  if (requestRecord !== undefined && !isTerminalRequestStatus(requestRecord.status)) {
+  // A held continuation lease means a same-request continuation (resume /
+  // crash-recovery `continue`) is in flight under this id (FIX-811). A
+  // `suspended` record with an active lease must therefore be live-tailed and
+  // followed THROUGH the run-1 suspension to the continuation's real terminal,
+  // not one-shot replayed as a settled pause. Without a lease, `suspended` is a
+  // genuine pause and falls through to the terminal-replay branch below.
+  const lease = await ctx.stores.leases.get(route.requestId);
+  const leaseHeld = lease !== null;
+
+  // Live-tail branch: a known-in-flight request — or a suspended one with an
+  // active continuation — streams via subscribeToEvents.
+  if (
+    requestRecord !== undefined &&
+    (!isTerminalRequestStatus(requestRecord.status) ||
+      (requestRecord.status === "suspended" && leaseHeld))
+  ) {
     if (requestRecord.flowKind !== flow.kind) {
       return jsonResponse(404, {
         error: `Unknown request "${route.requestId}"`
@@ -135,11 +150,22 @@ export async function handleRequestStream(
       {
         fromSequence,
         signal: request.signal,
-        livenessTimeoutMs: resolveLivenessTimeoutMs()
+        livenessTimeoutMs: resolveLivenessTimeoutMs(),
+        // While a continuation lease is held, follow through `request.suspended`
+        // (the run-1 suspension being continued past) instead of ending there.
+        followThroughSuspend: leaseHeld
       }
     );
 
-    void pumpSubscription(subscription, handle, shouldForward);
+    void pumpSubscription(subscription, handle, shouldForward, {
+      followThroughSuspend: leaseHeld,
+      // On a `request.suspended` while following a continuation, end the stream
+      // only once the lease has been released — i.e. the continuation reached a
+      // terminal or RE-suspended (a fresh pause). A still-held lease means this
+      // is the run-1 suspension we're continuing past; keep following.
+      isLeaseHeld: async () =>
+        (await ctx.stores.leases.get(route.requestId)) !== null
+    });
 
     return new Response(handle.readable, {
       status: 200,
@@ -190,10 +216,14 @@ export async function handleRequestStream(
     });
   }
 
-  // Terminal request: completed-request flat-string replay.
+  // Terminal request: completed-request flat-string replay. The request record
+  // keeps a bare sessionId + tenantId (FIX-682); namespace the lookup from the
+  // record itself so no request header is needed on the attach path.
   const session =
     requestRecord.sessionId !== undefined
-      ? await ctx.stores.session.get(requestRecord.sessionId)
+      ? await ctx.stores.session.get(
+          resolveSessionStorageKey(requestRecord.sessionId, requestRecord.tenantId)
+        )
       : undefined;
 
   const cursor = resolveRequestReplayCursor({
@@ -240,14 +270,33 @@ export async function handleRequestStream(
 async function pumpSubscription(
   subscription: AsyncIterableIterator<RequestStreamEvent>,
   handle: ReturnType<typeof createSSEStream>,
-  shouldForward: ((event: { type: string }) => boolean) | undefined
+  shouldForward: ((event: { type: string }) => boolean) | undefined,
+  followOptions?: {
+    followThroughSuspend?: boolean;
+    isLeaseHeld?: () => Promise<boolean>;
+  }
 ): Promise<void> {
   try {
     for await (const event of subscription) {
       if (handle.closed) break;
-      if (!shouldEmitToWire(event, shouldForward)) continue;
-      handle.writeRaw(encodeStreamEvent(event));
-      if (isTerminalRequestStreamEvent(event)) break;
+      if (shouldEmitToWire(event, shouldForward)) {
+        handle.writeRaw(encodeStreamEvent(event));
+      }
+      if (isTerminalRequestStreamEvent(event)) {
+        // FIX-811: while following a continuation, `request.suspended` is a
+        // checkpoint, not the end — keep following while the lease is held; end
+        // only once it's released (continuation reached terminal or re-suspended).
+        if (
+          event.type === "request.suspended" &&
+          followOptions?.followThroughSuspend === true
+        ) {
+          const stillRunning = followOptions.isLeaseHeld
+            ? await followOptions.isLeaseHeld()
+            : false;
+          if (stillRunning) continue;
+        }
+        break;
+      }
     }
   } catch {
     // Swallow — the SSE consumer's `last-event-id` reconnect path is the

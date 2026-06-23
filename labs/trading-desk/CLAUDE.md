@@ -89,6 +89,8 @@ src/flows/analysis/
     runtime/                     tool runtime (was lib/)
       cache.ts                   process-wide TTL cache (getOrFetch)
       fixtures.ts                loadFixture(tool, args)
+      recorder.ts                recordFixture — stable-serialize + write to corpus
+      resolve.ts                 resolveToolPayload — single dispatch for fixture/live/record
       discover.ts                web-search → DiscoveryPayload shape
     providers/                   external API clients — stateless, throw on failure (was ../providers/)
       finnhub.ts                 Finnhub fetch helpers (incl. institutional ownership)
@@ -111,6 +113,7 @@ src/flows/analysis/
   lib/                           pure IO-free utilities — neither tool-runtime nor recipe
     helpers.ts                   tickerDate / asDataBlock / memoLabel / attributedTools
     format.ts                    shared prompt formatters (memo, debate, contributions)
+    app-root.ts                  APP_ROOT — package root resolved once (module-relative, cwd fallback)
     prompt.ts                    loadPrompt(path) — resolves *.prompt.md relative to the flow root
     ticker-resolver.ts           pre-flight ticker probe
     concurrency.ts               mapLimit — bounded + retried fan-out
@@ -122,15 +125,26 @@ src/flows/portfolio/             The `portfolio` flow — owns the account/holdi
   state.ts                       sessionStateSchema (minimal; this flow has no run state)
   portfolio-schema.ts            pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
   portfolio-csv.ts               pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
-  portfolio-resources.ts         BP-019 leaf: accountsCollection + portfolioQuotesResource + pdfImportResource
-                                   — all user-scoped shared (flowIsolation: false → bare {userId}), EXCEPT
-                                   pdfImport which is session-scoped (transient per-import scratch channel)
+  portfolio-resources.ts         BP-019 leaf: portfolioQuotesResource (user-scoped shared) + pdfImportResource
+                                   (session-scoped scratch). Accounts/holdings are NOT resources — they live in
+                                   the app-owned tables (FIX-772; see src/db/ + lib/portfolio-db.ts below).
   portfolio-actions.ts           saveAccount / deleteAccount / importHoldings / deleteHolding handlers
+                                   (call the portfolio repository, not a resource)
   get-quotes.ts                  getQuotes read handler (last-close per ticker, fixture/live, null degrades)
   portfolio-pdf.ts               pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
   extract-pdf-text.server.ts     NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
   extract-holdings-generator.ts  broker-agnostic LLM transcription (statement text → strict rows)
   extract-holdings-action.ts     sequencer: decode bytes → extractPdfText → generator → commit pdfImport
+
+fixtures/<TICKER>/<DATE>/        date-addressed snapshots for fixture mode (`FIXTURE_SNAPSHOT` is the default date)
+src/db/                          App-owned relational layer (FIX-772) — accounts + holdings, NOT a resource
+  schema.ts                      Drizzle `app` Postgres schema: accounts + holdings tables
+  client.ts                      createDb (node-postgres, deploy) + createMigratedPgliteDb (embedded dev)
+  repository.ts                  createPortfolioRepository + toAccountStates — the typed data-access surface
+  migrations/                    drizzle-kit generated SQL + journal (run in-process on PGlite dev, via
+                                 scripts/migrate.ts on deploy)
+lib/portfolio-db.ts              getBacking() (PGlite dev / shared pg.Pool deploy) + getRepository() singleton
+app/api/portfolio/accounts/      GET route: read accounts+holdings via the repository (the UI read path)
 
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
@@ -196,9 +210,9 @@ in `app/page.tsx` (`view: "desk" | "reports"`, with `"portfolio"` reserved on
 to the row's tuple **before** `selectSession`, so the tuple-sync effect resolves
 back to the opened session and never re-dispatches or mis-keys the run. The
 stored report rehydrates through the existing `useSession` + `ThesesPane` read
-path. Persistence is `developmentOnly: true` filesystem store — history does not
-survive an ephemeral/serverless redeploy; swap the `lib/server.ts` `stores:`
-seam for a real store before relying on it.
+path. Persistence is Postgres-shaped (FIX-772): embedded PGlite in dev (persisted
+under `.fsdev/pglite`, survives restarts) and real Postgres via `DATABASE_URL` in
+deployment. The store backing is wired in `lib/portfolio-db.ts` / `lib/server.ts`.
 
 ## Summary view
 
@@ -254,23 +268,28 @@ The app has a **Portfolio** view (TopBar nav → `components/portfolio/`) backed
 the `portfolio` flow (`src/flows/portfolio/`). It is the durable record of what
 the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
 
-- **Data model — one collection; holdings live inside the account.** `accounts`
-  (`accounts/*`, keyed `accountId`) is the only collection — user-scoped +
-  **`flowIsolation: false`**, so it persists under bare `{userId}` on the
-  filesystem store (shared across flows; no `{userId}:portfolio` or similar
-  namespace). This is required so the analysis flow's `seedSession` can read the
-  same accounts without a client bridge (see BP-027). Each account record carries
-  its positions inline as `accountStateSchema.holdings: Holding[]` (a `Holding`
-  is exactly a `CanonicalRow`). The per-account record is the write unit: an
-  import is ONE write to one account, not one write per ticker. That suits this
-  small, rarely-changing, batch-written JSON — there is no concurrent-row-write
-  race to isolate, so the earlier per-holding-key scheme was over-modeled. The
-  same ticker in two accounts is simply two entries, one per account's array.
-- **Schemas are RESOURCE STATE, not generator outputs.** `.default()` /
-  `.nullable()` are fine (BP-016 only constrains generator outputs). Do NOT add
-  them to `output-schemas-strict.spec.ts`. Cost basis is **average cost
-  (informational)**, forward-compatible to tax-lots; tax-lots / realized P/L /
-  dividends are documented future seams, not built.
+- **Data model — app-owned relational tables (FIX-772).** Accounts and holdings
+  are NO LONGER an FSD resource. They live in real Postgres tables in a dedicated
+  `app` schema: `app.accounts` (PK `id` = the old `accountId`, `user_id` is the
+  household key) and `app.holdings` (one row per `(account_id, ticker)`, FK to
+  accounts with `ON DELETE CASCADE`, `holdings_ticker_idx` for the cross-account
+  rollup). They are reached through the typed **portfolio repository**
+  (`src/db/repository.ts`, `getRepository()` from `lib/portfolio-db.ts`). The same
+  ticker in two accounts is two rows — exactly the cross-account query shape the
+  household / sleeves / review-loop work needs. The store backing is Postgres in
+  both dev (embedded PGlite at `.fsdev/pglite`, no Docker) and deployment (real
+  Postgres via `DATABASE_URL`), shared with the framework store on one pool/
+  instance; `lib/portfolio-db.ts` owns that backing. See the FIX-772 spec and the
+  `src/db/` layer (`schema.ts`, `client.ts`, `repository.ts`, `migrations/`).
+- **Domain types vs persistence.** `accountStateSchema` / `holdingSchema`
+  (`portfolio-schema.ts`) are now DOMAIN types — input/CSV validation and the
+  inline-holdings `AccountState` shape the repository projects (`toAccountStates`)
+  for the seed + UI. The Drizzle tables (`src/db/schema.ts`) are the persistence.
+  These zod schemas are NOT generator outputs, so `.default()` / `.nullable()`
+  are fine (BP-016 only constrains generator outputs) — do NOT add them to
+  `output-schemas-strict.spec.ts`. Cost basis is **average cost (informational)**,
+  forward-compatible to tax-lots; tax-lots / realized P/L / dividends are
+  documented future seams, not built.
 - **CSV import** (`portfolio-csv.ts`) is a PURE, browser-safe parser: a synonym
   table maps real brokerage headers, bad rows are REPORTED (with 1-based row
   numbers) never thrown, duplicate tickers merge to a quantity-weighted average
@@ -379,10 +398,11 @@ positions, and a pack of documented-methodology investor LENSES re-reads the
 evidence to produce a convergence signal the PM uses for sizing conviction.
 
 - **The portfolio snapshot is built SERVER-SIDE at `seedSession`.** The analysis
-  flow's `seedSession` handler reads the shared user-scoped `accounts` collection
-  and the shared user-scoped `portfolioQuotes` resource (both owned by the
-  `portfolio` flow; both declared on the analysis flow with `flowIsolation: false`
-  so they resolve to the same bare `{userId}` key). It calls
+  flow's `seedSession` handler reads accounts + holdings from the app-owned
+  repository (`getRepository().getPortfolio(userId)`, FIX-772; `toAccountStates`
+  nests them into the inline-array shape) and the shared user-scoped
+  `portfolioQuotes` resource (still resource-backed, `flowIsolation: false` →
+  bare `{userId}`, owned by the `portfolio` flow). It calls
   `build-portfolio-context.ts` (a pure leaf) to compute the snapshot:
   per-holding `marketValue = quantity × live quote`, `totalNav = Σ known
   marketValue + Σ cash`, `weightPct = marketValue / totalNav`. A ticker with no
@@ -706,17 +726,18 @@ preset to participate in the cost gate.
 
 ## Adding a new tool
 
-Tools follow the per-tool-file pattern. Each tool file owns its mode
-branch, provider preference, and fallback chain.
+Tools follow the per-tool-file pattern. Each tool file owns its provider
+preference and fallback chain; mode dispatch (fixture / live / record)
+lives in `tools/runtime/resolve.ts` — every tool's `execute` funnels
+through `resolveToolPayload`.
 
 ```ts
 // tools/data/get_my_tool.ts
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import { fetchFromProviderA } from "../providers/providerA";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_my_tool = handler({
   name: "get_my_tool",
@@ -724,8 +745,7 @@ export const get_my_tool = handler({
   inputSchema: toolInputSchemas.get_my_tool,
   outputSchema: toolOutputSchemas.get_my_tool,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_my_tool", input);
-    return getOrFetch("get_my_tool", input, async () => {
+    return resolveToolPayload("get_my_tool", input, ctx, async () => {
       try { return await fetchFromProviderA(input); } catch {}
       return emptyPayload("get_my_tool", input);
     });
@@ -742,9 +762,9 @@ Then:
 3. Re-export from `tools/index.ts`.
 4. Add to the appropriate analyst's `tools: [...]` list in
    `agents/analysts/analysts.ts`.
-5. Add a curated fixture JSON under
-   `fixtures/<TICKER>/2026-05-06/<tool-file-name>.json` so fixture mode
-   still works.
+5. Record a snapshot for the tool (run with `dataSource: "record"`) so
+   fixture mode still works, or hand-author the fixture JSON per
+   `fixtures/README.md` for edge cases.
 
 If the tool needs a new external API, add its fetch helper to a new
 `tools/providers/<provider>.ts` file (one per provider). Keep it stateless — read
@@ -797,23 +817,35 @@ of them with no consumer. Keep it a plain chain.
 
 ## Fixture mode
 
-Fixtures are a single pinned snapshot at `2026-05-06` (the
-`FIXTURE_SNAPSHOT` constant in
-[`tools/runtime/fixtures.ts`](src/flows/analysis/tools/runtime/fixtures.ts)). The
-loader ignores `args.date` and always reads from the snapshot directory. The
-returned payload carries the fixture's own `asOf` field, so analysts see the
-actual data date.
+`dataSource` accepts three values: `fixture`, `live`, and `record`.
 
-When adding a new ticker to fixture coverage:
+Fixture mode reads from `fixtures/{TICKER}/{DATE}/` for the requested
+`args.date`. The loader is date-addressed: each `{TICKER}/{DATE}/` directory
+is one snapshot. `FIXTURE_SNAPSHOT` (`"2026-05-06"`) is the default date for
+the curated corpus, not a pin — requesting an unknown ticker or date throws
+`FixtureMissingError` loudly, never a silent fallback (in a full run the
+pre-flight guard stops with `unresolvable-ticker` before the loader ever
+throws). The returned payload
+carries the fixture's own `asOf` field, so analysts see the actual data date.
 
-1. Create `fixtures/<TICKER>/2026-05-06/`.
-2. Drop in one JSON per tool (see existing `fixtures/NVDA/2026-05-06/` for
-   the shape — names match `fixtureFileName(tool)`). The Phase 1 file set
-   includes `insider-transactions.json` (90 days of Form 4 rows for the
-   news analyst).
-3. The framework needs no other registration.
+Providers recorded as `source: "unavailable"` survive replay. The loader
+preserves the `"unavailable"` tag so a recorded provider miss stays a miss;
+any other source tag (`"yahoo"`, `"finnhub"`, etc.) replays as `"fixture"`.
+
+To add a new ticker to fixture coverage, record it:
+
+```bash
+pnpm fsdev run analysis analyze -i '{"ticker":"XOM","date":"2026-06-12","dataSource":"record","costPreset":"full"}'
+```
+
+See [`fixtures/README.md`](fixtures/README.md) for the full record-mode
+workflow and the hand-authoring fallback for edge cases.
 
 ## Live mode
+
+Record mode (`dataSource: "record"`) runs the same provider chain as live mode,
+so the same API keys apply. Use `costPreset: "full"` when recording to ensure
+the eight `discover_*` tools run and the fixture corpus is complete.
 
 Live mode wires Finnhub → Yahoo → FRED → Polymarket as the upstream
 providers, plus the `fetch` tool from `@flow-state-dev/tools` for article

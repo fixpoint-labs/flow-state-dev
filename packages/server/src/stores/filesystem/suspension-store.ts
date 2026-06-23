@@ -6,7 +6,12 @@
  */
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { SuspensionFilter, SuspensionRecord } from "@flow-state-dev/core/types";
+import {
+  isTerminalSuspensionStatus,
+  matchesSuspensionFilter,
+  type SuspensionFilter,
+  type SuspensionRecord
+} from "@flow-state-dev/core/types";
 import type { SuspensionStore } from "../types";
 
 function encodeFilename(id: string): string {
@@ -51,9 +56,14 @@ export class FilesystemSuspensionStore implements SuspensionStore {
     }
   }
 
-  async list(filter?: SuspensionFilter): Promise<SuspensionRecord[]> {
-    let results: SuspensionRecord[] = [];
-
+  /**
+   * Read and parse every persisted suspension record across all request
+   * directories. Corrupt / partial files are skipped. A missing root dir
+   * yields an empty list. Shared by `list` and `pruneTerminalBefore` so both
+   * see the same set; neither sorts or filters here.
+   */
+  private async readAllRecords(): Promise<SuspensionRecord[]> {
+    const records: SuspensionRecord[] = [];
     try {
       const requestDirs = await readdir(this.rootDir, { withFileTypes: true });
       for (const entry of requestDirs) {
@@ -64,7 +74,7 @@ export class FilesystemSuspensionStore implements SuspensionStore {
           if (!file.isFile() || !file.name.endsWith(".json")) continue;
           try {
             const raw = await readFile(path.join(dirPath, file.name), "utf8");
-            results.push(JSON.parse(raw) as SuspensionRecord);
+            records.push(JSON.parse(raw) as SuspensionRecord);
           } catch {
             // skip corrupt / partial files
           }
@@ -76,19 +86,13 @@ export class FilesystemSuspensionStore implements SuspensionStore {
       }
       throw error;
     }
+    return records;
+  }
 
-    if (filter?.flowKind) {
-      results = results.filter((r) => r.flowKind === filter.flowKind);
-    }
-    if (filter?.userId) {
-      results = results.filter((r) => r.userId === filter.userId);
-    }
-    if (filter?.sessionId) {
-      results = results.filter((r) => r.sessionId === filter.sessionId);
-    }
-    if (filter?.status) {
-      results = results.filter((r) => r.status === filter.status);
-    }
+  async list(filter?: SuspensionFilter): Promise<SuspensionRecord[]> {
+    let results = (await this.readAllRecords()).filter((r) =>
+      matchesSuspensionFilter(r, filter)
+    );
 
     results.sort((a, b) => b.createdAt - a.createdAt);
 
@@ -108,6 +112,27 @@ export class FilesystemSuspensionStore implements SuspensionStore {
         throw error;
       }
     }
+  }
+
+  async pruneTerminalBefore(cutoffMs: number, limit: number): Promise<number> {
+    const eligible = (await this.readAllRecords()).filter(
+      (r) =>
+        isTerminalSuspensionStatus(r.status) &&
+        r.resolvedAt !== undefined &&
+        r.resolvedAt < cutoffMs
+    );
+
+    let deleted = 0;
+    for (const record of eligible) {
+      if (deleted >= limit) break;
+      try {
+        await rm(this.filePath(record.requestId, record.suspensionId));
+        deleted += 1;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    return deleted;
   }
 }
 

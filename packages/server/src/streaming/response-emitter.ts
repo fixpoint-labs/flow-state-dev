@@ -48,6 +48,17 @@ type RequestEventDraft<TEvent extends RequestStreamEvent> = Omit<
 export type CreateResponseEmitterOptions = {
   requestId: string;
   startSequenceNumber?: number;
+  /**
+   * Starting item index for this emitter — the next item it assigns gets
+   * `startItemIndex + (items emitted so far)`. A same-request continuation
+   * (FIX-811) seeds this from the suspended request's last persisted item
+   * index so re-entry items (`suspension_resume` + post-resume items) continue
+   * after the pre-suspension log instead of restarting at `0`. Without it,
+   * persistent stores that order items by index (e.g. SQLite `ORDER BY
+   * sequence ASC`) would interleave the re-entry items ahead of the prior log
+   * and break the `pre + suspension + suspension_resume + post` ordering.
+   */
+  startItemIndex?: number;
   maxBufferSize?: number;
   now?: () => number;
   onEvent?: (event: RequestStreamEventWithId) => Promise<void> | void;
@@ -180,6 +191,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly internalSeams: InternalStreamingSeams;
   private readonly maxBufferSize: number;
   private sequenceNumber: number;
+  private readonly baseItemIndex: number;
   private readonly events: RequestStreamEventWithId[] = [];
   private readonly itemsById = new Map<string, OutputItem>();
   private onLogEvent?: (eventType: string, detail: Record<string, unknown>) => void;
@@ -198,6 +210,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   constructor(options: CreateInternalResponseEmitterOptions) {
     this.requestId = options.requestId;
     this.sequenceNumber = Math.max(0, options.startSequenceNumber ?? 0);
+    this.baseItemIndex = Math.max(0, options.startItemIndex ?? 0);
     this.maxBufferSize = Math.max(1, options.maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE);
     this.now = options.now ?? (() => Date.now());
     this.onEvent = options.onEvent;
@@ -635,7 +648,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }> {
     const ts = options.ts ?? this.now();
     const itemIndex =
-      options.itemIndex ?? this.itemsById.size;
+      options.itemIndex ?? this.getItemCount();
 
     const item: ResourceChangeItem = {
       id:
@@ -699,11 +712,14 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
-   * O(1) count of tracked items. Used on the per-emit hot path to assign the
-   * next `itemIndex` without materializing or ordering the items snapshot.
+   * O(1) next-`itemIndex` cursor. Used on the per-emit hot path to assign the
+   * next item's index without materializing or ordering the items snapshot.
+   * Includes `baseItemIndex` so a same-request continuation's re-entry items
+   * continue after the prior persisted log (FIX-811); `baseItemIndex` is `0` on
+   * a fresh run, so this stays `itemsById.size` there.
    */
   getItemCount(): number {
-    return this.itemsById.size;
+    return this.baseItemIndex + this.itemsById.size;
   }
 
   /**

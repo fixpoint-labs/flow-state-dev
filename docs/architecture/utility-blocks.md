@@ -36,10 +36,8 @@ Every utility factory accepts a `name` (required) and returns a block that can b
 | `contextReducer` | generator | Context & Memory | Reduce context via distill, denoise, or compress strategies |
 | `memoryExtractor` | generator | Context & Memory | Extract durable memory candidates from interactions |
 | `decomposer` | generator | Planning & Decomposition | Break broad requests into executable subtasks |
-| `composer` | generator | Planning & Decomposition | Assemble coherent output from structured parts |
 | `summarizer` | generator | Synthesis & Output | Summarize input at configurable granularity levels |
 | `combiner` | handler | Synthesis & Output | Deterministically merge artifacts (no LLM) |
-| `synthesizer` | generator | Synthesis & Output | Reconcile multiple inputs into one coherent artifact |
 | `analyzer` | generator | Evaluation | Evaluate artifacts against structured criteria |
 | `intentClassifier` | generator | Routing | Classify input into a bounded category set for downstream routing |
 | `intentRouter` | sequencer | Routing | Pre-wired classifier + router for classification-driven branching |
@@ -243,53 +241,6 @@ const decompose = utility.decomposer({
 
 ---
 
-### `composer`
-
-Assembles a coherent artifact from structured parts. Use composer when you have separate pieces that need to be joined into a unified document while respecting ordering and structural constraints.
-
-**How it differs from `synthesizer`:** Composer rebuilds from discrete parts (sections, fragments, chunks). Synthesizer reconciles overlap and conflict across independent inputs that may cover the same ground.
-
-```ts
-const compose = utility.composer({
-  name: "assemble-report",
-  objectives: ["Preserve chronology", "Keep section headings"],
-});
-```
-
-**Config:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"preset/fast"` | Model identifier |
-| `objectives` | `string \| string[]` | — | Focus areas for composition |
-| `outputSchema` | `ZodTypeAny` | `composerOutputSchema` | Override the default output schema |
-
-**Default output schema:**
-
-```ts
-// composerOutputSchema
-{
-  composed: string;
-  structure?: string[];  // ordered list of assembled sections
-}
-```
-
-**Usage in a sequencer:**
-
-```ts
-const compose = utility.composer({ name: "build-doc" });
-
-const pipeline = sequencer({
-  name: "composition-pipeline",
-  inputSchema: z.object({ parts: z.array(z.string()) }),
-})
-  .map((input) => ({ parts: input.parts }))
-  .step(compose);
-```
-
----
-
 ## Synthesis & Output
 
 ### `summarizer`
@@ -390,8 +341,8 @@ No `model` parameter — combiner runs pure logic.
 - Merge notes document every resolution decision (deduplication, conflict resolution, normalization).
 - Empty input returns `{ combined: [], mergeNotes: ["No artifacts provided; returned an empty combined array."] }`.
 
-**When to prefer combiner over synthesizer:**
-Use combiner when you need deterministic, auditable merging without LLM interpretation. Use synthesizer when inputs have semantic overlap or conflict that requires interpretive reasoning.
+**When to prefer combiner:**
+Use combiner when you need deterministic, auditable merging without LLM interpretation. When inputs have semantic overlap or conflict that requires interpretive reasoning, use a `generator()` with a `user` projection over the inputs instead.
 
 **Usage in a sequencer:**
 
@@ -405,53 +356,6 @@ const pipeline = sequencer({
 })
   .map((input) => [input.primary, input.secondary])
   .step(utility.combiner({ name: "merge" }));
-```
-
----
-
-### `synthesizer`
-
-Reconciles multiple intermediate artifacts into one coherent, non-redundant output. When inputs overlap, the synthesizer deduplicates while preserving the strongest signal. When inputs conflict, it explicitly resolves disagreements through interpretive reasoning rather than ignoring them.
-
-**How it differs from `combiner`:** Combiner performs deterministic structural merging. Synthesizer uses an LLM to reconcile semantic overlap and conflict across independent inputs.
-
-```ts
-const synthesize = utility.synthesizer({
-  name: "reconcile-sources",
-  objectives: ["Prefer sources with direct evidence"],
-});
-```
-
-**Config:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"preset/fast"` | Model identifier |
-| `objectives` | `string \| string[]` | — | Priorities for synthesis decisions |
-| `outputSchema` | `ZodTypeAny` | `synthesizerOutputSchema` | Override the default output schema |
-
-**Default output schema:**
-
-```ts
-// synthesizerOutputSchema
-{
-  synthesis: string;
-  rationale: string[];  // explanation of synthesis decisions
-}
-```
-
-**Multi-input pattern:**
-
-```ts
-const synthesize = utility.synthesizer({ name: "unify" });
-
-const pipeline = sequencer({
-  name: "synthesis-chain",
-  inputSchema: z.object({ artifacts: z.array(z.string()) }),
-})
-  .map((input) => input.artifacts)
-  .step(synthesize);
 ```
 
 ---
@@ -758,7 +662,7 @@ A research pipeline that decomposes a broad question into subtasks, summarizes e
 
 ```ts
 import { z } from "zod";
-import { handler, utility, sequencer } from "@flow-state-dev/core";
+import { handler, utility, generator, sequencer } from "@flow-state-dev/core";
 
 // Step 1: Break down the research question
 const decompose = utility.decomposer({ name: "plan-research" });
@@ -775,10 +679,13 @@ const analyze = utility.analyzer({
   criteria: ["coverage", "accuracy", "confidence"],
 });
 
-// Step 4: Synthesize into a final answer
-const synthesize = utility.synthesizer({
+// Step 4: Synthesize into a final answer with a raw generator
+const synthesize = generator({
   name: "final-synthesis",
-  objectives: ["Produce a coherent narrative", "Cite evidence for claims"],
+  outputSchema: z.object({ answer: z.string() }),
+  prompt: "Produce a coherent narrative answer and cite evidence for claims.",
+  user: (analysis: { findings: unknown; recommendation: unknown }) =>
+    JSON.stringify(analysis, null, 2),
 });
 
 // Wire the pipeline
@@ -805,7 +712,7 @@ const research = sequencer({
   .step(synthesize);
 ```
 
-**Data flow:** `question` → `decomposer` → `[subtasks]` → `forEach(summarizer)` → `analyzer` → `synthesizer` → final output
+**Data flow:** `question` → `decomposer` → `[subtasks]` → `forEach(summarizer)` → `analyzer` → `generator` → final output
 
 ---
 
@@ -919,9 +826,7 @@ import type {
   ContextReducerMode,
   MemoryExtractorConfig,
   DecomposerConfig,
-  ComposerConfig,
   CombinerConfig,
-  SynthesizerConfig,
   IntentClassifierConfig,
   IntentCategories,
   IntentClassifierOutput,

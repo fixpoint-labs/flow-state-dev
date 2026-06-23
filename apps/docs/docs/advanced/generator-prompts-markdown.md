@@ -200,17 +200,37 @@ When a module loads several prompts from the same place, `createPromptLoader` ca
 
 ```ts
 import path from "node:path";
-import { createPromptLoader } from "@flow-state-dev/core/prompt-file/node";
+import {
+  createPromptLoader,
+  moduleDir,
+  resolveBaseDir,
+} from "@flow-state-dev/core/prompt-file/node";
 
-const load = createPromptLoader(path.resolve(process.cwd(), "src/prompts"), {
-  partialsDir: path.resolve(process.cwd(), "src/prompts/_partials"),
+const PROMPT_ROOT = resolveBaseDir(
+  [moduleDir(import.meta.url, "./prompts"), path.resolve(process.cwd(), "src/prompts")],
+  { expect: "_partials" },
+);
+const load = createPromptLoader(PROMPT_ROOT, {
+  partialsDir: path.join(PROMPT_ROOT, "_partials"),
 });
 
 const analyst = load("analyst.prompt.md");
 const trader = load("trader.prompt.md", { filters: { format_usd } });
 ```
 
-`baseDir` must be absolute; `relPath` joins onto it, so resolution never depends on `import.meta.url`. Per-call `filters` merge over (and override) the loader's shared filters.
+`baseDir` must be absolute; `relPath` joins onto it. Per-call `filters` merge over (and override) the loader's shared filters.
+
+### Resolution rule
+
+Three cases, depending on what you pass:
+
+- `loadPromptFile("./rel.prompt.md", import.meta.url)` — resolved against the calling module's directory.
+- `loadPromptFile("/abs/path.prompt.md", importerUrl)` — used as-is; `importerUrl` is ignored.
+- `createPromptLoader(baseDir)` — every `relPath` joins onto the absolute `baseDir`.
+
+What never happens: resolution against the process working directory. A flow's prompts should load the same way whether the process started in the app directory, the repo root, or a test runner.
+
+The catch is computing `baseDir` when your flow also runs inside a bundler. Next.js rewrites `import.meta.url` during server bundling (Turbopack makes it a virtual path; webpack points it at the chunk), so a plain module-relative walk breaks there. `resolveBaseDir` handles this with a candidate chain: it takes a list of candidate directories and returns the first one that exists and contains the `expect` probe path. Put the module-relative candidate first — `moduleDir(import.meta.url, ...)` returns `undefined` under bundler-rewritten URLs, and the `expect` probe rejects walks that land inside build output — and a `process.cwd()`-derived candidate second, which carries bundled runtimes like Next.js dev and build because they pin cwd to the app package. If no candidate qualifies, `resolveBaseDir` throws at import time with every candidate it tried, instead of failing later on a path that never existed.
 
 Only the `/node` subpath imports `node:fs`. Browser and bundled consumers must not import it. Instead, import the raw text (Vite exposes a file's contents with the `?raw` suffix) and hand it to `parsePromptFile` with an explicit `partials` map:
 

@@ -18,11 +18,12 @@ import { analyze } from "./orchestration/analyze";
 import { setInstructions } from "./orchestration/guards";
 import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
 import { priceHistoryResource } from "./price-history-resource";
+import { financialsDataResource } from "./financials-data-resource";
+import { quantDataResource } from "./quant-data-resource";
+import { technicalDataResource } from "./technical-data-resource";
+import { profileDataResource } from "./profile-data-resource";
 import { rewardToRiskResource } from "./reward-to-risk-resource";
-import {
-  accountsCollection,
-  portfolioQuotesResource,
-} from "../portfolio/portfolio-resources";
+import { portfolioQuotesResource } from "../portfolio/portfolio-resources";
 import {
   memosCollection,
   phase2Contributions,
@@ -73,6 +74,18 @@ const analysisFlow = defineFlow({
     // derives the storage key; the capability's `core` preset also declares it
     // for runtime context access.
     specialInstructions: specialInstructionsResource,
+    // Financials data spine — the subject's raw fundamentals + statements,
+    // written once by the fundamentals analyst's tools via `getOrPatchState`
+    // and read back by the valuation tap as a stable per-session copy (replaces
+    // the process TTL cache for these subject-scoped payloads). Declared at the
+    // root so nested tool handlers resolve it from `ctx.resources`.
+    financialsData: financialsDataResource,
+    // Quant / technical / profile spines — the other Phase 1 payloads the
+    // valuation tap re-reads (composites + factor ranks, indicators, profile),
+    // written by their tools via `getOrPatchState`. Same per-domain pattern.
+    quantData: quantDataResource,
+    technicalData: technicalDataResource,
+    profileData: profileDataResource,
     // Valuation spine — computed after Phase 1, read by Phases 2–5.
     valuationSpine: valuationSpineResource,
     // Lens convergence — computed deterministically after the phase-2b lens
@@ -90,13 +103,12 @@ const analysisFlow = defineFlow({
     // commit to gate size against the active mandate. Nullable; null when the
     // forecaster produced no usable buckets.
     rewardToRisk: rewardToRiskResource,
-    // Portfolio domain (Spine B), owned + written by the
-    // `portfolio` flow. Declared here READ-ONLY: `seedSession`
-    // reads the shared user-scoped `accounts` (flowIsolation: false → bare
-    // `{userId}`) and the last-known `portfolioQuotes` to compute the per-run
-    // portfolio snapshot. Declaring them makes `resolveUserStorageKey` derive
-    // the same bare key both flows use — no client bridge.
-    accounts: accountsCollection,
+    // Last-known quotes cache (Spine B), owned + written by the `portfolio`
+    // flow. Declared here READ-ONLY: `seedSession` reads the shared user-scoped
+    // `portfolioQuotes` (flowIsolation: false → bare `{userId}`) to price the
+    // per-run portfolio snapshot. Accounts + holdings are no longer resources —
+    // `seedSession` reads them from the app-owned tables via the repository
+    // (FIX-772).
     portfolioQuotes: portfolioQuotesResource,
   },
 });

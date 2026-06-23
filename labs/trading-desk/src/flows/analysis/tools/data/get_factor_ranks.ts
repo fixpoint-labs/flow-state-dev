@@ -24,6 +24,9 @@ import {
   type ToolInput,
   type ToolOutput,
 } from "../schemas";
+import { quantDataResource } from "../../quant-data-resource";
+import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { recordIfRecording } from "../runtime/resolve";
 
 const MAX_PEERS = 6;
 
@@ -165,14 +168,27 @@ export const get_factor_ranks = handler({
     "low-vol percentiles of the name within its peer set.",
   inputSchema: toolInputSchemas.get_factor_ranks,
   outputSchema: toolOutputSchemas.get_factor_ranks,
+  resources: { quantData: quantDataResource },
+  // Write-through the subject's factor ranks to the quant spine (see
+  // get_fundamentals). The internal PEER price/fundamentals fetches are
+  // multi-ticker and stay on the args-keyed process cache.
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_factor_ranks", input);
-    return getOrFetch("get_factor_ranks", input, async () => {
+    const loadFactorRanks = async () => {
+      if (pickMode(ctx) === "fixture") return loadFixture("get_factor_ranks", input);
       try {
         return await fetchLive(input);
       } catch {
         return emptyPayload("get_factor_ranks", input);
       }
+    };
+    const payload = await writeSubjectSpine({
+      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      resource: ctx.resources.quantData,
+      field: "factorRanks",
+      tool: "get_factor_ranks",
+      input,
+      load: loadFactorRanks,
     });
+    return recordIfRecording("get_factor_ranks", input, ctx, payload);
   },
 });

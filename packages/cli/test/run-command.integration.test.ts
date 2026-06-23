@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { executeRunCommand, type FlowRunResult, type FlowEvent } from "../src/commands/run";
-import { discoverFlows } from "../src/resolve-flow";
+import { discoverFlows, getSearchedDirs } from "../src/resolve-flow";
 import { CliError } from "../src/resolve-block";
 import { EXIT_DISCOVERY_ERROR, EXIT_INVALID_ARGS } from "../src/exit-codes";
 
@@ -231,6 +231,19 @@ describe("monorepo flow discovery", () => {
     expect(result.flow.kind).toBe("nested");
     expect(result.flow.action).toBe("process");
     expect(result.output).toEqual({ result: "nested: from-monorepo" });
+  });
+
+  it("discovers flows from labs/*/src/flows/ in monorepo structure", async () => {
+    const flows = await discoverFlows(fixturesDir);
+    const kinds = flows.map((f) => f.kind);
+
+    // Monorepo-scanned flow (labs/sample-lab/src/flows/labbed-flow/)
+    expect(kinds).toContain("labbed");
+  });
+
+  it("includes labs/ directories in getSearchedDirs", () => {
+    const searched = getSearchedDirs({ cwd: fixturesDir });
+    expect(searched).toContain("labs/sample-lab/src/flows");
   });
 
   it("deduplicates flows by kind (first discovered wins)", async () => {
@@ -536,5 +549,107 @@ describe("seed state", () => {
         stores: createInMemoryStores(),
       }),
     ).rejects.toThrow(CliError);
+  });
+});
+
+const appConfigDir = resolve(import.meta.dirname, "fixtures-config", "app");
+
+interface ConfigStashes {
+  __fsdevModelCalls: string[];
+  __fsdevTestStores?: { session: { get: (id: string) => Promise<unknown> } };
+}
+
+describe("fsdev run with fsdev.config.ts", () => {
+  it("executes the flow from the config's registry and resolves models through the config resolver", async () => {
+    const result = await executeRunCommand("gen", "respond", {
+      input: '{"message": "hi"}',
+      cwd: appConfigDir,
+      session: "cfg-sess",
+    });
+
+    expect(result.success).toBe(true);
+    const stashes = globalThis as unknown as ConfigStashes;
+    // The config's resolver was used (the generator's configured model id flows
+    // through it), not a CLI-default resolver.
+    expect(stashes.__fsdevModelCalls).toContain("config/default-model");
+    // stdout stays NDJSON-pure: loading the config (which logs its active
+    // profile) must not leak a non-JSON line onto stdout.
+    expect(() => parsedEvents()).not.toThrow();
+    expect(parsedEvents().some((e) => e.type === "flow_complete")).toBe(true);
+  });
+
+  it("writes through the config's store instances", async () => {
+    await executeRunCommand("gen", "respond", {
+      input: '{"message": "hi"}',
+      cwd: appConfigDir,
+      session: "shared-sess",
+    });
+
+    const stashes = globalThis as unknown as ConfigStashes;
+    expect(stashes.__fsdevTestStores).toBeDefined();
+    // The run's session landed in the registry the config's adapter resolved —
+    // the in-miniature form of "CLI runs appear in the app's .fsdev/data".
+    const persisted = await stashes.__fsdevTestStores!.session.get("shared-sess");
+    expect(persisted).toBeDefined();
+  });
+
+  it("routes --model through the config's resolver", async () => {
+    await executeRunCommand("gen", "respond", {
+      input: '{"message": "hi"}',
+      cwd: appConfigDir,
+      model: "forced/model",
+      session: "model-sess",
+    });
+
+    const stashes = globalThis as unknown as ConfigStashes;
+    expect(stashes.__fsdevModelCalls).toContain("forced/model");
+  });
+
+  it("rejects --flow-dir together with a config", async () => {
+    await expect(
+      executeRunCommand("gen", "respond", {
+        input: '{"message": "hi"}',
+        cwd: appConfigDir,
+        flowDir: ["./flows"],
+      }),
+    ).rejects.toMatchObject({ exitCode: EXIT_INVALID_ARGS });
+  });
+
+  it("reports a flow missing from the config registry", async () => {
+    const err = await executeRunCommand("nope", "respond", {
+      input: "{}",
+      cwd: appConfigDir,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_DISCOVERY_ERROR);
+    expect(err.message).toContain("in fsdev config");
+  });
+
+  it("--no-config bypasses a present config and falls back to discovery", async () => {
+    const err = await executeRunCommand("gen", "respond", {
+      input: '{"message": "hi"}',
+      cwd: appConfigDir,
+      config: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_DISCOVERY_ERROR);
+    // The discovery-path "not found" error names searched dirs; the config-path
+    // error does not. Seeing "Searched:" proves the config was bypassed.
+    expect(err.message).toContain("Searched:");
+  });
+
+  it("runs the same config twice in one process (cache-busting guards dispose)", async () => {
+    const first = await executeRunCommand("gen", "respond", {
+      input: '{"message": "one"}',
+      cwd: appConfigDir,
+      session: "twice-1",
+    });
+    const second = await executeRunCommand("gen", "respond", {
+      input: '{"message": "two"}',
+      cwd: appConfigDir,
+      session: "twice-2",
+    });
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
   });
 });

@@ -14,6 +14,7 @@ import { z } from "zod";
 import {
   planAndExecute,
   planAndExecuteInputSchema,
+  planAndExecuteStateSchema,
 } from "../src/plan-and-execute";
 
 // ---------------------------------------------------------------------------
@@ -79,9 +80,9 @@ const plannerMock = mockGenerator({
     {
       structuredOutput: {
         tasks: [
-          { id: "step-1", goal: "First task" },
-          { id: "step-2", goal: "Second task" },
-          { id: "step-3", goal: "Third task" },
+          { id: "step-1", title: null, goal: "First task", context: null },
+          { id: "step-2", title: null, goal: "Second task", context: null },
+          { id: "step-3", title: null, goal: "Third task", context: null },
         ],
       },
     },
@@ -582,6 +583,64 @@ describe("plan-and-execute pattern", () => {
       expect(output.tasks.find((t: any) => t.id === "added")).toBeDefined();
     });
 
+    it("preserves a passthrough title on replanned tasks (FIX-827)", async () => {
+      const planner = createDeterministicPlanner([{ id: "s1", goal: "Initial" }]);
+
+      // A custom evaluator emits an inline task carrying a title → applyReplan
+      // seeds it. Title must survive the same way it does on initial seeding.
+      // (The default LLM evaluator/replanner schemas deliberately omit title —
+      // enriching them is a Non-Goal; this covers the custom-emitter contract.)
+      let evalCalls = 0;
+      const customEvaluator = handler({
+        name: "replan-title-eval",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          decision: z.enum(["continue", "complete", "replan"]),
+          tasks: z
+            .array(z.object({ id: z.string(), goal: z.string(), title: z.string() }))
+            .optional(),
+        }),
+        execute: () => {
+          evalCalls += 1;
+          if (evalCalls === 1) {
+            return {
+              decision: "replan" as const,
+              tasks: [{ id: "added", goal: "Added task", title: "Added label" }],
+            };
+          }
+          return { decision: "complete" as const };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "replan-title-test",
+        planner,
+        stepExecutor: echoExecutor,
+        evaluator: customEvaluator,
+        enableReplanning: true,
+        maxIterations: 5,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Test title preservation" },
+      });
+
+      expect(result.error).toBeNull();
+      const items = result.items as Array<{
+        type?: string;
+        component?: string;
+        data?: { task?: { id?: string; title?: string } };
+      }>;
+      const addedChange = items.find(
+        (i) =>
+          i.type === "component" &&
+          i.component === "task-change" &&
+          i.data?.task?.id === "added",
+      );
+      expect(addedChange?.data?.task?.title).toBe("Added label");
+    });
+
     it("auto-suffixes replanner-emitted ids that collide with existing tasks", async () => {
       // Real-world LLM replanners often re-emit an id that already lives
       // in the collection (e.g. asking to "redo task-1"). The substrate
@@ -786,6 +845,352 @@ describe("plan-and-execute pattern", () => {
       const output = result.output as { totalSteps: number; completedSteps: number };
       expect(output.totalSteps).toBe(2);
       expect(output.completedSteps).toBe(2);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Per-task context threading (FIX-827)
+  // -----------------------------------------------------------------------
+  describe("per-task context (FIX-827)", () => {
+    it("default taskContext='goal' fills each task's context with the goal", async () => {
+      // Planner emits no context — the default enricher copies the goal in.
+      const planner = createDeterministicPlanner([{ id: "s1", goal: "do A" }]);
+
+      let seen: string | undefined;
+      const capture = handler({
+        name: "ctx-default-capture",
+        inputSchema: z.any(),
+        outputSchema: z.object({ summary: z.string(), success: z.boolean() }),
+        execute: (input: any) => {
+          seen = input.context;
+          return { summary: "ok", success: true };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "ctx-default",
+        planner,
+        stepExecutor: capture,
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, { input: { goal: "Build the MVP" } });
+
+      expect(result.error).toBeNull();
+      expect(seen).toBe("Build the MVP");
+    });
+
+    it("taskContext=false leaves task context empty", async () => {
+      const planner = createDeterministicPlanner([{ id: "s1", goal: "do A" }]);
+
+      let seen: unknown = "SENTINEL";
+      const capture = handler({
+        name: "ctx-off-capture",
+        inputSchema: z.any(),
+        outputSchema: z.object({ summary: z.string(), success: z.boolean() }),
+        execute: (input: any) => {
+          seen = input.context;
+          return { summary: "ok", success: true };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "ctx-off",
+        planner,
+        stepExecutor: capture,
+        taskContext: false,
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, { input: { goal: "Build the MVP" } });
+
+      expect(result.error).toBeNull();
+      expect(seen).toBeUndefined();
+    });
+
+    it("taskContext as a custom block fills per-task context in one pass", async () => {
+      const planner = createDeterministicPlanner([
+        { id: "s1", goal: "do A" },
+        { id: "s2", goal: "do B" },
+      ]);
+
+      // Custom enricher: receives { goal, tasks }, returns { tasks } with a
+      // per-task context derived from both the goal and the task id.
+      const customEnricher = handler({
+        name: "custom-enricher",
+        inputSchema: z.object({ goal: z.string(), tasks: z.array(z.any()) }),
+        outputSchema: z.object({ tasks: z.array(z.any()) }),
+        execute: (input: any) => ({
+          tasks: input.tasks.map((t: any) => ({
+            ...t,
+            context: `enriched:${t.id}:${input.goal}`,
+          })),
+        }),
+      });
+
+      const seen: Record<string, string> = {};
+      const capture = handler({
+        name: "ctx-custom-capture",
+        inputSchema: z.any(),
+        outputSchema: z.object({ summary: z.string(), success: z.boolean() }),
+        execute: (input: any) => {
+          seen[input.stepId] = input.context;
+          return { summary: "ok", success: true };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "ctx-custom",
+        planner,
+        stepExecutor: capture,
+        taskContext: customEnricher,
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, { input: { goal: "Build" } });
+
+      expect(result.error).toBeNull();
+      expect(seen["s1"]).toBe("enriched:s1:Build");
+      expect(seen["s2"]).toBe("enriched:s2:Build");
+    });
+
+    it("fills replanned tasks' context with the goal too (FIX-827)", async () => {
+      // The replan loop re-enters the board directly, so applyReplan applies
+      // the same goal→context gap-fill the planning-entry enricher does.
+      const planner = createDeterministicPlanner([{ id: "s1", goal: "initial" }]);
+      const evaluatorMock = mockGenerator({
+        name: "replan-ctx-evaluate-llm",
+        script: [
+          { structuredOutput: { decision: "replan", reasoning: "more" } },
+          { structuredOutput: { decision: "complete", reasoning: "done" } },
+        ],
+      });
+      const replannerMock = mockGenerator({
+        name: "replan-ctx-replanner",
+        script: [
+          { structuredOutput: { tasks: [{ id: "extra-1", goal: "replanned task" }] } },
+        ],
+      });
+
+      const seen: Record<string, string | undefined> = {};
+      const capture = handler({
+        name: "replan-ctx-capture",
+        inputSchema: z.any(),
+        outputSchema: z.object({ summary: z.string(), success: z.boolean() }),
+        execute: (input: any) => {
+          seen[input.stepId] = input.context;
+          return { summary: "ok", success: true };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "replan-ctx",
+        planner,
+        stepExecutor: capture,
+        enableReplanning: true,
+        maxIterations: 5,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Build the thing" },
+        generators: {
+          "replan-ctx-evaluate-llm": evaluatorMock,
+          "replan-ctx-replanner": replannerMock,
+        },
+      });
+
+      expect(result.error).toBeNull();
+      // Initial task — context filled by the planning-entry enricher.
+      expect(seen["s1"]).toBe("Build the thing");
+      // Replanned task — context filled by applyReplan on re-seed.
+      expect(seen["extra-1"]).toBe("Build the thing");
+    });
+
+    it("threads planner-supplied context to the worker", async () => {
+      const planner = handler({
+        name: "ctx-planner",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          tasks: z.array(
+            z.object({ id: z.string(), goal: z.string(), context: z.string() }),
+          ),
+        }),
+        execute: () => ({
+          tasks: [
+            {
+              id: "s1",
+              goal: "research the listed subdomains",
+              context: "Subdomains: a.example.com, b.example.com",
+            },
+          ],
+        }),
+      });
+
+      let seenContext: string | undefined;
+      const captureExecutor = handler({
+        name: "ctx-capture-executor",
+        inputSchema: z.any(),
+        outputSchema: z.object({ summary: z.string(), success: z.boolean() }),
+        execute: (input: any) => {
+          seenContext = input.context;
+          return { summary: "ok", success: true };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "ctx-thread",
+        planner,
+        stepExecutor: captureExecutor,
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, { input: { goal: "research" } });
+
+      expect(result.error).toBeNull();
+      expect(seenContext).toBe("Subdomains: a.example.com, b.example.com");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Goal synthesis (FIX-827)
+  // -----------------------------------------------------------------------
+  describe("goal synthesis (FIX-827)", () => {
+    /** Planner that records the goal it was handed. */
+    function makeGoalCapturingPlanner() {
+      const seen: { goal?: string } = {};
+      const block = handler({
+        name: "synth-planner",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          tasks: z.array(z.object({ id: z.string(), goal: z.string() })),
+        }),
+        execute: (input: any) => {
+          seen.goal = input.goal;
+          return { tasks: [{ id: "s1", goal: "do the work" }] };
+        },
+      });
+      return Object.assign(block, { seen });
+    }
+
+    it("synthesizeGoal=true rewrites the goal the planner receives", async () => {
+      const planner = makeGoalCapturingPlanner();
+      const synthMock = mockGenerator({
+        name: "synth-on-synthesize-goal",
+        script: [{ structuredOutput: { goal: "Research asset info for a.com, b.com, c.com" } }],
+      });
+
+      const block = planAndExecute({
+        name: "synth-on",
+        planner,
+        stepExecutor: echoExecutor,
+        synthesizeGoal: true,
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "now do that for all of them" },
+        generators: { "synth-on-synthesize-goal": synthMock },
+      });
+
+      expect(result.error).toBeNull();
+      expect(planner.seen.goal).toBe("Research asset info for a.com, b.com, c.com");
+    });
+
+    it("synthesized goal reaches the outer pipeline state (replan/synthesize basis)", async () => {
+      // The replanner and synthesizer reason against the outer pipeline
+      // state's goal. A custom evaluator runs as a direct outer-pipeline
+      // step, so reading its state.goal proves the synthesized goal was
+      // stamped into the outer state — not just handed to the planner.
+      const planner = makeGoalCapturingPlanner();
+      const synthMock = mockGenerator({
+        name: "synth-outer-synthesize-goal",
+        script: [{ structuredOutput: { goal: "Self-contained objective" } }],
+      });
+
+      let evaluatorSawGoal: string | undefined;
+      const evaluator = handler({
+        name: "synth-outer-eval",
+        inputSchema: z.any(),
+        sequencerStateSchema: planAndExecuteStateSchema,
+        outputSchema: z.object({
+          decision: z.enum(["continue", "complete", "replan"]),
+        }),
+        execute: (_input: unknown, ctx: any) => {
+          evaluatorSawGoal = ctx.sequencer?.state?.goal;
+          return { decision: "complete" as const };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "synth-outer",
+        planner,
+        stepExecutor: echoExecutor,
+        evaluator,
+        synthesizeGoal: true,
+        synthesizer: false,
+        enableReplanning: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "do that for all of them" },
+        generators: { "synth-outer-synthesize-goal": synthMock },
+      });
+
+      expect(result.error).toBeNull();
+      expect(evaluatorSawGoal).toBe("Self-contained objective");
+    });
+
+    it("default (synthesizeGoal off) leaves the goal verbatim", async () => {
+      const planner = makeGoalCapturingPlanner();
+
+      const block = planAndExecute({
+        name: "synth-off",
+        planner,
+        stepExecutor: echoExecutor,
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "verbatim goal" },
+      });
+
+      expect(result.error).toBeNull();
+      expect(planner.seen.goal).toBe("verbatim goal");
+    });
+
+    it("synthesis failure falls back to the original goal (planning continues)", async () => {
+      const planner = makeGoalCapturingPlanner();
+      // An empty-script mock throws when the synthesizer generator runs.
+      // Synthesis is an enhancement, not a correctness gate, so the run must
+      // continue with the original goal (the synthesizer's internal rescue).
+      const failingSynth = mockGenerator({
+        name: "synth-fail-synthesize-goal",
+        script: [],
+      });
+
+      const block = planAndExecute({
+        name: "synth-fail",
+        planner,
+        stepExecutor: echoExecutor,
+        synthesizeGoal: true,
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "original request" },
+        generators: { "synth-fail-synthesize-goal": failingSynth },
+      });
+
+      expect(result.error).toBeNull();
+      expect(planner.seen.goal).toBe("original request");
     });
   });
 

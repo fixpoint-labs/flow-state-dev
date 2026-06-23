@@ -29,6 +29,13 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   flowKind: string;
   userId: string;
   orgId?: string;
+  /**
+   * Bare tenant id this session belongs to (FIX-682). The session record's
+   * `id` is already tenant-namespaced (`${tenantId}:${sessionId}`); this field
+   * keeps the bare tenant for cross-reference and `SessionListOptions.tenantId`
+   * filtering. Undefined for single-tenant sessions.
+   */
+  tenantId?: string;
   title?: string;
   description?: string;
   tags?: string[];
@@ -44,6 +51,14 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   userId: string;
   sessionId?: string;
   orgId?: string;
+  /**
+   * Bare tenant id this request ran under (FIX-682). `sessionId` stays bare;
+   * isolation of cross-turn history comes from filtering `request.list` by
+   * (`sessionId`, `tenantId`) rather than from namespacing the `sessionId`
+   * field — which keeps request recovery a clean pass-through. Undefined for
+   * single-tenant requests.
+   */
+  tenantId?: string;
   /**
    * Provenance of the inbound transport that produced this request.
    * Set from `InboundRequestEnvelope.source` (FIX-438). Open string —
@@ -83,6 +98,11 @@ export type OrgRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<
 export type SessionListOptions = {
   flowKind?: string;
   userId?: string;
+  /**
+   * Tenant filter (FIX-682). See {@link RequestListOptions.tenantId} for the
+   * present-vs-absent exact-match semantics — they are identical here.
+   */
+  tenantId?: string;
   limit?: number;
   offset?: number;
 };
@@ -91,6 +111,20 @@ export type RequestListOptions = {
   flowKind?: string;
   sessionId?: string;
   userId?: string;
+  /**
+   * Tenant filter (FIX-682). Exact-match isolation with deliberate
+   * present-vs-absent semantics, because tenant records and no-tenant records
+   * can share a bare `sessionId`:
+   * - When the `tenantId` key is **present on the options object** (including an
+   *   explicit `undefined`), the store exact-matches it — `undefined` matches
+   *   only records with no tenant. This is what isolates cross-turn history.
+   * - When the key is **absent**, no tenant filtering is applied (admin/debug
+   *   "list everything" callers keep working).
+   *
+   * `createExecutionContext` and the tenant-isolated routes always pass the key
+   * (carrying the current request's tenant, possibly `undefined`).
+   */
+  tenantId?: string;
   status?: RequestStatus;
   limit?: number;
   offset?: number;
@@ -252,6 +286,14 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * Persist the current items for an in-progress request.
    * Non-blocking from the caller's perspective — the backend handles async flushing.
    * Callers should call flushItems() before writing terminal status.
+   *
+   * Merge-by-id contract (FIX-811): persisting items MUST union the supplied
+   * items into the stored set by `id` (last-write-wins per id), never replacing
+   * the full set. Order is preserved — existing items keep their position, new
+   * ids append. This lets a same-request continuation (suspend → resume under
+   * the same id) persist only its post-resume items while a `get` still returns
+   * the full pause→continue history. The in-memory adapter's no-op satisfies
+   * this trivially (items live on the record); persistent adapters UPSERT.
    */
   persistItems(requestId: string, items: OutputItem[]): void;
 
@@ -348,6 +390,18 @@ export interface SubscribeToEventsOptions {
    * `1000`.
    */
   maxPendingEvents?: number;
+  /**
+   * When `true`, a `request.suspended` event is treated as a checkpoint, not
+   * a stream terminal: the iterator yields it and keeps following the request
+   * (FIX-811). Set by the attach route only when a continuation lease is held,
+   * so a same-request continuation (resume / crash-recovery `continue`) can be
+   * streamed through to its real terminal. The true terminals
+   * (`completed`/`failed`/`incomplete`/`aborted`) still end the iterator, and
+   * the route closes the wire if a later suspension lands with the lease gone
+   * (the continuation re-suspended). Default `false` — a paused request's
+   * stream still ends at `suspended`.
+   */
+  followThroughSuspend?: boolean;
 }
 
 export interface UserStore extends DeltaStoreOps<UserRecord> {
@@ -381,6 +435,12 @@ export type ActiveRequestEntry = {
   sessionId?: string;
   userId: string;
   orgId?: string;
+  /**
+   * Bare tenant id this request runs under (FIX-682). Carried so recovery can
+   * re-dispatch the retry within the same tenant's session. Undefined for
+   * single-tenant requests.
+   */
+  tenantId?: string;
   /** Inbound transport provenance — see `RequestRecord.source`. */
   source: string;
   input?: unknown;
@@ -511,6 +571,12 @@ export interface CheckpointStore {
 
   /** Remove the checkpoint when its sequencer reaches terminal state. */
   delete(requestId: string, blockInstanceId: string): Promise<void>;
+
+  /**
+   * Remove every checkpoint for `requestId` across all blockInstanceIds.
+   * Idempotent — a request with no checkpoints is a no-op, never an error.
+   */
+  deleteForRequest(requestId: string): Promise<void>;
 }
 
 /**
@@ -564,6 +630,15 @@ export interface SuspensionStore {
 
   /** Delete all suspensions for a request. */
   deleteForRequest(requestId: string): Promise<void>;
+
+  /**
+   * Delete suspensions in a TERMINAL status (approved | rejected | timed_out |
+   * expired) whose `resolvedAt` is non-null and strictly less than `cutoffMs`,
+   * up to `limit` rows. Pending suspensions are never touched. Returns the
+   * number of rows actually deleted so a sweeper can loop until it observes a
+   * partial batch (`deleted < limit`). Idempotent — nothing matching returns 0.
+   */
+  pruneTerminalBefore(cutoffMs: number, limit: number): Promise<number>;
 }
 
 /**

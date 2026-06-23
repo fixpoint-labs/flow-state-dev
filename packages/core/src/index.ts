@@ -41,7 +41,7 @@ export type {
   SchemaOutput
 } from "./schema/common";
 
-export { defineResource, resource } from "./types/resource";
+export { applyGetOrPatchState, defineResource, resource } from "./types/resource";
 export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
 export {
   bindToolCacheStore,
@@ -122,6 +122,14 @@ export {
   ROOT_BLOCK_PATH
 } from "./blocks/internal/block-instance-id";
 export { resolveActiveStatusMessage } from "./blocks/internal/resolve-active-status-message";
+// Log-as-source-of-truth resume read model (FIX-811). Exported so the server
+// can build a ReplayLog from a request's persisted items at re-entry and assign
+// it to `ctx._replayLog`; the core `executeBlock` seam consumes the interface.
+export { buildReplayLog } from "./blocks/internal/replay-log";
+export type { ReplayLog } from "./blocks/internal/replay-log";
+// Canonical item-log view (FIX-811): collapse a resumed request's superseded
+// re-emissions for the read paths (GET history, useSession, SSE replay seed).
+export { collapseToCanonicalLog } from "./items/canonical-log";
 export {
   generator,
   handler,
@@ -137,6 +145,7 @@ export { defineFlow } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath } from "./tools/resource-tools";
 export { resourceTools } from "./tools/resource-tools";
+export { resourceSearchTools } from "./tools/resource-search-tools";
 export {
   DEFAULT_MODEL_LOOKUP,
   findModelEntry,
@@ -181,6 +190,7 @@ export type {
   CostEstimate,
   CostEstimator,
   ActionConfig,
+  ActionCore,
   ActionMcpConfig,
   ClientDataComputeFn,
   ClientDataContext,
@@ -209,6 +219,13 @@ export { validateScheduleConfig, validateSchedulesConfig } from "./types/schedul
 
 export type { ChatConfig, ChatEventBinding } from "./types/chat";
 export { validateChatConfig } from "./types/chat";
+export type {
+  WebhookConfig,
+  WebhookEventBinding,
+  WebhookInboundEvent,
+  WebhookSubscriptionConfig
+} from "./types/webhooks";
+export { defineWebhookBinding, validateWebhookConfig } from "./types/webhooks";
 export type {
   TokenCounter,
 } from "./types/tokens";
@@ -271,13 +288,14 @@ export type { VoiceErrorKind, VoiceErrorOptions } from "./types/voice-error";
 export { VoiceError } from "./types/voice-error";
 
 export type { BindingCacheOptions, BindingProvider } from "./types/binding";
+export { createBindingCache } from "./bindings";
+export type { CachedBindingProvider } from "./bindings";
 
 // Model infrastructure (AI SDK adapters, provider detection, fallback)
 export {
   createAiSdkModelResolver,
   wrapAiSdkModel,
   createModelResolver,
-  createFSDProvider,
   createFallbackModel,
   isRetryableError,
   detectAvailableProviders,
@@ -294,9 +312,6 @@ export type {
   ResolveAiSdkLanguageModel,
   CreateModelResolverOptions,
   IntentDefaults,
-  FSDProviderConfig,
-  FSDProvider,
-  ModelGroupConfig,
   ModelGroupDefaults,
   GatewayConfig,
   GatewayType,
@@ -309,9 +324,6 @@ export type {
   WhenRule,
   ModelSelection,
   ProviderPreference,
-  ResolveOptions,
-  ExplainCandidate,
-  ExplainResult,
   MakeSchemaStrictOptions,
   StrictViolation
 } from "./models";

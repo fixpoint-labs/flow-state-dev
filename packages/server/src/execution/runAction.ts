@@ -4,17 +4,21 @@
 import type { ErrorItem, ItemProvenance, MessageItem, OutputItem, StatusItem } from "@flow-state-dev/core/items";
 import { isEphemeralContent } from "@flow-state-dev/core/items";
 import type {
-  ActionConfig,
+  ActionCore,
   BlockDefinition,
   FlowInstance,
   Middleware,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause } from "@flow-state-dev/core";
-import type { SuspensionItem } from "@flow-state-dev/core/items";
+import { resolveActionCore } from "./resolve-action-core";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
+import type { ReplayLog } from "@flow-state-dev/core";
+import type { SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
 import { createExecutionContext } from "../context/createExecutionContext";
+import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestWorkPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
@@ -131,29 +135,34 @@ async function drainRequestWorkPool(
 }
 
 /**
- * Resolves an action definition from a flow and validates that it exists.
+ * Resolves the action core to run from a flow and validates that it exists.
+ *
+ * Resolution is form-aware: a genuine webhook dispatch (`source === "webhook"`)
+ * carries its `(provider, eventType)` coordinate in `metadata.webhook`, so the
+ * handler is found on `flow.webhooks` rather than `flow.actions`. See
+ * `resolveActionCore` — the source gate is what stops a caller-addressed
+ * request from pivoting into a webhook handler via injected metadata.
  */
-function resolveAction<
-  TFlow extends FlowInstance,
-  TActionName extends keyof TFlow["actions"] & string
->(
-  flow: TFlow,
-  actionName: TActionName
-): ActionConfig {
-  const action = flow.actions[actionName];
+function resolveAction(
+  flow: FlowInstance,
+  actionName: string,
+  source: string | undefined,
+  metadata: Record<string, unknown> | undefined
+): ActionCore {
+  const action = resolveActionCore(flow, actionName, source, metadata);
   if (action === undefined) {
     throw new ValidationError(
       `Flow "${flow.kind}" does not define action "${actionName}"`
     );
   }
 
-  return action as ActionConfig;
+  return action;
 }
 
 /**
  * Validates and parses action input using the action's schema.
  */
-function parseActionInput(action: ActionConfig, input: unknown): unknown {
+function parseActionInput(action: ActionCore, input: unknown): unknown {
   const schema = action.inputSchema ?? action.block.inputSchema;
   const parsed = schema.safeParse(input);
   if (parsed.success) {
@@ -223,6 +232,32 @@ async function patchRequestRecord(
     { ...current, ...sanitized, updatedAt: Date.now() },
     "any"
   );
+}
+
+/**
+ * Union prior persisted items with this run's items by `id`, last-write-wins
+ * per id, preserving order (prior items first in their original order, then
+ * any new ids in re-entry order). Used for the terminal write of a same-request
+ * continuation (FIX-811), where the re-entry emitter holds only post-resume
+ * items but a GET must return the full pause→continue history. A backstop for
+ * stores whose `persistItems` already merges (sqlite); load-bearing for the
+ * in-memory store whose `persistItems` is a no-op.
+ */
+function mergeItemsById(
+  prior: readonly OutputItem[],
+  reentry: readonly OutputItem[]
+): OutputItem[] {
+  const byId = new Map<string, OutputItem>();
+  const order: string[] = [];
+  for (const item of prior) {
+    if (!byId.has(item.id)) order.push(item.id);
+    byId.set(item.id, item);
+  }
+  for (const item of reentry) {
+    if (!byId.has(item.id)) order.push(item.id);
+    byId.set(item.id, item);
+  }
+  return order.map((id) => byId.get(id)!);
 }
 
 /**
@@ -323,7 +358,7 @@ async function emitTerminalError(
 }
 
 
-function getActionTokenBudget(action: ActionConfig): {
+function getActionTokenBudget(action: ActionCore): {
   maxTotalTokens: number;
   warnAt?: number;
   onExceeded: "error" | "stop" | "warn";
@@ -435,14 +470,26 @@ export async function runActionInternal<
   options: RunActionInternalOptions<TFlow, TActionName>
 ): Promise<ExecutionResult> {
   const startedAt = Date.now();
-  const action = resolveAction(options.flow, options.actionName);
+  const action = resolveAction(options.flow, options.actionName, options.source, options.metadata);
   const requestId = options.requestId ?? generateId("req");
   const internalSeams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
   const response = options.responseEmitter ?? createInternalResponseEmitter({
     requestId,
     internalSeams: undefined,
-    startSequenceNumber: options.startSequenceNumber
+    startSequenceNumber: options.startSequenceNumber,
+    startItemIndex: options.startItemIndex
   });
+
+  // Same-request continuation (FIX-811): the re-entry emitter holds only
+  // post-resume items, but every persist — incremental AND terminal — must
+  // write the FULL pause→continue log so a replace-style store (e.g.
+  // filesystem) never truncates the pre-suspension history mid-run, and a crash
+  // between resume and completion keeps the whole log. Assigned once replay mode
+  // is determined below; until then `itemsToPersist()` is the live items as-is.
+  let isReplayMode = false;
+  let priorItemsForMerge: readonly OutputItem[] = [];
+  const itemsToPersist = (): OutputItem[] =>
+    isReplayMode ? mergeItemsById(priorItemsForMerge, response.getItems()) : response.getItems();
 
   if (options.onItem !== undefined) {
     // Fan every item to the caller's listener, transient ones included (they
@@ -527,6 +574,8 @@ export async function runActionInternal<
     sessionId: options.sessionId,
     userId: options.userId,
     orgId: options.orgId,
+    // Carry the tenant so recovery re-dispatches the retry in-tenant (FIX-682).
+    tenantId: options.tenantId,
     source,
     input: options.input,
     metadata: options.metadata,
@@ -547,10 +596,17 @@ export async function runActionInternal<
 
   // --- Update session's latestRequestId for auto-resume discovery ---
   if (options.sessionId !== undefined) {
-    const session = await options.stores.session.get(options.sessionId);
-    if (session !== undefined) {
+    // Tenant-namespaced key (FIX-682) so this lands on the same record the
+    // execution context reads/writes; a bare key would miss a tenant session.
+    const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
+    const session = await options.stores.session.get(sessionKey);
+    // Tenant-binding guard (FIX-682): this write runs before
+    // createExecutionContext's binding check, so without it a no-tenant caller
+    // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
+    // latestRequestId (an auto-resume hijack) even though the run then fails.
+    if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
       await options.stores.session.set(
-        options.sessionId,
+        sessionKey,
         { ...session, latestRequestId: requestId, updatedAt: Date.now() },
         "any"
       );
@@ -571,6 +627,11 @@ export async function runActionInternal<
   // termination ensures the last write/delete completes before the action
   // returns. (FIX-401)
   const cleanupCheckpointsOnTerminal = options.flow.request?.cleanupCheckpointsOnTerminal === true;
+  // Set whenever a durable state_snapshot frame is seen — the precise signal
+  // that this request exercised durable execution (a `sequencer({ durable })`
+  // step ran). Used by the terminal-completion cleanup wire (FIX-141) to
+  // decide whether to clean up this request's own durability artifacts.
+  let sawDurableFrame = false;
   const checkpointChains = new Map<string, Promise<void>>();
   const checkpointKey = (id: string) => `${requestId}:${id}`;
   function chainCheckpoint(blockInstanceId: string, op: () => Promise<void>): void {
@@ -606,6 +667,7 @@ export async function runActionInternal<
     onItemDone: (item) => {
       if (item.type === "state_snapshot") {
         if (item.durable) {
+          sawDurableFrame = true;
           const requestIdForCheckpoint = item.requestId;
           const blockInstanceId = item.provenance.blockInstanceId;
           const parentBlockInstanceId = item.provenance.parentBlockInstanceId ?? null;
@@ -648,7 +710,7 @@ export async function runActionInternal<
         return;
       }
       if (item.transient === true) return;
-      options.stores.request.persistItems(requestId, response.getItems());
+      options.stores.request.persistItems(requestId, itemsToPersist());
     },
     // FIX-479: incremental items-snapshot checkpoint while streaming text.
     // content.delta events no longer enter the persisted events log; the
@@ -660,7 +722,7 @@ export async function runActionInternal<
     onItemUpdate: (item) => {
       if (item.type === "state_snapshot") return;
       if (item.transient === true) return;
-      options.stores.request.persistItems(requestId, response.getItems());
+      options.stores.request.persistItems(requestId, itemsToPersist());
     }
   });
 
@@ -689,6 +751,21 @@ export async function runActionInternal<
   await response.emitRequestCreated();
   await response.emitRequestStatus("in_progress");
 
+  // Same-request continuation detection (FIX-811), computed BEFORE the
+  // request-start emits below so a continuation does not re-echo the initial
+  // user message. `resumeContextRaw` / `priorRecord` are also consumed later by
+  // the ReplayLog build and checkpoint restore. Replay covers suspension resume
+  // (a `resumeContext` re-enters a `suspended` record) and crash recovery
+  // (`continueRequest` re-enters an `interrupted` record with no resumeContext).
+  const resumeContextRaw = options.metadata?.resumeContext as ResumeContext | undefined;
+  let priorRecord: RequestRecord | undefined;
+  if (resumeContextRaw !== undefined || options.replayMode === true) {
+    priorRecord = await options.stores.request.get(requestId).catch(() => undefined);
+  }
+  isReplayMode =
+    options.replayMode === true ||
+    (resumeContextRaw !== undefined && priorRecord?.status === "suspended");
+
   // Parse input and emit user message early too. If parsing fails, we still
   // need the execution context for proper error handling, so we defer the
   // throw until after context creation.
@@ -697,7 +774,13 @@ export async function runActionInternal<
   try {
     parsedInput = parseActionInput(action, options.input);
 
-    if (action.userMessage !== undefined) {
+    // Skip the user-message echo on a continuation (FIX-811): it represents the
+    // INITIAL caller input and is already in the merged prior log, so emitting
+    // it again on resume / crash recovery would double it. It carries runtime
+    // provenance (no logical block owner), so the canonical-log collapse — which
+    // dedups by block ownership — cannot remove the duplicate; the only correct
+    // place to prevent it is here, at the source.
+    if (action.userMessage !== undefined && !isReplayMode) {
       const text = action.userMessage(parsedInput);
       const userItem: MessageItem = {
         id: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
@@ -792,8 +875,104 @@ export async function runActionInternal<
     fireBackground();
   }
 
+  // Same-request continuation (FIX-811): `isReplayMode` / `resumeContextRaw` /
+  // `priorRecord` were determined above (before the request-start emits, so the
+  // user-message echo can be skipped on a continuation). The ReplayLog build and
+  // checkpoint restore below consume them; building the augmented `resumeContext`
+  // BEFORE createExecutionContext is what lets the execution context's
+  // `ctx.suspend()` close over `pendingBlockLogicalId`. A flow-resolve /
+  // ReplayLog-build failure here is BEFORE the point-of-no-return: the record
+  // stays `suspended` and the run never transitions it.
+
+  // PRE-transition failure recovery (FIX-811). A same-request continuation
+  // (resume OR crash-recovery `continue`) acquires a lease and returns 202/SSE
+  // BEFORE this detached run reaches its point of no return
+  // (`suspended/interrupted → in_progress`). If a pre-transition step here throws
+  // (buildReplayLog, createExecutionContext, or the checkpoint restore), the
+  // route's catch never runs — it already returned — so the lease and (for the
+  // resume path) the resolved suspension would both linger. Two best-effort,
+  // idempotent recoveries, leaving the record where it was (`suspended` /
+  // `interrupted`, never `failed`, since we never crossed the point of no return):
+  //
+  //   1. Resume only: revert the suspension `approved`/`rejected` → `pending` so
+  //      the resume stays re-attemptable (its guard requires `pending`).
+  //   2. Both paths: release the continuation lease keyed on this request id —
+  //      otherwise it lingers until its 60s TTL and the next resume/continue
+  //      attempt 409s even though the request is back to a retryable state.
+  //
+  // Crash recovery has no `resumeContext` / no suspension to revert, but it DOES
+  // hold a lease (recovery-routes.ts `handleContinueRequest`), so the release
+  // must run for it too — that gap is what this guards. Only call for
+  // pre-transition failures.
+  async function recoverFromPreTransitionFailure(): Promise<void> {
+    if (!isReplayMode) return;
+    const provider = options.runtimeConfig.durabilityProvider;
+
+    // (1) Resume path: revert the resolved suspension back to pending.
+    if (provider !== undefined && resumeContextRaw !== undefined) {
+      try {
+        const suspension = await provider.loadSuspension(
+          requestId,
+          resumeContextRaw.suspensionId
+        );
+        if (suspension !== null) {
+          await provider.suspend({
+            ...suspension,
+            status: "pending",
+            resolvedAt: undefined,
+            resolvedBy: undefined,
+            resumeData: undefined
+          });
+        }
+      } catch {
+        // Best-effort: a revert failure must not mask the original error.
+      }
+    }
+
+    // (2) Both paths: release the continuation lease.
+    try {
+      const lease = await options.stores.leases.get(requestId);
+      if (lease !== null) {
+        await options.stores.leases.release(requestId, lease.leaseId);
+      }
+    } catch {
+      // Best-effort: a release failure must not mask the original error.
+    }
+  }
+
+  // Resume mode bookkeeping is declared before the pre-transition try so the
+  // values survive into the post-transition body. `resumeOf` (legacy
+  // two-request path) is independent of replay metadata; `resumeContext` /
+  // `checkpointSourceId` are assigned inside the try once `effectiveMetadata`
+  // is built.
+  const resumeOf = options.metadata?.resumeOf as string | undefined;
+  let resumeContext: ResumeContext | undefined;
+  let replayLog: ReplayLog | undefined;
+  let effectiveMetadata = options.metadata;
   let ctx: ExecutionContext;
   try {
+    if (isReplayMode && priorRecord !== undefined) {
+      const priorItems = (priorRecord.items ?? []) as RuntimeItem[];
+      // The full prior log (pre-suspension items + the `suspension` item) that
+      // every persist must preserve under the merge — assigned before any item
+      // is emitted so incremental persists never truncate it.
+      priorItemsForMerge = priorItems as readonly OutputItem[];
+      replayLog = buildReplayLog(priorItems);
+      // Crash-recovery continuation (FIX-811) replays with NO resumeContext: it
+      // re-enters an `interrupted` request, injects its completed blocks from
+      // the log, and re-runs the in-flight one — there is no gate to resolve, so
+      // leave `resumeContext` absent. Only a suspension resume threads the
+      // resolving gate's logical id so `ctx.suspend()` returns the payload at
+      // exactly that gate and re-suspends at any other.
+      if (resumeContextRaw !== undefined) {
+        const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
+        effectiveMetadata = {
+          ...options.metadata,
+          resumeContext: { ...resumeContextRaw, pendingBlockLogicalId }
+        };
+      }
+    }
+
     ctx = await createExecutionContext({
       flow: options.flow,
       actionName: options.actionName,
@@ -803,7 +982,7 @@ export async function runActionInternal<
       orgId: options.orgId,
       tenantId: options.tenantId,
       source,
-      metadata: options.metadata,
+      metadata: effectiveMetadata,
       input: options.input,
       signal: composedSignal,
       backgroundSignal: backgroundController.signal,
@@ -816,37 +995,113 @@ export async function runActionInternal<
       durabilityEnabled: options.runtimeConfig.durabilityProvider !== undefined,
       errorCapture: options.runtimeConfig.errorCapture
     });
+
+    // Resume mode: load the suspension record + checkpoint to restore the durable
+    // sequencer's accumulator state. `resumeOf` (legacy two-request path) reads
+    // from the ORIGINAL request id; same-request replay (FIX-811) reads from this
+    // request's own id. Step skipping is no longer positional — completed blocks
+    // are injected per-logical-path via `ctx._replayLog` (set below in replay
+    // mode); this only restores sequencer state.
+    resumeContext = effectiveMetadata?.resumeContext as ResumeContext | undefined;
+    const checkpointSourceId = isReplayMode ? requestId : resumeOf;
+    if (checkpointSourceId !== undefined && resumeContext !== undefined) {
+      const provider = options.runtimeConfig.durabilityProvider;
+      if (provider !== undefined) {
+        const suspension = await provider.loadSuspension(
+          checkpointSourceId,
+          resumeContext.suspensionId
+        );
+        if (suspension !== null && suspension.stepIndex >= 0) {
+          // The suspension's `blockInstanceId` is the durable sequencer's
+          // checkpoint key. In replay mode the request id is unchanged, so the
+          // checkpoint lives under this same id.
+          const checkpoint = await options.stores.checkpoints.latest(
+            checkpointSourceId,
+            suspension.blockInstanceId
+          );
+          (ctx as any)._resumeState = {
+            state: checkpoint?.state as Record<string, unknown> | undefined
+          };
+        }
+      }
+    } else if (isReplayMode && resumeContext === undefined) {
+      // Crash-recovery continuation (FIX-811): there is no suspension record to
+      // name the durable sequencer's checkpoint key, so restore the ROOT
+      // sequencer's accumulator state from its deterministic instance id
+      // (`${requestId}:root:0`). The action block itself is the durable
+      // sequencer in the common case, so this recovers its `stateSchema`
+      // accumulator rather than restarting it empty while block outputs replay
+      // from the log. A durable sequencer NESTED inside another is the
+      // documented limitation (its non-root checkpoint is not restored here).
+      const provider = options.runtimeConfig.durabilityProvider;
+      if (provider !== undefined) {
+        const rootInstanceId = buildBlockInstanceId(requestId, ROOT_BLOCK_PATH, 0);
+        const checkpoint = await options.stores.checkpoints.latest(
+          requestId,
+          rootInstanceId
+        );
+        if (checkpoint !== null) {
+          (ctx as any)._resumeState = {
+            state: checkpoint.state as Record<string, unknown> | undefined
+          };
+        }
+      }
+    }
   } catch (setupError) {
+    // This catch covers every PRE-transition step (buildReplayLog,
+    // createExecutionContext, checkpoint restore). The record has NOT crossed
+    // the point of no return, so leave it `suspended` (never `failed`) and, for
+    // a replay continuation, revert the resolved suspension back to `pending`
+    // so the resume stays re-attemptable (FIX-811). Then clean up the abort
+    // controller / heartbeat (as the prior createExecutionContext catch did)
+    // and rethrow so `finished` rejects.
+    await recoverFromPreTransitionFailure();
     deregisterAbortController(requestId);
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
     throw setupError;
   }
 
-  // Resume mode: when re-invoking after suspension, load the suspension record
-  // and checkpoint to populate _resumeState so the sequencer skips completed steps.
-  const resumeOf = options.metadata?.resumeOf as string | undefined;
-  const resumeContext = options.metadata?.resumeContext as ResumeContext | undefined;
-  if (resumeOf !== undefined && resumeContext !== undefined) {
-    const provider = options.runtimeConfig.durabilityProvider;
-    if (provider !== undefined) {
-      const suspension = await provider.loadSuspension(resumeOf, resumeContext.suspensionId);
-      if (suspension !== null && suspension.stepIndex >= 0) {
-        // Load the checkpoint from the original request to get the sequencer state.
-        const checkpoint = await options.stores.checkpoints.latest(
-          resumeOf,
-          suspension.blockInstanceId
-        );
-        // Skip steps 0..stepIndex-1 (completed before suspension).
-        // Step at stepIndex (the one that called ctx.suspend()) re-executes;
-        // this time ctx.suspend() returns resumeData instead of throwing.
-        const resumeStepIndex = suspension.stepIndex - 1;
-        (ctx as any)._resumeState = {
-          stepIndex: resumeStepIndex,
-          state: checkpoint?.state as Record<string, unknown> | undefined,
-          stepInput: suspension.stepInput
-        };
-      }
-    }
+  // Replay mode: assign the ReplayLog so the core executor injects completed
+  // blocks, and transition the record across the point-of-no-return. Everything
+  // above this point (flow resolve, ReplayLog build, heartbeat re-register,
+  // checkpoint restore) can fail while leaving the record `suspended` /
+  // `interrupted`; once we emit `in_progress` below, any later failure is a
+  // durable terminal `failed`. A suspension resume additionally emits the
+  // `suspension_resume` audit item; crash recovery (no `resumeContext`) does
+  // not — it just continues the interrupted run.
+  if (isReplayMode && replayLog !== undefined) {
+    (ctx as any)._replayLog = replayLog;
+
+    // Point of no return: suspended / interrupted → in_progress.
+    await patchRequestRecord(options.stores, requestId, { status: "in_progress" });
+    ctx.requestRuntime.status = "in_progress";
+    await response.emitRequestStatus("in_progress");
+  }
+
+  if (isReplayMode && replayLog !== undefined && resumeContext !== undefined) {
+    // Audit item, positioned immediately after the `suspension` it resolves
+    // (it is the first item appended to the re-entry emitter).
+    const resumeItem: SuspensionResumeItem = {
+      id: `item_suspension_resume_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      type: "suspension_resume",
+      status: "completed",
+      suspensionId: resumeContext.suspensionId,
+      resolution: resumeContext.action === "approve" ? "approved" : "rejected",
+      resolvedBy: resumeContext.resumedBy,
+      resumeData: resumeContext.data,
+      resolvedAt: Date.now(),
+      requestId,
+      // Reserve from the per-run synchronous counter (FIX-811) so this leading
+      // runtime item and the block items that follow share one monotonic
+      // sequence that continues the prior log — `getResponseItemCount` (emitter
+      // size) would restart the runtime counter independently of the block
+      // counter and collide with the first replayed block's index.
+      itemIndex: ctx._reserveItemIndex?.() ?? getResponseItemCount(response),
+      provenance: RUNTIME_PROVENANCE,
+      ts: Date.now()
+    };
+    await response.emitItemAdded(resumeItem);
+    await response.emitItemDone(resumeItem);
   }
 
   const metadata = createExecutionMetadata(ctx, {
@@ -895,6 +1150,15 @@ export async function runActionInternal<
     } catch (suspendError) {
       if (suspendError instanceof SuspensionError) {
         const provider = options.runtimeConfig.durabilityProvider;
+        // The suspending block's identity is stamped on the error at the
+        // innermost scope (FIX-811); the outer ctx usually has no
+        // `_blockIdentity` for a nested suspension. Used for the resume audit
+        // item only — NOT for the SuspensionRecord, whose `blockInstanceId` is
+        // the durable sequencer's checkpoint key consumed by the positional
+        // resume path below (`stores.checkpoints.latest`). Overloading that
+        // field with the leaf id would break checkpoint restore.
+        const suspendingBlockInstanceId =
+          suspendError._blockInstanceId ?? ctx._blockIdentity?.blockInstanceId ?? "unknown";
         if (provider !== undefined) {
           const stepIndex = suspendError._stepIndex ?? -1;
           const record: SuspensionRecord = {
@@ -910,7 +1174,14 @@ export async function runActionInternal<
             resumeSchema: suspendError.resumeSchema,
             render: suspendError.render,
             status: "pending",
-            blockInstanceId: ctx._blockIdentity?.blockInstanceId ?? "unknown",
+            // The durable sequencer's checkpoint key (FIX-811). Stamped on the
+            // error by the suspending sequencer's catch, where its identity is
+            // known — the outer ctx has no `_blockIdentity` for a nested
+            // suspension, which is why the prior `"unknown"` fallback silently
+            // broke checkpoint restore. Resume loads `checkpoints.latest(id,
+            // this)`.
+            blockInstanceId:
+              suspendError._sequencerInstanceId ?? ctx._blockIdentity?.blockInstanceId ?? "unknown",
             stepIndex,
             stepInput: suspendError._currentValue,
             createdAt: Date.now(),
@@ -932,8 +1203,17 @@ export async function runActionInternal<
           data: suspendError.data,
           resumeSchema: suspendError.resumeSchema,
           render: suspendError.render,
+          // Carry the suspending (leaf) block's identity into the log so the
+          // resume runtime can recover its logical path (FIX-811). This is the
+          // ReplayLog's source — distinct from the SuspensionRecord's
+          // checkpoint key above.
+          blockInstanceId: suspendingBlockInstanceId,
           requestId,
-          itemIndex: getResponseItemCount(response),
+          // Reserve from the per-run synchronous counter (FIX-811) so a
+          // re-suspension's index continues the shared sequence rather than
+          // reading the (async-lagging) emitter size. Identical to the emitter
+          // count on a normal run, where this is the terminal item.
+          itemIndex: ctx._reserveItemIndex?.() ?? getResponseItemCount(response),
           provenance: RUNTIME_PROVENANCE,
           ts: Date.now()
         };
@@ -948,7 +1228,7 @@ export async function runActionInternal<
 
         await patchRequestRecord(options.stores, requestId, {
           status: "suspended",
-          items: response.getItems()
+          items: itemsToPersist()
         });
         ctx.requestRuntime.status = "suspended";
         await response.emitRequestStatus("suspended");
@@ -965,24 +1245,34 @@ export async function runActionInternal<
         await registry.deregister(requestId).catch(() => {});
         if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
-        // Release the resumeOf lease so the original request can be resumed
-        // again (targeting this new suspension).
-        if (resumeOf !== undefined) {
+        // Release the resume lease so the request can be resumed again at the
+        // NEXT gate. Legacy two-request resume keyed the lease on `resumeOf`;
+        // same-request continuation (FIX-811) keys it on this request id itself
+        // (the resume route acquires it on `requestId`, and `resumeOf` is
+        // undefined here). Without this, a re-suspension strands the lease until
+        // its 60s TTL and the next approval 409s. Awaited before `finished`
+        // resolves so the next resume POST sees a released lease (the terminal
+        // path releases via `durabilityProvider.cleanup`).
+        const reSuspendLeaseKey = resumeOf ?? (isReplayMode ? requestId : undefined);
+        if (reSuspendLeaseKey !== undefined) {
           try {
-            const lease = await options.stores.leases.get(resumeOf);
+            const lease = await options.stores.leases.get(reSuspendLeaseKey);
             if (lease !== null) {
-              await options.stores.leases.release(resumeOf, lease.leaseId);
+              await options.stores.leases.release(reSuspendLeaseKey, lease.leaseId);
             }
           } catch (err) {
             logRuntimeEvent(logger, "warn", "[flow-state] lease release failed on re-suspend", {
-              requestId, resumeOf, error: String(err)
+              requestId, leaseKey: reSuspendLeaseKey, error: String(err)
             });
           }
         }
 
         return {
           output: undefined,
-          items: response.getItems(),
+          // Return the same merged list we persist (FIX-811): in replay mode
+          // `response` holds only post-resume items, so a programmatic caller
+          // awaiting `finished` must see prior ∪ re-entry, not just the tail.
+          items: itemsToPersist(),
           durationMs: Date.now() - startedAt,
           requestId
         };
@@ -1072,7 +1362,7 @@ export async function runActionInternal<
     await flushTraces();
 
     const completedAt = Date.now();
-    const items = response.getItems();
+    const items = itemsToPersist();
     await patchRequestRecord(options.stores, requestId, {
       status: terminalStatus,
       completedAtMs: completedAt,
@@ -1106,6 +1396,52 @@ export async function runActionInternal<
       }
     }
 
+    // Non-resumed durable completion: clean up THIS request's own durability
+    // artifacts (suspension records + lease) when it completes on the first
+    // run (never suspended/resumed). The `resumeOf` block above already cleans
+    // the original request on the resume path, so this branch is mutually
+    // exclusive with it (guarded by `resumeOf === undefined`) — no double-clean.
+    //
+    // "Durable" here means the request actually exercised durability:
+    // `action.durable` is the documented action-level opt-in (it's what makes
+    // ctx.suspend() / crash recovery available and is the reliable signal even
+    // for this in-process path). `sawDurableFrame` additionally covers the
+    // route/streaming path where a `sequencer({ durable: true })` emits durable
+    // state_snapshot frames through the checkpoint hook. Gating on real durable
+    // activity avoids touching the stores for purely transient requests, where
+    // `cleanup` would be a no-op anyway.
+    //
+    // Checkpoints are removed only when the flow opts into
+    // `cleanupCheckpointsOnTerminal` (per-instance terminal deletes during the
+    // run already handle the common case; this is the catch-up for any survivors).
+    //
+    // `isReplayMode` (FIX-811): a same-request continuation re-enters with
+    // `resumeOf === undefined` but does NOT re-emit durable frames (completed
+    // steps are injected from the log), so `sawDurableFrame` stays false on
+    // resume. A replay is durable by definition — the request was suspended —
+    // so force cleanup here to release the resume lease and delete the resolved
+    // suspension records on terminal completion. Without it both linger until
+    // their TTL, and the resume route's lease (keyed on this request id) would
+    // strand a spurious 409 against an already-completed request.
+    const usedDurability = action.durable === true || sawDurableFrame || isReplayMode;
+    if (
+      resumeOf === undefined &&
+      usedDurability &&
+      terminalStatus === "completed" &&
+      options.runtimeConfig.durabilityProvider !== undefined
+    ) {
+      try {
+        await options.runtimeConfig.durabilityProvider.cleanup(requestId);
+        if (cleanupCheckpointsOnTerminal) {
+          await options.runtimeConfig.durabilityProvider.cleanupCheckpoints(requestId);
+        }
+      } catch (err) {
+        logRuntimeEvent(logger, "warn", "[flow-state] durability cleanup failed", {
+          requestId, error: String(err)
+        });
+      }
+    }
+
     if (terminalStatus === "completed") {
       await emitActionLifecycleSeam(internalSeams, "completed", metadata);
 
@@ -1117,7 +1453,8 @@ export async function runActionInternal<
             options.sessionId,
             requestId,
             resolvedRetention,
-            completedAt
+            completedAt,
+            options.tenantId
           );
         } catch (err) {
           logRuntimeEvent(logger, "warn", "[flow-state] retention eviction failed", {
@@ -1152,7 +1489,9 @@ export async function runActionInternal<
 
     return {
       output: result.output,
-      items: response.getItems(),
+      // Merged prior ∪ re-entry items in replay mode (FIX-811); identical to
+      // `response.getItems()` on a normal run.
+      items: itemsToPersist(),
       durationMs: Date.now() - startedAt,
       requestId
     };
@@ -1185,7 +1524,7 @@ export async function runActionInternal<
         await patchRequestRecord(options.stores, requestId, {
           status: "aborted",
           abortedAt,
-          items: response.getItems()
+          items: itemsToPersist()
         });
 
         ctx.requestRuntime.status = "aborted";
@@ -1217,7 +1556,7 @@ export async function runActionInternal<
         await patchRequestRecord(options.stores, requestId, {
           status: "interrupted",
           interruptedAt: Date.now(),
-          items: response.getItems()
+          items: itemsToPersist()
         });
 
         ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
@@ -1259,7 +1598,7 @@ export async function runActionInternal<
       await patchRequestRecord(options.stores, requestId, {
         status: "failed",
         failedAtMs: failedAt,
-        items: response.getItems()
+        items: itemsToPersist()
       });
 
       ctx.requestRuntime.status = "failed";
@@ -1306,7 +1645,9 @@ export async function runActionInternal<
 
     return {
       output: undefined,
-      items: response.getItems(),
+      // Merged prior ∪ re-entry items in replay mode (FIX-811); identical to
+      // `response.getItems()` on a normal run.
+      items: itemsToPersist(),
       durationMs: Date.now() - startedAt,
       requestId,
       error: signalAborted ? undefined : applyNormalizedErrorSeam(

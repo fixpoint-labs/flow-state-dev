@@ -7,14 +7,13 @@
  * mode (BP-020).
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
-import { loadFixture } from "../runtime/fixtures";
+import { resolveToolPayload } from "../runtime/resolve";
 import {
   fetchFinnhubInstitutionalOwnership,
   hasFinnhubKey,
 } from "../providers/finnhub";
 import { emptyPayload } from "../empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
+import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_institutional_ownership = handler({
   name: "get_institutional_ownership",
@@ -25,8 +24,7 @@ export const get_institutional_ownership = handler({
   inputSchema: toolInputSchemas.get_institutional_ownership,
   outputSchema: toolOutputSchemas.get_institutional_ownership,
   execute: async (input, ctx) => {
-    if (pickMode(ctx) === "fixture") return loadFixture("get_institutional_ownership", input);
-    return getOrFetch("get_institutional_ownership", input, async () => {
+    return resolveToolPayload("get_institutional_ownership", input, ctx, async () => {
       if (!hasFinnhubKey()) return emptyPayload("get_institutional_ownership", input);
       try {
         return await fetchFinnhubInstitutionalOwnership(input);

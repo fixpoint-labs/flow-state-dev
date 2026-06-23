@@ -144,6 +144,63 @@ describe("createSSEClient", () => {
     handle.close();
   });
 
+  it("routes request.suspended to onRequestStatus (FIX-811)", async () => {
+    // Regression: a same-request suspend emits `request.suspended` over the
+    // wire; if the dispatcher drops it, the client never leaves "in progress"
+    // and a HITL gate can't surface for resume.
+    const onRequestStatus = vi.fn();
+    const streamBody = [
+      requestEventFrame({
+        id: "req_s:1",
+        event: "request.created",
+        data: {
+          stream: "request",
+          type: "request.created",
+          requestId: "req_s",
+          sequence_number: 1,
+          status: "in_progress",
+          ts: 1
+        }
+      }),
+      requestEventFrame({
+        id: "req_s:2",
+        event: "request.suspended",
+        data: {
+          stream: "request",
+          type: "request.suspended",
+          requestId: "req_s",
+          sequence_number: 2,
+          status: "suspended",
+          ts: 2
+        }
+      })
+    ].join("");
+
+    const fetcher = vi.fn<ClientFetch>(
+      async () =>
+        new Response(streamBody, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" }
+        })
+    );
+
+    const handle = createSSEClient({
+      url: "/api/flows/demo/requests/req_s/stream",
+      fetcher,
+      onRequestStatus
+    });
+
+    await flushSSE();
+
+    expect(onRequestStatus).toHaveBeenCalledTimes(1);
+    expect(onRequestStatus.mock.calls[0]![0]).toMatchObject({
+      type: "request.suspended",
+      status: "suspended"
+    });
+
+    handle.close();
+  });
+
   it("evicts old dedup keys outside the configured sliding window", async () => {
     const onItemAdded = vi.fn();
 

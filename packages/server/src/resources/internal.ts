@@ -19,10 +19,16 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
-import { mergeScopeReads, resourceScopeIds } from "../stores/scope-keys";
+import {
+  mergeScopeReads,
+  resolveSessionStorageKey,
+  resourceScopeIds,
+  tenantMatches
+} from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
 import { resourceStorageKeys } from "./storage-keys";
 import {
+  isResourceTemplate,
   parseResourceTemplate,
   renderResourceTemplate,
 } from "@flow-state-dev/core/resource-template";
@@ -115,10 +121,20 @@ export async function getPersistedData(
   ctx: ResourcePersistenceContext,
   flow: ResourceFlowLike,
   sessionId: string,
-  scope: ResolvedResourceScope
+  scope: ResolvedResourceScope,
+  tenantId?: string
 ): Promise<{ resources: Record<string, JsonObject>; content: Record<string, string> } | undefined> {
-  const session = await ctx.stores.session.get(sessionId);
+  // Namespace the session lookup by tenant (FIX-682); `session.id` then carries
+  // the namespaced key so the session-scope content/state reads below are
+  // tenant-isolated. `undefined` tenant → bare key (single-tenant, unchanged).
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(sessionId, tenantId)
+  );
   if (!session) return undefined;
+  // Tenant binding: the `${tenantId}:${sessionId}` key is ambiguous when the
+  // caller controls `sessionId`, so reject a record whose stored tenant differs
+  // from the request's — a key collision must never read across tenants.
+  if (!tenantMatches(session.tenantId, tenantId)) return undefined;
 
   if (scope === "session") {
     const [resources, content] = await Promise.all([
@@ -163,7 +179,7 @@ export async function renderContent(
   state: JsonObject,
   templateRaw?: string
 ): Promise<string | null> {
-  if ("contentTemplate" in config && config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
+  if ("contentTemplate" in config && isResourceTemplate(config.contentTemplate)) {
     return renderResourceTemplate(config.contentTemplate, state);
   }
   if ("contentTemplateRef" in config && config.contentTemplateRef !== undefined) {

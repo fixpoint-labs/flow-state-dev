@@ -49,9 +49,10 @@ import type {
   UserRecord
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
-import type { ModelResolver } from "@flow-state-dev/core";
+import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
+import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
@@ -70,11 +71,18 @@ import {
   resolveUserStorageKey,
   resolveOrgStorageKey,
   resolveResourceIsolation,
-  resolveResourceScopeId
+  resolveResourceScopeId,
+  resolveSessionStorageKey,
+  tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
-import { OrgBindingMismatchError, UserBindingMismatchError } from "./binding-errors";
+import { createInitialRequestRecord } from "./initial-request-record";
+import {
+  OrgBindingMismatchError,
+  TenantBindingMismatchError,
+  UserBindingMismatchError
+} from "./binding-errors";
 import {
   outputItemToSessionItem,
   createSessionItemViews,
@@ -486,6 +494,16 @@ export async function createExecutionContext<
   const sessionId = options.sessionId ?? `ephemeral_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const requestId = options.requestId;
 
+  // Tenant-namespaced session storage key (FIX-682). Bare `sessionId` for
+  // single-tenant requests; `${tenantId}:${sessionId}` when a tenant is
+  // present. This is the key used for the session record and the session-scoped
+  // content/resource-state `scopeId`, so two tenants sharing a session id never
+  // collide. The bare `sessionId` is preserved for the public identity
+  // (`ctx.session.identity.id`), emitted events, and the request record's
+  // (bare) `sessionId` field; request history isolates by the `tenantId` filter
+  // instead of a namespaced field.
+  const sessionKey = resolveSessionStorageKey(sessionId, options.tenantId);
+
   // Storage keys — namespaced by flowKind when the flow opts into per-flow
   // isolation for user/org scope. Bare identity ids otherwise. See
   // `packages/server/src/stores/scope-keys.ts` and FIX-431.
@@ -507,7 +525,7 @@ export async function createExecutionContext<
   // records don't depend on each other for the initial load.
   const [loadedUser, loadedSession, loadedOrg, loadedRequest, priorRequests] = await Promise.all([
     stores.user.get(userKey),
-    stores.session.get(sessionId),
+    stores.session.get(sessionKey),
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     stores.request.get(requestId),
     // The N most-recently-started completed requests — `status:"completed"`
@@ -516,6 +534,10 @@ export async function createExecutionContext<
     // out-of-order metadata writes. `items` reconstruct cross-turn history.
     stores.request.list({
       sessionId,
+      // Always pass the tenant (possibly undefined) so history exact-matches
+      // this tenant and never crosses into another tenant's requests for the
+      // same bare session id (FIX-682).
+      tenantId: options.tenantId,
       status: "completed",
       limit: historyWindowTurns,
       orderBy: "startedAtMs",
@@ -568,10 +590,11 @@ export async function createExecutionContext<
   let sessionRecord = loadedSession;
   if (sessionRecord === undefined) {
     sessionRecord = {
-      id: sessionId,
+      id: sessionKey,
       flowKind: flow.kind,
       userId,
       orgId: options.orgId,
+      tenantId: options.tenantId,
       state: (options.sessionState ?? {}) as TSessionState,
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
       version: 0,
@@ -588,6 +611,21 @@ export async function createExecutionContext<
     // route this user's actions against another user's data.
     if (sessionRecord.userId !== userId) {
       throw new UserBindingMismatchError(sessionId, sessionRecord.userId, userId);
+    }
+
+    // Tenant binding (FIX-682). The session storage key is
+    // `${tenantId}:${sessionId}`, which is ambiguous when the caller controls
+    // `sessionId`: omitting the tenant header while passing
+    // `sessionId = "${otherTenant}:${id}"` resolves to another tenant's key.
+    // The loaded record's stored `tenantId` is authoritative — reject when it
+    // differs from this request's tenant so a key collision can never read or
+    // mutate across the tenant boundary.
+    if (!tenantMatches(sessionRecord.tenantId, options.tenantId)) {
+      throw new TenantBindingMismatchError(
+        sessionId,
+        sessionRecord.tenantId,
+        options.tenantId
+      );
     }
   }
 
@@ -777,7 +815,7 @@ export async function createExecutionContext<
   // per-resource bucket. `undefined` when the scope is absent this request
   // (org with no orgId).
   const scopeIdentityId = (scope: ContentScopeType): string | undefined =>
-    scope === "session" ? sessionId : scope === "user" ? userId : resolvedOrgId;
+    scope === "session" ? sessionKey : scope === "user" ? userId : resolvedOrgId;
 
   // Per scope: which storage keys (singles) and collection prefixes are
   // isolated. Built once from the full config maps so any read/write can map a
@@ -839,7 +877,7 @@ export async function createExecutionContext<
     scope: ContentScopeType,
     config: ResourceConfig | ResourceCollectionConfig
   ): string | undefined => {
-    if (scope === "session") return sessionId;
+    if (scope === "session") return sessionKey;
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
     const isolated = resolveResourceIsolation(
@@ -861,7 +899,7 @@ export async function createExecutionContext<
     scope: ContentScopeType,
     storageKey: string
   ): string | undefined => {
-    if (scope === "session") return sessionId;
+    if (scope === "session") return sessionKey;
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
     const buckets = isolationBuckets[scope];
@@ -928,7 +966,7 @@ export async function createExecutionContext<
 
   const wave1Start = Date.now();
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
-    loadDeclaredScopeContent(stores.content, "session", sessionId, sessionFlowLevelConfigs),
+    loadDeclaredScopeContent(stores.content, "session", sessionKey, sessionFlowLevelConfigs),
     loadScopeContentByBuckets("user", userFlowLevelConfigs),
     resolvedOrgId !== undefined
       ? loadScopeContentByBuckets("org", orgFlowLevelConfigs)
@@ -954,7 +992,7 @@ export async function createExecutionContext<
   // per-scope caches; in-execution reads/writes hit the cache and persist
   // per-key, never rewriting the whole scope record.
   const [sessionStateFromStore, userStateFromStore, orgStateFromStore] = await Promise.all([
-    loadDeclaredResourceState(stores.resourceState, "session", sessionId, sessionFlowLevelConfigs),
+    loadDeclaredResourceState(stores.resourceState, "session", sessionKey, sessionFlowLevelConfigs),
     loadScopeStateByBuckets("user", userFlowLevelConfigs),
     resolvedOrgId !== undefined
       ? loadScopeStateByBuckets("org", orgFlowLevelConfigs)
@@ -988,23 +1026,27 @@ export async function createExecutionContext<
 
   let requestRecord = loadedRequest;
   if (requestRecord === undefined) {
-    requestRecord = {
-      id: requestId,
-      flowKind: flow.kind,
-      actionName: options.actionName,
-      userId,
-      sessionId: sessionRecord?.id,
-      orgId: orgRecord?.orgId,
-      source: options.source ?? "http",
-      status: "in_progress",
-      startedAtMs: now,
-      metadata: options.metadata,
-      input: options.input,
-      state: (options.requestState ?? {}) as TRequestState,
-      version: 0,
-      createdAt: now,
-      updatedAt: now
-    };
+    // Bare session id (not the namespaced session key) — request history
+    // isolates by the `tenantId` field, and recovery re-derives the key from
+    // (bare sessionId + tenantId). See FIX-682. Shared with the enqueue-time
+    // materialization in `createInboundTransportHost` so the host stub and the
+    // worker-built record are identical by construction (FIX-828).
+    requestRecord = createInitialRequestRecord<TRequestState>(
+      {
+        requestId,
+        flowKind: flow.kind,
+        actionName: options.actionName,
+        userId,
+        sessionId,
+        tenantId: options.tenantId,
+        orgId: orgRecord?.orgId,
+        source: options.source,
+        metadata: options.metadata,
+        input: options.input,
+        requestState: options.requestState
+      },
+      now
+    );
     await stores.request.set(requestRecord.id, requestRecord, "any");
   } else if (requestRecord.source === undefined) {
     // Pre-FIX-438 records read from a store that hasn't been migrated
@@ -1301,9 +1343,17 @@ export async function createExecutionContext<
   // dispatch (Wave 3); lazy collections fetch on demand via their async
   // accessor. The flow-level subset loaded at Wave 1 is skipped here (already
   // cached / prefix-seeded).
-  const dispatchedActionBlock = (
-    flow.actions as Record<string, { block?: { declaredResources?: Record<string, ResourceConfig | ResourceCollectionConfig> } }> | undefined
-  )?.[options.actionName]?.block;
+  // Form-aware: a webhook dispatch's handler lives on `flow.webhooks`, not
+  // `flow.actions`, so resolve through the shared seam (gated on the webhook
+  // source + keyed on `metadata.webhook`) rather than indexing `flow.actions`.
+  const dispatchedActionBlock = resolveActionCore(
+    flow,
+    options.actionName,
+    options.source,
+    options.metadata
+  )?.block as
+    | { declaredResources?: Record<string, ResourceConfig | ResourceCollectionConfig> }
+    | undefined;
   if (dispatchedActionBlock?.declaredResources !== undefined) {
     await loadDeclaredResourcesIntoCache(dispatchedActionBlock.declaredResources, {
       loadLazySingles: false
@@ -1409,7 +1459,17 @@ export async function createExecutionContext<
   // assigned once `response` is constructed below; until then no scope op
   // can run.
   const responseRef: { current: unknown } = { current: undefined };
-  let emittedItemCount = 0;
+  // Per-run item-index counter. Seeded from the response emitter's current
+  // count so a same-request continuation (FIX-811) continues after the prior
+  // persisted log instead of restarting at 0 — the emitter carries the prior
+  // log's length as its `baseItemIndex`, and is empty at context construction,
+  // so this reads back exactly that base (0 on a fresh run). Both block-emitted
+  // items and runtime items reserved via `_reserveItemIndex` draw from this one
+  // counter so their indices stay distinct and monotonic across the resume.
+  let emittedItemCount =
+    typeof options.response?.getItemCount === "function"
+      ? options.response.getItemCount()
+      : 0;
 
   const requestOps = createScopeStateOps(requestContainer, {
     persist: createScopePersist<TRequestState, RequestRecord>(
@@ -1580,7 +1640,7 @@ export async function createExecutionContext<
 
   const sessionResources = createScopeResourceRegistry({
     scope: "session",
-    scopeId: sessionId,
+    scopeId: sessionKey,
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
     readResourceContent: readSessionResourceContent,
@@ -1671,7 +1731,12 @@ export async function createExecutionContext<
     }
 
     const totalConsumed = Object.values(byModel).reduce((acc, model) => acc + model.total, 0);
-    const maxBudget = flow.actions[options.actionName]?.tokenBudget?.maxTotalTokens;
+    const maxBudget = resolveActionCore(
+      flow,
+      options.actionName,
+      options.source,
+      options.metadata
+    )?.tokenBudget?.maxTotalTokens;
 
     return {
       totalConsumed,
@@ -1754,7 +1819,9 @@ export async function createExecutionContext<
     {
       identity: {
         type: "session" as const,
-        id: sessionRef.current.id,
+        // Bare session id — `sessionRef.current.id` is the tenant-namespaced
+        // storage key (FIX-682); handlers and clients see the id they passed in.
+        id: sessionId,
         userId: sessionRef.current.userId,
         orgId: sessionRef.current.orgId,
         tenantId: options.tenantId
@@ -1836,7 +1903,8 @@ export async function createExecutionContext<
 
         await response.emit({
           type: "session.metadata.changed",
-          sessionId: sessionRef.current.id,
+          // Bare session id, not the namespaced storage key (FIX-682).
+          sessionId,
           ...(input.title !== undefined ? { title: input.title } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.tags !== undefined ? { tags: input.tags } : {}),
@@ -2005,7 +2073,7 @@ export async function createExecutionContext<
     flowKind: flow.kind,
     actionName: options.actionName,
     userId,
-    sessionId: sessionRecord?.id,
+    sessionId,
     orgId: orgRecord?.orgId
   };
   const capturedErrors = new Set<unknown>();
@@ -2227,6 +2295,26 @@ export async function createExecutionContext<
   // because every nested ctx shares the same `_runtimeHooks` reference.
   const blockTraceMap = new Map<string, BlockTraceItem>();
 
+  // Run-scoped guard for the legacy resume fallback (FIX-811). When a bare
+  // `resumeContext` (no `pendingBlockLogicalId`) is threaded — the pre-Step-3
+  // two-request / direct-`runAction` path — the payload must be consumed at the
+  // FIRST gate reached and re-suspend at every later gate. Without this shared
+  // flag a multi-gate legacy resume would re-inject the same approval at every
+  // gate and skip required approvals. Lives in the outer closure so all
+  // per-scope `suspend` closures (each built by `createContext`) share it. The
+  // Step-3 same-request path sets `pendingBlockLogicalId` and never touches it.
+  let legacyResumeConsumed = false;
+
+  // Run-scoped cursor for replaying ALREADY-resolved gates across a restart. On
+  // a continuation that replays the sequencer from the top, a `ctx.suspend()`
+  // re-reached at a gate that was resolved on a PRIOR continuation must return
+  // its recorded resolution (in original order) instead of re-suspending —
+  // otherwise a multi-gate sequencer resumed at a later gate bounces back to the
+  // earlier one forever. Keyed by logical block id; the value counts how many of
+  // that gate's recorded resolutions this replay has consumed. Shared across all
+  // per-scope `suspend` closures, like `legacyResumeConsumed`.
+  const resolvedResumeCursor = new Map<string, number>();
+
   // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
   // with the same key share a single fn() invocation. Sits in front of the
   // RequestStore so the wrapped side effect cannot fire twice in a race
@@ -2288,8 +2376,6 @@ export async function createExecutionContext<
     });
     return promise;
   };
-
-  let resumeConsumed = false;
 
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
@@ -2515,14 +2601,79 @@ export async function createExecutionContext<
       // store ref so it works across every scoped child context.
       idempotencyKey: undefined,
       runOnce,
+      // Shares the per-run synchronous item-index counter with block-emitted
+      // items so runtime items (e.g. runAction's `suspension_resume`) get a
+      // distinct, monotonic index that continues the prior log on resume.
+      _reserveItemIndex: () => emittedItemCount++,
       suspend: async (suspendOpts) => {
         const resumeCtx = options.metadata?.resumeContext as ResumeContext | undefined;
-        if (resumeCtx !== undefined && !resumeConsumed) {
-          resumeConsumed = true;
-          if (resumeCtx.action === "reject") {
-            throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
+        // The suspending block's logical id is the attempt-independent prefix
+        // of its blockInstanceId — `${requestId}:${path}`. `parentChain.parent`
+        // is the scope this `suspend` was created for (the calling block). The
+        // root context has no parentChain; default its path to ROOT_BLOCK_PATH
+        // ("root") so a `ctx.suspend()` reached on the root context still
+        // produces a defined logical id that matches the `pendingBlockLogicalId`
+        // a same-request replay threads (which is `${requestId}:root` for a
+        // root-level gate). Without this default the root gate's id was
+        // undefined and the resolving gate never matched, so the run re-suspended
+        // forever (FIX-811).
+        const callerPath = parentChain?.parent?.path ?? "root";
+        const callerLogicalId = `${requestRef.current.id}:${callerPath}`;
+
+        // Replay already-resolved gates across a restart. On a continuation that
+        // replays the sequencer from the top, a `ctx.suspend()` re-reached at a
+        // gate that was resolved on a PRIOR continuation returns its recorded
+        // resolution (in original order) instead of re-suspending. Without this,
+        // a multi-gate sequencer resumed at a LATER gate replays through the
+        // earlier (already-resolved) gate, which — not being the current pending
+        // target — re-suspends, bouncing the request back forever. This reads the
+        // durable suspension/resume log (not a `completed` block trace), so it is
+        // robust to suspend blocks whose trace stays `in_progress` because they
+        // re-run on every replay. Runs on any replay (resume or crash-recovery).
+        const replayLog = (context as { _replayLog?: ReplayLog })._replayLog;
+        if (replayLog !== undefined) {
+          const resolved = replayLog.resolvedResumes(callerLogicalId);
+          const consumed = resolvedResumeCursor.get(callerLogicalId) ?? 0;
+          if (consumed < resolved.length) {
+            resolvedResumeCursor.set(callerLogicalId, consumed + 1);
+            const entry = resolved[consumed];
+            if (entry.rejected) {
+              throw new SuspensionRejectedError(entry.suspensionId, entry.resolvedBy, entry.data);
+            }
+            return entry.data;
           }
-          return resumeCtx.data;
+        }
+
+        if (resumeCtx !== undefined) {
+          // Per-gate matching (FIX-811): only the gate whose logical id matches
+          // the suspension being resolved returns the resume payload. Every
+          // other gate reached during the same replay falls through and
+          // re-suspends, which is what makes multi-gate and loop-iteration
+          // flows resume one gate at a time without a shared "consumed" flag.
+          const isResolvingGate =
+            resumeCtx.pendingBlockLogicalId !== undefined &&
+            resumeCtx.pendingBlockLogicalId === callerLogicalId;
+
+          // Legacy fallback: the old two-request resume path threaded a
+          // resumeContext without `pendingBlockLogicalId`. Preserve its
+          // first-reached-gate-consumes behavior there — but ONLY once per run,
+          // via the shared `legacyResumeConsumed` flag, so a multi-gate legacy
+          // resume re-suspends at later gates instead of re-injecting the same
+          // payload and skipping their approvals (FIX-811). The Step-3
+          // same-request continuation always sets `pendingBlockLogicalId` (see
+          // runAction), so this branch is dead on that path — it exists only for
+          // callers that pass a bare resumeContext directly to runAction.
+          const isLegacyFirstGate =
+            resumeCtx.pendingBlockLogicalId === undefined && !legacyResumeConsumed;
+
+          if (isResolvingGate || isLegacyFirstGate) {
+            // Mark the legacy payload consumed so later gates re-suspend.
+            if (isLegacyFirstGate) legacyResumeConsumed = true;
+            if (resumeCtx.action === "reject") {
+              throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
+            }
+            return resumeCtx.data;
+          }
         }
         if (!options.durabilityEnabled) {
           throw new Error(
@@ -2560,6 +2711,23 @@ export async function createExecutionContext<
       // `errorCapture` handler is configured so callers incur zero overhead.
       _captureError: errorCapture !== undefined ? captureError : undefined,
       _loadDeclaredResources: loadDeclaredResourcesIntoCache,
+      // Resume replay (FIX-811): register a completed sibling entry for a block
+      // the core executor short-circuited (its output came from the ReplayLog,
+      // not a fresh run). The replay path returns BEFORE `_withExecutionScope`,
+      // so without this a later sibling's `ctx.getBlockOutput(replayedBlock)`
+      // would find no entry. This does NOT open a scope, run the body, or emit a
+      // trace — the recorded trace from the prior run is canonical, and emitting
+      // another would duplicate it. `parentStateContainer` is left undefined;
+      // `getBlockOutput`/`getBlockResult` read only `parent` + `result.output`,
+      // and `getTarget` (which would dereference the container) is never used to
+      // reach a replayed leaf.
+      _registerReplayedChild: (parent: ExecutionParent, output: unknown): void => {
+        childSiblingRegistry.push({
+          parent,
+          parentStateContainer: undefined,
+          result: { status: "completed", output }
+        });
+      },
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal) => {
         const resolvedParent: ExecutionParent = {
           ...parent,
@@ -2714,6 +2882,29 @@ export async function createExecutionContext<
         // FIX-406 6H: propagate the request's tracing level so sequencers in
         // any nested scope gate observability snapshots consistently.
         (childContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
+        // Resume replay (FIX-811): propagate the ReplayLog down every nested
+        // scope so the core `executeBlock` replay short-circuit fires for blocks
+        // anywhere in the tree, not just direct children of the root sequencer.
+        // Read from the parent `context` (set by runAction on the root ctx) so a
+        // late assignment still reaches descendants. `_resumeState` is
+        // deliberately NOT propagated — it carries the root sequencer's restored
+        // checkpoint state only; nested-sequencer state restore is a follow-up.
+        const inheritedReplayLog = (context as { _replayLog?: unknown })._replayLog;
+        if (inheritedReplayLog !== undefined) {
+          (childContext as { _replayLog?: unknown })._replayLog = inheritedReplayLog;
+        }
+        // Propagate `_resumeState` (the restored checkpoint state) to the ROOT
+        // block's scope only — `parentChain === undefined` marks the root-level
+        // dispatch. The root durable sequencer reads it to `setState` before
+        // running children. Deeper scopes do NOT inherit it, so a nested durable
+        // sequencer isn't wrongly seeded with the root's state (nested-sequencer
+        // accumulator restore is a documented follow-up, FIX-811).
+        if (parentChain === undefined) {
+          const inheritedResumeState = (context as { _resumeState?: unknown })._resumeState;
+          if (inheritedResumeState !== undefined) {
+            (childContext as { _resumeState?: unknown })._resumeState = inheritedResumeState;
+          }
+        }
 
         // Capture start time before execution — this is the only trace cost paid
         // unconditionally. Item construction and emission happen post-execution.
@@ -2828,6 +3019,26 @@ export async function createExecutionContext<
 
           return output;
         } catch (error) {
+          // SuspensionError is control flow, not a failure: the block paused at
+          // a `ctx.suspend()` gate awaiting external input. Propagate it without
+          // marking the block/sequencer "failed" — runAction catches it, writes
+          // the suspension record, and sets the request status to "suspended".
+          // The block trace is left at its "in_progress" (paused) state rather
+          // than emitting a misleading "failed" terminal; resume runs as a fresh
+          // request rebuilt from the checkpoint, so this run's bookkeeping is
+          // discarded anyway.
+          if (error instanceof SuspensionError) {
+            // FIX-811: stamp the suspending block's instance id at the innermost
+            // scope to see the error (where identity is known). The first
+            // (innermost) writer wins; outer scopes must not overwrite it. This
+            // is the reliable source for the suspension record/item identity —
+            // the outer request ctx usually has no `_blockIdentity` for a nested
+            // suspension.
+            if (error._blockInstanceId === undefined) {
+              error._blockInstanceId = resolvedParent.instanceId;
+            }
+            throw error;
+          }
           siblingEntry.result.status = "failed";
           siblingEntry.result.error = error instanceof Error ? error : new Error(String(error));
           siblingEntry.result.output = undefined;

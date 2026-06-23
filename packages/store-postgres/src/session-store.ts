@@ -14,8 +14,13 @@ import { createPgRecordStore } from "./pg-store";
 export function createPostgresSessionStore(executor: QueryExecutor): SessionStore {
   return createPgRecordStore<SessionRecord, SessionListOptions>(executor, {
     tableName: "sessions",
-    columns: ["flow_kind", "user_id", "org_id"],
-    toRow: (record) => [record.flowKind, record.userId, record.orgId ?? null],
+    columns: ["flow_kind", "user_id", "org_id", "tenant_id"],
+    toRow: (record) => [
+      record.flowKind,
+      record.userId,
+      record.orgId ?? null,
+      record.tenantId ?? null
+    ],
     toWhere: (options, nextParam = 1) => {
       const parts: string[] = [];
       const params: unknown[] = [];
@@ -28,6 +33,13 @@ export function createPostgresSessionStore(executor: QueryExecutor): SessionStor
       if (options?.userId !== undefined) {
         parts.push(`user_id = $${p++}`);
         params.push(options.userId);
+      }
+      // Tenant filter (FIX-682): present (incl. explicit undefined) → NULL-safe
+      // exact match; absent → no filter. `IS NOT DISTINCT FROM` matches the
+      // server-side `matchesTenantFilter` semantics (NULL = NULL).
+      if (options !== undefined && "tenantId" in options) {
+        parts.push(`tenant_id IS NOT DISTINCT FROM $${p++}`);
+        params.push(options.tenantId ?? null);
       }
 
       return { clause: parts.join(" AND "), params };

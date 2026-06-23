@@ -10,6 +10,94 @@ import type {
   ReasoningItem
 } from "@flow-state-dev/core/items";
 
+// Mirrors `collapseToCanonicalLog` from `@flow-state-dev/core/items` — inlined
+// because this package may only import types from core (same reason
+// `resolveItemVisibility` is mirrored in `useSession`). Keep in sync with the
+// core source, which is the authority. Collapses a resumed/continued request's
+// superseded re-emissions so the live view shows each emission once: Rule 1
+// (resolved suspension boundary), Rule 2 (canonical block_trace), and Rule 3
+// (crash-recovery re-run — a logical path with more than one block_trace, where
+// the canonical trace's item index bounds the surviving run; no
+// `suspension_resume` is emitted on the crash path). No-op for a single run.
+function logicalIdOfInstance(blockInstanceId: string | undefined): string | undefined {
+  if (blockInstanceId === undefined) return undefined;
+  const lastColon = blockInstanceId.lastIndexOf(":");
+  if (lastColon <= 0) return undefined;
+  const attempt = Number(blockInstanceId.slice(lastColon + 1));
+  if (!Number.isInteger(attempt) || attempt < 0) return undefined;
+  return blockInstanceId.slice(0, lastColon);
+}
+
+function collapseToCanonicalLog(items: OutputItem[]): OutputItem[] {
+  const resumed = new Set<string>();
+  for (const item of items) {
+    if (item.type === "suspension_resume") {
+      const id = (item as { suspensionId?: string }).suspensionId;
+      if (id !== undefined) resumed.add(id);
+    }
+  }
+  const supersededBefore = new Map<string, number>();
+  for (const item of items) {
+    if (item.type !== "suspension") continue;
+    const suspId = (item as { suspensionId?: string }).suspensionId;
+    if (suspId === undefined || !resumed.has(suspId)) continue;
+    const logicalId = logicalIdOfInstance(
+      (item as { blockInstanceId?: string }).blockInstanceId ?? item.provenance?.blockInstanceId
+    );
+    if (logicalId === undefined) continue;
+    const prior = supersededBefore.get(logicalId);
+    if (prior === undefined || item.itemIndex > prior) supersededBefore.set(logicalId, item.itemIndex);
+  }
+
+  const canonicalTrace = new Map<string, { id: string; itemIndex: number; completed: boolean }>();
+  const traceCount = new Map<string, number>();
+  for (const item of items) {
+    if ((item.type as string) !== "block_trace") continue;
+    const logicalId = logicalIdOfInstance(item.provenance?.blockInstanceId);
+    if (logicalId === undefined) continue;
+    traceCount.set(logicalId, (traceCount.get(logicalId) ?? 0) + 1);
+    const completed = item.status === "completed";
+    const prior = canonicalTrace.get(logicalId);
+    if (
+      prior === undefined ||
+      (completed && !prior.completed) ||
+      (completed === prior.completed && item.itemIndex > prior.itemIndex)
+    ) {
+      canonicalTrace.set(logicalId, { id: item.id, itemIndex: item.itemIndex, completed });
+    }
+  }
+
+  // Rule 3: a logical path that re-ran (more than one trace) but has no
+  // resolved-suspension boundary — the crash-recovery `continue` shape — uses
+  // its canonical trace's item index (the start of the surviving run) as the
+  // supersession boundary, taking the later of it and any Rule-1 boundary.
+  for (const [logicalId, count] of traceCount) {
+    if (count < 2) continue;
+    const canonical = canonicalTrace.get(logicalId);
+    if (canonical === undefined) continue;
+    const prior = supersededBefore.get(logicalId);
+    if (prior === undefined || canonical.itemIndex > prior) {
+      supersededBefore.set(logicalId, canonical.itemIndex);
+    }
+  }
+
+  if (supersededBefore.size === 0 && canonicalTrace.size === 0) return items;
+
+  return items.filter((item) => {
+    if ((item.type as string) === "block_trace") {
+      const logicalId = logicalIdOfInstance(item.provenance?.blockInstanceId);
+      if (logicalId === undefined) return true;
+      const canonical = canonicalTrace.get(logicalId);
+      return canonical === undefined || canonical.id === item.id;
+    }
+    if (item.type === "suspension" || item.type === "suspension_resume") return true;
+    const logicalId = logicalIdOfInstance(item.provenance?.blockInstanceId);
+    if (logicalId === undefined) return true;
+    const boundary = supersededBefore.get(logicalId);
+    return boundary === undefined || item.itemIndex >= boundary;
+  });
+}
+
 /** Buffered text delta waiting to be flushed into an item's content. */
 export type ContentDeltaAccumulator = {
   itemId: string;
@@ -220,8 +308,24 @@ export function createItemStore(): ItemStore {
   let ownershipIndex = new Map<string, Set<string>>();
   const deltaQueue = new Map<string, ContentDeltaAccumulator>();
 
+  // Memoized canonical view (FIX-811). The collapse is O(n); caching it keeps
+  // `getSorted` and `getOwnedBy` from rebuilding+rescanning the whole log on
+  // every call (a React render can call `getOwnedBy` once per displayed block).
+  // Invalidated (set to null) by every mutation below; recomputed lazily.
+  let canonicalCache: OutputItem[] | null = null;
+  const invalidateCanonical = (): void => {
+    canonicalCache = null;
+  };
+  const canonical = (): OutputItem[] => {
+    if (canonicalCache === null) {
+      canonicalCache = collapseToCanonicalLog(buildItemsFromMap(sortedIds, itemsById));
+    }
+    return canonicalCache;
+  };
+
   const store: ItemStore = {
     loadSnapshot(items: OutputItem[]): void {
+      invalidateCanonical();
       itemsById = new Map<string, OutputItem>();
       sortedIds = [];
       ownershipIndex = new Map<string, Set<string>>();
@@ -235,6 +339,7 @@ export function createItemStore(): ItemStore {
     },
 
     clear(): void {
+      invalidateCanonical();
       itemsById = new Map();
       sortedIds = [];
       ownershipIndex = new Map();
@@ -261,6 +366,7 @@ export function createItemStore(): ItemStore {
 
       itemsById.set(item.id, item);
       trackOwnership(ownershipIndex, item);
+      invalidateCanonical();
 
       if (isNew) {
         sortedIds = insertSortedItemId(sortedIds, item, itemsById);
@@ -285,6 +391,7 @@ export function createItemStore(): ItemStore {
 
       itemsById.delete(id);
       sortedIds = sortedIds.filter((sid) => sid !== id);
+      invalidateCanonical();
 
       const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
       if (ownedBy !== undefined) {
@@ -324,6 +431,7 @@ export function createItemStore(): ItemStore {
       }
 
       deltaQueue.clear();
+      if (hasChanges) invalidateCanonical();
       return hasChanges;
     },
 
@@ -335,11 +443,18 @@ export function createItemStore(): ItemStore {
       if (updated === existing) return false;
 
       itemsById.set(itemId, updated);
+      invalidateCanonical();
       return true;
     },
 
     getSorted(): OutputItem[] {
-      return buildItemsFromMap(sortedIds, itemsById);
+      // Memoized canonical view (FIX-811): once a resume's `suspension_resume`
+      // arrives on the stream, the suspending block's superseded run-1
+      // emissions are dropped so the live view shows each emission once. A no-op
+      // until a suspension is resolved. The collapse (the O(n) scan) is cached
+      // until the next mutation; we return a fresh copy so the documented
+      // "new array each call" contract holds and no caller can mutate the cache.
+      return [...canonical()];
     },
 
     getById(id: string): OutputItem | undefined {
@@ -349,13 +464,14 @@ export function createItemStore(): ItemStore {
     getOwnedBy(ownedBy: string): OutputItem[] {
       const ids = ownershipIndex.get(ownedBy);
       if (ids === undefined || ids.size === 0) return [];
-      const result: OutputItem[] = [];
-      for (const id of ids) {
-        const item = itemsById.get(id);
-        if (item !== undefined) result.push(item);
-      }
-      result.sort(compareItemOrder);
-      return result;
+      // Filter the memoized CANONICAL list (FIX-811) so a resumed block's
+      // superseded run-1 emissions don't surface here while `getSorted()` shows
+      // each emission once — `getOwnedItems` must stay consistent with `items`.
+      // Reuses the same cache as `getSorted`, so this no longer recomputes the
+      // collapse per call.
+      return canonical().filter(
+        (item) => (item as OutputItem & { ownedBy?: string }).ownedBy === ownedBy
+      );
     },
 
     size(): number {

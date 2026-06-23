@@ -178,7 +178,7 @@ const myHandler = handler({
 Resource content options:
 
 - `content?: string` — inline definition-time body
-- `contentFile?: string` — load initial body from a file path (mutually exclusive with `content`)
+- `contentFile?: string | AnchoredPath` — load initial body from a file path (mutually exclusive with `content`). A bare string resolves from the working directory; `{ path, importerUrl: import.meta.url }` resolves relative to the declaring module first
 - `render?: (content, state) => string | Promise<string>` — optional renderer for `readContent()`
 - `llmReadable?: boolean` — allows read access when `readResourceContentTool()` is installed
 - `llmWritable?: boolean` — allows write access when `writeResourceContentTool()` is installed

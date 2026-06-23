@@ -246,12 +246,14 @@ Defaults to `NVDA / 2026-05-06`. The top bar exposes four controls:
 - **preset** — `fast` (cheap utility models) or `full` (higher-tier chat models).
   Resolved via the model resolver's `intent/utility` and `intent/chat` intents,
   so the concrete model depends on which provider key is configured.
-- **source** — `fixture` (canonical hand-curated JSON) or `live` (SEC EDGAR +
+- **source** — `fixture` (canonical hand-curated JSON), `live` (SEC EDGAR +
   Yahoo Finance + Finnhub + FRED + Polymarket for structured data; Grok via
   `xSearch` for social sentiment when `XAI_API_KEY` is set; tools whose provider
-  key is absent return `unavailable`). The three financial statements
-  (balance sheet, income statement, cash flow) come from SEC EDGAR XBRL
-  filings first, falling back to Yahoo for non-US filers.
+  key is absent return `unavailable`), or `record` (runs live and persists every
+  tool payload into the fixture corpus, making the run immediately replayable
+  with `fixture`; not offered in the UI — pass it via the action input). The
+  three financial statements (balance sheet, income statement, cash flow) come
+  from SEC EDGAR XBRL filings first, falling back to Yahoo for non-US filers.
 
 Press **re-run** to dispatch a new `analyze` request.
 
@@ -276,19 +278,38 @@ four inputs at the top of the page name it: `(ticker, date, preset, source)`.
   derived from the tuple (`NVDA · 2026-05-06 · fast · fixture`), so prior
   runs stay identifiable for a future session-browser UI.
 
-Data lives under `labs/trading-desk/.fsdev/data/` (already covered by the root
-`.gitignore`'s `**/.fsdev/**` rule). To wipe history, delete the directory.
-To redirect storage — for an isolated test run, for example — set
-`FSDEV_DATA_DIR`:
+The lab runs on **Postgres** in both dev and deployment (FIX-772). Local dev uses
+an embedded PGlite database (Postgres compiled to WASM — no Docker), persisted
+under `labs/trading-desk/.fsdev/pglite/` (covered by the root `.gitignore`'s
+`**/.fsdev/**` rule); to wipe history, delete that directory. In deployment, set
+`DATABASE_URL` (or `FSD_DB_URL`) to a real Postgres and run the migrate step
+first:
 
 ```bash
-FSDEV_DATA_DIR=/tmp/td-test pnpm --filter @flow-state-dev/trading-desk dev
+pnpm --filter @flow-state-dev/trading-desk migrate   # framework + app schema
 ```
 
-The wiring lives in [`lib/server.ts`](lib/server.ts) (filesystem stores) and
-[`app/page.tsx`](app/page.tsx) (the resolve-or-create logic that runs on each
-**re-run** click). See also [Persistence overview](../../apps/docs/docs/persistence/overview.md)
-for the generalized pattern.
+The wiring lives in [`lib/portfolio-db.ts`](lib/portfolio-db.ts) (the shared
+backing — PGlite in dev, a host-owned `pg.Pool` in deploy, shared with the
+framework store) and [`lib/server.ts`](lib/server.ts) (the lazy async router).
+See also [Persistence overview](../../apps/docs/docs/persistence/overview.md).
+
+### Data layer: portfolio in Postgres
+
+Framework state (sessions, requests, resources, items) is one concern; the
+**portfolio domain** (accounts and holdings) is another. The desk owns the
+latter in real relational tables — `app.accounts` and `app.holdings` in a
+dedicated `app` Postgres schema — reached through a thin typed repository
+([`src/db/repository.ts`](src/db/repository.ts)), not through an FSD resource.
+Action handlers, the analysis seed, and the Portfolio UI read/write through that
+repository (the UI via a [`/api/portfolio/accounts`](app/api/portfolio/accounts/route.ts)
+read route). This is the showcase answer to "does FSD force my domain data
+through its state model?" — no. Keep resources for agent-facing state and caches
+(the desk still does, for the quotes cache and the PDF-import scratch), and own
+your relational entities in your own tables. Migrations live in
+[`src/db/migrations/`](src/db/migrations) (`pnpm db:generate`), applied in process
+on the PGlite dev backing and via `scripts/migrate.ts` on deploy. It's a pattern
+for any multi-tier FSD app, not a desk-only hack.
 
 ## Custom instructions
 

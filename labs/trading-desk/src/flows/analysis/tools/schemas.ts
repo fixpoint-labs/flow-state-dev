@@ -892,10 +892,15 @@ export function fixtureFileName(tool: ToolName): string {
   return TOOL_FILE_NAMES[tool];
 }
 
-/** Mode picker — read by every tool's `execute` to branch between fixture
- *  and live behavior. Default to `"fixture"` if state isn't set. */
+/** Mode picker — read by every tool's `execute` to branch between fixture,
+ *  live, and record behavior. Default to `"fixture"` if state isn't set.
+ *  Tools that only test `=== "fixture"` treat record as live — correct, since
+ *  a record run fetches live data (and persists it as a fixture snapshot). */
 export function pickMode(ctx: {
   session: { state: Record<string, unknown> };
-}): "fixture" | "live" {
-  return (ctx.session.state.dataSource as "fixture" | "live") ?? "fixture";
+}): "fixture" | "live" | "record" {
+  return (
+    (ctx.session.state.dataSource as "fixture" | "live" | "record") ??
+    "fixture"
+  );
 }

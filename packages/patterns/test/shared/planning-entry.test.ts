@@ -109,7 +109,7 @@ describe("createSeedTasksFromPlan", () => {
     expect(changes[0].data?.taskId).toBe("task-1");
   });
 
-  it("maps t.context → input (supervisor compat)", async () => {
+  it("maps planner t.context → task.context, not task.input (FIX-827 D1)", async () => {
     const seed = createSeedTasksFromPlan({
       name: "test",
       collectionId: "test",
@@ -123,17 +123,55 @@ describe("createSeedTasksFromPlan", () => {
 
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
-    expect(changes[0]?.data?.task?.input).toBe("extra context");
+    // `context` is first-class now — it lands on task.context and no longer
+    // collapses into the generic typed `input` payload.
+    expect(changes[0]?.data?.task?.context).toBe("extra context");
+    expect(changes[0]?.data?.task?.input).toBeUndefined();
   });
 
-  it("explicit t.input wins over t.context", async () => {
+  it("maps planner t.title → task.title (FIX-827)", async () => {
     const seed = createSeedTasksFromPlan({
       name: "test",
       collectionId: "test",
     });
 
     const wrapper = sequencer({ name: "w", inputSchema: z.any() })
-      .step(makePlanner([{ goal: "A", input: "explicit", context: "fallback" }]))
+      .step(makePlanner([{ goal: "A long self-contained objective", title: "Short label" }]))
+      .tap(seed);
+
+    const result = await testBlock(wrapper, { input: { goal: "test" } });
+
+    expect(result.error).toBeNull();
+    const changes = taskChanges(result.items);
+    expect(changes[0]?.data?.task?.title).toBe("Short label");
+  });
+
+  it("treats null title/context as absent (decomposer nullable shape)", async () => {
+    const seed = createSeedTasksFromPlan({
+      name: "test",
+      collectionId: "test",
+    });
+
+    const wrapper = sequencer({ name: "w", inputSchema: z.any() })
+      .step(makePlanner([{ goal: "A", title: null, context: null }]))
+      .tap(seed);
+
+    const result = await testBlock(wrapper, { input: { goal: "test" } });
+
+    expect(result.error).toBeNull();
+    const changes = taskChanges(result.items);
+    expect(changes[0]?.data?.task?.title).toBeUndefined();
+    expect(changes[0]?.data?.task?.context).toBeUndefined();
+  });
+
+  it("explicit t.input is preserved on task.input independent of context", async () => {
+    const seed = createSeedTasksFromPlan({
+      name: "test",
+      collectionId: "test",
+    });
+
+    const wrapper = sequencer({ name: "w", inputSchema: z.any() })
+      .step(makePlanner([{ goal: "A", input: "explicit", context: "support text" }]))
       .tap(seed);
 
     const result = await testBlock(wrapper, { input: { goal: "test" } });
@@ -141,6 +179,7 @@ describe("createSeedTasksFromPlan", () => {
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
     expect(changes[0]?.data?.task?.input).toBe("explicit");
+    expect(changes[0]?.data?.task?.context).toBe("support text");
   });
 
   it("inputDefault='goal' always sets input to t.goal (parallelTasks compat)", async () => {

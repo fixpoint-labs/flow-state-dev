@@ -80,7 +80,6 @@
     }
   },
   "devDependencies": {
-    "@flow-state-dev/server": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.3",

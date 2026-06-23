@@ -22,6 +22,7 @@ import {
 } from '../src/memory-system.js'
 import type { MemorySystemState } from '../src/memory-system.js'
 import {
+  buildObserveContext,
   memorySystemObserve,
   memorySystemReflect,
   memorySystemTick,
@@ -424,6 +425,50 @@ describe('memory/memorySystem', () => {
         const block = memorySystemCapture(baseConfig)
         expect(block.declaredResources).not.toHaveProperty('digestMemory')
       })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // buildObserveContext (observer prompt context selection)
+  // ---------------------------------------------------------------------------
+
+  describe('buildObserveContext', () => {
+    // A realistic single-turn item log: the user message and assistant reply
+    // are the only memorable content; everything else is execution trace/state
+    // noise that must never reach the observer prompt (regression for the
+    // block_trace/state_change/router_decision leak).
+    const turnItems = [
+      { type: 'block_trace', output: { kind: 'inline' } },
+      { type: 'message', role: 'user', content: 'I live in Woodstock NY' },
+      { type: 'router_decision', selectedRoute: 'assistant-generator' },
+      { type: 'state_change', operation: 'patch', delta: { resolved: true } },
+      { type: 'reasoning', summary: [{ text: 'internal chain of thought' }] },
+      { type: 'message', role: 'assistant', content: 'Got it, you live in Woodstock, NY.' },
+    ]
+
+    it('keeps only message items and drops all trace/state/reasoning noise', () => {
+      const out = buildObserveContext(turnItems, -1)
+      expect(out).toBe(
+        '[user] I live in Woodstock NY\n[assistant] Got it, you live in Woodstock, NY.',
+      )
+      // None of the non-message item shapes leak into the prompt.
+      expect(out).not.toContain('block_trace')
+      expect(out).not.toContain('state_change')
+      expect(out).not.toContain('router_decision')
+      expect(out).not.toContain('chain of thought')
+    })
+
+    it('respects the watermark — only items past lastProcessedIndex are included', () => {
+      // Watermark at index 1 (the user message already processed): only the
+      // assistant message after it should surface.
+      const out = buildObserveContext(turnItems, 1)
+      expect(out).toBe('[assistant] Got it, you live in Woodstock, NY.')
+    })
+
+    it('returns undefined when no new message items exist past the watermark', () => {
+      expect(buildObserveContext(turnItems, 5)).toBeUndefined()
+      expect(buildObserveContext([{ type: 'block_trace' }], -1)).toBeUndefined()
+      expect(buildObserveContext([], -1)).toBeUndefined()
     })
   })
 

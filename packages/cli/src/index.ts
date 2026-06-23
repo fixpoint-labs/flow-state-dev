@@ -5,7 +5,9 @@
 export { program } from "./cli";
 export { resolveBlock, isBlockDefinition } from "./resolve-block";
 export { resolveFlow, discoverFlows, getSearchedDirs, isFlowInstance } from "./resolve-flow";
-export type { DiscoverFlowsOptions } from "./resolve-flow";
+export type { DiscoverFlowsOptions, FlowImportFailure } from "./resolve-flow";
+export { loadFsdevConfig } from "./load-config";
+export type { LoadConfigOptions, LoadedConfig } from "./load-config";
 export { parseInputArg } from "./parse-input";
 export { formatOutput } from "./format-output";
 export {
@@ -18,6 +20,6 @@ export {
   EXIT_INTERNAL_ERROR,
 } from "./exit-codes";
 export type { BlockExecResult } from "./commands/block";
-export { registerDevCommand } from "./commands/dev";
+export { registerDevCommand, executeDevCommand } from "./commands/dev";
 export type { FlowRunResult, FlowEvent } from "./commands/run";
 export { registerUiCommand } from "./commands/ui";

@@ -64,6 +64,15 @@ describe("buildAnalyzeInput (modal/header dispatch parity)", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("carries the `record` data source through to the dispatch payload", () => {
+    // The "Live + Record" toggle option selects `dataSource: "record"`; the
+    // builder must pass it through unchanged and the server schema must accept
+    // it, so the UI can trigger a recording run (FIX-787).
+    const out = buildAnalyzeInput({ ...tuple, dataSource: "record" }, "", "");
+    expect(out.dataSource).toBe("record");
+    expect(analyzeInputSchema.safeParse(out).success).toBe(true);
+  });
+
   it("the modal path and the legacy header path build the identical payload", () => {
     // Both paths in `app/page.tsx` call this one builder with the same field
     // state. Modeling that here: identical inputs → identical output, so the

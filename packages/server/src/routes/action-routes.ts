@@ -13,6 +13,7 @@ import { OrgRequiredError, PrincipalResolutionError } from "../transports/errors
 import { generateId } from "../utils/generate-id";
 import {
   asObject,
+  extractTenantId,
   getString,
   jsonResponse,
   parseJsonBody,
@@ -33,9 +34,6 @@ type ActionRunInput = {
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
 };
-
-/** Default HTTP header carrying the tenant id (FIX-406 6D). */
-const DEFAULT_TENANT_ID_HEADER = "x-tenant-id";
 
 type ActionRouteContext = {
   host: InboundTransportHost;
@@ -65,8 +63,7 @@ export async function handleExecuteAction(
   const sessionId = route.sessionId ?? getString(body.sessionId);
   const metadata = asObject(body.metadata);
   // FIX-406 6D: optional tenant id from a configurable header.
-  const tenantId =
-    request.headers.get(ctx.tenantIdHeader ?? DEFAULT_TENANT_ID_HEADER) ?? undefined;
+  const tenantId = extractTenantId(request, ctx.tenantIdHeader);
 
   // Build principal-resolution context. The body is exposed under
   // `metadata.body` so the default body-userId resolver can read it
@@ -173,6 +170,20 @@ export async function handleExecuteAction(
       return jsonResponse(404, { error: message });
     }
     throw error;
+  }
+
+  // For external dispatch, hold the ack until the request is accepted: writes
+  // committed AND the dispatcher accepted the job. So a 202 means "discoverable
+  // and enqueued", and a store-write or enqueue failure becomes a failed POST
+  // rather than an ack for a request that never runs (FIX-828). Undefined and a
+  // no-op for in-process dispatch.
+  if (handle.accepted !== undefined) {
+    try {
+      await handle.accepted;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return jsonResponse(500, { error: "DispatchFailed", message });
+    }
   }
 
   // Inline streaming: when the client sends Accept: text/event-stream, return

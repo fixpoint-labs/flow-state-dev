@@ -17,6 +17,7 @@ export const KITCHEN_SINK_MODELS = [
   "vercel/openai/gpt-5.5",
   "vercel/openai/gpt-5.4-mini",
   "vercel/google/gemini-2.5-pro",
+  "vercel/zai/glm-5.2",
 ] as const;
 
 /** Union of accepted gateway model strings for the kitchen-sink. */
@@ -58,5 +59,9 @@ export const MODEL_LABELS: Record<
   "vercel/google/gemini-2.5-pro": {
     label: "Gemini 2.5 Pro",
     description: "Long context",
+  },
+  "vercel/zai/glm-5.2": {
+    label: "GLM 5.2",
+    description: "Open-weight, strong coding",
   },
 };

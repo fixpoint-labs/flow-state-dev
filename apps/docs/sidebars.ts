@@ -54,6 +54,7 @@ const sidebars: SidebarsConfig = {
             "resources/reactive-blocks",
             "resources/edges",
             "resources/client-access",
+            "resources/searching",
             "resources/manifest",
           ],
         },
@@ -75,6 +76,7 @@ const sidebars: SidebarsConfig = {
             "server/authentication",
             "server/mcp",
             "server/chat",
+            "server/webhooks",
             {
               type: "category",
               label: "Scheduled actions",
@@ -200,6 +202,7 @@ const sidebars: SidebarsConfig = {
           label: "Dev Experience",
           items: [
             "cli/overview",
+            "cli/configuration",
             "cli/agent-dev-loop",
             "devtool/overview",
             "devtool/setup",
@@ -222,6 +225,7 @@ const sidebars: SidebarsConfig = {
         "advanced/error-handling",
         "advanced/error-capture",
         "advanced/idempotency",
+        "advanced/block-memoization-and-replay",
         "advanced/durable-execution",
         "advanced/voice",
         "advanced/sequencer-side-chains",

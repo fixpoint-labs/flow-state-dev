@@ -26,5 +26,5 @@ export function resolveActiveStatusMessage(
     return;
   }
   const message = typeof value === "function" ? value(input, ctx) : value;
-  ctx.emitStatus(message);
+  ctx.emit.status(message);
 }

@@ -2,7 +2,6 @@
  * Public execution runtime API surface for server package consumers.
  */
 export { executeBlock } from "./executeBlock";
-export { isErrorTypeMatch, resolveRescueHandler } from "./rescue";
 export {
   isRetryableError,
   mergeRetryPolicy,
@@ -11,6 +10,11 @@ export {
 export { applyRetentionPolicy, resolveRetentionPolicy } from "./retention";
 export type { ResolvedRetentionPolicy } from "./retention";
 export { runAction } from "./runAction";
+export { continueRequest } from "./request-continuation";
+export type {
+  ContinueRequestOptions,
+  ContinueRequestResult
+} from "./request-continuation";
 export {
   abortRequest,
   hasActiveAbortController,
@@ -38,7 +42,6 @@ export {
   summarizeForLog
 } from "./logging";
 export type { RuntimeLogger, RuntimeLoggerLevel } from "./logging";
-export { createWorkQueue, WorkQueue } from "./work-queue";
 export { createRequestWorkPool } from "./request-work-pool";
 export type {
   ExecuteBlockContext,

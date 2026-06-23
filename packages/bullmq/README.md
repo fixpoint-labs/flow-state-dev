@@ -125,6 +125,8 @@ Validation errors, unknown flows, and unknown actions are marked as `Unrecoverab
 
 `createRedisStreamBridge` uses Redis pub/sub to stream live events from workers back to the web process. Each request gets its own channel pair (events + abort). The bridge is best-effort — late or reconnecting clients recover from the store.
 
+Requests are registered in the store at enqueue time, so SSE clients can attach via `GET /requests/:id/stream` before the worker claims the job — no 404 while the worker spins up.
+
 ```ts
 import { createRedisStreamBridge } from "@flow-state-dev/bullmq";
 

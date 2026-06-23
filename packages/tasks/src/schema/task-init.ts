@@ -14,6 +14,10 @@ import type { Task, TaskStatus } from "./task";
 export type TaskInit<TInput = unknown> = {
   id?: string;
   goal: string;
+  /** Concise label, distinct from `goal`. Surfaced as the plan-UI row label. */
+  title?: string;
+  /** Readable per-task support text handed to the worker. See `Task.context`. */
+  context?: string;
   status?: TaskStatus;
   assignee?: string;
   deps?: string[];

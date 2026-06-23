@@ -531,6 +531,7 @@ function dispatchRequestEvent(
     event.type === "request.completed" ||
     event.type === "request.incomplete" ||
     event.type === "request.failed" ||
+    event.type === "request.suspended" ||
     event.type === "request.interrupted" ||
     event.type === "request.aborted"
   ) {

@@ -40,7 +40,7 @@ export type {
   StoreAdapter,
   StoresConfig
 } from "./stores";
-export { createFlowState } from "./flowstate/createFlowState";
+export { createFlowState, isFlowState } from "./flowstate/createFlowState";
 export type {
   CreateFlowStateOptions,
   FlowState,
@@ -100,7 +100,6 @@ export {
   createAiSdkModelResolver,
   wrapAiSdkModel,
   createModelResolver,
-  createFSDProvider,
   detectAvailableProviders,
   parseModelString,
   createFallbackModel
@@ -109,9 +108,6 @@ export type {
   ResolveAiSdkLanguageModel,
   CreateModelResolverOptions,
   IntentDefaults,
-  FSDProviderConfig,
-  FSDProvider,
-  ModelGroupConfig,
   ModelGroupDefaults,
   GatewayConfig,
   RetryPolicy,
@@ -120,10 +116,7 @@ export type {
   ProviderAvailability,
   ParsedModelString,
   FallbackModelEntry,
-  ProviderPreference,
-  ResolveOptions,
-  ExplainCandidate,
-  ExplainResult
+  ProviderPreference
 } from "@flow-state-dev/core/models";
 export {
   FlowError,
@@ -153,6 +146,7 @@ export { BoundedQueue } from "./utils/bounded-queue";
 export type { BoundedQueuePushResult } from "./utils/bounded-queue";
 export {
   isTerminalRequestStreamEvent,
+  endsRequestStream,
   isTerminalRequestStatus,
   synthesizeRequestInterrupted,
   pollEvents,
@@ -161,6 +155,7 @@ export {
 } from "./stores/subscribe-helpers";
 export {
   OrgBindingMismatchError,
+  TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./context/binding-errors";
 
@@ -175,15 +170,20 @@ export {
   type TTSEmitterHook
 } from "./voice";
 
-export { createBindingCache, type CachedBindingProvider } from "./bindings";
 export * from "./middleware";
 
 export { createCheckpointDurabilityProvider } from "./durability/checkpoint-durability-provider";
 export type { DurabilityProvider, Lease, LeaseOptions } from "./durability/types";
+export {
+  createDurabilitySweeper
+} from "./durability/durability-sweeper";
+export type {
+  DurabilityRetentionConfig,
+  CreateDurabilitySweeperOptions,
+  DurabilitySweeper
+} from "./durability/durability-sweeper";
 
 export const serverPackageMarker = "@flow-state-dev/server";
-
-export { renderTemplate } from "./utils/renderTemplate";
 
 // ---------------------------------------------------------------------------
 // Internal resource helpers exposed for sibling-package consumption

@@ -6,7 +6,9 @@ import type {
   ClientFetch,
   DebugCollectionItemsResponse,
   DebugResourcesResponse,
+  DebugSuspensionsResponse,
   ListDebugCollectionItemsOptions,
+  ListDebugSuspensionsOptions,
   QueryValue,
   SessionDetail,
   SessionRequestSummary,
@@ -109,6 +111,15 @@ export type SessionClient = {
    */
   debug: {
     listResources: (sessionId: string) => Promise<DebugResourcesResponse>;
+    /**
+     * List durable-execution suspensions for a session (FIX-141 operator UI).
+     * Optionally narrows by `status` / `flowKind` / `userId` / `limit`. Returns
+     * an empty list when durability is not configured.
+     */
+    listSuspensions: (
+      sessionId: string,
+      options?: ListDebugSuspensionsOptions
+    ) => Promise<DebugSuspensionsResponse>;
     listCollectionItems: (
       sessionId: string,
       ref: string,
@@ -271,6 +282,25 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     });
   };
 
+  const debugListSuspensions = async (
+    sessionId: string,
+    listOptions?: ListDebugSuspensionsOptions
+  ): Promise<DebugSuspensionsResponse> => {
+    return requestJson<DebugSuspensionsResponse>({
+      fetcher,
+      url: buildFlowApiUrl({
+        baseUrl: options.baseUrl,
+        path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/debug/suspensions`,
+        query: asQuery({
+          status: listOptions?.status,
+          flowKind: listOptions?.flowKind,
+          userId: listOptions?.userId,
+          limit: listOptions?.limit
+        })
+      })
+    });
+  };
+
   const debugListCollectionItems = async (
     sessionId: string,
     ref: string,
@@ -349,6 +379,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     deleteSession,
     debug: {
       listResources: debugListResources,
+      listSuspensions: debugListSuspensions,
       listCollectionItems: debugListCollectionItems,
       fetchResourceContent: debugFetchResourceContent,
       fetchCollectionItemContent: debugFetchCollectionItemContent

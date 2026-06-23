@@ -133,4 +133,65 @@ describe("createRecoveryClient", () => {
       expect(fetcher).not.toHaveBeenCalled();
     });
   });
+
+  describe("resumeSuspension", () => {
+    it("posts to the resume endpoint with the action body and parses the response", async () => {
+      const fetcher = vi.fn<ClientFetch>(async () =>
+        createJsonResponse(
+          { requestId: "req_resumed", originalRequestId: "req_1" },
+          202
+        )
+      );
+
+      const client = createRecoveryClient({ fetcher });
+      const result = await client.resumeSuspension("chat", "req_1", {
+        suspensionId: "sus_1",
+        action: "approve",
+        data: { approvedBudget: 100 },
+        resumedBy: "operator"
+      });
+
+      expect(result).toEqual({
+        requestId: "req_resumed",
+        originalRequestId: "req_1"
+      });
+      expect(fetcher.mock.calls[0]?.[0]).toBe(
+        "/api/flows/chat/requests/req_1/resume"
+      );
+      expect(fetcher.mock.calls[0]?.[1]?.method).toBe("POST");
+      expect(fetcher.mock.calls[0]?.[1]?.body).toBe(
+        JSON.stringify({
+          suspensionId: "sus_1",
+          action: "approve",
+          data: { approvedBudget: 100 },
+          resumedBy: "operator"
+        })
+      );
+    });
+
+    it("rejects an invalid action before hitting the network", async () => {
+      const fetcher = vi.fn<ClientFetch>();
+      const client = createRecoveryClient({ fetcher });
+      await expect(
+        client.resumeSuspension("chat", "req_1", {
+          suspensionId: "sus_1",
+          // @ts-expect-error invalid action at the type level too
+          action: "maybe"
+        })
+      ).rejects.toThrow(/approve.*reject/);
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+
+    it("rejects an empty suspensionId before hitting the network", async () => {
+      const fetcher = vi.fn<ClientFetch>();
+      const client = createRecoveryClient({ fetcher });
+      await expect(
+        client.resumeSuspension("chat", "req_1", {
+          suspensionId: "  ",
+          action: "reject"
+        })
+      ).rejects.toThrow(/suspensionId/);
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+  });
 });

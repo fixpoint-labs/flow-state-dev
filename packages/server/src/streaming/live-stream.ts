@@ -33,6 +33,23 @@ export type CreateLiveRequestStreamOptions = {
    * the heartbeat.
    */
   sseHeartbeatMs?: number;
+  /**
+   * Starting sequence number for this stream's emitter — the first event it
+   * emits gets `startSequenceNumber + 1`. A same-request continuation
+   * (FIX-811) seeds this from the suspended request's last persisted sequence
+   * so the re-entry's events continue the existing per-request log instead of
+   * restarting at 1 (which would collide with the suspend-run events in stores
+   * keyed by `(requestId, sequence_number)` and break SSE cursor continuity).
+   */
+  startSequenceNumber?: number;
+  /**
+   * Starting item index for this stream's emitter — re-entry items continue
+   * after the prior persisted log instead of restarting at `0`. A same-request
+   * continuation (FIX-811) seeds this from the suspended request's last
+   * persisted item index so persistent stores that order by item index don't
+   * interleave the resume items ahead of the pre-suspension history.
+   */
+  startItemIndex?: number;
 };
 
 /**
@@ -64,6 +81,8 @@ export function createLiveRequestStream(
   const emitter = createInternalResponseEmitter({
     requestId,
     maxBufferSize: options.maxBufferSize,
+    startSequenceNumber: options.startSequenceNumber,
+    startItemIndex: options.startItemIndex,
     onEvent,
     internalSeams: options.internalSeams
   });

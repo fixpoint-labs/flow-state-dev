@@ -148,6 +148,42 @@ describe("project → org schema migration", () => {
     db.close();
   });
 
+  it("FIX-682: adds `tenant_id` column to existing sessions/requests/active_requests", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, user_id TEXT NOT NULL,
+        org_id TEXT, version INTEGER NOT NULL, created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL, data TEXT NOT NULL
+      );
+      CREATE TABLE requests (
+        id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, user_id TEXT NOT NULL,
+        session_id TEXT, org_id TEXT, status TEXT NOT NULL, version INTEGER NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, data TEXT NOT NULL
+      );
+      CREATE TABLE active_requests (
+        request_id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, action_name TEXT NOT NULL,
+        session_id TEXT, user_id TEXT NOT NULL, org_id TEXT, source TEXT NOT NULL DEFAULT 'http',
+        input TEXT, metadata TEXT, started_at INTEGER NOT NULL, last_heartbeat_at INTEGER NOT NULL
+      );
+    `);
+    db.prepare(
+      `INSERT INTO sessions (id, flow_kind, user_id, version, created_at, updated_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run("sess_legacy", "demo", "alice", 0, 1, 1, '{"state":{}}');
+
+    initializeSchema(db);
+
+    expect(tableInfo(db, "sessions")).toContain("tenant_id");
+    expect(tableInfo(db, "requests")).toContain("tenant_id");
+    expect(tableInfo(db, "active_requests")).toContain("tenant_id");
+    // Existing rows read back as no-tenant (NULL) — pre-isolation semantics.
+    const row = db
+      .prepare(`SELECT tenant_id FROM sessions WHERE id = ?`)
+      .get("sess_legacy") as { tenant_id: string | null };
+    expect(row.tenant_id).toBeNull();
+    db.close();
+  });
+
   it("is idempotent — calling initializeSchema twice doesn't break", () => {
     const db = new Database(":memory:");
     db.exec(`
