@@ -27,6 +27,55 @@ describe("generator builder", () => {
     await expect(runForTest(block, { value: "x" }, ctx)).resolves.toBe("hello");
   });
 
+  it("omits a ZodString output schema from the non-streaming model call", async () => {
+    // Regression: OpenAI / the AI Gateway reject a response_format whose root is
+    // `type: "string"`. A text generator (z.string(), explicit or the default)
+    // must therefore call the model as plain text, never as structured output —
+    // mirroring the streaming path, which already omits the schema.
+    let seenOutputSchema: unknown = "unset";
+    const block = generator({
+      name: "text-gen",
+      model: "mock-model",
+      prompt: "Answer the task"
+      // no outputSchema -> defaults to z.string()
+    });
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate(options) {
+          seenOutputSchema = options.outputSchema;
+          return { text: "the answer" };
+        }
+      })
+    });
+    await expect(runForTest(block, { value: "x" }, ctx)).resolves.toBe("the answer");
+    expect(seenOutputSchema).toBeUndefined();
+  });
+
+  it("passes an object output schema through to the non-streaming model call", async () => {
+    // The complement of the text case: object schemas are valid structured-output
+    // roots and must still reach the model so structured generation happens.
+    let seenOutputSchema: unknown = "unset";
+    const schema = z.object({ done: z.boolean() });
+    const block = generator({
+      name: "obj-gen",
+      model: "mock-model",
+      prompt: "Answer",
+      outputSchema: schema
+    });
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate(options) {
+          seenOutputSchema = options.outputSchema;
+          return { structuredOutput: { done: true } };
+        }
+      })
+    });
+    await expect(runForTest(block, { value: 1 }, ctx)).resolves.toEqual({ done: true });
+    expect(seenOutputSchema).toBe(schema);
+  });
+
   it("accepts a direct GeneratorModel instance in config.model", async () => {
     const model = {
       modelId: "custom:model",

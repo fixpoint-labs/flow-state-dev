@@ -1818,13 +1818,23 @@ export function generator<
         actual: model.modelId,
       };
       // Non-streaming: single call, model handles multi-step loop via maxSteps.
+      //
+      // A ZodString output ("text" generators, including the z.string() default)
+      // can't be a structured-output root: OpenAI and the AI Gateway require the
+      // response_format root to be `type: "object"` and reject `type: "string"`.
+      // The streaming path above already omits the schema and returns plain text;
+      // mirror that here so the non-streaming path builds the same valid request.
+      // Object schemas still flow through as structured output. Downstream,
+      // resolveGenerationCandidate falls back to result.text, and the block
+      // re-validates it against the real (z.string()) outputSchema.
+      const generateOutputSchema = isTextOutputSchema(outputSchema) ? undefined : outputSchema;
       let generation: GeneratorModelResult;
       try {
         generation = await model.generate({
           messages,
           tools: compiledTools.length > 0 ? compiledTools : undefined,
           providerTools: resolvedProviderTools.length > 0 ? resolvedProviderTools : undefined,
-          outputSchema,
+          outputSchema: generateOutputSchema,
           maxTokens: normalizedConfig.maxTokens,
           signal: ctx.signal,
           maxSteps,
