@@ -391,6 +391,18 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  goals:
+    dependencies:
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../packages/core
+      '@flow-state-dev/server':
+        specifier: workspace:*
+        version: link:../packages/server
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
   labs/trading-desk:
     dependencies:
       '@ai-sdk/gateway':
