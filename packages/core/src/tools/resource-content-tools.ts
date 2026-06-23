@@ -13,7 +13,7 @@
 
 import { z } from "zod";
 import { handler } from "../blocks/handler";
-import { collectAllResources, isLlmReadable, isLlmWritable, resolveResourceByUri } from "./resource-tools";
+import { collectReadableResources, isLlmReadable, isLlmWritable, resolveResourceByUri } from "./resource-tools";
 
 /**
  * Tool block for reading rendered resource content, keyed by scope-qualified uri.
@@ -35,7 +35,7 @@ export function readResourceContentTool() {
     }),
     execute: async (input, ctx) => {
       if (input.uri === undefined) {
-        const readable = (await collectAllResources(ctx)).filter(isLlmReadable);
+        const readable = await collectReadableResources(ctx);
         return { uris: readable.map((ref) => ref.uri).sort() };
       }
 

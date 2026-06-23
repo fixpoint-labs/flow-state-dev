@@ -44,14 +44,23 @@ function makeCtx(
   const entries: any[] = [];
   for (const r of statics) entries.push(refOf(r, writes));
   for (const c of collections) {
+    const prefix = c.pattern.replace(/\/?\*+$/, "");
+    const mkInstance = (inst: { path: string; content?: string | null }) =>
+      refOf({ ...inst, llmReadable: c.llmReadable, llmWritable: c.llmWritable }, writes);
     entries.push({
       pattern: c.pattern,
       scope: "session",
+      // Collection-level flags live on the collection ref's config (the server
+      // stamps `config: nsConfig`); the readable-listing path gates on this
+      // before calling list().
+      config: { llmReadable: c.llmReadable ?? false, llmWritable: c.llmWritable ?? false },
       create: async () => {},
-      list: async () =>
-        c.instances.map((inst) =>
-          refOf({ ...inst, llmReadable: c.llmReadable, llmWritable: c.llmWritable }, writes),
-        ),
+      list: async () => c.instances.map(mkInstance),
+      // Exact-uri resolution calls getOptional on the matching collection only.
+      getOptional: async (key: string) => {
+        const inst = c.instances.find((i) => i.path === `${prefix}/${key}`);
+        return inst ? mkInstance(inst) : undefined;
+      },
     });
   }
   return createMockContext({

@@ -9,7 +9,7 @@ type MockResource = {
   rendered?: string | null;
   llmReadable?: boolean;
 };
-type MockCollection = { pattern: string; instances: MockResource[] };
+type MockCollection = { pattern: string; llmReadable?: boolean; instances: MockResource[] };
 
 function refOf(r: MockResource): any {
   const raw = r.content === undefined ? null : r.content;
@@ -34,6 +34,10 @@ function makeCtx(statics: MockResource[] = [], collections: MockCollection[] = [
     entries.push({
       pattern: c.pattern,
       scope: "org",
+      // Collection-level llmReadable lives on the collection ref's config; grep
+      // and search gate on it before listing (default readable for the common
+      // case so each test names its own non-readable collections explicitly).
+      config: { llmReadable: c.llmReadable ?? true },
       create: async () => {},
       list: async () => c.instances.map(refOf),
     });
@@ -129,21 +133,39 @@ describe("grepResourceContent", () => {
     expect(matches).toEqual([{ uri: "org/concepts/react", line: 2, snippet: "useEffect hook" }]);
   });
 
-  it("excludes resources that are not llmReadable", async () => {
+  it("excludes instances of collections that are not llmReadable", async () => {
     const ctx = makeCtx([], [
-      {
-        pattern: "concepts/**",
-        instances: [
-          { path: "concepts/public", content: "needle here", llmReadable: true },
-          { path: "concepts/private", content: "needle here", llmReadable: false },
-        ],
-      },
+      { pattern: "public/**", llmReadable: true, instances: [{ path: "public/a", content: "needle here" }] },
+      { pattern: "private/**", llmReadable: false, instances: [{ path: "private/a", content: "needle here" }] },
     ]);
     const { matches } = await runForTest(grepResourceContent,
       { pattern: "needle", prefix: null, maxResults: 50 },
       ctx,
     );
-    expect(matches.map((m) => m.uri)).toEqual(["org/concepts/public"]);
+    expect(matches.map((m) => m.uri)).toEqual(["org/public/a"]);
+  });
+
+  it("does not call list() on a collection that did not opt into llmReadable", async () => {
+    let listed = false;
+    const ctx = createMockContext({
+      resources: {
+        list: () => [
+          {
+            pattern: "private/**",
+            scope: "org",
+            config: { llmReadable: false },
+            create: async () => {},
+            list: async () => {
+              listed = true;
+              return [];
+            },
+          },
+        ],
+        get: (() => undefined) as any,
+      } as any,
+    });
+    await runForTest(grepResourceContent, { pattern: "x", prefix: null, maxResults: 50 }, ctx);
+    expect(listed).toBe(false);
   });
 
   it("scopes by prefix", async () => {
@@ -213,6 +235,7 @@ describe("grepResourceContent", () => {
           {
             pattern: "concepts/**",
             scope: "org",
+            config: { llmReadable: true },
             create: async () => {},
             list: async (prefix?: string) => {
               seen.push(prefix);
@@ -291,16 +314,17 @@ describe("searchResources", () => {
     expect(results[0]!.score).toBe(3);
   });
 
-  it("excludes zero-score and non-llmReadable resources", async () => {
+  it("excludes zero-score results and instances of non-llmReadable collections", async () => {
     const ctx = makeCtx([], [
       {
         pattern: "concepts/**",
+        llmReadable: true,
         instances: [
           { path: "concepts/match", content: "useState and hooks" },
           { path: "concepts/nomatch", content: "totally unrelated" },
-          { path: "concepts/hidden", content: "hooks hooks", llmReadable: false },
         ],
       },
+      { pattern: "hidden/**", llmReadable: false, instances: [{ path: "hidden/a", content: "hooks hooks" }] },
     ]);
     const { results } = await runForTest(searchResources,
       { query: "hooks", prefix: null, limit: 10 },

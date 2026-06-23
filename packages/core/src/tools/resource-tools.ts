@@ -234,17 +234,55 @@ export function isLlmWritable(ref: ResourceRef<any>): boolean {
 }
 
 /**
+ * Every `llmReadable` resource — static resources that opted in, plus the
+ * instances of collections that opted in. Filters collections by their
+ * collection-level `llmReadable` BEFORE calling `list()`, so a collection that
+ * didn't opt in is never enumerated (a lazy collection isn't bulk-loaded, and a
+ * large/broken one can't fail an unrelated read). Flags are collection-wide, so
+ * skipping a non-readable collection drops exactly the instances an
+ * instance-level filter would have.
+ */
+export async function collectReadableResources(ctx: BlockContext): Promise<ResourceRef<any>[]> {
+  const out: ResourceRef<any>[] = collectStaticResources(ctx).filter(isLlmReadable);
+  for (const ns of collectCollections(ctx)) {
+    if (ns.ref.config?.llmReadable !== true) continue;
+    for (const instance of await ns.ref.list()) out.push(instance);
+  }
+  return out;
+}
+
+/**
  * Resolve a scope-qualified resource `uri` (`${scope}/${path}`) to its
  * `ResourceRef` — static resource or collection instance, uniformly. Unlike
  * `resolveResourceByPath`, the uri is unique across scopes (FIX-842), so
  * resolution is unambiguous even when two collections share a pattern in
- * different scopes. Returns `undefined` on a miss.
+ * different scopes. Resolves the target directly — statics by uri, then a single
+ * `getOptional` on the one collection whose scope+pattern matches — so reading
+ * one resource never lists (and so never bulk-loads) unrelated collections.
+ * Returns `undefined` on a miss.
  */
 export async function resolveResourceByUri(
   uri: string,
   ctx: BlockContext,
 ): Promise<ResourceRef<any> | undefined> {
-  return (await collectAllResources(ctx)).find((ref) => ref.uri === uri);
+  const staticMatch = collectStaticResources(ctx).find((ref) => ref.uri === uri);
+  if (staticMatch !== undefined) return staticMatch;
+
+  // uri is `${scope}/${path}`; the scope is the first segment, the rest is the
+  // within-scope path the collection pattern matches.
+  const slash = uri.indexOf("/");
+  if (slash === -1) return undefined;
+  const scope = uri.slice(0, slash);
+  const path = uri.slice(slash + 1);
+
+  for (const ns of collectCollections(ctx)) {
+    if (ns.scope !== scope) continue;
+    const { key } = tryMatchPath(ns, path);
+    if (key === undefined) continue;
+    const ref = await ns.ref.getOptional(key);
+    if (ref !== undefined && ref.uri === uri) return ref;
+  }
+  return undefined;
 }
 
 function resolvePathToCollection(

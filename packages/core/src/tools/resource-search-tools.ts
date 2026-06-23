@@ -25,7 +25,7 @@
 import { z } from "zod";
 import picomatch from "picomatch";
 import { handler } from "../blocks/handler";
-import { collectAllResources, isLlmReadable } from "./resource-tools";
+import { collectAllResources, collectReadableResources } from "./resource-tools";
 
 /** Maximum snippet length returned per match, so results stay token-cheap. */
 const MAX_SNIPPET_LENGTH = 200;
@@ -155,7 +155,7 @@ export function resourceSearchTools() {
     execute: async (input, ctx) => {
       const matcher = compileMatcher(input.pattern);
       const matches: Array<{ uri: string; line: number; snippet: string }> = [];
-      const resources = (await collectAllResources(ctx)).filter(isLlmReadable);
+      const resources = await collectReadableResources(ctx);
 
       for (const ref of resources) {
         if (input.prefix !== null && !matchesPrefix(ref.path, input.prefix)) continue;
@@ -203,7 +203,7 @@ export function resourceSearchTools() {
         .filter((term) => term.length > 0);
       if (terms.length === 0) return { results: [] };
 
-      const resources = (await collectAllResources(ctx)).filter(isLlmReadable);
+      const resources = await collectReadableResources(ctx);
       const scored: Array<{ uri: string; score: number; snippet: string }> = [];
 
       for (const ref of resources) {
