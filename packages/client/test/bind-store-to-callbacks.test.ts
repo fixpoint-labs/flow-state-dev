@@ -218,6 +218,27 @@ describe("bindStoreToCallbacks — content", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("discards a filtered item's buffered deltas at the filter seam (no unbounded queue)", () => {
+    const store = createRequestStreamStore();
+    const cb = bindStoreToCallbacks(store, {
+      itemFilter: (item) => item.type === "message"
+    });
+
+    // A delta for the to-be-filtered status item arrives before its item.added.
+    cb.onContentDelta!(contentDelta("s", 0, "x"));
+    // item.added is rejected by the filter → its buffered delta is discarded,
+    // not left to accumulate. (An absent-item delta is otherwise kept buffered
+    // forever, since flushDeltas can't tell a filtered item from a late one.)
+    cb.onItemAdded!(itemAdded(makeItem({ id: "s", ts: 100, type: "status" })));
+
+    // Prove it's gone: if an item with that id later enters the store directly,
+    // the discarded delta does not resurface.
+    store.upsert(makeItem({ id: "s", ts: 100, type: "message", content: [{ type: "output_text", text: "Z" }] } as Partial<OutputItem> & { id: string }));
+    expect(store.flushDeltas()).toBe(false);
+    const item = store.getById("s") as OutputItem & { content?: Array<{ text: string }> };
+    expect(item.content![0]!.text).toBe("Z");
+  });
+
   it("onContentAdded for a missing item signals nothing", () => {
     const store = createRequestStreamStore();
     const onChange = vi.fn();

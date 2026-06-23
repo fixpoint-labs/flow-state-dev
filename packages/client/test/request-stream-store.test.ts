@@ -394,16 +394,46 @@ describe("createRequestStreamStore — deltas", () => {
     expect(updated.content![0]!.text).toBe("Hi");
   });
 
-  it("drops a delta whose item is absent at flush (orphaned/filtered) so the queue can't grow unbounded", () => {
+  it("keeps a delta whose item hasn't arrived yet, then applies it once the item appears (early delta)", () => {
+    // A content.delta can arrive before its item.added (out-of-order delivery /
+    // resume race). A flush in between for an unrelated reason must NOT drop the
+    // buffered delta — the streamed text would be lost when the item lands.
     const store = createRequestStreamStore();
-    store.accumulateDelta("ghost", 0, "lost");
-    expect(store.flushDeltas()).toBe(false); // no target — dropped, not retained
+    store.accumulateDelta("late", 0, " world");
+    expect(store.flushDeltas()).toBe(false); // item absent — kept buffered, not dropped
 
-    // The dropped delta does not resurface if an item with that id appears later.
-    store.upsert(makeItem({ id: "ghost", ts: 100, type: "message", content: [{ type: "output_text", text: "X" }] } as Partial<OutputItem> & { id: string }));
-    expect(store.flushDeltas()).toBe(false);
-    const updated = store.getById("ghost")! as OutputItem & { content?: Array<{ type: string; text: string }> };
-    expect(updated.content![0]!.text).toBe("X");
+    store.upsert(makeItem({ id: "late", ts: 100, type: "message", content: [{ type: "output_text", text: "Hello" }] } as Partial<OutputItem> & { id: string }));
+    expect(store.flushDeltas()).toBe(true); // item now present — buffered delta applies
+    const updated = store.getById("late")! as OutputItem & { content?: Array<{ type: string; text: string }> };
+    expect(updated.content![0]!.text).toBe("Hello world");
+  });
+
+  it("discardDeltas drops only the targeted item's buffered deltas", () => {
+    const store = createRequestStreamStore();
+    store.accumulateDelta("filtered", 0, "gone");
+    store.accumulateDelta("filtered", 1, "also gone");
+    store.accumulateDelta("kept", 0, "stays");
+
+    store.discardDeltas("filtered");
+
+    // The filtered item's deltas never apply, even if an item with that id later
+    // appears; the unrelated item's early delta is untouched.
+    store.upsert(makeItem({ id: "filtered", ts: 100, type: "message", content: [{ type: "output_text", text: "F" }] } as Partial<OutputItem> & { id: string }));
+    store.upsert(makeItem({ id: "kept", ts: 200, type: "message", content: [{ type: "output_text", text: "K" }] } as Partial<OutputItem> & { id: string }));
+    expect(store.flushDeltas()).toBe(true);
+
+    const filtered = store.getById("filtered")! as OutputItem & { content?: Array<{ text: string }> };
+    expect(filtered.content![0]!.text).toBe("F"); // no discarded delta applied
+    const kept = store.getById("kept")! as OutputItem & { content?: Array<{ text: string }> };
+    expect(kept.content![0]!.text).toBe("Kstays"); // early delta preserved
+  });
+
+  it("discardDeltas is a no-op when nothing is buffered for the item", () => {
+    const store = createRequestStreamStore();
+    store.accumulateDelta("other", 0, "x");
+    expect(() => store.discardDeltas("missing")).not.toThrow();
+    store.upsert(makeItem({ id: "other", ts: 100, type: "message", content: [{ type: "output_text", text: "" }] } as Partial<OutputItem> & { id: string }));
+    expect(store.flushDeltas()).toBe(true); // "other" delta untouched
   });
 });
 

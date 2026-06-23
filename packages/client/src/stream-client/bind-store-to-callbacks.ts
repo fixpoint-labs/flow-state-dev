@@ -58,12 +58,24 @@ export function bindStoreToCallbacks(
       if (statusChanged) changed("status");
     },
     onItemAdded: (event) => {
-      if (!passes(event.item)) return;
+      if (!passes(event.item)) {
+        // Item rejected by the filter: clear any deltas that arrived for it
+        // before this item.added so they don't sit buffered forever (the item
+        // will never enter the store). Legitimate early deltas for items that
+        // simply haven't arrived yet are left untouched.
+        store.discardDeltas(event.item.id);
+        return;
+      }
       store.upsert(event.item);
       changed("item");
     },
     onItemDone: (event) => {
-      if (!passes(event.item)) return;
+      if (!passes(event.item)) {
+        // Same filter-seam cleanup as onItemAdded: a filtered item's deltas can
+        // also arrive between its item.added and item.done.
+        store.discardDeltas(event.item.id);
+        return;
+      }
       store.upsert(event.item);
       changed("item");
     },

@@ -146,8 +146,10 @@ export type RequestStreamStore = {
   deleteById(id: string): boolean;
   /** Buffer a text delta for later flush. */
   accumulateDelta(itemId: string, contentIndex: number, delta: string): void;
-  /** Apply all buffered deltas to their target items and clear the queue. Returns true if any item changed. */
+  /** Apply every buffered delta whose target item and content part are ready; deltas that aren't ready yet stay queued for a later flush (streamed text is never dropped). Returns true if any item changed. */
   flushDeltas(): boolean;
+  /** Discard all buffered deltas for an item — the binder's filter seam calls this when `itemFilter` rejects an item, so a permanently-absent item's deltas don't sit in the queue. No-op if none are buffered. */
+  discardDeltas(itemId: string): void;
   /** Place a content part at an index on a message (`content`) or reasoning (`summary`) item — overwrites an existing index, otherwise appends. Returns true if the item was updated. */
   applyContentAdded(itemId: string, contentIndex: number, content: Content): boolean;
   /** Replace a content part with its authoritative final value at an index (inserting if no prior part exists). Returns true if the item was updated. */
@@ -494,21 +496,22 @@ export function createRequestStreamStore(): RequestStreamStore {
       if (deltaQueue.size === 0) return false;
 
       let hasChanges = false;
-      // Apply each buffered delta to its target. Keep a delta queued only when
-      // its item exists but the target content part isn't ready yet (item.added
-      // arrived with an empty content array before content.added created the
-      // slot) — applied on a later flush rather than dropping streamed text.
-      // Drop a delta whose item is not present: in the binder's ordered usage a
-      // real item.added precedes its deltas, so an absent item means the delta
-      // is orphaned (e.g. for an itemFilter-rejected item) and must not
-      // accumulate unbounded. (Deleting the current entry mid-iteration is safe
-      // for Map.) A delta superseded by content.done is removed there.
+      // Apply each buffered delta to its target, keeping a delta queued whenever
+      // it can't be applied yet so streamed text is never dropped:
+      //  - item not present yet — a delta can arrive before its `item.added`
+      //    (out-of-order delivery / resume race); applied on a later flush once
+      //    the item exists.
+      //  - item present but the target content part isn't ready (item.added
+      //    arrived with an empty content array before content.added created the
+      //    slot) — applied on a later flush.
+      // This method can't tell a not-yet-arrived item from one the binder's
+      // `itemFilter` permanently rejected, so it never drops on an absent item;
+      // the binder clears a rejected item's deltas at its filter seam via
+      // `discardDeltas`. (Deleting the current entry mid-iteration is safe for
+      // Map.) A delta superseded by content.done is removed in applyContentDone.
       for (const [key, queued] of deltaQueue) {
         const target = itemsById.get(queued.itemId);
-        if (target === undefined) {
-          deltaQueue.delete(key); // orphaned/filtered — drop so the queue can't grow unbounded
-          continue;
-        }
+        if (target === undefined) continue; // item not present yet — keep buffered
 
         const nextItem = updateItemWithContentDelta(target, queued.contentIndex, queued.delta);
         if (nextItem === target) continue; // target content part not ready — keep buffered
@@ -520,6 +523,17 @@ export function createRequestStreamStore(): RequestStreamStore {
 
       if (hasChanges) invalidateCanonical();
       return hasChanges;
+    },
+
+    discardDeltas(itemId: string): void {
+      // Targeted cleanup for an item the binder's `itemFilter` rejected: its
+      // deltas were buffered by `accumulateDelta` (which runs before the item is
+      // known) but the item will never enter the store, so flushDeltas would
+      // keep them forever. Drop only this item's deltas, leaving legitimate
+      // early deltas for not-yet-arrived items untouched.
+      for (const [key, queued] of deltaQueue) {
+        if (queued.itemId === itemId) deltaQueue.delete(key);
+      }
     },
 
     applyContentAdded(itemId: string, contentIndex: number, content: Content): boolean {
