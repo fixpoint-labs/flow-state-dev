@@ -153,6 +153,18 @@ describe("RequestSeparator (transport source surface)", () => {
     expect(screen.getByText("dynamic")).toBeInTheDocument();
   });
 
+  it("labels the chip from legacy flat metadata during a rolling deploy", () => {
+    // Records enqueued by the pre-namespacing build carry flat
+    // `metadata.{scheduleId,origin}`. The chip falls back to them so in-flight
+    // jobs stay distinguishable while a mixed deployment drains.
+    renderSeparator({
+      ...baseProps,
+      source: "scheduled",
+      metadata: { scheduleId: "monthly-invoices", origin: "static" },
+    });
+    expect(screen.getByText(/Scheduled\s*·\s*monthly-invoices/)).toBeInTheDocument();
+  });
+
   it("truncates long schedule ids in the middle for the chip", () => {
     const longId = "a".repeat(20) + "/" + "b".repeat(40);
     renderSeparator({

@@ -21,8 +21,8 @@ export async function findScheduledRequest(
     // matching what the dispatch handler stamps. Also read the legacy top-level
     // `metadata.scheduleId` so `onOverlap: "skip"` still matches requests that
     // were enqueued by the pre-namespacing build and are still in-flight across
-    // a rolling deploy. Transitional — removable once no legacy in-flight
-    // requests remain.
+    // a rolling deploy.
+    // TODO(FIX-850): drop the flat fallback once no legacy in-flight requests remain.
     const meta = entry.metadata as
       | { schedule?: { scheduleId?: unknown }; scheduleId?: unknown }
       | undefined;

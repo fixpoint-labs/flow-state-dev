@@ -89,8 +89,11 @@ export function RequestSeparator({
   // `metadata.schedule` slot (`scheduleId`, `origin`; FIX-838) — surface as a
   // suffix on the source chip and a secondary origin badge so operators can
   // tell static cron jobs apart from user/agent-created dynamic schedules at a
-  // glance.
-  const scheduleMeta = metadata?.schedule as
+  // glance. Fall back to the legacy flat `metadata.{scheduleId,origin}` so the
+  // chip still labels in-flight requests enqueued by the pre-namespacing build
+  // during a rolling deploy.
+  // TODO(FIX-850): drop the flat fallback once no legacy records remain.
+  const scheduleMeta = (metadata?.schedule ?? metadata) as
     | { scheduleId?: unknown; origin?: unknown }
     | undefined;
   const scheduleId =
