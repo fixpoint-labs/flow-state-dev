@@ -135,6 +135,14 @@ describe("createRequestStreamStore — applyItemPatch", () => {
     expect(store.applyItemPatch("missing", { status: "completed" })).toBe(false);
   });
 
+  it("returns false for a patch that is entirely invariant keys (no real change)", () => {
+    const store = createRequestStreamStore();
+    store.upsert(makeItem({ id: "a", ts: 100, type: "message" }));
+    expect(store.applyItemPatch("a", { id: "x", type: "status", provenance: { blockName: "y" } })).toBe(false);
+    // The item is unchanged.
+    expect(store.getById("a")!.type).toBe("message");
+  });
+
   it("re-sorts when a patch changes a sort key (ts)", () => {
     const store = createRequestStreamStore();
     store.upsert(makeItem({ id: "a", ts: 100 }));
@@ -369,6 +377,21 @@ describe("createRequestStreamStore — deltas", () => {
     expect(store.flushDeltas()).toBe(true);
     const updated = store.getById("msg1")! as OutputItem & { content?: Array<{ type: string; text: string }> };
     expect(updated.content![0]!.text).toBe("Hello world");
+  });
+
+  it("keeps a buffered delta when the target content part isn't ready, then applies it once content.added creates the part", () => {
+    // item.added can arrive with an empty content array before content.added
+    // creates index 0. A flush in between must not drop the buffered delta.
+    const store = createRequestStreamStore();
+    store.accumulateDelta("msg1", 0, "Hi");
+    store.upsert(makeItem({ id: "msg1", ts: 100, type: "message", content: [] } as Partial<OutputItem> & { id: string }));
+
+    expect(store.flushDeltas()).toBe(false); // part not ready — delta kept buffered
+
+    store.applyContentAdded("msg1", 0, { type: "output_text", text: "" });
+    expect(store.flushDeltas()).toBe(true); // part now exists — delta applies
+    const updated = store.getById("msg1")! as OutputItem & { content?: Array<{ type: string; text: string }> };
+    expect(updated.content![0]!.text).toBe("Hi");
   });
 });
 

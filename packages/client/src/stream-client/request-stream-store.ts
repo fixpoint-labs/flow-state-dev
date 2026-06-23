@@ -449,6 +449,10 @@ export function createRequestStreamStore(): RequestStreamStore {
         sanitized[key] = patch[key];
       }
 
+      // A patch that was entirely invariant keys changes nothing — report no-op
+      // so the binder doesn't signal a phantom flush.
+      if (Object.keys(sanitized).length === 0) return false;
+
       // Route through upsertItem so a patch touching a sort key (ts/itemIndex)
       // or `ownedBy` re-sorts and re-indexes ownership rather than leaving the
       // sorted-id / ownership indexes stale.
@@ -490,18 +494,24 @@ export function createRequestStreamStore(): RequestStreamStore {
       if (deltaQueue.size === 0) return false;
 
       let hasChanges = false;
-      for (const queued of deltaQueue.values()) {
+      // Only remove a delta once it has actually been applied. A delta can be
+      // buffered before its item.added, or before content.added creates the
+      // target part; in those cases the item exists (or not) but the slot isn't
+      // ready, so we keep the delta queued for a later flush rather than
+      // dropping the streamed text. (Deleting the current entry mid-iteration is
+      // safe for Map.) A delta superseded by content.done is removed there.
+      for (const [key, queued] of deltaQueue) {
         const target = itemsById.get(queued.itemId);
-        if (target === undefined) continue;
+        if (target === undefined) continue; // item not present yet — keep buffered
 
         const nextItem = updateItemWithContentDelta(target, queued.contentIndex, queued.delta);
-        if (nextItem !== target) {
-          itemsById.set(queued.itemId, nextItem);
-          hasChanges = true;
-        }
+        if (nextItem === target) continue; // target content part not ready — keep buffered
+
+        itemsById.set(queued.itemId, nextItem);
+        deltaQueue.delete(key);
+        hasChanges = true;
       }
 
-      deltaQueue.clear();
       if (hasChanges) invalidateCanonical();
       return hasChanges;
     },
