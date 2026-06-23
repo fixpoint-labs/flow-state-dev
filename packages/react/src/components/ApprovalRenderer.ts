@@ -6,6 +6,11 @@
  * pass onApprove/onReject handlers to override the self-contained resume logic
  * (e.g., when integrating with a page-level useSuspensions hook).
  *
+ * Once a suspension resolves, the card collapses to a compact one-line receipt
+ * (e.g. "✓ Approved") instead of lingering as a disabled card — the outcome comes
+ * from the action taken on this card or, on reload, from the `resolution` prop the
+ * renderer threads down from the matching `suspension_resume` item.
+ *
  * Resolution transport, in precedence order:
  *   1. onApprove/onReject props  → caller owns the resume call
  *   2. SuspensionResolverProvider → resolve through the session's STREAMING
@@ -19,12 +24,132 @@
  *
  * When used inline without FlowContext.flowKind and without onApprove/onReject,
  * the buttons render disabled and a console.warn is emitted (dev-only guidance).
+ *
+ * Styling: a single scoped stylesheet is injected once at module load (class
+ * prefix `fsd-approval-`). Inline styles can't express `:hover`, `:focus-visible`,
+ * or `prefers-color-scheme`, so the card ships its own minimal sheet to read well
+ * on both light and dark surfaces. Consumers can override by targeting the classes.
  */
 import { createElement, useState, useMemo, useCallback, useEffect, type ReactNode } from "react";
 import { createRecoveryClient } from "@flow-state-dev/client";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
+import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
 import { useSuspensionResolver } from "../context/SuspensionResolver";
+
+// ---------------------------------------------------------------------------
+// Scoped styles
+// ---------------------------------------------------------------------------
+
+const STYLE_ELEMENT_ID = "fsd-approval-styles";
+
+// Minimal, theme-aware stylesheet. Green affirmative / red destructive, with a
+// `prefers-color-scheme` block so the surface, border, and receipt tints invert
+// on dark backgrounds instead of staying light-on-dark.
+const APPROVAL_CSS = `
+.fsd-approval-card {
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #111827;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 6px 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  font-family: inherit;
+}
+.fsd-approval-msg { margin: 0 0 10px; font-weight: 600; font-size: 14px; line-height: 1.4; }
+.fsd-approval-details { margin: 0 0 10px; font-size: 12px; }
+.fsd-approval-summary { cursor: pointer; opacity: 0.65; }
+.fsd-approval-pre {
+  margin: 6px 0 0; font-size: 11px; white-space: pre-wrap; opacity: 0.85;
+  background: rgba(0,0,0,0.04); padding: 8px; border-radius: 6px; overflow-x: auto;
+}
+.fsd-approval-error { color: #dc2626; font-size: 12px; margin: 0 0 10px; }
+.fsd-approval-actions { display: flex; gap: 8px; }
+.fsd-approval-btn {
+  appearance: none; border: 1px solid transparent; border-radius: 8px;
+  padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: background-color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+}
+.fsd-approval-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.fsd-approval-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.fsd-approval-approve { background: #16a34a; color: #ffffff; }
+.fsd-approval-approve:hover:not(:disabled) { background: #15803d; }
+.fsd-approval-approve:active:not(:disabled) { background: #166534; }
+.fsd-approval-reject { background: #ffffff; color: #dc2626; border-color: #fca5a5; }
+.fsd-approval-reject:hover:not(:disabled) { background: #fef2f2; border-color: #f87171; }
+.fsd-approval-reject:active:not(:disabled) { background: #fee2e2; }
+.fsd-approval-receipt {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid; border-radius: 8px; padding: 6px 12px; margin: 6px 0;
+  font-size: 13px; font-family: inherit;
+}
+.fsd-approval-receipt-icon { font-size: 13px; line-height: 1; }
+.fsd-approval-receipt-label { font-weight: 600; }
+.fsd-approval-receipt-msg { opacity: 0.75; font-weight: 400; }
+.fsd-approval-receipt-approved { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+.fsd-approval-receipt-rejected { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.fsd-approval-receipt-neutral { background: rgba(127,127,127,0.08); border-color: rgba(127,127,127,0.3); color: inherit; }
+@media (prefers-color-scheme: dark) {
+  .fsd-approval-card { background: #1f2937; color: #f9fafb; border-color: #374151; box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+  .fsd-approval-pre { background: rgba(255,255,255,0.06); }
+  .fsd-approval-error { color: #f87171; }
+  .fsd-approval-approve { background: #16a34a; }
+  .fsd-approval-approve:hover:not(:disabled) { background: #22c55e; }
+  .fsd-approval-reject { background: transparent; color: #f87171; border-color: #7f1d1d; }
+  .fsd-approval-reject:hover:not(:disabled) { background: rgba(248,113,113,0.12); border-color: #b91c1c; }
+  .fsd-approval-receipt-approved { background: rgba(22,163,74,0.15); border-color: rgba(34,197,94,0.4); color: #4ade80; }
+  .fsd-approval-receipt-rejected { background: rgba(220,38,38,0.15); border-color: rgba(248,113,113,0.4); color: #f87171; }
+}
+`;
+
+/**
+ * Inject the approval stylesheet once. Idempotent and DOM-only — guarded for
+ * SSR. Runs at module load (not in an effect) so the card never paints unstyled.
+ */
+function ensureApprovalStyles(): void {
+  if (typeof document === "undefined") return;
+  if (document.getElementById(STYLE_ELEMENT_ID) !== null) return;
+  const style = document.createElement("style");
+  style.id = STYLE_ELEMENT_ID;
+  style.textContent = APPROVAL_CSS;
+  document.head.appendChild(style);
+}
+
+ensureApprovalStyles();
+
+// ---------------------------------------------------------------------------
+// Receipt outcome derivation
+// ---------------------------------------------------------------------------
+
+/** Visual descriptor for the collapsed receipt: icon glyph, label, tone class. */
+export type ApprovalOutcome = {
+  icon: string;
+  label: string;
+  toneClass: string;
+};
+
+/**
+ * Map a resolved suspension status to its receipt descriptor. `undefined` (the
+ * card knows it resolved but not how — e.g. an external `isResolved` with no
+ * resolution threaded) collapses to a neutral "Resolved" receipt.
+ */
+export function resolveApprovalOutcome(
+  status: SuspensionStatus | undefined
+): ApprovalOutcome {
+  switch (status) {
+    case "approved":
+      return { icon: "✓", label: "Approved", toneClass: "fsd-approval-receipt-approved" };
+    case "rejected":
+      return { icon: "✕", label: "Rejected", toneClass: "fsd-approval-receipt-rejected" };
+    case "timed_out":
+      return { icon: "⏲", label: "Timed out", toneClass: "fsd-approval-receipt-neutral" };
+    case "expired":
+      return { icon: "⏲", label: "Expired", toneClass: "fsd-approval-receipt-neutral" };
+    default:
+      return { icon: "•", label: "Resolved", toneClass: "fsd-approval-receipt-neutral" };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Props
@@ -41,12 +166,20 @@ export interface ApprovalRendererProps {
   /** The suspension item to render an approval card for. */
   item: SuspensionItem;
   /**
-   * When true, both buttons are disabled and show a resolved state. Use this
-   * when a `suspension_resume` item has already arrived for this suspension
-   * (e.g. pass `!view.pending` from a `useSuspensions` result) to prevent
+   * When true, the card collapses to a read-only receipt instead of offering
+   * buttons. Pass `!view.pending` from a `useSuspensions` result (or let the
+   * renderer derive it from a matching `suspension_resume` item) to prevent
    * duplicate resume calls.
    */
   isResolved?: boolean;
+  /**
+   * How the suspension was resolved, when known. Drives the receipt label/tone
+   * (e.g. "Approved" vs "Rejected"). The renderer threads this down from the
+   * matching `suspension_resume` item so a reloaded log shows the real outcome;
+   * a card that resolved itself this session already knows the action. Falls
+   * back to a neutral "Resolved" receipt when absent.
+   */
+  resolution?: SuspensionStatus;
   /**
    * Optional override for the approve action. When supplied, replaces the
    * component's internal resumeSuspension call. Only the Approve button is
@@ -68,29 +201,31 @@ export interface ApprovalRendererProps {
 /**
  * Self-contained default approval card for `type === "suspension"` items.
  *
+ * While pending: renders the message, optional data details, and green Approve /
+ * red Reject buttons. Once resolved (via this card or an external
+ * `isResolved`/`resolution`): collapses to a compact receipt.
+ *
  * Reads FlowContext for resume credentials. If FlowContext.flowKind is absent
  * and no onApprove/onReject handlers are supplied, buttons render disabled with
  * a console.warn (cannot resume without flowKind on <FlowProvider>).
- *
- * Pass `isResolved={!view.pending}` from a `useSuspensions` result to disable
- * both buttons once the suspension has been resolved, preventing duplicate
- * resume calls (which would otherwise result in 409 responses).
  */
 export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
-  const { item, isResolved = false, onApprove, onReject } = props;
+  const { item, isResolved = false, resolution, onApprove, onReject } = props;
   const { flowKind, baseUrl, userId } = useFlowContext();
   // Streaming resolver from the nearest SuspensionResolverProvider, if any. When
   // present (and no explicit on{Approve,Reject} override), resolving goes through
   // the session's streaming resume so the continuation renders live.
   const streamingResolve = useSuspensionResolver();
 
-  const [isResolving, setIsResolving] = useState(false);
+  // The action currently in flight, or null when idle. Doubles as the
+  // "is resolving" flag and lets each button label its own progress correctly.
+  const [pendingAction, setPendingAction] = useState<"approve" | "reject" | null>(null);
+  const isResolving = pendingAction !== null;
   const [resolveError, setResolveError] = useState<string | null>(null);
-  // Set once this card successfully resolves its suspension, before the matching
-  // `suspension_resume` item has propagated back through `isResolved`. Prevents a
-  // second click from hitting an already-resolved suspension (a 409). The
-  // stream-derived `isResolved` takes over for the durable/replayed state.
-  const [locallyResolved, setLocallyResolved] = useState(false);
+  // The action this card took, captured on a successful local resolve so the
+  // receipt can show the real outcome before (or without) a `resolution` prop
+  // propagating back. null until this card resolves its own suspension.
+  const [resolvedAction, setResolvedAction] = useState<"approve" | "reject" | null>(null);
 
   const recoveryClient = useMemo(
     () => createRecoveryClient({ baseUrl }),
@@ -102,7 +237,7 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
   // resolver from context enables both buttons just like a flowKind does.
   const hasFlowKind = flowKind !== undefined && flowKind.length > 0;
   const canResolveInternally = hasFlowKind || streamingResolve !== null;
-  const resolved = isResolved || locallyResolved;
+  const resolved = isResolved || resolvedAction !== null;
   const canApprove = !resolved && (onApprove !== undefined || canResolveInternally);
   const canReject = !resolved && (onReject !== undefined || canResolveInternally);
   const canResume = canApprove || canReject;
@@ -110,7 +245,7 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
   // Warn once on mount when the card has no way to call resume. useEffect
   // keeps this out of SSR and prevents a flood on every re-render.
   useEffect(() => {
-    if (!canResume) {
+    if (!canResume && !resolved) {
       console.warn(
         "[ApprovalRenderer] Cannot resume suspension without flowKind on <FlowProvider>. " +
           "Either set flowKind on the provider, or supply onApprove/onReject handlers."
@@ -133,7 +268,7 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
 
       const handler = action === "approve" ? onApprove : onReject;
 
-      setIsResolving(true);
+      setPendingAction(action);
       setResolveError(null);
       try {
         if (handler !== undefined) {
@@ -158,92 +293,90 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
             resumedBy: userId
           });
         }
-        // Success: disable the buttons immediately so a card that lingers before
-        // its `suspension_resume` item arrives can't be resolved twice.
-        setLocallyResolved(true);
+        // Success: collapse to the receipt immediately so a card that lingers
+        // before its `suspension_resume` item arrives can't be resolved twice.
+        setResolvedAction(action);
       } catch (err) {
         setResolveError(err instanceof Error ? err.message : "Failed to resume suspension");
       } finally {
-        setIsResolving(false);
+        setPendingAction(null);
       }
     },
     [isResolving, canApprove, canReject, hasFlowKind, flowKind, item.requestId, item.suspensionId, userId, recoveryClient, streamingResolve, onApprove, onReject]
   );
+
+  // Resolved: collapse to a compact receipt. Prefer the action this card took;
+  // otherwise the threaded `resolution`; otherwise a neutral "Resolved".
+  if (resolved) {
+    const status: SuspensionStatus | undefined =
+      resolvedAction === "approve" ? "approved"
+      : resolvedAction === "reject" ? "rejected"
+      : resolution;
+    const outcome = resolveApprovalOutcome(status);
+    return createElement(
+      "div",
+      {
+        "data-suspension": item.suspensionId,
+        "data-resolved": "true",
+        className: `fsd-approval-receipt ${outcome.toneClass}`
+      },
+      createElement("span", { className: "fsd-approval-receipt-icon", "aria-hidden": true }, outcome.icon),
+      createElement("span", { className: "fsd-approval-receipt-label" }, outcome.label),
+      item.message
+        ? createElement("span", { className: "fsd-approval-receipt-msg" }, item.message)
+        : null
+    );
+  }
 
   const isApproveDisabled = !canApprove || isResolving;
   const isRejectDisabled = !canReject || isResolving;
 
   return createElement(
     "div",
-    // Theme-neutral: transparent background + inherited text, mid-gray border
-    // that reads on both light and dark surfaces. Avoids the white-on-dark
-    // invisible-text trap of hardcoded light colors.
-    { "data-suspension": item.suspensionId, style: { border: "1px solid #9ca3af", borderRadius: 6, padding: 12, margin: "4px 0" } },
+    { "data-suspension": item.suspensionId, className: "fsd-approval-card" },
     // Suspension message
-    createElement(
-      "p",
-      { style: { margin: "0 0 8px 0", fontWeight: 500 } },
-      item.message
-    ),
+    createElement("p", { className: "fsd-approval-msg" }, item.message),
     // Optional data summary
     item.data !== undefined && createElement(
       "details",
-      { style: { marginBottom: 8, fontSize: 12 } },
-      createElement("summary", { style: { cursor: "pointer", color: "inherit", opacity: 0.7 } }, "Details"),
+      { className: "fsd-approval-details" },
+      createElement("summary", { className: "fsd-approval-summary" }, "Details"),
       createElement(
         "pre",
-        { style: { margin: "4px 0", fontSize: 11, whiteSpace: "pre-wrap", color: "inherit", opacity: 0.85 } },
+        { className: "fsd-approval-pre" },
         JSON.stringify(item.data, null, 2)
       )
     ),
     // Error feedback
     resolveError !== null && createElement(
       "p",
-      { style: { color: "red", fontSize: 12, margin: "0 0 8px 0" } },
+      { className: "fsd-approval-error" },
       resolveError
     ),
     // Approve / Reject buttons — each uses its own per-action disabled state so
     // supplying only onApprove doesn't falsely enable the Reject button.
     createElement(
       "div",
-      { style: { display: "flex", gap: 8 } },
+      { className: "fsd-approval-actions" },
       createElement(
         "button",
         {
           type: "button",
+          className: "fsd-approval-btn fsd-approval-approve",
           disabled: isApproveDisabled,
-          onClick: () => { void handleAction("approve"); },
-          style: {
-            padding: "4px 12px",
-            borderRadius: 4,
-            border: "1px solid #9ca3af",
-            background: "transparent",
-            color: "inherit",
-            cursor: isApproveDisabled ? "not-allowed" : "pointer",
-            opacity: isApproveDisabled ? 0.5 : 1,
-            fontSize: 13
-          }
+          onClick: () => { void handleAction("approve"); }
         },
-        "Approve"
+        pendingAction === "approve" ? "Approving…" : "Approve"
       ),
       createElement(
         "button",
         {
           type: "button",
+          className: "fsd-approval-btn fsd-approval-reject",
           disabled: isRejectDisabled,
-          onClick: () => { void handleAction("reject"); },
-          style: {
-            padding: "4px 12px",
-            borderRadius: 4,
-            border: "1px solid #9ca3af",
-            background: "transparent",
-            color: "inherit",
-            cursor: isRejectDisabled ? "not-allowed" : "pointer",
-            opacity: isRejectDisabled ? 0.5 : 1,
-            fontSize: 13
-          }
+          onClick: () => { void handleAction("reject"); }
         },
-        "Reject"
+        pendingAction === "reject" ? "Rejecting…" : "Reject"
       )
     )
   );

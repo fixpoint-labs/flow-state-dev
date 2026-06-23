@@ -13,6 +13,7 @@ import type {
   SuspensionItem,
   SuspensionResumeItem
 } from "@flow-state-dev/core/items";
+import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
 import type { RendererRegistry } from "../registry/block-renderers";
 import { ItemRenderer } from "./ItemRenderer";
@@ -224,17 +225,19 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
     groupToolCalls: toolGroupRenderer !== undefined,
   });
 
-  // Suspensions whose matching `suspension_resume` item has arrived. The inline
-  // ApprovalRenderer fallback can't see the full stream, so we derive the
-  // resolved set here (from the unfiltered items) and pass it down — that's what
-  // lets the default card go read-only instead of offering a duplicate resume.
+  // Suspensions whose matching `suspension_resume` item has arrived, mapped to
+  // how they resolved. The inline ApprovalRenderer fallback can't see the full
+  // stream, so we derive this here (from the unfiltered items) and pass it down —
+  // presence lets the default card collapse to a receipt instead of offering a
+  // duplicate resume, and the `resolution` value gives the receipt its outcome.
   // Match the resume item by its `type` literal rather than the core runtime
   // predicate — this package imports only TYPES from core (see the inlined
   // TRACE_TYPES / CONVERSATIONAL_TYPES sets above).
-  const resolvedSuspensionIds = new Set<string>();
+  const resolvedSuspensions = new Map<string, SuspensionStatus>();
   for (const it of props.items) {
     if (it.type === "suspension_resume") {
-      resolvedSuspensionIds.add((it as SuspensionResumeItem).suspensionId);
+      const resume = it as SuspensionResumeItem;
+      resolvedSuspensions.set(resume.suspensionId, resume.resolution);
     }
   }
 
@@ -249,10 +252,12 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
     }
     const { item } = segment;
     if (item.type === "suspension") {
+      const suspensionId = (item as SuspensionItem).suspensionId;
       return createElement(ItemRenderer, {
         item,
         key: item.id,
-        isResolved: resolvedSuspensionIds.has((item as SuspensionItem).suspensionId)
+        isResolved: resolvedSuspensions.has(suspensionId),
+        resolution: resolvedSuspensions.get(suspensionId)
       });
     }
     return createElement(ItemRenderer, { item, key: item.id });

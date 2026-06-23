@@ -84,7 +84,9 @@ export {
 
 export {
   ApprovalRenderer,
-  type ApprovalRendererProps
+  resolveApprovalOutcome,
+  type ApprovalRendererProps,
+  type ApprovalOutcome
 } from "./components/ApprovalRenderer";
 
 export {

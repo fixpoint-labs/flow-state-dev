@@ -23,6 +23,7 @@ import type {
   StatusItem,
   SuspensionItem
 } from "@flow-state-dev/core/items";
+import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
 import { resolveRenderer } from "../registry/block-renderers";
 import { ApprovalRenderer } from "./ApprovalRenderer";
@@ -40,10 +41,16 @@ export type ItemRendererProps = {
    * For a `suspension` item rendered inline via the built-in ApprovalRenderer
    * fallback: whether a matching `suspension_resume` item has already arrived.
    * ItemsRenderer computes this from the full item list; when true the default
-   * card renders read-only. Ignored for non-suspension items and for custom or
-   * suppressed renderers.
+   * card collapses to a receipt. Ignored for non-suspension items and for custom
+   * or suppressed renderers.
    */
   isResolved?: boolean;
+  /**
+   * For a resolved `suspension` item: how it was resolved (from the matching
+   * `suspension_resume` item), so the collapsed receipt shows the real outcome.
+   * Ignored for non-suspension items.
+   */
+  resolution?: SuspensionStatus;
 };
 
 // ---------------------------------------------------------------------------
@@ -165,14 +172,14 @@ const BUILT_IN_FALLBACKS: Record<string, ((item: OutputItem) => ReactNode) | und
  * fallbacks, then a JSON dev fallback.
  */
 export function ItemRenderer(props: ItemRendererProps): ReactNode {
-  const { item, isResolved } = props;
+  const { item, isResolved, resolution } = props;
 
   // Non-renderable types: bail early (no hooks called on this path).
   if (NON_RENDERABLE_TYPES.has(item.type)) {
     return null;
   }
 
-  return renderItem(item, isResolved);
+  return renderItem(item, isResolved, resolution);
 }
 
 /**
@@ -180,7 +187,11 @@ export function ItemRenderer(props: ItemRendererProps): ReactNode {
  * doesn't violate React's rules of hooks (hooks must be called
  * unconditionally within a component).
  */
-function renderItem(item: OutputItem, isResolved?: boolean): ReactNode {
+function renderItem(
+  item: OutputItem,
+  isResolved?: boolean,
+  resolution?: SuspensionStatus
+): ReactNode {
   const { renderers } = useFlowContext();
 
   const componentKey =
@@ -218,7 +229,7 @@ function renderItem(item: OutputItem, isResolved?: boolean): ReactNode {
   // stream-derived `isResolved` flag, going read-only once its
   // `suspension_resume` item has arrived (prevents a duplicate-resume 409).
   if (item.type === "suspension") {
-    return createElement(ApprovalRenderer, { item: item as SuspensionItem, isResolved });
+    return createElement(ApprovalRenderer, { item: item as SuspensionItem, isResolved, resolution });
   }
 
   // 2b. Built-in fallback (message, status, error, etc.).

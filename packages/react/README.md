@@ -231,6 +231,8 @@ import { ApprovalRenderer } from "@flow-state-dev/react";
 />
 ```
 
+While pending, the card shows the message and green **Approve** / red **Reject** buttons (theme-aware via an injected scoped stylesheet, so it reads on both light and dark surfaces). Once resolved — by this card, or by a matching `suspension_resume` item arriving in the stream — it collapses to a compact one-line receipt (e.g. `✓ Approved`) instead of lingering as a disabled card. `ItemRenderer`/`ItemsRenderer` thread the resolution outcome down so a reloaded log shows the real result; pass `resolution` yourself if you render the card directly.
+
 Suppress inline rendering and use your own layout with `renderers={{ suspension: false }}` on `<FlowProvider>`.
 
 ### `<SuspensionResolverProvider>`
