@@ -1,0 +1,4 @@
+{
+  "request": "Roll back checkout service to v8.2.1",
+  "note": "approved after incident review (INC-4420)"
+}
