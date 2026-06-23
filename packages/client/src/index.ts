@@ -30,6 +30,18 @@ export {
 } from "./stream-client/createSSEClient";
 
 export {
+  createRequestStreamStore,
+  compareItemOrder,
+  type RequestStreamStore
+} from "./stream-client/request-stream-store";
+
+export {
+  bindStoreToCallbacks,
+  type BindStoreToCallbacksOptions,
+  type RequestStreamChangeKind
+} from "./stream-client/bind-store-to-callbacks";
+
+export {
   createResourceClient,
   type CreateResourceClientOptions,
   type ResourceClient,

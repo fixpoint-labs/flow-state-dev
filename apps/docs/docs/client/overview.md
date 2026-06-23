@@ -73,6 +73,8 @@ const stream = createSSEClient({
 
 The client handles reconnection, resume from cursor, and event assembly. Pass `Last-Event-ID` or `starting_after` in the URL to resume after disconnect. The server replays missed events, then continues live.
 
+If you'd rather have those events folded into a ready-to-render item list than handle each callback yourself, pass `createRequestStreamStore()` through `bindStoreToCallbacks` — the same accumulator the React hooks use, available to any non-React consumer. See [Stream state store](../api/client.md#createrequeststreamstore-and-bindstoretocallbacksstore-options) in the API reference. On React you don't need it; `useSession` and `useRequestStream` wrap it for you.
+
 ## Session management
 
 ```ts

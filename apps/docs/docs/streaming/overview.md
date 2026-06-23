@@ -16,6 +16,8 @@ Items serve three purposes:
 
 Voice I/O streams chunked audio over the same SSE channel — see [Voice](../advanced/voice).
 
+On the client, these events are folded back into a live item list. React apps get that through `useSession` / `useRequestStream`; a custom or non-React consumer can use the same accumulator directly via [`createRequestStreamStore`](../api/client.md#createrequeststreamstore-and-bindstoretocallbacksstore-options).
+
 ## The items you'll use most
 
 Most of the time you'll work with three emit methods. Generators call these automatically for their own output, but you can also call them explicitly from any block:
