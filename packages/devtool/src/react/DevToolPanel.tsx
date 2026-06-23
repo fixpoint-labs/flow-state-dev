@@ -129,7 +129,6 @@ function PanelContent({ className }: { className?: string }) {
   // Reset transient state when switching sessions.
   useEffect(() => {
     setActiveRequestId(null);
-    setResumeStream(null);
     clearReplay();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveSessionId]);
@@ -140,11 +139,6 @@ function PanelContent({ className }: { className?: string }) {
   // original id, so without this the connect effect (keyed on the id) wouldn't
   // re-run and the resumed run's progress would only show on a page reload.
   const [streamReconnectToken, setStreamReconnectToken] = useState(0);
-  // Continuation SSE response from a streaming resume (FIX-276). When set, the
-  // stream consumes this body inline instead of opening a GET — the only way to
-  // follow the resumed run live on serverless. One-shot: cleared once a terminal
-  // stream status lands (see the completed/failed effect below).
-  const [resumeStream, setResumeStream] = useState<Response | null>(null);
   const handleSessionMetadataChanged = useCallback(() => {
     setSessionRefreshKey((k) => k + 1);
     setStateRefreshKey((k) => k + 1);
@@ -157,7 +151,6 @@ function PanelContent({ className }: { className?: string }) {
     lastEventId: replayState.lastEventId,
     enabled: !!streamRequestId,
     reconnectToken: streamReconnectToken,
-    inlineResponse: resumeStream,
     onSessionMetadataChanged: handleSessionMetadataChanged,
   });
 
@@ -208,9 +201,6 @@ function PanelContent({ className }: { className?: string }) {
       // unlocks the Live toggle and lets live mode pick up any external
       // in-progress request that's still running.
       setDispatchedRequestId(null);
-      // The streaming-resume response (if any) is now spent — clear it so a
-      // later reconnect for this id re-attaches via GET (FIX-276).
-      setResumeStream(null);
     }
   }, [streamStatus, refreshRequests, isReplaying, clearReplay]);
 
@@ -322,17 +312,14 @@ function PanelContent({ className }: { className?: string }) {
     [activeFlowKind, effectiveSessionId, sendAction],
   );
 
-  // After a suspension is resolved, follow the continued (same-id) request to
-  // terminal. A streaming resume hands back the continuation's SSE response,
-  // which we consume inline — the only path that reaches the in-flight
-  // continuation on serverless (FIX-276). When the resume didn't stream (202
-  // fallback, `stream === null`) we re-attach via GET, which works wherever the
-  // server keeps the wire open across the resume (FIX-811).
+  // After a suspension is resolved, re-attach the live stream to the continued
+  // (same-id) request. The request stream follows the continuation through the
+  // resume (the server keeps the wire open while the continuation lease is held,
+  // FIX-811), so the post-resume output renders without a manual refresh.
   const handleResumed = useCallback(
-    (requestId: string, stream: Response | null) => {
+    (requestId: string) => {
       setActiveRequestId(requestId);
       setDispatchedRequestId(requestId);
-      setResumeStream(stream);
       // Force a reconnect: the id is unchanged (same-request continuation), so
       // the stream's connect effect won't re-run on the id alone.
       setStreamReconnectToken((t) => t + 1);

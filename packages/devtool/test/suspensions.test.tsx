@@ -10,11 +10,11 @@ import React from "react";
 import type { SuspensionRecord } from "@flow-state-dev/client";
 
 const listSuspensions = vi.fn();
-const resumeSuspensionStream = vi.fn();
+const resumeSuspension = vi.fn();
 
 const devToolState = {
   sessionClient: { debug: { listSuspensions } },
-  recoveryClient: { resumeSuspensionStream },
+  recoveryClient: { resumeSuspension },
 };
 
 vi.mock("../src/react/context/devtool-context", () => ({
@@ -46,11 +46,9 @@ function pendingRecord(overrides: Partial<SuspensionRecord> = {}): SuspensionRec
 describe("SuspensionsView", () => {
   beforeEach(() => {
     listSuspensions.mockReset().mockResolvedValue({ suspensions: [] });
-    // Streaming resume returns a Response; a 202-style (non-SSE) response is the
-    // simplest stand-in — the hook drains its body and reports stream: null.
-    resumeSuspensionStream.mockReset().mockResolvedValue({
-      headers: { get: () => "application/json" },
-      body: null,
+    resumeSuspension.mockReset().mockResolvedValue({
+      requestId: "req_2",
+      originalRequestId: "req_1",
     });
   });
 
@@ -80,7 +78,7 @@ describe("SuspensionsView", () => {
     fireEvent.click(approve);
 
     await waitFor(() => {
-      expect(resumeSuspensionStream).toHaveBeenCalledWith("chat", "req_1", {
+      expect(resumeSuspension).toHaveBeenCalledWith("chat", "req_1", {
         suspensionId: "sus_1",
         action: "approve",
         data: undefined,

@@ -1,7 +1,6 @@
 ---
 "@flow-state-dev/client": minor
 "@flow-state-dev/react": minor
-"@flow-state-dev/devtool": patch
 ---
 
 Stream the resume so a resolved suspension renders live, without a page refresh.
@@ -24,9 +23,6 @@ The resume now streams, mirroring `sendAction`'s inline-streaming path:
   bridges that streaming resolver to the inline default `<ApprovalRenderer>`, so
   the standard chat view updates live with one provider line (the card falls back
   to a non-streaming resume when no provider is mounted).
-- `@flow-state-dev/devtool`: the Suspensions tab consumes the streaming resume's
-  SSE response inline, so the resumed run follows to terminal live on serverless
-  instead of stalling until a refresh.
 
 `useSuspensions().approve`/`reject` now resolve to `void` (the continuation
 streams in via `session.items`) rather than returning the resume result.

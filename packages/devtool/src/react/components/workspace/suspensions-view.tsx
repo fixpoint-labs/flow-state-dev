@@ -25,12 +25,11 @@ type Props = {
   sessionId: string | null;
   /**
    * Called after a suspension is resolved (approve/reject), with the request id
-   * that just resumed and the continuation's SSE response (or `null` for a 202
-   * fallback). The panel consumes the stream inline so the resumed run's
-   * progress to terminal shows live, without a manual refresh — on serverless
-   * this is the only path that reaches the in-flight continuation (FIX-276).
+   * that just resumed. The panel uses it to re-attach its live stream to the
+   * continued (same-id) request so its progress to terminal shows without a
+   * manual page refresh (FIX-811).
    */
-  onResumed?: (requestId: string, stream: Response | null) => void;
+  onResumed?: (requestId: string) => void;
 };
 
 const STATUS_FILTERS: Array<{ value: SuspensionStatus | "all"; label: string }> = [
@@ -194,7 +193,7 @@ function SuspensionDetail({
 }: {
   record: SuspensionRecord;
   onResolved: () => Promise<void>;
-  onResumed?: (requestId: string, stream: Response | null) => void;
+  onResumed?: (requestId: string) => void;
 }) {
   const { resume, isResuming, error } = useResumeSuspension();
   const [dataText, setDataText] = useState("");
@@ -215,7 +214,7 @@ function SuspensionDetail({
       }
     }
     try {
-      const result = await resume({
+      await resume({
         flowKind: record.flowKind,
         requestId: record.requestId,
         suspensionId: record.suspensionId,
@@ -224,11 +223,10 @@ function SuspensionDetail({
       });
       await onResolved();
       // Same-request continuation (FIX-811): the resolved request now resumes
-      // under its own id. Hand the panel the continuation's SSE stream so it
-      // consumes the resumed run inline and follows it to terminal live —
-      // otherwise (especially on serverless) its status only updates on a
-      // manual refresh (FIX-276).
-      onResumed?.(result.requestId, result.stream);
+      // under its own id. Hand it to the panel so it re-attaches its live stream
+      // and follows the continuation to terminal — otherwise the request's
+      // status only updates on a manual refresh.
+      onResumed?.(record.requestId);
     } catch {
       // `error` from the hook surfaces the failure inline; swallow here so a
       // rejected resume (404/409/422) doesn't bubble as an unhandled rejection.
