@@ -8,6 +8,10 @@ See [Inbound Transports](./inbound-transports.md) for the contract. The runtime
 below the adapter is identical to HTTP: `host.dispatch` runs the action, and
 `RequestRecord.source = "webhook"` carries provenance through to DevTool.
 
+A webhook binding carries its handler inline (the shared `ActionCore`), not a
+named entry in `flow.actions`. As of FIX-838 the chat and scheduled transports
+follow this same inline-core binding model — see [Action forms](./action-forms.md).
+
 The defining trait is the **division of labour**. A flow declares routing only
 — which event runs which action — and carries no secrets. The host supplies
 provider mechanics — signature verification, payload parsing, event-type and
@@ -225,6 +229,8 @@ Stated honestly, because they're real:
 
 ## Related contracts
 
+- [Action forms](./action-forms.md) — the shared `ActionCore` model webhook,
+  chat, and scheduled bindings all carry inline.
 - [Inbound Transports](./inbound-transports.md) — the adapter contract.
 - [Chat Transport](./chat-transport.md) — sibling adapter; contrast the
   mount-time index vs. this adapter's per-request URL lookup.
