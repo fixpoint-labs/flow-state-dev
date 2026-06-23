@@ -27,6 +27,7 @@ export { asRuntime } from "./block";
 
 export type {
   ActionConfig,
+  ActionCore,
   ActionMcpConfig,
   CostEstimator,
   ClientDataComputeFn,
@@ -79,6 +80,15 @@ export type { TTSConfig, VoiceConfig } from "./speech";
 export type { ChatConfig, ChatEventBinding } from "./chat";
 
 export { validateChatConfig } from "./chat";
+
+export type {
+  WebhookConfig,
+  WebhookEventBinding,
+  WebhookInboundEvent,
+  WebhookSubscriptionConfig
+} from "./webhooks";
+
+export { defineWebhookBinding, validateWebhookConfig } from "./webhooks";
 
 export type {
   CompositeVoiceProviderConfig,

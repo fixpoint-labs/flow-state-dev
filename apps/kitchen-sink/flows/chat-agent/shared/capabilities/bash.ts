@@ -9,7 +9,9 @@
  *
  * The sandbox provider is selected per environment by `selectBashProvider`
  * so the same code path works in local dev, on Vercel, and in
- * preview/sandbox environments without a real shell.
+ * preview/sandbox environments without a real shell. `bashCap` (the bash
+ * capability built from `selectBashProvider()`) lives in
+ * `shared/capabilities/features.ts` alongside the other tool wiring.
  */
 import { Sandbox as VercelSandbox } from "@vercel/sandbox";
 import { createBashBlocks } from "@flow-state-dev/tools/bash";

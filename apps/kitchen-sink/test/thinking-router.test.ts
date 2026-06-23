@@ -8,8 +8,8 @@ import {
 import {
   keywordHandler,
   autoClassifyStyle,
-  thinkingStyleSchema,
-} from "../flows/chat-agent/blocks";
+} from "../flows/chat-agent/run/thinking-styles/classify";
+import { thinkingStyleSchema } from "../flows/chat-agent/shared/schemas";
 
 // Minimal flow instance for thinking router tests.
 const testFlow = defineFlow({

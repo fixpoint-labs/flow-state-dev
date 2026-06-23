@@ -60,6 +60,12 @@ const myGenerator = generator({
 });
 ```
 
+**Repair config (`repair`)** — recovers structured output that fails `outputSchema`:
+
+- `mode?: "auto" | "rescue" | "fail"` — `auto` (default) repairs; `fail` throws on the first mismatch; `rescue` defers to a `.rescue()` handler.
+- `maxAttempts?: number` — deterministic repair attempts (JSON parse / `jsonrepair` / unwrap) before escalating.
+- `coerce?: boolean | { model }` — LLM coercion: when deterministic repair can't recover the output (e.g. the model returned the right data under the wrong field names), one model call reshapes it to the schema. On by default in `auto` mode, using `intent/utility`; pass `false` to disable or `{ model }` to override the coercion model. Runs only on the path that would otherwise throw.
+
 **Identity config:**
 
 - `itemVisibility?: { client: boolean; history: boolean }` — Declares the generator's visibility. Governs auto-emission of conversational items (messages, reasoning, tool outputs). `{ client: true, history: true }` = user-facing (client + history). `{ client: true, history: false }` = task-executor (client, not history). `{ client: false, history: false }` = observability-only (neither). When **unset**, the generator performs no auto-emission — only its typed `block_trace` flows via graph edges. No position-inferred default; every generator declares.

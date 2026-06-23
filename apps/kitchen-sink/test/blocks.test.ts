@@ -4,9 +4,9 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores, executeBlock } from "@flow-state-dev/server";
 import {
   readArtifact,
-  updateArtifact
-} from "../flows/chat-agent/blocks";
-import { artifactsCollection } from "../flows/chat-agent/blocks/artifacts";
+  updateArtifact,
+  artifactsCollection
+} from "../flows/chat-agent/shared/artifacts";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 
 type ArtifactState = { title: string; summary: string; updatedAt: number };

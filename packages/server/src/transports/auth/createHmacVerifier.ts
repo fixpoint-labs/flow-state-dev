@@ -20,7 +20,8 @@
  * Custom formats are supported by passing a `parseSignature` function that
  * extracts the timestamp (optional) and signature(s) from the header.
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
+import { constantTimeStringEqual } from "./constant-time";
 
 export type HmacAlgorithm = "sha256" | "sha1" | "sha512";
 
@@ -189,23 +190,4 @@ function buildSignedPayload(rawBody: Uint8Array, timestamp: number | undefined):
   out.set(prefix, 0);
   out.set(rawBody, prefix.length);
   return out;
-}
-
-/**
- * Constant-time string comparison. We pad both inputs to a common length so
- * the timing-safe comparison itself is constant-time even when the inputs
- * differ in length, then check the original lengths separately. A final
- * `&` (not `&&`) on the result avoids an early-return shortcut.
- */
-function constantTimeStringEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a, "utf-8");
-  const bufB = Buffer.from(b, "utf-8");
-  const length = Math.max(bufA.length, bufB.length);
-  const padA = Buffer.alloc(length);
-  const padB = Buffer.alloc(length);
-  bufA.copy(padA);
-  bufB.copy(padB);
-  const sameContent = timingSafeEqual(padA, padB);
-  const sameLength = bufA.length === bufB.length;
-  return Boolean(Number(sameContent) & Number(sameLength));
 }
