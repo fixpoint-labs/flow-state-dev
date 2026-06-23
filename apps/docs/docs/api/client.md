@@ -117,7 +117,18 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
   resumedBy: "user_xyz",        // optional; stored on the audit record
 });
 // result.requestId — the request id that will continue (same as the input requestId)
+
+// Stream the resume: get the continuation's SSE stream from the POST response.
+const response = await recovery.resumeSuspensionStream("chat", "req_1", {
+  suspensionId: "susp_abc",
+  action: "approve",
+});
+if ((response.headers.get("content-type") ?? "").includes("text/event-stream")) {
+  // Consume response.body as the continuation's event stream (see createSSEClientFromResponse).
+}
 ```
+
+`resumeSuspensionStream` POSTs with `Accept: text/event-stream` and returns the raw `Response` whose body is the resumed run's SSE stream — the continuation runs on the same instance that handled the POST, so the resuming client follows it live even on serverless (no shared pub/sub). Falls back to a `202` JSON response when the server doesn't stream; branch on the `content-type` header. The React layer (`useSession().resumeSuspension`, `useSuspensions`) wires this for you.
 
 `retry` returns 409 from the server unless the original request's status is `interrupted` or `failed`.
 

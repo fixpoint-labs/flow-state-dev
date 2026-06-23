@@ -6,7 +6,7 @@
  * are exercised directly as pure functions:
  *  - `deriveSuspensions` — the `useMemo` derivation over `session.items`.
  *  - `resolveSuspension` — the body the `approve`/`reject` callbacks wrap,
- *    covering the recovery-client call shape, in-flight tracking, and the
+ *    covering the streaming-resolve call shape, in-flight tracking, and the
  *    capture-then-rethrow error contract.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -15,7 +15,6 @@ import type {
   SuspensionItem,
   SuspensionResumeItem
 } from "@flow-state-dev/core/items";
-import type { ResumeSuspensionResult } from "@flow-state-dev/client";
 import { deriveSuspensions, resolveSuspension } from "../src/hooks/useSuspensions";
 
 const provenance: ItemProvenance = {
@@ -145,13 +144,8 @@ describe("deriveSuspensions", () => {
 });
 
 describe("resolveSuspension", () => {
-  const okResult: ResumeSuspensionResult = {
-    requestId: "req_2",
-    originalRequestId: "req_1"
-  };
-
   function harness() {
-    const resumeSuspension = vi.fn().mockResolvedValue(okResult);
+    const resolve = vi.fn().mockResolvedValue(undefined);
     const inFlight: string[] = [];
     const markStart = vi.fn((id: string) => inFlight.push(id));
     const markEnd = vi.fn((id: string) => {
@@ -159,16 +153,15 @@ describe("resolveSuspension", () => {
       if (i >= 0) inFlight.splice(i, 1);
     });
     const setError = vi.fn();
-    return { resumeSuspension, inFlight, markStart, markEnd, setError };
+    return { resolve, inFlight, markStart, markEnd, setError };
   }
 
-  it("calls resumeSuspension with (flowKind, item.requestId, body) for approve", async () => {
+  it("streams the resume with { suspensionId, requestId, action, data } for approve", async () => {
     const h = harness();
     const item = suspension({ requestId: "req_99" });
 
-    const out = await resolveSuspension({
-      recoveryClient: { resumeSuspension: h.resumeSuspension },
-      flowKind: "chat",
+    await resolveSuspension({
+      resolve: h.resolve,
       item,
       action: "approve",
       data: { note: "looks good" },
@@ -178,9 +171,9 @@ describe("resolveSuspension", () => {
       setError: h.setError
     });
 
-    expect(out).toBe(okResult);
-    expect(h.resumeSuspension).toHaveBeenCalledWith("chat", "req_99", {
+    expect(h.resolve).toHaveBeenCalledWith({
       suspensionId: "sus_1",
+      requestId: "req_99",
       action: "approve",
       data: { note: "looks good" },
       resumedBy: "op_1"
@@ -192,8 +185,7 @@ describe("resolveSuspension", () => {
     const h = harness();
 
     await resolveSuspension({
-      recoveryClient: { resumeSuspension: h.resumeSuspension },
-      flowKind: "chat",
+      resolve: h.resolve,
       item: suspension(),
       action: "reject",
       markStart: h.markStart,
@@ -201,25 +193,22 @@ describe("resolveSuspension", () => {
       setError: h.setError
     });
 
-    expect(h.resumeSuspension).toHaveBeenCalledWith(
-      "chat",
-      "req_1",
-      expect.objectContaining({ action: "reject" })
+    expect(h.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: "req_1", action: "reject" })
     );
   });
 
   it("marks in-flight during the await and clears it after success", async () => {
     const h = harness();
-    let resolveCall: (v: ResumeSuspensionResult) => void = () => {};
-    h.resumeSuspension.mockReturnValue(
-      new Promise<ResumeSuspensionResult>((res) => {
+    let resolveCall: () => void = () => {};
+    h.resolve.mockReturnValue(
+      new Promise<void>((res) => {
         resolveCall = res;
       })
     );
 
     const promise = resolveSuspension({
-      recoveryClient: { resumeSuspension: h.resumeSuspension },
-      flowKind: "chat",
+      resolve: h.resolve,
       item: suspension(),
       action: "approve",
       markStart: h.markStart,
@@ -228,7 +217,7 @@ describe("resolveSuspension", () => {
     });
 
     expect(h.inFlight).toEqual(["sus_1"]);
-    resolveCall(okResult);
+    resolveCall();
     await promise;
     expect(h.inFlight).toEqual([]);
   });
@@ -237,12 +226,11 @@ describe("resolveSuspension", () => {
     const h = harness();
     const { ClientHttpError } = await import("@flow-state-dev/client");
     const err = new ClientHttpError("forbidden", { status: 403, body: {} });
-    h.resumeSuspension.mockRejectedValue(err);
+    h.resolve.mockRejectedValue(err);
 
     await expect(
       resolveSuspension({
-        recoveryClient: { resumeSuspension: h.resumeSuspension },
-        flowKind: "chat",
+        resolve: h.resolve,
         item: suspension(),
         action: "approve",
         markStart: h.markStart,
@@ -257,11 +245,10 @@ describe("resolveSuspension", () => {
 
   it("rethrows the same normalized Error it stores for a non-Error throw", async () => {
     const h = harness();
-    h.resumeSuspension.mockRejectedValue("boom"); // non-Error rejection
+    h.resolve.mockRejectedValue("boom"); // non-Error rejection
 
     const rejection = await resolveSuspension({
-      recoveryClient: { resumeSuspension: h.resumeSuspension },
-      flowKind: "chat",
+      resolve: h.resolve,
       item: suspension(),
       action: "approve",
       markStart: h.markStart,

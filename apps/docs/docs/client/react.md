@@ -278,7 +278,9 @@ See [Resource Manifest](/docs/resources/manifest) for the full reference.
 
 When a durable flow calls `ctx.suspend()`, execution pauses at that step and a `suspension` item arrives on the session's SSE stream. The flow waits for an external actor to resolve it before continuing.
 
-`useSuspensions` derives pending and resolved suspensions from `session.items`. It pairs each `suspension` item with its later `suspension_resume` item by `suspensionId` and exposes `approve` and `reject` callbacks that post to the resume endpoint.
+`useSuspensions` derives pending and resolved suspensions from `session.items`. It pairs each `suspension` item with its later `suspension_resume` item by `suspensionId` and exposes `approve` and `reject` callbacks.
+
+`approve` and `reject` stream the resume: the resumed continuation streams straight back into `session.items`, so the post-resume output renders live without a page refresh. This matters most on serverless, where the continuation runs in a different invocation than any open stream — streaming the resume keeps it on the same request the client is watching. The callbacks resolve to `void` once the resume is dispatched; the result shows up as new items.
 
 ### useSuspensions
 
@@ -325,6 +327,20 @@ By default `ItemRenderer` renders a built-in approval card (`ApprovalRenderer`) 
 ```
 
 When a suspension item reaches `ItemRenderer`, the card shows `item.message`, Approve and Reject buttons, and optional `item.data` in a collapsible details section.
+
+With just `flowKind` set, the inline card resolves with a non-streaming resume — it works, but the continuation's output only shows after the session refetches. To make the inline card stream like `useSuspensions` does, wrap the item list in `<SuspensionResolverProvider>` and hand it the session's `resumeSuspension`:
+
+```tsx
+import { SuspensionResolverProvider } from "@flow-state-dev/react";
+
+<FlowProvider flowKind="my-flow" baseUrl="/api/flows">
+  <SuspensionResolverProvider resolve={session.resumeSuspension}>
+    <ItemsRenderer items={session.items} />
+  </SuspensionResolverProvider>
+</FlowProvider>
+```
+
+Now approving or rejecting from the inline card streams the continuation back into `session.items` — the chat view updates in place. `session.resumeSuspension` is the same streaming resume `useSuspensions` calls under the hood, so the two paths behave identically.
 
 ### Custom approval UI
 

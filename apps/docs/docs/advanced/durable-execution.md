@@ -99,7 +99,7 @@ When `ctx.suspend()` is called, the sequencer catches the resulting `SuspensionE
 
 The original SSE connection closes cleanly. Nothing blocks a thread.
 
-On the React side, `useSuspensions(session)` derives pending and resolved suspensions from the item stream and exposes `approve` and `reject` callbacks. `<ApprovalRenderer>` is the built-in inline card. See [Suspensions and approvals](/docs/client/react#suspensions-and-approvals) for how to wire them.
+On the React side, `useSuspensions(session)` derives pending and resolved suspensions from the item stream and exposes `approve` and `reject` callbacks that stream the resumed continuation back into `session.items` — so the resolution renders live, no refresh. `<ApprovalRenderer>` is the built-in inline card. See [Suspensions and approvals](/docs/client/react#suspensions-and-approvals) for how to wire them.
 
 ### SuspendOptions
 

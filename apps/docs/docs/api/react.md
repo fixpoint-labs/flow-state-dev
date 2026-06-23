@@ -80,10 +80,17 @@ session.getOwnedItems(containerBlockInstanceId);
 await session.sendAction("chat", { message: "Hello!" });
 await session.abortRequest();        // signal in-flight request to stop
 await session.resumeLatestRequest(); // re-dispatch latest if interrupted/failed
+await session.resumeSuspension({     // approve/reject a suspension, stream the continuation
+  suspensionId: "susp_1",
+  requestId: "req_1",
+  action: "approve",
+});
 session.refresh();
 ```
 
 `resumeLatestRequest` is a no-op unless `latestRequest.status` is `interrupted` or `failed`. The server creates a new request that re-runs the original action with the same input, and the hook auto-attaches to its stream.
+
+`resumeSuspension` resolves a pending durable-execution suspension and streams the resumed continuation back into `session.items`, so the resolution renders live (no refresh) even on serverless. `requestId` is the suspended request's id (carried on the suspension item); the continuation re-enters that same id. This is the streaming resume `useSuspensions` and `<SuspensionResolverProvider>` build on.
 
 ### `useClientData(session, options)`
 
@@ -212,18 +219,30 @@ type RendererRegistry = {
 
 Pass `false` for any slot to suppress its built-in fallback renderer.
 
+### `SuspensionResolverProvider`
+
+Bridges a session's streaming resume to the inline default `<ApprovalRenderer>`. Wrap the subtree that renders `session.items` and pass `session.resumeSuspension`; the inline card then streams the continuation into the chat view instead of doing a non-streaming resume. Without it, the card still resolves — just without live output until the session refetches.
+
+```tsx
+import { SuspensionResolverProvider } from "@flow-state-dev/react";
+
+<SuspensionResolverProvider resolve={session.resumeSuspension}>
+  <ItemsRenderer items={session.items} />
+</SuspensionResolverProvider>
+```
+
 ## Suspensions
 
 ### `useSuspensions(session, options?)`
 
-Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` item by `suspensionId`.
+Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` item by `suspensionId`. `approve`/`reject` stream the resumed continuation back into `session.items` (via `session.resumeSuspension`), so the resolution renders live.
 
 ```ts
 const {
   suspensions,  // SuspensionView[] — all suspensions matching options
   pending,      // SuspensionView[] — subset where pending === true
-  approve,      // (suspensionId: string, data?: unknown) => Promise<ResumeSuspensionResult>
-  reject,       // (suspensionId: string, data?: unknown) => Promise<ResumeSuspensionResult>
+  approve,      // (suspensionId: string, data?: unknown) => Promise<void>
+  reject,       // (suspensionId: string, data?: unknown) => Promise<void>
   error,        // Error | null — most recent failed approve/reject call
 } = useSuspensions(session, {
   requestId: "req_abc",          // optional: restrict to one request

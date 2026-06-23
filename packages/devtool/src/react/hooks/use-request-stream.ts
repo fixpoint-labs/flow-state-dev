@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStatus, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { ITEM_UPDATE_INVARIANT_KEYS } from "@flow-state-dev/core/items";
-import type { RequestStreamHandle } from "@flow-state-dev/client";
-import { connectRequestStream } from "../lib/client";
+import type { RequestSSECallbacks, RequestStreamHandle } from "@flow-state-dev/client";
+import { connectRequestStream, consumeRequestStreamResponse } from "../lib/client";
 import { useDevTool } from "../context/devtool-context";
 
 export type StreamStatus = "idle" | "connecting" | "streaming" | "completed" | "failed" | "disconnected";
@@ -59,6 +59,16 @@ export type UseRequestStreamOptions = {
    * re-attaches and its progress to terminal only shows on a full page reload.
    */
   reconnectToken?: number;
+  /**
+   * A pre-fetched SSE response to consume as the stream instead of opening a
+   * GET — set after a streaming resume (the resume POST returns the
+   * continuation's SSE body). One-shot: consumed once when present, then the
+   * stream re-attaches via GET on later reconnects. On serverless this is the
+   * only way to follow the resumed run live (a GET would hit a cold instance
+   * with no in-flight stream). Bump `reconnectToken` alongside it so the
+   * connect effect re-runs for the same request id.
+   */
+  inlineResponse?: Response | null;
   onSessionMetadataChanged?: () => void;
 };
 
@@ -71,8 +81,13 @@ export type UseRequestStreamResult = {
 };
 
 export function useRequestStream(options: UseRequestStreamOptions): UseRequestStreamResult {
-  const { flowKind, requestId, startingAfter, lastEventId, enabled = true, reconnectToken, onSessionMetadataChanged } = options;
+  const { flowKind, requestId, startingAfter, lastEventId, enabled = true, reconnectToken, inlineResponse, onSessionMetadataChanged } = options;
   const { baseUrl } = useDevTool();
+  // Identity of the last inline response we already consumed. An SSE response
+  // body is one-shot — if the connect effect re-runs (e.g. startingAfter
+  // changes) while the same response is still referenced, we must NOT try to
+  // read the spent body again; fall back to GET instead.
+  const consumedResponseRef = useRef<Response | null>(null);
   const [streamState, setStreamState] = useState<StreamState | null>(null);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -139,9 +154,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
 
     const itemIdSet = new Set<string>();
 
-    const handle = connectRequestStream(flowKind, requestId, {
-      startingAfter,
-      lastEventId,
+    const callbacks: RequestSSECallbacks = {
       onRequestCreated: (event) => {
         state.status = "in_progress";
         state.lastSequenceNumber = event.sequence_number;
@@ -275,7 +288,21 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         setError(err.message);
         setStreamStatus("disconnected");
       },
-    }, baseUrl);
+    };
+
+    // Consume the streaming-resume response body directly when one is provided
+    // and not already spent (FIX-276); otherwise open a GET stream.
+    const useInline =
+      inlineResponse != null && inlineResponse !== consumedResponseRef.current;
+    const handle = useInline
+      ? (consumedResponseRef.current = inlineResponse,
+         consumeRequestStreamResponse(inlineResponse, callbacks))
+      : connectRequestStream(
+          flowKind,
+          requestId,
+          { startingAfter, lastEventId, ...callbacks },
+          baseUrl,
+        );
 
     handleRef.current = handle;
 
@@ -289,7 +316,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         rafRef.current = null;
       }
     };
-  }, [flowKind, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, close, scheduleFlush, flushNow, onSessionMetadataChanged]);
+  }, [flowKind, requestId, startingAfter, lastEventId, enabled, reconnectToken, inlineResponse, baseUrl, close, scheduleFlush, flushNow, onSessionMetadataChanged]);
 
   const items = useMemo(
     () => streamState

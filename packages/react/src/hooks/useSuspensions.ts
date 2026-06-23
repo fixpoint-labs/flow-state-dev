@@ -6,14 +6,13 @@
  * for human approval). The pause emits a `suspension` item; the eventual
  * resolution emits a matching `suspension_resume` item into the same stream.
  * This hook folds both halves into a stable view and exposes `approve`/`reject`
- * callbacks that POST to the recovery endpoint. Transport lives in the client —
- * this hook only derives state and tracks in-flight/error UI status.
+ * callbacks that resolve through the session's STREAMING resume — so the resumed
+ * continuation streams straight into `session.items` and the resolution renders
+ * live, with no page refresh (FIX-276). Transport lives in the client /
+ * `useSession`; this hook only derives state and tracks in-flight/error UI
+ * status.
  */
 import { useCallback, useMemo, useState } from "react";
-import {
-  createRecoveryClient,
-  type ResumeSuspensionResult
-} from "@flow-state-dev/client";
 import type {
   OutputItem,
   SuspensionItem,
@@ -61,8 +60,14 @@ export interface UseSuspensionsResult {
   suspensions: SuspensionView[];
   /** Convenience filter: only pending suspensions. */
   pending: SuspensionView[];
-  approve: (suspensionId: string, data?: unknown) => Promise<ResumeSuspensionResult>;
-  reject: (suspensionId: string, data?: unknown) => Promise<ResumeSuspensionResult>;
+  /**
+   * Approve a suspension and stream its continuation back into `session.items`.
+   * Resolves once the resume has been dispatched (the continuation then streams
+   * in live); rejects if the resume call fails.
+   */
+  approve: (suspensionId: string, data?: unknown) => Promise<void>;
+  /** Reject a suspension. Same streaming semantics as {@link approve}. */
+  reject: (suspensionId: string, data?: unknown) => Promise<void>;
   /**
    * Most-recent failed approve/reject error (also rethrown by the call).
    * Single-slot: concurrent resolves of different ids overwrite each other.
@@ -117,22 +122,18 @@ export function deriveSuspensions(
 
 /**
  * Arguments for {@link resolveSuspension}. `markStart`/`markEnd` toggle the
- * caller's in-flight set; `setError` is the error slot setter.
+ * caller's in-flight set; `setError` is the error slot setter. `resolve` is the
+ * session's streaming resume (`SessionView.resumeSuspension`) — the resolution
+ * streams the continuation back into `session.items`.
  */
 export interface ResolveSuspensionArgs {
-  recoveryClient: {
-    resumeSuspension: (
-      flowKind: string,
-      requestId: string,
-      body: {
-        suspensionId: string;
-        action: "approve" | "reject";
-        data?: unknown;
-        resumedBy?: string;
-      }
-    ) => Promise<ResumeSuspensionResult>;
-  };
-  flowKind: string;
+  resolve: (args: {
+    suspensionId: string;
+    requestId: string;
+    action: "approve" | "reject";
+    data?: unknown;
+    resumedBy?: string;
+  }) => Promise<void>;
   item: Pick<SuspensionItem, "suspensionId" | "requestId">;
   action: "approve" | "reject";
   data?: unknown;
@@ -143,20 +144,21 @@ export interface ResolveSuspensionArgs {
 }
 
 /**
- * The shared body of `approve`/`reject`. Marks in-flight, POSTs the resolution
- * to the suspension's own `requestId`, captures any error into `setError`, and
- * **rethrows** so callers can branch on success. In-flight is always cleared in
- * `finally`. Exported for direct unit testing.
+ * The shared body of `approve`/`reject`. Marks in-flight, streams the resolution
+ * through the session's resume (so the continuation renders live), captures any
+ * error into `setError`, and **rethrows** so callers can branch on success.
+ * In-flight is always cleared in `finally`. Exported for direct unit testing.
  */
 export async function resolveSuspension(
   args: ResolveSuspensionArgs
-): Promise<ResumeSuspensionResult> {
+): Promise<void> {
   const { item } = args;
   args.markStart(item.suspensionId);
   args.setError(null);
   try {
-    return await args.recoveryClient.resumeSuspension(args.flowKind, item.requestId, {
+    await args.resolve({
       suspensionId: item.suspensionId,
+      requestId: item.requestId,
       action: args.action,
       data: args.data,
       resumedBy: args.resumedBy
@@ -182,8 +184,7 @@ export function useSuspensions(
   session: SessionView,
   options: UseSuspensionsOptions = {}
 ): UseSuspensionsResult {
-  const { baseUrl, userId: ctxUserId } = useFlowContext();
-  const recoveryClient = useMemo(() => createRecoveryClient({ baseUrl }), [baseUrl]);
+  const { userId: ctxUserId } = useFlowContext();
 
   // In-flight suspensionIds, immutably updated so concurrent resolves of
   // different ids never clobber one another's membership.
@@ -217,7 +218,7 @@ export function useSuspensions(
 
   const resolve = useCallback(
     (action: "approve" | "reject") =>
-      (suspensionId: string, data?: unknown): Promise<ResumeSuspensionResult> => {
+      (suspensionId: string, data?: unknown): Promise<void> => {
         const target = session.items.find(
           (item): item is SuspensionItem => {
             if (item.type !== "suspension") return false;
@@ -228,8 +229,7 @@ export function useSuspensions(
           return Promise.reject(new Error("No suspension found with id: " + suspensionId));
         }
         return resolveSuspension({
-          recoveryClient,
-          flowKind: session.flowKind,
+          resolve: session.resumeSuspension,
           item: target,
           action,
           data,
@@ -239,7 +239,7 @@ export function useSuspensions(
           setError
         });
       },
-    [recoveryClient, session.items, session.flowKind, resolvedBy, markStart, markEnd]
+    [session.resumeSuspension, session.items, resolvedBy, markStart, markEnd]
   );
 
   const approve = useMemo(() => resolve("approve"), [resolve]);

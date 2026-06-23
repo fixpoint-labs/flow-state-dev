@@ -114,6 +114,24 @@ const { newRequestId } = await recovery.retry({
 `retry` only succeeds for requests whose status is `interrupted` or `failed`
 — the server returns 409 otherwise.
 
+```ts
+// Resolve a pending suspension (approve/reject), streaming the continuation.
+// resumeSuspensionStream POSTs with Accept: text/event-stream and returns the
+// raw Response whose body is the resumed run's SSE stream — so the resuming
+// client follows it live, even on serverless. Use createSSEClientFromResponse
+// to consume it; the React layer wires this for you.
+const response = await recovery.resumeSuspensionStream("chat", "req_1", {
+  suspensionId: "susp_1",
+  action: "approve",
+});
+
+// Non-streaming variant — fire-and-forget; returns once the resume is accepted.
+const result = await recovery.resumeSuspension("chat", "req_1", {
+  suspensionId: "susp_1",
+  action: "approve",
+});
+```
+
 ## Public API
 
 - `createClient(options)` — Dynamic action client

@@ -193,7 +193,7 @@ Low-level hook for subscribing to a request's SSE stream with reactive item/stat
 
 ### `useSuspensions(session, options?)`
 
-Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` by `suspensionId` and exposes `approve`/`reject` callbacks.
+Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` by `suspensionId` and exposes `approve`/`reject` callbacks. `approve`/`reject` stream the resumed continuation back into `session.items` (via `session.resumeSuspension`), so the resolution renders live — no page refresh, even on serverless.
 
 ```tsx
 const { pending, approve, reject, error } = useSuspensions(session, {
@@ -232,6 +232,20 @@ import { ApprovalRenderer } from "@flow-state-dev/react";
 ```
 
 Suppress inline rendering and use your own layout with `renderers={{ suspension: false }}` on `<FlowProvider>`.
+
+### `<SuspensionResolverProvider>`
+
+Bridges the session's streaming resume to the inline default `<ApprovalRenderer>`. Wrap the subtree that renders `session.items`; the inline card then streams the continuation into the chat view on approve/reject, instead of a non-streaming resume that only shows output after a refetch.
+
+```tsx
+import { SuspensionResolverProvider } from "@flow-state-dev/react";
+
+<SuspensionResolverProvider resolve={session.resumeSuspension}>
+  <ItemsRenderer items={session.items} />
+</SuspensionResolverProvider>
+```
+
+Explicit `onApprove`/`onReject` props still take precedence; with neither a provider nor handlers, the card falls back to a self-contained non-streaming resume (requires `flowKind` on `<FlowProvider>`).
 
 ## Voice playback
 

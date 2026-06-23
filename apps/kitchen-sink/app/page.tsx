@@ -4,6 +4,7 @@ import { memo, Suspense, useState, useCallback, useEffect, useMemo, useRef, type
 import { useSearchParams } from "next/navigation";
 import {
   FlowProvider,
+  SuspensionResolverProvider,
   useFlow,
   useSession,
   useClientData,
@@ -580,6 +581,10 @@ function ChatPanel({
   onSuggestionClick,
 }: ChatPanelProps) {
   return (
+    // Bridge the session's streaming resume to the inline approval cards
+    // (default ApprovalRenderer) so approving/rejecting a suspension streams the
+    // continuation into the chat live, without a page refresh.
+    <SuspensionResolverProvider resolve={session.resumeSuspension}>
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <Conversation className="min-h-0 flex-1" data-testid="conversation">
         <ConversationBody
@@ -629,5 +634,6 @@ function ChatPanel({
         </div>
       </div>
     </section>
+    </SuspensionResolverProvider>
   );
 }

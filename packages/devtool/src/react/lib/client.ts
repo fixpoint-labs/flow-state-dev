@@ -10,11 +10,13 @@ import {
   createSessionClient,
   createRecoveryClient,
   createSSEClient,
+  createSSEClientFromResponse,
   type Client,
   type ExecuteActionResponse,
   type SessionClient,
   type RecoveryClient,
   type CreateSSEClientOptions,
+  type RequestSSECallbacks,
   type RequestStreamHandle,
 } from "@flow-state-dev/client";
 
@@ -49,6 +51,20 @@ export function connectRequestStream(
     baseUrl,
     url: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/stream?include=trace`,
   });
+}
+
+/**
+ * Consume a pre-fetched SSE response body as a request stream (inline
+ * streaming). Used after a streaming resume: the resume POST returns the
+ * continuation's SSE stream directly, so the DevTool consumes that body instead
+ * of opening a separate GET — essential on serverless, where the GET would hit a
+ * different instance and never see the in-flight continuation.
+ */
+export function consumeRequestStreamResponse(
+  response: Response,
+  callbacks: RequestSSECallbacks,
+): RequestStreamHandle {
+  return createSSEClientFromResponse({ ...callbacks, response });
 }
 
 /**

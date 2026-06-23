@@ -6,6 +6,12 @@
  * pass onApprove/onReject handlers to override the self-contained resume logic
  * (e.g., when integrating with a page-level useSuspensions hook).
  *
+ * Resolution transport, in precedence order:
+ *   1. onApprove/onReject props  → caller owns the resume call
+ *   2. SuspensionResolverProvider → resolve through the session's STREAMING
+ *      resume, so the continuation streams into the chat view live (no refresh)
+ *   3. self-contained recovery client (non-streaming fire-and-forget fallback)
+ *
  * Resolution order in <ItemRenderer>:
  *   1. Custom renderer registered under renderers.suspension
  *   2. false  → suppressed (headless/custom-layout mode)
@@ -18,6 +24,7 @@ import { createElement, useState, useMemo, useCallback, useEffect, type ReactNod
 import { createRecoveryClient } from "@flow-state-dev/client";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
+import { useSuspensionResolver } from "../context/SuspensionResolver";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -72,6 +79,10 @@ export interface ApprovalRendererProps {
 export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
   const { item, isResolved = false, onApprove, onReject } = props;
   const { flowKind, baseUrl, userId } = useFlowContext();
+  // Streaming resolver from the nearest SuspensionResolverProvider, if any. When
+  // present (and no explicit on{Approve,Reject} override), resolving goes through
+  // the session's streaming resume so the continuation renders live.
+  const streamingResolve = useSuspensionResolver();
 
   const [isResolving, setIsResolving] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
@@ -87,11 +98,13 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
   );
 
   // Compute per-action capability so a single supplied handler doesn't enable
-  // the other button (e.g. onApprove only → Reject stays disabled).
+  // the other button (e.g. onApprove only → Reject stays disabled). A streaming
+  // resolver from context enables both buttons just like a flowKind does.
   const hasFlowKind = flowKind !== undefined && flowKind.length > 0;
+  const canResolveInternally = hasFlowKind || streamingResolve !== null;
   const resolved = isResolved || locallyResolved;
-  const canApprove = !resolved && (onApprove !== undefined || hasFlowKind);
-  const canReject = !resolved && (onReject !== undefined || hasFlowKind);
+  const canApprove = !resolved && (onApprove !== undefined || canResolveInternally);
+  const canReject = !resolved && (onReject !== undefined || canResolveInternally);
   const canResume = canApprove || canReject;
 
   // Warn once on mount when the card has no way to call resume. useEffect
@@ -127,8 +140,17 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
           // Override path: the parent (e.g. a useSuspensions-driven layout) owns
           // the resume call and its own in-flight tracking.
           await handler();
+        } else if (streamingResolve !== null) {
+          // Streaming path: resolve through the session that owns the live
+          // stream, so the continuation renders into the chat view without a
+          // refresh (FIX-276). The provider supplies resumedBy.
+          await streamingResolve({
+            suspensionId: item.suspensionId,
+            requestId: item.requestId,
+            action
+          });
         } else {
-          // Self-contained path: call the recovery client directly.
+          // Self-contained fallback: non-streaming fire-and-forget resume.
           if (!hasFlowKind) return;
           await recoveryClient.resumeSuspension(flowKind!, item.requestId, {
             suspensionId: item.suspensionId,
@@ -145,7 +167,7 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
         setIsResolving(false);
       }
     },
-    [isResolving, canApprove, canReject, hasFlowKind, flowKind, item.requestId, item.suspensionId, userId, recoveryClient, onApprove, onReject]
+    [isResolving, canApprove, canReject, hasFlowKind, flowKind, item.requestId, item.suspensionId, userId, recoveryClient, streamingResolve, onApprove, onReject]
   );
 
   const isApproveDisabled = !canApprove || isResolving;

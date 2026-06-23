@@ -123,6 +123,13 @@ export {
 } from "./context/FlowContext";
 
 export {
+  SuspensionResolverProvider,
+  useSuspensionResolver,
+  type SuspensionResolver,
+  type SuspensionResolverProviderProps
+} from "./context/SuspensionResolver";
+
+export {
   useVoice,
   createAudioRecorder,
   createAudioPlayer,
