@@ -26,6 +26,14 @@ const generateInvoices = handler<{ topic?: string }, { ok: true }>({
   execute: () => ({ ok: true })
 });
 
+// A chat-form handler on the same flow, used only to prove the exposure
+// invariant: an event-addressed chat handler is also absent from `flow.actions`.
+const replyInChat = handler({
+  name: "reply-in-chat",
+  inputSchema: z.object({}).passthrough(),
+  execute: () => undefined
+});
+
 const sendDigest = handler<Record<string, never>, { ok: true }>({
   name: "send-digest",
   inputSchema: z.object({}),
@@ -54,6 +62,9 @@ function buildRouter() {
           }
         }
       },
+      // A chat-form handler declared alongside the schedule, both event-only:
+      // neither appears in `actions`, so neither is exposed to HTTP/MCP.
+      chat: { on: { mention: { block: replyInChat, input: (e) => e } } },
       actions: {}
     })()
   );
@@ -159,10 +170,43 @@ describe("scheduled adapter — end-to-end", () => {
       const records = await waitForRequest(stores, 1);
       expect(records.length).toBeGreaterThanOrEqual(1);
       const record = records[0]!;
+      // The record exists only because dispatch resolved the inline schedule
+      // binding by its `metadata.schedule.scheduleId` coordinate — not from
+      // `flow.actions`, which is empty.
       expect(record.source).toBe("scheduled");
       expect(record.flowKind).toBe("billing");
       expect((record.metadata as { schedule: Record<string, unknown> })?.schedule?.scheduleId).toBe("monthly-invoices");
       expect((record.metadata as { schedule: Record<string, unknown> })?.schedule?.origin).toBe("static");
+    } finally {
+      await disposeFlowApiRouter(router);
+    }
+  });
+
+  // Goal check (FIX-838): the inline schedule + chat handlers resolve and
+  // dispatch through the real router (above + the dynamic case), yet neither
+  // appears in the flow's caller-addressed action surface — the structural leak
+  // is closed. Here we assert the exposure invariant through the real HTTP
+  // listing.
+  it("keeps event-only handlers off the HTTP action surface", async () => {
+    const { router } = buildRouter();
+    try {
+      const listResponse = await router.GET(
+        new Request("http://localhost/api/flows", {
+          headers: { Authorization: `Bearer ${SECRET}` }
+        }),
+        { params: { path: [] } }
+      );
+      expect(listResponse.status).toBe(200);
+      const { flows } = (await listResponse.json()) as {
+        flows: Array<{ kind: string; actions: string[] }>;
+      };
+      const billing = flows.find((f) => f.kind === "billing");
+      expect(billing).toBeDefined();
+      // No caller actions declared, and the event-addressed handlers
+      // (generate-invoices, reply-in-chat) are absent from the surface.
+      expect(billing!.actions).toEqual([]);
+      expect(billing!.actions).not.toContain("generate-invoices");
+      expect(billing!.actions).not.toContain("reply-in-chat");
     } finally {
       await disposeFlowApiRouter(router);
     }
