@@ -18,7 +18,6 @@ import {
   type ChatInboundEvent,
   type ChatEnvelopeMetadata,
 } from "./types";
-import { routeEvent } from "./routing";
 import { resolvePrincipalFromEvent } from "./principal-resolver";
 import { ensureSessionForChat } from "./session-resolver";
 import { setThreadForRequest, clearThreadForRequest } from "./thread-registry";
@@ -198,12 +197,12 @@ export function registerEventHandlers(
 /**
  * Entry point shared by every event registration.
  *
- * Flow-level subscriptions take total precedence: when any flow declares a
- * `chat.on` binding matching `event.kind` (and its `when` predicate passes),
- * those bindings fire — broadcast, each as its own dispatch — and the
- * adapter-mount `route()`/`flowKind` path is NOT consulted. Only when no
- * flow-level binding matches does dispatch fall back to the FIX-638
- * adapter-routing path. This lets a host migrate one flow at a time.
+ * Routing is purely declarative (FIX-838): when any flow declares a `chat.on`
+ * binding matching `event.kind` (and its `when` predicate passes), those
+ * bindings fire — broadcast, each as its own dispatch. When no flow-level
+ * binding matches, the event is a no-op (acked, no flow run), mirroring the
+ * webhook transport's `202 ignored`. There is no adapter-mount
+ * `route()`/`flowKind` fallback.
  */
 export async function dispatchChatEvent(
   host: InboundTransportHost,
@@ -213,26 +212,26 @@ export async function dispatchChatEvent(
 ): Promise<void> {
   const matched = matchSubscriptions(host, event, index);
 
-  if (matched.length > 0) {
-    // Broadcast: each matching binding produces an independent dispatch.
-    // `allSettled` so a downstream throw in one binding (principal rejection,
-    // flow error under streamToThread) neither aborts nor orphans its
-    // siblings — each rejection is observed and logged.
-    const results = await Promise.allSettled(
-      matched.map((entry) => runOneSubscription(host, options, event, entry))
-    );
-    for (const result of results) {
-      if (result.status === "rejected") {
-        host.logger?.error?.(
-          "@flow-state-dev/chat-sdk: subscription dispatch threw",
-          { err: result.reason }
-        );
-      }
-    }
+  if (matched.length === 0) {
+    // No declared subscription matched — ack and return, no dispatch.
     return;
   }
 
-  await dispatchViaAdapterRouting(host, options, event);
+  // Broadcast: each matching binding produces an independent dispatch.
+  // `allSettled` so a downstream throw in one binding (principal rejection,
+  // flow error under streamToThread) neither aborts nor orphans its
+  // siblings — each rejection is observed and logged.
+  const results = await Promise.allSettled(
+    matched.map((entry) => runOneSubscription(host, options, event, entry))
+  );
+  for (const result of results) {
+    if (result.status === "rejected") {
+      host.logger?.error?.(
+        "@flow-state-dev/chat-sdk: subscription dispatch threw",
+        { err: result.reason }
+      );
+    }
+  }
 }
 
 /**
@@ -305,47 +304,24 @@ async function runOneSubscription(
 
   await executeDispatch(host, options, event, {
     flowKind: entry.flowKind,
-    action: entry.binding.action,
+    // Provenance only — the runtime resolves the inline handler from
+    // `flow.chat.on[eventKey]` via the metadata coordinate, never this name.
+    action: entry.binding.block.name,
     input,
     sessionId,
-    subscriptionKey: entry.eventKey,
+    eventKey: entry.eventKey,
   });
 }
 
-/**
- * FIX-638 adapter-routing fallback. Resolves the flow + action via the
- * adapter-mount `route()`/`flowKind` and hands off to the shared executor.
- */
-async function dispatchViaAdapterRouting(
-  host: InboundTransportHost,
-  options: ChatAdapterOptions,
-  event: ChatInboundEvent
-): Promise<void> {
-  let route;
-  try {
-    route = await routeEvent(event, options);
-  } catch (err) {
-    host.logger?.warn?.("@flow-state-dev/chat-sdk: route function threw", { err });
-    return;
-  }
-  if (route.skip === true) return;
-
-  await executeDispatch(host, options, event, {
-    flowKind: route.flowKind,
-    action: route.action,
-    input: route.input,
-    sessionId: route.sessionId ?? event.thread?.id,
-  });
-}
-
-/** Resolved routing decision handed to `executeDispatch`. */
+/** Resolved subscription dispatch handed to `executeDispatch`. */
 type ResolvedDispatch = {
   flowKind: string;
+  /** Handler block name — provenance for the request record, not a resolver key. */
   action: string;
   input: unknown;
   sessionId: string | undefined;
-  /** `chat.on` key that matched, when dispatched via a flow-level subscription. */
-  subscriptionKey?: string;
+  /** The matched `chat.on` key — the resolution coordinate. */
+  eventKey: string;
 };
 
 /**
@@ -360,7 +336,7 @@ async function executeDispatch(
   event: ChatInboundEvent,
   resolved: ResolvedDispatch
 ): Promise<void> {
-  const { flowKind, action, input, sessionId, subscriptionKey } = resolved;
+  const { flowKind, action, input, sessionId, eventKey } = resolved;
 
   if (sessionId === undefined) {
     host.logger?.warn?.("@flow-state-dev/chat-sdk: event has no thread id; skipping", {
@@ -396,18 +372,20 @@ async function executeDispatch(
   const streamToThread = shouldStreamToThread(host, options, flowKind);
 
   const metadata: ChatEnvelopeMetadata = {
-    platform: event.platform,
-    threadId: event.thread?.id ?? sessionId,
-    channelId: typeof (event.thread as any)?.channelId === "string"
-      ? (event.thread as any).channelId
-      : event.thread?.id ?? sessionId,
-    ...(event.message?.id !== undefined ? { messageId: event.message.id } : {}),
-    ...(event.message?.author?.userId !== undefined
-      ? { authorId: event.message.author.userId }
-      : {}),
-    isDM: event.thread?.isDM ?? false,
-    eventKind: event.kind,
-    ...(subscriptionKey !== undefined ? { subscriptionKey } : {}),
+    chat: {
+      platform: event.platform,
+      threadId: event.thread?.id ?? sessionId,
+      channelId: typeof (event.thread as any)?.channelId === "string"
+        ? (event.thread as any).channelId
+        : event.thread?.id ?? sessionId,
+      ...(event.message?.id !== undefined ? { messageId: event.message.id } : {}),
+      ...(event.message?.author?.userId !== undefined
+        ? { authorId: event.message.author.userId }
+        : {}),
+      isDM: event.thread?.isDM ?? false,
+      eventKind: event.kind,
+      eventKey,
+    },
   };
 
   const handle = host.dispatch({

@@ -39,8 +39,6 @@ export type {
   ChatAdapterOptions,
   ChatBotInput,
   ChatInboundEvent,
-  ChatRouteFn,
-  ChatRouteResult,
   ChatEventConfig,
   ChatEnvelopeMetadata,
   ChatFlowOverride,

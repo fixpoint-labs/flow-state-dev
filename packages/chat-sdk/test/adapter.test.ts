@@ -6,6 +6,8 @@
  * boundary check.
  */
 import { describe, expect, it, vi } from "vitest";
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
 import {
   createChatTransportAdapter,
   CHAT_TRANSPORT_SOURCE,
@@ -18,6 +20,25 @@ import {
   createInboundTransportConformanceTests,
   createMockTransportHost,
 } from "@flow-state-dev/testing/conformance";
+
+/** A handler block with a known name, for inline chat bindings in fixtures. */
+function blk(name: string) {
+  return handler({
+    name,
+    inputSchema: z.object({}).passthrough(),
+    execute: () => undefined,
+  });
+}
+
+/** A flow instance declaring a single `chat.on.mention` inline-core binding. */
+function chatFlow(kind = "support"): unknown {
+  return {
+    kind,
+    id: kind,
+    actions: {},
+    chat: { on: { mention: { block: blk("reply"), input: (e: unknown) => e } } },
+  };
+}
 
 function makeHost(): InboundTransportHost {
   return {
@@ -65,21 +86,10 @@ describe("createChatTransportAdapter", () => {
     expect(() => bindings.start?.()).toThrow(/CHAT_ADAPTER_NO_ROUTING/);
   });
 
-  it("start() does not throw when flowKind is set", () => {
-    const adapter = createChatTransportAdapter({
-      bot: makeBot() as never,
-      flowKind: "support",
-    });
-    const bindings = adapter.createBindings(makeHost());
-    expect(() => bindings.start?.()).not.toThrow();
-  });
-
   it("start() does not throw when a flow declares chat.on", () => {
     const adapter = createChatTransportAdapter({ bot: makeBot() as never });
     const host = makeHost();
-    (host.registry as { list: () => unknown[] }).list = () => [
-      { kind: "support", chat: { on: { mention: { action: "reply", input: (e: unknown) => e } } } },
-    ];
+    (host.registry as { list: () => unknown[] }).list = () => [chatFlow()];
     const bindings = adapter.createBindings(host);
     expect(() => bindings.start?.()).not.toThrow();
   });
@@ -87,7 +97,6 @@ describe("createChatTransportAdapter", () => {
   it("stamps source = 'chat'", () => {
     const adapter = createChatTransportAdapter({
       bot: makeBot() as never,
-      flowKind: "support",
     });
     expect(adapter.source).toBe(CHAT_TRANSPORT_SOURCE);
     expect(adapter.source).toBe("chat");
@@ -96,7 +105,6 @@ describe("createChatTransportAdapter", () => {
   it("enumerates POST + GET routes per registered platform", () => {
     const adapter = createChatTransportAdapter({
       bot: makeBot(["slack", "discord"]) as never,
-      flowKind: "support",
     });
     const bindings = adapter.createBindings(makeHost());
     const paths = (bindings.routes ?? []).map(
@@ -112,7 +120,6 @@ describe("createChatTransportAdapter", () => {
     const bot = makeBot() as { onNewMention: ReturnType<typeof vi.fn> };
     const adapter = createChatTransportAdapter({
       bot: bot as never,
-      flowKind: "support",
     });
     adapter.createBindings(makeHost());
     expect(bot.onNewMention).toHaveBeenCalled();
@@ -121,7 +128,6 @@ describe("createChatTransportAdapter", () => {
   it("respects custom routePrefix", () => {
     const adapter = createChatTransportAdapter({
       bot: makeBot(["slack"]) as never,
-      flowKind: "support",
       routePrefix: "/hooks/chat",
     });
     const bindings = adapter.createBindings(makeHost());
@@ -132,7 +138,6 @@ describe("createChatTransportAdapter", () => {
   it("lazy bot mounts wildcard :platform", () => {
     const adapter = createChatTransportAdapter({
       bot: () => makeBot() as never,
-      flowKind: "support",
     });
     const bindings = adapter.createBindings(makeHost());
     const paths = (bindings.routes ?? []).map(
@@ -149,7 +154,6 @@ describe("createChatTransportAdapter", () => {
     };
     const adapter = createChatTransportAdapter({
       bot: bot as never,
-      flowKind: "support",
       mountOAuthRoutes: true,
     });
     const bindings = adapter.createBindings(makeHost());
@@ -162,7 +166,6 @@ describe("createChatTransportAdapter", () => {
   it("does not mount OAuth routes for adapters without handleOAuthCallback", () => {
     const adapter = createChatTransportAdapter({
       bot: makeBot(["discord"]) as never,
-      flowKind: "support",
       mountOAuthRoutes: true,
     });
     const bindings = adapter.createBindings(makeHost());
@@ -213,7 +216,6 @@ createInboundTransportConformanceTests({
   factory: () =>
     createChatTransportAdapter({
       bot: makeConformanceBot().bot as never,
-      flowKind: "support",
       streamToThread: false,
     }),
   helpers: {
@@ -224,8 +226,15 @@ createInboundTransportConformanceTests({
       // The conformance mock host carries the injected principal resolver
       // on `host.resolvePrincipal` and empty stores. The chat adapter
       // resolves the principal from the event by default, so route it back
-      // through the host resolver, and add a stub session store.
+      // through the host resolver, add a stub session store, and register a
+      // flow declaring `chat.on.mention` so the (now purely declarative)
+      // dispatch path actually fires.
+      const flow = chatFlow();
       const augmentedHost = Object.assign({}, host, {
+        registry: {
+          list: () => [flow],
+          get: (k: string) => (k === "support" ? flow : undefined),
+        },
         stores: {
           ...(host.stores as object),
           session: { get: async () => undefined, set: async () => undefined },
@@ -233,7 +242,6 @@ createInboundTransportConformanceTests({
       }) as ReturnType<typeof createMockTransportHost>;
       const adapter = createChatTransportAdapter({
         bot: bot as never,
-        flowKind: "support",
         streamToThread: false,
         resolvePrincipal: () => host.resolvePrincipal({} as never),
       });

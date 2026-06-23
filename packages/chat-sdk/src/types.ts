@@ -66,23 +66,6 @@ export interface ChatInboundEvent {
 }
 
 /**
- * Result returned by a custom `route` function — selects the flow + action
- * to dispatch, optionally overriding the derived session id, and optionally
- * skipping dispatch entirely (`skip: true` → 200 OK with no flow run).
- */
-export interface ChatRouteResult {
-  flowKind: string;
-  action: string;
-  input: unknown;
-  sessionId?: string;
-  skip?: boolean;
-}
-
-export type ChatRouteFn = (
-  event: ChatInboundEvent
-) => ChatRouteResult | Promise<ChatRouteResult>;
-
-/**
  * Per-callback opt-out flags. Every field defaults to `true`; set `false`
  * to skip registering a handler. Useful when a host wants Chat SDK to
  * deliver an event but not route it through FSD.
@@ -101,19 +84,15 @@ export interface ChatEventConfig {
 }
 
 /**
- * Options accepted by `createChatTransportAdapter`. The two routing
- * shapes are mutually-exclusive-with-default: either supply `flowKind`
- * (and optionally `action`) for short-form static routing, or supply a
- * custom `route` function that returns `ChatRouteResult` per event.
+ * Options accepted by `createChatTransportAdapter`. Routing is purely
+ * declarative (FIX-838): the adapter mounts the bot and dispatches the flow
+ * `chat.on` subscriptions whose event key + `when` predicate match an inbound
+ * event — there is no adapter-mount `route()`/`flowKind` escape hatch. Express
+ * content-based routing as `chat.on` bindings with `when` predicates on the
+ * flow definition, mirroring the webhook transport.
  */
 export interface ChatAdapterOptions {
   bot: ChatBotInput;
-  /** Short-form routing: every inbound event dispatches this flow. */
-  flowKind?: string;
-  /** Action name for short-form routing. Default `"chat"`. */
-  action?: string;
-  /** Custom router. Overrides short-form when present. */
-  route?: ChatRouteFn;
   /**
    * Auto-stream flow output back to the originating thread. Default `true`.
    * Per-flow override via `FlowDefinition.chat.streamToThread`.
@@ -152,24 +131,29 @@ export interface ChatAdapterOptions {
 }
 
 /**
- * Provenance metadata stamped onto every chat-originated envelope.
- * Surfaced on `RequestRecord.metadata` and available to flow middleware.
+ * Provenance metadata stamped onto every chat-originated envelope, namespaced
+ * under `chat` so it sits beside `metadata.webhook` / `metadata.schedule` in
+ * the shared action-forms model (FIX-838). Surfaced on
+ * `RequestRecord.metadata` and available to flow middleware; the devtool reads
+ * `metadata.chat` to explain why a flow fired.
+ *
+ * `eventKey` is the resolution coordinate: the matched `chat.on` subscription
+ * key. `resolveActionCore` reads it (gated on `source === "chat"`) to find the
+ * inline handler on `flow.chat.on`, so it is always present — every chat
+ * dispatch now flows through a declared subscription.
  */
 export interface ChatEnvelopeMetadata {
-  platform: string;
-  threadId: string;
-  channelId: string;
-  messageId?: string;
-  authorId?: string;
-  isDM: boolean;
-  eventKind: ChatInboundEvent["kind"];
-  /**
-   * The `chat.on` key that matched, when the request was dispatched via a
-   * flow-level subscription (FIX-667). Absent for adapter-routed requests.
-   * Surfaced in the devtool so "why did this flow fire?" is answerable
-   * without reading the host source.
-   */
-  subscriptionKey?: string;
+  chat: {
+    platform: string;
+    threadId: string;
+    channelId: string;
+    messageId?: string;
+    authorId?: string;
+    isDM: boolean;
+    eventKind: ChatInboundEvent["kind"];
+    /** The matched `chat.on` key — the resolution coordinate. */
+    eventKey: string;
+  };
 }
 
 /**
