@@ -48,6 +48,8 @@ function makeCtx(statics: MockResource[] = [], collections: MockCollection[] = [
 
 const { globResources, grepResourceContent, searchResources } = resourceSearchTools();
 
+// Glob patterns and grep/search prefixes match the within-scope `path`; results
+// are emitted as scope-qualified uris (`org/<path>` for the mock scope).
 describe("globResources", () => {
   it("matches collection instance paths against a deep-wildcard glob", async () => {
     const ctx = makeCtx([], [
@@ -60,8 +62,8 @@ describe("globResources", () => {
         ],
       },
     ]);
-    const { paths } = await runForTest(globResources,{ pattern: "concepts/**", limit: 100 }, ctx);
-    expect(paths).toEqual(["concepts/react", "concepts/react/hooks"]);
+    const { uris } = await runForTest(globResources,{ pattern: "concepts/**", limit: 100 }, ctx);
+    expect(uris).toEqual(["org/concepts/react", "org/concepts/react/hooks"]);
   });
 
   it("matches single-level and within-segment substring patterns (what prefix-listing can't)", async () => {
@@ -76,44 +78,44 @@ describe("globResources", () => {
       },
     ]);
     const single = await runForTest(globResources,{ pattern: "concepts/*", limit: 100 }, ctx);
-    expect(single.paths).toEqual(["concepts/react", "concepts/react-hooks"]);
+    expect(single.uris).toEqual(["org/concepts/react", "org/concepts/react-hooks"]);
 
     const substring = await runForTest(globResources,{ pattern: "concepts/*hooks*", limit: 100 }, ctx);
-    expect(substring.paths).toEqual(["concepts/react-hooks"]);
+    expect(substring.uris).toEqual(["org/concepts/react-hooks"]);
   });
 
-  it("lists all paths (static + collection) sorted when pattern is null", async () => {
+  it("lists all uris (static + collection) sorted when pattern is null", async () => {
     const ctx = makeCtx([{ path: "soul" }], [
       { pattern: "concepts/**", instances: [{ path: "concepts/b" }, { path: "concepts/a" }] },
     ]);
-    const { paths } = await runForTest(globResources,{ pattern: null, limit: 100 }, ctx);
-    expect(paths).toEqual(["concepts/a", "concepts/b", "soul"]);
+    const { uris } = await runForTest(globResources,{ pattern: null, limit: 100 }, ctx);
+    expect(uris).toEqual(["org/concepts/a", "org/concepts/b", "org/soul"]);
   });
 
-  it("does not gate on llmReadable (path discovery, like listResources)", async () => {
+  it("does not gate on llmReadable (discovery, like listResources)", async () => {
     const ctx = makeCtx([], [
       { pattern: "concepts/**", instances: [{ path: "concepts/secret", llmReadable: false }] },
     ]);
-    const { paths } = await runForTest(globResources,{ pattern: "concepts/**", limit: 100 }, ctx);
-    expect(paths).toEqual(["concepts/secret"]);
+    const { uris } = await runForTest(globResources,{ pattern: "concepts/**", limit: 100 }, ctx);
+    expect(uris).toEqual(["org/concepts/secret"]);
   });
 
   it("bounds results by limit", async () => {
     const ctx = makeCtx([], [
       { pattern: "c/**", instances: [{ path: "c/1" }, { path: "c/2" }, { path: "c/3" }] },
     ]);
-    const { paths } = await runForTest(globResources,{ pattern: "c/**", limit: 2 }, ctx);
-    expect(paths).toEqual(["c/1", "c/2"]);
+    const { uris } = await runForTest(globResources,{ pattern: "c/**", limit: 2 }, ctx);
+    expect(uris).toEqual(["org/c/1", "org/c/2"]);
   });
 
   it("returns empty when the registry is empty", async () => {
-    const { paths } = await runForTest(globResources,{ pattern: null, limit: 100 }, makeCtx());
-    expect(paths).toEqual([]);
+    const { uris } = await runForTest(globResources,{ pattern: null, limit: 100 }, makeCtx());
+    expect(uris).toEqual([]);
   });
 });
 
 describe("grepResourceContent", () => {
-  it("returns matching lines with 1-based line numbers and the resource path", async () => {
+  it("returns matching lines with 1-based line numbers and the resource uri", async () => {
     const ctx = makeCtx([], [
       {
         pattern: "concepts/**",
@@ -124,7 +126,7 @@ describe("grepResourceContent", () => {
       { pattern: "useEffect", prefix: null, maxResults: 50 },
       ctx,
     );
-    expect(matches).toEqual([{ path: "concepts/react", line: 2, snippet: "useEffect hook" }]);
+    expect(matches).toEqual([{ uri: "org/concepts/react", line: 2, snippet: "useEffect hook" }]);
   });
 
   it("excludes resources that are not llmReadable", async () => {
@@ -141,7 +143,7 @@ describe("grepResourceContent", () => {
       { pattern: "needle", prefix: null, maxResults: 50 },
       ctx,
     );
-    expect(matches.map((m) => m.path)).toEqual(["concepts/public"]);
+    expect(matches.map((m) => m.uri)).toEqual(["org/concepts/public"]);
   });
 
   it("scopes by prefix", async () => {
@@ -158,7 +160,7 @@ describe("grepResourceContent", () => {
       { pattern: "needle", prefix: "concepts/", maxResults: 50 },
       ctx,
     );
-    expect(matches.map((m) => m.path)).toEqual(["concepts/a"]);
+    expect(matches.map((m) => m.uri)).toEqual(["org/concepts/a"]);
   });
 
   it("treats prefix as a path boundary, not a string prefix (no sibling leak)", async () => {
@@ -175,7 +177,7 @@ describe("grepResourceContent", () => {
       { pattern: "needle", prefix: "concept", maxResults: 50 },
       ctx,
     );
-    expect(matches.map((m) => m.path)).toEqual(["concept/a"]);
+    expect(matches.map((m) => m.uri)).toEqual(["org/concept/a"]);
   });
 
   it("searches rendered content, not the raw template source", async () => {
@@ -189,7 +191,7 @@ describe("grepResourceContent", () => {
       { pattern: "Alice", prefix: null, maxResults: 50 },
       ctx,
     );
-    expect(hit.matches.map((m) => m.path)).toEqual(["personas/analyst"]);
+    expect(hit.matches.map((m) => m.uri)).toEqual(["org/personas/analyst"]);
 
     // The template token only exists in the raw body, never in rendered output.
     const miss = await runForTest(grepResourceContent,
@@ -233,7 +235,7 @@ describe("grepResourceContent", () => {
       ctx,
     );
     expect(seen).toEqual([undefined]);
-    expect(matches.map((m) => m.path)).toEqual(["concepts/react/hooks"]);
+    expect(matches.map((m) => m.uri)).toEqual(["org/concepts/react/hooks"]);
   });
 
   it("bounds results by maxResults", async () => {
@@ -285,7 +287,7 @@ describe("searchResources", () => {
       { query: "hooks", prefix: null, limit: 10 },
       ctx,
     );
-    expect(results.map((r) => r.path)).toEqual(["concepts/high", "concepts/mid", "concepts/low"]);
+    expect(results.map((r) => r.uri)).toEqual(["org/concepts/high", "org/concepts/mid", "org/concepts/low"]);
     expect(results[0]!.score).toBe(3);
   });
 
@@ -304,7 +306,7 @@ describe("searchResources", () => {
       { query: "hooks", prefix: null, limit: 10 },
       ctx,
     );
-    expect(results.map((r) => r.path)).toEqual(["concepts/match"]);
+    expect(results.map((r) => r.uri)).toEqual(["org/concepts/match"]);
   });
 
   it("returns a snippet from the first matching line", async () => {
@@ -344,7 +346,7 @@ describe("searchResources", () => {
       { query: "hooks", prefix: "concepts/", limit: 10 },
       ctx,
     );
-    expect(results.map((r) => r.path)).toEqual(["concepts/a"]);
+    expect(results.map((r) => r.uri)).toEqual(["org/concepts/a"]);
   });
 
   it("treats prefix as a path boundary, not a string prefix (no sibling leak)", async () => {
@@ -361,7 +363,7 @@ describe("searchResources", () => {
       { query: "hooks", prefix: "concept", limit: 10 },
       ctx,
     );
-    expect(results.map((r) => r.path)).toEqual(["concept/a"]);
+    expect(results.map((r) => r.uri)).toEqual(["org/concept/a"]);
   });
 
   it("ranks on rendered content, not the raw template source", async () => {
@@ -377,7 +379,7 @@ describe("searchResources", () => {
       { query: "analyst", prefix: null, limit: 10 },
       ctx,
     );
-    expect(results.map((r) => r.path)).toEqual(["personas/analyst"]);
+    expect(results.map((r) => r.uri)).toEqual(["org/personas/analyst"]);
   });
 
   it("bounds results by limit", async () => {

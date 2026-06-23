@@ -8,59 +8,27 @@
 //   - searchResources     — fuzzy ranked matching (term-frequency lexical scoring)
 //
 // All three enumerate both static resources and collection instances (both are
-// `ResourceRef`s). Glob is a path-discovery tool (ungated, like `listResources`);
+// `ResourceRef`s). Glob is a discovery tool (ungated, like `listResources`);
 // grep and search read content, so they gate on `llmReadable` for parity with
 // `readResourceContentTool` and search the *rendered* content (`readContent()`,
 // the same bytes that tool returns) — so they find what the agent can actually
-// read, including resources whose body is a state-rendered template. Scoping is
-// applied to full resource paths after listing (see `matchesPrefix`); these tools
-// enumerate the collections they search, so they suit bounded, curated content.
-// Lexical only — no embeddings (semantic recall is the memory / RAG job).
+// read, including resources whose body is a state-rendered template. All three
+// emit the scope-qualified `uri` (`${scope}/${path}`) — the unique handle the
+// content tools resolve (FIX-842), so the agent can feed a glob/grep result
+// straight to read/write. Glob patterns and the grep/search `prefix` match the
+// within-scope `path` (so callers write scope-free patterns like `concepts/**`),
+// while results are emitted as uris; these tools enumerate the collections they
+// search, so they suit bounded, curated content. Lexical only — no embeddings
+// (semantic recall is the memory / RAG job).
 // ---------------------------------------------------------------------------
 
 import { z } from "zod";
 import picomatch from "picomatch";
-import type { BlockContext } from "../types/block";
-import type { ResourceRef } from "../types/resource";
-import type { ResourceCollectionRef } from "../types/resource-collection";
 import { handler } from "../blocks/handler";
+import { collectAllResources, isLlmReadable } from "./resource-tools";
 
 /** Maximum snippet length returned per match, so results stay token-cheap. */
 const MAX_SNIPPET_LENGTH = 200;
-
-/**
- * Flatten the resource registry into a single list of `ResourceRef`s — static
- * resources plus every instance of every collection. Collection instances are
- * themselves `ResourceRef`s, so callers treat the two uniformly.
- *
- * Lists each collection in full and lets callers scope with `matchesPrefix` on the
- * resulting full paths. We deliberately do NOT push a prefix into
- * `collection.list(prefix)`: that argument is collection-relative (the store
- * prepends the pattern prefix), so a full-path scope would resolve to the wrong
- * key space and silently return nothing. Suited to bounded, curated collections.
- */
-async function collectAllResources(ctx: BlockContext): Promise<ResourceRef<any>[]> {
-  const registry = ctx.resources;
-  if (registry === undefined) return [];
-
-  const out: ResourceRef<any>[] = [];
-  for (const entry of registry.list()) {
-    // ResourceCollectionRef has a `pattern` + `create`; a ResourceRef does not.
-    if ("pattern" in entry && "create" in entry) {
-      const collection = entry as unknown as ResourceCollectionRef<any>;
-      const instances = await collection.list();
-      for (const instance of instances) out.push(instance);
-    } else {
-      out.push(entry as ResourceRef<any>);
-    }
-  }
-  return out;
-}
-
-/** Content exposure gate — mirrors `readResourceContentTool`'s `llmReadable` contract. */
-function isLlmReadable(ref: ResourceRef<any>): boolean {
-  return ref.config?.llmReadable === true;
-}
 
 /**
  * Path-boundary prefix test. Matches the path itself or anything beneath it as a
@@ -126,61 +94,59 @@ function firstMatchingLine(content: string, terms: string[]): string {
  * trio over resources. Returns handler blocks that work across all registered
  * static resources and collections:
  *
- * - `globResources({ pattern?, limit? })` — match resource paths against a glob
- *   (`concepts/**`, `**\/react*`); a null pattern lists every path. Path discovery
+ * - `globResources({ pattern?, limit? })` — match the within-scope path against a
+ *   glob (`concepts/**`, `**\/react*`); a null pattern lists everything. Discovery
  *   only — no content is read, no `llmReadable` gate. Subsumes prefix-listing.
  * - `grepResourceContent({ pattern, prefix?, maxResults? })` — regex / substring
  *   search over `llmReadable` content bodies, returning matching lines.
  * - `searchResources({ query, prefix?, limit? })` — term-frequency ranked search
  *   over `llmReadable` content bodies (lexical, not semantic).
+ *
+ * All three return the scope-qualified `uri` of each match — the unique handle
+ * the content tools accept.
  */
 export function resourceSearchTools() {
   const globResources = handler({
     name: "globResources",
     description:
-      "Find resources whose path matches a glob pattern (e.g. 'concepts/**', '**/react*'). With no pattern, returns all resource paths.",
+      "Find resources whose path matches a glob pattern (e.g. 'concepts/**', '**/react*'). With no pattern, returns every resource. Returns scope-qualified uris.",
     inputSchema: z.object({
       pattern: z
         .string()
         .nullable()
         .default(null)
-        .describe("Glob pattern matched against resource paths. Null returns all paths."),
-      limit: z.number().int().positive().default(100).describe("Maximum number of paths to return"),
+        .describe("Glob pattern matched against the within-scope resource path. Null returns everything."),
+      limit: z.number().int().positive().default(100).describe("Maximum number of uris to return"),
     }),
     outputSchema: z.object({
-      paths: z.array(z.string()),
+      uris: z.array(z.string()),
     }),
     execute: async (input, ctx) => {
-      const paths = (await collectAllResources(ctx)).map((ref) => ref.path);
-      let matched: string[];
-      if (input.pattern === null) {
-        matched = paths;
-      } else {
-        const isMatch = picomatch(input.pattern, { dot: true });
-        matched = paths.filter((path) => isMatch(path));
-      }
+      const refs = await collectAllResources(ctx);
+      const isMatch = input.pattern === null ? null : picomatch(input.pattern, { dot: true });
+      const matched = refs.filter((ref) => isMatch === null || isMatch(ref.path)).map((ref) => ref.uri);
       matched.sort();
-      return { paths: matched.slice(0, input.limit) };
+      return { uris: matched.slice(0, input.limit) };
     },
   });
 
   const grepResourceContent = handler({
     name: "grepResourceContent",
     description:
-      "Search resource content bodies for a regex or literal substring. Returns matching lines with their resource path.",
+      "Search resource content bodies for a regex or literal substring. Returns matching lines with the resource's scope-qualified uri.",
     inputSchema: z.object({
       pattern: z.string().describe("Regex or literal substring to match within content bodies"),
       prefix: z
         .string()
         .nullable()
         .default(null)
-        .describe("Restrict to resources at or under this path prefix (matched on a path boundary, not a bare string prefix)"),
+        .describe("Restrict to resources at or under this within-scope path prefix (matched on a path boundary, not a bare string prefix)"),
       maxResults: z.number().int().positive().default(50).describe("Maximum number of matches to return"),
     }),
     outputSchema: z.object({
       matches: z.array(
         z.object({
-          path: z.string(),
+          uri: z.string(),
           line: z.number(),
           snippet: z.string(),
         }),
@@ -188,7 +154,7 @@ export function resourceSearchTools() {
     }),
     execute: async (input, ctx) => {
       const matcher = compileMatcher(input.pattern);
-      const matches: Array<{ path: string; line: number; snippet: string }> = [];
+      const matches: Array<{ uri: string; line: number; snippet: string }> = [];
       const resources = (await collectAllResources(ctx)).filter(isLlmReadable);
 
       for (const ref of resources) {
@@ -199,7 +165,7 @@ export function resourceSearchTools() {
         const lines = content.split("\n");
         for (let i = 0; i < lines.length; i += 1) {
           if (matcher.test(lines[i]!)) {
-            matches.push({ path: ref.path, line: i + 1, snippet: truncate(lines[i]!.trim()) });
+            matches.push({ uri: ref.uri, line: i + 1, snippet: truncate(lines[i]!.trim()) });
             if (matches.length >= input.maxResults) return { matches };
           }
         }
@@ -211,20 +177,20 @@ export function resourceSearchTools() {
   const searchResources = handler({
     name: "searchResources",
     description:
-      "Rank resources by lexical relevance to a keyword query (term-frequency over content bodies). Returns the top matches. Lexical, not semantic.",
+      "Rank resources by lexical relevance to a keyword query (term-frequency over content bodies). Returns the top matches by scope-qualified uri. Lexical, not semantic.",
     inputSchema: z.object({
       query: z.string().describe("Keywords to search for"),
       prefix: z
         .string()
         .nullable()
         .default(null)
-        .describe("Restrict to resources at or under this path prefix (matched on a path boundary, not a bare string prefix)"),
+        .describe("Restrict to resources at or under this within-scope path prefix (matched on a path boundary, not a bare string prefix)"),
       limit: z.number().int().positive().default(10).describe("Maximum number of results to return"),
     }),
     outputSchema: z.object({
       results: z.array(
         z.object({
-          path: z.string(),
+          uri: z.string(),
           score: z.number(),
           snippet: z.string(),
         }),
@@ -238,7 +204,7 @@ export function resourceSearchTools() {
       if (terms.length === 0) return { results: [] };
 
       const resources = (await collectAllResources(ctx)).filter(isLlmReadable);
-      const scored: Array<{ path: string; score: number; snippet: string }> = [];
+      const scored: Array<{ uri: string; score: number; snippet: string }> = [];
 
       for (const ref of resources) {
         if (input.prefix !== null && !matchesPrefix(ref.path, input.prefix)) continue;
@@ -250,10 +216,10 @@ export function resourceSearchTools() {
         for (const term of terms) score += countOccurrences(lower, term);
         if (score === 0) continue;
 
-        scored.push({ path: ref.path, score, snippet: firstMatchingLine(content, terms) });
+        scored.push({ uri: ref.uri, score, snippet: firstMatchingLine(content, terms) });
       }
 
-      scored.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
+      scored.sort((a, b) => b.score - a.score || a.uri.localeCompare(b.uri));
       return { results: scored.slice(0, input.limit) };
     },
   });

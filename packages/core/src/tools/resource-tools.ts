@@ -205,6 +205,48 @@ export async function resolveResourceByPath(
   return undefined;
 }
 
+/**
+ * Static resources plus every instance of every collection, as one flat
+ * `ResourceRef` list. Collection instances are themselves `ResourceRef`s, so
+ * callers treat the two uniformly. Lists each collection in full — suited to
+ * the bounded, curated collections the navigation and content tools target.
+ */
+export async function collectAllResources(ctx: BlockContext): Promise<ResourceRef<any>[]> {
+  const out: ResourceRef<any>[] = [...collectStaticResources(ctx)];
+  for (const ns of collectCollections(ctx)) {
+    for (const instance of await ns.ref.list()) out.push(instance);
+  }
+  return out;
+}
+
+/**
+ * Content read gate. A collection instance carries its owning collection's
+ * config (the server stamps `config: nsConfig` onto every instance ref), so the
+ * collection-level `llmReadable` flag reaches each instance through `ref.config`.
+ */
+export function isLlmReadable(ref: ResourceRef<any>): boolean {
+  return ref.config?.llmReadable === true;
+}
+
+/** Content write gate. Independent of `llmReadable`, matching the single-resource contract. */
+export function isLlmWritable(ref: ResourceRef<any>): boolean {
+  return ref.config?.llmWritable === true;
+}
+
+/**
+ * Resolve a scope-qualified resource `uri` (`${scope}/${path}`) to its
+ * `ResourceRef` — static resource or collection instance, uniformly. Unlike
+ * `resolveResourceByPath`, the uri is unique across scopes (FIX-842), so
+ * resolution is unambiguous even when two collections share a pattern in
+ * different scopes. Returns `undefined` on a miss.
+ */
+export async function resolveResourceByUri(
+  uri: string,
+  ctx: BlockContext,
+): Promise<ResourceRef<any> | undefined> {
+  return (await collectAllResources(ctx)).find((ref) => ref.uri === uri);
+}
+
 function resolvePathToCollection(
   path: string,
   ctx: BlockContext

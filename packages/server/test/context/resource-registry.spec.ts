@@ -1012,3 +1012,35 @@ describe("createScopeResourceRegistry — edges slot", () => {
     expect((inst.state as any).edges).toHaveLength(1);
   });
 });
+
+describe("createScopeResourceRegistry — llmReadable/llmWritable flags (FIX-842)", () => {
+  it("threads collection-level llmReadable/llmWritable onto every instance ref's config", async () => {
+    // The generic content + search tools gate on `ref.config.llmReadable` /
+    // `.llmWritable`. A collection declares the flags once; this asserts they
+    // reach each instance ref's config (the seam that makes the tools cover
+    // collection instances).
+    const nsConfig = makeCollectionConfig("artifacts/*", {
+      llmReadable: true,
+      llmWritable: true,
+      stateSchema: z.object({ title: z.string().default("") }).passthrough()
+    });
+    const registry = makeRegistry({
+      configs: { artifacts: nsConfig },
+      initialState: { "artifacts/a": { title: "A" } }
+    });
+    const ref = await (registry as any).artifacts.get("a");
+    expect(ref.config.llmReadable).toBe(true);
+    expect(ref.config.llmWritable).toBe(true);
+  });
+
+  it("leaves instance config flags unset when the collection does not opt in", async () => {
+    const nsConfig = makeCollectionConfig("artifacts/*");
+    const registry = makeRegistry({
+      configs: { artifacts: nsConfig },
+      initialState: { "artifacts/a": {} }
+    });
+    const ref = await (registry as any).artifacts.get("a");
+    expect(ref.config.llmReadable).toBeUndefined();
+    expect(ref.config.llmWritable).toBeUndefined();
+  });
+});

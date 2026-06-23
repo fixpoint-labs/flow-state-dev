@@ -27,7 +27,9 @@ const librarian = generator({
 });
 ```
 
-All three span both static resources and collection instances — a collection instance is itself a resource, so you don't choose between them.
+All three span both static resources and collection instances — a collection instance is itself a resource, so you don't choose between them. A collection's instances are searchable once the collection opts in with `llmReadable` (see [Collections — LLM access](/docs/resources/collections#llm-access)).
+
+Each result is the resource's scope-qualified uri (for example `session/concepts/react`) — the same handle [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns) accepts, so a search result feeds straight into a read. Glob patterns and the grep/search `prefix` match the within-scope path (you write `concepts/**`, not `session/concepts/**`); only the results carry the scope.
 
 ## Glob by path — `globResources`
 
@@ -39,28 +41,28 @@ concepts/*         →  concepts/react                             (one level, n
 concepts/*hooks*   →  concepts/react-hooks                       (within-segment substring; a prefix can't express this)
 ```
 
-With no pattern (`null`), `globResources` returns every resource path, sorted. It's a superset of a prefix listing: `globResources("concepts/**")` covers what a prefix list of `concepts` would, plus the patterns prefixes can't reach. Results are bounded by `limit` (default 100).
+With no pattern (`null`), `globResources` returns every resource uri, sorted. It's a superset of a prefix listing: `globResources("concepts/**")` covers what a prefix list of `concepts` would, plus the patterns prefixes can't reach. Results are bounded by `limit` (default 100).
 
-Glob is path discovery, so it does not filter on `llmReadable` — it surfaces paths the same way listing does.
+Glob is discovery, so it does not filter on `llmReadable` — it surfaces uris the same way listing does.
 
 ## Grep content — `grepResourceContent`
 
-Search content bodies for a pattern, line by line. Returns each match as `{ path, line, snippet }`, with 1-based line numbers.
+Search content bodies for a pattern, line by line. Returns each match as `{ uri, line, snippet }`, with 1-based line numbers.
 
 ```ts
 // pattern: "useEffect"
-// → [{ path: "concepts/react", line: 2, snippet: "the useEffect hook runs after render" }]
+// → [{ uri: "org/concepts/react", line: 2, snippet: "the useEffect hook runs after render" }]
 ```
 
 The pattern is treated as a regular expression. If it isn't valid regex, it's matched as a literal substring instead, so `a(` searches for the text `a(` rather than erroring. Scope the search with `prefix` (a path prefix), and cap output with `maxResults` (default 50).
 
 ## Ranked search — `searchResources`
 
-When you have keywords rather than an exact string, `searchResources` scores each resource by how often your terms appear in its content and returns the top matches as `{ path, score, snippet }`, highest score first.
+When you have keywords rather than an exact string, `searchResources` scores each resource by how often your terms appear in its content and returns the top matches as `{ uri, score, snippet }`, highest score first.
 
 ```ts
 // query: "react hooks"
-// → [{ path: "concepts/react-hooks", score: 5, snippet: "..." }, ...]
+// → [{ uri: "org/concepts/react-hooks", score: 5, snippet: "..." }, ...]
 ```
 
 Resources that don't match at all are dropped. Scope with `prefix` and cap with `limit` (default 10).
@@ -73,9 +75,9 @@ Resources that don't match at all are dropped. Scope with `prefix` and cap with 
 
 ## Limits and readability
 
-`grepResourceContent` and `searchResources` read content, so they only see resources marked `llmReadable` — the same gate as [`readResourceContentTool`](/docs/resources/overview). A resource the LLM can't read won't appear in their results. `globResources` lists paths regardless. They match the *rendered* content — the same text `readResourceContentTool` returns — so a resource whose body is a state-driven template is found by the words it renders to, not by its template source.
+`grepResourceContent` and `searchResources` read content, so they only see resources marked `llmReadable` — the same gate as [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns). The gate covers collection instances too: a collection's instances are searchable once the collection sets `llmReadable`. A resource the LLM can't read won't appear in their results. `globResources` lists uris regardless. They match the *rendered* content — the same text `readResourceContentTool` returns — so a resource whose body is a state-driven template is found by the words it renders to, not by its template source.
 
-All three identify each resource by its storage `path` (for example `concepts/react`) — the same key `readResource` and `listResources` accept, so a path from a search result feeds straight back into them. Note that `readResourceContentTool`, if you pair it to pull full content, currently addresses resources by their scope-qualified URI (`session/concepts/react`) instead, so you'll need the URI form there.
+All three identify each match by its scope-qualified uri (for example `session/concepts/react`) — the same handle `readResourceContentTool` accepts, so a uri from a search result feeds straight into a read or write with no translation.
 
 Search and grep are lexical. They're a good fit for curated, bounded content where answers live in the words on the page. They are not a substitute for semantic retrieval over a large, uncurated corpus — that's what [memory](/docs/memory/overview) and a retrieval layer are for.
 

@@ -908,12 +908,12 @@ it("supports manually adding unified resource content tools", async () => {
         expect(options.tools).toHaveLength(2);
 
         const listed = await readTool.execute({});
-        calls.push({ name: "list", args: listed.paths });
+        calls.push({ name: "list", args: listed.uris });
 
-        const readResult = await readTool.execute({ path: "session/soul" });
+        const readResult = await readTool.execute({ uri: "session/soul" });
         calls.push({ name: "read", args: readResult.content });
 
-        await writeTool.execute({ path: "session/notes", content: "updated" });
+        await writeTool.execute({ uri: "session/notes", content: "updated" });
 
         return { text: "done" };
       }
