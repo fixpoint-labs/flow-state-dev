@@ -2,6 +2,7 @@
  * Commander program definition for the fsdev CLI.
  */
 import { Command } from "commander";
+import { registerBenchmarkCommand } from "./commands/benchmark";
 import { registerBlockCommand } from "./commands/block";
 import { registerDevCommand } from "./commands/dev";
 import { registerRunCommand } from "./commands/run";
@@ -18,3 +19,4 @@ registerBlockCommand(program);
 registerDevCommand(program);
 registerRunCommand(program);
 registerUiCommand(program);
+registerBenchmarkCommand(program);

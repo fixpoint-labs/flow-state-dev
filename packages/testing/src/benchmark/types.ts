@@ -1,0 +1,173 @@
+/**
+ * Engine-side benchmark types.
+ *
+ * These describe the inputs/outputs of the benchmark engine that lives in
+ * `@flow-state-dev/testing`: the run config, the per-cell result the engine
+ * collects, the aggregated report, and the `defineBenchmark` discovery shape.
+ * The pattern-agnostic contract types (`BenchmarkTask`, `BenchmarkSubject`,
+ * etc.) live in `@flow-state-dev/core` and are imported here.
+ *
+ * Type-only module: no runtime values.
+ */
+import type { Scorer } from "../eval/types";
+import type { ModelResolver } from "@flow-state-dev/core/types";
+import type {
+  BenchmarkSubject,
+  BenchmarkTask,
+  BenchmarkCategory,
+  BenchmarkRegistry
+} from "@flow-state-dev/core";
+
+/** Configuration for a single `runBenchmark` invocation. */
+export interface RunBenchmarkConfig {
+  /** Subjects (patterns + optional baseline) to compare. */
+  subjects: BenchmarkSubject[];
+  /** Tasks every subject is run against. */
+  tasks: BenchmarkTask[];
+  /** Executor model id (cheap-paid default applied by callers). */
+  model: string;
+  /** Distinct judge model id. Defaults to `model` with a self-preference warning. */
+  judgeModel?: string;
+  /** Extra deterministic code scorers applied uniformly (in addition to the rubric judge). */
+  scorers?: Scorer<unknown>[];
+  /** k repetitions per (subject, task). Default 3. */
+  runs?: number;
+  /** Concurrent (subject,task,run) cells. Default 3. */
+  concurrency?: number;
+  /** Abort + partial report when accumulated cost exceeds this. */
+  maxCostUsd?: number;
+  /** Executor resolver override (tests inject a mock). Built from `model` when absent. */
+  modelResolver?: ModelResolver;
+  /** Judge resolver override (tests inject a mock). Built from `judgeModel` when absent. */
+  judgeResolver?: ModelResolver;
+  /** Cancels in-flight scheduling; produces a partial report. */
+  signal?: AbortSignal;
+}
+
+/** Aggregated stats for one subject within one category (or "overall"). */
+export interface SubjectCategoryStat {
+  /** Subject name. */
+  subject: string;
+  /** Category bucket, or "overall" across all categories. */
+  category: BenchmarkCategory | "overall";
+  /** Mean judge score (0-1) across successful cells. */
+  mean: number;
+  /** Population standard deviation of judge scores. */
+  stddev: number;
+  /** Fraction of cells that passed the judge threshold. */
+  passRate: number;
+  /** Total cells scheduled for this (subject, category). */
+  runs: number;
+  /** Cells that completed without error. */
+  successfulRuns: number;
+  /** Summed estimated USD cost across cells. */
+  costUsd: number;
+  /** Mean wall-clock latency (ms) per cell. */
+  meanLatencyMs: number;
+  /** Mean of each optional code scorer (from `RunBenchmarkConfig.scorers`) across
+   *  successful cells. Empty when no code scorers were configured. */
+  codeScores: Record<string, number>;
+}
+
+/** A subject's standing within a category ranking. */
+export interface BenchmarkRanking {
+  /** Subject name. */
+  subject: string;
+  /** Mean judge score (0-1). */
+  mean: number;
+  /** Mean minus the baseline subject's mean (0 when no baseline). */
+  deltaVsBaseline: number;
+  /** Whether the delta clears ~2× the standard error of the difference of means
+   *  (and both groups have at least 2 runs). False when it could be run-to-run
+   *  noise. */
+  credible: boolean;
+}
+
+/** The aggregated, publishable benchmark report. */
+export interface BenchmarkReport {
+  /** Executor model id used. */
+  model: string;
+  /** Judge model id, when distinct/known. */
+  judgeModel?: string;
+  /** Repetitions per (subject, task). */
+  runs: number;
+  /** Subject names included. */
+  subjects: string[];
+  /** Every baseline subject (kind "baseline"), in first-seen order. A run may
+   *  carry several — one per pure model in a cross-model comparison. */
+  baselineSubjects: string[];
+  /** The baseline used as the delta reference (the same-model baseline). Other
+   *  baselines are compared by absolute mean. */
+  primaryBaseline?: string;
+  /** Categories present across the tasks. */
+  categories: BenchmarkCategory[];
+  /** Per (subject × category) and (subject × "overall") aggregates. */
+  stats: SubjectCategoryStat[];
+  /** category (or "overall") -> subjects ranked by mean desc. */
+  rankings: Record<string, BenchmarkRanking[]>;
+  /** Total estimated USD spend across all cells. */
+  totalCostUsd: number;
+  /** True when `maxCostUsd` was exceeded and the sweep stopped early. */
+  budgetExceeded: boolean;
+  /** Non-fatal warnings (e.g. judge == executor self-preference). */
+  warnings: string[];
+  /** Run timing. */
+  timing: { totalMs: number };
+}
+
+/** Per-cell record the engine collects before aggregation. */
+export interface BenchmarkRunResult {
+  /** Subject name. */
+  subject: string;
+  /** Subject kind (pattern vs baseline). */
+  kind: "pattern" | "baseline";
+  /** Task id. */
+  taskId: string;
+  /** Task category. */
+  category: BenchmarkCategory;
+  /** Repetition index (0-based). */
+  run: number;
+  /** Judge score 0-1 (0 on failure). */
+  score: number;
+  /** Whether the judge score met its threshold. */
+  passed: boolean;
+  /** True when the subject's sequencer errored/threw. */
+  errored: boolean;
+  /** Estimated USD cost for this cell (best-effort; 0 when unknown). */
+  costUsd: number;
+  /** Wall-clock latency (ms) for the subject run. */
+  latencyMs: number;
+  /** Optional deterministic code scorer scores for this cell. */
+  codeScores?: Record<string, number>;
+}
+
+/** Declarative benchmark definition for CLI/registry discovery. */
+export interface BenchmarkDefinition {
+  /** Benchmark name. */
+  name: string;
+  /** Explicit subjects, when not resolving via a registry. */
+  subjects?: BenchmarkSubject[];
+  /** Pattern names resolved against `registry` (or a registry the runner supplies). */
+  patterns?: string[];
+  /**
+   * Registry used to resolve `patterns` into subjects. Carried on the definition
+   * so a runner (e.g. the `fsdev benchmark` CLI) stays generic — it resolves
+   * names without importing any specific pattern package.
+   */
+  registry?: BenchmarkRegistry;
+  /** Append a baseline subject (default true at run time). */
+  baseline?: boolean;
+  /** Pure-model baselines to compare against (default: one on `model`). List
+   *  several to ask "do the patterns beat each of these pure models?". */
+  baselineModels?: string[];
+  /** Tasks to run. Must be non-empty. */
+  tasks: BenchmarkTask[];
+  /** Executor model id. */
+  model: string;
+  /** Distinct judge model id. */
+  judgeModel?: string;
+  /** Extra deterministic code scorers. */
+  scorers?: Scorer<unknown>[];
+  /** Repetitions per (subject, task). */
+  runs?: number;
+}

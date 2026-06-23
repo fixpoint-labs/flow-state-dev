@@ -339,6 +339,25 @@ The `emitPlanMeta`, `emitTaskUpdate`, and `emitPlanSnapshot` runtime helpers hav
 
 Each adapter validates its `pattern-config` block via a strict Zod schema — unknown keys reject at parse rather than silently passing through. See the [pattern skills docs](https://flow-state.dev/docs/skills/pattern-skills) for the full surface.
 
+## Benchmark adapters
+
+`defaultBenchmarkRegistry` maps each comparable pattern to a `BenchmarkAdapter` so the cross-pattern benchmark harness can run them all against the same task suite. The benchmark engine resolves subjects through this lookup without knowing any pattern's internals. See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks).
+
+The v1 roster has six entries:
+
+```typescript
+import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns";
+
+// supervisor, plan-and-execute, parallel-tasks, round-robin, debate, routed-specialists
+```
+
+Some patterns are intentionally left out of the roster:
+
+- **`task-board`** — the substrate primitive the others compose. `parallel-tasks` is task-board plus a planner and a synthesizer, so benchmarking the board alongside its consumers would double-count the same coordination work. It also returns a `TaskBoardHandle` rather than a synthesized answer.
+- **`event-actors`, `rlm`, `response-auditor`** — not `goal → answer` shaped. They don't map cleanly onto a single generic benchmark task and would need bespoke per-task glue (event-actors is event-driven, rlm is context-exploration scaffolding, response-auditor is a post-hoc sidechain over an existing response).
+
+Adding a pattern to the benchmark is one entry. Define its adapter, add it to `defaultBenchmarkRegistry`, and add its name to the `patterns` list in the benchmark definition (`apps/pattern-benchmark/src/benchmark.ts`). No per-pattern harness wiring.
+
 ## Running tests
 
 ```bash

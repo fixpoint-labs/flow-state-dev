@@ -100,6 +100,8 @@ More specifically:
 
 The first three accept a custom `planner` override, so you can swap out `utility.decomposer` for a domain-specific planner if you need tighter control.
 
+Not sure which to pick? Benchmark them on your own tasks. See [Benchmarks](../testing/benchmarks.md).
+
 ## Declarative binding from skills
 
 Every pattern in the table above (except Response Auditor, Round Robin, Debate, and RLM, which aren't task-collection-shaped) is reachable from a `SKILL.md` frontmatter declaration via `defaultPatternRegistry`. See [Pattern skills](../skills/pattern-skills) for the YAML shape, the worker resolution table, and the pattern-config crosswalk per factory.

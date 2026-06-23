@@ -19,6 +19,9 @@ export interface ScoreResult {
   score: number;
   passed: boolean;
   reason?: string;
+  /** Estimated USD cost the scorer itself incurred (e.g. an LLM-judge call).
+   *  Optional; set by scorers that make model calls so callers can budget. */
+  costUsd?: number;
 }
 
 // ---------------------------------------------------------------------------
