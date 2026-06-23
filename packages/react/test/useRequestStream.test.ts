@@ -156,8 +156,11 @@ describe("useRequestStream (react)", () => {
   });
 
   it("consumes a pre-fetched Response via the { response } source (no flowKind needed)", () => {
+    // Hoist the Response so its identity is stable across renders — a fresh
+    // object each render would (correctly) re-subscribe every render.
+    const response = {} as Response;
     const { result } = renderHook(() =>
-      useRequestStream({ source: { response: {} as Response }, flush: "immediate" }),
+      useRequestStream({ source: { response }, flush: "immediate" }),
     );
     act(() => {
       feed(itemAdded(makeMessage("m", "")));
@@ -249,6 +252,35 @@ describe("useRequestStream (react)", () => {
     expect(connections.length).toBe(2);
     expect(connections[0]!.closed).toBe(true);
     expect(result.current.items.length).toBe(0);
+  });
+
+  it("opens no connection when initially disabled", () => {
+    const { result } = renderHook(() =>
+      useRequestStream({ flowKind: "demo", source: { requestId: "r1" }, flush: "immediate", enabled: false }),
+    );
+    expect(connections.length).toBe(0);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("is not streaming and preserves items when disabled", () => {
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useRequestStream({ flowKind: "demo", source: { requestId: "r1" }, flush: "immediate", enabled }),
+      { initialProps: { enabled: true } },
+    );
+    act(() => {
+      feed(requestCreated());
+      feed(itemAdded(makeMessage("m", "hi")));
+    });
+    expect(result.current.items.length).toBe(1);
+    expect(result.current.isStreaming).toBe(true);
+
+    act(() => { rerender({ enabled: false }); });
+
+    // Disabling stops streaming without discarding what already streamed.
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.items.length).toBe(1);
+    expect(connections[0]!.closed).toBe(true);
   });
 
   it("stops streaming when close() is called", () => {

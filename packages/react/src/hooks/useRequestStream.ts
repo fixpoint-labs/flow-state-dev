@@ -59,7 +59,7 @@ export type UseRequestStreamOptions = {
   filter?: RequestStreamFilter;
   /** Append `?include=trace` to the stream URL. Only meaningful for a `{ requestId }` source. */
   includeTrace?: boolean;
-  /** Bump to force a fresh re-subscribe for the same request id (FIX-811 same-id reconnect). */
+  /** Bump to force a fresh re-subscribe for the same request id (e.g. resuming a suspended run under its original id). */
   reconnectToken?: number;
   /** Snapshot flush policy. `"raf"` (default) coalesces; `"immediate"` flushes synchronously. */
   flush?: "raf" | "immediate";
@@ -174,13 +174,17 @@ export function useRequestStream(
   const filterKey = filter?.itemTypes?.join(",");
 
   useEffect(() => {
+    // Disabled: leave the last snapshot in place and don't subscribe. The prior
+    // enabled run's cleanup already closed its handle; `isStreaming` reads false
+    // via the `enabled` gate below. Resetting happens only when we (re)subscribe,
+    // so a new stream always starts clean without wiping a paused one.
+    if (!enabled) return;
+
     const store = storeRef.current!;
     store.clear();
     setItems([]);
     setStatus("in_progress");
     setEnded(false);
-
-    if (!enabled) return;
 
     const callbacks = {
       ...bindStoreToCallbacks(store, {
@@ -256,15 +260,16 @@ export function useRequestStream(
   // Streaming while the request is live and not torn down. Finishing once the
   // main chain reports an unblocked status item but the request hasn't settled —
   // background work tasks are still running.
-  const isStreaming = !ended && status === "in_progress";
+  const isStreaming = enabled && !ended && status === "in_progress";
   const isFinishing = useMemo(
     () =>
+      enabled &&
       status === "in_progress" &&
       items.some(
         (item) =>
           item.type === "status" && (item as StatusItem).blocked === false
       ),
-    [items, status]
+    [enabled, items, status]
   );
 
   return {
