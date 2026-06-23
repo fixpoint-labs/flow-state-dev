@@ -17,7 +17,7 @@ If you're a developer (or a coding agent) iterating on a flow, this is your loop
 A worked example, "I'm adding a new tool to chat-agent":
 
 ```bash
-# 1. Edit flows/chat-agent/blocks/my-new-tool.ts and wire it into the pipeline.
+# 1. Edit flows/chat-agent/shared/capabilities/my-new-tool.ts and wire it into the pipeline.
 # 2. Smoke it.
 pnpm fsdev run kitchen-sink chat-agent \
   -i '{"message":"use the new tool to do X","mode":"do"}' \
