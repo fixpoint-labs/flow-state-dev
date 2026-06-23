@@ -45,6 +45,14 @@
     "./types/*": {
       "types": "./dist/types/*.d.ts",
       "default": "./src/types/*.ts"
+    },
+    "./helpers": {
+      "types": "./dist/helpers/index.d.ts",
+      "default": "./src/helpers/index.ts"
+    },
+    "./helpers/*": {
+      "types": "./dist/helpers/*.d.ts",
+      "default": "./src/helpers/*.ts"
     }
   },
   "license": "MIT",
@@ -76,6 +84,14 @@
       "./types/*": {
         "types": "./dist/types/*.d.ts",
         "default": "./dist/types/*.js"
+      },
+      "./helpers": {
+        "types": "./dist/helpers/index.d.ts",
+        "default": "./dist/helpers/index.js"
+      },
+      "./helpers/*": {
+        "types": "./dist/helpers/*.d.ts",
+        "default": "./dist/helpers/*.js"
       }
     }
   },
