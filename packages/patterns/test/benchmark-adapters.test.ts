@@ -49,7 +49,9 @@ const TASK: BenchmarkTask = {
 function plannerStep() {
   return {
     structuredOutput: {
-      tasks: [{ id: "task-1", goal: "Answer the question." }],
+      tasks: [
+        { id: "task-1", title: "Answer", goal: "Answer the question.", context: null },
+      ],
     },
   };
 }
