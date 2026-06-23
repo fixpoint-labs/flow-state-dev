@@ -14,45 +14,53 @@ The same schema serves as the tool's `inputSchema` and the renderer's data contr
 
 This is non-deterministic component emission. Today components are usually emitted by deterministic pattern code. With this pack, the *generator* picks the rendering shape based on what it's saying.
 
-## How a bundle works
+## Two entrypoints: tools and renderers
+
+The pack has two import paths, one per surface:
+
+- **`@flow-state-dev/ui/generative/tools`** — the *tool surface*. This runs server-side. It carries the Zod schemas and the `emit*` tool blocks, which are real `handler` blocks built on `@flow-state-dev/core`.
+- **`@flow-state-dev/ui/generative/renderers`** — the *renderer surface*. This runs in the browser. It carries only the React renderers.
+
+The split exists for one reason: the renderer surface stays browser-light. A renderer only needs the emitted data's *type*, which is erased at build time, so importing the renderers never pulls the authoring runtime (or Zod) into your browser bundle. The tool factories, which do reach `@flow-state-dev/core`, stay on the server side where that weight belongs. (A guard test enforces that the renderer surface never value-imports `core` or Zod.)
 
 ```ts
-type GenerativeComponent<TSchema extends ZodTypeAny> = {
-  name: string;                                          // 'info-card'
-  schema: TSchema;                                       // shared by tool + renderer
-  Renderer: ComponentType<{ item: ComponentItem }>;      // React renderer
-  tool: (options?) => BlockDefinition;                   // handler block factory
-};
+// tool surface (server): name + schema + handler-block factory
+import { generativeTools } from "@flow-state-dev/ui/generative/tools";
+
+// renderer surface (browser): name + React renderer only
+import { generativeRenderers } from "@flow-state-dev/ui/generative/renderers";
 ```
 
-When the LLM calls the tool, the handler runs `ctx.emitComponent(name, data, { key })`. The emitted `component` item flows through the stream and lands in `FlowProvider`'s renderer registry, which dispatches it to the matching `Renderer` by name.
+When the LLM calls the tool, the handler runs `ctx.emitComponent(name, data, { key })`. The emitted `component` item flows through the stream and lands in `FlowProvider`'s renderer registry, which dispatches it to the matching renderer by name. The shared `name` is what links the two surfaces.
+
+> **Migration.** This replaces the earlier single import `@flow-state-dev/ui/generative`, which exported one `generativeUI` object. `generativeUI.tools()` becomes `generativeTools()` (from `.../generative/tools`); `generativeUI.renderers()` becomes `generativeRenderers()` (from `.../generative/renderers`).
 
 Every `emit*` handler is a normal block, which means a tool can be a sequencer: fetch data, validate, then emit. A tool can also kick off a `.work()` sidechain that re-emits the same component with the same `key` once enrichment lands — the user sees the card appear, then upgrade in place.
 
-## Three-line setup
+## Setup
 
 Server side, in your generator definition:
 
 ```ts
-import { generativeUI } from "@flow-state-dev/ui/generative";
+import { generativeTools } from "@flow-state-dev/ui/generative/tools";
 
 const tripGenerator = generator({
   name: "trip-concierge",
   itemVisibility: { client: true, history: true },
   prompt: TRIP_CONCIERGE_PROMPT,
-  tools: [...generativeUI.tools(), webSearch],
+  tools: [...generativeTools(), webSearch],
 });
 ```
 
 Client side, on `FlowProvider`:
 
 ```tsx
-import { generativeUI } from "@flow-state-dev/ui/generative";
+import { generativeRenderers } from "@flow-state-dev/ui/generative/renderers";
 
 <FlowProvider
   flowKind="trip-concierge"
   userId={userId}
-  renderers={{ component: generativeUI.renderers() }}
+  renderers={{ component: generativeRenderers() }}
 >
   <ChatUI />
 </FlowProvider>
@@ -62,19 +70,17 @@ That's the whole integration. The schema, tool, and renderer are linked through 
 
 ## Picking a tighter palette
 
-Fewer tools generally means better selection accuracy on smaller models. Use `pick` to scope a subset:
+Fewer tools generally means better selection accuracy on smaller models. Each entrypoint has a matching `.pick(...names)`:
 
 ```ts
-const subset = generativeUI.pick("info-card", "link-card");
+// In the generator (server):
+tools: [...generativeTools.pick("info-card", "link-card"), webSearch];
 
-// In the generator:
-tools: [...subset.tools(), webSearch];
-
-// On FlowProvider:
-renderers: { component: subset.renderers() };
+// On FlowProvider (browser):
+renderers: { component: generativeRenderers.pick("info-card", "link-card") };
 ```
 
-`pick` returns the same `.tools()` / `.renderers()` surface scoped to the chosen names. Unknown names are silently ignored.
+`pick` returns the same registry / block array scoped to the chosen names. Unknown names are silently ignored. Keep the picked names in sync across the two surfaces so every emitted shape has a renderer.
 
 ## Starter pack
 
@@ -107,7 +113,7 @@ Schema fields: `url`, `title`, `description?`, `siteName?`, `imageUrl?`, `favico
 
 ## Project-owned renderers
 
-`generativeUI.renderers()` returns the lightweight defaults built into the runtime package. They use plain Tailwind classes and have no shadcn-primitive dependency, so they work anywhere Tailwind is available.
+`generativeRenderers()` returns the lightweight defaults built into the runtime package. They use plain Tailwind classes and have no shadcn-primitive dependency, so they work anywhere Tailwind is available.
 
 For a polished, fully-customizable variant, install the renderer through the registry and override the entry on `FlowProvider`:
 
@@ -116,13 +122,13 @@ fsdev ui add info-card
 ```
 
 ```tsx
-import { generativeUI } from "@flow-state-dev/ui/generative";
+import { generativeRenderers } from "@flow-state-dev/ui/generative/renderers";
 import { InfoCardRenderer } from "@/components/flow-state/generative/info-card";
 
 <FlowProvider
   renderers={{
     component: {
-      ...generativeUI.renderers(),
+      ...generativeRenderers(),
       "info-card": InfoCardRenderer,
     },
   }}

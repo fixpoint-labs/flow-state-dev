@@ -3,9 +3,13 @@
   "type": "module",
   "private": true,
   "exports": {
-    "./generative": {
-      "types": "./src/generative/index.ts",
-      "default": "./src/generative/index.ts"
+    "./generative/renderers": {
+      "types": "./src/generative/renderers.ts",
+      "default": "./src/generative/renderers.ts"
+    },
+    "./generative/tools": {
+      "types": "./src/generative/tools.ts",
+      "default": "./src/generative/tools.ts"
     }
   },
   "scripts": {
@@ -17,6 +21,7 @@
     "vercel-build": "cd ../.. && pnpm install && pnpm packages:build && cd packages/ui && pnpm build"
   },
   "dependencies": {
+    "@flow-state-dev/contracts": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "zod": "^3.24.1"
   },

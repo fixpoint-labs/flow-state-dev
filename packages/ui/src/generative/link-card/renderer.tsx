@@ -1,9 +1,9 @@
 /**
  * `<LinkCardRenderer />` — default renderer for the `link-card` component shape.
  * Plain Tailwind classnames; safe to runtime-import from
- * `@flow-state-dev/ui/generative`.
+ * `@flow-state-dev/ui/generative/renderers`.
  */
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { ComponentItem } from "@flow-state-dev/contracts";
 import type { LinkCardData } from "./schema";
 
 function safeHostname(url: string): string {

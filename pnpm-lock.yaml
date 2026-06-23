@@ -1142,6 +1142,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@flow-state-dev/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core

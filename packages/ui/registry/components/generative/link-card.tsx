@@ -3,7 +3,7 @@
 /**
  * `<LinkCardRenderer />` — registry-distributed renderer for the `link-card`
  * generative UI shape. Consumes `ComponentItem.data` matching the
- * `LinkCardSchema` exported from `@flow-state-dev/ui/generative`.
+ * `LinkCardSchema` exported from `@flow-state-dev/ui/generative/tools`.
  */
 import type { ComponentItem } from "@flow-state-dev/core/items";
 

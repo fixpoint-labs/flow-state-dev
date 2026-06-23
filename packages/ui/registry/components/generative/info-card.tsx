@@ -3,7 +3,7 @@
 /**
  * `<InfoCardRenderer />` — registry-distributed renderer for the `info-card`
  * generative UI shape. Consumes `ComponentItem.data` matching the
- * `InfoCardSchema` exported from `@flow-state-dev/ui/generative`.
+ * `InfoCardSchema` exported from `@flow-state-dev/ui/generative/tools`.
  *
  * Plain Tailwind classnames; no shadcn-primitive dependency. Edit freely once
  * copied into your project — typical customizations are swapping the layout or
