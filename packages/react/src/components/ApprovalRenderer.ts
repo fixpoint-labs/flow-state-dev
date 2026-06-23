@@ -26,11 +26,12 @@
  * the buttons render disabled and a console.warn is emitted (dev-only guidance).
  *
  * Styling: a single scoped stylesheet is injected once at module load (class
- * prefix `fsd-approval-`). Inline styles can't express `:hover`, `:focus-visible`,
- * or `prefers-color-scheme`, so the card ships its own minimal sheet to read well
- * on both light and dark surfaces. Consumers can override by targeting the classes.
+ * prefix `fsd-approval-`), mainly so the buttons can have `:hover`/`:focus-visible`
+ * states that inline styles can't express. The card is theme-agnostic — a neutral
+ * translucent surface plus `color: inherit` — so it reads on both light and dark
+ * backgrounds with no theme detection. Consumers can override the classes.
  */
-import { createElement, useState, useMemo, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { createElement, useState, useMemo, useCallback, useEffect, type ReactNode } from "react";
 import { createRecoveryClient } from "@flow-state-dev/client";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
@@ -43,20 +44,19 @@ import { useSuspensionResolver } from "../context/SuspensionResolver";
 
 const STYLE_ELEMENT_ID = "fsd-approval-styles";
 
-// Minimal stylesheet. Green affirmative / red destructive. Light is the default;
-// a `[data-theme="dark"]` variant is applied when the card detects it's sitting on
-// a dark surface (see `detectSurfaceTheme`). We key off the actual surrounding
-// background rather than `prefers-color-scheme` so the card matches the *app's*
-// theme — a light app on a dark-mode OS still gets the light card.
+// Minimal, theme-agnostic stylesheet. No light/dark detection: the surface uses a
+// neutral translucent tint and `color: inherit`, so it adapts to whatever
+// background and text color the host app provides. The buttons (solid green/red,
+// white text) and the receipt's colored icon carry their own contrast, so they
+// read on any surface.
 const APPROVAL_CSS = `
 .fsd-approval-card {
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
-  color: #111827;
+  border: 1px solid rgba(128,128,128,0.28);
+  background: rgba(128,128,128,0.08);
+  color: inherit;
   border-radius: 10px;
   padding: 14px 16px;
   margin: 6px 0;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
   font-family: inherit;
 }
 .fsd-approval-msg { margin: 0 0 10px; font-weight: 600; font-size: 14px; line-height: 1.4; }
@@ -64,43 +64,36 @@ const APPROVAL_CSS = `
 .fsd-approval-summary { cursor: pointer; opacity: 0.65; }
 .fsd-approval-pre {
   margin: 6px 0 0; font-size: 11px; white-space: pre-wrap; opacity: 0.85;
-  background: rgba(0,0,0,0.04); padding: 8px; border-radius: 6px; overflow-x: auto;
+  background: rgba(128,128,128,0.12); padding: 8px; border-radius: 6px; overflow-x: auto;
 }
-.fsd-approval-error { color: #dc2626; font-size: 12px; margin: 0 0 10px; }
+.fsd-approval-error { color: #ef4444; font-size: 12px; margin: 0 0 10px; }
 .fsd-approval-actions { display: flex; gap: 8px; }
 .fsd-approval-btn {
   appearance: none; border: 1px solid transparent; border-radius: 8px;
-  padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
-  font-family: inherit; transition: background-color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+  padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; color: #ffffff;
+  font-family: inherit; transition: background-color 0.12s ease, opacity 0.12s ease;
 }
-.fsd-approval-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.fsd-approval-btn:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
 .fsd-approval-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.fsd-approval-approve { background: #16a34a; color: #ffffff; }
+.fsd-approval-approve { background: #16a34a; }
 .fsd-approval-approve:hover:not(:disabled) { background: #15803d; }
 .fsd-approval-approve:active:not(:disabled) { background: #166534; }
-.fsd-approval-reject { background: #ffffff; color: #dc2626; border-color: #fca5a5; }
-.fsd-approval-reject:hover:not(:disabled) { background: #fef2f2; border-color: #f87171; }
-.fsd-approval-reject:active:not(:disabled) { background: #fee2e2; }
+.fsd-approval-reject { background: #dc2626; }
+.fsd-approval-reject:hover:not(:disabled) { background: #b91c1c; }
+.fsd-approval-reject:active:not(:disabled) { background: #991b1b; }
 .fsd-approval-receipt {
-  display: inline-flex; align-items: center; gap: 8px;
+  display: inline-flex; align-items: center; gap: 8px; color: inherit;
   border: 1px solid; border-radius: 8px; padding: 6px 12px; margin: 6px 0;
   font-size: 13px; font-family: inherit;
 }
 .fsd-approval-receipt-icon { font-size: 13px; line-height: 1; }
 .fsd-approval-receipt-label { font-weight: 600; }
 .fsd-approval-receipt-msg { opacity: 0.75; font-weight: 400; }
-.fsd-approval-receipt-approved { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
-.fsd-approval-receipt-rejected { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
-.fsd-approval-receipt-neutral { background: rgba(127,127,127,0.08); border-color: rgba(127,127,127,0.3); color: inherit; }
-[data-theme="dark"].fsd-approval-card { background: #1f2937; color: #f9fafb; border-color: #374151; box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
-[data-theme="dark"] .fsd-approval-pre { background: rgba(255,255,255,0.06); }
-[data-theme="dark"] .fsd-approval-error { color: #f87171; }
-[data-theme="dark"] .fsd-approval-approve { background: #16a34a; }
-[data-theme="dark"] .fsd-approval-approve:hover:not(:disabled) { background: #22c55e; }
-[data-theme="dark"] .fsd-approval-reject { background: transparent; color: #f87171; border-color: #7f1d1d; }
-[data-theme="dark"] .fsd-approval-reject:hover:not(:disabled) { background: rgba(248,113,113,0.12); border-color: #b91c1c; }
-[data-theme="dark"].fsd-approval-receipt-approved { background: rgba(22,163,74,0.15); border-color: rgba(34,197,94,0.4); color: #4ade80; }
-[data-theme="dark"].fsd-approval-receipt-rejected { background: rgba(220,38,38,0.15); border-color: rgba(248,113,113,0.4); color: #f87171; }
+.fsd-approval-receipt-approved { background: rgba(34,197,94,0.14); border-color: rgba(34,197,94,0.45); }
+.fsd-approval-receipt-approved .fsd-approval-receipt-icon { color: #22c55e; }
+.fsd-approval-receipt-rejected { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.45); }
+.fsd-approval-receipt-rejected .fsd-approval-receipt-icon { color: #ef4444; }
+.fsd-approval-receipt-neutral { background: rgba(128,128,128,0.1); border-color: rgba(128,128,128,0.3); }
 `;
 
 /**
@@ -117,37 +110,6 @@ function ensureApprovalStyles(): void {
 }
 
 ensureApprovalStyles();
-
-/** Parse a CSS `rgb()`/`rgba()` color string into channels, or null. */
-function parseRgb(color: string): { r: number; g: number; b: number; a: number } | null {
-  const match = color.match(/rgba?\(([^)]+)\)/);
-  if (match === null) return null;
-  const parts = match[1].split(",").map((p) => parseFloat(p.trim()));
-  if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null;
-  return { r: parts[0], g: parts[1], b: parts[2], a: parts.length >= 4 ? parts[3] : 1 };
-}
-
-/**
- * Decide whether the card sits on a dark surface by walking up from the mount
- * point to the first ancestor with an opaque background and comparing its
- * perceived luminance. Falls back to `prefers-color-scheme` only when no opaque
- * background is found (e.g. fully transparent tree). Keys off the real
- * surrounding background so the card matches the app's theme, not the OS's.
- */
-function detectSurfaceTheme(el: HTMLElement | null): "light" | "dark" {
-  if (el === null || typeof window === "undefined") return "light";
-  let node: HTMLElement | null = el;
-  while (node !== null) {
-    const rgb = parseRgb(window.getComputedStyle(node).backgroundColor);
-    if (rgb !== null && rgb.a > 0) {
-      // Rec. 601 luma (0–255); < 128 reads as a dark surface.
-      const luma = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
-      return luma < 128 ? "dark" : "light";
-    }
-    node = node.parentElement;
-  }
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
 
 // ---------------------------------------------------------------------------
 // Receipt outcome derivation
@@ -263,18 +225,6 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
     [baseUrl]
   );
 
-  // Match the card to its surrounding surface (light app vs dark app), not the
-  // OS color scheme. `rootRef` attaches to whichever root renders (card or
-  // receipt); detection runs once after mount, when the DOM background is
-  // measurable. Defaults to "light" for the SSR/first-paint frame.
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
-  useEffect(() => {
-    // Start from the parent: the card/receipt paints its own background, so
-    // measuring itself would always read its own surface.
-    setTheme(detectSurfaceTheme(rootRef.current?.parentElement ?? null));
-  }, []);
-
   // Compute per-action capability so a single supplied handler doesn't enable
   // the other button (e.g. onApprove only → Reject stays disabled). A streaming
   // resolver from context enables both buttons just like a flowKind does.
@@ -359,10 +309,8 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
     return createElement(
       "div",
       {
-        ref: rootRef,
         "data-suspension": item.suspensionId,
         "data-resolved": "true",
-        "data-theme": theme,
         className: `fsd-approval-receipt ${outcome.toneClass}`
       },
       createElement("span", { className: "fsd-approval-receipt-icon", "aria-hidden": true }, outcome.icon),
@@ -378,7 +326,7 @@ export function ApprovalRenderer(props: ApprovalRendererProps): ReactNode {
 
   return createElement(
     "div",
-    { ref: rootRef, "data-suspension": item.suspensionId, "data-theme": theme, className: "fsd-approval-card" },
+    { "data-suspension": item.suspensionId, className: "fsd-approval-card" },
     // Suspension message
     createElement("p", { className: "fsd-approval-msg" }, item.message),
     // Optional data summary
