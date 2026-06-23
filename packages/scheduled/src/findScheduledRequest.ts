@@ -18,9 +18,16 @@ export async function findScheduledRequest(
     if (entry.flowKind !== flowKind) continue;
     if (entry.source !== SCHEDULED_TRANSPORT_SOURCE) continue;
     // Coordinate lives under the namespaced `metadata.schedule` slot (FIX-838),
-    // matching what the dispatch handler stamps.
-    const meta = entry.metadata as { schedule?: { scheduleId?: unknown } } | undefined;
-    if (meta?.schedule?.scheduleId === scheduleId) return entry;
+    // matching what the dispatch handler stamps. Also read the legacy top-level
+    // `metadata.scheduleId` so `onOverlap: "skip"` still matches requests that
+    // were enqueued by the pre-namespacing build and are still in-flight across
+    // a rolling deploy. Transitional — removable once no legacy in-flight
+    // requests remain.
+    const meta = entry.metadata as
+      | { schedule?: { scheduleId?: unknown }; scheduleId?: unknown }
+      | undefined;
+    const coord = meta?.schedule?.scheduleId ?? meta?.scheduleId;
+    if (coord === scheduleId) return entry;
   }
   return null;
 }
