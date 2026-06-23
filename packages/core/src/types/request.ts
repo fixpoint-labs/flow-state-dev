@@ -5,18 +5,12 @@
  * crossing the server↔client package boundary.
  */
 
-/**
- * Lifecycle status of a request. Mirrors the value persisted in
- * `RequestStore.set`. Server's `RequestRecord.status` re-exports this type.
- */
-export type RequestStatus =
-  | "in_progress"
-  | "completed"
-  | "incomplete"
-  | "failed"
-  | "interrupted"
-  | "aborted"
-  | "suspended";
+// `RequestStatus` is a pure leaf type consumed by the item/stream taxonomy, so
+// its declaration lives in the zero-dependency `@flow-state-dev/contracts`
+// layer. Re-exported here to preserve this path's surface; the
+// `RequestStatusSnapshot` projection below still references it locally.
+import type { RequestStatus } from "@flow-state-dev/contracts";
+export type { RequestStatus };
 
 /**
  * Read-only snapshot of a request's lifecycle state, returned by

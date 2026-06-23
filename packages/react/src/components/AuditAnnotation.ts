@@ -15,7 +15,11 @@
  */
 import { createElement, useState, type ReactNode } from "react";
 import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
-import { resolveBlockValueLocal } from "../internal/block-value-resolver";
+// Canonical BlockValue resolution from the zero-dependency contracts layer.
+// Previously a hand-mirrored `resolveBlockValueLocal`; `resolveBlockValueInternal`
+// follows `ref` outputs (FIX-480), so a trace's ref-to-message resolves correctly.
+import { buildItemLookup } from "@flow-state-dev/contracts";
+import { resolveBlockValueInternal } from "@flow-state-dev/contracts/items/internal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,9 +95,9 @@ function extractAuditData(items: OutputItem[]): AuditAnnotationData | null {
       (item as BlockTraceItem).blockName === "apply-threshold" &&
       "output" in item
     ) {
-      return (resolveBlockValueLocal(
+      return (resolveBlockValueInternal(
         (item as BlockTraceItem).output,
-        items,
+        buildItemLookup(items),
       ) ?? null) as AuditAnnotationData | null;
     }
   }

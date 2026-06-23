@@ -15,6 +15,11 @@
     "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": {
+      "@flow-state-dev/contracts": ["packages/contracts/src/index.ts"],
+      "@flow-state-dev/contracts/items": ["packages/contracts/src/items/index.ts"],
+      "@flow-state-dev/contracts/items/*": ["packages/contracts/src/items/*"],
+      "@flow-state-dev/contracts/block-instance-id": ["packages/contracts/src/block-instance-id.ts"],
+      "@flow-state-dev/contracts/types/*": ["packages/contracts/src/types/*"],
       "@flow-state-dev/core": ["packages/core/src/index.ts"],
       "@flow-state-dev/core/types": ["packages/core/src/types/index.ts"],
       "@flow-state-dev/core/items": ["packages/core/src/items/index.ts"],

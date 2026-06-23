@@ -158,6 +158,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@flow-state-dev/contracts": "workspace:*",
     "ai": "^6.0.93",
     "cron-parser": "^5.0.0",
     "gray-matter": "^4.0.3",

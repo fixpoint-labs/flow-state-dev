@@ -39,6 +39,7 @@ The framework gives you: SSE streaming with resume, atomic state operations, ret
 Six packages with strict dependency boundaries:
 
 ```
+@flow-state-dev/contracts  Zero-dependency shared layer (item taxonomy + leaf types)
 @flow-state-dev/core       Isomorphic builders, type contracts, item taxonomy
 @flow-state-dev/server     Execution runtime, stores, SSE streaming, HTTP routes
 @flow-state-dev/client     Isomorphic API client (actions, sessions, streams)
@@ -67,6 +68,7 @@ core ─────────────────────────
 ```
 
 **Boundary rules (locked):**
+- `contracts` imports no workspace package and declares no dependencies — it is the zero-dependency layer the item taxonomy, its pure helpers, and the leaf types live in. `core` re-exports every symbol from its original path, so consumers importing them from `@flow-state-dev/core` are unaffected. Browser code (`client`, `react`) value-imports the canonical helpers from `contracts` instead of hand-mirroring them; `core` stays type-only for those packages.
 - `server` never depends on `react` or `client` — server knows nothing about transport consumers
 - `client` never depends on `server` or `react` — works in any JavaScript environment
 - `react` has no transport logic — it wraps `client` with hooks and renderers
