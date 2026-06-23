@@ -17,7 +17,7 @@
 
 import { CronExpressionParser } from "cron-parser";
 import type { ResolvedPrincipal } from "./auth";
-import type { ActionConfig } from "./flow";
+import type { ActionCore } from "./flow";
 
 /**
  * Subset of `StoreRegistry` exposed to dynamic resolvers. Defined
@@ -90,13 +90,22 @@ export type ScheduleInputContext = {
 export type ScheduleInputFn = (ctx: ScheduleInputContext) => unknown | Promise<unknown>;
 
 /**
- * Single scheduled-action declaration.
+ * Single scheduled-action declaration — an action in scheduled form. It
+ * extends the shared `ActionCore` (the handler `block` plus execution policy
+ * like `durable` and `tokenBudget`) with the schedule-specific cron mapping.
+ * Because it carries the core inline, the handler needs no entry in
+ * `flow.actions`: a fired schedule reaches it only through the dispatch
+ * endpoint, never the public action surface or MCP.
  *
  * Static entries live in `SchedulesConfig.static` and are validated at
- * registration time. Dynamic entries are produced by the resolver hook
- * and validated at dispatch time; failures map to `400 invalid_schedule`.
+ * registration time; the dispatch resolves them through `resolveActionCore`
+ * via the `metadata.schedule.scheduleId` coordinate. Dynamic entries are
+ * produced by the resolver hook and validated at dispatch time (failures map
+ * to `400 invalid_schedule`); their core is carried inline on the dispatch
+ * envelope because no static coordinate can reach it — so durable dynamic
+ * schedules are not crash-recoverable (a documented non-goal).
  */
-export type ScheduleConfig = {
+export type ScheduleConfig = ActionCore & {
   /**
    * POSIX 5-field cron expression: `minute hour dom month dow`. Validated
    * via `cron-parser`. Display-only — the framework does not run the
@@ -104,12 +113,9 @@ export type ScheduleConfig = {
    */
   cron: string;
 
-  /** Action name (must exist on `flow.actions`). */
-  action: string;
-
   /**
-   * Input passed to the action. Either a static value (validated against
-   * the action's effective input schema at registration for static
+   * Input passed to the handler. Either a static value (validated against
+   * the binding's effective input schema at registration for static
    * schedules; deferred to runtime for dynamic) or a function called
    * server-side at dispatch time.
    */
@@ -213,10 +219,9 @@ export function validateScheduleConfig(args: {
   kind: string;
   id: string;
   schedule: ScheduleConfig;
-  actions: Record<string, ActionConfig>;
   origin: "static" | "dynamic";
 }): void {
-  const { kind, id, schedule, actions, origin } = args;
+  const { kind, id, schedule, origin } = args;
 
   if (origin === "static" && !STATIC_SCHEDULE_ID_RE.test(id)) {
     throw new Error(
@@ -235,23 +240,21 @@ export function validateScheduleConfig(args: {
     );
   }
 
-  if (!(schedule.action in actions)) {
-    const known = Object.keys(actions).join(", ") || "<none>";
+  if (schedule.block === null || typeof schedule.block !== "object") {
     throw new Error(
-      `Flow "${kind}" schedule "${id}" references action "${schedule.action}" ` +
-        `but no such action is declared. Defined actions: ${known}.`
+      `Flow "${kind}" schedule "${id}" must declare a \`block\` ` +
+        `(the handler — handler/generator/sequencer/router) to run when the schedule fires.`
     );
   }
 
   if (schedule.input !== undefined && typeof schedule.input !== "function") {
-    const action = actions[schedule.action];
-    const inputSchema = action.inputSchema ?? action.block?.inputSchema;
+    const inputSchema = schedule.inputSchema ?? schedule.block?.inputSchema;
     if (inputSchema && typeof inputSchema.safeParse === "function") {
       const result = inputSchema.safeParse(schedule.input);
       if (!result.success) {
         throw new Error(
-          `Flow "${kind}" schedule "${id}" has input that does not match action ` +
-            `"${schedule.action}"'s inputSchema: ${result.error.message}.`
+          `Flow "${kind}" schedule "${id}" has input that does not match its ` +
+            `handler block's inputSchema: ${result.error.message}.`
         );
       }
     }
@@ -287,12 +290,23 @@ export function validateScheduleConfig(args: {
  */
 export function validateSchedulesConfig(
   flowKind: string,
-  schedules: SchedulesConfig | undefined,
-  actions: Record<string, ActionConfig>
+  schedules: SchedulesConfig | undefined
 ): void {
   if (!schedules?.static) return;
 
   for (const [id, schedule] of Object.entries(schedules.static)) {
-    validateScheduleConfig({ kind: flowKind, id, schedule, actions, origin: "static" });
+    validateScheduleConfig({ kind: flowKind, id, schedule, origin: "static" });
   }
+}
+
+/**
+ * Construct a `ScheduleConfig` — the schedule sibling of `defineWebhookBinding`
+ * / `defineChatBinding`. The schedule binding carries the shared `ActionCore`
+ * (handler `block` plus execution policy) inline alongside the cron mapping.
+ * Compile-time convenience only: the runtime is a single passthrough. Use it
+ * for inline static entries (`schedules.static[id] = defineScheduleBinding({…})`)
+ * or the value a dynamic `resolve()` returns.
+ */
+export function defineScheduleBinding(binding: ScheduleConfig): ScheduleConfig {
+  return binding;
 }

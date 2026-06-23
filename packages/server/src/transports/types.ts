@@ -10,6 +10,7 @@
  * implementation. See `docs/architecture/inbound-transports.md`.
  */
 import type {
+  ActionCore,
   InboundSource,
   Middleware,
   ModelResolver,
@@ -95,6 +96,21 @@ export interface InboundRequestEnvelope {
 
   /** Adapter-specific provenance (webhook headers, MCP session ids, etc.). */
   metadata?: Record<string, unknown>;
+
+  /**
+   * Pre-resolved action core, set ONLY by adapters for an event dispatch that
+   * has no static coordinate to recover from — today, the dynamic schedule
+   * whose handler block is produced at dispatch time by a resolver. When
+   * present, the runtime runs this core directly instead of resolving from
+   * `flow` via `resolveActionCore`. Like `source`, it is set internally and
+   * never read from a request body, so it adds no attack surface on the
+   * caller-addressed path. Not serializable and not persisted: on recovery the
+   * field is absent, which is why durable dynamic schedules do not recover
+   * (a documented non-goal). Statically-declared bindings (HTTP actions,
+   * webhooks, chat `on`, `schedules.static`) leave this unset and resolve by
+   * coordinate.
+   */
+  resolvedActionCore?: ActionCore;
 
   /**
    * Raw HTTP body bytes preserved for adapters that need pre-parse access

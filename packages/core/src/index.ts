@@ -215,7 +215,11 @@ export type {
   SchedulesConfig
 } from "./types/schedules";
 
-export { validateScheduleConfig, validateSchedulesConfig } from "./types/schedules";
+export {
+  defineScheduleBinding,
+  validateScheduleConfig,
+  validateSchedulesConfig
+} from "./types/schedules";
 
 export type { ChatConfig, ChatEventBinding } from "./types/chat";
 export { validateChatConfig } from "./types/chat";

@@ -97,3 +97,91 @@ describe("resolveActionCore", () => {
     expect(resolveActionCore(plain, "run", "webhook", WEBHOOK_META)).toBe(plain.actions.run);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Chat + scheduled event branches (FIX-838) — same coordinate-resolution and
+// source-gate model as the webhook branch, now namespaced under
+// `metadata.chat` / `metadata.schedule`.
+// ---------------------------------------------------------------------------
+
+const chatHandler = handler({
+  name: "reply",
+  inputSchema: z.object({ text: z.string().optional() }),
+  execute: () => undefined
+});
+
+const scheduleHandler = handler({
+  name: "send-digest",
+  inputSchema: z.object({ value: z.string().optional() }),
+  execute: () => undefined
+});
+
+function flowWithEvents() {
+  return defineFlow({
+    kind: "support",
+    actions: { run: { block: namedActionBlock } },
+    chat: { on: { mention: { block: chatHandler, input: () => ({}) } } },
+    schedules: { static: { daily: { cron: "0 9 * * *", block: scheduleHandler } } }
+  })({ id: "support" });
+}
+
+const CHAT_META = { chat: { eventKey: "mention" } };
+const SCHEDULE_META = { schedule: { scheduleId: "daily" } };
+
+describe("resolveActionCore — chat branch", () => {
+  it("resolves the chat binding for a genuine chat dispatch", () => {
+    const flow = flowWithEvents();
+    const resolved = resolveActionCore(flow, "reply", "chat", CHAT_META);
+    expect(resolved).toBe(flow.chat!.on!.mention);
+    expect(resolved?.block).toBe(chatHandler);
+  });
+
+  // The security lock: a caller-addressed request must never reach a chat
+  // handler, even when it forges `metadata.chat`.
+  it("does NOT pivot into a chat handler when source is not 'chat'", () => {
+    const flow = flowWithEvents();
+    expect(resolveActionCore(flow, "reply", "http", CHAT_META)).toBeUndefined();
+    expect(resolveActionCore(flow, "run", "http", CHAT_META)).toBe(flow.actions.run);
+  });
+
+  it("falls back when the chat event key does not match a binding", () => {
+    const flow = flowWithEvents();
+    const unknownKey = { chat: { eventKey: "reaction" } };
+    expect(resolveActionCore(flow, "run", "chat", unknownKey)).toBe(flow.actions.run);
+  });
+
+  it("falls back for a chat dispatch with no chat metadata", () => {
+    const flow = flowWithEvents();
+    expect(resolveActionCore(flow, "run", "chat", undefined)).toBe(flow.actions.run);
+  });
+});
+
+describe("resolveActionCore — scheduled branch", () => {
+  it("resolves the static schedule binding for a genuine scheduled dispatch", () => {
+    const flow = flowWithEvents();
+    const resolved = resolveActionCore(flow, "send-digest", "scheduled", SCHEDULE_META);
+    expect(resolved).toBe(flow.schedules!.static!.daily);
+    expect(resolved?.block).toBe(scheduleHandler);
+  });
+
+  // The security lock: a caller-addressed request must never reach a schedule
+  // handler, even when it forges `metadata.schedule`.
+  it("does NOT pivot into a schedule handler when source is not 'scheduled'", () => {
+    const flow = flowWithEvents();
+    expect(resolveActionCore(flow, "send-digest", "http", SCHEDULE_META)).toBeUndefined();
+    expect(resolveActionCore(flow, "run", "http", SCHEDULE_META)).toBe(flow.actions.run);
+  });
+
+  it("falls back when the schedule id does not match a static binding", () => {
+    const flow = flowWithEvents();
+    const unknownId = { schedule: { scheduleId: "hourly" } };
+    expect(resolveActionCore(flow, "run", "scheduled", unknownId)).toBe(flow.actions.run);
+  });
+
+  it("falls back for a scheduled dispatch with no schedule metadata (dynamic path)", () => {
+    const flow = flowWithEvents();
+    // A dynamic schedule has no static coordinate; the carried core handles it
+    // upstream, and coordinate resolution here correctly finds nothing.
+    expect(resolveActionCore(flow, "run", "scheduled", undefined)).toBe(flow.actions.run);
+  });
+});

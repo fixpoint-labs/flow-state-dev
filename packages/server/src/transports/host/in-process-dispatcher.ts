@@ -88,6 +88,7 @@ export function createInProcessDispatcher(
       tenantId: envelope.tenantId,
       source: envelope.source,
       metadata: envelope.metadata,
+      resolvedActionCore: envelope.resolvedActionCore,
       signal,
       stores,
       responseEmitter: local.responseEmitter,

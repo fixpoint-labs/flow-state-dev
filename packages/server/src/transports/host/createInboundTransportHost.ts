@@ -166,7 +166,8 @@ export function createInboundTransportHost(
       orgId: envelope.orgId ?? envelope.principal.orgId,
       tenantId: envelope.tenantId,
       source: envelope.source,
-      metadata: envelope.metadata
+      metadata: envelope.metadata,
+      resolvedActionCore: envelope.resolvedActionCore
     };
 
     // Delegate to the dispatcher. InProcessDispatcher uses dispatchLocal
