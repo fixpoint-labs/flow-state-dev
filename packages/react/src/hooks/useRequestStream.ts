@@ -1,10 +1,28 @@
 /**
- * Low-level request stream hook that maintains reactive item/status views.
+ * Low-level request-stream hook. Subscribes to one request's SSE stream and
+ * maintains reactive item/status views, driven by the shared
+ * `@flow-state-dev/client` request-stream store + `bindStoreToCallbacks` (the
+ * single deduplicated SSE→state reducer). Content deltas flow through the store,
+ * so streamed message and reasoning text accumulates token-by-token — the prior
+ * hand-rolled reducer had no `content.delta` handler, so text only appeared all
+ * at once when `item.done` landed.
+ *
+ * Two stream sources: `{ requestId }` opens a GET-by-id stream (the hook builds
+ * the URL from `flowKind` + `requestId`); `{ response }` consumes a pre-fetched
+ * POST Response body (inline streaming, e.g. serverless). Snapshots flush on a
+ * RAF by default (live token rendering without thrashing React), or
+ * synchronously with `flush: "immediate"` for low-volume or deterministic-test
+ * use; `"raf"` auto-falls back to immediate when `requestAnimationFrame` is
+ * unavailable (SSR / Node).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  bindStoreToCallbacks,
+  createRequestStreamStore,
   createSSEClient,
-  type RequestStreamHandle
+  createSSEClientFromResponse,
+  type RequestStreamHandle,
+  type RequestStreamStore
 } from "@flow-state-dev/client";
 import type {
   BlockTraceItem,
@@ -13,37 +31,40 @@ import type {
   RequestStatus,
   StatusItem
 } from "@flow-state-dev/core/items";
-
-// Identity-invariant keys stripped before applying an `item.updated` patch.
-// Mirrors `ITEM_UPDATE_INVARIANT_KEYS` from `@flow-state-dev/core/items` —
-// inlined because this package may only import types from core.
-const ITEM_UPDATE_INVARIANT_KEYS: ReadonlyArray<string> = [
-  "id",
-  "type",
-  "provenance",
-  "itemVisibility",
-  "transient"
-];
 import { useFlowContext } from "../context/FlowContext";
-import { insertSortedIntoArray } from "../internal/item-store";
 
 /**
- * Type-based filter for request stream items.
+ * Type-based filter for request stream items. Items failing the predicate never
+ * reach the store (gated at the binder's `itemFilter` seam).
  */
 export type RequestStreamFilter = {
   itemTypes?: string[];
 };
 
 /**
+ * Where the hook gets its stream. `{ requestId }` opens a GET-by-id stream;
+ * `{ response }` consumes a pre-fetched POST Response (inline streaming).
+ */
+export type RequestStreamSource =
+  | { requestId: string; startingAfter?: number; lastEventId?: string }
+  | { response: Response };
+
+/**
  * Options for useRequestStream.
  */
 export type UseRequestStreamOptions = {
   flowKind?: string;
-  requestId: string;
   baseUrl?: string;
-  lastEventId?: string;
-  startingAfter?: number;
+  source: RequestStreamSource;
   filter?: RequestStreamFilter;
+  /** Append `?include=trace` to the stream URL. Only meaningful for a `{ requestId }` source. */
+  includeTrace?: boolean;
+  /** Bump to force a fresh re-subscribe for the same request id (FIX-811 same-id reconnect). */
+  reconnectToken?: number;
+  /** Snapshot flush policy. `"raf"` (default) coalesces; `"immediate"` flushes synchronously. */
+  flush?: "raf" | "immediate";
+  enabled?: boolean;
+  onSessionMetadataChanged?: () => void;
 };
 
 /**
@@ -62,6 +83,14 @@ export type UseRequestStreamResult = {
   close: () => void;
 };
 
+function passesTypeFilter(
+  item: OutputItem,
+  filter: RequestStreamFilter | undefined
+): boolean {
+  if (filter?.itemTypes === undefined) return true;
+  return filter.itemTypes.includes(item.type);
+}
+
 /**
  * Low-level escape-hatch hook for subscribing to one request stream.
  */
@@ -71,98 +100,131 @@ export function useRequestStream(
   const context = useFlowContext();
   const flowKind = options.flowKind ?? context.flowKind;
   const baseUrl = options.baseUrl ?? context.baseUrl;
+  const {
+    source,
+    filter,
+    includeTrace,
+    reconnectToken,
+    enabled = true,
+    onSessionMetadataChanged
+  } = options;
 
-  if (!flowKind?.trim()) {
-    throw new Error(
-      "useRequestStream requires flowKind (option or FlowProvider)"
-    );
+  const isResponseSource = "response" in source;
+
+  if (!isResponseSource) {
+    if (!flowKind?.trim()) {
+      throw new Error(
+        "useRequestStream requires flowKind (option or FlowProvider) for a { requestId } source"
+      );
+    }
+    if (!source.requestId.trim()) {
+      throw new Error("useRequestStream requires a non-empty requestId");
+    }
   }
 
-  if (!options.requestId.trim()) {
-    throw new Error("useRequestStream requires non-empty requestId");
-  }
+  // Default to RAF coalescing; fall back to immediate when rAF is unavailable
+  // (SSR / Node), and honor an explicit "immediate" opt-in for determinism.
+  const flushMode: "raf" | "immediate" =
+    options.flush === "immediate" || typeof requestAnimationFrame === "undefined"
+      ? "immediate"
+      : "raf";
 
   const [items, setItems] = useState<OutputItem[]>([]);
   const [status, setStatus] = useState<RequestStatus>("in_progress");
-  const [isStreaming, setIsStreaming] = useState(true);
-  const [isFinishing, setIsFinishing] = useState(false);
+  // Transport error or manual close — distinct from a terminal request status.
+  const [ended, setEnded] = useState(false);
+
+  const storeRef = useRef<RequestStreamStore | null>(null);
+  if (storeRef.current === null) storeRef.current = createRequestStreamStore();
   const handleRef = useRef<RequestStreamHandle | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  // Latest-callback ref so an inline `onSessionMetadataChanged` doesn't force a
+  // re-subscribe every render (it's intentionally absent from the effect deps).
+  const onSessionMetadataChangedRef = useRef(onSessionMetadataChanged);
+  onSessionMetadataChangedRef.current = onSessionMetadataChanged;
+
+  const flush = useCallback(() => {
+    const store = storeRef.current;
+    if (!store) return;
+    store.flushDeltas();
+    setItems(store.getSorted());
+    setStatus(store.status);
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushMode === "immediate") {
+      flush();
+      return;
+    }
+    if (rafRef.current !== null) return; // already scheduled
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      flush();
+    });
+  }, [flush, flushMode]);
+
+  // Extract primitive source-identity deps so a fresh `source`/`filter` object
+  // literal each render doesn't force a re-subscribe (`filter` is referenced
+  // inside the effect; `filterKey` is its stable proxy).
+  const reqId = isResponseSource ? null : source.requestId;
+  const startingAfter = isResponseSource ? undefined : source.startingAfter;
+  const sourceLastEventId = isResponseSource ? undefined : source.lastEventId;
+  const responseObj = isResponseSource ? source.response : null;
+  const filterKey = filter?.itemTypes?.join(",");
 
   useEffect(() => {
+    const store = storeRef.current!;
+    store.clear();
     setItems([]);
     setStatus("in_progress");
-    setIsStreaming(true);
-    setIsFinishing(false);
+    setEnded(false);
 
-    const handle = createSSEClient({
-      url: `/api/flows/${encodeURIComponent(flowKind!)}/requests/${encodeURIComponent(options.requestId)}/stream`,
-      baseUrl,
-      lastEventId: options.lastEventId,
-      startingAfter: options.startingAfter,
-      onRequestStatus: (event) => {
-        setStatus(event.status);
+    if (!enabled) return;
 
-        if (
-          event.status === "completed" ||
-          event.status === "failed" ||
-          event.status === "incomplete" ||
-          event.status === "interrupted" ||
-          event.status === "aborted" ||
-          event.status === "suspended"
-        ) {
-          setIsStreaming(false);
-          setIsFinishing(false);
-        }
-      },
-      onItemAdded: (event) => {
-        if (!passesTypeFilter(event.item, options.filter)) return;
-
-        if (event.item.type === "status" && (event.item as StatusItem).blocked === false) {
-          setIsFinishing(true);
-        }
-
-        setItems((prev: OutputItem[]) => insertSortedIntoArray(prev, event.item));
-      },
-      onItemDone: (event) => {
-        setItems((prev: OutputItem[]) =>
-          prev.map((item: OutputItem) =>
-            item.id === event.item.id ? event.item : item
-          )
-        );
-      },
-      onItemUpdated: (event) => {
-        setItems((prev: OutputItem[]) => {
-          let changed = false;
-          const next = prev.map((item: OutputItem) => {
-            if (item.id !== event.itemId) return item;
-            const sanitized: Record<string, unknown> = {};
-            for (const key of Object.keys(event.patch)) {
-              if (ITEM_UPDATE_INVARIANT_KEYS.includes(key)) continue;
-              sanitized[key] = event.patch[key];
-            }
-            changed = true;
-            return { ...item, ...sanitized } as OutputItem;
-          });
-          return changed ? next : prev;
-        });
-      },
+    const callbacks = {
+      ...bindStoreToCallbacks(store, {
+        onChange: scheduleFlush,
+        itemFilter: filter ? (item) => passesTypeFilter(item, filter) : undefined
+      }),
+      onSessionMetadataChanged: () => onSessionMetadataChangedRef.current?.(),
       onError: () => {
-        setIsStreaming(false);
+        setEnded(true);
       }
-    });
+    };
+
+    const handle = responseObj
+      ? createSSEClientFromResponse({ response: responseObj, ...callbacks })
+      : createSSEClient({
+          url: `/api/flows/${encodeURIComponent(flowKind!)}/requests/${encodeURIComponent(reqId!)}/stream${includeTrace ? "?include=trace" : ""}`,
+          baseUrl,
+          lastEventId: sourceLastEventId,
+          startingAfter,
+          ...callbacks
+        });
 
     handleRef.current = handle;
 
     return () => {
       handle.close();
       handleRef.current = null;
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
   }, [
+    enabled,
     flowKind,
-    options.requestId,
     baseUrl,
-    options.lastEventId,
-    options.startingAfter
+    reconnectToken,
+    includeTrace,
+    filterKey,
+    reqId,
+    startingAfter,
+    sourceLastEventId,
+    responseObj,
+    scheduleFlush
   ]);
 
   const messages = useMemo(
@@ -191,6 +253,20 @@ export function useRequestStream(
     return statusItems[statusItems.length - 1];
   }, [items]);
 
+  // Streaming while the request is live and not torn down. Finishing once the
+  // main chain reports an unblocked status item but the request hasn't settled —
+  // background work tasks are still running.
+  const isStreaming = !ended && status === "in_progress";
+  const isFinishing = useMemo(
+    () =>
+      status === "in_progress" &&
+      items.some(
+        (item) =>
+          item.type === "status" && (item as StatusItem).blocked === false
+      ),
+    [items, status]
+  );
+
   return {
     items,
     status,
@@ -203,16 +279,8 @@ export function useRequestStream(
       return handleRef.current?.lastEventId;
     },
     close: () => {
-      setIsStreaming(false);
+      setEnded(true);
       handleRef.current?.close();
     }
   };
-}
-
-function passesTypeFilter(
-  item: OutputItem,
-  filter: RequestStreamFilter | undefined
-): boolean {
-  if (filter?.itemTypes === undefined) return true;
-  return filter.itemTypes.includes(item.type);
 }
