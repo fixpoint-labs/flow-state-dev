@@ -10,8 +10,11 @@ import type {
   MessageItem,
   ReasoningItem,
   SourceItem,
+  SuspensionItem,
+  SuspensionResumeItem,
   ToolOutputItem,
 } from "@flow-state-dev/core/items";
+import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { nanoid } from "nanoid";
 
 const nextId = (prefix: string) => `${prefix}-${nanoid(8)}`;
@@ -145,6 +148,70 @@ export function componentItem(options: ComponentItemOptions): ComponentItem {
     component,
     data,
     ...(key !== undefined ? { key } : {}),
+  };
+}
+
+export type SuspensionItemOptions = {
+  id?: string;
+  suspensionId?: string;
+  message?: string;
+  data?: Record<string, unknown>;
+  requestId?: string;
+};
+
+export function suspensionItem(
+  options: SuspensionItemOptions = {},
+): SuspensionItem {
+  const {
+    id = nextId("susp"),
+    suspensionId = "susp-1",
+    message = "Approve this action?",
+    data,
+    requestId = "req-1",
+  } = options;
+  return {
+    id,
+    type: "suspension",
+    status: "completed",
+    requestId,
+    itemIndex: 0,
+    ts: 0,
+    provenance: baseProvenance,
+    suspensionId,
+    suspensionStatus: "pending",
+    reason: "human_approval",
+    message,
+    ...(data !== undefined ? { data } : {}),
+  };
+}
+
+export type SuspensionResumeItemOptions = {
+  id?: string;
+  suspensionId?: string;
+  resolution?: SuspensionStatus;
+  requestId?: string;
+};
+
+export function suspensionResumeItem(
+  options: SuspensionResumeItemOptions = {},
+): SuspensionResumeItem {
+  const {
+    id = nextId("resume"),
+    suspensionId = "susp-1",
+    resolution = "approved",
+    requestId = "req-1",
+  } = options;
+  return {
+    id,
+    type: "suspension_resume",
+    status: "completed",
+    requestId,
+    itemIndex: 0,
+    ts: 0,
+    provenance: baseProvenance,
+    suspensionId,
+    resolution,
+    resolvedAt: 0,
   };
 }
 
