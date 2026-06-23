@@ -97,6 +97,7 @@ export {
 export {
   useRequestStream,
   type RequestStreamFilter,
+  type RequestStreamSource,
   type UseRequestStreamOptions,
   type UseRequestStreamResult
 } from "./hooks/useRequestStream";

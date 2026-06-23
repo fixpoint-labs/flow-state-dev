@@ -143,10 +143,12 @@ const { execute, loading, error } = useAction({
 
 ```tsx
 const { items, status, isStreaming } = useRequestStream({
-  requestId,
+  source: { requestId },
   filter: { itemTypes: ["message", "component"] },
 });
 ```
+
+The `source` is either `{ requestId }` (opens a GET-by-id stream) or `{ response }` (consumes a pre-fetched POST stream). Message and reasoning text accumulates token-by-token as it streams.
 
 ## Rendering Items
 

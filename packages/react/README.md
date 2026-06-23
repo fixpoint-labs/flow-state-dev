@@ -189,7 +189,16 @@ Low-level hook for direct action execution without session management.
 
 ### `useRequestStream(options)`
 
-Low-level hook for subscribing to a request's SSE stream with reactive item/status views.
+Low-level hook for subscribing to a request's SSE stream with reactive item/status views. Message and reasoning text streams in token-by-token.
+
+```tsx
+const { items, messages, status, isStreaming } = useRequestStream({
+  source: { requestId },          // or { response } for an inline POST stream
+  filter: { itemTypes: ["message"] },
+});
+```
+
+`flush` defaults to `"raf"` (coalesce snapshots per frame); pass `"immediate"` for low-volume or deterministic-test use.
 
 ### `useSuspensions(session, options?)`
 

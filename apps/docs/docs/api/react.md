@@ -127,14 +127,16 @@ await execute({ message: "Hello!" });
 
 ### `useRequestStream(options)`
 
-Direct request-stream access.
+Direct request-stream access. Message and reasoning text streams in token-by-token.
 
 ```ts
 const { items, status, isStreaming } = useRequestStream({
-  requestId,
+  source: { requestId },
   filter: { itemTypes: ["message", "component"] },
 });
 ```
+
+Use `source: { response }` to consume a pre-fetched POST stream (inline streaming) instead of opening a separate GET-by-id connection.
 
 ### `useVoice(session, options)`
 
