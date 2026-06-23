@@ -3,8 +3,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  compareItemOrder,
   createClient,
   createRecoveryClient,
+  createRequestStreamStore,
   createSessionClient,
   createSSEClient,
   createSSEClientFromResponse,
@@ -35,7 +37,6 @@ import {
   isReducibleResourceChange,
   mergeResourceChangeIntoSnapshot
 } from "../internal/mergeResourceChangeIntoSnapshot";
-import { compareItemOrder, createItemStore } from "../internal/item-store";
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
@@ -349,7 +350,13 @@ export function useSession(
    * request lifecycle transitions.
    */
   const latestRequestRef = useRef<SessionRequestSummary | null>(null);
-  const storeRef = useRef(createItemStore());
+  const storeRef = useRef(createRequestStreamStore());
+  // Item ids the filter rejected this stream. The shared store keeps deltas for
+  // not-yet-present items buffered (so early deltas survive), so a filtered item
+  // — which never enters the store — would otherwise buffer deltas forever.
+  // Mirrors the filter seam in `bindStoreToCallbacks`: drop its deltas on
+  // arrival. Reset per stream in `attachToStream`.
+  const rejectedItemIdsRef = useRef<Set<string>>(new Set());
   /**
    * Buffer for `state_change` items received before the initial snapshot
    * lands. The reducer (`mergeStateChangeIntoSnapshot`) bails when
@@ -608,6 +615,7 @@ export function useSession(
       setIsFinishing(false);
       setIsStuck(false);
       latestRequestIdAfterDropRef.current = null;
+      rejectedItemIdsRef.current.clear();
       // Baseline the watchdog at stream open so it doesn't fire instantly
       // on the first slow response.
       lastEventAtRef.current = Date.now();
@@ -712,6 +720,10 @@ export function useSession(
           }
 
           if (!passesItemFilter(event.item, filter)) {
+            // Never enters the store — drop any deltas it streams (buffered ones
+            // now, future ones via the rejected set) so they don't accumulate.
+            rejectedItemIdsRef.current.add(event.item.id);
+            storeRef.current.discardDeltas(event.item.id);
             return;
           }
 
@@ -732,6 +744,8 @@ export function useSession(
         },
         onItemDone: (event) => {
           if (!passesItemFilter(event.item, filter)) {
+            rejectedItemIdsRef.current.add(event.item.id);
+            storeRef.current.discardDeltas(event.item.id);
             return;
           }
 
@@ -744,9 +758,20 @@ export function useSession(
           }
         },
         onContentDelta: (event) => {
+          // Skip deltas for items the filter already rejected — they will never
+          // enter the store, so buffering them just grows the queue.
+          if (rejectedItemIdsRef.current.has(event.itemId)) return;
           storeRef.current.accumulateDelta(event.itemId, event.contentIndex, event.delta);
 
           scheduleContentFlush();
+        },
+        onContentDone: (event) => {
+          // Settle the slot to its authoritative final content (drops any
+          // queued delta for it). Inherited from the shared store — the prior
+          // hand-rolled callbacks had no content.done handler.
+          if (storeRef.current.applyContentDone(event.itemId, event.contentIndex, event.content)) {
+            setItems(storeRef.current.getSorted());
+          }
         },
         onContentAudioDelta: (event) => {
           // Fan out to subscribers (useVoice or any external consumer
