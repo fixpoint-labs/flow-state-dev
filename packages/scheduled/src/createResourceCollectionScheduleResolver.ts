@@ -10,6 +10,7 @@
  * user.
  */
 import type {
+  BlockDefinition,
   ScheduleConfig,
   ScheduleResolutionContext
 } from "@flow-state-dev/core/types";
@@ -37,6 +38,15 @@ export interface CreateResourceCollectionScheduleResolverOptions {
    */
   collection: { pattern: string };
   /**
+   * Handler registry keyed by the persisted row's `kind` discriminator
+   * (FIX-838). A schedule binding carries its handler block inline, but a
+   * block cannot be serialized into resource state — so the row stores a
+   * `kind` string and the resolver maps it to a real block here. A row whose
+   * `kind` is absent from this map resolves to `null` (404), exactly like an
+   * unknown schedule id.
+   */
+  blocks: Record<string, BlockDefinition>;
+  /**
    * Map a dispatch URL id back to `(userId, collectionKey)`. Default:
    * split on the first `/`. Return `null` to 404 the dispatch.
    */
@@ -63,6 +73,7 @@ export function createResourceCollectionScheduleResolver(
 ) => Promise<ScheduleConfig | null> {
   const parseId = options.parseId ?? defaultParseScheduleId;
   const prefix = collectionPrefix(options.collection.pattern);
+  const blocks = options.blocks;
 
   return async (scheduleId, ctx) => {
     const parsed = parseId(scheduleId);
@@ -83,13 +94,18 @@ export function createResourceCollectionScheduleResolver(
     }
 
     if (state.enabled === false) return null;
-    if (typeof state.cron !== "string" || typeof state.action !== "string") {
+    if (typeof state.cron !== "string" || typeof state.kind !== "string") {
       return null;
     }
 
+    // Map the persisted discriminator to a real handler block. An unknown
+    // `kind` (host removed the handler, or a stale row) 404s the dispatch.
+    const block = blocks[state.kind];
+    if (block === undefined) return null;
+
     const config: ScheduleConfig = {
       cron: state.cron,
-      action: state.action,
+      block,
       principal: { userId: parsed.userId }
     };
     if (state.input !== undefined) config.input = state.input;

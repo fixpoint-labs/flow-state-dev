@@ -51,15 +51,25 @@ export const billing = defineFlow({
     static: {
       "monthly-invoices": {
         cron: "0 0 1 * *",
-        action: "generateMonthlyInvoices"
+        block: generateMonthlyInvoices
       }
     }
-  },
-  actions: { /* ... */ }
+  }
 });
 ```
 
+A static schedule carries its handler `block` inline (the shared action core),
+not a name pointing into `flow.actions`. Same model the webhook and chat
+transports use. `defineScheduleBinding` (exported from `@flow-state-dev/core`)
+is the optional typed constructor. A scheduled handler has no HTTP or MCP caller
+surface; declare a block in both `schedules.static` and `flow.actions` (same
+reference) to expose it both ways.
+
 ## Dynamic schedules (per-user reminders, agent-created follow-ups)
+
+A persisted schedule row can't hold a block, so it stores a `kind`
+discriminator string instead. The resolver maps `kind → block` through a
+required `blocks` map.
 
 ```ts
 import {
@@ -74,7 +84,7 @@ const userSchedules = defineResourceCollection<ScheduleResourceState>({
   scope: "user",
   stateSchema: z.object({
     cron: z.string(),
-    action: z.string(),
+    kind: z.string(),          // handler discriminator, not a flow-action name
     input: z.unknown().optional(),
     timezone: z.string().optional(),
     onOverlap: z.enum(["skip", "allow"]).optional(),
@@ -87,24 +97,38 @@ defineFlow({
   kind: "reminders",
   user: { resources: { schedules: userSchedules } },
   schedules: {
-    resolve: createResourceCollectionScheduleResolver({ collection: userSchedules })
-  },
-  actions: { /* ... */ }
+    resolve: createResourceCollectionScheduleResolver({
+      collection: userSchedules,
+      blocks: { sendDigest, sendReminder }   // persisted `kind` → block
+    })
+  }
 });
 ```
 
 The default URL convention is `<userId>/<collectionKey>`. Override with
-`parseId` / `formatId` for richer compositions.
+`parseId` for richer compositions. A row whose `kind` isn't in the `blocks`
+map resolves to `null` (404).
+
+**Durable dynamic schedules don't recover across crashes.** A dynamic
+schedule's action core is produced by the resolver at dispatch time and carried
+on the dispatch envelope, never persisted (a block can't be serialized). So a
+durable dynamic schedule mid-run when the process crashes has no persisted
+coordinate to re-resolve its handler from, and the run is dropped. Static
+schedules recover normally — their handler is reachable from a stable
+coordinate. Make a durable scheduled action static if it must survive a crash.
 
 ## Source and metadata
 
-Every scheduled-driven request carries:
+Every scheduled-driven request carries `source: "scheduled"` and a namespaced
+`metadata.schedule`:
 
-- `source: "scheduled"`
-- `metadata.scheduleId` — the dispatch URL id
-- `metadata.origin` — `"static"` or `"dynamic"`
-- `metadata.cron`, `metadata.nominalFireTime`, `metadata.dispatchedAt`,
-  `metadata.timezone`
+- `metadata.schedule.scheduleId` — the dispatch URL id
+- `metadata.schedule.origin` — `"static"` or `"dynamic"`
+- `metadata.schedule.cron`, `metadata.schedule.nominalFireTime`,
+  `metadata.schedule.dispatchedAt`, `metadata.schedule.timezone`
+
+The dispatched request's `action` field is the handler block's name (provenance
+only — a scheduled handler is never reachable through the action endpoint).
 
 ## Schedule index
 

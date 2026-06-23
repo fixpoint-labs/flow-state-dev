@@ -4,6 +4,7 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActionConfig,
+  ActionCore,
   BlockDefinition,
   FlowInstance,
   Middleware,
@@ -87,6 +88,14 @@ export type RunActionOptions<
    */
   source?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Pre-resolved action core, set only by adapters for an event dispatch with
+   * no static coordinate (the dynamic schedule). When present, `runAction`
+   * runs it directly instead of resolving from `flow`. See
+   * `InboundRequestEnvelope.resolvedActionCore` for the full contract and why
+   * it adds no caller-addressed attack surface.
+   */
+  resolvedActionCore?: ActionCore;
   signal?: AbortSignal;
   stores: StoreRegistry;
   retry?: RetryPolicy;

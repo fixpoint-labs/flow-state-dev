@@ -73,7 +73,11 @@ export type {
   SchedulesConfig
 } from "./schedules";
 
-export { validateScheduleConfig, validateSchedulesConfig } from "./schedules";
+export {
+  defineScheduleBinding,
+  validateScheduleConfig,
+  validateSchedulesConfig
+} from "./schedules";
 
 export type { TTSConfig, VoiceConfig } from "./speech";
 

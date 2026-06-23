@@ -13,10 +13,23 @@
  * The event passed to a binding is therefore typed `unknown` here; chat-sdk
  * users reach for `defineChatBinding<T>()` to recover a typed `event`
  * parameter without inverting the dependency.
+ *
+ * Like the webhook transport, a chat binding *is an action in chat form*: it
+ * carries the shared `ActionCore` (the handler block plus execution policy)
+ * inline, so the handler needs no entry in `flow.actions` and is reached only
+ * through a matching inbound chat event — never the public action endpoint or
+ * MCP. The dispatch resolves it through `resolveActionCore` via the
+ * `metadata.chat.eventKey` coordinate, not by a named-action lookup.
  */
 
+import type { ActionCore } from "./flow";
+
 /**
- * Binding from one chat event-name key to one action on a flow.
+ * Binding from one chat event-name key to one handler on a flow — an action in
+ * chat form. It extends the shared `ActionCore` (the handler `block` plus
+ * execution policy like `durable` and `tokenBudget`) with the chat-specific
+ * event mapping. Because it carries the core inline, the handler needs no entry
+ * in `flow.actions`.
  *
  * `input` and `sessionId` may return a value or a Promise — the chat-sdk
  * adapter awaits the result before constructing the dispatch envelope
@@ -24,17 +37,12 @@
  * synchronous: the adapter evaluates it in the hot path before any async
  * work so the no-match case stays cheap.
  */
-export interface ChatEventBinding {
+export interface ChatEventBinding extends ActionCore {
   /**
-   * Name of the flow action to invoke when this binding matches. Must be a
-   * key in `flow.actions`; validated at registration via `validateChatConfig`.
-   */
-  action: string;
-
-  /**
-   * Map the inbound chat event to the action's input. May return a value or
-   * a Promise. The returned value is validated against the action's
-   * `inputSchema` by the runtime, the same way HTTP request bodies are.
+   * Map the inbound chat event to the handler's input. May return a value or
+   * a Promise. The returned value is validated against the binding's
+   * `inputSchema` (falling back to `block.inputSchema`) by the runtime, the
+   * same way HTTP request bodies are.
    */
   input: (event: unknown) => unknown | Promise<unknown>;
 
@@ -88,19 +96,19 @@ export interface ChatConfig {
 
 /**
  * Validate a flow's `chat` config at registration time. No-op when `chat`
- * or `chat.on` is absent or empty. Throws on a binding that references an
- * unknown action, carries a non-function `input`/`sessionId`/`when`, or is
- * keyed by an empty string. Event-key spelling is NOT validated against the
- * SDK vocabulary — keys are opaque strings (a typo simply never matches).
+ * or `chat.on` is absent or empty. Throws on a binding with no `block` (a chat
+ * binding is an action, so a handler block is required), a non-function
+ * `input`/`sessionId`/`when`, or an empty event key. Event-key spelling is NOT
+ * validated against the SDK vocabulary — keys are opaque strings (a typo simply
+ * never matches).
  *
- * Throws plain `Error`, matching `validateScheduleConfig` /
- * `validateMcpConfig`; adapter callers translate registration failures into
- * a hard startup abort.
+ * Throws plain `Error`, matching `validateWebhookConfig` /
+ * `validateScheduleConfig`; adapter callers translate registration failures
+ * into a hard startup abort.
  */
 export function validateChatConfig(
   flowKind: string,
-  chat: ChatConfig | undefined,
-  actions: Record<string, unknown>
+  chat: ChatConfig | undefined
 ): void {
   if (chat?.on === undefined) return;
 
@@ -115,15 +123,14 @@ export function validateChatConfig(
     if (binding === null || typeof binding !== "object") {
       throw new Error(
         `Flow "${flowKind}" chat subscription "${eventKey}" must be an object with at ` +
-          `least an \`action\` and \`input\`.`
+          `least a \`block\` and \`input\`.`
       );
     }
 
-    if (!(binding.action in actions)) {
-      const known = Object.keys(actions).join(", ") || "<none>";
+    if (binding.block === null || typeof binding.block !== "object") {
       throw new Error(
-        `Flow "${flowKind}" chat subscription "${eventKey}" references action ` +
-          `"${binding.action}" but no such action is declared. Defined actions: ${known}.`
+        `Flow "${flowKind}" chat subscription "${eventKey}" must declare a \`block\` ` +
+          `(the handler — handler/generator/sequencer/router) to run for the event.`
       );
     }
 

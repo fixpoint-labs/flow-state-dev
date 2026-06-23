@@ -137,18 +137,27 @@ async function drainRequestWorkPool(
 /**
  * Resolves the action core to run from a flow and validates that it exists.
  *
- * Resolution is form-aware: a genuine webhook dispatch (`source === "webhook"`)
- * carries its `(provider, eventType)` coordinate in `metadata.webhook`, so the
- * handler is found on `flow.webhooks` rather than `flow.actions`. See
- * `resolveActionCore` — the source gate is what stops a caller-addressed
- * request from pivoting into a webhook handler via injected metadata.
+ * Resolution is form-aware. A pre-resolved core (`carriedCore`) wins outright:
+ * it is set only by an adapter for an event dispatch with no static coordinate
+ * — today the dynamic schedule, whose handler block is produced at dispatch
+ * time and cannot be reached from the live flow definition. Otherwise the core
+ * is resolved from the flow: a genuine event dispatch (`source === "webhook" |
+ * "chat" | "scheduled"`) carries its coordinate in `metadata.<transport>`, so
+ * the handler is found on the matching transport map rather than `flow.actions`.
+ * See `resolveActionCore` — the source gate is what stops a caller-addressed
+ * request from pivoting into an event handler via injected metadata.
  */
 function resolveAction(
   flow: FlowInstance,
   actionName: string,
   source: string | undefined,
-  metadata: Record<string, unknown> | undefined
+  metadata: Record<string, unknown> | undefined,
+  carriedCore: ActionCore | undefined
 ): ActionCore {
+  if (carriedCore !== undefined) {
+    return carriedCore;
+  }
+
   const action = resolveActionCore(flow, actionName, source, metadata);
   if (action === undefined) {
     throw new ValidationError(
@@ -470,7 +479,13 @@ export async function runActionInternal<
   options: RunActionInternalOptions<TFlow, TActionName>
 ): Promise<ExecutionResult> {
   const startedAt = Date.now();
-  const action = resolveAction(options.flow, options.actionName, options.source, options.metadata);
+  const action = resolveAction(
+    options.flow,
+    options.actionName,
+    options.source,
+    options.metadata,
+    options.resolvedActionCore
+  );
   const requestId = options.requestId ?? generateId("req");
   const internalSeams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
   const response = options.responseEmitter ?? createInternalResponseEmitter({

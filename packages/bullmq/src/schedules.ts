@@ -57,7 +57,9 @@ export async function registerStaticSchedules(
           data: {
             flowKind: flow.kind,
             scheduleName: name,
-            actionName: schedule.action,
+            // Provenance only — the handler resolves by the schedule id
+            // coordinate at dispatch, not by this name (FIX-838).
+            actionName: schedule.block.name,
             cron: schedule.cron,
             timezone: schedule.timezone,
           },

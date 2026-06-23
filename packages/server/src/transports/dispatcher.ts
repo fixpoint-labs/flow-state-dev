@@ -6,6 +6,7 @@
  * implementations (WorkerDispatcher for BullMQ, future TriggerDevDispatcher)
  * route execution to external workers with live event bridging.
  */
+import type { ActionCore } from "@flow-state-dev/core/types";
 import type { ExecutionResult } from "../execution/types";
 
 /**
@@ -23,6 +24,14 @@ export interface DispatchEnvelope {
   tenantId?: string;
   source?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Pre-resolved action core for an event dispatch with no static coordinate
+   * (the dynamic schedule). NOT serializable — a block cannot cross a queue
+   * boundary — so it is honoured only by the in-process dispatcher; external
+   * dispatchers (BullMQ) drop it, which is consistent with dynamic schedules
+   * being non-recoverable. See `InboundRequestEnvelope.resolvedActionCore`.
+   */
+  resolvedActionCore?: ActionCore;
 }
 
 /**

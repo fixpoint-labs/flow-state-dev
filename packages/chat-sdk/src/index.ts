@@ -22,14 +22,18 @@
  *   const router = createFlowApiRouter({
  *     registry,
  *     stores,
- *     adapters: [createChatTransportAdapter({ bot, flowKind: "support" })],
+ *     adapters: [createChatTransportAdapter({ bot })],
  *   });
  *
- * Inbound events drive `flowKind: "support"` action `"chat"`. The
- * flow's stream is piped back to the originating thread automatically.
- * Disable per-flow via `flowOverrides`, per-adapter via
- * `streamToThread: false`. For richer outbound (cards, reactions,
- * cross-thread sends), import `chatCapability` and the `chat.*` blocks.
+ * Routing is declarative: a flow subscribes to chat events on its own
+ * definition (`chat: { on: { mention: { block, input, when } } }`), and the
+ * adapter dispatches the matching subscriptions. There is no adapter-mount
+ * `route()`/`flowKind` — express content-based routing as `chat.on` bindings
+ * with `when` predicates. An inbound event with no matching subscription is a
+ * no-op ack. The flow's stream is piped back to the originating thread
+ * automatically; disable per-flow via `flowOverrides`, per-adapter via
+ * `streamToThread: false`. For richer outbound (cards, reactions, cross-thread
+ * sends), import `chatCapability` and the `chat.*` blocks.
  */
 export {
   createChatTransportAdapter,
@@ -39,8 +43,6 @@ export type {
   ChatAdapterOptions,
   ChatBotInput,
   ChatInboundEvent,
-  ChatRouteFn,
-  ChatRouteResult,
   ChatEventConfig,
   ChatEnvelopeMetadata,
   ChatFlowOverride,
