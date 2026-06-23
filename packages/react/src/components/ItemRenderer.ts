@@ -20,10 +20,13 @@ import type {
   MessageItem,
   OutputItem,
   ReasoningItem,
-  StatusItem
+  StatusItem,
+  SuspensionItem
 } from "@flow-state-dev/core/items";
+import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
 import { resolveRenderer } from "../registry/block-renderers";
+import { ApprovalRenderer } from "./ApprovalRenderer";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -34,6 +37,20 @@ import { resolveRenderer } from "../registry/block-renderers";
  */
 export type ItemRendererProps = {
   item: OutputItem;
+  /**
+   * For a `suspension` item rendered inline via the built-in ApprovalRenderer
+   * fallback: whether a matching `suspension_resume` item has already arrived.
+   * ItemsRenderer computes this from the full item list; when true the default
+   * card collapses to a receipt. Ignored for non-suspension items and for custom
+   * or suppressed renderers.
+   */
+  isResolved?: boolean;
+  /**
+   * For a resolved `suspension` item: how it was resolved (from the matching
+   * `suspension_resume` item), so the collapsed receipt shows the real outcome.
+   * Ignored for non-suspension items.
+   */
+  resolution?: SuspensionStatus;
 };
 
 // ---------------------------------------------------------------------------
@@ -139,6 +156,8 @@ const BUILT_IN_FALLBACKS: Record<string, ((item: OutputItem) => ReactNode) | und
   status: (item) => renderStatusFallback(item as StatusItem),
   error: (item) => renderErrorFallback(item as ErrorItem),
   tool_output: (item) => renderBlockToolOutputFallback(item as ToolOutputItem)
+  // `suspension` is handled explicitly in renderItem so it can receive the
+  // stream-derived `isResolved` flag (which this `{ item }`-only map can't carry).
 };
 
 // ---------------------------------------------------------------------------
@@ -153,14 +172,14 @@ const BUILT_IN_FALLBACKS: Record<string, ((item: OutputItem) => ReactNode) | und
  * fallbacks, then a JSON dev fallback.
  */
 export function ItemRenderer(props: ItemRendererProps): ReactNode {
-  const { item } = props;
+  const { item, isResolved, resolution } = props;
 
   // Non-renderable types: bail early (no hooks called on this path).
   if (NON_RENDERABLE_TYPES.has(item.type)) {
     return null;
   }
 
-  return renderItem(item);
+  return renderItem(item, isResolved, resolution);
 }
 
 /**
@@ -168,7 +187,11 @@ export function ItemRenderer(props: ItemRendererProps): ReactNode {
  * doesn't violate React's rules of hooks (hooks must be called
  * unconditionally within a component).
  */
-function renderItem(item: OutputItem): ReactNode {
+function renderItem(
+  item: OutputItem,
+  isResolved?: boolean,
+  resolution?: SuspensionStatus
+): ReactNode {
   const { renderers } = useFlowContext();
 
   const componentKey =
@@ -202,7 +225,14 @@ function renderItem(item: OutputItem): ReactNode {
     return null;
   }
 
-  // 2. Built-in fallback (message, status, error).
+  // 2a. Suspension default card — handled explicitly so it receives the
+  // stream-derived `isResolved` flag, going read-only once its
+  // `suspension_resume` item has arrived (prevents a duplicate-resume 409).
+  if (item.type === "suspension") {
+    return createElement(ApprovalRenderer, { item: item as SuspensionItem, isResolved, resolution });
+  }
+
+  // 2b. Built-in fallback (message, status, error, etc.).
   const fallback = BUILT_IN_FALLBACKS[item.type];
   if (fallback !== undefined) {
     return fallback(item);

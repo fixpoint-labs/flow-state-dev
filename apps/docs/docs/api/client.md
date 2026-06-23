@@ -116,7 +116,7 @@ Create a user-scoped event stream client for cross-session notifications.
 
 ### `createRecoveryClient(options)`
 
-Create a client for the request-recovery surface — sweep stale active-request entries and re-dispatch interrupted/failed requests.
+Create a client for the request-recovery surface — sweep stale active-request entries, re-dispatch interrupted/failed requests, and resume suspended flows.
 
 ```ts
 import { createRecoveryClient } from "@flow-state-dev/client";
@@ -134,9 +134,37 @@ const { newRequestId } = await recovery.retry({
   sessionId: "sess_1",
   requestId: "req_1",
 });
+
+// Resolve a pending suspension (approve or reject).
+const result = await recovery.resumeSuspension("chat", "req_1", {
+  suspensionId: "susp_abc",
+  action: "approve",            // or "reject"
+  data: { approved: true },     // optional payload; ctx.suspend() returns this
+  resumedBy: "user_xyz",        // optional; stored on the audit record
+});
+// result.requestId — the request id that will continue (same as the input requestId)
+
+// Stream the resume: get the continuation's SSE stream from the POST response.
+const response = await recovery.resumeSuspensionStream("chat", "req_1", {
+  suspensionId: "susp_abc",
+  action: "approve",
+});
+if ((response.headers.get("content-type") ?? "").includes("text/event-stream")) {
+  // Consume response.body as the continuation's event stream (see createSSEClientFromResponse).
+}
 ```
 
+`resumeSuspensionStream` POSTs with `Accept: text/event-stream` and returns the raw `Response` whose body is the resumed run's SSE stream — the continuation runs on the same instance that handled the POST, so the resuming client follows it live even on serverless (no shared pub/sub). Falls back to a `202` JSON response when the server doesn't stream; branch on the `content-type` header. The React layer (`useSession().resumeSuspension`, `useSuspensions`) wires this for you.
+
 `retry` returns 409 from the server unless the original request's status is `interrupted` or `failed`.
+
+`resumeSuspension` error codes:
+- **400** — missing or invalid `action`, or no durability provider configured
+- **404** — unknown `flowKind`, `requestId`, or `suspensionId`
+- **409** — request is not currently suspended, or this suspension is already resolved, or a concurrent resume is in progress
+- **410** — the suspension has expired (`timeoutMs` elapsed)
+
+All failures throw `ClientHttpError` with a `.status` property.
 
 ## Error Handling
 

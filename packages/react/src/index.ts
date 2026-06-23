@@ -73,6 +73,28 @@ export {
 } from "./hooks/useContainerItems";
 
 export {
+  useSuspensions,
+  deriveSuspensions,
+  resolveSuspension,
+  type ResolveSuspensionArgs,
+  type SuspensionView,
+  type UseSuspensionsOptions,
+  type UseSuspensionsResult
+} from "./hooks/useSuspensions";
+
+export {
+  ApprovalRenderer,
+  type ApprovalRendererProps
+} from "./components/ApprovalRenderer";
+export {
+  useApproval,
+  resolveApprovalOutcome,
+  type UseApprovalOptions,
+  type UseApprovalResult,
+  type ApprovalOutcome
+} from "./hooks/useApproval";
+
+export {
   useRequestStream,
   type RequestStreamFilter,
   type UseRequestStreamOptions,
@@ -106,6 +128,13 @@ export {
   type FlowContextValue,
   type FlowProviderProps
 } from "./context/FlowContext";
+
+export {
+  SuspensionResolverProvider,
+  useSuspensionResolver,
+  type SuspensionResolver,
+  type SuspensionResolverProviderProps
+} from "./context/SuspensionResolver";
 
 export {
   useVoice,

@@ -4,9 +4,10 @@
  * directly with synthetic envelopes.
  */
 import { describe, it, expect, vi } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
+  createCheckpointDurabilityProvider,
   createFlowRegistry,
   createInMemoryStores,
   createInboundTransportHost,
@@ -16,6 +17,7 @@ import {
   PrincipalResolutionError
 } from "../../src";
 import type { FlowDispatcher } from "../../src/transports/dispatcher";
+import type { ResumeContext } from "@flow-state-dev/core/types";
 
 function buildHost(opts?: { withOrgFlow?: boolean; dispatcher?: FlowDispatcher }) {
   const registry = createFlowRegistry();
@@ -81,6 +83,85 @@ describe("createInboundTransportHost", () => {
     const record = await stores.request.get(handle.requestId);
     expect(record?.source).toBe("webhook");
     expect(record?.userId).toBe("u_host");
+  });
+
+  it("continueRequest registers background work so the resumed run is kept alive (Vercel waitUntil)", async () => {
+    // Regression: the resume route returns 202 without awaiting the inline
+    // continuation. On a freeze-after-response platform (Vercel, no BullMQ) the
+    // run only survives if its `finished` promise is handed to `onBackgroundWork`
+    // (→ Next `after()` / waitUntil). `dispatch` did this; `continueRequest`
+    // didn't, so resumes appeared to hang until a later invocation thawed the
+    // container. Assert continueRequest now registers its background work too.
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({
+      checkpoints: stores.checkpoints,
+      suspensions: stores.suspensions,
+      leases: stores.leases
+    });
+
+    const gate = handler<{ value: string }, unknown>({
+      name: "gate",
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "approve?" })
+    });
+    registry.register(
+      defineFlow({
+        kind: "durable-host-test",
+        actions: {
+          run: {
+            durable: true,
+            inputSchema: z.object({ value: z.string() }),
+            block: sequencer({
+              name: "seq",
+              durable: true,
+              inputSchema: z.object({ value: z.string() })
+            }).step(gate)
+          }
+        }
+      })({ id: "durable-host-test" })
+    );
+
+    const onBackgroundWork = vi.fn();
+    const host = createInboundTransportHost({
+      registry,
+      stores,
+      resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+      // onBackgroundWork lives on runtimeConfig (→ Next `after()` / waitUntil).
+      runtimeConfig: { durabilityProvider: provider, onBackgroundWork }
+    });
+
+    // Dispatch → suspends at the gate. (dispatch registers its own background work.)
+    const handle = host.dispatch({
+      source: "http",
+      flowKind: "durable-host-test",
+      action: "run",
+      input: { value: "x" },
+      principal: { userId: "u1" },
+      sessionId: "s1"
+    });
+    await handle.finished;
+    const callsAfterDispatch = onBackgroundWork.mock.calls.length;
+    expect(callsAfterDispatch).toBeGreaterThanOrEqual(1);
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    expect(suspension).toBeDefined();
+    await provider.suspend({ ...suspension, status: "approved", resolvedAt: Date.now() });
+    const resumeContext: ResumeContext = {
+      suspensionId: suspension.suspensionId,
+      action: "approve"
+    };
+
+    const resumed = await host.continueRequest({
+      requestId: handle.requestId,
+      resumeContext
+    });
+    await resumed.finished;
+
+    // The fix: continueRequest registered its `finished` with onBackgroundWork.
+    expect(onBackgroundWork.mock.calls.length).toBeGreaterThan(callsAfterDispatch);
+    const lastArg = onBackgroundWork.mock.calls.at(-1)?.[0];
+    expect(typeof (lastArg as { then?: unknown })?.then).toBe("function");
   });
 
   it("dispatch returns a usable liveStream by default", async () => {

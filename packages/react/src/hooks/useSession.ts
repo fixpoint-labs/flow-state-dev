@@ -173,6 +173,26 @@ export type SessionView = {
    * that the server will retry (`interrupted` or `failed`).
    */
   resumeLatestRequest: () => Promise<void>;
+  /**
+   * Resolve a pending durable-execution suspension (approve/reject) and stream
+   * the continuation back into this session's `items`. The resume POSTs with
+   * `Accept: text/event-stream`, so the resumed run streams from the POST
+   * response on the same instance that handled it — the post-suspension output
+   * renders live, with no page refresh, even on serverless (where a separate GET
+   * reconnect couldn't reach the in-flight continuation). Falls back to a GET
+   * re-attach + snapshot refresh when the server returns a 202 instead of SSE.
+   *
+   * `requestId` is the suspended request's id (carried on the suspension item).
+   * The continuation re-enters that same id (FIX-811), so its items merge into
+   * the existing stream rather than creating a new request.
+   */
+  resumeSuspension: (args: {
+    suspensionId: string;
+    requestId: string;
+    action: "approve" | "reject";
+    data?: unknown;
+    resumedBy?: string;
+  }) => Promise<void>;
   refresh: () => Promise<void>;
   /**
    * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
@@ -1256,6 +1276,80 @@ export function useSession(
     }
   }, [sessionId, latestRequest, recoveryClient, attachToStream, refreshLatestRequest]);
 
+  const resumeSuspension = useCallback(
+    async (args: {
+      suspensionId: string;
+      requestId: string;
+      action: "approve" | "reject";
+      data?: unknown;
+      resumedBy?: string;
+    }): Promise<void> => {
+      if (streamHandleRef.current !== null) {
+        streamHandleRef.current.close();
+        streamHandleRef.current = null;
+      }
+      setError(null);
+      setIsFinishing(false);
+      setIsStuck(false);
+      latestRequestIdAfterDropRef.current = null;
+      // The continuation re-enters the suspended request's own id (FIX-811), so
+      // the active request for abort/stuck tracking is that same id.
+      activeRequestIdRef.current = args.requestId;
+
+      try {
+        // Stream the resume: POST with Accept: text/event-stream so the
+        // continuation streams back from the POST response on the same instance.
+        // Mirrors sendAction's inline-streaming path — essential on serverless
+        // where a separate GET stream can't reach the in-flight continuation.
+        const postResponse = await recoveryClient.resumeSuspensionStream(
+          resolvedFlowKind,
+          args.requestId,
+          {
+            suspensionId: args.suspensionId,
+            action: args.action,
+            data: args.data,
+            resumedBy: args.resumedBy ?? userId
+          }
+        );
+
+        const contentType = postResponse.headers.get("content-type") ?? "";
+        if (contentType.includes("text/event-stream")) {
+          if (itemConfig.enabled) {
+            attachToStream(args.requestId, undefined, postResponse);
+          } else {
+            postResponse.body?.cancel().catch(() => {});
+            void refreshSnapshot();
+            void refreshLatestRequest();
+          }
+          return;
+        }
+
+        // Fallback: server returned 202 JSON (no inline streaming). Re-attach
+        // via GET and pull the snapshot so the resolution still surfaces.
+        postResponse.body?.cancel().catch(() => {});
+        if (itemConfig.enabled) {
+          attachToStream(args.requestId);
+        }
+        void refreshSnapshot();
+        void refreshLatestRequest();
+      } catch (cause) {
+        const normalized = cause instanceof Error ? cause : new Error(String(cause));
+        activeRequestIdRef.current = null;
+        setError(normalized);
+        throw normalized;
+      }
+    },
+    [
+      recoveryClient,
+      resolvedFlowKind,
+      itemConfig.enabled,
+      userId,
+      attachToStream,
+      refreshSnapshot,
+      refreshLatestRequest
+    ]
+  );
+
   const subscribeAudioDelta = useCallback(
     (handler: (event: ContentAudioDeltaEvent) => void) => {
       audioDeltaListenersRef.current.add(handler);
@@ -1290,6 +1384,7 @@ export function useSession(
     abortRequest,
     dismissRequest,
     resumeLatestRequest,
+    resumeSuspension,
     refresh,
     subscribeAudioDelta
   };

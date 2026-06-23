@@ -194,4 +194,66 @@ describe("createRecoveryClient", () => {
       expect(fetcher).not.toHaveBeenCalled();
     });
   });
+
+  describe("resumeSuspensionStream", () => {
+    it("posts the resume with Accept: text/event-stream and returns the raw response", async () => {
+      const sse = new Response("data: {}\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream" }
+      });
+      const fetcher = vi.fn<ClientFetch>(async () => sse);
+
+      const client = createRecoveryClient({ fetcher });
+      const response = await client.resumeSuspensionStream("chat", "req_1", {
+        suspensionId: "sus_1",
+        action: "approve",
+        data: { approvedBudget: 100 },
+        resumedBy: "operator"
+      });
+
+      expect(response).toBe(sse);
+      expect(fetcher.mock.calls[0]?.[0]).toBe(
+        "/api/flows/chat/requests/req_1/resume"
+      );
+      const init = fetcher.mock.calls[0]?.[1];
+      expect(init?.method).toBe("POST");
+      expect((init?.headers as Record<string, string>)?.accept).toBe(
+        "text/event-stream"
+      );
+      expect(init?.body).toBe(
+        JSON.stringify({
+          suspensionId: "sus_1",
+          action: "approve",
+          data: { approvedBudget: 100 },
+          resumedBy: "operator"
+        })
+      );
+    });
+
+    it("throws on a non-ok response", async () => {
+      const fetcher = vi.fn<ClientFetch>(async () =>
+        new Response("nope", { status: 409 })
+      );
+      const client = createRecoveryClient({ fetcher });
+      await expect(
+        client.resumeSuspensionStream("chat", "req_1", {
+          suspensionId: "sus_1",
+          action: "approve"
+        })
+      ).rejects.toThrow(/Resume request failed \(409\)/);
+    });
+
+    it("rejects an invalid action before hitting the network", async () => {
+      const fetcher = vi.fn<ClientFetch>();
+      const client = createRecoveryClient({ fetcher });
+      await expect(
+        client.resumeSuspensionStream("chat", "req_1", {
+          suspensionId: "sus_1",
+          // @ts-expect-error invalid action at the type level too
+          action: "maybe"
+        })
+      ).rejects.toThrow(/approve.*reject/);
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+  });
 });

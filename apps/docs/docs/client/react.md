@@ -274,6 +274,100 @@ const canCreateArtifact = manifest?.resources
 
 See [Resource Manifest](/docs/resources/manifest) for the full reference.
 
+## Suspensions and approvals
+
+When a durable flow calls `ctx.suspend()`, execution pauses at that step and a `suspension` item arrives on the session's SSE stream. The flow waits for an external actor to resolve it before continuing.
+
+`useSuspensions` derives pending and resolved suspensions from `session.items`. It pairs each `suspension` item with its later `suspension_resume` item by `suspensionId` and exposes `approve` and `reject` callbacks.
+
+`approve` and `reject` stream the resume: the resumed continuation streams straight back into `session.items`, so the post-resume output renders live without a page refresh. This matters most on serverless, where the continuation runs in a different invocation than any open stream — streaming the resume keeps it on the same request the client is watching. The callbacks resolve to `void` once the resume is dispatched; the result shows up as new items.
+
+### useSuspensions
+
+```tsx
+import { useSuspensions } from "@flow-state-dev/react";
+
+function ApprovalPanel({ session }) {
+  const { pending, approve, reject, error } = useSuspensions(session);
+
+  return (
+    <>
+      {pending.map(({ item }) => (
+        <div key={item.suspensionId}>
+          <p>{item.message}</p>
+          <button onClick={() => approve(item.suspensionId)}>Approve</button>
+          <button onClick={() => reject(item.suspensionId)}>Reject</button>
+        </div>
+      ))}
+      {error && <p style={{ color: "red" }}>{error.message}</p>}
+    </>
+  );
+}
+```
+
+`pending` is a live slice of `suspensions` — it updates automatically when a `suspension_resume` item arrives on the stream. `approve` and `reject` accept an optional `data` payload that `ctx.suspend()` returns on the resumed step.
+
+Filter to a specific reason or request:
+
+```tsx
+const { pending } = useSuspensions(session, {
+  reasons: ["human_approval"],
+  requestId: "req_abc",
+});
+```
+
+### Rendering approvals inline
+
+By default `ItemRenderer` renders a built-in approval card (`ApprovalRenderer`) for `type === "suspension"` items. Set `flowKind` on `<FlowProvider>` so the card can call the resume endpoint:
+
+```tsx
+<FlowProvider flowKind="my-flow" baseUrl="/api/flows">
+  <ItemsRenderer items={session.items} />
+</FlowProvider>
+```
+
+When a suspension item reaches `ItemRenderer`, the card shows `item.message`, Approve and Reject buttons, and optional `item.data` in a collapsible details section.
+
+With just `flowKind` set, the inline card resolves with a non-streaming resume — it works, but the continuation's output only shows after the session refetches. To make the inline card stream like `useSuspensions` does, wrap the item list in `<SuspensionResolverProvider>` and hand it the session's `resumeSuspension`:
+
+```tsx
+import { SuspensionResolverProvider } from "@flow-state-dev/react";
+
+<FlowProvider flowKind="my-flow" baseUrl="/api/flows">
+  <SuspensionResolverProvider resolve={session.resumeSuspension}>
+    <ItemsRenderer items={session.items} />
+  </SuspensionResolverProvider>
+</FlowProvider>
+```
+
+Now approving or rejecting from the inline card streams the continuation back into `session.items` — the chat view updates in place. `session.resumeSuspension` is the same streaming resume `useSuspensions` calls under the hood, so the two paths behave identically.
+
+### Custom approval UI
+
+Register a component under the `suspension` slot to replace the default card:
+
+```tsx
+<FlowProvider renderers={{ suspension: MyApprovalCard }}>
+```
+
+The component receives `{ item }` where `item` is the `SuspensionItem`. Use `useSuspensions` from a parent to manage resolution and pass `onApprove`/`onReject` handlers down.
+
+For a fully custom layout — modals, sidebars, toasts — suppress inline rendering and manage the list yourself:
+
+```tsx
+<FlowProvider renderers={{ suspension: false }}>
+  {/* ItemsRenderer shows no inline cards */}
+  <ItemsRenderer items={session.items} />
+
+  {/* Your own layout reads from useSuspensions */}
+  <ApprovalSidebar pending={pending} onApprove={approve} onReject={reject} />
+</FlowProvider>
+```
+
+For a full server-to-UI walkthrough (defining the gate, the `useApproval` hook, and the `Approval` card), see the [Human-in-the-Loop guide](/guides/human-in-the-loop). See [Durable execution](/docs/advanced/durable-execution) for the server-side setup (`ctx.suspend()`, `SuspendOptions`, the resume endpoint).
+
+See the [API reference](/docs/api/react#usesuspensions) for the full `useSuspensions` signature.
+
 ## Typical Pattern
 
 ```tsx

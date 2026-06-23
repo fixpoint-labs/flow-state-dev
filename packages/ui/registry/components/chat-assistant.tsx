@@ -9,6 +9,7 @@ import { RoutedSpecialists } from "./routed-specialists";
 import { EventedActors } from "./evented-actors";
 import { Debate } from "./debate";
 import { AuditAnnotation } from "./audit-annotation";
+import { Approval } from "./approval";
 import { TaskPlan } from "./task-plan";
 
 /**
@@ -45,6 +46,7 @@ export const chatAssistantRenderers: RendererRegistry = {
   status: Status,
   error: ErrorDisplay,
   source: false,
+  suspension: Approval,
   container: {
     "evented-actors": EventedActors,
     debate: Debate,

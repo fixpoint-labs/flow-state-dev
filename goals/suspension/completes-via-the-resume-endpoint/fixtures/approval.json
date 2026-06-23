@@ -1,0 +1,4 @@
+{
+  "request": "Disable feature flag fast-checkout for tenant acme",
+  "note": "approved by release captain (CHG-5567)"
+}

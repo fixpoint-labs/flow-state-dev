@@ -1,4 +1,4 @@
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
 import {
   ItemRenderer,
@@ -112,6 +112,43 @@ describe("ItemRenderer dispatch", () => {
     };
 
     expect(ItemRenderer({ item: resourceChangeItem })).toBeNull();
+  });
+
+  it("returns null for suspension_resume items (non-renderable type)", () => {
+    const resumeItem: OutputItem = {
+      id: "sr_1",
+      type: "suspension_resume",
+      suspensionId: "susp_abc",
+      resolution: "approved",
+      status: "completed",
+      requestId: "req_1",
+      itemIndex: 1,
+      provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+      ts: 2000
+    };
+
+    expect(ItemRenderer({ item: resumeItem })).toBeNull();
+  });
+});
+
+describe("suspension RendererRegistry slot", () => {
+  it("resolveRenderer returns undefined when no suspension renderer is registered (falls through to built-in)", () => {
+    // undefined → ItemRenderer uses the BUILT_IN_FALLBACKS ApprovalRenderer entry.
+    const registry: RendererRegistry = {};
+    expect(resolveRenderer(registry, "suspension")).toBeUndefined();
+  });
+
+  it("resolveRenderer returns false when suspension is suppressed (headless layout)", () => {
+    // false → ItemRenderer returns null; consumer uses useSuspensions for custom layout.
+    const registry: RendererRegistry = { suspension: false };
+    expect(resolveRenderer(registry, "suspension")).toBe(false);
+  });
+
+  it("resolveRenderer returns the custom suspension component", () => {
+    // Custom component wins over the built-in ApprovalRenderer fallback.
+    const customCard = (props: { item: SuspensionItem }) => `custom:${props.item.suspensionId}`;
+    const registry: RendererRegistry = { suspension: customCard };
+    expect(resolveRenderer(registry, "suspension")).toBe(customCard);
   });
 });
 
