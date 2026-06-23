@@ -113,7 +113,7 @@ Follow the discipline picked at Step 4.1.
 5. Instrument with `[DEBUG-<short-hash>]` tags so cleanup is a single grep at the end.
 6. Apply the fix.
 7. Write the regression test (Phase 5 of diagnose) at the correct seam — the seam the spec named in Testing Strategy, or the spec's substitute if one was not provided.
-8. Run the loop again; verify the original repro no longer reproduces.
+8. Run the loop again; verify the original repro no longer reproduces. If the bug was user-visible behaviour (not a pure type/unit regression), confirm the fix through the **real path** too — `fsdev run` against a real model — not only the mocked regression spec, so you've proven the symptom is actually gone.
 9. Cleanup: grep `[DEBUG-` and remove all instrumentation. Delete throwaway harnesses.
 10. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
 11. Commit with a conventional commit message referencing the issue ID. The commit message names which hypothesis turned out correct, so the next debugger learns.
@@ -128,8 +128,9 @@ Follow the discipline picked at Step 4.1.
 5. After all tests pass, refactor while green: extract duplication, deepen modules, follow BP-011–BP-016. Never refactor while red.
 6. For generators specifically: assert schema strictness with `makeSchemaStrict` per BP-016.
 7. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
-8. Commit with a conventional commit message referencing the issue ID
-9. Skip to Step 6 (Review)
+8. **Run the goal check** if the spec's Testing Strategy names one (real model, real path — see `fsd:tdd` → "Two kinds of test"). Green specs are mocked; they don't prove the goal. Run `fsdev run` against a real model or the `goal-checks/<name>.goal.mts` script and confirm PASS on the actual outcome. If it fails, the work isn't done — return to the loop. Record the command and verdict. If the spec documented that no goal check applies (docs/refactor/config work with no observable outcome), skip this and note the documented justification.
+9. Commit with a conventional commit message referencing the issue ID
+10. Skip to Step 6 (Review)
 
 ### Step 5B: Complex Implementation (Sub-agent Team)
 
@@ -185,6 +186,9 @@ Repeat 5B.2–5B.3 for each task in order. After all tasks:
 - Run full typecheck: `pnpm typecheck`
 - Run full test suite: `pnpm test`
 - Fix any cross-task integration issues
+- **Prove the goal on the assembled work** (real model, real path — see `fsd:tdd` → "Two kinds of test"). The per-task specs are mocked and only prove the pieces; this step proves the whole achieves the outcome. Confirm PASS before moving to review and record the command and verdict.
+  - **Feature/Enhancement:** run the goal check the spec names. If the spec documented that no goal check applies, skip and note the documented justification.
+  - **Bug** (complex bugs route through 5B, not 5A): if the original symptom was user-visible, re-run the **original repro through the real path** (`fsdev run` against a real model) on the assembled fix and confirm it's gone — this is the bug's goal verdict Step 6 expects. For a pure type/unit regression, note "N/A — type/unit-only" with the regression test as the proof.
 
 ### Step 6: Comprehensive Review
 
@@ -196,6 +200,7 @@ Launch a `general-purpose` sub-agent to:
 - Check each acceptance criterion from the spec
 - Verify edge cases from the spec's "Edge Cases" section are handled
 - Confirm the testing strategy from the spec was followed
+- **Confirm the goal was actually proven — when the spec names a goal check.** If the spec's Testing Strategy names a goal check, confirm it was run with a real model and passed (`fsd:tdd` → "Two kinds of test"); a green CI suite is not evidence. If it wasn't run, or only mocked specs exist, that is a completeness failure: flag it must-fix and run the goal check before presenting. **Honor a documented skip.** If the spec declares "no goal check applies" (docs-only, pure type/schema/internal refactor, config/build plumbing — per `create-spec`'s "When a goal check doesn't apply"), confirm that justification still holds — i.e. no user-observable outcome was actually introduced — rather than demanding a check. For bug work, the real-path confirmation is the goal-level proof — Step 5A for simple bugs, Step 5B.4 for complex bugs that route through sub-agents; verify that verdict (wherever it was recorded) instead of a named goal check.
 - Flag anything in the spec that wasn't implemented
 - Flag anything implemented that wasn't in the spec
 
@@ -229,8 +234,11 @@ Fix all must-fix and should-fix items. Re-run affected tests after fixes.
 
 ### Step 7: Update Linear
 
-Update the Linear issue:
-- Add a comment summarizing: what was implemented, approach taken, test results, any deviations from spec
+First, **compile the Key Decisions & Ramifications (top 5)** — the most consequential decisions made *during implementation* (not the spec's): a shape the spec left open, a deviation, a tradeoff under a constraint the spec didn't anticipate. For each: the decision, the alternative rejected, and the ramification — what it locks in, what it rules out, what risk it carries. If implementation was purely mechanical with no real decisions, say so rather than padding to five. This list is reused verbatim in Step 8 (presentation) and Step 9 (PR body).
+
+Then update the Linear issue:
+- Add a comment summarizing: what was implemented, approach taken, test results, the **goal verdict** (the goal-check command and its PASS verdict; or, when the spec documented no goal check, the justification; or, for bugs, diagnose's real-path confirmation), any deviations from spec
+- Include the **Key Decisions & Ramifications (top 5)** compiled above — the durable record lives on the issue so the decisions are reviewable async, not just in chat
 - Keep state as "In Progress" until user approves
 
 ### Step 8: Present for Review
@@ -238,12 +246,14 @@ Update the Linear issue:
 Present the completed work:
 
 1. **Summary**: what was implemented (tied back to the spec)
-2. **Changes**: files modified/created with brief descriptions
-3. **Deviations**: anything that differed from the spec and why
-4. **Test results**: full typecheck and test output
-5. **Review findings**: notable observations from the three reviewers
-6. **Simplifications made**: what the simplification review caught and how it was addressed
-7. **Follow-ups**: any items for future work (not in scope but worth noting)
+2. **Key decisions & ramifications (top 5)**: the list compiled in Step 7 — each decision made *during implementation*, the alternative rejected, and the ramification (what it locks in, what it rules out, what risk it carries). This lets the user review the decisions, not just the code.
+3. **Changes**: files modified/created with brief descriptions
+4. **Goal verdict**: when the spec named a goal check, the check that was run (command/path), that it used a real model, and its PASS verdict with the evidence it checked — the proof the goal was met, distinct from the mocked test suite. When the spec documented that no goal check applies, state that and the one-line justification. For bugs, give diagnose's real-path confirmation instead.
+5. **Deviations**: anything that differed from the spec and why
+6. **Test results**: full typecheck and test output
+7. **Review findings**: notable observations from the three reviewers
+8. **Simplifications made**: what the simplification review caught and how it was addressed
+9. **Follow-ups**: any items for future work (not in scope but worth noting)
 
 Ask the user to review. They may:
 - **Approve** → commit, push, open PR, update Linear to "Done"
@@ -258,7 +268,7 @@ Once approved:
 2. Push: `git push -u origin fix/{ISSUE-ID}`
 3. Open PR with `gh pr create`:
    - Title: concise description (under 70 characters)
-   - Body: summary, changes, test plan, `Fixes FIX-{number}`
+   - Body: summary, changes, **Key Decisions & Ramifications (top 5)** (the same list compiled in Step 7 — so reviewers evaluate the direction, not only the diff), test plan, the **goal verdict** (goal-check command + PASS verdict; or the documented no-goal-check justification; or diagnose's real-path confirmation for bugs), `Fixes FIX-{number}`
 4. Update Linear issue:
    - State: "Done"
    - Attach PR URL

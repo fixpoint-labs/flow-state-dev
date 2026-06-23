@@ -6,7 +6,6 @@
  * `docs/architecture/inbound-transports.md` for the full reference.
  */
 export type {
-  Dispatcher,
   DispatchHandle,
   InboundRequestEnvelope,
   InboundSource,

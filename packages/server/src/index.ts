@@ -100,7 +100,6 @@ export {
   createAiSdkModelResolver,
   wrapAiSdkModel,
   createModelResolver,
-  createFSDProvider,
   detectAvailableProviders,
   parseModelString,
   createFallbackModel
@@ -109,9 +108,6 @@ export type {
   ResolveAiSdkLanguageModel,
   CreateModelResolverOptions,
   IntentDefaults,
-  FSDProviderConfig,
-  FSDProvider,
-  ModelGroupConfig,
   ModelGroupDefaults,
   GatewayConfig,
   RetryPolicy,
@@ -120,10 +116,7 @@ export type {
   ProviderAvailability,
   ParsedModelString,
   FallbackModelEntry,
-  ProviderPreference,
-  ResolveOptions,
-  ExplainCandidate,
-  ExplainResult
+  ProviderPreference
 } from "@flow-state-dev/core/models";
 export {
   FlowError,
@@ -177,7 +170,6 @@ export {
   type TTSEmitterHook
 } from "./voice";
 
-export { createBindingCache, type CachedBindingProvider } from "./bindings";
 export * from "./middleware";
 
 export { createCheckpointDurabilityProvider } from "./durability/checkpoint-durability-provider";
@@ -192,8 +184,6 @@ export type {
 } from "./durability/durability-sweeper";
 
 export const serverPackageMarker = "@flow-state-dev/server";
-
-export { renderTemplate } from "./utils/renderTemplate";
 
 // ---------------------------------------------------------------------------
 // Internal resource helpers exposed for sibling-package consumption

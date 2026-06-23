@@ -16,7 +16,7 @@ const nextConfig = {
   // `pg` ships native bindings; mark external so webpack doesn't try to
   // bundle it. `@vercel/sandbox` doesn't need this entry — the bash
   // adapter takes the SDK class via DI from the consumer (see
-  // `flows/chat-agent/blocks/bash-tools.ts`), so the static import is
+  // `flows/chat-agent/shared/capabilities/bash.ts`), so the static import is
   // visible to nft like any other dependency.
   serverExternalPackages: ["pg", "bullmq", "ioredis", "express"],
   transpilePackages: workspacePackages,

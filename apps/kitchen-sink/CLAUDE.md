@@ -40,7 +40,7 @@ Don't mix these — the CLI is faster than the browser for everything below the 
 
 ## Layout
 
-- `flows/chat-agent/` — flow-specific code (flow.ts, blocks, schemas, prompts). Exports `chatAgentFlow` (`kind: "chat-agent"`).
+- `flows/chat-agent/` — flow-specific code, organized by-action: `flow.ts` (defineFlow only), `shared/` (schemas, capabilities, prompt loader + filters), `run/` (the chat turn — assistant, thinking styles, cognition, bias check), and single-file root actions (`approval-gate.ts`, `task-queue-demo.ts`, `settings.ts`). The `saveArtifact` action is owned by the artifacts concern (`shared/artifacts/`) rather than a root file — artifacts is fundamentally a capability, so its resource, tools, context, and `saveArtifact` action live together as a concern folder with a thin `capability.ts` adapter. Prompts are co-located `*.prompt.md` templates. Exports `chatAgentFlow` (`kind: "chat-agent"`).
 - `flows/rich-text-component/` — flow-specific code (flow.ts, generators, schemas, prompts, memory). Exports `richTextComponentFlow` (`kind: "rich-text-component"`). Non-agentic: 8 discrete text-transform actions. The `personalize` action reads user-scoped episodic + semantic memories captured by chat-agent. It only consumes memory, so it wires in `createMemoryCapability` (read-side) configured with the same tiers — not `system()` (no flow-isolation, so storage is shared by `userId`).
 - `flows/weekly-digest/` — reference wiring for scheduled actions. One static schedule (`monday-summary`) plus a dynamic resource-collection resolver backed by `defineScheduleCollection` + `createPostgresScheduleIndex`. The `scheduleDigest` action lets a caller add per-user dynamic schedules at runtime.
 - `components/flow-state/` — shared item-renderer UI (installed from `@flow-state-dev/ui`).
@@ -55,11 +55,30 @@ To add a new flow: drop it under `flows/<name>/`, register it in `fsdev.config.t
 
 This app uses `defineCapability()` to bundle related resources, context formatters, and tools into reusable units.
 
-- **`artifactsCapability`** (`flows/chat-agent/blocks/artifacts.ts`) — artifact resources + inventory context + read/write tools.
-- **`featuresCapability`** (`flows/chat-agent/blocks/features-capability.ts`) — feature-flag-gated tool selection. Conditionally includes `bashCapability` (from `@flow-state-dev/tools/bash`) when the bash feature is enabled. When bash is available, it replaces `readArtifact`/`updateArtifact` as the single artifact creation path.
+- **`artifactsCapability`** (`flows/chat-agent/shared/artifacts/`) — artifact resources + inventory context + read/write tools. Artifacts is a **concern folder**, not a single file: `resource.ts` → `tools.ts` / `context.ts` → `capability.ts` (a thin adapter), with one-way deps and `index.ts` as the public surface. The `saveArtifact` action sequencer (`updateArtifact`) that `flow.ts` wires lives in `tools.ts`.
+- **`featuresCapability`** (`flows/chat-agent/shared/capabilities/features.ts`) — feature-flag-gated tool selection. Conditionally includes `bashCapability` (from `@flow-state-dev/tools/bash`) when the bash feature is enabled. When bash is available, it replaces `readArtifact`/`updateArtifact` as the single artifact creation path.
 - **`bashCapability`** (framework: `createBashCapability()` from `@flow-state-dev/tools/bash`) — bash tool blocks + environment-aware context guidance. Adapts prompt based on provider config (network access, python, just-bash vs local).
 
 Generators and pattern factories declare `uses: [featuresCapability]` — one line replaces manual tools/context/resources plumbing.
+
+## Prompt templates: data prep stays in TS
+
+When a generator's `user:` (or `<system>`) prompt needs to format structured
+input, author the layout in a `.prompt.md` `<user>` block and keep the
+shape-handling in a typed TS **view builder** registered as a Liquid filter
+(`shared/prompt-filters.ts`, wired onto the loader in `shared/prompts.ts`). The
+supervisor worker is the reference: `supervisor-worker.prompt.md` is pure layout
+over `{{ input | supervisorWorkerView }}`, and `supervisorWorkerView` does the
+`unknown`-shape discrimination, source filtering, and context fallback in
+type-checked code.
+
+The engine renders under `strictVariables`, so a template that reads an absent
+optional field directly (`{{ input.feedback }}` with no feedback) throws. The
+view builder dodges this by returning an object whose keys are **always present**
+— `null` when absent — so `{% if %}` guards never touch an undefined variable.
+Reusable shape helpers (`normalizeDeps`) live alongside the builders so other
+pattern workers compose the same registry. Add a rendered value by adding a
+field to the view + a line in the template.
 
 ## Scheduled actions demo
 
