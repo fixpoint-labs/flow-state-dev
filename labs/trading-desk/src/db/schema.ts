@@ -27,6 +27,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /** The app's private Postgres schema. The framework owns `public`. */
@@ -82,5 +83,65 @@ export const holdings = appSchema.table(
   (table) => [
     primaryKey({ columns: [table.accountId, table.ticker] }),
     index("holdings_ticker_idx").on(table.ticker),
+  ],
+);
+
+/**
+ * The transaction ledger (FIX-774) — one append-only row per cash/share event,
+ * realizing the `accountLedgerSchema` "FUTURE SEAM" as a table (not a resource).
+ * Every writer (manual entry now; FIX-775 file import and FIX-853 Plaid sync
+ * later) ingests through one idempotent contract, so the two dedup keys ship now
+ * even though only manual entry populates the table in this PR:
+ *
+ * - `fingerprint` — a canonical content hash, always computed; the
+ *   `(account_id, fingerprint)` unique index catches a duplicate that has no
+ *   external id (a manual re-submit; later, the same trade arriving from two
+ *   feeds, once the feed normalizers in FIX-775/FIX-853 map onto this recipe).
+ * - `(source, external_id)` — a PARTIAL unique index (only when `external_id`
+ *   is set) that catches a same-source retry. Manual rows leave `external_id`
+ *   null and dedup on `fingerprint` alone.
+ *
+ * `voided_at` is a tombstone (a correction now; a Plaid cancellation later) —
+ * derivation and rollups ignore voided rows, but they are never deleted (audit
+ * trail). `user_id` is denormalized for the household ownership guard and the
+ * cross-account rollups. `type`/`source` stay `text` (the enum is enforced at
+ * the zod boundary) so a new event kind needs no enum-alter migration. Money and
+ * quantity are `numeric` (exact in storage; the repository coerces to JS number
+ * at the read boundary, RISK-P5).
+ */
+export const ledgerEvents = appSchema.table(
+  "ledger_events",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    type: text("type").notNull(),
+    ticker: text("ticker"),
+    tradeDate: date("trade_date", { mode: "string" }).notNull(),
+    settleDate: date("settle_date", { mode: "string" }),
+    quantity: numeric("quantity"),
+    unitPrice: numeric("unit_price"),
+    amount: numeric("amount").notNull(),
+    fee: numeric("fee"),
+    currency: text("currency").notNull().default("USD"),
+    source: text("source").notNull(),
+    externalId: text("external_id"),
+    fingerprint: text("fingerprint").notNull(),
+    description: text("description"),
+    basisUnknown: text("basis_unknown"),
+    voidedAt: timestamp("voided_at", { withTimezone: true, mode: "string" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    index("ledger_events_account_idx").on(table.accountId),
+    index("ledger_events_user_ticker_idx").on(table.userId, table.ticker),
+    uniqueIndex("ledger_events_fingerprint_uq").on(table.accountId, table.fingerprint),
+    uniqueIndex("ledger_events_source_external_uq")
+      .on(table.source, table.externalId)
+      .where(sql`${table.externalId} is not null`),
   ],
 );

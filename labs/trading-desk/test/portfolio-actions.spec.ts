@@ -364,6 +364,97 @@ describe("deleteAccount", () => {
   });
 });
 
+describe("recordLedgerEvent action", () => {
+  it("records a manual event, attributes it to the manual source, and recomputes basis", async () => {
+    const stores = createInMemoryStores();
+    await createAccount(stores, A1);
+    await testFlow({
+      flow: portfolioFlow,
+      action: "importHoldings",
+      userId: USER_ID,
+      stores,
+      input: { accountId: A1, mode: "upsert", csvText: "ticker,quantity\nAAPL,10" },
+    });
+
+    const result = await testFlow({
+      flow: portfolioFlow,
+      action: "recordLedgerEvent",
+      userId: USER_ID,
+      stores,
+      input: {
+        accountId: A1,
+        type: "buy",
+        tradeDate: "2026-01-10",
+        ticker: "AAPL",
+        quantity: 10,
+        unitPrice: 150,
+        amount: -1500,
+      },
+    });
+    expect(result.status).toBe("completed");
+    expect(result.output).toMatchObject({ inserted: 1, deduplicated: 0 });
+
+    const ledger = await repoState.repo!.getLedger(USER_ID);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]).toMatchObject({ ticker: "AAPL", source: "manual", externalId: null });
+
+    // Basis was derived onto the existing holding from the recorded buy.
+    const { holdings } = await repoState.repo!.getPortfolio(USER_ID);
+    expect(holdings.find((h) => h.ticker === "AAPL")?.costBasis).toBe(150);
+  });
+
+  it("records a basis-unknown transfer-in without zero-filling the basis", async () => {
+    const stores = createInMemoryStores();
+    await createAccount(stores, A1);
+    await testFlow({
+      flow: portfolioFlow,
+      action: "importHoldings",
+      userId: USER_ID,
+      stores,
+      input: { accountId: A1, mode: "upsert", csvText: "ticker,quantity\nTSLA,5" },
+    });
+
+    await testFlow({
+      flow: portfolioFlow,
+      action: "recordLedgerEvent",
+      userId: USER_ID,
+      stores,
+      input: {
+        accountId: A1,
+        type: "transfer",
+        tradeDate: "2026-01-10",
+        ticker: "TSLA",
+        quantity: 5,
+        amount: 0,
+        basisUnknown: "transferred in; no acquisition record",
+      },
+    });
+
+    const { holdings } = await repoState.repo!.getPortfolio(USER_ID);
+    expect(holdings.find((h) => h.ticker === "TSLA")?.costBasis).toBeNull(); // not 0
+  });
+
+  it("rejects a manual event targeting an account the caller does not own", async () => {
+    const stores = createInMemoryStores();
+    // Account belongs to "other"; devuser must not be able to write to it.
+    await repoState.repo!.upsertAccount({
+      id: "foreign",
+      userId: "other",
+      name: "Theirs",
+      type: "taxable",
+    });
+    const result = await testFlow({
+      flow: portfolioFlow,
+      action: "recordLedgerEvent",
+      userId: USER_ID,
+      stores,
+      input: { accountId: "foreign", type: "deposit", tradeDate: "2026-01-10", amount: 100 },
+    });
+    expect(result.status).not.toBe("completed");
+    expect(await repoState.repo!.getLedger(USER_ID)).toHaveLength(0);
+  });
+});
+
 describe("getQuotes action", () => {
   it("resolves a fixture-backed ticker's last close", async () => {
     const stores = createInMemoryStores();

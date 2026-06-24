@@ -15,7 +15,8 @@
  * Nothing downstream — the seed snapshot's `quantity × price` math, the UI
  * rollups — ever sees a string.
  */
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type {
   AccountState,
   AccountType,
@@ -23,8 +24,21 @@ import type {
   Holding,
   ImportMode,
 } from "@/src/flows/portfolio/portfolio-schema";
+import type {
+  IngestReport,
+  LedgerEventInput,
+  LedgerEventType,
+  LedgerRow,
+  LedgerSource,
+} from "@/src/flows/portfolio/ledger-schema";
+import { deriveLots } from "@/src/flows/portfolio/lots";
 import type { Db } from "./client";
-import { accounts, holdings } from "./schema";
+import { accounts, holdings, ledgerEvents } from "./schema";
+
+/** The Drizzle transaction handle, extracted from `Db.transaction`. The ledger
+ *  ingest/void paths recompute basis inside their own transaction, so the shared
+ *  {@link recomputeBasis} helper takes this rather than the top-level `Db`. */
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** Account-level fields (everything in {@link AccountState} except the inline
  *  `holdings` array, plus the `userId` household key the table carries). */
@@ -94,6 +108,34 @@ export interface PortfolioRepository {
   /** Remove a single position — only when its account belongs to `userId` (the
    *  same household-scoping security boundary as {@link deleteAccount}). */
   deleteHolding(accountId: string, ticker: string, userId: string): Promise<void>;
+
+  /**
+   * Append events to the ledger, idempotently. The shared ingestion contract
+   * (FIX-774): manual entry today, FIX-775 file import and FIX-853 Plaid sync
+   * later, all write through this. In ONE transaction it (1) ownership-guards
+   * every referenced account against `userId` (a foreign account throws and the
+   * whole batch rolls back), (2) computes each row's content fingerprint and
+   * dedups — within the batch in memory, across batches via `ON CONFLICT DO
+   * NOTHING` on both unique indexes — so a re-submit (or the same trade arriving
+   * twice) is dropped, not double-counted, and (3) recomputes derived basis on
+   * every touched account. `inserted + deduplicated` always equals the number of
+   * events passed.
+   */
+  ingestLedgerEvents(events: LedgerEventInput[], userId: string): Promise<IngestReport>;
+  /**
+   * Tombstone events by `(source, external_id)` — only the caller's own
+   * (`user_id` scoped). Marks `voided_at` rather than deleting (audit trail);
+   * voided rows are excluded from derivation, and basis recomputes on every
+   * affected account. Returns the number of rows voided. Used by FIX-853 for
+   * Plaid cancellations and available for manual corrections.
+   */
+  voidLedgerEvents(externalIds: string[], source: string, userId: string): Promise<number>;
+  /** A household's ledger rows, newest trade-date first, optionally filtered by
+   *  account or ticker and capped by `limit` — the read for the ledger view. */
+  getLedger(
+    userId: string,
+    opts?: { accountId?: string; ticker?: string; limit?: number },
+  ): Promise<LedgerRow[]>;
 }
 
 /** Coerce a Drizzle `numeric` (string) to a JS number; pass `null` through.
@@ -129,6 +171,86 @@ function mapHolding(row: typeof holdings.$inferSelect): HoldingRow {
     costBasis: toNumber(row.costBasis),
     acquiredDate: row.acquiredDate,
   };
+}
+
+/** Map a ledger row to the {@link LedgerRow} shape, coercing numerics to JS
+ *  number and timestamps to ISO-8601 (the {@link mapHolding} precedent). */
+function mapLedgerRow(row: typeof ledgerEvents.$inferSelect): LedgerRow {
+  return {
+    id: row.id,
+    accountId: row.accountId,
+    userId: row.userId,
+    type: row.type as LedgerEventType,
+    ticker: row.ticker,
+    tradeDate: row.tradeDate,
+    settleDate: row.settleDate,
+    quantity: toNumber(row.quantity),
+    unitPrice: toNumber(row.unitPrice),
+    amount: Number(row.amount),
+    fee: toNumber(row.fee),
+    currency: row.currency,
+    source: row.source as LedgerSource,
+    externalId: row.externalId,
+    description: row.description,
+    basisUnknown: row.basisUnknown,
+    voidedAt: row.voidedAt === null ? null : new Date(row.voidedAt).toISOString(),
+    createdAt: new Date(row.createdAt).toISOString(),
+  };
+}
+
+/**
+ * The canonical content fingerprint — a sha256 over the load-bearing fields at a
+ * fixed numeric scale and canonical (caller-supplied) sign. This recipe is
+ * contract: changing which fields it covers later would be a data migration, so
+ * it is fixed now. The per-feed normalizers that map Plaid/OFX representations
+ * onto this same canonical shape before hashing are added by FIX-775/FIX-853 —
+ * the recipe does not change.
+ */
+function computeFingerprint(e: LedgerEventInput): string {
+  const norm = [
+    e.accountId,
+    e.tradeDate,
+    e.type,
+    e.ticker ?? "",
+    e.quantity === null ? "" : e.quantity.toFixed(8),
+    e.amount.toFixed(8),
+  ].join("|");
+  return createHash("sha256").update(norm).digest("hex");
+}
+
+/**
+ * Recompute derived basis for one account from its non-voided ledger and write
+ * it onto the matching holdings rows, inside the caller's transaction. Only the
+ * `cost_basis` / `acquired_date` of EXISTING holdings whose ticker the ledger
+ * derives a position for are updated — quantity is left to the holdings table
+ * (snapshot import owns it; a quantity mismatch is FIX-853's reconciliation, not
+ * an overwrite here), and a derived position with no holding row is ignored.
+ * Unknown-basis lots write `null` cost, never zero.
+ */
+async function recomputeBasis(tx: Tx, accountId: string): Promise<void> {
+  const eventRows = await tx
+    .select()
+    .from(ledgerEvents)
+    .where(and(eq(ledgerEvents.accountId, accountId), isNull(ledgerEvents.voidedAt)));
+  const { positions } = deriveLots(eventRows.map(mapLedgerRow));
+  if (positions.length === 0) return;
+  const posByTicker = new Map(positions.map((p) => [p.ticker, p]));
+  const existing = await tx
+    .select({ ticker: holdings.ticker })
+    .from(holdings)
+    .where(eq(holdings.accountId, accountId));
+  for (const h of existing) {
+    const p = posByTicker.get(h.ticker);
+    if (p === undefined) continue;
+    await tx
+      .update(holdings)
+      .set({
+        costBasis: p.avgCost === null ? null : String(p.avgCost),
+        acquiredDate: p.acquiredDate,
+        updatedAt: sql`now()`,
+      })
+      .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, h.ticker)));
+  }
 }
 
 /**
@@ -305,6 +427,119 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             ),
           ),
         );
+    },
+
+    async ingestLedgerEvents(events, userId) {
+      if (events.length === 0) {
+        return { inserted: 0, deduplicated: 0, voided: 0, errors: [] };
+      }
+      return db.transaction(async (tx) => {
+        // Ownership guard: every referenced account must belong to the caller.
+        // A foreign account throws and the whole batch rolls back (the
+        // `upsertHoldings` precedent — defense in depth for a future caller that
+        // skips the app-level check).
+        const accountIds = [...new Set(events.map((e) => e.accountId))];
+        const owned = await tx
+          .select({ id: accounts.id })
+          .from(accounts)
+          .where(and(inArray(accounts.id, accountIds), eq(accounts.userId, userId)));
+        const ownedSet = new Set(owned.map((o) => o.id));
+        for (const id of accountIds) {
+          if (!ownedSet.has(id)) {
+            throw new Error(`Account ${id} is not owned by the requesting user.`);
+          }
+        }
+
+        // In-memory dedup BEFORE the insert so two conflicting rows in the same
+        // batch can't trip an intra-statement conflict and the counts are exact.
+        // Prefer the stable `(source, external_id)` key when present, else the
+        // content fingerprint. Cross-batch / re-run dups are caught again by
+        // `ON CONFLICT DO NOTHING` against both unique indexes.
+        const seen = new Set<string>();
+        const values: (typeof ledgerEvents.$inferInsert)[] = [];
+        for (const e of events) {
+          const fingerprint = computeFingerprint(e);
+          const key =
+            e.externalId !== null
+              ? `x:${e.source}:${e.externalId}`
+              : `f:${e.accountId}:${fingerprint}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          values.push({
+            id: crypto.randomUUID(),
+            accountId: e.accountId,
+            userId,
+            type: e.type,
+            ticker: e.ticker,
+            tradeDate: e.tradeDate,
+            settleDate: e.settleDate,
+            quantity: e.quantity === null ? null : String(e.quantity),
+            unitPrice: e.unitPrice === null ? null : String(e.unitPrice),
+            amount: String(e.amount),
+            fee: e.fee === null ? null : String(e.fee),
+            currency: e.currency,
+            source: e.source,
+            externalId: e.externalId,
+            fingerprint,
+            description: e.description,
+            basisUnknown: e.basisUnknown,
+          });
+        }
+
+        const insertedRows =
+          values.length === 0
+            ? []
+            : await tx
+                .insert(ledgerEvents)
+                .values(values)
+                .onConflictDoNothing()
+                .returning({ id: ledgerEvents.id });
+        const inserted = insertedRows.length;
+
+        // Basis is derived: recompute on every touched account in the same tx.
+        for (const id of accountIds) await recomputeBasis(tx, id);
+
+        return {
+          inserted,
+          deduplicated: events.length - inserted,
+          voided: 0,
+          errors: [],
+        };
+      });
+    },
+
+    async voidLedgerEvents(externalIds, source, userId) {
+      if (externalIds.length === 0) return 0;
+      return db.transaction(async (tx) => {
+        const voidedRows = await tx
+          .update(ledgerEvents)
+          .set({ voidedAt: sql`now()` })
+          .where(
+            and(
+              eq(ledgerEvents.source, source),
+              inArray(ledgerEvents.externalId, externalIds),
+              eq(ledgerEvents.userId, userId),
+              isNull(ledgerEvents.voidedAt),
+            ),
+          )
+          .returning({ accountId: ledgerEvents.accountId });
+        const affected = [...new Set(voidedRows.map((r) => r.accountId))];
+        for (const id of affected) await recomputeBasis(tx, id);
+        return voidedRows.length;
+      });
+    },
+
+    async getLedger(userId, opts) {
+      const conds = [eq(ledgerEvents.userId, userId)];
+      if (opts?.accountId) conds.push(eq(ledgerEvents.accountId, opts.accountId));
+      if (opts?.ticker) conds.push(eq(ledgerEvents.ticker, opts.ticker));
+      const base = db
+        .select()
+        .from(ledgerEvents)
+        .where(and(...conds))
+        .orderBy(desc(ledgerEvents.tradeDate), desc(ledgerEvents.createdAt));
+      const rows = opts?.limit ? await base.limit(opts.limit) : await base;
+      return rows.map(mapLedgerRow);
     },
   };
 }
