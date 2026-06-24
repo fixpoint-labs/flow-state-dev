@@ -363,6 +363,32 @@ describe("resume route — allow enforcement & payload validation", () => {
     expect((await provider.loadSuspension(requestId, "sus_1"))?.status).toBe("pending");
   });
 
+  it("resolves a bare approve against an optional resumeSchema (no 400)", async () => {
+    // An approve is binary; its payload is optional metadata. A bare approve
+    // against a suspension that carries a resumeSchema (e.g. an optional note)
+    // must still resolve — validation only runs when the resumer sends data.
+    const { stores, provider } = createDurableStores();
+    const requestId = await seedSuspended(stores, provider, {
+      reason: "human_approval",
+      allow: ["approve", "reject"],
+      resumeSchema: { type: "object", properties: { note: { type: "string" } } }
+    });
+    // A host whose continueRequest succeeds without an inline stream → 202.
+    const ctx = {
+      ...ctxFor(stores, provider),
+      host: { continueRequest: async () => ({ requestId, liveStream: null }) } as never
+    };
+
+    const res = await handleResumeSuspension(
+      resumeRequest(requestId, { suspensionId: "sus_1", action: "approve" }),
+      { kind: "resume_suspension", flowKind: "gen", requestId },
+      ctx
+    );
+
+    expect(res.status).toBe(202);
+    expect((await provider.loadSuspension(requestId, "sus_1"))?.status).toBe("approved");
+  });
+
   it("rejects an unknown action with 400", async () => {
     const { stores, provider } = createDurableStores();
     const requestId = await seedSuspended(stores, provider, { allow: ["submit"] });

@@ -14,7 +14,7 @@ import type {
   SuspensionResumeItem,
   ToolOutputItem,
 } from "@flow-state-dev/core/items";
-import type { SuspensionStatus } from "@flow-state-dev/core/types";
+import type { ResumeAction, SuspensionReason, SuspensionStatus } from "@flow-state-dev/core/types";
 import { nanoid } from "nanoid";
 
 const nextId = (prefix: string) => `${prefix}-${nanoid(8)}`;
@@ -157,6 +157,12 @@ export type SuspensionItemOptions = {
   message?: string;
   data?: Record<string, unknown>;
   requestId?: string;
+  /** Defaults to `"human_approval"`; pass `"human_input"` for the non-binary cards. */
+  reason?: SuspensionReason;
+  /** JSON Schema describing the expected resume payload (drives question/form/selection). */
+  resumeSchema?: Record<string, unknown>;
+  /** Permitted resolution actions (e.g. `["submit", "skip"]`). */
+  allow?: ResumeAction[];
 };
 
 export function suspensionItem(
@@ -168,6 +174,9 @@ export function suspensionItem(
     message = "Approve this action?",
     data,
     requestId = "req-1",
+    reason = "human_approval",
+    resumeSchema,
+    allow,
   } = options;
   return {
     id,
@@ -179,9 +188,11 @@ export function suspensionItem(
     provenance: baseProvenance,
     suspensionId,
     suspensionStatus: "pending",
-    reason: "human_approval",
+    reason,
     message,
     ...(data !== undefined ? { data } : {}),
+    ...(resumeSchema !== undefined ? { resumeSchema } : {}),
+    ...(allow !== undefined ? { allow } : {}),
   };
 }
 

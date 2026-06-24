@@ -151,8 +151,14 @@ export async function handleResumeSuspension(
 
   // Validate the submitted payload against the persisted resumeSchema before any
   // state transition, so an invalid submission is a clean 400 and the suspension
-  // stays pending. `skip`/`reject` carry no payload.
-  if (action === "submit" || action === "approve") {
+  // stays pending. A `submit` always carries the typed answer, so it is always
+  // validated (a missing required payload is a 400). An `approve` is binary and
+  // its payload is optional metadata, so validate it only when the resumer
+  // actually sent data — a bare approve against a schema with an optional field
+  // must still resolve. `skip`/`reject` carry no payload.
+  const shouldValidate =
+    action === "submit" || (action === "approve" && resumeData !== undefined);
+  if (shouldValidate) {
     const validationErrors = validateResumePayload(suspension.resumeSchema, resumeData);
     if (validationErrors !== null) {
       return jsonResponse(400, {
