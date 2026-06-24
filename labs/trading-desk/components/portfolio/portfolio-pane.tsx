@@ -27,7 +27,7 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { Plus, Upload, FileText, RefreshCw } from "lucide-react";
+import { Plus, Upload, FileText, RefreshCw, Receipt } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
 import { useResource } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
@@ -38,7 +38,13 @@ import { AccountSection } from "./account-section";
 import { AddAccountDialog, type NewAccountDraft } from "./add-account-dialog";
 import { ImportCsvDialog, type ImportSubmit } from "./import-csv-dialog";
 import { ImportPdfDialog } from "./import-pdf-dialog";
+import {
+  AddTransactionDialog,
+  type NewLedgerEvent,
+} from "./add-transaction-dialog";
+import { LedgerTable } from "./ledger-table";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
+import { useLedger } from "./use-ledger";
 import {
   DASH,
   formatMoney,
@@ -63,9 +69,11 @@ export function PortfolioPane({
   hasSession,
 }: PortfolioPaneProps): ReactElement {
   const { accounts, refetch: refetchAccounts } = usePortfolioAccounts(session);
+  const { events: ledgerEvents, refetch: refetchLedger } = useLedger(session);
   const { clientData: quotesData } = useResource(session, "portfolioQuotes");
 
   const [addOpen, setAddOpen] = useState(false);
+  const [addTransactionOpen, setAddTransactionOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importPdfOpen, setImportPdfOpen] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(
@@ -184,6 +192,22 @@ export function PortfolioPane({
     [session, refetchAccounts, fetchPrices],
   );
 
+  const handleRecordTransaction = useCallback(
+    async (event: NewLedgerEvent) => {
+      try {
+        await session.sendAction("recordLedgerEvent", event);
+        // sendAction returns a request envelope, not handler output — refetch
+        // the ledger for the committed row, and the accounts too (an ingest
+        // recomputes derived basis on existing holdings).
+        refetchLedger();
+        refetchAccounts();
+      } catch (err) {
+        console.error("[trading-desk] recordLedgerEvent failed", err);
+      }
+    },
+    [session, refetchLedger, refetchAccounts],
+  );
+
   const handleDeleteHolding = useCallback(
     async (accountId: string, ticker: string) => {
       try {
@@ -275,6 +299,24 @@ export function PortfolioPane({
         </button>
         <button
           type="button"
+          onClick={() => setAddTransactionOpen(true)}
+          disabled={accounts.length === 0}
+          className={cn(
+            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
+            accounts.length === 0
+              ? "cursor-not-allowed opacity-50"
+              : "hover:bg-[color:var(--c-surface-2)]",
+          )}
+          title={
+            accounts.length === 0
+              ? "Add an account first"
+              : "Record a manual transaction"
+          }
+        >
+          <Receipt className="h-3 w-3" aria-hidden /> Add transaction
+        </button>
+        <button
+          type="button"
           onClick={() => void fetchPrices()}
           disabled={holdings.length === 0 || isFetchingPrices}
           className={cn(
@@ -352,6 +394,15 @@ export function PortfolioPane({
             );
           })
         )}
+
+        {/* Transactions ledger (FIX-774): the durable cash/share-movement
+            record below the account sections. */}
+        <section className="space-y-2">
+          <h2 className="font-mono text-[10px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+            Transactions
+          </h2>
+          <LedgerTable events={ledgerEvents} />
+        </section>
       </div>
 
       <AddAccountDialog
@@ -379,6 +430,13 @@ export function PortfolioPane({
           setSelectedAccountId(submit.accountId);
           void handleImport(submit);
         }}
+      />
+      <AddTransactionDialog
+        open={addTransactionOpen}
+        onClose={() => setAddTransactionOpen(false)}
+        accounts={accounts}
+        defaultAccountId={selectedAccountId ?? accounts[0]?.accountId}
+        onSubmit={(event) => void handleRecordTransaction(event)}
       />
     </div>
   );
