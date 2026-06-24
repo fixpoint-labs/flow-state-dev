@@ -422,6 +422,20 @@ describe("resume route — allow enforcement & payload validation", () => {
 
     expect(res.status).toBe(400);
   });
+
+  it("reports a missing action as missing, not as an invalid value", async () => {
+    const { stores, provider } = createDurableStores();
+    const requestId = await seedSuspended(stores, provider, { allow: ["submit"] });
+
+    const res = await handleResumeSuspension(
+      resumeRequest(requestId, { suspensionId: "sus_1" }),
+      { kind: "resume_suspension", flowKind: "gen", requestId },
+      ctxFor(stores, provider)
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "Missing required field: action" });
+  });
 });
 
 /** Shared first-run helper: drive the flow to its first suspension. */

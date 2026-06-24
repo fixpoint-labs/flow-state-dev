@@ -325,8 +325,9 @@ export function useSuspensionForm(
   const canSubmit = !resolved && !isResolving && Object.keys(errors).length === 0;
 
   const setField = useCallback((key: string, next: unknown) => {
+    if (analysis.kind !== "object") return; // no-op for scalar kinds, as documented
     setValue((prev: unknown) => ({ ...(prev as Record<string, unknown>), [key]: next }));
-  }, []);
+  }, [analysis.kind]);
 
   /** Build the submit payload, coercing control values to their schema types. */
   const buildPayload = useCallback((): unknown => {
@@ -390,8 +391,9 @@ export function useSuspensionForm(
   }, [canSubmit, send, buildPayload]);
 
   const skip = useCallback(async () => {
+    if (!canSkip) return; // guard the API surface, not just the hidden button
     await send("skip");
-  }, [send]);
+  }, [canSkip, send]);
 
   const resolvedStatus: SuspensionStatus | undefined = localResolution ?? resolution;
 

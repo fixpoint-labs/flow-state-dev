@@ -115,6 +115,12 @@ export async function handleResumeSuspension(
     return jsonResponse(400, { error: "Missing required field: suspensionId" });
   }
 
+  // Distinguish a missing field from a wrong value (mirrors suspensionId above),
+  // so an absent `action` reads as "missing" rather than "invalid value".
+  if (action === undefined) {
+    return jsonResponse(400, { error: "Missing required field: action" });
+  }
+
   if (!isResumeAction(action)) {
     return jsonResponse(400, {
       error: `Field "action" must be one of ${RESUME_ACTIONS.join(", ")}`

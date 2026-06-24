@@ -177,6 +177,12 @@ describe("useSuspensionForm", () => {
       wrapper: wrapperWith(resolve2)
     });
     expect(r2.current.canSkip).toBe(false);
+
+    // skip() is a no-op when skip isn't permitted — it must not POST and 409.
+    await act(async () => {
+      await r2.current.skip();
+    });
+    expect(resolve2).not.toHaveBeenCalled();
   });
 
   it("omits blank optional fields from the submit payload", async () => {
