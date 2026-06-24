@@ -112,12 +112,14 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   onInstanceDeleted?: (key: string, ctx: CollectionHookContext) => void | Promise<void>;
 
   /**
-   * Bind blocks to this collection's instance mutations (FIX-751). Each present
-   * entry (`created` / `updated` / `deleted`) names a block — bare, or
-   * `{ block, when }` with an optional gate — that the server dispatcher runs
-   * with a `ResourceChange` payload when that mutation fires. Coexists with the
-   * `onInstance*` callbacks above and supersedes them for the block case: prefer
-   * `reactTo` when the reaction is itself a block to run, not just a side effect.
+   * Bind blocks to this collection's instance mutations (FIX-751, FIX-843). Each
+   * present entry names a block — bare, or `{ block, when }` with an optional
+   * gate — that the server dispatcher runs when that mutation fires. The state
+   * kinds (`created` / `stateUpdated` / `deleted`) get a `ResourceChange`
+   * payload; `contentUpdated` (a content-body write) gets a
+   * `ResourceContentChange`. Coexists with the `onInstance*` callbacks above and
+   * supersedes them for the block case: prefer `reactTo` when the reaction is
+   * itself a block to run, not just a side effect.
    */
   reactTo?: ReactiveBindings<TState>;
 };

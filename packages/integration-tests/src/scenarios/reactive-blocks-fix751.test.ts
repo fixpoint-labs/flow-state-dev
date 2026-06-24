@@ -17,8 +17,9 @@ import {
   handler,
   sequencer,
   resourceChangeSchema,
+  resourceContentChangeSchema,
 } from "@flow-state-dev/core";
-import type { ResourceChange } from "@flow-state-dev/core";
+import type { ResourceChange, ResourceContentChange } from "@flow-state-dev/core";
 import { testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
 
@@ -219,7 +220,7 @@ describe("FIX-751: reactive blocks", () => {
       scope: "session",
       pattern: "counters/**",
       stateSchema: z.object({ n: z.number().default(0) }),
-      reactTo: { updated: bumper },
+      reactTo: { stateUpdated: bumper },
     });
 
     const kick = handler({
@@ -274,7 +275,7 @@ describe("FIX-751: reactive blocks", () => {
       scope: "session",
       pattern: "loops/**",
       stateSchema: z.object({ n: z.number().default(0) }),
-      reactTo: { updated: runaway },
+      reactTo: { stateUpdated: runaway },
     });
 
     const kick = handler({
@@ -307,5 +308,128 @@ describe("FIX-751: reactive blocks", () => {
       (i: any) => i.type === "error" && i.code === "reactive_cascade_exceeded"
     );
     expect(diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe("FIX-843: content reactions", () => {
+  it("runs reactTo.contentUpdated in-session on a content write and reads the fresh body", async () => {
+    const bodies: string[] = [];
+    const onContent = handler({
+      name: "reactive-content",
+      inputSchema: resourceContentChangeSchema(),
+      resources: {
+        docs: defineResourceCollection({
+          scope: "session",
+          pattern: "docs/**",
+          stateSchema: noteSchema,
+        }),
+      },
+      execute: async (change: ResourceContentChange, ctx) => {
+        // The body is persisted before the seam fires, so the reaction reads the
+        // just-written content — the ordering guarantee content reactions provide.
+        const body = await (await (ctx.resources.docs as any).get(change.key)).readContent();
+        bodies.push(body ?? "");
+        ctx.emit.message([{ type: "output_text", text: `summarized:${change.key}` }]);
+        return "done";
+      },
+    });
+
+    const docs = defineResourceCollection({
+      scope: "session",
+      pattern: "docs/**",
+      stateSchema: noteSchema,
+      reactTo: { contentUpdated: onContent },
+    });
+
+    const writeBody = handler({
+      name: "write-body",
+      inputSchema: z.object({ key: z.string(), body: z.string() }),
+      resources: { docs },
+      execute: async (input: { key: string; body: string }, ctx) => {
+        await (ctx.resources.docs as any).create(input.key, { text: "x" });
+        ctx.emit.message([{ type: "output_text", text: "mutating" }]);
+        await (await (ctx.resources.docs as any).get(input.key)).writeContent(input.body);
+        return "ok";
+      },
+    });
+
+    const flow = defineFlow({
+      kind: "fix843-content",
+      actions: {
+        run: { inputSchema: z.object({ key: z.string(), body: z.string() }), block: writeBody },
+      },
+    })({ id: "test" });
+
+    const result = await testFlow({
+      flow,
+      action: "run",
+      userId: "u",
+      input: { key: "d1", body: "the new body" },
+      unmockedGeneratorPolicy: "allow",
+    });
+
+    expect(result.status).toBe("completed");
+    expect(bodies).toEqual(["the new body"]);
+
+    // The reaction ran in-session, ordered after the mutating block's item.
+    const texts = messageItems(result.items).map((m) => JSON.stringify(m));
+    const mutateIdx = texts.findIndex((t) => t.includes("mutating"));
+    const reactIdx = texts.findIndex((t) => t.includes("summarized:d1"));
+    expect(mutateIdx).toBeGreaterThanOrEqual(0);
+    expect(reactIdx).toBeGreaterThan(mutateIdx);
+  });
+
+  it("isolates a .work()-wrapped content reaction failure — the content write still completes", async () => {
+    // The kitchen-sink artifact summarizer relies on this: a failing content
+    // reaction wrapped in `.work()` must not fail the writeContent that triggered
+    // it. Mirrors the FIX-751 state-axis isolation test, on the content axis.
+    let workerRan = false;
+    const failingWorker = handler({
+      name: "content-worker-boom",
+      inputSchema: resourceContentChangeSchema(),
+      execute: () => {
+        workerRan = true;
+        throw new Error("summarizer boom");
+      },
+    });
+    const reactiveSeq = sequencer({
+      name: "content-reactive-seq",
+      inputSchema: resourceContentChangeSchema(),
+    }).work(failingWorker);
+
+    const docs = defineResourceCollection({
+      scope: "session",
+      pattern: "docs/**",
+      stateSchema: noteSchema,
+      reactTo: { contentUpdated: reactiveSeq },
+    });
+
+    const writeBody = handler({
+      name: "write-body-isolated",
+      inputSchema: z.object({ key: z.string() }),
+      resources: { docs },
+      execute: async (input: { key: string }, ctx) => {
+        await (ctx.resources.docs as any).create(input.key, { text: "x" });
+        await (await (ctx.resources.docs as any).get(input.key)).writeContent("body");
+        return "ok";
+      },
+    });
+
+    const flow = defineFlow({
+      kind: "fix843-content-isolation",
+      actions: { run: { inputSchema: z.object({ key: z.string() }), block: writeBody } },
+    })({ id: "test" });
+
+    const result = await testFlow({
+      flow,
+      action: "run",
+      userId: "u",
+      input: { key: "d1" },
+      unmockedGeneratorPolicy: "allow",
+    });
+
+    // The turn completes despite the content reaction failing — `.work()` isolation.
+    expect(result.status).toBe("completed");
+    expect(workerRan).toBe(true);
   });
 });

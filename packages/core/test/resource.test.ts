@@ -90,18 +90,28 @@ describe("defineResource", () => {
     expect(res.contentTemplateRef).toBe("templates/analyst");
   });
 
-  it("accepts an updated block binding in reactTo", () => {
+  it("accepts a stateUpdated block binding in reactTo", () => {
     const res = defineResource({
       scope: "session",
       stateSchema: z.object({ name: z.string() }),
-      reactTo: { updated: reactiveBlock },
+      reactTo: { stateUpdated: reactiveBlock },
     });
-    expect(res.reactTo?.updated).toBe(reactiveBlock);
+    expect(res.reactTo?.stateUpdated).toBe(reactiveBlock);
+  });
+
+  it("accepts a contentUpdated block binding in reactTo", () => {
+    const res = defineResource({
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      reactTo: { contentUpdated: reactiveBlock },
+    });
+    expect(res.reactTo?.contentUpdated).toBe(reactiveBlock);
   });
 
   it("rejects created/deleted reactTo bindings on a single resource", () => {
-    // Single resources have no create/delete lifecycle — only `updated` fires,
-    // so binding those kinds would be a silent no-op. Reject at build time.
+    // Single resources have no create/delete lifecycle — only state/content
+    // updates fire, so binding those kinds would be a silent no-op. Reject at
+    // build time.
     expect(() => defineResource({
       scope: "session",
       stateSchema: z.object({ name: z.string() }),
@@ -118,16 +128,16 @@ describe("defineResource", () => {
     expect(() => defineResource({
       scope: "session",
       stateSchema: z.object({ name: z.string() }),
-      reactTo: { updated: {} as never },
-    })).toThrow("reactTo.updated must be a block");
+      reactTo: { stateUpdated: {} as never },
+    })).toThrow("reactTo.stateUpdated must be a block");
   });
 
   it("throws when a reactTo binding's when is not a function", () => {
     expect(() => defineResource({
       scope: "session",
       stateSchema: z.object({ name: z.string() }),
-      reactTo: { updated: { block: reactiveBlock, when: "x" as never } },
-    })).toThrow("reactTo.updated.when must be a function");
+      reactTo: { stateUpdated: { block: reactiveBlock, when: "x" as never } },
+    })).toThrow("reactTo.stateUpdated.when must be a function");
   });
 
   describe("edges slot", () => {
@@ -235,6 +245,16 @@ describe("defineResourceCollection", () => {
       reactTo: { deleted: reactiveBlock },
     });
     expect(col.reactTo?.deleted).toBe(reactiveBlock);
+  });
+
+  it("accepts a contentUpdated block binding in reactTo", () => {
+    const col = defineResourceCollection({
+      pattern: "items/*",
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      reactTo: { contentUpdated: reactiveBlock },
+    });
+    expect(col.reactTo?.contentUpdated).toBe(reactiveBlock);
   });
 
   it("throws when a reactTo binding is not a block", () => {

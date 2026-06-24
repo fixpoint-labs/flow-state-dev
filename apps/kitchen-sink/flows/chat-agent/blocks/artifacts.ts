@@ -5,28 +5,122 @@
  * body stored as resource content. The capability bundles resources, context,
  * and tools under a single `uses: [artifactsCapability]` declaration.
  *
- * writeArtifact: upserts the resource then immediately summarizes the new content,
- * so the summary is always current without a separate background sweep.
+ * Summarization is declarative: the artifacts collection binds a block to
+ * `reactTo.contentUpdated`, so whenever an artifact's body is written (by any
+ * server-side path) the summarizer regenerates from the fresh body. The write
+ * tool just upserts; it no longer wires summarization per call.
  */
-import { defineCapability, defineResourceCollection, handler, sequencer, utility } from "@flow-state-dev/core";
+import {
+  defineCapability,
+  defineResourceCollection,
+  handler,
+  sequencer,
+  utility,
+} from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { resourceContentChangeSchema } from "@flow-state-dev/core";
 import path from "node:path";
 import { z } from "zod";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../lib/models";
 
 // ---------------------------------------------------------------------------
-// Resource definition
+// Resource state + I/O schemas
 // ---------------------------------------------------------------------------
 
 // Per-instance state for an artifact resource. State tracks metadata only —
 // the document body is stored as resource content via writeContent/readContent.
-// The summary field is populated by a background .work() block after each update.
+// The summary field is populated by the reactTo.contentUpdated reaction below
+// after each body write.
 export const artifactStateSchema = z.object({
   title: z.string(),
   summary: z.string().default(""),
   extension: z.string().optional(),
   updatedAt: z.number()
 });
+
+type ArtifactState = z.infer<typeof artifactStateSchema>;
+
+export const updateArtifactInputSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  content: z.string()
+});
+
+export const updateArtifactOutputSchema = z.object({
+  success: z.boolean(),
+  id: z.string()
+});
+
+// ---------------------------------------------------------------------------
+// Content reaction: summarize the body whenever it is written
+// ---------------------------------------------------------------------------
+
+const artifactSummarizer = utility.summarizer({
+  name: "artifact-summarizer",
+  model: DEFAULT_KITCHEN_SINK_MODEL,
+  granularity: "brief",
+});
+
+/**
+ * Reads the freshly-written body for the changed artifact. Accesses the
+ * collection through `ctx.resources` (installed by the capability) rather than a
+ * block-level `resources` declaration — declaring the collection here would form
+ * a definition cycle with the collection's own `reactTo` binding.
+ */
+const loadArtifactBody = handler({
+  name: "load-artifact-body",
+  inputSchema: resourceContentChangeSchema(),
+  outputSchema: z.object({ key: z.string(), content: z.string() }),
+  execute: async (change, ctx) => {
+    const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
+    const ref = await artifacts.getOptional(change.key);
+    return { key: change.key, content: (ref ? await ref.readContent() : null) ?? "" };
+  }
+});
+
+/**
+ * Persists the generated summary onto the artifact's state. The artifact key
+ * comes from the reaction's parent input (the {@link resourceContentChangeSchema}
+ * payload), since the summarizer's output carries only the summary text.
+ */
+const saveSummary = handler({
+  name: "save-artifact-summary",
+  inputSchema: utility.summarizerOutputSchema,
+  outputSchema: updateArtifactOutputSchema,
+  parentInputSchema: resourceContentChangeSchema(),
+  execute: async (input, ctx) => {
+    const { key } = ctx.parent!.input;
+    const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
+    const ref = await artifacts.getOptional(key);
+    if (ref) await ref.patchState({ summary: input.summary });
+    return { success: true, id: key };
+  }
+});
+
+// Inner pipeline: load the fresh body → summarize → save the summary.
+const summarizeArtifactBody = sequencer({
+  name: "summarize-artifact-body",
+  inputSchema: resourceContentChangeSchema(),
+})
+  .step(loadArtifactBody)
+  .step((loaded) => loaded.content, artifactSummarizer)
+  .step(saveSummary);
+
+/**
+ * The block bound to `reactTo.contentUpdated`. Isolates summarization as
+ * background `.work()` so a summarizer failure does not fail the artifact write
+ * that triggered it (the FIX-751 isolation idiom). The summary catches up out of
+ * band; `patchState` fires a state update, not a content write, so it does not
+ * re-trigger this reaction.
+ */
+const summarizeArtifactReaction = sequencer({
+  name: "summarize-artifact",
+  inputSchema: resourceContentChangeSchema(),
+}).work(summarizeArtifactBody);
+
+// ---------------------------------------------------------------------------
+// Resource definition
+// ---------------------------------------------------------------------------
 
 // Resource collection for artifacts. Each artifact is a separate resource
 // instance keyed by its ID (e.g., "artifacts/my-doc"). Metadata lives in
@@ -35,6 +129,9 @@ export const artifactStateSchema = z.object({
 // client.content declares that content is readable and updatable by clients.
 // client.data exposes title, summary, and updatedAt metadata in the snapshot
 // without eagerly loading document bodies.
+//
+// reactTo.contentUpdated regenerates the summary from the body after each
+// server-side content write.
 export const artifactsCollection = defineResourceCollection({
   pattern: "artifacts/**",
   scope: "session",
@@ -49,6 +146,7 @@ export const artifactsCollection = defineResourceCollection({
       extension: state.extension ?? null
     }),
   },
+  reactTo: { contentUpdated: summarizeArtifactReaction },
 });
 
 export const artifactResources = {
@@ -135,23 +233,6 @@ export const readArtifact = handler({
 // Write artifact (sequencer — the LLM-callable tool)
 // ---------------------------------------------------------------------------
 
-export const updateArtifactInputSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  content: z.string()
-});
-
-export const updateArtifactOutputSchema = z.object({
-  success: z.boolean(),
-  id: z.string()
-});
-
-const artifactSummarizer = utility.summarizer({
-  name: "artifact-summarizer",
-  model: DEFAULT_KITCHEN_SINK_MODEL,
-  granularity: "brief",
-});
-
 const upsertArtifact = utility.upsertResource({
   name: "upsert-artifact",
   inputSchema: updateArtifactInputSchema,
@@ -173,35 +254,15 @@ const upsertArtifact = utility.upsertResource({
   content: (input) => input.content,
 });
 
-const saveSummary = handler({
-  name: "save-artifact-summary",
-  inputSchema: utility.summarizerOutputSchema,
-  outputSchema: updateArtifactOutputSchema,
-  // TODO: we will refactor the need for this out of the framework. Ideally blocks should mainly rely on their input and use connectors to send necessary data into them
-  parentInputSchema: updateArtifactInputSchema,
-  resources: artifactResources,
-  execute: async (input, ctx) => {
-    const { id } = ctx.parent!.input;
-    const ref = await ctx.resources.artifacts.getOptional(id);
-    if (ref) await ref.patchState({ summary: input.summary });
-    return { success: true, id };
-  }
-});
-
-const summarizeArtifact = sequencer({
-  name: "summarize-artifact",
-  inputSchema: updateArtifactInputSchema,
-})
-  .step((input) => input.content, artifactSummarizer)
-  .step(saveSummary);
-
+// The write tool upserts metadata + body. The body write fires
+// reactTo.contentUpdated, which regenerates the summary — so the tool no longer
+// wires summarization itself.
 export const writeArtifact = sequencer({
   name: "write-artifact",
   description: "Create or update an artifact in the session artifacts collection.",
   inputSchema: updateArtifactInputSchema,
 })
-  .tap(upsertArtifact)
-  .work(summarizeArtifact);
+  .tap(upsertArtifact);
 
 // Keep updateArtifact as an alias so flow.ts and saveArtifact action don't break.
 export const updateArtifact = writeArtifact;

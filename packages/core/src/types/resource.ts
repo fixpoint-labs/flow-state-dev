@@ -231,10 +231,11 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   /** Client visibility configuration. Omit to keep the resource invisible to clients. */
   client?: ResourceClientConfig<TState>;
   /**
-   * Bind blocks to this resource's mutations (FIX-751). Each present entry
-   * (`created` / `updated` / `deleted`) names a block — bare, or
-   * `{ block, when }` with an optional gate — that the server dispatcher runs
-   * with a `ResourceChange` payload when that mutation fires.
+   * Bind blocks to this resource's mutations (FIX-751, FIX-843). Each present
+   * entry names a block — bare, or `{ block, when }` with an optional gate —
+   * that the server dispatcher runs when that mutation fires. The state kinds
+   * (`created` / `stateUpdated` / `deleted`) get a `ResourceChange` payload;
+   * `contentUpdated` (a content-body write) gets a `ResourceContentChange`.
    */
   reactTo?: ReactiveBindings<TState>;
   /** Declare a typed-edge graph on this resource. `true` = defaults; object = curated vocabulary / size cap. The framework injects an `edges: Edge[]` state field (if absent) and attaches an `.edges` API to the live ref. */
@@ -438,8 +439,9 @@ export function defineResource<
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
 
-  // Single resources have no create/delete lifecycle — only `updated` fires.
-  validateReactTo("defineResource()", config.reactTo, ["updated"]);
+  // Single resources have no create/delete lifecycle — only state and content
+  // updates fire.
+  validateReactTo("defineResource()", config.reactTo, ["stateUpdated", "contentUpdated"]);
 
   // Edge-slot injection: when `edges` is declared, fold an `edges: Edge[]` field
   // into the resolved state schema + default unless the resource already declares

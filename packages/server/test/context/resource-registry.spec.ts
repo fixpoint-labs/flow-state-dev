@@ -461,9 +461,11 @@ describe("createScopeResourceRegistry — static resources", () => {
     await ref.writeContent("new content");
     expect(await ref.readContent()).toBe("new content");
     // Parity with the collection-instance content path (FIX-756): exactly one
-    // emission, with no projection delta and no state delta (exact arity).
+    // emission, with no projection delta (3rd arg undefined → the client falls
+    // back to a refetch) and a `contentWrite` marker (4th arg) that routes the
+    // reaction to `contentUpdated` (FIX-843).
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenLastCalledWith("doc", "updated");
+    expect(onChange).toHaveBeenLastCalledWith("doc", "updated", undefined, { contentWrite: true });
   });
 
   it("writeContent throws for read-only resources", async () => {
@@ -618,10 +620,11 @@ describe("createScopeResourceRegistry — collections", () => {
     onChange.mockClear();
 
     await ref.writeContent("body");
-    // Content-only write: exactly one emission, no projection delta and no
-    // state delta (exact arity) — the client falls back to a batched refetch.
+    // Content-only write: exactly one emission, no projection delta (3rd arg
+    // undefined → the client falls back to a batched refetch) and a `contentWrite`
+    // marker (4th arg) routing the reaction to `contentUpdated` (FIX-843).
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated");
+    expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated", undefined, { contentWrite: true });
   });
 
   it("instance setState replaces state and fires onInstanceUpdated", async () => {
@@ -804,11 +807,11 @@ describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
     });
 
     await registry.get("doc").writeContent("body");
-    // Content carries no state projection — even for a live resource the
-    // emission has exact arity (key, "updated"): no delta is ever computed
-    // from state on a content-only write.
+    // Content carries no state projection — even for a live resource the 3rd arg
+    // (projection delta) stays undefined: no delta is ever computed from state on
+    // a content write. The 4th arg is the `contentWrite` marker (FIX-843).
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenLastCalledWith("doc", "updated");
+    expect(onChange).toHaveBeenLastCalledWith("doc", "updated", undefined, { contentWrite: true });
   });
 
   it("degrades to no delta when a live client.data projection throws", async () => {
