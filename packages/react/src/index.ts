@@ -96,10 +96,12 @@ export {
 export {
   useSuspensionForm,
   analyzeResumeSchema,
+  suspensionShape,
   type UseSuspensionFormOptions,
   type UseSuspensionFormResult,
   type SchemaField,
-  type SuspensionValueKind
+  type SuspensionValueKind,
+  type SuspensionShape
 } from "./hooks/useSuspensionForm";
 export { QuestionRenderer } from "./components/QuestionRenderer";
 export { SelectionRenderer } from "./components/SelectionRenderer";

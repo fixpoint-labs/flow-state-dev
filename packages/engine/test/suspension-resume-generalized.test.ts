@@ -342,6 +342,27 @@ describe("resume route — allow enforcement & payload validation", () => {
     expect((await provider.loadSuspension(requestId, "sus_1"))?.status).toBe("pending");
   });
 
+  it("returns 400 (not 500) when a submit omits data against a schema", async () => {
+    // The JSON-Schema validator throws on an `undefined` instance; the route must
+    // treat that as a clean validation failure, not let it escape as a 500.
+    const { stores, provider } = createDurableStores();
+    const requestId = await seedSuspended(stores, provider, {
+      allow: ["submit"],
+      resumeSchema: { type: "object", properties: { age: { type: "number" } }, required: ["age"] }
+    });
+
+    const res = await handleResumeSuspension(
+      resumeRequest(requestId, { suspensionId: "sus_1", action: "submit" }),
+      { kind: "resume_suspension", flowKind: "gen", requestId },
+      ctxFor(stores, provider)
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.validationErrors).toBeDefined();
+    expect((await provider.loadSuspension(requestId, "sus_1"))?.status).toBe("pending");
+  });
+
   it("rejects an unknown action with 400", async () => {
     const { stores, provider } = createDurableStores();
     const requestId = await seedSuspended(stores, provider, { allow: ["submit"] });

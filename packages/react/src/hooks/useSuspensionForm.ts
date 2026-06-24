@@ -113,6 +113,29 @@ export function analyzeResumeSchema(
   return { kind: classified.kind, fields: [], options: classified.options };
 }
 
+/** The default card a suspension dispatches to. */
+export type SuspensionShape = "approval" | "question" | "selection" | "form";
+
+/**
+ * Pick the default card shape for a suspension from its `reason` and
+ * `resumeSchema`. Shared by the built-in `ItemRenderer` dispatch and the polished
+ * UI dispatcher so the two surfaces never diverge: `human_approval` → approval;
+ * `human_input` → form (flat object) / selection (enum) / question (everything
+ * else, including a schema richer than the bounded set). Pure — no hooks.
+ */
+export function suspensionShape(item: {
+  reason: string;
+  resumeSchema?: Record<string, unknown>;
+}): SuspensionShape {
+  if (item.reason !== "human_input") return "approval";
+  const analysis = analyzeResumeSchema(item.resumeSchema);
+  if (analysis !== null && analysis.kind === "object") return "form";
+  if (analysis !== null && (analysis.kind === "enum" || analysis.kind === "enum-multi")) {
+    return "selection";
+  }
+  return "question";
+}
+
 // ---------------------------------------------------------------------------
 // Value seeding, coercion, validation
 // ---------------------------------------------------------------------------

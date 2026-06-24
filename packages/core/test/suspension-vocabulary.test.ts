@@ -55,6 +55,12 @@ describe("RESUME_ACTION_STATUS", () => {
       expect(RESUME_ACTION_STATUS[action]).toBeDefined();
     }
   });
+
+  it("only maps to terminal statuses (so resolved suspensions are prunable)", () => {
+    for (const status of Object.values(RESUME_ACTION_STATUS)) {
+      expect(isTerminalSuspensionStatus(status)).toBe(true);
+    }
+  });
 });
 
 describe("resolveAllowedActions", () => {

@@ -39,8 +39,19 @@ function validateResumePayload(
   data: unknown
 ): Record<string, string> | null {
   if (schema === undefined) return null;
-  const validator = new Validator(schema as Schema);
-  const result = validator.validate(data);
+  // Match the draft `zod-to-json-schema` emits (draft-07), and disable
+  // short-circuiting so every failing field is reported, not just the first.
+  const validator = new Validator(schema as Schema, "7", false);
+  let result: ReturnType<Validator["validate"]>;
+  try {
+    result = validator.validate(data);
+  } catch {
+    // The validator throws on an unsupported instance (e.g. `undefined` when a
+    // `submit` carries no `data`) or an unresolved `$ref`. Treat any such throw
+    // as a validation failure, not a 500 — the payload did not satisfy the
+    // schema. Keyed at the root since there is no per-field location.
+    return { "": "Resume payload does not satisfy the suspension's resumeSchema" };
+  }
   if (result.valid) return null;
   const errors: Record<string, string> = {};
   for (const unit of result.errors) {

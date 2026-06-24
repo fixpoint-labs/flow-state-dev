@@ -30,7 +30,7 @@ import { ApprovalRenderer } from "./ApprovalRenderer";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { SelectionRenderer } from "./SelectionRenderer";
 import { SchemaFormRenderer } from "./SchemaFormRenderer";
-import { analyzeResumeSchema } from "../hooks/useSuspensionForm";
+import { suspensionShape } from "../hooks/useSuspensionForm";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -175,19 +175,19 @@ function chooseSuspensionRenderer(
     if (custom !== undefined && custom !== false) return custom;
   }
 
-  if (item.reason === "human_input") {
-    const analysis = analyzeResumeSchema(item.resumeSchema);
-    if (analysis !== null) {
-      if (analysis.kind === "object") return SchemaFormRenderer;
-      if (analysis.kind === "enum" || analysis.kind === "enum-multi") return SelectionRenderer;
+  switch (suspensionShape(item)) {
+    case "form":
+      return SchemaFormRenderer;
+    case "selection":
+      return SelectionRenderer;
+    case "question":
+      // Also the fallback for a schema richer than the bounded set with no custom
+      // component — the free-text box is the safest actionable default.
       return QuestionRenderer;
-    }
-    // A schema richer than the bounded set with no custom component: the free-text
-    // question is the safest actionable default.
-    return QuestionRenderer;
+    case "approval":
+    default:
+      return ApprovalRenderer;
   }
-
-  return ApprovalRenderer;
 }
 
 /** Map of item types to built-in fallback renderers. */

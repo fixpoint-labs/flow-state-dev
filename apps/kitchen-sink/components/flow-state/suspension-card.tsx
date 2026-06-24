@@ -1,7 +1,7 @@
 "use client";
 
 import type { SuspensionItem } from "@flow-state-dev/core/items";
-import { analyzeResumeSchema } from "@flow-state-dev/react";
+import { suspensionShape } from "@flow-state-dev/react";
 import { Approval } from "./approval";
 import { Question } from "./question";
 import { Selection } from "./selection";
@@ -24,17 +24,15 @@ export function SuspensionCard({ item }: { item: SuspensionItem }) {
   // derives its own resolved state.
   const { isResolved, resolution } = useSuspensionResolution(item.suspensionId);
 
-  if (item.reason !== "human_input") {
-    return <Approval item={item} />;
+  switch (suspensionShape(item)) {
+    case "form":
+      return <Form item={item} isResolved={isResolved} resolution={resolution} />;
+    case "selection":
+      return <Selection item={item} isResolved={isResolved} resolution={resolution} />;
+    case "question":
+      return <Question item={item} isResolved={isResolved} resolution={resolution} />;
+    case "approval":
+    default:
+      return <Approval item={item} />;
   }
-
-  const analysis = analyzeResumeSchema(item.resumeSchema);
-
-  if (analysis !== null && analysis.kind === "object") {
-    return <Form item={item} isResolved={isResolved} resolution={resolution} />;
-  }
-  if (analysis !== null && (analysis.kind === "enum" || analysis.kind === "enum-multi")) {
-    return <Selection item={item} isResolved={isResolved} resolution={resolution} />;
-  }
-  return <Question item={item} isResolved={isResolved} resolution={resolution} />;
 }
