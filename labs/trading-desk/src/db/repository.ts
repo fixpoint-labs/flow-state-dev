@@ -228,10 +228,14 @@ function computeFingerprint(e: LedgerEventInput): string {
  * Unknown-basis lots write `null` cost, never zero.
  */
 async function recomputeBasis(tx: Tx, accountId: string): Promise<void> {
+  // Deterministic order so the FIFO derivation is reproducible: trade date, then
+  // insertion order (created_at, id) as the same-day tie-break. Without it the
+  // heap-scan order could vary across re-derivations (a void UPDATE, a vacuum).
   const eventRows = await tx
     .select()
     .from(ledgerEvents)
-    .where(and(eq(ledgerEvents.accountId, accountId), isNull(ledgerEvents.voidedAt)));
+    .where(and(eq(ledgerEvents.accountId, accountId), isNull(ledgerEvents.voidedAt)))
+    .orderBy(ledgerEvents.tradeDate, ledgerEvents.createdAt, ledgerEvents.id);
   const { positions } = deriveLots(eventRows.map(mapLedgerRow));
   if (positions.length === 0) return;
   const posByTicker = new Map(positions.map((p) => [p.ticker, p]));
@@ -431,7 +435,7 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
 
     async ingestLedgerEvents(events, userId) {
       if (events.length === 0) {
-        return { inserted: 0, deduplicated: 0, voided: 0, errors: [] };
+        return { inserted: 0, deduplicated: 0, errors: [] };
       }
       return db.transaction(async (tx) => {
         // Ownership guard: every referenced account must belong to the caller.
@@ -502,7 +506,6 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         return {
           inserted,
           deduplicated: events.length - inserted,
-          voided: 0,
           errors: [],
         };
       });

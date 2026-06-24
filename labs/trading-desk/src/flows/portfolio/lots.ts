@@ -67,12 +67,24 @@ export function deriveLots(events: LedgerRow[]): {
   positions: DerivedPosition[];
   lots: Lot[];
 } {
-  // Stable trade-date order: equal dates keep their input order (createdAt order
-  // from the repository read), so same-day buy-then-sell consumes the buy.
+  // Order by trade date; within a single day, process acquisitions before
+  // disposals so a same-day sell consumes that day's buy rather than over-selling
+  // into a phantom position — FIFO still draws from the OLDEST open lot at the
+  // front of the queue, so a same-day buy never jumps ahead of an older lot.
+  // Remaining ties keep the input order, which the repository supplies
+  // deterministically (`ORDER BY trade_date, created_at, id`). Intraday sequence
+  // within one batch is best-effort (there is no intraday timestamp), not
+  // tax-grade.
   const ordered = events
     .filter((e) => e.voidedAt === null && e.quantity !== null && Math.abs(e.quantity) > QTY_EPSILON)
     .map((e, idx) => ({ e, idx }))
-    .sort((a, b) => (a.e.tradeDate < b.e.tradeDate ? -1 : a.e.tradeDate > b.e.tradeDate ? 1 : a.idx - b.idx));
+    .sort((a, b) => {
+      if (a.e.tradeDate !== b.e.tradeDate) return a.e.tradeDate < b.e.tradeDate ? -1 : 1;
+      const aAcq = (a.e.quantity as number) > 0;
+      const bAcq = (b.e.quantity as number) > 0;
+      if (aAcq !== bAcq) return aAcq ? -1 : 1;
+      return a.idx - b.idx;
+    });
 
   const open = new Map<string, OpenLot[]>();
 

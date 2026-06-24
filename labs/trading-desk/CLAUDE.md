@@ -403,9 +403,12 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
 
 - **Limitations (v1).** FIFO only; no wash sales or corporate-action basis math;
   non-equity events (bonds/options/MMF) are recorded with their symbol but not
-  asset-classified until FIX-773 lands; single-currency. Live sync (Plaid) is
-  FIX-853, and historical file import (OFX/CSV) is FIX-775 — both write through
-  this issue's `ingestLedgerEvents` contract.
+  asset-classified until FIX-773 lands; single-currency. Two manual events with
+  an identical fingerprint (same account/date/type/ticker/quantity/amount) dedup
+  to one — the same dedup that makes re-submits idempotent also collapses a
+  genuine identical second fill, so record a distinguishing detail if both must
+  land. Live sync (Plaid) is FIX-853, and historical file import (OFX/CSV) is
+  FIX-775 — both write through this issue's `ingestLedgerEvents` contract.
 
 ## Responsive / mobile layout
 

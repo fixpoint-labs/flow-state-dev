@@ -161,6 +161,25 @@ describe("ingestLedgerEvents — derived basis", () => {
     expect(typeof aapl?.costBasis).toBe("number"); // coerced, never a string
   });
 
+  it("derives basis deterministically for a same-day buy+sell against an older lot in one batch", async () => {
+    await repo.upsertHoldings("acc-1", "devuser", [holding("AAPL", 10)], "upsert");
+    // One batch, all rows share created_at; the deterministic read order +
+    // acquisitions-before-disposals same-day rule make the FIFO result stable:
+    // the same-day sell consumes the OLD Jan lot, leaving the same-day Mar buy.
+    await repo.ingestLedgerEvents(
+      [
+        ev({ tradeDate: "2026-01-01", quantity: 10, unitPrice: 10, amount: -100 }),
+        ev({ tradeDate: "2026-03-01", quantity: 10, unitPrice: 200, amount: -2000 }),
+        ev({ type: "sell", tradeDate: "2026-03-01", quantity: -10, amount: 2500 }),
+      ],
+      "devuser",
+    );
+    const { holdings } = await repo.getPortfolio("devuser");
+    const aapl = holdings.find((h) => h.ticker === "AAPL");
+    expect(aapl?.costBasis).toBe(200); // Mar lot remains; Jan lot was sold
+    expect(aapl?.acquiredDate).toBe("2026-03-01");
+  });
+
   it("writes null cost (never 0) for a basis-unknown transfer-in", async () => {
     await repo.upsertHoldings("acc-1", "devuser", [holding("TSLA", 5, 999)], "upsert");
     await repo.ingestLedgerEvents(

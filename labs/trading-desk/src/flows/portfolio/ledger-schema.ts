@@ -82,7 +82,6 @@ export type LedgerEventInput = z.infer<typeof ledgerEventInputSchema>;
 export const ingestReportSchema = z.object({
   inserted: z.number(),
   deduplicated: z.number(),
-  voided: z.number(),
   errors: z.array(z.object({ reason: z.string() })),
 });
 export type IngestReport = z.infer<typeof ingestReportSchema>;

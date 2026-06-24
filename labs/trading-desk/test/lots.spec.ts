@@ -142,3 +142,37 @@ describe("deriveLots — FIFO", () => {
     expect(aapl?.hasUnknownBasis).toBe(false);
   });
 });
+
+describe("deriveLots — same-day ordering", () => {
+  it("nets a same-day buy then sell to a closed position", () => {
+    const { positions } = deriveLots([
+      row({ tradeDate: "2026-03-01", quantity: 10, unitPrice: 100 }),
+      row({ type: "sell", tradeDate: "2026-03-01", quantity: -10, amount: 1200 }),
+    ]);
+    expect(positions.find((p) => p.ticker === "AAPL")).toBeUndefined();
+  });
+
+  it("does not phantom a position when the sell is ordered before the buy", () => {
+    // Acquisitions are processed before disposals on the same day, so even with
+    // the sell listed first the buy is in the queue when the sell consumes it —
+    // no over-sell into a phantom open lot.
+    const { positions } = deriveLots([
+      row({ type: "sell", tradeDate: "2026-03-01", quantity: -10, amount: 1200 }),
+      row({ tradeDate: "2026-03-01", quantity: 10, unitPrice: 100 }),
+    ]);
+    expect(positions.find((p) => p.ticker === "AAPL")).toBeUndefined();
+  });
+
+  it("a same-day sell still consumes the OLDEST lot, not that day's buy", () => {
+    const { positions } = deriveLots([
+      row({ tradeDate: "2026-01-01", quantity: 10, unitPrice: 10 }), // old lot
+      row({ tradeDate: "2026-03-01", quantity: 10, unitPrice: 200 }), // same-day buy
+      row({ type: "sell", tradeDate: "2026-03-01", quantity: -10, amount: 2500 }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    // FIFO: the sell consumes the Jan lot; the same-day Mar buy remains.
+    expect(aapl?.quantity).toBe(10);
+    expect(aapl?.avgCost).toBe(200);
+    expect(aapl?.acquiredDate).toBe("2026-03-01");
+  });
+});
