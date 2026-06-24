@@ -40,6 +40,13 @@ export interface RunBenchmarkConfig {
   modelResolver?: ModelResolver;
   /** Judge resolver override (tests inject a mock). Built from `judgeModel` when absent. */
   judgeResolver?: ModelResolver;
+  /**
+   * Strip provider-native web search (`search: true`) from every subject and the
+   * judge. Default false. Set when the task suite is answerable from model
+   * knowledge, so live search doesn't add uncontrolled cost, latency, and
+   * variance to the comparison. Ignored when a `modelResolver` is injected.
+   */
+  disableSearch?: boolean;
   /** Cancels in-flight scheduling; produces a partial report. */
   signal?: AbortSignal;
 }
@@ -170,4 +177,11 @@ export interface BenchmarkDefinition {
   scorers?: Scorer<unknown>[];
   /** Repetitions per (subject, task). */
   runs?: number;
+  /**
+   * Strip provider-native web search from every subject and the judge. Default
+   * false. Set true when the suite's tasks are answerable from model knowledge,
+   * so search doesn't confound the comparison with cost/latency/variance. The
+   * `fsdev benchmark --search` flag overrides this back on.
+   */
+  disableSearch?: boolean;
 }

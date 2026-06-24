@@ -252,13 +252,21 @@ function fmtDelta(delta: number): string {
 function rankingRows(report: BenchmarkReport): string[][] {
   const lookup = statLookup(report);
   const baselines = new Set(report.baselineSubjects);
-  const header = ["rank", "subject", "mean", "Δ vs baseline", "credible", "success"];
+  // `$/task` is the per-cell cost (subject total / cells), so it's comparable
+  // regardless of task or run count; `score/$` = mean / $/task is the quality-per-
+  // dollar figure that makes a cheap-orchestrated vs expensive-single comparison
+  // legible (a small model that nearly matches a big one at a fraction of the cost
+  // wins here even when it loses on mean). Shown "—" when cost wasn't recorded.
+  const header = ["rank", "subject", "mean", "Δ vs baseline", "credible", "success", "$/task", "score/$"];
   const rows: string[][] = [header];
 
   (report.rankings["overall"] ?? []).forEach((r, i) => {
     const overall = lookup.get(`${r.subject}::overall`);
     const success = overall ? `${overall.successfulRuns}/${overall.runs}` : "—";
     const isBaseline = baselines.has(r.subject);
+    const costPerTask = overall && overall.runs > 0 ? overall.costUsd / overall.runs : 0;
+    const costCell = costPerTask > 0 ? `$${costPerTask.toFixed(4)}` : "—";
+    const scorePerDollar = costPerTask > 0 ? (r.mean / costPerTask).toFixed(0) : "—";
     rows.push([
       String(i + 1),
       isBaseline ? `${r.subject} (baseline)` : r.subject,
@@ -266,6 +274,8 @@ function rankingRows(report: BenchmarkReport): string[][] {
       isBaseline ? "—" : fmtDelta(r.deltaVsBaseline),
       isBaseline ? "—" : r.credible ? "yes" : "no",
       success,
+      costCell,
+      scorePerDollar,
     ]);
   });
 

@@ -167,6 +167,34 @@ describe("renderScorecard", () => {
     expect(md).toContain("+0.500"); // supervisor 0.9 vs baseline 0.4
   });
 
+  it("renders per-subject $/task and score-per-dollar in the ranking", () => {
+    // The cross-model efficiency question (cheap-orchestrated vs expensive
+    // single-call) is only legible with cost. Per-cell cost already aggregates
+    // into each subject's overall stat; the ranking must surface it.
+    const costRuns: BenchmarkRunResult[] = [
+      // plan-and-execute: 2 cells × $0.004 → $/task 0.0040, mean 0.88 → score/$ 220
+      cell({ subject: "plan-and-execute", kind: "pattern", score: 0.88, run: 0, costUsd: 0.004 }),
+      cell({ subject: "plan-and-execute", kind: "pattern", score: 0.88, run: 1, costUsd: 0.004 }),
+      // pure-sonnet baseline: 2 cells × $0.012 → $/task 0.0120, mean 0.95 → score/$ 79
+      cell({ subject: "pure-sonnet", kind: "baseline", score: 0.95, run: 0, costUsd: 0.012 }),
+      cell({ subject: "pure-sonnet", kind: "baseline", score: 0.95, run: 1, costUsd: 0.012 }),
+    ];
+    const costReport = buildBenchmarkReport(costRuns, {
+      model: "anthropic/claude-haiku-4-5",
+      runs: 2,
+      startedAt: Date.now(),
+      budgetExceeded: false,
+      warnings: [],
+    });
+    const md = renderScorecard(costReport, "markdown");
+    expect(md).toContain("$/task");
+    expect(md).toContain("score/$");
+    expect(md).toContain("$0.0040"); // plan-and-execute per-task cost
+    expect(md).toContain("$0.0120"); // sonnet per-task cost
+    expect(md).toContain("220"); // 0.88 / 0.0040
+    expect(md).toContain("79"); // 0.95 / 0.0120
+  });
+
   it("renders json that round-trips to the report", () => {
     const json = renderScorecard(report, "json");
     expect(JSON.parse(json).subjects).toEqual(["supervisor", "single-generator"]);

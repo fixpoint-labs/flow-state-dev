@@ -45,6 +45,8 @@ export interface BenchmarkCommandOptions {
   maxCost?: string;
   output?: string;
   format?: string;
+  /** Force provider-native web search back on, overriding a definition's `disableSearch`. */
+  search?: boolean;
   /** Explicit `--dotenv <path>` entries to load before the cwd `.env.local` walk-up. */
   dotenv?: string[];
 }
@@ -140,6 +142,8 @@ export function buildBenchmarkRun(
     // the baseline off when the user actually passed `--no-baseline`; otherwise
     // defer to the definition's `baseline` setting.
     baseline: options.baseline === false ? false : def.baseline,
+    // `--search` forces provider search back on; otherwise honor the definition.
+    disableSearch: options.search === true ? false : def.disableSearch,
   };
 
   return { names, registry: def.registry, subjects: def.subjects, config, format };
@@ -251,6 +255,7 @@ export function registerBenchmarkCommand(program: Command): void {
     )
     .option("--no-baseline", "Skip the single-generator baseline subject")
     .option("--max-cost <usd>", "Abort the sweep when the estimated cost exceeds this")
+    .option("--search", "Force provider-native web search on, overriding the definition's disableSearch")
     .option("--output <path>", "Write the scorecard to a file instead of stdout")
     .option(
       "--dotenv <path>",
