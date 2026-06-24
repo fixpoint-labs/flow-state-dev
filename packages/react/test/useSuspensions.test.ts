@@ -141,6 +141,26 @@ describe("deriveSuspensions", () => {
     const idle = deriveSuspensions([suspension()], undefined, new Set());
     expect(idle.suspensions[0].isResolving).toBe(false);
   });
+
+  it("surfaces the suspension's allow set, defaulting to binary for older items (FIX-849)", () => {
+    const withAllow = deriveSuspensions([
+      suspension({ reason: "human_input", allow: ["submit", "skip"] })
+    ]);
+    expect(withAllow.suspensions[0].allow).toEqual(["submit", "skip"]);
+
+    // A suspension persisted before `allow` existed reads as binary approve/reject.
+    const legacy = deriveSuspensions([suspension({ allow: undefined })]);
+    expect(legacy.suspensions[0].allow).toEqual(["approve", "reject"]);
+  });
+
+  it("passes an unknown future resolution tag through without throwing", () => {
+    const result = deriveSuspensions([
+      suspension(),
+      resume({ resolution: "some_future_tag" as never })
+    ]);
+    expect(result.suspensions[0].pending).toBe(false);
+    expect(result.suspensions[0].status).toBe("some_future_tag");
+  });
 });
 
 describe("resolveSuspension", () => {

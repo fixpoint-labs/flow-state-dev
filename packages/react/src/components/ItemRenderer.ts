@@ -25,8 +25,12 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
-import { resolveRenderer } from "../registry/block-renderers";
+import { resolveRenderer, type BlockComponentType, type RendererRegistry } from "../registry/block-renderers";
 import { ApprovalRenderer } from "./ApprovalRenderer";
+import { QuestionRenderer } from "./QuestionRenderer";
+import { SelectionRenderer } from "./SelectionRenderer";
+import { SchemaFormRenderer } from "./SchemaFormRenderer";
+import { analyzeResumeSchema } from "../hooks/useSuspensionForm";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -149,6 +153,43 @@ function renderBlockToolOutputFallback(item: ToolOutputItem): ReactNode {
   );
 }
 
+/**
+ * Pick the built-in default renderer for a `suspension` item, in order:
+ *  1. `item.render.component` — if it names a registered `renderers.component`
+ *     entry, the author's custom component wins (the escape hatch for schemas
+ *     richer than the bounded default can handle).
+ *  2. by `reason`: `human_approval` → the approve/reject card; `human_input` →
+ *     by `resumeSchema` shape (free-text question, enum selection, or flat form).
+ *  3. fallback to the approval card.
+ *
+ * Reached only after the custom `renderers.suspension` slot and the `false`
+ * suppression have been checked, so this never overrides an app's own renderer.
+ */
+function chooseSuspensionRenderer(
+  item: SuspensionItem,
+  renderers: RendererRegistry | undefined
+): BlockComponentType {
+  const componentKey = item.render?.component;
+  if (componentKey !== undefined) {
+    const custom = renderers?.component?.[componentKey];
+    if (custom !== undefined && custom !== false) return custom;
+  }
+
+  if (item.reason === "human_input") {
+    const analysis = analyzeResumeSchema(item.resumeSchema);
+    if (analysis !== null) {
+      if (analysis.kind === "object") return SchemaFormRenderer;
+      if (analysis.kind === "enum" || analysis.kind === "enum-multi") return SelectionRenderer;
+      return QuestionRenderer;
+    }
+    // A schema richer than the bounded set with no custom component: the free-text
+    // question is the safest actionable default.
+    return QuestionRenderer;
+  }
+
+  return ApprovalRenderer;
+}
+
 /** Map of item types to built-in fallback renderers. */
 const BUILT_IN_FALLBACKS: Record<string, ((item: OutputItem) => ReactNode) | undefined> = {
   message: (item) => renderMessageFallback(item as MessageItem),
@@ -225,11 +266,14 @@ function renderItem(
     return null;
   }
 
-  // 2a. Suspension default card — handled explicitly so it receives the
-  // stream-derived `isResolved` flag, going read-only once its
+  // 2a. Suspension default card — dispatched by render.component / reason /
+  // schema shape (FIX-849), handled explicitly so the chosen renderer receives
+  // the stream-derived `isResolved` flag and goes read-only once its
   // `suspension_resume` item has arrived (prevents a duplicate-resume 409).
   if (item.type === "suspension") {
-    return createElement(ApprovalRenderer, { item: item as SuspensionItem, isResolved, resolution });
+    const suspItem = item as SuspensionItem;
+    const Renderer = chooseSuspensionRenderer(suspItem, renderers);
+    return createElement(Renderer, { item: suspItem, isResolved, resolution });
   }
 
   // 2b. Built-in fallback (message, status, error, etc.).

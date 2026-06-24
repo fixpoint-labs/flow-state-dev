@@ -93,6 +93,18 @@ export {
   type UseApprovalResult,
   type ApprovalOutcome
 } from "./hooks/useApproval";
+export {
+  useSuspensionForm,
+  analyzeResumeSchema,
+  type UseSuspensionFormOptions,
+  type UseSuspensionFormResult,
+  type SchemaField,
+  type SuspensionValueKind
+} from "./hooks/useSuspensionForm";
+export { QuestionRenderer } from "./components/QuestionRenderer";
+export { SelectionRenderer } from "./components/SelectionRenderer";
+export { SchemaFormRenderer } from "./components/SchemaFormRenderer";
+export { type SuspensionFormRendererProps } from "./components/suspensionFormShared";
 
 export {
   useRequestStream,

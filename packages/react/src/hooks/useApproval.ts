@@ -43,6 +43,10 @@ export function resolveApprovalOutcome(
       return { icon: "✓", label: "Approved" };
     case "rejected":
       return { icon: "✕", label: "Rejected" };
+    case "submitted":
+      return { icon: "✓", label: "Submitted" };
+    case "skipped":
+      return { icon: "⤼", label: "Skipped" };
     case "timed_out":
       return { icon: "⏲", label: "Timed out" };
     case "expired":

@@ -25,6 +25,7 @@ import type {
   SessionMetadataChangedEvent,
   StateChangeItem
 } from "@flow-state-dev/core/items";
+import type { ResumeAction } from "@flow-state-dev/core/types";
 // Canonical helper from the zero-dependency contracts layer (value-import).
 // Previously hand-mirrored here because react may only type-import core.
 import { resolveItemVisibility } from "@flow-state-dev/contracts";
@@ -190,7 +191,7 @@ export type SessionView = {
   resumeSuspension: (args: {
     suspensionId: string;
     requestId: string;
-    action: "approve" | "reject";
+    action: ResumeAction;
     data?: unknown;
     resumedBy?: string;
   }) => Promise<void>;
@@ -1305,7 +1306,7 @@ export function useSession(
     async (args: {
       suspensionId: string;
       requestId: string;
-      action: "approve" | "reject";
+      action: ResumeAction;
       data?: unknown;
       resumedBy?: string;
     }): Promise<void> => {
