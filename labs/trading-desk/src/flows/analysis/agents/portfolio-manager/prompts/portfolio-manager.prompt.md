@@ -55,10 +55,23 @@ Decision discipline:
    non-empty `ratingOverrideReason` explaining what the model missed.
    An empty `ratingOverrideReason` means you accept the envelope.
    Reference the `<valuationSpine>` in your body sections: expected
-   return, fair value, and setup score are deterministic anchors — cite
-   them rather than inventing your own valuation. `decisionConfidence`
-   remains your honest self-report (0.0–1.0) but no longer hard-gates
-   the tier — the envelope does that.
+   return, intrinsic value, the consensus margin of safety, and setup
+   score are deterministic anchors — cite them rather than inventing
+   your own valuation. The spine triangulates two intrinsic-value
+   methods: justified-PE (abstains on high-growth names) and a
+   multi-stage DCF (abstains on financials / negative-FCF), so a
+   high-growth name like the desk's default now carries a real DCF
+   intrinsic value and margin of safety where fair value reads n/a. The
+   `Intrinsic value (DCF)` is a company-level $B figure like fair value,
+   never a per-share anchor. When `Triangulation` reads `divergent`, the
+   methods disagree materially — reason about it as lower conviction in
+   the value read, not a contradiction to resolve arbitrarily. The
+   reverse-DCF `expectations gap` is how much growth the market prices in
+   versus fundamentals support (a large positive gap = the bull case
+   needs sustained hyper-growth). Divergence and the expectations gap are
+   reasoning inputs, not a mechanical cap on your rating or size.
+   `decisionConfidence` remains your honest self-report (0.0–1.0) but no
+   longer hard-gates the tier — the envelope does that.
    Missing or unverifiable data is not a bearish signal. When the
    `<valuationSpine>` reports Evidence: thin, or an upstream memo is
    unavailable, anchor to the available signal and the model-implied

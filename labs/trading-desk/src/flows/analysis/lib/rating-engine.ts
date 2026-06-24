@@ -17,6 +17,7 @@
 import type { ExpectedReturn } from "./expected-return";
 import type { FairValue } from "./fair-value";
 import type { SetupScore } from "./setup-score";
+import type { Triangulation } from "./triangulation";
 
 export type AbsoluteRating = "Buy" | "Hold" | "Sell";
 export type RelativeRating = "Overweight" | "Equal Weight" | "Underweight";
@@ -144,10 +145,18 @@ export interface ValuationSpineInput {
   expectedReturn: ExpectedReturn;
   fairValue: FairValue;
   setupScore: SetupScore;
+  /**
+   * Cross-method consensus (FIX-807). Surfaced in the rationale ONLY — the hard
+   * Buy/Hold gate stays anchored to the justified-PE margin of safety (`fv`), so
+   * a conservative DCF read never floors a high-growth name to Hold (Open Q1:
+   * soft-only, preserving FIX-778's return-anchored Buy). Optional so callers
+   * predating the triangulation leg still type-check.
+   */
+  triangulation?: Triangulation;
 }
 
 export function modelImpliedRating(input: ValuationSpineInput): RatingEnvelope {
-  const { expectedReturn: er, fairValue: fv, setupScore: ss } = input;
+  const { expectedReturn: er, fairValue: fv, setupScore: ss, triangulation } = input;
 
   const abs = computeAbsoluteRating(er, fv);
   const rel = computeRelativeRating(ss);
@@ -166,7 +175,13 @@ export function modelImpliedRating(input: ValuationSpineInput): RatingEnvelope {
   const floor = FINAL_RATING_LADDER[Math.max(0, idx - downSpread)];
   const ceiling = FINAL_RATING_LADDER[Math.min(4, idx + upSpread)];
 
-  const rationale = `absolute: ${abs.rationale}; relative: ${rel.rationale}`;
+  // Surface the consensus margin of safety so the prompt shows the triangulated
+  // number; it does NOT enter the gate conditions above.
+  const consensus =
+    triangulation != null && triangulation.marginOfSafety != null
+      ? `; consensus margin of safety ${(triangulation.marginOfSafety * 100).toFixed(0)}% (${triangulation.divergence})`
+      : "";
+  const rationale = `absolute: ${abs.rationale}; relative: ${rel.rationale}${consensus}`;
 
   return {
     absoluteRating: abs.rating,
