@@ -14,7 +14,7 @@ import type {
   StreamSubscriber,
   StreamEvent,
   ExecutionResult,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 
 export interface CreateRedisStreamBridgeOptions {
   /** ioredis connection (URL string or options object). */

@@ -27,7 +27,7 @@ The adapter is a plain function. It receives an `ErrorCaptureEvent` and maps it 
 
 ```ts
 import * as Sentry from "@sentry/node";
-import type { ErrorCaptureEvent } from "@flow-state-dev/server";
+import type { ErrorCaptureEvent } from "@flow-state-dev/engine";
 
 export function captureToSentry(event: ErrorCaptureEvent): void {
   Sentry.captureException(event.error, {
@@ -53,7 +53,7 @@ export function captureToSentry(event: ErrorCaptureEvent): void {
 ## Wire it in
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState } from "@flow-state-dev/server";
+import { createFlowState } from "@flow-state-dev/engine";
 import { captureToSentry } from "./capture-to-sentry";
 
 export const flowstate = createFlowState({

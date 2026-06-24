@@ -169,7 +169,7 @@ even though the dispatch was authenticated against the system
 scheduler secret.
 
 `createBearerSecretPrincipalResolver` (exported from
-`@flow-state-dev/server`) is the canonical helper for the gateway
+`@flow-state-dev/engine`) is the canonical helper for the gateway
 phase. It does a constant-time comparison via `crypto.timingSafeEqual`
 on `Authorization: Bearer <secret>` and returns the configured
 `ResolvedPrincipal` on match. Composing with HTTP auth uses
@@ -411,7 +411,7 @@ ownership.
 Mounted alongside any other adapters via `createFlowApiRouter`:
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 
 const router = createFlowApiRouter({

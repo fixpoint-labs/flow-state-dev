@@ -16,7 +16,7 @@
  * — proving cross-restart persistence, not a brand-new suspension (see goal.md
  * Anti-game). `requestApproval` has no LLM, so no model credential is needed.
  *
- * Persistence uses @flow-state-dev/server's on-disk filesystem store — it
+ * Persistence uses @flow-state-dev/engine's on-disk filesystem store — it
  * provides the checkpoint/suspension/lease stores and survives a process
  * restart. store-sqlite would work too but is not a kitchen-sink dependency, so
  * it can't be resolved from a driver placed in apps/kitchen-sink.
@@ -45,7 +45,7 @@ const fixture = JSON.parse(
 
 // --- Process A: dispatch → suspend, persisted to disk -----------------------
 const suspendDriver = `
-import { createFilesystemStores, createCheckpointDurabilityProvider, runAction } from "@flow-state-dev/server";
+import { createFilesystemStores, createCheckpointDurabilityProvider, runAction } from "@flow-state-dev/engine";
 import flow from "./flows/chat-agent/flow";
 
 const out = (r) => console.log(${JSON.stringify(MARKER)} + JSON.stringify(r));
@@ -77,7 +77,7 @@ process.exit(0);
 
 // --- Process B: FRESH runtime over the same on-disk dir → reload, approve, resume
 const resumeDriver = `
-import { createFilesystemStores, createCheckpointDurabilityProvider, runAction } from "@flow-state-dev/server";
+import { createFilesystemStores, createCheckpointDurabilityProvider, runAction } from "@flow-state-dev/engine";
 import flow from "./flows/chat-agent/flow";
 
 const out = (r) => console.log(${JSON.stringify(MARKER)} + JSON.stringify(r));

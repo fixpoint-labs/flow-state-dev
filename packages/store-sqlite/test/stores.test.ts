@@ -9,8 +9,8 @@ import type {
   SessionRecord,
   TraceStore,
   UserRecord
-} from "@flow-state-dev/server";
-import { createTraceStoreConformanceTests } from "@flow-state-dev/server/testing";
+} from "@flow-state-dev/engine";
+import { createTraceStoreConformanceTests } from "@flow-state-dev/engine/testing";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
 import { initializeSchema } from "../src/schema";
 import { createSQLiteSuspensionStore } from "../src/suspension-store";
@@ -1045,7 +1045,7 @@ describe("SQLite store adapter", () => {
   it("is a drop-in replacement for createInMemoryStores", async () => {
     const s = freshStores();
 
-    // Same operations as the in-memory test in packages/server/test/stores.test.ts
+    // Same operations as the in-memory test in packages/engine/test/stores.test.ts
     await s.session.set("sess_a", makeSessionRecord("sess_a", "flow-a", "user_1"), "any");
     await s.session.set("sess_b", makeSessionRecord("sess_b", "flow-b", "user_2"), "any");
     await s.request.set("req_a", makeRequestRecord("req_a", "flow-a", "run", "user_1", "sess_a"), "any");

@@ -71,7 +71,7 @@ Each `.ndjson` file holds one trace event per line. Filenames are URL-encoded so
 To override the cap explicitly:
 
 ```ts
-import { createFilesystemStores } from "@flow-state-dev/server";
+import { createFilesystemStores } from "@flow-state-dev/engine";
 
 const stores = createFilesystemStores({
   rootDir: ".fsdev/data",

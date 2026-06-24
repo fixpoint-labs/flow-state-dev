@@ -1,6 +1,6 @@
 ---
 "@flow-state-dev/core": minor
-"@flow-state-dev/server": minor
+"@flow-state-dev/engine": minor
 "@flow-state-dev/client": minor
 "@flow-state-dev/react": minor
 ---

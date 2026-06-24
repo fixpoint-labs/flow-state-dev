@@ -80,7 +80,7 @@ export const chatGen = generator({
 Describe the runtime once in `lib/flowstate.ts`, then mount it from a single catch-all API route that handles routing for all flows:
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import chatFlow from "@/flows/my-chat/flow";
 import agentFlow from "@/flows/my-agent/flow";
 

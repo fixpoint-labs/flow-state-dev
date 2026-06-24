@@ -414,7 +414,7 @@ export type FlowDefinition<
 
   /**
    * Per-flow webhook-transport subscriptions. When set, the
-   * `@flow-state-dev/server` webhook adapter mounts
+   * `@flow-state-dev/engine` webhook adapter mounts
    * `POST /api/flows/:kind/webhooks/:provider` and routes verified inbound
    * events to the named actions. The flow declares routing only; the host
    * supplies signature verification and payload mechanics at adapter mount.

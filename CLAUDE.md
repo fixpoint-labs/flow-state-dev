@@ -119,7 +119,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | ----------------------------------- | ----------------------------------------------------------------------- |
 | `@flow-state-dev/contracts`         | Zero-dependency shared layer (item taxonomy, leaf types, block-instance-id); re-exported by `core` |
 | `@flow-state-dev/core`              | Isomorphic builders, type contracts, item taxonomy                      |
-| `@flow-state-dev/server`            | Execution runtime, stores, SSE streaming, HTTP routes                   |
+| `@flow-state-dev/engine`            | Execution runtime, stores, SSE streaming, HTTP routes                   |
 | `@flow-state-dev/client`            | Isomorphic API client (actions, sessions, streams)                      |
 | `@flow-state-dev/react`             | React hooks and renderers (wraps client)                                |
 | `@flow-state-dev/testing`           | Test harnesses and mocks                                                |

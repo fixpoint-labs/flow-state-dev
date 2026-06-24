@@ -6,7 +6,7 @@
  * The hint lives on `ctx._blockOutputHint`. Server-side `executeBlock` reads
  * it after `block.run` returns and wraps the BlockValue accordingly. These
  * tests assert the hint write path; end-to-end emission is covered in
- * `packages/server/test/block-value-fix480.test.ts`.
+ * `packages/engine/test/block-value-fix480.test.ts`.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";

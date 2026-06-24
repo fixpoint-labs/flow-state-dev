@@ -28,7 +28,7 @@ import {
   createFlowState,
   inMemoryStores,
   createCheckpointDurabilityProvider,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { contentReview } from "./flows/content-review/flow";
 
 const stores = inMemoryStores();

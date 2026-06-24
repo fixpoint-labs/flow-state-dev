@@ -9,7 +9,7 @@
  * runs the count should be 2.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import helloChatFlow from "../../../../examples/hello-chat/src/flows/hello-chat/flow";
 

@@ -7,7 +7,7 @@ import {
   inMemoryStores,
   type FlowApiRouter,
   type StoreAdapter,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";

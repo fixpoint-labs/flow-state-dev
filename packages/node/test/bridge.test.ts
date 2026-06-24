@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Readable } from "node:stream";
-import type { FlowApiRouter } from "@flow-state-dev/server";
+import type { FlowApiRouter } from "@flow-state-dev/engine";
 import { handleApiRequest } from "../src/bridge";
 
 /** Build a fake IncomingMessage backed by a Readable for the body. */

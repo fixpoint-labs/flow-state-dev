@@ -67,7 +67,7 @@ exposed action has no description.
 ## Mounting
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
 
 const router = createFlowApiRouter({
@@ -127,7 +127,7 @@ defineFlow({
 ```
 
 `extractBearerToken` and `createHs256JwtVerifier` are exported from
-`@flow-state-dev/server`. Per the MCP spec, tokens MUST NOT be passed
+`@flow-state-dev/engine`. Per the MCP spec, tokens MUST NOT be passed
 in query strings — use the `Authorization` header.
 
 When `resolvePrincipal` throws `PrincipalResolutionError`, the adapter
@@ -194,7 +194,7 @@ and are not affected.
   ships a WHATWG-native transport or stateful mode lands.
 - The adapter consumes `unstable_findResourceConfig`,
   `unstable_getPersistedData`, `unstable_renderContent`, and
-  `unstable_listExposedResources` from `@flow-state-dev/server` so the
+  `unstable_listExposedResources` from `@flow-state-dev/engine` so the
   resource lookup logic stays single-sourced with the HTTP route
   handlers.
 

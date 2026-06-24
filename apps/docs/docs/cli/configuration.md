@@ -37,7 +37,7 @@ With no config file present and no `--config`, nothing changes: the CLI falls ba
 The default export must be a FlowState. The CLI reads its registry, stores, and resolver directly off that handle.
 
 ```ts title="fsdev.config.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import chatFlow from "./src/flows/chat/flow";
 
 export default createFlowState({

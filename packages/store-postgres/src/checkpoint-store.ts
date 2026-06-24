@@ -6,7 +6,7 @@
  * inserts the first record or overwrites the prior one in a single round
  * trip. Storage is constant per sequencer regardless of step count.
  */
-import type { CheckpointStore } from "@flow-state-dev/server";
+import type { CheckpointStore } from "@flow-state-dev/engine";
 import type { SequencerCheckpoint } from "@flow-state-dev/core/types";
 import type { QueryExecutor } from "./types";
 

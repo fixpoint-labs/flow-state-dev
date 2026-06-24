@@ -18,7 +18,7 @@ import {
   createModelResolver,
   type FlowApiRouter,
   type FlowState,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import {

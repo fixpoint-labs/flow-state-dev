@@ -17,7 +17,7 @@ pnpm add @flow-state-dev/chat-sdk chat
 ```ts
 import { Chat } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createChatTransportAdapter } from "@flow-state-dev/chat-sdk";
 
 const bot = new Chat({

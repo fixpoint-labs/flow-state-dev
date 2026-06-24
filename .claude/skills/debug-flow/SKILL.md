@@ -301,10 +301,10 @@ Tools are compiled from block definitions and auto-executed in the model loop (u
 | Flow definition | `packages/core/src/flow/defineFlow.ts` |
 | Item types | `packages/core/src/items/types.ts` |
 | Block context | `packages/core/src/types/block.ts` |
-| Execution engine | `packages/server/src/execution/executeBlock.ts` |
-| Action runner | `packages/server/src/execution/runAction.ts` |
-| Error classes | `packages/server/src/errors/flow-error.ts` |
-| Retry logic | `packages/server/src/execution/retry.ts` |
+| Execution engine | `packages/engine/src/execution/executeBlock.ts` |
+| Action runner | `packages/engine/src/execution/runAction.ts` |
+| Error classes | `packages/engine/src/errors/flow-error.ts` |
+| Retry logic | `packages/engine/src/execution/retry.ts` |
 | CLI run command | `packages/cli/src/commands/run.ts` |
 | CLI block command | `packages/cli/src/commands/block.ts` |
 

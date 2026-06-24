@@ -134,7 +134,7 @@ anything imports the flow from another directory — `fsdev run` at the repo
 root, a consumer-repo script, an eval harness.
 
 **Resolve the anchor once with `resolveBaseDir`** (from
-`@flow-state-dev/core/prompt-file/node`): a module-relative candidate first,
+`@flow-state-dev/engine/prompt-file`): a module-relative candidate first,
 a cwd-derived fallback second, and an `expect` probe that rejects
 bundler-rewritten paths. The module-relative candidate carries every
 unbundled runtime from any cwd; the cwd candidate carries Turbopack.

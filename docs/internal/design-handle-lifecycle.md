@@ -80,10 +80,10 @@ const claudeBlock = defineHandler({
 
 ### 3.3 Optional Binding Cache — `createBindingCache<T>()`
 
-A framework-provided utility (in `@flow-state-dev/server`) that wraps a `BindingProvider` with per-process LRU caching and TTL eviction. Blocks opt in explicitly.
+A framework-provided utility (in `@flow-state-dev/engine`) that wraps a `BindingProvider` with per-process LRU caching and TTL eviction. Blocks opt in explicitly.
 
 ```typescript
-import { createBindingCache } from "@flow-state-dev/server";
+import { createBindingCache } from "@flow-state-dev/engine";
 
 const claudeCache = createBindingCache<ClaudeSession>({
   provider: {
@@ -165,7 +165,7 @@ No sticky-session routing required.
 | Artifact | Package | Rationale |
 |----------|---------|-----------|
 | `BindingProvider<T>` interface | `@flow-state-dev/core` | Pure type contract, no runtime. Blocks in any package can reference it. |
-| `createBindingCache()` | `@flow-state-dev/server` | Runtime utility with timers, LRU, `Symbol.dispose`. Server-only. |
+| `createBindingCache()` | `@flow-state-dev/engine` | Runtime utility with timers, LRU, `Symbol.dispose`. Server-only. |
 | SDK-specific providers | User-land / examples | Not framework code. Each SDK integration supplies its own provider. |
 
 ## 5. Answers to Issue Questions
@@ -190,14 +190,14 @@ Binding reconstruction from persisted IDs is exactly what a `DurabilityProvider`
 ### Files to create
 
 - `packages/core/src/types/binding.ts` — `BindingProvider<T>` interface + types
-- `packages/server/src/bindings/createBindingCache.ts` — Cache utility
-- `packages/server/src/bindings/index.ts` — Public exports
-- `packages/server/src/bindings/__tests__/createBindingCache.test.ts` — Unit tests
+- `packages/engine/src/bindings/createBindingCache.ts` — Cache utility
+- `packages/engine/src/bindings/index.ts` — Public exports
+- `packages/engine/src/bindings/__tests__/createBindingCache.test.ts` — Unit tests
 
 ### Files to modify
 
 - `packages/core/src/types/index.ts` — Re-export binding types
-- `packages/server/src/index.ts` — Re-export `createBindingCache`
+- `packages/engine/src/index.ts` — Re-export `createBindingCache`
 
 ### What this does NOT include
 

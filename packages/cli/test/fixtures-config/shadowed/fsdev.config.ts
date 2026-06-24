@@ -2,7 +2,7 @@
  * Test fixture: the TS-first precedence winner when multiple config files are
  * present in the same directory (alongside fsdev.config.mjs).
  */
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 

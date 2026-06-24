@@ -2,7 +2,7 @@
  * Request-scoped pool for background work tasks dispatched by sequencer DSL
  * (`.work()`, `.workIf()`, `.forEachBackground()`). The interface is defined in
  * core so sequencer code can push tasks; the implementation lives in
- * `@flow-state-dev/server`. The server's request executor constructs one pool
+ * `@flow-state-dev/engine`. The server's request executor constructs one pool
  * per request, attaches it to `BlockContext._requestWorkPool`, and drains it
  * exactly once before the SSE stream closes.
  *

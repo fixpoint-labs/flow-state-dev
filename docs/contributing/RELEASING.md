@@ -88,7 +88,7 @@ This checklist runs once for the initial npm publish:
 7. Post-publish smoke test from a fresh directory:
    ```bash
    mkdir /tmp/fsd-smoke && cd /tmp/fsd-smoke
-   pnpm init && pnpm add @flow-state-dev/core @flow-state-dev/server
+   pnpm init && pnpm add @flow-state-dev/core @flow-state-dev/engine
    # verify types resolve and a basic import works
    ```
 8. Verify each npmjs.com listing renders the README and shows the provenance badge.

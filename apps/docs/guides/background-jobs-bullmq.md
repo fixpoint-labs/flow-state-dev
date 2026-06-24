@@ -79,7 +79,7 @@ REDIS_URL=redis://localhost:6379
 One option on `createFlowState` does the whole job. `bullmqWorker` bundles the queue, the dispatch side, the worker, and the Redis stream bridge into a single adapter:
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState } from "@flow-state-dev/server";
+import { createFlowState } from "@flow-state-dev/engine";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 export const bullmq = bullmqWorker({

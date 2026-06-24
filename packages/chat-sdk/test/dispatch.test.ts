@@ -17,7 +17,7 @@ import type { FlowInstance, ChatEventBinding } from "@flow-state-dev/core";
 import type {
   InboundTransportHost,
   InboundRequestEnvelope,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { dispatchChatEvent } from "../src/event-handlers";
 import { buildChatSubscriptionIndex } from "../src/subscription-index";
 import type { ChatAdapterOptions, ChatInboundEvent } from "../src/types";

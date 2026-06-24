@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/server": minor
+"@flow-state-dev/engine": minor
 ---
 
 Resource list/get-state read endpoints now support user- and org-scoped collections (previously session-only, returning 501).

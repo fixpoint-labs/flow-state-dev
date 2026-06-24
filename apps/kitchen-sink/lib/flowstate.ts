@@ -4,4 +4,4 @@
  * `fsdev` CLI all run the exact same wiring.
  */
 export { default as flowstate, bullmq } from "../fsdev.config";
-export type { FlowState } from "@flow-state-dev/server";
+export type { FlowState } from "@flow-state-dev/engine";

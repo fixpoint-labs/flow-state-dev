@@ -10,7 +10,7 @@
  */
 import { Worker, UnrecoverableError } from "bullmq";
 import type { Queue, Job } from "bullmq";
-import type { FlowRegistry } from "@flow-state-dev/server";
+import type { FlowRegistry } from "@flow-state-dev/engine";
 import { resolveWorkerConnection } from "./connection";
 import type { BullmqConnectionOptions } from "./types";
 

@@ -77,5 +77,5 @@ The architectural overlay above coexists with FSD's primary domain vocabulary. W
 
 - A "block" stays a block in suggestions — don't rename it "the X module." Say "the X handler" / "the X generator" and add the architectural framing alongside ("…which is currently a shallow module whose interface is nearly as complex as its body").
 - A capability is the FSD answer to "I keep plumbing the same tools + context + resources into many blocks." When suggesting one, frame it explicitly: "Extract a capability — this is FSD's mechanism for collapsing repeated wiring into a deep module."
-- The boundary between `@flow-state-dev/server` and `@flow-state-dev/client` is a *real* seam (server must never depend on client/react per package-boundary rules). Don't propose refactors that would cross it.
+- The boundary between `@flow-state-dev/engine` and `@flow-state-dev/client` is a *real* seam (server must never depend on client/react per package-boundary rules). Don't propose refactors that would cross it.
 - The boundary between `@flow-state-dev/client` and `@flow-state-dev/react` is a *real* seam (react wraps client; no transport logic in react). Same rule.

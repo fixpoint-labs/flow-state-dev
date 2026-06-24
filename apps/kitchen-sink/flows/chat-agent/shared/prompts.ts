@@ -2,7 +2,7 @@
  * chat-agent prompt-file loader.
  *
  * Builds the flow's `.prompt.md` loader with
- * `@flow-state-dev/core/prompt-file/node`'s `createPromptLoader`, mirroring
+ * `@flow-state-dev/engine/prompt-file`'s `createPromptLoader`, mirroring
  * `labs/trading-desk/src/flows/analysis/lib/prompt.ts`. Paths passed to
  * `loadPrompt` are relative to the chat-agent flow root (e.g.
  * `"run/assistant/prompts/ask.prompt.md"`).
@@ -19,7 +19,7 @@ import {
   createPromptLoader,
   moduleDir,
   resolveBaseDir,
-} from "@flow-state-dev/core/prompt-file/node";
+} from "@flow-state-dev/engine/prompt-file";
 import { promptFilters } from "./prompt-filters";
 
 const FLOW_ROOT = resolveBaseDir(

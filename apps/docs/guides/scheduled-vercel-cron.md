@@ -90,7 +90,7 @@ The framework verifies it on the dispatch endpoint via
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { createBearerSecretPrincipalResolver } from "@flow-state-dev/server";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
 
 defineFlow({
   kind: "billing",

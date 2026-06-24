@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const rootDir = process.cwd();
-const packages = ["contracts", "core", "server", "client", "react", "testing", "cli", "store-sqlite"];
+const packages = ["contracts", "core", "engine", "client", "react", "testing", "cli", "store-sqlite"];
 
 const packageRules = {
   // The zero-dependency shared layer: imports no workspace package. Its
@@ -10,13 +10,13 @@ const packageRules = {
   contracts: {
     allow: new Set([]),
     typeOnly: new Set([]),
-    deny: new Set(["core", "server", "client", "react", "testing", "cli", "store-sqlite"])
+    deny: new Set(["core", "engine", "client", "react", "testing", "cli", "store-sqlite"])
   },
   core: {
     allow: new Set(["contracts"]),
     typeOnly: new Set([])
   },
-  server: {
+  engine: {
     allow: new Set(["contracts", "core"]),
     typeOnly: new Set([]),
     deny: new Set(["client", "react"])
@@ -25,26 +25,26 @@ const packageRules = {
     // `contracts` is value-importable; `core` stays type-only for browser code.
     allow: new Set(["contracts", "core"]),
     typeOnly: new Set(["core"]),
-    deny: new Set(["server", "react"])
+    deny: new Set(["engine", "react"])
   },
   react: {
     // `contracts` is value-importable; `core` stays type-only for browser code.
     allow: new Set(["contracts", "core", "client"]),
     typeOnly: new Set(["core"]),
-    deny: new Set(["server"])
+    deny: new Set(["engine"])
   },
   testing: {
-    allow: new Set(["contracts", "core", "server"]),
+    allow: new Set(["contracts", "core", "engine"]),
     typeOnly: new Set([]),
     deny: new Set(["client", "react"])
   },
   cli: {
-    allow: new Set(["contracts", "core", "server", "testing", "store-sqlite"]),
+    allow: new Set(["contracts", "core", "engine", "testing", "store-sqlite"]),
     typeOnly: new Set([])
   },
   "store-sqlite": {
-    allow: new Set(["contracts", "core", "server"]),
-    typeOnly: new Set(["server"]),
+    allow: new Set(["contracts", "core", "engine"]),
+    typeOnly: new Set(["engine"]),
     deny: new Set(["client", "react"])
   }
 };

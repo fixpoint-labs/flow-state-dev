@@ -6,7 +6,7 @@ import {
   inMemoryStores,
   type FlowApiRouter,
   type FlowState
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { createNextHandler } from "../src/createNextHandler";
 
 describe("createNextHandler — delegation", () => {

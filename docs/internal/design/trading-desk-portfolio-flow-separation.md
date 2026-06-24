@@ -17,7 +17,7 @@ Give the portfolio domain its own flow (`trading-desk-portfolio`) with its own s
 
 ## 2. The sharing mechanism (the crux)
 
-A user-scoped resource with `flowIsolation: false` (the default) keys at bare `{userId}` and is **shared across every flow** for that user (`resolveUserStorageKey`, `packages/server/src/stores/scope-keys.ts`). That is the cross-flow channel: the portfolio flow writes the shared resource; the report flow declares the same resource and reads it (server-side at seed, and client-side for the account picker). No snapshot bridge, no two-provider React plumbing, no freezing a snapshot from a dispatch input.
+A user-scoped resource with `flowIsolation: false` (the default) keys at bare `{userId}` and is **shared across every flow** for that user (`resolveUserStorageKey`, `packages/engine/src/stores/scope-keys.ts`). That is the cross-flow channel: the portfolio flow writes the shared resource; the report flow declares the same resource and reads it (server-side at seed, and client-side for the account picker). No snapshot bridge, no two-provider React plumbing, no freezing a snapshot from a dispatch input.
 
 The original trading-desk **opted accounts into isolation** (`flowIsolation: true` → `{userId}:trading-desk`). That was a reasonable single-flow default; for the split we flip it off.
 

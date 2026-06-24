@@ -30,8 +30,8 @@ two existing ones:
   `defineWebhookBinding`, and the registration-time `validateWebhookConfig`. A
   binding extends the shared `ActionCore` (`packages/core/src/types/flow.ts`).
   All browser-safe, no crypto.
-- **`@flow-state-dev/server`** carries the runtime
-  (`packages/server/src/transports/webhook/`), next to the HTTP adapter, plus
+- **`@flow-state-dev/engine`** carries the runtime
+  (`packages/engine/src/transports/webhook/`), next to the HTTP adapter, plus
   the signature verifiers in `transports/auth/`.
 
 Two reasons it isn't its own package. First, it isolates no external dependency
@@ -39,7 +39,7 @@ Two reasons it isn't its own package. First, it isolates no external dependency
 Vercel Chat SDK), the webhook transport needs nothing a consumer doesn't already
 have. Second, signature verification needs Node `crypto`, which is not
 isomorphic. The verification code therefore cannot live in `core`; it lives in
-`server`, the same package the HTTP adapter and the existing
+`engine`, the same package the HTTP adapter and the existing
 `createHmacVerifier` already live in. The flow-side declaration is pure routing
 and stays in `core` so a flow definition remains browser-safe.
 
@@ -70,7 +70,7 @@ interface WebhookEventBinding extends ActionCore {
 Because a webhook handler lives off `flow.actions`, the runtime resolves it from
 `flow.webhooks[provider].on[event]` via the `(provider, eventType)` coordinate
 the adapter stamps onto `metadata.webhook` (see `resolveActionCore` in
-`server`). The dispatched request records the handler block's `name` as its
+`engine`). The dispatched request records the handler block's `name` as its
 `actionName` for provenance.
 
 Unlike `ChatConfig` — where the event is typed `unknown` because `core` cannot
@@ -79,7 +79,7 @@ dependency — the webhook event shape is **framework-owned**, so
 `WebhookInboundEvent` is concrete in `core`. Only `payload` is `unknown`;
 `defineWebhookBinding<TPayload>()` narrows it as a compile-time passthrough.
 
-The host-side `WebhookProviderDefinition` lives in `server` because it carries
+The host-side `WebhookProviderDefinition` lives in `engine` because it carries
 the `verify` function:
 
 ```ts

@@ -104,13 +104,13 @@ the top-level flag, then defaults to `true`.
 
 ## Convenience helpers
 
-`@flow-state-dev/server` ships two verifier helpers hosts can compose
+`@flow-state-dev/engine` ships two verifier helpers hosts can compose
 inside their resolvers.
 
 ### HMAC signature verifier
 
 ```ts
-import { createHmacVerifier, PrincipalResolutionError } from "@flow-state-dev/server";
+import { createHmacVerifier, PrincipalResolutionError } from "@flow-state-dev/engine";
 
 const verifyStripe = createHmacVerifier({
   secret: process.env.STRIPE_WEBHOOK_SECRET!,
@@ -147,7 +147,7 @@ import {
   createHs256JwtVerifier,
   extractBearerToken,
   PrincipalResolutionError
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 
 const verifyJwt = createHs256JwtVerifier({
   secret: process.env.JWT_SECRET!,
@@ -196,7 +196,7 @@ private; one MCP-exposed, another not.
 inbound flow has no `authentication.resolvePrincipal` of its own:
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 
 const router = createFlowApiRouter({
   registry,

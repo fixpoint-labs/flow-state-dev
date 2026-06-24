@@ -23,7 +23,7 @@ import {
 import {
   createBearerSecretPrincipalResolver,
   defaultBodyUserIdPrincipalResolver,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { z } from "zod";
 import { scheduleIndex } from "@/lib/schedule-index";
 

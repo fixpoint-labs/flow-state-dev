@@ -24,7 +24,7 @@ Server:                                Client:
 └──────────────────────┘
 ```
 
-1. **Wire heartbeat.** `@flow-state-dev/server` injects `: ping\n\n` comment frames into every live and GET-attach SSE response at a configurable cadence. NAT and proxy idle timeouts stop closing the connection, and clients get a wire-level signal that the server is still alive.
+1. **Wire heartbeat.** `@flow-state-dev/engine` injects `: ping\n\n` comment frames into every live and GET-attach SSE response at a configurable cadence. NAT and proxy idle timeouts stop closing the connection, and clients get a wire-level signal that the server is still alive.
 2. **Stale-request sweeper.** A periodic in-process job that reads the active request registry. If any entry's executor heartbeat has stopped past the threshold, it marks the persisted record `interrupted` so session locks release.
 3. **Client watchdog.** `useSession` tracks the most recent SSE event or heartbeat. When the gap exceeds the configured threshold while a request is in flight, it flips `session.isStuck` so the host can render a dismiss affordance.
 4. **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot`. The client uses it during dismiss to confirm the actual server state when no SSE is connected.
@@ -34,7 +34,7 @@ Server:                                Client:
 The defaults work for typical Vercel/Next.js deployments — every knob is optional.
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 
 export const flowstate = createFlowState({
   flows: { chat: chatFlow },

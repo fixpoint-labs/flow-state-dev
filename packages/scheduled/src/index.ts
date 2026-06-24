@@ -12,7 +12,7 @@
  * (gateway → schedule.principal), idempotency dedupe, and provenance
  * stamping (`source: 'scheduled'`).
  *
- *   import { createFlowApiRouter } from "@flow-state-dev/server";
+ *   import { createFlowApiRouter } from "@flow-state-dev/engine";
  *   import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
  *
  *   const router = createFlowApiRouter({

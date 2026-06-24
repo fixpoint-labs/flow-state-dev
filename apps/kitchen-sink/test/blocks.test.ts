@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { createExecutionContext, createInMemoryStores, executeBlock } from "@flow-state-dev/server";
+import { createExecutionContext, createInMemoryStores, executeBlock } from "@flow-state-dev/engine";
 import {
   readArtifact,
   updateArtifact,

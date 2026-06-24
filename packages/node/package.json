@@ -55,7 +55,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@flow-state-dev/server": "workspace:*"
+    "@flow-state-dev/engine": "workspace:*"
   },
   "devDependencies": {
     "@flow-state-dev/core": "workspace:*",

@@ -16,7 +16,7 @@ import type { Chat, Thread, Message } from "chat";
  * can import it without a circular dependency through `adapter.ts`.
  */
 export const CHAT_TRANSPORT_SOURCE = "chat" as const;
-import type { ResolvedPrincipal } from "@flow-state-dev/server";
+import type { ResolvedPrincipal } from "@flow-state-dev/engine";
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 
 /**

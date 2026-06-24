@@ -13,7 +13,7 @@ flow-state.dev is distributed as separate packages. Install what you need:
 pnpm add @flow-state-dev/core zod
 
 # Server — action runtime, stores, SSE streaming
-pnpm add @flow-state-dev/server
+pnpm add @flow-state-dev/engine
 
 # Client — HTTP/SSE transport (no React dependency)
 pnpm add @flow-state-dev/client
@@ -33,11 +33,11 @@ pnpm add -D @flow-state-dev/cli
 | Use case | Packages |
 |----------|----------|
 | Define flows only (shared library) | `core` |
-| Server-side execution | `core` + `server` |
+| Server-side execution | `core` + `engine` |
 | Client-side consumption | `core` + `client` |
-| Full-stack React app | `core` + `server` + `react` |
+| Full-stack React app | `core` + `engine` + `react` |
 | Testing | `core` + `testing` |
-| CLI development workflow | `core` + `server` + `cli` |
+| CLI development workflow | `core` + `engine` + `cli` |
 
 The `react` package depends on `client` internally — you don't need to install `client` separately when using `react`.
 
@@ -58,7 +58,7 @@ flow-state.dev is written in TypeScript and ships type definitions. For best res
 Describe the runtime once with `createFlowState`. You pass it your flows, a model config, and where to store state. Keep this in its own file so a route handler (and your tests) can import it.
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import myFlow from "@/flows/my-flow/flow";
 
 export const flowstate = createFlowState({

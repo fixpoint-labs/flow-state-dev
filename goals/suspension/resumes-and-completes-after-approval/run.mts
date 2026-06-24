@@ -46,7 +46,7 @@ const fixture = JSON.parse(
 // `@flow-state-dev/*` (kitchen-sink node_modules) both resolve. It performs the
 // real dispatch → approve → resume round trip and prints one JSON verdict line.
 const driver = `
-import { runAction } from "@flow-state-dev/server";
+import { runAction } from "@flow-state-dev/engine";
 import { flowstate } from "./lib/flowstate";
 
 const request = process.env.KS_GOAL_REQUEST;

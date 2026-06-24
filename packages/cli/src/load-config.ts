@@ -19,7 +19,7 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { isFlowState, type FlowState } from "@flow-state-dev/server";
+import { isFlowState, type FlowState } from "@flow-state-dev/engine";
 import { CliError } from "./resolve-block";
 import { EXIT_CONFIG_ERROR } from "./exit-codes";
 

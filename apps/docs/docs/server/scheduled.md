@@ -35,7 +35,7 @@ The scheduled adapter is just another entry in `adapters` on
 [`createFlowState`](./setup.md), the canonical setup entrypoint:
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 
 export const flowstate = createFlowState({
@@ -241,10 +241,10 @@ The dispatch endpoint goes through `host.resolvePrincipal` like every
 other inbound route. The canonical pattern is a shared bearer secret
 between the host scheduler and the dispatch endpoint.
 `createBearerSecretPrincipalResolver`, exported from
-`@flow-state-dev/server`, does the constant-time comparison.
+`@flow-state-dev/engine`, does the constant-time comparison.
 
 ```ts
-import { createBearerSecretPrincipalResolver } from "@flow-state-dev/server";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
 
 defineFlow({
   kind: "billing",

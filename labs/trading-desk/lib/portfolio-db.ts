@@ -21,7 +21,7 @@
  */
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import type { StoreAdapter } from "@flow-state-dev/server";
+import type { StoreAdapter } from "@flow-state-dev/engine";
 import {
   createPostgresStores,
   type PostgresStoreOptions,

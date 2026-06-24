@@ -13,7 +13,7 @@ pnpm add @flow-state-dev/mcp
 ## Usage
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";

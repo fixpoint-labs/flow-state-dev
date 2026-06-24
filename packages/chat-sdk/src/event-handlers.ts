@@ -10,8 +10,8 @@
  * to enabled and can be set to `false` to skip the registration.
  */
 import type { Chat, Thread, Message } from "chat";
-import type { InboundTransportHost } from "@flow-state-dev/server";
-import { PrincipalResolutionError } from "@flow-state-dev/server";
+import type { InboundTransportHost } from "@flow-state-dev/engine";
+import { PrincipalResolutionError } from "@flow-state-dev/engine";
 import {
   CHAT_TRANSPORT_SOURCE,
   type ChatAdapterOptions,

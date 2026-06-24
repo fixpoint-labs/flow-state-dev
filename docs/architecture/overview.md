@@ -41,7 +41,7 @@ Six packages with strict dependency boundaries:
 ```
 @flow-state-dev/contracts  Zero-dependency shared layer (item taxonomy + leaf types)
 @flow-state-dev/core       Isomorphic builders, type contracts, item taxonomy
-@flow-state-dev/server     Execution runtime, stores, SSE streaming, HTTP routes
+@flow-state-dev/engine     Execution runtime, stores, SSE streaming, HTTP routes
 @flow-state-dev/client     Isomorphic API client (actions, sessions, streams)
 @flow-state-dev/react      React hooks and renderers (wraps client)
 @flow-state-dev/testing    Test harnesses and mocks
@@ -54,7 +54,7 @@ apps/devtool               First-party inspector app
 ```
 core ─────────────────────────────────┐
   ↑                                   │
-  ├── server                          │
+  ├── engine                          │
   │     ↑                             │
   │     ├── testing                   │
   │     └── cli ─── testing           │
@@ -69,10 +69,10 @@ core ─────────────────────────
 
 **Boundary rules (locked):**
 - `contracts` imports no workspace package and declares no dependencies — it is the zero-dependency layer the item taxonomy, its pure helpers, and the leaf types live in. `core` re-exports every symbol from its original path, so consumers importing them from `@flow-state-dev/core` are unaffected. Browser code (`client`, `react`) value-imports the canonical helpers from `contracts` instead of hand-mirroring them; `core` stays type-only for those packages.
-- `server` never depends on `react` or `client` — server knows nothing about transport consumers
-- `client` never depends on `server` or `react` — works in any JavaScript environment
+- `engine` never depends on `react` or `client` — the execution engine knows nothing about transport consumers
+- `client` never depends on `engine` or `react` — works in any JavaScript environment
 - `react` has no transport logic — it wraps `client` with hooks and renderers
-- `cli` uses `server` + `testing`, never `react` or `client`
+- `cli` uses `engine` + `testing`, never `react` or `client`
 - `apps/devtool` uses only public APIs from `client` and `react`
 
 ## Core abstractions

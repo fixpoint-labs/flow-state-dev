@@ -12,7 +12,7 @@ import type {
   FlowDispatchHandle,
   DispatchEnvelope,
   StreamBridge,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { toJobOptions } from "./retry";
 import type { RetryConfig } from "./types";
 

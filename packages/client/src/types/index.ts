@@ -460,7 +460,7 @@ export type RequestSSECallbacks = {
 /**
  * Per-entry projection result on the privileged debug surface — the same
  * shape `client.data` would have emitted (or a typed reason it didn't). See
- * `@flow-state-dev/server` `debug-snapshot.ts` for the server-side producer.
+ * `@flow-state-dev/engine` `debug-snapshot.ts` for the server-side producer.
  */
 export type DebugClientView =
   | { ok: true; value: unknown }

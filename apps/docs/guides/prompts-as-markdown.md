@@ -61,7 +61,7 @@ Load the file and spread it into the generator. `definePromptFile` fills the `pr
 ```ts
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
-import { loadPromptFile } from "@flow-state-dev/core/prompt-file/node";
+import { loadPromptFile } from "@flow-state-dev/engine/prompt-file";
 
 const pf = loadPromptFile("./fundamentals.prompt.md", import.meta.url);
 
@@ -119,7 +119,7 @@ import {
   createPromptLoader,
   moduleDir,
   resolveBaseDir,
-} from "@flow-state-dev/core/prompt-file/node";
+} from "@flow-state-dev/engine/prompt-file";
 
 const APP_ROOT = resolveBaseDir(
   [moduleDir(import.meta.url, "../../../.."), process.cwd()],

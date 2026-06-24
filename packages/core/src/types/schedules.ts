@@ -22,7 +22,7 @@ import type { ActionCore } from "./flow";
 /**
  * Subset of `StoreRegistry` exposed to dynamic resolvers. Defined
  * structurally in core so `defineFlow` can reference the resolver shape
- * without depending on `@flow-state-dev/server` (which owns the full
+ * without depending on `@flow-state-dev/engine` (which owns the full
  * `StoreRegistry` type). Resolvers receive the host's full `StoreRegistry`
  * at runtime — this type only narrows what the contract guarantees.
  */

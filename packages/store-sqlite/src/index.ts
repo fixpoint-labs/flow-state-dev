@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import type { StoreAdapter, StoreRegistry } from "@flow-state-dev/server";
+import type { StoreAdapter, StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteContentStore } from "./content-store";
 import { createSQLiteResourceStateStore } from "./resource-state-store";
 import { applyConnectionPragmas, initializeSchemaDDL } from "./schema";
@@ -16,7 +16,7 @@ import { createSQLiteTraceStore, type SQLiteTraceStoreOptions } from "./trace-st
 import { createSQLiteSuspensionStore } from "./suspension-store";
 import { createSQLiteLeaseStore } from "./lease-store";
 
-// Inlined to avoid a value import from `@flow-state-dev/server` — the
+// Inlined to avoid a value import from `@flow-state-dev/engine` — the
 // store-sqlite package boundary forbids value imports from server, and the
 // shared helper in server is the same three lines. Drift risk is low: the
 // constants are documented in the trace-channel reference doc.

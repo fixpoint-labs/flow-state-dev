@@ -26,7 +26,7 @@ import {
   runAction,
   abortRequest,
   createInMemoryStores
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 

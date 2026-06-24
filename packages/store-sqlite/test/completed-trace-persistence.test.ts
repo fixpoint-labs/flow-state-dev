@@ -14,8 +14,8 @@
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import { createCheckpointDurabilityProvider, runAction } from "@flow-state-dev/server";
-import type { DurabilityProvider, StoreRegistry } from "@flow-state-dev/server";
+import { createCheckpointDurabilityProvider, runAction } from "@flow-state-dev/engine";
+import type { DurabilityProvider, StoreRegistry } from "@flow-state-dev/engine";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

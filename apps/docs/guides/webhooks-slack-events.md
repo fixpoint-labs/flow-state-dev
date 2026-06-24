@@ -43,11 +43,11 @@ routing proceeds.
 ## 2. The host verifies and answers the handshake
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import {
   createWebhookTransportAdapter,
   slackWebhookVerifier,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { slackFlow } from "@/flows/slack";
 
 interface SlackEnvelope {

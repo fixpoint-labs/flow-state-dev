@@ -9,7 +9,7 @@
  * `flow.webhooks`, and never in `flow.actions` — so it is event-addressed
  * (selected by the provider's event type) and transport-authenticated (by the
  * signature check), not caller-addressed like an HTTP/MCP action. The
- * `@flow-state-dev/server` webhook adapter discovers these declarations by
+ * `@flow-state-dev/engine` webhook adapter discovers these declarations by
  * reading the flow registry at request time (the flowKind is carried in the
  * URL) and dispatches the matching event to its handler.
  *
@@ -18,7 +18,7 @@
  * secrets. Signature verification and payload mechanics (how to read a
  * provider's event type, delivery id, and handshake) are supplied by the
  * *host* at adapter mount, keyed by the same provider name. See
- * `WebhookProviderDefinition` in `@flow-state-dev/server`. Verification needs
+ * `WebhookProviderDefinition` in `@flow-state-dev/engine`. Verification needs
  * Node `crypto`, which is not isomorphic, so it cannot live in this package;
  * the routing declaration here stays browser-safe.
  *

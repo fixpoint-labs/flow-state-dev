@@ -22,7 +22,7 @@ import {
   defaultBodyUserIdPrincipalResolver,
   createWebhookTransportAdapter,
   stripeWebhookVerifier,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 
 const fixture = JSON.parse(process.env.GOAL_FIXTURE ?? "{}") as {
   invoiceId: string;

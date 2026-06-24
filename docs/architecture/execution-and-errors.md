@@ -88,7 +88,7 @@ type FlowError = Error & {
 
 Non-Error thrown values are automatically normalized to `FlowError`.
 
-`FlowError` lives in `@flow-state-dev/core` so author code in third-party packages can throw it without depending on `@flow-state-dev/server`. Server's typed subclasses extend the core base; `instanceof FlowError` checks across server code continue to work unchanged.
+`FlowError` lives in `@flow-state-dev/core` so author code in third-party packages can throw it without depending on `@flow-state-dev/engine`. Server's typed subclasses extend the core base; `instanceof FlowError` checks across server code continue to work unchanged.
 
 At failure-phase trace emission, the runtime forwards `FlowError.details` into `block_trace.error.details` (and the parallel `tool_output.error.details`) verbatim. `OutputValidationError` populates `details` with `{ rawOutput, issues, phase }`; author-thrown details flow through unmodified.
 
@@ -151,7 +151,7 @@ The rescued bit is a transient flag on each block's sibling-result entry, never 
 
 The write → stamp → read chain:
 1. **Write** — when a `.rescue()` handler recovers an error, `ctx._didRescue = true` is set on the rescued block's scoped context before the recovered value is returned. For chain-level rescue this happens in `runSequencerOperations`' catch; for block-level rescue it happens in `executeBlock`'s catch (both `packages/core/src/blocks/sequencer.ts`, via the shared `runRescue` helper).
-2. **Stamp** — after the child returns, `_withExecutionScope`'s success branch copies `_didRescue` onto that block's `SiblingRegistryEntry.result.rescued` (`packages/server/src/context/createExecutionContext.ts`).
+2. **Stamp** — after the child returns, `_withExecutionScope`'s success branch copies `_didRescue` onto that block's `SiblingRegistryEntry.result.rescued` (`packages/engine/src/context/createExecutionContext.ts`).
 3. **Read** — `ctx.wasRescued(target)` resolves `target` by name and returns `result.rescued === true` for the most-recent matching sibling, mirroring `getBlockResult`'s search. Returns `false` for a clean run, a never-dispatched step, an unknown name, or a call outside a sequencer; never throws.
 
 This replaced an earlier `{ __rescued: true }` sentinel value that `routedSpecialists` smuggled through the pipeline to signal recovery.
@@ -284,7 +284,7 @@ The full request execution sequence:
 
 ## Canonical Authority
 
-This document is authoritative for execution and error semantics. For full type signatures, refer to the published types in `@flow-state-dev/core` and `@flow-state-dev/server`.
+This document is authoritative for execution and error semantics. For full type signatures, refer to the published types in `@flow-state-dev/core` and `@flow-state-dev/engine`.
 
 
 ### Token budget enforcement

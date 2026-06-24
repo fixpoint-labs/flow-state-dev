@@ -95,7 +95,7 @@ The server resolves the path relative to the declaring module first and falls ba
 If you need to pre-parse the template at module level (e.g. for validation or to inspect its metadata), use `loadResourceTemplate` instead of a string:
 
 ```ts
-import { loadResourceTemplate } from "@flow-state-dev/core/resource-template/node";
+import { loadResourceTemplate } from "@flow-state-dev/engine/resource-template";
 
 const reportTemplate = loadResourceTemplate("./report.prompt.md", import.meta.url);
 

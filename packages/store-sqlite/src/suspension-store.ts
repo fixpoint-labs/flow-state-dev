@@ -17,7 +17,7 @@ import {
   type SuspensionFilter,
   type SuspensionRecord
 } from "@flow-state-dev/core/types";
-import type { SuspensionStore } from "@flow-state-dev/server";
+import type { SuspensionStore } from "@flow-state-dev/engine";
 
 export function createSQLiteSuspensionStore(db: Database.Database): SuspensionStore {
   const upsertStmt = db.prepare(

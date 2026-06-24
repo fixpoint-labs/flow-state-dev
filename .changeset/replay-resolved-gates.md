@@ -1,6 +1,6 @@
 ---
 "@flow-state-dev/core": patch
-"@flow-state-dev/server": patch
+"@flow-state-dev/engine": patch
 ---
 
 Multi-gate durable sequencers now resume correctly across a process restart.

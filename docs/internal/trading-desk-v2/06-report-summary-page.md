@@ -58,7 +58,7 @@ const { items } = useResourceCollectionList(session, "memos", { limit: 50 });
 // topic is the bare collection key, e.g. "p1/fundamentals", "p5/portfolio-manager"
 ```
 
-**Verified:** server `STATE_LIST_DEFAULT_LIMIT = 50`, `STATE_LIST_MAX_LIMIT = 200` (`packages/server/src/routes/resource-routes.ts`). There are ~20 memos, so a single `limit: 50` page returns all of them — no pagination loop needed. `item.clientData` is the projected/full memo state; cast it to `MemoState` (the collection ships full state, so the cast is sound; treat fields as nullable).
+**Verified:** server `STATE_LIST_DEFAULT_LIMIT = 50`, `STATE_LIST_MAX_LIMIT = 200` (`packages/engine/src/routes/resource-routes.ts`). There are ~20 memos, so a single `limit: 50` page returns all of them — no pagination loop needed. `item.clientData` is the projected/full memo state; cast it to `MemoState` (the collection ships full state, so the cast is sound; treat fields as nullable).
 
 Per-memo fields the Summary uses (all on `memoStateSchema`, all nullable until published):
 

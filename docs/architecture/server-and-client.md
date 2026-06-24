@@ -4,7 +4,7 @@ This document covers how the server, client, and React packages work together to
 
 ## Package Responsibilities
 
-### `@flow-state-dev/server`
+### `@flow-state-dev/engine`
 
 Server-side runtime. Handles:
 - Flow registration and discovery
@@ -38,7 +38,7 @@ React UI layer. Handles:
 ### Flow Registration
 
 ```ts
-import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/engine";
 import flow from "./flows/hello-chat/flow";
 
 const registry = createFlowRegistry();
@@ -51,7 +51,7 @@ const router = createFlowApiRouter({ registry });
 
 ```ts
 // app/api/flows/[...path]/route.ts
-import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/engine";
 
 const registry = createFlowRegistry();
 // Register flows...
@@ -88,7 +88,7 @@ custom) mount alongside it via the `adapters` option — see
 ### Custom Model Resolution
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 import { createModelResolver } from "@flow-state-dev/core/models";
 
 const router = createFlowApiRouter({
@@ -100,7 +100,7 @@ const router = createFlowApiRouter({
 ### Store Configuration
 
 ```ts
-import { createFlowApiRouter, createFilesystemStores, createInMemoryStores } from "@flow-state-dev/server";
+import { createFlowApiRouter, createFilesystemStores, createInMemoryStores } from "@flow-state-dev/engine";
 
 // Production: filesystem (default)
 const router = createFlowApiRouter({ registry });
@@ -313,4 +313,4 @@ Client                        Server
 
 ## Canonical Authority
 
-This document is authoritative for server and client contracts. For full type signatures, store interfaces, and rendering contracts, refer to the published types in `@flow-state-dev/server`, `@flow-state-dev/client`, and `@flow-state-dev/react`.
+This document is authoritative for server and client contracts. For full type signatures, store interfaces, and rendering contracts, refer to the published types in `@flow-state-dev/engine`, `@flow-state-dev/client`, and `@flow-state-dev/react`.

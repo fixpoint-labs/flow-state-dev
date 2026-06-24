@@ -392,7 +392,7 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
   });
 
   it("PrincipalResolutionError surfaces as 401 with -32001 and WWW-Authenticate", async () => {
-    const { PrincipalResolutionError } = await import("@flow-state-dev/server");
+    const { PrincipalResolutionError } = await import("@flow-state-dev/engine");
     const adapter = createMcpTransportAdapter();
     const host = withFlow(
       createMockTransportHost({

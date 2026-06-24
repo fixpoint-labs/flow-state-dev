@@ -74,7 +74,7 @@ Never commit API keys. Use your platform's secrets management: `.env.local` for 
 All deployments start the same way: describe the runtime with `createFlowState`, naming your flows, models, and stores.
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import myFlow from "./flows/my-flow/flow";
 
 export const flowstate = createFlowState({

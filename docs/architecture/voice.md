@@ -36,7 +36,7 @@ Voice synthesis and transcription are owned by a `VoiceProvider` implementation,
 A single `VoiceProvider` instance owns both directions of voice. Pass it once; the router uses it for synthesis and the transcribe endpoint alike.
 
 ```typescript
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
+import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 
 const registry = createFlowRegistry();

@@ -31,7 +31,7 @@ import {
   type RequestStore,
   type SetResult,
   type SubscribeToEventsOptions
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import type { Pool, PoolClient } from "pg";
 import type { QueryExecutor } from "./types";
 import { createPgRecordStore } from "./pg-store";

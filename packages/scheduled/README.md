@@ -1,6 +1,6 @@
 # @flow-state-dev/scheduled
 
-Scheduled-actions transport adapter for `@flow-state-dev/server`.
+Scheduled-actions transport adapter for `@flow-state-dev/engine`.
 
 Mounts a single dispatch endpoint per flow:
 
@@ -22,7 +22,7 @@ pnpm add @flow-state-dev/scheduled
 ## Mount the adapter
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 
 const router = createFlowApiRouter({
@@ -36,7 +36,7 @@ const router = createFlowApiRouter({
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { createBearerSecretPrincipalResolver } from "@flow-state-dev/server";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
 
 export const billing = defineFlow({
   kind: "billing",

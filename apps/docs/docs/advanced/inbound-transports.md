@@ -25,7 +25,7 @@ runtime; the transport owns its protocol.
 ## What an adapter looks like
 
 ```ts
-import type { InboundTransportAdapter } from "@flow-state-dev/server";
+import type { InboundTransportAdapter } from "@flow-state-dev/engine";
 
 export function createEchoAdapter(): InboundTransportAdapter {
   return {
@@ -141,7 +141,7 @@ right user.
 
 ### Webhook adapter shape
 
-`createWebhookTransportAdapter` (in `@flow-state-dev/server`, next to the
+`createWebhookTransportAdapter` (in `@flow-state-dev/engine`, next to the
 HTTP adapter) mounts one parameterized route,
 `POST /api/flows/:flowKind/webhooks/:provider`, and dispatches verified
 inbound webhooks — Stripe, GitHub, Slack Events, any signed service POST —

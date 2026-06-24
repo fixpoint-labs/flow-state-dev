@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
-    "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/skills": "workspace:*",

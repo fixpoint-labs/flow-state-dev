@@ -5,7 +5,7 @@
 import type {
   ActiveRequestEntry,
   ActiveRequestRegistry
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { SCHEDULED_TRANSPORT_SOURCE } from "./createScheduledTransportAdapter";
 
 export async function findScheduledRequest(

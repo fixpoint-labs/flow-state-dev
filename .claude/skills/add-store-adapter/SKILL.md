@@ -4,7 +4,7 @@ description: Create a new persistence store adapter package implementing all Sto
 argument-hint: "<database name, e.g. 'mongodb' or 'dynamodb'>"
 ---
 
-You are a development agent creating a new persistence store adapter for the flow-state-dev framework. Store adapters implement the `StoreRegistry` interface from `@flow-state-dev/server` and ship as independent packages to isolate database-specific dependencies.
+You are a development agent creating a new persistence store adapter for the flow-state-dev framework. Store adapters implement the `StoreRegistry` interface from `@flow-state-dev/engine` and ship as independent packages to isolate database-specific dependencies.
 
 ## Core Principle
 
@@ -39,7 +39,7 @@ Key patterns in the Postgres adapter worth noting:
 - **QueryExecutor abstraction**: A minimal `{ query(text, values?) }` interface that both `pg.Pool` and `@electric-sql/pglite` satisfy. This lets tests run against an embedded PGlite instance with zero external infrastructure.
 
 Also read the store interfaces:
-- `packages/server/src/stores/types.ts` — `StoreRegistry`, `SessionStore`, `RequestStore`, `UserStore`, `ProjectStore`, `ActiveRequestRegistry`, `ContentStore`
+- `packages/engine/src/stores/types.ts` — `StoreRegistry`, `SessionStore`, `RequestStore`, `UserStore`, `ProjectStore`, `ActiveRequestRegistry`, `ContentStore`
 
 ### Step 2: Create the Package
 
@@ -86,17 +86,17 @@ packages/store-<name>/
     "access": "public"
   },
   "dependencies": {
-    "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
     "<db-driver>": "^<version>"
   },
   "devDependencies": {
     "@types/node": "^22.0.0"
   },
   "scripts": {
-    "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && tsc -p tsconfig.json",
-    "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && node ../../scripts/typecheck.mjs",
-    "test": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && vitest run --root .",
-    "test:watch": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && vitest --root ."
+    "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/engine build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/engine build && node ../../scripts/typecheck.mjs",
+    "test": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/engine build && vitest run --root .",
+    "test:watch": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/engine build && vitest --root ."
   }
 }
 ```
@@ -106,7 +106,7 @@ packages/store-<name>/
 The main export is a factory function that returns a typed `StoreRegistry`:
 
 ```typescript
-import type { StoreRegistry } from "@flow-state-dev/server";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 
 export type <Name>StoreOptions = {
   /** Connection string or config */
@@ -152,7 +152,7 @@ export { initializeSchema } from "./schema";
 
 ### Step 5: Implement the 6 Store Interfaces
 
-Each store must implement its interface from `@flow-state-dev/server`:
+Each store must implement its interface from `@flow-state-dev/engine`:
 
 #### SessionStore
 - `get(id)` — fetch by session ID

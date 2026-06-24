@@ -94,7 +94,7 @@ The debug response lists every alias for each storage key. The panel shows them 
 The endpoint is off by default. Three ways to turn it on:
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 
 const router = createFlowApiRouter({
   registry,

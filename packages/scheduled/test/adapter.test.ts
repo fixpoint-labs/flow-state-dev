@@ -8,7 +8,7 @@ import {
 import {
   PrincipalResolutionError,
   type ActiveRequestRegistry
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import {
   createScheduledTransportAdapter,
   SCHEDULED_TRANSPORT_SOURCE

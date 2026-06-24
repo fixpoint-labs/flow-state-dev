@@ -72,11 +72,11 @@ by the `stripe` provider name. Stripe carries the event type in the body
 (`payload.type`) and a stable delivery id (`payload.id`).
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import {
   createWebhookTransportAdapter,
   stripeWebhookVerifier,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { billingFlow } from "@/flows/billing";
 
 export const flowstate = createFlowState({

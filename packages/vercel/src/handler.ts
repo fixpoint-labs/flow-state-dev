@@ -4,7 +4,7 @@
  * Wraps a `FlowApiRouter` (from `createFlowApiRouter`) into Next.js App Router
  * handlers with Vercel-specific SSE response shaping and runtime configuration.
  *
- * SSE heartbeats are emitted by `@flow-state-dev/server` for every live and
+ * SSE heartbeats are emitted by `@flow-state-dev/engine` for every live and
  * GET-attach stream — this adapter no longer injects them itself.
  */
 import type {
@@ -78,7 +78,7 @@ function createHandlerCore(
  *
  * Handles the Next.js 15 async params contract and injects Vercel-specific
  * SSE headers to prevent proxy buffering. SSE heartbeats are emitted by
- * `@flow-state-dev/server` for every live and GET-attach stream.
+ * `@flow-state-dev/engine` for every live and GET-attach stream.
  *
  * ```ts
  * // app/api/fsd/[...path]/route.ts

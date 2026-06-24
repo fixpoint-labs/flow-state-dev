@@ -52,7 +52,7 @@ Server-side execution extends this with `ExecutionMetadata` and the full `Execut
 ### Global (server startup)
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 
 const router = createFlowApiRouter({
   flows: [myFlow],
@@ -173,10 +173,10 @@ Within each layer, middleware runs in array order (first element is outermost).
 | Artifact | Package |
 |----------|---------|
 | `Middleware`, `MiddlewareFn`, `MiddlewareContext` types | `@flow-state-dev/core` |
-| `composeMiddleware()`, `mergeMiddlewareStacks()` | `@flow-state-dev/server` |
+| `composeMiddleware()`, `mergeMiddlewareStacks()` | `@flow-state-dev/engine` |
 
 The types live in core so middleware definitions don't need a server dependency. Composition and execution are server-only.
 
 ## Canonical Authority
 
-For full type signatures and composition logic, see `packages/core/src/types/middleware.ts` and `packages/server/src/middleware/compose.ts`.
+For full type signatures and composition logic, see `packages/core/src/types/middleware.ts` and `packages/engine/src/middleware/compose.ts`.

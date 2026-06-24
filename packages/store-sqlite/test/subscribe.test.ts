@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { createSQLiteRequestStore } from "../src/request-store";
 import { initializeSchemaDDL, applyConnectionPragmas } from "../src/schema";
-import { createRequestStoreConformanceTests } from "@flow-state-dev/server/testing";
+import { createRequestStoreConformanceTests } from "@flow-state-dev/engine/testing";
 
 const POLL_INTERVAL_MS = 25;
 

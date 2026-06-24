@@ -12,7 +12,7 @@ import {
   createFlowRegistry,
   createInMemoryStores,
   disposeFlowApiRouter
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { createScheduledTransportAdapter } from "../src";
 
 const SECRET = "scheduler-secret-do-not-share";

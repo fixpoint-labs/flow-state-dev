@@ -6,7 +6,7 @@
  */
 
 /**
- * The router shape returned by `createFlowApiRouter` from `@flow-state-dev/server`.
+ * The router shape returned by `createFlowApiRouter` from `@flow-state-dev/engine`.
  * Each method handles a Next.js catch-all route segment.
  */
 export type FlowApiRouter = {
@@ -30,7 +30,7 @@ export type VercelHandlerInput =
  */
 export type VercelHandlerOptions = {
   /**
-   * @deprecated SSE heartbeats are now emitted by `@flow-state-dev/server`
+   * @deprecated SSE heartbeats are now emitted by `@flow-state-dev/engine`
    * for every live and GET-attach stream. Configure the cadence via
    * `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow
    * `defineFlow({ request: { sseHeartbeatMs } })`. This option is ignored.

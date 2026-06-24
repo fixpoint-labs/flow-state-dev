@@ -47,7 +47,7 @@ a passthrough cast at runtime.
 
 Because the handler lives off `flow.actions`, the runtime resolves it from
 `flow.chat.on[eventKey]` via the `metadata.chat.eventKey` coordinate the
-adapter stamps (see `resolveActionCore` in `server`). The dispatched request
+adapter stamps (see `resolveActionCore` in `engine`). The dispatched request
 records the handler block's `name` as its action, for provenance only.
 
 Each `on` key is matched against `ChatInboundEvent.kind` by exact string

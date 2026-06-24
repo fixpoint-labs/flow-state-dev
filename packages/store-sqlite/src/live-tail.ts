@@ -18,12 +18,12 @@
  *
  * Per-subscriber delivery is bounded: a slow SSE consumer fails alone rather
  * than growing memory unbounded for everyone on the request. The package keeps
- * a TYPE-ONLY dependency on `@flow-state-dev/server` (enforced by
+ * a TYPE-ONLY dependency on `@flow-state-dev/engine` (enforced by
  * `scripts/validate-package-boundaries.mjs`), so the overflow surfaces as a
  * plain `Error` rather than the server's `StoreSubscriptionError` value.
  */
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { SubscribeToEventsOptions } from "@flow-state-dev/server";
+import type { SubscribeToEventsOptions } from "@flow-state-dev/engine";
 
 /** Default subscription poll interval (ms). */
 export const DEFAULT_POLL_INTERVAL_MS = 100;

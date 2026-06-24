@@ -165,7 +165,7 @@ Default retry budget: **3 retries** with exponential backoff (10ms, 20ms, 40ms).
 When retries exhaust, the helper throws `ConcurrentModificationError`:
 
 ```ts
-import { ConcurrentModificationError } from "@flow-state-dev/server";
+import { ConcurrentModificationError } from "@flow-state-dev/engine";
 
 try {
   await ctx.session.patchState({ mode: "agent" });

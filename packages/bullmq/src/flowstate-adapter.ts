@@ -13,7 +13,7 @@ import type {
   FlowStateRuntime,
   WorkerAdapter,
   WorkerMode,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { createBullmqRuntime, type BullmqRuntime } from "./runtime";
 import { createRedisStreamBridge } from "./stream-bridge";
 import { createWorkerDispatcher } from "./dispatcher";
