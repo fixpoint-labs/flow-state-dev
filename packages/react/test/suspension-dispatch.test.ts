@@ -69,6 +69,15 @@ describe("ItemRenderer suspension dispatch", () => {
     expect(getByText("Reject")).not.toBeNull();
   });
 
+  it("renders the approval card for a legacy human_input with no allow set", () => {
+    // A human_input gate persisted before `allow` existed has no submit path
+    // (the route treats missing allow as binary), so it must render approve/reject
+    // rather than a submit-only card the server would 409.
+    const { getByText, container } = renderItem(suspension({ reason: "human_input", allow: undefined }));
+    expect(getByText("Approve")).not.toBeNull();
+    expect(container.querySelector('[data-suspension-input="question"]')).toBeNull();
+  });
+
   it("prefers a registered render.component over the reason default", () => {
     const Custom = () => createElement("div", { "data-testid": "custom-widget" }, "custom");
     const { getByTestId } = renderItem(

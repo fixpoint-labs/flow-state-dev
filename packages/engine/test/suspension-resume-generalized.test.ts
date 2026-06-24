@@ -389,6 +389,27 @@ describe("resume route — allow enforcement & payload validation", () => {
     expect((await provider.loadSuspension(requestId, "sus_1"))?.status).toBe("approved");
   });
 
+  it("enforces expiry before payload validation (expired + invalid → 410)", async () => {
+    // An expired gate must be marked expired even when the client sends an
+    // invalid payload — the expiry check runs before the allow/validation guards,
+    // so the gate can't be held pending indefinitely by bad submissions.
+    const { stores, provider } = createDurableStores();
+    const requestId = await seedSuspended(stores, provider, {
+      allow: ["submit"],
+      resumeSchema: { type: "object", properties: { age: { type: "number" } }, required: ["age"] },
+      expiresAt: 1
+    });
+
+    const res = await handleResumeSuspension(
+      resumeRequest(requestId, { suspensionId: "sus_1", action: "submit", data: { age: "nope" } }),
+      { kind: "resume_suspension", flowKind: "gen", requestId },
+      ctxFor(stores, provider)
+    );
+
+    expect(res.status).toBe(410);
+    expect((await provider.loadSuspension(requestId, "sus_1"))?.status).toBe("expired");
+  });
+
   it("rejects an unknown action with 400", async () => {
     const { stores, provider } = createDurableStores();
     const requestId = await seedSuspended(stores, provider, { allow: ["submit"] });

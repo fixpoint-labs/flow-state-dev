@@ -117,17 +117,27 @@ export function analyzeResumeSchema(
 export type SuspensionShape = "approval" | "question" | "selection" | "form";
 
 /**
- * Pick the default card shape for a suspension from its `reason` and
+ * Pick the default card shape for a suspension from its `reason`, `allow`, and
  * `resumeSchema`. Shared by the built-in `ItemRenderer` dispatch and the polished
- * UI dispatcher so the two surfaces never diverge: `human_approval` → approval;
- * `human_input` → form (flat object) / selection (enum) / question (everything
- * else, including a schema richer than the bounded set). Pure — no hooks.
+ * UI dispatcher so the two surfaces never diverge:
+ *  - `human_approval` → approval.
+ *  - `human_input` whose permitted actions don't include `submit` → approval.
+ *    This covers a legacy record persisted before `allow` existed (the resume
+ *    route treats a missing `allow` as binary approve/reject) and an explicitly
+ *    binary `human_input` gate — rendering a submit-only card for either would
+ *    show a button the server 409s.
+ *  - otherwise `human_input` → form (flat object) / selection (enum) / question
+ *    (everything else, including a schema richer than the bounded set).
+ * Pure — no hooks.
  */
 export function suspensionShape(item: {
   reason: string;
   resumeSchema?: Record<string, unknown>;
+  allow?: ResumeAction[];
 }): SuspensionShape {
   if (item.reason !== "human_input") return "approval";
+  // No submit path → render the binary approval card so the gate stays resolvable.
+  if (item.allow === undefined || !item.allow.includes("submit")) return "approval";
   const analysis = analyzeResumeSchema(item.resumeSchema);
   if (analysis !== null && analysis.kind === "object") return "form";
   if (analysis !== null && (analysis.kind === "enum" || analysis.kind === "enum-multi")) {
@@ -325,7 +335,13 @@ export function useSuspensionForm(
       const payload: Record<string, unknown> = {};
       for (const field of analysis.fields) {
         const coerced = coerceForKind(field.kind, obj[field.key]);
-        if (coerced !== undefined) payload[field.key] = coerced;
+        // Omit blank optional values (a left-empty text/enum field), not just
+        // `undefined` — sending `""` would be validated against the property's
+        // schema (e.g. an optional enum or `minLength`) and rejected, blocking
+        // submit on a field the author marked optional. A required-but-empty
+        // field never reaches here: `canSubmit` is false. `false`/`0` are not
+        // empty, so unchecked booleans and zeroes are preserved.
+        if (coerced !== undefined && !isEmpty(coerced)) payload[field.key] = coerced;
       }
       return payload;
     }

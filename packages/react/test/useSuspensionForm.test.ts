@@ -13,6 +13,7 @@ import { renderHook, act, cleanup } from "@testing-library/react";
 import type { ItemProvenance, SuspensionItem } from "@flow-state-dev/core/items";
 import {
   analyzeResumeSchema,
+  suspensionShape,
   useSuspensionForm,
   FlowProvider,
   SuspensionResolverProvider,
@@ -92,6 +93,30 @@ describe("analyzeResumeSchema", () => {
   });
 });
 
+describe("suspensionShape", () => {
+  it("routes human_input to a card by schema shape when submit is allowed", () => {
+    expect(suspensionShape({ reason: "human_input", allow: ["submit"] })).toBe("question");
+    expect(
+      suspensionShape({ reason: "human_input", allow: ["submit"], resumeSchema: { type: "string", enum: ["a"] } })
+    ).toBe("selection");
+    expect(
+      suspensionShape({
+        reason: "human_input",
+        allow: ["submit"],
+        resumeSchema: { type: "object", properties: { a: { type: "string" } } }
+      })
+    ).toBe("form");
+  });
+
+  it("falls back to the approval card for human_approval and for binary/legacy human_input", () => {
+    expect(suspensionShape({ reason: "human_approval", allow: ["approve", "reject"] })).toBe("approval");
+    // Legacy human_input with no allow (route treats as binary) → approval.
+    expect(suspensionShape({ reason: "human_input" })).toBe("approval");
+    // Explicitly binary human_input (no submit path) → approval, not a submit card.
+    expect(suspensionShape({ reason: "human_input", allow: ["approve", "reject"] })).toBe("approval");
+  });
+});
+
 describe("useSuspensionForm", () => {
   it("gates canSubmit on required-field validation and submits the coerced payload", async () => {
     const resolve = vi.fn<SuspensionResolver>().mockResolvedValue(undefined);
@@ -152,6 +177,33 @@ describe("useSuspensionForm", () => {
       wrapper: wrapperWith(resolve2)
     });
     expect(r2.current.canSkip).toBe(false);
+  });
+
+  it("omits blank optional fields from the submit payload", async () => {
+    const resolve = vi.fn<SuspensionResolver>().mockResolvedValue(undefined);
+    const item = suspension({
+      allow: ["submit"],
+      resumeSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          tier: { type: "string", enum: ["free", "pro"] } // optional enum
+        },
+        required: ["name"]
+      }
+    });
+    const { result } = renderHook(() => useSuspensionForm(item), { wrapper: wrapperWith(resolve) });
+
+    act(() => result.current.setField("name", "Ada")); // leave optional `tier` blank
+    expect(result.current.canSubmit).toBe(true);
+    await act(async () => {
+      await result.current.submit();
+    });
+
+    // The blank optional enum must not be sent as "" (which would fail the enum).
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "submit", data: { name: "Ada" } })
+    );
   });
 
   it("requires a top-level enum selection before submit", () => {

@@ -139,6 +139,24 @@ export async function handleResumeSuspension(
     });
   }
 
+  // Enforce expiry at the endpoint, not just in the sweeper, and BEFORE the
+  // allow/payload guards — otherwise an expired gate could be held pending
+  // indefinitely by a client sending disallowed actions or invalid payloads
+  // (each short-circuiting before this check). The sweeper flips pending ->
+  // expired only every sweepIntervalMs (and only when retention is configured),
+  // so without this an expired gate stays approvable between ticks — or forever
+  // if retention is off. Mark it expired now and reject.
+  if (suspension.expiresAt != null && suspension.expiresAt <= Date.now()) {
+    await provider.suspend({
+      ...suspension,
+      status: "expired",
+      resolvedAt: Date.now()
+    });
+    return jsonResponse(410, {
+      error: `Suspension "${suspensionId}" expired at ${suspension.expiresAt}`
+    });
+  }
+
   // The action must be in the suspension's permitted set. This is the
   // suspension's contract (not a malformed request), so an out-of-set action is
   // a 409. Records persisted before `allow` existed are treated as binary.
@@ -166,21 +184,6 @@ export async function handleResumeSuspension(
         validationErrors
       });
     }
-  }
-
-  // Enforce expiry at the endpoint, not just in the sweeper. The sweeper flips
-  // pending -> expired only every sweepIntervalMs (and only when retention is
-  // configured), so without this check an expired gate stays approvable between
-  // ticks — or forever if retention is off. Mark it expired now and reject.
-  if (suspension.expiresAt != null && suspension.expiresAt <= Date.now()) {
-    await provider.suspend({
-      ...suspension,
-      status: "expired",
-      resolvedAt: Date.now()
-    });
-    return jsonResponse(410, {
-      error: `Suspension "${suspensionId}" expired at ${suspension.expiresAt}`
-    });
   }
 
   const lease = await provider.acquireLease(route.requestId, {

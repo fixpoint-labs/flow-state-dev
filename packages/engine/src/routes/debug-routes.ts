@@ -15,6 +15,7 @@ import type {
   SuspensionFilter,
   SuspensionStatus
 } from "@flow-state-dev/core/types";
+import { TERMINAL_SUSPENSION_STATUSES } from "@flow-state-dev/core/types";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { jsonResponse } from "./route-utils";
 import {
@@ -160,12 +161,11 @@ export async function handleDebugListResources(
   return jsonResponse(200, tree);
 }
 
-const VALID_SUSPENSION_STATUSES: ReadonlySet<SuspensionStatus> = new Set([
+// Derived from the canonical vocabulary (pending + every terminal status) so it
+// never drifts when the status union gains members (e.g. submitted/skipped).
+const VALID_SUSPENSION_STATUSES: ReadonlySet<SuspensionStatus> = new Set<SuspensionStatus>([
   "pending",
-  "approved",
-  "rejected",
-  "timed_out",
-  "expired"
+  ...TERMINAL_SUSPENSION_STATUSES
 ]);
 
 /**
