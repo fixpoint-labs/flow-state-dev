@@ -220,7 +220,35 @@ pending.map(({ item }) => (
 ));
 ```
 
-Returns `{ suspensions, pending, approve, reject, error }`. Each `SuspensionView` has `{ item, status, pending, resumeData, resolvedBy, isResolving }`.
+Returns `{ suspensions, pending, resolve, approve, reject, error }`. Each `SuspensionView` has `{ item, status, pending, resumeData, resolvedBy, allow, isResolving }`. `resolve(id, { action, data })` is the general resolver — `action` is `"approve" | "reject" | "submit" | "skip"`, `submit` carries a typed payload; `approve`/`reject` are thin wrappers over it.
+
+### `useSuspensionForm(item, options?)`
+
+Headless controller for the non-binary input shapes — a clarifying question, a flat form, or a single/multi selection. Where `useApproval` drives the binary gate, this drives the `submit`/`skip` path. It derives form fields from the suspension's `resumeSchema` (a flat object of scalars and enums, or a top-level scalar/enum), holds the in-progress value, validates it client-side, coerces numbers, and resolves through the same streaming transport.
+
+```tsx
+import { useSuspensionForm } from "@flow-state-dev/react";
+
+function ClarifyCard({ item }) {
+  const f = useSuspensionForm(item);
+  if (f.resolved) return <Receipt outcome={f.outcome} />;
+  return (
+    <>
+      {f.fields.map((field) => (
+        <Field key={field.key} field={field} value={f.value[field.key]} onChange={(v) => f.setField(field.key, v)} error={f.errors[field.key]} />
+      ))}
+      <button disabled={!f.canSubmit} onClick={f.submit}>Submit</button>
+      {f.canSkip && <button onClick={f.skip}>Skip</button>}
+    </>
+  );
+}
+```
+
+Returns `{ kind, value, setValue, setField, fields, options, errors, canSubmit, canSkip, submit, skip, isResolving, resolved, resolution, outcome, error }`. When the schema is richer than a flat object of scalars/enums (nested objects, arrays of objects, unions), `fields` is empty — render a custom component named via the suspension's `render.component` hint instead.
+
+### `<QuestionRenderer>`, `<SelectionRenderer>`, `<SchemaFormRenderer>`
+
+The default cards for `human_input` suspensions, all thin views over `useSuspensionForm`: `QuestionRenderer` (free-text answer), `SelectionRenderer` (single choice from a `z.enum`, or multi from `z.array(z.enum)`), and `SchemaFormRenderer` (a flat object of scalars and enums, one control per property). `ItemRenderer` auto-picks one for a `human_input` suspension by `render.component` hint → reason → `resumeSchema` shape; `human_approval` suspensions get `ApprovalRenderer`. A registered `renderers.suspension` overrides this, and `renderers.suspension: false` suppresses inline cards.
 
 ### `useApproval(item, options?)`
 

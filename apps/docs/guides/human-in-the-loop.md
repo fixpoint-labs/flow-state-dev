@@ -179,6 +179,77 @@ Two pieces make the live, in-place update work:
 
 If you're not using `@flow-state-dev/ui`, the `@flow-state-dev/react` package ships a minimal built-in default. Set `flowKind` on `FlowProvider` and a `suspension` item renders plain, unstyled Approve / Reject buttons with no extra setup. It's deliberately bare. The `Approval` card above is the styled version.
 
+## Beyond binary approval
+
+Approve / reject is the simplest gate, but a pause can ask for more than a yes/no. The same suspend/resume cycle handles a free-text answer, a small form, or a choice from a fixed set. Two resolution actions drive this: `submit` (the human returns a typed payload) and `skip` (the human declines an optional step).
+
+The server decides what a gate asks for through its `reason` and `resumeSchema`. Use `reason: "human_input"` for an input gate; it defaults to `allow: ["submit"]`. On the client, `ItemsRenderer` reads the schema shape and renders the matching card. The renderer picks a free-text question for no flat schema, a selection for an enum, and a form for a flat object — automatically, with the same wiring as the approval example above.
+
+### A question (free text)
+
+```ts
+const askName = await ctx.suspend!({
+  reason: "human_input",
+  message: "What should we title this draft?",
+  resumeSchema: z.object({ title: z.string() }),
+});
+```
+
+The conversation shows a text box. Submitting returns `{ title }` to the flow.
+
+### A form (a few fields)
+
+A flat object of scalars and enums renders as one combined form, one control per property:
+
+```ts
+const details = await ctx.suspend!({
+  reason: "human_input",
+  message: "Add publishing details.",
+  resumeSchema: z.object({
+    clarification: z.string(),
+    priority: z.enum(["low", "normal", "urgent"]),
+    urgent: z.boolean(),
+  }),
+});
+```
+
+This is the flat-schema boundary. Nested objects, arrays of objects, and unions don't auto-generate. For those, name your own component with the `render.component` hint and register it under `renderers.component`.
+
+### A selection (choose from a set)
+
+A single enum renders as a single-choice control; an array of enums renders as multi-select:
+
+```ts
+const pick = await ctx.suspend!({
+  reason: "human_input",
+  message: "Which channels should this post to?",
+  resumeSchema: z.object({
+    channels: z.array(z.enum(["blog", "email", "social"])),
+  }),
+});
+```
+
+### Optional steps (skip)
+
+Add `"skip"` to `allow` to let a human decline a step. A skip is normal control flow, not a rejection: `ctx.suspend()` returns the `SUSPENSION_SKIPPED` sentinel instead of throwing, so the author branches on it.
+
+```ts
+import { SUSPENSION_SKIPPED } from "@flow-state-dev/core";
+
+const answer = await ctx.suspend!({
+  reason: "human_input",
+  message: "Add a reviewer note? (optional)",
+  resumeSchema: z.object({ note: z.string() }),
+  allow: ["submit", "skip"],
+});
+
+if (answer === SUSPENSION_SKIPPED) {
+  // proceed with a default
+}
+```
+
+The card shows a Skip control whenever `allow` includes `"skip"`. To build a fully custom input instead of the default cards, reach for `useSuspensionForm(item)` — see [React client](/docs/client/react#beyond-approval-questions-forms-and-selections).
+
 ## Custom approval UI with `useApproval`
 
 When you want your own card, build it on `useApproval`. The hook is headless: it owns the resume call, the in-flight and error state, a guard against double-resume, and the resolved outcome. You bring the markup.
@@ -303,7 +374,7 @@ POST /:flowKind/requests/:requestId/resume
 }
 ```
 
-`data` is the payload `ctx.suspend()` returns. `resumedBy` is recorded on the audit item. Today `action` is `"approve"` or `"reject"`; richer input forms (clarifying questions, multi-field forms) are tracked separately.
+`data` is the payload `ctx.suspend()` returns. `resumedBy` is recorded on the audit item. `action` is one of `"approve"`, `"reject"`, `"submit"`, or `"skip"`; `submit` carries the validated `data`, `skip` carries none. The server rejects an action outside the gate's `allow` set with a `409`.
 
 ## Related
 

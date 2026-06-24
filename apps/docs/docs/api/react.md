@@ -243,29 +243,101 @@ Derives pending and resolved suspensions from `session.items`. Pairs each `suspe
 const {
   suspensions,  // SuspensionView[] — all suspensions matching options
   pending,      // SuspensionView[] — subset where pending === true
+  resolve,      // (id: string, { action, data }) => Promise<void> — general resolver
   approve,      // (suspensionId: string, data?: unknown) => Promise<void>
   reject,       // (suspensionId: string, data?: unknown) => Promise<void>
-  error,        // Error | null — most recent failed approve/reject call
+  error,        // Error | null — most recent failed resolve call
 } = useSuspensions(session, {
   requestId: "req_abc",          // optional: restrict to one request
   reasons: ["human_approval"],   // optional: restrict by reason
 });
 ```
 
+`resolve(id, { action, data })` is the general resolver: `action` is `"approve" | "reject" | "submit" | "skip"`, and `submit` carries the typed payload in `data`. `approve(id, data)` and `reject(id, data)` are thin wrappers over it.
+
 Each `SuspensionView` has:
 
 ```ts
 interface SuspensionView {
   item: SuspensionItem;
-  status: SuspensionStatus;   // "pending" | "approved" | "rejected" | "timed_out" | "expired"
+  status: SuspensionStatus;   // "pending" | "approved" | "rejected" | "submitted" | "skipped" | "timed_out" | "expired"
   pending: boolean;
   resumeData?: unknown;
   resolvedBy?: string;
-  isResolving: boolean;       // true while approve/reject is in flight for this suspension
+  allow: ResumeAction[];      // permitted actions, e.g. which controls to show
+  isResolving: boolean;       // true while a resolve is in flight for this suspension
 }
 ```
 
-`approve` and `reject` rethrow on failure so callers can branch on the error. The last failure is also captured in `error`.
+`resolve`, `approve`, and `reject` rethrow on failure so callers can branch on the error. The last failure is also captured in `error`.
+
+### `useSuspensionForm(item, options?)`
+
+Headless controller for the non-binary input shapes — a clarifying question, a flat form, or a single/multi selection. Where `useApproval` drives the binary gate, this drives the `submit` / `skip` path. It derives form fields from the suspension's `resumeSchema` (bounded to a flat object of scalars and enums, or a single top-level scalar/enum), holds the in-progress value, validates it client-side, coerces numbers, and resolves through the same streaming transport.
+
+```tsx
+import { useSuspensionForm } from "@flow-state-dev/react";
+
+function ClarifyCard({ item }) {
+  const f = useSuspensionForm(item);
+  if (f.resolved) return <span>{f.outcome.icon} {f.outcome.label}</span>;
+  return (
+    <div>
+      {f.fields.map((field) => (
+        <label key={field.key}>
+          {field.label}
+          <input
+            value={String(f.value[field.key] ?? "")}
+            onChange={(e) => f.setField(field.key, e.target.value)}
+          />
+          {f.errors[field.key] && <em>{f.errors[field.key]}</em>}
+        </label>
+      ))}
+      <button disabled={!f.canSubmit} onClick={f.submit}>Submit</button>
+      {f.canSkip && <button onClick={f.skip}>Skip</button>}
+    </div>
+  );
+}
+```
+
+Return shape:
+
+```ts
+interface UseSuspensionFormResult {
+  kind: SuspensionValueKind;          // "object" | "string" | "number" | "boolean" | "enum" | "enum-multi"
+  value: unknown;                     // object for kind:"object", else a scalar/array
+  setValue: (next: unknown) => void;
+  setField: (key: string, next: unknown) => void;  // set one property of an object value
+  fields: SchemaField[];              // derived from a flat object schema (empty for scalar kinds)
+  options?: string[];                 // for a top-level enum / enum-multi
+  errors: Record<string, string>;     // path-keyed ("value" for a scalar)
+  canSubmit: boolean;
+  canSkip: boolean;                   // true when the suspension permits "skip"
+  submit: () => Promise<void>;        // validate, then resolve with action:"submit"
+  skip: () => Promise<void>;          // resolve with action:"skip" (no payload)
+  isResolving: boolean;
+  resolved: boolean;
+  resolution?: SuspensionStatus;
+  outcome: ApprovalOutcome;           // icon + label for the resolved receipt
+  error: string | null;
+}
+```
+
+When the schema is richer than a flat object of scalars/enums (nested objects, arrays of objects, unions), `fields` is empty — render a custom component named via the suspension's `render.component` hint instead.
+
+### `QuestionRenderer`, `SelectionRenderer`, `SchemaFormRenderer`
+
+The default cards for `human_input` suspensions, all thin views over `useSuspensionForm`:
+
+- `QuestionRenderer` — a free-text answer (no flat schema).
+- `SelectionRenderer` — single choice (a `z.enum`) or multi (`z.array(z.enum)`).
+- `SchemaFormRenderer` — a flat object of scalars and enums, one control per property.
+
+`ItemRenderer` auto-picks one for a `suspension` item with `reason: "human_input"` by `render.component` hint → reason → `resumeSchema` shape. A registered `renderers.suspension` overrides this, and `renderers.suspension: false` suppresses inline cards. `human_approval` suspensions still get `ApprovalRenderer`.
+
+```tsx
+import { QuestionRenderer, SelectionRenderer, SchemaFormRenderer } from "@flow-state-dev/react";
+```
 
 ### `useApproval`
 

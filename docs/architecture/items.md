@@ -189,7 +189,9 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 
 ### Suspension item rendering
 
-`suspension` items are consumer-renderable. `ItemRenderer` uses `ApprovalRenderer` as its built-in fallback for `type === "suspension"` — it shows `item.message` with Approve and Reject buttons that call the resume endpoint. Register a custom component under the `suspension` slot of `RendererRegistry` to replace the default card, or set `suspension: false` to suppress it (headless layouts use `useSuspensions` and render the approval UI in a modal or sidebar instead).
+`suspension` items are consumer-renderable. The `suspension` item carries an `allow: ResumeAction[]` field (`"approve" | "reject" | "submit" | "skip"`) recording which resolutions the gate permits — the resume route gates inbound actions against it (`409` otherwise), and renderers read it to decide which controls to show (e.g. a Skip button appears iff `"skip"` is present). `resolution` on the `suspension_resume` item, and the resolved status more broadly, now includes `submitted` and `skipped` alongside `approved` / `rejected` / `timed_out` / `expired`.
+
+`ItemRenderer` dispatches `type === "suspension"` items to a built-in default by `render.component` hint → `reason` → `resumeSchema` shape: a registered `render.component` wins; otherwise `human_approval` → `ApprovalRenderer` (Approve / Reject), and `human_input` → a free-text question, an enum selection, or a flat-object form depending on the schema. Register a custom component under the `suspension` slot of `RendererRegistry` to replace the default entirely, or set `suspension: false` to suppress it (headless layouts use `useSuspensions` and render the resolution UI in a modal or sidebar instead).
 
 `suspension_resume` items are not rendered. They carry the audit record of a resolved suspension and are used by `useSuspensions` to flip a suspension from `pending` to resolved. Apps derive resume state from the item log, not from the `suspension` item's `suspensionStatus` field.
 

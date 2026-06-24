@@ -203,20 +203,22 @@ When a block suspends, the runtime emits a `suspension` item. When the request l
 type SuspensionResumeItem = {
   type: "suspension_resume";
   suspensionId: string;
-  resolution: "approved" | "rejected";
+  resolution: "approved" | "rejected" | "submitted" | "skipped";
   resolvedBy?: string;
   resumeData?: unknown;
   resolvedAt: number;
 };
 ```
 
+The `suspension` item carries an `allow: ResumeAction[]` field (`"approve" | "reject" | "submit" | "skip"`) recording which resolutions the gate permits; renderers read it to decide which controls to show.
+
 `resumeData` is the payload `ctx.suspend()` returns on continuation. It is client-visible and persisted, so don't put secrets in it.
 
 A log fragment across one cycle:
 
 ```jsonc
-{ "type": "suspension",        "suspensionId": "susp_abc123", "reason": "human_approval" }
-{ "type": "suspension_resume", "suspensionId": "susp_abc123", "resolution": "approved", "resolvedBy": "user_xyz" }
+{ "type": "suspension",        "suspensionId": "susp_abc123", "reason": "human_input", "allow": ["submit", "skip"] }
+{ "type": "suspension_resume", "suspensionId": "susp_abc123", "resolution": "submitted", "resolvedBy": "user_xyz" }
 ```
 
 ## `content.audio.delta` — streaming TTS audio chunks

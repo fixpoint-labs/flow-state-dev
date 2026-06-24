@@ -344,6 +344,56 @@ import { SuspensionResolverProvider } from "@flow-state-dev/react";
 
 Now approving or rejecting from the inline card streams the continuation back into `session.items` — the chat view updates in place. `session.resumeSuspension` is the same streaming resume `useSuspensions` calls under the hood, so the two paths behave identically.
 
+### Beyond approval: questions, forms, and selections
+
+A suspension doesn't have to be a yes/no gate. The same pause-and-resume machinery can ask for a free-text answer, a small form, or a choice from a fixed set. The two new resolution actions are `submit` (the human hands back a typed payload) and `skip` (the human declines an optional step). Approve and reject keep their original binary meaning.
+
+Which card renders is decided by the suspension's `reason` and the shape of its `resumeSchema`:
+
+- `reason: "human_approval"` renders the Approve / Reject card.
+- `reason: "human_input"` picks by schema shape: a free-text **question** when there's no flat schema, a **selection** when the schema is a single enum (or array of enums), and a **form** when it's a flat object of scalars and enums.
+
+`<ItemsRenderer>` makes that choice automatically, so a `human_input` suspension renders an actionable card with no extra wiring. A registered `renderers.suspension` still wins, and `renderers.suspension: false` still suppresses inline cards.
+
+On the server, a `human_input` gate defaults to `allow: ["submit"]`. Add `"skip"` to make the step optional. When a human skips, `ctx.suspend()` returns the `SUSPENSION_SKIPPED` sentinel instead of throwing, so the flow author branches on it and falls back to a default.
+
+```ts
+import { handler, SUSPENSION_SKIPPED } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const clarify = handler({
+  name: "clarify",
+  inputSchema: z.object({ draft: z.string() }),
+  outputSchema: z.object({ priority: z.string() }),
+  execute: async (input, ctx) => {
+    const answer = await ctx.suspend!({
+      reason: "human_input",
+      message: "How should we triage this draft?",
+      resumeSchema: z.object({
+        priority: z.enum(["low", "normal", "urgent"]),
+        note: z.string(),
+      }),
+      allow: ["submit", "skip"],
+    });
+    if (answer === SUSPENSION_SKIPPED) return { priority: "normal" };
+    return answer as { priority: string };
+  },
+});
+```
+
+```tsx
+// Client: ItemsRenderer auto-picks the form card for this human_input gate.
+<SuspensionResolverProvider resolve={session.resumeSuspension}>
+  <ItemsRenderer items={session.items} />
+</SuspensionResolverProvider>
+```
+
+To build your own input, `useSuspensionForm(item)` is the headless controller. It derives form fields from the `resumeSchema`, holds the in-progress value, validates it client-side against that schema, and resolves via `submit` or `skip`. It returns `value` / `setValue` / `setField`, the derived `fields` and `options`, path-keyed `errors`, `canSubmit` / `canSkip`, and the `submit` / `skip` callbacks. The three default cards (`QuestionRenderer`, `SelectionRenderer`, `SchemaFormRenderer`) are all thin views over it.
+
+The default cards only auto-generate for a flat object of scalars (`string` / `number` / `boolean`) and enums; nested objects, arrays of objects, and unions need an author-supplied component named via the suspension's `render.component` hint.
+
+See [Durable execution](/docs/advanced/durable-execution) for the server-side `allow` and `SUSPENSION_SKIPPED` contract, and the [React API reference](/docs/api/react#usesuspensionform) for the full `useSuspensionForm` signature.
+
 ### Custom approval UI
 
 Register a component under the `suspension` slot to replace the default card:

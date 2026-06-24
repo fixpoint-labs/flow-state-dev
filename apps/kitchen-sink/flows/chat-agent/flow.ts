@@ -22,6 +22,7 @@ import { updateArtifact } from "./shared/artifacts";
 import { setSelectedModelHandler, setThinkingEnabledHandler } from "./settings";
 import { taskQueueDemo } from "./task-queue-demo";
 import { approvalGate } from "./approval-gate";
+import { askQuestion, collectForm, chooseOption } from "./human-input";
 import { mem } from "./run/cognition";
 import { bashCap } from "./shared/capabilities/features";
 import { modeSchema, sessionStateSchema, userStateSchema } from "./shared/schemas";
@@ -61,6 +62,24 @@ const chatAgentFlow = defineFlow({
       block: approvalGate,
       durable: true,
       userMessage: (input) => `Requesting approval: ${input.request}`,
+    },
+    // Durable non-binary HITL demos: a clarifying question, a flat optional
+    // form, and a single-choice selection. Each suspends for typed input and
+    // resumes via submit/skip; the default UI renders each shape automatically.
+    askQuestion: {
+      block: askQuestion,
+      durable: true,
+      userMessage: (input) => `Asking about: ${input.topic}`,
+    },
+    collectForm: {
+      block: collectForm,
+      durable: true,
+      userMessage: (input) => `Collecting feedback on: ${input.subject}`,
+    },
+    chooseOption: {
+      block: chooseOption,
+      durable: true,
+      userMessage: (input) => input.question,
     },
   },
 

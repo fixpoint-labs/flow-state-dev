@@ -9,7 +9,7 @@ import { RoutedSpecialists } from "./routed-specialists";
 import { EventedActors } from "./evented-actors";
 import { Debate } from "./debate";
 import { AuditAnnotation } from "./audit-annotation";
-import { Approval } from "./approval";
+import { SuspensionCard } from "./suspension-card";
 import { TaskPlan } from "./task-plan";
 
 /**
@@ -43,7 +43,9 @@ export const chatAssistantRenderers: RendererRegistry = {
   status: Status,
   error: ErrorDisplay,
   source: false,
-  suspension: Approval,
+  // Dispatches by reason/schema shape to the approval, question, selection, or
+  // form card.
+  suspension: SuspensionCard,
   component: {
     "audit-annotation": AuditAnnotation,
     "task-board-meta": TaskBoardMeta,

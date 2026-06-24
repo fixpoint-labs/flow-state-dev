@@ -160,6 +160,8 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
 });
 ```
 
+`action` is one of `"approve" | "reject" | "submit" | "skip"`. `submit` carries a typed payload in `data` that the server validates against the suspension's `resumeSchema` (an invalid payload is a `400` with path-keyed `validationErrors`); `skip` declines an optional step and carries no payload; `approve`/`reject` are the binary outcomes. An action outside the suspension's `allow` set is a `409`.
+
 ## Public API
 
 - `createClient(options)` — Dynamic action client
