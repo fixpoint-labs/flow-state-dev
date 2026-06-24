@@ -162,7 +162,10 @@ planAndExecute({
 
   // Executes each step.
   // Receives { stepId, goal, dependencyResults? }.
-  // Default: a research generator that returns { summary, success, reason?, sources? }.
+  // Default: a general step executor returning { summary, success, reason?, sources? }.
+  // `summary` holds the step's full result (reasoning, draft, plan, or research),
+  // matched to what the step needs; `sources` is populated only when the step
+  // actually used external lookups, and is empty for steps answered directly.
   stepExecutor?: BlockDefinition;
 
   // Evaluator — decides continue/replan/complete after each step.
@@ -203,7 +206,9 @@ planAndExecute({
 
   // Final synthesis step. Receives the completed plan shape and produces
   // the final result. Pass false to skip synthesis and return the raw plan.
-  // Default: a generator that integrates task findings into a coherent answer.
+  // Default: a generator that integrates the step results into the complete
+  // final deliverable the goal asks for (solution, plan, critique, or report),
+  // citing sources only when the steps actually drew on them.
   synthesizer?: BlockDefinition | false;
 
   // Output schema for the synthesized result.
@@ -354,7 +359,7 @@ const hierarchical = planAndExecute({
 
 ## Custom synthesizer
 
-The default synthesizer integrates task findings into a coherent narrative. Swap it out for domain-specific formatting:
+The default synthesizer integrates the step results into the final answer the goal asks for. Swap it out for domain-specific formatting:
 
 ```ts
 import { planAndExecute } from "@flow-state-dev/patterns";
