@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { generator, handler, router } from "@flow-state-dev/core";
+import { z } from "zod";
+import { defineResource, generator, handler, router } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import {
@@ -34,6 +35,35 @@ describe("testing utilities", () => {
     expect(result.output).toEqual({ ok: true });
     expect(result.state.session.count).toBe(3);
     expect(result.stateChanges.some((change) => change.operation === "incState")).toBe(true);
+  });
+
+  it("registers a block's declared resources so ctx.resources is wired without explicit seeding", async () => {
+    // Regression: testBlock/testSequencer ran a block that declared a resource on
+    // its `resources:` slot without registering it, so `ctx.resources.X` was
+    // undefined and writing to it threw "Cannot read properties of undefined
+    // (reading 'setState')". Production wires it via flow.resources collected from
+    // the block's declaredResources; the harness must mirror that. This is the gap
+    // that made round-robin / debate / routed-specialists fail in the benchmark.
+    const ledger = defineResource({
+      scope: "session",
+      stateSchema: z.object({ entries: z.array(z.string()).default([]) }),
+      writable: true
+    });
+
+    const record = handler<{ note: string }, { ok: boolean }>({
+      name: "record",
+      resources: { ledger },
+      execute: async (input, ctx) => {
+        // Throws unless ctx.resources.ledger was registered from declaredResources.
+        await ctx.resources.ledger.setState({ entries: [input.note] } as never);
+        return { ok: true };
+      }
+    });
+
+    const result = await testBlock(record, { input: { note: "hello" } });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toEqual({ ok: true });
   });
 
   it("testRouter reports selected route", async () => {

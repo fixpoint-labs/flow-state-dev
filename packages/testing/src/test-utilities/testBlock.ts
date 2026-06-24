@@ -84,7 +84,11 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
     unmockedDefault: options.unmockedDefault,
     actionName: `test:${block.name}`,
     sessionId: "test-session",
-    sequencerName: block.name
+    sequencerName: block.name,
+    // Wire the block's declared resources (bubbled up from descendants) into the
+    // synthetic flow so `ctx.resources.X` exists for blocks that declare a
+    // `resources:` slot — matching production's flow.resources registration.
+    declaredResources: block.declaredResources
   });
 
   const blockUnderTest =

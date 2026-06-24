@@ -1,5 +1,6 @@
 import type { StateRef } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { DeclaredResources } from "@flow-state-dev/core";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
 import { deepEqual } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
@@ -49,6 +50,13 @@ export type CreateTestContextOptions<TInput = unknown> = Omit<
   userId?: string;
   orgId?: string;
   sequencerName?: string;
+  /**
+   * Resources the block-under-test declares on its `resources:` slots (bubbled
+   * up from descendants). Merged into the synthetic flow's `resources` so
+   * `ctx.resources.X` is wired the way production does via `flow.resources`.
+   * Explicitly-seeded scope resources take precedence on accessor-key conflict.
+   */
+  declaredResources?: DeclaredResources;
 };
 
 export type TestContextRuntime = {
@@ -136,6 +144,7 @@ function createTestFlow(options: {
   sessionResources?: Record<string, unknown>;
   userResources?: Record<string, unknown>;
   orgResources?: Record<string, unknown>;
+  declaredResources?: DeclaredResources;
 }): FlowInstance {
   if (options.flow !== undefined) {
     return options.flow;
@@ -143,7 +152,14 @@ function createTestFlow(options: {
 
   // FIX-435: every resource is intrinsically scoped; the test harness now
   // emits a single flat `flow.resources` map covering all three buckets.
+  //
+  // Block-declared resources are merged first so a block that declares a
+  // resource on its `resources:` slot (e.g. round-robin/debate/routed-specialists)
+  // gets `ctx.resources.X` wired the same way production's `flow.resources` does.
+  // Explicitly-seeded scope resources are spread on top, so a test that opts to
+  // seed an accessor keeps its generic entry and existing behavior is unchanged.
   const resources: Record<string, unknown> = {
+    ...(options.declaredResources ?? {}),
     ...buildFlatResourceMap(options.sessionResources, "session"),
     ...buildFlatResourceMap(options.userResources, "user"),
     ...buildFlatResourceMap(options.orgResources, "org")
@@ -438,7 +454,8 @@ export async function createTestContext<TInput = unknown>(
     sessionId: options.sessionId,
     sessionResources: options.session?.resources,
     userResources: options.user?.resources,
-    orgResources: options.org?.resources
+    orgResources: options.org?.resources,
+    declaredResources: options.declaredResources
   });
   const actionName = options.actionName ?? "test-action";
   const requestId = options.requestId ?? generateId("test_req");
