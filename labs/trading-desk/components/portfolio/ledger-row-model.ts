@@ -17,7 +17,7 @@ import type {
   LedgerRow,
   LedgerSource,
 } from "@/src/flows/portfolio/ledger-schema";
-import { DASH, formatMoney, formatSignedMoney } from "./portfolio-format";
+import { DASH, formatSignedMoney } from "./portfolio-format";
 
 /** Human label for each event kind. */
 const TYPE_LABELS: Record<LedgerRow["type"], string> = {

@@ -63,9 +63,27 @@ const inputClass = cn(
 const labelTextClass =
   "font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]";
 
-/** Today as `YYYY-MM-DD` for the trade-date default. */
+/** Today as a LOCAL `YYYY-MM-DD` for the trade-date default. `toISOString()`
+ *  would give the UTC calendar day, which near a timezone boundary pre-fills
+ *  yesterday/tomorrow relative to the user's local date. */
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Apply the canonical sign convention by type so the user enters a magnitude:
+ *  a buy adds shares (+), a sell removes them (−). `deriveLots` keys off the
+ *  quantity SIGN, so a `sell` entered as a positive number must not land as an
+ *  acquisition. A transfer keeps the entered sign (it can be in or out); cash
+ *  events carry no quantity. */
+function signedQuantity(type: LedgerEventType, quantity: number | null): number | null {
+  if (quantity === null) return null;
+  if (type === "buy") return Math.abs(quantity);
+  if (type === "sell") return -Math.abs(quantity);
+  return quantity;
 }
 
 /** Parse an optional numeric field. Blank → null; otherwise a number (NaN if
@@ -152,7 +170,7 @@ export function AddTransactionDialog({
       tradeDate: tradeDate.trim(),
       amount: amountNum,
       ticker: trimmedTicker.length === 0 ? null : trimmedTicker,
-      quantity: quantityNum,
+      quantity: signedQuantity(type, quantityNum),
       unitPrice: unitPriceNum,
       description: trimmedDescription.length === 0 ? null : trimmedDescription,
       basisUnknown:
