@@ -182,6 +182,26 @@ describe("createRecoveryClient", () => {
       expect(fetcher).not.toHaveBeenCalled();
     });
 
+    it("posts the non-binary submit and skip actions to the network", async () => {
+      const fetcher = vi.fn<ClientFetch>(async () =>
+        createJsonResponse({ requestId: "req_resumed", originalRequestId: "req_1" }, 202)
+      );
+      const client = createRecoveryClient({ fetcher });
+
+      await client.resumeSuspension("chat", "req_1", {
+        suspensionId: "sus_1",
+        action: "submit",
+        data: { name: "Ada" }
+      });
+      await client.resumeSuspension("chat", "req_1", {
+        suspensionId: "sus_1",
+        action: "skip"
+      });
+
+      expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string).action).toBe("submit");
+      expect(JSON.parse(fetcher.mock.calls[1]?.[1]?.body as string).action).toBe("skip");
+    });
+
     it("rejects an empty suspensionId before hitting the network", async () => {
       const fetcher = vi.fn<ClientFetch>();
       const client = createRecoveryClient({ fetcher });

@@ -11,6 +11,7 @@ import type {
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import { resolveActionCore } from "./resolve-action-core";
+import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
@@ -1101,7 +1102,7 @@ export async function runActionInternal<
       type: "suspension_resume",
       status: "completed",
       suspensionId: resumeContext.suspensionId,
-      resolution: resumeContext.action === "approve" ? "approved" : "rejected",
+      resolution: RESUME_ACTION_STATUS[resumeContext.action],
       resolvedBy: resumeContext.resumedBy,
       resumeData: resumeContext.data,
       resolvedAt: Date.now(),
@@ -1188,6 +1189,7 @@ export async function runActionInternal<
             data: suspendError.data,
             resumeSchema: suspendError.resumeSchema,
             render: suspendError.render,
+            allow: suspendError.allow,
             status: "pending",
             // The durable sequencer's checkpoint key (FIX-811). Stamped on the
             // error by the suspending sequencer's catch, where its identity is
@@ -1218,6 +1220,7 @@ export async function runActionInternal<
           data: suspendError.data,
           resumeSchema: suspendError.resumeSchema,
           render: suspendError.render,
+          allow: suspendError.allow,
           // Carry the suspending (leaf) block's identity into the log so the
           // resume runtime can recover its logical path (FIX-811). This is the
           // ReplayLog's source — distinct from the SuspensionRecord's

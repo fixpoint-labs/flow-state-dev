@@ -22,6 +22,7 @@ export type { SerializedError } from "./serialize-error";
 export {
   SuspensionError,
   SuspensionRejectedError,
-  SuspensionTimeoutError
+  SuspensionTimeoutError,
+  resolveAllowedActions
 } from "./suspension-error";
 export type { SuspendOptions } from "./suspension-error";

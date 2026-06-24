@@ -206,13 +206,17 @@ export type { BindingCacheOptions, BindingProvider } from "./binding";
 export type { RequestStatus, RequestStatusSnapshot } from "./request";
 
 export type {
+  ResumeAction,
   ResumeContext,
   SuspensionFilter,
   SuspensionReason,
   SuspensionRecord,
+  SuspensionSkipped,
   SuspensionStatus
 } from "./suspension";
 export {
+  RESUME_ACTION_STATUS,
+  SUSPENSION_SKIPPED,
   TERMINAL_SUSPENSION_STATUSES,
   isTerminalSuspensionStatus,
   matchesSuspensionFilter
