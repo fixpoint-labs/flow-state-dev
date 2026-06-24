@@ -309,7 +309,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     "- summary: the complete result of this step — the actual answer or work, not a description of it",
     "- success: true if you completed the step, false only if it genuinely could not be done",
     "- reason: (only if success is false) a brief explanation",
-    "- sources: { title?, url } for any web sources you actually relied on. Leave empty for steps answered without external lookup — never invent sources.",
+    "- sources: an array of { title?, url } objects, one entry per web source you actually relied on. Leave it an empty array for steps answered without external lookup — never invent sources.",
   ].join("\n");
 
   return generator({

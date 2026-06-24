@@ -45,6 +45,13 @@ export interface RunBenchmarkConfig {
    * judge. Default false. Set when the task suite is answerable from model
    * knowledge, so live search doesn't add uncontrolled cost, latency, and
    * variance to the comparison. Ignored when a `modelResolver` is injected.
+   *
+   * Like the engine's model-forcing, this acts at the resolver: it only strips
+   * search from models the engine resolves by id. A generator pinned to a
+   * concrete `GeneratorModel` instance bypasses `ctx.resolveModel`, so its search
+   * tool survives — but such a subject also escapes the fixed-model comparison
+   * the benchmark exists to hold, so it is out of contract regardless. Subjects
+   * must reference their model by id (`BenchmarkSubject.model`).
    */
   disableSearch?: boolean;
   /** Cancels in-flight scheduling; produces a partial report. */
@@ -69,6 +76,10 @@ export interface SubjectCategoryStat {
   successfulRuns: number;
   /** Summed estimated USD cost across cells. */
   costUsd: number;
+  /** Per-cell cost (`costUsd / runs`) computed from the unrounded sum, so cheap
+   *  sub-cent costs that would round to 0 in {@link costUsd} keep their signal
+   *  for the `$/task` and `score/$` ranking columns. */
+  costPerTaskUsd: number;
   /** Mean wall-clock latency (ms) per cell. */
   meanLatencyMs: number;
   /** Mean of each optional code scorer (from `RunBenchmarkConfig.scorers`) across
