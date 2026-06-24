@@ -14,11 +14,11 @@ import {
   defineCapability,
   defineResourceCollection,
   handler,
+  resourceContentChangeSchema,
   sequencer,
   utility,
 } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { resourceContentChangeSchema } from "@flow-state-dev/core";
 import path from "node:path";
 import { z } from "zod";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../lib/models";
