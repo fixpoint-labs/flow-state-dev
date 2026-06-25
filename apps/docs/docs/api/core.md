@@ -78,7 +78,7 @@ const myGenerator = generator({
 
 **Search config:**
 
-- `search?: boolean | GeneratorSearchConfig` — Enable provider-native web search. `true` uses defaults; pass a config object for fine-grained control (`maxUses`, `allowedDomains`, `blockedDomains`, `userLocation`, `searchDepth`).
+- `search?: boolean | GeneratorSearchConfig` — Enable provider-native web search. `true` uses defaults; pass a config object for fine-grained control (`maxUses`, `allowedDomains`, `blockedDomains`, `userLocation`, `searchDepth`). See [Web search](/docs/fundamentals/blocks#web-search) for the per-provider field mapping and how this differs from the standalone [`tools.search`](/docs/tools/search) tool (whose `tier` knob does not apply here).
 
 **Provider tools:**
 

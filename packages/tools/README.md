@@ -58,6 +58,8 @@ search({
 
 `tier` is a provider-agnostic latency-vs-thoroughness knob mapped to each provider's native parameter. When several providers are configured, auto-selection prefers one that supports the requested tier (Serper and Brave have no deep mode, so a `deep` request routes past them). `balanced` reproduces the previous default behavior. For provider-specific behaviors the tier doesn't cover, `searchMode` overrides the native value directly. See the [search tool docs](https://flow-state.dev/docs/tools/search) for the full per-provider mapping.
 
+`tools.search` is distinct from the generator's built-in `search` option. `tier` is `tools.search`-only and does not apply to generator-native search; the two `searchDepth` fields also differ (here `"basic" | "advanced"` for content per result, versus the generator's `"low" | "medium" | "high"`). See [Web search](https://flow-state.dev/docs/fundamentals/blocks#web-search).
+
 ### Direct provider constructors
 
 ```typescript

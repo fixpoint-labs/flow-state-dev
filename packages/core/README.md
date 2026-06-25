@@ -121,6 +121,7 @@ export default defineFlow({
 **Block builders:**
 - `handler(config)` — Synchronous/async logic block
 - `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair (deterministic `jsonrepair` then LLM coercion that reshapes off-schema output to the schema; on by default, configured via `repair.coerce` / `repair.coerce.model`, defaulting to `intent/utility`)
+  - Provider-native web search: set `search: true` (or a `GeneratorSearchConfig`). This is the model provider's built-in search, distinct from the `@flow-state-dev/tools` `tools.search` tool — the tools `tier` knob does not apply, and the generator's `searchDepth` (`"low" | "medium" | "high"`, OpenAI `searchContextSize`) is a different field from the tools `searchDepth` (`"basic" | "advanced"`). See [Web search](https://flow-state.dev/docs/fundamentals/blocks#web-search).
 - `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `waitForWork`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes
 
