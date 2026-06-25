@@ -926,3 +926,42 @@ pnpm --filter @flow-state-dev/trading-desk test         # vitest run
 The test suite is offline — every live provider is mocked, every analyst
 generator is mocked. Tests verify wiring (resources, memo transitions,
 sequencer composition) rather than LLM behavior.
+
+## Verifying changes headlessly
+
+When you change analysis logic, verify it the way CI can't — a real run with a
+machine-readable result, not the browser. The harness lives in
+[`scripts/headless/`](scripts/headless/README.md); run everything from this
+directory (`fsdev` config search is cwd-only).
+
+**Single run** — runs `analyze` end-to-end and prints a `RunSummary`:
+
+```bash
+pnpm run:headless '{"ticker":"NVDA","dataSource":"fixture","costPreset":"fast"}'
+```
+
+Exit code is **0** completed / **2** stopped / **1** error. A single run uses the
+shared `.fsdev/pglite`, so it appears in Past Reports like a UI run.
+
+**Batch** — runs a `tickers × axes` matrix with bounded concurrency and appends
+one summary line per run to a JSONL scoreboard (the artifact an agent loop
+reads):
+
+```bash
+pnpm batch scripts/headless/manifest.fixture.json
+```
+
+Each batch run is isolated in its own temp PGlite database (concurrency-safe), so
+batch runs do **not** touch Past Reports — the scoreboard is the batch artifact.
+
+The `RunSummary` records what happened: final rating + clamps, target weight +
+mandate gates, stop reason, per-memo status, duration, session id, and the
+capture path. It does NOT judge whether the run was good — that is the
+eval-suite's job (FIX-790). The shape is in
+[`src/flows/analysis/run-summary.ts`](src/flows/analysis/run-summary.ts).
+
+**The smoke proof** is the fixture batch over NVDA / AAPL / JPM running
+all-completed — the
+[`goals/trading-desk-headless/fixture-batch-runs-clean`](../../goals/trading-desk-headless/fixture-batch-runs-clean/goal.md)
+goal check. Fixture mode stubs the data tools but still calls real models, so it
+exercises the real generator path.

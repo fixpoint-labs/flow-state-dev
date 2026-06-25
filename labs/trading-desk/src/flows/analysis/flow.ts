@@ -16,6 +16,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import { decisionSnapshotResource } from "./decision-snapshot-resource";
 import { analyze } from "./orchestration/analyze";
 import { setInstructions } from "./orchestration/guards";
+import { runSummaryAction } from "./orchestration/run-summary-action";
 import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
 import { priceHistoryResource } from "./price-history-resource";
 import { financialsDataResource } from "./financials-data-resource";
@@ -42,6 +43,10 @@ const analysisFlow = defineFlow({
   actions: {
     analyze: { block: analyze },
     setInstructions: { block: setInstructions },
+    // Zero-model read action: projects the current session's decision snapshot,
+    // memos, and stop-state into a machine-readable RunSummary. The headless
+    // harness invokes this after `analyze` to read back what happened.
+    runSummary: { block: runSummaryAction },
   },
 
   session: {

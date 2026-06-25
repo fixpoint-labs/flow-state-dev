@@ -1,0 +1,10 @@
+{
+  "concurrency": 3,
+  "scoreboard": ".fsdev/headless/scoreboard.fixture.jsonl",
+  "tickers": ["NVDA", "AAPL", "JPM"],
+  "axes": {
+    "date": ["2026-05-06"],
+    "costPreset": ["fast"],
+    "dataSource": ["fixture"]
+  }
+}
