@@ -11,9 +11,10 @@
 // ---------------------------------------------------------------------------
 
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
+import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { parseOkfBundle } from "./parse";
 import { DEFAULT_EDGE_TYPE } from "./types";
-import { frontmatterToState, type ConceptState } from "../concepts";
+import { frontmatterToState, conceptIdFromPath, type ConceptState } from "../concepts";
 
 /** Outcome of an import: how many concepts landed, and any best-effort warnings. */
 export interface ImportResult {
@@ -22,10 +23,13 @@ export interface ImportResult {
 }
 
 /**
- * Import the OKF bundle at `dir` into `collection`. Existing instances at the
- * same keys are replaced. Returns the count imported and the accumulated
- * warnings (missing `type`, dangling links, unreadable concepts). Best-effort:
- * a partial bundle imports the concepts it can.
+ * Import the OKF bundle at `dir` into `collection`, SYNCING the collection to
+ * the bundle: instances at incoming keys are replaced, and instances NOT present
+ * in the bundle are pruned — so after a mount the collection mirrors the bundle
+ * exactly (a re-mount of a different bundle does not leave stragglers, and a
+ * subsequent export matches the mounted bundle). Returns the count imported and
+ * the accumulated warnings (missing `type`, dangling links, unreadable/unparseable
+ * concepts). Best-effort: a partial bundle imports the concepts it can.
  */
 export async function importOkf(
   dir: string,
@@ -33,6 +37,13 @@ export async function importOkf(
 ): Promise<ImportResult> {
   const { concepts, warnings } = await parseOkfBundle(dir);
   const ids = new Set(concepts.map((c) => c.id));
+
+  // Prune concepts absent from the incoming bundle (mount = sync, not merge).
+  const prefix = getPatternPrefix(collection.pattern);
+  for (const existing of await collection.list()) {
+    const existingId = conceptIdFromPath(existing.path, prefix);
+    if (!ids.has(existingId)) await collection.delete(existingId);
+  }
 
   // Pass 1: state + content.
   const refs = new Map<string, ResourceRef<ConceptState>>();

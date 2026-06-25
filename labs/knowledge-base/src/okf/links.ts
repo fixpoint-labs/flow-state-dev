@@ -10,8 +10,12 @@
 // minus `.md`), which is also the FSD collection key.
 // ---------------------------------------------------------------------------
 
-/** Matches `[text](target)` and `[text](target "title")`, capturing the target. */
-const MARKDOWN_LINK = /\[(?:[^\]]*)\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/g;
+/**
+ * Matches `[text](target)` and `[text](target "title")`, capturing the target.
+ * The `(?<!!)` lookbehind skips image syntax `![alt](src)` — an image is not a
+ * prose cross-link and must not become a concept edge (OKF links are §5 prose).
+ */
+const MARKDOWN_LINK = /(?<!!)\[(?:[^\]]*)\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/g;
 
 /** All raw link targets in a markdown body, in document order (may include externals). */
 export function extractLinkTargets(body: string): string[] {

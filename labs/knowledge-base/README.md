@@ -53,6 +53,7 @@ Frontmatter is parsed as **YAML 1.2** (gray-matter on the eemeli `yaml` engine) 
 These are deliberate for the incubation; each is a follow-up, not a bug:
 
 - **Interchange only.** Import hydrates the split state/content model; export emits a bundle. No single-file-backed collection variant.
+- **Import is sync, not merge.** Mounting a bundle makes the collection mirror it — concepts not in the incoming bundle are pruned, so a re-mount or a later export matches the mounted bundle rather than unioning prior mounts.
 - **Edge metadata is lossy on export.** OKF links are untyped, so confidence / temporality / provenance on an edge are dropped. The round-trip idempotency gate asserts content + frontmatter + link structure, **not** edge metadata.
 - **Links are body-resident.** Import projects body links into edges for navigation; the verbatim body still carries them, so export does not re-emit body links. A *programmatic* edge (added via `relate`, not present in the body) is materialized once into a trailing `# Related` section — which a re-import reads back, so a second export is byte-identical.
 - **`log.md` is not round-tripped.** It is parsed and surfaced by `parseOkfBundle`, but not persisted on import or synthesized on export.

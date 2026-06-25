@@ -102,4 +102,45 @@ describe("importOkf", () => {
     expect(loose.state.type).toBe("concept");
     expect(result.warnings.some((w) => w.includes("missing required"))).toBe(true);
   });
+
+  it("syncs the collection to the bundle — a re-mount prunes concepts not present", async () => {
+    const collection = await makeConceptCollection();
+    await importOkf(FIXTURE_BUNDLE, collection); // datasets/sales, tables/orders, tables/customers
+
+    const other = await fs.mkdtemp(path.join(os.tmpdir(), "okf-remount-"));
+    await fs.writeFile(path.join(other, "solo.md"), "---\ntype: Note\n---\n\nOnly me.\n");
+    await importOkf(other, collection);
+
+    const remaining = (await collection.list()).map((r) => r.path).sort();
+    expect(remaining).toEqual(["concepts/solo"]); // prior bundle's concepts pruned
+  });
+
+  it("skips a concept with unparseable YAML and warns, without failing the bundle", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "okf-badyaml-"));
+    await fs.writeFile(path.join(dir, "good.md"), "---\ntype: Note\n---\n\nFine.\n");
+    await fs.writeFile(path.join(dir, "bad.md"), "---\nfoo: [unclosed\nbar: : :\n---\n\nBroken.\n");
+
+    const collection = await makeConceptCollection();
+    const result = await importOkf(dir, collection);
+
+    expect(await collection.getOptional("good")).toBeDefined();
+    expect(await collection.getOptional("bad")).toBeUndefined();
+    expect(result.warnings.some((w) => w.includes("failed to parse"))).toBe(true);
+  });
+
+  it("does not turn a markdown image (`![]()`) into a concept edge", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "okf-image-"));
+    await fs.writeFile(path.join(dir, "target.md"), "---\ntype: Note\n---\n\nTarget.\n");
+    // `imaged` links to target only via an image; `prosed` via a prose link.
+    await fs.writeFile(path.join(dir, "imaged.md"), "---\ntype: Note\n---\n\n![pic](/target.md)\n");
+    await fs.writeFile(path.join(dir, "prosed.md"), "---\ntype: Note\n---\n\nSee [target](/target.md).\n");
+
+    const collection = await makeConceptCollection();
+    await importOkf(dir, collection);
+
+    const imaged = await collection.get("imaged");
+    const prosed = await collection.get("prosed");
+    expect(imaged.edges!.all().some((e) => e.from === "imaged")).toBe(false);
+    expect(prosed.edges!.all().some((e) => e.from === "prosed" && e.to === "target")).toBe(true);
+  });
 });

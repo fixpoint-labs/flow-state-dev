@@ -38,13 +38,20 @@ export async function parseOkfBundle(dir: string): Promise<ParsedOkfBundle> {
       continue;
     }
 
-    const { data, body } = splitFrontmatter(raw);
-    const links = dedupe(
-      extractLinkTargets(body)
-        .map((target) => resolveLinkToConceptId(target, id))
-        .filter((t): t is string => t !== null),
-    );
-    concepts.push({ id, frontmatter: data, body, links });
+    // Best-effort (SPEC §9): a YAML/parse failure on one concept is a warning +
+    // skip, not a rejection of the whole bundle.
+    try {
+      const { data, body } = splitFrontmatter(raw);
+      const links = dedupe(
+        extractLinkTargets(body)
+          .map((target) => resolveLinkToConceptId(target, id))
+          .filter((t): t is string => t !== null),
+      );
+      concepts.push({ id, frontmatter: data, body, links });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnings.push(`${id}: failed to parse (${msg}); skipped`);
+    }
   }
 
   concepts.sort((a, b) => a.id.localeCompare(b.id));
