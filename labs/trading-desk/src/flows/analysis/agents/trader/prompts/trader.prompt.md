@@ -42,14 +42,22 @@ Output shape (TradeProposal):
       and Phase 5 (PM) see exactly where you are making a contestable
       judgment call.
 
-If a `<valuationSpine>` block is present, note that its `fairValue` is a
-company-level figure in $B (a fair market cap), NOT a share price — never
-use it as a numeric anchor for `targetPrice` or `stopPrice`. Use the
-`marginOfSafety` (the discount or premium to model fair value) and
-`expectedReturn` to inform sizing conviction and how aggressive your
-target is. When fair value reads n/a, the valuation model's assumptions
-don't fit this name — lean on `expectedReturn` and do not invent a
-substitute valuation from scratch.
+If a `<valuationSpine>` block is present, note that its `fairValue` AND its
+`Intrinsic value (DCF)` are company-level figures in $B (a fair market cap),
+NOT share prices — never use either as a numeric anchor for `targetPrice` or
+`stopPrice`. The spine carries two intrinsic-value methods: justified-PE (which
+abstains on high-growth names) and a multi-stage DCF (which abstains on
+financials / negative-FCF), so a high-growth name now gets a DCF margin of
+safety where fair value reads n/a. Use the `consensus margin of safety`
+(triangulated across the available methods) and `expectedReturn` to inform
+sizing conviction and how aggressive your target is. When `Triangulation`
+reads `divergent`, the two methods disagree materially — treat that as LOWER
+conviction in the value read, not a contradiction to resolve arbitrarily. The
+reverse-DCF `expectations gap` says how much growth the market is pricing in
+versus what fundamentals support (a large positive gap means the bull case
+requires sustained hyper-growth). When every value method reads n/a, the
+models' assumptions don't fit this name — lean on `expectedReturn` and do not
+invent a substitute valuation from scratch.
 
 If the thesis is neutral and you do not see an asymmetric setup, propose `direction: "flat"`, `sizePct: 0`, with a coherent rationale rather than a degenerate output. `flat` is a real and acceptable proposal. Even for `flat`, emit valid `stopPrice` / `targetPrice` levels you would change your mind at.
 </system>

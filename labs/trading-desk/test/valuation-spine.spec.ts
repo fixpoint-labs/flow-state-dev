@@ -21,6 +21,7 @@ import {
   formatRatingEnvelope,
 } from "../src/flows/analysis/lib/valuation-spine";
 import { computeValuation } from "../src/flows/analysis/lib/valuation";
+import { valuationSpineStateSchema } from "../src/flows/analysis/valuation-spine-resource";
 
 import nvdaFundamentals from "../fixtures/NVDA/2026-05-06/fundamentals.json";
 import nvdaBalanceSheet from "../fixtures/NVDA/2026-05-06/balance-sheet.json";
@@ -271,7 +272,7 @@ describe("computeSetupScore", () => {
     });
     const ss = computeSetupScore({
       expectedReturn: er,
-      fairValue: fv,
+      marginOfSafety: fv.marginOfSafety,
       quantComposites: nvdaQuantComposites,
       factorRanks: nvdaFactorRanks,
       technicals: nvdaIndicators,
@@ -297,7 +298,7 @@ describe("computeSetupScore", () => {
     });
     const ss = computeSetupScore({
       expectedReturn: er,
-      fairValue: fv,
+      marginOfSafety: fv.marginOfSafety,
       quantComposites: null,
       factorRanks: null,
       technicals: null,
@@ -326,7 +327,7 @@ describe("modelImpliedRating", () => {
     });
     const ss = computeSetupScore({
       expectedReturn: er,
-      fairValue: fv,
+      marginOfSafety: fv.marginOfSafety,
       quantComposites,
       factorRanks,
       technicals,
@@ -384,7 +385,7 @@ describe("modelImpliedRating", () => {
     });
     const ss = computeSetupScore({
       expectedReturn: er,
-      fairValue: fv,
+      marginOfSafety: fv.marginOfSafety,
       quantComposites: null,
       factorRanks: null,
       technicals: null,
@@ -535,8 +536,11 @@ describe("FIX-778 regression — low-payout growth envelope", () => {
     expect(spine.fairValue.marginOfSafety).toBeNull();
     expect(spine.envelope.absoluteRating).toBe("Buy");
     expect(spine.envelope.ceiling).toBe("Buy");
-    // The old defect printed "margin of safety -13902% < 25%" here.
-    expect(spine.envelope.rationale).not.toMatch(/-\d{3,}%/);
+    // The old defect printed "margin of safety -13902% < 25%" here — an absurd
+    // 4+-digit figure from the collapsed justified-PE. The legitimate FIX-807
+    // DCF consensus (−165%) is a real 3-digit read and must be allowed; only the
+    // absurd magnitude is the defect signal.
+    expect(spine.envelope.rationale).not.toMatch(/-\d{4,}%/);
   });
 });
 
@@ -671,5 +675,133 @@ describe("formatRatingEnvelope", () => {
     expect(text).toContain("Absolute rating");
     expect(text).toContain("Relative rating");
     expect(text).toContain("Permitted band:");
+  });
+});
+
+// ── FIX-807: DCF + triangulation spine integration ──────────────────
+
+function buildSpine(ticker: string, statements: any, sector: string, quant: any, factor: any, tech: any) {
+  return buildValuationSpine({
+    ticker,
+    asOf: "2026-05-06",
+    ...statements,
+    sector,
+    quantComposites: quant,
+    factorRanks: factor,
+    technicals: tech,
+    valuation: computeValuation(statements),
+  });
+}
+
+describe("FIX-807 — DCF + triangulation wired into the spine", () => {
+  const nvda = buildSpine("NVDA", nvdaStatements, "Technology", nvdaQuantComposites, nvdaFactorRanks, nvdaIndicators);
+  const aapl = buildSpine("AAPL", aaplStatements, "Technology", aaplQuantComposites, aaplFactorRanks, aaplIndicators);
+  const jpm = buildSpine("JPM", jpmStatements, "Financial Services", jpmQuantComposites, jpmFactorRanks, jpmIndicators);
+
+  it("NVDA: DCF fills the value axis justified-PE abstained on, single-method triangulation", () => {
+    expect(nvda.fairValue.available).toBe(false); // justified-PE still abstains
+    expect(nvda.dcf.available).toBe(true);
+    expect(nvda.dcf.marginOfSafety).toBeCloseTo(-1.654, 3);
+    expect(nvda.triangulation.divergence).toBe("single-method");
+    expect(nvda.triangulation.methodsUsed).toEqual(["dcf"]);
+  });
+
+  it("NVDA: absolute Buy gate stays anchored to justified-PE — Buy preserved (FIX-778)", () => {
+    // The conservative DCF reads NVDA −165% on intrinsic value, but the hard gate
+    // is return-anchored, so NVDA stays Buy-capable (Open Q1: soft-only).
+    expect(nvda.envelope.absoluteRating).toBe("Buy");
+    expect(nvda.envelope.implied).toBe("Buy");
+    // The consensus number is surfaced in the rationale (not in the gate).
+    expect(nvda.envelope.rationale).toContain("consensus margin of safety");
+  });
+
+  it("AAPL: value sub-score reflects the more-bearish triangulated MoS, implied rating unchanged", () => {
+    expect(aapl.triangulation.divergence).toBe("divergent");
+    // Value sub-score routed through the consensus (−62%) vs justified-PE alone (−22.6%):
+    const peOnly = computeSetupScore({
+      expectedReturn: aapl.expectedReturn,
+      marginOfSafety: aapl.fairValue.marginOfSafety, // justified-PE only
+      quantComposites: aaplQuantComposites,
+      factorRanks: aaplFactorRanks,
+      technicals: aaplIndicators,
+      valuation: computeValuation(aaplStatements as any),
+    });
+    expect(aapl.setupScore.value!).toBeLessThan(peOnly.value!); // triangulation is strictly more bearish
+    // …but the shift is bounded and does NOT flip the implied rating.
+    expect(aapl.envelope.implied).toBe("Hold");
+  });
+
+  it("JPM (financial): DCF abstains with a structured reason, triangulation unavailable", () => {
+    expect(jpm.dcf.available).toBe(false);
+    expect(jpm.dcf.unavailableReason).toBe("financial-sector");
+    expect(jpm.triangulation.divergence).toBe("unavailable");
+    expect(jpm.triangulation.marginOfSafety).toBeNull();
+  });
+
+  it("formatter surfaces the DCF + triangulation + reverse-DCF lines to the prompt", () => {
+    const text = formatValuationSpine(nvda);
+    expect(text).toContain("Intrinsic value (DCF): $1111.5B");
+    expect(text).toContain("DCF margin of safety: -165.4%");
+    expect(text).toContain("stage-1 growth 15%");
+    expect(text).toContain("terminal-value share 70%");
+    expect(text).toContain("Triangulation: single-method");
+    expect(text).toContain("reverse-DCF implies 70%");
+    expect(text).toContain("expectations gap +55pp");
+  });
+
+  it("formatter renders an abstained DCF + triangulation as n/a with the reason", () => {
+    const text = formatValuationSpine(jpm);
+    expect(text).toContain("Intrinsic value (DCF): n/a (financial-sector)");
+    expect(text).toContain("Triangulation: n/a");
+  });
+
+  it("formatter renders a divergent triangulation line (AAPL)", () => {
+    const text = formatValuationSpine(aapl);
+    expect(text).toContain("Triangulation: divergent");
+    expect(text).toContain("reverse-DCF implies 39%");
+  });
+
+  it("formatter renders the ⚠ terminal-value-dominated flag when reliability trips", () => {
+    // The flag is a defensive guard the production constants (15% stage-1 cap,
+    // 6.5% rate floor, conservative linear fade) keep below 0.85 — so assert the
+    // RENDERING against a spine whose DCF leg carries the flag.
+    const flagged = { ...nvda, dcf: { ...nvda.dcf, reliability: "tv-dominated" as const } };
+    expect(formatValuationSpine(flagged)).toContain("⚠ terminal-value-dominated");
+  });
+});
+
+describe("FIX-807 — resource backward compatibility", () => {
+  it("a pre-FIX-807 spine object (no dcf/triangulation keys) parses with both defaulting to null", () => {
+    const spine = buildSpine("NVDA", nvdaStatements, "Technology", nvdaQuantComposites, nvdaFactorRanks, nvdaIndicators);
+    // Strip the new keys to simulate a session persisted before this change.
+    const { dcf: _dcf, triangulation: _tri, ...legacy } = spine;
+    const parsed = valuationSpineStateSchema.parse(legacy);
+    expect(parsed.dcf).toBeNull();
+    expect(parsed.triangulation).toBeNull();
+    // The rest of the spine still round-trips.
+    expect(parsed.ticker).toBe("NVDA");
+    expect(parsed.envelope.absoluteRating).toBe("Buy");
+  });
+
+  it("a current spine round-trips through the schema with the new blocks populated", () => {
+    const spine = buildSpine("AAPL", aaplStatements, "Technology", aaplQuantComposites, aaplFactorRanks, aaplIndicators);
+    const parsed = valuationSpineStateSchema.parse(spine);
+    expect(parsed.dcf?.available).toBe(true);
+    expect(parsed.triangulation?.divergence).toBe("divergent");
+  });
+
+  it("formatValuationSpine degrades to n/a on a legacy spine with null dcf/triangulation, never throws", () => {
+    // The capability injects the PARSED resource state into the prompt; a session
+    // persisted before FIX-807 parses with dcf/triangulation = null, so the
+    // formatter must render n/a rather than throwing on `.available`/`.divergence`.
+    const spine = buildSpine("NVDA", nvdaStatements, "Technology", nvdaQuantComposites, nvdaFactorRanks, nvdaIndicators);
+    const legacy = { ...spine, dcf: null, triangulation: null };
+    let text = "";
+    expect(() => { text = formatValuationSpine(legacy); }).not.toThrow();
+    expect(text).toContain("Intrinsic value (DCF): n/a");
+    expect(text).toContain("Triangulation: n/a");
+    // The rest of the spine still renders.
+    expect(text).toContain("Expected return:");
+    expect(text).toContain("Setup score:");
   });
 });

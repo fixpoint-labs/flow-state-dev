@@ -369,6 +369,8 @@ function clampingSpine(): ValuationSpineState {
       method: "none",
       available: false,
     },
+    dcf: null,
+    triangulation: null,
     setupScore: {
       score: null,
       value: null,

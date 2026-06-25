@@ -6,7 +6,6 @@
  * Each sub-score is normalized to 0–100 before blending.
  */
 import type { ExpectedReturn } from "./expected-return";
-import type { FairValue } from "./fair-value";
 
 const W_VALUE = 0.35;
 const W_QUALITY = 0.30;
@@ -29,27 +28,32 @@ function clamp100(v: number): number {
 
 export function computeSetupScore(args: {
   expectedReturn: ExpectedReturn;
-  fairValue: FairValue;
+  /** Triangulated consensus margin of safety; null encodes "no value method". */
+  marginOfSafety: number | null;
   quantComposites: { piotroskiF?: number; altmanZone?: string } | null;
   factorRanks: { compositeFactorPercentile?: number } | null;
   technicals: { trend?: string; sma50?: number; sma200?: number } | null;
   valuation: { roic?: { value: number | null } } | null;
 }): SetupScore {
-  const { expectedReturn: er, fairValue: fv, quantComposites, factorRanks, technicals, valuation } = args;
+  const { expectedReturn: er, marginOfSafety, quantComposites, factorRanks, technicals, valuation } = args;
 
   let componentCount = 0;
 
-  // Value sub-score: margin of safety + excess return, normalized
+  // Value sub-score: margin of safety + excess return, normalized. The MoS term
+  // is the TRIANGULATED consensus (FIX-807), so a deeply-negative DCF read for a
+  // high-growth name materially lowers the value component even though the hard
+  // absolute Buy gate stays return-anchored.
   let valueSub: number | null = null;
-  if (er.excessReturn != null || (fv.marginOfSafety != null && fv.available)) {
+  if (er.excessReturn != null || marginOfSafety != null) {
     let v = 50; // neutral baseline
     if (er.excessReturn != null) {
       // +10% excess → 80, -10% → 20, linear in between
       v = clamp100(50 + er.excessReturn * 300);
     }
-    if (fv.marginOfSafety != null && fv.available) {
-      // +30% MoS → 80, -30% → 20
-      const mosScore = clamp100(50 + fv.marginOfSafety * 100);
+    if (marginOfSafety != null) {
+      // +30% MoS → 80, -30% → 20. Saturates near 0 for deeply-negative reads
+      // (an unbounded value penalty is not wanted).
+      const mosScore = clamp100(50 + marginOfSafety * 100);
       v = (v + mosScore) / 2;
     }
     valueSub = v;

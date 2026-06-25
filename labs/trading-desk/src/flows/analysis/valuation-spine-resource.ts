@@ -27,6 +27,36 @@ const fairValueSchema = z.object({
   available: z.boolean(),
 });
 
+const dcfSchema = z.object({
+  intrinsicValue: z.number().nullable(),
+  marginOfSafety: z.number().nullable(),
+  discountRate: z.number().nullable(),
+  stage1Growth: z.number().nullable(),
+  terminalValueShare: z.number().nullable(),
+  impliedGrowth: z.number().nullable(),
+  expectationsGap: z.number().nullable(),
+  reliability: z.enum(["ok", "tv-dominated"]).nullable(),
+  reverseDcfStatus: z.enum(["solved", "below-terminal", "above-bracket", "unavailable"]),
+  unavailableReason: z
+    .enum([
+      "financial-sector",
+      "non-positive-fcf",
+      "missing-net-debt",
+      "missing-growth",
+      "negative-equity-value",
+    ])
+    .nullable(),
+  method: z.enum(["dcf", "none"]),
+  available: z.boolean(),
+});
+
+const triangulationSchema = z.object({
+  marginOfSafety: z.number().nullable(),
+  methodsUsed: z.array(z.enum(["justified-pe", "dcf"])),
+  divergence: z.enum(["convergent", "divergent", "single-method", "unavailable"]),
+  spread: z.number().nullable(),
+});
+
 const setupScoreSchema = z.object({
   score: z.number().nullable(),
   value: z.number().nullable(),
@@ -50,6 +80,10 @@ export const valuationSpineStateSchema = z.object({
   asOf: z.string(),
   expectedReturn: expectedReturnSchema,
   fairValue: fairValueSchema,
+  // Nullable + default(null) so sessions persisted before FIX-807 (which lack
+  // these keys) still parse — the missing key fills to null on `.parse()`.
+  dcf: dcfSchema.nullable().default(null),
+  triangulation: triangulationSchema.nullable().default(null),
   setupScore: setupScoreSchema,
   envelope: ratingEnvelopeSchema,
   valuationMethod: z.enum(["ev-multiples", "equity-multiples"]),
