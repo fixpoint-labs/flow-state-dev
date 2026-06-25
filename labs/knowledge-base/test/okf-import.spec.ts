@@ -143,6 +143,19 @@ describe("importOkf", () => {
     expect(note.edges!.all().some((e) => e.to === "foo")).toBe(false);
   });
 
+  it("resolves an absolute link with a valid internal `..` (e.g. /a/../b.md)", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "okf-absdotdot-"));
+    await fs.writeFile(path.join(dir, "b.md"), "---\ntype: Note\n---\n\nB.\n");
+    // `/sub/../b.md` resolves to the in-bundle `b` — it must not be dropped.
+    await fs.writeFile(path.join(dir, "note.md"), "---\ntype: Note\n---\n\n[b](/sub/../b.md)\n");
+
+    const collection = await makeConceptCollection();
+    await importOkf(dir, collection);
+
+    const note = await collection.get("note");
+    expect(note.edges!.all().some((e) => e.from === "note" && e.to === "b")).toBe(true);
+  });
+
   it("does not turn a markdown image (`![]()`) into a concept edge", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "okf-image-"));
     await fs.writeFile(path.join(dir, "target.md"), "---\ntype: Note\n---\n\nTarget.\n");

@@ -63,6 +63,34 @@ describe("exportOkf", () => {
     expect(concepts.map((c) => c.id)).toEqual(["solo"]); // prior bundle's files gone
   });
 
+  it("preserves reserved and non-concept markdown when pruning stale concepts", async () => {
+    const out = await tmpDir();
+
+    const first = await makeConceptCollection();
+    await importOkf(FIXTURE_BUNDLE, first);
+    await exportOkf(first, out); // emits datasets/sales.md, tables/*.md, index.md
+
+    // User-owned markdown the exporter must not delete.
+    await fs.writeFile(path.join(out, "README.md"), "# My bundle\n\nHand-written.\n");
+    await fs.writeFile(path.join(out, "log.md"), "# Update Log\n\n## 2026-01-01\n* init\n");
+
+    // A smaller collection: only `solo` remains after export.
+    const second = await makeConceptCollection();
+    await second.create("solo", { type: "Note" });
+    await exportOkf(second, out);
+
+    const exists = (rel: string) =>
+      fs.access(path.join(out, rel)).then(() => true, () => false);
+
+    // Stale concept files (which carry frontmatter `type`) are pruned...
+    expect(await exists("datasets/sales.md")).toBe(false);
+    expect(await exists("tables/orders.md")).toBe(false);
+    expect(await exists("solo.md")).toBe(true);
+    // ...but reserved + non-concept user markdown is preserved.
+    expect(await fs.readFile(path.join(out, "README.md"), "utf8")).toContain("Hand-written");
+    expect(await fs.readFile(path.join(out, "log.md"), "utf8")).toContain("Update Log");
+  });
+
   it("materializes a programmatic edge (not in the body) into a # Related section", async () => {
     const collection = await makeConceptCollection();
     await importOkf(FIXTURE_BUNDLE, collection);

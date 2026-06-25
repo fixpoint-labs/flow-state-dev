@@ -39,20 +39,24 @@ export function resolveLinkToConceptId(target: string, fromConceptId: string): s
   const pathPart = target.split(/[?#]/)[0]!;
   if (!pathPart.endsWith(".md")) return null;
 
-  let resolved: string | null;
-  if (pathPart.startsWith("/")) {
-    resolved = pathPart.slice(1);
-  } else {
-    const dir = fromConceptId.includes("/") ? fromConceptId.slice(0, fromConceptId.lastIndexOf("/")) : "";
-    resolved = joinPosix(dir, pathPart);
-  }
+  // Resolve absolute (`/a/b.md`) and relative (`./b.md`, `../b.md`) targets
+  // through the same segment resolver. Absolute paths resolve from an empty
+  // base (the bundle root); relative paths from the linking concept's dir. A
+  // valid internal `..` (e.g. `/a/../b.md` -> `b`) resolves normally; only a
+  // `..` that pops above the root returns null (the link escaped the bundle).
+  const isAbsolute = pathPart.startsWith("/");
+  const base = isAbsolute
+    ? ""
+    : fromConceptId.includes("/")
+      ? fromConceptId.slice(0, fromConceptId.lastIndexOf("/"))
+      : "";
+  const rel = isAbsolute ? pathPart.slice(1) : pathPart;
+
+  const resolved = joinPosix(base, rel);
   if (resolved === null) return null; // link traversed above the bundle root
 
-  const id = normalizeSegments(resolved.slice(0, -3));
-  // A surviving `..` (e.g. an absolute `/../x.md`) means the target escaped the
-  // bundle — it is not an in-bundle concept, so drop it rather than clamp it.
-  if (id.length === 0 || id.split("/").includes("..")) return null;
-  return id;
+  const id = resolved.slice(0, -3); // strip `.md`
+  return id.length > 0 ? id : null;
 }
 
 /**
@@ -72,12 +76,4 @@ function joinPosix(dir: string, rel: string): string | null {
     }
   }
   return base.join("/");
-}
-
-/** Collapse `.` segments and strip empties in an already-absolute concept path. */
-function normalizeSegments(path: string): string {
-  return path
-    .split("/")
-    .filter((seg) => seg.length > 0 && seg !== ".")
-    .join("/");
 }
