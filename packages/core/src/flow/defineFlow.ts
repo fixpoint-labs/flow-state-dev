@@ -30,6 +30,7 @@ import type {
 import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
 import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } from "../types/schedules";
+import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateChatConfig, type ChatConfig, type ChatEventBinding } from "../types/chat";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
 import { warnDeprecated } from "../helpers/deprecation";
@@ -663,6 +664,14 @@ function createFlowInstance(
 
   const mcp = definition.mcp;
   validateMcpConfig(kind, mcp, actions);
+
+  // Reject reserved/unknown concurrency policies at definition time, the same
+  // way schedules reject a reserved `onOverlap`. Validate the flow-level
+  // default and every per-action override.
+  validateConcurrencyConfig(`Flow "${kind}" request default`, definition.request?.concurrency);
+  for (const [actionName, action] of Object.entries(actions)) {
+    validateConcurrencyConfig(`Flow "${kind}" action "${actionName}"`, action.concurrency);
+  }
 
   return {
     id: options?.id ?? kind,

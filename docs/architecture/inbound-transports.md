@@ -131,6 +131,28 @@ that need a streamed response (HTTP+SSE) consume `handle.liveStream.readable`;
 adapters that just want a final result (webhook, schedule) await
 `handle.finished`.
 
+The **concurrency policy** (FIX-837) is enforced here, at the top of
+`host.dispatch`, before any request record or live stream is created — so every
+transport inherits it at the one shared seam. The arbiter resolves the
+effective policy (`action.concurrency ?? flow.request.concurrency ?? "allow"`)
+and a key (default: the tenant-namespaced session id):
+
+- `reject` claims the key synchronously; if another request holds it, `dispatch`
+  throws `ConcurrencyRejectedError` (status 409, carrying the in-flight
+  `requestId`) before a record exists, so the dropped caller never materializes
+  a run. This extends the set of synchronous `dispatch` throws beyond
+  malformed/unknown-flow.
+- `queue` defers the *start* of execution behind the key (FIFO) while still
+  returning the handle synchronously, so an SSE client gets an open stream while
+  queued. An over-long wait rejects `finished` with `ConcurrencyQueueTimeoutError`
+  (status 503).
+- `allow` (default) and a key that resolves to `undefined` (no session, `"none"`,
+  or a custom key returning `undefined`) are passthroughs — today's behavior.
+
+The key is acquired and released within a single `dispatch` lifecycle (released
+when `finished` settles), so there is no cross-call handoff and no leaked key.
+v1 is in-process / single-instance; cross-worker enforcement is future work.
+
 `host.resolvePrincipal` is the auth integration point. Per-flow
 `authentication.resolvePrincipal` (set on `defineFlow`) wins over the
 host-level fallback (`createFlowApiRouter({ resolvePrincipal })`). Adapter

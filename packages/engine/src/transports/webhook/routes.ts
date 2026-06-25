@@ -14,7 +14,7 @@ import type {
   WebhookSubscriptionConfig
 } from "@flow-state-dev/core/types";
 import type { InboundRequestEnvelope, InboundTransportHost, ResolvedPrincipal } from "../types";
-import { PrincipalResolutionError } from "../errors";
+import { ConcurrencyRejectedError, PrincipalResolutionError } from "../errors";
 import {
   WEBHOOK_TRANSPORT_SOURCE,
   type WebhookProviderDefinition
@@ -213,6 +213,17 @@ export async function handleWebhook(
   try {
     handle = host.dispatch(envelope);
   } catch (err) {
+    // Concurrency `reject`: a duplicate delivery for this key is already in
+    // flight (the classic webhook double-fire). Ack 200 with a benign skipped
+    // status so the provider stops redelivering, rather than a 4xx/5xx it would
+    // retry. The in-flight requestId is surfaced for correlation.
+    if (err instanceof ConcurrencyRejectedError) {
+      return jsonResponse(200, {
+        status: "skipped",
+        reason: "in_flight",
+        requestId: err.inFlightRequestId
+      });
+    }
     return jsonResponse(503, { error: "flow_unregistered", message: errorMessage(err) });
   }
 

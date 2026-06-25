@@ -11,6 +11,8 @@ Block-level retries and request-recovery re-dispatches will re-invoke a handler 
 
 Both are opt-in. Nothing auto-wraps your handler.
 
+Idempotency stops the *same* delivery from running twice. A [concurrency policy](./concurrency-policies.md) is the sibling: it arbitrates two *different* requests that collide on one key. Webhooks usually want both, and the two compose.
+
 ## `ctx.idempotencyKey`
 
 Every handler invocation gets a key of the form `${requestId}:${blockPath}`. It's deliberately scoped without the retry attempt, so all attempts of the same logical step within a request observe the same key. That's the value you want to pass to Stripe's `Idempotency-Key` header, Twilio's idempotency extension, or any provider that de-dups by key.

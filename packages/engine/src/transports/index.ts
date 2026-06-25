@@ -31,6 +31,8 @@ export type {
 export type { AuthenticationConfig, ResolvePrincipalFn } from "@flow-state-dev/core/types";
 
 export {
+  ConcurrencyQueueTimeoutError,
+  ConcurrencyRejectedError,
   OrgRequiredError,
   PrincipalResolutionError,
   TransportRouteCollisionError

@@ -93,6 +93,14 @@ resolves when the action completes. Adapters that need a streamed
 response consume `handle.liveStream.readable`. Adapters that only want
 the final result await `handle.finished`.
 
+### Concurrency policy enforcement
+
+A flow's concurrency policy is enforced once, at the shared host dispatch
+seam every adapter funnels through. So the same declaration governs HTTP,
+chat, webhooks, scheduled, and MCP without per-transport code — an adapter
+just constructs its envelope and calls `host.dispatch`. See
+[Concurrency policies](./concurrency-policies.md) for the policy surface.
+
 ## Mounting a custom adapter
 
 ```ts

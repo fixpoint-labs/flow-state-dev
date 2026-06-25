@@ -21,6 +21,7 @@ import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import { generateId } from "../../utils/generate-id";
 import { OrgRequiredError, PrincipalResolutionError } from "../errors";
+import { createConcurrencyArbiter } from "../concurrency/arbiter";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import {
   createInProcessDispatcher,
@@ -106,6 +107,14 @@ export function createInboundTransportHost(
     options.dispatcher ?? inProcessDispatcher;
   const isExternalDispatcher = !("dispatchLocal" in effectiveDispatcher);
 
+  // One arbiter governs every in-process dispatch, so an action's concurrency
+  // policy is enforced once at this shared seam (FIX-837). v1 enforces only the
+  // in-process dispatcher (the default): with an external dispatcher (BullMQ)
+  // the run completes in another worker, so the policy is deferred to the
+  // durable substrate (FIX-830) rather than gating the enqueue, which would give
+  // misleading semantics (a `reject` lease freed at enqueue, not run-completion).
+  const arbiter = createConcurrencyArbiter();
+
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
     const flow = registry.get(envelope.flowKind);
     if (flow === undefined) {
@@ -113,6 +122,34 @@ export function createInboundTransportHost(
     }
 
     const requestId = envelope.requestId ?? generateId("req");
+
+    const dispatchEnvelope: DispatchEnvelope = {
+      requestId,
+      flowKind: envelope.flowKind,
+      actionName: envelope.action,
+      input: envelope.input,
+      userId: envelope.principal.userId,
+      sessionId: envelope.sessionId,
+      orgId: envelope.orgId ?? envelope.principal.orgId,
+      tenantId: envelope.tenantId,
+      source: envelope.source,
+      metadata: envelope.metadata,
+      resolvedActionCore: envelope.resolvedActionCore
+    };
+
+    // Concurrency gate, resolved up front and built before any request record or
+    // live stream exists. For `reject` this synchronously claims the action's
+    // key and throws `ConcurrencyRejectedError` here when another request holds
+    // it — so a dropped caller never materializes a run. `queue` defers the
+    // kickoff behind the key (FIFO); `allow` is a passthrough preserving today's
+    // timing. Only the *start* of execution is gated — the handle (requestId,
+    // liveStream, finished) is still returned synchronously, so an SSE client
+    // gets an open stream while queued. External dispatchers run elsewhere, so
+    // they skip arbitration (no key, passthrough) — see the arbiter note above.
+    const decision = isExternalDispatcher
+      ? { policy: "allow" as const, key: undefined }
+      : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
+    const gateStart = arbiter.gate(decision, requestId);
 
     // Per-flow `voice.provider` wins over the router-level provider, mirroring
     // the principal-resolver override pattern below. Merged once here so
@@ -156,20 +193,6 @@ export function createInboundTransportHost(
       liveStream?.emitter ??
       createResponseEmitter({ requestId });
 
-    const dispatchEnvelope: DispatchEnvelope = {
-      requestId,
-      flowKind: envelope.flowKind,
-      actionName: envelope.action,
-      input: envelope.input,
-      userId: envelope.principal.userId,
-      sessionId: envelope.sessionId,
-      orgId: envelope.orgId ?? envelope.principal.orgId,
-      tenantId: envelope.tenantId,
-      source: envelope.source,
-      metadata: envelope.metadata,
-      resolvedActionCore: envelope.resolvedActionCore
-    };
-
     // Delegate to the dispatcher. InProcessDispatcher uses dispatchLocal
     // (carries non-serializable context); external dispatchers use the
     // generic dispatch interface.
@@ -179,18 +202,20 @@ export function createInboundTransportHost(
     // (see the external branch). Left undefined for in-process.
     let accepted: Promise<void> | undefined;
     if ("dispatchLocal" in effectiveDispatcher) {
-      const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
-        dispatchEnvelope,
-        {
-          signal: envelope.signal,
-          responseEmitter,
-          effectiveRuntimeConfig: {
-            ...runtimeConfig,
-            voiceProvider: effectiveVoiceProvider
+      finished = gateStart(() => {
+        const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
+          dispatchEnvelope,
+          {
+            signal: envelope.signal,
+            responseEmitter,
+            effectiveRuntimeConfig: {
+              ...runtimeConfig,
+              voiceProvider: effectiveVoiceProvider
+            }
           }
-        }
-      );
-      finished = handle.finished;
+        );
+        return handle.finished;
+      });
     } else {
       // External dispatchers (BullMQ, etc.) run in a separate process and only
       // register the request once the worker starts `runAction`. A client GET
@@ -210,7 +235,6 @@ export function createInboundTransportHost(
       // but also if a backed-up queue delays worker-start past the sweeper's
       // staleness threshold (default 30s). That false-positive window is the
       // accepted tradeoff of enqueue-time registration.
-      const ts = Date.now();
       // `acceptance` resolves once the request is accepted: the enqueue-time
       // writes commit AND the dispatcher accepts the job. The response path
       // awaits the exposed `accepted` view before acking, so the 202 means
@@ -218,7 +242,9 @@ export function createInboundTransportHost(
       // enqueue (`effectiveDispatcher.dispatch`) is inside this promise, so an
       // enqueue failure rejects the ack (failing the POST / reverting the
       // resume) rather than landing in the detached `finished` chain after a 202
-      // already went out.
+      // already went out. The concurrency gate does not apply here — external
+      // dispatch is unarbitrated in v1 (FIX-830).
+      const ts = Date.now();
       const acceptance = Promise.all([
         stores.activeRequests.register({
           requestId,
@@ -242,16 +268,16 @@ export function createInboundTransportHost(
       ])
         .then(() => effectiveDispatcher.dispatch(dispatchEnvelope))
         .catch(async (error: unknown) => {
-          // Materialization or the enqueue failed: the job is not running and
-          // never will. Terminate the in_progress record we may have written —
-          // `Promise.all` can reject after one write already landed, and a
-          // failed enqueue leaves a fully-written record — so it doesn't outlive
-          // the job. The `finally` below only deregisters the activeRequests
-          // entry, which would otherwise leave the sweeper nothing to reap and
-          // the record stuck in_progress forever.
-          await terminateUnenqueuedRequest(stores, requestId);
-          throw error;
-        });
+            // Materialization or the enqueue failed: the job is not running and
+            // never will. Terminate the in_progress record we may have written —
+            // `Promise.all` can reject after one write already landed, and a
+            // failed enqueue leaves a fully-written record — so it doesn't
+            // outlive the job. The `finally` below only deregisters the
+            // activeRequests entry, which would otherwise leave the sweeper
+            // nothing to reap and the record stuck in_progress forever.
+            await terminateUnenqueuedRequest(stores, requestId);
+            throw error;
+          });
 
       accepted = acceptance.then(() => undefined);
       finished = acceptance.then((handle) => handle.finished);

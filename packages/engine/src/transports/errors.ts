@@ -40,6 +40,51 @@ export class OrgRequiredError extends Error {
 }
 
 /**
+ * Thrown synchronously from `host.dispatch` (before any request record exists)
+ * when an action's concurrency policy is `reject` and another request already
+ * holds the key (default: the session). Carries an HTTP-shaped `status` (409)
+ * like `PrincipalResolutionError`, the contended `key`, and the in-flight
+ * `requestId` so a caller may choose to tail the surviving request instead of
+ * retrying. Fire-and-forget adapters (scheduled/webhook) map it to a benign
+ * skipped response so the provider stops redelivering.
+ */
+export class ConcurrencyRejectedError extends Error {
+  readonly status = 409;
+  readonly key: string;
+  readonly inFlightRequestId?: string;
+
+  constructor(key: string, inFlightRequestId?: string) {
+    super(
+      `A request is already in flight for concurrency key "${key}"; ` +
+        `this action's policy is "reject" so the competing request was dropped.`
+    );
+    this.name = "ConcurrencyRejectedError";
+    this.key = key;
+    this.inFlightRequestId = inFlightRequestId;
+  }
+}
+
+/**
+ * Thrown when a `queue` request waits past its budget for the key to free up,
+ * instead of hanging indefinitely. Carries an HTTP-shaped `status` (503) and
+ * the contended `key`. Retryable with backoff.
+ */
+export class ConcurrencyQueueTimeoutError extends Error {
+  readonly status = 503;
+  readonly key: string;
+  readonly timeoutMs: number;
+
+  constructor(key: string, timeoutMs: number) {
+    super(
+      `Timed out after ${timeoutMs}ms waiting for concurrency key "${key}" to free up.`
+    );
+    this.name = "ConcurrencyQueueTimeoutError";
+    this.key = key;
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+/**
  * Thrown at host construction when two adapters declare the same
  * `(method, path)` pair. The message names both adapter sources and the
  * colliding path so the failure is actionable.

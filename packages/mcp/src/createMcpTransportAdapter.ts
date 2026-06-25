@@ -32,7 +32,7 @@ import type {
   PrincipalResolutionContext,
   ResolvedPrincipal
 } from "@flow-state-dev/engine";
-import { PrincipalResolutionError } from "@flow-state-dev/engine";
+import { ConcurrencyRejectedError, PrincipalResolutionError } from "@flow-state-dev/engine";
 import {
   unstable_findResourceConfig,
   unstable_getPersistedData,
@@ -348,6 +348,15 @@ async function handleToolsCall(
       metadata: { mcpMethod: "tools/call", mcpToolName: name }
     });
   } catch (error) {
+    // Concurrency `reject`: another request holds this action's key. Like a
+    // capacity overflow, this is a transient busy condition — map to the
+    // server-busy code (retryable) so MCP clients back off.
+    if (error instanceof ConcurrencyRejectedError) {
+      return jsonRpcResponse(
+        id,
+        jsonRpcError(JSON_RPC_SERVER_BUSY, error.message, { retryable: true })
+      );
+    }
     const message = error instanceof Error ? error.message : String(error);
     // Capacity overflow is the documented framework signal for "the host
     // is at its concurrent-stream cap." Map to the JSON-RPC server-busy

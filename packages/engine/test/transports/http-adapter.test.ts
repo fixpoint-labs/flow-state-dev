@@ -236,4 +236,63 @@ describe("HTTP transport adapter (via createFlowApiRouter)", () => {
     );
     expect(response.status).toBe(400);
   });
+
+  it("returns 409 ConcurrencyRejected for a second request on a session held under reject (FIX-837)", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+
+    // A `reject` action whose handler blocks, so the key stays held while the
+    // second request arrives. The gate claims the key synchronously inside
+    // `dispatch`, so the 409 lands without waiting for the handler to start.
+    let release!: () => void;
+    const blocked = new Promise<void>((r) => (release = r));
+    registry.register(
+      defineFlow({
+        kind: "rej",
+        actions: {
+          run: {
+            concurrency: "reject",
+            inputSchema: z.object({ value: z.string() }),
+            block: handler<{ value: string }, { ok: true }>({
+              name: "rej-run",
+              execute: async () => {
+                await blocked;
+                return { ok: true };
+              }
+            })
+          }
+        }
+      })({ id: "rej" })
+    );
+
+    const router = createFlowApiRouter({ registry, stores });
+    const post = () =>
+      router.POST(
+        new Request("http://localhost/api/flows/rej/sess_rej/actions/run", {
+          method: "POST",
+          body: JSON.stringify({ userId: "u_rej", input: { value: "hi" } })
+        }),
+        { params: { path: ["rej", "sess_rej", "actions", "run"] } }
+      );
+
+    const first = await post();
+    expect(first.status).toBe(202);
+    const firstPayload = (await first.json()) as { request: { id: string } };
+
+    const second = await post();
+    expect(second.status).toBe(409);
+    const secondPayload = (await second.json()) as {
+      error: string;
+      requestId?: string;
+    };
+    expect(secondPayload.error).toBe("ConcurrencyRejected");
+    // The 409 names the in-flight request the caller may tail.
+    expect(secondPayload.requestId).toBe(firstPayload.request.id);
+
+    // Release the first run; the key frees and a later request is admitted.
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const third = await post();
+    expect(third.status).toBe(202);
+  });
 });

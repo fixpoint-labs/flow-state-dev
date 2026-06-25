@@ -6,6 +6,7 @@
  * fire-and-forget dispatch.
  */
 import {
+  ConcurrencyRejectedError,
   PrincipalResolutionError,
   type InboundRequestEnvelope,
   type InboundTransportHost,
@@ -203,6 +204,17 @@ export async function handleDispatch(
   try {
     handle = host.dispatch(envelope);
   } catch (err) {
+    // Concurrency `reject` (only reachable when a flow's default policy keys on
+    // something a scheduled dispatch carries, e.g. `user` — scheduled envelopes
+    // have no session): a competing run holds the key. Ack 200 skipped, the same
+    // shape as the schedule's own overlap skip, so the caller does not retry.
+    if (err instanceof ConcurrencyRejectedError) {
+      return jsonResponse(200, {
+        status: "skipped",
+        reason: "in_flight",
+        requestId: err.inFlightRequestId
+      });
+    }
     return jsonResponse(503, {
       error: "flow_unregistered",
       message: err instanceof Error ? err.message : String(err)

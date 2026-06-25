@@ -191,6 +191,19 @@ See the [inbound transports reference](https://flow-state.dev/docs/advanced/inbo
 for the full contract reference and a walk-through of authoring a custom
 adapter.
 
+A flow's concurrency policy is enforced once at the host dispatch seam — the
+in-process dispatcher gates the run there, so every transport inherits the
+same behavior and adapters only map the outcome to their native response.
+When a `reject` policy drops a competing request, `host.dispatch` throws
+`ConcurrencyRejectedError` synchronously (carrying the contended `key` and the
+`inFlightRequestId`); the HTTP adapter maps it to 409, fire-and-forget
+webhook/scheduled adapters to a benign skipped 200, MCP to a server-busy
+error. A `queue` policy that waits past its budget rejects the request's
+`finished` with `ConcurrencyQueueTimeoutError` (it surfaces through the request
+stream, not a synchronous status). Both errors are exported from this package.
+See the [concurrency policies
+reference](https://flow-state.dev/docs/advanced/concurrency-policies).
+
 ## Authentication
 
 Per-flow `defineFlow({ authentication })` and a host-level
