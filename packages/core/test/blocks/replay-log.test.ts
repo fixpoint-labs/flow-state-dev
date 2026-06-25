@@ -221,7 +221,7 @@ describe("buildReplayLog", () => {
         suspensionItem("root/step[3]", "susp_b", 2),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: { observed: "In Spec Review" }, rejected: false, suspensionId: "susp_a", resolvedBy: undefined },
+        { data: { observed: "In Spec Review" }, rejected: false, skipped: false, suspensionId: "susp_a", resolvedBy: undefined },
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[3]`)).toEqual([]);
     });
@@ -246,8 +246,18 @@ describe("buildReplayLog", () => {
         }),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: { note: "no" }, rejected: true, suspensionId: "susp_a", resolvedBy: "reviewer" },
+        { data: { note: "no" }, rejected: true, skipped: false, suspensionId: "susp_a", resolvedBy: "reviewer" },
       ]);
+    });
+
+    it("marks a skipped resolution so ctx.suspend() replays the sentinel, not data (FIX-849)", () => {
+      const log = buildReplayLog([
+        suspensionItem("root/step[2]", "susp_a", 0),
+        suspensionResumeItem("root/step[2]", "susp_a", 1, { resolution: "skipped" }),
+      ]);
+      const [resolved] = log.resolvedResumes(`${REQ}:root/step[2]`);
+      expect(resolved.skipped).toBe(true);
+      expect(resolved.rejected).toBe(false);
     });
   });
 });

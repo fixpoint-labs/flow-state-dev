@@ -12,7 +12,7 @@
 
 import type { ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import type { SuspensionReason } from "../types/suspension";
+import type { ResumeAction, SuspensionReason } from "../types/suspension";
 
 export interface SuspendOptions {
   reason: SuspensionReason;
@@ -28,6 +28,27 @@ export interface SuspendOptions {
   resumeSchema?: ZodTypeAny | Record<string, unknown>;
   timeoutMs?: number;
   render?: { component: string; props?: Record<string, unknown> };
+  /**
+   * Which resolution actions this suspension permits. Omit to take the default
+   * for the `reason`: `human_input` → `["submit"]`; everything else (including
+   * `human_approval`) → `["approve", "reject"]`. Add `"skip"` to make the step
+   * optional — a skipped resume returns the `SUSPENSION_SKIPPED` sentinel from
+   * `ctx.suspend()` instead of aborting. The resume route enforces this set.
+   */
+  allow?: ResumeAction[];
+}
+
+/**
+ * Resolve the permitted resolution actions for a suspension, applying the
+ * reason-based default when the author did not pass `allow` explicitly. Shared
+ * by the suspension-record builder and any caller that needs the concrete set.
+ */
+export function resolveAllowedActions(
+  reason: SuspensionReason,
+  allow: ResumeAction[] | undefined
+): ResumeAction[] {
+  if (allow !== undefined) return allow;
+  return reason === "human_input" ? ["submit"] : ["approve", "reject"];
 }
 
 /**
@@ -52,6 +73,8 @@ export class SuspensionError extends Error {
   readonly resumeSchema?: Record<string, unknown>;
   readonly render?: { component: string; props?: Record<string, unknown> };
   readonly timeoutMs?: number;
+  /** Permitted resolution actions, defaulted by reason (see {@link resolveAllowedActions}). */
+  readonly allow: ResumeAction[];
 
   /** @internal Stamped by the sequencer so runAction can build a SuspensionRecord. */
   _stepIndex?: number;
@@ -86,6 +109,7 @@ export class SuspensionError extends Error {
     this.resumeSchema = normalizeResumeSchema(options.resumeSchema);
     this.render = options.render;
     this.timeoutMs = options.timeoutMs;
+    this.allow = resolveAllowedActions(options.reason, options.allow);
   }
 }
 

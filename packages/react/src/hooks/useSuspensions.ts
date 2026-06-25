@@ -1,6 +1,9 @@
 /**
  * useSuspensions — derives pending/resolved suspension state from a session's
- * live item stream and provides approve/reject actions (FIX-276).
+ * live item stream and provides resolution actions (FIX-276, generalized in
+ * FIX-849). `resolve(id, { action, data })` is the general resolver (submit a
+ * typed payload, skip an optional step, or approve/reject); `approve`/`reject`
+ * are thin wrappers over it.
  *
  * Suspensions surface when a durable action calls `ctx.suspend()` (e.g. to wait
  * for human approval). The pause emits a `suspension` item; the eventual
@@ -18,7 +21,7 @@ import type {
   SuspensionItem,
   SuspensionResumeItem
 } from "@flow-state-dev/core/items";
-import type { SuspensionReason, SuspensionStatus } from "@flow-state-dev/core/types";
+import type { ResumeAction, SuspensionReason, SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
 import type { SessionView } from "./useSession";
 
@@ -47,7 +50,14 @@ export interface SuspensionView {
   /** The resolution payload, once resolved (from the suspension_resume item). */
   resumeData?: unknown;
   resolvedBy?: string;
-  /** True while an approve/reject call for this suspension is in flight. */
+  /**
+   * The resolution actions this suspension permits (from `item.allow`). A layout
+   * reads it to decide which controls to show — e.g. a Skip button appears iff it
+   * includes `"skip"`. Falls back to binary `["approve", "reject"]` for older
+   * suspensions persisted before `allow` existed.
+   */
+  allow: ResumeAction[];
+  /** True while a resolve call for this suspension is in flight. */
   isResolving: boolean;
 }
 
@@ -61,9 +71,16 @@ export interface UseSuspensionsResult {
   /** Convenience filter: only pending suspensions. */
   pending: SuspensionView[];
   /**
+   * Resolve a suspension with any permitted action, streaming its continuation
+   * back into `session.items`. This is the general resolver — `submit` carries a
+   * typed payload (a question answer, a form, a selection); `skip` declines an
+   * optional step; `approve`/`reject` keep their binary meaning. Resolves once the
+   * resume has been dispatched; rejects if the resume call fails.
+   */
+  resolve: (suspensionId: string, args: { action: ResumeAction; data?: unknown }) => Promise<void>;
+  /**
    * Approve a suspension and stream its continuation back into `session.items`.
-   * Resolves once the resume has been dispatched (the continuation then streams
-   * in live); rejects if the resume call fails.
+   * Thin wrapper over {@link resolve} with `action: "approve"`.
    */
   approve: (suspensionId: string, data?: unknown) => Promise<void>;
   /** Reject a suspension. Same streaming semantics as {@link approve}. */
@@ -107,9 +124,12 @@ export function deriveSuspensions(
     suspensions.push({
       item: suspItem,
       pending: resume === undefined,
+      // An unknown future resolution tag passes through verbatim rather than
+      // throwing — the reducer tolerates a vocabulary it does not recognise.
       status: resume?.resolution ?? "pending",
       resumeData: resume?.resumeData,
       resolvedBy: resume?.resolvedBy,
+      allow: suspItem.allow ?? ["approve", "reject"],
       isResolving: inFlight.has(suspItem.suspensionId)
     });
   }
@@ -130,12 +150,12 @@ export interface ResolveSuspensionArgs {
   resolve: (args: {
     suspensionId: string;
     requestId: string;
-    action: "approve" | "reject";
+    action: ResumeAction;
     data?: unknown;
     resumedBy?: string;
   }) => Promise<void>;
   item: Pick<SuspensionItem, "suspensionId" | "requestId">;
-  action: "approve" | "reject";
+  action: ResumeAction;
   data?: unknown;
   resumedBy?: string;
   markStart: (id: string) => void;
@@ -217,33 +237,39 @@ export function useSuspensions(
   const resolvedBy = ctxUserId ?? session.userId;
 
   const resolve = useCallback(
-    (action: "approve" | "reject") =>
-      (suspensionId: string, data?: unknown): Promise<void> => {
-        const target = session.items.find(
-          (item): item is SuspensionItem => {
-            if (item.type !== "suspension") return false;
-            return (item as SuspensionItem).suspensionId === suspensionId;
-          }
-        );
-        if (target === undefined) {
-          return Promise.reject(new Error("No suspension found with id: " + suspensionId));
+    (suspensionId: string, args: { action: ResumeAction; data?: unknown }): Promise<void> => {
+      const target = session.items.find(
+        (item): item is SuspensionItem => {
+          if (item.type !== "suspension") return false;
+          return (item as SuspensionItem).suspensionId === suspensionId;
         }
-        return resolveSuspension({
-          resolve: session.resumeSuspension,
-          item: target,
-          action,
-          data,
-          resumedBy: resolvedBy,
-          markStart,
-          markEnd,
-          setError
-        });
-      },
+      );
+      if (target === undefined) {
+        return Promise.reject(new Error("No suspension found with id: " + suspensionId));
+      }
+      return resolveSuspension({
+        resolve: session.resumeSuspension,
+        item: target,
+        action: args.action,
+        data: args.data,
+        resumedBy: resolvedBy,
+        markStart,
+        markEnd,
+        setError
+      });
+    },
     [session.resumeSuspension, session.items, resolvedBy, markStart, markEnd]
   );
 
-  const approve = useMemo(() => resolve("approve"), [resolve]);
-  const reject = useMemo(() => resolve("reject"), [resolve]);
+  // Binary approve/reject stay as thin wrappers over the general resolver.
+  const approve = useCallback(
+    (suspensionId: string, data?: unknown) => resolve(suspensionId, { action: "approve", data }),
+    [resolve]
+  );
+  const reject = useCallback(
+    (suspensionId: string, data?: unknown) => resolve(suspensionId, { action: "reject", data }),
+    [resolve]
+  );
 
-  return { suspensions, pending, approve, reject, error };
+  return { suspensions, pending, resolve, approve, reject, error };
 }

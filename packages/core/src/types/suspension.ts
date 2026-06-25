@@ -13,8 +13,21 @@
 // the item taxonomy, so their declarations live in the zero-dependency
 // `@flow-state-dev/contracts` layer. Re-exported here to preserve this path's
 // surface; the record/filter machinery below still references them locally.
-import type { SuspensionReason, SuspensionStatus } from "@flow-state-dev/contracts";
-export type { SuspensionReason, SuspensionStatus };
+import type { ResumeAction, SuspensionReason, SuspensionStatus } from "@flow-state-dev/contracts";
+export type { ResumeAction, SuspensionReason, SuspensionStatus };
+
+/**
+ * Returned by `ctx.suspend()` when a human skips an optional suspension (resumed
+ * with `action: "skip"`). Distinct from `reject`, which throws
+ * `SuspensionRejectedError` and aborts the flow: a skip is normal control flow,
+ * so a flow author branches on it (`if (r === SUSPENSION_SKIPPED) useDefault()`).
+ * The symbol never crosses the serialization boundary — only the string
+ * `resolution: "skipped"` is ever persisted; the sentinel is reconstructed on
+ * both the live continuation and the replay path.
+ */
+export const SUSPENSION_SKIPPED: unique symbol = Symbol.for("fsd.suspension.skipped");
+/** The type of the {@link SUSPENSION_SKIPPED} sentinel. */
+export type SuspensionSkipped = typeof SUSPENSION_SKIPPED;
 
 export interface SuspensionRecord {
   suspensionId: string;
@@ -35,6 +48,14 @@ export interface SuspensionRecord {
    */
   resumeSchema?: Record<string, unknown>;
   render?: { component: string; props?: Record<string, unknown> };
+  /**
+   * The resolution actions this suspension permits. The resume route rejects an
+   * inbound action outside this set (409), and renderers read it to decide which
+   * controls to show (e.g. a Skip button appears iff `"skip"` is present). When
+   * absent — including on records persisted before this field existed — the
+   * suspension is treated as binary `["approve", "reject"]` for back-compat.
+   */
+  allow?: ResumeAction[];
 
   status: SuspensionStatus;
 
@@ -58,6 +79,8 @@ export interface SuspensionRecord {
 export const TERMINAL_SUSPENSION_STATUSES: readonly SuspensionStatus[] = [
   "approved",
   "rejected",
+  "submitted",
+  "skipped",
   "timed_out",
   "expired"
 ];
@@ -66,6 +89,18 @@ export const TERMINAL_SUSPENSION_STATUSES: readonly SuspensionStatus[] = [
 export function isTerminalSuspensionStatus(status: SuspensionStatus): boolean {
   return TERMINAL_SUSPENSION_STATUSES.includes(status);
 }
+
+/**
+ * The terminal status each resume action resolves a suspension to. Shared by the
+ * resume route (which writes the record status) and `runAction` (which stamps
+ * the `suspension_resume` audit item's `resolution`) so the two never drift.
+ */
+export const RESUME_ACTION_STATUS: Record<ResumeAction, SuspensionStatus> = {
+  approve: "approved",
+  reject: "rejected",
+  submit: "submitted",
+  skip: "skipped"
+};
 
 /**
  * Apply a `SuspensionFilter` to a single record. Shared by every adapter that
@@ -97,7 +132,7 @@ export function matchesSuspensionFilter(
 
 export interface ResumeContext {
   suspensionId: string;
-  action: "approve" | "reject";
+  action: ResumeAction;
   data?: unknown;
   resumedBy?: string;
   /**

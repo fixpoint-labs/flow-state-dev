@@ -66,6 +66,7 @@ import {
 } from "../errors/error-capture";
 import { SuspensionError, SuspensionRejectedError } from "@flow-state-dev/core";
 import type { ResumeContext } from "@flow-state-dev/core/types";
+import { SUSPENSION_SKIPPED } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
   resolveUserStorageKey,
@@ -2640,6 +2641,12 @@ export async function createExecutionContext<
             if (entry.rejected) {
               throw new SuspensionRejectedError(entry.suspensionId, entry.resolvedBy, entry.data);
             }
+            // A skipped gate replays as the sentinel, never the persisted data,
+            // so `if (r === SUSPENSION_SKIPPED)` holds identically across a
+            // restart (the symbol never crossed the serialization boundary).
+            if (entry.skipped) {
+              return SUSPENSION_SKIPPED;
+            }
             return entry.data;
           }
         }
@@ -2671,6 +2678,11 @@ export async function createExecutionContext<
             if (isLegacyFirstGate) legacyResumeConsumed = true;
             if (resumeCtx.action === "reject") {
               throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
+            }
+            // A skip is non-throwing control flow: return the sentinel so the
+            // author's optional-step branch fires instead of receiving a payload.
+            if (resumeCtx.action === "skip") {
+              return SUSPENSION_SKIPPED;
             }
             return resumeCtx.data;
           }

@@ -29,6 +29,12 @@ export interface ResolvedResume {
   data: unknown;
   /** True when the resolution was a rejection (re-throw `SuspensionRejectedError`). */
   rejected: boolean;
+  /**
+   * True when the resolution was a skip — `ctx.suspend()` must return the
+   * `SUSPENSION_SKIPPED` sentinel on replay, not the persisted `data`, so a
+   * skipped gate behaves identically on first-run and after a restart.
+   */
+  skipped: boolean;
   /** The original suspension id (for reconstructing a rejection error). */
   suspensionId: string;
   /** Who resolved it (for reconstructing a rejection error). */
@@ -93,7 +99,7 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
   /** Resolution payloads keyed by the suspension id they resolved. */
   const resumeBySuspension = new Map<
     string,
-    { data: unknown; rejected: boolean; resolvedBy: string | undefined }
+    { data: unknown; rejected: boolean; skipped: boolean; resolvedBy: string | undefined }
   >();
 
   for (const item of items) {
@@ -131,6 +137,7 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
       resumeBySuspension.set(resume.suspensionId, {
         data: resume.resumeData,
         rejected: resume.resolution === "rejected",
+        skipped: resume.resolution === "skipped",
         resolvedBy: resume.resolvedBy,
       });
     }
@@ -161,6 +168,7 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
     list.push({
       data: resume.data,
       rejected: resume.rejected,
+      skipped: resume.skipped,
       suspensionId: s.suspensionId,
       resolvedBy: resume.resolvedBy,
     });

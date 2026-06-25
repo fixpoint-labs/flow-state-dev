@@ -9,6 +9,8 @@ export type SuspensionStatus =
   | "pending"
   | "approved"
   | "rejected"
+  | "submitted"
+  | "skipped"
   | "timed_out"
   | "expired";
 
@@ -22,3 +24,12 @@ export type SuspensionReason =
   | "human_input"
   | "external_event"
   | (string & {});
+
+/**
+ * The resolution actions a resumer can send to the resume endpoint. `approve`
+ * and `reject` are the original binary outcomes; `submit` carries a validated
+ * payload (a question answer, a form, a selection); `skip` declines an optional
+ * step so the run continues with a default. A leaf type so the item taxonomy
+ * (`SuspensionItem.allow`) can reference it without depending on `core`.
+ */
+export type ResumeAction = "approve" | "reject" | "submit" | "skip";

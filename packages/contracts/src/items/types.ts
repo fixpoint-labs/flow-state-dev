@@ -1,6 +1,6 @@
 import type { Content } from "./content";
 import type { ModelIdentity } from "../types/model-identity";
-import type { SuspensionReason, SuspensionStatus } from "../types/suspension";
+import type { ResumeAction, SuspensionReason, SuspensionStatus } from "../types/suspension";
 
 export type { ModelIdentity };
 
@@ -539,6 +539,13 @@ export type SuspensionItem = OutputItemBase & {
   resumeSchema?: Record<string, unknown>;
   render?: { component: string; props?: Record<string, unknown> };
   resumeData?: unknown;
+  /**
+   * Resolution actions this suspension permits (e.g. `["submit", "skip"]`).
+   * Renderers read it to decide which controls to show — a Skip button appears
+   * iff `"skip"` is present. Absent on suspensions persisted before this field
+   * existed, which renderers treat as binary `["approve", "reject"]`.
+   */
+  allow?: ResumeAction[];
   /**
    * `blockInstanceId` of the block that suspended (FIX-811). The item itself is
    * emitted with runtime provenance, so this carries the suspending block's

@@ -7,8 +7,12 @@
  * records — typically the DevTool calls `checkInterrupted` on mount and on
  * every session-list refresh.
  */
+import type { ResumeAction } from "@flow-state-dev/contracts";
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
 import type { ClientFetch } from "../types";
+
+/** The resolution actions the resume endpoint accepts. */
+const RESUME_ACTIONS: readonly ResumeAction[] = ["approve", "reject", "submit", "skip"];
 
 export type CreateRecoveryClientOptions = {
   baseUrl?: string;
@@ -63,8 +67,13 @@ export type ContinueRequestResult = {
 export type ResumeSuspensionBody = {
   /** Id of the pending suspension to resolve. */
   suspensionId: string;
-  /** Whether the operator approves or rejects the suspension. */
-  action: "approve" | "reject";
+  /**
+   * How the suspension resolves. `approve`/`reject` are the binary outcomes;
+   * `submit` carries a `data` payload validated against the suspension's
+   * `resumeSchema`; `skip` declines an optional step. The action must be in the
+   * suspension's `allow` set or the route returns 409.
+   */
+  action: ResumeAction;
   /** Optional resume payload validated against the suspension's resumeSchema. */
   data?: unknown;
   /** Optional identifier of the operator resolving the suspension. */
@@ -211,11 +220,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
       requireNonEmpty(flowKind, "flowKind");
       requireNonEmpty(requestId, "requestId");
       requireNonEmpty(body.suspensionId, "suspensionId");
-      if (body.action !== "approve" && body.action !== "reject") {
-        throw new Error(
-          'createRecoveryClient.resumeSuspension requires action "approve" or "reject"'
-        );
-      }
+      requireAction(body.action, "resumeSuspension");
 
       return requestJson<ResumeSuspensionResult>({
         fetcher,
@@ -235,11 +240,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
       requireNonEmpty(flowKind, "flowKind");
       requireNonEmpty(requestId, "requestId");
       requireNonEmpty(body.suspensionId, "suspensionId");
-      if (body.action !== "approve" && body.action !== "reject") {
-        throw new Error(
-          'createRecoveryClient.resumeSuspensionStream requires action "approve" or "reject"'
-        );
-      }
+      requireAction(body.action, "resumeSuspensionStream");
 
       const response = await fetcher(
         buildFlowApiUrl({
@@ -269,5 +270,13 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
 function requireNonEmpty(value: string, name: string): void {
   if (value.trim().length === 0) {
     throw new Error(`createRecoveryClient requires a non-empty ${name}`);
+  }
+}
+
+function requireAction(action: ResumeAction, method: string): void {
+  if (!RESUME_ACTIONS.includes(action)) {
+    throw new Error(
+      `createRecoveryClient.${method} requires action one of ${RESUME_ACTIONS.join(", ")}`
+    );
   }
 }

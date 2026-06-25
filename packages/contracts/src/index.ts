@@ -14,7 +14,7 @@
 export * from "./items";
 
 // Pure leaf types not surfaced through the items barrel.
-export type { SuspensionReason, SuspensionStatus } from "./types/suspension";
+export type { ResumeAction, SuspensionReason, SuspensionStatus } from "./types/suspension";
 
 // Deterministic blockInstanceId construction/parsing (pure string logic).
 export * from "./block-instance-id";

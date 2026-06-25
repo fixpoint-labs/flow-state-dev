@@ -135,11 +135,11 @@ const { newRequestId } = await recovery.retry({
   requestId: "req_1",
 });
 
-// Resolve a pending suspension (approve or reject).
+// Resolve a pending suspension.
 const result = await recovery.resumeSuspension("chat", "req_1", {
   suspensionId: "susp_abc",
-  action: "approve",            // or "reject"
-  data: { approved: true },     // optional payload; ctx.suspend() returns this
+  action: "approve",            // "approve" | "reject" | "submit" | "skip"
+  data: { approved: true },     // payload for submit/approve; ctx.suspend() returns it
   resumedBy: "user_xyz",        // optional; stored on the audit record
 });
 // result.requestId — the request id that will continue (same as the input requestId)
@@ -158,8 +158,10 @@ if ((response.headers.get("content-type") ?? "").includes("text/event-stream")) 
 
 `retry` returns 409 from the server unless the original request's status is `interrupted` or `failed`.
 
+`action` is one of `"approve" | "reject" | "submit" | "skip"`. `submit` carries a typed payload in `data` that the server validates against the suspension's `resumeSchema`; `skip` declines an optional step and carries no payload; `approve` / `reject` are the binary outcomes. The server returns `409` for an action outside the suspension's `allow` set.
+
 `resumeSuspension` error codes:
-- **400** — missing or invalid `action`, or no durability provider configured
+- **400** — missing or invalid `action`, a `data` payload that fails `resumeSchema` validation (path-keyed `validationErrors` in the body), or no durability provider configured
 - **404** — unknown `flowKind`, `requestId`, or `suspensionId`
 - **409** — request is not currently suspended, or this suspension is already resolved, or a concurrent resume is in progress
 - **410** — the suspension has expired (`timeoutMs` elapsed)

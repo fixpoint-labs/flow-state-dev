@@ -20,15 +20,18 @@ import {
   useContext,
   type ReactNode
 } from "react";
+import type { ResumeAction } from "@flow-state-dev/core/types";
 
 /**
  * Streaming suspension resolver. Matches the shape of
- * `SessionView.resumeSuspension` so an app can pass it through verbatim.
+ * `SessionView.resumeSuspension` so an app can pass it through verbatim. The
+ * `action` spans the full resolution vocabulary — `submit`/`skip` resolve the
+ * non-binary shapes (a question answer, a form, a selection, an optional step).
  */
 export type SuspensionResolver = (args: {
   suspensionId: string;
   requestId: string;
-  action: "approve" | "reject";
+  action: ResumeAction;
   data?: unknown;
   resumedBy?: string;
 }) => Promise<void>;

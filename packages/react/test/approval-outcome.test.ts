@@ -21,6 +21,14 @@ describe("resolveApprovalOutcome", () => {
     expect(resolveApprovalOutcome("expired").label).toBe("Expired");
   });
 
+  it("labels the non-binary submitted and skipped resolutions (FIX-849)", () => {
+    expect(resolveApprovalOutcome("submitted").label).toBe("Submitted");
+    expect(resolveApprovalOutcome("skipped").label).toBe("Skipped");
+    // A submitted/skipped receipt must read as such, not the neutral default.
+    expect(resolveApprovalOutcome("submitted").label).not.toBe("Resolved");
+    expect(resolveApprovalOutcome("skipped").label).not.toBe("Resolved");
+  });
+
   it("falls back to a neutral 'Resolved' receipt when the outcome is unknown", () => {
     expect(resolveApprovalOutcome(undefined).label).toBe("Resolved");
   });

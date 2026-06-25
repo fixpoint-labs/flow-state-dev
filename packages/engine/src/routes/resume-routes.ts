@@ -1,7 +1,10 @@
 /**
  * Resume endpoint handler for durable action suspension resolution.
  */
-import type { ResumeContext } from "@flow-state-dev/core/types";
+import { Validator } from "@cfworker/json-schema";
+import type { Schema } from "@cfworker/json-schema";
+import type { ResumeAction, ResumeContext } from "@flow-state-dev/core/types";
+import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost } from "../transports/types";
@@ -15,6 +18,51 @@ import {
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
+
+/** The resolution actions the resume endpoint accepts on the wire. */
+const RESUME_ACTIONS: readonly ResumeAction[] = ["approve", "reject", "submit", "skip"];
+
+/** Narrow an arbitrary string to a known resume action. */
+function isResumeAction(value: string | undefined): value is ResumeAction {
+  return value !== undefined && (RESUME_ACTIONS as readonly string[]).includes(value);
+}
+
+/**
+ * Validate a resume `data` payload against the suspension's persisted JSON
+ * Schema. Returns `null` when valid (or when there is no schema to check
+ * against); otherwise a path-keyed error map (JSON-pointer field → message)
+ * mirroring rjsf's `extraErrors` shape so a client can pin each error to its
+ * field. Only `submit`/`approve` carry a payload — `skip`/`reject` skip this.
+ */
+function validateResumePayload(
+  schema: Record<string, unknown> | undefined,
+  data: unknown
+): Record<string, string> | null {
+  if (schema === undefined) return null;
+  // Match the draft `zod-to-json-schema` emits (draft-07), and disable
+  // short-circuiting so every failing field is reported, not just the first.
+  const validator = new Validator(schema as Schema, "7", false);
+  let result: ReturnType<Validator["validate"]>;
+  try {
+    result = validator.validate(data);
+  } catch {
+    // The validator throws on an unsupported instance (e.g. `undefined` when a
+    // `submit` carries no `data`) or an unresolved `$ref`. Treat any such throw
+    // as a validation failure, not a 500 — the payload did not satisfy the
+    // schema. Keyed at the root since there is no per-field location.
+    return { "": "Resume payload does not satisfy the suspension's resumeSchema" };
+  }
+  if (result.valid) return null;
+  const errors: Record<string, string> = {};
+  for (const unit of result.errors) {
+    // `instanceLocation` is a JSON pointer ("" for the root, "/field" for a
+    // property). Strip the leading slash for a bare field key; keep "" → "".
+    const key = unit.instanceLocation.replace(/^\//, "");
+    // Keep the first error per field — the most specific keyword failure.
+    if (errors[key] === undefined) errors[key] = unit.error;
+  }
+  return errors;
+}
 
 type ResumeRouteContext = {
   host: InboundTransportHost;
@@ -67,9 +115,15 @@ export async function handleResumeSuspension(
     return jsonResponse(400, { error: "Missing required field: suspensionId" });
   }
 
-  if (action !== "approve" && action !== "reject") {
+  // Distinguish a missing field from a wrong value (mirrors suspensionId above),
+  // so an absent `action` reads as "missing" rather than "invalid value".
+  if (action === undefined) {
+    return jsonResponse(400, { error: "Missing required field: action" });
+  }
+
+  if (!isResumeAction(action)) {
     return jsonResponse(400, {
-      error: 'Field "action" must be "approve" or "reject"'
+      error: `Field "action" must be one of ${RESUME_ACTIONS.join(", ")}`
     });
   }
 
@@ -91,10 +145,13 @@ export async function handleResumeSuspension(
     });
   }
 
-  // Enforce expiry at the endpoint, not just in the sweeper. The sweeper flips
-  // pending -> expired only every sweepIntervalMs (and only when retention is
-  // configured), so without this check an expired gate stays approvable between
-  // ticks — or forever if retention is off. Mark it expired now and reject.
+  // Enforce expiry at the endpoint, not just in the sweeper, and BEFORE the
+  // allow/payload guards — otherwise an expired gate could be held pending
+  // indefinitely by a client sending disallowed actions or invalid payloads
+  // (each short-circuiting before this check). The sweeper flips pending ->
+  // expired only every sweepIntervalMs (and only when retention is configured),
+  // so without this an expired gate stays approvable between ticks — or forever
+  // if retention is off. Mark it expired now and reject.
   if (suspension.expiresAt != null && suspension.expiresAt <= Date.now()) {
     await provider.suspend({
       ...suspension,
@@ -104,6 +161,35 @@ export async function handleResumeSuspension(
     return jsonResponse(410, {
       error: `Suspension "${suspensionId}" expired at ${suspension.expiresAt}`
     });
+  }
+
+  // The action must be in the suspension's permitted set. This is the
+  // suspension's contract (not a malformed request), so an out-of-set action is
+  // a 409. Records persisted before `allow` existed are treated as binary.
+  const allowed = suspension.allow ?? ["approve", "reject"];
+  if (!allowed.includes(action)) {
+    return jsonResponse(409, {
+      error: `Action "${action}" not permitted for this suspension (allowed: ${allowed.join(", ")})`
+    });
+  }
+
+  // Validate the submitted payload against the persisted resumeSchema before any
+  // state transition, so an invalid submission is a clean 400 and the suspension
+  // stays pending. A `submit` always carries the typed answer, so it is always
+  // validated (a missing required payload is a 400). An `approve` is binary and
+  // its payload is optional metadata, so validate it only when the resumer
+  // actually sent data — a bare approve against a schema with an optional field
+  // must still resolve. `skip`/`reject` carry no payload.
+  const shouldValidate =
+    action === "submit" || (action === "approve" && resumeData !== undefined);
+  if (shouldValidate) {
+    const validationErrors = validateResumePayload(suspension.resumeSchema, resumeData);
+    if (validationErrors !== null) {
+      return jsonResponse(400, {
+        error: "Resume payload failed validation against the suspension's resumeSchema",
+        validationErrors
+      });
+    }
   }
 
   const lease = await provider.acquireLease(route.requestId, {
@@ -128,7 +214,7 @@ export async function handleResumeSuspension(
     const now = Date.now();
     await provider.suspend({
       ...suspension,
-      status: action === "approve" ? "approved" : "rejected",
+      status: RESUME_ACTION_STATUS[action],
       resolvedAt: now,
       resolvedBy: resumedBy,
       resumeData

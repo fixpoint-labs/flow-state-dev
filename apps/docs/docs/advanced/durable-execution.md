@@ -111,6 +111,7 @@ On the React side, `useSuspensions(session)` derives pending and resolved suspen
 | `resumeSchema` | `Record<string, unknown>` | JSON Schema describing the expected resume payload shape |
 | `timeoutMs` | `number` | Optional expiry. After this duration the suspension transitions to `timed_out`. |
 | `render` | `{ component: string; props?: Record<string, unknown> }` | Hint for client-side rendering of the approval UI |
+| `allow` | `ResumeAction[]` | Which resolution actions this suspension permits. Omit to take the reason-based default: `human_input` → `["submit"]`; everything else (including `human_approval`) → `["approve", "reject"]`. Add `"skip"` to make the step optional. The resume route returns `409` for an action outside this set. |
 
 ## Resuming a suspended request
 
@@ -131,7 +132,9 @@ Request body:
 }
 ```
 
-`action` must be `"approve"` or `"reject"`. `data` carries the payload that `ctx.suspend()` will return on the resumed step. `resumedBy` is optional — it's stored on the suspension record for audit purposes.
+`action` is one of `"approve" | "reject" | "submit" | "skip"`, and must be in the suspension's `allow` set (a `409` otherwise). `submit` carries a typed payload in `data` (a question answer, a form, a selection); `skip` declines an optional step and carries no payload; `approve` / `reject` are the binary outcomes. `data` is the payload that `ctx.suspend()` returns on the resumed step. `resumedBy` is optional — it's stored on the suspension record for audit purposes.
+
+When the inbound action is `submit` (or `approve` with a schema present), the server validates `data` against the suspension's stored `resumeSchema` before any state transition. An invalid payload returns `400` with path-keyed `validationErrors` and the suspension stays pending.
 
 Resume continues the **same** request id. There is no new linked request. The record's status walks `suspended → in_progress → terminal` as the continuation runs (and `interrupted → in_progress → terminal` on crash recovery). A `GET` on the request returns the whole pause-and-continue history on one record, not two records joined by a reference.
 
@@ -182,6 +185,34 @@ See [Block memoization and replay](./block-memoization-and-replay.md) for the fu
 A request can suspend and resume more than once. Each cycle appends to the same log: another `suspension` item, another `suspension_resume` item, and the post-resume items, all under the same request id with continuous sequence numbers. The audit of every pause lives on the item log as the `suspension` / `suspension_resume` pairs, in order, so the full decision trail for a multi-gate flow reads top to bottom on one record.
 
 This holds across a process restart, not just an in-process pause. A continuation replays the request from the top of the action, so resuming a *later* gate re-reaches the earlier ones. Those earlier gates were already resolved on the durable log, so they replay their recorded resolutions in order instead of pausing again, and the request runs through to completion. A flow with two sequential `ctx.suspend()` gates resumed at the second gate after the server restarted completes the same as it would in one process.
+
+## What `ctx.suspend()` returns
+
+On resume, `ctx.suspend()` returns the resolver's payload (`data`) for `approve` and `submit`. The two non-payload outcomes are different:
+
+- `reject` throws `SuspensionRejectedError` (see below), aborting the step unless a rescue handler catches it.
+- `skip` returns the `SUSPENSION_SKIPPED` sentinel, importable from `@flow-state-dev/core`. A skip is normal control flow, so the author branches on it rather than catching an error:
+
+```ts
+import { SUSPENSION_SKIPPED } from "@flow-state-dev/core";
+
+const answer = await ctx.suspend!({
+  reason: "human_input",
+  message: "Add a reviewer note? (optional)",
+  resumeSchema: z.object({ note: z.string() }),
+  allow: ["submit", "skip"],
+});
+
+if (answer === SUSPENSION_SKIPPED) {
+  // proceed with a default
+}
+```
+
+The sentinel never crosses the wire — only the string `resolution: "skipped"` is persisted, and the symbol is reconstructed on both the live continuation and the replay path.
+
+### Resolution statuses
+
+A suspension's resolved status is one of `approved`, `rejected`, `submitted`, `skipped`, `timed_out`, or `expired` (`pending` is the sole non-resolved state). The resume action maps to the status one-to-one: `submit` → `submitted`, `skip` → `skipped`. The matching `suspension_resume` audit item carries the status in its `resolution` field.
 
 ## Error handling
 

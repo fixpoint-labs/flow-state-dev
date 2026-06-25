@@ -363,3 +363,7 @@ export type {
   SuspendOptions,
   SerializedError
 } from "./errors";
+// The skip sentinel returned by ctx.suspend() lives alongside SuspensionError on
+// the top-level surface so flow authors import both from one place.
+export { SUSPENSION_SKIPPED } from "./types/suspension";
+export type { ResumeAction, SuspensionSkipped } from "./types/suspension";
