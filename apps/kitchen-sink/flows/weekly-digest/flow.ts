@@ -23,7 +23,7 @@ import {
 import {
   createBearerSecretPrincipalResolver,
   defaultBodyUserIdPrincipalResolver,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { z } from "zod";
 import { scheduleIndex } from "@/lib/schedule-index";
 
@@ -44,7 +44,9 @@ const sendWeeklySummary = handler({
 
 const scheduleDigestInputSchema = z.object({
   cron: z.string().min(1),
-  action: z.string().min(1).default("sendWeeklySummary"),
+  // Handler discriminator persisted on the row; the resolver maps it back to a
+  // real block via its `blocks` map (FIX-838). A row can't serialize a block.
+  kind: z.string().min(1).default("sendWeeklySummary"),
 });
 
 /**
@@ -65,11 +67,11 @@ const scheduleDigest = handler({
     // branding doesn't carry into the flat registry lookup.
     const schedules = ctx.resources.schedules as unknown as ResourceCollectionRef<{
       cron: string;
-      action: string;
+      kind: string;
       enabled: boolean;
     }>;
     const key = "digest";
-    const nextState = { cron: input.cron, action: input.action, enabled: true };
+    const nextState = { cron: input.cron, kind: input.kind, enabled: true };
     const existing = await schedules.getOptional(key);
     if (existing !== undefined) {
       await existing.setState(nextState);
@@ -96,7 +98,7 @@ const clearSchedules = handler({
     }
     const schedules = ctx.resources.schedules as unknown as ResourceCollectionRef<{
       cron: string;
-      action: string;
+      kind: string;
       enabled: boolean;
     }>;
     const prefix = "schedules/";
@@ -132,23 +134,25 @@ const weeklyDigestFlow = defineFlow({
 
   resources: { schedules: schedulesCollection },
 
+  // Event-addressed handlers carry the action core inline (FIX-838): the
+  // digest handler lives on its schedule bindings, never in `actions`, so it
+  // has no caller-addressed HTTP/MCP surface.
   schedules: {
     static: {
       "monday-summary": {
         cron: "0 9 * * 1",
-        action: "sendWeeklySummary",
+        block: sendWeeklySummary,
         description: "Weekly digest, Mondays 09:00 UTC",
       },
     },
     resolve: createResourceCollectionScheduleResolver({
       collection: schedulesCollection,
+      // Map the persisted `kind` discriminator back to a real handler block.
+      blocks: { sendWeeklySummary },
     }),
   },
 
   actions: {
-    sendWeeklySummary: {
-      block: sendWeeklySummary,
-    },
     scheduleDigest: {
       block: scheduleDigest,
     },

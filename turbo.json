@@ -13,7 +13,7 @@
         "!.next/cache/**"
       ]
     },
-    "@flow-state-dev/server#build": {
+    "@flow-state-dev/engine#build": {
       "dependsOn": ["@flow-state-dev/core#build"],
       "outputs": ["dist/**", "tsconfig.tsbuildinfo"]
     },

@@ -51,6 +51,7 @@ Options:
 | `--seed-user <json\|path>` | Seed user-level state |
 | `--seed-project <json\|path>` | Seed project-level state |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
+| `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `--format <format>` | Output format (default: `json`) |
 | `--quiet` | Suppress `[flow-state] *` runtime logs on stderr |
 | `--log-level <level>` | Stderr log level: `debug \| info \| warn \| error` (default: `info`) |
@@ -140,6 +141,7 @@ Options:
 |------|-------------|
 | `-p, --port <port>` | Port to listen on (default: `4200`) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
+| `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `-m, --model <model>` | Override model for all generator blocks |
 | `--no-open` | Don't open the browser automatically |
 
@@ -184,6 +186,82 @@ Output is a JSON object with execution results, schema validation status, and ti
 }
 ```
 
+### `fsdev benchmark` — Compare coordination patterns
+
+Loads a `defineBenchmark(...)` file, runs each pattern (plus a single-generator baseline) against the same task suite on the same model, and prints a comparative scorecard. One independent variable: the coordination shape. A blinded judge (a distinct model) scores every output against each task's locked rubric.
+
+Real runs make real model calls and need provider credentials in the environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENROUTER_API_KEY`).
+
+```bash
+# Default suite, table scorecard
+fsdev benchmark ./benchmark.ts
+
+# Markdown table, capped spend
+fsdev benchmark ./benchmark.ts --format markdown --max-cost 0.50
+
+# A subset of patterns, one category, written to a file
+fsdev benchmark ./benchmark.ts \
+  --patterns supervisor,debate \
+  --category reasoning \
+  --output results.json --format json
+
+# Cross-model: run the patterns on Haiku and compare them against pure Haiku
+# AND pure Sonnet ("does a Haiku swarm beat raw Sonnet?")
+fsdev benchmark ./benchmark.ts \
+  --model anthropic/claude-haiku-4-5 \
+  --baseline-model anthropic/claude-sonnet-4-6
+```
+
+`--baseline-model` adds a pure single-generator baseline on that model; the run model is always included as the same-model baseline (the delta reference). The other baselines appear as their own rows, so you read whether the patterns beat them from the absolute scores.
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `-m, --model <model>` | Override the executor model for all subjects |
+| `--judge-model <model>` | Override the judge model |
+| `--runs <n>` | Repetitions per (subject, task) |
+| `--concurrency <n>` | Concurrent (subject, task, run) cells |
+| `--category <name>` | Only run tasks in this category |
+| `--patterns <names>` | Comma-separated subset of pattern names to run |
+| `--baseline-model <model>` | Add a pure-model baseline to compare against (repeatable; the run model is always included) |
+| `--no-baseline` | Skip the single-generator baseline subject |
+| `--max-cost <usd>` | Abort the sweep when the estimated cost exceeds this |
+| `--output <path>` | Write the scorecard to a file instead of stdout |
+| `--format <format>` | `table` \| `markdown` \| `json` (default: `table`) |
+
+Cost is tracked best-effort. When `--max-cost` is exceeded the sweep stops, prints a partial scorecard, and the command exits `1` so CI notices.
+
+A `table` scorecard puts subjects in rows, categories plus `overall` in columns, and `mean±stddev` of the judge score (0-1) in each cell:
+
+```
+subject           reasoning     multi-step-research  overall
+supervisor        0.840±0.060   0.910±0.040          0.875±0.058
+debate            0.870±0.090   0.800±0.080          0.835±0.091
+single-generator  0.720±0.070   0.690±0.090          0.705±0.083
+```
+
+See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks) for the methodology and the [walkthrough guide](https://flow-state.dev/guides/choosing-patterns-with-benchmarks) for a worked example.
+
+## Environment variables
+
+`fsdev run`, `fsdev dev`, and `fsdev benchmark` load `.env.local` before importing your config, so generator providers see your gateway and API keys.
+
+Resolution, highest precedence first:
+
+1. The real shell environment. Anything already exported always wins — a file never overwrites it.
+2. Files named with `--dotenv <path>`, in the order given.
+3. `.env.local` in the working directory, then each parent directory up to the filesystem root.
+
+The auto walk-up only climbs, so running from the repo root will not find an app's `.env.local` one level down. Point at it explicitly:
+
+```bash
+# from the repo root, load the app's env:
+fsdev run my-flow action -i '{}' --dotenv apps/my-app/.env.local
+```
+
+`--dotenv` is repeatable and resolved relative to cwd (absolute paths work too). A named file that doesn't exist is an error, unlike the silent walk-up. The flag is `--dotenv` rather than `--env-file` because Node and tsx reserve `--env-file` as a built-in flag and would intercept it before the CLI sees it.
+
 ## Flow discovery
 
 Flows are discovered from conventional directories relative to the working directory:
@@ -222,7 +300,7 @@ Directory discovery covers a simple app whose providers are env-keyed. An app wi
 The CLI searches the current directory for `fsdev.config.{ts,mts,js,mjs}` (TS first). Pass `--config <path>` to point at an explicit file, or `--no-config` to ignore any config and force directory discovery. With a config loaded, `--model` is routed through your resolver, and `--flow-dir` is rejected (use `--no-config` if you wanted directory discovery).
 
 ```ts title="fsdev.config.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import chatFlow from "./src/flows/chat/flow";
 
 export default createFlowState({
@@ -257,7 +335,7 @@ import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/
 ## Dependencies
 
 - `@flow-state-dev/core` — block/flow type definitions
-- `@flow-state-dev/server` — execution engine, stores, streaming
+- `@flow-state-dev/engine` — execution engine, stores, streaming
 - `@flow-state-dev/testing` — isolated block execution context
 - `commander` — CLI framework
 - `@flow-state-dev/devtool` (optional peer) — pre-built DevTool UI assets for `fsdev dev`

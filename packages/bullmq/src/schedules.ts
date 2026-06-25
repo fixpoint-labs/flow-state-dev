@@ -10,7 +10,7 @@
  */
 import { Worker, UnrecoverableError } from "bullmq";
 import type { Queue, Job } from "bullmq";
-import type { FlowRegistry } from "@flow-state-dev/server";
+import type { FlowRegistry } from "@flow-state-dev/engine";
 import { resolveWorkerConnection } from "./connection";
 import type { BullmqConnectionOptions } from "./types";
 
@@ -57,7 +57,9 @@ export async function registerStaticSchedules(
           data: {
             flowKind: flow.kind,
             scheduleName: name,
-            actionName: schedule.action,
+            // Provenance only — the handler resolves by the schedule id
+            // coordinate at dispatch, not by this name (FIX-838).
+            actionName: schedule.block.name,
             cron: schedule.cron,
             timezone: schedule.timezone,
           },

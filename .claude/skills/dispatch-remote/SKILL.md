@@ -84,7 +84,7 @@ Send multiple independent questions in a **single** `AskUserQuestion` call (the 
 > **Unresolved spec question**
 > *Question:* `FIX-720's spec says "Open question: should retries use exponential or linear backoff?". What's the answer to inline into the dispatch prompt?`
 > Options:
->   - `Exponential backoff (Recommended)` — matches the existing convention in `packages/server/src/retry.ts`.
+>   - `Exponential backoff (Recommended)` — matches the existing convention in `packages/engine/src/retry.ts`.
 >   - `Linear backoff` — match the legacy behavior the spec is replacing.
 >   - `Defer — skip this issue` — don't dispatch until the spec is updated.
 

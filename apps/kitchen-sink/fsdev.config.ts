@@ -18,7 +18,7 @@
 import { after } from "next/server";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
-import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/engine";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";

@@ -18,7 +18,7 @@ import type {
   InboundTransportHost,
   ResolvedPrincipal,
   PrincipalResolutionContext
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 
 /**
  * Snapshot of a dispatch call captured by the mock host. Adapters under

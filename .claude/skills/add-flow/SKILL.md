@@ -345,7 +345,7 @@ export default myFlow({ id: "default" });
 For server registration, flows are passed to `createServer()` or `registerFlows()`:
 
 ```typescript
-import { createServer } from "@flow-state-dev/server";
+import { createServer } from "@flow-state-dev/engine";
 import myFlow from "./flows/my-flow/flow";
 
 const server = createServer({

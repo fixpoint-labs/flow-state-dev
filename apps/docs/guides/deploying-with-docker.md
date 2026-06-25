@@ -83,7 +83,7 @@ Use the same standalone server pattern from the [Railway guide](/guides/deployin
 
 ```ts title="src/server.ts"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createFlowState } from "@flow-state-dev/server";
+import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import myFlow from "./flows/my-flow/flow.js";
 

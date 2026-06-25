@@ -12,7 +12,7 @@
 import { createGateway } from "@ai-sdk/gateway";
 import { createXai } from "@ai-sdk/xai";
 import { createModelResolver } from "@flow-state-dev/core/models";
-import { createFlowState } from "@flow-state-dev/server";
+import { createFlowState } from "@flow-state-dev/engine";
 import analysisFlow from "./src/flows/analysis/flow";
 import portfolioFlow from "./src/flows/portfolio/flow";
 import { hasXaiKey } from "./src/flows/analysis/tools/providers/xai";

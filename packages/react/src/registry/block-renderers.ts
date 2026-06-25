@@ -36,6 +36,12 @@ export type RendererRegistry = {
   status?: BlockComponentType | false;
   source?: BlockComponentType | false;
   error?: BlockComponentType | false;
+  /**
+   * Custom renderer for `type === "suspension"` items. Pass `false` to suppress
+   * inline rendering (for headless layouts that use `useSuspensions` + a modal/sidebar).
+   * When unset, `<ApprovalRenderer>` renders as the built-in fallback.
+   */
+  suspension?: BlockComponentType | false;
   component?: Record<string, BlockComponentType | false>;
   container?: Record<string, BlockComponentType | false>;
 };

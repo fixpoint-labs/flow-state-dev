@@ -150,7 +150,7 @@ export {
 export { runRescue } from "./blocks/sequencer";
 export { defineFlow } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
-export { resolveResourceByPath } from "./tools/resource-tools";
+export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";
 export { resourceTools } from "./tools/resource-tools";
 export { resourceSearchTools } from "./tools/resource-search-tools";
 export {
@@ -197,6 +197,7 @@ export type {
   CostEstimate,
   CostEstimator,
   ActionConfig,
+  ActionCore,
   ActionMcpConfig,
   ClientDataComputeFn,
   ClientDataContext,
@@ -221,10 +222,21 @@ export type {
   SchedulesConfig
 } from "./types/schedules";
 
-export { validateScheduleConfig, validateSchedulesConfig } from "./types/schedules";
+export {
+  defineScheduleBinding,
+  validateScheduleConfig,
+  validateSchedulesConfig
+} from "./types/schedules";
 
 export type { ChatConfig, ChatEventBinding } from "./types/chat";
 export { validateChatConfig } from "./types/chat";
+export type {
+  WebhookConfig,
+  WebhookEventBinding,
+  WebhookInboundEvent,
+  WebhookSubscriptionConfig
+} from "./types/webhooks";
+export { defineWebhookBinding, validateWebhookConfig } from "./types/webhooks";
 export type {
   TokenCounter,
 } from "./types/tokens";
@@ -246,6 +258,16 @@ export type {
   PrepareStepResult,
   ProviderTool
 } from "./types/model";
+
+// Cross-pattern benchmark contract types (shared by patterns + testing engine)
+export type {
+  BenchmarkCategory,
+  BenchmarkTask,
+  BenchmarkSubject,
+  BenchmarkAdapterOptions,
+  BenchmarkAdapter,
+  BenchmarkRegistry
+} from "./benchmark/types";
 
 export type { TTSConfig, VoiceConfig } from "./types/speech";
 

@@ -60,6 +60,12 @@ const myGenerator = generator({
 });
 ```
 
+**Repair config (`repair`)** — recovers structured output that fails `outputSchema`:
+
+- `mode?: "auto" | "rescue" | "fail"` — `auto` (default) repairs; `fail` throws on the first mismatch; `rescue` defers to a `.rescue()` handler.
+- `maxAttempts?: number` — deterministic repair attempts (JSON parse / `jsonrepair` / unwrap) before escalating.
+- `coerce?: boolean | { model }` — LLM coercion: when deterministic repair can't recover the output (e.g. the model returned the right data under the wrong field names), one model call reshapes it to the schema. On by default in `auto` mode, using `intent/utility`; pass `false` to disable or `{ model }` to override the coercion model. Runs only on the path that would otherwise throw.
+
 **Identity config:**
 
 - `itemVisibility?: { client: boolean; history: boolean }` — Declares the generator's visibility. Governs auto-emission of conversational items (messages, reasoning, tool outputs). `{ client: true, history: true }` = user-facing (client + history). `{ client: true, history: false }` = task-executor (client, not history). `{ client: false, history: false }` = observability-only (neither). When **unset**, the generator performs no auto-emission — only its typed `block_trace` flows via graph edges. No position-inferred default; every generator declares.
@@ -227,6 +233,8 @@ Config options:
 - `stateSchema: ZodTypeAny` — schema for each instance's state
 - `maxInstances?: number` — cap on simultaneous instances (must be >= 1)
 - `eviction?: "none" | "lru" | "oldest"` — what to do when cap is reached (default: `"none"` = throw)
+- `llmReadable?: boolean` — exposes every instance's content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`). Default `false`
+- `llmWritable?: boolean` — lets `writeResourceContentTool()` overwrite an instance body. Default `false`; independent of `llmReadable`
 - `onInstanceCreated?: (key, state, ctx) => void` — lifecycle hook
 - `onInstanceUpdated?: (key, state, prevState, ctx) => void` — lifecycle hook
 - `onInstanceDeleted?: (key, ctx) => void` — lifecycle hook

@@ -8,7 +8,7 @@
  * — `set()` only fires when the entity is missing, so prior journal entries
  * and resources survive subsequent runs.
  */
-import { createInMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/server";
+import { createInMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
 import { createMockModelResolver } from "../mocks/mockGenerator";

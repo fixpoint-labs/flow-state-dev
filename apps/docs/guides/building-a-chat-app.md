@@ -136,7 +136,7 @@ export default chatFlow({ id: "default" });
 List the flow in one config object. Get a complete REST API.
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import chatFlow from "@/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({

@@ -6,7 +6,7 @@
 import {
   createHttpTransportAdapter,
   HTTP_TRANSPORT_SOURCE
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import {
   createInboundTransportConformanceTests
 } from "../src/transports/conformance";

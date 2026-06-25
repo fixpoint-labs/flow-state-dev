@@ -2,14 +2,14 @@
  * SQLite adapter compliance with the Store CAS contract (FIX-400).
  *
  * The contract is also exercised at the in-memory/filesystem layer in
- * @flow-state-dev/server. These tests verify the SQLite adapter enforces
+ * @flow-state-dev/engine. These tests verify the SQLite adapter enforces
  * the same semantics: version predicate, insert-or-update on expectedVersion=0,
  * "any" writes unconditionally, and cross-registry conflict detection when
  * two store instances share the same database file.
  */
 
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import type { SessionRecord } from "@flow-state-dev/server";
+import type { SessionRecord } from "@flow-state-dev/engine";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
 
 function makeSession(id: string, version: number, state: Record<string, unknown> = {}): SessionRecord {

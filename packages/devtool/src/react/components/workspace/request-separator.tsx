@@ -20,9 +20,11 @@ type RequestSeparatorProps = {
   /** Inbound transport that produced the request. Undefined for legacy data. */
   source?: string;
   /**
-   * Adapter-stamped provenance bag. Scheduled requests carry
-   * `scheduleId` (string) and `origin` (`"static" | "dynamic"`); other
-   * sources may carry their own keys without affecting rendering here.
+   * Adapter-stamped provenance bag. Event transports namespace their
+   * coordinate under a single slot — scheduled requests carry
+   * `metadata.schedule.{scheduleId, origin, …}`, chat `metadata.chat.{eventKey, …}`,
+   * webhooks `metadata.webhook.{provider, eventType}` (FIX-838). Other sources
+   * may carry their own keys without affecting rendering here.
    */
   metadata?: Record<string, unknown>;
   onReplayFull?: () => void;
@@ -83,17 +85,25 @@ export function RequestSeparator({
   const hasOverflow = showReplayControls || isDebugMode;
   const durationText = formatDuration(duration, isActive);
 
-  // Scheduled requests carry first-class provenance (`scheduleId`,
-  // `origin`) — surface as a suffix on the source chip and a secondary
-  // origin badge so operators can tell static cron jobs apart from
-  // user/agent-created dynamic schedules at a glance.
+  // Scheduled requests carry first-class provenance under the namespaced
+  // `metadata.schedule` slot (`scheduleId`, `origin`; FIX-838) — surface as a
+  // suffix on the source chip and a secondary origin badge so operators can
+  // tell static cron jobs apart from user/agent-created dynamic schedules at a
+  // glance. Fall back to the legacy flat `metadata.{scheduleId,origin}` so the
+  // chip still labels in-flight requests enqueued by the pre-namespacing build
+  // during a rolling deploy.
+  // TODO(FIX-850): drop the flat fallback once no legacy records remain.
+  const scheduleMeta = (metadata?.schedule ?? metadata) as
+    | { scheduleId?: unknown; origin?: unknown }
+    | undefined;
   const scheduleId =
-    source === "scheduled" && typeof metadata?.scheduleId === "string"
-      ? metadata.scheduleId
+    source === "scheduled" && typeof scheduleMeta?.scheduleId === "string"
+      ? scheduleMeta.scheduleId
       : undefined;
   const origin =
-    source === "scheduled" && (metadata?.origin === "static" || metadata?.origin === "dynamic")
-      ? metadata.origin
+    source === "scheduled" &&
+    (scheduleMeta?.origin === "static" || scheduleMeta?.origin === "dynamic")
+      ? scheduleMeta.origin
       : undefined;
   const sourceChipText = (() => {
     const baseLabel = source !== undefined ? (SOURCE_LABELS[source]?.label ?? source) : "";
@@ -211,6 +221,18 @@ function ProvenanceDetails({
   const entries: Array<[string, unknown]> = [["source", source]];
   for (const [key, value] of Object.entries(metadata)) {
     if (value === undefined) continue;
+    // Event transports namespace their coordinate under a single slot
+    // (`metadata.webhook` / `metadata.chat` / `metadata.schedule`; FIX-838).
+    // Flatten it so operators see `scheduleId`, `cron`, `eventKey`, … as
+    // individual rows rather than one JSON blob.
+    if ((key === "webhook" || key === "chat" || key === "schedule") &&
+        value !== null && typeof value === "object") {
+      for (const [innerKey, innerValue] of Object.entries(value)) {
+        if (innerValue === undefined) continue;
+        entries.push([innerKey, innerValue]);
+      }
+      continue;
+    }
     entries.push([key, value]);
   }
 

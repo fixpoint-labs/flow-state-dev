@@ -5,7 +5,9 @@
 import { z } from "zod";
 import { utility } from "@flow-state-dev/core";
 import type { GeneratorConfig } from "@flow-state-dev/core";
+import type { ModelResolver } from "@flow-state-dev/core/types";
 import { testBlock } from "../test-utilities/testBlock";
+import { sumCostFromItems } from "./cost";
 import type { Scorer, ScoreResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -46,6 +48,8 @@ export interface AnalyzerScorerConfig {
   name?: string;
   /** Pass/fail threshold (0-1). Default: 0.5. */
   threshold?: number;
+  /** Real resolver for the judge LLM; when set, the analyzer runs against it instead of the mock/noop path. */
+  modelResolver?: ModelResolver;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +149,12 @@ export function analyzerScorer(config: AnalyzerScorerConfig): Scorer<unknown> {
       try {
         const result = await testBlock(analyzerBlock, {
           input: evalInput,
-          unmockedGeneratorPolicy: "allow",
+          // The "allow" fallback only matters for the mock path; when a real
+          // resolver is injected it serves the judge, so omit the policy to
+          // avoid the mixed-mock-options warning in createTestContext.
+          unmockedGeneratorPolicy:
+            config.modelResolver === undefined ? "allow" : undefined,
+          modelResolver: config.modelResolver,
         });
 
         if (result.error) {
@@ -164,6 +173,9 @@ export function analyzerScorer(config: AnalyzerScorerConfig): Scorer<unknown> {
           score,
           passed: score >= scorerThreshold,
           reason,
+          // Report the judge's own token cost so cost-aware callers (the
+          // benchmark budget guard) can account for it.
+          costUsd: sumCostFromItems(result.items),
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

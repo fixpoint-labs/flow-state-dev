@@ -9,8 +9,8 @@ import type {
   SessionRecord,
   TraceStore,
   UserRecord
-} from "@flow-state-dev/server";
-import { createTraceStoreConformanceTests } from "@flow-state-dev/server/testing";
+} from "@flow-state-dev/engine";
+import { createTraceStoreConformanceTests } from "@flow-state-dev/engine/testing";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
 import { initializeSchema } from "../src/schema";
 import { createSQLiteSuspensionStore } from "../src/suspension-store";
@@ -497,9 +497,11 @@ describe("SQLite store adapter", () => {
       expect(seq).toBe(12);
     });
 
-    it("passing the same item reference twice issues no second write", async () => {
-      // Intent: reference-identity diffing skips unchanged items, so a
-      // re-persist of the same object does not touch the row.
+    it("re-persisting unchanged content issues no second write", async () => {
+      // Intent: content diffing skips items whose serialized form is unchanged,
+      // so re-persisting an item with no field changes does not touch the row.
+      // (A changed field — e.g. a block_trace going in_progress → completed —
+      // is re-written; that is the FIX-839 guarantee.)
       const store = freshRequestStore();
       await seedRequest(store, "req_noop");
       const item = makeMessageItem("req_noop", "a", 0, "x") as unknown as OutputItem;
@@ -1043,7 +1045,7 @@ describe("SQLite store adapter", () => {
   it("is a drop-in replacement for createInMemoryStores", async () => {
     const s = freshStores();
 
-    // Same operations as the in-memory test in packages/server/test/stores.test.ts
+    // Same operations as the in-memory test in packages/engine/test/stores.test.ts
     await s.session.set("sess_a", makeSessionRecord("sess_a", "flow-a", "user_1"), "any");
     await s.session.set("sess_b", makeSessionRecord("sess_b", "flow-b", "user_2"), "any");
     await s.request.set("req_a", makeRequestRecord("req_a", "flow-a", "run", "user_1", "sess_a"), "any");

@@ -3,8 +3,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  compareItemOrder,
   createClient,
   createRecoveryClient,
+  createRequestStreamStore,
   createSessionClient,
   createSSEClient,
   createSSEClientFromResponse,
@@ -23,6 +25,9 @@ import type {
   SessionMetadataChangedEvent,
   StateChangeItem
 } from "@flow-state-dev/core/items";
+// Canonical helper from the zero-dependency contracts layer (value-import).
+// Previously hand-mirrored here because react may only type-import core.
+import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
 import {
   isReducibleStateChange,
@@ -32,23 +37,8 @@ import {
   isReducibleResourceChange,
   mergeResourceChangeIntoSnapshot
 } from "../internal/mergeResourceChangeIntoSnapshot";
-import { compareItemOrder, createItemStore } from "../internal/item-store";
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
-
-// Mirrors `resolveItemVisibility` from `@flow-state-dev/core/items` —
-// inlined because this package may only import types from core.
-const TRACE_TYPES = new Set(["block_trace", "router_decision", "state_snapshot"]);
-const CONVERSATIONAL_TYPES = new Set(["message", "reasoning", "tool_output"]);
-const CONVERSATIONAL_DEFAULT: ItemVisibility = { client: true, history: true };
-const STRUCTURAL_DEFAULT: ItemVisibility = { client: true, history: false };
-const TRACE_DEFAULT: ItemVisibility = { client: false, history: false };
-function resolveItemVisibility(item: OutputItem): ItemVisibility {
-  if (TRACE_TYPES.has(item.type)) return TRACE_DEFAULT;
-  if (CONVERSATIONAL_TYPES.has(item.type)) return item.itemVisibility ?? CONVERSATIONAL_DEFAULT;
-  return STRUCTURAL_DEFAULT;
-}
-
 
 /**
  * Items subscription configuration for useSession.
@@ -184,6 +174,26 @@ export type SessionView = {
    * that the server will retry (`interrupted` or `failed`).
    */
   resumeLatestRequest: () => Promise<void>;
+  /**
+   * Resolve a pending durable-execution suspension (approve/reject) and stream
+   * the continuation back into this session's `items`. The resume POSTs with
+   * `Accept: text/event-stream`, so the resumed run streams from the POST
+   * response on the same instance that handled it — the post-suspension output
+   * renders live, with no page refresh, even on serverless (where a separate GET
+   * reconnect couldn't reach the in-flight continuation). Falls back to a GET
+   * re-attach + snapshot refresh when the server returns a 202 instead of SSE.
+   *
+   * `requestId` is the suspended request's id (carried on the suspension item).
+   * The continuation re-enters that same id (FIX-811), so its items merge into
+   * the existing stream rather than creating a new request.
+   */
+  resumeSuspension: (args: {
+    suspensionId: string;
+    requestId: string;
+    action: "approve" | "reject";
+    data?: unknown;
+    resumedBy?: string;
+  }) => Promise<void>;
   refresh: () => Promise<void>;
   /**
    * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
@@ -340,7 +350,13 @@ export function useSession(
    * request lifecycle transitions.
    */
   const latestRequestRef = useRef<SessionRequestSummary | null>(null);
-  const storeRef = useRef(createItemStore());
+  const storeRef = useRef(createRequestStreamStore());
+  // Item ids the filter rejected this stream. The shared store keeps deltas for
+  // not-yet-present items buffered (so early deltas survive), so a filtered item
+  // — which never enters the store — would otherwise buffer deltas forever.
+  // Mirrors the filter seam in `bindStoreToCallbacks`: drop its deltas on
+  // arrival. Reset per stream in `attachToStream`.
+  const rejectedItemIdsRef = useRef<Set<string>>(new Set());
   /**
    * Buffer for `state_change` items received before the initial snapshot
    * lands. The reducer (`mergeStateChangeIntoSnapshot`) bails when
@@ -599,6 +615,7 @@ export function useSession(
       setIsFinishing(false);
       setIsStuck(false);
       latestRequestIdAfterDropRef.current = null;
+      rejectedItemIdsRef.current.clear();
       // Baseline the watchdog at stream open so it doesn't fire instantly
       // on the first slow response.
       lastEventAtRef.current = Date.now();
@@ -703,6 +720,10 @@ export function useSession(
           }
 
           if (!passesItemFilter(event.item, filter)) {
+            // Never enters the store — drop any deltas it streams (buffered ones
+            // now, future ones via the rejected set) so they don't accumulate.
+            rejectedItemIdsRef.current.add(event.item.id);
+            storeRef.current.discardDeltas(event.item.id);
             return;
           }
 
@@ -723,6 +744,8 @@ export function useSession(
         },
         onItemDone: (event) => {
           if (!passesItemFilter(event.item, filter)) {
+            rejectedItemIdsRef.current.add(event.item.id);
+            storeRef.current.discardDeltas(event.item.id);
             return;
           }
 
@@ -735,9 +758,20 @@ export function useSession(
           }
         },
         onContentDelta: (event) => {
+          // Skip deltas for items the filter already rejected — they will never
+          // enter the store, so buffering them just grows the queue.
+          if (rejectedItemIdsRef.current.has(event.itemId)) return;
           storeRef.current.accumulateDelta(event.itemId, event.contentIndex, event.delta);
 
           scheduleContentFlush();
+        },
+        onContentDone: (event) => {
+          // Settle the slot to its authoritative final content (drops any
+          // queued delta for it). Inherited from the shared store — the prior
+          // hand-rolled callbacks had no content.done handler.
+          if (storeRef.current.applyContentDone(event.itemId, event.contentIndex, event.content)) {
+            setItems(storeRef.current.getSorted());
+          }
         },
         onContentAudioDelta: (event) => {
           // Fan out to subscribers (useVoice or any external consumer
@@ -1267,6 +1301,80 @@ export function useSession(
     }
   }, [sessionId, latestRequest, recoveryClient, attachToStream, refreshLatestRequest]);
 
+  const resumeSuspension = useCallback(
+    async (args: {
+      suspensionId: string;
+      requestId: string;
+      action: "approve" | "reject";
+      data?: unknown;
+      resumedBy?: string;
+    }): Promise<void> => {
+      if (streamHandleRef.current !== null) {
+        streamHandleRef.current.close();
+        streamHandleRef.current = null;
+      }
+      setError(null);
+      setIsFinishing(false);
+      setIsStuck(false);
+      latestRequestIdAfterDropRef.current = null;
+      // The continuation re-enters the suspended request's own id (FIX-811), so
+      // the active request for abort/stuck tracking is that same id.
+      activeRequestIdRef.current = args.requestId;
+
+      try {
+        // Stream the resume: POST with Accept: text/event-stream so the
+        // continuation streams back from the POST response on the same instance.
+        // Mirrors sendAction's inline-streaming path — essential on serverless
+        // where a separate GET stream can't reach the in-flight continuation.
+        const postResponse = await recoveryClient.resumeSuspensionStream(
+          resolvedFlowKind,
+          args.requestId,
+          {
+            suspensionId: args.suspensionId,
+            action: args.action,
+            data: args.data,
+            resumedBy: args.resumedBy ?? userId
+          }
+        );
+
+        const contentType = postResponse.headers.get("content-type") ?? "";
+        if (contentType.includes("text/event-stream")) {
+          if (itemConfig.enabled) {
+            attachToStream(args.requestId, undefined, postResponse);
+          } else {
+            postResponse.body?.cancel().catch(() => {});
+            void refreshSnapshot();
+            void refreshLatestRequest();
+          }
+          return;
+        }
+
+        // Fallback: server returned 202 JSON (no inline streaming). Re-attach
+        // via GET and pull the snapshot so the resolution still surfaces.
+        postResponse.body?.cancel().catch(() => {});
+        if (itemConfig.enabled) {
+          attachToStream(args.requestId);
+        }
+        void refreshSnapshot();
+        void refreshLatestRequest();
+      } catch (cause) {
+        const normalized = cause instanceof Error ? cause : new Error(String(cause));
+        activeRequestIdRef.current = null;
+        setError(normalized);
+        throw normalized;
+      }
+    },
+    [
+      recoveryClient,
+      resolvedFlowKind,
+      itemConfig.enabled,
+      userId,
+      attachToStream,
+      refreshSnapshot,
+      refreshLatestRequest
+    ]
+  );
+
   const subscribeAudioDelta = useCallback(
     (handler: (event: ContentAudioDeltaEvent) => void) => {
       audioDeltaListenersRef.current.add(handler);
@@ -1301,6 +1409,7 @@ export function useSession(
     abortRequest,
     dismissRequest,
     resumeLatestRequest,
+    resumeSuspension,
     refresh,
     subscribeAudioDelta
   };

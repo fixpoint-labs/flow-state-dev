@@ -20,8 +20,8 @@ import {
   createCheckpointDurabilityProvider,
   createFlowRegistry,
   runAction
-} from "@flow-state-dev/server";
-import type { DurabilityProvider, StoreRegistry } from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
+import type { DurabilityProvider, StoreRegistry } from "@flow-state-dev/engine";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

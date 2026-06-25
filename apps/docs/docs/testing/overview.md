@@ -260,6 +260,8 @@ const cases = await fromCsv("./fixtures/cases.csv", {
 });
 ```
 
+To compare whole coordination patterns against each other and a baseline, see [Benchmarks](./benchmarks.md).
+
 ## What makes this different
 
 - **Deterministic** — Generator mocks produce the same output every time. No flaky tests from LLM variance.

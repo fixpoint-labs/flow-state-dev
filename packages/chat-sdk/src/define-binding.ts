@@ -8,12 +8,16 @@
  * structurally assignable to `FlowDefinition['chat']['on'][key]`. It is a
  * compile-time convenience only — the runtime is a single passthrough.
  */
-import type { ChatEventBinding } from "@flow-state-dev/core";
+import type { ActionCore, ChatEventBinding } from "@flow-state-dev/core";
 import type { ChatInboundEvent } from "./types";
 
-/** Binding shape with a typed `event` parameter. */
-export type TypedChatEventBinding<T extends ChatInboundEvent = ChatInboundEvent> = {
-  action: string;
+/**
+ * Binding shape with a typed `event` parameter. Carries the shared
+ * `ActionCore` (the handler `block` plus execution policy) inline — a chat
+ * binding is an action in chat form (FIX-838) — and re-types the event
+ * functions over `T`.
+ */
+export type TypedChatEventBinding<T extends ChatInboundEvent = ChatInboundEvent> = ActionCore & {
   input: (event: T) => unknown | Promise<unknown>;
   sessionId?: (event: T) => string | Promise<string> | undefined;
   when?: (event: T) => boolean;
@@ -22,7 +26,8 @@ export type TypedChatEventBinding<T extends ChatInboundEvent = ChatInboundEvent>
 /**
  * Construct a `ChatEventBinding` whose handlers receive a typed
  * `ChatInboundEvent` (or a narrowed subtype via the `T` parameter) instead
- * of `unknown`. Place the result directly in a flow's `chat.on` map.
+ * of `unknown`. Carries the handler `block` inline. Place the result directly
+ * in a flow's `chat.on` map.
  */
 export function defineChatBinding<T extends ChatInboundEvent = ChatInboundEvent>(
   binding: TypedChatEventBinding<T>

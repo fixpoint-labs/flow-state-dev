@@ -25,7 +25,7 @@ runtime; the transport owns its protocol.
 ## What an adapter looks like
 
 ```ts
-import type { InboundTransportAdapter } from "@flow-state-dev/server";
+import type { InboundTransportAdapter } from "@flow-state-dev/engine";
 
 export function createEchoAdapter(): InboundTransportAdapter {
   return {
@@ -138,6 +138,35 @@ right user.
 `metadata.dispatchedAt`, and `metadata.timezone` propagate to
 `RequestRecord` for trace and DevTool. See
 [Scheduled actions](/docs/server/scheduled) for the full surface.
+
+### Webhook adapter shape
+
+`createWebhookTransportAdapter` (in `@flow-state-dev/engine`, next to the
+HTTP adapter) mounts one parameterized route,
+`POST /api/flows/:flowKind/webhooks/:provider`, and dispatches verified
+inbound webhooks — Stripe, GitHub, Slack Events, any signed service POST —
+to the action the flow declared.
+
+The split is the adapter's defining trait. The *flow* declares routing only
+(`webhooks: { <provider>: { on } }` in `@flow-state-dev/core`) and carries no
+secrets. The *host* supplies provider mechanics — signature verification,
+payload parsing, event-type and delivery-id extraction, the optional
+handshake — at adapter mount via `WebhookProviderDefinition`, keyed by the
+same provider name. Verification needs Node `crypto`, which isn't
+isomorphic, so it lives on the host, not the flow definition.
+
+Like Scheduled, dispatch is fire-and-forget with `responseEmitter: null`:
+the adapter verifies, routes, ensures the session, fires `host.dispatch`,
+and returns 202 the moment the handle is back. Because the action runs
+asynchronously, the ack returns well inside provider budgets (Slack 3s,
+GitHub 10s). The flow kind is carried in the URL, so the adapter resolves
+one flow per request via `host.registry.get(flowKind)` — the same
+per-request lookup MCP and Scheduled use, unlike the chat adapter's
+mount-time index.
+
+`source: "webhook"` and `metadata.webhook` (`provider`, `eventType`, and
+`deliveryId` when configured) propagate to `RequestRecord` for trace and
+DevTool. See [Webhook receivers](/docs/server/webhooks) for the full surface.
 
 ## Auth
 

@@ -7,7 +7,7 @@
  * full body when untagged) becomes the resource's content body on each read.
  *
  * This module is browser-safe — no `node:fs` imports. The Node-only loader
- * lives in `load-resource-template.node.ts`.
+ * lives in `@flow-state-dev/engine/resource-template`.
  */
 
 import { Liquid } from "liquidjs";

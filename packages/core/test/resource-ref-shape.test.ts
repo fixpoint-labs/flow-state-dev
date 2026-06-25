@@ -20,7 +20,7 @@ it("accepts the { path, scope, uri } shape, including multi-segment paths", () =
   // Structural check only — pins the public field shape by example. The
   // `${scope}/${path}` concatenation rule is an implementation detail of the
   // ref producers (createExecutionContext, route-utils), which live in
-  // @flow-state-dev/server; its runtime coverage is in that package's
+  // @flow-state-dev/engine; its runtime coverage is in that package's
   // resource-collection.test.ts against a live ResourceCollectionRef. A
   // hardcoded-literal assertion here would only test string interpolation on
   // constants, never the implementation.

@@ -31,15 +31,15 @@ import type {
   TransportRoute,
   PrincipalResolutionContext,
   ResolvedPrincipal
-} from "@flow-state-dev/server";
-import { PrincipalResolutionError } from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
+import { PrincipalResolutionError } from "@flow-state-dev/engine";
 import {
   unstable_findResourceConfig,
   unstable_getPersistedData,
   unstable_isCollectionConfig,
   unstable_listExposedResources,
   unstable_renderContent
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import type { ActionConfig, McpConfig } from "@flow-state-dev/core/types";
 import {
   JSON_RPC_INVALID_PARAMS,

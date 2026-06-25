@@ -80,10 +80,17 @@ session.getOwnedItems(containerBlockInstanceId);
 await session.sendAction("chat", { message: "Hello!" });
 await session.abortRequest();        // signal in-flight request to stop
 await session.resumeLatestRequest(); // re-dispatch latest if interrupted/failed
+await session.resumeSuspension({     // approve/reject a suspension, stream the continuation
+  suspensionId: "susp_1",
+  requestId: "req_1",
+  action: "approve",
+});
 session.refresh();
 ```
 
 `resumeLatestRequest` is a no-op unless `latestRequest.status` is `interrupted` or `failed`. The server creates a new request that re-runs the original action with the same input, and the hook auto-attaches to its stream.
+
+`resumeSuspension` resolves a pending durable-execution suspension and streams the resumed continuation back into `session.items`, so the resolution renders live (no refresh) even on serverless. `requestId` is the suspended request's id (carried on the suspension item); the continuation re-enters that same id. This is the streaming resume `useSuspensions` and `<SuspensionResolverProvider>` build on.
 
 ### `useClientData(session, options)`
 
@@ -120,14 +127,16 @@ await execute({ message: "Hello!" });
 
 ### `useRequestStream(options)`
 
-Direct request-stream access.
+Direct request-stream access. Message and reasoning text streams in token-by-token.
 
 ```ts
 const { items, status, isStreaming } = useRequestStream({
-  requestId,
+  source: { requestId },
   filter: { itemTypes: ["message", "component"] },
 });
 ```
+
+Use `source: { response }` to consume a pre-fetched POST stream (inline streaming) instead of opening a separate GET-by-id connection.
 
 ### `useVoice(session, options)`
 
@@ -203,8 +212,97 @@ Type for the renderers map:
 type RendererRegistry = {
   message?: ComponentType<{ item: MessageItem }> | false;
   reasoning?: ComponentType<{ item: ReasoningItem }> | false;
+  suspension?: ComponentType<{ item: SuspensionItem }> | false;
   component?: Record<string, ComponentType<{ item: ComponentItem }>>;
   container?: Record<string, ComponentType<{ item: ContainerItem }>>;
   // ... other item types
 };
 ```
+
+Pass `false` for any slot to suppress its built-in fallback renderer.
+
+### `SuspensionResolverProvider`
+
+Bridges a session's streaming resume to the inline default `<ApprovalRenderer>`. Wrap the subtree that renders `session.items` and pass `session.resumeSuspension`; the inline card then streams the continuation into the chat view instead of doing a non-streaming resume. Without it, the card still resolves — just without live output until the session refetches.
+
+```tsx
+import { SuspensionResolverProvider } from "@flow-state-dev/react";
+
+<SuspensionResolverProvider resolve={session.resumeSuspension}>
+  <ItemsRenderer items={session.items} />
+</SuspensionResolverProvider>
+```
+
+## Suspensions
+
+### `useSuspensions(session, options?)`
+
+Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` item by `suspensionId`. `approve`/`reject` stream the resumed continuation back into `session.items` (via `session.resumeSuspension`), so the resolution renders live.
+
+```ts
+const {
+  suspensions,  // SuspensionView[] — all suspensions matching options
+  pending,      // SuspensionView[] — subset where pending === true
+  approve,      // (suspensionId: string, data?: unknown) => Promise<void>
+  reject,       // (suspensionId: string, data?: unknown) => Promise<void>
+  error,        // Error | null — most recent failed approve/reject call
+} = useSuspensions(session, {
+  requestId: "req_abc",          // optional: restrict to one request
+  reasons: ["human_approval"],   // optional: restrict by reason
+});
+```
+
+Each `SuspensionView` has:
+
+```ts
+interface SuspensionView {
+  item: SuspensionItem;
+  status: SuspensionStatus;   // "pending" | "approved" | "rejected" | "timed_out" | "expired"
+  pending: boolean;
+  resumeData?: unknown;
+  resolvedBy?: string;
+  isResolving: boolean;       // true while approve/reject is in flight for this suspension
+}
+```
+
+`approve` and `reject` rethrow on failure so callers can branch on the error. The last failure is also captured in `error`.
+
+### `useApproval`
+
+Headless controller for a suspension approval — the logic with no markup. Owns the resume transport, in-flight/error state, the duplicate-resume guard, and the resolved outcome.
+
+```tsx
+import { useApproval } from "@flow-state-dev/react";
+
+function MyApproval({ item }) {
+  const a = useApproval(item);
+  if (a.resolved) return <span>{a.outcome.icon} {a.outcome.label}</span>;
+  return (
+    <>
+      <button disabled={!a.canApprove || a.isResolving} onClick={a.approve}>Approve</button>
+      <button disabled={!a.canReject || a.isResolving} onClick={a.reject}>Reject</button>
+    </>
+  );
+}
+```
+
+Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if supplied, else the nearest `<SuspensionResolverProvider>` (streaming), else a self-contained recovery client (needs `flowKind` on `<FlowProvider>`).
+
+### `ApprovalRenderer`
+
+The **minimal built-in default** that `ItemRenderer` uses for `type === "suspension"` items — plain, unstyled buttons so a suspension renders something actionable with zero setup, collapsing to a one-line text receipt once resolved. For a polished, themeable card, register the **`Approval` component from `@flow-state-dev/ui`** via the `suspension` renderer slot (it's in `chatAssistantRenderers`). Both are thin views over `useApproval`.
+
+```tsx
+import { ApprovalRenderer } from "@flow-state-dev/react";
+
+// Used automatically by ItemRenderer; or render directly with explicit handlers:
+<ApprovalRenderer
+  item={suspensionItem}
+  onApprove={(data) => approve(item.suspensionId, data)}
+  onReject={(data) => reject(item.suspensionId, data)}
+/>
+```
+
+When used inline (inside `<ItemsRenderer>` without explicit handlers), it reads `FlowContext` for `flowKind`/`baseUrl`/`userId` and resumes directly. `ItemsRenderer` threads the resolution outcome to this default, so a reloaded conversation shows whether it was approved or rejected. Suppress it with `renderers={{ suspension: false }}`.
+
+See [Suspensions and approvals](/docs/client/react#suspensions-and-approvals) for usage patterns.

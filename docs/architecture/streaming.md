@@ -284,7 +284,7 @@ This enables UI grouping, debugging, and devtools timeline views.
 
 ## Canonical Authority
 
-This document is authoritative for the streaming model and event contracts. For full type definitions, refer to the published types in `@flow-state-dev/core` and `@flow-state-dev/server`.
+This document is authoritative for the streaming model and event contracts. For full type definitions, refer to the published types in `@flow-state-dev/core` and `@flow-state-dev/engine`.
 
 
 ### Generator usage metadata on `block_trace`

@@ -80,6 +80,21 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   client?: CollectionClientConfig<TState>;
 
   /**
+   * Expose this collection's instance content to the LLM via the generic content
+   * tools (`readResourceContentTool`) and content search (`grepResourceContent` /
+   * `searchResources`). Collection-wide — applies to every instance, the same way
+   * `client` is declared once at the collection level. Default `false`: a
+   * collection that doesn't opt in stays invisible to those tools.
+   */
+  llmReadable?: boolean;
+  /**
+   * Allow the LLM to overwrite instance content via `writeResourceContentTool`.
+   * Collection-wide. Default `false`. Independent of `llmReadable`, matching the
+   * single-resource contract (the write tool gates on `llmWritable` alone).
+   */
+  llmWritable?: boolean;
+
+  /**
    * Declare a typed-edge graph on each instance of this collection. `true` =
    * defaults; object = curated vocabulary / size cap. Attaches an `.edges` API
    * to each live instance ref backed by that instance's own state.

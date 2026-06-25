@@ -8,7 +8,7 @@
  * regardless of step count.
  */
 import type Database from "better-sqlite3";
-import type { CheckpointStore } from "@flow-state-dev/server";
+import type { CheckpointStore } from "@flow-state-dev/engine";
 import type { SequencerCheckpoint } from "@flow-state-dev/core/types";
 
 type CheckpointRow = {

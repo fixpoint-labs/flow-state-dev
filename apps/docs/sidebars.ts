@@ -76,6 +76,7 @@ const sidebars: SidebarsConfig = {
             "server/authentication",
             "server/mcp",
             "server/chat",
+            "server/webhooks",
             {
               type: "category",
               label: "Scheduled actions",
@@ -104,6 +105,7 @@ const sidebars: SidebarsConfig = {
             "testing/testing-flows",
             "testing/flow-integration-tests",
             "testing/end-to-end-tests",
+            "testing/benchmarks",
           ],
         },
       ],
@@ -245,6 +247,7 @@ const sidebars: SidebarsConfig = {
         "api/client",
         "api/react",
         "api/testing",
+        "api/benchmarks",
         "api/cli",
       ],
     },

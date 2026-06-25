@@ -5,7 +5,7 @@
  *
  * Mount alongside the built-in HTTP adapter:
  *
- *   import { createFlowApiRouter } from "@flow-state-dev/server";
+ *   import { createFlowApiRouter } from "@flow-state-dev/engine";
  *   import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
  *
  *   const router = createFlowApiRouter({

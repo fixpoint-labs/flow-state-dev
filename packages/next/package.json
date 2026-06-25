@@ -53,7 +53,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@flow-state-dev/server": "workspace:*"
+    "@flow-state-dev/engine": "workspace:*"
   },
   "peerDependencies": {
     "next": ">=15.0.0"

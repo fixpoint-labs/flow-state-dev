@@ -1,7 +1,7 @@
 ---
 "@flow-state-dev/tools": patch
 "@flow-state-dev/core": patch
-"@flow-state-dev/server": patch
+"@flow-state-dev/engine": patch
 "@flow-state-dev/devtool": patch
 ---
 

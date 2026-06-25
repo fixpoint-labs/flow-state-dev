@@ -83,7 +83,7 @@ const nextConfig = {
     "@flow-state-dev/core",
     "@flow-state-dev/client",
     "@flow-state-dev/react",
-    "@flow-state-dev/server",
+    "@flow-state-dev/engine",
     "@flow-state-dev/vercel",
   ],
 };
@@ -112,7 +112,7 @@ import { after } from "next/server";
 import { openai } from "@ai-sdk/openai";
 import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core/models";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import myFlow from "@/flows/my-flow/flow";
 

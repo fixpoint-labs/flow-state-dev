@@ -12,8 +12,13 @@ become action invocations; flow output streams back to the originating
 thread.
 
 If you're building anything past a single-flow demo, the part that matters
-is this: a flow declares which chat events trigger which of its actions,
-directly on the flow definition. You read one file to know what fires it.
+is this: a flow declares which chat events trigger which handler, directly on
+the flow definition. Each binding carries its handler inline (the shared
+action core), so you read one file to know what fires it and what runs.
+
+This is the transport for real-time conversation. For asynchronous
+service-to-service notifications — Slack's Events API, Stripe, GitHub — use
+the [webhook transport](./webhooks.md) instead.
 
 ## Install and mount
 
@@ -24,7 +29,7 @@ pnpm add @flow-state-dev/chat-sdk chat
 ```ts title="lib/flowstate.ts"
 import { Chat } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createChatTransportAdapter } from "@flow-state-dev/chat-sdk";
 
 const bot = new Chat({
@@ -49,13 +54,20 @@ export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 ```
 
 The adapter mounts `POST /api/chat/slack` and `GET /api/chat/slack` (the GET
-handles platforms that use challenge-response verification). When your flows
-declare their own subscriptions, that's the whole mount — no routing config.
+handles platforms that use challenge-response verification). The mount takes
+just `{ bot }` — routing lives on the flows. An inbound event that matches no
+subscription is acknowledged and dropped.
 
 ## Declaring subscriptions on the flow
 
 Put a `chat.on` map on the flow. Each key is a chat event kind; each value
-binds it to an action and says how the event maps to that action's input.
+binds it to a handler and says how the event maps to that handler's input.
+
+A binding carries the handler inline (the shared action core) instead of
+naming an entry in `flow.actions`. Same model the webhook transport uses. An
+event-addressed handler lives only on `chat.on`, so it has no HTTP or MCP
+caller surface. If you want one block reachable both as a named action and as
+a chat handler, declare it in both places (same block reference).
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -63,18 +75,14 @@ import { defineChatBinding } from "@flow-state-dev/chat-sdk";
 
 const supportFlow = defineFlow({
   kind: "support",
-  actions: {
-    reply: { block: replyBlock },
-    escalate: { block: escalateBlock },
-  },
   chat: {
     on: {
       mention: defineChatBinding({
-        action: "reply",
+        block: replyBlock,
         input: (event) => ({ text: event.message?.text ?? "" }),
       }),
       reaction: defineChatBinding({
-        action: "escalate",
+        block: escalateBlock,
         when: (event) => event.platform === "slack",
         input: (event) => ({ emoji: event.actionValue }),
       }),
@@ -83,15 +91,19 @@ const supportFlow = defineFlow({
 });
 ```
 
-A binding has four fields:
+A binding carries the action core plus the event mapping:
 
-- **`action`** — the flow action to run. Must be a key in `actions`;
-  `defineFlow` throws at registration if it isn't.
-- **`input`** — maps the event to the action's input. May be async.
+- **`block`** — the handler to run for the event. Required.
+- **`input`** — maps the event to the handler's input. May be async.
 - **`sessionId`** (optional) — derives the session id from the event. May be
   async. Defaults to the originating thread's id.
 - **`when`** (optional) — a synchronous predicate. A falsy result skips the
   binding; other bindings still evaluate.
+
+It also accepts the rest of the action core: `durable`, `tokenBudget`,
+`onCompleted` / `onErrored`, `inputSchema`, `userMessage`. The dispatched
+request records the handler block's name as its action (provenance only — the
+handler is never reachable through the action endpoint).
 
 ### Typed events with `defineChatBinding`
 
@@ -107,16 +119,10 @@ At mount the adapter walks the flow registry once and indexes every
 `chat.on` binding by event kind. For each inbound event it looks up the
 matching bindings, filters them by `when`, and dispatches.
 
-- **Flow-level subscriptions take total precedence.** When any binding
-  matches, those bindings fire and the adapter-mount `route()`/`flowKind`
-  (below) is not consulted.
 - **Fan-out is broadcast.** Two flows subscribing to the same event both
   run, independently.
-- **No match falls through** to the adapter-mount routing, if configured;
-  otherwise the event is acked and dropped.
-
-If neither any flow nor the adapter mount configures routing, the adapter
-throws at startup instead of silently dropping events.
+- **No match is a no-op ack.** An event with no matching subscription is
+  acknowledged and dropped. No event throws at dispatch.
 
 ## Event kinds
 
@@ -140,20 +146,40 @@ order: the flow's `chat.streamToThread`, then the adapter-mount
 `flowOverrides[kind].streamToThread`, then the adapter's `streamToThread`,
 defaulting to `true`.
 
-## Adapter-mount routing (advanced)
+## Migrating from adapter-mount routing
 
-The original routing surface — a `route(event)` callback or a static
-`flowKind` on the adapter mount — still works. It's now a fallback:
-consulted only when no flow-level subscription matches. Keep it for hosts
-with custom pre-registry logic, or migrate one flow at a time by moving its
-routing onto `chat.on`.
+Earlier versions let the adapter mount carry a `route(event)` callback or a
+static `flowKind`/`action` pair. Those options are gone. Chat is purely
+declarative `on:` now, the same as webhooks.
+
+Re-express imperative or content-based routing as `chat.on` bindings with
+`when` predicates. A `route()` that inspected the event and picked a flow
+becomes one binding per target, each gated by the condition the old callback
+checked:
 
 ```ts
+// Before: imperative routing at the mount.
 createChatTransportAdapter({
   bot,
   route: (event) => ({ flowKind: "legacy", action: "chat", input: event.raw }),
 });
+
+// After: a declarative binding on the flow it routed to.
+const legacyFlow = defineFlow({
+  kind: "legacy",
+  chat: {
+    on: {
+      mention: defineChatBinding({
+        block: chatBlock,
+        input: (event) => event.raw,
+      }),
+    },
+  },
+});
 ```
+
+Whatever the old `route()` returned `skip` for becomes an event with no
+matching binding: a no-op ack.
 
 ## Testing
 

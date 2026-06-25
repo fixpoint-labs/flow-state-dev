@@ -189,7 +189,90 @@ Low-level hook for direct action execution without session management.
 
 ### `useRequestStream(options)`
 
-Low-level hook for subscribing to a request's SSE stream with reactive item/status views.
+Low-level hook for subscribing to a request's SSE stream with reactive item/status views. Message and reasoning text streams in token-by-token.
+
+```tsx
+const { items, messages, status, isStreaming } = useRequestStream({
+  source: { requestId },          // or { response } for an inline POST stream
+  filter: { itemTypes: ["message"] },
+});
+```
+
+`flush` defaults to `"raf"` (coalesce snapshots per frame); pass `"immediate"` for low-volume or deterministic-test use.
+
+### `useSuspensions(session, options?)`
+
+Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` by `suspensionId` and exposes `approve`/`reject` callbacks. `approve`/`reject` stream the resumed continuation back into `session.items` (via `session.resumeSuspension`), so the resolution renders live — no page refresh, even on serverless.
+
+```tsx
+const { pending, approve, reject, error } = useSuspensions(session, {
+  reasons: ["human_approval"],  // optional filter
+});
+
+// Render headless approval UI
+pending.map(({ item }) => (
+  <ApprovalSidebar
+    key={item.suspensionId}
+    message={item.message}
+    onApprove={() => approve(item.suspensionId)}
+    onReject={() => reject(item.suspensionId)}
+  />
+));
+```
+
+Returns `{ suspensions, pending, approve, reject, error }`. Each `SuspensionView` has `{ item, status, pending, resumeData, resolvedBy, isResolving }`.
+
+### `useApproval(item, options?)`
+
+Headless controller for a suspension approval. Owns the resume transport, in-flight/error state, the duplicate-resume guard, and the resolved outcome — no markup. Build your own approval UI on top of it:
+
+```tsx
+import { useApproval } from "@flow-state-dev/react";
+
+function MyApproval({ item }) {
+  const a = useApproval(item, { isResolved, resolution });
+  if (a.resolved) return <Receipt outcome={a.outcome} />;
+  return (
+    <>
+      <button disabled={!a.canApprove || a.isResolving} onClick={a.approve}>Approve</button>
+      <button disabled={!a.canReject || a.isResolving} onClick={a.reject}>Reject</button>
+    </>
+  );
+}
+```
+
+Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a self-contained recovery client.
+
+### `<ApprovalRenderer>`
+
+The **minimal built-in default** for `suspension` items — plain, unstyled buttons so a suspension renders something actionable with zero setup, collapsing to a one-line text receipt once resolved. It's bare on purpose; for a polished, themeable card use the **`Approval` component from `@flow-state-dev/ui`** (included in `chatAssistantRenderers` as `suspension: Approval`). Both are thin views over `useApproval`.
+
+```tsx
+import { ApprovalRenderer } from "@flow-state-dev/react";
+
+// Used automatically by ItemRenderer; or render directly with explicit handlers:
+<ApprovalRenderer
+  item={suspensionItem}
+  onApprove={(data) => approve(suspensionItem.suspensionId, data)}
+  onReject={(data) => reject(suspensionItem.suspensionId, data)}
+/>
+```
+
+`ItemRenderer`/`ItemsRenderer` thread the resolution outcome to this default so a reloaded log shows the real result. Suppress it with `renderers={{ suspension: false }}` on `<FlowProvider>`.
+
+### `<SuspensionResolverProvider>`
+
+Bridges the session's streaming resume to the inline default `<ApprovalRenderer>`. Wrap the subtree that renders `session.items`; the inline card then streams the continuation into the chat view on approve/reject, instead of a non-streaming resume that only shows output after a refetch.
+
+```tsx
+import { SuspensionResolverProvider } from "@flow-state-dev/react";
+
+<SuspensionResolverProvider resolve={session.resumeSuspension}>
+  <ItemsRenderer items={session.items} />
+</SuspensionResolverProvider>
+```
+
+Explicit `onApprove`/`onReject` props still take precedence; with neither a provider nor handlers, the card falls back to a self-contained non-streaming resume (requires `flowKind` on `<FlowProvider>`).
 
 ## Voice playback
 

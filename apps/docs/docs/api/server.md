@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Server API
 
-`@flow-state-dev/server` — Action runtime, stores, SSE streaming, orchestration.
+`@flow-state-dev/engine` — Action runtime, stores, SSE streaming, orchestration.
 
 ## Runtime
 
@@ -13,7 +13,7 @@ sidebar_position: 2
 The main entry point. Assemble a runtime from declarative config. Returns a `FlowState` handle. Most users want this rather than the lower-level registry and router below.
 
 ```ts
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 
 const flowstate = createFlowState({
   flows: { myFlow },
@@ -93,7 +93,7 @@ Store-adapter factories: `inMemoryStores()`, `filesystemStores({ rootDir })` (th
 Create a registry for flow instances.
 
 ```ts
-import { createFlowRegistry } from "@flow-state-dev/server";
+import { createFlowRegistry } from "@flow-state-dev/engine";
 
 const registry = createFlowRegistry();
 registry.register(myFlow);
@@ -104,7 +104,7 @@ registry.register(myFlow);
 Create HTTP route handlers for the flow API from a registry.
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 
 const router = createFlowApiRouter({
   registry,
@@ -141,7 +141,7 @@ Execute a block directly with a given context.
 Filesystem-backed persistence (default).
 
 ```ts
-import { createFilesystemStores } from "@flow-state-dev/server";
+import { createFilesystemStores } from "@flow-state-dev/engine";
 
 const stores = createFilesystemStores({ basePath: ".flow-state" });
 ```
@@ -151,7 +151,7 @@ const stores = createFilesystemStores({ basePath: ".flow-state" });
 In-memory persistence for testing.
 
 ```ts
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 
 const stores = createInMemoryStores();
 ```

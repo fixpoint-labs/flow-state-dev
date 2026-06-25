@@ -10,7 +10,7 @@
     { "path": "../core" },
     { "path": "../devtool" },
     { "path": "../node" },
-    { "path": "../server" },
+    { "path": "../engine" },
     { "path": "../store-sqlite" },
     { "path": "../testing" }
   ]

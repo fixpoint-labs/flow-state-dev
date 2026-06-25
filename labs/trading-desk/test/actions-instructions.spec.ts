@@ -4,7 +4,7 @@
  * and confirms patch semantics across multiple writes.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import analysisFlow from "../src/flows/analysis/flow";
 

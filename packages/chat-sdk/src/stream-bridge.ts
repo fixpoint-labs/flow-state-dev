@@ -14,7 +14,7 @@
  *     `output_text` parts as a single chunk. Covers non-streaming
  *     generators.
  */
-import type { ResponseEmitter, RequestStreamEventWithId } from "@flow-state-dev/server";
+import type { ResponseEmitter, RequestStreamEventWithId } from "@flow-state-dev/engine";
 import type { RequestStatus } from "@flow-state-dev/core/types";
 
 const TERMINAL_STATUSES: ReadonlySet<RequestStatus> = new Set([

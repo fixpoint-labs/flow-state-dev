@@ -12,7 +12,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
-import type { SessionRecord } from "@flow-state-dev/server";
+import type { SessionRecord } from "@flow-state-dev/engine";
 import { initializeSchema } from "../src/schema";
 import { createSQLiteSessionStore } from "../src/session-store";
 

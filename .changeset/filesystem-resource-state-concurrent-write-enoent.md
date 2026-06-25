@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/server": patch
+"@flow-state-dev/engine": patch
 ---
 
 Fix: `FilesystemResourceStateStore.set` could throw `ENOENT` mid-write under a concurrent-write race, failing the whole operation (e.g. a portfolio import that writes many resources at once would abort, surfacing as a stray `…/<scope>/<key>.tmp-…` path).

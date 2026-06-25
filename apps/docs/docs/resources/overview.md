@@ -120,7 +120,11 @@ For longer or shared templates, you can author resource content as a `.md` file 
 
 ## LLM access patterns
 
-Resources are not automatically exposed to generators. Use `llmReadable` and `llmWritable` flags to control access, and wire `readResourceContentTool()` or `writeResourceContentTool()` to a generator's tools array when you want the model to interact with resource content directly.
+Resources are not automatically exposed to generators. Use `llmReadable` and `llmWritable` flags to control access, and wire `readResourceContentTool()` or `writeResourceContentTool()` to a generator's tools array when you want the model to interact with resource content directly. The flags default off, so a resource stays invisible to those tools until you opt it in.
+
+Resource collections take the same flags, declared once on the collection and applied to every instance — so a content-bearing collection (files, artifacts, per-topic notes) exposes its instances to the generic tools instead of needing a hand-rolled read/write block per collection. See [Collections — LLM access](/docs/resources/collections#llm-access).
+
+The generic tools address resources by their scope-qualified uri (for example `session/files/readme.md`), the same handle the [search tools](/docs/resources/searching) return — so a result from `globResources` or `grepResourceContent` feeds straight into `readResourceContentTool`.
 
 ## Resource collections
 

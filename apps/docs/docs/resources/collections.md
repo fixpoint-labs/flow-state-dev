@@ -279,6 +279,37 @@ If the set is bounded and predictable (three artifact slots), a static resource 
 
 Collections can declare a `client` config to make their items visible to the frontend. This gives you React hooks for listing items, lazy-loading content, and performing CRUD operations. See [Client Access](/docs/resources/client-access) for the full reference.
 
+## LLM access
+
+A content-bearing collection can opt into the generic content tools, the same way single resources do. Two flags, declared once on the collection and applied to every instance:
+
+- `llmReadable: true` — a generator can read instance content with `readResourceContentTool()`, and find it with `grepResourceContent` / `searchResources`.
+- `llmWritable: true` — a generator can overwrite an instance body with `writeResourceContentTool()`.
+
+Both default to `false`: a collection that doesn't opt in stays invisible to those tools. `llmWritable` is independent of `llmReadable` (the write tool gates on `llmWritable` alone), matching the single-resource contract.
+
+```ts
+import { generator, readResourceContentTool, writeResourceContentTool } from "@flow-state-dev/core";
+
+const notes = defineResourceCollection({
+  pattern: "notes/**",
+  scope: "session",
+  stateSchema: z.object({ title: z.string().default("") }),
+  llmReadable: true,
+  llmWritable: true,
+});
+
+const editor = generator({
+  name: "notes-editor",
+  model: "openai/gpt-5.4-mini",
+  prompt: "Edit notes on request. Read the current body before rewriting it.",
+  tools: [readResourceContentTool(), writeResourceContentTool()],
+  sessionResources: { notes },
+});
+```
+
+The tools address an instance by its scope-qualified uri (`session/notes/onboarding`), so a result from [`globResources` or `grepResourceContent`](/docs/resources/searching) feeds straight into a read or write. Before this, every content-bearing collection had to hand-roll its own read/write tool blocks; now they keep only their domain-specific logic.
+
 ## Lazy state by default
 
 Collection state is fetched on demand. The session snapshot no longer carries every item's state — that approach broke down once collections grew past a few dozen items, and shared (org-scoped) collections made the bloat unworkable across sessions.

@@ -139,7 +139,7 @@ describe("RequestSeparator (transport source surface)", () => {
     renderSeparator({
       ...baseProps,
       source: "scheduled",
-      metadata: { scheduleId: "monthly-invoices", origin: "static" },
+      metadata: { schedule: { scheduleId: "monthly-invoices", origin: "static" } },
     });
     expect(screen.getByText(/Scheduled\s*·\s*monthly-invoices/)).toBeInTheDocument();
   });
@@ -148,9 +148,21 @@ describe("RequestSeparator (transport source surface)", () => {
     renderSeparator({
       ...baseProps,
       source: "scheduled",
-      metadata: { scheduleId: "u_1/digest", origin: "dynamic" },
+      metadata: { schedule: { scheduleId: "u_1/digest", origin: "dynamic" } },
     });
     expect(screen.getByText("dynamic")).toBeInTheDocument();
+  });
+
+  it("labels the chip from legacy flat metadata during a rolling deploy", () => {
+    // Records enqueued by the pre-namespacing build carry flat
+    // `metadata.{scheduleId,origin}`. The chip falls back to them so in-flight
+    // jobs stay distinguishable while a mixed deployment drains.
+    renderSeparator({
+      ...baseProps,
+      source: "scheduled",
+      metadata: { scheduleId: "monthly-invoices", origin: "static" },
+    });
+    expect(screen.getByText(/Scheduled\s*·\s*monthly-invoices/)).toBeInTheDocument();
   });
 
   it("truncates long schedule ids in the middle for the chip", () => {
@@ -158,7 +170,7 @@ describe("RequestSeparator (transport source surface)", () => {
     renderSeparator({
       ...baseProps,
       source: "scheduled",
-      metadata: { scheduleId: longId, origin: "dynamic" },
+      metadata: { schedule: { scheduleId: longId, origin: "dynamic" } },
     });
     expect(screen.getByText(/…/)).toBeInTheDocument();
   });
@@ -168,14 +180,18 @@ describe("RequestSeparator (transport source surface)", () => {
       ...baseProps,
       source: "scheduled",
       metadata: {
-        scheduleId: "monthly-invoices",
-        origin: "static",
-        cron: "0 0 1 * *",
-        nominalFireTime: "2026-06-01T00:00:00Z",
+        schedule: {
+          scheduleId: "monthly-invoices",
+          origin: "static",
+          cron: "0 0 1 * *",
+          nominalFireTime: "2026-06-01T00:00:00Z",
+        },
       },
     });
     fireEvent.click(screen.getByText(/Scheduled/));
     expect(screen.getByText("Provenance")).toBeInTheDocument();
+    // The namespaced `schedule` slot is flattened in the provenance panel,
+    // so the cron value still renders as its own row.
     expect(screen.getByText("0 0 1 * *")).toBeInTheDocument();
   });
 });

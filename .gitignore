@@ -19,6 +19,7 @@ docs/superpowers/*
 .claude/specs/*
 packages/devtool/dist-client/*
 .claude/**/_drafts/*
+.claude/worktrees/
 docs/internal/design-memos/*
 *.code-workspace
 .tmp/*

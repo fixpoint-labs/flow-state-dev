@@ -4,7 +4,7 @@
  * Schema auto-initializes on first call.
  */
 
-import type { StoreAdapter, StoreRegistry } from "@flow-state-dev/server";
+import type { StoreAdapter, StoreRegistry } from "@flow-state-dev/engine";
 import type { Pool, PoolConfig } from "pg";
 import type { PostgresStoreOptions, QueryExecutor } from "./types";
 import { initializeSchema, initializeSchemaWithDedicatedClient } from "./schema";
@@ -16,7 +16,7 @@ import { createPostgresActiveRequestRegistry } from "./active-request-registry";
 import { createPostgresContentStore } from "./content-store";
 import { createPostgresResourceStateStore } from "./resource-state-store";
 import { createPostgresCheckpointStore } from "./checkpoint-store";
-import { createInMemoryTraceStore } from "@flow-state-dev/server";
+import { createInMemoryTraceStore } from "@flow-state-dev/engine";
 import { createPostgresSuspensionStore } from "./suspension-store";
 import { createPostgresLeaseStore } from "./lease-store";
 import { createPgPoolTx } from "./tx";

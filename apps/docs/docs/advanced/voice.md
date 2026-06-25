@@ -19,7 +19,7 @@ Voice is opt-in on two sides: a `voice.tts` block on the flow (so the server kno
 Pass a single `voiceProvider` to your router. The provider owns both directions of voice (text-to-speech and speech-to-text), so there's one thing to wire instead of two resolver functions.
 
 ```ts title="lib/server.ts"
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
+import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 
 const registry = createFlowRegistry();

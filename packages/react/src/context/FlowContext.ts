@@ -59,7 +59,9 @@ function mergeRenderers(
     block_trace: child.block_trace !== undefined ? child.block_trace : parent.block_trace,
     tool_output: child.tool_output !== undefined ? child.tool_output : parent.tool_output,
     status: child.status !== undefined ? child.status : parent.status,
+    source: child.source !== undefined ? child.source : parent.source,
     error: child.error !== undefined ? child.error : parent.error,
+    suspension: child.suspension !== undefined ? child.suspension : parent.suspension,
     component: {
       ...parent.component,
       ...child.component

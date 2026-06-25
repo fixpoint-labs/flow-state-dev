@@ -64,13 +64,42 @@ interface InboundRequestEnvelope {
   rawBody?: Uint8Array;
   responseEmitter?: ResponseEmitter | null;
   signal?: AbortSignal;
+  resolvedActionCore?: ActionCore;
 }
 ```
+
+`resolvedActionCore` is the carried-core escape hatch. It's set only by an
+adapter for the one ad-hoc path with no static coordinate — the dynamic
+schedule, whose handler is produced by a resolver at dispatch time and can't
+be reached from `flow.schedules.static`. `runAction` prefers it when present.
+It is not serialized and not persisted, so dynamic schedules don't recover
+across crashes. See [Action forms](./action-forms.md).
 
 `source` is provenance — first-class on `RequestRecord` and
 `ActiveRequestEntry`, propagated through to DevTool's request list. It is
 an open string; the documented known-set is `http`, `mcp`, `webhook`,
 `scheduled`, `notification`, `chat`. Custom transports pick their own.
+
+### The shared action core
+
+Every action — caller-addressed or event-addressed — is built on one shape:
+`ActionCore` (the handler `block` plus execution policy: `durable`,
+`tokenBudget`, `onCompleted`/`onErrored`, `inputSchema`, `userMessage`).
+A caller-addressed action (`ActionConfig` in `flow.actions`) adds the
+HTTP/MCP exposure metadata. An event-addressed handler — webhook, chat, or
+scheduled — carries the core inline on its transport binding and never enters
+`flow.actions`, so it has no caller surface. The runtime dispatches, runs, and
+records all forms identically; it only differs in how it finds the core.
+
+`resolveActionCore` is that seam. For an event dispatch it reads a
+**namespaced** coordinate out of metadata — `metadata.webhook`,
+`metadata.chat.eventKey`, or `metadata.schedule.scheduleId` — gated on the
+`source` the adapter set, and looks the binding up on the matching transport
+map. A caller-addressed dispatch resolves the named `flow.actions` entry. The
+source gate matters for security: a caller POSTing to the public action
+endpoint can forge `metadata`, but cannot set `source`, so it cannot pivot
+resolution into an event handler. See [Action forms](./action-forms.md) for
+the full argument.
 
 ### The host
 
@@ -113,7 +142,7 @@ transparently. See `authentication.md`.
 ## The HTTP adapter as reference
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 
 const router = createFlowApiRouter({ registry, stores });
 ```
@@ -133,8 +162,8 @@ transport boundary lives at the action call, not at every route.
 A minimal adapter looks like this:
 
 ```ts
-import type { InboundTransportAdapter } from "@flow-state-dev/server";
-import { OrgRequiredError } from "@flow-state-dev/server";
+import type { InboundTransportAdapter } from "@flow-state-dev/engine";
+import { OrgRequiredError } from "@flow-state-dev/engine";
 
 export function createEchoAdapter(): InboundTransportAdapter {
   return {
@@ -237,7 +266,7 @@ Auth is two-phase. The dispatch endpoint runs through
 `host.resolvePrincipal` to establish the gateway principal — typically
 a system user proven via a shared scheduler secret
 (`createBearerSecretPrincipalResolver`, exported from
-`@flow-state-dev/server`). Each schedule then carries its own optional
+`@flow-state-dev/engine`). Each schedule then carries its own optional
 `principal` (the *target* user the action runs as), which wins over
 the gateway principal during dispatch. The runtime resolves
 `schedule.principal ?? gatewayPrincipal` and dispatches with that as
@@ -245,9 +274,11 @@ the effective principal.
 
 Source and metadata propagate through to `RequestRecord` so DevTool
 and the trace channel can distinguish scheduled work: `source =
-"scheduled"`, `metadata.scheduleId`, `metadata.origin` (`"static"` or
-`"dynamic"`), `metadata.cron`, `metadata.nominalFireTime`,
-`metadata.dispatchedAt`, `metadata.timezone`. See
+"scheduled"` plus the namespaced `metadata.schedule = { scheduleId,
+origin, cron, nominalFireTime, dispatchedAt, timezone }`. Each transport
+namespaces its provenance the same way — `metadata.webhook`,
+`metadata.chat`, `metadata.schedule` — and `resolveActionCore` reads the
+event coordinate from that slot. See
 [`scheduled-actions.md`](./scheduled-actions.md) for the full design
 notes.
 
@@ -303,11 +334,14 @@ notification adapters plug into the same harness.
 
 ## Related
 
+- [Action forms](./action-forms.md) — the shared `ActionCore` model, the
+  `resolveActionCore` seam and its source gate, and the carried-core
+  mechanism for dynamic schedules.
 - `docs/architecture/authentication.md` — `resolvePrincipal` contract,
   per-flow auth config, `requireUser` semantics, convenience verifiers.
 - `docs/architecture/server-and-client.md` — the route table is now
   produced by the HTTP adapter rather than hard-coded in the router.
 - `docs/architecture/streaming.md` — `LiveRequestStream` / `ResponseEmitter`
   are public types adapters consume.
-- `packages/server/README.md` — public API reference for
+- `packages/engine/README.md` — public API reference for
   `createFlowApiRouter` and the `adapters` option.

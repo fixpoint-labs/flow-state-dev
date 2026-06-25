@@ -8,7 +8,7 @@
  * bodies through unbuffered so SSE reaches the client chunk-by-chunk.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { FlowApiRouter } from "@flow-state-dev/server";
+import type { FlowApiRouter } from "@flow-state-dev/engine";
 
 /** Escape a string for safe use as a literal inside a `RegExp`. */
 function escapeRegExp(value: string): string {

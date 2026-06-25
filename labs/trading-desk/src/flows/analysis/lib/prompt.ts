@@ -1,7 +1,7 @@
 /**
  * Trading-desk prompt-file loader.
  *
- * Builds the desk's prompt loader with `@flow-state-dev/core/prompt-file/node`'s
+ * Builds the desk's prompt loader with `@flow-state-dev/engine/prompt-file`'s
  * `createPromptLoader` so phase prompts authored as `.md` files load consistently
  * across the trading-desk runtimes.
  *
@@ -19,7 +19,7 @@
  * with `{% render 'shared-output-preamble' %}`.
  */
 import path from "node:path";
-import { createPromptLoader } from "@flow-state-dev/core/prompt-file/node";
+import { createPromptLoader } from "@flow-state-dev/engine/prompt-file";
 import { APP_ROOT } from "./app-root";
 
 const FLOW_ROOT = path.join(APP_ROOT, "src/flows/analysis");

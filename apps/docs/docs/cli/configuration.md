@@ -37,7 +37,7 @@ With no config file present and no `--config`, nothing changes: the CLI falls ba
 The default export must be a FlowState. The CLI reads its registry, stores, and resolver directly off that handle.
 
 ```ts title="fsdev.config.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import chatFlow from "./src/flows/chat/flow";
 
 export default createFlowState({
@@ -45,6 +45,33 @@ export default createFlowState({
   models: { default: "openai/gpt-5.4-mini" },
   stores: { default: { primary: inMemoryStores() } },
 });
+```
+
+## Environment files
+
+Before the CLI imports your config, it loads `.env.local` into the environment. That ordering matters: your config constructs its model providers as it loads, and those providers read gateway and API keys at that moment. Load the env too late and the keys are already missing.
+
+Resolution runs highest precedence first:
+
+1. The real shell environment. Anything you've exported wins, and no file overwrites it.
+2. Files you name with `--dotenv <path>`, in order.
+3. `.env.local` in the working directory, then each parent up to the filesystem root.
+
+The auto walk-up only climbs. It finds `.env.local` in cwd and above, never in a child directory. So in a monorepo, running `fsdev` from the repo root will not pick up `apps/my-app/.env.local` one level down. Point at it directly:
+
+```bash
+# from the repo root, load the app's env explicitly:
+fsdev run my-flow action -i '{}' --dotenv apps/my-app/.env.local
+```
+
+`--dotenv` is repeatable and resolved relative to cwd, and absolute paths work. A file you name that doesn't exist is an error, which is the opposite of the silent walk-up: naming a file is a claim it's there, so a typo stops the run instead of vanishing.
+
+One naming note. The flag is `--dotenv`, not `--env-file`, because Node 20.6+ and tsx already treat `--env-file` as a built-in flag. Under `pnpm fsdev` (which runs through tsx), Node would grab `--env-file` before the CLI ever parsed it.
+
+The simpler alternative to all of this is to run from the app directory, where both the config and its `.env.local` sit in cwd:
+
+```bash
+cd apps/my-app && pnpm fsdev run my-flow action -i '{}'
 ```
 
 ## Sharing it with your server entry

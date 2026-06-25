@@ -3,7 +3,7 @@ import type {
   SessionListOptions,
   SessionRecord,
   SessionStore
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { createSQLiteRecordStore } from "./sqlite-store";
 
 export function createSQLiteSessionStore(db: Database.Database): SessionStore {

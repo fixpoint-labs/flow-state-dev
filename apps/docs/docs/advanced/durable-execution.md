@@ -17,7 +17,7 @@ Sequencers default to `durable: true`. Checkpoints write automatically at every 
 Wire a provider at startup:
 
 ```ts
-import { createFlowState, inMemoryStores, createCheckpointDurabilityProvider } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores, createCheckpointDurabilityProvider } from "@flow-state-dev/engine";
 
 const stores = inMemoryStores();
 
@@ -98,6 +98,8 @@ const flow = defineFlow({
 When `ctx.suspend()` is called, the sequencer catches the resulting `SuspensionError` at the step boundary, persists a `SuspensionRecord` to the durability store, and transitions the request to `"suspended"` status. A `SuspensionItem` is emitted to the SSE stream before it closes. Clients receive the suspension metadata — `suspensionId`, `reason`, `message`, and optionally a `render` hint for building a UI — and can use it to display an approval interface.
 
 The original SSE connection closes cleanly. Nothing blocks a thread.
+
+On the React side, `useSuspensions(session)` derives pending and resolved suspensions from the item stream and exposes `approve` and `reject` callbacks that stream the resumed continuation back into `session.items` — so the resolution renders live, no refresh. `<ApprovalRenderer>` is the built-in inline card. For a full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop); for the hook and renderer reference, see [Suspensions and approvals](/docs/client/react#suspensions-and-approvals).
 
 ### SuspendOptions
 
@@ -237,8 +239,8 @@ The standard store adapters all implement the durability tables:
 
 | Adapter | Package | Notes |
 |---|---|---|
-| In-memory | `@flow-state-dev/server` (`inMemoryStores()`) | Default. State is lost on process restart — suitable for development and testing |
-| Filesystem | `@flow-state-dev/server` (`filesystemStores({ rootDir })`) | Persists to JSON files. Survives restarts, not suitable for multi-instance deployments |
+| In-memory | `@flow-state-dev/engine` (`inMemoryStores()`) | Default. State is lost on process restart — suitable for development and testing |
+| Filesystem | `@flow-state-dev/engine` (`filesystemStores({ rootDir })`) | Persists to JSON files. Survives restarts, not suitable for multi-instance deployments |
 | SQLite | `@flow-state-dev/store-sqlite` | Single-file database. Good for single-server deployments |
 | Postgres | `@flow-state-dev/store-postgres` | Full persistence with concurrent read/write support |
 
@@ -289,5 +291,6 @@ The tab reads through the gated debug endpoints, which are disabled by default a
 
 ## See also
 
+- [Human-in-the-Loop guide](/guides/human-in-the-loop) — building an approval gate end to end, from `ctx.suspend()` to the React card that resolves it
 - [Idempotency and `runOnce`](./idempotency.md) — for making handlers safe to re-run on retry, which complements crash recovery
 - [Error handling](./error-handling.md) — for rescue handlers and structured error flow

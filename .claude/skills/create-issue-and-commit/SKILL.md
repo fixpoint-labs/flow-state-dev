@@ -37,7 +37,7 @@ Create the issue using `save_issue`:
 - **Priority**: 3 (Normal) unless the user indicates otherwise
 - **State**: "In Progress"
 - **Team**: "Fixpoint Labs"
-- **Project**: Infer from the affected packages (e.g., changes to `packages/server` or `packages/core` → "flow-state.dev", changes to `packages/thought-fabric-core` → "Thought Fabric")
+- **Project**: Infer from the affected packages (e.g., changes to `packages/engine` or `packages/core` → "flow-state.dev", changes to `packages/thought-fabric-core` → "Thought Fabric")
 - **Description**: 2-3 sentences covering what and why. Keep it scannable.
 - **Assignee**: "me"
 

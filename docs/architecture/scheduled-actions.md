@@ -46,9 +46,12 @@ type SchedulesConfig = {
   ) => Promise<ScheduleConfig | null> | ScheduleConfig | null;
 };
 
-type ScheduleConfig = {
+// A schedule is an action in scheduled form: it carries the shared ActionCore
+// (the handler `block` plus execution policy — `durable`, `tokenBudget`,
+// `onCompleted`/`onErrored`, `inputSchema`) inline, so the handler needs no
+// entry in flow.actions and has no caller-addressed (HTTP/MCP) surface.
+type ScheduleConfig = ActionCore & {
   cron: string;                  // POSIX 5-field, validated, display-only
-  action: string;                // must exist on flow.actions
   input?: unknown | ScheduleInputFn;
   principal?: ResolvedPrincipal; // target user (wins over gateway principal)
   timezone?: string;             // opaque metadata; framework does not interpret
@@ -57,6 +60,11 @@ type ScheduleConfig = {
   enabled?: boolean;             // default true
 };
 ```
+
+`defineScheduleBinding({ cron, block, ... })` is the schedule sibling of
+`defineWebhookBinding` / `defineChatBinding` — a compile-time passthrough that
+constructs a `ScheduleConfig`. Use it for static entries and for the value a
+dynamic `resolve()` returns.
 
 A flow can ship both `static` (the simple framework cron-job case)
 and `resolve` (dynamic per-user, per-record, agent-created
@@ -77,11 +85,13 @@ runs in both paths. The function checks:
   Dynamic ids carry composite shapes (e.g. `<userId>/<key>`) and use
   the wider URL-safe pattern `^[a-z0-9][a-z0-9:/_-]{0,127}$`. The
   dispatch route validates the URL pattern before any resolver call.
-- Action exists on `flow.actions`.
+- The binding carries a `block` (the handler). A schedule is an action
+  in scheduled form, so a handler block is required.
 - Cron parses under `cron-parser` (POSIX 5-field).
-- Static `input` matches the action's `inputSchema`. Dynamic input
-  defers to runtime — the resolver returns whatever the host stored,
-  and validation happens against the action schema during dispatch.
+- Static `input` matches the binding's effective input schema
+  (`inputSchema ?? block.inputSchema`). Dynamic input defers to runtime —
+  the resolver returns whatever the host stored, and validation happens
+  against that schema during dispatch.
 - `onOverlap` is `"skip"` or `"allow"`. `"queue"` is a reserved enum
   value not implemented in v1 (requires durable queueing).
 - `principal.userId` is a non-empty string when the field is set.
@@ -120,7 +130,7 @@ hot loop.
    the resolver returned. Failures → 400 `invalid_schedule`.
 8. Overlap policy. If `onOverlap !== "allow"`, scan `host.stores.activeRequests.listAll()`
    via `findScheduledRequest` for an in-flight scheduled request with
-   matching `(flowKind, source, metadata.scheduleId)`. A match → 200
+   matching `(flowKind, source, metadata.schedule.scheduleId)`. A match → 200
    `{ status: "skipped", reason: "in_flight" }`.
 9. Effective principal: `schedule.principal ?? gatewayPrincipal`.
    Static schedules typically rely on the gateway fallback; dynamic
@@ -159,7 +169,7 @@ even though the dispatch was authenticated against the system
 scheduler secret.
 
 `createBearerSecretPrincipalResolver` (exported from
-`@flow-state-dev/server`) is the canonical helper for the gateway
+`@flow-state-dev/engine`) is the canonical helper for the gateway
 phase. It does a constant-time comparison via `crypto.timingSafeEqual`
 on `Authorization: Bearer <secret>` and returns the configured
 `ResolvedPrincipal` on match. Composing with HTTP auth uses
@@ -202,25 +212,48 @@ only ever does `read(userId, key)` lookups.
 const envelope: InboundRequestEnvelope = {
   source: "scheduled",
   flowKind,
-  action: schedule.action,
+  action: schedule.block.name,   // provenance only; resolution uses the coordinate
   input,
   principal: effectivePrincipal,
   metadata: {
-    scheduleId,
-    origin,                  // "static" | "dynamic"
-    cron: schedule.cron,
-    nominalFireTime,
-    dispatchedAt: new Date().toISOString(),
-    timezone: schedule.timezone ?? "UTC"
+    schedule: {
+      scheduleId,
+      origin,                // "static" | "dynamic"
+      cron: schedule.cron,
+      nominalFireTime,
+      dispatchedAt: new Date().toISOString(),
+      timezone: schedule.timezone ?? "UTC"
+    }
   },
+  // Dynamic only: the resolved core is carried inline because no static
+  // coordinate can reach it. Omitted for static schedules.
+  resolvedActionCore: origin === "dynamic" ? schedule : undefined,
   responseEmitter: null,
   // signal intentionally omitted
 };
 ```
 
-All seven `metadata` fields land on the `RequestRecord` and are
-visible to lifecycle hooks, middleware, the items log, and DevTool's
-provenance panel.
+The `action` field is the handler block's `name` — recorded for
+provenance, never used to resolve the handler. Resolution happens
+through `resolveActionCore` (see [Action forms](./action-forms.md)): for
+a static schedule it reads `flow.schedules.static[scheduleId]` via the
+`metadata.schedule.scheduleId` coordinate, gated on `source ===
+"scheduled"`. The namespaced `metadata.schedule` fields land on the
+`RequestRecord` and are visible to lifecycle hooks, middleware, the items
+log, and DevTool's provenance panel.
+
+### Dynamic schedules carry their core; they don't recover
+
+A dynamic schedule has no static coordinate — its `ScheduleConfig` is
+produced by the resolver at dispatch time. So the adapter sets
+`resolvedActionCore` on the envelope, and `runAction` prefers it over
+the coordinate lookup. That field is not serialized and not persisted
+on the `RequestRecord`. The consequence is honest: a durable dynamic
+schedule mid-run when the process crashes cannot re-resolve its handler
+on recovery, so the run is dropped. Static schedules (and the other
+event transports) recover normally — their handler is reachable from a
+stable coordinate. If a durable scheduled action must survive a crash,
+make it static.
 
 ## DevTool surface
 
@@ -284,7 +317,8 @@ async function findScheduledRequest(
     (entry) =>
       entry.flowKind === flowKind &&
       entry.source === "scheduled" &&
-      (entry.metadata as Record<string, unknown> | undefined)?.scheduleId === scheduleId
+      (entry.metadata as { schedule?: { scheduleId?: unknown } } | undefined)
+        ?.schedule?.scheduleId === scheduleId
   ) ?? null;
 }
 ```
@@ -301,7 +335,7 @@ If profiling shows the scan is hot in production, promotion to a
 dedicated `findScheduled` method on the registry interface is a
 non-breaking follow-up. SQLite and Postgres can back it with a
 partial index on `source = 'scheduled'` plus a JSON-extract on
-`metadata.scheduleId`. Documented in the FIX-440 spec for the
+`metadata.schedule.scheduleId`. Documented in the FIX-440 spec for the
 follow-up.
 
 ## Listing endpoint
@@ -317,6 +351,9 @@ follow-up.
 }
 ```
 
+The `action` field holds the handler block's `name` — provenance for the
+listing, not a resolver key.
+
 Static enumeration only. Dynamic schedules live in host-owned
 storage and are not the framework's to enumerate — the host's own
 UI surfaces those, since it owns the storage primitive ("list all my
@@ -330,13 +367,16 @@ every other route.
 ## Reference helper: resource-collection-backed dynamic schedules
 
 `createResourceCollectionScheduleResolver` wires dynamic schedules
-backed by a flow-state resource collection in one line:
+backed by a flow-state resource collection. A persisted row can't hold a
+block, so it stores a `kind` discriminator string; the resolver maps
+`kind → block` through a required `blocks` option:
 
 ```ts
 schedules: {
   resolve: createResourceCollectionScheduleResolver({
     collection: userSchedules,
-    // parseId / formatId are optional; default is "<userId>/<key>"
+    blocks: { sendDigest, sendReminder },  // persisted `kind` → block
+    // parseId is optional; default is "<userId>/<key>"
   })
 }
 ```
@@ -346,9 +386,16 @@ Internally on `resolve(scheduleId, ctx)`:
 1. Parse `scheduleId` into `(userId, collectionKey)`.
 2. Read `ctx.stores.content.get("user", userId, "schedules/" + collectionKey)`.
    Absent → return `null`.
-3. Synthesize `principal: { userId }` from the parsed userId (which is
+3. Map `state.kind → blocks[state.kind]`. Unknown `kind` → return `null`
+   (404). This is why a stored row keeps `kind`, not a block: blocks
+   aren't serializable.
+4. Synthesize `principal: { userId }` from the parsed userId (which is
    also the storage scope).
-4. Return the `ScheduleConfig`.
+5. Return the `ScheduleConfig` with `block` set.
+
+`defineScheduleCollection`'s persisted state schema names this field
+`kind` (it was `action` before FIX-838). The row records which handler
+to run as a discriminator; the host owns the `kind → block` map.
 
 URL-driven impersonation is structurally prevented by the user-scoped
 lookup: the parsed userId is both the principal and the storage scope,
@@ -364,7 +411,7 @@ ownership.
 Mounted alongside any other adapters via `createFlowApiRouter`:
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 
 const router = createFlowApiRouter({
@@ -407,6 +454,9 @@ the same path) throw `TransportRouteCollisionError` at construction
 
 ## Related
 
+- [Action forms](./action-forms.md) — the shared `ActionCore` model, the
+  `resolveActionCore` seam, and the carried-core mechanism dynamic
+  schedules use.
 - [Inbound Transports](./inbound-transports.md) — the
   `InboundTransportAdapter` contract.
 - [MCP Server](./mcp-server.md) — package layout precedent

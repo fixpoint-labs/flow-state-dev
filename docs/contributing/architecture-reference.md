@@ -22,8 +22,14 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 - `@flow-state-dev/client` required; `@flow-state-dev/react` wraps client (no transport logic)
 - Inbound transport contract: `InboundTransportAdapter`, `InboundRequestEnvelope`, `RequestRecord.source`
   → [Inbound Transports](../architecture/inbound-transports.md)
-- Scheduled actions: `schedules` config on `defineFlow` (`static` map + dynamic `resolve` hook), `ScheduleConfig`, dispatch route `POST /api/flows/:kind/schedules/:scheduleId/dispatch`
+- Action forms: every action shares `ActionCore` (handler `block` + execution policy). Caller-addressed = `ActionConfig` in `flow.actions`; event-addressed (webhook/chat/scheduled) carries the core inline on its transport map and has no HTTP/MCP caller surface (no `internal` flag — the structural fact is the boundary). Resolution seam `resolveActionCore(flow, actionName, source, metadata)` reads a namespaced coordinate (`metadata.webhook` / `metadata.chat.eventKey` / `metadata.schedule.scheduleId`) gated on `source` (set only by adapters), else falls back to `flow.actions[name]`. Dynamic schedules carry the core on `InboundRequestEnvelope.resolvedActionCore` (transient — not persisted, so durable dynamic schedules don't recover).
+  → [Action Forms](../architecture/action-forms.md)
+- Scheduled actions: `schedules` config on `defineFlow` (`static` map + dynamic `resolve` hook). `ScheduleConfig = ActionCore & { cron; input?; principal?; ... }` — carries `block` inline (no `action: string`); `defineScheduleBinding` helper. Dynamic resolver via `createResourceCollectionScheduleResolver({ collection, blocks })` maps a persisted `kind` discriminator → block (`defineScheduleCollection` schema field renamed `action` → `kind`). Dispatch route `POST /api/flows/:kind/schedules/:scheduleId/dispatch`.
   → [Scheduled Actions](../architecture/scheduled-actions.md)
+- Chat transport: `chat` config on `defineFlow` (`chat.on` map). `ChatEventBinding extends ActionCore` — carries `block` inline (no `action: string`); `defineChatBinding` helper. Adapter mount is bare `createChatTransportAdapter({ bot })`: the `route()`/`flowKind`/`action` mount options and `ChatRouteResult`/`ChatRouteFn` types are removed. Unmatched event = no-op ack. `source: "chat"`, namespaced `metadata.chat`.
+  → [Chat Transport](../architecture/chat-transport.md)
+- Webhook receivers: `webhooks` config on `defineFlow` (`WebhookConfig` = per-provider `{ on }`, `WebhookSubscriptionConfig`, `WebhookEventBinding extends ActionCore` — the handler lives on `flow.webhooks`, never `flow.actions`), framework-owned `WebhookInboundEvent` (`core`), host-side `WebhookProviderDefinition` (`engine`, carries `verify` + crypto), route `POST /api/flows/:kind/webhooks/:provider`, `source: "webhook"`
+  → [Webhook Transport](../architecture/webhook-transport.md)
 
 ## Sequencer Surface (21 methods)
 
@@ -70,7 +76,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 - Optional `filter` predicate to target specific block kinds/names
 - `next()` may only be called once per middleware (double-call throws)
 - Middleware runs on every retry attempt
-- Types in `core`; composition logic in `server`
+- Types in `core`; composition logic in `engine`
 
 → [Middleware](../architecture/middleware.md)
 
@@ -90,8 +96,9 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 | Package | Role | Key constraint |
 |---------|------|----------------|
-| `core` | Isomorphic builders/types/items | No platform-specific code |
-| `server` | Execution/runtime/stores/streaming/routes | No dependency on react or client |
+| `contracts` | Zero-dep shared layer (item taxonomy + leaf types) | Imports no workspace package; declares no dependencies (guarded). `core` re-exports it |
+| `core` | Isomorphic builders/types/items | No platform-specific code; value-imports `contracts` |
+| `engine` | Execution/runtime/stores/streaming/routes | No dependency on react or client |
 | `client` | Transport + session/request APIs | No dependency on server or react |
 | `react` | Hooks/renderers only | Wraps client; no transport logic |
 | `testing` | Deterministic harnesses + mocks | Uses core + server |

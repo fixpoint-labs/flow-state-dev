@@ -1,0 +1,113 @@
+{
+  "name": "@flow-state-dev/contracts",
+  "version": "0.0.0",
+  "description": "Zero-dependency shared contracts layer (item taxonomy, leaf types, block-instance-id) for the flow-state-dev block framework.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "contracts",
+    "items"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/contracts"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./items": {
+      "types": "./dist/items/index.d.ts",
+      "default": "./src/items/index.ts"
+    },
+    "./items/*": {
+      "types": "./dist/items/*.d.ts",
+      "default": "./src/items/*.ts"
+    },
+    "./block-instance-id": {
+      "types": "./dist/block-instance-id.d.ts",
+      "default": "./src/block-instance-id.ts"
+    },
+    "./types/*": {
+      "types": "./dist/types/*.d.ts",
+      "default": "./src/types/*.ts"
+    },
+    "./helpers": {
+      "types": "./dist/helpers/index.d.ts",
+      "default": "./src/helpers/index.ts"
+    },
+    "./helpers/*": {
+      "types": "./dist/helpers/*.d.ts",
+      "default": "./src/helpers/*.ts"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./items": {
+        "types": "./dist/items/index.d.ts",
+        "default": "./dist/items/index.js"
+      },
+      "./items/*": {
+        "types": "./dist/items/*.d.ts",
+        "default": "./dist/items/*.js"
+      },
+      "./block-instance-id": {
+        "types": "./dist/block-instance-id.d.ts",
+        "default": "./dist/block-instance-id.js"
+      },
+      "./types/*": {
+        "types": "./dist/types/*.d.ts",
+        "default": "./dist/types/*.js"
+      },
+      "./helpers": {
+        "types": "./dist/helpers/index.d.ts",
+        "default": "./dist/helpers/index.js"
+      },
+      "./helpers/*": {
+        "types": "./dist/helpers/*.d.ts",
+        "default": "./dist/helpers/*.js"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured yet'",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root ."
+  }
+}

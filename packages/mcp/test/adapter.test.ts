@@ -105,6 +105,32 @@ describe("resolveExposedActions", () => {
     expect([...exposed.keys()]).toEqual(["record_payment"]);
   });
 
+  it("does not expose webhook handlers as MCP tools (they live off `flow.actions`)", () => {
+    // FIX-439: a webhook binding is an action in webhook form, living on
+    // `flow.webhooks`, never `flow.actions`. So it is structurally absent from
+    // the MCP tool surface — no filtering needed.
+    const flow = defineFlow({
+      kind: "billing",
+      mcp: { enabled: true },
+      actions: {
+        recordPayment: {
+          inputSchema: z.object({ amount: z.number() }),
+          block: noopBlock,
+          description: "Record a payment for an invoice."
+        }
+      },
+      webhooks: {
+        stripe: {
+          on: {
+            "invoice.paid": { block: noopBlock, input: () => ({}) }
+          }
+        }
+      }
+    });
+    const exposed = resolveExposedActions(flow.kind, flow.actions);
+    expect([...exposed.keys()]).toEqual(["record_payment"]);
+  });
+
   it("honors per-action mcp.name overrides", () => {
     const flow = defineFlow({
       kind: "demo",
@@ -366,7 +392,7 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
   });
 
   it("PrincipalResolutionError surfaces as 401 with -32001 and WWW-Authenticate", async () => {
-    const { PrincipalResolutionError } = await import("@flow-state-dev/server");
+    const { PrincipalResolutionError } = await import("@flow-state-dev/engine");
     const adapter = createMcpTransportAdapter();
     const host = withFlow(
       createMockTransportHost({

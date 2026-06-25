@@ -8,7 +8,7 @@
   "include": ["src/**/*"],
   "references": [
     { "path": "../core" },
-    { "path": "../server" },
+    { "path": "../engine" },
     { "path": "../scheduled" },
     { "path": "../store-postgres" }
   ]

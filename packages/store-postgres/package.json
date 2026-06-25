@@ -55,7 +55,7 @@
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
-    "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
     "pg": "^8.13.0"
   },
   "peerDependencies": {

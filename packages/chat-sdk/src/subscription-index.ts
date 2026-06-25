@@ -62,8 +62,9 @@ export function buildChatSubscriptionIndex(
 
 /**
  * True when at least one flow declares a non-empty `chat.on` map. Used by
- * the adapter's `start()` hook to decide whether flow-level routing is
- * configured before falling back to the adapter-mount `flowKind`/`route`.
+ * the adapter's `start()` hook to fail fast when no declarative routing is
+ * configured anywhere — routing is purely declarative (FIX-838), so an adapter
+ * with no subscriptions can never dispatch.
  */
 export function hasChatSubscriptions(index: ChatSubscriptionIndex): boolean {
   return index.byEventKey.size > 0;

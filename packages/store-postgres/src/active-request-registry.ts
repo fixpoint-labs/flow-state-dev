@@ -6,7 +6,7 @@
 import type {
   ActiveRequestEntry,
   ActiveRequestRegistry
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import type { QueryExecutor } from "./types";
 
 function serializeEntry(entry: ActiveRequestEntry): unknown[] {

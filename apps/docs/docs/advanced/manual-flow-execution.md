@@ -47,7 +47,7 @@ See [authentication](../server/authentication.md) for the full trust model.
 ## Example
 
 ```ts
-import { runAction, createFilesystemStores } from "@flow-state-dev/server";
+import { runAction, createFilesystemStores } from "@flow-state-dev/engine";
 import { digestFlow } from "./flows/digest";
 
 const stores = createFilesystemStores({

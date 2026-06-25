@@ -10,7 +10,7 @@
  * (`OPENAI_API_KEY`, etc.) — model strings like "openai/gpt-5-mini" in the flow
  * resolve automatically.
  */
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import helloChatFlow from "./src/flows/hello-chat/flow";
 
 export default createFlowState({

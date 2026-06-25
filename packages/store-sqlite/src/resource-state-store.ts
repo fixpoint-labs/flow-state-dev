@@ -11,7 +11,7 @@
  */
 import type Database from "better-sqlite3";
 import type { JsonObject } from "@flow-state-dev/core/types";
-import type { ResourceStateStore, ContentScopeType } from "@flow-state-dev/server";
+import type { ResourceStateStore, ContentScopeType } from "@flow-state-dev/engine";
 
 /**
  * Create a SQLite-backed `ResourceStateStore` over the provided database

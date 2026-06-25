@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  ApprovalRenderer,
   FlowProvider,
   ItemRenderer,
   coreItemImportProof,
+  deriveSuspensions,
   getFlowContext,
   reactPackageMarker,
+  resolveSuspension,
   useAction,
   useFlow,
   useFlowContext,
   useClientData,
   useRequestStream,
-  useSession
+  useSession,
+  useSuspensions
 } from "../src";
 
 describe("@flow-state-dev/react", () => {
@@ -38,5 +42,12 @@ describe("@flow-state-dev/react", () => {
 
   it("exports render helpers", () => {
     expect(typeof ItemRenderer).toBe("function");
+  });
+
+  it("exports useSuspensions and HITL helpers", () => {
+    expect(typeof useSuspensions).toBe("function");
+    expect(typeof deriveSuspensions).toBe("function");
+    expect(typeof resolveSuspension).toBe("function");
+    expect(typeof ApprovalRenderer).toBe("function");
   });
 });

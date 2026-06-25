@@ -15,7 +15,7 @@ import {
 import {
   createContentStoreConformanceTests,
   createResourceStateStoreConformanceTests
-} from "@flow-state-dev/server/testing";
+} from "@flow-state-dev/engine/testing";
 
 const pglites: PGlite[] = [];
 

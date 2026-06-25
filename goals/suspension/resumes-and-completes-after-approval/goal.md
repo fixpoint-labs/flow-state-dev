@@ -1,0 +1,16 @@
+# suspension › it resumes and completes after approval
+
+**Issue:** FIX-276
+**Outcome:** A developer requests human approval in a durable flow (kitchen-sink's `requestApproval`), an operator approves it, and the flow resumes past the gate and completes — producing the approved action's result, carrying both the original request and the approver's note through the suspend/resume boundary. Not stuck suspended, not silently dropped down the wrong branch. This is the end-to-end path the DevTool Suspensions tab and the client `resumeSuspension` endpoint sit on top of.
+**Input:** `fixtures/approval.json` — `{ request, note }`. Held-out: the check reads `request` and `note` from the fixture and asserts both survive into the resumed output; swapping them for any other valid pair must still pass a correct implementation. Nothing in the runner hardcodes the strings.
+**Signal:** the **resumed** action's output — a structured object `{ request, approvalId, approved, note }` — serialized, contains **both** the held-out `request` and `note` (case-insensitive), **and** the resumed request record reaches status `"completed"`. (The `note` is the approve payload injected on resume; the `request` is the original input carried through the suspend.)
+**Anti-game:** the hollow pass is asserting that *a suspension was created*, or that the resumed run's `status === "completed"` / `success === true`. All of those hold even if the flow resumed down the **reject** branch, dropped the approve payload, or lost the original input (e.g. output with an empty `request` or no `note`). The check MUST grade the resumed output's **content** against the fixture's `request` AND `note` — that pair only co-occurs when the approved branch ran, the operator's `data.note` was injected on resume, and the original input survived the suspend. It does **not** assert on the completion flag alone, the suspension's existence, item counts, block traces, or schema shape.
+**Model:** n/a — `requestApproval` is pure handlers + `ctx.suspend()`, no LLM call. "No mocking" here means the **real durable suspend/resume/replay path and the real flow code**, not a generator; no model credential is needed to run it.
+**Run:** `pnpm tsx goals/suspension/resumes-and-completes-after-approval/run.mts`
+
+> **Scope.** This drives the **warm** path: dispatch and resume in one process against the real checkpoint durability provider (in-memory dev profile). It proves "approve → completes" — the regression that breaks if the approved branch doesn't run or the payload is dropped. It does **not** simulate a cold restart / page reload (resume in a fresh runtime against a persisted store). The DevTool "approve, reload, state lost" symptom would need a persistent-store cold-restart sibling goal — a natural follow-up, especially given the `replay-resolved-gates` change now on `main`.
+
+## Verdict log
+| Date | Commit | Model | Verdict | Notes |
+|------|--------|-------|---------|-------|
+| 2026-06-23 | e00112fc | n/a (no LLM) | PASS | `pnpm tsx goals/suspension/resumes-and-completes-after-approval/run.mts` → exit 0. Resumed output `{request, approvalId, approved:true, note}` carried both held-out values; request status `completed`. |

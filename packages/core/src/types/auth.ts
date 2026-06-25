@@ -7,7 +7,7 @@
  *
  * These types live in core because `defineFlow` accepts an `authentication`
  * config and the principal contract is the runtime's authoritative caller
- * identity. Server re-exports the same names from `@flow-state-dev/server`
+ * identity. Server re-exports the same names from `@flow-state-dev/engine`
  * so adapter authors can import them next to `InboundRequestEnvelope`.
  */
 
@@ -64,7 +64,7 @@ export interface PrincipalResolutionContext {
  * `defaultUserId` and enforce `requireUser`), or `null` when the request is
  * unauthenticated and the flow opts out of user requirement.
  *
- * Throwing a `PrincipalResolutionError` (from `@flow-state-dev/server`) lets
+ * Throwing a `PrincipalResolutionError` (from `@flow-state-dev/engine`) lets
  * the resolver pick the HTTP status code surfaced to clients (e.g., 401 for
  * invalid signature, 403 for valid signature on a forbidden resource).
  */

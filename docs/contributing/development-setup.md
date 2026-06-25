@@ -56,7 +56,7 @@ docs/
 | `pnpm lint` | All packages | Lint (currently stubbed) |
 | `pnpm test:watch` | All packages | Watch mode tests |
 | `pnpm --filter @flow-state-dev/core test` | Single package | Test one package |
-| `pnpm --filter @flow-state-dev/server typecheck` | Single package | Typecheck one package |
+| `pnpm --filter @flow-state-dev/engine typecheck` | Single package | Typecheck one package |
 | `pnpm --filter @flow-state-dev/kitchen-sink dev` | App | Run kitchen-sink dev server |
 
 
@@ -113,8 +113,8 @@ tests flake on the default 5s timeout. Serial execution matches the prior
 packages are skipped). Build and typecheck stay fully parallel.
 
 You don't order builds by hand. The one explicit edge in `turbo.json` is
-`@flow-state-dev/server#build`, pinned to `core` only: `testing` is a dev-only
-dependency of `server`, so the default graph traversal would otherwise see a
+`@flow-state-dev/engine#build`, pinned to `core` only: `testing` is a dev-only
+dependency of `engine`, so the default graph traversal would otherwise see a
 `server ⇄ testing` cycle.
 
 To build the DevTool static assets (for `fsdev dev`), run

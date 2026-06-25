@@ -16,6 +16,8 @@ Items serve three purposes:
 
 Voice I/O streams chunked audio over the same SSE channel — see [Voice](../advanced/voice).
 
+On the client, these events are folded back into a live item list. React apps get that through `useSession` / `useRequestStream`; a custom or non-React consumer can use the same accumulator directly via [`createRequestStreamStore`](../api/client.md#createrequeststreamstore-and-bindstoretocallbacksstore-options).
+
 ## The items you'll use most
 
 Most of the time you'll work with three emit methods. Generators call these automatically for their own output, but you can also call them explicitly from any block:
@@ -154,4 +156,4 @@ For reference, here's the complete registry:
 
 ## Wire-level heartbeat
 
-`@flow-state-dev/server` injects `: ping\n\n` SSE comment frames into every live and GET-attach response at a configurable cadence (default 15 s). They keep NAT and proxy idle timeouts from closing the connection and give clients a wire-level signal independent of any specific event. Configure via `createFlowState({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })`. See [Connection Resilience](/docs/server/connection-resilience) for how heartbeats fit alongside the watchdog and stale-request sweeper.
+`@flow-state-dev/engine` injects `: ping\n\n` SSE comment frames into every live and GET-attach response at a configurable cadence (default 15 s). They keep NAT and proxy idle timeouts from closing the connection and give clients a wire-level signal independent of any specific event. Configure via `createFlowState({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })`. See [Connection Resilience](/docs/server/connection-resilience) for how heartbeats fit alongside the watchdog and stale-request sweeper.

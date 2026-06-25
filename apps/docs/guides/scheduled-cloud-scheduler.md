@@ -40,7 +40,7 @@ The dispatch endpoint mirrors the schedule on the framework side:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { createBearerSecretPrincipalResolver } from "@flow-state-dev/server";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
 
 defineFlow({
   kind: "billing",

@@ -14,8 +14,8 @@
  * Adapter authors with stricter requirements should pass a custom
  * `resolvePrincipal` to `createChatTransportAdapter`.
  */
-import type { ResolvedPrincipal } from "@flow-state-dev/server";
-import { PrincipalResolutionError } from "@flow-state-dev/server";
+import type { ResolvedPrincipal } from "@flow-state-dev/engine";
+import { PrincipalResolutionError } from "@flow-state-dev/engine";
 import type { ChatInboundEvent } from "./types";
 
 export function resolvePrincipalFromEvent(

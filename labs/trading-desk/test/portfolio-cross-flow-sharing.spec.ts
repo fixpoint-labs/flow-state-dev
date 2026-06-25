@@ -27,7 +27,7 @@
  *     somehow saw a stale or differently-keyed write, the negative would fail.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/src/db/repository";

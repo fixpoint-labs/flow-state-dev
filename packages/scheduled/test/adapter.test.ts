@@ -8,7 +8,7 @@ import {
 import {
   PrincipalResolutionError,
   type ActiveRequestRegistry
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import {
   createScheduledTransportAdapter,
   SCHEDULED_TRANSPORT_SOURCE
@@ -35,12 +35,19 @@ function buildFlow(overrides: Parameters<typeof defineFlow>[0] | undefined = und
         static: {
           "monthly-invoices": {
             cron: "0 0 1 * *",
-            action: "run"
+            block: noopBlock
           }
         }
       }
     }
   );
+}
+
+/** Read the namespaced `metadata.schedule` slot off a recorded envelope. */
+function schedMeta(
+  envelope: { metadata?: unknown } | undefined
+): Record<string, unknown> {
+  return (envelope?.metadata as { schedule?: Record<string, unknown> })?.schedule ?? {};
 }
 
 function postRequest(
@@ -164,10 +171,10 @@ describe("createScheduledTransportAdapter — dispatch", () => {
 
     const envelope = host.dispatchCalls[0]?.envelope;
     expect(envelope?.source).toBe("scheduled");
-    expect(envelope?.action).toBe("run");
-    expect((envelope?.metadata as Record<string, unknown>)?.scheduleId).toBe("monthly-invoices");
-    expect((envelope?.metadata as Record<string, unknown>)?.origin).toBe("static");
-    expect((envelope?.metadata as Record<string, unknown>)?.nominalFireTime).toBe(
+    expect(envelope?.action).toBe("noop");
+    expect(schedMeta(envelope).scheduleId).toBe("monthly-invoices");
+    expect(schedMeta(envelope).origin).toBe("static");
+    expect(schedMeta(envelope).nominalFireTime).toBe(
       "2026-06-01T00:00:00Z"
     );
   });
@@ -187,7 +194,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
           if (id !== "u_1/weekly") return null;
           return {
             cron: "0 9 * * MON",
-            action: "sendDigest",
+            block: noopBlock,
             principal: { userId: "u_1" }
           };
         }
@@ -203,9 +210,9 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     expect(response.status).toBe(202);
 
     const envelope = host.dispatchCalls[0]?.envelope;
-    expect(envelope?.action).toBe("sendDigest");
+    expect(envelope?.action).toBe("noop");
     expect(envelope?.principal).toEqual({ userId: "u_1" });
-    expect((envelope?.metadata as Record<string, unknown>)?.origin).toBe("dynamic");
+    expect(schedMeta(envelope).origin).toBe("dynamic");
   });
 
   it("returns 404 when the resolver returns null", async () => {
@@ -254,7 +261,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
       kind: "reminders",
       actions: { sendDigest: { inputSchema: z.object({}), block: noopBlock } },
       schedules: {
-        resolve: () => ({ cron: "@nope", action: "sendDigest" })
+        resolve: () => ({ cron: "@nope", block: noopBlock })
       }
     });
     const host = withFlow(
@@ -331,7 +338,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
             source: "scheduled",
             startedAt: 0,
             lastHeartbeatAt: 0,
-            metadata: { scheduleId: "monthly-invoices" }
+            metadata: { schedule: { scheduleId: "monthly-invoices" } }
           }
         ])
       ),
@@ -366,7 +373,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
         static: {
           "monthly-invoices": {
             cron: "0 0 1 * *",
-            action: "run",
+            block: noopBlock,
             onOverlap: "allow"
           }
         }
@@ -384,7 +391,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
             source: "scheduled",
             startedAt: 0,
             lastHeartbeatAt: 0,
-            metadata: { scheduleId: "monthly-invoices" }
+            metadata: { schedule: { scheduleId: "monthly-invoices" } }
           }
         ])
       ),
@@ -408,7 +415,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
         static: {
           "for-u-7": {
             cron: "0 9 * * MON",
-            action: "sendDigest",
+            block: noopBlock,
             principal: { userId: "u_7" }
           }
         }
@@ -457,7 +464,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
         static: {
           "monthly-invoices": {
             cron: "0 0 1 * *",
-            action: "run",
+            block: noopBlock,
             enabled: false
           }
         }
@@ -483,7 +490,7 @@ describe("createScheduledTransportAdapter — list", () => {
         run: { inputSchema: z.object({ value: z.string().optional() }), block: noopBlock }
       },
       schedules: {
-        static: { "monthly-invoices": { cron: "0 0 1 * *", action: "run", description: "monthly" } },
+        static: { "monthly-invoices": { cron: "0 0 1 * *", block: noopBlock, description: "monthly" } },
         resolve: () => null
       }
     });
@@ -546,11 +553,11 @@ describe("createScheduledTransportAdapter — edge cases", () => {
       },
       schedules: {
         static: {
-          shared: { cron: "0 0 1 * *", action: "run", description: "static-wins" }
+          shared: { cron: "0 0 1 * *", block: noopBlock, description: "static-wins" }
         },
         resolve: () => ({
           cron: "* * * * *",
-          action: "run",
+          block: noopBlock,
           description: "should-not-be-used"
         })
       }
@@ -567,7 +574,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
     expect(json.origin).toBe("static");
 
     const envelope = host.dispatchCalls[0]?.envelope;
-    expect((envelope?.metadata as Record<string, unknown>)?.cron).toBe("0 0 1 * *");
+    expect(schedMeta(envelope).cron).toBe("0 0 1 * *");
   });
 
   it("returns 503 when host.dispatch throws (flow unregistered between resolve and dispatch)", async () => {
@@ -604,7 +611,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
     });
     expect(response.status).toBe(202);
     const envelope = host.dispatchCalls[0]?.envelope;
-    expect(typeof (envelope?.metadata as Record<string, unknown>)?.nominalFireTime).toBe("string");
+    expect(typeof schedMeta(envelope).nominalFireTime).toBe("string");
   });
 
   it("treats unparseable JSON as an empty body", async () => {

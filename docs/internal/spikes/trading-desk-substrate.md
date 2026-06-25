@@ -16,7 +16,7 @@ was needed — the gap is structural and visible in `useSession.ts`.
 
 ### 1. Container-start events reach the client
 
-`packages/server/src/context/createExecutionContext.ts` emits a container item
+`packages/engine/src/context/createExecutionContext.ts` emits a container item
 when a sub-sequencer with `container.component` enters. The item carries the
 sub-sequencer's `name` and `label`. `useSession.onItemAdded` admits non-trace
 items so the transcript pane can render the phase divider directly off these.

@@ -21,7 +21,7 @@ pnpm add @flow-state-dev/node
 ## `serve(flowState)`
 
 ```ts
-import { createFlowState } from "@flow-state-dev/server";
+import { createFlowState } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { flows } from "./flows.js";
 
@@ -50,7 +50,7 @@ store lifecycle yourself), pass it instead of a `FlowState`. It is treated as
 ready immediately, and `close()` disposes the router but leaves your stores alone.
 
 ```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 
 const router = createFlowApiRouter({ registry, stores, runtimeConfig });

@@ -18,7 +18,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/src/db/repository";

@@ -13,11 +13,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
 
-vi.mock("@flow-state-dev/server", () => ({
+vi.mock("@flow-state-dev/engine", () => ({
   runAction: vi.fn()
 }));
 
-import { runAction } from "@flow-state-dev/server";
+import { runAction } from "@flow-state-dev/engine";
 import { createFlowJobProcessor, type FlowWorkerDeps } from "../src/worker";
 import type { FlowJobData } from "../src/types";
 

@@ -142,7 +142,7 @@ host-defined system principal — or skip the resolver entirely and set
 import {
   createHmacVerifier,
   PrincipalResolutionError
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 
 const verifyStripe = createHmacVerifier({
   secret: process.env.STRIPE_WEBHOOK_SECRET!,
@@ -178,6 +178,14 @@ covers.
 `toleranceSeconds`. For GitHub-style `sha256=<hex>` headers, use
 `format: "raw"` with `prefix: "sha256="`.
 
+If you're mounting the [webhook transport](./webhooks.md), you usually don't
+write this resolver at all. The webhook adapter does signature verification
+itself, per provider, at the mount — `stripeWebhookVerifier`,
+`githubWebhookVerifier`, `slackWebhookVerifier`, and `createWebhookVerifier`
+wrap the same HMAC machinery shown here. Reach for `createHmacVerifier` inside
+`resolvePrincipal` only when you're handling a signed POST through the plain
+HTTP transport rather than the webhook transport.
+
 ### MCP / API token over Authorization header
 
 ```ts
@@ -185,7 +193,7 @@ import {
   createHs256JwtVerifier,
   extractBearerToken,
   PrincipalResolutionError
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 
 const verifyJwt = createHs256JwtVerifier({
   secret: process.env.JWT_SECRET!,
@@ -224,7 +232,7 @@ different requirements (one public, one private; one MCP-exposed, one
 not). When flows do share auth logic, pull the resolver into a constant:
 
 ```ts
-import type { ResolvePrincipalFn } from "@flow-state-dev/server";
+import type { ResolvePrincipalFn } from "@flow-state-dev/engine";
 
 const sessionResolver: ResolvePrincipalFn = async (ctx) => {
   const session = await getSession(ctx.request);
@@ -241,7 +249,7 @@ defineFlow({ kind: "flow-b", authentication: { resolvePrincipal: sessionResolver
 inbound flow has no `authentication.resolvePrincipal` of its own:
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 
 export const flowstate = createFlowState({
   flows: { chat: chatFlow },

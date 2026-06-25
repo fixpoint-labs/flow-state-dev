@@ -107,8 +107,8 @@ reading the Linear issue or any other context.]
 
 ## Files to Modify
 
-- `packages/server/src/streaming/sse.ts` — [what changes]
-- `packages/server/src/__tests__/sse.test.ts` — [what to test]
+- `packages/engine/src/streaming/sse.ts` — [what changes]
+- `packages/engine/src/__tests__/sse.test.ts` — [what to test]
 
 ## Acceptance Criteria
 

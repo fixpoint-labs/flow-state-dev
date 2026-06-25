@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 import { executeRunCommand, type FlowRunResult, type FlowEvent } from "../src/commands/run";
 import { discoverFlows, getSearchedDirs } from "../src/resolve-flow";
 import { CliError } from "../src/resolve-block";

@@ -8,7 +8,7 @@
  */
 
 import type { JsonObject } from "@flow-state-dev/core/types";
-import type { ResourceStateStore, ContentScopeType } from "@flow-state-dev/server";
+import type { ResourceStateStore, ContentScopeType } from "@flow-state-dev/engine";
 import type { QueryExecutor } from "./types";
 
 export function createPostgresResourceStateStore(executor: QueryExecutor): ResourceStateStore {

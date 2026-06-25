@@ -15,7 +15,7 @@ import {
   initializeSchema,
   type QueryExecutor
 } from "../src";
-import { createRequestStoreConformanceTests } from "@flow-state-dev/server/testing";
+import { createRequestStoreConformanceTests } from "@flow-state-dev/engine/testing";
 
 const POLL_INTERVAL_MS = 25;
 const pglites: PGlite[] = [];

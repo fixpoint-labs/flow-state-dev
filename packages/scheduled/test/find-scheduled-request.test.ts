@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ActiveRequestEntry, ActiveRequestRegistry } from "@flow-state-dev/server";
+import type { ActiveRequestEntry, ActiveRequestRegistry } from "@flow-state-dev/engine";
 import { findScheduledRequest } from "../src";
 
 const baseEntry = {
@@ -48,10 +48,26 @@ describe("findScheduledRequest", () => {
       requestId: "req-1",
       flowKind: "demo",
       source: "scheduled",
-      metadata: { scheduleId: "weekly-digest" }
+      metadata: { schedule: { scheduleId: "weekly-digest" } }
     });
     const result = await findScheduledRequest(registry, "demo", "weekly-digest");
     expect(result?.requestId).toBe("req-1");
+  });
+
+  it("matches a legacy in-flight request with top-level metadata.scheduleId", async () => {
+    // Requests enqueued by the pre-namespacing build carry a flat
+    // `metadata.scheduleId`. Overlap-skip must still match them across a
+    // rolling deploy, otherwise a duplicate dispatch slips through.
+    const registry = createInMemoryActiveRequestRegistry();
+    await registry.register({
+      ...baseEntry,
+      requestId: "req-legacy",
+      flowKind: "demo",
+      source: "scheduled",
+      metadata: { scheduleId: "weekly-digest" }
+    });
+    const result = await findScheduledRequest(registry, "demo", "weekly-digest");
+    expect(result?.requestId).toBe("req-legacy");
   });
 
   it("ignores requests from a different flow", async () => {
@@ -61,7 +77,7 @@ describe("findScheduledRequest", () => {
       requestId: "req-1",
       flowKind: "other",
       source: "scheduled",
-      metadata: { scheduleId: "weekly-digest" }
+      metadata: { schedule: { scheduleId: "weekly-digest" } }
     });
     const result = await findScheduledRequest(registry, "demo", "weekly-digest");
     expect(result).toBeNull();
@@ -74,7 +90,7 @@ describe("findScheduledRequest", () => {
       requestId: "req-1",
       flowKind: "demo",
       source: "scheduled",
-      metadata: { scheduleId: "daily-cleanup" }
+      metadata: { schedule: { scheduleId: "daily-cleanup" } }
     });
     const result = await findScheduledRequest(registry, "demo", "weekly-digest");
     expect(result).toBeNull();
@@ -87,7 +103,7 @@ describe("findScheduledRequest", () => {
       requestId: "req-1",
       flowKind: "demo",
       source: "http",
-      metadata: { scheduleId: "weekly-digest" }
+      metadata: { schedule: { scheduleId: "weekly-digest" } }
     });
     const result = await findScheduledRequest(registry, "demo", "weekly-digest");
     expect(result).toBeNull();

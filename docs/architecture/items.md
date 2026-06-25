@@ -91,6 +91,8 @@ Author-thrown `FlowError.details` flows through verbatim, and authors may attach
 
 Lifecycle: `item.added` (status `in_progress`, input filled in, output empty) → zero or more `item.updated` patches (connector input, generator bundle, model usage) → `item.done` (terminal status, output written, timing closed). Consumers reconcile by id. Late subscribers see only the final settled row.
 
+Because that row is mutated in place — one object reference, fields changed between phases — a store's incremental item persistence MUST diff by item **content**, not object reference. A reference-identity diff never observes the `in_progress → completed` field change and leaves the persisted row at `in_progress`, which defeats resume memoization (`getCompletedOutput` short-circuits a block only when its persisted trace is `completed`). "Last-write-wins per item id" is therefore by content. The cross-store conformance suite enforces this on every adapter (FIX-839).
+
 `block_trace.output` is a `BlockValue<T>` discriminated union with three cases:
 
 - **`inline`** — the block produced novel content. Leaves (generators, handlers) and explicit transforms (`.map`, non-identity `connectOutput`) emit this kind. The payload rides on `output.value`.
@@ -178,12 +180,20 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 | `resource_change` | Auto on resource mutations | ✓ | — | Structural | Transient by default |
 | `error` | Runtime (terminal failure) | ✓ | — | Structural | Persistent |
 | `suspension` | `ctx.suspend()` (durable actions, on suspend) | ✓ | — | Structural | Persistent |
-| `suspension_resume` | Resume (durable actions, on continuation) | ✓ | — | Structural | Persistent |
+| `suspension_resume` | Resume (durable actions, on continuation) | ✓ | — | Structural | Persistent. Not rendered client-side — apps render their resume UI off the `suspension` item, not this one. |
 | `block_trace` | Every block (auto, lifecycle: in_progress → updates → terminal) | — | — | Trace | Persistent |
 | `router_decision` | Router (auto, on selection) | — | — | Trace | Persistent |
 | `state_snapshot` | Sequencer (at step boundaries) | — | — | Trace | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
 
 **Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Visibility category` = how `resolveItemVisibility(item)` determines visibility. Conversational types use `item.itemVisibility` (default `{ client: true, history: true }`). Structural types have fixed per-type defaults. Trace types always resolve to `{ client: false, history: false }`.
+
+### Suspension item rendering
+
+`suspension` items are consumer-renderable. `ItemRenderer` uses `ApprovalRenderer` as its built-in fallback for `type === "suspension"` — it shows `item.message` with Approve and Reject buttons that call the resume endpoint. Register a custom component under the `suspension` slot of `RendererRegistry` to replace the default card, or set `suspension: false` to suppress it (headless layouts use `useSuspensions` and render the approval UI in a modal or sidebar instead).
+
+`suspension_resume` items are not rendered. They carry the audit record of a resolved suspension and are used by `useSuspensions` to flip a suspension from `pending` to resolved. Apps derive resume state from the item log, not from the `suspension` item's `suspensionStatus` field.
+
+See [Suspensions and approvals](/docs/client/react#suspensions-and-approvals) for the React surface.
 
 ## Status slot semantics
 

@@ -19,7 +19,7 @@ import fs from "node:fs";
 import {
   createContentStoreConformanceTests,
   createResourceStateStoreConformanceTests
-} from "@flow-state-dev/server/testing";
+} from "@flow-state-dev/engine/testing";
 import { createSQLiteStores } from "../src";
 import { createSQLiteContentStore } from "../src/content-store";
 import { createSQLiteResourceStateStore } from "../src/resource-state-store";

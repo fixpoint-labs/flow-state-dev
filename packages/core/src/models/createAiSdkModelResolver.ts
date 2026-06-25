@@ -813,14 +813,43 @@ function createGeneratorModelFromAiSdk(
       } catch (err: unknown) {
         // AI SDK throws NoObjectGeneratedError / NoOutputGeneratedError when
         // the model returns empty or unparseable output for structured generation.
-        // Extract the diagnostic fields (text, cause, usage) before re-throwing
-        // so callers get actionable debug info instead of a bare error message.
+        // Extract the diagnostic fields (text, cause, usage) before deciding
+        // whether to recover or re-throw.
         const rec = err as Record<string, unknown> | undefined;
         const text = typeof rec?.text === "string" ? rec.text : undefined;
         const cause = rec?.cause;
         const usage = rec?.usage;
         const name = err instanceof Error ? err.name : "UnknownError";
         const message = err instanceof Error ? err.message : String(err);
+
+        // Recoverable case (FIX-841): the model produced text, it just didn't
+        // match the structured-output schema. Hand the raw text back as the
+        // candidate so the generator's repair pipeline — deterministic
+        // parse/jsonrepair, then LLM coercion — can try to reshape it instead
+        // of crashing the block. Errors with no text (empty output, abort,
+        // network) are not recoverable and still throw.
+        const isStructuredParseFailure =
+          (name === "AI_NoObjectGeneratedError" || name === "NoObjectGeneratedError") &&
+          typeof text === "string" &&
+          text.length > 0;
+        if (isStructuredParseFailure) {
+          const recovered: GeneratorModelResult = {
+            text,
+            structuredOutput: undefined,
+            resolvedIdentity: buildResolvedIdentity(
+              extractProviderModelId(rec ?? {}),
+              identityHints,
+              modelId
+            ),
+          };
+          // Normalize usage the same way the success path does so recovered
+          // calls don't drop prompt/completion tokens from cost accounting.
+          const normalizedUsage = normalizeUsage(usage, rec?.providerMetadata);
+          if (normalizedUsage !== undefined) {
+            recovered.usage = normalizedUsage;
+          }
+          return recovered;
+        }
 
         const details: string[] = [`[ai-sdk-generate] ${name}: ${message}`];
         if (text) details.push(`  model text: ${text.slice(0, 500)}`);

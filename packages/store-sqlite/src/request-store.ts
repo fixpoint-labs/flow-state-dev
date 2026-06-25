@@ -22,7 +22,7 @@ import type {
   RequestStore,
   SetResult,
   SubscribeToEventsOptions
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { createSQLiteRecordStore } from "./sqlite-store";
 import { createLiveTailRegistry, DEFAULT_POLL_INTERVAL_MS } from "./live-tail";
 
@@ -37,7 +37,7 @@ const MAX_ITEM_ID_LENGTH = 2600;
 /**
  * Whether a request status is past the in-flight phase. Mirrors the server
  * helper of the same name, defined locally so this package keeps a TYPE-ONLY
- * dependency on `@flow-state-dev/server` (enforced by
+ * dependency on `@flow-state-dev/engine` (enforced by
  * `scripts/validate-package-boundaries.mjs`); importing the runtime helper
  * would couple the SQLite store to server runtime values.
  */
@@ -160,12 +160,14 @@ export function createSQLiteRequestStore(
   /** Holds the most recent items so the queued write always uses the latest data. */
   const latestItemSnapshots = new Map<string, OutputItem[]>();
   /**
-   * Per-request map of the item references last persisted to `request_items`.
-   * The emitter swaps the item reference on each item-boundary update, so
-   * reference inequality catches every boundary change while skipping
-   * unchanged items — the diff that makes persistence incremental.
+   * Per-request map of item id → the JSON last persisted to `request_items`.
+   * Diffing by serialized content (not object reference) keeps persistence
+   * incremental while still catching in-place field mutations: the runtime
+   * mutates a block_trace item in place across in_progress → completed (same
+   * reference, new content), so a reference compare would drop the completed
+   * write and leave the row in_progress, defeating resume memoization (FIX-839).
    */
-  const lastPersistedItems = new Map<string, Map<string, OutputItem>>();
+  const lastPersistedItems = new Map<string, Map<string, string>>();
   const pendingEventWrites = new Set<string>();
 
   const insertItemStmt = db.prepare(
@@ -368,13 +370,20 @@ export function createSQLiteRequestStore(
         latestItemSnapshots.delete(requestId);
         if (snapshot === undefined) return;
 
-        // Diff against the last persisted references: only items whose
-        // reference changed need an UPSERT. This is what keeps writes
-        // proportional to new/changed items rather than the whole snapshot.
+        // Diff against the last persisted *content* (not object reference):
+        // the runtime mutates a block_trace item in place across its
+        // in_progress → completed lifecycle (same reference, new content), so a
+        // reference compare would never re-persist the completed state — the
+        // row would stay in_progress and resume memoization would re-run the
+        // already-completed block (FIX-839). Serializing to compare keeps
+        // writes proportional to new/changed items.
         const priorById = lastPersistedItems.get(requestId);
+        const nextById = new Map<string, string>();
         const delta: OutputItem[] = [];
         for (const item of snapshot) {
-          if (priorById?.get(item.id) !== item) delta.push(item);
+          const serialized = JSON.stringify(item);
+          nextById.set(item.id, serialized);
+          if (priorById?.get(item.id) !== serialized) delta.push(item);
         }
         if (delta.length > 0) {
           // De-dup by id and sort for deterministic write ordering.
@@ -386,9 +395,7 @@ export function createSQLiteRequestStore(
           writeItemsBatchTxn(batch, requestId);
         }
 
-        const next = new Map<string, OutputItem>();
-        for (const item of snapshot) next.set(item.id, item);
-        lastPersistedItems.set(requestId, next);
+        lastPersistedItems.set(requestId, nextById);
       });
     },
 

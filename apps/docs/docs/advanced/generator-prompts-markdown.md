@@ -187,7 +187,7 @@ There is deliberately no `calculatedValues` config slot. Filters plus the `<cont
 In Node, `loadPromptFile` reads the file and resolves sibling partials:
 
 ```ts
-import { loadPromptFile } from "@flow-state-dev/core/prompt-file/node";
+import { loadPromptFile } from "@flow-state-dev/engine/prompt-file";
 
 const pf = loadPromptFile("./analyst.prompt.md", import.meta.url, {
   filters: { format_usd: (n) => `$${n.toFixed(2)}` },
@@ -204,7 +204,7 @@ import {
   createPromptLoader,
   moduleDir,
   resolveBaseDir,
-} from "@flow-state-dev/core/prompt-file/node";
+} from "@flow-state-dev/engine/prompt-file";
 
 const PROMPT_ROOT = resolveBaseDir(
   [moduleDir(import.meta.url, "./prompts"), path.resolve(process.cwd(), "src/prompts")],
@@ -251,7 +251,7 @@ const pf = parsePromptFile(txt, {
 ```ts
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
-import { loadPromptFile } from "@flow-state-dev/core/prompt-file/node";
+import { loadPromptFile } from "@flow-state-dev/engine/prompt-file";
 
 const pf = loadPromptFile("./analyst.prompt.md", import.meta.url, {
   filters: { format_usd: (n) => `$${n.toFixed(2)}` },

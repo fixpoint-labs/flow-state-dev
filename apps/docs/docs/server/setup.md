@@ -13,7 +13,7 @@ The runtime is the part that registers your flows, runs actions, persists state,
 `createFlowState` takes one declarative object and returns a handle. Everything the runtime needs lives in that object: which flows to register, how to resolve models, where state is stored, and what to do with errors.
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import myFlow from "@/flows/my-flow/flow";
 
 export const flowstate = createFlowState({
@@ -54,7 +54,7 @@ Common options:
 | `errorCapture` | Block-aware sink for routing runtime block failures to an external service. |
 
 ```ts
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { openai } from "@ai-sdk/openai";
 import myFlow from "@/flows/my-flow/flow";
@@ -96,8 +96,8 @@ Adapters ship in a few packages:
 
 | Adapter | Import | Notes |
 |---------|--------|-------|
-| `inMemoryStores()` | `@flow-state-dev/server` | Ephemeral. Default for local dev and tests. |
-| `filesystemStores({ rootDir })` | `@flow-state-dev/server` | On-disk persistence, local development only. Suitable for single-server dev; persistent across restarts. |
+| `inMemoryStores()` | `@flow-state-dev/engine` | Ephemeral. Default for local dev and tests. |
+| `filesystemStores({ rootDir })` | `@flow-state-dev/engine` | On-disk persistence, local development only. Suitable for single-server dev; persistent across restarts. |
 | `postgresStores(options)` | `@flow-state-dev/store-postgres` | Postgres-backed. |
 | `sqliteStores(options)` | `@flow-state-dev/store-sqlite` | SQLite-backed. Recommended for durable persistence; what `fsdev dev` uses. |
 | `vercelPostgresStores()` | `@flow-state-dev/vercel/store` | Postgres tuned for Vercel/Neon. |

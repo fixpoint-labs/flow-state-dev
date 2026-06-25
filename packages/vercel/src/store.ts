@@ -15,7 +15,7 @@
  * the app's own stable proxy — install it with the app's `setScheduleIndexImpl`
  * equivalent. The index no-ops until the pool is resolved on first request.
  */
-import type { StoreAdapter } from "@flow-state-dev/server";
+import type { StoreAdapter } from "@flow-state-dev/engine";
 import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
 import {
   createPostgresStores,

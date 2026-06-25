@@ -109,6 +109,21 @@ export type RecoveryClient = {
     requestId: string,
     body: ResumeSuspensionBody
   ) => Promise<ResumeSuspensionResult>;
+  /**
+   * Streaming sibling of {@link RecoveryClient.resumeSuspension}. POSTs the
+   * resolution with `Accept: text/event-stream` so the server returns the
+   * continuation's SSE stream directly from the POST response, and returns the
+   * raw {@link Response} whose body is that stream. The continuation runs on the
+   * same instance that handled the POST — so on serverless (no shared pub/sub)
+   * the resuming client still sees the resumed run live, without a separate GET
+   * reconnect. Falls back to a 202 JSON response when the server does not
+   * support inline streaming; callers branch on the `content-type` header.
+   */
+  resumeSuspensionStream: (
+    flowKind: string,
+    requestId: string,
+    body: ResumeSuspensionBody
+  ) => Promise<Response>;
 };
 
 type RetryResponseBody = {
@@ -214,6 +229,39 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
           body: JSON.stringify(body)
         }
       });
+    },
+
+    resumeSuspensionStream: async (flowKind, requestId, body) => {
+      requireNonEmpty(flowKind, "flowKind");
+      requireNonEmpty(requestId, "requestId");
+      requireNonEmpty(body.suspensionId, "suspensionId");
+      if (body.action !== "approve" && body.action !== "reject") {
+        throw new Error(
+          'createRecoveryClient.resumeSuspensionStream requires action "approve" or "reject"'
+        );
+      }
+
+      const response = await fetcher(
+        buildFlowApiUrl({
+          baseUrl: options.baseUrl,
+          path: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/resume`
+        }),
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "accept": "text/event-stream"
+          },
+          body: JSON.stringify(body)
+        }
+      );
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(`Resume request failed (${response.status}): ${text}`.trim());
+      }
+
+      return response;
     }
   };
 }

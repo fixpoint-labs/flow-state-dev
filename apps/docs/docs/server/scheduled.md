@@ -35,7 +35,7 @@ The scheduled adapter is just another entry in `adapters` on
 [`createFlowState`](./setup.md), the canonical setup entrypoint:
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 
 export const flowstate = createFlowState({
@@ -61,29 +61,35 @@ mounted; MCP, webhooks, and scheduled coexist on the same router.
 ## Static schedules
 
 A static schedule is a record on the flow's `schedules.static` map.
-Cron strings and input shapes are validated when the flow is
-registered, so a malformed cron or a missing action surfaces at boot,
-not at dispatch.
+Each entry carries its handler inline (the shared action core) instead
+of naming an entry in `flow.actions`. Same model the webhook and chat
+transports use. Cron strings and input shapes are validated when the
+flow is registered, so a malformed cron or a bad input shape surfaces
+at boot, not at dispatch.
 
 ```ts
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, defineScheduleBinding } from "@flow-state-dev/core";
 
 defineFlow({
   kind: "billing",
   schedules: {
     static: {
-      monthly-invoices: {
+      "monthly-invoices": defineScheduleBinding({
         cron: "0 0 1 * *",
-        action: "generateMonthlyInvoices",
+        block: generateMonthlyInvoices,
         description: "First of the month, 00:00 UTC"
-      }
+      })
     }
-  },
-  actions: {
-    generateMonthlyInvoices: { /* ... */ }
   }
 });
 ```
+
+`defineScheduleBinding` is the schedule sibling of `defineWebhookBinding`
+and `defineChatBinding`. It's a compile-time convenience — a plain object
+literal works too. A schedule handler lives only on `schedules.static`,
+so it has no HTTP or MCP caller surface; declare a block in both
+`schedules.static` and `flow.actions` (same reference) if you want it
+reachable both ways.
 
 Cron strings are POSIX 5-field: `minute hour day-of-month month day-of-week`.
 The framework validates the syntax but does not run the schedule. The
@@ -95,24 +101,45 @@ at the right time.
 A dynamic schedule is resolved at dispatch time by the
 `schedules.resolve` hook. The hook receives the schedule id from the
 URL and returns a `ScheduleConfig` (or `null` to 404 the dispatch).
+The config carries the handler block inline, the same as a static
+entry.
+
+A block can't be serialized into a stored row, so the persisted record
+keeps a `kind` discriminator string instead. The resolver maps that
+`kind` back to a real block. The `createResourceCollectionScheduleResolver`
+helper takes a `blocks` map for exactly this:
 
 ```ts
+import { createResourceCollectionScheduleResolver } from "@flow-state-dev/scheduled";
+
 defineFlow({
   kind: "reminders",
   schedules: {
-    resolve: async (scheduleId, ctx) => {
-      const row = await db.schedules.findById(scheduleId);
-      if (!row || !row.enabled) return null;
-      return {
-        cron: row.cron,
-        action: row.action,
-        input: row.input,
-        principal: { userId: row.userId }
-      };
-    }
-  },
-  actions: { /* ... */ }
+    resolve: createResourceCollectionScheduleResolver({
+      collection: schedulesCollection,
+      blocks: { sendDigest, sendReminder }   // persisted `kind` → block
+    })
+  }
 });
+```
+
+Writing the resolver by hand follows the same shape: read the row, look
+the block up by its `kind`, and return the config. An unknown `kind`
+returns `null` (404).
+
+```ts
+resolve: async (scheduleId, ctx) => {
+  const row = await db.schedules.findById(scheduleId);
+  if (!row || !row.enabled) return null;
+  const block = blocks[row.kind];
+  if (!block) return null;
+  return {
+    cron: row.cron,
+    block,
+    input: row.input,
+    principal: { userId: row.userId }
+  };
+}
 ```
 
 The host backs the resolver with whatever store fits. For schedules
@@ -120,6 +147,20 @@ held in a flow-state resource collection, the
 [dynamic schedules guide](/guides/scheduled-dynamic) covers the
 reference helper and end-to-end wiring. For SQL or external services,
 write the resolver directly.
+
+### Durable dynamic schedules don't recover across crashes
+
+A dynamic schedule's action core is produced by the resolver at
+dispatch time and carried on the dispatch envelope. It's never
+persisted — a block can't be serialized, and the stored row holds only
+the `kind` discriminator. So if a durable dynamic schedule is mid-run
+when the process crashes, there's no persisted coordinate to re-resolve
+the handler from, and the run is not recovered.
+
+Static schedules don't have this problem. Their handler is reachable
+from a stable coordinate (`schedules.static[scheduleId]`), so a durable
+static schedule recovers normally. If you need crash recovery for a
+durable scheduled action, make it static.
 
 ## Effective principal
 
@@ -171,7 +212,9 @@ Response codes:
 The endpoint is fire-and-forget. A 202 means the action started; it
 does not mean it finished. Action errors after dispatch land on the
 `RequestRecord` and surface in DevTool, not in the dispatch response
-body.
+body. The `action` field on the request record is the handler block's
+name, recorded for provenance — a scheduled handler is never reachable
+through the action endpoint.
 
 Example call:
 
@@ -198,10 +241,10 @@ The dispatch endpoint goes through `host.resolvePrincipal` like every
 other inbound route. The canonical pattern is a shared bearer secret
 between the host scheduler and the dispatch endpoint.
 `createBearerSecretPrincipalResolver`, exported from
-`@flow-state-dev/server`, does the constant-time comparison.
+`@flow-state-dev/engine`, does the constant-time comparison.
 
 ```ts
-import { createBearerSecretPrincipalResolver } from "@flow-state-dev/server";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
 
 defineFlow({
   kind: "billing",
@@ -214,10 +257,9 @@ defineFlow({
   },
   schedules: {
     static: {
-      monthly-invoices: { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }
+      "monthly-invoices": { cron: "0 0 1 * *", block: generateMonthlyInvoices }
     }
-  },
-  actions: { /* ... */ }
+  }
 });
 ```
 
@@ -301,8 +343,9 @@ enumerate).
 }
 ```
 
-The listing endpoint goes through `host.resolvePrincipal` and respects
-the flow's `requireUser` setting.
+The `action` field holds the handler block's name (provenance for the
+listing, not a resolver key). The listing endpoint goes through
+`host.resolvePrincipal` and respects the flow's `requireUser` setting.
 
 ## What v1 doesn't do
 

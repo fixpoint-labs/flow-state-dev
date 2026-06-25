@@ -10,10 +10,9 @@ import {
   type InboundRequestEnvelope,
   type InboundTransportHost,
   type ResolvedPrincipal
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import {
   validateScheduleConfig,
-  type ActionConfig,
   type ScheduleConfig,
   type ScheduleResolutionStores,
   type SchedulesConfig
@@ -119,7 +118,6 @@ export async function handleDispatch(
       kind: flowKind,
       id: scheduleId,
       schedule,
-      actions: (flow as { actions: Record<string, ActionConfig> }).actions,
       origin
     });
   } catch (err) {
@@ -176,17 +174,28 @@ export async function handleDispatch(
   const envelope: InboundRequestEnvelope = {
     source: SCHEDULED_TRANSPORT_SOURCE,
     flowKind,
-    action: schedule.action,
+    // Provenance only — the runtime resolves the inline handler from
+    // `flow.schedules.static[scheduleId]` via the metadata coordinate (static)
+    // or from the carried core below (dynamic), never this name.
+    action: schedule.block.name,
     input,
     principal: effectivePrincipal,
     metadata: {
-      scheduleId,
-      origin,
-      cron: schedule.cron,
-      nominalFireTime,
-      dispatchedAt: new Date().toISOString(),
-      timezone: schedule.timezone ?? "UTC"
+      schedule: {
+        scheduleId,
+        origin,
+        cron: schedule.cron,
+        nominalFireTime,
+        dispatchedAt: new Date().toISOString(),
+        timezone: schedule.timezone ?? "UTC"
+      }
     },
+    // A dynamic schedule's core is produced by the resolver at dispatch time
+    // and is not reachable from any static coordinate, so carry it inline for
+    // the runtime to run directly. Static schedules resolve by their
+    // `metadata.schedule.scheduleId` coordinate and recover across crashes;
+    // dynamic schedules carry the core and do not recover (documented non-goal).
+    ...(origin === "dynamic" ? { resolvedActionCore: schedule } : {}),
     responseEmitter: null
   };
 
@@ -213,6 +222,7 @@ export async function handleDispatch(
 interface ListedStaticSchedule {
   id: string;
   cron: string;
+  /** Handler block name — provenance for the listing, not a resolver key. */
   action: string;
   timezone: string;
   description?: string;
@@ -267,7 +277,7 @@ export async function handleList(
       staticEntries.push({
         id,
         cron: schedule.cron,
-        action: schedule.action,
+        action: schedule.block.name,
         timezone: schedule.timezone ?? "UTC",
         description: schedule.description,
         enabled: schedule.enabled !== false

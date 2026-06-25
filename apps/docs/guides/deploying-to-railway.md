@@ -26,7 +26,7 @@ The framework's router uses Web standard `Request`/`Response` objects. You bridg
 
 ```ts title="src/server.ts"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createFlowState, filesystemStores } from "@flow-state-dev/server";
+import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
 import myFlow from "./flows/my-flow/flow.js";
 
 const port = parseInt(process.env.PORT ?? "3000", 10);

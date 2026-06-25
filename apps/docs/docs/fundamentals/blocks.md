@@ -65,7 +65,7 @@ What the framework handles for you:
 - **Prompt assembly** from four slots: system prompt, context entries, conversation history, and user message
 - **Tool execution loops** — tools are blocks, auto-compiled to provider-native format (see below)
 - **Streaming** — content deltas flow to the client as they're generated
-- **Structured output repair** — if the LLM returns invalid JSON, the framework can auto-retry or route to a rescue block
+- **Structured output repair** — if the LLM returns output that fails the schema, the framework recovers it in two passes before failing: a deterministic pass (JSON parse, `jsonrepair`, unwrap), then one LLM coercion call that reshapes the raw output to the schema (e.g. when the model returned the right data under the wrong field names). Coercion is on by default and configurable via `repair`. See [Repairing structured output](#repairing-structured-output).
 
 #### Generator identity — who is emitting?
 
@@ -257,6 +257,28 @@ const agent = generator({
   tools: [readDoc, updateDoc],                     // block tools
 });
 ```
+
+#### Repairing structured output
+
+When a generator has a custom `outputSchema`, the model's response has to match it. Models that don't honor structured output reliably (common for open-weight and gateway-routed models) sometimes return the right data in the wrong shape. Rather than fail the block, the framework tries to recover the output in two passes, controlled by `repair`:
+
+1. **Deterministic.** Parse the text as JSON; if that fails, run it through `jsonrepair` (trailing commas, unclosed braces, code fences) and parse again; unwrap a `{ output: ... }` envelope. No model call.
+2. **LLM coercion.** If the deterministic pass still doesn't match the schema, make one model call that rewrites the raw output to the schema, preserving the original content. This is what recovers renamed fields, like a model that returns `{ action, reason }` where the schema wants `{ decision, reasoning }`.
+
+```ts
+generator({
+  name: "evaluator",
+  outputSchema: VerdictSchema,
+  // Defaults shown. Coercion is on; it only runs on the path that would
+  // otherwise throw, so conforming output is untouched.
+  repair: {
+    mode: "auto",                              // "auto" | "rescue" | "fail"
+    coerce: { model: "openai/gpt-5.4-mini" },  // override the coercion model
+  },
+});
+```
+
+The coercion model defaults to `intent/utility` so repair routes through a cheap, reliable tier independent of the primary model. Set `repair: { coerce: false }` to turn coercion off, or `repair: { mode: "fail" }` to skip all repair and throw on the first mismatch. If both passes fail, the block throws `OutputValidationError` as before.
 
 ### Sequencer — the composition engine
 

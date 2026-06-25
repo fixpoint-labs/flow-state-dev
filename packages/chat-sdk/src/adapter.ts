@@ -23,7 +23,7 @@ import type {
   InboundTransportHost,
   TransportBindings,
   TransportRoute,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/engine";
 import { CHAT_TRANSPORT_SOURCE, type ChatAdapterOptions } from "./types";
 import { registerEventHandlers } from "./event-handlers";
 import { buildOAuthRoutes } from "./oauth/routes";
@@ -93,20 +93,16 @@ export function createChatTransportAdapter(
       return {
         routes,
         // Build the subscription index by walking the registry once, and
-        // fail fast when no routing is configured anywhere. Runs
-        // synchronously: `createFlowApiRouter` invokes `start()`
-        // fire-and-forget, so only a synchronous throw aborts startup.
+        // fail fast when no flow declares `chat.on` — routing is purely
+        // declarative now (FIX-838), so an adapter with no subscriptions can
+        // never dispatch. Runs synchronously: `createFlowApiRouter` invokes
+        // `start()` fire-and-forget, so only a synchronous throw aborts startup.
         start(): void {
           index = buildChatSubscriptionIndex(host.registry.list());
-          if (
-            options.flowKind === undefined &&
-            options.route === undefined &&
-            !hasChatSubscriptions(index)
-          ) {
+          if (!hasChatSubscriptions(index)) {
             throw new Error(
               "@flow-state-dev/chat-sdk: no chat routing configured. Declare " +
-                "`chat.on` on at least one flow, or pass `flowKind` or `route` to " +
-                "createChatTransportAdapter (CHAT_ADAPTER_NO_ROUTING)."
+                "`chat.on` on at least one flow (CHAT_ADAPTER_NO_ROUTING)."
             );
           }
         },

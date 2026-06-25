@@ -6,7 +6,7 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { LinkCardSchema, type LinkCardData } from "./schema";
-import type { GenerativeToolOptions } from "../types";
+import type { GenerativeToolOptions } from "../tool-types";
 
 const DESCRIPTION = [
   "Render a rich preview card for an external URL with title, optional description, source name, and preview image.",

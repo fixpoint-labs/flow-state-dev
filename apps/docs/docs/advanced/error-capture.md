@@ -13,8 +13,8 @@ It pairs with [error handling](./error-handling.md). Error handling is about rea
 ## The callback
 
 ```ts
-import { createFlowState } from "@flow-state-dev/server";
-import type { ErrorCaptureEvent } from "@flow-state-dev/server";
+import { createFlowState } from "@flow-state-dev/engine";
+import type { ErrorCaptureEvent } from "@flow-state-dev/engine";
 
 const flowstate = createFlowState({
   flows: { myFlow },

@@ -21,7 +21,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
-import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/server";
+import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { checkTickerResolvable } from "../src/flows/analysis/orchestration/guards";
 import { commitPortfolioManagerMemo } from "../src/flows/analysis/agents/portfolio-manager/writer";

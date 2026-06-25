@@ -57,7 +57,7 @@ The `inputContains(needle)` helper in `helpers/assertions.ts` is shorthand for t
 `testFlow` accepts an optional `stores: StoreRegistry`. Pass the same registry to two calls and the second one resumes from the first one's session, journal, and resource state:
 
 ```ts
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 
 const stores = createInMemoryStores();
 await testFlow({ flow, action, userId, sessionId: "s1", stores, /* ... */ });

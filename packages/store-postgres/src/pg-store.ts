@@ -10,7 +10,7 @@
  * top-level entries in `data` in lockstep.
  */
 
-import type { ExpectedVersion, SetResult } from "@flow-state-dev/server";
+import type { ExpectedVersion, SetResult } from "@flow-state-dev/engine";
 import type { QueryExecutor, QueryResultRow } from "./types";
 
 export type PgRecordStoreConfig<TRecord, TListOptions> = {

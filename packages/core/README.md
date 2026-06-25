@@ -120,7 +120,7 @@ export default defineFlow({
 
 **Block builders:**
 - `handler(config)` — Synchronous/async logic block
-- `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair
+- `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair (deterministic `jsonrepair` then LLM coercion that reshapes off-schema output to the schema; on by default, configured via `repair.coerce` / `repair.coerce.model`, defaulting to `intent/utility`)
 - `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `waitForWork`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes
 
@@ -300,7 +300,7 @@ Defaultable fields: `sessionStateSchema`, `userStateSchema`,
 `resources`, `outputSchema`, `uses`. `name`, `inputSchema`, `execute`, and
 `description` are excluded — those vary per block.
 
-### Prompt files (`@flow-state-dev/core/prompt-file`, `@flow-state-dev/core/prompt-file/node`)
+### Prompt files (`@flow-state-dev/core/prompt-file`, `@flow-state-dev/engine/prompt-file`)
 
 Author a generator's prompt as a `.md` file. The isomorphic subpath exports `parsePromptFile(text, options?)`, `definePromptFile(pf)`, `isPromptFile(value)`, and the `PromptFile` / `PromptFileConfig` / `PromptFileParseError` / `PromptFileLoadError` types. The Node-only subpath exports `loadPromptFile(specifier, importerUrl, options?)`, which reads the file and auto-registers sibling `.md` files as partials; only this subpath imports `node:fs`, so browser/bundled consumers use `parsePromptFile` with raw text plus an explicit `partials` map.
 
@@ -317,7 +317,7 @@ import {
   createPromptLoader,
   moduleDir,
   resolveBaseDir,
-} from "@flow-state-dev/core/prompt-file/node";
+} from "@flow-state-dev/engine/prompt-file";
 
 const PROMPT_ROOT = resolveBaseDir(
   [moduleDir(import.meta.url, "./prompts"), path.resolve(process.cwd(), "src/prompts")],
@@ -361,6 +361,8 @@ Per-provider implementations live in separate packages — `@flow-state-dev/voic
 
 Block, flow, resource, scope, streaming, and model type definitions. Use this subpath for type-only imports.
 
+`defineResourceCollection` accepts `llmReadable?: boolean` / `llmWritable?: boolean` (default `false`), the collection-level analog of the single-resource flags. Declared once, they apply to every instance: `llmReadable` exposes instance content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`); `llmWritable` lets `writeResourceContentTool()` overwrite an instance body. The generic tools address resources by scope-qualified uri (e.g. `session/files/readme.md`), so a content-bearing collection no longer needs hand-rolled per-collection read/write blocks.
+
 `defineResourceCollection` accepts a `prefetchWindow?: number` (default `0`) that inlines the first N items in the snapshot's `prefetched` window in lexicographic storage-key order. Per-item `clientData` in the window appears only when `client.state.read: true` is also set. `CollectionStateClientConfig` controls per-item state visibility separately from content; single resources don't accept `client.state` (state visibility is governed by `client.data` on those).
 
 Set `client: { live: true }` to stream each mutation's projected `clientData` as an inline delta that the client merges mid-stream without a refetch (the resource-side analog of `state_change`). It requires the resource's `clientData` to be client-visible (`state.read: true` or a projection on collections; a projection on single resources). `lifecycleSchema(statuses)` is a convenience export that returns a `status` enum plus nullable `startedAt` / `completedAt` / `errorMessage` fields to spread into a status-bearing `stateSchema`.
@@ -371,6 +373,8 @@ Set `client: { live: true }` to stream each mutation's projected `clientData` as
 
 Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `container`, `tool_output`, `status`, `source`, `state_change`, `resource_change`, `error`.
 
+> The item taxonomy and its pure helpers (`resolveItemVisibility`, `collapseToCanonicalLog`, `resolveBlockValue` / `buildItemLookup`, the `blockPath*` builders, and the `ModelIdentity` / `SuspensionReason` / `SuspensionStatus` / `RequestStatus` leaf types) now live in the zero-dependency [`@flow-state-dev/contracts`](../contracts) package and are **re-exported from these same `@flow-state-dev/core` paths**. Import them from `core` exactly as before — nothing changes for consumers. Browser packages can value-import the canonical helpers from `contracts` without pulling core's heavy authoring dependencies.
+
 `state_change` and `resource_change` share an exported `InvalidationItem` base (common `scope`/`delta`/`version` fields) for consumers that react to "something changed in a scope" generically. It is a base type, not a member of the `OutputItem` union — only the two leaves are.
 
 **`BlockValue<T>`** — `block_output.output` is a discriminated union with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.stepAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
@@ -378,6 +382,8 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 ### Helpers (`@flow-state-dev/core/helpers`)
 
 State-shape primitives shared across the framework. All three operate on the same JSON-serializable state trees, so they live together as the single canonical home — no per-package copies.
+
+> The pure, dependency-free helpers `deepEqual` / `looseDeepEqual`, `mapLimit`, and the string-case utilities (`camelToKebab`, `normalizeTagName`) now live in [`@flow-state-dev/contracts`](../contracts) and are re-exported from these same `@flow-state-dev/core/helpers` paths. Import them from `core` exactly as before; browser packages can value-import them from `contracts` without core's heavy runtime.
 
 - **`cloneValue(value)`** — structural deep copy via the platform `structuredClone`, falling back to a JSON round-trip. Stores clone records on read/write so callers can't mutate stored state through a retained reference.
 - **`deepMerge(base, override)`** — recursive merge returning a new object. Scalars and arrays in `override` replace; nested plain objects merge; `base` is never mutated.
@@ -433,7 +439,7 @@ Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.defa
 
 **LLM content tools are explicit.** Use `readResourceContentTool()` / `writeResourceContentTool()` in a generator's `tools` array when you want LLM access. These are not auto-injected.
 
-**LLM navigation tools.** `resourceSearchTools()` returns the Glob/Grep/Search trio over resources — `globResources` (path glob), `grepResourceContent` (regex/substring over content), and `searchResources` (lexical, term-frequency ranked). Grep and search gate on `llmReadable`; glob lists paths. Lexical only, not semantic. See [Searching resources](https://flow-state.dev/docs/resources/searching).
+**LLM navigation tools.** `resourceSearchTools()` returns the Glob/Grep/Search trio over resources — `globResources` (path glob), `grepResourceContent` (regex/substring over content), and `searchResources` (lexical, term-frequency ranked). All three span static resources and collection instances and return each match's scope-qualified uri — the handle `readResourceContentTool` accepts. Grep and search gate on `llmReadable` (including collection instances whose collection opts in); glob lists uris ungated. Lexical only, not semantic. See [Searching resources](https://flow-state.dev/docs/resources/searching).
 
 **Prompt caching is on by default.** Generators accept a `caching` field; the default is `{ enabled: true, breakpoints: 'auto', ttl: '5m' }`. The AI SDK adapter stamps `providerOptions.anthropic.cacheControl` on the last system message for Anthropic-flavored providers (and opts the Vercel AI Gateway into `caching: 'auto'`); OpenAI / Google / DeepSeek cache implicitly and are left alone. Cache token counts land on `GeneratorModelUsage` as `cacheCreationInputTokens` and `cacheReadInputTokens`. See the [prompt caching guide](https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/PROMPT_CACHING.md) for the full design, audit, and manual-mode guide.
 

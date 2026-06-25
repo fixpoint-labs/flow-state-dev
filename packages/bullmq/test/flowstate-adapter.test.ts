@@ -6,7 +6,7 @@
  * FlowStateRuntime onto FlowWorkerDeps verbatim.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { FlowStateRuntime } from "@flow-state-dev/server";
+import type { FlowStateRuntime } from "@flow-state-dev/engine";
 
 const createdWorker = { close: vi.fn().mockResolvedValue(undefined) };
 const fakeQueue = { name: "fsd-flows" };

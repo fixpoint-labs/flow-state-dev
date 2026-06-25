@@ -9,7 +9,7 @@
  *
  * This module is browser-safe — it never imports `node:fs`. The Node-only
  * loader that reads files from disk and auto-discovers sibling partials lives
- * in `load-prompt-file.node.ts`. Browser/bundled consumers pass the raw text
+ * in `@flow-state-dev/engine/prompt-file`. Browser/bundled consumers pass the raw text
  * (e.g. via Vite's `?raw`) and a `partials` map directly to `parsePromptFile`.
  *
  * Presence of a `<context>` block signals the template owns context rendering:

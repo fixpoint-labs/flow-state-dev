@@ -28,7 +28,7 @@ The MCP adapter is just another entry in `adapters` on
 [`createFlowState`](./setup.md), the canonical setup entrypoint:
 
 ```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
 
 export const flowstate = createFlowState({
@@ -200,7 +200,7 @@ URL with their own token in their Claude Desktop config, and the host's
 credential-grants table maps the token back to a `userId`. The
 framework does not run this for you — that table is in your database —
 but `extractBearerToken` and `createHs256JwtVerifier` from
-`@flow-state-dev/server` are usable inside `resolvePrincipal` to keep
+`@flow-state-dev/engine` are usable inside `resolvePrincipal` to keep
 the verification short.
 
 ## Origin enforcement

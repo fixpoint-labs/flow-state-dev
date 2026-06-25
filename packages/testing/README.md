@@ -138,6 +138,32 @@ analyzerScorer.coherence()     // Well-structured output
 analyzerScorer.safety()        // No harmful content
 ```
 
+## Benchmarking patterns
+
+An eval scores one block or flow. A benchmark compares whole coordination patterns against each other and a single-generator baseline, on the same tasks and the same model, so the only variable is the coordination shape. Each task carries a locked rubric; a blinded judge (a distinct model) scores every output against it, with `k` repetitions and a credibility flag so a delta inside the noise isn't reported as a win.
+
+`comparePatterns` takes the registry as its first argument (so this package never imports `@flow-state-dev/patterns`), resolves the pattern names, appends the baseline, and runs:
+
+```ts
+import { comparePatterns, renderScorecard } from "@flow-state-dev/testing";
+import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns";
+
+const report = await comparePatterns(
+  defaultBenchmarkRegistry,
+  ["supervisor", "debate"],
+  {
+    tasks,
+    model: "openai/gpt-5.4-mini",
+    judgeModel: "anthropic/claude-haiku-4-5",
+    runs: 3,
+  },
+);
+
+console.log(renderScorecard(report, "table"));
+```
+
+Other entry points: `runBenchmark` for explicit subjects, `baselineSubject` for the control, `defineBenchmark` for the `fsdev benchmark` discovery shape. See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks) for the full surface.
+
 ## Scripts
 
 - `pnpm --filter @flow-state-dev/testing build`
@@ -174,7 +200,7 @@ If you previously relied on the absence of `tool_call_progress` items from a moc
 `testFlow` accepts an optional `stores: StoreRegistry`. Pass the same registry to two calls and the second resumes from the first run's session, journal, and resource state:
 
 ```ts
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 
 const stores = createInMemoryStores();
 await testFlow({ flow, action, userId, sessionId: "s1", stores, /* ... */ });

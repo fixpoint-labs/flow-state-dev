@@ -264,9 +264,8 @@ function PanelContent({ className }: { className?: string }) {
     // override a fresher status the store already has once the stream settles.
     // Rule: while the stream is actively connected it's the real-time truth;
     // once it settles, show whichever side is furthest along. Every other
-    // request uses its list status. `created` normalizes to `in_progress`.
-    const liveStreamStatus =
-      streamState?.status === "created" ? "in_progress" : streamState?.status;
+    // request uses its list status.
+    const liveStreamStatus = streamState?.status;
     const streamIsLive =
       streamStatus === "streaming" || streamStatus === "connecting";
     const groups: RequestGroup[] = [];

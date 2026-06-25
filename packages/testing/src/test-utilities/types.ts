@@ -1,6 +1,6 @@
 import type { RuntimeItem as TestItem } from "@flow-state-dev/core/items/internal";
-import type { BlockInput, BlockOutput, FlowInstance, FlowStateSettings } from "@flow-state-dev/core/types";
-import type { StoreRegistry } from "@flow-state-dev/server";
+import type { BlockInput, BlockOutput, FlowInstance, FlowStateSettings, ModelResolver } from "@flow-state-dev/core/types";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import type {
   MockGeneratorInstance,
   UnmockedDefault,
@@ -46,6 +46,8 @@ export type TestBlockOptions<TInput> = {
   generators?: Record<string, MockGeneratorInstance>;
   models?: Record<string, MockGeneratorInstance>;
   unmockedGeneratorPolicy?: UnmockedGeneratorPolicy;
+  /** Real resolver to route generation through; overrides the mock resolver when set. */
+  modelResolver?: ModelResolver;
   /** Fallback script for unmocked generators when policy is "default". */
   unmockedDefault?: UnmockedDefault;
 };
