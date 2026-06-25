@@ -25,19 +25,20 @@ import { z } from "zod";
 // askQuestion — clarifying question (free-text answer)
 // ---------------------------------------------------------------------------
 
-const askQuestionInput = z.object({ topic: z.string().min(1) });
+const askQuestionInput = z.object({ question: z.string().min(1) });
 
 const askQuestionStep = handler({
   name: "ask-question",
   inputSchema: askQuestionInput,
   outputSchema: z.object({ answer: z.string() }),
   execute: async (input, ctx) => {
-    ctx.emit.message(`Need a detail about: "${input.topic}"`);
-    // A single-string resumeSchema renders as a free-text question card. The
-    // default `allow` for `human_input` is `["submit"]`.
+    // The `message` IS the question — it renders once as the card heading. Don't
+    // emit a separate "we're about to ask…" line or wrap the question in a
+    // meta-question; that just restates it. A single-string resumeSchema renders
+    // a free-text box; the default `allow` for `human_input` is `["submit"]`.
     const answer = (await ctx.suspend!({
       reason: "human_input",
-      message: `What should we know about "${input.topic}"?`,
+      message: input.question,
       resumeSchema: z.string().min(1),
     })) as string;
     ctx.emit.message(`Got it: ${answer}`);

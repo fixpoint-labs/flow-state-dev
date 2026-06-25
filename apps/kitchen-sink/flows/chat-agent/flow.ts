@@ -69,7 +69,9 @@ const chatAgentFlow = defineFlow({
     askQuestion: {
       block: askQuestion,
       durable: true,
-      userMessage: (input) => `Asking about: ${input.topic}`,
+      // The user-bubble represents kicking off the demo; the question itself is
+      // asked once, on the suspension card — don't restate it here.
+      userMessage: () => "Ask me a clarifying question",
     },
     collectForm: {
       block: collectForm,
