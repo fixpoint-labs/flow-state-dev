@@ -58,11 +58,21 @@ export const askQuestion = sequencer({
 
 const collectFormInput = z.object({ subject: z.string().min(1) });
 
-/** A flat object: a free-text field, a single-choice enum, and a checkbox. */
+/**
+ * A flat object: a free-text field, a single-choice enum, and a checkbox.
+ * Each field uses `.describe()` so the rendered form shows context under the
+ * label — the human can answer without scrolling back through the conversation.
+ */
 const feedbackSchema = z.object({
-  comments: z.string(),
-  priority: z.enum(["low", "medium", "high"]),
-  urgent: z.boolean(),
+  comments: z
+    .string()
+    .describe("A sentence or two on what you observed. Shared with the reviewer verbatim."),
+  priority: z
+    .enum(["low", "medium", "high"])
+    .describe("High is handled now; medium next business day; low is best-effort."),
+  urgent: z
+    .boolean()
+    .describe("Check only if end users are currently affected — this escalates past the queue."),
 });
 
 const collectFormStep = handler({

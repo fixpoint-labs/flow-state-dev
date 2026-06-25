@@ -52,7 +52,7 @@ describe("analyzeResumeSchema", () => {
     const analysis = analyzeResumeSchema({
       type: "object",
       properties: {
-        note: { type: "string" },
+        note: { type: "string", title: "Your note", description: "Context for the reviewer" },
         priority: { type: "string", enum: ["low", "high"] },
         urgent: { type: "boolean" }
       },
@@ -62,6 +62,9 @@ describe("analyzeResumeSchema", () => {
     const byKey = Object.fromEntries((analysis?.fields ?? []).map((f) => [f.key, f]));
     expect(byKey.note.kind).toBe("string");
     expect(byKey.note.required).toBe(true);
+    // Per-field context: `title` → label, `description` → help text under it.
+    expect(byKey.note.label).toBe("Your note");
+    expect(byKey.note.description).toBe("Context for the reviewer");
     expect(byKey.priority.kind).toBe("enum");
     expect(byKey.priority.options).toEqual(["low", "high"]);
     expect(byKey.urgent.kind).toBe("boolean");

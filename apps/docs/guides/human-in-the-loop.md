@@ -199,19 +199,27 @@ The conversation shows a text box. Submitting returns `{ title }` to the flow.
 
 ### A form (a few fields)
 
-A flat object of scalars and enums renders as one combined form, one control per property:
+A flat object of scalars and enums renders as one combined form, one control per property. Give each field its own context with `.describe()` — it renders as help text under the label, so the person answering doesn't have to scroll back through the run to understand what's being asked:
 
 ```ts
 const details = await ctx.suspend!({
   reason: "human_input",
   message: "Add publishing details.",
   resumeSchema: z.object({
-    clarification: z.string(),
-    priority: z.enum(["low", "normal", "urgent"]),
-    urgent: z.boolean(),
+    clarification: z
+      .string()
+      .describe("A sentence the editor will see verbatim."),
+    priority: z
+      .enum(["low", "normal", "urgent"])
+      .describe("Urgent jumps the queue; normal is next business day."),
+    urgent: z
+      .boolean()
+      .describe("Check only if readers are currently affected."),
   }),
 });
 ```
+
+Each field reads as its own small question: the property's `.describe()` (or a JSON-Schema `description`) is the context, and a `title` overrides the label. The form's `message` is the overall framing above the fields.
 
 This is the flat-schema boundary. Nested objects, arrays of objects, and unions don't auto-generate. For those, name your own component with the `render.component` hint and register it under `renderers.component`.
 
