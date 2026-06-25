@@ -101,4 +101,17 @@ describe("defineFlow concurrency validation", () => {
       })
     ).toThrow(/request default.*reserved but not/s);
   });
+
+  it("rejects a reserved policy passed via an instance-level request override", () => {
+    const flow = defineFlow({
+      kind: "chat",
+      request: { concurrency: "queue" },
+      actions: { respond: { block: noopHandler } }
+    });
+    // The factory caller must not be able to smuggle a reserved policy past
+    // definition-time validation through `options.request`.
+    expect(() =>
+      flow({ request: { concurrency: "restart" as unknown as ConcurrencyConfig } })
+    ).toThrow(/request default.*reserved but not/s);
+  });
 });

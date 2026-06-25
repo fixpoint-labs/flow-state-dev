@@ -128,7 +128,19 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
 
   return {
     resolve(flow, actionName, view): ResolvedDecision {
-      const actionConfig = flow.actions[actionName]?.concurrency;
+      // Event dispatches (webhook/chat/scheduled) carry their handler inline and
+      // pass the handler *block name* as `actionName` — provenance only. That
+      // name can coincide with a public `flow.actions` key, so consulting
+      // `flow.actions` here would let an event silently inherit an unrelated
+      // caller action's policy. Only caller-addressed dispatches resolve a
+      // per-action override; events take the flow default. This mirrors how
+      // `resolveActionCore` gates the action lookup on the transport-metadata
+      // coordinate rather than the bare name.
+      const isEvent =
+        view.metadata?.webhook !== undefined ||
+        view.metadata?.chat !== undefined ||
+        view.metadata?.schedule !== undefined;
+      const actionConfig = isEvent ? undefined : flow.actions[actionName]?.concurrency;
       const effective = actionConfig ?? flow.request?.concurrency;
       const { policy, key } = normalizeConfig(effective);
       return { policy, key: resolveKey(key, view) };
@@ -179,12 +191,19 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
       }
 
       // queue: serialize behind the key, FIFO, bounded by the wait budget.
+      // Use try/finally (not `.finally`) so a synchronous throw from `start()`
+      // still clears the holder entry — otherwise a concurrent `reject` could
+      // read a stale in-flight requestId for an already-dead request.
       return (start) =>
         keyedGate.runExclusive(
           key,
-          () => {
+          async () => {
             holders.set(key, requestId);
-            return start().finally(() => holders.delete(key));
+            try {
+              return await start();
+            } finally {
+              holders.delete(key);
+            }
           },
           { waitTimeoutMs: QUEUE_WAIT_TIMEOUT_MS }
         );

@@ -32,7 +32,11 @@ import type {
   PrincipalResolutionContext,
   ResolvedPrincipal
 } from "@flow-state-dev/engine";
-import { ConcurrencyRejectedError, PrincipalResolutionError } from "@flow-state-dev/engine";
+import {
+  ConcurrencyQueueTimeoutError,
+  ConcurrencyRejectedError,
+  PrincipalResolutionError
+} from "@flow-state-dev/engine";
 import {
   unstable_findResourceConfig,
   unstable_getPersistedData,
@@ -370,7 +374,22 @@ async function handleToolsCall(
     return jsonRpcResponse(id, jsonRpcError(JSON_RPC_INVALID_PARAMS, message));
   }
 
-  const result = await handle.finished;
+  let result;
+  try {
+    result = await handle.finished;
+  } catch (error) {
+    // A `queue` policy that waits past its budget rejects `finished` (not the
+    // synchronous `dispatch` above) with `ConcurrencyQueueTimeoutError`. Map it
+    // to the retryable server-busy code, the same family as a `reject` drop, so
+    // the MCP client backs off rather than seeing a transport-level failure.
+    if (error instanceof ConcurrencyQueueTimeoutError) {
+      return jsonRpcResponse(
+        id,
+        jsonRpcError(JSON_RPC_SERVER_BUSY, error.message, { retryable: true })
+      );
+    }
+    throw error;
+  }
   return jsonRpcResponse(id, undefined, toolResultFromExecution(result));
 }
 

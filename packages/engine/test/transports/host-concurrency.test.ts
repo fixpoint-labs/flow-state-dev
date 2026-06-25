@@ -178,4 +178,25 @@ describe("host concurrency — queue", () => {
     expect(h.maxLive).toBe(1);
     expect(h.startOrder).toEqual(["first", "second"]);
   });
+
+  it("materializes a discoverable request record for a queued run before it starts", async () => {
+    const h = buildHost("queue");
+    const r1 = h.host.dispatch(envelope("first"));
+    const r2 = h.host.dispatch(envelope("second"));
+    await tick();
+
+    // The second run hasn't started, but its requestId must already resolve to a
+    // record (so a 202 client polling .../requests/:id/stream gets the record,
+    // not a 404). FIX-837 materializes it up front, like the external dispatcher.
+    expect(h.liveCount).toBe(1);
+    const queuedRecord = await h.stores.request.get(r2.requestId);
+    expect(queuedRecord).toBeDefined();
+    expect(queuedRecord?.status).toBe("in_progress");
+
+    h.releaseOne();
+    await r1.finished;
+    await tick();
+    h.releaseOne();
+    await r2.finished;
+  });
 });

@@ -667,8 +667,11 @@ function createFlowInstance(
 
   // Reject reserved/unknown concurrency policies at definition time, the same
   // way schedules reject a reserved `onOverlap`. Validate the flow-level
-  // default and every per-action override.
-  validateConcurrencyConfig(`Flow "${kind}" request default`, definition.request?.concurrency);
+  // default (merged with any instance override) and every per-action override.
+  // `actions` is already the merged map, so per-action overrides supplied via
+  // `options.actions` are covered by the loop.
+  const requestMerged = mergeConfig(definition.request, options?.request);
+  validateConcurrencyConfig(`Flow "${kind}" request default`, requestMerged?.concurrency);
   for (const [actionName, action] of Object.entries(actions)) {
     validateConcurrencyConfig(`Flow "${kind}" action "${actionName}"`, action.concurrency);
   }
@@ -681,7 +684,7 @@ function createFlowInstance(
     authentication,
     actions,
     session,
-    request: mergeConfig(definition.request, options?.request),
+    request: requestMerged,
     user,
     org,
     work: mergeConfig(definition.work, options?.work),

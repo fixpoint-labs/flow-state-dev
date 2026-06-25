@@ -75,10 +75,11 @@ A policy arbitrates requests that share a *key*. By default that's the session, 
 // One sync per user at a time, dropping duplicates.
 syncInvoice: { block: invoicePipeline, concurrency: { policy: "reject", key: "user" } },
 
-// Dedup webhook deliveries by the provider's delivery id.
+// Dedup webhook deliveries by the provider's delivery id. The webhook
+// transport namespaces it under `metadata.webhook.deliveryId`.
 onEvent: { block: handlePipeline, concurrency: {
   policy: "reject",
-  key: (ctx) => ctx.metadata?.deliveryId as string | undefined,
+  key: (ctx) => (ctx.metadata?.webhook as { deliveryId?: string } | undefined)?.deliveryId,
 } },
 ```
 

@@ -20,7 +20,11 @@ import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import { generateId } from "../../utils/generate-id";
-import { OrgRequiredError, PrincipalResolutionError } from "../errors";
+import {
+  ConcurrencyQueueTimeoutError,
+  OrgRequiredError,
+  PrincipalResolutionError
+} from "../errors";
 import { createConcurrencyArbiter } from "../concurrency/arbiter";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import {
@@ -202,7 +206,7 @@ export function createInboundTransportHost(
     // (see the external branch). Left undefined for in-process.
     let accepted: Promise<void> | undefined;
     if ("dispatchLocal" in effectiveDispatcher) {
-      finished = gateStart(() => {
+      const startRun = (): Promise<ExecutionResult> => {
         const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
           dispatchEnvelope,
           {
@@ -215,7 +219,55 @@ export function createInboundTransportHost(
           }
         );
         return handle.finished;
-      });
+      };
+
+      if (decision.policy === "queue" && decision.key !== undefined) {
+        // A `queue` run's start is deferred behind the key, so `dispatchLocal`
+        // (which registers `activeRequests` and writes the request record) has
+        // not run when this handle is returned. Materialize a discoverable
+        // `in_progress` record + activeRequests entry now — the same enqueue-time
+        // stub the external dispatcher writes (FIX-828) — so the synchronously
+        // returned `requestId` resolves instead of 404ing on `.../requests/:id/
+        // stream` while queued. `runAction` adopts/overwrites the stub when the
+        // run starts (last-write-wins). If the wait budget elapses the run never
+        // starts, so flip the stub to a terminal failure rather than leaving a
+        // phantom `in_progress` the client can never resolve.
+        const ts = Date.now();
+        const materialized = Promise.all([
+          stores.activeRequests.register({
+            requestId,
+            flowKind: dispatchEnvelope.flowKind,
+            actionName: dispatchEnvelope.actionName,
+            sessionId: dispatchEnvelope.sessionId,
+            userId: dispatchEnvelope.userId,
+            orgId: dispatchEnvelope.orgId,
+            tenantId: dispatchEnvelope.tenantId,
+            source: dispatchEnvelope.source ?? "http",
+            input: dispatchEnvelope.input,
+            metadata: dispatchEnvelope.metadata,
+            startedAt: ts,
+            lastHeartbeatAt: ts
+          }),
+          stores.request.set(
+            requestId,
+            createInitialRequestRecord(dispatchEnvelope, ts),
+            "any"
+          )
+        ]).catch(async (error: unknown) => {
+          await terminateUnenqueuedRequest(stores, requestId);
+          throw error;
+        });
+        finished = materialized.then(() =>
+          gateStart(startRun).catch(async (error: unknown) => {
+            if (error instanceof ConcurrencyQueueTimeoutError) {
+              await terminateUnenqueuedRequest(stores, requestId);
+            }
+            throw error;
+          })
+        );
+      } else {
+        finished = gateStart(startRun);
+      }
     } else {
       // External dispatchers (BullMQ, etc.) run in a separate process and only
       // register the request once the worker starts `runAction`. A client GET

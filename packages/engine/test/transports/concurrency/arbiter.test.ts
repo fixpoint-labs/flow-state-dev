@@ -81,6 +81,26 @@ describe("arbiter.resolve — key resolution", () => {
     expect(d.key).toBeUndefined();
   });
 
+  it("does not inherit a colliding public action's policy for an event dispatch", () => {
+    const arbiter = createConcurrencyArbiter();
+    // `respond` is a public caller action with a reject policy; a webhook
+    // handler block also happens to be named `respond` (provenance only). The
+    // event dispatch (metadata.webhook present) must take the flow default, not
+    // the unrelated public action's reject policy.
+    const f = flow({
+      actions: { respond: { concurrency: "reject" } },
+      request: { concurrency: "queue" }
+    });
+    const caller = arbiter.resolve(f, "respond", envelope());
+    expect(caller.policy).toBe("reject");
+    const event = arbiter.resolve(
+      f,
+      "respond",
+      envelope({ metadata: { webhook: { provider: "stripe" } } })
+    );
+    expect(event.policy).toBe("queue"); // flow default, not the public action's reject
+  });
+
   it("resolves an undefined session (MCP / ephemeral) to undefined for the session key", () => {
     const arbiter = createConcurrencyArbiter();
     const d = arbiter.resolve(flow(), "respond", envelope({ sessionId: undefined }));
