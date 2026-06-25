@@ -789,4 +789,19 @@ describe("FIX-807 — resource backward compatibility", () => {
     expect(parsed.dcf?.available).toBe(true);
     expect(parsed.triangulation?.divergence).toBe("divergent");
   });
+
+  it("formatValuationSpine degrades to n/a on a legacy spine with null dcf/triangulation, never throws", () => {
+    // The capability injects the PARSED resource state into the prompt; a session
+    // persisted before FIX-807 parses with dcf/triangulation = null, so the
+    // formatter must render n/a rather than throwing on `.available`/`.divergence`.
+    const spine = buildSpine("NVDA", nvdaStatements, "Technology", nvdaQuantComposites, nvdaFactorRanks, nvdaIndicators);
+    const legacy = { ...spine, dcf: null, triangulation: null };
+    let text = "";
+    expect(() => { text = formatValuationSpine(legacy); }).not.toThrow();
+    expect(text).toContain("Intrinsic value (DCF): n/a");
+    expect(text).toContain("Triangulation: n/a");
+    // The rest of the spine still renders.
+    expect(text).toContain("Expected return:");
+    expect(text).toContain("Setup score:");
+  });
 });

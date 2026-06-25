@@ -120,8 +120,20 @@ function pp(v: number | null): string {
   return `${x >= 0 ? "+" : ""}${x.toFixed(0)}pp`;
 }
 
-/** The DCF intrinsic-value line — n/a-safe (carries the abstention reason). */
-function formatDcfLine(dcf: ValuationSpine["dcf"]): string {
+/**
+ * Spine shape the formatters accept. `dcf` / `triangulation` are nullable here
+ * (not on `ValuationSpine`) because the capability injects the PARSED resource
+ * state, and a session persisted before FIX-807 re-parses with both = null. The
+ * formatters must degrade to n/a on that legacy shape, never throw.
+ */
+type FormattableSpine = Omit<ValuationSpine, "dcf" | "triangulation"> & {
+  dcf: DcfValue | null;
+  triangulation: Triangulation | null;
+};
+
+/** The DCF intrinsic-value line — n/a-safe (null legacy block or abstention). */
+function formatDcfLine(dcf: DcfValue | null): string {
+  if (dcf == null) return "Intrinsic value (DCF): n/a";
   if (!dcf.available) {
     return `Intrinsic value (DCF): n/a (${dcf.unavailableReason ?? "unavailable"})`;
   }
@@ -134,9 +146,9 @@ function formatDcfLine(dcf: ValuationSpine["dcf"]): string {
   );
 }
 
-/** The reverse-DCF clause, rendered per status. Empty when no reading. */
-function formatReverseDcfClause(dcf: ValuationSpine["dcf"]): string {
-  switch (dcf.reverseDcfStatus) {
+/** The reverse-DCF clause, rendered per status. Empty when null or no reading. */
+function formatReverseDcfClause(dcf: DcfValue | null): string {
+  switch (dcf?.reverseDcfStatus) {
     case "solved":
       return (
         ` | reverse-DCF implies ${gpct(dcf.impliedGrowth)} vs ${gpct(dcf.stage1Growth)} ` +
@@ -151,17 +163,17 @@ function formatReverseDcfClause(dcf: ValuationSpine["dcf"]): string {
   }
 }
 
-/** The triangulation line — n/a-safe. */
-function formatTriangulationLine(spine: ValuationSpine): string {
+/** The triangulation line — n/a-safe (null legacy block or unavailable). */
+function formatTriangulationLine(spine: FormattableSpine): string {
   const t = spine.triangulation;
-  if (t.divergence === "unavailable") return "Triangulation: n/a";
+  if (t == null || t.divergence === "unavailable") return "Triangulation: n/a";
   return (
     `Triangulation: ${t.divergence} | consensus margin of safety: ${pct(t.marginOfSafety)}` +
     formatReverseDcfClause(spine.dcf)
   );
 }
 
-export function formatValuationSpine(spine: ValuationSpine): string {
+export function formatValuationSpine(spine: FormattableSpine): string {
   const er = spine.expectedReturn;
   const fv = spine.fairValue;
   const ss = spine.setupScore;
