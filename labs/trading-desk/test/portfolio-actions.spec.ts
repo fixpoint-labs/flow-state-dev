@@ -403,6 +403,38 @@ describe("recordLedgerEvent action", () => {
     expect(holdings.find((h) => h.ticker === "AAPL")?.costBasis).toBe(150);
   });
 
+  it("canonicalizes a lower-case ticker so basis lands on the upper-case holding", async () => {
+    const stores = createInMemoryStores();
+    await createAccount(stores, A1);
+    await testFlow({
+      flow: portfolioFlow,
+      action: "importHoldings",
+      userId: USER_ID,
+      stores,
+      input: { accountId: A1, mode: "upsert", csvText: "ticker,quantity\nAAPL,10" },
+    });
+    // A direct caller passes a lower-case, padded ticker — the action normalizes it.
+    await testFlow({
+      flow: portfolioFlow,
+      action: "recordLedgerEvent",
+      userId: USER_ID,
+      stores,
+      input: {
+        accountId: A1,
+        type: "buy",
+        tradeDate: "2026-01-10",
+        ticker: " aapl ",
+        quantity: 10,
+        unitPrice: 150,
+        amount: -1500,
+      },
+    });
+    const ledger = await repoState.repo!.getLedger(USER_ID);
+    expect(ledger[0].ticker).toBe("AAPL"); // stored upper-case
+    const { holdings } = await repoState.repo!.getPortfolio(USER_ID);
+    expect(holdings.find((h) => h.ticker === "AAPL")?.costBasis).toBe(150); // basis landed
+  });
+
   it("records a basis-unknown transfer-in without zero-filling the basis", async () => {
     const stores = createInMemoryStores();
     await createAccount(stores, A1);

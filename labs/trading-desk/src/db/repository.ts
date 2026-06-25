@@ -219,13 +219,17 @@ function computeFingerprint(e: LedgerEventInput): string {
 }
 
 /**
- * Recompute derived basis for one account from its non-voided ledger and write
- * it onto the matching holdings rows, inside the caller's transaction. Only the
- * `cost_basis` / `acquired_date` of EXISTING holdings whose ticker the ledger
- * derives a position for are updated — quantity is left to the holdings table
- * (snapshot import owns it; a quantity mismatch is FIX-853's reconciliation, not
- * an overwrite here), and a derived position with no holding row is ignored.
- * Unknown-basis lots write `null` cost, never zero.
+ * Recompute derived basis for one account from its ledger and write it onto the
+ * matching holdings rows, inside the caller's transaction. The set of tickers
+ * the ledger DRIVES is computed from ALL of the account's rows (including voided
+ * ones); the basis values themselves derive from only the non-voided subset
+ * (`deriveLots` filters voided). For each existing holding whose ticker the
+ * ledger drives, `cost_basis` / `acquired_date` are set from the derived
+ * position — or CLEARED to null when no current position remains (the last row
+ * was voided, or the position netted flat), so a correction never leaves stale
+ * basis behind. A holding with no ledger history at all (a CSV-snapshot-only
+ * position) is left untouched, and quantity is never overwritten (a quantity
+ * mismatch is FIX-853's reconciliation). Unknown-basis lots write `null`, never zero.
  */
 async function recomputeBasis(tx: Tx, accountId: string): Promise<void> {
   // Deterministic order so the FIFO derivation is reproducible: trade date, then
@@ -234,23 +238,34 @@ async function recomputeBasis(tx: Tx, accountId: string): Promise<void> {
   const eventRows = await tx
     .select()
     .from(ledgerEvents)
-    .where(and(eq(ledgerEvents.accountId, accountId), isNull(ledgerEvents.voidedAt)))
+    .where(eq(ledgerEvents.accountId, accountId))
     .orderBy(ledgerEvents.tradeDate, ledgerEvents.createdAt, ledgerEvents.id);
-  const { positions } = deriveLots(eventRows.map(mapLedgerRow));
-  if (positions.length === 0) return;
+  const rows = eventRows.map(mapLedgerRow);
+  // The tickers the ledger DRIVES are those with at least one share-moving event
+  // (a non-null quantity) — a cash event (a dividend that merely references a
+  // ticker) does not substantiate or invalidate a basis, so it must not clear a
+  // snapshot-set one.
+  const ledgerTickers = new Set(
+    rows
+      .filter((r) => r.quantity !== null && r.ticker !== null)
+      .map((r) => r.ticker as string),
+  );
+  if (ledgerTickers.size === 0) return; // no share history → nothing to recompute
+  const { positions } = deriveLots(rows);
   const posByTicker = new Map(positions.map((p) => [p.ticker, p]));
   const existing = await tx
     .select({ ticker: holdings.ticker })
     .from(holdings)
     .where(eq(holdings.accountId, accountId));
   for (const h of existing) {
+    if (!ledgerTickers.has(h.ticker)) continue; // CSV-only holding — untouched
     const p = posByTicker.get(h.ticker);
-    if (p === undefined) continue;
     await tx
       .update(holdings)
       .set({
-        costBasis: p.avgCost === null ? null : String(p.avgCost),
-        acquiredDate: p.acquiredDate,
+        // No current position (fully sold, or all rows voided) → clear, not stale.
+        costBasis: p && p.avgCost !== null ? String(p.avgCost) : null,
+        acquiredDate: p ? p.acquiredDate : null,
         updatedAt: sql`now()`,
       })
       .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, h.ticker)));

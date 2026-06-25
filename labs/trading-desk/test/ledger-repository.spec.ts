@@ -142,6 +142,24 @@ describe("voidLedgerEvents", () => {
     await repo.ingestLedgerEvents([ev({ externalId: "plaid-1", source: "plaid" })], "devuser");
     expect(await repo.voidLedgerEvents(["plaid-1"], "plaid", "intruder")).toBe(0);
   });
+
+  it("clears derived basis when the last ledger row for a ticker is voided", async () => {
+    await repo.upsertHoldings("acc-1", "devuser", [holding("AAPL", 10)], "upsert");
+    await repo.ingestLedgerEvents(
+      [ev({ externalId: "p1", source: "plaid", quantity: 10, unitPrice: 150, amount: -1500 })],
+      "devuser",
+    );
+    // Basis derived from the buy.
+    let portfolio = await repo.getPortfolio("devuser");
+    expect(portfolio.holdings.find((h) => h.ticker === "AAPL")?.costBasis).toBe(150);
+
+    // Void the only row → no derived position remains → basis is CLEARED, not stale.
+    await repo.voidLedgerEvents(["p1"], "plaid", "devuser");
+    portfolio = await repo.getPortfolio("devuser");
+    const aapl = portfolio.holdings.find((h) => h.ticker === "AAPL");
+    expect(aapl?.costBasis).toBeNull();
+    expect(aapl?.acquiredDate).toBeNull();
+  });
 });
 
 describe("ingestLedgerEvents — derived basis", () => {

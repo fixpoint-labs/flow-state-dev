@@ -140,8 +140,12 @@ export const ledgerEvents = appSchema.table(
     index("ledger_events_account_idx").on(table.accountId),
     index("ledger_events_user_ticker_idx").on(table.userId, table.ticker),
     uniqueIndex("ledger_events_fingerprint_uq").on(table.accountId, table.fingerprint),
-    uniqueIndex("ledger_events_source_external_uq")
-      .on(table.source, table.externalId)
+    // Account-scoped, NOT global: an external id is only unique within its feed
+    // AND account (an OFX FITID repeats across accounts at the same broker), so a
+    // global `(source, external_id)` index would silently drop a second account's
+    // legitimate row via ON CONFLICT DO NOTHING. Scope it to the account.
+    uniqueIndex("ledger_events_account_source_external_uq")
+      .on(table.accountId, table.source, table.externalId)
       .where(sql`${table.externalId} is not null`),
   ],
 );

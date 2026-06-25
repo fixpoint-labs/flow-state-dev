@@ -225,8 +225,13 @@ export const recordLedgerEvent = handler({
   outputSchema: ingestReportSchema,
   execute: async (input, ctx) => {
     const repo = await getRepository();
+    // Canonicalize the ticker to trimmed upper-case (the holdings contract, as
+    // `deleteHolding` does) so basis recompute keys match the holding rows even
+    // when a direct caller passes a lower-case / padded symbol.
+    const ticker =
+      input.ticker === null ? null : input.ticker.trim().toUpperCase() || null;
     return repo.ingestLedgerEvents(
-      [{ ...input, source: "manual", externalId: null }],
+      [{ ...input, ticker, source: "manual", externalId: null }],
       userId(ctx),
     );
   },

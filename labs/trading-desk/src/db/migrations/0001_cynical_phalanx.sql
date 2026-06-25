@@ -24,4 +24,4 @@ ALTER TABLE "app"."ledger_events" ADD CONSTRAINT "ledger_events_account_id_accou
 CREATE INDEX "ledger_events_account_idx" ON "app"."ledger_events" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "ledger_events_user_ticker_idx" ON "app"."ledger_events" USING btree ("user_id","ticker");--> statement-breakpoint
 CREATE UNIQUE INDEX "ledger_events_fingerprint_uq" ON "app"."ledger_events" USING btree ("account_id","fingerprint");--> statement-breakpoint
-CREATE UNIQUE INDEX "ledger_events_source_external_uq" ON "app"."ledger_events" USING btree ("source","external_id") WHERE "app"."ledger_events"."external_id" is not null;
+CREATE UNIQUE INDEX "ledger_events_account_source_external_uq" ON "app"."ledger_events" USING btree ("account_id","source","external_id") WHERE "app"."ledger_events"."external_id" is not null;

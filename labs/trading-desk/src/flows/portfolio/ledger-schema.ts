@@ -41,6 +41,11 @@ export type LedgerEventType = z.infer<typeof ledgerEventTypeSchema>;
 export const ledgerSourceSchema = z.enum(["manual", "file", "plaid"]);
 export type LedgerSource = z.infer<typeof ledgerSourceSchema>;
 
+/** An ISO `YYYY-MM-DD` calendar date. Validated at the boundary so a bad date
+ *  (a typo, a mis-mapped feed field) fails here with a clear message instead of
+ *  as a cryptic Postgres driver error at the `INSERT`. */
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected ISO date YYYY-MM-DD");
+
 /**
  * The canonical event every writer maps TO. Signs are caller-canonical: a buy
  * is a positive `quantity` with a negative cash `amount`; a sell is a negative
@@ -49,20 +54,24 @@ export type LedgerSource = z.infer<typeof ledgerSourceSchema>;
  * the feed's stable id (Plaid `investment_transaction_id` / OFX `FITID`) when
  * present; null for manual entry. `basisUnknown`, when set, is the reason a
  * transfer-in lot has no acquisition record (the basis hole) — never a zero.
+ *
+ * Numeric fields are `.finite()`: `z.number()` alone admits `NaN`/`Infinity`,
+ * which Postgres `numeric` would store as `'NaN'` and which would poison the
+ * fingerprint (`NaN.toFixed(8)` → `"NaN"`) — reject them at the boundary.
  */
 export const ledgerEventInputSchema = z.object({
   accountId: z.string(),
   type: ledgerEventTypeSchema,
   /** ISO `YYYY-MM-DD`, the date the event occurred (trade date preferred). */
-  tradeDate: z.string(),
-  settleDate: z.string().nullable().default(null),
+  tradeDate: isoDate,
+  settleDate: isoDate.nullable().default(null),
   ticker: z.string().nullable().default(null),
   /** Signed share delta; null for cash events. */
-  quantity: z.number().nullable().default(null),
-  unitPrice: z.number().nullable().default(null),
+  quantity: z.number().finite().nullable().default(null),
+  unitPrice: z.number().finite().nullable().default(null),
   /** Signed cash impact on the account. */
-  amount: z.number(),
-  fee: z.number().nullable().default(null),
+  amount: z.number().finite(),
+  fee: z.number().finite().nullable().default(null),
   currency: z.string().default("USD"),
   source: ledgerSourceSchema,
   externalId: z.string().nullable().default(null),

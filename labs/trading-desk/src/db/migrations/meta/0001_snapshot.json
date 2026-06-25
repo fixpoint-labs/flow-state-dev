@@ -1,5 +1,5 @@
 {
-  "id": "132b5df7-b8b0-4c03-ba1d-c0a4653467f6",
+  "id": "117671c8-b95b-4a0f-bf6b-c5cf9577f21a",
   "prevId": "d1171032-ea0f-4097-bf6e-e147980b264f",
   "version": "7",
   "dialect": "postgresql",
@@ -359,9 +359,15 @@
           "method": "btree",
           "with": {}
         },
-        "ledger_events_source_external_uq": {
-          "name": "ledger_events_source_external_uq",
+        "ledger_events_account_source_external_uq": {
+          "name": "ledger_events_account_source_external_uq",
           "columns": [
+            {
+              "expression": "account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "source",
               "isExpression": false,

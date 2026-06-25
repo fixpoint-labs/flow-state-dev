@@ -162,6 +162,18 @@ export function AddTransactionDialog({
       return;
     }
     const trimmedTicker = ticker.trim().toUpperCase();
+    // A buy/sell with no security is a share move `deriveLots` can't apply — it
+    // would land in the ledger but never update derived basis. Require both.
+    if (type === "buy" || type === "sell") {
+      if (trimmedTicker.length === 0) {
+        setError("Ticker is required for a buy or sell");
+        return;
+      }
+      if (quantityNum === null) {
+        setError("Quantity is required for a buy or sell");
+        return;
+      }
+    }
     const trimmedDescription = description.trim();
     const trimmedBasis = basisUnknown.trim();
     onSubmit({
