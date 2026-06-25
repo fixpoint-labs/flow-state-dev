@@ -31,6 +31,7 @@ import { z } from "zod";
 import { getRepository } from "@/lib/portfolio-db";
 import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
 import { accountTypeSchema } from "./portfolio-schema";
+import { ingestReportSchema, ledgerEventInputSchema } from "./ledger-schema";
 import { pdfImportResource } from "./portfolio-resources";
 
 /** Import feedback. Handler output (not a generator output) so a fixed-shape
@@ -204,5 +205,34 @@ export const importHoldings = handler({
     await ctx.resources.pdfImport.setState(null);
 
     return { imported, updated, deleted, errors, warnings };
+  },
+});
+
+/**
+ * Record one manual ledger event (FIX-774) — the user-driven writer into the
+ * shared ingestion contract. The input is the canonical event without the
+ * `source` / `externalId` fields: the handler fixes `source: "manual"` (a
+ * manual entry can't claim to be a Plaid/file row) and leaves `externalId` null,
+ * then ingests through `ingestLedgerEvents`, which dedups, ownership-guards the
+ * account, and recomputes derived basis. Returns the ingest report (a re-submit
+ * of the same event reports `deduplicated`, not a second row). This is the path
+ * for a transfer-in basis hole: set `basisUnknown` and the derived lot is
+ * flagged, never zero-filled. Repository I/O from a handler is BP-011-safe.
+ */
+export const recordLedgerEvent = handler({
+  name: "record-ledger-event",
+  inputSchema: ledgerEventInputSchema.omit({ source: true, externalId: true }),
+  outputSchema: ingestReportSchema,
+  execute: async (input, ctx) => {
+    const repo = await getRepository();
+    // Canonicalize the ticker to trimmed upper-case (the holdings contract, as
+    // `deleteHolding` does) so basis recompute keys match the holding rows even
+    // when a direct caller passes a lower-case / padded symbol.
+    const ticker =
+      input.ticker === null ? null : input.ticker.trim().toUpperCase() || null;
+    return repo.ingestLedgerEvents(
+      [{ ...input, ticker, source: "manual", externalId: null }],
+      userId(ctx),
+    );
   },
 });

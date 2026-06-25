@@ -342,6 +342,74 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   session (option a) — the pane prompts the user to run an analysis first when no
   session exists. Once any session is bound, Add Account / Import work.
 
+## Transaction ledger (FIX-774)
+
+The desk records a typed, append-only **transaction ledger** — the realized-P/L
+and dividend history the `accountLedgerSchema` "FUTURE SEAM" in
+`portfolio-schema.ts` always promised. A *ledger event* is one row per cash or
+share movement (a buy, sell, dividend, interest, deposit, withdrawal, transfer,
+or fee). It is an app-owned table on the FIX-772 model layer, NOT a resource —
+the same `app` Postgres schema as accounts/holdings, reached through the same
+`getRepository()`.
+
+- **The table — `app.ledger_events` (`src/db/schema.ts`).** Event-id PK,
+  `account_id` FK with `ON DELETE CASCADE`, denormalized `user_id` for the
+  household ownership guard and rollups. Money/quantity are `numeric` (exact in
+  storage; the repository coerces to JS number at the read boundary, RISK-P5).
+  `type`/`source` are plain `text` (the enum is enforced at the zod boundary in
+  `ledger-schema.ts`), so a new event kind needs no enum-alter migration. A
+  `voided_at` tombstone marks a correction (and, once FIX-853 lands, a Plaid
+  cancellation) — derivation and rollups skip voided rows, but they are never
+  physically deleted (audit trail).
+
+- **One idempotent ingestion contract (`ingestLedgerEvents`).** Every writer maps
+  to the source-agnostic `LedgerEventInput` (`ledger-schema.ts`) and ingests
+  through this one repository method — manual entry today; FIX-775 (file import)
+  and FIX-853 (Plaid sync) later, so they add no new ingestion path. In one
+  transaction it ownership-guards every referenced account against `userId` (a
+  foreign account throws and the batch rolls back), dedups, and recomputes basis.
+  **Two-tier dedup:** a `(source, external_id)` partial unique index catches a
+  same-source retry (manual rows leave `external_id` null), and an always-computed
+  content `fingerprint` — `sha256(account|tradeDate|type|ticker|quantity|amount)`
+  at a fixed numeric scale — catches a duplicate with no external id. The batch is
+  also deduped in memory first, so two conflicting rows in one batch can't trip an
+  intra-statement conflict and `inserted + deduplicated` always equals the input
+  count. The fingerprint *recipe* is contract (changing the covered fields later
+  is a data migration, so it is fixed now); the per-feed normalizers that map
+  Plaid/OFX representations onto it land with FIX-775/FIX-853.
+
+- **Basis is derived, not declared (`lots.ts`).** `deriveLots` is a PURE FIFO
+  reduction over the non-voided events: share-adding events (driven by the SIGN of
+  `quantity`, not the type label, so a buy, a reinvested dividend, and a
+  transfer-in are uniform) push lots; sells/transfers-out consume them
+  oldest-first. `recomputeHoldingsBasis` runs inside the ingest/void transaction
+  and writes each derived position's weighted average cost → `holdings.costBasis`
+  and earliest open-lot date → `holdings.acquiredDate`, but ONLY for existing
+  holdings whose ticker the ledger derives a position for — quantity stays with
+  the holdings table (a quantity mismatch is FIX-853's reconciliation, not an
+  overwrite). A transfer-in with no acquisition record is a **basis-unknown** lot:
+  it writes `null` cost, never zero (zero-fill would massively overstate gains).
+  FIFO is the IRS default; specific-lot sales, wash sales, and corporate-action
+  basis allocation are deferred.
+
+- **Manual entry (`recordLedgerEvent`).** The user-driven writer. The action input
+  omits `source`/`external_id`; the handler fixes `source: "manual"` (a manual row
+  can't claim to be a Plaid/file row) and ingests through the same contract. This
+  is the path for a transfer-in basis hole — set `basisUnknown` and the derived
+  lot is flagged. The UI reads the ledger via `GET /api/portfolio/ledger` (the
+  `accounts` route precedent — a read route, not an action, since `sendAction`
+  returns a request envelope not handler output) and renders the transactions pane
+  + add-transaction dialog in `components/portfolio/`.
+
+- **Limitations (v1).** FIFO only; no wash sales or corporate-action basis math;
+  non-equity events (bonds/options/MMF) are recorded with their symbol but not
+  asset-classified until FIX-773 lands; single-currency. Two manual events with
+  an identical fingerprint (same account/date/type/ticker/quantity/amount) dedup
+  to one — the same dedup that makes re-submits idempotent also collapses a
+  genuine identical second fill, so record a distinguishing detail if both must
+  land. Live sync (Plaid) is FIX-853, and historical file import (OFX/CSV) is
+  FIX-775 — both write through this issue's `ingestLedgerEvents` contract.
+
 ## Responsive / mobile layout
 
 The desk branches its **shell** at the `lg` breakpoint (1024px); content

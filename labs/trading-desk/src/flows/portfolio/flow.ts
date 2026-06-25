@@ -16,6 +16,7 @@ import {
   deleteAccount,
   deleteHolding,
   importHoldings,
+  recordLedgerEvent,
   saveAccount,
 } from "./portfolio-actions";
 import { getQuotes } from "./get-quotes";
@@ -37,6 +38,7 @@ const portfolioFlow = defineFlow({
     deleteAccount: { block: deleteAccount },
     importHoldings: { block: importHoldings },
     deleteHolding: { block: deleteHolding },
+    recordLedgerEvent: { block: recordLedgerEvent },
     getQuotes: { block: getQuotes },
     extractHoldingsFromPdf: { block: extractHoldingsFromPdf },
   },
