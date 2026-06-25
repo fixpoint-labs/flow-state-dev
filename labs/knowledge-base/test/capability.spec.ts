@@ -62,12 +62,13 @@ describe("createKnowledgeBaseCapability", () => {
     expect(await cap.__presetDefs.index.context(undefined, ctx)).toBeNull();
   });
 
-  it("the search preset exposes the glob/grep/search nav tools", () => {
+  it("the search preset exposes the glob/grep/search nav tools plus content read", () => {
     const cap = createKnowledgeBaseCapability() as any;
     const tools = cap.__presetDefs.search.tools();
     expect(tools.map((t: { name: string }) => t.name).sort()).toEqual([
       "globResources",
       "grepResourceContent",
+      "readResourceContent",
       "searchResources",
     ]);
   });

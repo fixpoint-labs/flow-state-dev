@@ -39,25 +39,37 @@ export function resolveLinkToConceptId(target: string, fromConceptId: string): s
   const pathPart = target.split(/[?#]/)[0]!;
   if (!pathPart.endsWith(".md")) return null;
 
-  let resolved: string;
+  let resolved: string | null;
   if (pathPart.startsWith("/")) {
     resolved = pathPart.slice(1);
   } else {
     const dir = fromConceptId.includes("/") ? fromConceptId.slice(0, fromConceptId.lastIndexOf("/")) : "";
     resolved = joinPosix(dir, pathPart);
   }
+  if (resolved === null) return null; // link traversed above the bundle root
 
   const id = normalizeSegments(resolved.slice(0, -3));
-  return id.length > 0 ? id : null;
+  // A surviving `..` (e.g. an absolute `/../x.md`) means the target escaped the
+  // bundle — it is not an in-bundle concept, so drop it rather than clamp it.
+  if (id.length === 0 || id.split("/").includes("..")) return null;
+  return id;
 }
 
-/** Resolve `.`/`..` segments against a base directory, POSIX-style, no leading slash. */
-function joinPosix(dir: string, rel: string): string {
+/**
+ * Resolve `.`/`..` segments against a base directory, POSIX-style, no leading
+ * slash. Returns `null` when a `..` pops above the base — a link that escapes
+ * the bundle root is not an in-bundle concept and must not be clamped to one.
+ */
+function joinPosix(dir: string, rel: string): string | null {
   const base = dir.length > 0 ? dir.split("/") : [];
   for (const seg of rel.split("/")) {
     if (seg === "." || seg === "") continue;
-    if (seg === "..") base.pop();
-    else base.push(seg);
+    if (seg === "..") {
+      if (base.length === 0) return null;
+      base.pop();
+    } else {
+      base.push(seg);
+    }
   }
   return base.join("/");
 }

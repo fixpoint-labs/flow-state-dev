@@ -29,7 +29,10 @@ export interface ExportResult {
 /**
  * Export every instance of `collection` into the directory `dir` as an OKF v0.1
  * bundle. Creates `dir` (and any concept subdirectories) as needed. Deterministic
- * — concepts and listing entries are emitted in concept-ID order.
+ * — concepts and listing entries are emitted in concept-ID order. Existing `.md`
+ * files in `dir` are cleared first, so exporting into a directory that held a
+ * prior bundle does not leave stale concept files; the emitted bundle reflects
+ * exactly the current collection.
  */
 export async function exportOkf(
   collection: ResourceCollectionRef<ConceptState>,
@@ -40,6 +43,7 @@ export async function exportOkf(
   instances.sort((a, b) => a.path.localeCompare(b.path));
 
   await fs.mkdir(dir, { recursive: true });
+  await clearManagedMarkdown(dir);
 
   const listing: Array<{ id: string; title: string; description: string | null }> = [];
   for (const ref of instances) {
@@ -54,6 +58,29 @@ export async function exportOkf(
   await fs.writeFile(path.join(dir, "index.md"), emitRootIndex(OKF_VERSION, formatListing(listing)), "utf8");
 
   return { exported: instances.length };
+}
+
+/**
+ * Remove every `.md` file under `dir` (concept files + a prior `index.md`) and
+ * prune directories left empty afterwards, so a re-export reflects only the
+ * current collection. Non-`.md` files are left untouched.
+ */
+async function clearManagedMarkdown(dir: string): Promise<void> {
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await clearManagedMarkdown(abs);
+      await fs.rmdir(abs).catch(() => {}); // remove only if now empty
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      await fs.unlink(abs);
+    }
+  }
 }
 
 /**

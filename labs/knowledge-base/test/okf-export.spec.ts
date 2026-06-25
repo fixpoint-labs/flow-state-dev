@@ -47,6 +47,22 @@ describe("exportOkf", () => {
     expect(concepts.map((c) => c.id)).not.toContain("index");
   });
 
+  it("clears stale concept files when re-exporting into an existing directory", async () => {
+    const out = await tmpDir();
+
+    const first = await makeConceptCollection();
+    await importOkf(FIXTURE_BUNDLE, first); // 3 concepts under datasets/ and tables/
+    await exportOkf(first, out);
+
+    // A different, smaller collection exported into the SAME directory.
+    const second = await makeConceptCollection();
+    await second.create("solo", { type: "Note" });
+    await exportOkf(second, out);
+
+    const { concepts } = await parseOkfBundle(out);
+    expect(concepts.map((c) => c.id)).toEqual(["solo"]); // prior bundle's files gone
+  });
+
   it("materializes a programmatic edge (not in the body) into a # Related section", async () => {
     const collection = await makeConceptCollection();
     await importOkf(FIXTURE_BUNDLE, collection);

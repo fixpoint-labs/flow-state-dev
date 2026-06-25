@@ -128,6 +128,21 @@ describe("importOkf", () => {
     expect(result.warnings.some((w) => w.includes("failed to parse"))).toBe(true);
   });
 
+  it("drops a link that traverses above the bundle root (no spurious edge)", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "okf-escape-"));
+    await fs.mkdir(path.join(dir, "sub"), { recursive: true });
+    await fs.writeFile(path.join(dir, "foo.md"), "---\ntype: Note\n---\n\nRoot foo.\n");
+    // `../../foo.md` from `sub/note` escapes the bundle root — it must not become
+    // an edge to the unrelated root `foo` concept.
+    await fs.writeFile(path.join(dir, "sub/note.md"), "---\ntype: Note\n---\n\n[up](../../foo.md)\n");
+
+    const collection = await makeConceptCollection();
+    await importOkf(dir, collection);
+
+    const note = await collection.get("sub/note");
+    expect(note.edges!.all().some((e) => e.to === "foo")).toBe(false);
+  });
+
   it("does not turn a markdown image (`![]()`) into a concept edge", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "okf-image-"));
     await fs.writeFile(path.join(dir, "target.md"), "---\ntype: Note\n---\n\nTarget.\n");

@@ -18,7 +18,7 @@
 // ---------------------------------------------------------------------------
 
 import { defineCapability } from "@flow-state-dev/core";
-import { resourceSearchTools } from "@flow-state-dev/core";
+import { resourceSearchTools, readResourceContentTool } from "@flow-state-dev/core";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
@@ -58,6 +58,7 @@ async function formatKnowledgeIndex(
 export function createKnowledgeBaseCapability() {
   const collection = conceptCollection;
   const nav = resourceSearchTools();
+  const readContent = readResourceContentTool();
 
   const capability = defineCapability({
     name: "knowledgeBase" as const,
@@ -96,9 +97,14 @@ export function createKnowledgeBaseCapability() {
         context: (_input: any, ctx: any) =>
           formatKnowledgeIndex(ctx.resources.concepts as ResourceCollectionRef<ConceptState>),
       },
-      /** Install the glob/grep/search nav tools. Default-on. */
+      /**
+       * Install the glob/grep/search nav tools plus the content-read tool.
+       * The nav tools return uris + snippets; `readResourceContent` lets the
+       * model fetch a full concept body by uri when the snippet isn't enough.
+       * Default-on.
+       */
       search: {
-        tools: () => [nav.globResources, nav.grepResourceContent, nav.searchResources],
+        tools: () => [nav.globResources, nav.grepResourceContent, nav.searchResources, readContent],
       },
       default: ["index", "search"],
     },
