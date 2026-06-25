@@ -88,6 +88,22 @@ describe("ingestLedgerEvents — idempotency", () => {
     expect(await repo.getLedger("devuser")).toHaveLength(1);
   });
 
+  it("keeps both rows when two accounts share a feed id in one batch", async () => {
+    await repo.upsertAccount({ id: "acc-2", userId: "devuser", name: "IRA", type: "IRA" });
+    // The same FITID is valid in two different accounts — the in-batch dedup key
+    // is account-scoped (matching the DB index), so neither is dropped.
+    const report = await repo.ingestLedgerEvents(
+      [
+        ev({ accountId: "acc-1", externalId: "FITID-1", source: "file" }),
+        ev({ accountId: "acc-2", externalId: "FITID-1", source: "file" }),
+      ],
+      "devuser",
+    );
+    expect(report.inserted).toBe(2);
+    expect(report.deduplicated).toBe(0);
+    expect(await repo.getLedger("devuser")).toHaveLength(2);
+  });
+
   it("dedups a same-source external-id retry", async () => {
     const a = ev({ externalId: "plaid-tx-1", source: "plaid", ticker: "NVDA", amount: -300 });
     // Same external id, different content — the (source, external_id) index still
@@ -125,7 +141,7 @@ describe("voidLedgerEvents", () => {
       "devuser",
     );
 
-    const voided = await repo.voidLedgerEvents(["plaid-2"], "plaid", "devuser");
+    const voided = await repo.voidLedgerEvents("acc-1", ["plaid-2"], "plaid", "devuser");
     expect(voided).toBe(1);
 
     const ledger = await repo.getLedger("devuser");
@@ -140,7 +156,27 @@ describe("voidLedgerEvents", () => {
 
   it("does not void another user's rows", async () => {
     await repo.ingestLedgerEvents([ev({ externalId: "plaid-1", source: "plaid" })], "devuser");
-    expect(await repo.voidLedgerEvents(["plaid-1"], "plaid", "intruder")).toBe(0);
+    expect(await repo.voidLedgerEvents("acc-1", ["plaid-1"], "plaid", "intruder")).toBe(0);
+  });
+
+  it("voids only the named account when two accounts share a feed id", async () => {
+    await repo.upsertAccount({ id: "acc-2", userId: "devuser", name: "IRA", type: "IRA" });
+    // The same FITID legitimately appears in two of the user's accounts.
+    await repo.ingestLedgerEvents(
+      [
+        ev({ accountId: "acc-1", externalId: "FITID-1", source: "file" }),
+        ev({ accountId: "acc-2", externalId: "FITID-1", source: "file" }),
+      ],
+      "devuser",
+    );
+    // Voiding acc-1's row must NOT tombstone acc-2's same-id row.
+    expect(await repo.voidLedgerEvents("acc-1", ["FITID-1"], "file", "devuser")).toBe(1);
+
+    const ledger = await repo.getLedger("devuser");
+    const a1 = ledger.find((r) => r.accountId === "acc-1" && r.externalId === "FITID-1");
+    const a2 = ledger.find((r) => r.accountId === "acc-2" && r.externalId === "FITID-1");
+    expect(a1?.voidedAt).not.toBeNull();
+    expect(a2?.voidedAt).toBeNull(); // untouched
   });
 
   it("clears derived basis when the last ledger row for a ticker is voided", async () => {
@@ -154,7 +190,7 @@ describe("voidLedgerEvents", () => {
     expect(portfolio.holdings.find((h) => h.ticker === "AAPL")?.costBasis).toBe(150);
 
     // Void the only row → no derived position remains → basis is CLEARED, not stale.
-    await repo.voidLedgerEvents(["p1"], "plaid", "devuser");
+    await repo.voidLedgerEvents("acc-1", ["p1"], "plaid", "devuser");
     portfolio = await repo.getPortfolio("devuser");
     const aapl = portfolio.holdings.find((h) => h.ticker === "AAPL");
     expect(aapl?.costBasis).toBeNull();

@@ -123,13 +123,20 @@ export interface PortfolioRepository {
    */
   ingestLedgerEvents(events: LedgerEventInput[], userId: string): Promise<IngestReport>;
   /**
-   * Tombstone events by `(source, external_id)` — only the caller's own
-   * (`user_id` scoped). Marks `voided_at` rather than deleting (audit trail);
-   * voided rows are excluded from derivation, and basis recomputes on every
+   * Tombstone events by `(account_id, source, external_id)` — only the caller's
+   * own (`user_id` scoped). Account-scoped because an external id (an OFX FITID)
+   * is unique only within its account, so a void targets ONE account's rows, not
+   * the same feed id everywhere. Marks `voided_at` rather than deleting (audit
+   * trail); voided rows are excluded from derivation, and basis recomputes on the
    * affected account. Returns the number of rows voided. Used by FIX-853 for
-   * Plaid cancellations and available for manual corrections.
+   * Plaid cancellations (which fire per Item/account) and manual corrections.
    */
-  voidLedgerEvents(externalIds: string[], source: string, userId: string): Promise<number>;
+  voidLedgerEvents(
+    accountId: string,
+    externalIds: string[],
+    source: string,
+    userId: string,
+  ): Promise<number>;
   /** A household's ledger rows, newest trade-date first, optionally filtered by
    *  account or ticker and capped by `limit` — the read for the ledger view. */
   getLedger(
@@ -478,9 +485,13 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         const values: (typeof ledgerEvents.$inferInsert)[] = [];
         for (const e of events) {
           const fingerprint = computeFingerprint(e);
+          // Both keys are account-scoped, matching the DB unique indexes
+          // (`(account_id, fingerprint)` and `(account_id, source, external_id)`):
+          // the same feed id (e.g. an OFX FITID) legitimately repeats across
+          // accounts, so it must not collide in-batch.
           const key =
             e.externalId !== null
-              ? `x:${e.source}:${e.externalId}`
+              ? `x:${e.accountId}:${e.source}:${e.externalId}`
               : `f:${e.accountId}:${fingerprint}`;
           if (seen.has(key)) continue;
           seen.add(key);
@@ -526,14 +537,19 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
       });
     },
 
-    async voidLedgerEvents(externalIds, source, userId) {
+    async voidLedgerEvents(accountId, externalIds, source, userId) {
       if (externalIds.length === 0) return 0;
       return db.transaction(async (tx) => {
+        // Account-scoped: an external id is unique only within its account
+        // (the `(account_id, source, external_id)` index), so a void targets one
+        // account — voiding by `(source, external_id)` alone would tombstone the
+        // same feed id across every account that holds it.
         const voidedRows = await tx
           .update(ledgerEvents)
           .set({ voidedAt: sql`now()` })
           .where(
             and(
+              eq(ledgerEvents.accountId, accountId),
               eq(ledgerEvents.source, source),
               inArray(ledgerEvents.externalId, externalIds),
               eq(ledgerEvents.userId, userId),
@@ -541,8 +557,7 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             ),
           )
           .returning({ accountId: ledgerEvents.accountId });
-        const affected = [...new Set(voidedRows.map((r) => r.accountId))];
-        for (const id of affected) await recomputeBasis(tx, id);
+        if (voidedRows.length > 0) await recomputeBasis(tx, accountId);
         return voidedRows.length;
       });
     },
