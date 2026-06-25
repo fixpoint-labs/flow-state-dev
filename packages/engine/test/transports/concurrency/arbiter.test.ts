@@ -96,9 +96,23 @@ describe("arbiter.resolve — key resolution", () => {
     const event = arbiter.resolve(
       f,
       "respond",
-      envelope({ metadata: { webhook: { provider: "stripe" } } })
+      envelope({ source: "webhook", metadata: { webhook: { provider: "stripe" } } })
     );
     expect(event.policy).toBe("queue"); // flow default, not the public action's reject
+  });
+
+  it("does not let a caller spoof an event via body metadata to skip its action policy", () => {
+    const arbiter = createConcurrencyArbiter();
+    // An HTTP caller (trusted source "http") includes a forged metadata.webhook
+    // coordinate. Because the event check requires the trusted transport source
+    // to match, the public action's reject policy must still apply.
+    const f = flow({ actions: { respond: { concurrency: "reject" } } });
+    const spoofed = arbiter.resolve(
+      f,
+      "respond",
+      envelope({ source: "http", metadata: { webhook: { provider: "stripe" } } })
+    );
+    expect(spoofed.policy).toBe("reject");
   });
 
   it("resolves an undefined session (MCP / ephemeral) to undefined for the session key", () => {

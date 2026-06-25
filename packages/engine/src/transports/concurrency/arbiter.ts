@@ -133,13 +133,17 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
       // name can coincide with a public `flow.actions` key, so consulting
       // `flow.actions` here would let an event silently inherit an unrelated
       // caller action's policy. Only caller-addressed dispatches resolve a
-      // per-action override; events take the flow default. This mirrors how
-      // `resolveActionCore` gates the action lookup on the transport-metadata
-      // coordinate rather than the bare name.
+      // per-action override; events take the flow default.
+      //
+      // The event check must gate on the trusted transport `source` (set by the
+      // adapter, never the caller) AND the metadata coordinate, exactly as
+      // `resolveActionCore` does — `metadata` alone is caller-controllable over
+      // HTTP, so trusting it would let a caller spoof `metadata.webhook` to skip
+      // a public action's reject/queue policy.
       const isEvent =
-        view.metadata?.webhook !== undefined ||
-        view.metadata?.chat !== undefined ||
-        view.metadata?.schedule !== undefined;
+        (view.source === "webhook" && view.metadata?.webhook !== undefined) ||
+        (view.source === "chat" && view.metadata?.chat !== undefined) ||
+        (view.source === "scheduled" && view.metadata?.schedule !== undefined);
       const actionConfig = isEvent ? undefined : flow.actions[actionName]?.concurrency;
       const effective = actionConfig ?? flow.request?.concurrency;
       const { policy, key } = normalizeConfig(effective);
