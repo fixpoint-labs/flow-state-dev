@@ -15,7 +15,7 @@
  * so concurrent runs each get their own PGlite database. cwd stays the app dir
  * (config search is cwd-only).
  */
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { AnalyzeInput } from "../../src/flows/analysis/flow-schema";
@@ -65,20 +65,34 @@ function stringifyError(error: unknown): string | null {
   return JSON.stringify(error);
 }
 
-/** Run one `fsdev run analysis <args>` invocation, returning its exit code.
- *  `execFileSync` throws on a non-zero exit and carries `.status`. */
-function runFsdev(args: string[], cwd: string, env: NodeJS.ProcessEnv): number {
-  try {
-    execFileSync("pnpm", ["fsdev", "run", "analysis", ...args], {
-      cwd,
-      env,
-      stdio: "inherit",
-    });
-    return 0;
-  } catch (err) {
-    const status = (err as { status?: unknown }).status;
-    return typeof status === "number" ? status : 1;
-  }
+/** Run one `fsdev run analysis <args>` invocation, resolving with its exit code.
+ *  Uses async `spawn`, NOT `execFileSync`: a synchronous call would block the
+ *  single-threaded event loop for the whole ~2-minute subprocess, so `mapLimit`'s
+ *  worker coroutines could never interleave and the batch would run serially
+ *  despite its `concurrency` setting. The promise resolves on the async `close`
+ *  event, so the worker yields and other runs proceed concurrently.
+ *  `stdio: "inherit"` streams the run's output live (and sidesteps execFile's
+ *  output-buffer cap on a long, chatty run). */
+function runFsdev(
+  args: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+): Promise<number> {
+  return new Promise((resolve) => {
+    // Default ("pipe") stdio, then forward the streams — equivalent to
+    // "inherit" for live output, but it returns `ChildProcessWithoutNullStreams`
+    // (whose `.on` the repo's `@types/node` types correctly, unlike the bare
+    // `ChildProcess` the "inherit" overload yields). Matches `packages/claude-code`.
+    const child = spawn("pnpm", ["fsdev", "run", "analysis", ...args], { cwd, env });
+    child.stdout.pipe(process.stdout);
+    child.stderr.pipe(process.stderr);
+    // This repo's `@types/node` doesn't surface ChildProcess's inherited
+    // EventEmitter methods (same as `packages/tools/.../moat.ts`); cast to attach
+    // the listeners. ChildProcess genuinely is an EventEmitter at runtime.
+    const events = child as unknown as import("node:events").EventEmitter;
+    events.on("error", () => resolve(1)); // spawn failure (e.g. binary missing)
+    events.on("close", (code: number | null) => resolve(code ?? 1));
+  });
 }
 
 export async function runOne(
@@ -116,7 +130,7 @@ export async function runOne(
     analyzeCapture,
   ];
   if (opts.model) analyzeArgs.push("--model", opts.model);
-  const analyzeExit = runFsdev(analyzeArgs, opts.cwd, env);
+  const analyzeExit = await runFsdev(analyzeArgs, opts.cwd, env);
   const analyzeResult = readCaptureResult(analyzeCapture);
   const durationMs = analyzeResult?.execution?.durationMs ?? null;
 
@@ -138,7 +152,7 @@ export async function runOne(
   }
 
   // 2. The zero-model read-back.
-  const summaryExit = runFsdev(
+  const summaryExit = await runFsdev(
     ["runSummary", "-i", "{}", "--session", sessionId, "--capture", summaryCapture],
     opts.cwd,
     env,

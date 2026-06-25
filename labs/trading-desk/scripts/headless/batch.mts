@@ -59,31 +59,43 @@ const captureRoot = path.join(APP_ROOT, ".fsdev", "headless");
 
 // Serialize scoreboard appends — concurrent appendFile can interleave a long
 // JSON line. The runs themselves stay concurrent; only the write is chained.
+// The gate swallows errors (`.catch`) so one failed write does not poison the
+// chain — a later run's write is still attempted; the returned promise still
+// rejects so the caller (and the batch) sees the failure.
 let writeChain: Promise<void> = Promise.resolve();
 function appendLine(line: string): Promise<void> {
-  writeChain = writeChain.then(() => appendFile(scoreboard, line));
-  return writeChain;
+  const write = writeChain.then(() => appendFile(scoreboard, line));
+  writeChain = write.catch(() => {});
+  return write;
 }
 
 console.error(
   `[batch] ${inputs.length} runs, concurrency ${concurrency} → ${scoreboard}`,
 );
 
-const summaries = await mapLimit(inputs, concurrency, async (input) => {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "td-batch-"));
-  try {
-    const summary = await runOne(input, {
-      dataDir,
-      captureDir: captureRoot,
-      cwd: APP_ROOT,
-      model,
-    });
-    await appendLine(JSON.stringify(summary) + "\n");
-    return summary;
-  } finally {
-    await rm(dataDir, { recursive: true, force: true }).catch(() => {});
-  }
-});
+let summaries;
+try {
+  summaries = await mapLimit(inputs, concurrency, async (input) => {
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "td-batch-"));
+    try {
+      const summary = await runOne(input, {
+        dataDir,
+        captureDir: captureRoot,
+        cwd: APP_ROOT,
+        model,
+      });
+      await appendLine(JSON.stringify(summary) + "\n");
+      return summary;
+    } finally {
+      await rm(dataDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+} catch (err) {
+  // Harness-fatal: the scoreboard could not be written (disk full, dir removed).
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`[batch] FATAL: scoreboard write failed (${scoreboard}): ${message}`);
+  process.exit(1);
+}
 
 const completed = summaries.filter((s) => s.status === "completed").length;
 const stopped = summaries.filter((s) => s.status === "stopped").length;
