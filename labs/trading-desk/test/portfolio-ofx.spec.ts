@@ -165,7 +165,47 @@ VERSION:102
       quantity: 12,
       unitPrice: null,
     });
-    expect(result.events[0].basisUnknown).toMatch(/no acquisition record/);
+    expect(result.events[0].basisUnknown).toMatch(/no acquisition cost/);
+  });
+
+  it("preserves a broker-supplied cost basis on a transfer-in (known lot, not basis-unknown)", async () => {
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<TRANSFER><INVTRAN><FITID>T2<DTTRADE>20260301</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>10<TFERACTION>IN<POSTYPE>LONG<AVGCOSTBASIS>1500<UNITPRICE>150</TRANSFER>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events[0]).toMatchObject({ type: "transfer", quantity: 10, unitPrice: 150 });
+    expect(result.events[0].basisUnknown).toBeNull(); // basis supplied → known lot
+  });
+
+  it("skips a short sale (SELLSHORT) rather than emitting a phantom long-sell", async () => {
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<SELLSTOCK><INVSELL><INVTRAN><FITID>SS1<DTTRADE>20260110</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>-5<UNITPRICE>150<TOTAL>750</INVSELL><SELLTYPE>SELLSHORT</SELLSTOCK>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events).toHaveLength(0);
+    expect(result.warnings.some((w) => /short sale/i.test(w))).toBe(true);
+  });
+
+  it("skips a JRNLSEC (subaccount journal) instead of booking a phantom transfer-in", async () => {
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<JRNLSEC><INVTRAN><FITID>J1<DTTRADE>20260301</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><SUBACCTFROM>MARGIN<SUBACCTTO>CASH<UNITS>10</JRNLSEC>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events).toHaveLength(0); // no phantom transfer-in
+    expect(result.skipped.some((s) => s.kind === "JRNLSEC")).toBe(true);
   });
 
   it("skips a SPLIT with a warning instead of corrupting basis", async () => {
@@ -254,6 +294,26 @@ VERSION:102
 <SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
     const result = await parseOfxTransactions(file);
     expect(result.events[0]).toMatchObject({ type: "dividend", amount: -23.45 });
+  });
+
+  it("skips a transaction with no usable date (never dates it to the epoch)", async () => {
+    // No DTTRADE and no DTPOSTED: the event must be skipped + warned, not
+    // ingested under 1970 where it would corrupt FIFO order and acquired-date.
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<BUYSTOCK><INVBUY><INVTRAN><FITID>NODATE</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>10<UNITPRICE>150<TOTAL>-1500</INVBUY><BUYTYPE>BUY</BUYSTOCK>
+<BUYSTOCK><INVBUY><INVTRAN><FITID>OK<DTTRADE>20260105</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>5<UNITPRICE>160<TOTAL>-800</INVBUY><BUYTYPE>BUY</BUYSTOCK>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    // Only the dated buy survives; none carries the epoch date.
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].externalId).toBe("OK");
+    expect(result.events.some((e) => e.tradeDate === "1970-01-01")).toBe(false);
+    expect(result.warnings.some((w) => w.includes("NODATE") && /trade date/i.test(w))).toBe(true);
   });
 
   it("warns when a file spans multiple accounts (all land in the one selected account)", async () => {

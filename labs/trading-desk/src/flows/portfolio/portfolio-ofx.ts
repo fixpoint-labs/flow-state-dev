@@ -100,6 +100,14 @@ function ofxDateToIso(value: unknown): string | null {
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
+/** The transaction's trade date, preferring `DTTRADE`, falling back to
+ *  `DTPOSTED`. Null when neither is a usable date — the caller skips the event
+ *  rather than dating it to the epoch (a fake date would corrupt FIFO order and
+ *  the acquired-date). */
+function tradeDateOf(invtran: OfxNode | null): string | null {
+  return ofxDateToIso(invtran?.DTTRADE ?? invtran?.DTPOSTED);
+}
+
 /** Sum the optional `COMMISSION` + `FEES` legs into a single fee, or null when
  *  neither is present. */
 function feeOf(node: OfxNode): number | null {
@@ -166,12 +174,15 @@ function resolveTicker(ctx: Ctx, secid: OfxNode | null): string | null {
 }
 
 /** Build a canonical event from the common `INVTRAN` fields, applying the
- *  caller-canonical sign already computed by the caller. */
+ *  caller-canonical sign already computed by the caller. The caller resolves +
+ *  validates `tradeDate` first (skipping the event when it can't), so this never
+ *  fabricates a date. */
 function baseEvent(
   ctx: Ctx,
   invtran: OfxNode | null,
   fields: {
     type: LedgerEventInput["type"];
+    tradeDate: string;
     ticker: string | null;
     quantity: number | null;
     unitPrice: number | null;
@@ -186,7 +197,7 @@ function baseEvent(
     fitid === null ? null : `${fitid}${fields.externalIdSuffix ?? ""}`;
   return {
     type: fields.type,
-    tradeDate: ofxDateToIso(invtran?.DTTRADE ?? invtran?.DTPOSTED) ?? "1970-01-01",
+    tradeDate: fields.tradeDate,
     settleDate: ofxDateToIso(invtran?.DTSETTLE),
     ticker: fields.ticker,
     quantity: fields.quantity,
@@ -200,11 +211,35 @@ function baseEvent(
   };
 }
 
+/** Resolve a security transaction's trade date, or skip-with-warning when the
+ *  file gives no usable date (never date it to the epoch — a fake date corrupts
+ *  FIFO order and the acquired-date). Returns null to tell the caller to bail. */
+function requireTradeDate(ctx: Ctx, invtran: OfxNode | null, kind: string): string | null {
+  const date = tradeDateOf(invtran);
+  if (date === null) {
+    const fitid = invtran ? str(invtran.FITID) : null;
+    ctx.warnings.push(
+      `A ${kind} transaction${fitid ? ` (${fitid})` : ""} has no usable trade date — skipped.`,
+    );
+  }
+  return date;
+}
+
 /** BUY* aggregates → a canonical buy (+quantity, −amount). */
 function handleBuy(ctx: Ctx, agg: OfxNode): void {
   const buy = obj(agg.INVBUY);
   if (buy === null) return;
+  // A buy-to-cover closes a short. v1 reconstructs LONG positions only, so a
+  // short was never opened — skip rather than book a phantom long lot.
+  if (str(agg.BUYTYPE) === "BUYTOCOVER") {
+    ctx.warnings.push(
+      "A buy-to-cover (closing a short) was skipped — v1 reconstructs long positions only; record it manually.",
+    );
+    return;
+  }
   const invtran = obj(buy.INVTRAN);
+  const tradeDate = requireTradeDate(ctx, invtran, "buy");
+  if (tradeDate === null) return;
   const ticker = resolveTicker(ctx, obj(buy.SECID));
   const units = Math.abs(num(buy.UNITS) ?? 0);
   const unitPrice = num(buy.UNITPRICE);
@@ -218,6 +253,7 @@ function handleBuy(ctx: Ctx, agg: OfxNode): void {
   ctx.events.push(
     baseEvent(ctx, invtran, {
       type: "buy",
+      tradeDate,
       ticker,
       quantity: units,
       unitPrice: unitPrice === null ? null : Math.abs(unitPrice),
@@ -235,7 +271,17 @@ function handleBuy(ctx: Ctx, agg: OfxNode): void {
 function handleSell(ctx: Ctx, agg: OfxNode): void {
   const sell = obj(agg.INVSELL);
   if (sell === null) return;
+  // A short sale opens a negative position v1's long-only FIFO can't model (a
+  // naive long-sell would be silently clamped away). Skip-with-warning instead.
+  if (str(agg.SELLTYPE) === "SELLSHORT") {
+    ctx.warnings.push(
+      "A short sale (SELLSHORT) was skipped — v1 reconstructs long positions only; record it manually.",
+    );
+    return;
+  }
   const invtran = obj(sell.INVTRAN);
+  const tradeDate = requireTradeDate(ctx, invtran, "sell");
+  if (tradeDate === null) return;
   const ticker = resolveTicker(ctx, obj(sell.SECID));
   const units = Math.abs(num(sell.UNITS) ?? 0);
   const unitPrice = num(sell.UNITPRICE);
@@ -244,6 +290,7 @@ function handleSell(ctx: Ctx, agg: OfxNode): void {
   ctx.events.push(
     baseEvent(ctx, invtran, {
       type: "sell",
+      tradeDate,
       ticker,
       quantity: -units,
       unitPrice: unitPrice === null ? null : Math.abs(unitPrice),
@@ -259,12 +306,15 @@ function handleSell(ctx: Ctx, agg: OfxNode): void {
 /** INCOME → dividend (DIV / capital gains) or interest, +amount, no shares. */
 function handleIncome(ctx: Ctx, agg: OfxNode): void {
   const invtran = obj(agg.INVTRAN);
+  const tradeDate = requireTradeDate(ctx, invtran, "income");
+  if (tradeDate === null) return;
   const ticker = resolveTicker(ctx, obj(agg.SECID));
   const incomeType = str(agg.INCOMETYPE);
   const type = incomeType === "INTEREST" ? "interest" : "dividend";
   ctx.events.push(
     baseEvent(ctx, invtran, {
       type,
+      tradeDate,
       ticker,
       quantity: null,
       unitPrice: null,
@@ -284,6 +334,8 @@ function handleIncome(ctx: Ctx, agg: OfxNode): void {
  *  re-imports without colliding on the `(source, external_id)` index. */
 function handleReinvest(ctx: Ctx, agg: OfxNode): void {
   const invtran = obj(agg.INVTRAN);
+  const tradeDate = requireTradeDate(ctx, invtran, "reinvest");
+  if (tradeDate === null) return;
   const ticker = resolveTicker(ctx, obj(agg.SECID));
   const units = Math.abs(num(agg.UNITS) ?? 0);
   const unitPrice = num(agg.UNITPRICE);
@@ -291,6 +343,7 @@ function handleReinvest(ctx: Ctx, agg: OfxNode): void {
   ctx.events.push(
     baseEvent(ctx, invtran, {
       type: "dividend",
+      tradeDate,
       ticker,
       quantity: null,
       unitPrice: null,
@@ -301,6 +354,7 @@ function handleReinvest(ctx: Ctx, agg: OfxNode): void {
     }),
     baseEvent(ctx, invtran, {
       type: "buy",
+      tradeDate,
       ticker,
       quantity: units,
       unitPrice: unitPrice === null ? null : Math.abs(unitPrice),
@@ -315,22 +369,33 @@ function handleReinvest(ctx: Ctx, agg: OfxNode): void {
  *  so it is flagged `basisUnknown` (a basis hole), never zero-cost. */
 function handleTransfer(ctx: Ctx, agg: OfxNode, kind: string): void {
   const invtran = obj(agg.INVTRAN);
+  const tradeDate = requireTradeDate(ctx, invtran, kind);
+  if (tradeDate === null) return;
   const ticker = resolveTicker(ctx, obj(agg.SECID));
   const tferAction = str(agg.TFERACTION); // IN | OUT (TRANSFER only)
   const rawUnits = Math.abs(num(agg.UNITS) ?? 0);
   const isOut = tferAction === "OUT";
   const quantity = isOut ? -rawUnits : rawUnits;
+  // Preserve a broker-supplied cost basis when the TRANSFER carries one
+  // (`UNITPRICE`, else total `AVGCOSTBASIS` / units). Only then is a transfer-in
+  // a KNOWN-basis lot; with no cost the lot stays basis-unknown (never zero).
+  const avgCostBasis = num(agg.AVGCOSTBASIS);
+  const transferUnitCost =
+    num(agg.UNITPRICE) ??
+    (avgCostBasis !== null && rawUnits > 0 ? avgCostBasis / rawUnits : null);
+  const hasBasis = quantity > 0 && transferUnitCost !== null;
   ctx.events.push(
     baseEvent(ctx, invtran, {
       type: "transfer",
+      tradeDate,
       ticker,
       quantity,
-      unitPrice: null,
+      unitPrice: hasBasis ? Math.abs(transferUnitCost) : null,
       amount: 0,
       fee: null,
       basisUnknown:
-        quantity > 0
-          ? `transferred in via ${kind}; no acquisition record in file`
+        quantity > 0 && !hasBasis
+          ? `transferred in via ${kind}; no acquisition cost in file`
           : null,
     }),
   );
@@ -339,9 +404,12 @@ function handleTransfer(ctx: Ctx, agg: OfxNode, kind: string): void {
 /** MARGININTEREST / INVEXPENSE → a fee (−amount, no shares). */
 function handleCashCharge(ctx: Ctx, agg: OfxNode): void {
   const invtran = obj(agg.INVTRAN);
+  const tradeDate = requireTradeDate(ctx, invtran, "fee");
+  if (tradeDate === null) return;
   ctx.events.push(
     baseEvent(ctx, invtran, {
       type: "fee",
+      tradeDate,
       ticker: resolveTicker(ctx, obj(agg.SECID)),
       quantity: null,
       unitPrice: null,
@@ -367,10 +435,18 @@ function handleBankTran(ctx: Ctx, agg: OfxNode): void {
   else if (trnType === "FEE" || trnType === "SRVCHG") type = "fee";
   else if (amount >= 0) type = "deposit";
   else type = "withdrawal";
+  const tradeDate = ofxDateToIso(stmt.DTPOSTED);
+  if (tradeDate === null) {
+    const id = str(stmt.FITID);
+    ctx.warnings.push(
+      `A cash (INVBANKTRAN) transaction${id ? ` (${id})` : ""} has no usable posted date — skipped.`,
+    );
+    return;
+  }
   const fitid = str(stmt.FITID);
   ctx.events.push({
     type,
-    tradeDate: ofxDateToIso(stmt.DTPOSTED) ?? "1970-01-01",
+    tradeDate,
     settleDate: null,
     ticker: null,
     quantity: null,
@@ -384,19 +460,20 @@ function handleBankTran(ctx: Ctx, agg: OfxNode): void {
   });
 }
 
-/** Corporate actions naive FIFO cannot honor in v1 — recorded as skipped (with
- *  a warning) so the user can enter them manually, never fed to the lot math. */
-function handleSkip(ctx: Ctx, agg: OfxNode, kind: string): void {
+/** Record an aggregate as skipped (with a reason) rather than feed it to the
+ *  long-only FIFO lot math, where it would corrupt basis — corporate actions
+ *  (no basis math in v1) and intra-account security journals (no net position
+ *  effect for an account-level ledger). */
+function handleSkip(ctx: Ctx, agg: OfxNode, kind: string, note: string): void {
   const invtran = obj(agg.INVTRAN);
   const secid = obj(agg.SECID);
   const uniqueId = secid ? str(secid.UNIQUEID) : null;
   const date = ofxDateToIso(invtran?.DTTRADE) ?? "unknown date";
   const security = uniqueId ?? "unknown security";
-  ctx.skipped.push({
-    kind,
-    reason: `${kind} on ${security} (${date}) not imported — record manually; v1 does not adjust basis for corporate actions`,
-  });
+  ctx.skipped.push({ kind, reason: `${kind} on ${security} (${date}) not imported — ${note}` });
 }
+
+const CORPORATE_ACTION_NOTE = "record manually; v1 does not adjust basis for corporate actions";
 
 /** The aggregate dispatch table. A tag absent here is reported as an unhandled
  *  warning rather than silently dropped. */
@@ -414,13 +491,22 @@ const HANDLERS: Record<string, (ctx: Ctx, agg: OfxNode) => void> = {
   INCOME: handleIncome,
   REINVEST: handleReinvest,
   TRANSFER: (ctx, agg) => handleTransfer(ctx, agg, "TRANSFER"),
-  JRNLSEC: (ctx, agg) => handleTransfer(ctx, agg, "JRNLSEC"),
+  // A security journal moves shares between an account's own subaccounts
+  // (e.g. cash <-> margin) — no net position change for this account-level
+  // ledger, so skip rather than book a phantom transfer-in.
+  JRNLSEC: (ctx, agg) =>
+    handleSkip(
+      ctx,
+      agg,
+      "JRNLSEC",
+      "a security journal between subaccounts has no net effect on this account-level ledger",
+    ),
   MARGININTEREST: handleCashCharge,
   INVEXPENSE: handleCashCharge,
   INVBANKTRAN: handleBankTran,
-  SPLIT: (ctx, agg) => handleSkip(ctx, agg, "SPLIT"),
-  RETOFCAP: (ctx, agg) => handleSkip(ctx, agg, "RETOFCAP"),
-  CLOSUREOPT: (ctx, agg) => handleSkip(ctx, agg, "CLOSUREOPT"),
+  SPLIT: (ctx, agg) => handleSkip(ctx, agg, "SPLIT", CORPORATE_ACTION_NOTE),
+  RETOFCAP: (ctx, agg) => handleSkip(ctx, agg, "RETOFCAP", CORPORATE_ACTION_NOTE),
+  CLOSUREOPT: (ctx, agg) => handleSkip(ctx, agg, "CLOSUREOPT", CORPORATE_ACTION_NOTE),
 };
 
 /** The non-transaction children of `INVTRANLIST` (its bounds), never aggregates. */

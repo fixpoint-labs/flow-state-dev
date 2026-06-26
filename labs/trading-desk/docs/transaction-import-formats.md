@@ -42,7 +42,8 @@ magnitudes from the file; `externalId` = the `FITID`):
 | `INCOME` (`INCOMETYPE` DIV/CGLONG/CGSHORT) | `dividend` | null | `+|TOTAL|` | |
 | `INCOME` (`INCOMETYPE` INTEREST) | `interest` | null | `+|TOTAL|` | |
 | `REINVEST` | `dividend` + `buy` | — / `+UNITS` | `+|TOTAL|` / `−|TOTAL|` | two events; the buy is a new lot; ids `FITID:div` + `FITID` |
-| `TRANSFER` / `JRNLSEC` | `transfer` | `±UNITS` (by `TFERACTION`) | `0` | a transfer-IN sets `basisUnknown` (no price in file) |
+| `TRANSFER` | `transfer` | `±UNITS` (by `TFERACTION`) | `0` | a transfer-IN preserves a supplied `UNITPRICE`/`AVGCOSTBASIS`, else sets `basisUnknown` |
+| `JRNLSEC` | — (skipped) | — | — | an intra-account subaccount journal has no net position effect; surfaced in `skipped` |
 | `INVBANKTRAN` (`STMTTRN`) | `deposit` / `withdrawal` / `interest` / `dividend` / `fee` | null | signed `TRNAMT` | by `TRNTYPE`, sign preserved |
 | `MARGININTEREST` / `INVEXPENSE` | `fee` | null | `−|TOTAL|` | |
 | `SPLIT` / `RETOFCAP` / `CLOSUREOPT` | — (skipped) | — | — | surfaced in `skipped`; v1 does not adjust basis for corporate actions |

@@ -299,7 +299,7 @@ export const importTransactions = handler({
     // — getPortfolio only returns the caller's own accounts, so a foreign id
     // simply isn't found.
     const repo = await getRepository();
-    const { accounts } = await repo.getPortfolio(uid);
+    const { accounts, holdings } = await repo.getPortfolio(uid);
     if (!accounts.some((a) => a.accountId === input.accountId)) {
       return report({
         inserted: 0,
@@ -317,9 +317,26 @@ export const importTransactions = handler({
       source: "file" as const,
     }));
     const ingest = await repo.ingestLedgerEvents(events, uid);
+
+    // The ledger derives BASIS for positions the holdings table already lists; it
+    // does not create holdings (quantity stays with the holdings table — the
+    // FIX-774/853 boundary). So a transaction import into an account with no
+    // holdings reconstructs history + basis but shows no positions until a
+    // holdings snapshot (CSV/PDF) is also imported. Surface that, honestly,
+    // rather than leave an empty positions view looking like a failed import.
+    const accountHasHoldings = holdings.some((h) => h.accountId === input.accountId);
+    const hasShareMoves = events.some((e) => e.quantity !== null);
+    const extraWarnings =
+      !accountHasHoldings && hasShareMoves
+        ? [
+            "Transactions imported, but this account has no holdings yet — import a holdings snapshot (CSV/PDF) to see positions. The transaction history reconstructs cost basis for those positions; it does not create them.",
+          ]
+        : [];
+
     return report({
       inserted: ingest.inserted,
       deduplicated: ingest.deduplicated,
+      warnings: [...diag.warnings, ...extraWarnings],
       // Surface any ingest-level rejections beside the parse-level ones.
       extraParseErrors: ingest.errors.map((e) => ({ line: null, reason: e.reason })),
     });

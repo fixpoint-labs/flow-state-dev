@@ -105,6 +105,15 @@ describe("importTransactions action", () => {
     expect(await repoState.repo!.getLedger(USER_ID)).toHaveLength(2); // not 4
   });
 
+  it("notes that positions need a holdings snapshot when importing into an empty account", async () => {
+    const stores = createInMemoryStores();
+    await seedAccount(repoState.repo!, { accountId: ACCT, userId: USER_ID }); // no holdings
+    const { output } = await importFile(stores, ACCT, OFX_FILE);
+    expect(output.inserted).toBeGreaterThan(0);
+    // Ledger events landed, but the account has no holdings to show positions on.
+    expect(output.warnings.some((w) => /no holdings yet/i.test(w))).toBe(true);
+  });
+
   it("reports (does not throw) when the target account does not exist", async () => {
     const stores = createInMemoryStores();
     const { status, output } = await importFile(stores, "no-such-account", OFX_FILE);
