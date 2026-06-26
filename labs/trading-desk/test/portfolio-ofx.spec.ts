@@ -192,7 +192,7 @@ VERSION:102
 </INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1></OFX>`;
     const result = await parseOfxTransactions(file);
     expect(result.events).toHaveLength(0);
-    expect(result.warnings.some((w) => /short sale/i.test(w))).toBe(true);
+    expect(result.warnings.some((w) => /SELLSHORT/i.test(w))).toBe(true);
   });
 
   it("skips a JRNLSEC (subaccount journal) instead of booking a phantom transfer-in", async () => {
@@ -358,6 +358,41 @@ ${body}
     expect(result.warnings.some((w) => w.includes("CASH-NOAMT") && /no amount/i.test(w))).toBe(
       true,
     );
+  });
+
+  it("skips an option sell-to-open (OPTSELLTYPE=SELLTOOPEN) — a short opening long-only FIFO can't model", async () => {
+    const result = await parseOfxTransactions(
+      wrap(
+        "<SELLOPT><INVSELL><INVTRAN><FITID>SO1<DTTRADE>20260110</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>-1<UNITPRICE>2.5<TOTAL>250</INVSELL><OPTSELLTYPE>SELLTOOPEN<SHPERCTRCT>100</SELLOPT>",
+      ),
+    );
+    expect(result.events).toHaveLength(0);
+    expect(result.warnings.some((w) => /sell-to-open/i.test(w))).toBe(true);
+  });
+
+  it("floors a no-proceeds sell with a fee at 0 (never a negative sell amount)", async () => {
+    // No TOTAL, no UNITPRICE, but a COMMISSION: units*0 − fee = −fee. A negative
+    // sell proceeds is impossible canonically and breaks cross-source dedup —
+    // it must floor at 0.
+    const result = await parseOfxTransactions(
+      wrap(
+        "<SELLSTOCK><INVSELL><INVTRAN><FITID>SF1<DTTRADE>20260110</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>-5<COMMISSION>5</INVSELL><SELLTYPE>SELL</SELLSTOCK>",
+      ),
+    );
+    expect(result.events[0]).toMatchObject({ type: "sell", quantity: -5, amount: 0 });
+    expect(result.warnings.some((w) => /proceeds are unknown/i.test(w))).toBe(true);
+  });
+
+  it("skips a REINVEST with neither cash (TOTAL) nor price (UNITPRICE) — no $0 phantom DRIP", async () => {
+    const result = await parseOfxTransactions(
+      wrap(
+        "<REINVEST><INVTRAN><FITID>RI-NOAMT<DTTRADE>20260215</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><INCOMETYPE>DIV<UNITS>0.5</REINVEST>",
+      ),
+    );
+    expect(result.events).toHaveLength(0);
+    expect(
+      result.warnings.some((w) => w.includes("RI-NOAMT") && /no amount or price/i.test(w)),
+    ).toBe(true);
   });
 });
 

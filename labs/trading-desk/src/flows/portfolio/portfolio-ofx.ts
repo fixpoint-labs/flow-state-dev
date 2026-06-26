@@ -315,11 +315,15 @@ function handleBuy(ctx: Ctx, agg: OfxNode): void {
 function handleSell(ctx: Ctx, agg: OfxNode): void {
   const sell = obj(agg.INVSELL);
   if (sell === null) return;
-  // A short sale opens a negative position v1's long-only FIFO can't model (a
-  // naive long-sell would be silently clamped away). Skip-with-warning instead.
-  if (str(agg.SELLTYPE) === "SELLSHORT") {
+  // A short OPENING — an equity short sale (`SELLTYPE=SELLSHORT`) or an option
+  // sell-to-open (`OPTSELLTYPE=SELLTOOPEN`, the option subtype `SELLTYPE` never
+  // carries) — creates a negative position v1's long-only FIFO can't model: a
+  // naive long-sell is silently clamped away, and a later buy-to-close imports
+  // as a phantom new long lot. Skip-with-warning. (A SELLTOCLOSE is a normal
+  // long disposal and falls through.)
+  if (str(agg.SELLTYPE) === "SELLSHORT" || str(agg.OPTSELLTYPE) === "SELLTOOPEN") {
     ctx.warnings.push(
-      "A short sale (SELLSHORT) was skipped — v1 reconstructs long positions only; record it manually.",
+      "A short opening (SELLSHORT / option sell-to-open) was skipped — v1 reconstructs long positions only; record it manually.",
     );
     return;
   }
@@ -348,8 +352,12 @@ function handleSell(ctx: Ctx, agg: OfxNode): void {
       quantity: -units,
       unitPrice: unitPrice === null ? null : Math.abs(unitPrice),
       // All-in proceeds: when `TOTAL` is absent, net the fee out (it's already
-      // netted into `TOTAL` when present) so both paths agree for dedup.
-      amount: total === null ? units * (unitPrice ?? 0) - (fee ?? 0) : Math.abs(total),
+      // netted into `TOTAL` when present) so both paths agree for dedup. Floor at
+      // 0: with neither TOTAL nor UNITPRICE the formula is just −fee, a negative
+      // sell-proceeds (impossible canonically) that would also break cross-source
+      // dedup — a Plaid event with the real positive proceeds fingerprints
+      // differently, so both land and the lot is consumed twice.
+      amount: total === null ? Math.max(0, units * (unitPrice ?? 0) - (fee ?? 0)) : Math.abs(total),
       fee,
       basisUnknown: null,
     }),
@@ -404,10 +412,20 @@ function handleReinvest(ctx: Ctx, agg: OfxNode): void {
   const units = Math.abs(num(agg.UNITS) ?? 0);
   if (!hasShareLegs(ctx, ticker, units, "reinvest")) return;
   const unitPrice = num(agg.UNITPRICE);
+  const rawTotal = num(agg.TOTAL);
+  // With neither cash (`TOTAL`) nor price, the reinvested amount is genuinely
+  // unknown — `units × 0` would persist a $0 dividend + $0 buy under this FITID
+  // and dedup away a later corrected re-import. Skip-with-warning instead.
+  if (rawTotal === null && unitPrice === null) {
+    const fitid = fitidOf(invtran);
+    ctx.warnings.push(
+      `A reinvestment (DRIP)${fitid ? ` (${fitid})` : ""} has no amount or price — skipped.`,
+    );
+    return;
+  }
   // OFX `TOTAL` is the reinvested cash; when absent, derive it from units ×
   // price (the buy/sell fallback) so the DRIP doesn't record a $0 reinvestment
   // and lose its fingerprint match against the same DRIP from another source.
-  const rawTotal = num(agg.TOTAL);
   const total = rawTotal !== null ? Math.abs(rawTotal) : units * (unitPrice ?? 0);
   ctx.events.push(
     baseEvent(ctx, invtran, {
