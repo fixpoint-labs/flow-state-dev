@@ -92,12 +92,30 @@ function num(value: unknown): number | null {
 }
 
 /** An OFX datetime is `YYYYMMDD` optionally followed by time/timezone. Take the
- *  date part and format ISO `YYYY-MM-DD`; null if it isn't 8 leading digits. */
+ *  date part and format ISO `YYYY-MM-DD`; null if it isn't 8 leading digits OR
+ *  isn't a real calendar date. A malformed-but-8-digit date like `20261340`
+ *  must NOT pass — the ledger date column would reject it and fail the whole
+ *  batch insert, so reject it here and let the caller skip just that row. */
 function ofxDateToIso(value: unknown): string | null {
   const s = str(value);
   if (s === null) return null;
   const m = /^(\d{4})(\d{2})(\d{2})/.exec(s);
-  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+  if (m === null) return null;
+  const [, y, mo, d] = m;
+  const iso = `${y}-${mo}-${d}`;
+  // Round-trip through Date to reject impossible months/days (e.g. month 13,
+  // day 40, Feb 30) — `getUTC*` rolls an out-of-range value over, so a mismatch
+  // means the input wasn't a real date.
+  const dt = new Date(`${iso}T00:00:00Z`);
+  if (
+    Number.isNaN(dt.getTime()) ||
+    dt.getUTCFullYear() !== Number(y) ||
+    dt.getUTCMonth() + 1 !== Number(mo) ||
+    dt.getUTCDate() !== Number(d)
+  ) {
+    return null;
+  }
+  return iso;
 }
 
 /** The transaction's trade date, preferring `DTTRADE`, falling back to
@@ -245,7 +263,11 @@ function handleBuy(ctx: Ctx, agg: OfxNode): void {
   const unitPrice = num(buy.UNITPRICE);
   const total = num(buy.TOTAL);
   const fee = feeOf(buy);
-  if (total === null && unitPrice === null) {
+  // No price AND no total → the lot's cost basis is genuinely unknown. Flag it
+  // (so `deriveLots` records a null-cost lot) rather than letting it infer a
+  // phantom cost from `amount / quantity` (which would be just the fee/share).
+  const noCost = total === null && unitPrice === null;
+  if (noCost) {
     ctx.warnings.push(
       `Buy of ${ticker ?? "a security"} has no price or total — its lot has unknown cost basis.`,
     );
@@ -262,7 +284,7 @@ function handleBuy(ctx: Ctx, agg: OfxNode): void {
       // fingerprint keys on `amount`, so the two paths must agree for dedup).
       amount: total === null ? -(units * (unitPrice ?? 0) + (fee ?? 0)) : -Math.abs(total),
       fee,
-      basisUnknown: null,
+      basisUnknown: noCost ? "buy with no price or total in file" : null,
     }),
   );
 }
@@ -564,13 +586,20 @@ export async function parseOfxTransactions(content: string): Promise<OfxParseRes
     );
   } else if (fileAccountIds.length > 1) {
     // The file spans multiple brokerage accounts, but import targets ONE chosen
-    // account — every transaction lands there. Surface it (the caller should
-    // import a per-account export) rather than silently merging two accounts'
-    // histories (and basis) into one. Per-account mapping is a follow-up.
-    ctx.warnings.push(
-      `This file contains ${fileAccountIds.length} accounts (${fileAccountIds.join(", ")}). ` +
-        "All transactions were imported into the one selected account — import a per-account file to keep them separate.",
-    );
+    // account. Merging them would mis-attribute one account's basis to another
+    // AND lose data: OFX FITIDs are only account-scoped, so the same FITID in two
+    // source accounts would collide on the `(account, source, external_id)`
+    // dedup and one would be dropped. Refuse the file rather than import a wrong,
+    // partially-deduped merge — the user should export one account at a time.
+    return {
+      events: [],
+      unresolvedSecurities: [],
+      skipped: [],
+      warnings: [
+        `This file contains ${fileAccountIds.length} accounts (${fileAccountIds.join(", ")}). ` +
+          "Nothing was imported — export and import one account at a time so each account's transactions (and cost basis) stay correctly attributed.",
+      ],
+    };
   }
 
   const unresolvedSecurities: UnresolvedSecurity[] = [...ctx.unresolved].map(

@@ -61,10 +61,12 @@ Two known limitations of the OFX shape:
   consumes oldest-first — so the open-lot result is stable; only the rare case of
   two same-day, same-ticker acquisitions of *different* kinds (a buy and a DRIP
   reinvest) could pick a different lot for a same-day sell.
-- **One file, one target account.** A consolidated export with several
-  `INVSTMTRS` blocks (multiple accounts) imports every transaction into the one
-  account the user selected; the parser warns when it sees more than one. Import
-  a per-account file to keep histories (and basis) separate.
+- **One file, one target account.** Import targets a single account. A
+  consolidated export with several `INVSTMTRS` blocks (multiple accounts) is
+  **refused** (nothing imported, with a warning): merging would mis-attribute one
+  account's basis to another, and since OFX `FITID`s are only account-scoped the
+  same id across two source accounts would collide on the dedup index and lose a
+  row. Export and import one account at a time.
 
 ## Security resolution (CUSIP → ticker)
 

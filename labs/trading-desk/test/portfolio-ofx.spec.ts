@@ -326,7 +326,43 @@ VERSION:102
 <INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVACCTFROM><ACCTID>ACCT-B</INVACCTFROM><INVTRANLIST><BUYSTOCK><INVBUY><INVTRAN><FITID>B<DTTRADE>20260106</INVTRAN><SECID><UNIQUEID>2<UNIQUEIDTYPE>CUSIP</SECID><UNITS>2<UNITPRICE>2<TOTAL>-4</INVBUY><BUYTYPE>BUY</BUYSTOCK></INVTRANLIST></INVSTMTRS></INVSTMTTRNRS>
 </INVSTMTMSGSRSV1></OFX>`;
     const result = await parseOfxTransactions(file);
-    expect(result.events).toHaveLength(2);
-    expect(result.warnings.some((w) => w.includes("ACCT-A") && w.includes("ACCT-B"))).toBe(true);
+    // Refused, not merged: a consolidated multi-account file imports nothing
+    // (mis-attribution + account-scoped FITID dedup would lose data).
+    expect(result.events).toHaveLength(0);
+    expect(
+      result.warnings.some(
+        (w) => w.includes("ACCT-A") && w.includes("ACCT-B") && /Nothing was imported/i.test(w),
+      ),
+    ).toBe(true);
+  });
+
+  it("skips a calendar-invalid date (e.g. month 13) rather than passing 2026-13-40 to the DB", async () => {
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<BUYSTOCK><INVBUY><INVTRAN><FITID>BAD<DTTRADE>20261340</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>1<UNITPRICE>1<TOTAL>-1</INVBUY><BUYTYPE>BUY</BUYSTOCK>
+<BUYSTOCK><INVBUY><INVTRAN><FITID>OK<DTTRADE>20260105</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>5<UNITPRICE>160<TOTAL>-800</INVBUY><BUYTYPE>BUY</BUYSTOCK>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].externalId).toBe("OK");
+    expect(result.warnings.some((w) => w.includes("BAD"))).toBe(true);
+  });
+
+  it("flags a buy with no price and no total as basis-unknown (no phantom fee-derived cost)", async () => {
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<BUYSTOCK><INVBUY><INVTRAN><FITID>NP1<DTTRADE>20260105</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>10<COMMISSION>5</INVBUY><BUYTYPE>BUY</BUYSTOCK>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events[0]).toMatchObject({ type: "buy", quantity: 10, unitPrice: null });
+    expect(result.events[0].basisUnknown).toMatch(/no price or total/);
   });
 });
