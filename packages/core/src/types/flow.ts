@@ -14,6 +14,7 @@ import type {
   ResourceCollectionRef
 } from "./resource-collection";
 import type { SchedulesConfig } from "./schedules";
+import type { ConcurrencyConfig } from "./concurrency";
 import type { ChatConfig } from "./chat";
 import type { WebhookConfig } from "./webhooks";
 import type { CASOptions } from "./state";
@@ -219,6 +220,14 @@ export type ActionConfig<
   description?: string;
   /** Per-action MCP overrides. */
   mcp?: ActionMcpConfig;
+  /**
+   * What happens when a request arrives on this action while another request
+   * on the same key (default: session) is already in flight. Overrides the
+   * flow-level default on `request.concurrency`. Resolution is per-action-wins:
+   * `action.concurrency ?? flow.request?.concurrency ?? "allow"`. Default when
+   * unset everywhere: `"allow"` (today's parallel behavior).
+   */
+  concurrency?: ConcurrencyConfig;
 };
 
 /**
@@ -328,6 +337,13 @@ export type RequestConfig = {
    * surface contention as `ConcurrentModificationError`.
    */
   mutationTimeoutMs?: number;
+  /**
+   * Flow-level default concurrency policy for every action, applied when an
+   * action does not set its own `concurrency`. Governs what happens when a
+   * request arrives while another on the same key (default: session) is in
+   * flight. Default when unset: `"allow"`. See `ConcurrencyConfig`.
+   */
+  concurrency?: ConcurrencyConfig;
 };
 
 export type UserConfig = {

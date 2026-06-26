@@ -137,6 +137,26 @@ export default defineFlow({
 **Flow:**
 - `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and per-scope `client` blocks
 
+**Concurrency policy:**
+
+An action can declare a `concurrency` policy that decides what happens when two requests collide on the same key (the session by default). Set it per-action via `ActionConfig.concurrency`, or set a flow-wide default via `RequestConfig.concurrency` (`flow.request.concurrency`); resolution is `action.concurrency ?? flow.request.concurrency ?? "allow"`.
+
+`ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently, today's behavior).
+
+```ts
+defineFlow({
+  kind: "support-chat",
+  request: { concurrency: "queue" },                              // flow-wide default
+  actions: {
+    respond:     { block: respondPipeline },                      // inherits "queue"
+    syncInvoice: { block: invoicePipeline,
+                   concurrency: { policy: "reject", key: "user" } },
+  },
+});
+```
+
+Exported types: `ConcurrencyConfig`, `ConcurrencyKey`, `ConcurrencyKeyContext`, `ConcurrencyPolicyName`, plus the `validateConcurrencyConfig` validator. The policy is enforced once at the host dispatch seam, so every transport inherits it. See the [Concurrency policies](https://flow-state.dev/docs/advanced/concurrency-policies) reference.
+
 **Utility block factories (`utility.*`):**
 - `utility.contextReducer(config)` — Generator factory for `distill`, `denoise`, or `compress` context transformation modes with mode-specific default output schemas (`{ distilled, keyPoints }`, `{ cleaned, removedCategories? }`, `{ compressed, compressionRatio?, dropped? }`)
 - `utility.summarizer(config)` — Generator factory for brief, detailed, or executive summaries with optional focus `objectives` and a default `{ summary, keyPoints? }` output contract

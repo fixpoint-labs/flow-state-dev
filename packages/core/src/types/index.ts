@@ -79,6 +79,15 @@ export {
   validateSchedulesConfig
 } from "./schedules";
 
+export type {
+  ConcurrencyConfig,
+  ConcurrencyKey,
+  ConcurrencyKeyContext,
+  ConcurrencyPolicyName
+} from "./concurrency";
+
+export { validateConcurrencyConfig } from "./concurrency";
+
 export type { TTSConfig, VoiceConfig } from "./speech";
 
 export type { ChatConfig, ChatEventBinding } from "./chat";

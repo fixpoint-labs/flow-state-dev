@@ -186,6 +186,8 @@ request: {
 
 Hooks are **observational** — they run after the fact and can't modify the result. The past-tense naming (`onCompleted`, not `onComplete`) makes this intent clear.
 
+`request.concurrency` sets a flow-wide default concurrency policy that every action inherits unless it declares its own. See [Concurrency policies](../advanced/concurrency-policies.md).
+
 ### Block-level completion (`onCompleted`)
 
 Individual blocks can also declare an `onCompleted` callback on their config. This is distinct from the action-level and request-level hooks shown above, which are lifecycle observers run by the request executor. A block-level `onCompleted` fires immediately after the block's `execute` succeeds:

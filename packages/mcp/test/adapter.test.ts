@@ -13,6 +13,7 @@ import {
   createMockTransportHost,
   createInboundTransportConformanceTests
 } from "@flow-state-dev/testing/conformance";
+import { ConcurrencyRejectedError } from "@flow-state-dev/engine";
 import {
   createMcpTransportAdapter,
   MCP_TRANSPORT_SOURCE,
@@ -306,6 +307,28 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
     expect(response.status).toBe(200);
     expect(host.dispatchCalls).toHaveLength(1);
     expect(host.dispatchCalls[0]!.envelope.action).toBe("recordPayment");
+  });
+
+  it("tools/call maps a concurrency reject to a retryable server-busy JSON-RPC error", async () => {
+    const adapter = createMcpTransportAdapter();
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    // The arbiter throws `ConcurrencyRejectedError` synchronously from
+    // `host.dispatch` when the key is held; the adapter must map it to the
+    // server-busy code (retryable), not the generic invalid-params path.
+    host.dispatch = () => {
+      throw new ConcurrencyRejectedError("u_busy", "req_inflight");
+    };
+    const response = await callAdapter(adapter, host, "POST", "billing", {
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/call",
+      params: { name: "record_payment", arguments: { amount: 1 } }
+    });
+    const json = (await response.json()) as {
+      error?: { code: number; data?: { retryable?: boolean } };
+    };
+    expect(json.error?.code).toBe(-32000); // JSON_RPC_SERVER_BUSY
+    expect(json.error?.data?.retryable).toBe(true);
   });
 
   it("tools/list returns only exposed actions with descriptions and JSON schemas", async () => {

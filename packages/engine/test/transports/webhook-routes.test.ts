@@ -451,6 +451,72 @@ describe("handleWebhook with a real host (signed, end-to-end)", () => {
     expect(res.status).toBe(401);
     expect(await stores.session.get("customer-cus_42")).toBeUndefined();
   });
+
+  it("drops a concurrent double-fire on the same session with a 200 skipped under reject (FIX-837)", async () => {
+    let release!: () => void;
+    const blocked = new Promise<void>((r) => (release = r));
+    const blockingHandler = handler({
+      name: "record-payment",
+      inputSchema: z.object({ invoiceId: z.string() }),
+      execute: async () => {
+        await blocked;
+      }
+    });
+    const flow = defineFlow({
+      kind: "billing",
+      // Flow-level default applies to the webhook handler (which lives on
+      // `flow.webhooks`, not `flow.actions`); key defaults to the session.
+      request: { concurrency: "reject" },
+      actions: {},
+      authentication: { defaultUserId: "system", requireUser: false },
+      webhooks: {
+        stripe: {
+          on: {
+            "invoice.paid": defineWebhookBinding<{ data: { object: { id: string; customer: string } } }>({
+              block: blockingHandler,
+              input: (e) => ({ invoiceId: e.payload.data.object.id }),
+              sessionId: (e) => `customer-${e.payload.data.object.customer}`
+            })
+          }
+        }
+      }
+    })({ id: "billing" });
+
+    const registry = createFlowRegistry();
+    registry.register(flow);
+    const stores = createInMemoryStores();
+    const host = createInboundTransportHost({
+      registry,
+      stores,
+      resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+      runtimeConfig: {}
+    });
+    const providers = { stripe: stripeWebhookVerifierProvider(SECRET) };
+    const params = { params: { flowKind: "billing", provider: "stripe" } };
+
+    // First delivery: dispatched, holding the session key while it runs.
+    const first = await handleWebhook(
+      signedStripeRequest({ type: "invoice.paid", id: "evt_1", data: { object: { id: "in_1", customer: "cus_99" } } }),
+      params,
+      host,
+      providers
+    );
+    expect(first.status).toBe(202);
+
+    // Second, distinct delivery for the same customer arrives while the first
+    // still holds the key → dropped with a benign 200 skipped so the provider
+    // stops retrying.
+    const second = await handleWebhook(
+      signedStripeRequest({ type: "invoice.paid", id: "evt_2", data: { object: { id: "in_2", customer: "cus_99" } } }),
+      params,
+      host,
+      providers
+    );
+    expect(second.status).toBe(200);
+    expect(await second.json()).toMatchObject({ status: "skipped", reason: "in_flight" });
+
+    release();
+  });
 });
 
 function stripeWebhookVerifierProvider(secret: string): WebhookProviderDefinition {

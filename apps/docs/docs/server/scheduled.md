@@ -291,6 +291,10 @@ schedule id is still in flight:
 - `"allow"` — dispatch concurrently; new request runs alongside the
   existing one.
 
+`onOverlap` is the scheduled-specific spelling of a [concurrency
+policy](../advanced/concurrency-policies.md) keyed on the schedule id:
+`"skip"` is `reject`, `"allow"` is `allow`.
+
 Skip is best-effort. If two ticks arrive within a few milliseconds of
 each other, both can pass the in-flight check before either calls
 `host.dispatch`, and both proceed. The framework-side idempotency

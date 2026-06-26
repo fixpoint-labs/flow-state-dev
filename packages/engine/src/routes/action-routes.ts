@@ -9,7 +9,11 @@
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost } from "../transports/types";
-import { OrgRequiredError, PrincipalResolutionError } from "../transports/errors";
+import {
+  ConcurrencyRejectedError,
+  OrgRequiredError,
+  PrincipalResolutionError
+} from "../transports/errors";
 import { generateId } from "../utils/generate-id";
 import {
   asObject,
@@ -162,6 +166,17 @@ export async function handleExecuteAction(
   try {
     handle = ctx.host.dispatch(dispatchEnvelope);
   } catch (error) {
+    // Concurrency `reject`: another request holds this action's key. The gate
+    // throws synchronously from `dispatch` before any record is created. 409 is
+    // retryable; surface the in-flight requestId so a client may tail the
+    // surviving request instead of retrying.
+    if (error instanceof ConcurrencyRejectedError) {
+      return jsonResponse(409, {
+        error: "ConcurrencyRejected",
+        message: error.message,
+        requestId: error.inFlightRequestId
+      });
+    }
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("active stream capacity")) {
       return jsonResponse(503, { error: message });

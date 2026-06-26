@@ -30,6 +30,7 @@ import type {
 import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
 import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } from "../types/schedules";
+import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateChatConfig, type ChatConfig, type ChatEventBinding } from "../types/chat";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
 import { warnDeprecated } from "../helpers/deprecation";
@@ -664,6 +665,17 @@ function createFlowInstance(
   const mcp = definition.mcp;
   validateMcpConfig(kind, mcp, actions);
 
+  // Reject reserved/unknown concurrency policies at definition time, the same
+  // way schedules reject a reserved `onOverlap`. Validate the flow-level
+  // default (merged with any instance override) and every per-action override.
+  // `actions` is already the merged map, so per-action overrides supplied via
+  // `options.actions` are covered by the loop.
+  const requestMerged = mergeConfig(definition.request, options?.request);
+  validateConcurrencyConfig(`Flow "${kind}" request default`, requestMerged?.concurrency);
+  for (const [actionName, action] of Object.entries(actions)) {
+    validateConcurrencyConfig(`Flow "${kind}" action "${actionName}"`, action.concurrency);
+  }
+
   return {
     id: options?.id ?? kind,
     kind,
@@ -672,7 +684,7 @@ function createFlowInstance(
     authentication,
     actions,
     session,
-    request: mergeConfig(definition.request, options?.request),
+    request: requestMerged,
     user,
     org,
     work: mergeConfig(definition.work, options?.work),

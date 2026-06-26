@@ -221,6 +221,15 @@ export {
   validateSchedulesConfig
 } from "./types/schedules";
 
+export type {
+  ConcurrencyConfig,
+  ConcurrencyKey,
+  ConcurrencyKeyContext,
+  ConcurrencyPolicyName
+} from "./types/concurrency";
+
+export { validateConcurrencyConfig } from "./types/concurrency";
+
 export type { ChatConfig, ChatEventBinding } from "./types/chat";
 export { validateChatConfig } from "./types/chat";
 export type {
