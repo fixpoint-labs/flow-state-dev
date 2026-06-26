@@ -109,6 +109,16 @@ export function ImportTransactionsDialog({
   const eventCount = preview?.events.length ?? 0;
   const canImport = accountId.length > 0 && eventCount > 0;
 
+  // The server returns a "no holdings yet" warning in that case, but `sendAction`
+  // only returns a request envelope (not the handler output), so surface the
+  // same hint here in the preview — the one place the user actually sees it. The
+  // ledger reconstructs basis for existing positions; it doesn't create them.
+  const selectedAccount = accounts.find((a) => a.accountId === accountId);
+  const willHaveNoPositions =
+    selectedAccount !== undefined &&
+    selectedAccount.holdings.length === 0 &&
+    (preview?.events.some((e) => e.quantity !== null) ?? false);
+
   const handleSubmit = (): void => {
     if (!canImport) return;
     onSubmit({ accountId, content, filename });
@@ -228,6 +238,13 @@ export function ImportTransactionsDialog({
                   • {w}
                 </p>
               ))}
+              {willHaveNoPositions ? (
+                <p className="font-mono text-[10.5px] text-[color:var(--c-warn)]">
+                  This account has no holdings yet — import a holdings snapshot (CSV/PDF)
+                  to see positions. The transaction history reconstructs their cost basis;
+                  it doesn't create the positions.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

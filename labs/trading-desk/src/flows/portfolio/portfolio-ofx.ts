@@ -243,6 +243,18 @@ function requireTradeDate(ctx: Ctx, invtran: OfxNode | null, kind: string): stri
   return date;
 }
 
+/** A share-moving aggregate needs both a security (`SECID`) and a non-zero unit
+ *  count to form a lot. A row missing either is malformed — skip-with-warning
+ *  rather than record a cash amount with no lot, which would look like a
+ *  successful import that reconstructed nothing. */
+function hasShareLegs(ctx: Ctx, ticker: string | null, units: number, kind: string): boolean {
+  if (ticker === null || units === 0) {
+    ctx.warnings.push(`A ${kind} transaction is missing its security or unit count — skipped.`);
+    return false;
+  }
+  return true;
+}
+
 /** BUY* aggregates → a canonical buy (+quantity, −amount). */
 function handleBuy(ctx: Ctx, agg: OfxNode): void {
   const buy = obj(agg.INVBUY);
@@ -260,6 +272,7 @@ function handleBuy(ctx: Ctx, agg: OfxNode): void {
   if (tradeDate === null) return;
   const ticker = resolveTicker(ctx, obj(buy.SECID));
   const units = Math.abs(num(buy.UNITS) ?? 0);
+  if (!hasShareLegs(ctx, ticker, units, "buy")) return;
   const unitPrice = num(buy.UNITPRICE);
   const total = num(buy.TOTAL);
   const fee = feeOf(buy);
@@ -306,9 +319,18 @@ function handleSell(ctx: Ctx, agg: OfxNode): void {
   if (tradeDate === null) return;
   const ticker = resolveTicker(ctx, obj(sell.SECID));
   const units = Math.abs(num(sell.UNITS) ?? 0);
+  if (!hasShareLegs(ctx, ticker, units, "sell")) return;
   const unitPrice = num(sell.UNITPRICE);
   const total = num(sell.TOTAL);
   const fee = feeOf(sell);
+  // A sell with neither price nor total still removes shares (the disposal
+  // happened), but its cash proceeds are unknown — record it (so FIFO consumes
+  // the lot) and warn rather than silently understating proceeds.
+  if (total === null && unitPrice === null) {
+    ctx.warnings.push(
+      `Sell of ${ticker} has no price or total — recorded as a disposal, but proceeds are unknown.`,
+    );
+  }
   ctx.events.push(
     baseEvent(ctx, invtran, {
       type: "sell",
@@ -360,8 +382,13 @@ function handleReinvest(ctx: Ctx, agg: OfxNode): void {
   if (tradeDate === null) return;
   const ticker = resolveTicker(ctx, obj(agg.SECID));
   const units = Math.abs(num(agg.UNITS) ?? 0);
+  if (!hasShareLegs(ctx, ticker, units, "reinvest")) return;
   const unitPrice = num(agg.UNITPRICE);
-  const total = Math.abs(num(agg.TOTAL) ?? 0);
+  // OFX `TOTAL` is the reinvested cash; when absent, derive it from units ×
+  // price (the buy/sell fallback) so the DRIP doesn't record a $0 reinvestment
+  // and lose its fingerprint match against the same DRIP from another source.
+  const rawTotal = num(agg.TOTAL);
+  const total = rawTotal !== null ? Math.abs(rawTotal) : units * (unitPrice ?? 0);
   ctx.events.push(
     baseEvent(ctx, invtran, {
       type: "dividend",
@@ -394,10 +421,19 @@ function handleTransfer(ctx: Ctx, agg: OfxNode, kind: string): void {
   const tradeDate = requireTradeDate(ctx, invtran, kind);
   if (tradeDate === null) return;
   const ticker = resolveTicker(ctx, obj(agg.SECID));
-  const tferAction = str(agg.TFERACTION); // IN | OUT (TRANSFER only)
   const rawUnits = Math.abs(num(agg.UNITS) ?? 0);
-  const isOut = tferAction === "OUT";
-  const quantity = isOut ? -rawUnits : rawUnits;
+  if (!hasShareLegs(ctx, ticker, rawUnits, kind)) return;
+  // Direction must be explicit. Defaulting a missing/malformed `TFERACTION` to
+  // IN would turn a broker error on an OUTBOUND transfer into a phantom
+  // incoming lot — skip-with-warning when it isn't a known IN/OUT.
+  const tferAction = str(agg.TFERACTION);
+  if (tferAction !== "IN" && tferAction !== "OUT") {
+    ctx.warnings.push(
+      `A ${kind} transaction has an unknown direction (TFERACTION=${tferAction ?? "missing"}) — skipped; record it manually.`,
+    );
+    return;
+  }
+  const quantity = tferAction === "OUT" ? -rawUnits : rawUnits;
   // Preserve a broker-supplied cost basis when the TRANSFER carries one
   // (`UNITPRICE`, else total `AVGCOSTBASIS` / units). Only then is a transfer-in
   // a KNOWN-basis lot; with no cost the lot stays basis-unknown (never zero).

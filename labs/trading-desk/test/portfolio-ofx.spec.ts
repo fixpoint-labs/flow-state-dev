@@ -267,6 +267,58 @@ VERSION:102
   });
 });
 
+describe("parseOfxTransactions — malformed-leg guards", () => {
+  const wrap = (body: string) => `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+${body}
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+
+  it("skips a buy missing its security or unit count", async () => {
+    // No SECID, no UNITS.
+    const result = await parseOfxTransactions(
+      wrap(
+        "<BUYSTOCK><INVBUY><INVTRAN><FITID>B<DTTRADE>20260105</INVTRAN><TOTAL>-100</INVBUY><BUYTYPE>BUY</BUYSTOCK>",
+      ),
+    );
+    expect(result.events).toHaveLength(0);
+    expect(result.warnings.some((w) => /missing its security or unit count/i.test(w))).toBe(true);
+  });
+
+  it("records a sell with no proceeds data but warns (the disposal still happened)", async () => {
+    const result = await parseOfxTransactions(
+      wrap(
+        "<SELLSTOCK><INVSELL><INVTRAN><FITID>S<DTTRADE>20260110</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>-5</INVSELL><SELLTYPE>SELL</SELLSTOCK>",
+      ),
+    );
+    expect(result.events[0]).toMatchObject({ type: "sell", quantity: -5 });
+    expect(result.warnings.some((w) => /proceeds are unknown/i.test(w))).toBe(true);
+  });
+
+  it("derives a REINVEST amount from units × price when TOTAL is absent", async () => {
+    const result = await parseOfxTransactions(
+      wrap(
+        "<REINVEST><INVTRAN><FITID>RI<DTTRADE>20260215</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><INCOMETYPE>DIV<UNITS>0.5<UNITPRICE>200</REINVEST>",
+      ),
+    );
+    expect(result.events.find((e) => e.type === "dividend")?.amount).toBe(100); // 0.5 * 200
+    expect(result.events.find((e) => e.type === "buy")?.amount).toBe(-100);
+  });
+
+  it("skips a transfer whose direction (TFERACTION) is missing/unknown", async () => {
+    const result = await parseOfxTransactions(
+      wrap(
+        "<TRANSFER><INVTRAN><FITID>T<DTTRADE>20260301</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>10</TRANSFER>",
+      ),
+    );
+    expect(result.events).toHaveLength(0);
+    expect(result.warnings.some((w) => /unknown direction/i.test(w))).toBe(true);
+  });
+});
+
 describe("parseOfxTransactions — canonical-amount + sign edge cases", () => {
   it("folds the fee into amount when a buy reports no TOTAL (dedup consistency)", async () => {
     // No TOTAL: amount must be the all-in cash (units*price + commission), the
