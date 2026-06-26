@@ -11,7 +11,7 @@
  */
 import type { Chat, Thread, Message } from "chat";
 import type { InboundTransportHost } from "@flow-state-dev/engine";
-import { PrincipalResolutionError } from "@flow-state-dev/engine";
+import { ConcurrencyRejectedError, PrincipalResolutionError } from "@flow-state-dev/engine";
 import {
   CHAT_TRANSPORT_SOURCE,
   type ChatAdapterOptions,
@@ -388,16 +388,34 @@ async function executeDispatch(
     },
   };
 
-  const handle = host.dispatch({
-    source: CHAT_TRANSPORT_SOURCE,
-    flowKind,
-    action,
-    input,
-    sessionId,
-    principal,
-    metadata: metadata as unknown as Record<string, unknown>,
-    responseEmitter: streamToThread ? undefined : null,
-  });
+  let handle;
+  try {
+    handle = host.dispatch({
+      source: CHAT_TRANSPORT_SOURCE,
+      flowKind,
+      action,
+      input,
+      sessionId,
+      principal,
+      metadata: metadata as unknown as Record<string, unknown>,
+      responseEmitter: streamToThread ? undefined : null,
+    });
+  } catch (err) {
+    // Concurrency `reject` (FIX-837): a response is already in flight for this
+    // thread's session, so the gate dropped this one synchronously. That's the
+    // intended outcome for a double-message — the in-flight run answers the
+    // thread — so log and return cleanly rather than letting it surface as a
+    // dispatch error (and never post / retry).
+    if (err instanceof ConcurrencyRejectedError) {
+      host.logger?.info?.("@flow-state-dev/chat-sdk: concurrent message dropped (reject policy)", {
+        flowKind,
+        sessionId,
+        inFlightRequestId: err.inFlightRequestId,
+      });
+      return;
+    }
+    throw err;
+  }
 
   setThreadForRequest(handle.requestId, event.thread, event.message);
   handle.finished.finally(() => clearThreadForRequest(handle.requestId));

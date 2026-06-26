@@ -18,6 +18,7 @@ import type {
   InboundTransportHost,
   InboundRequestEnvelope,
 } from "@flow-state-dev/engine";
+import { ConcurrencyRejectedError } from "@flow-state-dev/engine";
 import { dispatchChatEvent } from "../src/event-handlers";
 import { buildChatSubscriptionIndex } from "../src/subscription-index";
 import type { ChatAdapterOptions, ChatInboundEvent } from "../src/types";
@@ -222,6 +223,42 @@ describe("dispatchChatEvent — no matching subscription", () => {
     const { host, calls } = makeHost(flows);
     await dispatchChatEvent(host, baseOptions, mentionEvent({ platform: "slack" }), buildChatSubscriptionIndex(flows));
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("dispatchChatEvent — concurrency reject", () => {
+  it("drops a concurrent message cleanly (no error log, no throw) when dispatch rejects", async () => {
+    // A flow with `request.concurrency: "reject"` makes a second message on the
+    // same thread throw ConcurrencyRejectedError synchronously from host.dispatch
+    // (the in-flight run answers the thread). The chat adapter must treat that as
+    // a clean drop — logged at info, not surfaced as a dispatch error.
+    const info = vi.fn();
+    const error = vi.fn();
+    const flows = [flow("support", { mention: { block: blk("reply"), input: () => 1 } }, false)];
+    const host = {
+      registry: {
+        list: () => flows,
+        get: (kind: string) => flows.find((f) => f.kind === kind),
+      },
+      stores: {
+        session: { get: async () => undefined, set: async () => undefined },
+      },
+      logger: { warn: vi.fn(), error, info, debug: vi.fn() },
+      dispatch() {
+        throw new ConcurrencyRejectedError("tenant:thread-1", "req_inflight");
+      },
+      resolvePrincipal: async () => ({ userId: "u" }),
+    } as unknown as InboundTransportHost;
+
+    await expect(
+      dispatchChatEvent(host, baseOptions, mentionEvent(), buildChatSubscriptionIndex(flows))
+    ).resolves.toBeUndefined();
+
+    expect(error).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith(
+      expect.stringContaining("concurrent message dropped"),
+      expect.objectContaining({ inFlightRequestId: "req_inflight" })
+    );
   });
 });
 
