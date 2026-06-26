@@ -410,6 +410,72 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   land. Live sync (Plaid) is FIX-853, and historical file import (OFX/CSV) is
   FIX-775 — both write through this issue's `ingestLedgerEvents` contract.
 
+## File import (OFX/QFX/QBO) — FIX-775
+
+The desk imports a brokerage **transaction-history file** to bootstrap the
+ledger from real trades, so cost basis is reconstructed (the FIX-774 derivation)
+rather than declared. This is the first *second source* to write through the
+FIX-774 ingestion contract: it adds no new ingestion path, only a normalizer
+that maps a file's representation onto the canonical `LedgerEventInput`. The
+*OFX family* is one grammar with three packagings — QFX (Quicken), QBO
+(QuickBooks Web Connect), and raw OFX — so one parser covers all three.
+
+- **The parser (`portfolio-ofx.ts`).** A PURE, browser-safe leaf (the
+  `portfolio-csv.ts` precedent): it runs in the import dialog's client preview
+  and in the server action off one definition. `ofx-js` (zero-dependency) owns
+  the fiddly tokenizing — OFX 1.x is SGML with *unclosed* leaf tags, OFX 2.x is
+  real XML, and it auto-detects — so the lab owns only the semantic mapping:
+  walking `INVTRANLIST`, normalizing each typed aggregate (`BUYSTOCK`,
+  `SELLSTOCK`, `INCOME`, `REINVEST`, `TRANSFER`, `INVBANKTRAN`, …), and joining
+  each transaction's `SECID` to the file's `SECLIST` to recover a ticker.
+
+- **Signs are normalized by aggregate TYPE, not the file's convention.** A buy
+  is `+quantity` / `−amount`, a sell is `−quantity` / `+amount`, by the
+  aggregate kind, with magnitudes from the file. This is what makes
+  *cross-source dedup* work: the FIX-774 fingerprint keys on
+  `(account, tradeDate, type, ticker, quantity, amount)`, so a file backfill and
+  a Plaid sync of the same trade produce the SAME fingerprint and collapse to one
+  row. A re-import, or two overlapping statement files, dedups on the OFX `FITID`
+  (the event's `externalId`) and the fingerprint.
+
+- **The CUSIP→ticker gap (honest, not silent).** OFX identifies securities by
+  CUSIP. `SECLIST` *sometimes* carries a `TICKER`, but some brokers (notably
+  Fidelity) ship CUSIP-only. v1 is best-effort: the `SECLIST` ticker when
+  present, else the CUSIP itself as the keying identifier, AND the security is
+  reported in `unresolvedSecurities` for manual mapping. The cost is real and
+  documented: a CUSIP-only file event won't fingerprint-match a Plaid ticker
+  event and won't attach to a ticker-keyed holding until mapped. No paid CUSIP
+  lookup (none is freely authoritative).
+
+- **Corporate actions are skipped, not mis-counted.** `SPLIT`, `RETOFCAP`, and
+  `CLOSUREOPT` change quantity/basis in ways naive FIFO can't honor, so they are
+  surfaced in `skipped` with a warning to record manually — never fed to the lot
+  math where a split would look like a basis-unknown share-adder. Mergers and
+  spin-offs are not distinct OFX aggregates; they arrive as `TRANSFER` and land
+  as basis-unknown transfers, which is honest. A `REINVEST` (a DRIP) becomes TWO
+  events — the dividend (income) and the reinvested buy (a new lot) — with
+  distinct external ids.
+
+- **The action + UI.** `importTransactions` (`portfolio-actions.ts`,
+  registered in `portfolio/flow.ts`) re-parses server-side via the
+  `transaction-file.ts` dispatcher, injects the user-chosen `accountId` and fixes
+  `source: "file"` (the `recordLedgerEvent` precedent), ingests through the shared
+  contract, and returns a `FileImportReport`
+  (`transaction-import-schema.ts`: counts + parse errors + unresolved securities
+  + skipped). The `ImportTransactionsDialog`
+  (`components/portfolio/import-transactions-dialog.tsx`) previews the file with
+  the same pure parser before committing. A missing/foreign account is reported,
+  not thrown (the `importHoldings` edge-guard precedent).
+
+- **Limitations (v1).** OFX family only — per-broker transaction **CSV** adapters
+  are the follow-up (a non-OFX file reports a clear "not yet supported"). FIFO
+  only (inherited from FIX-774); CUSIP-only securities and corporate actions are
+  surfaced, not resolved. The real-file goal check lives at
+  `goals/transaction-file-import/reconstructs-basis-from-ofx/` — drop a real
+  (anonymized) export beside its `expected.json` to validate against an actual
+  institution. Format details and the aggregate→canonical mapping are in
+  [`docs/transaction-import-formats.md`](docs/transaction-import-formats.md).
+
 ## Responsive / mobile layout
 
 The desk branches its **shell** at the `lg` breakpoint (1024px); content

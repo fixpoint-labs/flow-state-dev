@@ -32,6 +32,8 @@ import { getRepository } from "@/lib/portfolio-db";
 import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
 import { accountTypeSchema } from "./portfolio-schema";
 import { ingestReportSchema, ledgerEventInputSchema } from "./ledger-schema";
+import { fileImportReportSchema } from "./transaction-import-schema";
+import { detectAndParseTransactionFile } from "./transaction-file";
 import { pdfImportResource } from "./portfolio-resources";
 
 /** Import feedback. Handler output (not a generator output) so a fixed-shape
@@ -234,5 +236,92 @@ export const recordLedgerEvent = handler({
       [{ ...input, ticker, source: "manual", externalId: null }],
       userId(ctx),
     );
+  },
+});
+
+/**
+ * Import a brokerage transaction-history file (OFX family: QFX / QBO / raw OFX)
+ * into a target account's ledger (FIX-775) — the historical file-import feed,
+ * writing through the SAME `ingestLedgerEvents` contract manual entry uses. The
+ * dispatcher (`transaction-file.ts`) sniffs and parses the file into canonical
+ * events; this handler injects the user-chosen `accountId` and fixes
+ * `source: "file"` (a file row can't claim to be manual/plaid — the
+ * `recordLedgerEvent` precedent), then ingests. The ledger's two-tier dedup
+ * makes a re-import (or overlapping statement periods) idempotent, and basis
+ * recomputes on ingest, so cost basis reconstructs from the imported buy/sell
+ * history.
+ *
+ * The target account must already exist (the UI only enables import once an
+ * account is selected). A missing/foreign account isn't ingested — it's reported
+ * as a warning (the `importHoldings` edge-guard precedent), not thrown at the UI.
+ * Repository I/O from a handler is BP-011-safe; the parser is deterministic TS,
+ * so BP-016 has no surface.
+ */
+export const importTransactions = handler({
+  name: "import-transactions",
+  inputSchema: z.object({
+    accountId: z.string(),
+    content: z.string(),
+    filename: z.string().nullable().default(null),
+  }),
+  outputSchema: fileImportReportSchema,
+  execute: async (input, ctx) => {
+    const uid = userId(ctx);
+    const parsed = await detectAndParseTransactionFile(
+      input.content,
+      input.filename ?? undefined,
+    );
+    const diag = parsed.diagnostics;
+
+    // Build the report off the parse diagnostics (shared by every return path),
+    // overriding the ingest counts + any extra warnings/errors per case.
+    const report = (over: {
+      inserted: number;
+      deduplicated: number;
+      warnings?: string[];
+      extraParseErrors?: { line: number | null; reason: string }[];
+    }) => ({
+      inserted: over.inserted,
+      deduplicated: over.deduplicated,
+      detectedFormat: parsed.format,
+      parseErrors: [...diag.parseErrors, ...(over.extraParseErrors ?? [])],
+      warnings: over.warnings ?? diag.warnings,
+      unresolvedSecurities: diag.unresolvedSecurities,
+      skipped: diag.skipped,
+    });
+
+    // Nothing parsed (a parse error, or a file with no investment transactions):
+    // report the diagnostics without touching the ledger.
+    if (parsed.events.length === 0) return report({ inserted: 0, deduplicated: 0 });
+
+    // Edge guard (the `importHoldings` precedent): import requires an existing
+    // account the caller owns. A missing/foreign account is reported, not thrown
+    // — getPortfolio only returns the caller's own accounts, so a foreign id
+    // simply isn't found.
+    const repo = await getRepository();
+    const { accounts } = await repo.getPortfolio(uid);
+    if (!accounts.some((a) => a.accountId === input.accountId)) {
+      return report({
+        inserted: 0,
+        deduplicated: 0,
+        warnings: [
+          ...diag.warnings,
+          `Account ${input.accountId} was not found — nothing imported. Create or select the account first.`,
+        ],
+      });
+    }
+
+    const events = parsed.events.map((e) => ({
+      ...e,
+      accountId: input.accountId,
+      source: "file" as const,
+    }));
+    const ingest = await repo.ingestLedgerEvents(events, uid);
+    return report({
+      inserted: ingest.inserted,
+      deduplicated: ingest.deduplicated,
+      // Surface any ingest-level rejections beside the parse-level ones.
+      extraParseErrors: ingest.errors.map((e) => ({ line: null, reason: e.reason })),
+    });
   },
 });

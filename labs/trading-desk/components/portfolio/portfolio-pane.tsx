@@ -27,7 +27,7 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { Plus, Upload, FileText, RefreshCw, Receipt } from "lucide-react";
+import { Plus, Upload, FileText, RefreshCw, Receipt, FileUp } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
 import { useResource } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
@@ -38,6 +38,10 @@ import { AccountSection } from "./account-section";
 import { AddAccountDialog, type NewAccountDraft } from "./add-account-dialog";
 import { ImportCsvDialog, type ImportSubmit } from "./import-csv-dialog";
 import { ImportPdfDialog } from "./import-pdf-dialog";
+import {
+  ImportTransactionsDialog,
+  type TransactionImportSubmit,
+} from "./import-transactions-dialog";
 import {
   AddTransactionDialog,
   type NewLedgerEvent,
@@ -76,6 +80,7 @@ export function PortfolioPane({
   const [addTransactionOpen, setAddTransactionOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importPdfOpen, setImportPdfOpen] = useState(false);
+  const [importTxnOpen, setImportTxnOpen] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(
     undefined,
   );
@@ -192,6 +197,22 @@ export function PortfolioPane({
     [session, refetchAccounts, fetchPrices],
   );
 
+  const handleImportTransactions = useCallback(
+    async (submit: TransactionImportSubmit) => {
+      try {
+        await session.sendAction("importTransactions", submit);
+        // An import writes ledger events AND recomputes derived basis on the
+        // affected holdings, so refetch both the ledger and the accounts.
+        refetchLedger();
+        refetchAccounts();
+        await fetchPrices();
+      } catch (err) {
+        console.error("[trading-desk] importTransactions failed", err);
+      }
+    },
+    [session, refetchLedger, refetchAccounts, fetchPrices],
+  );
+
   const handleRecordTransaction = useCallback(
     async (event: NewLedgerEvent) => {
       try {
@@ -296,6 +317,24 @@ export function PortfolioPane({
           }
         >
           <FileText className="h-3 w-3" aria-hidden /> Import PDF
+        </button>
+        <button
+          type="button"
+          onClick={() => setImportTxnOpen(true)}
+          disabled={accounts.length === 0}
+          className={cn(
+            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
+            accounts.length === 0
+              ? "cursor-not-allowed opacity-50"
+              : "hover:bg-[color:var(--c-surface-2)]",
+          )}
+          title={
+            accounts.length === 0
+              ? "Add an account first"
+              : "Import a transaction file (OFX/QFX/QBO)"
+          }
+        >
+          <FileUp className="h-3 w-3" aria-hidden /> Import transactions
         </button>
         <button
           type="button"
@@ -429,6 +468,16 @@ export function PortfolioPane({
         onSubmit={(submit) => {
           setSelectedAccountId(submit.accountId);
           void handleImport(submit);
+        }}
+      />
+      <ImportTransactionsDialog
+        open={importTxnOpen}
+        onClose={() => setImportTxnOpen(false)}
+        accounts={accounts}
+        defaultAccountId={selectedAccountId ?? accounts[0]?.accountId}
+        onSubmit={(submit) => {
+          setSelectedAccountId(submit.accountId);
+          void handleImportTransactions(submit);
         }}
       />
       <AddTransactionDialog
