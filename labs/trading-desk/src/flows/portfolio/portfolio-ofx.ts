@@ -126,6 +126,15 @@ function tradeDateOf(invtran: OfxNode | null): string | null {
   return ofxDateToIso(invtran?.DTTRADE ?? invtran?.DTPOSTED);
 }
 
+/** Read a transaction's `FITID`, treating a blank/absent id as null. An empty
+ *  `<FITID>` must NOT become `externalId: ""` — every blank-id row in the same
+ *  account/file would then collide on the `(account, source, external_id)` dedup
+ *  and drop unrelated trades. Null lets those rows dedup by fingerprint instead. */
+function fitidOf(node: OfxNode | null): string | null {
+  const id = node ? str(node.FITID) : null;
+  return id === null || id === "" ? null : id;
+}
+
 /** Sum the optional `COMMISSION` + `FEES` legs into a single fee, or null when
  *  neither is present. */
 function feeOf(node: OfxNode): number | null {
@@ -210,7 +219,7 @@ function baseEvent(
     externalIdSuffix?: string;
   },
 ): FileLedgerEvent {
-  const fitid = invtran ? str(invtran.FITID) : null;
+  const fitid = fitidOf(invtran);
   const externalId =
     fitid === null ? null : `${fitid}${fields.externalIdSuffix ?? ""}`;
   return {
@@ -235,7 +244,7 @@ function baseEvent(
 function requireTradeDate(ctx: Ctx, invtran: OfxNode | null, kind: string): string | null {
   const date = tradeDateOf(invtran);
   if (date === null) {
-    const fitid = invtran ? str(invtran.FITID) : null;
+    const fitid = fitidOf(invtran);
     ctx.warnings.push(
       `A ${kind} transaction${fitid ? ` (${fitid})` : ""} has no usable trade date — skipped.`,
     );
@@ -355,6 +364,17 @@ function handleIncome(ctx: Ctx, agg: OfxNode): void {
   const ticker = resolveTicker(ctx, obj(agg.SECID));
   const incomeType = str(agg.INCOMETYPE);
   const type = incomeType === "INTEREST" ? "interest" : "dividend";
+  // A row with no `TOTAL` has no cash amount to record. Recording it as $0 would
+  // understate dividend/interest history AND, if it carries a FITID, dedup away a
+  // later corrected re-import on the `(source, external_id)` index — skip + warn.
+  const amount = num(agg.TOTAL);
+  if (amount === null) {
+    const fitid = fitidOf(invtran);
+    ctx.warnings.push(
+      `An income transaction${fitid ? ` (${fitid})` : ""} has no amount (TOTAL) — skipped.`,
+    );
+    return;
+  }
   ctx.events.push(
     baseEvent(ctx, invtran, {
       type,
@@ -365,7 +385,7 @@ function handleIncome(ctx: Ctx, agg: OfxNode): void {
       // Preserve the file's sign: income is normally positive (cash in), but a
       // dividend reversal / correction is a real negative — don't `abs` it into
       // a phantom positive dividend.
-      amount: num(agg.TOTAL) ?? 0,
+      amount,
       fee: null,
       basisUnknown: null,
     }),
@@ -464,6 +484,16 @@ function handleCashCharge(ctx: Ctx, agg: OfxNode): void {
   const invtran = obj(agg.INVTRAN);
   const tradeDate = requireTradeDate(ctx, invtran, "fee");
   if (tradeDate === null) return;
+  // Same no-amount rule as income/cash-bank: a charge with no `TOTAL` is a $0
+  // no-op that also blocks a later corrected re-import via the FITID index.
+  const total = num(agg.TOTAL);
+  if (total === null) {
+    const fitid = fitidOf(invtran);
+    ctx.warnings.push(
+      `A fee transaction${fitid ? ` (${fitid})` : ""} has no amount (TOTAL) — skipped.`,
+    );
+    return;
+  }
   ctx.events.push(
     baseEvent(ctx, invtran, {
       type: "fee",
@@ -471,7 +501,7 @@ function handleCashCharge(ctx: Ctx, agg: OfxNode): void {
       ticker: resolveTicker(ctx, obj(agg.SECID)),
       quantity: null,
       unitPrice: null,
-      amount: -Math.abs(num(agg.TOTAL) ?? 0),
+      amount: -Math.abs(total),
       fee: null,
       basisUnknown: null,
     }),
@@ -485,7 +515,18 @@ function handleCashCharge(ctx: Ctx, agg: OfxNode): void {
 function handleBankTran(ctx: Ctx, agg: OfxNode): void {
   const stmt = obj(agg.STMTTRN);
   if (stmt === null) return;
-  const amount = num(stmt.TRNAMT) ?? 0;
+  // A cash movement with no parseable `TRNAMT` is a $0 no-op (and, with a FITID,
+  // would block a later corrected re-import via the external-id index) — and the
+  // amount sign also decides deposit vs withdrawal, so a missing one isn't even
+  // classifiable. Skip + warn rather than materialize it.
+  const amount = num(stmt.TRNAMT);
+  if (amount === null) {
+    const id = fitidOf(stmt);
+    ctx.warnings.push(
+      `A cash (INVBANKTRAN) transaction${id ? ` (${id})` : ""} has no amount (TRNAMT) — skipped.`,
+    );
+    return;
+  }
   const trnType = (str(stmt.TRNTYPE) ?? "").toUpperCase();
   let type: LedgerEventInput["type"];
   if (trnType === "INT") type = "interest";
@@ -495,13 +536,13 @@ function handleBankTran(ctx: Ctx, agg: OfxNode): void {
   else type = "withdrawal";
   const tradeDate = ofxDateToIso(stmt.DTPOSTED);
   if (tradeDate === null) {
-    const id = str(stmt.FITID);
+    const id = fitidOf(stmt);
     ctx.warnings.push(
       `A cash (INVBANKTRAN) transaction${id ? ` (${id})` : ""} has no usable posted date — skipped.`,
     );
     return;
   }
-  const fitid = str(stmt.FITID);
+  const fitid = fitidOf(stmt);
   ctx.events.push({
     type,
     tradeDate,
@@ -616,11 +657,15 @@ export async function parseOfxTransactions(content: string): Promise<OfxParseRes
     }
   }
 
+  // De-dupe by ACCTID: a single brokerage account can legitimately arrive as
+  // several `INVSTMTRS` blocks (split statement responses). Only DISTINCT source
+  // accounts pose the cross-account-attribution / FITID-collision risk.
+  const distinctAccountIds = [...new Set(fileAccountIds)];
   if (fileAccountIds.length === 0) {
     ctx.warnings.push(
       "No investment statement (<INVSTMTRS>) found — this OFX file has no investment transactions to import.",
     );
-  } else if (fileAccountIds.length > 1) {
+  } else if (distinctAccountIds.length > 1) {
     // The file spans multiple brokerage accounts, but import targets ONE chosen
     // account. Merging them would mis-attribute one account's basis to another
     // AND lose data: OFX FITIDs are only account-scoped, so the same FITID in two
@@ -632,7 +677,7 @@ export async function parseOfxTransactions(content: string): Promise<OfxParseRes
       unresolvedSecurities: [],
       skipped: [],
       warnings: [
-        `This file contains ${fileAccountIds.length} accounts (${fileAccountIds.join(", ")}). ` +
+        `This file contains ${distinctAccountIds.length} accounts (${distinctAccountIds.join(", ")}). ` +
           "Nothing was imported — export and import one account at a time so each account's transactions (and cost basis) stay correctly attributed.",
       ],
     };

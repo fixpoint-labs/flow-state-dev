@@ -317,6 +317,48 @@ ${body}
     expect(result.events).toHaveLength(0);
     expect(result.warnings.some((w) => /unknown direction/i.test(w))).toBe(true);
   });
+
+  it("normalizes a blank FITID to a null externalId (so blank-id rows dedup by fingerprint)", async () => {
+    // Two distinct buys, both with an empty <FITID></FITID> (ofx-js parses an
+    // empty XML leaf to ""). A blank id must NOT become externalId "" — that
+    // would collide on (account, source, externalId) and drop the second buy.
+    // Null lets each dedup by its own fingerprint. (Written as 2.x XML because
+    // SGML can't tokenize a zero-length leaf tag.)
+    const file = `<?xml version="1.0"?>
+<?OFX OFXHEADER="200" VERSION="200"?>
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD</CURDEF>
+<INVACCTFROM><ACCTID>X</ACCTID></INVACCTFROM><INVTRANLIST>
+<BUYSTOCK><INVBUY><INVTRAN><FITID></FITID><DTTRADE>20260105</DTTRADE></INVTRAN><SECID><UNIQUEID>037833100</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID><UNITS>10</UNITS><UNITPRICE>150</UNITPRICE><TOTAL>-1500</TOTAL></INVBUY><BUYTYPE>BUY</BUYTYPE></BUYSTOCK>
+<BUYSTOCK><INVBUY><INVTRAN><FITID></FITID><DTTRADE>20260106</DTTRADE></INVTRAN><SECID><UNIQUEID>037833100</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID><UNITS>5</UNITS><UNITPRICE>160</UNITPRICE><TOTAL>-800</TOTAL></INVBUY><BUYTYPE>BUY</BUYTYPE></BUYSTOCK>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events).toHaveLength(2);
+    expect(result.events.every((e) => e.externalId === null)).toBe(true);
+  });
+
+  it("skips an INCOME row with no amount (TOTAL) instead of recording a phantom $0 dividend", async () => {
+    // A $0 dividend understates history AND, with a FITID, would dedup away a
+    // later corrected re-import on the external-id index.
+    const result = await parseOfxTransactions(
+      wrap(
+        "<INCOME><INVTRAN><FITID>DIV-NOAMT<DTTRADE>20260120</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><INCOMETYPE>DIV</INCOME>",
+      ),
+    );
+    expect(result.events).toHaveLength(0);
+    expect(result.warnings.some((w) => w.includes("DIV-NOAMT") && /no amount/i.test(w))).toBe(true);
+  });
+
+  it("skips an INVBANKTRAN with no amount (TRNAMT) instead of materializing a $0 cash event", async () => {
+    const result = await parseOfxTransactions(
+      wrap(
+        "<INVBANKTRAN><STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260103<FITID>CASH-NOAMT<NAME>ACH</STMTTRN><SUBACCTFUND>CASH</INVBANKTRAN>",
+      ),
+    );
+    expect(result.events).toHaveLength(0);
+    expect(result.warnings.some((w) => w.includes("CASH-NOAMT") && /no amount/i.test(w))).toBe(
+      true,
+    );
+  });
 });
 
 describe("parseOfxTransactions — canonical-amount + sign edge cases", () => {
@@ -386,6 +428,24 @@ VERSION:102
         (w) => w.includes("ACCT-A") && w.includes("ACCT-B") && /Nothing was imported/i.test(w),
       ),
     ).toBe(true);
+  });
+
+  it("imports split-statement blocks that repeat the SAME account id (not a multi-account refusal)", async () => {
+    // Two INVSTMTRS blocks, ONE account (ACCT-A) — a split statement response.
+    // No cross-account attribution risk, so both buys import (distinct-account
+    // count is 1, not 2).
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1>
+<INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVACCTFROM><ACCTID>ACCT-A</INVACCTFROM><INVTRANLIST><BUYSTOCK><INVBUY><INVTRAN><FITID>A1<DTTRADE>20260105</INVTRAN><SECID><UNIQUEID>1<UNIQUEIDTYPE>CUSIP</SECID><UNITS>1<UNITPRICE>1<TOTAL>-1</INVBUY><BUYTYPE>BUY</BUYSTOCK></INVTRANLIST></INVSTMTRS></INVSTMTTRNRS>
+<INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVACCTFROM><ACCTID>ACCT-A</INVACCTFROM><INVTRANLIST><BUYSTOCK><INVBUY><INVTRAN><FITID>A2<DTTRADE>20260106</INVTRAN><SECID><UNIQUEID>2<UNIQUEIDTYPE>CUSIP</SECID><UNITS>2<UNITPRICE>2<TOTAL>-4</INVBUY><BUYTYPE>BUY</BUYSTOCK></INVTRANLIST></INVSTMTRS></INVSTMTTRNRS>
+</INVSTMTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events).toHaveLength(2);
+    expect(result.events.map((e) => e.externalId).sort()).toEqual(["A1", "A2"]);
+    expect(result.warnings.some((w) => /Nothing was imported/i.test(w))).toBe(false);
   });
 
   it("skips a calendar-invalid date (e.g. month 13) rather than passing 2026-13-40 to the DB", async () => {
