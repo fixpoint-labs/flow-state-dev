@@ -19,3 +19,4 @@ Where the three top-level app folders sit:
 | Directory | Purpose |
 |-----------|---------|
 | [`trading-desk/`](trading-desk) | A multi-phase AI research desk for a single stock: parallel analyst fan-out → bull/bear debate → trader proposal → risk debate → portfolio manager rating + portfolio-fit verdict, over live market data and a real imported portfolio. Research only — not financial advice. |
+| [`knowledge-base/`](knowledge-base) | Incubation for FIX-813: an Open Knowledge Format (OKF) v0.1 import/export adapter and a thin `knowledgeBase` capability over the resource graph. Validates a portable, vendor-neutral on-disk knowledge representation before any public-package graduation. |

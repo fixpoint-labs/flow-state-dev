@@ -1,0 +1,29 @@
+{
+  "name": "@flow-state-dev/knowledge-base",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Incubation lab: OKF (Open Knowledge Format) interchange adapter + knowledgeBase capability over the resource graph (FIX-813). Not a published package.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root . --passWithNoTests",
+    "test:watch": "vitest --root . --passWithNoTests",
+    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
+    "okf:smoke": "tsx scripts/visualize-smoke.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "^3.0.53",
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
+    "gray-matter": "^4.0.3",
+    "yaml": "^2.9.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
