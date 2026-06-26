@@ -158,13 +158,18 @@ Each constructor accepts the same config as `search()` minus `provider`.
 
 ## Provider-native search on the generator
 
-For search executed inside the model provider (grounded responses with inline citations), use the `search` field on the generator instead of an external tool:
+The generator's `search` field is a different system from `tools.search`. It turns on the model provider's built-in web search (Anthropic, OpenAI, or Google), which runs inside the provider and returns grounded responses with inline citations, instead of calling a third-party search API over HTTP the way `tools.search` does:
 
 ```ts
 generator({ search: true });
 ```
 
-See the generator docs in `@flow-state-dev/core` for details.
+The two systems don't share configuration:
+
+- The `tier` knob (`fast`/`balanced`/`deep`) documented above is `tools.search`-only. It has no effect on generator-native search.
+- `searchDepth` exists in both but means different things. On `tools.search` it's `"basic" | "advanced"` (how much content is pulled per result). On the generator it's `"low" | "medium" | "high"` (a context-size hint that maps to OpenAI's `searchContextSize`).
+
+Use `tools.search` when you need a specific search provider or portability across providers. Use generator-native search when you want the provider's built-in grounding with minimal setup. See [Web search](/docs/fundamentals/blocks#web-search) for the generator's full field reference and per-provider mapping.
 
 ## Next steps
 

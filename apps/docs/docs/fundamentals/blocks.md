@@ -175,7 +175,7 @@ See also: [`tool_output` items](../streaming/items.md), [emitting items](../stre
 
 #### Web search
 
-Generators have first-class support for provider-native web search. Add `search: true` and the framework handles the rest — detecting your provider, creating the right search tool, and returning grounded results with source citations:
+Generators have built-in support for *generator-native web search*: web search the model provider runs server-side, separate from the standalone [`tools.search`](/docs/tools/search) tool. Add `search: true` and the framework handles the rest, detecting your provider, creating the right search tool, and returning grounded results with source citations:
 
 ```ts
 const agent = generator({
@@ -219,7 +219,23 @@ All config fields are optional and provider-normalized. The framework maps them 
 
 Fields that a provider doesn't support are silently ignored. This means you can write `search: { maxUses: 3, searchDepth: "high" }` and it works across Anthropic and OpenAI — each provider picks up the fields it understands.
 
+`searchDepth` here takes `"low" | "medium" | "high"` and maps to OpenAI's `searchContextSize`, a hint for how much search context the model pulls in. Anthropic and Google native search have no depth knob, so they ignore it.
+
 Search requires your model resolver to receive the provider object directly (not just a model factory function). See [Custom Model Resolver](/docs/advanced/custom-model-resolver#provider-search-tools) for setup details.
+
+##### Which search: generator-native or `tools.search`?
+
+There are two separate search systems, and they do not share configuration:
+
+- **Generator-native search** (this section) runs inside the model provider. The provider decides when to search and executes it server-side, so you get grounded answers with citations and no separate API key. Configured by `search` / `GeneratorSearchConfig`, tuned with `searchDepth` (`"low" | "medium" | "high"`, OpenAI only).
+- **[`tools.search`](/docs/tools/search)** is a standalone tool that calls a third-party search API (Exa, Tavily, Serper, and others) over HTTP and hands the results back to the model. Configured separately, with its own `tier` (`"fast" | "balanced" | "deep"`) and its own `searchDepth` (`"basic" | "advanced"`).
+
+Reach for generator-native search when you want the provider's built-in grounding with minimal setup. Reach for `tools.search` when you need a specific search provider, portability across providers, or a depth the model itself can vary per query.
+
+Two things that look shared but are not:
+
+- The `tier` knob is `tools.search`-only. It has no effect on generator-native search.
+- `searchDepth` exists in both, with different values and different meanings: generator-native `searchDepth` (`"low" | "medium" | "high"`) is the OpenAI context-size hint above; `tools.search` `searchDepth` (`"basic" | "advanced"`) controls how much content is pulled per result.
 
 #### Provider tools
 
