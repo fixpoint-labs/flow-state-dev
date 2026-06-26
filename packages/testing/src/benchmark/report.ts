@@ -104,6 +104,10 @@ function aggregate(
     runs: cells.length,
     successfulRuns: successful.length,
     costUsd: round(costUsd),
+    // Divide the UNROUNDED sum (not the 4-dp `costUsd` above): a real per-cell
+    // cost below $0.00005 would round the total to 0 and drop the cost signal.
+    // 6 dp keeps the headroom while staying clean in the JSON report.
+    costPerTaskUsd: cells.length > 0 ? round(costUsd / cells.length, 6) : 0,
     meanLatencyMs: round(meanLatencyMs, 1),
     codeScores
   };
@@ -252,13 +256,23 @@ function fmtDelta(delta: number): string {
 function rankingRows(report: BenchmarkReport): string[][] {
   const lookup = statLookup(report);
   const baselines = new Set(report.baselineSubjects);
-  const header = ["rank", "subject", "mean", "Δ vs baseline", "credible", "success"];
+  // `$/task` is the per-cell cost (subject total / cells), so it's comparable
+  // regardless of task or run count; `score/$` = mean / $/task is the quality-per-
+  // dollar figure that makes a cheap-orchestrated vs expensive-single comparison
+  // legible (a small model that nearly matches a big one at a fraction of the cost
+  // wins here even when it loses on mean). Shown "—" when cost wasn't recorded.
+  // Reads the precise `costPerTaskUsd` (not the 4-dp `costUsd`/runs) so sub-cent
+  // costs don't round to 0 and read as "no cost data".
+  const header = ["rank", "subject", "mean", "Δ vs baseline", "credible", "success", "$/task", "score/$"];
   const rows: string[][] = [header];
 
   (report.rankings["overall"] ?? []).forEach((r, i) => {
     const overall = lookup.get(`${r.subject}::overall`);
     const success = overall ? `${overall.successfulRuns}/${overall.runs}` : "—";
     const isBaseline = baselines.has(r.subject);
+    const costPerTask = overall ? overall.costPerTaskUsd : 0;
+    const costCell = costPerTask > 0 ? `$${costPerTask.toFixed(4)}` : "—";
+    const scorePerDollar = costPerTask > 0 ? (r.mean / costPerTask).toFixed(0) : "—";
     rows.push([
       String(i + 1),
       isBaseline ? `${r.subject} (baseline)` : r.subject,
@@ -266,6 +280,8 @@ function rankingRows(report: BenchmarkReport): string[][] {
       isBaseline ? "—" : fmtDelta(r.deltaVsBaseline),
       isBaseline ? "—" : r.credible ? "yes" : "no",
       success,
+      costCell,
+      scorePerDollar,
     ]);
   });
 

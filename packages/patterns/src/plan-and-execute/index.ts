@@ -301,15 +301,15 @@ export const executorOutputSchema = z.object({
  */
 function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
   const basePrompt = [
-    "You are a focused task executor.",
-    "Given a specific task, produce a substantive finding in 2-4 sentences with specific facts or insights.",
-    "Use the web to find information if needed, you have search capabilities available to you.",
-    "If prior task results are provided, build directly on that context — reuse their findings and sources rather than re-discovering what an upstream task already established.",
+    "You are a focused task executor completing one step of a larger plan.",
+    "Produce the complete result this step requires. Match the depth to the task: show full working for calculations or logic, give the full text for a draft, critique, or spec, list every item for an enumeration. Be concise only when the step is genuinely simple.",
+    "Most steps — reasoning, math, critique, planning, writing — are answered directly from your own knowledge. When a step needs external or current facts and web search is available to you, use it and record the sources; otherwise answer directly and leave sources empty.",
+    "If prior task results are provided, build directly on them — reuse their conclusions and sources rather than redoing upstream work.",
     "Return a JSON object with:",
-    "- summary: your substantive finding",
-    "- success: true if you found meaningful information, false if the information was unavailable or missing",
-    "- reason: (only if success is false) a brief explanation of why the task could not be completed",
-    "- sources: list of { title?, url } for the web sources that ACTUALLY informed your summary. Include sources reused from prior tasks if they shaped your answer. Do NOT list every URL the search returned — only the ones you specifically leveraged.",
+    "- summary: the complete result of this step — the actual answer or work, not a description of it",
+    "- success: true if you completed the step, false only if it genuinely could not be done",
+    "- reason: (only if success is false) a brief explanation",
+    "- sources: an array of { title?, url } objects, one entry per web source you actually relied on. Leave it an empty array for steps answered without external lookup — never invent sources.",
   ].join("\n");
 
   return generator({
@@ -476,9 +476,8 @@ export function buildSynthesizerUserPrompt(input: SynthesizerPromptInput): strin
     return [
       `Goal: ${input.goal}`,
       ``,
-      `No research tasks completed. The plan encountered an error on the first task: ${firstError}`,
-      `Downstream tasks were skipped as a result.`,
-      `Acknowledge that you were unable to gather findings for this goal and briefly explain why based on the error above.`,
+      `The planned steps did not complete (first error: ${firstError}).`,
+      `Answer the goal directly and completely from your own knowledge instead. Produce the full deliverable it asks for — do not mention the failed plan or ask for more input.`,
     ].join("\n");
   }
 
@@ -513,7 +512,7 @@ export function buildSynthesizerUserPrompt(input: SynthesizerPromptInput): strin
           .join("\n")}`
       : "";
 
-  return `Goal: ${input.goal}\n\nFindings:\n\n${findings}${sourcesSection}`;
+  return `Goal: ${input.goal}\n\nStep results:\n\n${findings}${sourcesSection}`;
 }
 
 function createDefaultSynthesizer(config: {
@@ -528,13 +527,12 @@ function createDefaultSynthesizer(config: {
   itemVisibility?: ItemVisibility;
 }) {
   const basePrompt = [
-    "You are synthesizing findings from a structured multi-step research process.",
-    "Write a clear, direct final answer to the original goal.",
-    "Integrate the findings into a coherent narrative — do not just summarize each step.",
-    "Be specific and draw on the concrete facts gathered.",
-    "When grounding a specific claim in a source, cite it inline as a Markdown link, e.g. [title](https://...). Don't link every sentence — only the ones that actually depend on a source.",
-    "End the response with a 'Sources' section listing only the URLs you actually relied on to construct the answer. Do not aggregate every URL that was searched — only the ones that contributed. Format each line as '- [Title](URL)'.",
-    "If no findings are available, briefly explain that the research could not be completed and why, without asking the user for more information.",
+    "You are producing the final answer to the original goal from the results of a multi-step plan.",
+    "Write the complete deliverable the goal asks for, in full: if it asks to solve a problem, give the full solution with its reasoning; if it asks for a plan, recommendation, critique, or spec, produce exactly that, completely.",
+    "Integrate the step results into one coherent answer — do not just list or summarize each step.",
+    "Preserve the substance the steps produced: keep the actual computations, assignments, arguments, and items rather than abstracting them away.",
+    "Only when the steps drew on external sources: cite them inline as Markdown links and end with a 'Sources' section listing just the URLs you relied on, each as '- [Title](URL)'. If the answer used no external sources — as most reasoning, critique, and planning goals do — include no Sources section.",
+    "Always produce the best complete answer you can from the available step results. Never say the work could not be completed, and never ask for more input.",
   ].join("\n");
 
   return generator({

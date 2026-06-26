@@ -26,7 +26,9 @@ interface ModelPrice {
 const PRICE_TABLE: Array<{ key: string; price: ModelPrice }> = [
   { key: "gpt-5.4-mini", price: { inputPer1M: 0.2, outputPer1M: 0.8 } },
   { key: "claude-haiku-4-5", price: { inputPer1M: 0.8, outputPer1M: 4.0 } },
-  { key: "claude-haiku", price: { inputPer1M: 0.8, outputPer1M: 4.0 } }
+  { key: "claude-haiku", price: { inputPer1M: 0.8, outputPer1M: 4.0 } },
+  { key: "claude-sonnet-4-6", price: { inputPer1M: 3.0, outputPer1M: 15.0 } },
+  { key: "claude-sonnet", price: { inputPer1M: 3.0, outputPer1M: 15.0 } }
 ];
 
 /**

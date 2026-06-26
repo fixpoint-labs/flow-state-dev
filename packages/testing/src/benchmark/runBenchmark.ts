@@ -18,7 +18,7 @@
  * a real provider under test.
  */
 import { createModelResolver } from "@flow-state-dev/core";
-import type { ModelResolver } from "@flow-state-dev/core/types";
+import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { testSequencer } from "../test-utilities/testSequencer";
 import { analyzerScorer } from "../eval/analyzerScorer";
 import { createLimiter } from "../eval/concurrency";
@@ -32,14 +32,32 @@ import type {
 import type { BenchmarkSubject, BenchmarkTask } from "@flow-state-dev/core";
 
 /**
+ * Returns a copy of `model` with provider-native web search stripped, so a
+ * block's `search: true` becomes a no-op (the generator calls
+ * `model.resolveSearchTool?.()`, which now yields `undefined`).
+ *
+ * Benchmarks disable search to hold the comparison to one variable: the suite's
+ * tasks are answerable from model knowledge, and live search would add
+ * uncontrolled cost, latency, and run-to-run variance to every cell. Exported
+ * for unit testing.
+ */
+export function withoutSearch(model: GeneratorModel): GeneratorModel {
+  return { ...model, resolveSearchTool: undefined };
+}
+
+/**
  * Builds a resolver that forces every model reference to `modelId`, wrapping the
  * default resolver. Mirrors the `fsdev run --model` override (run.ts) so the
- * benchmark holds the executor model fixed across all subjects.
+ * benchmark holds the executor model fixed across all subjects. When
+ * `disableSearch` is set, resolved models have provider-native web search
+ * stripped (see {@link withoutSearch}).
  */
-function forceModelResolver(modelId: string): ModelResolver {
+function forceModelResolver(modelId: string, disableSearch = false): ModelResolver {
   const base = createModelResolver();
-  const resolver = ((_modelId: string, blockName?: string, options?: unknown) =>
-    base(modelId, blockName, options as never)) as ModelResolver;
+  const resolver = ((_modelId: string, blockName?: string, options?: unknown) => {
+    const model = base(modelId, blockName, options as never);
+    return disableSearch ? withoutSearch(model) : model;
+  }) as ModelResolver;
   resolver.resolveId = (_id: string, options?: { preferProvider?: string | string[] }) =>
     base.resolveId(modelId, options);
   return resolver;
@@ -87,19 +105,20 @@ export async function runBenchmark(
   // it serves every subject; otherwise each subject is forced to its own model
   // (`subject.model`) or the run's `model`. Per-subject forcing is what lets one
   // run mix cheap-model patterns with a pure expensive-model baseline.
+  const disableSearch = config.disableSearch ?? false;
   const resolverCache = new Map<string, ModelResolver>();
   const resolverForSubject = (subject: BenchmarkSubject): ModelResolver => {
     if (config.modelResolver !== undefined) return config.modelResolver;
     const subjectModel = subject.model ?? model;
     let resolver = resolverCache.get(subjectModel);
     if (resolver === undefined) {
-      resolver = forceModelResolver(subjectModel);
+      resolver = forceModelResolver(subjectModel, disableSearch);
       resolverCache.set(subjectModel, resolver);
     }
     return resolver;
   };
 
-  const judgeResolver = config.judgeResolver ?? forceModelResolver(judgeModelId);
+  const judgeResolver = config.judgeResolver ?? forceModelResolver(judgeModelId, disableSearch);
 
   // The cost budget relies on the pricing table; an unpriced model estimates to
   // $0 and never trips `maxCostUsd`. Warn so a budget isn't silently ignored —

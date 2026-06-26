@@ -16,6 +16,28 @@ import {
   defineBenchmark,
   runBenchmark,
 } from "../src/benchmark";
+import { withoutSearch } from "../src/benchmark/runBenchmark";
+
+describe("withoutSearch", () => {
+  it("strips resolveSearchTool so `search: true` no-ops, preserving generate/stream", () => {
+    const base = {
+      modelId: "anthropic/claude-haiku-4-5",
+      generate: async () => ({ text: "x" }),
+      stream: async function* () {},
+      resolveSearchTool: () => ({ name: "web_search", tool: {} }),
+    } as unknown as GeneratorModel;
+
+    const stripped = withoutSearch(base);
+
+    // The lever: the generator calls `model.resolveSearchTool?.()`, which now
+    // yields undefined → no provider search tool is attached.
+    expect(stripped.resolveSearchTool).toBeUndefined();
+    // Everything else the resolver returns must survive untouched.
+    expect(stripped.modelId).toBe("anthropic/claude-haiku-4-5");
+    expect(stripped.generate).toBe(base.generate);
+    expect(stripped.stream).toBe(base.stream);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Benchmark engine tests. All execution goes through injected mock resolvers —

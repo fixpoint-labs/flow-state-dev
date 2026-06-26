@@ -39,4 +39,9 @@ export default defineBenchmark({
   // k repetitions per (subject, task); deltas below pooled stddev are flagged
   // not-credible in the report.
   runs: 3,
+  // The task suite is answerable from model knowledge — none of it needs live
+  // web data. Strip provider-native search so the comparison isolates the
+  // coordination shape (and model), not search latency, cost, or result drift.
+  // `fsdev benchmark --search` re-enables it for an ad-hoc search-augmented run.
+  disableSearch: true,
 });
