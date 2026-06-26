@@ -68,17 +68,32 @@ function asJsonValue(value: unknown): JsonValue {
 }
 
 /**
- * FIX-751: the state delta a mutation threads to `onResourceChanged` as its 4th
- * arg, used by the reactive dispatcher to build the `ResourceChange` payload.
+ * The internal mutation-seam change vocabulary, also the FIX-739 client
+ * `resource_change` wire format. Distinct from the author-facing *reactive*
+ * kinds (`created` / `deleted` / `stateUpdated` / `contentUpdated`): a content
+ * write fires the seam as `"updated"` with a {@link ResourceChangeDelta.contentWrite}
+ * marker, and the reactive dispatcher maps it to the `contentUpdated` reactive
+ * kind. Keeping this vocabulary stable means content reactions add no client
+ * wire change.
+ */
+export type ResourceSeamChangeType = "created" | "updated" | "deleted";
+
+/**
+ * FIX-751: the change descriptor a mutation threads to `onResourceChanged` as
+ * its 4th arg, used by the reactive dispatcher to build the reactive payload.
  * `state` is the post-mutation state (omit for `deleted`); `prevState` the
  * pre-mutation state (omit for `created`); `evicted` is `true` only for a
- * capacity-driven removal. Declared once here and imported type-only by the
- * dispatcher and the execution context so the shape can't drift.
+ * capacity-driven removal. FIX-843: `contentWrite` is set by `writeContent()`
+ * (which carries no state delta) so the dispatcher routes to
+ * `reactTo.contentUpdated` rather than `reactTo.stateUpdated`. Declared once here
+ * and imported type-only by the dispatcher and the execution context so the
+ * shape can't drift.
  */
 export interface ResourceChangeDelta {
   state?: JsonObject;
   prevState?: JsonObject;
   evicted?: boolean;
+  contentWrite?: boolean;
 }
 
 function updateObjectState(
@@ -457,9 +472,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
      */
     onResourceChanged?: (
       resourcePath: string,
-      changeType: "created" | "updated" | "deleted",
+      changeType: ResourceSeamChangeType,
       projection?: { delta: JsonValue },
-      // FIX-751: state delta for the reactive dispatcher (see ResourceChangeDelta).
+      // FIX-751: change descriptor for the reactive dispatcher (see ResourceChangeDelta).
       // Awaitable so reactive blocks run inline within the mutating turn.
       change?: ResourceChangeDelta
     ) => void | Promise<void>;
@@ -713,11 +728,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async writeContent(content: string): Promise<void> {
         await options.persistResourceContentKey(storageKey, content);
-        // Content-only change carries no state delta. Fire the seam so the
-        // FIX-739 client projection refreshes, but pass no 4th arg: the reactive
-        // dispatcher skips content-only changes (reactive bindings react to state
-        // mutations, not content writes).
-        await options.onResourceChanged?.(storageKey, "updated");
+        // A content write carries no state delta. Fire the seam as "updated" (so
+        // the FIX-739 client projection refreshes unchanged) with a `contentWrite`
+        // marker, which the reactive dispatcher maps to `reactTo.contentUpdated`
+        // (FIX-843). Persist runs first, so the reaction reads the fresh body.
+        await options.onResourceChanged?.(storageKey, "updated", undefined, { contentWrite: true });
       }
     };
 
@@ -1257,12 +1272,12 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         }
 
         await options.persistResourceContentKey(storageKey, content);
-        // Content-only change carries no state delta. Fire the seam so the
-        // FIX-739 client projection refreshes, but pass no 4th arg: the reactive
-        // dispatcher skips content-only changes (reactive bindings react to state
-        // mutations, not content writes). Mirrors the collection-instance content
-        // path (FIX-756 parity).
-        await options.onResourceChanged?.(storageKey, "updated");
+        // A content write carries no state delta. Fire the seam as "updated" (so
+        // the FIX-739 client projection refreshes unchanged) with a `contentWrite`
+        // marker, which the reactive dispatcher maps to `reactTo.contentUpdated`
+        // (FIX-843). Persist runs first, so the reaction reads the fresh body.
+        // Mirrors the collection-instance content path (FIX-756 parity).
+        await options.onResourceChanged?.(storageKey, "updated", undefined, { contentWrite: true });
       }
     };
 
@@ -1316,7 +1331,7 @@ async function evictInstance(
   // delete. Omitted by callers that don't wire the seam (mock registries).
   onResourceChanged?: (
     resourcePath: string,
-    changeType: "created" | "updated" | "deleted",
+    changeType: ResourceSeamChangeType,
     projection?: { delta: JsonValue },
     change?: ResourceChangeDelta
   ) => void | Promise<void>

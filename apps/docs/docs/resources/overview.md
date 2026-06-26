@@ -93,6 +93,8 @@ execute: async (input, ctx) => {
 }
 ```
 
+Content has a reactive hook too: bind `reactTo.contentUpdated` to run a block after a content write — for example, re-summarizing the body. See [Reacting to content changes](/docs/resources/reactive-blocks#reacting-to-content-changes).
+
 ### Templates
 
 Use `render` to interpolate state into content templates:

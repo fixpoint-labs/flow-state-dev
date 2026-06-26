@@ -403,6 +403,8 @@ That batched-at-completion default is the right call for most resources. It avoi
 - **Single resources** announce only when `live: true`. State writes carry the projected delta; content writes don't (content has no state projection), so a content write falls back to the batched refetch even on a live resource.
 - **Non-live single resources** don't stream change events at all — their state and content still load through snapshots and the content endpoint.
 
+A server-side content write can also run a `reactTo.contentUpdated` reaction. That's the in-flow reactive path — a block that runs as part of the mutating turn — separate from the client projection described here. See [Reacting to content changes](/docs/resources/reactive-blocks#reacting-to-content-changes).
+
 ### Opt-in mid-stream updates with `live: true`
 
 Some UIs need the change *now*, not at completion: a navigator that renders a memo moving through `pending → writing → published` as the agent works. For those, set `live: true` on the resource's `client` config:

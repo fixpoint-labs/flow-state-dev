@@ -55,11 +55,18 @@ export type {
   ToolCacheStore,
 } from "./blocks/tool-cache";
 export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
-export { normalizeReactiveBinding, resourceChangeSchema } from "./types/resource-change";
+export {
+  normalizeReactiveBinding,
+  resourceChangeSchema,
+  resourceContentChangeSchema,
+} from "./types/resource-change";
 export type {
   ReactiveBinding,
+  ReactiveContentBinding,
   ReactiveBindings,
+  ReactiveBindingKind,
   ResourceChange,
+  ResourceContentChange,
   ResourceChangeKind,
 } from "./types/resource-change";
 export type {

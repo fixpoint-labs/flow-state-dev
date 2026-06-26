@@ -26,10 +26,15 @@ import {
   normalizeReactiveBinding,
   buildBlockInstanceId,
   type ResourceChange,
-  type ResourceChangeKind,
+  type ResourceContentChange,
+  type ReactiveBindingKind,
 } from "@flow-state-dev/core";
 import type { ErrorItem } from "@flow-state-dev/core/items";
-import { isCollectionConfig, type ResourceChangeDelta } from "./resource-registry";
+import {
+  isCollectionConfig,
+  type ResourceChangeDelta,
+  type ResourceSeamChangeType,
+} from "./resource-registry";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import type { ExecutionContext } from "./types";
 import { executeBlock } from "../execution/executeBlock";
@@ -167,7 +172,7 @@ let reactiveDispatchSeq = 0;
  */
 export function createReactiveDispatcher(
   deps: ReactiveDispatcherDeps
-): (resourcePath: string, changeType: ResourceChangeKind, change: ResourceChangeDelta | undefined) => Promise<void> {
+): (resourcePath: string, changeType: ResourceSeamChangeType, change: ResourceChangeDelta | undefined) => Promise<void> {
   const { configs, ctxRef, controller } = deps;
   // Storage-key alias map is fixed for the dispatcher's lifetime — compute once.
   const storageKeys = resourceStorageKeys(configs);
@@ -177,30 +182,54 @@ export function createReactiveDispatcher(
     if (resolved === undefined) return;
     const { config, key } = resolved;
     const reactTo = config.reactTo;
-    const binding = reactTo?.[changeType];
-    if (binding === undefined) return;
+    if (reactTo === undefined) return;
 
-    // Content-only changes (e.g. a collection instance `writeContent`) fire the
-    // seam with no state descriptor. Reactive bindings react to state mutations,
-    // not content writes, so skip when no change payload was threaded — otherwise
-    // an `updated` binding would run with null `state`/`prevState`, misfiring
-    // `when` gates and blocks that assume real state. The FIX-739 client
-    // projection still fires for content writes independently.
+    // Every mutation seam threads a change descriptor: state mutations a full
+    // delta, content writes a `{ contentWrite: true }` marker (FIX-843). A bare
+    // fire with no descriptor carries nothing to react to — skip defensively.
     if (change === undefined) return;
+
+    // Map the internal seam vocabulary to the author-facing reactive kind. Only
+    // an "updated" seam splits by axis: a content write carries a `contentWrite`
+    // marker and routes to `contentUpdated`, otherwise to `stateUpdated`.
+    // `created` / `deleted` are existence events — they never carry the marker
+    // and keep their names. Gating the split on `"updated"` keeps the routing
+    // correct even if a future create/delete path ever threaded the marker.
+    const reactiveKind: ReactiveBindingKind =
+      changeType === "updated"
+        ? change.contentWrite === true
+          ? "contentUpdated"
+          : "stateUpdated"
+        : changeType;
+
+    const binding = reactTo[reactiveKind];
+    if (binding === undefined) return;
 
     const ctx = ctxRef.current;
     if (ctx === undefined) return;
 
-    const payload: ResourceChange = {
-      key,
-      ref: resourcePath,
-      kind: changeType,
-      state: (change?.state as JsonObject | undefined) ?? null,
-      prevState: (change?.prevState as JsonObject | undefined) ?? null,
-      evicted: change?.evicted ?? false,
-    };
+    // A content reaction gets a minimal identity payload (it `readContent()`s the
+    // fresh body); a state reaction gets the post/pre state from the delta.
+    const payload: ResourceChange | ResourceContentChange =
+      reactiveKind === "contentUpdated"
+        ? { key, ref: resourcePath, kind: "contentUpdated" }
+        : {
+            key,
+            ref: resourcePath,
+            kind: reactiveKind,
+            state: (change.state as JsonObject | undefined) ?? null,
+            prevState: (change.prevState as JsonObject | undefined) ?? null,
+            evicted: change.evicted ?? false,
+          };
 
-    const { block, when } = normalizeReactiveBinding(binding);
+    // Cast through the normalized binding shape so `when` accepts either payload
+    // union member (the runtime block/gate is the same regardless of kind).
+    const { block, when } = normalizeReactiveBinding(
+      binding as unknown as {
+        block: BlockDefinition<any, any>;
+        when?: (c: ResourceChange | ResourceContentChange) => boolean;
+      }
+    );
     if (when !== undefined && !when(payload)) return;
 
     // Cascade budget: check before running. On breach emit a diagnostic and
@@ -245,8 +274,8 @@ export function createReactiveDispatcher(
 
     controller.depth += 1;
     controller.fanout += 1;
-    // Self-describing path: which resource + change kind drove this dispatch.
-    const blockPath = `__reactive__/${resourcePath}/${changeType}#${reactiveDispatchSeq++}`;
+    // Self-describing path: which resource + reactive kind drove this dispatch.
+    const blockPath = `__reactive__/${resourcePath}/${reactiveKind}#${reactiveDispatchSeq++}`;
     // Parent the reactive block under the block that performed the mutation, so
     // it nests in the trace beneath its trigger instead of at the request root.
     const parentBlockInstanceId = deps.getTriggerInstanceId();

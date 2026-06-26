@@ -103,6 +103,7 @@ import {
   type LazyLoadOutcome,
   type ScopeLazyLoad,
   type ResourceChangeDelta,
+  type ResourceSeamChangeType,
 } from "./resource-registry";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 
@@ -1595,7 +1596,7 @@ export async function createExecutionContext<
 
     return async (
       resourcePath: string,
-      changeType: "created" | "updated" | "deleted",
+      changeType: ResourceSeamChangeType,
       projection?: { delta: unknown },
       change?: ResourceChangeDelta
     ): Promise<void> => {

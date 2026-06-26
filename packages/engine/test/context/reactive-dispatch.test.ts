@@ -14,8 +14,9 @@ import {
   defineResourceCollection,
   handler,
   resourceChangeSchema,
+  resourceContentChangeSchema,
 } from "@flow-state-dev/core";
-import type { ResourceChange } from "@flow-state-dev/core";
+import type { ResourceChange, ResourceContentChange } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { createExecutionContext, createInMemoryStores } from "../../src";
 import { createInternalResponseEmitter } from "../../src/streaming/response-emitter";
@@ -123,7 +124,7 @@ describe("reactive dispatch: updated/deleted payloads", () => {
       scope: "session",
       pattern: "files/**",
       stateSchema: fileSchema,
-      reactTo: { updated: onUpdate },
+      reactTo: { stateUpdated: onUpdate },
     });
 
     const { ctx } = await createCtx({ files });
@@ -132,7 +133,7 @@ describe("reactive dispatch: updated/deleted payloads", () => {
     await (await ns.get("a.ts")).patchState({ status: "published" });
 
     expect(seen).toHaveLength(1);
-    expect(seen[0]!.kind).toBe("updated");
+    expect(seen[0]!.kind).toBe("stateUpdated");
     expect(seen[0]!.state).toMatchObject({ status: "published" });
     expect(seen[0]!.prevState).toMatchObject({ status: "draft" });
     expect(seen[0]!.evicted).toBe(false);
@@ -169,7 +170,7 @@ describe("reactive dispatch: updated/deleted payloads", () => {
 });
 
 describe("reactive dispatch: single (non-live) resource", () => {
-  it("fires reactTo.updated on patchState of a non-live single", async () => {
+  it("fires reactTo.stateUpdated on patchState of a non-live single", async () => {
     const seen: ResourceChange[] = [];
     const onUpdate = handler({
       name: "on-single-update",
@@ -182,14 +183,14 @@ describe("reactive dispatch: single (non-live) resource", () => {
     const counter = defineResource({
       scope: "session",
       stateSchema: z.object({ count: z.number().default(0) }),
-      reactTo: { updated: onUpdate },
+      reactTo: { stateUpdated: onUpdate },
     });
 
     const { ctx } = await createCtx({ counter });
     await (ctx.resources.counter as any).patchState({ count: 5 });
 
     expect(seen).toHaveLength(1);
-    expect(seen[0]!.kind).toBe("updated");
+    expect(seen[0]!.kind).toBe("stateUpdated");
     expect(seen[0]!.key).toBe("counter");
     expect(seen[0]!.ref).toBe("counter");
     expect(seen[0]!.state).toMatchObject({ count: 5 });
@@ -276,7 +277,7 @@ describe("reactive dispatch: when gate on state", () => {
       scope: "session",
       pattern: "files/**",
       stateSchema: fileSchema,
-      reactTo: { updated: { block: onUpdate, when: (c) => c.state?.status === "published" } },
+      reactTo: { stateUpdated: { block: onUpdate, when: (c) => c.state?.status === "published" } },
     });
 
     const { ctx } = await createCtx({ files });
@@ -401,7 +402,7 @@ describe("reactive dispatch: non-live single streaming + updateState aliasing", 
     const doc = defineResource({
       scope: "session",
       stateSchema: docSchema,
-      reactTo: { updated: onUpdate },
+      reactTo: { stateUpdated: onUpdate },
     });
 
     const { ctx, items } = await createCtx({ doc });
@@ -424,7 +425,7 @@ describe("reactive dispatch: non-live single streaming + updateState aliasing", 
     const doc = defineResource({
       scope: "session",
       stateSchema: docSchema,
-      reactTo: { updated: onUpdate },
+      reactTo: { stateUpdated: onUpdate },
     });
 
     const { ctx } = await createCtx({ doc });
@@ -468,7 +469,7 @@ describe("reactive dispatch: re-entrant same-resource mutation", () => {
       scope: "session",
       ref: "doc",
       stateSchema: mirrorSchema,
-      reactTo: { updated: { block: mirror, when: (c) => c.state?.mirror !== c.state?.status } },
+      reactTo: { stateUpdated: { block: mirror, when: (c) => c.state?.mirror !== c.state?.status } },
     });
 
     const { ctx } = await createCtx({ doc });
@@ -487,13 +488,93 @@ describe("reactive dispatch: re-entrant same-resource mutation", () => {
   });
 });
 
-describe("reactive dispatch: content-only writes", () => {
-  it("does not run an updated binding for a collection instance content write", async () => {
-    const seen: ResourceChange[] = [];
-    const onUpdate = handler({
-      name: "on-update-content",
+describe("reactive dispatch: content writes (contentUpdated)", () => {
+  it("runs reactTo.contentUpdated on a collection instance content write, with a fresh body", async () => {
+    const seen: ResourceContentChange[] = [];
+    let bodyInside: string | null = null;
+    const onContent = handler({
+      name: "on-content",
+      inputSchema: resourceContentChangeSchema(),
+      resources: {
+        files: defineResourceCollection({
+          scope: "session",
+          pattern: "files/**",
+          stateSchema: fileSchema,
+        }),
+      },
+      execute: async (change: ResourceContentChange, ctx) => {
+        seen.push(change);
+        // The reaction reads the just-written body (persist runs before the seam).
+        bodyInside = await (await (ctx.resources.files as any).get(change.key)).readContent();
+        return "done";
+      },
+    });
+    const files = defineResourceCollection({
+      scope: "session",
+      pattern: "files/**",
+      stateSchema: fileSchema,
+      reactTo: { contentUpdated: onContent },
+    });
+
+    const { ctx } = await createCtx({ files });
+    const ns = ctx.resources.files as any;
+    await ns.create("a.ts", { language: "typescript", status: "draft" });
+    await (await ns.get("a.ts")).writeContent("const x = 1;");
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.kind).toBe("contentUpdated");
+    expect(seen[0]!.key).toBe("a.ts");
+    expect(seen[0]!.ref).toBe("files/a.ts");
+    expect(bodyInside).toBe("const x = 1;");
+  });
+
+  it("content writes and state updates are orthogonal axes", async () => {
+    const stateSeen: ResourceChange[] = [];
+    const contentSeen: ResourceContentChange[] = [];
+    const onState = handler({
+      name: "on-state-axis",
       inputSchema: resourceChangeSchema(fileSchema),
       execute: (change: ResourceChange) => {
+        stateSeen.push(change);
+        return "done";
+      },
+    });
+    const onContent = handler({
+      name: "on-content-axis",
+      inputSchema: resourceContentChangeSchema(),
+      execute: (change: ResourceContentChange) => {
+        contentSeen.push(change);
+        return "done";
+      },
+    });
+    const files = defineResourceCollection({
+      scope: "session",
+      pattern: "files/**",
+      stateSchema: fileSchema,
+      reactTo: { stateUpdated: onState, contentUpdated: onContent },
+    });
+
+    const { ctx } = await createCtx({ files });
+    const ns = ctx.resources.files as any;
+    await ns.create("a.ts", { language: "typescript", status: "draft" });
+
+    // A content write fires contentUpdated only.
+    await (await ns.get("a.ts")).writeContent("const x = 1;");
+    expect(contentSeen).toHaveLength(1);
+    expect(stateSeen).toHaveLength(0);
+
+    // A state update fires stateUpdated only.
+    await (await ns.get("a.ts")).patchState({ status: "published" });
+    expect(stateSeen).toHaveLength(1);
+    expect(contentSeen).toHaveLength(1);
+  });
+
+  it("a when gate filters content reactions by ref", async () => {
+    const seen: ResourceContentChange[] = [];
+    const onContent = handler({
+      name: "on-content-gated",
+      inputSchema: resourceContentChangeSchema(),
+      execute: (change: ResourceContentChange) => {
         seen.push(change);
         return "done";
       },
@@ -502,21 +583,44 @@ describe("reactive dispatch: content-only writes", () => {
       scope: "session",
       pattern: "files/**",
       stateSchema: fileSchema,
-      reactTo: { updated: onUpdate },
+      reactTo: { contentUpdated: { block: onContent, when: (c) => c.key === "keep.ts" } },
     });
 
     const { ctx } = await createCtx({ files });
     const ns = ctx.resources.files as any;
-    await ns.create("a.ts", { language: "typescript", status: "draft" });
-
-    // Content-only write carries no state delta — must NOT dispatch the updated
-    // reactive block (it would otherwise run with null state/prevState).
-    await (await ns.get("a.ts")).writeContent("const x = 1;");
+    await ns.create("skip.ts", { language: "ts" });
+    await ns.create("keep.ts", { language: "ts" });
+    await (await ns.get("skip.ts")).writeContent("nope");
     expect(seen).toHaveLength(0);
-
-    // A real state update still dispatches it (regression guard).
-    await (await ns.get("a.ts")).patchState({ status: "published" });
+    await (await ns.get("keep.ts")).writeContent("yes");
     expect(seen).toHaveLength(1);
-    expect(seen[0]!.state).toMatchObject({ status: "published" });
+    expect(seen[0]!.key).toBe("keep.ts");
+  });
+
+  it("runs reactTo.contentUpdated on a single (non-live) resource content write", async () => {
+    const seen: ResourceContentChange[] = [];
+    const onContent = handler({
+      name: "on-single-content",
+      inputSchema: resourceContentChangeSchema(),
+      execute: (change: ResourceContentChange) => {
+        seen.push(change);
+        return "done";
+      },
+    });
+    const doc = defineResource({
+      scope: "session",
+      stateSchema: z.object({ status: z.string().default("draft") }),
+      reactTo: { contentUpdated: onContent },
+    });
+
+    const { ctx, items } = await createCtx({ doc });
+    await (ctx.resources.doc as any).writeContent("hello body");
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.kind).toBe("contentUpdated");
+    expect(seen[0]!.key).toBe("doc");
+    expect(seen[0]!.ref).toBe("doc");
+    // Non-live single: the reaction runs but no client resource_change leaks.
+    expect(items.some((i) => i.type === "resource_change")).toBe(false);
   });
 });

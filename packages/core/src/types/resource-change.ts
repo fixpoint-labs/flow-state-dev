@@ -1,18 +1,32 @@
 /**
- * Payload and binding types for reactive blocks (FIX-751).
+ * Payload and binding types for reactive blocks (FIX-751, FIX-843).
  *
  * A reactive block is one an author binds to a resource or collection mutation
  * via `reactTo` on `defineResource` / `defineResourceCollection`. When the bound
- * mutation fires, the server dispatcher (PR2) runs the block with a
- * {@link ResourceChange} payload describing what changed. This file owns:
+ * mutation fires, the server dispatcher runs the block with a payload describing
+ * what changed. There are two payload families, one per mutation axis:
  *
- * - {@link ResourceChange} — the runtime payload shape.
- * - {@link resourceChangeSchema} — a Zod input schema for a reactive block,
- *   parameterized by the resource's state schema.
- * - {@link ReactiveBinding} / {@link ReactiveBindings} — the author-facing
- *   `reactTo` config (bare block or `{ block, when }`, keyed by change kind).
- * - {@link normalizeReactiveBinding} — collapses the binding union to a single
- *   `{ block, when? }` form, shared by the definers (PR1) and the dispatcher (PR2).
+ * - {@link ResourceChange} — a structured-state mutation (`created` /
+ *   `stateUpdated` / `deleted`), carrying the post/pre state.
+ * - {@link ResourceContentChange} — a content-body write (`contentUpdated`),
+ *   carrying only identity; the block `readContent()`s for the fresh body.
+ *
+ * This file owns:
+ *
+ * - the payload shapes and their Zod input schemas ({@link resourceChangeSchema},
+ *   {@link resourceContentChangeSchema});
+ * - {@link ReactiveBinding} / {@link ReactiveContentBinding} / {@link ReactiveBindings}
+ *   — the author-facing `reactTo` config (bare block or `{ block, when }`, keyed
+ *   by reactive kind);
+ * - {@link normalizeReactiveBinding} — collapses a binding union to a single
+ *   `{ block, when? }` form, shared by the definers and the server dispatcher.
+ *
+ * Note the vocabulary split: these *reactive* kinds (`created` / `deleted` /
+ * `stateUpdated` / `contentUpdated`) are author-facing. The internal mutation
+ * seam and the FIX-739 client `resource_change` wire format keep the older
+ * `"created" | "updated" | "deleted"`; the server dispatcher maps one to the
+ * other (a content write fires the seam as `"updated"` and routes here to
+ * `contentUpdated`).
  */
 
 import { z, type ZodType, type ZodTypeAny } from "zod";
@@ -20,11 +34,21 @@ import type { JsonObject } from "../schema/common";
 import type { BlockDefinition } from "./block";
 import { isBlockDefinition } from "../blocks/internal/utils";
 
-/** The kind of mutation that produced a {@link ResourceChange}. */
-export type ResourceChangeKind = "created" | "updated" | "deleted";
+/**
+ * The kind of structured-state mutation that produced a {@link ResourceChange}.
+ * `stateUpdated` (renamed from FIX-751's `updated`) names the axis that changed,
+ * keeping it parallel to the content axis's `contentUpdated`.
+ */
+export type ResourceChangeKind = "created" | "stateUpdated" | "deleted";
 
 /**
- * The payload handed to a reactive block when its bound mutation fires.
+ * The full set of author-facing reactive kinds: the three state kinds plus the
+ * content kind. Backs `reactTo`'s keys and `validateReactTo`'s `allowedKinds`.
+ */
+export type ReactiveBindingKind = ResourceChangeKind | "contentUpdated";
+
+/**
+ * The payload handed to a reactive block when its bound state mutation fires.
  * `state` is the post-mutation state (null on delete); `prevState` is the
  * pre-mutation state (null on create). `evicted` distinguishes a
  * capacity-driven removal from an explicit delete.
@@ -34,17 +58,32 @@ export interface ResourceChange<TState extends JsonObject = JsonObject> {
   key: string;
   /** Full storage path, e.g. `"artifacts/memo-1"`. */
   ref: string;
-  /** Which mutation produced this change. */
+  /** Which state mutation produced this change. */
   kind: ResourceChangeKind;
   /** Post-mutation state; `null` for `"deleted"`. */
   state: TState | null;
-  /** Pre-mutation state; `null` for `"created"`; present for updated/deleted. */
+  /** Pre-mutation state; `null` for `"created"`; present for stateUpdated/deleted. */
   prevState: TState | null;
   /**
    * `true` only when `kind === "deleted"` AND it was a capacity eviction
    * (LRU/oldest); `false` otherwise.
    */
   evicted: boolean;
+}
+
+/**
+ * The payload handed to a reactive block when a resource's content body is
+ * written (`writeContent`). Deliberately minimal: bodies are not inlined — the
+ * block `readContent()`s the fresh body, and reads state (unchanged by a content
+ * write) from `ctx.resources` if it needs it.
+ */
+export interface ResourceContentChange {
+  /** Collection instance key, or the single resource's ref name. */
+  key: string;
+  /** Full storage path, e.g. `"artifacts/memo-1"`. */
+  ref: string;
+  /** Always `"contentUpdated"` — the discriminant against {@link ResourceChange}. */
+  kind: "contentUpdated";
 }
 
 /**
@@ -60,7 +99,7 @@ export function resourceChangeSchema(stateSchema: ZodTypeAny): ZodType<ResourceC
   return z.object({
     key: z.string(),
     ref: z.string(),
-    kind: z.enum(["created", "updated", "deleted"]),
+    kind: z.enum(["created", "stateUpdated", "deleted"]),
     state: stateSchema.nullable(),
     prevState: stateSchema.nullable(),
     evicted: z.boolean(),
@@ -68,8 +107,21 @@ export function resourceChangeSchema(stateSchema: ZodTypeAny): ZodType<ResourceC
 }
 
 /**
- * An author's binding for one change kind: either a bare block, or a block
- * paired with an optional `when` gate that skips dispatch when it returns false.
+ * Build a Zod schema matching {@link ResourceContentChange}, suitable as a
+ * `reactTo.contentUpdated` block's `inputSchema`. Takes no state schema — a
+ * content change carries only identity. An INPUT schema, so BP-016 does not apply.
+ */
+export function resourceContentChangeSchema(): ZodType<ResourceContentChange> {
+  return z.object({
+    key: z.string(),
+    ref: z.string(),
+    kind: z.literal("contentUpdated"),
+  }) as unknown as ZodType<ResourceContentChange>;
+}
+
+/**
+ * An author's binding for one state kind: either a bare block, or a block paired
+ * with an optional `when` gate that skips dispatch when it returns false.
  */
 export type ReactiveBinding<TState extends JsonObject = JsonObject> =
   | BlockDefinition<any, any>
@@ -79,24 +131,46 @@ export type ReactiveBinding<TState extends JsonObject = JsonObject> =
       when?: (change: ResourceChange<TState>) => boolean;
     };
 
-/** Per-change-kind reactive bindings, as passed to `reactTo`. */
+/**
+ * An author's binding for the content kind. Same shape as {@link ReactiveBinding},
+ * but its `when` gate receives a {@link ResourceContentChange} (`key`/`ref` only —
+ * no state to gate on; gate on state inside the block).
+ */
+export type ReactiveContentBinding =
+  | BlockDefinition<any, any>
+  | {
+      block: BlockDefinition<any, any>;
+      /** Optional gate; skip dispatch when it returns false. */
+      when?: (change: ResourceContentChange) => boolean;
+    };
+
+/** Per-reactive-kind bindings, as passed to `reactTo`. */
 export interface ReactiveBindings<TState extends JsonObject = JsonObject> {
   /** Runs when an instance/resource is created. */
   created?: ReactiveBinding<TState>;
-  /** Runs when an instance/resource's state is updated. */
-  updated?: ReactiveBinding<TState>;
+  /** Runs when an instance/resource's structured state is updated. */
+  stateUpdated?: ReactiveBinding<TState>;
   /** Runs when an instance/resource is deleted (including eviction). */
   deleted?: ReactiveBinding<TState>;
+  /** Runs after an instance/resource's content body is written. */
+  contentUpdated?: ReactiveContentBinding;
+  // The `updated` umbrella (react to ANY in-place change) is intentionally
+  // reserved, not declared: it is expressible by binding the same block to both
+  // `stateUpdated` and `contentUpdated`, and can be added non-breakingly later.
 }
 
 /**
- * Collapse a {@link ReactiveBinding} (bare block or `{ block, when }`) to its
- * normalized `{ block, when? }` form. Exported because the server dispatcher
- * (PR2) reuses it to resolve the block and gate before running it.
+ * Collapse a reactive binding (bare block or `{ block, when }`) to its
+ * normalized `{ block, when? }` form. Generic over the change payload type so it
+ * serves both {@link ReactiveBinding} (state) and {@link ReactiveContentBinding}
+ * (content). Exported because the server dispatcher reuses it to resolve the
+ * block and gate before running it.
  */
-export function normalizeReactiveBinding<TState extends JsonObject = JsonObject>(
-  binding: ReactiveBinding<TState>
-): { block: BlockDefinition<any, any>; when?: (c: ResourceChange<TState>) => boolean } {
+export function normalizeReactiveBinding<TChange = ResourceChange>(
+  binding:
+    | BlockDefinition<any, any>
+    | { block: BlockDefinition<any, any>; when?: (change: TChange) => boolean }
+): { block: BlockDefinition<any, any>; when?: (c: TChange) => boolean } {
   // Discriminate via the canonical block guard rather than `"block" in binding`,
   // which would misread a bare block that ever gained a `block` property.
   if (isBlockDefinition(binding)) {
@@ -108,36 +182,41 @@ export function normalizeReactiveBinding<TState extends JsonObject = JsonObject>
 }
 
 /**
- * Validate a `reactTo` config at definer time. For each present change kind,
+ * Validate a `reactTo` config at definer time. For each present reactive kind,
  * normalizes the binding and asserts the resolved `block` is a block definition
  * and any `when` is a function, throwing a `<definer>` qualified error otherwise.
  * Shared by `defineResource` and `defineResourceCollection`.
  *
- * `allowedKinds` restricts which mutation kinds may be bound. Single resources
+ * `allowedKinds` restricts which reactive kinds may be bound. Single resources
  * have no create/delete lifecycle (they always exist with a default and are only
- * ever `updated`), so `defineResource` passes `["updated"]` — a `created` or
- * `deleted` binding on a single resource is a silent no-op at runtime and is
- * rejected here instead. Collections fire all three.
+ * ever updated), so `defineResource` passes `["stateUpdated", "contentUpdated"]`
+ * — a `created` or `deleted` binding on a single resource is a silent no-op at
+ * runtime and is rejected here instead. Collections allow all four.
  */
 export function validateReactTo(
   definer: string,
   reactTo: ReactiveBindings | undefined,
-  allowedKinds: readonly ResourceChangeKind[] = ["created", "updated", "deleted"]
+  allowedKinds: readonly ReactiveBindingKind[] = [
+    "created",
+    "stateUpdated",
+    "deleted",
+    "contentUpdated",
+  ]
 ): void {
   if (reactTo === undefined) {
     return;
   }
-  for (const kind of ["created", "updated", "deleted"] as const) {
+  for (const kind of ["created", "stateUpdated", "deleted", "contentUpdated"] as const) {
     const binding = reactTo[kind];
     if (binding === undefined) {
       continue;
     }
     if (!allowedKinds.includes(kind)) {
       throw new Error(
-        `${definer} does not support reactTo.${kind} — single resources have no create/delete lifecycle and only fire "updated". Use reactTo.updated.`
+        `${definer} does not support reactTo.${kind} — single resources have no create/delete lifecycle and only fire "stateUpdated" / "contentUpdated". Use reactTo.stateUpdated or reactTo.contentUpdated.`
       );
     }
-    const { block, when } = normalizeReactiveBinding(binding);
+    const { block, when } = normalizeReactiveBinding(binding as ReactiveBinding);
     if (!isBlockDefinition(block)) {
       throw new Error(
         `${definer} reactTo.${kind} must be a block (got ${JSON.stringify(block)})`

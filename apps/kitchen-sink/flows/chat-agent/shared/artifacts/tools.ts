@@ -1,16 +1,17 @@
 /**
- * Artifact tool blocks + the `saveArtifact` action pipeline.
+ * Artifact tool blocks + the `saveArtifact` action.
  *
  * `readArtifact` reads one artifact; `writeArtifact` (aliased `updateArtifact`
- * for the flow action) upserts the document then summarizes it in the
- * background. Both are generator-callable tools and the building blocks the
- * `artifactsCapability` exposes; `writeArtifact` is also wired directly as the
- * `saveArtifact` flow action. Depends only on the resource module.
+ * for the flow action) upserts the document's metadata and body. The summary is
+ * regenerated separately by the collection's `reactTo.contentUpdated` reaction
+ * (see ./resource), so the write tool is just the upsert. Both are
+ * generator-callable tools the `artifactsCapability` exposes; `writeArtifact` is
+ * also wired directly as the `saveArtifact` flow action. Depends only on the
+ * resource module.
  */
-import { handler, sequencer, utility } from "@flow-state-dev/core";
+import { handler, utility } from "@flow-state-dev/core";
 import path from "node:path";
 import { z } from "zod";
-import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../../lib/models";
 import { artifactResources } from "./resource";
 
 // ---------------------------------------------------------------------------
@@ -61,7 +62,7 @@ export const readArtifact = handler({
 });
 
 // ---------------------------------------------------------------------------
-// Write artifact (sequencer — the LLM-callable tool + the saveArtifact action)
+// Write artifact (the LLM-callable tool + the saveArtifact action)
 // ---------------------------------------------------------------------------
 
 export const updateArtifactInputSchema = z.object({
@@ -75,14 +76,12 @@ export const updateArtifactOutputSchema = z.object({
   id: z.string()
 });
 
-const artifactSummarizer = utility.summarizer({
-  name: "artifact-summarizer",
-  model: DEFAULT_KITCHEN_SINK_MODEL,
-  granularity: "brief",
-});
-
-const upsertArtifact = utility.upsertResource({
-  name: "upsert-artifact",
+// Upserts the artifact's metadata + body. The body write fires
+// reactTo.contentUpdated (see ./resource), which regenerates the summary — so
+// the write tool itself is just the upsert, with no summarization wiring.
+export const writeArtifact = utility.upsertResource({
+  name: "write-artifact",
+  description: "Create or update an artifact in the session artifacts collection.",
   inputSchema: updateArtifactInputSchema,
   resources: artifactResources,
   collectionKey: "artifacts",
@@ -101,36 +100,6 @@ const upsertArtifact = utility.upsertResource({
   },
   content: (input) => input.content,
 });
-
-const saveSummary = handler({
-  name: "save-artifact-summary",
-  inputSchema: utility.summarizerOutputSchema,
-  outputSchema: updateArtifactOutputSchema,
-  // TODO: we will refactor the need for this out of the framework. Ideally blocks should mainly rely on their input and use connectors to send necessary data into them
-  parentInputSchema: updateArtifactInputSchema,
-  resources: artifactResources,
-  execute: async (input, ctx) => {
-    const { id } = ctx.parent!.input;
-    const ref = await ctx.resources.artifacts.getOptional(id);
-    if (ref) await ref.patchState({ summary: input.summary });
-    return { success: true, id };
-  }
-});
-
-const summarizeArtifact = sequencer({
-  name: "summarize-artifact",
-  inputSchema: updateArtifactInputSchema,
-})
-  .step((input) => input.content, artifactSummarizer)
-  .step(saveSummary);
-
-export const writeArtifact = sequencer({
-  name: "write-artifact",
-  description: "Create or update an artifact in the session artifacts collection.",
-  inputSchema: updateArtifactInputSchema,
-})
-  .tap(upsertArtifact)
-  .work(summarizeArtifact);
 
 // `updateArtifact` is the name `flow.ts` wires as the `saveArtifact` action.
 export const updateArtifact = writeArtifact;

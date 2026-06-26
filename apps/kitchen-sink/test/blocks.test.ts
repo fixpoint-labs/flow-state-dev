@@ -81,7 +81,7 @@ describe("chat-agent blocks", () => {
   it("updateArtifact creates a new artifact with content", async () => {
     const { ctx } = await createCtx();
 
-    const result = await executeBlock({
+    await executeBlock({
       block: updateArtifact,
       input: {
         id: "new-doc",
@@ -91,11 +91,8 @@ describe("chat-agent blocks", () => {
       ctx,
     });
 
-    const output = result.output as { id: string; title: string; content: string };
-    expect(output.id).toBe("new-doc");
-    expect(output.title).toBe("New Document");
-
-    // Verify: metadata in state, body in content
+    // writeArtifact is an upsert (returns no echo); verify the upsert landed:
+    // metadata in state, body in content.
     const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
     const ref = await artifacts.get("new-doc");
     expect(ref.state.title).toBe("New Document");
