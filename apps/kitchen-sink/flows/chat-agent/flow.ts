@@ -40,9 +40,16 @@ const chatAgentFlow = defineFlow({
     run: {
       block: runSequencer,
       userMessage: (input) => input.message,
+      // Concurrency demo (FIX-837): a second `run` on the same session while one
+      // is in flight is dropped with a 409 (the caller gets the in-flight
+      // requestId to tail). Models the "don't start a second turn mid-turn" case.
+      concurrency: "reject",
     },
     saveArtifact: {
       block: updateArtifact,
+      // Concurrency demo (FIX-837): concurrent artifact saves on one session
+      // serialize FIFO instead of racing the same artifact write.
+      concurrency: "queue",
     },
     setSelectedModel: {
       block: setSelectedModelHandler,
