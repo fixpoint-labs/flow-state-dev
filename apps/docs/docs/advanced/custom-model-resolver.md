@@ -107,16 +107,21 @@ Env vars overlay `intents` and `defaultModel` at construction. The `env` option 
 
 - **Replace, not prepend.** The original candidate list is discarded for that intent.
 - **Read once at construction.** Mutating the env source later in the process has no effect; per-call reads would invalidate the resolver's intent cache.
-- **Throw on bad input.** Construction surfaces malformed values, typo'd `FSDEV_INTENT_*` names, and `FSDEV_DEFAULT_MODEL` set with no intents declared. The path after `applyOverrides` is the existing resolution path — no override-specific branches downstream.
+- **Throw on bad input, tolerate ambient input.** Construction surfaces malformed values and `FSDEV_DEFAULT_MODEL` set with no intents declared. An `FSDEV_INTENT_*` that names an intent the resolver doesn't declare is warned-and-skipped, not thrown — env vars are ambient, and an app must not crash because its environment pins an intent var for some other app. The path after `applyOverrides` is the existing resolution path — no override-specific branches downstream.
 
 ### Validation
 
-Each env-var value passes through the same `parseModelString` parser used for in-code intent candidates. Errors are construction-time and name the offending env var:
+Each env-var value passes through the same `parseModelString` parser used for in-code intent candidates. A malformed value for a *declared* intent is a construction-time error that names the offending env var:
 
 ```
 createModelResolver: FSDEV_INTENT_CHAT: Invalid model format: "garbage". ...
 createModelResolver: FSDEV_INTENT_CHAT must be a 'provider/model' or 'gateway/provider/model' string; received "intent/foo".
-createModelResolver: FSDEV_INTENT_NOSUCH does not match any declared intent. Declared intents: chat, plan, utility.
+```
+
+An `FSDEV_INTENT_*` for an intent that isn't declared warns and is skipped rather than throwing:
+
+```
+[flow-state-dev] FSDEV_INTENT_NOSUCH does not match any declared intent (declared: chat, plan, utility); ignoring the override.
 ```
 
 ### The `env` option

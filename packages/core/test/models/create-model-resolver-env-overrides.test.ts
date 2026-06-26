@@ -143,28 +143,29 @@ describe("createModelResolver — env override validation", () => {
     );
   });
 
-  it("throws when FSDEV_INTENT_NOSUCH names a non-declared intent", () => {
-    expect(() =>
-      createModelResolver({
-        intents: {
-          chat: ["openai/gpt-5.4"],
-          plan: ["openai/gpt-5.4"],
-          utility: ["openai/gpt-5.4"],
-        },
-        defaultModel: "openai/gpt-5.4",
-        env: { FSDEV_INTENT_NOSUCH: "openai/gpt-5" },
-      })
-    ).toThrow(
-      /FSDEV_INTENT_NOSUCH does not match any declared intent.*Declared intents: chat, plan, utility/
-    );
+  it("warns and ignores FSDEV_INTENT_NOSUCH (a non-declared intent) instead of throwing", () => {
+    // Env vars are ambient/inherited — an app must not crash because its
+    // environment names an intent it doesn't declare. The stray override is
+    // skipped; the declared intents are unaffected.
+    const resolver = createModelResolver({
+      intents: {
+        chat: ["openai/gpt-5.4"],
+        plan: ["openai/gpt-5.4"],
+        utility: ["openai/gpt-5.4"],
+      },
+      defaultModel: "openai/gpt-5.4",
+      env: { FSDEV_INTENT_NOSUCH: "openai/gpt-5" },
+      providers: { openai: mockProvider() },
+    });
+    expect(resolver.resolveId("intent/chat")).toBe("openai/gpt-5.4");
   });
 
-  it("throws when FSDEV_INTENT_* is set with no declared intents", () => {
+  it("warns and ignores FSDEV_INTENT_* when no intents are declared", () => {
     expect(() =>
       createModelResolver({
         env: { FSDEV_INTENT_CHAT: "openai/gpt-5" },
       })
-    ).toThrow(/FSDEV_INTENT_CHAT does not match any declared intent.*\(none\)/);
+    ).not.toThrow();
   });
 
   it("throws when FSDEV_DEFAULT_MODEL is set with no declared intents", () => {
@@ -341,6 +342,26 @@ describe("createModelResolver — override logging", () => {
     ).toBe(true);
     expect(
       messages.filter((m) => m.includes("FSDEV_INTENT_CHAT")).length
+    ).toBe(1);
+  });
+
+  it("warns once when an undeclared FSDEV_INTENT_* override is ignored", () => {
+    createModelResolver({
+      intents: { chat: ["openai/gpt-5.4"] },
+      defaultModel: "openai/gpt-5.4",
+      env: { FSDEV_INTENT_NOSUCH: "openai/gpt-5" },
+      providers: { openai: mockProvider() },
+    });
+    const messages = warnSpy.mock.calls.map((c) => String(c[0]));
+    expect(
+      messages.some((m) =>
+        /\[flow-state-dev\] FSDEV_INTENT_NOSUCH does not match any declared intent.*ignoring/i.test(
+          m
+        )
+      )
+    ).toBe(true);
+    expect(
+      messages.filter((m) => m.includes("FSDEV_INTENT_NOSUCH")).length
     ).toBe(1);
   });
 

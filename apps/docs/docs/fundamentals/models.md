@@ -87,11 +87,12 @@ You can replace which model a declared intent (or `defaultModel`) resolves to pe
 
 **When it's read.** Construction time only, once. Set the env var before `createModelResolver` is called; changing it later in a running process has no effect.
 
-**What happens if it's wrong.** Failure modes are construction-time errors, not silent fallbacks:
+**What happens if it's wrong.** Most failure modes are construction-time errors, not silent fallbacks:
 
-- malformed value (`intent/foo`, `preset/fast`, empty, garbage)
-- `FSDEV_INTENT_<NAME>` with no matching declared intent (typo or missing config)
-- any `FSDEV_INTENT_*` or `FSDEV_DEFAULT_MODEL` set when no intents are declared
+- malformed value for a declared intent (`intent/foo`, `preset/fast`, empty, garbage)
+- `FSDEV_DEFAULT_MODEL` set when no intents are declared (the override would have no effect)
+
+One case is deliberately **not** fatal: an `FSDEV_INTENT_<NAME>` that names an intent the resolver doesn't declare is warned and ignored, not thrown. Env vars are ambient — a shared or CI environment may pin an intent override for some other app, and your app must not crash because of it. A typo in an intent you *do* declare still surfaces as a warning and falls back to `defaultModel`.
 
 **Confirming it took effect.** Each applied override emits one dev-only log at construction (suppressed by `NODE_ENV=production` and `FSD_QUIET_WARNINGS=1`). Example: `[flow-state-dev] Intent "chat" overridden by FSDEV_INTENT_CHAT; resolves to "openai/gpt-5.4-mini".`
 
