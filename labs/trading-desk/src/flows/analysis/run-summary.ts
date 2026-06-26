@@ -4,7 +4,7 @@
  *
  * This is the headless sibling of the UI Summary (`components/summary/
  * aggregate.ts`): where that builds a render model for the browser, this builds
- * a stable JSON record a terminal harness or an agent loop reads instead of the
+ * a stable JSON record an agent (or a `goals/` check) reads instead of the
  * browser. It records WHAT happened — final rating + clamps, target weight +
  * mandate gates, stop reason, per-memo status — and deliberately does NOT judge
  * whether the run was good (that is the eval-suite's job, FIX-790).
@@ -14,8 +14,8 @@
  * summary. The clock-stamped `ranAt` and the run-level fields (`durationMs`,
  * `exitCode`, `error`, `capturePath`) are passed in, not derived here, so the
  * function stays unit-testable with fixed inputs. The `runSummary` flow action
- * reads the resources and calls this; the batch harness fills the run-level
- * fields from the analyze capture.
+ * reads the resources and calls this; a caller fills the run-level fields from
+ * the `analyze` capture when it wants them (the action leaves them null).
  *
  * This is RESOURCE-STATE-adjacent (not a generator output), so `.nullable()` /
  * `.default()` are correct here — do NOT add it to `output-schemas-strict.spec.ts`.
@@ -27,8 +27,9 @@ import type { MemoState, MemoStatus } from "./resources";
 import type { SessionState } from "./state";
 
 /** Run-level outcome: did the pipeline complete with a decision, stop cleanly at
- *  a guard, or fail to execute? `error` is set by the harness when the analyze
- *  subprocess itself failed; the action only ever emits `completed`/`stopped`. */
+ *  a guard, or fail to execute? `error` is what gets recorded when the `analyze`
+ *  run itself failed (no decision was stored to read back); the action's
+ *  projection of a stored run emits `completed`/`stopped`. */
 export const runStatusSchema = z.enum(["completed", "stopped", "error"]);
 export type RunStatus = z.infer<typeof runStatusSchema>;
 
@@ -52,8 +53,8 @@ export const runSummaryStateSchema = z.object({
   mandateId: z.string().nullable().default(null),
   sessionId: z.string(),
 
-  // Run-level. The action leaves these at their defaults; the harness fills
-  // them from the analyze capture (`capturePath` is the trace pointer).
+  // Run-level. The action leaves these at their defaults; a caller fills them
+  // from the analyze capture if it wants them (`capturePath` is the trace pointer).
   status: runStatusSchema,
   stopReason: z.string().nullable().default(null),
   stopMessage: z.string().nullable().default(null),
@@ -127,8 +128,8 @@ function hasDecision(
  * Project a finished or stopped run into a `RunSummary`. Pure: no resource
  * reads, no clock. The status is derived from stored state — a guard stop wins
  * (`stopped`), else a present decision means `completed`, else `error` (a
- * defensive fallback the harness also guards against by never calling the read
- * action after a failed analyze run).
+ * defensive fallback a caller avoids by only reading back after a successful
+ * analyze run).
  */
 export function buildRunSummary(input: BuildRunSummaryInput): RunSummary {
   const { sessionState, decisionSnapshot, memos, sessionId, ranAt } = input;

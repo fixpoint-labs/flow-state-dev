@@ -5,8 +5,8 @@
  * It reads the desk's own durable records for the current session — the
  * decision-of-record snapshot, the memo collection, and the session stop-state
  * — and returns the projection as its OUTPUT. Run headlessly as
- * `fsdev run analysis runSummary --session <id>`, the output lands in the
- * capture file at `result.output`, which the headless harness reads back.
+ * `fsdev run analysis runSummary --session <id> --capture <file>`, the output
+ * lands in the capture file at `result.output`, which the caller reads back.
  *
  * Why a separate read action (rather than scraping the analyze capture): the
  * CLI's NDJSON stream drops resource VALUES (it emits only change
@@ -16,8 +16,8 @@
  *
  * Returning the output works on the CLI / `runAction` path (`result.output` is
  * the action's return value). This is distinct from the HTTP `sendAction`
- * envelope path that makes `getQuotes` write to a resource instead — the harness
- * drives `fsdev run`, so reading the return value is correct here.
+ * envelope path that makes `getQuotes` write to a resource instead — headless
+ * verification drives `fsdev run`, so reading the return value is correct here.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";

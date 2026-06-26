@@ -41,11 +41,12 @@ type Backing = {
 /** Where the embedded PGlite dev database lives. Under `.fsdev/` so the root
  *  `.gitignore`'s `**​/.fsdev/**` rule covers it (the filesystem store's old home).
  *
- *  `TRADING_DESK_DATA_DIR` overrides the location. PGlite is single-process —
- *  concurrent `fsdev run` children cannot share one data dir — so the headless
- *  BATCH harness points each run at its own temp dir via this env var to run
- *  them concurrently without contention. Unset (single runs, the app) → the
- *  shared default, so those runs appear in Past Reports. */
+ *  `TRADING_DESK_DATA_DIR` overrides the location — an escape hatch for an
+ *  isolated, throwaway run (e.g. a headless verification run you don't want
+ *  landing in Past Reports): point it at a temp dir. PGlite is single-process,
+ *  so two `fsdev run` children must not share one data dir. Unset (the app, and
+ *  ordinary single verification runs) → the shared default, so those runs appear
+ *  in Past Reports. */
 const PGLITE_DATA_DIR =
   process.env.TRADING_DESK_DATA_DIR ?? path.join(process.cwd(), ".fsdev", "pglite");
 /** Committed `app.*` migrations, read at runtime by the in-process dev migrator. */

@@ -99,6 +99,8 @@ pnpm fsdev run hello-chat chat -i '{"message":"hi"}' --quiet
   pnpm fsdev run ... 2>/dev/null | jq -r 'select(.type=="content_delta") | .delta' | tr -d '\n'
   ```
 
+**When the result lives in a resource, not the stream.** `fsdev run`'s NDJSON records items and events, not resource VALUES (only change notifications). When an app's outcome is a stored resource — e.g. the trading-desk's decision-of-record, which also lives in a PGlite store rather than a readable file — a single `fsdev run` shows you the stream but not the decision. Pair it with a zero-model **read action** that projects the resource back out, captured to a file: `fsdev run <flow> analyze --capture … --quiet` then `fsdev run <flow> <readAction> --capture … --quiet`, then read the second capture's `result.output`. The trading-desk's headless verification is the worked example — reach for the **`fsd:verify-trading-desk`** skill, which encodes the two-step, the record→replay cost ladder, and the result-field reference.
+
 **When something breaks**, switch into the `debug-flow` skill — it has the failure-pattern matrix and the `fsdev block` isolation workflow. This section is for confirming a change works; `debug-flow` is for diagnosing why one doesn't.
 
 ## Adding test coverage

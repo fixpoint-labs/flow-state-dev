@@ -9,8 +9,6 @@
     "build": "next build",
     "start": "next start",
     "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
-    "run:headless": "tsx scripts/headless/run.mts",
-    "batch": "tsx scripts/headless/batch.mts",
     "test": "vitest run --root . --passWithNoTests",
     "test:watch": "vitest --root . --passWithNoTests",
     "db:generate": "drizzle-kit generate",
