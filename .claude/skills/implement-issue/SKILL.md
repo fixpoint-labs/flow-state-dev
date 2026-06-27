@@ -218,6 +218,7 @@ Launch a `Plan` sub-agent to:
 Launch a `superpowers:code-reviewer` sub-agent to:
 - Review code quality: naming, structure, test coverage
 - Check for bugs or logic errors
+- **Run the second-path checklist (BP-033)** against the changed surface: legacy/persisted records, null/empty/boundary inputs and guard-clause order, concurrent/duplicate (409) calls, cancel/error paths, second-tenant key scoping, cost/observability of any new model call, and React derived-state/no-op-render. These are the highest-frequency review-defect classes; treat an unhandled path as must-fix unless explicitly out of scope.
 - Verify adherence to project conventions (AGENTS.md, best-practices.md)
 - Identify if changes affect other parts of the codebase
 - Check documentation needs (architecture docs, READMEs, changeset)

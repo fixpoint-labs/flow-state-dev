@@ -424,6 +424,89 @@ Update policy:
   - Before FIX-735 this was a footgun: any one isolated user-scoped resource collapsed the WHOLE flow's user scope to `{userId}:{flowKind}`, silently breaking cross-flow sharing for every shared sibling. The trading-desk hit exactly this — `accounts`, `portfolioQuotes`, and `specialInstructions` all isolated, so the analysis flow's `seedSession` read zero accounts. Per-resource granularity removes the collapse; the default-shared guidance still stands.
 - See: FIX-735 (per-resource isolation granularity — shipped)
 
+### BP-028: Migrations are dual-read and reject removed keys loudly
+
+- Status: Active
+- Date: 2026-06-27
+- Rule:
+  - When you rename, namespace, or change the shape of a **persisted or in-flight** field (resource state, request `metadata`, stored records, a client store's buffers), the reader must tolerate the old shape for the rollout window. Either dual-read (`metadata.schedule.scheduleId ?? metadata.scheduleId`) or null-guard the new field; never assume every record on disk or in flight already has the new shape.
+  - When you **rename or remove** a key from a public config object, reject the dead key explicitly — throw with a message pointing at the replacement (`"reactTo.updated was renamed to reactTo.stateUpdated"`). Never accept-then-silently-ignore an unknown key: a validator that only iterates the new keys lets an untyped consumer lose its behavior with no error.
+  - When you add a nullable field to a schema for backward-compat, every downstream formatter / renderer / prompt-context builder that reads it must `== null`-guard it. Adding the nullable field is half the change; degrading gracefully when an old record has `null` is the other half.
+  - Pair any transitional dual-read with a cleanup pointer (a `TODO(FIX-NNN)` or changeset note) so it doesn't outlive the rollout.
+- Why:
+  - This is the single most recurring class of review defect across recent PRs. Concrete incidents: a `reactTo` rename (FIX-843) accepted the stale key and silently dropped the reaction; a `scheduleId` → `metadata.schedule.*` namespacing (overlap-skip) read only the new path and could double-dispatch legacy in-flight requests during a rolling deploy; resuming a pre-change session with a `null` `dcf`/`triangulation` spine (FIX-807) threw at prompt-injection time; a HITL gate (FIX-849) rejected legacy `human_input` records that lacked the new `allow` field; a `useSession` store swap (FIX-846) dropped the old store's delta-flush handling.
+  - A schema change is a contract change for data that already exists. The new code path is the easy half; the migration window — old records, in-flight requests, rejected keys — is where these bugs live.
+
+### BP-029: Authorization and routing decisions key off the trusted transport `source`, never caller-supplied `metadata`
+
+- Status: Active
+- Date: 2026-06-27
+- Rule:
+  - When code decides *what kind of request this is* (event vs public action, webhook vs chat) or *who is allowed to do what*, derive that from the trusted transport `source` set by the framework at the inbound seam — not from `body.metadata` or any other caller-controllable field.
+  - If a policy branch consults a metadata coordinate (e.g. `metadata.webhook`), gate it on the trusted `source` matching that coordinate first. Mirror the existing `resolveActionCore` pattern rather than inventing a new trust path.
+  - Resolve per-instance keys (dedup, void, attribution like `resumedBy`) from the authenticated identity and the full tenant tuple, never from a bare block/action name that an unrelated caller could collide with.
+- Why:
+  - FIX-837 (session-scoped concurrency) had two trust-boundary defects: a caller could POST `metadata: { webhook: {} }` to make the arbiter treat the request as an event and bypass the public action's `reject` policy; and event dispatch resolved policy from public actions by bare block name, so a same-named event handler inherited an unrelated action's policy. The streaming HITL resume path (FIX-276) separately dropped `resumedBy`, attributing an approval to the wrong user under impersonation.
+  - Anything the caller can set, the caller can forge. Security and routing decisions belong to the transport, which the caller cannot spoof.
+
+### BP-030: A secondary model/tool call inherits the primary call's runtime contract
+
+- Status: Active
+- Date: 2026-06-27
+- Rule:
+  - When you add a *second* model call or tool invocation alongside an existing one (a repair/coercion pass, a judge call, a fallback resolver), it must carry the same runtime plumbing every sibling call already has:
+    - **Cancellation:** pass `signal: ctx.signal`. A call that ignores the signal keeps spending tokens after the parent request is canceled.
+    - **Usage accounting:** fold its `result.usage` into the returned usage so the tokens are visible to billing and observability. A discarded `usage` makes the spend invisible.
+    - **Input threading:** resolve a `ResolvableModel` against the generator's actual `input`, not `undefined` — input-based model pickers must see the input.
+  - Any cost budget / guard must count *every* model call in the operation, including judges and repair passes, and must warn (not silently pass) when it can't price a model in play.
+- Why:
+  - FIX-841 (off-schema repair) shipped a coercion model call that omitted `ctx.signal`, discarded its `usage`, and resolved its model with `undefined` — three findings, one root cause: a new call path that didn't copy the conventions of the call right next to it. The benchmark harness (FIX-614) summed executor cost but not the judge LLM's own cost (≈2× the budget cap) and silently disabled the cap for unpriced models.
+  - The first call in a file establishes the contract. Grep the sibling call and match it line-for-line: signal, usage, input, error mapping.
+
+### BP-031: Filter before you load on lazy collections
+
+- Status: Active
+- Date: 2026-06-27
+- Rule:
+  - To resolve one resource by URI, parse the URI and `getOptional` the matching collection. Do not collect every static resource and `list()` every collection and then filter — for lazy collections, `list()` bulk-loads the whole prefix, so reading one unrelated resource pays for the entire store.
+  - To enumerate resources that opted into a capability (e.g. `llmReadable`), filter collections by their config *before* calling `list()`, never after. Asking for "readable URIs" must not load collections that didn't opt in.
+  - Add a regression test asserting `list()` is **not** called on the collections the operation shouldn't touch.
+- Why:
+  - FIX-842 (generic content/search tools) had both shapes of this bug: exact-URI resolution scanned everything, and the no-URI readable path listed every collection before filtering by `llmReadable`. Both turned an O(1) or opt-in-scoped operation into a full-store load that gets slow or fails as collections grow.
+  - "Load everything, then narrow" reads fine on a small store and silently degrades. Narrow first; load only what survives the filter.
+
+### BP-032: Mechanical move/rename PRs update provenance
+
+- Status: Active
+- Date: 2026-06-27
+- Rule:
+  - A PR that moves code between packages or renames a package is not done when it compiles. In the same change set, update the provenance that the move invalidated:
+    - File header comments that name the old home ("Lives in core…" on a file now in `contracts`).
+    - Architecture diagrams / dependency graphs that show the old topology (the ASCII graph rooting at `core` when `contracts` is now the zero-dependency base).
+    - Doc examples and cross-link anchors that reference the old path or coordinate.
+  - Re-exported public types must be exported from **every** documented import path, including subpath entries (`@flow-state-dev/core/types`), not just the package root — or downstream `import type` breaks at compile time.
+- Why:
+  - The `contracts` extraction (FIX-684) and the `server` → `engine` rename left stale "Lives in core" headers and a dependency diagram still rooted at `core`; FIX-837 and FIX-842 each missed a subpath re-export so public types failed to import via the documented path. Stale provenance is worse than no comment — a reader trusts the header and gets the wrong mental model.
+  - The compiler verifies the code; it does not verify the prose, the diagram, or the subpath barrel. Those are the move's blind spots — check them explicitly.
+
+### BP-033: Run the second-path checklist before declaring a change done
+
+- Status: Active
+- Date: 2026-06-27
+- Rule:
+  - Nearly every recent review defect was a path the change *touched* but didn't add code for. Before opening a PR (and in the Step 6 review), walk this checklist for the changed surface and either handle each path or state why it's out of scope:
+    - **Legacy / persisted records** — old-shape records on disk or in flight during rollout (BP-028).
+    - **Null / empty / boundary inputs** — `null` nullable fields, blank `""` vs `undefined`, `NaN`/`Infinity` through `z.number()` (use `.finite()`), empty arrays, unvalidated date strings. Check that guard clauses run in the right order (expiry before payload validation, not after).
+    - **Concurrent / duplicate calls** — double-click / double-submit (409) windows; guard re-entrancy in the handler body, not only via a disabled button. Resolved/terminal state must disable its own actions.
+    - **Cancel / error paths** — `ctx.signal` threaded; cleanup runs on synchronous throw (`try/finally`, not a dangling `.finally`); a record/handle exists before any id is returned to a caller.
+    - **Second tenant / account** — dedup, void, and uniqueness keys are scoped to the full tenant tuple, not global (BP-029).
+    - **Cost / observability** — every model call is counted and cancelable (BP-030).
+    - **React derived state** — flags (`isStreaming`, `canResume`, button-enabled) are derived from the *complete* input set (including `enabled` / per-action handlers / resolved state), and change-signals (`onChange`, re-render, store events) fire only on a *real* change, not on no-op patches or filtered items.
+  - When a flag toggles behavior (e.g. `enabled: false`, a new resolution mode), add the test for the *off / new* state in the same PR. Reviewers repeatedly noted "a test here would have caught this."
+- Why:
+  - This generalizes ~80% of the findings across the last 20 PRs into one pass. The specific BPs above name the highest-frequency paths; this checklist is the habit that catches the rest before the bot round-trip — including the ones bots miss (a P1 merged before review landed; two unresolved threads where an earlier fix in the same PR introduced a regression on the rejected-items path).
+  - The new/happy path is the part you were thinking about. The bugs are in the paths you implicitly changed and didn't revisit. Make revisiting them a checklist, not a memory.
+
 ## Template For New Entries
 
 ```md
