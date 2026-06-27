@@ -162,6 +162,7 @@ Development task skills live in `.claude/skills/`. Use these when performing com
 | `debug-flow`              | Debug flow execution via CLI traces and NDJSON logs        |
 | `linear-triage`           | Review and prioritize Linear issues                        |
 | `plan-day`                | Identify unblocked tasks and generate a daily work plan    |
+| `distill-lessons`         | Reflect on reworked/reviewed work, extract transferable lessons, propose best-practice updates |
 
 
 ### Development skills

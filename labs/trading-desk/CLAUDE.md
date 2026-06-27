@@ -994,3 +994,48 @@ pnpm --filter @flow-state-dev/trading-desk test         # vitest run
 The test suite is offline — every live provider is mocked, every analyst
 generator is mocked. Tests verify wiring (resources, memo transitions,
 sequencer composition) rather than LLM behavior.
+
+## Verifying changes headlessly
+
+When you change analysis logic, verify it the way `pnpm test` can't — a real run
+with a machine-readable result, not the browser. There is **no wrapper script**:
+drive `fsdev run` directly. Use the **`fsd:verify-trading-desk`** skill, which
+encodes the full workflow, the record→replay cost ladder, and the `RunSummary`
+field reference. The short version, run from this directory (`fsdev` config
+search is cwd-only):
+
+```bash
+SID=verify_$(date +%s)
+# 1. The real run (trace + logs to a file; --quiet silences stderr logs).
+pnpm fsdev run analysis analyze \
+  -i '{"ticker":"NVDA","dataSource":"fixture","costPreset":"fast"}' \
+  --session "$SID" --capture ".fsdev/headless/$SID.analyze.json" --quiet \
+  > ".fsdev/headless/$SID.analyze.log" 2>&1
+# 2. The zero-model read-back — the machine-readable RunSummary.
+pnpm fsdev run analysis runSummary \
+  -i '{}' --session "$SID" --capture ".fsdev/headless/$SID.summary.json" --quiet
+# 3. The decision is the runSummary capture's result.output.
+```
+
+`fsdev run` exits **0** when the action ran (completed OR stopped) and non-zero
+only on an execution error — so read the summary's `status` to tell completed
+from stopped. The `runSummary` action exists because `fsdev run`'s NDJSON/capture
+record items and events, not resource VALUES: the desk's decision lives in a
+PGlite-backed resource, and this zero-model action is the read-path back out. Its
+output is the `RunSummary` (final rating + clamps, target weight + mandate gates,
+stop reason, per-memo status, session id) — the shape is in
+[`src/flows/analysis/run-summary.ts`](src/flows/analysis/run-summary.ts). It
+records what happened; it does NOT judge whether the run was good — that is the
+eval-suite's job (FIX-790).
+
+A single run uses the shared `.fsdev/pglite`, so it appears in Past Reports like a
+UI run; set `TRADING_DESK_DATA_DIR` to a temp dir for a throwaway run that
+shouldn't. **Default to `fixture` + `fast`**; escalate to `full`, and to a
+one-time `dataSource:"record"` run that populates `fixtures/<TICKER>/<DATE>/`,
+only when the full flow needs data the corpus lacks — then replay from `fixture`.
+
+**The smoke proof** is the single NVDA fixture run completing with a decision —
+the
+[`goals/trading-desk-headless/fixture-run-clean`](../../goals/trading-desk-headless/fixture-run-clean/goal.md)
+goal check (the same two-step). Fixture mode stubs the data tools but still calls
+real models, so it exercises the real generator path.
