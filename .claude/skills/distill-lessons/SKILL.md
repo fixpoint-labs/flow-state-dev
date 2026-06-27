@@ -73,9 +73,10 @@ or a **positive pattern** ("prefer X"). Both are valid.
 For every candidate, answer four questions. Drop it unless it clears all four:
 
 1. **Generalizable?** Applies beyond this one instance.
-2. **Recurring or likely to recur?** Has it bitten before, or will it bite a
-   *class* of future work? The house style *requires* a concrete recurrence in
-   the "Why" — if you can't name one, it's an opinion, not a standard.
+2. **Grounded in a real incident?** Has it bitten before, or will it bite a
+   *class* of future work? Being able to name the concrete incident is your
+   *gate* for adding it — not text you keep. If you can't name one, it's an
+   opinion, not a standard.
 3. **Not already covered?** Read `docs/contributing/best-practices.md` (BP-001…)
    and the `CLAUDE.md` behavioral guidelines. If an existing BP/guideline says
    it, **don't duplicate** — propose *sharpening the existing entry* instead.
@@ -107,8 +108,9 @@ cutting is the point.
 
 ### 5. Draft in house style
 
-For each BP you'll propose, follow the template at the bottom of
-`best-practices.md`:
+Keep entries **terse — the rule, not the proof.** Best practices are decided
+guidelines, not arguments, and the file is loaded into agent context: there is no
+`Why`/proof section. Use the template at the bottom of `best-practices.md`:
 
 ```
 ### BP-XXX: <name>
@@ -117,17 +119,14 @@ For each BP you'll propose, follow the template at the bottom of
 - Scope: Universal | <the situation it applies to>   (optional; use when it clarifies altitude)
 - Rule:
   - <imperative, concrete; name the trigger and the action>
-- Why:
-  - <the concrete incident that produced it — required>
-  - <the cost of getting it wrong / why the rule pays for itself>
 ```
 
 - **Number sequentially** after the last existing BP. **Append; never overwrite.**
   If you're replacing an older BP, mark the old one `Superseded (date) by …` and
   link forward — don't delete it.
-- The **Why must cite the real incident** (issue id, the bug, the rework). Every
-  existing BP does; it's what separates a standard from a preference.
-- Match the voice: terse imperative Rule bullets, a Why that teaches.
+- Ground the rule in a real incident as your *gate* for adding it (Step 3), but
+  don't write the proof into the entry.
+- Match the voice: terse imperative Rule bullets.
 
 ### 6. Review gate (required — do not skip)
 
@@ -159,8 +158,9 @@ apply it. Only then write.
 - **Cut aggressively.** If you're proposing more than two or three BPs from one
   change, you're probably over-capturing. The best outcome is often "one sharp
   universal rule, two dropped, one folded into an existing BP."
-- **Cite or it didn't happen.** No concrete recurrence → not a BP. A rule with no
-  incident behind it rots into ignored boilerplate.
+- **Ground it, but don't prove it.** A real incident behind the rule is your gate
+  for adding it — an ungrounded rule rots into ignored boilerplate. But keep the
+  written entry terse: the rule, not the proof.
 - **Sharpen before you add.** A near-duplicate of an existing BP weakens both.
   Edit the original.
 - **The meta-lesson is the highest-value one.** Watch for the pattern where you
