@@ -66,3 +66,13 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Call `.validate()` at build/setup time on any sequencer that declares `outputSchema` — it catches drift between the declared schema and the chain's inferred tail before the flow runs.
   - Omit `outputSchema` for internal/ephemeral sequencers (scratch pipelines, background fan-out) — there the validation is pure overhead.
   - `.validate()` is a conservative one-level structural check: deep shapes, refinements, brands, and union variants are out of scope, and it no-ops when the tail is erased by `stepAny` / `race` / `stepAll` / `branch`. The runtime gate still catches real mismatches; `.validate()` is the early warning, not the guarantee.
+
+### Conditional composition: prefer step variants over wrapper sequencers
+
+- Status: Active
+- Scope: Blocks — conditional composition.
+- Rule:
+  - Use `.workIf(condition, connector, block)` — not a wrapper sequencer with `.stepIf` inside `.work()`.
+  - Use `.tapIf(condition, block)` — not a gating handler that conditionally calls a block.
+  - Use `.stepIf(condition, block)` — not a wrapper sequencer with a `.map` + `.step`.
+  - All conditional variants accept an inline connector as a second argument for input adaptation; don't create an intermediate sequencer just to `.map()` before a block.
