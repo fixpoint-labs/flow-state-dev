@@ -429,7 +429,7 @@ Update policy:
 - Status: Active
 - Date: 2026-06-27
 - Rule:
-  - When you rename, namespace, or change the shape of a **persisted or in-flight** field (resource state, request `metadata`, stored records, a client store's buffers), the reader must tolerate the old shape for the rollout window. Either dual-read (`metadata.schedule.scheduleId ?? metadata.scheduleId`) or null-guard the new field; never assume every record on disk or in flight already has the new shape.
+  - When you rename, namespace, or change the shape of a **persisted or in-flight** field (resource state, request `metadata`, stored records, a client store's buffers), the reader must tolerate the old shape for the rollout window. Either dual-read (`metadata.schedule?.scheduleId ?? metadata.scheduleId` — optional-chain the new path so a legacy record without `metadata.schedule` falls back instead of throwing) or null-guard the new field; never assume every record on disk or in flight already has the new shape.
   - When you **rename or remove** a key from a public config object, reject the dead key explicitly — throw with a message pointing at the replacement (`"reactTo.updated was renamed to reactTo.stateUpdated"`). Never accept-then-silently-ignore an unknown key: a validator that only iterates the new keys lets an untyped consumer lose its behavior with no error.
   - When you add a nullable field to a schema for backward-compat, every downstream formatter / renderer / prompt-context builder that reads it must `== null`-guard it. Adding the nullable field is half the change; degrading gracefully when an old record has `null` is the other half.
   - Pair any transitional dual-read with a cleanup pointer (a `TODO(FIX-NNN)` or changeset note) so it doesn't outlive the rollout.
@@ -468,7 +468,7 @@ Update policy:
 - Status: Active
 - Date: 2026-06-27
 - Rule:
-  - To resolve one resource by URI, parse the URI and `getOptional` the matching collection. Do not collect every static resource and `list()` every collection and then filter — for lazy collections, `list()` bulk-loads the whole prefix, so reading one unrelated resource pays for the entire store.
+  - To resolve one resource by URI, check static resources by URI first, then `getOptional` the one collection whose scope+pattern matches (statics and collection instances both resolve by URI — don't drop the static lookup). Do not collect every static resource and `list()` every collection and then filter — for lazy collections, `list()` bulk-loads the whole prefix, so reading one unrelated resource pays for the entire store.
   - To enumerate resources that opted into a capability (e.g. `llmReadable`), filter collections by their config *before* calling `list()`, never after. Asking for "readable URIs" must not load collections that didn't opt in.
   - Add a regression test asserting `list()` is **not** called on the collections the operation shouldn't touch.
 - Why:
