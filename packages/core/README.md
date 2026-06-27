@@ -551,7 +551,7 @@ FSDEV_INTENT_CHAT=openai/gpt-5.4-mini
 FSDEV_DEFAULT_MODEL=openai/gpt-5.4-mini
 ```
 
-Invalid values, unknown intent names, and an `FSDEV_INTENT_*` without a matching declared intent throw at construction. Each applied override emits one dev-only `console.warn` (suppressed by `NODE_ENV=production` and `FSD_QUIET_WARNINGS=1`) so you can confirm the override took effect. Tests can pass an explicit `env` option to `createModelResolver` to avoid mutating `process.env`.
+Invalid values (an `intent/*`/`preset/*` string, or an empty value) for a declared intent throw at construction. An `FSDEV_INTENT_*` that names an intent the resolver doesn't declare is **warned-and-skipped, not fatal** — env vars are ambient, and an app must not crash because a shared/CI environment pins an intent var for some *other* app. (A typo in an intent the app *does* declare still surfaces as a warning.) `FSDEV_DEFAULT_MODEL` set with no declared intents still throws, since the override would have no effect. Each applied or ignored override emits one dev-only `console.warn` (suppressed by `NODE_ENV=production` and `FSD_QUIET_WARNINGS=1`). Tests can pass an explicit `env` option to `createModelResolver` to avoid mutating `process.env`.
 
 See the [models page](https://flow-state.dev/docs/fundamentals/models#env-var-overrides) for the failure-mode taxonomy.
 

@@ -361,12 +361,14 @@ function validateOverrideValue(value: string | undefined, envKey: string): void 
 
 /**
  * Scan the env source for `FSDEV_INTENT_*` and `FSDEV_DEFAULT_MODEL` keys,
- * validate each value, and map them back to declared intent names. Throws if
- * an `FSDEV_INTENT_<NAME>` doesn't match a declared intent, or if
- * `FSDEV_DEFAULT_MODEL` is set with no declared intents.
+ * validate each value, and map them back to declared intent names. An
+ * `FSDEV_INTENT_<NAME>` that doesn't match a declared intent is warned-and-
+ * skipped (env is ambient — an app must not crash because its environment names
+ * an intent it doesn't declare). `FSDEV_DEFAULT_MODEL` with no declared intents
+ * still throws (it would silently have no effect — a real misconfiguration).
  *
- * Iterates `env` (not declared intents) so typo'd env-var names surface as
- * loud errors rather than being silently ignored.
+ * Iterates `env` (not declared intents) so a typo in an intent the app DOES use
+ * surfaces as a warning rather than being silently ignored.
  */
 function readIntentEnvOverrides(
   env: Record<string, string | undefined>,
@@ -399,11 +401,18 @@ function readIntentEnvOverrides(
     const canonical = envKey.slice(INTENT_ENV_PREFIX.length);
     const declaredName = declared.get(canonical);
     if (!declaredName) {
+      // Env vars are ambient — a shared/automation environment may pin
+      // `FSDEV_INTENT_*` for intents OTHER apps declare. An app must not crash
+      // because the environment names an intent it doesn't declare, so the
+      // stray override is warned-and-skipped, not fatal. (A typo in an intent
+      // the app DOES use still surfaces here as a warning.)
       const declaredList = [...declared.values()].join(", ") || "(none)";
-      throw new Error(
-        `createModelResolver: ${envKey} does not match any declared intent. ` +
-          `Declared intents: ${declaredList}.`
+      warnOnceDev(
+        envKey,
+        `${envKey} does not match any declared intent ` +
+          `(declared: ${declaredList}); ignoring the override.`
       );
+      continue;
     }
     validateOverrideValue(envValue, envKey);
     result.intentOverrides.set(declaredName, (envValue as string).trim());
