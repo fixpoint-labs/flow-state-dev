@@ -424,6 +424,33 @@ Update policy:
   - Before FIX-735 this was a footgun: any one isolated user-scoped resource collapsed the WHOLE flow's user scope to `{userId}:{flowKind}`, silently breaking cross-flow sharing for every shared sibling. The trading-desk hit exactly this — `accounts`, `portfolioQuotes`, and `specialInstructions` all isolated, so the analysis flow's `seedSession` read zero accounts. Per-resource granularity removes the collapse; the default-shared guidance still stands.
 - See: FIX-735 (per-resource isolation granularity — shipped)
 
+### BP-028: Fix the bug at the layer that owns it, not where it bit you
+
+- Status: Active
+- Date: 2026-06-27
+- Scope: Universal — applies to any change in any package; every agent should weigh it.
+- Rule:
+  - When a failure forces a workaround at the call site — stripping an env var before spawning a subprocess, catching-and-massaging a framework error, guarding around a surprising default — treat that as a signal the bug likely lives one layer down. Before patching where it bit you, ask: "Which layer *owns* this behavior, and would fixing it there cure it for every caller?"
+  - Push the fix to the owning layer whenever the same failure would recur for any other consumer in the same situation (another app on the framework, a shared/CI/automation environment, the next tool that spawns the same process). A workaround each caller has to repeat is a smell.
+  - A leaf workaround is acceptable only when the owning layer genuinely can't change (third-party, or out of scope for the current work) — and then say so inline: document why the fix lives where it does.
+- Why:
+  - FIX-788 (headless harness): the first cut stripped `FSDEV_INTENT_*` from the child env to dodge a `createModelResolver` that *threw* on ambient overrides for intents an app didn't declare. That throw hits every consumer running under inherited/CI env, not just one script. The durable fix moved into `@flow-state-dev/core` — warn-and-ignore an undeclared intent, still fail on a genuinely-invalid value for a *declared* one — and the per-call env-strip then deleted itself.
+  - A leaf workaround multiplies: the next tool, the next app, the next CI job each re-discovers and re-patches the same root cause. Fixing the owning layer once removes the whole class. This is the necessity question ("which layer should own this?") applied to bug fixes, not just features.
+
+### BP-029: Prefer composing existing primitives over re-implementing what a tool already provides
+
+- Status: Active
+- Date: 2026-06-27
+- Scope: Universal — applies to any change in any package; every agent should weigh it.
+- Rule:
+  - Before writing glue that wraps an existing capability (a CLI command, a framework primitive, a documented workflow), ask: "Could a documented recipe over the existing commands replace this code entirely?" If yes, write the recipe — a skill, a runbook, a `goals/` check — not the wrapper.
+  - Apply the compose-don't-build / necessity discipline to *plumbing*, not just headline features. The same gate that asks "does this feature earn its keep over an existing primitive?" governs the scaffolding around a feature. Every line of bespoke orchestration is a line that can harbor a bug — and reviewers/owners tend to delete it.
+  - Reserve bespoke code for the part that genuinely doesn't exist yet — a *new primitive* (e.g. a structured, machine-readable read-back surface), not a re-implementation of subprocess spawning, capture parsing, exit-code handling, or concurrency the tool already does.
+  - Automate the *invariant*, teach the *workflow*: a deterministic check belongs in a script (a `goals/` smoke test); an exploratory sequence of existing commands plus judgment about when to escalate cost belongs in a skill/doc that teaches the primitives, not a script that ossifies them.
+- Why:
+  - FIX-788 (headless harness): the first cut wrapped `fsdev run` in a bespoke `scripts/headless/` harness (single-run + batch + JSONL scoreboard + concurrency). Both reviewer-found bugs lived in code that didn't need to exist — a synchronous `execFileSync` that silently serialized the "concurrent" batch, and a promise-chain mutex that dropped writes after one failure. The rework deleted the harness and taught the same two-step as raw `fsdev run` + a `verify-trading-desk` skill, keeping only the one genuinely-new primitive: the zero-model `runSummary` read action.
+  - What survives a review or rework is the signal. The owner kept the load-bearing primitive (the structured read-back) and deleted the disposable glue. Invest durability in primitives; keep glue thin or absent.
+
 ## Template For New Entries
 
 ```md
