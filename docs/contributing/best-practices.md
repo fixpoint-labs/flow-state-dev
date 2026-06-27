@@ -54,7 +54,7 @@ Update policy:
 - Scope: Universal — every claimed deliverable.
 - Rule:
   - Every claimed deliverable must have an evidence path and pass criteria.
-  - Wave close-out requires a journal and changelog under `docs/waves/`.
+  - Wave close-out requires a journal and changelog under `docs/internal/waves/wave-<number>/` (per AGENTS.md → Wave execution protocol).
 
 ### BP-007: Concise API and file-level documentation
 
