@@ -138,7 +138,7 @@ When the user rejects a candidate, the default is **don't record anything**. Rej
 
 If all three pass, route by what the rejection captures:
 
-- **Implementation rule worth preserving** (a pattern we shouldn't do, a shape we should avoid in future blocks/patterns/capabilities) → propose a new BP entry in `docs/contributing/best-practices.md`. BPs codify "do this" or "don't do this" rules that propagate across the codebase.
+- **Implementation rule worth preserving** (a pattern we shouldn't do, a shape we should avoid in future blocks/patterns/capabilities) → propose a new BP in its home per the best-practices update policy (universal → `docs/contributing/best-practices.md` + `CLAUDE.md` mirror; situational → `docs/contributing/best-practices/<category>.md` + both indexes). BPs codify "do this" or "don't do this" rules that propagate across the codebase.
 - **Deliberate contract choice** (item taxonomy, scope semantics, package boundary, stream protocol — something the architecture deliberately doesn't allow) → bake the reasoning into the relevant `docs/architecture/<area>.md` as a "Rejected alternatives" / "Why not X" section. The architecture doc is the durable anchor for *what* the contract is; rejections explain *what it isn't*.
 - **Out-of-scope direction** (a feature, integration, abstraction, or alternative design we deliberately won't pursue — plugin runtimes, GraphQL adapters, alternative store shapes, etc.) → add an entry to `docs/internal/out-of-scope/<concept>.md`. See [out-of-scope README](../../../../docs/internal/out-of-scope/README.md) for the format. This is where "no, and here's why" lives so the same proposal doesn't return every quarter.
 

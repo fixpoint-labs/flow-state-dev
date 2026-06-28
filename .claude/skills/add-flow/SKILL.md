@@ -35,7 +35,7 @@ Also read:
 - `docs/architecture/flows-and-actions.md` — Flow definition contract
 - `docs/architecture/state-and-scopes.md` — Scope hierarchy and state operations
 - `docs/architecture/resources-and-client-data.md` — Resources and clientData patterns
-- `docs/contributing/best-practices.md` — universal rules + situational index; block rules (BP-011–BP-014) live in `docs/contributing/best-practices/blocks.md`
+- `docs/contributing/best-practices.md` — universal rules + situational index; block rules (BP-011–BP-014) live in `docs/contributing/best-practices/blocks.md`, and resource/state rules (BP-015/019/023/027) — relevant when a flow declares scopes, resources, or client projections — in `docs/contributing/best-practices/resources.md`
 
 ### Step 3: Design the Flow Structure
 

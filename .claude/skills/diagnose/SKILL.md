@@ -162,7 +162,7 @@ Required before declaring done:
 
 **Then ask: what would have prevented this bug?** If the answer involves architectural change (no good test seam, tangled callers, hidden coupling between packages, missing capability), capture the specifics — the right place depends on scope:
 
-- **Implementation-level concern** (BP violation, missing test seam, recurring pattern bug): consider whether it warrants a new BP entry in `docs/contributing/best-practices.md`, or a follow-up Linear issue.
+- **Implementation-level concern** (BP violation, missing test seam, recurring pattern bug): consider whether it warrants a new BP (in its home per the update policy — universal in `docs/contributing/best-practices.md`, situational in `docs/contributing/best-practices/<category>.md`), or a follow-up Linear issue.
 - **Architecture-level concern** (documented contract is ambiguous or wrong, cross-package drift, missing seam): update the relevant `docs/architecture/<area>.md` in the same change set, and consider whether `fsd:improve-codebase-architecture` should run on the area afterwards.
 
 Make the recommendation **after** the fix is in, not before — you have more information now than when you started.

@@ -47,7 +47,7 @@ Many more utility blocks exist in `packages/core/src/utility/` (analyzer, combin
 **For sequencers**, read:
 - `packages/patterns/src/task-board/index.ts` — sequencer composition example
 
-Also read the active best practices: `docs/contributing/best-practices.md` (universal rules + situational index). Block rules live in `docs/contributing/best-practices/blocks.md` (BP-011–BP-014, BP-024/025/036); generator rules in `docs/contributing/best-practices/generators.md` (BP-016/017/018/032).
+Also read the active best practices: `docs/contributing/best-practices.md` (universal rules + situational index). Block rules live in `docs/contributing/best-practices/blocks.md` (BP-011–BP-014, BP-024/025/036); generator rules in `docs/contributing/best-practices/generators.md` (BP-016/017/018/032); for tool blocks also read `docs/contributing/best-practices/resources.md` (BP-021 `cacheable`).
 
 ### Step 3: Write the Block
 
