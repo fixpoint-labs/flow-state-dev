@@ -38,14 +38,14 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 **Authority hierarchy** (suggestions must respect this):
 
 1. `docs/architecture/*` — adapted reference docs (block kinds, items, streaming, state/scopes, execution/errors, middleware, capabilities, sequencer DSL, server/client, etc.).
-2. `docs/contributing/best-practices.md` — implementation standards (BP-001–BP-036). New cross-cutting patterns belong here.
+2. `docs/contributing/best-practices.md` — implementation standards (BP-001–BP-036): universal rules + the situational index. New patterns are added per its update policy — universal → this file + the `CLAUDE.md` mirror; situational → the matching `docs/contributing/best-practices/<category>.md` + both indexes.
 3. `docs/contributing/architecture-reference.md` — quick reference to locked contracts.
 4. `AGENTS.md` — process protocol.
 5. Per-package `README.md` — public API documentation for that package.
 
 **Where decisions get recorded** (replaces the generic "ADR" flow):
 
-- **Implementation-level pattern** that should propagate → new entry in `docs/contributing/best-practices.md` (next BP number).
+- **Implementation-level pattern** that should propagate → new BP (next global number) in its home per the best-practices update policy: universal → `docs/contributing/best-practices.md` + `CLAUDE.md` mirror; situational → `docs/contributing/best-practices/<category>.md` + both indexes.
 - **Architecture refinement** that updates a documented contract → edit the relevant `docs/architecture/<area>.md` directly and call it out in the change description.
 - **Specific actionable refactor** with a clear owner → Linear issue.
 - **Surface-level user-facing change** → update the package `README.md` and any affected `apps/docs` page in the same change set (CLAUDE.md rule).
@@ -122,7 +122,7 @@ Once the user picks a candidate, drop into a grilling conversation. Walk the des
 
 Side effects happen inline as decisions crystallize. **Route each by scope** — there's no `CONTEXT.md` to update, but there are real homes for each kind of artifact:
 
-- **A new cross-cutting implementation pattern emerges from the discussion?** Draft a new entry for `docs/contributing/best-practices.md` (next BP number). Keep it concise and rule-shaped, matching BP-001–BP-036.
+- **A new cross-cutting implementation pattern emerges from the discussion?** Draft a new BP (next global number) in its home per the best-practices update policy — universal in `docs/contributing/best-practices.md`, situational in `docs/contributing/best-practices/<category>.md`. Keep it concise and rule-shaped, matching BP-001–BP-036.
 - **A term in `docs/architecture/<area>.md` was fuzzy and got sharpened?** Update the relevant `docs/architecture/*` doc directly in the same change set.
 - **A public API surface changed?** Update the package's `README.md` in the same change set (CLAUDE.md rule for user-facing changes); add or revise the relevant `apps/docs` page.
 - **User rejects the candidate?** Apply the **three-way filter** below to decide whether to record it.
