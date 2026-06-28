@@ -17,12 +17,4 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Adding a forwarded field touches only `RuntimeConfig` plus the public boundary that constructs it. Keep the public boundary flat (the bundling is internal; `runtimeConfig` on `CreateFlowApiRouterOptions` is `@internal`).
   - Before adding a field as a named parameter on an intermediate options type, ask: "Does any layer use this, or just forward it?" Forward-only → `RuntimeConfig`. Transformed mid-chain → named parameter on the transforming layer.
 
-### BP-031: Key auth and routing decisions off the trusted transport `source`, not caller `metadata`
-
-- Status: Active
-- Date: 2026-06-27
-- Scope: Request handling — transport, authorization, routing, multi-tenant keys.
-- Rule:
-  - Decide request kind (event vs public action, webhook vs chat) and authorization from the framework-set transport `source`, never from `body.metadata` or any caller-controllable field — anything the caller can set, the caller can forge.
-  - A policy branch that reads a metadata coordinate (e.g. `metadata.webhook`) must gate on the trusted `source` matching it first; mirror `resolveActionCore` rather than inventing a new trust path.
-  - Scope dedup / void / attribution keys (e.g. `resumedBy`) to the authenticated identity and the full tenant tuple, never a bare block/action name an unrelated caller could collide with.
+> Trust-boundary rules for the inbound seam (classify events vs actions off the trusted transport `source`, not `body.metadata`) are now universal **BP-031** — see [`../best-practices.md`](../best-practices.md).

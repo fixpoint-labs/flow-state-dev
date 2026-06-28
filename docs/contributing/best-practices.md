@@ -112,6 +112,16 @@ Update policy:
   - Adding a nullable field for back-compat: every downstream reader (formatter / renderer / prompt-context builder) must `== null`-guard it.
   - Pair any transitional dual-read with a cleanup pointer (`TODO(FIX-NNN)` or changeset note) so it doesn't outlive the rollout.
 
+### BP-031: Never make authorization or control-flow decisions from caller-controllable input
+
+- Status: Active
+- Date: 2026-06-27
+- Scope: Universal — any auth, routing, or trust decision.
+- Rule:
+  - Decide *who may do what* and *what kind of request this is* from a source the caller cannot forge — a server-set identity, a verified token, the framework's trusted transport `source` — never from `body`, `metadata`, query params, headers, or any caller-supplied field.
+  - When a branch must read a caller-supplied coordinate, gate it on the trusted value first. (FSD: the inbound seam classifies events vs public actions off the trusted transport `source`, mirroring `resolveActionCore`, not off `body.metadata`.)
+  - Scope dedup / uniqueness / attribution keys to the authenticated identity and the full tenant tuple, never to a bare name an unrelated caller could collide with.
+
 ### BP-034: Finish move/rename refactors — update provenance, not just imports
 
 - Status: Active
@@ -132,8 +142,8 @@ Update policy:
     - Null / empty / boundary inputs; `NaN`/`Infinity` through `z.number()` (use `.finite()`); guard-clause order (expiry before validation).
     - Concurrent / duplicate calls (409 windows) — guard re-entrancy in the handler, not only via a disabled button.
     - Cancel / error paths — `ctx.signal` threaded; cleanup on synchronous throw; a record exists before any id is returned.
-    - Second tenant / account — keys scoped to the full tuple (BP-031).
-    - Cost / observability — every model call counted and cancelable (BP-032).
+    - Second tenant / account — keys scoped to the full tuple, derived from the authenticated identity (BP-031).
+    - Cost / observability — any new model/tool call is counted in usage/cost and threads `ctx.signal`, matching the call beside it.
     - React derived state — flags derived from the *complete* input set; change-signals fire only on a *real* change (BP-010).
   - When a flag toggles behavior (`enabled: false`, a new mode), add the test for the off / new state in the same PR.
 
@@ -142,6 +152,8 @@ Update policy:
 ## Situational Practices — Index
 
 Full text lives in the category files. Open the file when working in that area.
+
+> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-037.
 
 ### [Process & Docs](best-practices/process.md)
 
@@ -173,7 +185,6 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-016 | Generator outputSchemas must be OpenAI strict-compatible |
 | BP-017 | Use the generator `context` slot for typed, segmented prompts |
 | BP-018 | Shared prompt formatters live in `lib/` |
-| BP-032 | A secondary model/tool call inherits the primary call's runtime contract |
 
 ### [Resources & State](best-practices/resources.md)
 
@@ -185,7 +196,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-021 | Tool blocks declare `cacheable` deliberately |
 | BP-023 | Resource state schemas use `.nullable().default(null)` |
 | BP-027 | User-scoped resources default to shared; isolate only deliberately |
-| BP-033 | Filter before you load on lazy resource collections |
+| BP-033 | Filter at the source before you load — don't list-then-discard (lazy collections, store queries) |
 
 ### [React](best-practices/react.md)
 
@@ -198,7 +209,6 @@ Full text lives in the category files. Open the file when working in that area.
 | BP | Rule |
 | --- | --- |
 | BP-026 | Bundle forwarded options into a `RuntimeConfig`-shaped struct, never drill |
-| BP-031 | Key auth/routing off the trusted transport `source`, not caller `metadata` |
 
 ---
 

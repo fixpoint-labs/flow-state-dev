@@ -37,11 +37,4 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - When two or more blocks format the same shape of data into a prompt, lift the formatter into a `lib/format.ts` leaf module and import it from each consumer. Single-consumer formatters stay in that block's file; the bar is "two or more consumers."
   - Before hand-rolling a formatter, reach for `@flow-state-dev/core/prompt` composers (`section`, `list`, `keyValues`, `table`, `entries`, `codeBlock`, `join`, `when`) — or, inside `.md` templates, the `fsd_keyValues` / `fsd_list` / `fsd_table` / `fsd_json` filters. Only write a shared formatter for shapes these don't cover.
 
-### BP-032: A secondary model/tool call inherits the primary call's runtime contract
-
-- Status: Active
-- Date: 2026-06-27
-- Scope: Generators and model/tool calls (repair, judge, fallback, coercion passes).
-- Rule:
-  - When you add a second model/tool call beside an existing one, match the sibling call line-for-line: pass `signal: ctx.signal`; fold its `result.usage` into the returned usage; resolve a `ResolvableModel` against the real `input`, not `undefined`.
-  - Cost budgets count *every* model call (judges and repair passes included) and warn — never silently pass — when a model in play is unpriced.
+<!-- BP-032 withdrawn during review (too framework-internal; app code uses generator() blocks, not the raw model SDK). The runtime-contract paths it named live in BP-035. Numbers are not reused. -->

@@ -67,12 +67,12 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - `flowIsolation` is honored per resource (FIX-735): a `false` resource keys at bare `{userId}` even when a sibling sets `true`. The flow-level `isolateUserState` / `isolateOrgState` is only the default for resources that don't declare their own, plus the key for the scope's own `state` blob.
   - Practical test: if a second flow must read this resource without a client bridge, it MUST be `flowIsolation: false` (or unset) on both sides.
 
-### BP-033: Filter before you load on lazy resource collections
+### BP-033: Filter at the source before you load — don't list-then-discard
 
 - Status: Active
 - Date: 2026-06-27
-- Scope: Resource collections and resource tools.
+- Scope: Data access in resource/store code — collections, lazy stores, queries.
 - Rule:
-  - Resolve one resource by URI: check static resources by URI first, then `getOptional` the single collection whose scope+pattern matches. Don't `list()` every collection and filter — `list()` bulk-loads a lazy collection's whole prefix.
-  - Enumerate opt-in resources (e.g. `llmReadable`): filter collections by config *before* `list()`, never after.
-  - Add a regression test asserting `list()` is not called on collections the operation shouldn't touch.
+  - Push the predicate to the data source. Never load a whole collection / table / key-prefix into memory just to filter most of it away — narrow first, load only what survives.
+  - FSD lazy collections: resolve one resource by URI by checking static refs first, then `getOptional` on the single matching collection — don't `list()` every collection and filter. To enumerate opt-in resources (e.g. `llmReadable`), filter collections by config *before* `list()`.
+  - Add a regression test asserting the bulk load (`list()` / full scan) is not run on data the operation shouldn't touch.
