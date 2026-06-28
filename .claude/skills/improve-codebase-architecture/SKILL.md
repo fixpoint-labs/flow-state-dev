@@ -38,7 +38,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 **Authority hierarchy** (suggestions must respect this):
 
 1. `docs/architecture/*` — adapted reference docs (block kinds, items, streaming, state/scopes, execution/errors, middleware, capabilities, sequencer DSL, server/client, etc.).
-2. `docs/contributing/best-practices.md` — implementation standards (BP-001–BP-016). New cross-cutting patterns belong here.
+2. `docs/contributing/best-practices.md` — implementation standards (BP-001–BP-036). New cross-cutting patterns belong here.
 3. `docs/contributing/architecture-reference.md` — quick reference to locked contracts.
 4. `AGENTS.md` — process protocol.
 5. Per-package `README.md` — public API documentation for that package.
@@ -52,7 +52,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 
 **Lock state to check before proposing**:
 
-- BP-001–BP-016 are constraints, not guidelines. A candidate that violates a BP needs to either (a) align with it instead, or (b) explicitly justify why the BP should be revisited.
+- BP-001–BP-036 are constraints, not guidelines. A candidate that violates a BP needs to either (a) align with it instead, or (b) explicitly justify why the BP should be revisited.
 - Package boundaries: `server` never depends on `client` or `react`; `react` wraps `client` (no transport in `react`). Cross-boundary refactors are off-limits — the boundary validator at `scripts/validate-package-boundaries.mjs` will catch violations.
 - Middleware coverage: `docs/architecture/middleware.md` documents which seams are public — keep suggestions aligned with what's currently exposed rather than inventing parallel mechanisms.
 
@@ -65,7 +65,7 @@ Read the relevant docs first so suggestions don't re-litigate decided design:
 - `docs/architecture/overview.md` — package roles and the system shape
 - `docs/architecture/<area>.md` — `blocks.md`, `items.md`, `streaming.md`, `state-and-scopes.md`, `execution-and-errors.md`, `middleware.md`, `capabilities.md`, `sequencer-dsl.md`, `server-and-client.md`, etc.
 - `docs/contributing/architecture-reference.md` — locked contracts quick reference
-- `docs/contributing/best-practices.md` — BP-001–BP-016 (these are constraints, not suggestions)
+- `docs/contributing/best-practices.md` — universal rules + situational index (BP-001–BP-036, constraints not suggestions); open the relevant `docs/contributing/best-practices/<category>.md` for situational rule text
 
 Then use the Agent tool with `subagent_type=Explore` to walk the codebase. Don't follow rigid heuristics — explore organically and note where you experience friction:
 
@@ -122,7 +122,7 @@ Once the user picks a candidate, drop into a grilling conversation. Walk the des
 
 Side effects happen inline as decisions crystallize. **Route each by scope** — there's no `CONTEXT.md` to update, but there are real homes for each kind of artifact:
 
-- **A new cross-cutting implementation pattern emerges from the discussion?** Draft a new entry for `docs/contributing/best-practices.md` (next BP number). Keep it concise and rule-shaped, matching BP-001–BP-016.
+- **A new cross-cutting implementation pattern emerges from the discussion?** Draft a new entry for `docs/contributing/best-practices.md` (next BP number). Keep it concise and rule-shaped, matching BP-001–BP-036.
 - **A term in `docs/architecture/<area>.md` was fuzzy and got sharpened?** Update the relevant `docs/architecture/*` doc directly in the same change set.
 - **A public API surface changed?** Update the package's `README.md` in the same change set (CLAUDE.md rule for user-facing changes); add or revise the relevant `apps/docs` page.
 - **User rejects the candidate?** Apply the **three-way filter** below to decide whether to record it.

@@ -77,7 +77,7 @@ For every candidate, answer four questions. Drop it unless it clears all four:
    *class* of future work? Being able to name the concrete incident is your
    *gate* for adding it — not text you keep. If you can't name one, it's an
    opinion, not a standard.
-3. **Not already covered?** Read `docs/contributing/best-practices.md` (BP-001…)
+3. **Not already covered?** Read `docs/contributing/best-practices.md` (universal + index) and the relevant `docs/contributing/best-practices/<category>.md` (BP-001…)
    and the `CLAUDE.md` behavioral guidelines. If an existing BP/guideline says
    it, **don't duplicate** — propose *sharpening the existing entry* instead.
 4. **What altitude?** Be honest:

@@ -156,7 +156,7 @@ Provide:
 - **Full task text** from the spec (don't make the sub-agent read files)
 - **Scene-setting context**: where this fits in the overall implementation, what prior tasks produced, architectural constraints. If the sub-agent is landing in unfamiliar code, include a `fsd:zoom-out` shape map up front
 - **The relevant spec sections** that inform this task (Technical Design, Edge Cases, Testing Strategy — Testing Strategy is especially load-bearing because it names the discipline's seam)
-- **Codebase conventions** from AGENTS.md and best-practices.md (BP-007 doc-comments, BP-010–BP-016 implementation rules)
+- **Codebase conventions** from AGENTS.md and best-practices.md — universal rules + index inline; situational rule text (e.g. BP-010 react, BP-011–BP-016 blocks/generators/resources) in `docs/contributing/best-practices/<category>.md`
 - **The chosen discipline block** filled into the `[Discipline]` slot
 
 **Model selection:**
