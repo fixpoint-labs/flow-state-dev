@@ -67,9 +67,10 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Omit `outputSchema` for internal/ephemeral sequencers (scratch pipelines, background fan-out) — there the validation is pure overhead.
   - `.validate()` is a conservative one-level structural check: deep shapes, refinements, brands, and union variants are out of scope, and it no-ops when the tail is erased by `stepAny` / `race` / `stepAll` / `branch`. The runtime gate still catches real mismatches; `.validate()` is the early warning, not the guarantee.
 
-### Conditional composition: prefer step variants over wrapper sequencers
+### BP-036: Prefer conditional step variants over wrapper sequencers
 
 - Status: Active
+- Date: 2026-06-27
 - Scope: Blocks — conditional composition.
 - Rule:
   - Use `.workIf(condition, connector, block)` — not a wrapper sequencer with `.stepIf` inside `.work()`.

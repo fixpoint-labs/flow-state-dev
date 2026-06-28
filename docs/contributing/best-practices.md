@@ -24,7 +24,7 @@ Update policy:
 
 - A practice is established by **user review** (see the `fsd:distill-lessons`
   skill). Add it in the same change set as the code/docs adopting it.
-- Number sequentially after the last existing BP (currently BP-035). Append;
+- Number sequentially after the last existing BP (currently BP-036). Append;
   never overwrite or renumber.
 - A new **universal** BP goes in this file's Universal section *and* the
   `CLAUDE.md` mirror. A new **situational** BP goes in the matching
@@ -164,6 +164,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-014 | Handlers must never return input as output |
 | BP-024 | Helpers when the body varies; factories when only identity varies |
 | BP-025 | Declare and validate sequencer output schemas deliberately |
+| BP-036 | Prefer conditional step variants (`.workIf`/`.tapIf`/`.stepIf`) over wrapper sequencers |
 
 ### [Generators & Prompts](best-practices/generators.md)
 

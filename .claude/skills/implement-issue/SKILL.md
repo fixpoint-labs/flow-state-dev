@@ -207,7 +207,7 @@ Launch a `general-purpose` sub-agent to:
 #### Agent 2: Simplification Review
 Launch a `Plan` sub-agent to:
 - Look for over-engineering: abstractions that aren't justified by the spec's scope
-- Identify unnecessary indirection or complexity (shallow handlers per BP-013, wrapper sequencers per BP-015, BP-014 violations, etc.)
+- Identify unnecessary indirection or complexity (shallow handlers per BP-013, wrapper sequencers per BP-036, BP-014 violations, etc.)
 - Check if any code could be simplified without losing functionality
 - Verify the implementation follows existing codebase patterns rather than inventing new ones
 - Check for YAGNI violations — features or flexibility that wasn't requested

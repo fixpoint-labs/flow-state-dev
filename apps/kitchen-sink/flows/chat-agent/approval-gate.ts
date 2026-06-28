@@ -21,7 +21,7 @@
  *
  * The branch blocks are `.tapIf` (side-effect/emit only) rather than `.stepIf`
  * so they don't rewrite the threaded value — every branch condition reads the
- * same gate decision (BP-015: conditional step variants, no wrapper sequencer).
+ * same gate decision (BP-036: conditional step variants, no wrapper sequencer).
  * Kept off the main `run` pipeline so ordinary chat turns stay transient.
  */
 import { handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";

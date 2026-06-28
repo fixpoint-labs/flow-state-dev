@@ -1,6 +1,6 @@
 ---
 name: fsd:improve-codebase-architecture
-description: Find deepening opportunities in the @flow-state-dev repo, informed by FSD's existing domain vocabulary (block, generator, sequencer, router, pattern, capability, scope, item) and authority hierarchy (docs/architecture > docs/contributing/best-practices.md > AGENTS.md). Use when the user wants to improve architecture, find refactoring opportunities, consolidate shallow blocks or thin handlers, or make a package more testable and AI-navigable. Respects existing best practices (BP-001–BP-016) — suggestions that would contradict a BP should explicitly justify revisiting it.
+description: Find deepening opportunities in the @flow-state-dev repo, informed by FSD's existing domain vocabulary (block, generator, sequencer, router, pattern, capability, scope, item) and authority hierarchy (docs/architecture > docs/contributing/best-practices.md > AGENTS.md). Use when the user wants to improve architecture, find refactoring opportunities, consolidate shallow blocks or thin handlers, or make a package more testable and AI-navigable. Respects existing best practices (BP-001–BP-036) — suggestions that would contradict a BP should explicitly justify revisiting it.
 ---
 
 # Improve Codebase Architecture
@@ -82,7 +82,7 @@ Then use the Agent tool with `subagent_type=Explore` to walk the codebase. Don't
 | Thin connector handler whose `execute` is `return { x: input.y }` | `.step()` chain bloated with adapter blocks | Use a connector function: `.step((v) => ({ x: v.y }), block)` (BP-013) |
 | Handler that calls another block inside `execute` | Hidden composition; defeats observability | Lift to a sequencer (`BP-011`) |
 | Handler returning its input unchanged | Items log polluted with echoes | Replace with `.tap()` (BP-012, BP-014) |
-| Wrapper sequencer just to gate a `.step()` on a condition | Indirection that obscures control flow | `.stepIf` / `.workIf` / `.tapIf` (BP-015) |
+| Wrapper sequencer just to gate a `.step()` on a condition | Indirection that obscures control flow | `.stepIf` / `.workIf` / `.tapIf` (BP-036) |
 | Multiple blocks each plumbing the same tools/context/resources into a generator | Capability-shaped duplication | Extract a `defineCapability` and use `uses: [cap]` |
 | Generator `outputSchema` with `z.record` / `z.optional` / heterogeneous `z.union` | OpenAI strict-mode incompatibility | Collapse to fixed shape + nullable (BP-016) |
 | `useEffect` doing derived-state computation in React layer | Renders out of sync, brittle to deps | `useMemo` (BP-010) |
