@@ -40,6 +40,10 @@ type HoldingsTableProps = {
   accountTotal: number | null;
   /** Household tickers (upper-case) that have a standing thesis (FIX-760). */
   thesisTickers: ReadonlySet<string>;
+  /** Whether the household theses have finished loading. The thesis button is
+   *  disabled until then, so a click can't open a blank editor against a partial
+   *  list and overwrite an unloaded thesis (FIX-760). Defaults to true. */
+  thesisReady?: boolean;
   onDeleteHolding: (ticker: string) => void;
   /** Open the thesis editor for one holding (the per-holding thesis affordance). */
   onEditThesis: (ticker: string) => void;
@@ -110,6 +114,7 @@ export function HoldingsTable({
   currency,
   accountTotal,
   thesisTickers,
+  thesisReady = true,
   onDeleteHolding,
   onEditThesis,
 }: HoldingsTableProps): ReactElement {
@@ -159,6 +164,7 @@ export function HoldingsTable({
                   <ThesisButton
                     ticker={m.ticker}
                     hasThesis={m.hasThesis}
+                    disabled={!thesisReady}
                     onEdit={onEditThesis}
                   />
                 </span>
@@ -203,6 +209,7 @@ export function HoldingsTable({
               <ThesisButton
                 ticker={m.ticker}
                 hasThesis={m.hasThesis}
+                disabled={!thesisReady}
                 onEdit={onEditThesis}
               />
               <span className="ml-auto font-mono text-[12.5px] tabular-nums text-[color:var(--c-fg)]">
@@ -260,24 +267,40 @@ function CardStat({
 function ThesisButton({
   ticker,
   hasThesis,
+  disabled = false,
   onEdit,
 }: {
   ticker: string;
   hasThesis: boolean;
+  /** Disabled until the household theses finish loading — a click against a
+   *  partial list could blank-edit and overwrite an unloaded thesis (FIX-760). */
+  disabled?: boolean;
   onEdit: (ticker: string) => void;
 }): ReactElement {
   return (
     <button
       type="button"
       onClick={() => onEdit(ticker)}
+      disabled={disabled}
       className={cn(
-        "rounded p-0.5 hover:bg-[color:var(--c-surface-2)]",
-        hasThesis
-          ? "text-[color:var(--c-accent)]"
-          : "text-[color:var(--c-fg-faint)] hover:text-[color:var(--c-fg-muted)]",
+        "rounded p-0.5",
+        disabled
+          ? "cursor-not-allowed text-[color:var(--c-fg-faint)] opacity-40"
+          : cn(
+              "hover:bg-[color:var(--c-surface-2)]",
+              hasThesis
+                ? "text-[color:var(--c-accent)]"
+                : "text-[color:var(--c-fg-faint)] hover:text-[color:var(--c-fg-muted)]",
+            ),
       )}
       aria-label={hasThesis ? `Edit thesis for ${ticker}` : `Add thesis for ${ticker}`}
-      title={hasThesis ? `Thesis recorded — edit ${ticker}` : `Add a thesis for ${ticker}`}
+      title={
+        disabled
+          ? "Loading theses…"
+          : hasThesis
+            ? `Thesis recorded — edit ${ticker}`
+            : `Add a thesis for ${ticker}`
+      }
     >
       <NotebookPen className="h-3 w-3" aria-hidden />
     </button>

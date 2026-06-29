@@ -64,7 +64,10 @@ export type TimeHorizon = z.infer<typeof timeHorizonSchema>;
  */
 export const thesisInputSchema = z.object({
   ticker: z.string().min(1).max(12),
-  entryRationale: z.string().min(1).max(4000),
+  // `.trim()` first so a whitespace-only rationale (a direct/bypass caller) fails
+  // `.min(1)` — the formatter only suppresses an exactly empty string, so a blank
+  // "why" must never persist into the `<standingThesis>` prompt.
+  entryRationale: z.string().trim().min(1).max(4000),
   invalidationConditions: z.string().max(4000).nullable().default(null),
   tripwires: z.array(tripwireSchema).max(20).default([]),
   timeHorizon: timeHorizonSchema.nullable().default(null),

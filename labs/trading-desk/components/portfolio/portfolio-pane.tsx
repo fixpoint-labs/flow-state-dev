@@ -73,7 +73,7 @@ export function PortfolioPane({
 }: PortfolioPaneProps): ReactElement {
   const { accounts, refetch: refetchAccounts } = usePortfolioAccounts(session);
   const { events: ledgerEvents, refetch: refetchLedger } = useLedger(session);
-  const { theses, refetch: refetchTheses } = useTheses(session);
+  const { theses, loading: thesesLoading, refetch: refetchTheses } = useTheses(session);
   const { clientData: quotesData } = useResource(session, "portfolioQuotes");
 
   const [addOpen, setAddOpen] = useState(false);
@@ -434,6 +434,10 @@ export function PortfolioPane({
                 accountValue={rollup.value}
                 accountUpl={rollup.upl}
                 thesisTickers={thesisTickers}
+                // Gate the thesis affordance until the whole household has loaded
+                // (initial read + paging) — opening the editor against a partial
+                // list would blank-edit and overwrite an unloaded thesis.
+                thesisReady={!thesesLoading}
                 onDeleteHolding={(ticker) =>
                   void handleDeleteHolding(account.accountId, ticker)
                 }

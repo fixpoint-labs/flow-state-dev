@@ -31,6 +31,10 @@ type AccountSectionProps = {
   accountUpl: number | null;
   /** Household tickers (upper-case) with a standing thesis (FIX-760). */
   thesisTickers: ReadonlySet<string>;
+  /** Whether the household theses have finished loading; the thesis editor
+   *  affordance is disabled until then so it can't blank-edit/overwrite an
+   *  unloaded thesis (FIX-760). */
+  thesisReady?: boolean;
   onDeleteHolding: (ticker: string) => void;
   onDeleteAccount: () => void;
   /** Open the thesis editor for one holding. */
@@ -51,6 +55,7 @@ export function AccountSection({
   accountValue,
   accountUpl,
   thesisTickers,
+  thesisReady = true,
   onDeleteHolding,
   onDeleteAccount,
   onEditThesis,
@@ -104,6 +109,7 @@ export function AccountSection({
           currency={account.currency}
           accountTotal={accountValue}
           thesisTickers={thesisTickers}
+          thesisReady={thesisReady}
           onDeleteHolding={onDeleteHolding}
           onEditThesis={onEditThesis}
         />

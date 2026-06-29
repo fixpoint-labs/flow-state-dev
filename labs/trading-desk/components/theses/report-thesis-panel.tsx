@@ -38,13 +38,13 @@ export function ReportThesisPanel({
 }: ReportThesisPanelProps): ReactElement | null {
   const { theses, loading, refetch } = useTheses(session);
   const [adopting, setAdopting] = useState(false);
-  const [adopted, setAdopted] = useState(false);
+  const [adoptAttempted, setAdoptAttempted] = useState(false);
 
-  // Reset the "Adopted ✓" confirmation whenever the target report changes
-  // (the pane swaps session/ticker without remounting this panel), so a stale
-  // confirmation from a previous ticker can't leak into a new, un-adopted one.
+  // Reset the attempt flag whenever the target report changes (the pane swaps
+  // session/ticker without remounting this panel), so a stale confirmation from
+  // a previous ticker can't leak into a new, un-adopted one.
   useEffect(() => {
-    setAdopted(false);
+    setAdoptAttempted(false);
   }, [ticker, session]);
 
   const standing = useMemo(
@@ -52,14 +52,22 @@ export function ReportThesisPanel({
     [ticker, theses],
   );
 
+  // Confirm "Adopted ✓" only once the thesis ACTUALLY exists for this ticker
+  // (the live collection reflects the committed write) AND we attempted it —
+  // `sendAction` resolves at stream-attach, before the handler commits and before
+  // a no-decision / write failure surfaces, so an optimistic confirm would show a
+  // false success. Tying it to the live record means a failed adopt never confirms.
+  const adopted = adoptAttempted && standing !== null;
+
   const handleAdopt = useCallback(async () => {
     setAdopting(true);
     try {
       // Derive-only: the action reads the stored decision snapshot — no input.
       await session.sendAction("adoptThesis", {});
-      // sendAction resolves before the write commits; refetch for the new record.
+      // sendAction resolves before the write commits; refetch as a backstop to the
+      // live stream. The confirmation gates on `standing` actually appearing.
       refetch();
-      setAdopted(true);
+      setAdoptAttempted(true);
     } catch (err) {
       console.error("[trading-desk] adoptThesis failed", err);
     } finally {
@@ -67,11 +75,12 @@ export function ReportThesisPanel({
     }
   }, [session, refetch]);
 
-  // Adoption needs the theses read to have landed (`loading === false`), so a
-  // user can't click Adopt before an existing standing thesis is known and
-  // overwrite it on a slow `/api/portfolio/theses` response. Until then, treat
-  // adoption as unavailable.
-  const canAdopt = runComplete && !loading;
+  // Adoption needs: the run finished (`runComplete` flips only after the PM
+  // commits a decision), the theses read to have landed (so an existing thesis is
+  // known and not overwritten), and a known `ticker` — when the ticker hasn't
+  // loaded, `standing` is forced null and the panel could otherwise offer Adopt
+  // for an unknown name, overwriting a thesis it couldn't match.
+  const canAdopt = runComplete && !loading && ticker !== null;
 
   // Nothing to show yet: no standing thesis to display AND adoption unavailable
   // (run not finished, or the theses read still in flight).

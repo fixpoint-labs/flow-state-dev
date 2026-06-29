@@ -90,6 +90,18 @@ describe("saveThesis action", () => {
     expect((await thesesOf(stores))["theses/NVDA"]).toBeUndefined();
   });
 
+  it("rejects a whitespace-only entry rationale at the action boundary", async () => {
+    const result = await testFlow({
+      flow: portfolioFlow,
+      action: "saveThesis",
+      userId: USER_ID,
+      stores,
+      input: { ticker: "NVDA", entryRationale: "   " },
+    });
+    expect(result.status).not.toBe("completed");
+    expect((await thesesOf(stores))["theses/NVDA"]).toBeUndefined();
+  });
+
   it("rejects a nonpositive price at the action boundary", async () => {
     const result = await testFlow({
       flow: portfolioFlow,
