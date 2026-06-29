@@ -275,14 +275,33 @@ describe("canonicalRowsToCsv — feeds the EXISTING CSV parser cleanly", () => {
     });
   });
 
-  it("emits a ticker,quantity,costBasis,assetType header (no price column)", () => {
+  it("emits a ticker,quantity,costBasis,assetType,markPrice header (no bare price column)", () => {
     const { rows } = toCanonicalRows(syntheticExtraction());
     const csv = canonicalRowsToCsv(rows);
-    expect(csv.split("\n")[0]).toBe("ticker,quantity,costBasis,assetType");
-    // No warning about a price→cost mapping, because there is no price column.
+    expect(csv.split("\n")[0]).toBe("ticker,quantity,costBasis,assetType,markPrice");
+    // No warning about a bare-price→cost mapping: `markPrice` is NOT a costBasis
+    // synonym, so the parser never misreads it as cost.
     const parsed = parsePortfolioCsv(csv);
-    expect(parsed.warnings.some((w) => w.toLowerCase().includes("price"))).toBe(
+    expect(parsed.warnings.some((w) => w.toLowerCase().includes("cost"))).toBe(
       false,
     );
+    expect(parsed.rows.every((r) => r.costBasis === null)).toBe(true);
+  });
+
+  it("carries a bond's markPrice through the PDF → CSV round-trip (FIX-773 Slice C)", () => {
+    // A bond is valued at the carried statement mark — it must survive the CSV
+    // seam, or the bond would value at "—" after import.
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: "912828YK0", quantity: 5, costBasis: null, price: 98.5, value: 492.5 },
+      ],
+      statedTotal: null,
+    };
+    const csv = canonicalRowsToCsv(toCanonicalRows(ext).rows);
+    const parsed = parsePortfolioCsv(csv);
+    expect(parsed.errors).toEqual([]);
+    const bond = parsed.rows.find((r) => r.ticker === "912828YK0");
+    expect(bond?.assetType).toBe("bond");
+    expect(bond?.attributes).toMatchObject({ kind: "bond", markPrice: 98.5 });
   });
 });

@@ -18,15 +18,18 @@
 import type { ReactElement } from "react";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Holding } from "@/src/flows/portfolio/portfolio-schema";
+import type { AssetType, Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
+import {
+  resolveHoldingPrice,
+  holdingMarketValue,
+} from "@/src/flows/portfolio/value-holding";
 import {
   DASH,
   formatMoney,
   formatPercent,
   formatQuantity,
   formatSignedMoney,
-  marketValue,
   unrealizedPL,
   weight,
 } from "./portfolio-format";
@@ -41,10 +44,27 @@ type HoldingsTableProps = {
   onDeleteHolding: (ticker: string) => void;
 };
 
+/** Short uppercase type chips (FIX-773 Slice C). Dense, terminal-style — `EQ`
+ *  not "Equity". Surfaced next to the ticker so the user sees WHY a row values
+ *  at a quote vs a statement mark vs par. */
+const TYPE_LABELS: Record<AssetType, string> = {
+  equity: "EQ",
+  etf: "ETF",
+  mutual_fund: "MF",
+  bond: "BOND",
+  money_market: "MMF",
+  crypto: "CRY",
+  option: "OPT",
+  other: "OTH",
+};
+
 /** Render-ready strings for one holding row/card. Every price-derived field
- *  degrades to "—" when the quote is missing — never a fabricated number. */
+ *  degrades to "—" when no price resolves for the type — never a fabricated
+ *  number. `typeLabel` surfaces the asset type even on an unpriced row. */
 export type HoldingRowModel = {
   ticker: string;
+  /** Short uppercase asset-type chip (e.g. `EQ`, `BOND`, `MMF`). */
+  typeLabel: string;
   quantity: string;
   avgCost: string;
   price: string;
@@ -54,18 +74,24 @@ export type HoldingRowModel = {
 };
 
 /** Build the shared view model behind a table row AND a mobile card. Pure —
- *  exported for the node-env spec (`test/holdings-row-model.spec.ts`). */
+ *  exported for the node-env spec (`test/holdings-row-model.spec.ts`).
+ *
+ *  FIX-773 Slice C: the price is resolved BY TYPE (`value-holding.ts`) — equity
+ *  via the live quote, a bond/option at its carried statement mark, MMF/cash at
+ *  par — so a bond/MMF shows a real value with no live quote. uP/L stays vs the
+ *  informational `costBasis` (null for a snapshot-imported bond → "—"). */
 export function buildHoldingRowModel(
   holding: Holding,
   quote: Quote | undefined,
   currency: string,
   accountTotal: number | null,
 ): HoldingRowModel {
-  const price = quote?.price ?? null;
-  const value = marketValue(holding.quantity, price);
+  const { price } = resolveHoldingPrice(holding, quote);
+  const value = holdingMarketValue(holding, quote);
   const upl = unrealizedPL(holding.quantity, holding.costBasis, price);
   return {
     ticker: holding.ticker,
+    typeLabel: TYPE_LABELS[holding.assetType],
     quantity: formatQuantity(holding.quantity),
     avgCost:
       holding.costBasis === null ? DASH : formatMoney(holding.costBasis, currency),
@@ -133,7 +159,12 @@ export function HoldingsTable({
               key={m.ticker}
               className="border-b border-[color:var(--c-border)]/40"
             >
-              <td className={cn(cellClass, "font-semibold")}>{m.ticker}</td>
+              <td className={cn(cellClass, "font-semibold")}>
+                <span className="inline-flex items-center gap-1.5">
+                  {m.ticker}
+                  <TypeChip label={m.typeLabel} />
+                </span>
+              </td>
               <td className={numCellClass}>{m.quantity}</td>
               <td className={numCellClass}>{m.avgCost}</td>
               <td className={numCellClass}>{m.price}</td>
@@ -171,6 +202,7 @@ export function HoldingsTable({
               <span className="font-mono text-[12.5px] font-semibold text-[color:var(--c-fg)]">
                 {m.ticker}
               </span>
+              <TypeChip label={m.typeLabel} />
               <span className="ml-auto font-mono text-[12.5px] tabular-nums text-[color:var(--c-fg)]">
                 {m.value}
               </span>
@@ -191,6 +223,17 @@ export function HoldingsTable({
         ))}
       </ul>
     </div>
+  );
+}
+
+/** A tiny uppercase asset-type chip (FIX-773 Slice C), shown next to the ticker
+ *  in both layouts so the user sees the holding's type at a glance — and so a
+ *  bond/MMF valued at a statement mark / par reads as deliberate, not a quote. */
+function TypeChip({ label }: { label: string }): ReactElement {
+  return (
+    <span className="rounded-sm border border-[color:var(--c-border)] px-1 py-px font-mono text-[8.5px] uppercase leading-none tracking-wider text-[color:var(--c-fg-faint)]">
+      {label}
+    </span>
   );
 }
 

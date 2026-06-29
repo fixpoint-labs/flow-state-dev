@@ -1,0 +1,121 @@
+/**
+ * Unit tests for `resolveHoldingPrice` + `holdingMarketValue` — the ONE place the
+ * per-type valuation rule lives (FIX-773 Slice C), shared by the holdings table
+ * and the analysis-context builder.
+ *
+ * These encode the real-money intent: a majority-bond/MMF book values honestly
+ * (bonds at their carried statement mark, cash/MMF at par $1.00, equity via live
+ * quote) and NEVER fabricates a price — a type with no resolvable price → null
+ * value → the "—" gate downstream.
+ */
+import { describe, expect, it } from "vitest";
+import {
+  resolveHoldingPrice,
+  holdingMarketValue,
+} from "../src/flows/portfolio/value-holding";
+import type { Holding } from "../src/flows/portfolio/portfolio-schema";
+
+function holding(over: Partial<Holding> = {}): Holding {
+  return {
+    ticker: "NVDA",
+    quantity: 10,
+    costBasis: 100,
+    acquiredDate: null,
+    assetClass: "equity",
+    assetType: "equity",
+    attributes: { kind: "none" },
+    ...over,
+  };
+}
+
+describe("resolveHoldingPrice — per-type valuation rule", () => {
+  it("values equity/etf/mutual_fund/crypto via the live quote", () => {
+    for (const assetType of ["equity", "etf", "mutual_fund", "crypto"] as const) {
+      const r = resolveHoldingPrice(holding({ assetType }), { price: 200 });
+      expect(r).toEqual({ price: 200, priceSource: "quote" });
+    }
+  });
+
+  it("degrades equity to unavailable when there is no quote", () => {
+    expect(resolveHoldingPrice(holding(), undefined)).toEqual({
+      price: null,
+      priceSource: "unavailable",
+    });
+    expect(resolveHoldingPrice(holding(), { price: null })).toEqual({
+      price: null,
+      priceSource: "unavailable",
+    });
+  });
+
+  it("values a money_market at par $1.00 regardless of quote", () => {
+    const h = holding({
+      assetType: "money_market",
+      assetClass: "cash",
+      attributes: { kind: "cash_equivalent", yield: null },
+    });
+    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 1, priceSource: "par" });
+  });
+
+  it("values any cash-class holding at par", () => {
+    const h = holding({ assetType: "other", assetClass: "cash", attributes: { kind: "none" } });
+    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 1, priceSource: "par" });
+  });
+
+  it("values a bond at its carried statement mark", () => {
+    const h = holding({
+      assetType: "bond",
+      assetClass: "fixed_income",
+      attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: 98.5, markAsOf: null },
+    });
+    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 98.5, priceSource: "statement" });
+  });
+
+  it("degrades an unpriced bond to unavailable (no fabricated price)", () => {
+    const h = holding({
+      assetType: "bond",
+      assetClass: "fixed_income",
+      attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: null, markAsOf: null },
+    });
+    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: null, priceSource: "unavailable" });
+  });
+
+  it("values an option at its carried mark", () => {
+    const h = holding({
+      assetType: "option",
+      assetClass: "equity",
+      attributes: { kind: "option", underlying: "AAPL", strike: 190, expiry: "2026-06-21", right: "call", multiplier: 100, markPrice: 12.4, markAsOf: null },
+    });
+    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 12.4, priceSource: "statement" });
+  });
+
+  it("values `other` as unavailable", () => {
+    const h = holding({ assetType: "other", assetClass: "alternative", attributes: { kind: "none" } });
+    expect(resolveHoldingPrice(h, { price: 50 })).toEqual({ price: null, priceSource: "unavailable" });
+  });
+});
+
+describe("holdingMarketValue — type-resolved value (option multiplier)", () => {
+  it("equity value = quantity × price", () => {
+    expect(holdingMarketValue(holding({ quantity: 10 }), { price: 200 })).toBe(2000);
+  });
+
+  it("money_market value = quantity × par", () => {
+    const h = holding({ quantity: 1500, assetType: "money_market", assetClass: "cash", attributes: { kind: "cash_equivalent", yield: null } });
+    expect(holdingMarketValue(h, undefined)).toBe(1500);
+  });
+
+  it("bond value = quantity × mark", () => {
+    const h = holding({ quantity: 5, assetType: "bond", assetClass: "fixed_income", attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: 98.5, markAsOf: null } });
+    expect(holdingMarketValue(h, undefined)).toBe(492.5);
+  });
+
+  it("option value = quantity × mark × multiplier", () => {
+    const h = holding({ quantity: 2, assetType: "option", assetClass: "equity", attributes: { kind: "option", underlying: "AAPL", strike: 190, expiry: "2026-06-21", right: "call", multiplier: 100, markPrice: 12.4, markAsOf: null } });
+    // 2 × 12.4 × 100 = 2480
+    expect(holdingMarketValue(h, undefined)).toBe(2480);
+  });
+
+  it("null price → null value (the real-money gate)", () => {
+    expect(holdingMarketValue(holding(), undefined)).toBeNull();
+  });
+});

@@ -24,7 +24,13 @@ import { classifyInstrument } from "./classify-instrument";
  *  the optional `assetType` column (FIX-773 Slice B) is the only taxonomy hint —
  *  present → it WINS over symbol-shape inference, absent → the classifier infers
  *  from the symbol. The synonym table and column-index map key on this subset. */
-type CsvColumn = "ticker" | "quantity" | "costBasis" | "acquiredDate" | "assetType";
+type CsvColumn =
+  | "ticker"
+  | "quantity"
+  | "costBasis"
+  | "acquiredDate"
+  | "assetType"
+  | "markPrice";
 
 /** One row that failed validation, surfaced to the user with its 1-based row
  *  number (matching what they see in a spreadsheet, header = row 1). */
@@ -71,6 +77,11 @@ const COLUMN_SYNONYMS: Record<CsvColumn, string[]> = {
     "date",
   ],
   assetType: ["assettype", "type", "assetclass"],
+  // FIX-773 Slice C: the carried statement mark for a bond/option, emitted by the
+  // PDF round-trip (`canonicalRowsToCsv`). Deliberately a distinct name — NOT a
+  // costBasis synonym — so it never collides with cost. A direct CSV import
+  // without this column just yields a null mark (a bond then shows "—").
+  markPrice: ["markprice"],
 };
 
 /** Normalize a header cell for synonym matching: lower-case, strip everything
@@ -138,6 +149,7 @@ function resolveColumns(headerCells: string[]): {
     costBasis: -1,
     acquiredDate: -1,
     assetType: -1,
+    markPrice: -1,
   };
   const mapping: Record<string, string> = {};
   for (const field of Object.keys(COLUMN_SYNONYMS) as CsvColumn[]) {
@@ -224,6 +236,10 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
      *  duplicate rows share a ticker ⇒ share a classification). Null → the
      *  classifier infers from the symbol shape. */
     assetTypeHint: AssetType | null;
+    /** First non-null `markPrice`-column value seen for this ticker (FIX-773
+     *  Slice C). Fed as the classifier's `price` so a bond/option regains its
+     *  carried statement mark; null → the mark stays null (the bond shows "—"). */
+    markPrice: number | null;
     rowCount: number;
   };
   const byTicker = new Map<string, Acc>();
@@ -283,6 +299,13 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
       if (parsed.success) assetTypeHint = parsed.data;
     }
 
+    // Optional `markPrice` column → the carried statement mark (FIX-773 Slice C),
+    // loose-parsed (currency/thousands tolerated); blank → null.
+    let markPrice: number | null = null;
+    if (indices.markPrice !== -1) {
+      markPrice = parseLooseNumber((cells[indices.markPrice] ?? "").trim());
+    }
+
     const existing = byTicker.get(rawTicker);
     if (existing === undefined) {
       byTicker.set(rawTicker, {
@@ -292,6 +315,7 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
         costWeightQty: costBasis === null ? 0 : quantity,
         acquiredDate,
         assetTypeHint,
+        markPrice,
         rowCount: 1,
       });
     } else {
@@ -311,6 +335,10 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
       if (existing.assetTypeHint === null && assetTypeHint !== null) {
         existing.assetTypeHint = assetTypeHint;
       }
+      // First non-null mark wins (same ticker ⇒ same carried mark).
+      if (existing.markPrice === null && markPrice !== null) {
+        existing.markPrice = markPrice;
+      }
       existing.rowCount += 1;
     }
   }
@@ -327,6 +355,9 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
     // classify call covers the merged accumulator.
     const { assetClass, assetType, attributes } = classifyInstrument(acc.ticker, {
       assetTypeHint: acc.assetTypeHint,
+      // FIX-773 Slice C: re-derive the bond/option mark from the carried column.
+      // The CSV row has no as-of, so markAsOf stays null on this path.
+      price: acc.markPrice,
     });
     rows.push({
       ticker: acc.ticker,

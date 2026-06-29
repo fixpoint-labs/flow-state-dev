@@ -44,6 +44,8 @@ describe("classifyInstrument — symbol-shape inference (one case per rule)", ()
       coupon: null,
       maturity: null,
       yield: null,
+      markPrice: null,
+      markAsOf: null,
     });
     expect(holdingAttributesSchema.safeParse(r.attributes).success).toBe(true);
   });
@@ -82,6 +84,8 @@ describe("classifyInstrument — symbol-shape inference (one case per rule)", ()
       expiry: "2024-06-21",
       right: "call",
       multiplier: 100,
+      markPrice: null,
+      markAsOf: null,
     });
     expect(holdingAttributesSchema.safeParse(r.attributes).success).toBe(true);
   });
@@ -118,6 +122,8 @@ describe("classifyInstrument — assetTypeHint overrides symbol shape", () => {
       coupon: null,
       maturity: null,
       yield: null,
+      markPrice: null,
+      markAsOf: null,
     });
     expect(holdingAttributesSchema.safeParse(r.attributes).success).toBe(true);
   });
@@ -136,5 +142,45 @@ describe("classifyInstrument — assetTypeHint overrides symbol shape", () => {
     expect(r.assetType).toBe("equity");
     expect(r.attributes).toEqual({ kind: "none" });
     expect(holdingAttributesSchema.safeParse(r.attributes).success).toBe(true);
+  });
+});
+
+describe("classifyInstrument — carries the statement mark (FIX-773 Slice C)", () => {
+  it("stamps markPrice + markAsOf onto an inferred bond when a price is supplied", () => {
+    // A bond has no live quote, so the import's carried per-unit mark is the only
+    // value it ever gets — it must survive into the attributes.
+    const r = classifyInstrument("912828YK0", { price: 98.5, asOf: "2026-05-06" });
+    expect(r.assetType).toBe("bond");
+    expect(r.attributes).toMatchObject({ kind: "bond", markPrice: 98.5, markAsOf: "2026-05-06" });
+    expect(holdingAttributesSchema.safeParse(r.attributes).success).toBe(true);
+  });
+
+  it("leaves markPrice null on a bond when no price is supplied", () => {
+    const r = classifyInstrument("912828YK0");
+    expect(r.attributes).toMatchObject({ kind: "bond", markPrice: null, markAsOf: null });
+  });
+
+  it("stamps the mark onto a HINTED bond too", () => {
+    const r = classifyInstrument("XYZ", { assetTypeHint: "bond", price: 101.25 });
+    expect(r.attributes).toMatchObject({ kind: "bond", markPrice: 101.25 });
+  });
+
+  it("stamps markPrice onto an inferred option, keeping its parsed fields", () => {
+    const r = classifyInstrument("AAPL240621C00190000", { price: 12.4, asOf: "2026-05-06" });
+    expect(r.attributes).toMatchObject({
+      kind: "option",
+      underlying: "AAPL",
+      strike: 190,
+      right: "call",
+      multiplier: 100,
+      markPrice: 12.4,
+      markAsOf: "2026-05-06",
+    });
+    expect(holdingAttributesSchema.safeParse(r.attributes).success).toBe(true);
+  });
+
+  it("does not stamp a mark onto a money_market (it values at par, not a mark)", () => {
+    const r = classifyInstrument("SPAXX", { price: 1.0 });
+    expect(r.attributes).toEqual({ kind: "cash_equivalent", yield: null });
   });
 });

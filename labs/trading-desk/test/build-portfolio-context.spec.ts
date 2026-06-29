@@ -93,6 +93,42 @@ describe("buildPortfolioContext", () => {
     expect(out?.accounts[0]).toMatchObject({ label: "Roth IRA", type: "Roth", cash: 10000 });
   });
 
+  it("values a mixed book by type: equity via quote, bond at mark, MMF at par (FIX-773 Slice C)", () => {
+    // The whole point of the slice: a majority-bond/MMF book shows a real NAV,
+    // not a sliver. Only the equity has a live quote; the bond values at its
+    // carried mark, the MMF at par, and an unpriced bond degrades honestly.
+    const accounts = [
+      account({
+        accountId: "acc-mixed",
+        cashBalance: 0,
+        holdings: [
+          // equity via quote: 10 × 200 = 2000
+          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+          // bond at carried mark: 5 × 98.5 = 492.5
+          { ticker: "912828YK0", quantity: 5, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "912828YK0", coupon: null, maturity: null, yield: null, markPrice: 98.5, markAsOf: null } },
+          // MMF at par: 1500 × 1.00 = 1500
+          { ticker: "SPAXX", quantity: 1500, costBasis: null, acquiredDate: null, assetClass: "cash", assetType: "money_market", attributes: { kind: "cash_equivalent", yield: null } },
+          // unpriced bond: no mark → null marketValue, adds nothing to NAV
+          { ticker: "999999XX9", quantity: 7, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "999999XX9", coupon: null, maturity: null, yield: null, markPrice: null, markAsOf: null } },
+        ],
+      }),
+    ];
+    // No quote for the bonds/MMF — they value WITHOUT a quote. The equity does.
+    const quotes = [{ ticker: "NVDA", price: 200, asOf: "2026-05-06" }];
+    const out = buildPortfolioContext(accounts, quotes, "2026-05-06");
+    // NAV = 2000 (equity) + 492.5 (bond mark) + 1500 (MMF par) = 3992.5.
+    // The unpriced bond adds nothing.
+    expect(out?.totalNav).toBe(3992.5);
+    expect(out?.pricedHoldings).toBe(3);
+    expect(out?.totalHoldings).toBe(4);
+    const byTicker = new Map(out?.holdings.map((h) => [h.ticker, h]));
+    expect(byTicker.get("NVDA")?.marketValue).toBe(2000);
+    expect(byTicker.get("912828YK0")?.marketValue).toBe(492.5);
+    expect(byTicker.get("SPAXX")?.marketValue).toBe(1500);
+    expect(byTicker.get("999999XX9")?.marketValue).toBeNull();
+    expect(byTicker.get("999999XX9")?.weightPct).toBeNull();
+  });
+
   it("never divides by zero — weight is null when NAV is 0", () => {
     // All holdings unpriced and no cash → NAV 0 → every weight null.
     const accounts = [

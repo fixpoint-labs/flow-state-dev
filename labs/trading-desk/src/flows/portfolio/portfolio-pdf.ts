@@ -321,9 +321,22 @@ export function toCanonicalRows(extraction: PdfExtraction): CanonicalMapping {
  * after the round-trip. We do NOT serialize `assetClass`/`attributes` as JSON —
  * `splitCsvLine` has no RFC-4180 escaping, so embedded JSON would be fragile;
  * `parsePortfolioCsv` re-derives those from the symbol + this `assetType` hint.
+ *
+ * FIX-773 Slice C: a SECOND extra column, `markPrice`, carries a bond/option
+ * row's carried statement mark as ONE flat number (`attributes.markPrice`, blank
+ * for any non-bond/option row). It is deliberately NOT named `price` — the CSV
+ * parser maps a bare `price` to costBasis (its documented last-resort synonym),
+ * which is exactly wrong for a current mark; `markPrice` is in NO costBasis
+ * synonym list, so it round-trips back into the bond/option attributes only.
  */
 export function canonicalRowsToCsv(rows: CanonicalRow[]): string {
-  const header = "ticker,quantity,costBasis,assetType";
-  const lines = rows.map((r) => `${r.ticker},${r.quantity},,${r.assetType}`);
+  const header = "ticker,quantity,costBasis,assetType,markPrice";
+  const lines = rows.map((r) => {
+    const markPrice =
+      r.attributes.kind === "bond" || r.attributes.kind === "option"
+        ? r.attributes.markPrice ?? ""
+        : "";
+    return `${r.ticker},${r.quantity},,${r.assetType},${markPrice}`;
+  });
   return [header, ...lines].join("\n");
 }

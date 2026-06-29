@@ -56,15 +56,6 @@ export function formatPercent(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-/** Market value = quantity × current price. `null` price → null value. */
-export function marketValue(
-  quantity: number,
-  price: number | null,
-): number | null {
-  if (price === null || !Number.isFinite(price)) return null;
-  return quantity * price;
-}
-
 /** Unrealized P/L = (price − avg cost) × quantity. `null` if either price or
  *  cost basis is unknown — never fabricated from a partial input. */
 export function unrealizedPL(

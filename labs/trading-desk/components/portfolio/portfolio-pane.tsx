@@ -45,11 +45,11 @@ import {
 import { LedgerTable } from "./ledger-table";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import { useLedger } from "./use-ledger";
+import { holdingMarketValue, resolveHoldingPrice } from "@/src/flows/portfolio/value-holding";
 import {
   DASH,
   formatMoney,
   formatSignedMoney,
-  marketValue,
   unrealizedPL,
 } from "./portfolio-format";
 
@@ -112,9 +112,13 @@ export function PortfolioPane({
       let value: number | null = null;
       let upl: number | null = null;
       for (const h of accHoldings) {
-        const price = priceMap.get(h.ticker.toUpperCase())?.price ?? null;
-        const v = marketValue(h.quantity, price);
+        const quote = priceMap.get(h.ticker.toUpperCase());
+        // Value BY TYPE (FIX-773 Slice C) so the account/portfolio totals and the
+        // weight denominator match the per-row values (bond at mark, MMF at par,
+        // equity via quote). uP/L stays vs the type-resolved price.
+        const v = holdingMarketValue(h, quote);
         if (v !== null) value = (value ?? 0) + v;
+        const { price } = resolveHoldingPrice(h, quote);
         const p = unrealizedPL(h.quantity, h.costBasis, price);
         if (p !== null) upl = (upl ?? 0) + p;
       }
