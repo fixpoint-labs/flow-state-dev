@@ -144,17 +144,17 @@ describe("extractHoldingsFromPdf action", () => {
 });
 
 describe("confirmed PDF rows flow into the EXISTING importHoldings", () => {
-  it("imports the real holdings (costBasis null) and skips MMF + contra-CUSIP", async () => {
+  it("imports real + MMF holdings TYPED (costBasis null) and skips only the zero-qty contra row", async () => {
     const stores = createInMemoryStores();
     await createAccount(stores);
 
     // The dialog's confirm step: map the (reviewed) extraction to canonical CSV.
     const { rows, skipped } = toCanonicalRows(extractionOutput());
     const csvText = canonicalRowsToCsv(rows);
-    // Sanity: the pure mapping already dropped the junk before import.
-    expect(rows.map((r) => r.ticker)).toEqual(["AAPL", "MSFT"]);
-    expect(skipped.map((s) => s.ticker)).toContain("TIMXX");
-    expect(skipped.map((s) => s.ticker)).toContain("436CVR021");
+    // FIX-773 Slice B: the MMF is PRESERVED (typed money_market), not dropped.
+    // Only the zero-quantity contra-CUSIP row is skipped.
+    expect(rows.map((r) => r.ticker)).toEqual(["AAPL", "MSFT", "TIMXX"]);
+    expect(skipped.map((s) => s.ticker)).toEqual(["436CVR021"]);
 
     const result = await testFlow({
       flow: portfolioFlow,
@@ -173,15 +173,22 @@ describe("confirmed PDF rows flow into the EXISTING importHoldings", () => {
         ticker: "AAPL",
         quantity: 5.44149,
         costBasis: null,
+        assetType: "equity",
       }),
     );
     expect(holdings).toContainEqual(
       expect.objectContaining({ ticker: "MSFT", quantity: 2, costBasis: null }),
     );
-    // The skipped junk rows never reached storage.
-    const tickers = holdings.map((h) => h.ticker);
-    expect(tickers).not.toContain("TIMXX");
-    expect(tickers).not.toContain("436CVR021");
+    // The MMF survives the round-trip TYPED — preserved, not dropped.
+    expect(holdings).toContainEqual(
+      expect.objectContaining({
+        ticker: "TIMXX",
+        assetType: "money_market",
+        assetClass: "cash",
+      }),
+    );
+    // The zero-quantity contra-CUSIP row never reached storage.
+    expect(holdings.map((h) => h.ticker)).not.toContain("436CVR021");
   });
 });
 

@@ -142,20 +142,74 @@ describe("toCanonicalRows — mapping + skip rules", () => {
       quantity: 5.44149,
       costBasis: null,
       acquiredDate: null,
-      // PDF import is equity-only in Slice A (FIX-773); classification is later.
+      // FIX-773 Slice B: an equity ticker classifies as equity.
       assetClass: "equity",
       assetType: "equity",
       attributes: { kind: "none" },
     });
   });
 
-  it("skips money-market funds, contra-CUSIPs, and reports them", () => {
+  it("PRESERVES bond/MMF/cash rows as typed holdings (classifier, not filter)", () => {
+    // An equity, a bond CUSIP, an MMF (XX + $1.00), and a cash line — FOUR typed
+    // rows, none dropped. This is the real-money intent of Slice B: a statement
+    // row is never silently lost; a non-equity becomes a visible typed holding.
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: "AAPL", quantity: 10, costBasis: null, price: 200, value: 2000 },
+        { ticker: "912828YK0", quantity: 5, costBasis: null, price: 98.5, value: 492.5 },
+        { ticker: "SPAXX", quantity: 1500, costBasis: null, price: 1.0, value: 1500 },
+        { ticker: "CASH", quantity: 250, costBasis: null, price: 1.0, value: 250 },
+      ],
+      statedTotal: 4242.5,
+    };
+    const { rows, skipped } = toCanonicalRows(ext);
+    expect(skipped).toEqual([]);
+    expect(rows).toHaveLength(4);
+
+    const byTicker = new Map(rows.map((r) => [r.ticker, r]));
+    expect(byTicker.get("AAPL")).toMatchObject({ assetType: "equity", assetClass: "equity" });
+    expect(byTicker.get("912828YK0")).toMatchObject({
+      assetType: "bond",
+      assetClass: "fixed_income",
+      attributes: { kind: "bond", cusip: "912828YK0" },
+    });
+    expect(byTicker.get("SPAXX")).toMatchObject({
+      assetType: "money_market",
+      assetClass: "cash",
+      attributes: { kind: "cash_equivalent" },
+    });
+    expect(byTicker.get("CASH")).toMatchObject({
+      assetType: "money_market",
+      assetClass: "cash",
+    });
+  });
+
+  it("still skips a no-symbol row and a zero-quantity row, reporting both", () => {
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: null, quantity: 100, costBasis: null, price: 1, value: 100 },
+        { ticker: "ZEROQTY", quantity: 0, costBasis: null, price: 50, value: 0 },
+        { ticker: "GOOG", quantity: 1, costBasis: null, price: 150, value: 150 },
+      ],
+      statedTotal: null,
+    };
+    const { rows, skipped } = toCanonicalRows(ext);
+    expect(rows.map((r) => r.ticker)).toEqual(["GOOG"]);
+    expect(skipped.map((s) => s.rowNumber).sort()).toEqual([1, 2]);
+    expect(skipped.every((s) => s.reason.length > 0)).toBe(true);
+  });
+
+  it("preserves the MMF as money_market and skips only the zero-qty contra row", () => {
+    // The synthetic extraction's TIMXX (XX + $1.00) is now PRESERVED as a
+    // money-market holding; the contra-CUSIP row is skipped only because its
+    // quantity is 0 (a no-position row), not because of its symbol shape.
     const { rows, skipped } = toCanonicalRows(syntheticExtraction());
-    expect(rows.map((r) => r.ticker)).toEqual(["AAPL", "MSFT"]);
-    const skippedTickers = skipped.map((s) => s.ticker);
-    expect(skippedTickers).toContain("TIMXX");
-    expect(skippedTickers).toContain("436CVR021");
-    // Each skip carries a human reason.
+    expect(rows.map((r) => r.ticker)).toEqual(["AAPL", "MSFT", "TIMXX"]);
+    expect(rows.find((r) => r.ticker === "TIMXX")).toMatchObject({
+      assetType: "money_market",
+      assetClass: "cash",
+    });
+    expect(skipped.map((s) => s.ticker)).toEqual(["436CVR021"]);
     expect(skipped.every((s) => s.reason.length > 0)).toBe(true);
   });
 
@@ -188,16 +242,43 @@ describe("canonicalRowsToCsv — feeds the EXISTING CSV parser cleanly", () => {
     const csv = canonicalRowsToCsv(rows);
     const parsed = parsePortfolioCsv(csv);
     expect(parsed.errors).toEqual([]);
-    expect(parsed.rows.map((r) => r.ticker).sort()).toEqual(["AAPL", "MSFT"]);
+    expect(parsed.rows.map((r) => r.ticker).sort()).toEqual(["AAPL", "MSFT", "TIMXX"]);
     // Cost basis must remain null — the snapshot never carried one, and the CSV
     // we emit deliberately has no price column for the parser to misread as cost.
     expect(parsed.rows.every((r) => r.costBasis === null)).toBe(true);
   });
 
-  it("does NOT emit a price column (which the CSV parser would map to cost)", () => {
+  it("survives the classification through the CSV seam (assetType round-trips)", () => {
+    // The PDF classifies; the CSV is the transport between the PDF path and the
+    // server-side parse. The bond must STILL be a bond and the MMF STILL a
+    // money_market after the round-trip — proving the type survives the seam.
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: "AAPL", quantity: 10, costBasis: null, price: 200, value: 2000 },
+        { ticker: "912828YK0", quantity: 5, costBasis: null, price: 98.5, value: 492.5 },
+        { ticker: "SPAXX", quantity: 1500, costBasis: null, price: 1.0, value: 1500 },
+      ],
+      statedTotal: null,
+    };
+    const csv = canonicalRowsToCsv(toCanonicalRows(ext).rows);
+    const parsed = parsePortfolioCsv(csv);
+    expect(parsed.errors).toEqual([]);
+    const byTicker = new Map(parsed.rows.map((r) => [r.ticker, r]));
+    expect(byTicker.get("AAPL")).toMatchObject({ assetType: "equity" });
+    expect(byTicker.get("912828YK0")).toMatchObject({
+      assetType: "bond",
+      assetClass: "fixed_income",
+    });
+    expect(byTicker.get("SPAXX")).toMatchObject({
+      assetType: "money_market",
+      assetClass: "cash",
+    });
+  });
+
+  it("emits a ticker,quantity,costBasis,assetType header (no price column)", () => {
     const { rows } = toCanonicalRows(syntheticExtraction());
     const csv = canonicalRowsToCsv(rows);
-    expect(csv.split("\n")[0]).toBe("ticker,quantity,costBasis");
+    expect(csv.split("\n")[0]).toBe("ticker,quantity,costBasis,assetType");
     // No warning about a price→cost mapping, because there is no price column.
     const parsed = parsePortfolioCsv(csv);
     expect(parsed.warnings.some((w) => w.toLowerCase().includes("price"))).toBe(

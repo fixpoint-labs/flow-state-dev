@@ -15,14 +15,16 @@
  *  - Conservative on cost: a bare `price` column (often a CURRENT price, not
  *    cost) maps to costBasis only as a last resort, and emits a warning.
  */
-import type { CanonicalRow } from "./portfolio-schema";
+import type { AssetType, CanonicalRow } from "./portfolio-schema";
+import { assetTypeSchema } from "./portfolio-schema";
+import { classifyInstrument } from "./classify-instrument";
 
-/** The CSV-mappable canonical columns. The asset-taxonomy fields
- *  (`assetClass`/`assetType`/`attributes`, FIX-773) are NOT parsed from CSV in
- *  Slice A — every imported row defaults to equity; classification arrives in a
- *  later slice — so the synonym table and column-index map key on this subset,
- *  not all of `CanonicalRow`. */
-type CsvColumn = "ticker" | "quantity" | "costBasis" | "acquiredDate";
+/** The CSV-mappable canonical columns. The taxonomy fields `assetClass` /
+ *  `attributes` are NOT parsed from CSV (they are re-derived by the classifier);
+ *  the optional `assetType` column (FIX-773 Slice B) is the only taxonomy hint —
+ *  present → it WINS over symbol-shape inference, absent → the classifier infers
+ *  from the symbol. The synonym table and column-index map key on this subset. */
+type CsvColumn = "ticker" | "quantity" | "costBasis" | "acquiredDate" | "assetType";
 
 /** One row that failed validation, surfaced to the user with its 1-based row
  *  number (matching what they see in a spreadsheet, header = row 1). */
@@ -68,6 +70,7 @@ const COLUMN_SYNONYMS: Record<CsvColumn, string[]> = {
     "opendate",
     "date",
   ],
+  assetType: ["assettype", "type", "assetclass"],
 };
 
 /** Normalize a header cell for synonym matching: lower-case, strip everything
@@ -134,6 +137,7 @@ function resolveColumns(headerCells: string[]): {
     quantity: -1,
     costBasis: -1,
     acquiredDate: -1,
+    assetType: -1,
   };
   const mapping: Record<string, string> = {};
   for (const field of Object.keys(COLUMN_SYNONYMS) as CsvColumn[]) {
@@ -216,6 +220,10 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
     costWeightedSum: number; // Σ(qty_i * cost_i) over rows that supplied a cost
     costWeightQty: number; // Σ(qty_i) over rows that supplied a cost
     acquiredDate: string | null;
+    /** First valid `type`-column hint seen for this ticker (a later slice's
+     *  duplicate rows share a ticker ⇒ share a classification). Null → the
+     *  classifier infers from the symbol shape. */
+    assetTypeHint: AssetType | null;
     rowCount: number;
   };
   const byTicker = new Map<string, Acc>();
@@ -266,6 +274,15 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
       }
     }
 
+    // Optional `type` column → an assetType hint for the classifier (a valid
+    // AssetType wins over symbol-shape inference; anything else is ignored).
+    let assetTypeHint: AssetType | null = null;
+    if (indices.assetType !== -1) {
+      const rawType = (cells[indices.assetType] ?? "").trim().toLowerCase();
+      const parsed = assetTypeSchema.safeParse(rawType);
+      if (parsed.success) assetTypeHint = parsed.data;
+    }
+
     const existing = byTicker.get(rawTicker);
     if (existing === undefined) {
       byTicker.set(rawTicker, {
@@ -274,6 +291,7 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
         costWeightedSum: costBasis === null ? 0 : quantity * costBasis,
         costWeightQty: costBasis === null ? 0 : quantity,
         acquiredDate,
+        assetTypeHint,
         rowCount: 1,
       });
     } else {
@@ -289,6 +307,10 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
       ) {
         existing.acquiredDate = acquiredDate;
       }
+      // First non-null type hint wins (duplicate rows share a ticker).
+      if (existing.assetTypeHint === null && assetTypeHint !== null) {
+        existing.assetTypeHint = assetTypeHint;
+      }
       existing.rowCount += 1;
     }
   }
@@ -300,15 +322,20 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
     }
     const costBasis =
       acc.costWeightQty > 0 ? acc.costWeightedSum / acc.costWeightQty : null;
+    // FIX-773 Slice B: classify the merged row once from its ticker (+ the
+    // optional type-column hint). Same ticker ⇒ same classification, so a single
+    // classify call covers the merged accumulator.
+    const { assetClass, assetType, attributes } = classifyInstrument(acc.ticker, {
+      assetTypeHint: acc.assetTypeHint,
+    });
     rows.push({
       ticker: acc.ticker,
       quantity: acc.quantity,
       costBasis,
       acquiredDate: acc.acquiredDate,
-      // FIX-773 Slice A: CSV import is equity-only until the classifier lands.
-      assetClass: "equity",
-      assetType: "equity",
-      attributes: { kind: "none" },
+      assetClass,
+      assetType,
+      attributes,
     });
   }
 

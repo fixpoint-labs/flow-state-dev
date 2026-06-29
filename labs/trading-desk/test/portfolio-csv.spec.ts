@@ -143,4 +143,65 @@ describe("parsePortfolioCsv", () => {
     expect(result.rows).toEqual([]);
     expect(result.warnings.length).toBeGreaterThan(0);
   });
+
+  it("classifies imported rows by symbol shape (bond CUSIP + crypto pair)", () => {
+    // A bond CUSIP and a crypto pair both pass the ticker regex, so they import —
+    // and now arrive TYPED, not silently flattened to equity (FIX-773 Slice B).
+    const csv = [
+      "ticker,quantity",
+      "912828YK0,5",
+      "BTC-USD,0.25",
+      "AAPL,10",
+    ].join("\n");
+    const result = parsePortfolioCsv(csv);
+    expect(result.errors).toEqual([]);
+    const byTicker = new Map(result.rows.map((r) => [r.ticker, r]));
+    expect(byTicker.get("912828YK0")).toMatchObject({
+      assetType: "bond",
+      assetClass: "fixed_income",
+      attributes: { kind: "bond", cusip: "912828YK0" },
+    });
+    expect(byTicker.get("BTC-USD")).toMatchObject({
+      assetType: "crypto",
+      assetClass: "crypto",
+    });
+    // A plain equity with no type column infers equity.
+    expect(byTicker.get("AAPL")).toMatchObject({
+      assetType: "equity",
+      assetClass: "equity",
+      attributes: { kind: "none" },
+    });
+  });
+
+  it("lets an explicit `type` column override symbol-shape inference", () => {
+    // GLD looks like a plain equity by shape; the type column says it's an ETF.
+    const csv = ["ticker,quantity,type", "GLD,3,etf"].join("\n");
+    const result = parsePortfolioCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows[0]).toMatchObject({
+      ticker: "GLD",
+      assetType: "etf",
+      assetClass: "equity",
+    });
+  });
+
+  it("keeps the classification on a dedupe-merged row", () => {
+    const csv = [
+      "ticker,quantity,type",
+      "VWOB,10,bond",
+      "VWOB,30,bond",
+    ].join("\n");
+    const result = parsePortfolioCsv(csv);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      ticker: "VWOB",
+      quantity: 40,
+      assetType: "bond",
+      assetClass: "fixed_income",
+      attributes: { kind: "bond", cusip: "VWOB" },
+    });
+    expect(
+      result.warnings.some((w) => w.includes("merged") && w.includes("VWOB")),
+    ).toBe(true);
+  });
 });
