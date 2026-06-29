@@ -77,7 +77,7 @@ For every candidate, answer four questions. Drop it unless it clears all four:
    *class* of future work? Being able to name the concrete incident is your
    *gate* for adding it — not text you keep. If you can't name one, it's an
    opinion, not a standard.
-3. **Not already covered?** Read `docs/contributing/best-practices.md` (BP-001…)
+3. **Not already covered?** Read `docs/contributing/best-practices.md` (universal + index) and the relevant `docs/contributing/best-practices/<category>.md` (BP-001…)
    and the `CLAUDE.md` behavioral guidelines. If an existing BP/guideline says
    it, **don't duplicate** — propose *sharpening the existing entry* instead.
 4. **What altitude?** Be honest:
@@ -91,13 +91,17 @@ If two or more candidates are facets of one underlying principle, merge them.
 
 Assign each survivor a home — and prefer the lightest one that fits:
 
-- **Universal principle** → a new BP in `best-practices.md`, written at full
-  generality. Mark `Scope: Universal` so it reads differently from the
-  FSD-implementation-specific BPs.
-- **Use-case-specific** → a new BP whose Rule *names the situation it applies to*
-  (so it doesn't read as universal), **or** a note appended to the closest
-  existing BP, **or** an example inside a relevant skill. A niche lesson rarely
-  earns a top-level BP of its own.
+- **Universal principle** → a new BP in the **Universal Practices** section of
+  `best-practices.md`, written at full generality, `Scope: Universal`. Mirror its
+  one-liner into the `CLAUDE.md` "Best practices" Universal list (the always-loaded
+  surface).
+- **Use-case-specific** → a new BP in the matching
+  `best-practices/<category>.md` file (process / blocks / generators / resources /
+  react / engine — add a new category file only if none fits), with a `Scope:`
+  line that *names the situation it applies to*. Add its index row to the
+  Situational index in `best-practices.md` **and** the situational list in
+  `CLAUDE.md`. Or, for a niche lesson, a note appended to the closest existing BP,
+  or an example inside a relevant skill — a niche lesson rarely earns its own BP.
 - **Already-covered-but-fuzzy** → an edit that sharpens the existing BP, not a
   new number.
 - **Drop / defer** → record it in the PR or a short note, not the BP doc. This is
@@ -108,24 +112,26 @@ cutting is the point.
 
 ### 5. Draft in house style
 
-Keep entries **terse — the rule, not the proof.** Best practices are decided
-guidelines, not arguments, and the file is loaded into agent context: there is no
-`Why`/proof section. Use the template at the bottom of `best-practices.md`:
+Keep entries **terse**: the rule plus a **one-sentence `Why`** stating its
+purpose — when it applies and what it prevents (a few bullets only if genuinely
+needed). The `Why` is purpose, not evidence — don't write a proof or incident
+dump. Use the template at the bottom of `best-practices.md`:
 
 ```
 ### BP-XXX: <name>
 - Status: Active
 - Date: YYYY-MM-DD
-- Scope: Universal | <the situation it applies to>   (optional; use when it clarifies altitude)
+- Scope: Universal | <the situation it applies to>
 - Rule:
   - <imperative, concrete; name the trigger and the action>
+- Why: <one sentence: the rule's purpose and when it applies>
 ```
 
 - **Number sequentially** after the last existing BP. **Append; never overwrite.**
   If you're replacing an older BP, mark the old one `Superseded (date) by …` and
   link forward — don't delete it.
 - Ground the rule in a real incident as your *gate* for adding it (Step 3), but
-  don't write the proof into the entry.
+  keep the proof out of the entry — the `Why` is a one-sentence purpose, not the incident.
 - Match the voice: terse imperative Rule bullets.
 
 ### 6. Review gate (required — do not skip)
@@ -142,7 +148,10 @@ apply it. Only then write.
 
 ### 7. Write and land
 
-- Append the approved entries to `docs/contributing/best-practices.md`.
+- Write the approved entries to their home (Universal → `best-practices.md` +
+  `CLAUDE.md` mirror; situational → `best-practices/<category>.md` + both indexes,
+  per Step 4). Number sequentially after the last existing BP across all files —
+  numbers are global IDs.
 - If a "shipping" change adopts the BP in the same breath, update it in the same
   change set (BP update policy). A BP-doc-only change is internal — `pnpm
   changeset --empty` or state "no changeset needed" (BP-022).

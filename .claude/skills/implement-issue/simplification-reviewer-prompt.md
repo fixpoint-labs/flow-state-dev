@@ -38,7 +38,7 @@ Agent tool (Plan):
     - Thin connector handlers (a handler whose `execute` is `return { x: input.y }`) — use a connector function `.step((v) => ({ x: v.y }), block)` per BP-013
     - Handlers calling another block inside `execute` — lift to a sequencer per BP-011
     - Handlers returning their input unchanged — replace with `.tap()` per BP-012 / BP-014
-    - Wrapper sequencers gating a single step — use `.stepIf` / `.workIf` / `.tapIf` per BP-015
+    - Wrapper sequencers gating a single step — use `.stepIf` / `.workIf` / `.tapIf` per BP-036
     - Repeated tool / context / resource wiring across multiple blocks — extract a capability via `defineCapability`
     - Generator output schemas with `z.optional` / `z.default` / `z.record` / non-literal `z.union` — BP-016 requires fixed-shape + nullable
     - `useEffect` doing derived-state computation in React layer — use `useMemo` per BP-010

@@ -34,7 +34,7 @@ Before writing, read at least two existing patterns in `packages/patterns/src/`:
 | `eventActors/index.ts` | Stigmergic multi-agent coordination, actor dispatch, event-driven drain |
 
 Also read:
-- `docs/contributing/best-practices.md` — especially BP-011 (no block.run in handlers), BP-012 (use .tap for state-only), BP-014 (never return input)
+- `docs/contributing/best-practices.md` (universal rules + index) and the category files for what the pattern composes — `docs/contributing/best-practices/blocks.md` (esp. BP-011 no block.run in handlers, BP-012 `.tap` for state-only, BP-014 never return input, BP-025 sequencer output schemas), plus `generators.md` and `resources.md` when the pattern includes generators or resources
 - `docs/architecture/blocks.md` — block contract and sequencer DSL methods
 
 ### Step 3: Design the Pattern Structure

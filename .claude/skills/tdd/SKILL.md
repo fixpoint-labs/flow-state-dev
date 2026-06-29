@@ -129,7 +129,7 @@ After all tests pass, look for:
 - [ ] Repeated tool / context / resource wiring → extract a capability (`defineCapability`)
 - [ ] Shallow handlers whose `execute` is a single transform → fold into the sequencer via `.map()` or a connector
 - [ ] Handlers that just return their input → replace with `.tap()` (BP-012, BP-014)
-- [ ] Wrapper sequencers gating a single step → replace with `.stepIf` / `.workIf` / `.tapIf` (BP-015)
+- [ ] Wrapper sequencers gating a single step → replace with `.stepIf` / `.workIf` / `.tapIf` (BP-036)
 - [ ] Generator output schemas with `z.optional` / `z.default` / `z.record` / heterogeneous `z.union` → collapse to fixed + nullable (BP-016)
 - [ ] Shallow modules in the broader area → use `fsd:improve-codebase-architecture` for deepening
 - [ ] Run tests after each refactor step. **Never refactor while red.** Get to green first.

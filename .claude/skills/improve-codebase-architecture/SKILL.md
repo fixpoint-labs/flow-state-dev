@@ -1,6 +1,6 @@
 ---
 name: fsd:improve-codebase-architecture
-description: Find deepening opportunities in the @flow-state-dev repo, informed by FSD's existing domain vocabulary (block, generator, sequencer, router, pattern, capability, scope, item) and authority hierarchy (docs/architecture > docs/contributing/best-practices.md > AGENTS.md). Use when the user wants to improve architecture, find refactoring opportunities, consolidate shallow blocks or thin handlers, or make a package more testable and AI-navigable. Respects existing best practices (BP-001–BP-016) — suggestions that would contradict a BP should explicitly justify revisiting it.
+description: Find deepening opportunities in the @flow-state-dev repo, informed by FSD's existing domain vocabulary (block, generator, sequencer, router, pattern, capability, scope, item) and authority hierarchy (docs/architecture > docs/contributing/best-practices.md > AGENTS.md). Use when the user wants to improve architecture, find refactoring opportunities, consolidate shallow blocks or thin handlers, or make a package more testable and AI-navigable. Respects existing best practices (BP-001–BP-039) — suggestions that would contradict a BP should explicitly justify revisiting it.
 ---
 
 # Improve Codebase Architecture
@@ -38,21 +38,21 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 **Authority hierarchy** (suggestions must respect this):
 
 1. `docs/architecture/*` — adapted reference docs (block kinds, items, streaming, state/scopes, execution/errors, middleware, capabilities, sequencer DSL, server/client, etc.).
-2. `docs/contributing/best-practices.md` — implementation standards (BP-001–BP-016). New cross-cutting patterns belong here.
+2. `docs/contributing/best-practices.md` — implementation standards (BP-001–BP-039): universal rules + the situational index. New patterns are added per its update policy — universal → this file + the `CLAUDE.md` mirror; situational → the matching `docs/contributing/best-practices/<category>.md` + both indexes.
 3. `docs/contributing/architecture-reference.md` — quick reference to locked contracts.
 4. `AGENTS.md` — process protocol.
 5. Per-package `README.md` — public API documentation for that package.
 
 **Where decisions get recorded** (replaces the generic "ADR" flow):
 
-- **Implementation-level pattern** that should propagate → new entry in `docs/contributing/best-practices.md` (next BP number).
+- **Implementation-level pattern** that should propagate → new BP (next global number) in its home per the best-practices update policy: universal → `docs/contributing/best-practices.md` + `CLAUDE.md` mirror; situational → `docs/contributing/best-practices/<category>.md` + both indexes.
 - **Architecture refinement** that updates a documented contract → edit the relevant `docs/architecture/<area>.md` directly and call it out in the change description.
 - **Specific actionable refactor** with a clear owner → Linear issue.
 - **Surface-level user-facing change** → update the package `README.md` and any affected `apps/docs` page in the same change set (CLAUDE.md rule).
 
 **Lock state to check before proposing**:
 
-- BP-001–BP-016 are constraints, not guidelines. A candidate that violates a BP needs to either (a) align with it instead, or (b) explicitly justify why the BP should be revisited.
+- BP-001–BP-039 are constraints, not guidelines. A candidate that violates a BP needs to either (a) align with it instead, or (b) explicitly justify why the BP should be revisited.
 - Package boundaries: `server` never depends on `client` or `react`; `react` wraps `client` (no transport in `react`). Cross-boundary refactors are off-limits — the boundary validator at `scripts/validate-package-boundaries.mjs` will catch violations.
 - Middleware coverage: `docs/architecture/middleware.md` documents which seams are public — keep suggestions aligned with what's currently exposed rather than inventing parallel mechanisms.
 
@@ -65,7 +65,7 @@ Read the relevant docs first so suggestions don't re-litigate decided design:
 - `docs/architecture/overview.md` — package roles and the system shape
 - `docs/architecture/<area>.md` — `blocks.md`, `items.md`, `streaming.md`, `state-and-scopes.md`, `execution-and-errors.md`, `middleware.md`, `capabilities.md`, `sequencer-dsl.md`, `server-and-client.md`, etc.
 - `docs/contributing/architecture-reference.md` — locked contracts quick reference
-- `docs/contributing/best-practices.md` — BP-001–BP-016 (these are constraints, not suggestions)
+- `docs/contributing/best-practices.md` — universal rules + situational index (BP-001–BP-039, constraints not suggestions); open the relevant `docs/contributing/best-practices/<category>.md` for situational rule text
 
 Then use the Agent tool with `subagent_type=Explore` to walk the codebase. Don't follow rigid heuristics — explore organically and note where you experience friction:
 
@@ -82,7 +82,7 @@ Then use the Agent tool with `subagent_type=Explore` to walk the codebase. Don't
 | Thin connector handler whose `execute` is `return { x: input.y }` | `.step()` chain bloated with adapter blocks | Use a connector function: `.step((v) => ({ x: v.y }), block)` (BP-013) |
 | Handler that calls another block inside `execute` | Hidden composition; defeats observability | Lift to a sequencer (`BP-011`) |
 | Handler returning its input unchanged | Items log polluted with echoes | Replace with `.tap()` (BP-012, BP-014) |
-| Wrapper sequencer just to gate a `.step()` on a condition | Indirection that obscures control flow | `.stepIf` / `.workIf` / `.tapIf` (BP-015) |
+| Wrapper sequencer just to gate a `.step()` on a condition | Indirection that obscures control flow | `.stepIf` / `.workIf` / `.tapIf` (BP-036) |
 | Multiple blocks each plumbing the same tools/context/resources into a generator | Capability-shaped duplication | Extract a `defineCapability` and use `uses: [cap]` |
 | Generator `outputSchema` with `z.record` / `z.optional` / heterogeneous `z.union` | OpenAI strict-mode incompatibility | Collapse to fixed shape + nullable (BP-016) |
 | `useEffect` doing derived-state computation in React layer | Renders out of sync, brittle to deps | `useMemo` (BP-010) |
@@ -122,7 +122,7 @@ Once the user picks a candidate, drop into a grilling conversation. Walk the des
 
 Side effects happen inline as decisions crystallize. **Route each by scope** — there's no `CONTEXT.md` to update, but there are real homes for each kind of artifact:
 
-- **A new cross-cutting implementation pattern emerges from the discussion?** Draft a new entry for `docs/contributing/best-practices.md` (next BP number). Keep it concise and rule-shaped, matching BP-001–BP-016.
+- **A new cross-cutting implementation pattern emerges from the discussion?** Draft a new BP (next global number) in its home per the best-practices update policy — universal in `docs/contributing/best-practices.md`, situational in `docs/contributing/best-practices/<category>.md`. Keep it concise and rule-shaped, matching BP-001–BP-039.
 - **A term in `docs/architecture/<area>.md` was fuzzy and got sharpened?** Update the relevant `docs/architecture/*` doc directly in the same change set.
 - **A public API surface changed?** Update the package's `README.md` in the same change set (CLAUDE.md rule for user-facing changes); add or revise the relevant `apps/docs` page.
 - **User rejects the candidate?** Apply the **three-way filter** below to decide whether to record it.
@@ -138,7 +138,7 @@ When the user rejects a candidate, the default is **don't record anything**. Rej
 
 If all three pass, route by what the rejection captures:
 
-- **Implementation rule worth preserving** (a pattern we shouldn't do, a shape we should avoid in future blocks/patterns/capabilities) → propose a new BP entry in `docs/contributing/best-practices.md`. BPs codify "do this" or "don't do this" rules that propagate across the codebase.
+- **Implementation rule worth preserving** (a pattern we shouldn't do, a shape we should avoid in future blocks/patterns/capabilities) → propose a new BP in its home per the best-practices update policy (universal → `docs/contributing/best-practices.md` + `CLAUDE.md` mirror; situational → `docs/contributing/best-practices/<category>.md` + both indexes). BPs codify "do this" or "don't do this" rules that propagate across the codebase.
 - **Deliberate contract choice** (item taxonomy, scope semantics, package boundary, stream protocol — something the architecture deliberately doesn't allow) → bake the reasoning into the relevant `docs/architecture/<area>.md` as a "Rejected alternatives" / "Why not X" section. The architecture doc is the durable anchor for *what* the contract is; rejections explain *what it isn't*.
 - **Out-of-scope direction** (a feature, integration, abstraction, or alternative design we deliberately won't pursue — plugin runtimes, GraphQL adapters, alternative store shapes, etc.) → add an entry to `docs/internal/out-of-scope/<concept>.md`. See [out-of-scope README](../../../../docs/internal/out-of-scope/README.md) for the format. This is where "no, and here's why" lives so the same proposal doesn't return every quarter.
 

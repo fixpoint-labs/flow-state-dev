@@ -108,7 +108,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 
 - `docs/architecture/items.md` — **Read before touching items, rendering, or the stream.** Complete item type registry, classification, and rendering contracts.
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.
-- `docs/contributing/best-practices.md` — Process and documentation standards (active BPs listed at top of file)
+- `docs/contributing/best-practices.md` — Universal BPs + the situational index; per-category situational BPs live in `docs/contributing/best-practices/<category>.md` (open the category file for the area you're touching). Universal BPs are mirrored in this file's "Best practices" section.
 - Per-package `CHANGELOG.md` files and `docs/contributing/release-notes-workflow.md` — what shipped and how new changes get recorded
 - `packages/*/README.md` — Per-package API docs
 
@@ -255,57 +255,36 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 - **Common helpers** (`deepEqual`, formatting utilities, etc.) belong in a shared utils file — not inlined per-file. No duplicate copies across packages.
 
-### Always-applied implementation rules
+### Best practices (BP-001…036)
 
-**File and export documentation** (BP-007)
+Best practices have two altitudes. Full text lives in `docs/contributing/best-practices.md` (universal) and `docs/contributing/best-practices/<category>.md` (situational).
 
-- File header comment required: explain the file's role in the runtime.
-- 100% of exported APIs documented with concise doc comments (contract + behavior, not syntax restatement).
-- Document non-obvious internal helpers (complex control flow, error semantics).
+**Universal — always apply, every task:**
 
-**Handlers must not call blocks using block.run** (BP-011)
+- **BP-001** Documentation authority precedence — the more specific in-repo doc wins.
+- **BP-003** Verification evidence is mandatory — every deliverable has an evidence path + pass criteria.
+- **BP-007** Concise API/file docs — file header + 100% of exported APIs documented; non-obvious helpers too.
+- **BP-022** Release notes via Changesets — every user-facing PR adds a `.changeset/*.md`; internal-only → `--empty`. Pre-1.0: `patch`/`minor` only.
+- **BP-028** Fix the bug at the layer that owns it, not where it bit you — a workaround each caller repeats is a smell.
+- **BP-029** Compose existing primitives over re-implementing what a tool already provides — reserve bespoke code for the genuinely-new primitive.
+- **BP-030** Tolerate the old shape when you change a persisted/in-flight field — dual-read legacy records; reject removed keys loudly; `== null`-guard new nullable fields.
+- **BP-031** Never make auth/routing decisions from caller-controllable input — derive them from a trusted source (server-set identity, verified token, the framework's transport `source`), not `body`/`metadata`/query/headers.
+- **BP-034** Finish move/rename refactors — update provenance (headers, diagrams, doc anchors) and subpath re-exports, not just imports.
+- **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state paths; test the off/new state of any new flag.
+- **BP-038** Build the least that satisfies the spec; subtract before you add — no speculative surface (YAGNI), delete the path you supersede, minimize public API/options, prefer defaults over knobs.
 
-- Never instantiate or call a block inside a handler's `execute`.
-- Compose as a sequencer: `.step(generator).step(handler)`.
+**Situational — open the category file when working in that area:**
 
-**Handlers must never return input as output** (BP-014)
+- **Blocks & composition** (`docs/contributing/best-practices/blocks.md`): BP-011 handlers don't call blocks (compose as a sequencer) · BP-012 `.tap()` for state-mutation-only blocks · BP-013 `connectInput`/`connectOutput` inside the router · BP-014 handlers never return input · BP-024 helpers when the body varies, factories when only identity does · BP-025 declare/validate sequencer output schemas deliberately · BP-036 prefer conditional step variants (`.workIf`/`.tapIf`/`.stepIf` with an inline connector) over wrapper sequencers.
+- **Generators & prompts** (`docs/contributing/best-practices/generators.md`): BP-016 outputSchemas OpenAI strict-compatible · BP-017 typed `context` slot for prompts · BP-018 shared prompt formatters in `lib/`.
+- **Resources & state** (`docs/contributing/best-practices/resources.md`): BP-015 `expose`/`exclude` over `data` projections · BP-019 resource refs in leaf modules · BP-020 live mode never falls back to fixtures · BP-021 `cacheable` declared deliberately · BP-023 state schemas `.nullable().default(null)` · BP-027 user-scoped resources default to shared · BP-033 filter at the source before you load (don't list-then-discard).
+- **React** (`docs/contributing/best-practices/react.md`): BP-010 `useMemo` over `useEffect`; derive flags from the complete input set; signal only on real change.
+- **Engine & transport** (`docs/contributing/best-practices/engine.md`): BP-026 bundle forwarded options into `RuntimeConfig`.
+- **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a Linear-linked spec) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs are versioned docs (`docs/specs/<ISSUE-ID>.md`) reviewed as a PR, synced with Linear · BP-039 specs lead with a plain-language summary (grok before diving deep).
 
-- `execute` must never `return input`. It pollutes the items log with redundant echoes.
-- No meaningful output → use `.tap()`. Transforming input → return the transformation.
+**Document new and changed user-facing functionality** (always)
 
-**Use `.tap()` for state-mutation-only blocks** (BP-012)
-
-- Blocks that only mutate state: use `.tap()`, no `outputSchema`, no `return input`.
-
-**Use conditional step variants instead of wrapper sequencers** (BP-015)
-
-- `.workIf(condition, connector, block)` — not a wrapper sequencer with `.stepIf` inside `.work()`.
-- `.tapIf(condition, block)` — not a gating handler that conditionally calls a block.
-- `.stepIf(condition, block)` — not a wrapper sequencer with a `.map` + `.step`.
-- All conditional variants accept an inline connector as a second argument for input adaptation. Don't create an intermediate sequencer just to `.map()` before a block.
-
-**Input/output adaptation belongs inside the router** (BP-013)
-
-- Use `connectInput(() => ...)` and `connectOutput(...)` inside the router's `execute`, not at block definition time.
-- Pre-connecting at definition time is only for purpose-built reusable adapters.
-
-**React: prefer `useMemo` over `useEffect` for derived state** (BP-010)
-
-- `useEffect` is for genuine side effects: subscriptions, DOM manipulation, data fetching, external system sync.
-- Comment every `useEffect` explaining what it does and why. Comment non-obvious logic.
-
-**Generator outputSchemas must be OpenAI strict-compatible** (BP-016)
-
-- No `z.record()` reachable from a generator output — use a fixed-shape `z.object({...})` or `z.array(z.object({ key, value }))` when keys are dynamic.
-- No `z.optional()` / `z.default()` on outputs — use `z.nullable()` instead.
-- No `z.union([...])` of differently-shaped variants. Collapse to a nullable single shape or split generators.
-- Enforced automatically: `generator()` throws a `StrictSchemaError` at definition when a reachable `z.record` / non-literal `z.union` survives `makeSchemaStrict`. To assert a bare schema constant in a test, `import { assertStrictCompatible } from "@flow-state-dev/core"` and call it — no copied walker. See `labs/trading-desk/test/output-schemas-strict.spec.ts`.
-
-**Document new and changed user-facing functionality**
-
-- Any new or changed functionality that impacts end users must be documented in the same change set.
-- Update the relevant `packages/*/README.md` for public API changes.
-- Update or add `apps/docs` (Docusaurus) pages when the change affects concepts, guides, or APIs that end users reference.
+- New/changed end-user functionality is documented in the same change set: relevant `packages/*/README.md` for public API changes, and `apps/docs` (Docusaurus) pages for concepts/guides/APIs end users reference.
 
 ## Using Bash
 

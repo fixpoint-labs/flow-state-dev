@@ -40,7 +40,7 @@ For diff and feature targets, pull the **real line counts** before estimating. E
 ## Process
 
 1. **Understand intent.** What is this change *for*? Read the intent source for the target (table above) — not just the code. You can't judge whether something is overbuilt without knowing the requirement it was meant to meet.
-2. **Read the authority docs.** Skim the relevant `docs/architecture/*` and the BP list in `docs/contributing/best-practices.md`. This is the guardrail against false positives: **a deliberate, documented contract is not bloat.** If the change implements something `docs/architecture/*` requires, it stays.
+2. **Read the authority docs.** Skim the relevant `docs/architecture/*`, the BP index in `docs/contributing/best-practices.md`, and the relevant `docs/contributing/best-practices/<category>.md` for situational rule text. This is the guardrail against false positives: **a deliberate, documented contract is not bloat.** If the change implements something `docs/architecture/*` requires, it stays.
 3. **Map actual usage** (diff/feature targets). Use the `Explore` agent to check how new surface is consumed: callers of new abstractions, readers of new config/options/params, downstream consumers of new schema fields/state/resources. This is what separates YAGNI from earning-its-keep — verify it, don't eyeball it. For a **spec** target there's no code yet — instead, judge each piece of proposed surface against the requirement and check whether the spec itself names a present consumer for it.
 4. **Apply the five lenses** (below).
 5. **Run each candidate through the calibration gate** (below). Most candidates die here. That's correct.
