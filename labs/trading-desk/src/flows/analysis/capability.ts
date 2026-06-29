@@ -60,6 +60,7 @@ import {
   formatMemoBlock,
   formatPersonaCritique,
   formatPortfolioContext,
+  formatReferencesConsulted,
   formatRewardToRisk,
   formatRiskAssessmentExtensions,
   formatRiskMandate,
@@ -161,6 +162,59 @@ const GROUNDING_CLAUSE = [
   "assess X\" rather than fabricating to fill the shape. Quoted figures,",
   "named entities, dates, and events must trace to an upstream artifact.",
   "</grounding>",
+].join("\n");
+
+/**
+ * Codifies the corroboration contract for the cost-gated `corroborate` preset
+ * (FIX-676). Same `search` + `fetch` tools as `verify`, but — like
+ * `investigate` — HARD-GATED on `costPreset === "full"` so cheap runs perform no
+ * web lookups and this clause is suppressed entirely (the resolver returns
+ * `null`). The synthesis corroborators (trader, the three risk personas, the PM)
+ * use it to corroborate a SPECIFIC claim, never to re-run the analysts'
+ * discovery; the per-memo call cap is stated here, not enforced in tool-state
+ * (the `counterEvidence`/`investigate` precedent). It points the agent at
+ * <referencesConsulted> first so it reuses a link the desk already surfaced
+ * rather than re-searching the same ground.
+ */
+const CORROBORATION_CLAUSE = [
+  "<corroboration>",
+  "You have `search` and `fetch` tools. Use them ONLY to corroborate a",
+  "specific, checkable claim you are about to rely on (a peer/sector comp, a",
+  "recent event, a regulatory action, a downgrade, a number) that the upstream",
+  "memos and <data> do not already settle. Do NOT re-run the analysts'",
+  "discovery or broadly research the company — the memos are your evidence base;",
+  "this is a targeted second source.",
+  "",
+  "Check <referencesConsulted> FIRST: if the desk already surfaced a relevant",
+  "URL, `fetch` it rather than issuing a new search. Budget: at most 2 searches",
+  "and 2 fetches for this memo. Prefer a search snippet; fetch only when the",
+  "snippet is not enough.",
+  "",
+  "Every claim that rests on a lookup must trace to a URL you actually fetched;",
+  "add it to the `citations` array with its title. Do not cite a URL you did not",
+  "fetch. If the lookup is inconclusive, say so in the body and do not raise your",
+  "conviction for an unverified claim. If <data> and the memos already answer the",
+  "question, do not search — emit `citations: null`.",
+  "</corroboration>",
+].join("\n");
+
+/**
+ * Codifies the read-only review contract for the `reviewReferences` preset
+ * (FIX-676). For synthesis agents that should be able to PULL a link the desk
+ * already surfaced (the scenario forecaster and the risk consolidator) but
+ * should NOT issue new web searches. Cost-gated on `full` like `corroborate`;
+ * the `fetch` tool and this clause are both absent on `fast`.
+ */
+const REVIEW_REFERENCES_CLAUSE = [
+  "<reviewReferences>",
+  "You do not have web search. You may `fetch` a URL listed in",
+  "<referencesConsulted> to read in full a source the desk already surfaced —",
+  "use it only to corroborate a specific claim you are about to rely on. Add any",
+  "URL you actually fetch to the `citations` array with its title; do not cite a",
+  "URL you did not fetch, and do not fetch a URL that is not already in",
+  "<referencesConsulted>. A missing source is not license to fabricate — say",
+  "\"could not corroborate\" instead.",
+  "</reviewReferences>",
 ].join("\n");
 
 async function memoState(ctx: { resources: any }, collectionKey: string): Promise<unknown> {
@@ -454,6 +508,55 @@ export const tradingDesk = defineCapability({
         ctx.session.state.costPreset === "full" ? [find_counter_evidence] : [],
     },
 
+    /**
+     * FIX-676 — cost-gated synthesis web search + fetch. Mirrors `verify`'s tool
+     * set, gated like `investigate` (full only). Opted into by the trader (P3),
+     * all three risk personas (P4 — all-or-none, so search does not tilt the
+     * triad), and the PM (P5b). On `fast` the tools are absent and the
+     * `<corroboration>` clause is suppressed (the resolver returns `null`).
+     */
+    corroborate: {
+      tools: (ctx) =>
+        ctx.session.state.costPreset === "full" ? [searchWeb, fetchArticle] : [],
+      context: {
+        corroboration: (_input, ctx) =>
+          ctx.session.state.costPreset === "full" ? CORROBORATION_CLAUSE : null,
+      },
+    },
+
+    /**
+     * FIX-676 — read-only fetch of an already-surfaced link, no new search. For
+     * the scenario forecaster and the risk consolidator: they can pull a URL the
+     * desk surfaced (via <referencesConsulted>) but cannot run a fresh search.
+     * Gated on `full` like `corroborate`.
+     */
+    reviewReferences: {
+      tools: (ctx) =>
+        ctx.session.state.costPreset === "full" ? [fetchArticle] : [],
+      context: {
+        reviewReferences: (_input, ctx) =>
+          ctx.session.state.costPreset === "full" ? REVIEW_REFERENCES_CLAUSE : null,
+      },
+    },
+
+    /**
+     * FIX-676 — the shared "references consulted" ledger. DERIVED from the
+     * `citations` already on every memo (the memos collection IS the ledger —
+     * no separate resource), so a downstream agent can reuse a link the desk
+     * surfaced instead of re-searching. Returns `null` (tag suppressed) until
+     * something has been cited — the steady state on `fast`. Read by every
+     * corroborator and reviewer; NOT by the lenses (independence guarantee,
+     * FIX-655) or the Phase 2 debaters (a synthesis-phase surface; the debate
+     * search question is tracked separately).
+     */
+    referencesConsulted: {
+      resources: { memos: memosCollection },
+      context: {
+        referencesConsulted: (_input, ctx) =>
+          formatReferencesConsulted(ctx.resources.memos),
+      },
+    },
+
     /** Valuation spine — computed deterministic anchor for the final
      *  rating. Injects `<valuationSpine>` (expected return, fair value,
      *  setup score) and `<ratingEnvelope>` (implied rating + permitted
@@ -613,6 +716,7 @@ export {
   formatMemoBlock,
   formatPersonaCritique,
   formatPortfolioContext,
+  formatReferencesConsulted,
   formatRewardToRisk,
   formatRiskAssessmentExtensions,
   formatRiskMandate,
