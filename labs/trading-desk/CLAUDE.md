@@ -410,6 +410,70 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   land. Live sync (Plaid) is FIX-853, and historical file import (OFX/CSV) is
   FIX-775 — both write through this issue's `ingestLedgerEvents` contract.
 
+## Per-position thesis records (FIX-760)
+
+The durable "why" behind a holding — entry rationale, invalidation conditions,
+time horizon, optional target/stop, and a link to the originating report. It is
+an app-owned table on the FIX-772 model layer, NOT a resource — the same `app`
+Postgres schema as accounts/holdings/ledger, reached through the same
+`getRepository()`.
+
+- **The table — `app.theses` (`src/db/schema.ts`).** Keyed household × ticker
+  (`(user_id, ticker)` unique), NOT per account: intent is about the name, account
+  location is a tax question. Deliberately **no FK to `holdings`** — a thesis can
+  outlive an exited position (a post-mortem) and exist before a buy settles
+  (adopt-then-buy), so it stands on its own key. `tripwires` is a `jsonb` array of
+  the structured observable falsifiers; the enum/shape is enforced at the zod
+  boundary in `thesis-schema.ts`, so adding a tripwire kind needs no enum-alter
+  migration (the `ledger.type` text-column precedent). `target_price` /
+  `stop_price` are `numeric` (coerced to JS number at the read boundary, RISK-P5).
+  `source_session_id` links the originating report (no FK — sessions are
+  framework-owned `public.*` rows).
+
+- **The schema leaf — `src/flows/portfolio/thesis-schema.ts`.** Browser-safe
+  (imports only `zod`): `thesisInputSchema` (the user-suppliable fields the editor
+  validates and the action re-validates), `thesisRecordSchema` (the mapped read
+  shape), `tripwireSchema`. NOT generator outputs — `.default()`/`.nullable()` are
+  fine; do NOT add them to `output-schemas-strict.spec.ts` (the `accountStateSchema`
+  precedent).
+
+- **Two write paths, one repository.** The portfolio flow owns the hand-edit
+  path — `saveThesis` / `deleteThesis` (`src/flows/portfolio/thesis-actions.ts`),
+  household-scoped, ticker canonicalized to upper-case. The analysis flow owns the
+  derive-from-report path — `adoptThesis`
+  (`orchestration/adopt-thesis-action.ts`), which reads the session's decision
+  snapshot + trader memo SERVER-SIDE (v1 is derive-only; the user edits afterward)
+  and upserts with the `sourceSessionId` captured automatically. Both go through
+  `repository.upsertThesis` (overwrite on `(user_id, ticker)`, no revision history
+  in v1 — the originating analysis is preserved via the snapshot link).
+
+- **Injection — read at seed, frozen, trader + PM only.** `seedSession` reads
+  `getThesis(userId, ticker)` and freezes it onto `state.standingThesis` (the
+  `portfolioContext` / `riskMandate` snapshot pattern; does NOT join the keying
+  tuple). The `standingThesis` capability preset renders `<standingThesis>` from
+  frozen state (suppressed to null when absent), opted into by the trader (P3) and
+  PM (P5) ONLY — the analysts stay blind so the independent evidence is
+  uncontaminated. **`<standingThesis>` is distinct from `userThesis`'s
+  `<userThesis>`** (the Phase 6 hypothesis-under-audit) — never the same tag: the
+  standing thesis is durable context, the user thesis is a per-run hypothesis.
+
+- **`hasStandingThesis` echo (snapshot + RunSummary).** The PM commit derives
+  `hasStandingThesis` from frozen state (never LLM-emitted, the
+  `hasPortfolioContext` precedent) onto the decision snapshot, mirrored to
+  `RunSummary`. It is the deterministic PASS signal the
+  `goals/trading-desk-thesis/standing-thesis-injected` goal check reads.
+
+- **Read path is `GET /api/portfolio/theses`** (the `accounts` / `ledger` route
+  precedent — a read route, not an action, since `sendAction` returns a request
+  envelope not handler output). The Portfolio UI reads it via `use-theses.ts`; a
+  per-holding indicator flows through the holdings row model so both the table and
+  the stacked-card layout show it.
+
+- **Limitations (v1).** Household × ticker only (per-sleeve theses defer to
+  FIX-771); overwrite on edit, no revision history; `adoptThesis` is derive-only
+  (no edit-before-save). The review loop that re-checks tripwires and fills the
+  snapshot `outcome*` fields is FIX-763 (this is its blocker).
+
 ## Responsive / mobile layout
 
 The desk branches its **shell** at the `lg` breakpoint (1024px); content

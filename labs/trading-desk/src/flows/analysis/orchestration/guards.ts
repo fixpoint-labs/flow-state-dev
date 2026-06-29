@@ -115,13 +115,11 @@ export const seedSession = handler({
     // holdings (read via the repository, FIX-772) and the last-known quotes
     // resource. `toAccountStates` nests holdings into the inline-array shape
     // `buildPortfolioContext` consumes — same snapshot as the prior resource read.
-    const allAccounts = toAccountStates(
-      await (await getRepository()).getPortfolio(
-        // `requireUser: true` guarantees a user; the fallback matches the
-        // framework's key resolution and satisfies the optional type.
-        ctx.request.identity.userId ?? "unknown_user",
-      ),
-    );
+    // `requireUser: true` guarantees a user; the fallback matches the framework's
+    // key resolution and satisfies the optional type.
+    const uid = ctx.request.identity.userId ?? "unknown_user";
+    const repo = await getRepository();
+    const allAccounts = toAccountStates(await repo.getPortfolio(uid));
     const scoped = input.selectedAccountIds.length
       ? allAccounts.filter((a) => input.selectedAccountIds.includes(a.accountId))
       : allAccounts;
@@ -138,6 +136,13 @@ export const seedSession = handler({
     const riskMandate =
       resolveMandate(input.riskMandate) ??
       mostConservativeMandate(scoped.map((a) => a.riskMandate));
+
+    // Standing per-position thesis for this name (FIX-760), read from the
+    // app-owned `app.theses` table (household × ticker) and frozen onto state.
+    // The trader (P3) + PM (P5) read it via the `standingThesis` preset; the
+    // analysts stay blind. Null → thesis-blind run. Ticker is upper-cased to
+    // match the household × ticker key (the holdings canonicalization precedent).
+    const standingThesis = await repo.getThesis(uid, input.ticker.trim().toUpperCase());
 
     await ctx.session.patchState({
       ticker: input.ticker,
@@ -162,6 +167,9 @@ export const seedSession = handler({
       selectedAccountIds: input.selectedAccountIds,
       // Effective risk-appetite mandate (FIX-752), frozen for the run.
       riskMandate,
+      // Standing per-position thesis (FIX-760), frozen for the run. Null →
+      // thesis-blind.
+      standingThesis,
     });
     return input;
   },

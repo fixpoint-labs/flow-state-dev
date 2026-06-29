@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import type { Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import type { PortfolioQuotesState } from "@/src/flows/portfolio/portfolio-resources";
+import type { ThesisInputFields } from "@/src/flows/portfolio/thesis-schema";
 import { AccountSection } from "./account-section";
 import { AddAccountDialog, type NewAccountDraft } from "./add-account-dialog";
 import { ImportCsvDialog, type ImportSubmit } from "./import-csv-dialog";
@@ -43,8 +44,10 @@ import {
   type NewLedgerEvent,
 } from "./add-transaction-dialog";
 import { LedgerTable } from "./ledger-table";
+import { ThesisDialog } from "./thesis-dialog";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import { useLedger } from "./use-ledger";
+import { useTheses } from "./use-theses";
 import {
   DASH,
   formatMoney,
@@ -70,12 +73,16 @@ export function PortfolioPane({
 }: PortfolioPaneProps): ReactElement {
   const { accounts, refetch: refetchAccounts } = usePortfolioAccounts(session);
   const { events: ledgerEvents, refetch: refetchLedger } = useLedger(session);
+  const { theses, refetch: refetchTheses } = useTheses(session);
   const { clientData: quotesData } = useResource(session, "portfolioQuotes");
 
   const [addOpen, setAddOpen] = useState(false);
   const [addTransactionOpen, setAddTransactionOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importPdfOpen, setImportPdfOpen] = useState(false);
+  // The ticker whose thesis editor is open (null = closed). The dialog pre-fills
+  // from the existing thesis for this ticker, if any.
+  const [thesisTicker, setThesisTicker] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(
     undefined,
   );
@@ -92,6 +99,20 @@ export function PortfolioPane({
     () => accounts.flatMap((a) => a.holdings),
     [accounts],
   );
+
+  // Household tickers (upper) that have a standing thesis, for the per-holding
+  // indicator. Derived (BP-010). The thesis is keyed household × ticker, so the
+  // set is shared across every account.
+  const thesisTickers = useMemo(
+    () => new Set(theses.map((t) => t.ticker.toUpperCase())),
+    [theses],
+  );
+  // The existing thesis for the open editor's ticker, if any (pre-fill source).
+  const editingThesis = useMemo(() => {
+    if (thesisTicker === null) return null;
+    const upper = thesisTicker.toUpperCase();
+    return theses.find((t) => t.ticker.toUpperCase() === upper) ?? null;
+  }, [thesisTicker, theses]);
 
   // Price map: ticker (upper) → quote. Read from the resource the action wrote.
   const quotes = quotesData as PortfolioQuotesState | null;
@@ -230,6 +251,32 @@ export function PortfolioPane({
       }
     },
     [session, refetchAccounts],
+  );
+
+  const handleSaveThesis = useCallback(
+    async (payload: ThesisInputFields) => {
+      try {
+        await session.sendAction("saveThesis", payload);
+        // sendAction returns a request envelope, not handler output — refetch
+        // for the committed row so the per-holding indicator updates.
+        refetchTheses();
+      } catch (err) {
+        console.error("[trading-desk] saveThesis failed", err);
+      }
+    },
+    [session, refetchTheses],
+  );
+
+  const handleDeleteThesis = useCallback(
+    async (ticker: string) => {
+      try {
+        await session.sendAction("deleteThesis", { ticker });
+        refetchTheses();
+      } catch (err) {
+        console.error("[trading-desk] deleteThesis failed", err);
+      }
+    },
+    [session, refetchTheses],
   );
 
   // Empty-state: no bound session. Reads no longer need one (accounts come from
@@ -386,10 +433,12 @@ export function PortfolioPane({
                 prices={priceMap}
                 accountValue={rollup.value}
                 accountUpl={rollup.upl}
+                thesisTickers={thesisTickers}
                 onDeleteHolding={(ticker) =>
                   void handleDeleteHolding(account.accountId, ticker)
                 }
                 onDeleteAccount={() => void handleDeleteAccount(account.accountId)}
+                onEditThesis={(ticker) => setThesisTicker(ticker)}
               />
             );
           })
@@ -437,6 +486,14 @@ export function PortfolioPane({
         accounts={accounts}
         defaultAccountId={selectedAccountId ?? accounts[0]?.accountId}
         onSubmit={(event) => void handleRecordTransaction(event)}
+      />
+      <ThesisDialog
+        open={thesisTicker !== null}
+        onClose={() => setThesisTicker(null)}
+        ticker={thesisTicker ?? ""}
+        existing={editingThesis}
+        onSave={(payload) => void handleSaveThesis(payload)}
+        onDelete={(ticker) => void handleDeleteThesis(ticker)}
       />
     </div>
   );

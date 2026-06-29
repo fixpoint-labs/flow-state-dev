@@ -95,4 +95,30 @@ describe("buildHoldingRowModel", () => {
     expect(m.weight).toBe(DASH);
     expect(m.value).toBe("$1,200.00");
   });
+
+  // The `hasThesis` flag flows through the ONE row model so both the desktop
+  // table and the mobile card show the per-holding thesis indicator by
+  // construction (the same parity guarantee as the price gates above).
+  describe("hasThesis indicator", () => {
+    it("is true when the household has a thesis for the ticker (case-insensitive)", () => {
+      const m = buildHoldingRowModel(
+        holding({ ticker: "nvda" }),
+        quote(120),
+        "USD",
+        2400,
+        new Set(["NVDA"]),
+      );
+      expect(m.hasThesis).toBe(true);
+    });
+
+    it("is false when no thesis exists for the ticker", () => {
+      const m = buildHoldingRowModel(holding(), quote(120), "USD", 2400, new Set(["AAPL"]));
+      expect(m.hasThesis).toBe(false);
+    });
+
+    it("defaults to false when the thesis-ticker set is omitted", () => {
+      const m = buildHoldingRowModel(holding(), quote(120), "USD", 2400);
+      expect(m.hasThesis).toBe(false);
+    });
+  });
 });

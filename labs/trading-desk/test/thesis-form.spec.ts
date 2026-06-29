@@ -1,0 +1,143 @@
+/**
+ * Unit tests for the thesis editor's pure form ↔ payload mapping (FIX-760).
+ *
+ * The test env is node + `.spec.ts` (no JSX), so — matching the
+ * `buildHoldingRowModel` / `aggregate.ts` precedent — the load-bearing mapping
+ * lives in pure helpers tested directly. These are INTENT-ENCODING tests: each
+ * locks a real-money trust rule the dialog relies on.
+ *
+ *   - a blank optional field maps to `null`, NEVER a fabricated value;
+ *   - the household × ticker key is canonicalized upper-case so it matches the
+ *     holdings rows (a lower-case ticker would orphan the thesis);
+ *   - a note-less tripwire row (the user's empty scaffold) is dropped on save —
+ *     a tripwire with no observable is meaningless;
+ *   - round-tripping a record → form → payload preserves the user's data;
+ *   - Save is gated on a non-empty entry rationale (a thesis with no "why").
+ */
+import { describe, expect, it } from "vitest";
+import {
+  buildSaveThesisPayload,
+  canSaveThesis,
+  emptyThesisForm,
+  thesisRecordToForm,
+} from "../components/portfolio/thesis-form";
+import type { ThesisRecord } from "../src/flows/portfolio/thesis-schema";
+
+function record(overrides: Partial<ThesisRecord> = {}): ThesisRecord {
+  return {
+    ticker: "NVDA",
+    entryRationale: "Durable AI compute moat.",
+    invalidationConditions: "Gross margin compresses below 60%.",
+    tripwires: [
+      { kind: "price", note: "Breaks the stop", level: 90, byDate: null },
+      { kind: "date", note: "Q3 print", level: null, byDate: "2026-11-01" },
+    ],
+    timeHorizon: "years",
+    targetPrice: 200,
+    stopPrice: 90,
+    sourceSessionId: "sess_1",
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("buildSaveThesisPayload", () => {
+  it("canonicalizes the ticker upper-case so it matches the holdings key", () => {
+    const form = { ...emptyThesisForm(), entryRationale: "Why." };
+    const payload = buildSaveThesisPayload("nvda", form);
+    expect(payload.ticker).toBe("NVDA");
+  });
+
+  it("maps blank optional fields to null, never a fabricated value", () => {
+    const payload = buildSaveThesisPayload("AAPL", {
+      ...emptyThesisForm(),
+      entryRationale: "Why.",
+    });
+    expect(payload.invalidationConditions).toBeNull();
+    expect(payload.timeHorizon).toBeNull();
+    expect(payload.targetPrice).toBeNull();
+    expect(payload.stopPrice).toBeNull();
+    expect(payload.tripwires).toEqual([]);
+    expect(payload.sourceSessionId).toBeNull();
+  });
+
+  it("parses numeric fields and drops currency formatting", () => {
+    const payload = buildSaveThesisPayload("AAPL", {
+      ...emptyThesisForm(),
+      entryRationale: "Why.",
+      targetPrice: "$1,200",
+      stopPrice: "90",
+    });
+    expect(payload.targetPrice).toBe(1200);
+    expect(payload.stopPrice).toBe(90);
+  });
+
+  it("maps an unparseable number to null (server re-validates)", () => {
+    const payload = buildSaveThesisPayload("AAPL", {
+      ...emptyThesisForm(),
+      entryRationale: "Why.",
+      targetPrice: "abc",
+    });
+    expect(payload.targetPrice).toBeNull();
+  });
+
+  it("drops a note-less tripwire scaffold but keeps a real one", () => {
+    const payload = buildSaveThesisPayload("AAPL", {
+      ...emptyThesisForm(),
+      entryRationale: "Why.",
+      tripwires: [
+        { kind: "price", note: "  ", level: "50", byDate: "" },
+        { kind: "event", note: "Guidance cut", level: "", byDate: "2026-09-01" },
+      ],
+    });
+    expect(payload.tripwires).toEqual([
+      { kind: "event", note: "Guidance cut", level: null, byDate: "2026-09-01" },
+    ]);
+  });
+});
+
+describe("thesisRecordToForm round-trip", () => {
+  it("pre-fills the form from a record and rebuilds an equivalent payload", () => {
+    const r = record();
+    const form = thesisRecordToForm(r);
+    expect(form.entryRationale).toBe(r.entryRationale);
+    expect(form.invalidationConditions).toBe(r.invalidationConditions);
+    expect(form.timeHorizon).toBe("years");
+    expect(form.targetPrice).toBe("200");
+    expect(form.stopPrice).toBe("90");
+    expect(form.tripwires).toHaveLength(2);
+
+    const payload = buildSaveThesisPayload(r.ticker, form);
+    expect(payload.entryRationale).toBe(r.entryRationale);
+    expect(payload.invalidationConditions).toBe(r.invalidationConditions);
+    expect(payload.timeHorizon).toBe(r.timeHorizon);
+    expect(payload.targetPrice).toBe(r.targetPrice);
+    expect(payload.stopPrice).toBe(r.stopPrice);
+    expect(payload.tripwires).toEqual(r.tripwires);
+  });
+
+  it("renders null record fields as blank strings, not 'null'", () => {
+    const form = thesisRecordToForm(
+      record({
+        invalidationConditions: null,
+        timeHorizon: null,
+        targetPrice: null,
+        stopPrice: null,
+        tripwires: [],
+      }),
+    );
+    expect(form.invalidationConditions).toBe("");
+    expect(form.timeHorizon).toBe("");
+    expect(form.targetPrice).toBe("");
+    expect(form.stopPrice).toBe("");
+  });
+});
+
+describe("canSaveThesis", () => {
+  it("requires a non-empty entry rationale", () => {
+    expect(canSaveThesis(emptyThesisForm())).toBe(false);
+    expect(canSaveThesis({ ...emptyThesisForm(), entryRationale: "   " })).toBe(false);
+    expect(canSaveThesis({ ...emptyThesisForm(), entryRationale: "Real why." })).toBe(true);
+  });
+});

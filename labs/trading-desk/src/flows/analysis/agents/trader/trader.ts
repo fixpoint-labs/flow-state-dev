@@ -69,6 +69,10 @@ export const traderGenerator = generator({
       // reward-to-risk figure is not yet computed at Phase 3 (it derives from the
       // Phase 5a forecast), so the trader sees only the mandate, not the figure.
       riskMandate: true,
+      // FIX-760 — the trader sees the user's STANDING thesis for a held name
+      // (their durable "why"), so its sizing weighs standing intent, not just
+      // position size. Thesis-blind when none is recorded.
+      standingThesis: true,
     }),
   ],
   ...definePromptFile(traderPrompt),

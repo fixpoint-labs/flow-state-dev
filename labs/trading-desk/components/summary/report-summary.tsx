@@ -49,6 +49,7 @@ import { PriceOverlay, type PriceOverlayLevel } from "./charts/price-overlay";
 import { PortfolioFitBlock } from "./portfolio-fit-block";
 import { LensConvergenceBlock } from "./lens-convergence-block";
 import { MandatePanel } from "../theses/mandate-panel";
+import { ReportThesisPanel } from "../theses/report-thesis-panel";
 import { cn } from "@/lib/utils";
 
 export type ReportSummaryProps = {
@@ -127,7 +128,16 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
         trade={summary.trade}
       />
 
-      <ConvictionStrip nodes={summary.conviction} />      
+      {/* FIX-760: adopt-as-thesis + the standing-thesis card for the analyzed
+          name. Reached only on a finished report (the stopped branch returns
+          early above), so the adopt gate is satisfied. */}
+      <ReportThesisPanel
+        session={session}
+        ticker={summary.ticker === "" ? null : summary.ticker}
+        runComplete={true}
+      />
+
+      <ConvictionStrip nodes={summary.conviction} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">

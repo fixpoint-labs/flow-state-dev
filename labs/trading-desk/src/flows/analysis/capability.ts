@@ -65,6 +65,7 @@ import {
   formatRiskMandate,
   formatScenarioForecastExtensions,
   formatStanceContributions,
+  formatStandingThesis,
   formatThesisExtensions,
   formatTradeProposalExtensions,
   readContributionsEntries,
@@ -529,6 +530,20 @@ export const tradingDesk = defineCapability({
       },
     },
 
+    /** Standing per-position thesis (FIX-760) — the user's durable "why" for a
+     *  held name. Reads the frozen session-state thesis (no resource — the
+     *  `portfolioContext` / `riskMandate` pattern). Returns null to suppress the
+     *  `<standingThesis>` tag on a thesis-blind run. Opted into by the trader (P3)
+     *  and the PM (P5) ONLY — the analysts stay blind so the independent evidence
+     *  is uncontaminated. Distinct from the `userThesis` preset (the Phase 6
+     *  hypothesis-under-audit) — never the same tag for both. */
+    standingThesis: {
+      context: {
+        standingThesis: (_input, ctx) =>
+          formatStandingThesis(ctx.session.state.standingThesis),
+      },
+    },
+
     // ────────────────────────────────────────────────────────────────────
     // Cost-preset-gated variants.
     //
@@ -618,6 +633,7 @@ export {
   formatRiskMandate,
   formatScenarioForecastExtensions,
   formatStanceContributions,
+  formatStandingThesis,
   formatThesisExtensions,
   formatTradeProposalExtensions,
   readContributionsEntries,

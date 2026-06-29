@@ -29,8 +29,12 @@ type AccountSectionProps = {
   /** Sum of unrealized P/L across this account's holdings; `null` if none
    *  computable. */
   accountUpl: number | null;
+  /** Household tickers (upper-case) with a standing thesis (FIX-760). */
+  thesisTickers: ReadonlySet<string>;
   onDeleteHolding: (ticker: string) => void;
   onDeleteAccount: () => void;
+  /** Open the thesis editor for one holding. */
+  onEditThesis: (ticker: string) => void;
 };
 
 const TYPE_LABELS: Record<AccountState["type"], string> = {
@@ -46,8 +50,10 @@ export function AccountSection({
   prices,
   accountValue,
   accountUpl,
+  thesisTickers,
   onDeleteHolding,
   onDeleteAccount,
+  onEditThesis,
 }: AccountSectionProps): ReactElement {
   const uplFmt = formatSignedMoney(accountUpl, account.currency);
   return (
@@ -97,7 +103,9 @@ export function AccountSection({
           prices={prices}
           currency={account.currency}
           accountTotal={accountValue}
+          thesisTickers={thesisTickers}
           onDeleteHolding={onDeleteHolding}
+          onEditThesis={onEditThesis}
         />
       </div>
       <p className="border-t border-[color:var(--c-border)] px-3 py-1.5 text-[10px] text-[color:var(--c-fg-faint)]">

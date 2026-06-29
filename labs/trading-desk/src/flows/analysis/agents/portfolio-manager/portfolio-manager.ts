@@ -163,6 +163,10 @@ export const portfolioManagerGenerator = generator({
       // and the active risk-appetite mandate it is judged against.
       rewardToRisk: true,
       riskMandate: true,
+      // FIX-760 — the PM weighs the user's STANDING thesis for a held name (their
+      // durable "why" + invalidation conditions) when deciding and sizing the
+      // portfolio-fit verdict. Thesis-blind when none is recorded.
+      standingThesis: true,
     }),
   ],
   ...definePromptFile(portfolioManagerPrompt),

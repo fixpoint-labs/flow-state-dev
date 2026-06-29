@@ -17,6 +17,7 @@ import { decisionSnapshotResource } from "./decision-snapshot-resource";
 import { analyze } from "./orchestration/analyze";
 import { setInstructions } from "./orchestration/guards";
 import { runSummaryAction } from "./orchestration/run-summary-action";
+import { adoptThesis } from "./orchestration/adopt-thesis-action";
 import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
 import { priceHistoryResource } from "./price-history-resource";
 import { financialsDataResource } from "./financials-data-resource";
@@ -47,6 +48,10 @@ const analysisFlow = defineFlow({
     // memos, and stop-state into a machine-readable RunSummary. The headless
     // harness invokes this after `analyze` to read back what happened.
     runSummary: { block: runSummaryAction },
+    // Adopt the current report's decision as the standing thesis for the position
+    // (FIX-760) — derives the thesis from the session's decision snapshot and
+    // writes it to the app-owned `app.theses` table with the report linkage.
+    adoptThesis: { block: adoptThesis },
   },
 
   session: {

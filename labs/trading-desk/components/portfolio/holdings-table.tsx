@@ -16,7 +16,7 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
@@ -38,7 +38,11 @@ type HoldingsTableProps = {
   currency: string;
   /** Account total market value, for weight %. `null` while prices load. */
   accountTotal: number | null;
+  /** Household tickers (upper-case) that have a standing thesis (FIX-760). */
+  thesisTickers: ReadonlySet<string>;
   onDeleteHolding: (ticker: string) => void;
+  /** Open the thesis editor for one holding (the per-holding thesis affordance). */
+  onEditThesis: (ticker: string) => void;
 };
 
 /** Render-ready strings for one holding row/card. Every price-derived field
@@ -51,15 +55,22 @@ export type HoldingRowModel = {
   value: string;
   weight: string;
   upl: { text: string; direction: "up" | "down" | "flat" };
+  /** Whether the household has a standing thesis for this name (FIX-760).
+   *  Derived from the household thesis set; drives the quiet per-holding
+   *  indicator in BOTH the table cell and the stacked card. */
+  hasThesis: boolean;
 };
 
 /** Build the shared view model behind a table row AND a mobile card. Pure —
- *  exported for the node-env spec (`test/holdings-row-model.spec.ts`). */
+ *  exported for the node-env spec (`test/holdings-row-model.spec.ts`).
+ *  `thesisTickers` is the household's set of upper-cased tickers that have a
+ *  thesis (household × ticker, FIX-760); omitted → no thesis indicator. */
 export function buildHoldingRowModel(
   holding: Holding,
   quote: Quote | undefined,
   currency: string,
   accountTotal: number | null,
+  thesisTickers?: ReadonlySet<string>,
 ): HoldingRowModel {
   const price = quote?.price ?? null;
   const value = marketValue(holding.quantity, price);
@@ -73,6 +84,7 @@ export function buildHoldingRowModel(
     value: formatMoney(value, currency),
     weight: formatPercent(weight(value, accountTotal)),
     upl: formatSignedMoney(upl, currency),
+    hasThesis: thesisTickers?.has(holding.ticker.toUpperCase()) ?? false,
   };
 }
 
@@ -97,7 +109,9 @@ export function HoldingsTable({
   prices,
   currency,
   accountTotal,
+  thesisTickers,
   onDeleteHolding,
+  onEditThesis,
 }: HoldingsTableProps): ReactElement {
   if (holdings.length === 0) {
     return (
@@ -108,7 +122,13 @@ export function HoldingsTable({
   }
 
   const rows = holdings.map((h) =>
-    buildHoldingRowModel(h, prices.get(h.ticker.toUpperCase()), currency, accountTotal),
+    buildHoldingRowModel(
+      h,
+      prices.get(h.ticker.toUpperCase()),
+      currency,
+      accountTotal,
+      thesisTickers,
+    ),
   );
 
   return (
@@ -133,7 +153,16 @@ export function HoldingsTable({
               key={m.ticker}
               className="border-b border-[color:var(--c-border)]/40"
             >
-              <td className={cn(cellClass, "font-semibold")}>{m.ticker}</td>
+              <td className={cn(cellClass, "font-semibold")}>
+                <span className="inline-flex items-center gap-1">
+                  {m.ticker}
+                  <ThesisButton
+                    ticker={m.ticker}
+                    hasThesis={m.hasThesis}
+                    onEdit={onEditThesis}
+                  />
+                </span>
+              </td>
               <td className={numCellClass}>{m.quantity}</td>
               <td className={numCellClass}>{m.avgCost}</td>
               <td className={numCellClass}>{m.price}</td>
@@ -171,6 +200,11 @@ export function HoldingsTable({
               <span className="font-mono text-[12.5px] font-semibold text-[color:var(--c-fg)]">
                 {m.ticker}
               </span>
+              <ThesisButton
+                ticker={m.ticker}
+                hasThesis={m.hasThesis}
+                onEdit={onEditThesis}
+              />
               <span className="ml-auto font-mono text-[12.5px] tabular-nums text-[color:var(--c-fg)]">
                 {m.value}
               </span>
@@ -216,6 +250,37 @@ function CardStat({
         {value}
       </dd>
     </div>
+  );
+}
+
+/** The shared per-holding thesis affordance (table cell + card header). A quiet
+ *  notebook glyph: filled-accent when a thesis exists, faint when it doesn't.
+ *  Clicking opens the thesis editor (pre-filled when one exists). The flag
+ *  travels through the row model, so both layouts get the indicator identically. */
+function ThesisButton({
+  ticker,
+  hasThesis,
+  onEdit,
+}: {
+  ticker: string;
+  hasThesis: boolean;
+  onEdit: (ticker: string) => void;
+}): ReactElement {
+  return (
+    <button
+      type="button"
+      onClick={() => onEdit(ticker)}
+      className={cn(
+        "rounded p-0.5 hover:bg-[color:var(--c-surface-2)]",
+        hasThesis
+          ? "text-[color:var(--c-accent)]"
+          : "text-[color:var(--c-fg-faint)] hover:text-[color:var(--c-fg-muted)]",
+      )}
+      aria-label={hasThesis ? `Edit thesis for ${ticker}` : `Add thesis for ${ticker}`}
+      title={hasThesis ? `Thesis recorded — edit ${ticker}` : `Add a thesis for ${ticker}`}
+    >
+      <NotebookPen className="h-3 w-3" aria-hidden />
+    </button>
   );
 }
 

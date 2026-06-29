@@ -232,6 +232,34 @@ Portfolio-aware analysis + lens pack (optional):
   debate, and convergence means "robust across philosophies," not "likely
   correct." On the `fast` preset the pack is skipped entirely.
 
+Per-position thesis records (optional):
+
+- **A holding can carry a durable "why".** A *thesis* records the entry
+  rationale, the conditions that would prove it wrong, a time horizon, optional
+  target/stop levels, and a link back to the report it came from — keyed per name
+  at the household level (one thesis for NVDA regardless of which account holds
+  it; intent is about the name, account location is a tax question). Like
+  accounts, holdings, and the ledger it lives in the app-owned relational layer
+  (`app.theses`), not an FSD resource, so it survives sessions and re-imports and
+  the future review loop can read every name's thesis in one query.
+- **Freeform plus tripwires.** The invalidation conditions are freeform prose
+  ("what would make this wrong") alongside an optional list of structured
+  *tripwires* — observable falsifiers like a price level or a dated event. A
+  tripwire is the "wrong if [observable]" clause a machine can check later;
+  freeform is what people actually write. The record carries both.
+- **Injected into analysis when the desk runs a held name.** At run start the
+  desk reads the standing thesis for the ticker and shows it to the trader and the
+  PM as a `<standingThesis>` block — they reason with the user's standing intent,
+  not just position size. The analysts stay blind to it, so the independent
+  evidence is uncontaminated. This is distinct from the per-run thesis the Phase 6
+  validator audits: the standing thesis is context the desk holds about a position,
+  not a hypothesis under test. With no thesis recorded the run is unchanged.
+- **Adopt a report in one action.** On a finished report, "Adopt as thesis"
+  derives the thesis from the decision (rationale, levels, horizon, and a price
+  tripwire from the stop) and writes it with the report linkage captured
+  automatically. Edit it afterward from the Portfolio view, where each holding
+  shows whether it carries a thesis.
+
 ## Run it
 
 ```bash
@@ -297,8 +325,9 @@ See also [Persistence overview](../../apps/docs/docs/persistence/overview.md).
 ### Data layer: portfolio in Postgres
 
 Framework state (sessions, requests, resources, items) is one concern; the
-**portfolio domain** (accounts and holdings) is another. The desk owns the
-latter in real relational tables — `app.accounts` and `app.holdings` in a
+**portfolio domain** (accounts, holdings, the transaction ledger, and per-position
+theses) is another. The desk owns the latter in real relational tables —
+`app.accounts`, `app.holdings`, `app.ledger_events`, and `app.theses` in a
 dedicated `app` Postgres schema — reached through a thin typed repository
 ([`src/db/repository.ts`](src/db/repository.ts)), not through an FSD resource.
 Action handlers, the analysis seed, and the Portfolio UI read/write through that

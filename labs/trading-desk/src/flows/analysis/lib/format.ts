@@ -17,6 +17,7 @@ import type { PortfolioContextInput } from "../flow-schema";
 import type { LensConvergenceState } from "../agents/lenses/lens-convergence-resource";
 import type { RewardToRiskState } from "../reward-to-risk-resource";
 import type { RiskMandate } from "./risk-mandate";
+import type { ThesisRecord } from "../../portfolio/thesis-schema";
 
 /** Render a memo state as a compact prompt block. Permissive `any` —
  *  body shape is enforced by `memoStateSchema` at write time, so reads
@@ -592,5 +593,62 @@ export function formatRiskMandate(
       0,
     )}% of a full-Kelly stake (fractional-Kelly); a name that does NOT clear is held to a token size (at or below ${mandate.unclearedCapPct}% of NAV). The mandate only ever reduces size, never inflates it, and never changes the rating.`,
   );
+  return lines.join("\n");
+}
+
+/**
+ * Render the user's STANDING per-position thesis (FIX-760) as the inner content
+ * of the `<standingThesis>` prompt block the trader (P3) and PM (P5) reason with.
+ * This is the durable "why we hold this name" — distinct from the per-run
+ * `<userThesis>` (the hypothesis the Phase 6 validator audits): the standing
+ * thesis is CONTEXT the decision tier sees, like position size, never the run's
+ * hypothesis-under-test. The analysts stay blind to it.
+ *
+ * Guards on the required `entryRationale` (BP-018, the `formatPortfolioContext`
+ * precedent): a partial/empty read (a nullable single resource that surfaced as
+ * `{}`) suppresses the tag rather than throwing. Returns the inner content; the
+ * capability context key wraps it as `<standingThesis>`.
+ */
+export function formatStandingThesis(
+  thesis: ThesisRecord | null | undefined,
+): string | null {
+  if (
+    thesis == null ||
+    typeof thesis !== "object" ||
+    typeof (thesis as Partial<ThesisRecord>).entryRationale !== "string" ||
+    (thesis as Partial<ThesisRecord>).entryRationale === ""
+  ) {
+    return null;
+  }
+  const lines: string[] = [];
+  lines.push(
+    "The user holds this name with a STANDING thesis — their durable reason for the position, NOT a hypothesis to test. Treat it as standing intent (like position size); do not let it bias the evidence, but weigh it when sizing and deciding.",
+  );
+  if (thesis.updatedAt) {
+    lines.push(`Recorded as of ${thesis.updatedAt.slice(0, 10)}.`);
+  }
+  lines.push(`Entry rationale: ${thesis.entryRationale}`);
+  if (thesis.timeHorizon != null) {
+    lines.push(`Intended horizon: ${thesis.timeHorizon}.`);
+  }
+  const levels: string[] = [];
+  if (thesis.targetPrice != null) levels.push(`target ~$${thesis.targetPrice}`);
+  if (thesis.stopPrice != null) levels.push(`stop ~$${thesis.stopPrice}`);
+  if (levels.length > 0) lines.push(`Levels: ${levels.join(", ")}.`);
+  if (thesis.invalidationConditions != null && thesis.invalidationConditions !== "") {
+    lines.push(`What would make this wrong: ${thesis.invalidationConditions}`);
+  }
+  if (thesis.tripwires.length > 0) {
+    lines.push("Tripwires (observable falsifiers):");
+    for (const t of thesis.tripwires) {
+      const detail =
+        t.kind === "price" && t.level != null
+          ? ` (price ${t.level})`
+          : t.byDate != null
+            ? ` (by ${t.byDate})`
+            : "";
+      lines.push(`- [${t.kind}] ${t.note}${detail}`);
+    }
+  }
   return lines.join("\n");
 }

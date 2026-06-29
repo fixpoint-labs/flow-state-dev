@@ -47,6 +47,7 @@ import { AgentBadge } from "@/components/agent-badge";
 import { ThesisHeader } from "./thesis-header";
 import { ThesisBody } from "./thesis-body";
 import { PmHero } from "./pm-hero";
+import { ReportThesisPanel } from "./report-thesis-panel";
 import { LensCard } from "./lens-card";
 import { ScenarioPanel } from "./scenario-panel";
 import { WritingSkeleton } from "./writing-skeleton";
@@ -473,10 +474,19 @@ function PmHeroWithScenarios({
     };
   }, [scenarioItem, data]);
 
+  // The PM memo only publishes once the run finishes, so reaching this branch
+  // means the report is complete — the adopt gate is satisfied. The thesis panel
+  // (adopt button + standing-thesis card) sits above the hero.
   return (
-    <PmHero
-      agent={agent}
-      label={data?.label ?? null}
+    <div className="flex flex-col gap-5">
+      <ReportThesisPanel
+        session={session}
+        ticker={data?.ticker ?? null}
+        runComplete={true}
+      />
+      <PmHero
+        agent={agent}
+        label={data?.label ?? null}
       headline={data?.headline ?? null}
       rating={data?.rating ?? null}
       body={data?.body ?? null}
@@ -493,7 +503,8 @@ function PmHeroWithScenarios({
       lensConvergence={data?.lensConvergence ?? null}
       snapshotAsOf={data?.portfolioFit?.snapshotAsOf ?? null}
       mandateDecision={data?.mandateDecision ?? null}
-    />
+      />
+    </div>
   );
 }
 
