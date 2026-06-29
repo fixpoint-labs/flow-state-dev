@@ -44,7 +44,7 @@ The issue under-counts the current surface. As built today (`packages/engine/src
 - `StoreRegistry` is **eleven** separately-implemented stores, not six: `session`, `request`, `user`, `org`, `activeRequests`, `content`, `resourceState`, `checkpoints`, `traces`, `suspensions`, `leases`.
 - A **composition seam already exists.** `resolveProfileStores` (`packages/engine/src/flowstate/resolve-slots.ts`) resolves a `CapabilitySlotMap` of slots — `primary` plus forward-compatible `blobs` / `queue` / `scheduler` — onto the flat registry, failing fast when an adapter doesn't declare a slot's capability. Today `primary` resolves ten sub-stores all-or-nothing and the other slots back nothing, but the machinery to compose multiple adapters *is present and tested for the fail-fast path.*
 - **`subscribe` is already a store contract, and already backend-swappable.** `RequestStore.subscribeToEvents(requestId, options): AsyncIterableIterator<RequestStreamEvent>` plus `getEvents(fromSequence?)` landed with FIX-569 (`docs/internal/design/store-live-tail.md`). Memory uses an in-process bus, SQLite/filesystem poll, Postgres uses LISTEN/NOTIFY (signal-only, single channel, dedicated pool, PGlite→poll fallback). The design doc *already names the migration path*: "When operators outgrow [LISTEN/NOTIFY], the next move is Redis pub/sub or NATS JetStream behind the same `subscribeToEvents` interface."
-- **`DeltaStoreOps`** (`types.ts:203`) — `patchField` / `incField` / `pushToArray` / `deleteField`, CAS-guarded — is implemented natively on Postgres (JSONB) and memory; SQLite/filesystem transparently fall back to full-record `set`. Feature-detected per adapter.
+- **`DeltaStoreOps`** (`types.ts:203`) — `patchField` / `incField` / `pushToArray` / `deleteField`, CAS-guarded — is implemented by every persistent adapter, with different strategies per engine: Postgres uses native JSONB operators; SQLite and filesystem read-mutate-rewrite the record under CAS. No adapter silently degrades to a plain full-record overwrite; the verb contract is honored everywhere, only the execution differs.
 - **No vector contract exists.** Memory rides on `ContentStore` + `ResourceStateStore` keyed by `(scopeType, scopeId, resourceKey)`.
 - **Asymmetry to note:** traces are durable on SQLite/filesystem but **in-memory only on Postgres** (`store-postgres/src/index.ts`), undocumented.
 
@@ -147,7 +147,7 @@ Tiers: **First-class** (framework-maintained, production-supported, in the test 
 | Backend | Records | Streams/subscribe | Vectors | Blobs | Edges | Tier | Honest hosting gradient |
 |---|---|---|---|---|---|---|---|
 | **In-memory** | ✓ | ✓ (bus) | — | ✓ | — | First-class | Test/dev only |
-| **SQLite** (`store-sqlite`) | ✓ (set-fallback deltas) | ✓ (poll) | sqlite-vec (proposed) | ✓ | — | First-class | Perfect local/single-host; impossible distributed |
+| **SQLite** (`store-sqlite`) | ✓ (read-mutate-rewrite deltas) | ✓ (poll) | sqlite-vec (proposed) | ✓ | — | First-class | Perfect local/single-host; impossible distributed |
 | **Postgres** (`store-postgres`) | ✓ (JSONB deltas) | ✓ (LISTEN/NOTIFY *wakeup*) | pgvector | ✓ | relational/AGE-optional | First-class | Great single-host & cloud; painful serverless-edge; NOTIFY is wakeup-only |
 | **Valkey / Redis** (proposed) | KV CAS (Lua/WATCH) | ✓ (Streams + Pub/Sub) | valkey-search | — | — | Community | Trivial single-host; Upstash-REST for serverless; default to Valkey/BSD, Redis-8-AGPL flagged |
 | **MongoDB** (FIX-83) | ✓ (`$set`/`$inc`/`$push`, `findOneAndUpdate` CAS) | ✓ (change streams, durable/resumable) | Atlas Vector (Atlas-only) | GridFS | — | Community | Cloud/Atlas sweet spot; replica-set cost self-host |
@@ -237,7 +237,7 @@ Steps 3–7 are independent of each other and can be prioritized separately; non
 - **Deepening opportunities flagged (follow up via `fsd:improve-codebase-architecture`):**
   - `primary` resolves ten sub-stores all-or-nothing (`resolve-slots.ts`) — the slot machinery exists but only one slot projects sub-stores; formalizing `events`/`vectors`/`blobs` slots is the deepening.
   - Traces in-memory only on Postgres — undocumented asymmetry; decide durable-vs-external.
-  - `resourceState` is absent from `PRIMARY_REGISTRY_SLOTS` in `resolve-slots.ts` while present in `StoreRegistry` — confirm it's covered and not silently in-memory-fallback.
+  - `resourceState` is absent from `PRIMARY_REGISTRY_SLOTS` in `resolve-slots.ts` while present in `StoreRegistry`. Runtime coverage is fine (adapters return the full registry including `resourceState`; the in-memory fallback covers any gap), so this is a *declaration-only* asymmetry — the slot list under-reports what `primary` actually backs. Either add `resourceState` to the list or document that the list is illustrative, not exhaustive. Low-risk, but worth resolving when the events/vectors/blobs slots formalize.
   - No store-level resource-mutation log (changes live only on the SSE emitter) — a future audit/webhook seam, out of scope here.
 
 ---
