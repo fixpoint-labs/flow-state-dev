@@ -211,6 +211,7 @@ Launch a `Plan` sub-agent to:
 - Check if any code could be simplified without losing functionality
 - Verify the implementation follows existing codebase patterns rather than inventing new ones
 - Check for YAGNI violations — features or flexibility that wasn't requested
+- **What could this change remove?** (BP-038) — a superseded path left beside the new one, an export/option/config key no caller needs, dead code the change orphaned. Subtraction is part of the change, not a follow-up.
 - Surface **deepening opportunities** the implementation revealed — capability-shaped wiring that wasn't extracted, repeated `.step()` chains that could be a pattern, shallow modules. These do not block the PR; flag them as follow-ups to be handled later via `fsd:improve-codebase-architecture`
 - **Key question**: "If I were reading this PR for the first time, what would I find unnecessarily complex?"
 

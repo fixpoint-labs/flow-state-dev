@@ -24,7 +24,7 @@ Update policy:
 
 - A practice is established by **user review** (see the `fsd:distill-lessons`
   skill). Add it in the same change set as the code/docs adopting it.
-- Number sequentially after the last existing BP (currently BP-037). Append;
+- Number sequentially after the last existing BP (currently BP-038). Append;
   never overwrite or renumber.
 - A new **universal** BP goes in this file's Universal section *and* the
   `CLAUDE.md` mirror. A new **situational** BP goes in the matching
@@ -157,13 +157,25 @@ Update policy:
   - When a flag toggles behavior (`enabled: false`, a new mode), add the test for the off / new state in the same PR.
 - Why: The happy path is the part you thought about; the bugs hide in the paths the change implicitly touched but didn't add code for.
 
+### BP-038: Build the least that satisfies the spec; subtract before you add
+
+- Status: Active
+- Date: 2026-06-29
+- Scope: Universal — every change.
+- Rule:
+  - Prefer the smallest design that meets the spec. No speculative configurability, abstraction, or "flexibility" without a present consumer (YAGNI). If 200 lines could be 50, write 50.
+  - Subtract as you go: a change that supersedes an old path deletes it in the same PR — don't leave old and new side by side. (Your change's orphans, not pre-existing dead code unasked-for.)
+  - Minimize public surface: every exported symbol, option, and config key is a permanent maintenance contract. Prefer a sensible default over a new knob; don't export what callers don't need; don't add a package or dependency without a clear earn.
+  - Same instinct at two altitudes: the spec-time necessity gate (`fsd:create-spec` Step 3.5) and the architecture-deepening pass (`fsd:improve-codebase-architecture`) — reach for them.
+- Why: An already-large framework stays maintainable only if new surface earns its keep and superseded surface is removed, not accumulated.
+
 ---
 
 ## Situational Practices — Index
 
 Full text lives in the category files. Open the file when working in that area.
 
-> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-038.
+> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-039.
 
 ### [Process & Docs](best-practices/process.md)
 
