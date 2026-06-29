@@ -64,7 +64,7 @@ Verified against primary sources. Two patterns dominate, and the framework alrea
 
 | Runtime | Pluggable persistence contract? | Stream/event vs. record/state separated? | Default(s) |
 |---|---|---|---|
-| **Temporal** | Yes — `DataStoreFactory` / `customDatastore`; persistence store ≠ visibility store | Yes — event-sourced append-only history; current state replayed, never snapshotted | Cassandra/Postgres/MySQL; SQLite dev-only ([docs](https://docs.temporal.io/temporal-service/persistence)) |
+| **Temporal** | Yes — `DataStoreFactory` / `customDatastore`; persistence store ≠ visibility store | Yes — append-only history is the source of truth, *plus* persisted mutable execution state (`executions`/`current_executions`) and a separate visibility store; not purely event-sourced-no-snapshot | Cassandra/Postgres/MySQL; SQLite dev-only ([docs](https://docs.temporal.io/temporal-service/persistence)) |
 | **LangGraph** | Yes — `BaseCheckpointSaver` ABC + conformance suite; separate `BaseStore` ABC | Yes — `BaseStore` (cross-thread memory, *with vector search*) distinct from checkpointer; streaming independent of persistence | Postgres in prod; SQLite local; Redis option ([docs](https://docs.langchain.com/oss/python/langgraph/persistence)) |
 | **Mastra** | Yes — `MastraCompositeStore` routes **per-domain** adapters (memory/workflows/observability/scores) | Yes — `transient: true` chunks stream but bypass storage | LibSQL default; Postgres/Upstash/Mongo/D1/etc. ([base.ts](https://github.com/mastra-ai/mastra/blob/main/packages/core/src/storage/base.ts)) |
 | **Vercel WDK** | Yes — "Worlds" adapter system (managed / self-host Postgres / community) | Yes — **streams bypass the event log**, Redis-backed; event log is state source of truth ([streaming](https://workflow-sdk.dev/docs/foundations/streaming)) | `world-vercel` managed default |
@@ -253,9 +253,9 @@ Steps 3–7 are independent of each other and can be prioritized separately; non
 
 **9.2 Surfaces affected:**
 - [x] Reference docs — **extend** `apps/docs/docs/persistence/overview.md` (no new page, no sidebar change)
-- [ ] Guides — not yet (a "compose your stores" guide is a follow-up once the events/vectors/blobs slots formalize)
 - [x] Package READMEs — `packages/store-postgres/README.md` gets a one-line "LISTEN/NOTIFY is a wakeup, not a durable bus; the ceiling and the move to Valkey/NATS" note; `store-sqlite` README a "local/single-host fit" note
-- [ ] Architecture docs — `docs/architecture/state-and-scopes.md` and `streaming.md` already describe the contracts accurately; no change needed beyond this internal strategy doc as the rationale store
+- [x] Architecture docs — `state-and-scopes.md` and `streaming.md` are accurate, **but `docs/architecture/server-and-client.md` is stale and must be corrected** (it outranks this strategy in the authority hierarchy, so leaving it is worse than no doc): line ~13 lists engine persistence as only "filesystem + in-memory" (omits SQLite/Postgres), and line ~105 comments `// Production: filesystem (default)` — the opposite of the new posture (filesystem is dev-only; SQLite/Postgres are the production backends, and `createFilesystemStores` itself now warns its event persistence is unsuitable for production load). Update both spots in the docs follow-up before FIX-664 is closed.
+- [x] Guides — no *new* guide yet (a "compose your stores" guide waits on the events/vectors/blobs slots), **but the existing trading-desk walkthrough is stale and must be fixed in the same follow-up if it's used as the resource-vs-table example** (see §9.5): `apps/docs/guides/trading-desk-walkthrough.md:235-246` still shows `createFilesystemStores`, while the app (`labs/trading-desk/lib/server.ts`) now shares Postgres-backed stores via `fsdev.config.ts` (FIX-772). Either refresh that section to the shared-Postgres + app-owned-tables pattern, or don't cross-link it as the worked example.
 - [ ] Blog — no
 
 **9.3 Per-page plan**
@@ -273,7 +273,9 @@ Insertion points:
   - Extend the existing "### Live tail" subsection (under Custom stores) with the LISTEN/NOTIFY
     ceiling and the "move streams to Valkey/NATS behind the same subscribeToEvents interface" path.
   - Add a "## Resource vs. table: where relational data lives" section near the end (the §4.6
-    criterion), cross-linked to the trading-desk walkthrough that already demonstrates it.
+    criterion), cross-linked to the trading-desk walkthrough — but only after that walkthrough's
+    persistence section is refreshed off `createFilesystemStores` to the shared-Postgres + app-owned-
+    tables pattern the app actually uses now (see §9.2 Guides); don't link to the stale section.
 Audience: a developer who has built a flow on the default store and is now choosing a production backend.
 Code examples:
   - One minimal composed-profile snippet showing the slot map with a (future) separate events/vectors
