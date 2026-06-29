@@ -394,6 +394,37 @@ ${body}
       result.warnings.some((w) => w.includes("RI-NOAMT") && /no amount or price/i.test(w)),
     ).toBe(true);
   });
+
+  it("skips an option buy-to-close (OPTBUYTYPE=BUYTOCLOSE) — a short-side close long-only FIFO can't model", async () => {
+    const result = await parseOfxTransactions(
+      wrap(
+        "<BUYOPT><INVBUY><INVTRAN><FITID>BC1<DTTRADE>20260110</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>1<UNITPRICE>2.5<TOTAL>-250</INVBUY><OPTBUYTYPE>BUYTOCLOSE<SHPERCTRCT>100</BUYOPT>",
+      ),
+    );
+    expect(result.events).toHaveLength(0);
+    expect(result.warnings.some((w) => /buy-to-close/i.test(w))).toBe(true);
+  });
+
+  it("records reinvested interest (REINVEST INCOMETYPE=INTEREST) as interest, not dividend", async () => {
+    const result = await parseOfxTransactions(
+      wrap(
+        "<REINVEST><INVTRAN><FITID>RI-INT<DTTRADE>20260215</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><INCOMETYPE>INTEREST<UNITS>1<UNITPRICE>100<TOTAL>-100</REINVEST>",
+      ),
+    );
+    // The income leg is interest; the paired reinvested buy still lands.
+    expect(result.events.find((e) => e.externalId === "RI-INT:div")?.type).toBe("interest");
+    expect(result.events.find((e) => e.type === "buy")?.quantity).toBe(1);
+  });
+
+  it("skips a short-position transfer (POSTYPE=SHORT) — long-only FIFO can't model it", async () => {
+    const result = await parseOfxTransactions(
+      wrap(
+        "<TRANSFER><INVTRAN><FITID>TS1<DTTRADE>20260301</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>10<TFERACTION>IN<POSTYPE>SHORT</TRANSFER>",
+      ),
+    );
+    expect(result.events).toHaveLength(0);
+    expect(result.warnings.some((w) => /short position/i.test(w))).toBe(true);
+  });
 });
 
 describe("parseOfxTransactions — canonical-amount + sign edge cases", () => {

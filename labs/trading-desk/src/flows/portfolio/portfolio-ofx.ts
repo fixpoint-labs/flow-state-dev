@@ -268,11 +268,14 @@ function hasShareLegs(ctx: Ctx, ticker: string | null, units: number, kind: stri
 function handleBuy(ctx: Ctx, agg: OfxNode): void {
   const buy = obj(agg.INVBUY);
   if (buy === null) return;
-  // A buy-to-cover closes a short. v1 reconstructs LONG positions only, so a
-  // short was never opened — skip rather than book a phantom long lot.
-  if (str(agg.BUYTYPE) === "BUYTOCOVER") {
+  // A short-side close — an equity buy-to-cover (`BUYTYPE=BUYTOCOVER`) or an
+  // option buy-to-close (`OPTBUYTYPE=BUYTOCLOSE`, the option subtype `BUYTYPE`
+  // never carries) — closes a position v1 never opened (short opens are skipped),
+  // so booking it as a long buy would create a phantom long lot. Skip-with-
+  // warning. (A buy-to-open falls through.)
+  if (str(agg.BUYTYPE) === "BUYTOCOVER" || str(agg.OPTBUYTYPE) === "BUYTOCLOSE") {
     ctx.warnings.push(
-      "A buy-to-cover (closing a short) was skipped — v1 reconstructs long positions only; record it manually.",
+      "A short-side close (buy-to-cover / option buy-to-close) was skipped — v1 reconstructs long positions only; record it manually.",
     );
     return;
   }
@@ -427,9 +430,13 @@ function handleReinvest(ctx: Ctx, agg: OfxNode): void {
   // price (the buy/sell fallback) so the DRIP doesn't record a $0 reinvestment
   // and lose its fingerprint match against the same DRIP from another source.
   const total = rawTotal !== null ? Math.abs(rawTotal) : units * (unitPrice ?? 0);
+  // The income leg is interest for a reinvested bond/MMF distribution
+  // (`INCOMETYPE=INTEREST`), dividend otherwise — same distinction as the plain
+  // INCOME path, so reinvested interest isn't misclassified as a dividend.
+  const incomeType = str(agg.INCOMETYPE) === "INTEREST" ? "interest" : "dividend";
   ctx.events.push(
     baseEvent(ctx, invtran, {
-      type: "dividend",
+      type: incomeType,
       tradeDate,
       ticker,
       quantity: null,
@@ -461,6 +468,15 @@ function handleTransfer(ctx: Ctx, agg: OfxNode, kind: string): void {
   const ticker = resolveTicker(ctx, obj(agg.SECID));
   const rawUnits = Math.abs(num(agg.UNITS) ?? 0);
   if (!hasShareLegs(ctx, ticker, rawUnits, kind)) return;
+  // A short-position transfer (`POSTYPE=SHORT`) can't be modeled by long-only
+  // FIFO — an incoming short would book a phantom long lot, an outgoing short
+  // would consume an unrelated long lot. Skip-with-warning.
+  if (str(agg.POSTYPE) === "SHORT") {
+    ctx.warnings.push(
+      `A ${kind} of a short position (POSTYPE=SHORT) was skipped — v1 reconstructs long positions only; record it manually.`,
+    );
+    return;
+  }
   // Direction must be explicit. Defaulting a missing/malformed `TFERACTION` to
   // IN would turn a broker error on an OUTBOUND transfer into a phantom
   // incoming lot — skip-with-warning when it isn't a known IN/OUT.
