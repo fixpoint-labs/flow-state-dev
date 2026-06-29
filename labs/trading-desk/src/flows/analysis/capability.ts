@@ -114,9 +114,42 @@ const INVESTIGATION_CLAUSE = [
  *  from the generator that consumed it. */
 const fetchArticle = createFetchTool();
 
-/** Shared `search` tool instance for the `verify` preset (Phase 6). Auto-
- *  detects the best available web-search provider from env. */
+/** Shared `search` tool instance for the `verify` + `corroborate` presets.
+ *  Auto-detects the best available web-search provider from env. */
 const searchWeb = createSearchTool();
+
+/**
+ * True when at least one web-search provider key is configured.
+ *
+ * The `@flow-state-dev/tools` search resolver THROWS ("No search provider
+ * available") when none is set — it has no keyless fallback, unlike `fetch`
+ * (which always degrades to a builtin reader). So the search-exposing presets
+ * must DROP the `search` tool when no key is present, rather than hand the model
+ * a tool that aborts the generator on its first call. `fetch` always works, so
+ * it stays either way. The desk's run requirements only mandate model-provider
+ * keys, so a `full` run with no search key is a normal, supported configuration.
+ */
+const SEARCH_PROVIDER_ENV_VARS = [
+  "TAVILY_API_KEY",
+  "EXA_API_KEY",
+  "PERPLEXITY_API_KEY",
+  "SERPER_API_KEY",
+  "BRAVE_SEARCH_API_KEY",
+  "PARALLEL_API_KEY",
+] as const;
+
+function hasSearchProvider(): boolean {
+  return SEARCH_PROVIDER_ENV_VARS.some((name) => {
+    const value = process.env[name];
+    return typeof value === "string" && value.trim() !== "";
+  });
+}
+
+/** The tool set for a search-capable preset: `search` only when a provider key
+ *  is configured (else it would throw on first call), plus `fetch` always. */
+function webLookupTools() {
+  return hasSearchProvider() ? [searchWeb, fetchArticle] : [fetchArticle];
+}
 
 /**
  * Codifies the verification contract for the Phase 6 `verify` preset. Paired
@@ -178,17 +211,19 @@ const GROUNDING_CLAUSE = [
  */
 const CORROBORATION_CLAUSE = [
   "<corroboration>",
-  "You have `search` and `fetch` tools. Use them ONLY to corroborate a",
-  "specific, checkable claim you are about to rely on (a peer/sector comp, a",
-  "recent event, a regulatory action, a downgrade, a number) that the upstream",
-  "memos and <data> do not already settle. Do NOT re-run the analysts'",
-  "discovery or broadly research the company — the memos are your evidence base;",
-  "this is a targeted second source.",
+  "You may have `search` and `fetch` tools (a `search` tool appears only when a",
+  "web-search provider is configured; `fetch` is always present). Use them ONLY",
+  "to corroborate a specific, checkable claim you are about to rely on (a",
+  "peer/sector comp, a recent event, a regulatory action, a downgrade, a number)",
+  "that the upstream memos and <data> do not already settle. Do NOT re-run the",
+  "analysts' discovery or broadly research the company — the memos are your",
+  "evidence base; this is a targeted second source.",
   "",
   "Check <referencesConsulted> FIRST: if the desk already surfaced a relevant",
-  "URL, `fetch` it rather than issuing a new search. Budget: at most 2 searches",
-  "and 2 fetches for this memo. Prefer a search snippet; fetch only when the",
-  "snippet is not enough.",
+  "URL, `fetch` it rather than issuing a new search. If no `search` tool is",
+  "present, corroborate only by `fetch`ing a URL already in <referencesConsulted>",
+  "or <data>. Budget: at most 2 searches and 2 fetches for this memo. Prefer a",
+  "search snippet; fetch only when the snippet is not enough.",
   "",
   "Every claim that rests on a lookup must trace to a URL you actually fetched;",
   "add it to the `citations` array with its title. Do not cite a URL you did not",
@@ -445,7 +480,9 @@ export const tradingDesk = defineCapability({
      *  the validator's job is to verify claims, and it only runs on an
      *  explicit user-thesis opt-in. */
     verify: {
-      tools: () => [searchWeb, fetchArticle],
+      // `search` only when a provider key is set (the resolver throws otherwise);
+      // `fetch` always. Same guard as `corroborate` — see `hasSearchProvider`.
+      tools: () => webLookupTools(),
       context: {
         verification: () => VERIFICATION_CLAUSE,
       },
@@ -517,7 +554,7 @@ export const tradingDesk = defineCapability({
      */
     corroborate: {
       tools: (ctx) =>
-        ctx.session.state.costPreset === "full" ? [searchWeb, fetchArticle] : [],
+        ctx.session.state.costPreset === "full" ? webLookupTools() : [],
       context: {
         corroboration: (_input, ctx) =>
           ctx.session.state.costPreset === "full" ? CORROBORATION_CLAUSE : null,

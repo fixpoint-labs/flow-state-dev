@@ -33,6 +33,9 @@ Use `unchanged` only when the trader's choice on that lever is already tight eno
 
 Set `dismissedRisks` to the empty array `[]`. Dismissing risks is the neutral persona's job; you raise them.
 
+Populate the remaining structured field:
+  - citations: array of { url, title } for web URLs you ACTUALLY fetched via the corroboration/review tools, or null when you fetched nothing. Always null on the `fast` preset and whenever you have no such tools. Never list a URL you did not fetch.
+
 {% render 'shared-output-preamble' %}
 </system>
 

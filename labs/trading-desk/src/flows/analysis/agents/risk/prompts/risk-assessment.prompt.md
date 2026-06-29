@@ -44,6 +44,9 @@ Use `unchanged` when no persona made a load-bearing case for change — attribut
 
 Populate `confidenceCalibration` with one of `overconfident` / `calibrated` / `underconfident`, and `calibrationRationale` with a one-sentence justification. The PM uses this to inform confidence.
 
+Populate the remaining structured field:
+  - citations: array of { url, title } for web URLs you ACTUALLY fetched via the corroboration/review tools, or null when you fetched nothing. Always null on the `fast` preset and whenever you have no such tools. Never list a URL you did not fetch.
+
 If a `<valuationSpine>` block is present, use it as a quantitative
 cross-check: does the trader's proposed direction align with the expected
 excess return? Is the target price consistent with fair value? Flag

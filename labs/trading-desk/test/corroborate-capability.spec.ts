@@ -12,7 +12,7 @@
  * The preset resolvers are the contract; we call them directly off `__presetDefs`
  * rather than routing through a full flow.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { tradingDesk } from "../src/flows/analysis/capability";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,15 +26,46 @@ function ctxFor(costPreset: "fast" | "full") {
   return { session: { state: { costPreset } }, resources: {} };
 }
 
+// The search-exposing presets gate the `search` tool on a configured provider
+// key (the resolver throws with none), so these tests control the env to make
+// the tool count deterministic regardless of the CI environment.
+const SEARCH_KEYS = [
+  "TAVILY_API_KEY",
+  "EXA_API_KEY",
+  "PERPLEXITY_API_KEY",
+  "SERPER_API_KEY",
+  "BRAVE_SEARCH_API_KEY",
+  "PARALLEL_API_KEY",
+];
+let savedKeys: Record<string, string | undefined>;
+
+beforeEach(() => {
+  savedKeys = Object.fromEntries(SEARCH_KEYS.map((k) => [k, process.env[k]]));
+  for (const k of SEARCH_KEYS) delete process.env[k];
+});
+afterEach(() => {
+  for (const k of SEARCH_KEYS) {
+    if (savedKeys[k] === undefined) delete process.env[k];
+    else process.env[k] = savedKeys[k];
+  }
+});
+
 describe("corroborate preset", () => {
-  it("exposes search + fetch on the full preset", async () => {
+  it("exposes search + fetch on full when a search provider key is set", async () => {
+    process.env.TAVILY_API_KEY = "test-key";
     const tools = await corroborate.tools(ctxFor("full"));
     expect(Array.isArray(tools)).toBe(true);
-    // Two tools: a web search and a fetch.
     expect(tools.length).toBe(2);
     expect(tools.every((t: { name?: unknown }) => typeof t.name === "string")).toBe(
       true,
     );
+  });
+
+  it("drops search (fetch only) on full when no search provider key is set", async () => {
+    // The resolver throws with no key, so the preset must not hand the model a
+    // search tool that would abort the generator on first call.
+    const tools = await corroborate.tools(ctxFor("full"));
+    expect(tools.length).toBe(1);
   });
 
   it("exposes no tools on the fast preset", async () => {
