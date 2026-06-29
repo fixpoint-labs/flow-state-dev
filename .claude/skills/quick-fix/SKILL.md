@@ -75,7 +75,7 @@ After implementing the fix, launch three sub-agents **in parallel**:
 Launch a `feature-dev:code-reviewer` sub-agent to review the changes for:
 - Bugs or logic errors introduced by the fix
 - Security concerns
-- Adherence to project conventions (check `AGENTS.md` and `docs/contributing/best-practices.md`)
+- Adherence to project conventions (check `AGENTS.md`, `docs/contributing/best-practices.md` for universal rules + the index, and the relevant `docs/contributing/best-practices/<category>.md` for situational rule text)
 - Test coverage adequacy
 
 #### Agent 2: Alternative Approaches
@@ -98,7 +98,7 @@ Launch a `general-purpose` sub-agent to determine what documentation and changel
    - `docs/architecture/*.md` — Does the fix change how a system works in a way that contradicts the architecture reference?
    - `apps/docs/` (hosted site) — Are there guides, references, or getting-started pages that describe the old behavior?
    - `packages/*/README.md` — Does the affected package's README describe the pre-fix behavior?
-   - `AGENTS.md` or `docs/contributing/best-practices.md` — Does the fix introduce a new pattern or deprecate an old one that agents/contributors should know about?
+   - `AGENTS.md` or `docs/contributing/best-practices.md` (+ the relevant `best-practices/<category>.md`) — Does the fix introduce a new pattern or deprecate an old one that agents/contributors should know about?
 3. **Changeset** — Determine whether the fix needs a `.changeset/*.md` fragment. Not every fix warrants one. It does if:
    - The fix changes observable behavior (API response shape, error messages, default values)
    - The fix affects how developers use the framework

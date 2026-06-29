@@ -8,7 +8,7 @@ You are an implementation agent. Given a Linear issue ID, your job is to pull th
 
 ## Core Principles
 
-**The spec is the source of truth, not the issue description.** The issue description says *what* and *why*. The attached Linear document (the spec) says *how*. Always read both, but when they conflict on implementation details, the spec wins. If no spec exists, behavior depends on category (see Step 2).
+**The spec is the source of truth, not the issue description.** The issue description says *what* and *why*. The spec says *how* — it lives at `docs/specs/<ISSUE-ID>.md` in the repo (the reviewed artifact) and is mirrored to the attached Linear document; the two are kept in sync, so read either. Always read both issue and spec, but when they conflict on implementation details, the spec wins. If no spec exists, behavior depends on category (see Step 2).
 
 **Bugs and features follow different disciplines.** Step 4 reads the Linear category label and routes:
 
@@ -19,7 +19,7 @@ Both disciplines are embedded into the implementer sub-agent prompt at dispatch 
 
 ## Workflow
 
-**Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open PR (`gh pr list --search "FIX-N in:title,body" --state open` or the URL recorded on the Linear issue). If one exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
+**Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open **implementation** PR (`gh pr list --search "FIX-N in:title,body" --state open`, or the URL recorded on the Linear issue). **Ignore the docs-only spec PR** (`spec(FIX-N)` title / `spec/FIX-N` branch from `fsd:create-spec`) — that's the spec artifact, not the implementation; matching it would wrongly jump to PR-feedback mode and skip the build. If an implementation PR exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
 
 ### Step 1: Pull the Linear Issue
 
@@ -27,7 +27,7 @@ Fetch everything about the issue:
 
 1. `get_issue` with `includeRelations: true` — get the full issue: description, labels, priority, relations
 2. `list_comments` — read any discussion or decisions
-3. **Fetch attached documents** — use `get_document` for each attached document. The spec is typically the document titled `{ISSUE-ID}: ... — Implementation Spec`
+3. **Read the spec** — prefer `docs/specs/<ISSUE-ID>.md` in the repo; otherwise fetch the attached Linear document with `get_document` (titled `{ISSUE-ID}: ... — Implementation Spec`). They're kept in sync; if both exist and differ, reconcile before implementing.
 4. If the issue has sub-tasks, fetch those too — they may represent the intended PR breakdown
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search with `list_issues` using it as a query.
@@ -156,7 +156,7 @@ Provide:
 - **Full task text** from the spec (don't make the sub-agent read files)
 - **Scene-setting context**: where this fits in the overall implementation, what prior tasks produced, architectural constraints. If the sub-agent is landing in unfamiliar code, include a `fsd:zoom-out` shape map up front
 - **The relevant spec sections** that inform this task (Technical Design, Edge Cases, Testing Strategy — Testing Strategy is especially load-bearing because it names the discipline's seam)
-- **Codebase conventions** from AGENTS.md and best-practices.md (BP-007 doc-comments, BP-010–BP-016 implementation rules)
+- **Codebase conventions** from AGENTS.md and best-practices.md — universal rules + index inline; situational rule text (e.g. BP-010 react, BP-011–BP-016 blocks/generators/resources) in `docs/contributing/best-practices/<category>.md`
 - **The chosen discipline block** filled into the `[Discipline]` slot
 
 **Model selection:**
@@ -207,10 +207,11 @@ Launch a `general-purpose` sub-agent to:
 #### Agent 2: Simplification Review
 Launch a `Plan` sub-agent to:
 - Look for over-engineering: abstractions that aren't justified by the spec's scope
-- Identify unnecessary indirection or complexity (shallow handlers per BP-013, wrapper sequencers per BP-015, BP-014 violations, etc.)
+- Identify unnecessary indirection or complexity (shallow handlers per BP-013, wrapper sequencers per BP-036, BP-014 violations, etc.)
 - Check if any code could be simplified without losing functionality
 - Verify the implementation follows existing codebase patterns rather than inventing new ones
 - Check for YAGNI violations — features or flexibility that wasn't requested
+- **What could this change remove?** (BP-038) — a superseded path left beside the new one, an export/option/config key no caller needs, dead code the change orphaned. Subtraction is part of the change, not a follow-up.
 - Surface **deepening opportunities** the implementation revealed — capability-shaped wiring that wasn't extracted, repeated `.step()` chains that could be a pattern, shallow modules. These do not block the PR; flag them as follow-ups to be handled later via `fsd:improve-codebase-architecture`
 - **Key question**: "If I were reading this PR for the first time, what would I find unnecessarily complex?"
 
@@ -218,6 +219,7 @@ Launch a `Plan` sub-agent to:
 Launch a `superpowers:code-reviewer` sub-agent to:
 - Review code quality: naming, structure, test coverage
 - Check for bugs or logic errors
+- **Run the second-path checklist (BP-035)** against the changed surface: legacy/persisted records, null/empty/boundary inputs and guard-clause order, concurrent/duplicate (409) calls, cancel/error paths, second-tenant key scoping, cost/observability of any new model call, and React derived-state/no-op-render. These are the highest-frequency review-defect classes; treat an unhandled path as must-fix unless explicitly out of scope.
 - Verify adherence to project conventions (AGENTS.md, best-practices.md)
 - Identify if changes affect other parts of the codebase
 - Check documentation needs (architecture docs, READMEs, changeset)
