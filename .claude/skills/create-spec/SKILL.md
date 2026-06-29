@@ -248,9 +248,10 @@ Once design questions are resolved, draft the implementation spec. The spec must
 
 1. **TLDR**
 
-   A scan-first summary that anyone opening the document can read to know exactly what's changing without reading further. Three parts, in this order:
+   A summary that anyone opening the document can read to know what's changing without reading further. Four parts, in this order:
 
-   - **One-sentence statement** of what's being built / fixed / changed, in plain terms.
+   - **Plain-language summary (2–4 sentences).** The solution explained so a multitasking or non-expert reader gets the gist *before* diving deep — what we're going to do and why, in everyday terms. No file paths, type names, or framework jargon (block / capability / scope / sequencer / item). If a teammate asked "what's this spec about?" in the hallway, this is the answer. This leads the spec (BP-039).
+   - **One-sentence technical statement** of what's being built / fixed / changed.
    - **Bulleted list of concrete deliverables.** Each bullet is one shippable thing — a new file, a modified API, an added capability, a removed function, a docs page. Use the form `<verb> <thing> in <location>` (e.g., *"Add `resumeFromSequence` parameter to `createSSEStream()` in `packages/engine/src/streaming/sse.ts`"*). Keep the list to 3–8 bullets; if the change has more deliverables than that, group by area (e.g., *"Server:"*, *"Client:"*, *"Docs:"*) and bullet within each group. Group order should mirror the Implementation Sequence (section 5) so readers can pivot from TLDR to sequence without re-mapping.
    - **Size estimate.** One of: **Small** (1 file / 1 PR / <100 LOC), **Medium** (multi-file / 1 PR / 100–500 LOC), or **Large** (multi-PR / >500 LOC / multi-package). If multi-PR, name the PR split (e.g., *"Large — split as server changes, then client changes, then docs"*).
 
@@ -455,7 +456,7 @@ This step is required, not optional. The spec now exists as the authoritative so
 Present the completed spec to the user:
 
 1. **Necessity verdict** (one line): "Build as scoped" or "Build smaller — dropped <X>." Surfacing this in the summary lets the user see that Step 3.5 actually ran and what its outcome was; future readers can audit whether the gate worked. If the verdict was anything other than "Build as scoped," you will not have reached Step 8 without user confirmation — note that confirmation here too.
-2. **TLDR**: paste the spec's TLDR section verbatim. This is the scan-first surface — the user should see exactly what they'd see opening the spec document. If you find yourself rewording it for the summary, the TLDR itself is wrong; fix it in the spec and then paste here.
+2. **TLDR**: paste the spec's TLDR section verbatim, **leading with the plain-language summary** (BP-039) so the user gets the gist before the dense detail. This is the scan-first surface — the user should see exactly what they'd see opening the spec document. If you find yourself rewording it for the summary, the TLDR itself is wrong; fix it in the spec and then paste here.
 3. **Approach chosen**: 2-3 sentences on what the spec proposes and why
 4. **Key decisions & ramifications (top 5)**: paste the spec's "Key Decisions & Ramifications" list verbatim — each decision, the alternative rejected, and what it locks in. This is what the user reviews to sign off on the direction, not just the code. If you can't name five that genuinely shape the outcome, say which ones are load-bearing and why the rest are mechanical.
 5. **Documentation plan**: one or two sentences naming the docs surfaces affected, any new pages and their sidebar placement, and explicit call-out if the conclusion is "no docs changes." Never omit this — the user has flagged docs scoping as a recurring miss.

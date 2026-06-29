@@ -75,3 +75,13 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - The repo spec and the Linear spec document are the same content — keep them in sync; any edit to one mirrors to the other in the same change.
   - On spec-PR review: apply clear, obvious fixes directly (to both copies); for debatable or judgment-call feedback, surface it to the user rather than silently accepting.
 - Why: Reviewing the spec before implementation catches design problems when they're cheapest to fix — a doc edit, not a code rewrite.
+
+### BP-039: Specs lead with a plain-language summary
+
+- Status: Active
+- Date: 2026-06-29
+- Scope: Process — spec authoring (`fsd:create-spec`).
+- Rule:
+  - Begin every spec with a 2–4 sentence plain-language summary of the *solution* — what we're doing and why, in terms a multitasking or non-expert reader can grok without the framework vocabulary (no file paths, type names, or block/capability/scope/sequencer jargon).
+  - It leads the TLDR, above the deliverables list and size estimate; the dense detail follows. "Explain it to a teammate in the hallway," not "scan the change list."
+- Why: A reader should get the gist before diving deep; a jargon-dense TLDR forces full attention just to understand the shape.
