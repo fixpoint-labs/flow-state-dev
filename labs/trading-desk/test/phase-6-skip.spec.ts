@@ -167,6 +167,7 @@ function makeUpstreamMocks() {
           holdingPeriod: "months",
           invalidationCriteria: ["weekly close below $132"],
           dependsOn: ["AI cap-ex cycle length"],
+          citations: null,
         }),
       ],
     }),
@@ -193,6 +194,7 @@ function makeUpstreamMocks() {
           dismissedRisks: [
             { description: "Earnings drawdown", reason: "Exits before earnings.", dismissalCategory: "out-of-scope" },
           ],
+          citations: null,
         }),
       ],
     }),
@@ -216,6 +218,7 @@ function makeUpstreamMocks() {
           },
           confidenceCalibration: "calibrated",
           calibrationRationale: "Aligned.",
+          citations: null,
         }),
       ],
     }),
@@ -244,6 +247,7 @@ function makeUpstreamMocks() {
             { index: 0, status: "carried", note: "Central to the call." },
           ],
           primaryScenario: "",
+          citations: null,
         }),
       ],
     }),
@@ -270,6 +274,7 @@ function makeUpstreamMocks() {
           ],
           distribution: "concentrated",
           evidenceBasis: "sufficient",
+          citations: null,
         }),
       ],
     }),
@@ -287,6 +292,7 @@ function personaCritique(posture: "aggressive" | "conservative") {
     posture,
     raisedRisks: [{ description: "Sample risk", severity: "medium" }],
     proposedAdjustments: { sizing: "unchanged", holdingPeriod: "unchanged", invalidation: "unchanged" },
+    citations: null,
   });
 }
 

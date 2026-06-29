@@ -165,6 +165,7 @@ function traderOutput() {
       holdingPeriod: "months" as const,
       invalidationCriteria: ["weekly close below $132"],
       dependsOn: ["Cap-ex cycle"],
+      citations: null,
     },
   };
 }
@@ -198,6 +199,7 @@ function personaCritique(posture: "aggressive" | "conservative") {
         invalidation: "unchanged" as const,
       },
       dismissedRisks: [],
+      citations: null,
     },
   };
 }
@@ -224,6 +226,7 @@ function neutralCritique() {
       dismissedRisks: [
         { description: "X", reason: "Y", dismissalCategory: "out-of-scope" as const },
       ],
+      citations: null,
     },
   };
 }
@@ -255,6 +258,7 @@ function riskAssessmentOutput() {
       },
       confidenceCalibration: "calibrated" as const,
       calibrationRationale: "Aligned.",
+      citations: null,
     },
   };
 }
@@ -274,6 +278,7 @@ function scenarioOutput() {
       ],
       distribution: "concentrated",
       evidenceBasis: "sufficient",
+      citations: null,
     },
   };
 }
@@ -312,6 +317,7 @@ function pmOutput() {
       primaryScenario: "Base",
       ratingOverrideReason: "",
       portfolioFit: null,
+      citations: null,
     },
   };
 }
