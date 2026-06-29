@@ -25,6 +25,7 @@ import { extractHoldingsFromPdf } from "./extract-holdings-action";
 import {
   pdfImportResource,
   portfolioQuotesResource,
+  thesesCollection,
 } from "./portfolio-resources";
 import { sessionStateSchema } from "./state";
 
@@ -56,6 +57,11 @@ const portfolioFlow = defineFlow({
     // Transient per-session PDF-extraction channel written by
     // `extractHoldingsFromPdf`; the import dialog reads it via `useResource`.
     pdfImport: pdfImportResource,
+    // Per-position thesis records (FIX-760) — user-scoped collection
+    // (`theses/{ticker}`, flowIsolation:false → cross-flow). Written by
+    // saveThesis/deleteThesis here and adoptThesis in the analysis flow; read by
+    // the analysis seed and the Portfolio/report UI.
+    theses: thesesCollection,
   },
 });
 

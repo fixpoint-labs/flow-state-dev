@@ -80,7 +80,7 @@ export const sessionStateSchema = z.object({
   // before FIX-752.
   riskMandate: riskMandateSchema.nullable().default(null),
   // Standing per-position thesis for the run's ticker (FIX-760), read from the
-  // app-owned `app.theses` table at `seedSession` and frozen here. The pipeline
+  // user-scoped `theses` resource collection at `seedSession` and frozen here. The pipeline
   // (P1–P2) runs blind to it — only the trader (P3) and PM (P5) read it via the
   // `standingThesis` capability preset, so the independent analyst evidence stays
   // uncontaminated (the `portfolioContext` injection points). Distinct from the

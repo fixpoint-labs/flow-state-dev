@@ -35,7 +35,12 @@ import { decisionSnapshotResource } from "../decision-snapshot-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
-import { portfolioQuotesResource } from "../../portfolio/portfolio-resources";
+import {
+  portfolioQuotesResource,
+  thesesCollection,
+  thesisKey,
+} from "../../portfolio/portfolio-resources";
+import type { ThesisRecord } from "../../portfolio/thesis-schema";
 import { buildPortfolioContext } from "../build-portfolio-context";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 import { getRepository } from "@/lib/portfolio-db";
@@ -59,6 +64,7 @@ export const seedSession = handler({
   sessionStateSchema,
   resources: {
     portfolioQuotes: portfolioQuotesResource,
+    theses: thesesCollection,
     financialsData: financialsDataResource,
     quantData: quantDataResource,
     technicalData: technicalDataResource,
@@ -146,11 +152,12 @@ export const seedSession = handler({
       mostConservativeMandate(scoped.map((a) => a.riskMandate));
 
     // Standing per-position thesis for this name (FIX-760), read from the
-    // app-owned `app.theses` table (household × ticker) and frozen onto state.
-    // The trader (P3) + PM (P5) read it via the `standingThesis` preset; the
-    // analysts stay blind. Null → thesis-blind run. Ticker is upper-cased to
-    // match the household × ticker key (the holdings canonicalization precedent).
-    const standingThesis = await repo.getThesis(uid, input.ticker.trim().toUpperCase());
+    // user-scoped `theses` collection (household × ticker, flowIsolation:false →
+    // cross-flow) and frozen onto state. The trader (P3) + PM (P5) read it via
+    // the `standingThesis` preset; the analysts stay blind. Null → thesis-blind
+    // run. The key upper-cases the ticker (the holdings canonicalization).
+    const thesisRef = await ctx.resources.theses.getOptional(thesisKey(input.ticker));
+    const standingThesis = (thesisRef?.state as ThesisRecord | undefined) ?? null;
 
     await ctx.session.patchState({
       ticker: input.ticker,

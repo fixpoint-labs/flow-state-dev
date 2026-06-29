@@ -1,61 +1,69 @@
 /**
  * Per-position thesis write actions (FIX-760) — `saveThesis`, `deleteThesis`.
  *
- * The portfolio-UI editing path. Each is a SINGLE handler (BP-011-safe: it does
- * repository I/O, which a handler may do — that is not calling a block), keyed at
- * the household level (`userId` resolved from the caller identity, never trusted
- * from the client). `saveThesis` returns the ticker so the UI can re-read; the
- * delete is state-mutation-only and returns `void` (BP-012, no `return input`
- * per BP-014). Tickers are canonicalized to trimmed upper-case so the
- * household × ticker key matches the holdings rows (the `deleteHolding` /
- * `recordLedgerEvent` precedent).
+ * The portfolio-UI editing path. A thesis is a user-scoped resource collection
+ * keyed `theses/{ticker}` (NOT a relational table — it is a flat household ×
+ * ticker document with no relational needs), so these actions mutate the
+ * `thesesCollection` resource. Being a resource gives the client a live read path
+ * (`useResourceCollectionList`) with no bespoke route — `live: true` streams the
+ * change back, so there is no manual refetch.
+ *
+ * Each is a SINGLE handler (BP-011-safe: a resource mutation is not a block
+ * call), keyed at the household level (`userId` is the resource scope, resolved
+ * from the caller identity — never trusted from the client). `saveThesis` returns
+ * the ticker so the UI can re-read; the delete is state-mutation-only (BP-012, no
+ * `return input` per BP-014). Tickers are canonicalized to trimmed upper-case so
+ * the key matches the holdings rows.
  *
  * The complementary write path — `adoptThesis`, which DERIVES a thesis from a
  * finished analysis report — lives in the analysis flow (it reads that flow's
- * session-scoped decision snapshot). Both write through the same shared
- * repository.
+ * session-scoped decision snapshot) and writes the same cross-flow collection.
  *
  * No generator output schemas here — `thesisInputSchema` is a deterministic input
  * shape, so BP-016 has no surface (mirrors `portfolio-actions.ts`).
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { getRepository } from "@/lib/portfolio-db";
+import { thesesCollection, thesisKey } from "./portfolio-resources";
 import { thesisInputSchema } from "./thesis-schema";
-
-/** The caller's resolved household key (the `portfolio-actions.ts` helper). */
-function userId(ctx: { request: { identity: { userId?: string } } }): string {
-  return ctx.request.identity.userId ?? "unknown_user";
-}
 
 /**
  * Create or update the thesis for a held name. Overwrites in place on
- * `(userId, ticker)` — no revision history in v1; the originating analysis stays
- * preserved via the linked `sourceSessionId`. Returns the canonical ticker.
+ * `theses/{ticker}` — no revision history in v1; the originating analysis stays
+ * preserved via the linked `sourceSessionId`. `createdAt` is preserved across an
+ * edit (read from the existing item); `updatedAt` is stamped now. Returns the
+ * canonical ticker.
  */
 export const saveThesis = handler({
   name: "save-thesis",
   inputSchema: thesisInputSchema,
   outputSchema: z.object({ ticker: z.string() }),
+  resources: { theses: thesesCollection },
   execute: async (input, ctx) => {
     const ticker = input.ticker.trim().toUpperCase();
-    const repo = await getRepository();
-    const saved = await repo.upsertThesis({ ...input, ticker, userId: userId(ctx) });
-    return { ticker: saved.ticker };
+    const key = thesisKey(ticker);
+    const existing = await ctx.resources.theses.getOptional(key);
+    const now = new Date().toISOString();
+    await ctx.resources.theses.upsert(key, {
+      ...input,
+      ticker,
+      createdAt: existing?.state.createdAt ?? now,
+      updatedAt: now,
+    });
+    return { ticker };
   },
 });
 
 /**
  * Delete the household's thesis for one ticker. State-mutation-only (BP-012); a
- * no-op when absent or owned by another household (the repository scopes on
- * `userId`).
+ * no-op when absent (`delete` on a missing collection key is idempotent).
  */
 export const deleteThesis = handler({
   name: "delete-thesis",
   inputSchema: z.object({ ticker: z.string() }),
   outputSchema: z.void(),
+  resources: { theses: thesesCollection },
   execute: async (input, ctx) => {
-    const repo = await getRepository();
-    await repo.deleteThesis(userId(ctx), input.ticker.trim().toUpperCase());
+    await ctx.resources.theses.delete(thesisKey(input.ticker));
   },
 });

@@ -32,14 +32,8 @@ import type {
   LedgerSource,
 } from "@/src/flows/portfolio/ledger-schema";
 import { deriveLots } from "@/src/flows/portfolio/lots";
-import type {
-  ThesisInput,
-  ThesisRecord,
-  TimeHorizon,
-  Tripwire,
-} from "@/src/flows/portfolio/thesis-schema";
 import type { Db } from "./client";
-import { accounts, holdings, ledgerEvents, theses } from "./schema";
+import { accounts, holdings, ledgerEvents } from "./schema";
 
 /** The Drizzle transaction handle, extracted from `Db.transaction`. The ledger
  *  ingest/void paths recompute basis inside their own transaction, so the shared
@@ -149,22 +143,6 @@ export interface PortfolioRepository {
     userId: string,
     opts?: { accountId?: string; ticker?: string; limit?: number },
   ): Promise<LedgerRow[]>;
-
-  /** A household's thesis for one ticker, or null. The analysis seed reads this
-   *  to inject the standing thesis (FIX-760); keyed household × ticker, so it is
-   *  independent of which account holds the name. */
-  getThesis(userId: string, ticker: string): Promise<ThesisRecord | null>;
-  /** All of a household's theses, ticker-ascending — the Portfolio UI list and
-   *  the review-loop fan-out (FIX-763). */
-  listTheses(userId: string): Promise<ThesisRecord[]>;
-  /** Create or update the thesis for `(user_id, ticker)` in place (overwrite on
-   *  edit, no revision history in v1). Preserves `created_at`, bumps
-   *  `updated_at`. The household key comes from the caller identity, so there is
-   *  no cross-user conflict path. */
-  upsertThesis(input: ThesisInput): Promise<ThesisRecord>;
-  /** Remove a household's thesis for one ticker — a no-op when absent or owned by
-   *  another household (the `deleteAccount` scoping precedent). */
-  deleteThesis(userId: string, ticker: string): Promise<void>;
 }
 
 /** Coerce a Drizzle `numeric` (string) to a JS number; pass `null` through.
@@ -224,24 +202,6 @@ function mapLedgerRow(row: typeof ledgerEvents.$inferSelect): LedgerRow {
     basisUnknown: row.basisUnknown,
     voidedAt: row.voidedAt === null ? null : new Date(row.voidedAt).toISOString(),
     createdAt: new Date(row.createdAt).toISOString(),
-  };
-}
-
-/** Map a theses row to the {@link ThesisRecord} shape, coercing numerics to JS
- *  number, normalizing timestamps to ISO-8601, and passing the `jsonb` tripwires
- *  through (the driver returns parsed JS; `?? []` guards a legacy null row). */
-function mapThesis(row: typeof theses.$inferSelect): ThesisRecord {
-  return {
-    ticker: row.ticker,
-    entryRationale: row.entryRationale,
-    invalidationConditions: row.invalidationConditions,
-    tripwires: (row.tripwires ?? []) as Tripwire[],
-    timeHorizon: row.timeHorizon as TimeHorizon | null,
-    targetPrice: toNumber(row.targetPrice),
-    stopPrice: toNumber(row.stopPrice),
-    sourceSessionId: row.sourceSessionId,
-    createdAt: new Date(row.createdAt).toISOString(),
-    updatedAt: new Date(row.updatedAt).toISOString(),
   };
 }
 
@@ -613,67 +573,6 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         .orderBy(desc(ledgerEvents.tradeDate), desc(ledgerEvents.createdAt));
       const rows = opts?.limit ? await base.limit(opts.limit) : await base;
       return rows.map(mapLedgerRow);
-    },
-
-    async getThesis(userId, ticker) {
-      const [row] = await db
-        .select()
-        .from(theses)
-        .where(and(eq(theses.userId, userId), eq(theses.ticker, ticker)));
-      return row === undefined ? null : mapThesis(row);
-    },
-
-    async listTheses(userId) {
-      const rows = await db
-        .select()
-        .from(theses)
-        .where(eq(theses.userId, userId))
-        .orderBy(theses.ticker);
-      return rows.map(mapThesis);
-    },
-
-    async upsertThesis(input) {
-      const values = {
-        id: crypto.randomUUID(),
-        userId: input.userId,
-        ticker: input.ticker,
-        entryRationale: input.entryRationale,
-        invalidationConditions: input.invalidationConditions ?? null,
-        tripwires: input.tripwires ?? [],
-        timeHorizon: input.timeHorizon ?? null,
-        targetPrice: input.targetPrice == null ? null : String(input.targetPrice),
-        stopPrice: input.stopPrice == null ? null : String(input.stopPrice),
-        sourceSessionId: input.sourceSessionId ?? null,
-      };
-      const [row] = await db
-        .insert(theses)
-        .values(values)
-        .onConflictDoUpdate({
-          target: [theses.userId, theses.ticker],
-          // created_at + id are intentionally absent — the update preserves the
-          // original record's identity and creation time (overwrite in place).
-          set: {
-            entryRationale: values.entryRationale,
-            invalidationConditions: values.invalidationConditions,
-            tripwires: values.tripwires,
-            timeHorizon: values.timeHorizon,
-            targetPrice: values.targetPrice,
-            stopPrice: values.stopPrice,
-            sourceSessionId: values.sourceSessionId,
-            updatedAt: sql`now()`,
-          },
-        })
-        .returning();
-      return mapThesis(row);
-    },
-
-    async deleteThesis(userId, ticker) {
-      // Household-scoped: a delete for another household's thesis is a no-op (the
-      // `deleteAccount` boundary). The `(user_id, ticker)` predicate also makes
-      // a delete for a ticker the household has no thesis on a harmless no-op.
-      await db
-        .delete(theses)
-        .where(and(eq(theses.userId, userId), eq(theses.ticker, ticker)));
     },
   };
 }

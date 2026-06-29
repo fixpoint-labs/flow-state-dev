@@ -12,10 +12,10 @@ run.
 `TRADING_DESK_DATA_DIR` so they hit the same PGlite backing and the same CLI
 principal:
 
-1. `portfolio saveThesis` — writes the thesis to the app-owned `app.theses` table
-   through the real action + repository.
+1. `portfolio saveThesis` — writes the thesis into the user-scoped `theses`
+   resource collection through the real action.
 2. `analysis analyze` (NVDA, fixture, fast) — `seedSession` reads the thesis from
-   the repository (household × ticker), freezes it, and the `standingThesis`
+   the `theses` collection (household × ticker), freezes it, and the `standingThesis`
    capability preset renders `<standingThesis>` into the trader (P3) and PM (P5)
    prompts; the PM commit derives the `hasStandingThesis` echo onto the decision
    snapshot. Real models via the desk's intent ladder; fixture mode stubs DATA

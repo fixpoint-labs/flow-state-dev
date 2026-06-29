@@ -4,28 +4,26 @@
  *
  * Intent encoded: at report completion, one action DERIVES the standing thesis
  * from the session's stored decision snapshot + the trader memo (server-side,
- * never trusted from the client) and writes it to the app-owned `app.theses`
- * table with the originating `sourceSessionId` captured automatically. A run with
- * no completed decision has nothing to adopt and the action throws.
+ * never trusted from the client) and writes it into the user-scoped `theses`
+ * collection with the originating `sourceSessionId` captured automatically. A run
+ * with no completed decision — or a snapshot whose ticker doesn't match the
+ * session — has nothing valid to adopt and the action throws.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
-import { makeTestRepository } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
-import type { DecisionSnapshotState } from "../src/flows/analysis/decision-snapshot-resource";
-
-const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
-  getRepository: async () => {
-    if (!repoState.repo) throw new Error("test repository not initialized");
-    return repoState.repo;
-  },
-}));
-
 import analysisFlow from "../src/flows/analysis/flow";
+import type { DecisionSnapshotState } from "../src/flows/analysis/decision-snapshot-resource";
+import type { ThesisRecord } from "../src/flows/portfolio/thesis-schema";
 
 const USER_ID = "devuser";
+
+/** Read the household's theses collection items from the user-scope store. */
+async function thesesOf(
+  stores: ReturnType<typeof createInMemoryStores>,
+): Promise<Record<string, ThesisRecord>> {
+  return (await stores.resourceState.getAll("user", USER_ID)) as Record<string, ThesisRecord>;
+}
 
 const completedSnapshot: DecisionSnapshotState = {
   ticker: "NVDA",
@@ -51,15 +49,14 @@ const completedSnapshot: DecisionSnapshotState = {
   outcomeVerdict: null,
 };
 
-beforeEach(async () => {
-  repoState.repo = await makeTestRepository();
+let stores: ReturnType<typeof createInMemoryStores>;
+beforeEach(() => {
+  stores = createInMemoryStores();
 });
 
 describe("adoptThesis action", () => {
   it("derives a thesis from the decision snapshot + trader memo and captures the report link", async () => {
-    const stores = createInMemoryStores();
     const sessionId = "run_nvda_done";
-
     const result = await testFlow({
       flow: analysisFlow,
       action: "adoptThesis",
@@ -76,8 +73,8 @@ describe("adoptThesis action", () => {
               status: "published",
               agentName: "trader",
               // The real trader memo emits an ARRAY of short strings (matches the
-              // trader output schema) — the adopt mapping must join them into the
-              // thesis's freeform text column, not write the array verbatim.
+              // trader output schema) — the adopt mapping joins them into the
+              // thesis's freeform text column, not the array verbatim.
               invalidationCriteria: [
                 "Data-center capex guide cut two quarters running.",
                 "Gross margin compresses below 60%.",
@@ -91,27 +88,24 @@ describe("adoptThesis action", () => {
     expect(result.status).toBe("completed");
     expect(result.output).toEqual({ ticker: "NVDA" });
 
-    const thesis = await repoState.repo!.getThesis(USER_ID, "NVDA");
-    expect(thesis).not.toBeNull();
-    expect(thesis?.entryRationale).toContain("Buy decision");
-    expect(thesis?.entryRationale).toContain("Compute super-cycle intact");
-    // The trader's array of criteria is joined into the thesis's freeform text.
-    expect(thesis?.invalidationConditions).toBe(
+    const thesis = (await thesesOf(stores))["theses/NVDA"];
+    expect(thesis).toBeDefined();
+    expect(thesis.entryRationale).toContain("Buy decision");
+    expect(thesis.entryRationale).toContain("Compute super-cycle intact");
+    expect(thesis.invalidationConditions).toBe(
       "- Data-center capex guide cut two quarters running.\n- Gross margin compresses below 60%.",
     );
-    expect(thesis?.timeHorizon).toBe("quarters");
-    expect(thesis?.targetPrice).toBe(180);
-    expect(thesis?.stopPrice).toBe(120);
-    // A price tripwire is derived from the stop level for FIX-763's checks.
-    expect(thesis?.tripwires).toEqual([
+    expect(thesis.timeHorizon).toBe("quarters");
+    expect(thesis.targetPrice).toBe(180);
+    expect(thesis.stopPrice).toBe(120);
+    expect(thesis.tripwires).toEqual([
       { kind: "price", note: "Price through the stop level", level: 120, byDate: null },
     ]);
     // Report linkage captured automatically.
-    expect(thesis?.sourceSessionId).toBe(sessionId);
+    expect(thesis.sourceSessionId).toBe(sessionId);
   });
 
   it("throws when there is no completed decision to adopt", async () => {
-    const stores = createInMemoryStores();
     const result = await testFlow({
       flow: analysisFlow,
       action: "adoptThesis",
@@ -123,13 +117,12 @@ describe("adoptThesis action", () => {
     });
 
     expect(result.status).not.toBe("completed");
-    expect(await repoState.repo!.getThesis(USER_ID, "ZZZ")).toBeNull();
+    expect((await thesesOf(stores))["theses/ZZZ"]).toBeUndefined();
   });
 
   it("refuses a snapshot whose ticker doesn't match the session (stale guard)", async () => {
     // Defense in depth: even if a prior run's NVDA snapshot somehow survived onto
     // a session now analyzing AAPL, adopt must not save the wrong name.
-    const stores = createInMemoryStores();
     const result = await testFlow({
       flow: analysisFlow,
       action: "adoptThesis",
@@ -146,7 +139,8 @@ describe("adoptThesis action", () => {
     });
 
     expect(result.status).not.toBe("completed");
-    expect(await repoState.repo!.getThesis(USER_ID, "AAPL")).toBeNull();
-    expect(await repoState.repo!.getThesis(USER_ID, "NVDA")).toBeNull();
+    const theses = await thesesOf(stores);
+    expect(theses["theses/AAPL"]).toBeUndefined();
+    expect(theses["theses/NVDA"]).toBeUndefined();
   });
 });

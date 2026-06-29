@@ -22,7 +22,6 @@ import { sql } from "drizzle-orm";
 import {
   date,
   index,
-  jsonb,
   numeric,
   pgSchema,
   primaryKey,
@@ -30,7 +29,6 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { Tripwire } from "@/src/flows/portfolio/thesis-schema";
 
 /** The app's private Postgres schema. The framework owns `public`. */
 export const appSchema = pgSchema("app");
@@ -149,48 +147,5 @@ export const ledgerEvents = appSchema.table(
     uniqueIndex("ledger_events_account_source_external_uq")
       .on(table.accountId, table.source, table.externalId)
       .where(sql`${table.externalId} is not null`),
-  ],
-);
-
-/**
- * The per-position thesis record (FIX-760) — the durable "why" behind a holding.
- * Keyed household × ticker (`(user_id, ticker)` unique), NOT per account: intent
- * is about the name, account location is a tax question. Deliberately NOT FK'd to
- * `holdings` — a thesis can outlive an exited position (a post-mortem) and exist
- * before a buy settles (adopt-then-buy), so it stands on its own `(user_id,
- * ticker)` key.
- *
- * `tripwires` is a `jsonb` array of the structured observable falsifiers (the
- * enum/shape is enforced at the zod boundary in `thesis-schema.ts`), so adding a
- * tripwire kind needs no enum-alter migration (the `ledger.type` text-column
- * precedent). `target_price` / `stop_price` are `numeric` (coerced to JS number
- * at the read boundary, RISK-P5). `source_session_id` links the originating
- * analysis report (no FK — sessions are framework-owned `public.*` rows). The
- * `theses_user_id_idx` serves the household fan-out the review loop (FIX-763) and
- * the UI list both read.
- */
-export const theses = appSchema.table(
-  "theses",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id").notNull(),
-    ticker: text("ticker").notNull(),
-    entryRationale: text("entry_rationale").notNull(),
-    invalidationConditions: text("invalidation_conditions"),
-    tripwires: jsonb("tripwires").$type<Tripwire[]>().notNull().default(sql`'[]'::jsonb`),
-    timeHorizon: text("time_horizon"),
-    targetPrice: numeric("target_price"),
-    stopPrice: numeric("stop_price"),
-    sourceSessionId: text("source_session_id"),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
-      .notNull()
-      .default(sql`now()`),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
-      .notNull()
-      .default(sql`now()`),
-  },
-  (table) => [
-    uniqueIndex("theses_user_ticker_uq").on(table.userId, table.ticker),
-    index("theses_user_id_idx").on(table.userId),
   ],
 );

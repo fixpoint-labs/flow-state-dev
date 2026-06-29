@@ -25,7 +25,10 @@ import { quantDataResource } from "./quant-data-resource";
 import { technicalDataResource } from "./technical-data-resource";
 import { profileDataResource } from "./profile-data-resource";
 import { rewardToRiskResource } from "./reward-to-risk-resource";
-import { portfolioQuotesResource } from "../portfolio/portfolio-resources";
+import {
+  portfolioQuotesResource,
+  thesesCollection,
+} from "../portfolio/portfolio-resources";
 import {
   memosCollection,
   phase2Contributions,
@@ -50,7 +53,8 @@ const analysisFlow = defineFlow({
     runSummary: { block: runSummaryAction },
     // Adopt the current report's decision as the standing thesis for the position
     // (FIX-760) — derives the thesis from the session's decision snapshot and
-    // writes it to the app-owned `app.theses` table with the report linkage.
+    // writes it to the user-scoped `theses` resource collection with the report
+    // linkage.
     adoptThesis: { block: adoptThesis },
   },
 
@@ -120,6 +124,10 @@ const analysisFlow = defineFlow({
     // `seedSession` reads them from the app-owned tables via the repository
     // (FIX-772).
     portfolioQuotes: portfolioQuotesResource,
+    // Per-position thesis records (FIX-760) — user-scoped collection owned by the
+    // portfolio flow. Declared here so the seed can read the standing thesis and
+    // `adoptThesis` can write it (flowIsolation:false → cross-flow shared).
+    theses: thesesCollection,
   },
 });
 

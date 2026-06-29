@@ -2,37 +2,34 @@
  * Integration tests for the per-position thesis write actions (FIX-760), driven
  * through the real `runAction` engine via `testFlow`.
  *
- * These lock the portfolio-UI editing path: `saveThesis` upserts through the
- * repository at the caller's household scope and canonicalizes the ticker;
- * `deleteThesis` removes one; and `saveThesis` rejects an empty rationale at the
- * action boundary (a thesis with no "why" is meaningless). The `adoptThesis`
- * derive-from-report path is tested separately in the analysis flow.
+ * A thesis is a user-scoped resource collection (`theses/{ticker}`), so these
+ * assert the actions mutate that collection — read back from the user-scope
+ * resource state. `saveThesis` upserts (canonicalizing the ticker) and rejects an
+ * empty rationale; `deleteThesis` removes one. The `adoptThesis` derive-from-
+ * report path is tested separately in the analysis flow.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
-import { makeTestRepository } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
-
-const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
-  getRepository: async () => {
-    if (!repoState.repo) throw new Error("test repository not initialized");
-    return repoState.repo;
-  },
-}));
-
 import portfolioFlow from "../src/flows/portfolio/flow";
+import type { ThesisRecord } from "../src/flows/portfolio/thesis-schema";
 
 const USER_ID = "devuser";
 
-beforeEach(async () => {
-  repoState.repo = await makeTestRepository();
+/** Read the household's theses collection items from the user-scope store. */
+async function thesesOf(
+  stores: ReturnType<typeof createInMemoryStores>,
+): Promise<Record<string, ThesisRecord>> {
+  return (await stores.resourceState.getAll("user", USER_ID)) as Record<string, ThesisRecord>;
+}
+
+let stores: ReturnType<typeof createInMemoryStores>;
+beforeEach(() => {
+  stores = createInMemoryStores();
 });
 
 describe("saveThesis action", () => {
-  it("upserts a thesis at the caller household and canonicalizes the ticker", async () => {
-    const stores = createInMemoryStores();
+  it("upserts a thesis into the household collection and canonicalizes the ticker", async () => {
     const result = await testFlow({
       flow: portfolioFlow,
       action: "saveThesis",
@@ -49,14 +46,39 @@ describe("saveThesis action", () => {
     expect(result.status).toBe("completed");
     expect(result.output).toEqual({ ticker: "NVDA" });
 
-    const stored = await repoState.repo!.getThesis(USER_ID, "NVDA");
-    expect(stored?.entryRationale).toBe("Compute demand outruns supply.");
-    expect(stored?.tripwires).toHaveLength(1);
-    expect(stored?.stopPrice).toBe(95);
+    const stored = (await thesesOf(stores))["theses/NVDA"];
+    expect(stored).toBeDefined();
+    expect(stored.entryRationale).toBe("Compute demand outruns supply.");
+    expect(stored.tripwires).toHaveLength(1);
+    expect(stored.stopPrice).toBe(95);
+    expect(typeof stored.createdAt).toBe("string");
+    expect(typeof stored.updatedAt).toBe("string");
+  });
+
+  it("preserves createdAt across an edit and bumps updatedAt", async () => {
+    await testFlow({
+      flow: portfolioFlow,
+      action: "saveThesis",
+      userId: USER_ID,
+      stores,
+      input: { ticker: "NVDA", entryRationale: "First take." },
+    });
+    const first = (await thesesOf(stores))["theses/NVDA"];
+
+    await testFlow({
+      flow: portfolioFlow,
+      action: "saveThesis",
+      userId: USER_ID,
+      stores,
+      input: { ticker: "NVDA", entryRationale: "Revised." },
+    });
+    const second = (await thesesOf(stores))["theses/NVDA"];
+
+    expect(second.entryRationale).toBe("Revised.");
+    expect(second.createdAt).toBe(first.createdAt); // overwrite in place
   });
 
   it("rejects an empty entry rationale at the action boundary", async () => {
-    const stores = createInMemoryStores();
     const result = await testFlow({
       flow: portfolioFlow,
       action: "saveThesis",
@@ -65,24 +87,20 @@ describe("saveThesis action", () => {
       input: { ticker: "NVDA", entryRationale: "" },
     });
     expect(result.status).not.toBe("completed");
-    expect(await repoState.repo!.getThesis(USER_ID, "NVDA")).toBeNull();
+    expect((await thesesOf(stores))["theses/NVDA"]).toBeUndefined();
   });
 });
 
 describe("deleteThesis action", () => {
   it("removes the household's thesis for a ticker", async () => {
-    const stores = createInMemoryStores();
-    await repoState.repo!.upsertThesis({
+    await testFlow({
+      flow: portfolioFlow,
+      action: "saveThesis",
       userId: USER_ID,
-      ticker: "NVDA",
-      entryRationale: "x",
-      invalidationConditions: null,
-      tripwires: [],
-      timeHorizon: null,
-      targetPrice: null,
-      stopPrice: null,
-      sourceSessionId: null,
+      stores,
+      input: { ticker: "NVDA", entryRationale: "x" },
     });
+    expect((await thesesOf(stores))["theses/NVDA"]).toBeDefined();
 
     const result = await testFlow({
       flow: portfolioFlow,
@@ -92,6 +110,6 @@ describe("deleteThesis action", () => {
       input: { ticker: "nvda" },
     });
     expect(result.status).toBe("completed");
-    expect(await repoState.repo!.getThesis(USER_ID, "NVDA")).toBeNull();
+    expect((await thesesOf(stores))["theses/NVDA"]).toBeUndefined();
   });
 });

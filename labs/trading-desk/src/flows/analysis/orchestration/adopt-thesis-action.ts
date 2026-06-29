@@ -3,10 +3,11 @@
  * a finished analysis into the standing thesis for the position.
  *
  * Lives in the analysis flow because it reads that flow's session-scoped decision
- * snapshot + the trader memo; it writes the durable thesis through the SHARED
- * portfolio repository (`getRepository()` is not flow-scoped — `seedSession`
- * already reads it). The complementary hand-edit path is `saveThesis` /
- * `deleteThesis` in the portfolio flow.
+ * snapshot + the trader memo; it writes the durable thesis into the user-scoped
+ * `theses` collection (flowIsolation:false → the same cross-flow items the
+ * portfolio flow's `saveThesis`/`deleteThesis` and the analysis seed use). The
+ * collection is user-scoped, so the write is automatically the caller's household
+ * — no explicit userId.
  *
  * v1 is DERIVE-ONLY (approved scope): the thesis fields are mapped server-side
  * from the stored decision — never trusted from the client — capturing the
@@ -17,18 +18,13 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { getRepository } from "@/lib/portfolio-db";
+import { thesesCollection, thesisKey } from "../../portfolio/portfolio-resources";
 import type { Tripwire } from "../../portfolio/thesis-schema";
 import { decisionSnapshotResource } from "../decision-snapshot-resource";
 import type { DecisionSnapshotState } from "../decision-snapshot-resource";
 import { PHASE_3_MEMO_KEYS } from "../registry";
 import { memosCollection } from "../resources";
 import { sessionStateSchema } from "../state";
-
-/** The caller's resolved household key (the `portfolio-actions.ts` helper). */
-function userId(ctx: { request: { identity: { userId?: string } } }): string {
-  return ctx.request.identity.userId ?? "unknown_user";
-}
 
 export const adoptThesis = handler({
   name: "adopt-thesis",
@@ -39,6 +35,7 @@ export const adoptThesis = handler({
   resources: {
     decisionSnapshot: decisionSnapshotResource,
     memos: memosCollection,
+    theses: thesesCollection,
   },
   execute: async (_input, ctx) => {
     // A stopped / in-progress run has no decision to adopt. An unwritten single
@@ -89,10 +86,12 @@ export const adoptThesis = handler({
       .filter((s) => s != null && s !== "")
       .join(" ");
 
-    const repo = await getRepository();
-    const saved = await repo.upsertThesis({
-      userId: userId(ctx),
-      ticker: snapshot.ticker.trim().toUpperCase(),
+    const ticker = snapshot.ticker.trim().toUpperCase();
+    const key = thesisKey(ticker);
+    const existing = await ctx.resources.theses.getOptional(key);
+    const now = new Date().toISOString();
+    await ctx.resources.theses.upsert(key, {
+      ticker,
       entryRationale,
       invalidationConditions,
       tripwires,
@@ -102,7 +101,9 @@ export const adoptThesis = handler({
       stopPrice: snapshot.stopPrice,
       // Capture the originating report automatically (the FIX-763 read).
       sourceSessionId: ctx.session.identity.id,
+      createdAt: existing?.state.createdAt ?? now,
+      updatedAt: now,
     });
-    return { ticker: saved.ticker };
+    return { ticker };
   },
 });

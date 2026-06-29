@@ -18,9 +18,10 @@
  * portfolio repository (FIX-772). The action handlers, the analysis seed, and
  * the Portfolio UI read/write them via `getRepository()` / the read API route.
  */
-import { defineResource } from "@flow-state-dev/core";
+import { defineResource, defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
 import { pdfExtractionSchema } from "./portfolio-pdf";
+import { thesisRecordSchema } from "./thesis-schema";
 
 export const portfolioQuotesStateSchema = z.object({
   /** Data source the quotes were fetched under, echoed for provenance. */
@@ -119,4 +120,43 @@ export const pdfImportResource = defineResource({
   // the full state of a nullable resource, so `useResource` can read it. The
   // import dialog reads this as the extraction.
   client: { exclude: [] },
+});
+
+/** The collection key for a household's thesis on one ticker — the BARE key
+ *  (just the canonical upper-case ticker). The collection's mutation verbs
+ *  (`upsert`/`getOptional`/`delete`) auto-prepend the `theses/` pattern prefix,
+ *  so the stored key / client `item.topic` is `theses/{TICKER}`. Upper-cased so
+ *  it matches the holdings rows. */
+export function thesisKey(ticker: string): string {
+  return ticker.trim().toUpperCase();
+}
+
+/**
+ * Per-position thesis records (FIX-760) — the durable "why" behind a holding:
+ * entry rationale, invalidation conditions + structured tripwires, time horizon,
+ * optional target/stop, and a link to the originating report.
+ *
+ * A thesis is a flat `household × ticker` document — no foreign key, no join, no
+ * aggregation — so it is an FSD RESOURCE, not a relational table (unlike
+ * accounts/holdings/ledger, which earned the app tables with FK cascades and
+ * cross-account rollups). It is also agent-facing state: the analysis seed reads
+ * it and injects `<standingThesis>` into the trader/PM prompts — exactly what
+ * resources are for. Being a resource buys the client read path (`useResource
+ * CollectionList`) and live `resource_change` streaming for free, so there is no
+ * bespoke read route or manual refetch.
+ *
+ * User-scoped + `flowIsolation: false` (keys at bare `theses/{ticker}` under the
+ * user) — the `portfolioQuotes` precedent — so it is one record per name across
+ * the household and readable cross-flow: the portfolio flow's CRUD actions and
+ * the analysis flow's seed + `adoptThesis` all reach the same items. `live: true`
+ * streams each item's projection on mutation so the UI updates with no refetch;
+ * `state: { read: true }` ships the whole `ThesisRecord` (the renderer reads
+ * every field).
+ */
+export const thesesCollection = defineResourceCollection({
+  pattern: "theses/*",
+  scope: "user",
+  flowIsolation: false,
+  stateSchema: thesisRecordSchema,
+  client: { state: { read: true }, live: true },
 });

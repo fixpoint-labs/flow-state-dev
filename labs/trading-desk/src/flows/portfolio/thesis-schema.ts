@@ -72,10 +72,6 @@ export const thesisInputSchema = z.object({
 });
 export type ThesisInputFields = z.infer<typeof thesisInputSchema>;
 
-/** What the repository's `upsertThesis` takes — the user fields plus the
- *  resolved household key. Identity/timestamps are owned by the repository. */
-export type ThesisInput = ThesisInputFields & { userId: string };
-
 /**
  * The persisted-and-mapped read shape the repository returns and the standing-
  * thesis context injection consumes. Adds the repository-owned timestamps to the
