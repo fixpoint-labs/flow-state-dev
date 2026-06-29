@@ -142,6 +142,10 @@ describe("toCanonicalRows — mapping + skip rules", () => {
       quantity: 5.44149,
       costBasis: null,
       acquiredDate: null,
+      // PDF import is equity-only in Slice A (FIX-773); classification is later.
+      assetClass: "equity",
+      assetType: "equity",
+      attributes: { kind: "none" },
     });
   });
 

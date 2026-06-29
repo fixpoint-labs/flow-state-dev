@@ -344,6 +344,10 @@ export function toCanonicalRows(extraction: PdfExtraction): CanonicalMapping {
       // current price — that is the mark, not what the user paid.
       costBasis: null,
       acquiredDate: null,
+      // FIX-773 Slice A: PDF import is equity-only until the classifier lands.
+      assetClass: "equity",
+      assetType: "equity",
+      attributes: { kind: "none" },
     });
   });
 

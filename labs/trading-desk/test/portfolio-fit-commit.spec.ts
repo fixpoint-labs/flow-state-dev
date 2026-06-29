@@ -368,7 +368,7 @@ async function seedPortfolio(): Promise<void> {
     name: "Roth IRA",
     type: "Roth",
     cashBalance: 5000,
-    holdings: [{ ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null }],
+    holdings: [{ ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }],
   });
   await seedAccount(repoState.repo!, {
     accountId: taxableAccountId,

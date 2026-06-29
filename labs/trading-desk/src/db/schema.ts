@@ -22,6 +22,7 @@ import { sql } from "drizzle-orm";
 import {
   date,
   index,
+  jsonb,
   numeric,
   pgSchema,
   primaryKey,
@@ -76,6 +77,16 @@ export const holdings = appSchema.table(
     quantity: numeric("quantity").notNull(),
     costBasis: numeric("cost_basis"),
     acquiredDate: date("acquired_date", { mode: "string" }),
+    // Two-level asset taxonomy (FIX-773). `asset_class` is the allocation bucket
+    // every drift/exposure/mandate consumer groups on; `asset_type` routes
+    // display + valuation. Both default to `equity` so the pre-taxonomy rows
+    // backfill as equity (unchanged behaviour). `attributes` carries the
+    // per-type JSONB, discriminated by `kind` — the default MUST serialize to
+    // `{"kind":"none"}` (NOT `{}`), or `mapHolding` would throw parsing a
+    // backfilled row against the `kind`-discriminated union.
+    assetClass: text("asset_class").notNull().default("equity"),
+    assetType: text("asset_type").notNull().default("equity"),
+    attributes: jsonb("attributes").notNull().default({ kind: "none" }),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
       .notNull()
       .default(sql`now()`),

@@ -20,10 +20,14 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type {
   AccountState,
   AccountType,
+  AssetClass,
+  AssetType,
   CanonicalRow,
   Holding,
+  HoldingAttributes,
   ImportMode,
 } from "@/src/flows/portfolio/portfolio-schema";
+import { holdingAttributesSchema } from "@/src/flows/portfolio/portfolio-schema";
 import type {
   IngestReport,
   LedgerEventInput,
@@ -169,7 +173,18 @@ function mapAccount(row: typeof accounts.$inferSelect): AccountRow {
   };
 }
 
-/** Map a holdings row to the {@link HoldingRow} shape, coercing numerics. */
+/** Validate a holdings row's JSONB `attributes` into the typed
+ *  {@link HoldingAttributes} union. Drizzle returns `jsonb` as a parsed object
+ *  (not a string), but types it loosely, so this re-validates against the
+ *  `kind`-discriminated schema. NEVER throws on a read (the nullable-honest
+ *  precedent): a malformed or legacy value degrades to `{ kind: "none" }`. */
+function parseAttributes(value: unknown): HoldingAttributes {
+  const parsed = holdingAttributesSchema.safeParse(value);
+  return parsed.success ? parsed.data : { kind: "none" };
+}
+
+/** Map a holdings row to the {@link HoldingRow} shape, coercing numerics and
+ *  validating the asset-taxonomy columns (FIX-773). */
 function mapHolding(row: typeof holdings.$inferSelect): HoldingRow {
   return {
     accountId: row.accountId,
@@ -177,6 +192,9 @@ function mapHolding(row: typeof holdings.$inferSelect): HoldingRow {
     quantity: Number(row.quantity),
     costBasis: toNumber(row.costBasis),
     acquiredDate: row.acquiredDate,
+    assetClass: row.assetClass as AssetClass,
+    assetType: row.assetType as AssetType,
+    attributes: parseAttributes(row.attributes),
   };
 }
 
@@ -298,6 +316,9 @@ export function toAccountStates(portfolio: {
       quantity: h.quantity,
       costBasis: h.costBasis,
       acquiredDate: h.acquiredDate,
+      assetClass: h.assetClass,
+      assetType: h.assetType,
+      attributes: h.attributes,
     });
     byAccount.set(h.accountId, list);
   }
@@ -391,6 +412,9 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         quantity: String(r.quantity),
         costBasis: r.costBasis === null ? null : String(r.costBasis),
         acquiredDate: r.acquiredDate,
+        assetClass: r.assetClass,
+        assetType: r.assetType,
+        attributes: r.attributes,
       }));
       // Holdings write + optional cash update in ONE transaction, so an import
       // never leaves new holdings paired with stale cash.
@@ -422,6 +446,12 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
                 quantity: sql`excluded.quantity`,
                 costBasis: sql`excluded.cost_basis`,
                 acquiredDate: sql`excluded.acquired_date`,
+                // Re-classification is load-bearing: an upsert that changes a
+                // held ticker's class/type/attributes must overwrite the old
+                // values, not silently keep them (FIX-773).
+                assetClass: sql`excluded.asset_class`,
+                assetType: sql`excluded.asset_type`,
+                attributes: sql`excluded.attributes`,
                 updatedAt: sql`now()`,
               },
             });

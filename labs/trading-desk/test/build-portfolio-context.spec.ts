@@ -37,8 +37,8 @@ describe("buildPortfolioContext", () => {
         name: "Roth IRA",
         cashBalance: 1000,
         holdings: [
-          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null },
-          { ticker: "AAPL", quantity: 20, costBasis: 150, acquiredDate: null },
+          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+          { ticker: "AAPL", quantity: 20, costBasis: 150, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
         ],
       }),
     ];
@@ -66,8 +66,8 @@ describe("buildPortfolioContext", () => {
         type: "taxable",
         cashBalance: 500,
         holdings: [
-          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null },
-          { ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null }, // no quote
+          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+          { ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }, // no quote
         ],
       }),
     ];
@@ -98,7 +98,7 @@ describe("buildPortfolioContext", () => {
     const accounts = [
       account({
         cashBalance: 0,
-        holdings: [{ ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null }],
+        holdings: [{ ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }],
       }),
     ];
     const out = buildPortfolioContext(accounts, [], "2026-05-06");

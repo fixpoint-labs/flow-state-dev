@@ -28,6 +28,9 @@ function holding(overrides: Partial<Holding> = {}): Holding {
     quantity: 10,
     costBasis: 100,
     acquiredDate: null,
+    assetClass: "equity",
+    assetType: "equity",
+    attributes: { kind: "none" },
     ...overrides,
   };
 }

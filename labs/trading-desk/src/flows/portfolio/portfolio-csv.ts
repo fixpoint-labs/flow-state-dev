@@ -17,6 +17,13 @@
  */
 import type { CanonicalRow } from "./portfolio-schema";
 
+/** The CSV-mappable canonical columns. The asset-taxonomy fields
+ *  (`assetClass`/`assetType`/`attributes`, FIX-773) are NOT parsed from CSV in
+ *  Slice A — every imported row defaults to equity; classification arrives in a
+ *  later slice — so the synonym table and column-index map key on this subset,
+ *  not all of `CanonicalRow`. */
+type CsvColumn = "ticker" | "quantity" | "costBasis" | "acquiredDate";
+
 /** One row that failed validation, surfaced to the user with its 1-based row
  *  number (matching what they see in a spreadsheet, header = row 1). */
 export type RowError = { rowNumber: number; raw: string; reason: string };
@@ -42,7 +49,7 @@ export type ParsedCsv = {
  *  the CURRENT price, not cost. An explicit `costBasis`/`avgCost` column wins;
  *  a bare `price` maps to costBasis only when nothing better exists, and emits
  *  a warning (never a silent guess). */
-const COLUMN_SYNONYMS: Record<keyof CanonicalRow, string[]> = {
+const COLUMN_SYNONYMS: Record<CsvColumn, string[]> = {
   ticker: ["ticker", "symbol", "sym", "security", "securityid"],
   quantity: ["quantity", "qty", "shares", "sharesheld", "units"],
   costBasis: [
@@ -118,18 +125,18 @@ function splitCsvLine(line: string): string[] {
 /** Resolve header columns to canonical fields. Returns the column index per
  *  canonical field (or -1 if absent) plus the display mapping. */
 function resolveColumns(headerCells: string[]): {
-  indices: Record<keyof CanonicalRow, number>;
+  indices: Record<CsvColumn, number>;
   mapping: Record<string, string>;
 } {
   const normalized = headerCells.map(normalizeHeader);
-  const indices: Record<keyof CanonicalRow, number> = {
+  const indices: Record<CsvColumn, number> = {
     ticker: -1,
     quantity: -1,
     costBasis: -1,
     acquiredDate: -1,
   };
   const mapping: Record<string, string> = {};
-  for (const field of Object.keys(COLUMN_SYNONYMS) as (keyof CanonicalRow)[]) {
+  for (const field of Object.keys(COLUMN_SYNONYMS) as CsvColumn[]) {
     for (const synonym of COLUMN_SYNONYMS[field]) {
       const idx = normalized.indexOf(synonym);
       if (idx !== -1) {
@@ -298,6 +305,10 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
       quantity: acc.quantity,
       costBasis,
       acquiredDate: acc.acquiredDate,
+      // FIX-773 Slice A: CSV import is equity-only until the classifier lands.
+      assetClass: "equity",
+      assetType: "equity",
+      attributes: { kind: "none" },
     });
   }
 

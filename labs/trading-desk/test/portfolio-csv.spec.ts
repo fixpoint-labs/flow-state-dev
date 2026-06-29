@@ -27,6 +27,10 @@ describe("parsePortfolioCsv", () => {
       quantity: 12.5,
       costBasis: 118.4,
       acquiredDate: "2024-03-15",
+      // CSV import is equity-only in Slice A (FIX-773); classification is later.
+      assetClass: "equity",
+      assetType: "equity",
+      attributes: { kind: "none" },
     });
   });
 
