@@ -27,6 +27,13 @@ import type { ThesisRecord } from "@/src/flows/portfolio/thesis-schema";
  */
 export function useTheses(session: SessionView): {
   theses: ThesisRecord[];
+  /** True until the first read of `/api/portfolio/theses` lands. Distinguishes
+   *  "still loading" from "loaded, no thesis" so a consumer (the report's adopt
+   *  button) can suppress an overwrite-adopt before the existing thesis is known.
+   *  `data` is null only before the first SUCCESSFUL response (an empty household
+   *  returns `{theses: []}`, a non-null object), so `data === null` is the honest
+   *  not-yet-known signal. */
+  loading: boolean;
   refetch: () => void;
 } {
   const { userId } = useFlowContext();
@@ -43,5 +50,5 @@ export function useTheses(session: SessionView): {
     wasStreaming.current = session.isStreaming;
   }, [session.isStreaming, refetch]);
 
-  return { theses: data?.theses ?? [], refetch };
+  return { theses: data?.theses ?? [], loading: data === null, refetch };
 }

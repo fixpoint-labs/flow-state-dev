@@ -82,6 +82,22 @@ describe("buildSaveThesisPayload", () => {
     expect(payload.targetPrice).toBeNull();
   });
 
+  it("defaults sourceSessionId to null for a hand-written thesis", () => {
+    const payload = buildSaveThesisPayload("AAPL", {
+      ...emptyThesisForm(),
+      entryRationale: "Why.",
+    });
+    expect(payload.sourceSessionId).toBeNull();
+  });
+
+  it("carries the existing report link through an edit (never erases it)", () => {
+    // Editing a thesis adopted from a report must preserve its sourceSessionId —
+    // passing null would erase the originating-report link FIX-760 preserves.
+    const form = { ...emptyThesisForm(), entryRationale: "Revised conviction." };
+    const payload = buildSaveThesisPayload("NVDA", form, "sess_42");
+    expect(payload.sourceSessionId).toBe("sess_42");
+  });
+
   it("drops a note-less tripwire scaffold but keeps a real one", () => {
     const payload = buildSaveThesisPayload("AAPL", {
       ...emptyThesisForm(),

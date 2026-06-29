@@ -125,4 +125,28 @@ describe("adoptThesis action", () => {
     expect(result.status).not.toBe("completed");
     expect(await repoState.repo!.getThesis(USER_ID, "ZZZ")).toBeNull();
   });
+
+  it("refuses a snapshot whose ticker doesn't match the session (stale guard)", async () => {
+    // Defense in depth: even if a prior run's NVDA snapshot somehow survived onto
+    // a session now analyzing AAPL, adopt must not save the wrong name.
+    const stores = createInMemoryStores();
+    const result = await testFlow({
+      flow: analysisFlow,
+      action: "adoptThesis",
+      userId: USER_ID,
+      sessionId: "run_mismatch",
+      stores,
+      input: {},
+      seed: {
+        session: {
+          state: { ticker: "AAPL", date: "2026-05-06", runComplete: true },
+          resources: { tradingDeskDecisionSnapshot: completedSnapshot }, // ticker NVDA
+        },
+      },
+    });
+
+    expect(result.status).not.toBe("completed");
+    expect(await repoState.repo!.getThesis(USER_ID, "AAPL")).toBeNull();
+    expect(await repoState.repo!.getThesis(USER_ID, "NVDA")).toBeNull();
+  });
 });

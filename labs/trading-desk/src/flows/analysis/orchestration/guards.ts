@@ -31,6 +31,7 @@ import { technicalDataResource } from "../technical-data-resource";
 import { profileDataResource } from "../profile-data-resource";
 import { priceHistoryResource } from "../price-history-resource";
 import { valuationSpineResource } from "../valuation-spine-resource";
+import { decisionSnapshotResource } from "../decision-snapshot-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
@@ -64,6 +65,7 @@ export const seedSession = handler({
     profileData: profileDataResource,
     priceHistory: priceHistoryResource,
     valuationSpine: valuationSpineResource,
+    decisionSnapshot: decisionSnapshotResource,
     ...memoResources,
   },
   execute: async (input, ctx) => {
@@ -97,6 +99,12 @@ export const seedSession = handler({
     // exactly as for an unwritten resource.)
     await ctx.resources.priceHistory.setState(null);
     await ctx.resources.valuationSpine.setState(null);
+    // Reset the decision-of-record too, so a re-run that stops before the PM
+    // commits (or is mid-flight) can't leave the PRIOR run's decision readable —
+    // which `adoptThesis` would otherwise save as the current thesis (it only
+    // gates on a present `finalRating`). The PM commit re-writes it on a clean
+    // run; a stopped re-run correctly has no decision to adopt.
+    await ctx.resources.decisionSnapshot.setState(null);
 
     // Freeze the per-run thesis at seed time so editing the form mid-run
     // can't affect the session that's already analyzing. A non-null

@@ -16,7 +16,7 @@
  */
 "use client";
 
-import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { NotebookPen } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
 import { useTheses } from "@/components/portfolio/use-theses";
@@ -36,9 +36,16 @@ export function ReportThesisPanel({
   ticker,
   runComplete,
 }: ReportThesisPanelProps): ReactElement | null {
-  const { theses, refetch } = useTheses(session);
+  const { theses, loading, refetch } = useTheses(session);
   const [adopting, setAdopting] = useState(false);
   const [adopted, setAdopted] = useState(false);
+
+  // Reset the "Adopted ✓" confirmation whenever the target report changes
+  // (the pane swaps session/ticker without remounting this panel), so a stale
+  // confirmation from a previous ticker can't leak into a new, un-adopted one.
+  useEffect(() => {
+    setAdopted(false);
+  }, [ticker, session]);
 
   const standing = useMemo(
     () => buildStandingThesisModel(ticker, theses),
@@ -60,8 +67,15 @@ export function ReportThesisPanel({
     }
   }, [session, refetch]);
 
-  // Nothing to show before the run finishes and with no standing thesis.
-  if (!runComplete && standing === null) return null;
+  // Adoption needs the theses read to have landed (`loading === false`), so a
+  // user can't click Adopt before an existing standing thesis is known and
+  // overwrite it on a slow `/api/portfolio/theses` response. Until then, treat
+  // adoption as unavailable.
+  const canAdopt = runComplete && !loading;
+
+  // Nothing to show yet: no standing thesis to display AND adoption unavailable
+  // (run not finished, or the theses read still in flight).
+  if (standing === null && !canAdopt) return null;
 
   return (
     <section
@@ -75,7 +89,7 @@ export function ReportThesisPanel({
         <span className="font-mono text-[10px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
           position thesis
         </span>
-        {runComplete ? (
+        {canAdopt ? (
           adopted ? (
             <span className="font-mono text-[10.5px] uppercase tracking-wider text-[color:var(--c-live)]">
               Adopted ✓

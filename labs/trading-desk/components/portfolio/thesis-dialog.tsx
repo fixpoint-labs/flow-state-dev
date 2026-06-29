@@ -129,7 +129,9 @@ export function ThesisDialog({
 
   const handleSave = (): void => {
     if (!canSave) return;
-    onSave(buildSaveThesisPayload(ticker, form));
+    // Carry the existing report link through an edit so a Portfolio edit of an
+    // adopted thesis doesn't erase its originating `sourceSessionId`.
+    onSave(buildSaveThesisPayload(ticker, form, existing?.sourceSessionId ?? null));
     onClose();
   };
 

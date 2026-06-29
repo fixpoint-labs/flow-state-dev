@@ -43,9 +43,20 @@ export const adoptThesis = handler({
   execute: async (_input, ctx) => {
     // A stopped / in-progress run has no decision to adopt. An unwritten single
     // resource can surface as `{}`, so gate on the required `finalRating`.
+    // `seedSession` resets the snapshot to null at the start of every run, so a
+    // present `finalRating` means the CURRENT run committed a decision — never a
+    // stale prior-run one.
     const snapshot = ctx.resources.decisionSnapshot.state as DecisionSnapshotState | null;
     if (snapshot == null || typeof snapshot.finalRating !== "string") {
       throw new Error("no-decision: cannot adopt a thesis before the run produces a decision.");
+    }
+    // Defense in depth: the snapshot's ticker must match the session's current
+    // ticker. The seed reset already prevents a stale cross-ticker snapshot; this
+    // guard makes a mismatch fail loudly rather than silently adopt the wrong name.
+    if (snapshot.ticker.toUpperCase() !== ctx.session.state.ticker.toUpperCase()) {
+      throw new Error(
+        `stale-decision: snapshot ticker ${snapshot.ticker} does not match the session ticker ${ctx.session.state.ticker}.`,
+      );
     }
 
     // Invalidation conditions come from the trader memo's typed

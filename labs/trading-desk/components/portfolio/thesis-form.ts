@@ -94,12 +94,18 @@ function formTripwireToTripwire(draft: TripwireDraft): Tripwire | null {
 /**
  * Build the `saveThesis` action input from the draft + the holding's ticker. The
  * ticker is canonicalized upper-case (the household × ticker key matches the
- * holdings rows); `sourceSessionId` stays null on a hand-written thesis (the
- * `adoptThesis` derive path sets it). Empty optional fields collapse to null.
+ * holdings rows). Empty optional fields collapse to null.
+ *
+ * `existingSourceSessionId` carries the originating-report link THROUGH an edit:
+ * editing a thesis that was adopted from a report must NOT erase its
+ * `sourceSessionId` (the repository update writes whatever is passed). A
+ * hand-written thesis has none, so it defaults to null; the `adoptThesis` derive
+ * path sets it server-side and a later Portfolio edit preserves it here.
  */
 export function buildSaveThesisPayload(
   ticker: string,
   form: ThesisFormState,
+  existingSourceSessionId: string | null = null,
 ): ThesisInputFields {
   const invalidation = form.invalidationConditions.trim();
   return {
@@ -112,7 +118,7 @@ export function buildSaveThesisPayload(
     timeHorizon: form.timeHorizon === "" ? null : form.timeHorizon,
     targetPrice: parseOptionalNumber(form.targetPrice),
     stopPrice: parseOptionalNumber(form.stopPrice),
-    sourceSessionId: null,
+    sourceSessionId: existingSourceSessionId,
   };
 }
 
