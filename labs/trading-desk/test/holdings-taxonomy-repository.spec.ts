@@ -70,7 +70,7 @@ describe("holdings taxonomy — non-equity round-trip", () => {
       acquiredDate: null,
       assetClass: "fixed_income",
       assetType: "bond",
-      attributes: { kind: "bond", cusip: "912828YK0", coupon: null, maturity: null, yield: null, markPrice: null, markAsOf: null },
+      attributes: { kind: "bond", cusip: "912828YK0", coupon: null, maturity: null, yield: null, markPrice: null },
     };
     const option: CanonicalRow = {
       ticker: "AAPL_C200",
@@ -87,7 +87,6 @@ describe("holdings taxonomy — non-equity round-trip", () => {
         right: "call",
         multiplier: 100,
         markPrice: null,
-        markAsOf: null,
       },
     };
     const cash: CanonicalRow = {
@@ -113,7 +112,6 @@ describe("holdings taxonomy — non-equity round-trip", () => {
       maturity: null,
       yield: null,
       markPrice: null,
-      markAsOf: null,
     });
 
     expect(byTicker.AAPL_C200.assetType).toBe("option");

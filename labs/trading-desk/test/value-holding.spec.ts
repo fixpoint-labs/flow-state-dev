@@ -65,7 +65,7 @@ describe("resolveHoldingPrice — per-type valuation rule", () => {
     const h = holding({
       assetType: "bond",
       assetClass: "fixed_income",
-      attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: 98.5, markAsOf: null },
+      attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: 98.5 },
     });
     expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 98.5, priceSource: "statement" });
   });
@@ -74,7 +74,7 @@ describe("resolveHoldingPrice — per-type valuation rule", () => {
     const h = holding({
       assetType: "bond",
       assetClass: "fixed_income",
-      attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: null, markAsOf: null },
+      attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: null },
     });
     expect(resolveHoldingPrice(h, undefined)).toEqual({ price: null, priceSource: "unavailable" });
   });
@@ -83,7 +83,7 @@ describe("resolveHoldingPrice — per-type valuation rule", () => {
     const h = holding({
       assetType: "option",
       assetClass: "equity",
-      attributes: { kind: "option", underlying: "AAPL", strike: 190, expiry: "2026-06-21", right: "call", multiplier: 100, markPrice: 12.4, markAsOf: null },
+      attributes: { kind: "option", underlying: "AAPL", strike: 190, expiry: "2026-06-21", right: "call", multiplier: 100, markPrice: 12.4 },
     });
     expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 12.4, priceSource: "statement" });
   });
@@ -105,12 +105,12 @@ describe("holdingMarketValue — type-resolved value (option multiplier)", () =>
   });
 
   it("bond value = quantity × mark", () => {
-    const h = holding({ quantity: 5, assetType: "bond", assetClass: "fixed_income", attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: 98.5, markAsOf: null } });
+    const h = holding({ quantity: 5, assetType: "bond", assetClass: "fixed_income", attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: 98.5 } });
     expect(holdingMarketValue(h, undefined)).toBe(492.5);
   });
 
   it("option value = quantity × mark × multiplier", () => {
-    const h = holding({ quantity: 2, assetType: "option", assetClass: "equity", attributes: { kind: "option", underlying: "AAPL", strike: 190, expiry: "2026-06-21", right: "call", multiplier: 100, markPrice: 12.4, markAsOf: null } });
+    const h = holding({ quantity: 2, assetType: "option", assetClass: "equity", attributes: { kind: "option", underlying: "AAPL", strike: 190, expiry: "2026-06-21", right: "call", multiplier: 100, markPrice: 12.4 } });
     // 2 × 12.4 × 100 = 2480
     expect(holdingMarketValue(h, undefined)).toBe(2480);
   });

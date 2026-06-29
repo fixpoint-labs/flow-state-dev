@@ -68,7 +68,7 @@ function looksLikeEquityTicker(symbol: string): boolean {
  *  (the caller falls through to the next rule rather than throwing). */
 function parseOccOption(
   symbol: string,
-  mark: { price: number | null | undefined; asOf: string | null | undefined },
+  markPrice: number | null | undefined,
 ): Extract<HoldingAttributes, { kind: "option" }> | null {
   // ROOT is the leading alpha run (space-padding in the canonical form is
   // collapsed by the trim/upper-case the caller already applied, but the root may
@@ -97,8 +97,7 @@ function parseOccOption(
     multiplier: 100,
     // The carried statement mark (FIX-773 Slice C): a finite price → stamped, else
     // null. An option is valued at this mark × multiplier (no live quote).
-    markPrice: typeof mark.price === "number" && Number.isFinite(mark.price) ? mark.price : null,
-    markAsOf: mark.asOf ?? null,
+    markPrice: typeof markPrice === "number" && Number.isFinite(markPrice) ? markPrice : null,
   };
 }
 
@@ -116,7 +115,7 @@ const CASH_EQUIVALENT: Classification = {
  *  it ever carries; null when the import had none. */
 function bondClassification(
   symbol: string,
-  mark: { price: number | null | undefined; asOf: string | null | undefined },
+  markPrice: number | null | undefined,
 ): Classification {
   return {
     assetClass: "fixed_income",
@@ -127,8 +126,7 @@ function bondClassification(
       coupon: null,
       maturity: null,
       yield: null,
-      markPrice: typeof mark.price === "number" && Number.isFinite(mark.price) ? mark.price : null,
-      markAsOf: mark.asOf ?? null,
+      markPrice: typeof markPrice === "number" && Number.isFinite(markPrice) ? markPrice : null,
     },
   };
 }
@@ -149,12 +147,12 @@ function bondClassification(
  */
 export function classifyInstrument(
   symbol: string,
-  opts?: { price?: number | null; asOf?: string | null; assetTypeHint?: AssetType | null },
+  opts?: { price?: number | null; assetTypeHint?: AssetType | null },
 ): Classification {
   const normalized = symbol.trim().toUpperCase();
   // The carried statement mark, threaded into the bond/option attributes (a bond
   // / option has no live quote, so this import-carried price is its value).
-  const mark = { price: opts?.price, asOf: opts?.asOf };
+  const markPrice = opts?.price;
 
   // A hint wins when it is a valid AssetType AND its required attributes are
   // derivable. `bond` derives `{ kind: "bond", cusip: symbol, ...nulls }` from any
@@ -162,10 +160,10 @@ export function classifyInstrument(
   // every other type carries `{ kind: "none" }`.
   const hint = opts?.assetTypeHint;
   if (hint !== null && hint !== undefined && assetTypeSchema.safeParse(hint).success) {
-    if (hint === "bond") return bondClassification(normalized, mark);
+    if (hint === "bond") return bondClassification(normalized, markPrice);
     if (hint === "money_market") return CASH_EQUIVALENT;
     if (hint === "option") {
-      const parsed = parseOccOption(normalized, mark);
+      const parsed = parseOccOption(normalized, markPrice);
       if (parsed !== null) return { assetClass: "equity", assetType: "option", attributes: parsed };
       // Not OCC-parseable → fall through to symbol-shape inference.
     } else if (hint === "crypto") {
@@ -186,11 +184,11 @@ export function classifyInstrument(
   if (looksLikeMoneyMarket(normalized, opts?.price)) return CASH_EQUIVALENT;
 
   // 3. OCC-shaped option (before CUSIP — both contain digits).
-  const option = parseOccOption(normalized, mark);
+  const option = parseOccOption(normalized, markPrice);
   if (option !== null) return { assetClass: "equity", assetType: "option", attributes: option };
 
   // 4. CUSIP → bond.
-  if (looksLikeCusip(normalized)) return bondClassification(normalized, mark);
+  if (looksLikeCusip(normalized)) return bondClassification(normalized, markPrice);
 
   // 5. Crypto USD pair.
   if (looksLikeCryptoPair(normalized)) {

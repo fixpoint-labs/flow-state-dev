@@ -113,7 +113,7 @@ describe("buildHoldingRowModel", () => {
       costBasis: null,
       assetType: "bond",
       assetClass: "fixed_income",
-      attributes: { kind: "bond", cusip: "912828YK0", coupon: null, maturity: null, yield: null, markPrice: 98.5, markAsOf: null },
+      attributes: { kind: "bond", cusip: "912828YK0", coupon: null, maturity: null, yield: null, markPrice: 98.5 },
     });
     const m = buildHoldingRowModel(bond, undefined, "USD", 492.5);
     expect(m.typeLabel).toBe("BOND");
@@ -144,7 +144,7 @@ describe("buildHoldingRowModel", () => {
       costBasis: null,
       assetType: "bond",
       assetClass: "fixed_income",
-      attributes: { kind: "bond", cusip: "999999XX9", coupon: null, maturity: null, yield: null, markPrice: null, markAsOf: null },
+      attributes: { kind: "bond", cusip: "999999XX9", coupon: null, maturity: null, yield: null, markPrice: null },
     });
     const m = buildHoldingRowModel(bond, undefined, "USD", 1000);
     expect(m.typeLabel).toBe("BOND");

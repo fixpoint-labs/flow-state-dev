@@ -105,11 +105,11 @@ describe("buildPortfolioContext", () => {
           // equity via quote: 10 × 200 = 2000
           { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
           // bond at carried mark: 5 × 98.5 = 492.5
-          { ticker: "912828YK0", quantity: 5, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "912828YK0", coupon: null, maturity: null, yield: null, markPrice: 98.5, markAsOf: null } },
+          { ticker: "912828YK0", quantity: 5, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "912828YK0", coupon: null, maturity: null, yield: null, markPrice: 98.5 } },
           // MMF at par: 1500 × 1.00 = 1500
           { ticker: "SPAXX", quantity: 1500, costBasis: null, acquiredDate: null, assetClass: "cash", assetType: "money_market", attributes: { kind: "cash_equivalent", yield: null } },
           // unpriced bond: no mark → null marketValue, adds nothing to NAV
-          { ticker: "999999XX9", quantity: 7, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "999999XX9", coupon: null, maturity: null, yield: null, markPrice: null, markAsOf: null } },
+          { ticker: "999999XX9", quantity: 7, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "999999XX9", coupon: null, maturity: null, yield: null, markPrice: null } },
         ],
       }),
     ];

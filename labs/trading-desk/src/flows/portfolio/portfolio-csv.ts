@@ -356,7 +356,6 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
     const { assetClass, assetType, attributes } = classifyInstrument(acc.ticker, {
       assetTypeHint: acc.assetTypeHint,
       // FIX-773 Slice C: re-derive the bond/option mark from the carried column.
-      // The CSV row has no as-of, so markAsOf stays null on this path.
       price: acc.markPrice,
     });
     rows.push({
