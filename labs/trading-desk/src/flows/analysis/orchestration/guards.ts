@@ -207,11 +207,13 @@ export const checkTickerResolvable = handler({
  * following `.exitIf` bails before any model spend — the FIX-605 no-hallucination
  * discipline, extended to asset type.
  *
- * Runs after `checkTickerResolvable`: a symbol that resolves to a price but is a
- * bond/option/crypto/cash still stops here. Equity AND etf pass (a ticker-shaped
+ * Runs BEFORE `checkTickerResolvable` (no provider call needed): a bond CUSIP or
+ * a crypto pair would otherwise fail the equity fundamentals probe and stop as
+ * the less-accurate "unresolvable-ticker". Equity AND etf pass (a ticker-shaped
  * symbol classifies as `equity` from shape alone — precise ETF tagging is a later
  * provider concern, and FIX-777 is the issue that opens ETF/crypto analysis, at
- * which point this allow-list widens).
+ * which point this allow-list widens). A bogus equity-shaped ticker passes here
+ * and is caught by the resolution guard next.
  */
 export const checkAssetTypeSupported = handler({
   name: "check-asset-type-supported",

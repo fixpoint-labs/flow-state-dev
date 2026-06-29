@@ -50,11 +50,15 @@ export const analyze = sequencer({
   inputSchema: analyzeInputSchema,
 })
   .step(seedSession)
-  .tap(checkTickerResolvable)
-  .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
-  // Asset-type gate (FIX-773): a non-equity symbol stops cleanly here rather
-  // than hallucinating a stock report through the equity-only bench.
+  // Asset-type gate (FIX-773) runs BEFORE ticker resolution: a non-equity symbol
+  // (a bond CUSIP, a crypto pair) would otherwise fail the equity fundamentals
+  // probe and stop as "unresolvable-ticker" — technically true but unhelpful. The
+  // shape classifier needs no provider, so gating first yields the accurate "this
+  // is a bond, the bench is equity-only" stop. A bogus equity-shaped ticker still
+  // passes here and is caught by the resolution guard next.
   .tap(checkAssetTypeSupported)
+  .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
+  .tap(checkTickerResolvable)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .step(analystFanOut)
   .tap(checkPhase1HasFundamentalsAndProfile)

@@ -24,6 +24,11 @@ AAPL,40,176.10,2023-11-02
   a row error.
 - `acquiredDate` — optional. ISO `YYYY-MM-DD`. An unparseable date is a warning,
   not a rejection: the holding still imports with a blank date.
+- `assetType` — optional. One of `equity / etf / mutual_fund / bond /
+  money_market / crypto / option / other`. Provides a per-row classification hint.
+  Absent or unrecognized values are inferred server-side from the symbol shape
+  (CUSIP → bond, OCC option format → option, crypto pair → crypto, etc.). Most
+  equity tickers don't need this column at all.
 
 ## Tolerant column mapping
 
@@ -36,6 +41,7 @@ against a synonym table. The first synonym that appears wins:
 | `quantity` | quantity, qty, shares, sharesheld, units |
 | `costBasis` | costbasis, avgcost, averagecost, costpershare, unitcost, purchaseprice, **price** |
 | `acquiredDate` | acquireddate, dateacquired, purchasedate, opendate, date |
+| `assetType` | assettype, type, assetclass |
 
 So a Fidelity/Schwab export with `Symbol, Shares Held, Avg Cost` maps with no
 edits. The dialog shows the resolved mapping ("Detected columns") before you
@@ -84,3 +90,14 @@ optional "Cash balance" field in the import dialog (or when adding the account).
 - Persistence is the development filesystem store (`developmentOnly: true`) — it
   does not survive an ephemeral/serverless redeploy. This is a demo, not a place
   to keep a real portfolio.
+- **Classification is always re-derived server-side.** The `assetType` column is
+  a hint; the server never trusts the client's classification verbatim. It runs
+  `classify-instrument` and can override a supplied value.
+- **Non-equity rows import as typed holdings, not errors.** A bond CUSIP or a
+  crypto pair (e.g. `BTC-USD`) classifies as `bond` or `crypto` and is stored
+  with its attributes rather than being dropped. Analysis (the research pipeline)
+  currently runs on equities only — submitting a bond or crypto symbol to analyze
+  stops with an "unsupported-asset-type" result. Bond/option rows imported without
+  a statement mark show `—` for value (the PDF import path carries the mark via the
+  `markPrice` column). Cash and money-market holdings value at par ($1.00/share),
+  so a quantity-1 cash row with no cost basis still shows a value.
