@@ -123,12 +123,16 @@ export const pdfImportResource = defineResource({
 });
 
 /** The collection key for a household's thesis on one ticker — the BARE key
- *  (just the canonical upper-case ticker). The collection's mutation verbs
+ *  (the canonical upper-case ticker). The collection's mutation verbs
  *  (`upsert`/`getOptional`/`delete`) auto-prepend the `theses/` pattern prefix,
- *  so the stored key / client `item.topic` is `theses/{TICKER}`. Upper-cased so
- *  it matches the holdings rows. */
+ *  so the stored key / client `item.topic` is `theses/{KEY}`. Upper-cased so it
+ *  matches the holdings rows, then `encodeURIComponent`'d so a ticker that
+ *  contains a slash (e.g. `BRK/B`) stays a SINGLE path segment — the `theses/*`
+ *  single-wildcard pattern matches one segment, so a raw slash would break the
+ *  write/read. Normal tickers (`AAPL`) encode to themselves; matching/display use
+ *  the record's own `ticker` field, never this key, so the encoding is internal. */
 export function thesisKey(ticker: string): string {
-  return ticker.trim().toUpperCase();
+  return encodeURIComponent(ticker.trim().toUpperCase());
 }
 
 /**

@@ -43,7 +43,9 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected ISO date YYYY-
 export const tripwireSchema = z.object({
   kind: tripwireKindSchema,
   note: z.string().min(1).max(300),
-  level: z.number().finite().nullable().default(null),
+  // A price tripwire's level is a price, so reject zero/negative (a nonsensical
+  // level would pollute the `<standingThesis>` prompt). Null for non-price kinds.
+  level: z.number().positive().finite().nullable().default(null),
   byDate: isoDate.nullable().default(null),
 });
 export type Tripwire = z.infer<typeof tripwireSchema>;
@@ -66,8 +68,10 @@ export const thesisInputSchema = z.object({
   invalidationConditions: z.string().max(4000).nullable().default(null),
   tripwires: z.array(tripwireSchema).max(20).default([]),
   timeHorizon: timeHorizonSchema.nullable().default(null),
-  targetPrice: z.number().finite().nullable().default(null),
-  stopPrice: z.number().finite().nullable().default(null),
+  // Prices, so reject zero/negative at the boundary (a nonsensical level would
+  // persist into the standing-thesis card + the trader/PM prompt context).
+  targetPrice: z.number().positive().finite().nullable().default(null),
+  stopPrice: z.number().positive().finite().nullable().default(null),
   sourceSessionId: z.string().nullable().default(null),
 });
 export type ThesisInputFields = z.infer<typeof thesisInputSchema>;

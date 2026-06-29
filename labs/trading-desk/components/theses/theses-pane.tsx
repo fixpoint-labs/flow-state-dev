@@ -474,15 +474,18 @@ function PmHeroWithScenarios({
     };
   }, [scenarioItem, data]);
 
-  // The PM memo only publishes once the run finishes, so reaching this branch
-  // means the report is complete — the adopt gate is satisfied. The thesis panel
-  // (adopt button + standing-thesis card) sits above the hero.
+  // Pass the REAL completion signal (not a hard-coded true): `runComplete` flips
+  // only after the PM commit writes the decision snapshot, so the adopt button
+  // never offers an action that would fail with `no-decision` (e.g. the Summary
+  // tab opened manually mid-run). The thesis panel sits above the hero.
+  const { session: live } = useClientData(session, { session: ["runComplete"] });
+  const runComplete = live?.runComplete === true;
   return (
     <div className="flex flex-col gap-5">
       <ReportThesisPanel
         session={session}
         ticker={data?.ticker ?? null}
-        runComplete={true}
+        runComplete={runComplete}
       />
       <PmHero
         agent={agent}

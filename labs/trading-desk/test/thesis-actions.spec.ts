@@ -89,6 +89,34 @@ describe("saveThesis action", () => {
     expect(result.status).not.toBe("completed");
     expect((await thesesOf(stores))["theses/NVDA"]).toBeUndefined();
   });
+
+  it("rejects a nonpositive price at the action boundary", async () => {
+    const result = await testFlow({
+      flow: portfolioFlow,
+      action: "saveThesis",
+      userId: USER_ID,
+      stores,
+      input: { ticker: "NVDA", entryRationale: "x", stopPrice: 0 },
+    });
+    expect(result.status).not.toBe("completed");
+    expect((await thesesOf(stores))["theses/NVDA"]).toBeUndefined();
+  });
+
+  it("keeps a slash ticker (BRK/B) a single collection segment", async () => {
+    const result = await testFlow({
+      flow: portfolioFlow,
+      action: "saveThesis",
+      userId: USER_ID,
+      stores,
+      input: { ticker: "brk/b", entryRationale: "Holdco compounder." },
+    });
+    expect(result.status).toBe("completed");
+    expect(result.output).toEqual({ ticker: "BRK/B" }); // real ticker echoed
+    const stored = await thesesOf(stores);
+    // Stored under an encoded single-segment key; the record keeps the real ticker.
+    expect(stored["theses/BRK%2FB"]).toBeDefined();
+    expect(stored["theses/BRK%2FB"].ticker).toBe("BRK/B");
+  });
 });
 
 describe("deleteThesis action", () => {

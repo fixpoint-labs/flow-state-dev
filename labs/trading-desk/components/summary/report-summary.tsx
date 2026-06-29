@@ -75,7 +75,7 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
   const { clientData: spineRaw } = useResource(session, "valuationSpine");
   const { clientData: priceRaw } = useResource(session, "priceHistory");
   const { session: stop } = useClientData(session, {
-    session: ["stoppedReason", "stoppedMessage"],
+    session: ["stoppedReason", "stoppedMessage", "runComplete"],
   });
 
   const stoppedReason = (stop?.stoppedReason ?? null) as string | null;
@@ -129,12 +129,14 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
       />
 
       {/* FIX-760: adopt-as-thesis + the standing-thesis card for the analyzed
-          name. Reached only on a finished report (the stopped branch returns
-          early above), so the adopt gate is satisfied. */}
+          name. Pass the REAL `runComplete` (not hard-coded true): the Summary tab
+          can be opened manually mid-run, and `runComplete` flips only after the PM
+          commit writes the decision snapshot, so the adopt button never offers an
+          action that would fail with `no-decision`. */}
       <ReportThesisPanel
         session={session}
         ticker={summary.ticker === "" ? null : summary.ticker}
-        runComplete={true}
+        runComplete={stop?.runComplete === true}
       />
 
       <ConvictionStrip nodes={summary.conviction} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { type SessionView, useResourceCollectionList } from "@flow-state-dev/react";
 import type { ThesisRecord } from "@/src/flows/portfolio/thesis-schema";
 
@@ -18,22 +18,29 @@ import type { ThesisRecord } from "@/src/flows/portfolio/thesis-schema";
  * thesis is keyed `theses/{ticker}` (upper-case), so a per-ticker lookup is a
  * cheap array find on the caller side.
  *
- * `loading` is the first-read flag — distinct from a loaded-but-empty household —
- * so a consumer (the report's adopt button) can suppress an overwrite-adopt until
- * the read lands. `refetch` is retained for callers that want an explicit
- * re-pull, though the live stream makes it unnecessary in practice.
+ * `loading` is true until the FULL household list is in (initial read + every
+ * remaining page) — distinct from a loaded-but-empty household — so a consumer
+ * (the report's adopt button) suppresses an overwrite-adopt until it actually
+ * knows whether a thesis exists. `refetch` is retained for callers that want an
+ * explicit re-pull, though the live stream makes it unnecessary in practice.
  */
 export function useTheses(session: SessionView): {
   theses: ThesisRecord[];
   loading: boolean;
   refetch: () => void;
 } {
-  const { items, isLoading, refetch } = useResourceCollectionList<ThesisRecord>(
-    session,
-    "theses",
-    // A household holds dozens of positions, not thousands — one page covers it.
-    { limit: 200 },
-  );
+  const { items, isLoading, refetch, loadMore, pagination } =
+    useResourceCollectionList<ThesisRecord>(session, "theses", { limit: 200 });
+
+  // Page through the whole household. A truncated first page would make a
+  // consumer treat a ticker beyond it as "no thesis" — hiding the holding
+  // indicator and letting the report panel offer Adopt, which would overwrite the
+  // existing record. A household holds dozens of positions, so this is normally a
+  // single page; the loop only matters at the tail.
+  useEffect(() => {
+    if (pagination?.hasMore) loadMore();
+  }, [pagination, loadMore]);
+
   const theses = useMemo(
     () =>
       items
@@ -41,5 +48,7 @@ export function useTheses(session: SessionView): {
         .filter((data): data is ThesisRecord => data != null),
     [items],
   );
-  return { theses, loading: isLoading, refetch };
+  // Not "done loading" until the initial read lands AND no more pages remain, so
+  // a per-ticker "has a thesis?" check is never made against a partial list.
+  return { theses, loading: isLoading || pagination?.hasMore === true, refetch };
 }
