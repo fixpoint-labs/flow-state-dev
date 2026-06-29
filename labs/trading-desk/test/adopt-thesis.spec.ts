@@ -75,7 +75,13 @@ describe("adoptThesis action", () => {
             "memos/p3/trader": {
               status: "published",
               agentName: "trader",
-              invalidationCriteria: "Data-center capex guide cut two quarters running.",
+              // The real trader memo emits an ARRAY of short strings (matches the
+              // trader output schema) — the adopt mapping must join them into the
+              // thesis's freeform text column, not write the array verbatim.
+              invalidationCriteria: [
+                "Data-center capex guide cut two quarters running.",
+                "Gross margin compresses below 60%.",
+              ],
             },
           },
         },
@@ -89,8 +95,9 @@ describe("adoptThesis action", () => {
     expect(thesis).not.toBeNull();
     expect(thesis?.entryRationale).toContain("Buy decision");
     expect(thesis?.entryRationale).toContain("Compute super-cycle intact");
+    // The trader's array of criteria is joined into the thesis's freeform text.
     expect(thesis?.invalidationConditions).toBe(
-      "Data-center capex guide cut two quarters running.",
+      "- Data-center capex guide cut two quarters running.\n- Gross margin compresses below 60%.",
     );
     expect(thesis?.timeHorizon).toBe("quarters");
     expect(thesis?.targetPrice).toBe(180);

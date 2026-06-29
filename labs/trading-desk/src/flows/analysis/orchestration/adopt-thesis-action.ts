@@ -49,13 +49,19 @@ export const adoptThesis = handler({
     }
 
     // Invalidation conditions come from the trader memo's typed
-    // `invalidationCriteria` (freeform); absent → null.
+    // `invalidationCriteria` — an ARRAY of short strings (see the trader output
+    // schema). The thesis stores invalidation as freeform text, so join the
+    // array into a bullet list; absent / empty → null.
     const traderMemo = await ctx.resources.memos.getOptional(
       PHASE_3_MEMO_KEYS.trader.collectionKey,
     );
+    const criteria = (
+      traderMemo?.state as { invalidationCriteria?: string[] | null } | undefined
+    )?.invalidationCriteria;
     const invalidationConditions =
-      (traderMemo?.state as { invalidationCriteria?: string | null } | undefined)
-        ?.invalidationCriteria ?? null;
+      Array.isArray(criteria) && criteria.length > 0
+        ? criteria.map((c) => `- ${c}`).join("\n")
+        : null;
 
     // A price tripwire from the stop level gives FIX-763's deterministic check a
     // machine-readable falsifier out of the box; the user adds richer tripwires
