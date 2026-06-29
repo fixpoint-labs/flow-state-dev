@@ -16,9 +16,11 @@ import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import {
+  checkAssetTypeSupported,
   checkPhase1HasData,
   checkPhase1HasFundamentalsAndProfile,
 } from "../src/flows/analysis/orchestration/guards";
+import { analyzeInputSchema } from "../src/flows/analysis/flow-schema";
 import { PHASE_1_MEMO_KEYS } from "../src/flows/analysis/registry";
 import { memosCollection } from "../src/flows/analysis/resources";
 import { sessionStateSchema } from "../src/flows/analysis/state";
@@ -28,6 +30,7 @@ const fixtureFlow = defineFlow({
   actions: {
     primary: { block: checkPhase1HasFundamentalsAndProfile },
     allError: { block: checkPhase1HasData },
+    assetType: { block: checkAssetTypeSupported },
   },
   session: { stateSchema: sessionStateSchema },
   resources: { memos: memosCollection },
@@ -98,6 +101,47 @@ describe("checkPhase1HasFundamentalsAndProfile", () => {
 
   it("does NOT trip when every analyst succeeded", async () => {
     expect(await stoppedReasonAfter(checkPhase1HasFundamentalsAndProfile, [])).toBeNull();
+  });
+});
+
+describe("checkAssetTypeSupported (FIX-773 asset-type gate)", () => {
+  /** The `stoppedReason` after running the gate for a given ticker. */
+  async function stoppedReasonForTicker(ticker: string): Promise<string | null> {
+    const result = await testBlock(checkAssetTypeSupported, {
+      input: analyzeInputSchema.parse({ ticker }),
+      flow: fixtureFlow,
+      session: { state: baseSessionState, resources: seedMemos([]) },
+    });
+    expect(result.error).toBeNull();
+    const sessionPatches = result.stateChanges.filter((c) => c.scope === "session");
+    if (sessionPatches.length === 0) return null;
+    return (
+      sessionPatches[sessionPatches.length - 1].resultingState as {
+        stoppedReason: string | null;
+      }
+    ).stoppedReason;
+  }
+
+  it("passes an equity ticker through (no stop)", async () => {
+    expect(await stoppedReasonForTicker("NVDA")).toBeNull();
+  });
+
+  it("stops a bond CUSIP", async () => {
+    expect(await stoppedReasonForTicker("912828YK0")).toBe("unsupported-asset-type");
+  });
+
+  it("stops a crypto pair", async () => {
+    expect(await stoppedReasonForTicker("BTC-USD")).toBe("unsupported-asset-type");
+  });
+
+  it("stops an OCC option symbol", async () => {
+    expect(await stoppedReasonForTicker("AAPL240621C00190000")).toBe(
+      "unsupported-asset-type",
+    );
+  });
+
+  it("stops a cash line", async () => {
+    expect(await stoppedReasonForTicker("CASH")).toBe("unsupported-asset-type");
   });
 });
 

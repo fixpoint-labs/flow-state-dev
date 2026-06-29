@@ -22,6 +22,7 @@ import { computeAndStoreRewardToRisk } from "../compute-reward-to-risk";
 import { storePriceHistory } from "../store-price-history";
 import { resetLensConvergence } from "../agents/lenses/writer";
 import {
+  checkAssetTypeSupported,
   checkPhase1HasData,
   checkPhase1HasFundamentalsAndProfile,
   checkTickerResolvable,
@@ -50,6 +51,10 @@ export const analyze = sequencer({
 })
   .step(seedSession)
   .tap(checkTickerResolvable)
+  .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
+  // Asset-type gate (FIX-773): a non-equity symbol stops cleanly here rather
+  // than hallucinating a stock report through the equity-only bench.
+  .tap(checkAssetTypeSupported)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .step(analystFanOut)
   .tap(checkPhase1HasFundamentalsAndProfile)

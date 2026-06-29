@@ -39,6 +39,7 @@ import { buildPortfolioContext } from "../build-portfolio-context";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 import { getRepository } from "@/lib/portfolio-db";
 import { toAccountStates } from "@/src/db/repository";
+import { classifyInstrument } from "../../portfolio/classify-instrument";
 
 /**
  * Patches session state from action input and clears any memos a prior run
@@ -193,6 +194,46 @@ export const checkTickerResolvable = handler({
         metadata: { reportStatus: "stopped" },
       });
     }
+  },
+});
+
+/**
+ * Pre-flight asset-type gate (FIX-773). The analyst bench researches equities;
+ * a non-equity symbol (a bond CUSIP, an OCC option, a `BTC-USD` crypto pair, a
+ * cash line) would otherwise be run through the equity pipeline and produce a
+ * confident hallucinated stock report. Classify the symbol by shape (no provider
+ * call, the `classifyInstrument` leaf the importers use) and, when it is not an
+ * equity-class instrument, patch `stoppedReason: "unsupported-asset-type"` so the
+ * following `.exitIf` bails before any model spend — the FIX-605 no-hallucination
+ * discipline, extended to asset type.
+ *
+ * Runs after `checkTickerResolvable`: a symbol that resolves to a price but is a
+ * bond/option/crypto/cash still stops here. Equity AND etf pass (a ticker-shaped
+ * symbol classifies as `equity` from shape alone — precise ETF tagging is a later
+ * provider concern, and FIX-777 is the issue that opens ETF/crypto analysis, at
+ * which point this allow-list widens).
+ */
+export const checkAssetTypeSupported = handler({
+  name: "check-asset-type-supported",
+  inputSchema: analyzeInputSchema,
+  outputSchema: z.void(),
+  sessionStateSchema,
+  execute: async (input, ctx) => {
+    const { assetType } = classifyInstrument(input.ticker);
+    if (assetType === "equity" || assetType === "etf") return;
+    await ctx.session.patchState({
+      stoppedReason: "unsupported-asset-type",
+      stoppedMessage:
+        `${input.ticker} classifies as a ${assetType.replace(/_/g, " ")} — the ` +
+        "analyst bench researches equities only. Analysis of this asset type is " +
+        "not supported yet.",
+      runComplete: true,
+    });
+    // Badge the reports-index row so Past Reports renders the stopped run
+    // distinctly. Additive metadata merge — the four tuple keys are preserved.
+    await ctx.session.setMetadata({
+      metadata: { reportStatus: "stopped" },
+    });
   },
 });
 
