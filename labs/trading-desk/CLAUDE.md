@@ -19,7 +19,7 @@ When modifying this app, follow the conventions below. The patterns here
 are also written up in the project-level docs — read those first if you
 haven't:
 
-- [`docs/contributing/best-practices.md`](../../docs/contributing/best-practices.md) — hard rules (BP-001–BP-037): universal rules + the situational index live here; per-category situational rule text lives in [`docs/contributing/best-practices/`](../../docs/contributing/best-practices/) (e.g. `generators.md`, `resources.md`)
+- [`docs/contributing/best-practices.md`](../../docs/contributing/best-practices.md) — hard rules (BP-001–BP-039): universal rules + the situational index live here; per-category situational rule text lives in [`docs/contributing/best-practices/`](../../docs/contributing/best-practices/) (e.g. `generators.md`, `resources.md`)
 - [`docs/contributing/building-apps.md`](../../docs/contributing/building-apps.md) — patterns and tradeoffs
 - [`docs/architecture/capabilities.md`](../../docs/architecture/capabilities.md) — capability model
 
