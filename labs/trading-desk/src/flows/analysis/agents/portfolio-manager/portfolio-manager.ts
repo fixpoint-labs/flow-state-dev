@@ -24,7 +24,7 @@ import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_5_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
-import { thesisSection } from "../../resources";
+import { memoCitation, thesisSection } from "../../resources";
 import { sessionStateSchema } from "../../state";
 import { loadPrompt } from "../../lib/prompt";
 import { portfolioManagerApproachGenerator } from "./approach";
@@ -136,6 +136,10 @@ export const portfolioDecisionOutputSchema = z.object({
     // mandate-blind run. Never lifts the hard capacity veto.
     mandateOverrideReason: z.string(),
   }),
+  // FIX-676 — URLs the PM actually fetched while corroborating a final claim via
+  // the `corroborate` preset. Null when nothing was fetched and always null on
+  // `fast`. Rendered as a "Sources" footer.
+  citations: z.array(memoCitation).nullable(),
 });
 
 export type PortfolioDecisionOutput = z.infer<typeof portfolioDecisionOutputSchema>;
@@ -163,6 +167,10 @@ export const portfolioManagerGenerator = generator({
       // and the active risk-appetite mandate it is judged against.
       rewardToRisk: true,
       riskMandate: true,
+      // FIX-676 — final corroboration: cost-gated web search+fetch to verify a
+      // specific claim before signing the decision, plus the references ledger.
+      corroborate: true,
+      referencesConsulted: true,
     }),
   ],
   ...definePromptFile(portfolioManagerPrompt),

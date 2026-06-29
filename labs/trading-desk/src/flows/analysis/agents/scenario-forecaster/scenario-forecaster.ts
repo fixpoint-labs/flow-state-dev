@@ -19,7 +19,7 @@ import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_5_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
-import { thesisSection } from "../../resources";
+import { memoCitation, thesisSection } from "../../resources";
 import { sessionStateSchema } from "../../state";
 import { loadPrompt } from "../../lib/prompt";
 import { scenarioForecasterApproachGenerator } from "./approach";
@@ -63,6 +63,10 @@ export const scenarioForecastOutputSchema = z.object({
   scenarios: z.array(scenarioSchema).min(3).max(5),
   distribution: z.enum(["concentrated", "balanced", "barbell", "long-tail"]),
   evidenceBasis: z.enum(["sufficient", "thin"]),
+  // FIX-676 — URLs the forecaster actually fetched via the `reviewReferences`
+  // preset (pull a surfaced link, no fresh search). Null when nothing was
+  // fetched and always null on `fast`. Rendered as a "Sources" footer.
+  citations: z.array(memoCitation).nullable(),
 });
 
 export type ScenarioForecastOutput = z.infer<typeof scenarioForecastOutputSchema>;
@@ -81,6 +85,10 @@ export const scenarioForecasterGenerator = generator({
       phase2DebateFull: true,
       riskCritiquesFull: true,
       highReasoning: true,
+      // FIX-676 — pull a desk-surfaced link to corroborate a scenario trigger;
+      // no fresh search.
+      reviewReferences: true,
+      referencesConsulted: true,
     }),
   ],
   ...definePromptFile(scenarioForecasterPrompt),

@@ -91,6 +91,7 @@ const tradeProposal = {
   holdingPeriod: "months" as const,
   invalidationCriteria: ["weekly close below $132", "DC revenue print misses"],
   dependsOn: ["AI cap-ex cycle length"],
+  citations: null,
 };
 
 describe("Phase 3 writer taps", () => {
