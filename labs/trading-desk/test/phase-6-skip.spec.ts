@@ -292,6 +292,9 @@ function personaCritique(posture: "aggressive" | "conservative") {
     posture,
     raisedRisks: [{ description: "Sample risk", severity: "medium" }],
     proposedAdjustments: { sizing: "unchanged", holdingPeriod: "unchanged", invalidation: "unchanged" },
+    // aggressive/conservative emit an empty dismissedRisks (required field);
+    // omitting it flipped these persona memos to `error` instead of `published`.
+    dismissedRisks: [],
     citations: null,
   });
 }
