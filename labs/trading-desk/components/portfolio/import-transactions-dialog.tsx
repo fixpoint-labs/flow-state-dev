@@ -61,6 +61,10 @@ export function ImportTransactionsDialog({
   const [content, setContent] = useState("");
   const [filename, setFilename] = useState<string | null>(null);
   const [preview, setPreview] = useState<TransactionFileParse | null>(null);
+  // Monotonic token for the in-flight file parse. Choosing a new file bumps it;
+  // a parse completion only applies if it's still the latest (so a slow parse of
+  // an earlier file can't clobber a newer selection).
+  const parseToken = useRef(0);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -83,14 +87,22 @@ export function ImportTransactionsDialog({
   // so it runs in the file handler and the result is held in state (BP-010). A
   // read/parse failure surfaces as a preview error rather than a silent null.
   const handleFile = async (file: File): Promise<void> => {
+    // Clear the prior preview + content UP FRONT so `canImport` can't fire on a
+    // stale preview (old event count) while the new file is still parsing — a
+    // quick Import click would otherwise ingest the new content under the old
+    // gate. Bump the token so a slower earlier parse can't apply out of order.
+    const token = ++parseToken.current;
+    setContent("");
+    setPreview(null);
+    setFilename(file.name);
     try {
       const text = await file.text();
+      const parsed = await detectAndParseTransactionFile(text, file.name);
+      if (parseToken.current !== token) return; // a newer file superseded this one
       setContent(text);
-      setFilename(file.name);
-      setPreview(await detectAndParseTransactionFile(text, file.name));
+      setPreview(parsed);
     } catch (err) {
-      setContent("");
-      setFilename(file.name);
+      if (parseToken.current !== token) return;
       setPreview({
         format: "unknown",
         events: [],
