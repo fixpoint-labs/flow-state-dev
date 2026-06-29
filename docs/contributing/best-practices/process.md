@@ -12,8 +12,9 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Date: 2026-02-15 (updated 2026-06-28: spec-driven)
 - Scope: Process — scoping and tracking a change.
 - Rule:
-  - Every implementation change maps to a spec linked to its Linear issue.
+  - Every implementation change maps to a spec linked to its Linear issue (full `docs/specs/*` spec per BP-037 for non-trivial work).
   - Each spec carries explicit deliverables and verification steps.
+  - Spec-lite is allowed for small, local work: a one-screen agent brief on the issue, or — for a clear-repro bug — its reproduction + regression seam, instead of a full spec doc (see `fsd:implement-issue`, `fsd:quick-fix`).
 - Why: Ties every change to a reviewable unit of intent with its own acceptance criteria, so execution stays accountable to a tracked requirement.
 
 ### BP-004: Public boundary first
@@ -31,7 +32,7 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Status: Superseded (2026-05-19) by [BP-022: Release notes via Changesets](../best-practices.md#bp-022-release-notes-via-changesets)
 - Date: 2026-02-15
 - Scope: Process — release notes (historical).
-- Rule (historical): a pre-Changesets requirement to keep per-milestone changelog artifacts plus a root `changelog.md`. Fully superseded by BP-022 (Changesets); retained only as a numbered placeholder.
+- Rule (historical): a pre-Changesets changelog requirement. Its root-`changelog.md` half is superseded by BP-022 (per-package CHANGELOGs via Changesets). Retained as a numbered placeholder; consult `AGENTS.md` for any remaining process-artifact requirements.
 
 ### BP-006: Keep planning/tracking labels out of code and tests
 
@@ -39,9 +40,9 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Date: 2026-02-16 (updated 2026-06-28: generalized to all tracking labels)
 - Scope: Code & test hygiene.
 - Rule:
-  - Keep planning/tracking labels — spec IDs, Linear refs, milestone names — in planning and documentation artifacts only.
-  - Do not reference them in runtime code, package code comments, or test assertions/titles.
-- Why: Tracking labels rot in code and couple runtime artifacts to transient planning state.
+  - Don't use planning/tracking labels (milestone names, spec IDs, Linear refs) as **identifiers in code or test logic** — no variable, type, function, or test title named after a milestone or ticket.
+  - A `FIX-NNN` reference is fine as a **provenance or TODO pointer in a comment** (e.g. a dual-read cleanup marker per BP-030). The ban is on labels driving code/test structure, not on citing a ticket in a comment.
+- Why: Tracking labels as identifiers couple runtime artifacts to transient planning state and rot; as comment pointers they add useful provenance.
 
 ### BP-008: Keep README onboarding-first and current
 

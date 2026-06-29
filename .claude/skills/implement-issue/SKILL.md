@@ -19,7 +19,7 @@ Both disciplines are embedded into the implementer sub-agent prompt at dispatch 
 
 ## Workflow
 
-**Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open PR (`gh pr list --search "FIX-N in:title,body" --state open` or the URL recorded on the Linear issue). If one exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
+**Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open **implementation** PR (`gh pr list --search "FIX-N in:title,body" --state open`, or the URL recorded on the Linear issue). **Ignore the docs-only spec PR** (`spec(FIX-N)` title / `spec/FIX-N` branch from `fsd:create-spec`) — that's the spec artifact, not the implementation; matching it would wrongly jump to PR-feedback mode and skip the build. If an implementation PR exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
 
 ### Step 1: Pull the Linear Issue
 

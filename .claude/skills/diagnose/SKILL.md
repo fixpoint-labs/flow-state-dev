@@ -14,7 +14,7 @@ Before diagnosing, orient yourself:
 - `docs/architecture/overview.md` — system architecture and package roles
 - `docs/architecture/<area>.md` — deep dives (e.g. `items.md` before touching items/rendering/stream, `streaming.md`, `execution-and-errors.md`, `state-and-scopes.md`)
 - `docs/contributing/architecture-reference.md` — locked contracts quick reference
-- `docs/contributing/best-practices.md` — universal standards + situational index (BP-001–BP-036); situational rule text lives in `docs/contributing/best-practices/<category>.md`
+- `docs/contributing/best-practices.md` — universal standards + situational index (BP-001–BP-037); situational rule text lives in `docs/contributing/best-practices/<category>.md`
 - `AGENTS.md` — process protocol and code style rules
 
 **Related skills — pick the right one:**
