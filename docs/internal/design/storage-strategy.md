@@ -148,6 +148,7 @@ Tiers: **First-class** (framework-maintained, production-supported, in the test 
 |---|---|---|---|---|---|---|---|
 | **In-memory** | ✓ | ✓ (bus) | — | ✓ | — | First-class | Test/dev only |
 | **SQLite** (`store-sqlite`) | ✓ (read-mutate-rewrite deltas) | ✓ (poll) | sqlite-vec (proposed) | ✓ | — | First-class | Perfect local/single-host; impossible distributed |
+| **Filesystem** (`filesystemStores`, in `engine`) | ✓ (read-mutate-rewrite via `casUpdate`) | ✓ (poll) | — | ✓ | — | First-class | Local dev persistence across restarts; not for production concurrency |
 | **Postgres** (`store-postgres`) | ✓ (JSONB deltas) | ✓ (LISTEN/NOTIFY *wakeup*) | pgvector | ✓ | relational/AGE-optional | First-class | Great single-host & cloud; painful serverless-edge; NOTIFY is wakeup-only |
 | **Valkey / Redis** (proposed) | KV CAS (Lua/WATCH) | ✓ (Streams + Pub/Sub) | valkey-search | — | — | Community | Trivial single-host; Upstash-REST for serverless; default to Valkey/BSD, Redis-8-AGPL flagged |
 | **MongoDB** (FIX-83) | ✓ (`$set`/`$inc`/`$push`, `findOneAndUpdate` CAS) | ✓ (change streams, durable/resumable) | Atlas Vector (Atlas-only) | GridFS | — | Community | Cloud/Atlas sweet spot; replica-set cost self-host |
@@ -157,12 +158,12 @@ Tiers: **First-class** (framework-maintained, production-supported, in the test 
 
 ### 4.4 Composition matrix (recommended per hosting dimension)
 
-Defaults are recommendations, not mandates. Each dimension lists the **default** and a **scale-up** path that stays behind the same contracts.
+Defaults are recommendations, not mandates. Each dimension lists the **default** and a **scale-up** path that stays behind the same contracts. **Important — "today" vs. "target":** today the slot model resolves `subscribeToEvents` from whatever backs `primary` (there is no `events` slot yet to route only the subscription path elsewhere), and the shipped serverless adapter is pooled, not HTTP-driver. The compositions below are marked accordingly; the cross-backend splits become expressible only after the **events-slot** and **vector-slot** follow-ups (§5 steps 3–4) land. Do not publish the target splits as current guidance until then (§9 carries this caveat).
 
-- **Local dev** — *Default:* SQLite (`primary`) + in-memory bus for subscribe. *Why:* zero-infra, embedded, dev/prod parity on the records contract. *Vectors:* sqlite-vec when FIX-142 lands. Correctness > scale.
-- **Single host** (Railway / Fly / VPS) — *Default:* Postgres (`primary` + pgvector for the vector slot), LISTEN/NOTIFY for subscribe. *Scale-up:* add Valkey or NATS for streams/notify behind `subscribeToEvents` if fan-out grows. One DB covers records + vectors + wakeup; lowest ops surface.
-- **Cloud / distributed** (K8s / ECS) — *Default:* Postgres for records + vectors; **Valkey (or NATS JetStream) for streams/pub-sub** behind the events contract once cross-instance fan-out and durable replay matter (LISTEN/NOTIFY's global-commit lock is the documented ceiling). *Alternative:* MongoDB for records (change streams give durable resumable events in one engine) + Atlas Vector. Bring-your-own-DB.
-- **Serverless / edge** — *Default:* Postgres via HTTP driver (Neon/Supabase pooler) for records + pgvector; **Upstash (REST) for streams/notify** — the only clean fit for the no-long-connection constraint. *Avoid:* LISTEN/NOTIFY (breaks through poolers), self-host NATS/Valkey from functions (connection model fights ephemerality). This is the dimension where the one-binary thesis breaks and composition earns its keep.
+- **Local dev** — *Today:* SQLite (`primary`) with SQLite's polling live tail. Zero-infra, embedded, dev/prod parity on the records contract. *Target (after the events slot):* swap only the subscription path to the in-memory bus for lower-latency local tail. *Vectors:* sqlite-vec when FIX-142 lands. Correctness > scale.
+- **Single host** (Railway / Fly / VPS) — *Today:* Postgres (`primary`; pgvector for vectors once the vector slot lands), LISTEN/NOTIFY for subscribe. *Scale-up:* add Valkey or NATS for streams/notify behind `subscribeToEvents` once the events slot exists and fan-out grows. One DB covers records + vectors + wakeup; lowest ops surface.
+- **Cloud / distributed** (K8s / ECS) — *Today:* Postgres for records (LISTEN/NOTIFY tail). *Target:* **Valkey (or NATS JetStream) for streams/pub-sub** behind the events contract once cross-instance fan-out and durable replay matter (LISTEN/NOTIFY's global-commit lock is the documented ceiling). *Alternative:* MongoDB for records (change streams give durable resumable events in one engine) + Atlas Vector. Bring-your-own-DB.
+- **Serverless / edge** — *Today:* the shipped path is Vercel/Neon pooled Postgres (`vercelPostgresStores()` — `pg.Pool` + optional Neon WebSocket client) with polling live tail. *Target:* Postgres via HTTP driver for records + **Upstash (REST) for streams/notify** — the clean fit for the no-long-connection constraint — which needs both the events slot and an Upstash adapter. *Avoid:* LISTEN/NOTIFY (breaks through poolers), self-host NATS/Valkey from functions (connection model fights ephemerality). This is the dimension where the one-binary thesis breaks and composition earns its keep.
 
 ### 4.5 Resolution of the eleven open questions
 
@@ -192,12 +193,12 @@ This stays a *documented pattern with a thin sharing seam* (expose the pool), no
 
 ## 5. Implementation Sequence
 
-This issue produces the **document** (this file + the Linear spec + a persistence-overview docs page) and **spawns scoped follow-ups**. No adapter code lands here. Steps are ordered; later steps are independently specced issues.
+This issue produces the **document** (this file + the Linear spec) and **spawns scoped follow-ups**. The user-facing docs extension (§9) and adapter README notes are part of the FIX-664 *deliverable* but are executed at implementation time — they are **not** in this spec-authoring PR, which adds only the internal strategy doc. So FIX-664 must not be closed from this commit: the public guidance (hosting-shape composition, the LISTEN/NOTIFY ceiling, resource-vs-table) stays stale until step 2 lands. No adapter code lands here either. Steps are ordered; later steps are independently specced issues.
 
 1. **Publish this strategy** (this doc) + reframe FIX-664 + post the decision summary to Linear. *Verify:* doc attached, issue reframed to problem/outcomes, In Spec Review.
-2. **Add a persistence-overview docs page** consolidating §4.2–§4.4 for users (§9). *Verify:* page renders, sidebar placed, cross-linked. *Depends on:* step 1.
-3. **Spawn: events-as-a-slot** — reconcile FIX-362's EventStore-config split with FIX-569's `subscribeToEvents`/`getEvents`/`persistEvents` surface; formalize an `events` capability slot so events can route to a cheaper/append-only backend. *Verify (in that issue):* a profile can place events on a different adapter than records; conformance test passes.
-4. **Spawn: vector-store capability shape** — the `VectorStore` slot + per-adapter impls (pgvector first), unblocking FIX-142. *Verify (there):* `ctx.resources.search()` returns ranked results against pgvector; adapters without vectors don't fill the slot.
+2. **Extend the existing `apps/docs/docs/persistence/overview.md`** with §4.2–§4.4 (composition by hosting shape, the LISTEN/NOTIFY ceiling framing, resource-vs-table), plus the store README notes (§9). *Verify:* page renders, cross-linked; only *shipped-today* compositions are stated as current, target splits labeled future. *Depends on:* step 1, and ideally steps 3–4 for the cross-backend splits.
+3. **Spawn: events-as-a-slot** — reconcile FIX-362's EventStore-config split with FIX-569's `subscribeToEvents`/`getEvents`/`persistEvents` surface; formalize an `events` capability slot so events can route to a cheaper/append-only backend (this is what makes the local/cloud/serverless subscription splits above expressible). *Verify (in that issue):* a profile can place events on a different adapter than records; conformance test passes.
+4. **Spawn: vector-store capability shape** — the `VectorStore` slot + per-adapter impls (pgvector first), unblocking FIX-142. Defining this slot's surface (a `VectorStore` contract and/or the resource search API) is part of the follow-up; the current `ResourceRegistry` has no search method today. *Verify (there):* the new vector-search surface returns ranked results against pgvector; adapters without vectors don't fill the slot.
 5. **Spawn: stream adapters behind `subscribeToEvents`** — a Valkey/Redis adapter and/or a NATS JetStream adapter, *when* a deployment outgrows LISTEN/NOTIFY. *Verify (there):* cross-instance live tail works behind the unchanged interface; LISTEN/NOTIFY path unaffected.
 6. **Spawn: `blobs` slot formalization** — wire `ContentStore` to an S3-compatible adapter through the reserved `blobs` slot. *Verify (there):* content reads/writes route to S3; `primary` no longer mandatory for blobs.
 7. **Spawn: app-owned-tables guidance** — a docs page + the pool-sharing seam, generalized from trading-desk (FIX-772). *Verify (there):* a second app can adopt the pattern from docs alone.
@@ -216,13 +217,13 @@ Steps 3–7 are independent of each other and can be prioritized separately; non
 | Serverless + LISTEN/NOTIFY | Breaks through poolers — strategy steers serverless to Upstash; docs must warn explicitly. |
 | AGPL-averse consumer + Redis 8 | Adapter links a permissive client; document the Valkey (BSD) default and the Redis-8-AGPL flag so legal teams can choose. |
 | Traces in-memory on Postgres | Pre-existing undocumented asymmetry (§3.1) — flag as a follow-up (§8), decide durable-vs-external explicitly. |
-| Vectors on an adapter without a vector leg | Slot simply unfilled; `ctx.resources.search()` surfaces a typed "no vector backend configured" error, not a silent empty result. |
+| Vectors on an adapter without a vector leg | Slot simply unfilled; the vector-search surface (defined in the FIX-142 follow-up) surfaces a typed "no vector backend configured" error, not a silent empty result. |
 
 ---
 
 ## 7. Testing / Validation Strategy
 
-**Goal & goal check.** This is a strategy/decision document; **no real-LLM goal check applies** — there is no observable runtime behavior to exercise. Justification: the deliverable is a set of architectural decisions and docs, validated by review, not by a flow run. The *spawned* issues (steps 3–7) each carry their own goal checks and conformance tests (e.g. cross-instance live-tail behind `subscribeToEvents`; `ctx.resources.search()` against pgvector).
+**Goal & goal check.** This is a strategy/decision document; **no real-LLM goal check applies** — there is no observable runtime behavior to exercise. Justification: the deliverable is a set of architectural decisions and docs, validated by review, not by a flow run. The *spawned* issues (steps 3–7) each carry their own goal checks and conformance tests (e.g. cross-instance live-tail behind `subscribeToEvents`; the FIX-142 vector-search surface against pgvector).
 
 **Validation discipline for this issue:** human spec review (the issue moves to *In Spec Review*), plus the existing store-conformance harness (the FIX-569 per-store factory) as the template every new slot adapter must satisfy. Each follow-up that ships code routes through `fsd:tdd` (features) or `fsd:diagnose` (bugs) and reuses the conformance factory as its regression seam.
 
@@ -237,7 +238,7 @@ Steps 3–7 are independent of each other and can be prioritized separately; non
 - **Deepening opportunities flagged (follow up via `fsd:improve-codebase-architecture`):**
   - `primary` resolves ten sub-stores all-or-nothing (`resolve-slots.ts`) — the slot machinery exists but only one slot projects sub-stores; formalizing `events`/`vectors`/`blobs` slots is the deepening.
   - Traces in-memory only on Postgres — undocumented asymmetry; decide durable-vs-external.
-  - `resourceState` is absent from `PRIMARY_REGISTRY_SLOTS` in `resolve-slots.ts` while present in `StoreRegistry`. Runtime coverage is fine (adapters return the full registry including `resourceState`; the in-memory fallback covers any gap), so this is a *declaration-only* asymmetry — the slot list under-reports what `primary` actually backs. Either add `resourceState` to the list or document that the list is illustrative, not exhaustive. Low-risk, but worth resolving when the events/vectors/blobs slots formalize.
+  - **`resourceState` is absent from `PRIMARY_REGISTRY_SLOTS` — a durability/conformance risk, not just cosmetics.** The first-party adapters happen to return a full registry including `resourceState`, so today nothing breaks. But `PRIMARY_REGISTRY_SLOTS` is the *exported* list iterated by the adapter conformance test (`packages/engine/test/flowstate/store-adapter.test.ts`), and `resolveStores()` silently fills any missing sub-store from in-memory. So a third-party durable `primary` adapter written to that list could **pass conformance while leaving `resourceState` ephemeral** — durable everywhere except resource state, with no test catching it. Because this strategy formalizes the slot contract, **adding `resourceState` to `PRIMARY_REGISTRY_SLOTS` and the conformance list should be a prerequisite of the events-slot formalization (step 3), not a later cleanup.**
   - No store-level resource-mutation log (changes live only on the SSE emitter) — a future audit/webhook seam, out of scope here.
 
 ---
