@@ -1,6 +1,6 @@
 ---
 name: fsd:create-spec
-description: Pull a Linear issue, deeply research implementation approaches using web sources and codebase patterns, validate with multiple agents, and produce a comprehensive implementation spec attached to the Linear issue.
+description: Pull a Linear issue, deeply research implementation approaches using web sources and codebase patterns, validate with multiple agents, then publish the spec as a versioned doc at docs/specs/<ISSUE-ID>.md opened as a spec PR for automated review and mirrored to the Linear issue (repo and Linear kept in sync).
 argument-hint: "<Linear issue ID or identifier, e.g. FSD-142>"
 ---
 
@@ -11,6 +11,8 @@ You are a specification research and authoring agent. Given a Linear issue, your
 **Specs prevent wasted implementation cycles.** A good spec means the implementer doesn't have to make architectural decisions, guess at edge cases, or discover conflicts mid-PR. Invest the research time upfront so implementation is mechanical.
 
 **Issues describe the problem; specs describe the solution.** The Linear issue is the canonical statement of *what we are trying to accomplish and why* — the user/business/developer outcome. The spec document is the canonical statement of *how we will accomplish it* — architecture, file changes, sequencing, tests. Once a spec exists, the issue must not duplicate or contradict its solution detail. Solution detail in the issue rots faster than the spec, fragments authority, and leaves readers unsure which to trust.
+
+**The spec lives in two synced places.** It is authored as a versioned doc at `docs/specs/<ISSUE-ID>.md` (the reviewable artifact, opened as its own PR so the project's automated reviewers critique the design before any code is written) and mirrored to the Linear issue's document. The two copies are the same content and must be kept in sync — see Step 6. Reviewing the spec as a PR is the cheapest place to fix a design: a doc edit, not a code rewrite.
 
 This split has a consequence: **after writing the spec, you must reframe the issue.** Many issues in this project were written before this split was the norm and contain implementation specifics, file paths, and pseudo-architecture sketches. Those details either belong in the spec (and are now redundant) or are stale (and now contradict the spec). Step 6 below makes that reshaping a required, not optional, step.
 
@@ -379,18 +381,32 @@ Launch an `Explore` sub-agent to review section 9 (Documentation Plan) specifica
 
 Address any issues the validators surface. If there are unresolvable questions, add them to the "Open Questions" section.
 
-### Step 6: Publish the Spec to Linear
+### Step 6: Publish the spec — repo PR + Linear (kept in sync)
 
-1. **Check for existing spec document** on the issue:
-   - If one exists, update it with the new content using `update_document`
-   - If none exists, create a new one with `create_document`, linked to the issue
+The spec is published in two places that must hold identical content: a versioned doc in the repo (the reviewable artifact) and the Linear document (the issue-attached copy).
 
-2. **Update issue relations and comment**:
-   - Add/update any dependency relations discovered during research (using `save_issue` with `blockedBy` or `blocks`)
-   - Add a comment summarizing: "Implementation spec created/updated. Open questions: [list if any]." Include the **Key Decisions & Ramifications (top 5)** from spec section 3 verbatim — the durable record lives on the issue so a reviewer can evaluate the direction without opening the full spec.
-   - If open questions exist, flag the issue for discussion (don't move it to "In Progress" — it's not ready)
+1. **Write the spec to `docs/specs/<ISSUE-ID>.md`** (e.g. `docs/specs/FIX-775.md`). This is the canonical reviewable artifact.
 
-3. **Move the issue to "In Spec Review"** with `save_issue` (set `state` to the team's "In Spec Review" workflow state). This signals the spec is ready for human review before implementation begins. Do this *after* the spec document is attached and the publishing comment is posted, so anyone navigating to the issue from the status change finds the spec already linked. If the team has no "In Spec Review" state, fall back to the closest equivalent and note it in the publishing comment.
+2. **Open a spec PR.** Branch `spec/<ISSUE-ID>`, commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>`. It is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the spec *before* any code is written.
+
+3. **Publish to Linear.** Check for an existing spec document on the issue: `update_document` if one exists, else `create_document` linked to the issue — with the same content as the repo doc.
+
+4. **Update issue relations and comment**:
+   - Add/update dependency relations discovered during research (`save_issue` with `blockedBy` / `blocks`).
+   - Add a comment summarizing: "Implementation spec created/updated. Open questions: [list if any]." Include the **Key Decisions & Ramifications (top 5)** from spec section 3 verbatim, and a link to the **spec PR**. The durable record lives on the issue so a reviewer can evaluate the direction without opening the full spec.
+   - If open questions exist, flag the issue for discussion.
+
+5. **Keep the two copies in sync.** `docs/specs/<ISSUE-ID>.md` and the Linear document are the same content. Any later edit to either — most often from spec-PR review (Step 6.5) — is mirrored to the other in the same change set. Never let them drift.
+
+6. **Move the issue to "In Spec Review"** with `save_issue`, *after* the repo doc, PR, Linear document, and publishing comment are all in place. If the team has no "In Spec Review" state, fall back to the closest equivalent and note it in the comment.
+
+### Step 6.5: Respond to spec-PR review
+
+The spec PR will draw automated review (the same bots that review code PRs). Treat their feedback as a cheap chance to fix the design on paper:
+
+- **Apply clear, obvious fixes and improvements directly** — factual corrections, missed edge cases, broken references, tightening, a better-scoped approach the reviewer is plainly right about. Update **both** the repo `docs/specs/<ISSUE-ID>.md` and the Linear document (keep them in sync), and reply on the thread noting the fix.
+- **Escalate debatable feedback to the user.** When a suggestion is a judgment call, a scope change, or a direction the reviewer and the spec could each reasonably defend, don't silently accept it — surface it with the trade-off (use `AskUserQuestion` for a crisp choice) and let the user decide.
+- The spec PR is done when review is addressed and the user has signed off on the direction; `fsd:implement-issue` then proceeds from the agreed spec.
 
 ### Step 7: Reframe the Issue Description
 
@@ -432,7 +448,7 @@ This step is required, not optional. The spec now exists as the authoritative so
 
 **7.5. Apply the update** with `save_issue`, replacing the description. If the existing description had content worth preserving for archival reasons (e.g., a historical decision thread), put that in a comment rather than the live description so the description stays clean.
 
-**7.6. Note the reshape in the publishing comment** added in Step 6.2 — extend it with: "Issue description reframed: [one-sentence summary of what was moved out / what now leads]." This gives reviewers a heads-up that the issue text changed shape, not just content.
+**7.6. Note the reshape in the publishing comment** added in Step 6.4 — extend it with: "Issue description reframed: [one-sentence summary of what was moved out / what now leads]." This gives reviewers a heads-up that the issue text changed shape, not just content.
 
 ### Step 8: Present Summary
 
@@ -446,7 +462,7 @@ Present the completed spec to the user:
 6. **Issue reshape summary**: one or two sentences on how the Linear issue description was reframed — what implementation detail was moved out, what now leads, and whether anything was found stale/contradicted. If the issue needed no reshape because it was already PM/business-shaped, say so explicitly.
 7. **Dependencies identified**: what must land before this can start
 8. **Open questions**: anything that needs the user's input before implementation (including any open docs-placement questions)
-9. **Links**: the Linear issue and the spec document
+9. **Links**: the Linear issue, the spec document, and the spec PR
 
 If there are open questions, ask the user to resolve them. Once resolved, update the spec document with the decisions.
 

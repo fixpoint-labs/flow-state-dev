@@ -8,7 +8,7 @@ You are an implementation agent. Given a Linear issue ID, your job is to pull th
 
 ## Core Principles
 
-**The spec is the source of truth, not the issue description.** The issue description says *what* and *why*. The attached Linear document (the spec) says *how*. Always read both, but when they conflict on implementation details, the spec wins. If no spec exists, behavior depends on category (see Step 2).
+**The spec is the source of truth, not the issue description.** The issue description says *what* and *why*. The spec says *how* — it lives at `docs/specs/<ISSUE-ID>.md` in the repo (the reviewed artifact) and is mirrored to the attached Linear document; the two are kept in sync, so read either. Always read both issue and spec, but when they conflict on implementation details, the spec wins. If no spec exists, behavior depends on category (see Step 2).
 
 **Bugs and features follow different disciplines.** Step 4 reads the Linear category label and routes:
 
@@ -27,7 +27,7 @@ Fetch everything about the issue:
 
 1. `get_issue` with `includeRelations: true` — get the full issue: description, labels, priority, relations
 2. `list_comments` — read any discussion or decisions
-3. **Fetch attached documents** — use `get_document` for each attached document. The spec is typically the document titled `{ISSUE-ID}: ... — Implementation Spec`
+3. **Read the spec** — prefer `docs/specs/<ISSUE-ID>.md` in the repo; otherwise fetch the attached Linear document with `get_document` (titled `{ISSUE-ID}: ... — Implementation Spec`). They're kept in sync; if both exist and differ, reconcile before implementing.
 4. If the issue has sub-tasks, fetch those too — they may represent the intended PR breakdown
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search with `list_issues` using it as a query.
