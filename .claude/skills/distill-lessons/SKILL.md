@@ -112,24 +112,26 @@ cutting is the point.
 
 ### 5. Draft in house style
 
-Keep entries **terse — the rule, not the proof.** Best practices are decided
-guidelines, not arguments, and the file is loaded into agent context: there is no
-`Why`/proof section. Use the template at the bottom of `best-practices.md`:
+Keep entries **terse**: the rule plus a **one-sentence `Why`** stating its
+purpose — when it applies and what it prevents (a few bullets only if genuinely
+needed). The `Why` is purpose, not evidence — don't write a proof or incident
+dump. Use the template at the bottom of `best-practices.md`:
 
 ```
 ### BP-XXX: <name>
 - Status: Active
 - Date: YYYY-MM-DD
-- Scope: Universal | <the situation it applies to>   (optional; use when it clarifies altitude)
+- Scope: Universal | <the situation it applies to>
 - Rule:
   - <imperative, concrete; name the trigger and the action>
+- Why: <one sentence: the rule's purpose and when it applies>
 ```
 
 - **Number sequentially** after the last existing BP. **Append; never overwrite.**
   If you're replacing an older BP, mark the old one `Superseded (date) by …` and
   link forward — don't delete it.
 - Ground the rule in a real incident as your *gate* for adding it (Step 3), but
-  don't write the proof into the entry.
+  keep the proof out of the entry — the `Why` is a one-sentence purpose, not the incident.
 - Match the voice: terse imperative Rule bullets.
 
 ### 6. Review gate (required — do not skip)

@@ -16,3 +16,4 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - **Comment every `useEffect`** with what side effect it performs and why it exists.
   - **Comment non-obvious logic** — complex conditions, non-trivial memo dependencies, workarounds.
   - Derive flags (`isStreaming`, `canResume`, button-enabled) from the *complete* input set (including `enabled` / per-action handlers / resolved state); fire change-signals only on a *real* change, not no-op patches or filtered items (see BP-035).
+- Why: `useMemo` is synchronous and deterministic — deriving state through `useEffect` adds a render cycle and a class of stale-intermediate-state and timing bugs.
