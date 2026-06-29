@@ -27,7 +27,11 @@ import type {
   HoldingAttributes,
   ImportMode,
 } from "@/src/flows/portfolio/portfolio-schema";
-import { holdingAttributesSchema } from "@/src/flows/portfolio/portfolio-schema";
+import {
+  assetClassSchema,
+  assetTypeSchema,
+  holdingAttributesSchema,
+} from "@/src/flows/portfolio/portfolio-schema";
 import type {
   IngestReport,
   LedgerEventInput,
@@ -183,6 +187,18 @@ function parseAttributes(value: unknown): HoldingAttributes {
   return parsed.success ? parsed.data : { kind: "none" };
 }
 
+/** Validate a stored asset-class / asset-type `text` column against its enum,
+ *  degrading an unexpected value (a direct SQL edit, a future rollback) to
+ *  `"equity"` rather than casting it blind — the {@link parseAttributes}
+ *  read-boundary precedent, so the UI's `TYPE_LABELS[assetType]` and the
+ *  per-type valuation switch never see an out-of-enum value. */
+function parseAssetClass(value: string): AssetClass {
+  return assetClassSchema.safeParse(value).success ? (value as AssetClass) : "equity";
+}
+function parseAssetType(value: string): AssetType {
+  return assetTypeSchema.safeParse(value).success ? (value as AssetType) : "equity";
+}
+
 /** Map a holdings row to the {@link HoldingRow} shape, coercing numerics and
  *  validating the asset-taxonomy columns (FIX-773). */
 function mapHolding(row: typeof holdings.$inferSelect): HoldingRow {
@@ -192,8 +208,8 @@ function mapHolding(row: typeof holdings.$inferSelect): HoldingRow {
     quantity: Number(row.quantity),
     costBasis: toNumber(row.costBasis),
     acquiredDate: row.acquiredDate,
-    assetClass: row.assetClass as AssetClass,
-    assetType: row.assetType as AssetType,
+    assetClass: parseAssetClass(row.assetClass),
+    assetType: parseAssetType(row.assetType),
     attributes: parseAttributes(row.attributes),
   };
 }

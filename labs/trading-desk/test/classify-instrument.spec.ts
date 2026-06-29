@@ -10,7 +10,10 @@
  * invalid attributes shape would corrupt the holdings table.
  */
 import { describe, expect, it } from "vitest";
-import { classifyInstrument } from "../src/flows/portfolio/classify-instrument";
+import {
+  classifyInstrument,
+  isOccOptionSymbol,
+} from "../src/flows/portfolio/classify-instrument";
 import { holdingAttributesSchema } from "../src/flows/portfolio/portfolio-schema";
 
 describe("classifyInstrument — symbol-shape inference (one case per rule)", () => {
@@ -157,9 +160,27 @@ describe("classifyInstrument — carries the statement mark (FIX-773 Slice C)", 
     expect(r.attributes).toMatchObject({ kind: "bond", markPrice: null });
   });
 
+  it("rejects a negative or zero mark (OCR/typo) → null, never a negative value", () => {
+    expect(classifyInstrument("912828YK0", { price: -98.5 }).attributes).toMatchObject({
+      kind: "bond",
+      markPrice: null,
+    });
+    expect(classifyInstrument("912828YK0", { price: 0 }).attributes).toMatchObject({
+      kind: "bond",
+      markPrice: null,
+    });
+  });
+
   it("stamps the mark onto a HINTED bond too", () => {
     const r = classifyInstrument("XYZ", { assetTypeHint: "bond", price: 101.25 });
     expect(r.attributes).toMatchObject({ kind: "bond", markPrice: 101.25 });
+  });
+
+  it("isOccOptionSymbol recognizes an OCC option, rejects a plain ticker/CUSIP", () => {
+    expect(isOccOptionSymbol("AAPL240621C00190000")).toBe(true);
+    expect(isOccOptionSymbol("AAPL  240621C00190000")).toBe(true); // padded form
+    expect(isOccOptionSymbol("AAPL")).toBe(false);
+    expect(isOccOptionSymbol("912828YK0")).toBe(false); // CUSIP, not an option
   });
 
   it("stamps markPrice onto an inferred option, keeping its parsed fields", () => {

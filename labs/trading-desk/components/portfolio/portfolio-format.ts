@@ -56,18 +56,6 @@ export function formatPercent(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-/** Unrealized P/L = (price − avg cost) × quantity. `null` if either price or
- *  cost basis is unknown — never fabricated from a partial input. */
-export function unrealizedPL(
-  quantity: number,
-  costBasis: number | null,
-  price: number | null,
-): number | null {
-  if (price === null || costBasis === null) return null;
-  if (!Number.isFinite(price) || !Number.isFinite(costBasis)) return null;
-  return (price - costBasis) * quantity;
-}
-
 /** Weight = this holding's market value / a total. `null` when either is
  *  unknown or the total is zero. */
 export function weight(

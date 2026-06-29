@@ -50,6 +50,15 @@ function looksLikeCusip(symbol: string): boolean {
   return /^[A-Z0-9]{9}$/.test(symbol) && /[0-9]/.test(symbol);
 }
 
+/** A carried statement mark is valid only when it is a finite POSITIVE price.
+ *  A bond/option mark cannot be negative or zero, so a typo / OCR error like
+ *  `-98.5` or `0` becomes a null mark (the row then shows "—") rather than a
+ *  value that would subtract the holding from NAV — the same real-money gate
+ *  cost-basis import already applies. */
+function validMarkPrice(price: number | null | undefined): number | null {
+  return typeof price === "number" && Number.isFinite(price) && price > 0 ? price : null;
+}
+
 /** Crypto USD pair, e.g. `BTC-USD` / `ETH-USD`. */
 function looksLikeCryptoPair(symbol: string): boolean {
   return /^[A-Z0-9]{2,10}-USD$/.test(symbol);
@@ -95,10 +104,18 @@ function parseOccOption(
     expiry,
     right: rightChar === "C" ? "call" : "put",
     multiplier: 100,
-    // The carried statement mark (FIX-773 Slice C): a finite price → stamped, else
-    // null. An option is valued at this mark × multiplier (no live quote).
-    markPrice: typeof markPrice === "number" && Number.isFinite(markPrice) ? markPrice : null,
+    // The carried statement mark (FIX-773 Slice C): a finite positive price →
+    // stamped, else null. An option is valued at this mark × multiplier (no quote).
+    markPrice: validMarkPrice(markPrice),
   };
+}
+
+/** Whether a symbol is an OCC/OSI option (the 18–21-char form the equity ticker
+ *  regex rejects). Exported so the CSV importer can widen its acceptance gate to
+ *  let an option row through to the classifier instead of rejecting it as an
+ *  "invalid ticker" before it is ever classified. */
+export function isOccOptionSymbol(symbol: string): boolean {
+  return parseOccOption(symbol.trim().toUpperCase(), null) !== null;
 }
 
 /** The cash-equivalent classification (CASH lines + money-market funds). */
@@ -126,7 +143,7 @@ function bondClassification(
       coupon: null,
       maturity: null,
       yield: null,
-      markPrice: typeof markPrice === "number" && Number.isFinite(markPrice) ? markPrice : null,
+      markPrice: validMarkPrice(markPrice),
     },
   };
 }

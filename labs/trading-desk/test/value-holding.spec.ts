@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveHoldingPrice,
   holdingMarketValue,
+  holdingUnrealizedPL,
 } from "../src/flows/portfolio/value-holding";
 import type { Holding } from "../src/flows/portfolio/portfolio-schema";
 
@@ -117,5 +118,29 @@ describe("holdingMarketValue — type-resolved value (option multiplier)", () =>
 
   it("null price → null value (the real-money gate)", () => {
     expect(holdingMarketValue(holding(), undefined)).toBeNull();
+  });
+});
+
+describe("holdingUnrealizedPL — type-aware P/L", () => {
+  it("equity uP/L = (price − cost) × quantity", () => {
+    const h = holding({ quantity: 10, costBasis: 100 });
+    expect(holdingUnrealizedPL(h, { price: 120 })).toBe(200);
+  });
+
+  it("option uP/L scales by the contract multiplier, like its value", () => {
+    const h = holding({
+      quantity: 2,
+      costBasis: 5.2,
+      assetType: "option",
+      assetClass: "equity",
+      attributes: { kind: "option", underlying: "AAPL", strike: 190, expiry: "2026-06-21", right: "call", multiplier: 100, markPrice: 12.4 },
+    });
+    // (12.4 − 5.2) × 2 × 100 = 1440 — NOT 14.40 (the pre-fix unscaled bug).
+    expect(holdingUnrealizedPL(h, undefined)).toBeCloseTo(1440, 6);
+  });
+
+  it("null cost basis → null uP/L (never fabricated)", () => {
+    const h = holding({ costBasis: null });
+    expect(holdingUnrealizedPL(h, { price: 120 })).toBeNull();
   });
 });

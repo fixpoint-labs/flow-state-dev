@@ -286,8 +286,9 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   and `asset_type` (one of `equity / etf / mutual_fund / bond / money_market /
   crypto / option / other`), plus a discriminated `attributes` jsonb column that
   carries per-type fields — bond: `cusip / coupon / maturity / yield` + carried
-  `markPrice / markAsOf`; option: `underlying / strike / expiry / right /
-  multiplier` + mark; cash_equivalent: `yield`. Classification is denormalized
+  `markPrice` (a finite positive statement mark; a negative/zero OCR typo is
+  rejected to null); option: `underlying / strike / expiry / right / multiplier`
+  + mark; cash_equivalent: `yield`. Classification is denormalized
   per holding row; a security-master table is a deferred option, not built. The
   classifier lives in `src/flows/portfolio/classify-instrument.ts`.
 - **Domain types vs persistence.** `accountStateSchema` / `holdingSchema`
@@ -307,11 +308,13 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   server-side (never trusts the client) and returns an `ImportReport`. Default
   mode is `upsert` (non-destructive); `replace-account` is destructive, non-atomic
   (RISK-P6), and requires a typed `REPLACE` confirmation. FIX-773 added two
-  optional columns: `assetType` (synonyms: `assettype`, `type`, `assetclass`) — a
+  optional columns: `assetType` (synonyms: `assettype`, `type` — NOT `assetclass`,
+  which is a class-level column whose values aren't valid instrument types) — a
   per-row classification hint; absent or unrecognized values are inferred from
   the symbol shape server-side — and `markPrice` (the carried statement mark the
   PDF round-trip uses for bond and option rows). Non-equity rows (bond CUSIPs,
-  crypto pairs) now import as typed holdings rather than being rejected. See
+  crypto pairs, and OCC option symbols — which the equity ticker regex rejects but
+  the importer now accepts) import as typed holdings rather than being rejected. See
   `docs/portfolio-csv-format.md`.
 - **PDF import** uploads the PDF BYTES and extracts the text SERVER-SIDE. The
   dialog (`import-pdf-dialog.tsx`) base64-encodes the file and dispatches
@@ -368,12 +371,16 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   `useMemo` (BP-010), never stored — it depends on a live quote and the whole-
   portfolio total. Money figures are labeled display approximations; a live +
   as-of provenance line sits near the totals.
-- **Analysis is equity-gated (FIX-773).** A non-equity symbol sent to the
-  `analyze` action stops cleanly before ticker resolution with
-  `stoppedReason: "unsupported-asset-type"`. The guard is
-  `checkAssetTypeSupported` in `orchestration/guards.ts`, which classifies the
-  symbol via `classify-instrument.ts` and exits early if `assetClass !== "equity"`.
-  ETF and crypto analysis are tracked in FIX-777, which this unblocks.
+- **Analysis is equity-gated (FIX-773).** The `checkAssetTypeSupported` guard in
+  `orchestration/guards.ts` classifies the analyzed symbol via
+  `classify-instrument.ts` (before ticker resolution, no provider call) and stops
+  the run with `stoppedReason: "unsupported-asset-type"` ONLY on the unambiguously
+  non-equity shapes — a bond CUSIP, an OCC option, a `…-USD` crypto pair. A
+  ticker-shaped symbol passes to the resolver, including the cash-equivalent
+  placeholders `CASH` / `USD` (themselves real tickers — Pathward, a ProShares
+  ETF), so resolution is the arbiter for whether a real instrument exists. ETF and
+  crypto analysis are tracked in FIX-777, which this unblocks (the crypto stop is
+  lifted there).
 - **Empty-state binding (spec §12.1):** user-scoped reads need a bound session
   snapshot. We take the honest empty-state CTA (option b), NOT auto-minting a junk
   session (option a) — the pane prompts the user to run an analysis first when no

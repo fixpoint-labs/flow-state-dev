@@ -45,13 +45,8 @@ import {
 import { LedgerTable } from "./ledger-table";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import { useLedger } from "./use-ledger";
-import { holdingMarketValue, resolveHoldingPrice } from "@/src/flows/portfolio/value-holding";
-import {
-  DASH,
-  formatMoney,
-  formatSignedMoney,
-  unrealizedPL,
-} from "./portfolio-format";
+import { holdingMarketValue, holdingUnrealizedPL } from "@/src/flows/portfolio/value-holding";
+import { DASH, formatMoney, formatSignedMoney } from "./portfolio-format";
 
 type PortfolioPaneProps = {
   /** A bound session whose snapshot the user-scoped resource reads project
@@ -118,8 +113,7 @@ export function PortfolioPane({
         // equity via quote). uP/L stays vs the type-resolved price.
         const v = holdingMarketValue(h, quote);
         if (v !== null) value = (value ?? 0) + v;
-        const { price } = resolveHoldingPrice(h, quote);
-        const p = unrealizedPL(h.quantity, h.costBasis, price);
+        const p = holdingUnrealizedPL(h, quote);
         if (p !== null) upl = (upl ?? 0) + p;
       }
       // Cash counts toward account + portfolio value.

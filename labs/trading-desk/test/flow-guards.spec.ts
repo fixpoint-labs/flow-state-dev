@@ -140,8 +140,11 @@ describe("checkAssetTypeSupported (FIX-773 asset-type gate)", () => {
     );
   });
 
-  it("stops a cash line", async () => {
-    expect(await stoppedReasonForTicker("CASH")).toBe("unsupported-asset-type");
+  it("does NOT stop CASH / USD — they are real tickers, let resolution decide", async () => {
+    // `CASH` (Pathward) and `USD` (a ProShares ETF) classify as cash by shape but
+    // are real exchange symbols; the gate must not pre-empt the resolver for them.
+    expect(await stoppedReasonForTicker("CASH")).toBeNull();
+    expect(await stoppedReasonForTicker("USD")).toBeNull();
   });
 });
 

@@ -199,21 +199,24 @@ export const checkTickerResolvable = handler({
 
 /**
  * Pre-flight asset-type gate (FIX-773). The analyst bench researches equities;
- * a non-equity symbol (a bond CUSIP, an OCC option, a `BTC-USD` crypto pair, a
- * cash line) would otherwise be run through the equity pipeline and produce a
- * confident hallucinated stock report. Classify the symbol by shape (no provider
- * call, the `classifyInstrument` leaf the importers use) and, when it is not an
- * equity-class instrument, patch `stoppedReason: "unsupported-asset-type"` so the
- * following `.exitIf` bails before any model spend — the FIX-605 no-hallucination
- * discipline, extended to asset type.
+ * a bond CUSIP, an OCC option, or a `BTC-USD` crypto pair would otherwise be run
+ * through the equity pipeline and produce a confident hallucinated stock report.
+ * Classify the symbol by shape (no provider call, the `classifyInstrument` leaf
+ * the importers use) and, when it is one of those UNAMBIGUOUSLY non-equity shapes,
+ * patch `stoppedReason: "unsupported-asset-type"` so the following `.exitIf` bails
+ * before any model spend — the FIX-605 no-hallucination discipline, extended to
+ * asset type.
  *
  * Runs BEFORE `checkTickerResolvable` (no provider call needed): a bond CUSIP or
  * a crypto pair would otherwise fail the equity fundamentals probe and stop as
- * the less-accurate "unresolvable-ticker". Equity AND etf pass (a ticker-shaped
- * symbol classifies as `equity` from shape alone — precise ETF tagging is a later
- * provider concern, and FIX-777 is the issue that opens ETF/crypto analysis, at
- * which point this allow-list widens). A bogus equity-shaped ticker passes here
- * and is caught by the resolution guard next.
+ * the less-accurate "unresolvable-ticker".
+ *
+ * Only bond / option / crypto stop here — those shapes can never be a real
+ * exchange ticker. A ticker-shaped symbol (including ETFs, and the cash-equivalent
+ * placeholders `CASH` / `USD` that are themselves real tickers — Pathward, a
+ * ProShares ETF) passes to the resolution guard next, which is the right arbiter
+ * for whether a real instrument exists. FIX-777 is the issue that opens ETF /
+ * crypto analysis, at which point the crypto stop is lifted.
  */
 export const checkAssetTypeSupported = handler({
   name: "check-asset-type-supported",
@@ -222,11 +225,16 @@ export const checkAssetTypeSupported = handler({
   sessionStateSchema,
   execute: async (input, ctx) => {
     const { assetType } = classifyInstrument(input.ticker);
-    if (assetType === "equity" || assetType === "etf") return;
+    // Stop ONLY on the unambiguously non-equity symbol shapes: a 9-digit CUSIP,
+    // a 21-char OCC option, a `…-USD` crypto pair. These can never be a real
+    // exchange ticker. Cash-equivalent / money-market / other are NOT stopped —
+    // `CASH` (Pathward) and `USD` (a ProShares ETF) are real tickers, so the
+    // provider resolution that runs next is the right arbiter for those.
+    if (assetType !== "bond" && assetType !== "option" && assetType !== "crypto") return;
     await ctx.session.patchState({
       stoppedReason: "unsupported-asset-type",
       stoppedMessage:
-        `${input.ticker} classifies as a ${assetType.replace(/_/g, " ")} — the ` +
+        `${input.ticker} classifies as ${assetType.replace(/_/g, " ")} — the ` +
         "analyst bench researches equities only. Analysis of this asset type is " +
         "not supported yet.",
       runComplete: true,

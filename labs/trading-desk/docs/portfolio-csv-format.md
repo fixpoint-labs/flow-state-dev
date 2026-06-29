@@ -41,7 +41,7 @@ against a synonym table. The first synonym that appears wins:
 | `quantity` | quantity, qty, shares, sharesheld, units |
 | `costBasis` | costbasis, avgcost, averagecost, costpershare, unitcost, purchaseprice, **price** |
 | `acquiredDate` | acquireddate, dateacquired, purchasedate, opendate, date |
-| `assetType` | assettype, type, assetclass |
+| `assetType` | assettype, type |
 
 So a Fidelity/Schwab export with `Symbol, Shares Held, Avg Cost` maps with no
 edits. The dialog shows the resolved mapping ("Detected columns") before you

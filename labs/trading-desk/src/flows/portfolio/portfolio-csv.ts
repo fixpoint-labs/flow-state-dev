@@ -17,7 +17,7 @@
  */
 import type { AssetType, CanonicalRow } from "./portfolio-schema";
 import { assetTypeSchema } from "./portfolio-schema";
-import { classifyInstrument } from "./classify-instrument";
+import { classifyInstrument, isOccOptionSymbol } from "./classify-instrument";
 
 /** The CSV-mappable canonical columns. The taxonomy fields `assetClass` /
  *  `attributes` are NOT parsed from CSV (they are re-derived by the classifier);
@@ -76,7 +76,11 @@ const COLUMN_SYNONYMS: Record<CsvColumn, string[]> = {
     "opendate",
     "date",
   ],
-  assetType: ["assettype", "type", "assetclass"],
+  // The hint is the instrument TYPE (validated against assetTypeSchema). A column
+  // literally named `assetClass` carries class-level values (`fixed_income`, …)
+  // that aren't valid asset TYPES, so it is intentionally NOT a synonym here —
+  // mapping it would silently drop those values to shape inference.
+  assetType: ["assettype", "type"],
   // FIX-773 Slice C: the carried statement mark for a bond/option, emitted by the
   // PDF round-trip (`canonicalRowsToCsv`). Deliberately a distinct name — NOT a
   // costBasis synonym — so it never collides with cost. A direct CSV import
@@ -251,7 +255,12 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
     const cells = splitCsvLine(raw);
 
     const rawTicker = (cells[indices.ticker] ?? "").trim().toUpperCase();
-    if (!/^[A-Z0-9.\-]{1,12}$/.test(rawTicker)) {
+    // Accept a normal exchange ticker OR an OCC option symbol (18–21 chars, which
+    // the equity regex rejects) so an option row reaches the classifier instead of
+    // being dropped as "invalid ticker" — the PDF confirm path serializes option
+    // rows through this same gate, so rejecting here would lose them despite the
+    // classifier supporting options.
+    if (!/^[A-Z0-9.\-]{1,12}$/.test(rawTicker) && !isOccOptionSymbol(rawTicker)) {
       errors.push({ rowNumber, raw, reason: "invalid ticker" });
       continue;
     }

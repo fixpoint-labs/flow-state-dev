@@ -173,6 +173,23 @@ describe("parsePortfolioCsv", () => {
     });
   });
 
+  it("accepts an OCC option symbol (which the equity ticker regex rejects)", () => {
+    // An OCC symbol is 18–21 chars, so the equity regex rejects it; the importer
+    // must still let it through to the classifier (the PDF confirm path serializes
+    // option rows through this same gate). markPrice carries the per-contract mark.
+    const csv = [
+      "ticker,quantity,markPrice",
+      "AAPL240621C00190000,2,12.4",
+    ].join("\n");
+    const result = parsePortfolioCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows[0]).toMatchObject({
+      assetType: "option",
+      assetClass: "equity",
+      attributes: { kind: "option", underlying: "AAPL", strike: 190, markPrice: 12.4 },
+    });
+  });
+
   it("lets an explicit `type` column override symbol-shape inference", () => {
     // GLD looks like a plain equity by shape; the type column says it's an ETF.
     const csv = ["ticker,quantity,type", "GLD,3,etf"].join("\n");

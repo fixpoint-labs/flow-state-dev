@@ -91,7 +91,28 @@ export function holdingMarketValue(
 ): number | null {
   const { price } = resolveHoldingPrice(holding, quote);
   if (price === null) return null;
-  const multiplier =
-    holding.attributes.kind === "option" ? holding.attributes.multiplier : 1;
-  return holding.quantity * price * multiplier;
+  return holding.quantity * price * optionMultiplier(holding);
+}
+
+/** The contract multiplier applied to an option's value/P/L (a per-contract mark
+ *  covers `multiplier` shares), or 1 for every other type. */
+function optionMultiplier(holding: Pick<Holding, "attributes">): number {
+  return holding.attributes.kind === "option" ? holding.attributes.multiplier : 1;
+}
+
+/**
+ * Unrealized P/L of a holding using the type-resolved price, consistent with
+ * {@link holdingMarketValue}: `(price − costBasis) × quantity × multiplier`, so an
+ * option's P/L scales by its contract multiplier exactly as its value does (a raw
+ * `quantity`-only P/L would understate options 100×). Null when the price or the
+ * cost basis is unknown — never fabricated from a partial input. Pure.
+ */
+export function holdingUnrealizedPL(
+  holding: Pick<Holding, "quantity" | "costBasis" | "assetType" | "assetClass" | "attributes">,
+  quote: { price: number | null } | undefined,
+): number | null {
+  const { price } = resolveHoldingPrice(holding, quote);
+  const cost = finiteOrNull(holding.costBasis);
+  if (price === null || cost === null) return null;
+  return (price - cost) * holding.quantity * optionMultiplier(holding);
 }

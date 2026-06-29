@@ -23,6 +23,7 @@ import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import {
   resolveHoldingPrice,
   holdingMarketValue,
+  holdingUnrealizedPL,
 } from "@/src/flows/portfolio/value-holding";
 import {
   DASH,
@@ -30,7 +31,6 @@ import {
   formatPercent,
   formatQuantity,
   formatSignedMoney,
-  unrealizedPL,
   weight,
 } from "./portfolio-format";
 
@@ -88,7 +88,9 @@ export function buildHoldingRowModel(
 ): HoldingRowModel {
   const { price } = resolveHoldingPrice(holding, quote);
   const value = holdingMarketValue(holding, quote);
-  const upl = unrealizedPL(holding.quantity, holding.costBasis, price);
+  // Type-aware P/L: scales by the option contract multiplier exactly as `value`
+  // does, so an option's P/L isn't understated 100× against its value.
+  const upl = holdingUnrealizedPL(holding, quote);
   return {
     ticker: holding.ticker,
     typeLabel: TYPE_LABELS[holding.assetType],
