@@ -7,7 +7,7 @@ title: Deployment Overview
 
 What to think about when moving a flow-state-dev application from `pnpm dev` to production.
 
-The framework's server is built on Web standard APIs (`Request`, `Response`, `ReadableStream`). It doesn't depend on Express, Hono, or any specific Node.js HTTP library. That means it runs anywhere modern JavaScript runs: Node.js 18+, Vercel serverless functions, Railway containers, a Docker image behind nginx.
+The framework's router is built on Web standard APIs (`Request`, `Response`, `ReadableStream`). It speaks the same `fetch(request)` shape on every runtime, so a thin host adapter is all that connects it to a platform. That means it runs anywhere modern JavaScript runs: Node.js 18+, Vercel serverless functions, AWS Lambda, Railway containers, a Docker image behind nginx. See [Host adapters](/docs/server/host-adapters) for the wrapper that fits each one.
 
 But each platform handles two things differently: **SSE streaming** and **persistence**. Get those right and everything else is straightforward.
 
@@ -18,6 +18,7 @@ But each platform handles two things differently: **SSE streaming** and **persis
 | Platform | SSE streaming | Persistence | Best for |
 |----------|--------------|-------------|----------|
 | **Vercel** (Next.js) | Works with `force-dynamic`. Serverless timeout limits apply (10s hobby / 60s pro). | No filesystem. Use SQLite (ephemeral) or external DB. | Apps already on Next.js. Short-lived flows. |
+| **AWS Lambda** | Works with a Function URL in `RESPONSE_STREAM` mode. Per-invocation timeout applies. | No persistent filesystem. Use an external DB. | Bursty traffic, custom infra, non-Vercel serverless. |
 | **Railway** | Works natively. Long-running containers. | Filesystem persists within container. SQLite works well. | Production APIs. Long-running agents. |
 | **Fly.io** | Works natively. Persistent volumes available. | Filesystem or SQLite on a volume. | Stateful, latency-sensitive deployments. |
 | **Docker** (self-hosted) | Works natively. Watch for reverse proxy buffering. | Full filesystem control. SQLite or any external DB. | Full control. On-premise. Custom infra. |
@@ -84,7 +85,11 @@ export const flowstate = createFlowState({
 });
 ```
 
-What changes per platform is how you connect this runtime to incoming HTTP requests, and which store adapter backs `primary`. Next.js uses a platform handler around `flowstate`. Standalone Node.js calls `await flowstate.getRouter()` and uses `http.createServer`. The platform-specific guides cover each approach.
+What changes per platform is how you connect this runtime to incoming HTTP requests, and which store adapter backs `primary`. That connection is a [host adapter](/docs/server/host-adapters): Next.js uses a platform handler around `flowstate`; a long-lived Node process uses `serve(flowstate)` from `@flow-state-dev/node`; other serverless targets wrap the same portable app. The platform-specific guides cover each approach.
+
+## Serverless beyond Vercel
+
+Vercel's Next.js serverless is one path. For other Node-runtime serverless platforms — AWS Lambda, Bun, Deno — the same portable app from `@flow-state-dev/node` runs unchanged; you wrap its `fetch` handler with the platform's adapter. See [Host adapters](/docs/server/host-adapters) for the full breakdown and [Deploying to AWS Lambda](/guides/deploying-to-aws-lambda) for a worked example. Edge runtimes (Cloudflare Workers, Vercel Edge) are not supported — the engine relies on Node primitives.
 
 ---
 
@@ -145,5 +150,6 @@ Single-tenant deployments do nothing here: when no header is sent, behavior and 
 ## Platform guides
 
 - [Deploying to Vercel](/guides/deploying-to-vercel) — Next.js App Router on Vercel's serverless platform
+- [Deploying to AWS Lambda](/guides/deploying-to-aws-lambda) — Serverless functions with response streaming
 - [Deploying to Railway](/guides/deploying-to-railway) — Long-running Node.js containers
 - [Deploying with Docker](/guides/deploying-with-docker) — Self-hosted with Dockerfile and nginx reverse proxy
