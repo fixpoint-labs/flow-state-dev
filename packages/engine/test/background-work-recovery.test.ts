@@ -17,6 +17,14 @@
  *
  * The contract under test: a background block that COMPLETED before the crash
  * must be replayed (its recorded output injected), NOT re-executed, on recovery.
+ *
+ * Each test asserts BOTH halves of that contract, because they fail independently:
+ *   - not re-executed: a run counter stays at its pre-crash value; and
+ *   - output injected (not dropped): the gate reads the drained background result
+ *     via `ctx.getBlockOutput` and stashes it in its suspension `data`, so the
+ *     re-suspension on recovery proves the replayed output is still observable to
+ *     a later sibling. A drop-but-don't-re-run regression keeps the counter at 1
+ *     yet loses the value, so the counter alone would go green falsely.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -53,11 +61,18 @@ describe("attached durable background-work recovery", () => {
         return { done: true };
       }
     });
+    // The gate reads the drained `.work()` result via getBlockOutput and stashes
+    // it in the suspension data, so we can assert the value survives recovery.
     const gate = handler({
       name: "gate",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+      execute: async (_i, ctx) =>
+        ctx.suspend!({
+          reason: "human_approval",
+          message: "Approve?",
+          data: { observed: ctx.getBlockOutput!(bg) }
+        })
     });
 
     const flow = defineFlow({
@@ -83,9 +98,12 @@ describe("attached durable background-work recovery", () => {
       runtimeConfig: { durabilityProvider: provider }
     });
     const requestId = initial.requestId!;
-    // Background work completed (drained by waitForWork) before the gate suspended.
+    // Background work completed (drained by waitForWork) before the gate suspended,
+    // and the gate observed its result.
     expect(bgRuns).toBe(1);
     expect((await stores.request.get(requestId))?.status).toBe("suspended");
+    const [firstSusp] = await provider.listSuspended({ status: "pending" });
+    expect((firstSusp.data as { observed?: unknown }).observed).toEqual({ done: true });
 
     // Simulate a crash mid-flight: the stale sweeper marks the record interrupted.
     const suspended = await stores.request.get(requestId);
@@ -95,7 +113,8 @@ describe("attached durable background-work recovery", () => {
       "any"
     );
 
-    // Continue under the same id — crash recovery (no resumeContext).
+    // Continue under the same id — crash recovery (no resumeContext). The gate
+    // re-runs (re-suspends, no resolution); the background block is replayed.
     const { finished } = await continueRequest({
       requestId,
       stores,
@@ -104,10 +123,15 @@ describe("attached durable background-work recovery", () => {
     });
     await finished;
 
-    // The completed background block must have been injected from the durable
-    // log, NOT re-executed. If this is 2, the side effect double-fired on
-    // recovery — attached background work is not durable.
+    // (a) Not re-executed: a double-fire would push bgRuns to 2.
     expect(bgRuns).toBe(1);
+    // (b) Output injected, not dropped: the re-run gate still observed the
+    // replayed background result via getBlockOutput. A drop-but-don't-re-run
+    // regression keeps bgRuns at 1 but loses this value.
+    const pending = await provider.listSuspended({ status: "pending" });
+    const reSusp = pending.find((s) => s.suspensionId !== firstSusp.suspensionId);
+    expect(reSusp).toBeDefined();
+    expect((reSusp!.data as { observed?: unknown }).observed).toEqual({ done: true });
   });
 
   it("replays completed `.forEachBackground()` iterations instead of re-running them on crash recovery", async () => {
@@ -125,7 +149,15 @@ describe("attached durable background-work recovery", () => {
       name: "gate",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+      execute: async (_i, ctx) =>
+        ctx.suspend!({
+          reason: "human_approval",
+          message: "Approve?",
+          // All iterations share the element block name, so getBlockOutput
+          // resolves to the most recent completed one — non-undefined proves
+          // the fan-out results weren't dropped wholesale on replay.
+          data: { observed: ctx.getBlockOutput!(elem) }
+        })
     });
 
     const flow = defineFlow({
@@ -153,6 +185,8 @@ describe("attached durable background-work recovery", () => {
     const requestId = initial.requestId!;
     expect(elemRuns).toEqual({ a: 1, b: 1, c: 1 });
     expect((await stores.request.get(requestId))?.status).toBe("suspended");
+    const [firstSusp] = await provider.listSuspended({ status: "pending" });
+    expect((firstSusp.data as { observed?: unknown }).observed).toEqual({ done: true });
 
     const suspended = await stores.request.get(requestId);
     await stores.request.set(
@@ -169,7 +203,12 @@ describe("attached durable background-work recovery", () => {
     });
     await finished;
 
-    // Every completed fan-out iteration must be injected, not re-run.
+    // (a) Every completed fan-out iteration was injected, not re-run.
     expect(elemRuns).toEqual({ a: 1, b: 1, c: 1 });
+    // (b) The replayed iteration outputs are still observable on recovery.
+    const pending = await provider.listSuspended({ status: "pending" });
+    const reSusp = pending.find((s) => s.suspensionId !== firstSusp.suspensionId);
+    expect(reSusp).toBeDefined();
+    expect((reSusp!.data as { observed?: unknown }).observed).toEqual({ done: true });
   });
 });
