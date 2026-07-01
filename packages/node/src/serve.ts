@@ -10,6 +10,12 @@
  * SPA fallback (the DevTool UI), and `SIGTERM`/`SIGINT`-driven graceful shutdown
  * that disposes the router and the `FlowState`. SSE streams unbuffered because the
  * app returns the engine's streaming `Response` straight through to `@hono/node-server`.
+ *
+ * Two behaviour notes vs. the previous hand-rolled bridge: static/SPA serving is
+ * now GET-only (Hono also answers HEAD), where the old server handed any method
+ * on a non-API path to the SPA fallback; and a mid-stream SSE failure is handled
+ * inside `@hono/node-server` rather than logged to stderr, so there is no longer a
+ * server-side signal when a live stream dies mid-flight.
  */
 import type { Server } from "node:http";
 import { serve as honoServe } from "@hono/node-server";
@@ -55,8 +61,6 @@ export interface ServeHandle {
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "0.0.0.0";
-const DEFAULT_BASE_PATH = "/api/flows";
-const DEFAULT_HEALTH_PATH = "/healthz";
 const DEFAULT_SHUTDOWN_GRACE_MS = 10_000;
 
 /** MIME types for static asset serving. */
@@ -102,16 +106,19 @@ export function serve(
 ): Promise<ServeHandle> {
   const port = resolvePort(options.port);
   const host = options.host ?? DEFAULT_HOST;
-  const basePath = options.basePath ?? DEFAULT_BASE_PATH;
-  const healthPath = options.healthPath ?? DEFAULT_HEALTH_PATH;
   const staticDir = options.staticDir;
   const shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
   const handleSignals = options.handleSignals ?? true;
 
-  const { app: honoApp, dispose } = createServerApp(app, { basePath, healthPath });
+  // `basePath`/`healthPath` defaults live in `createServerApp`; pass through.
+  const { app: honoApp, dispose } = createServerApp(app, {
+    basePath: options.basePath,
+    healthPath: options.healthPath,
+  });
 
-  // Static assets + SPA fallback for the DevTool UI. Registered after the
-  // portable app's health/API routes, so it only catches what they don't.
+  // Static assets + SPA fallback for the DevTool UI, GET-only (Hono also answers
+  // HEAD). Registered after the portable app's health/API routes, so it only
+  // catches what they don't.
   if (staticDir !== undefined) {
     honoApp.get("*", (c) => serveStaticResponse(c.req.path, staticDir));
   }

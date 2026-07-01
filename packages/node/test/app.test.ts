@@ -143,8 +143,9 @@ describe("createServerApp — translation", () => {
     };
     const { app } = createServerApp(throwing);
     const res = await app.fetch(new Request(url("/api/flows/chat")));
-    // Hono's onError surfaces the throw as a 500.
+    // Hono's onError surfaces the throw as a uniformly-JSON 500.
     expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "Internal server error" });
   });
 });
 
@@ -178,7 +179,7 @@ describe("createServerApp — SSE streaming", () => {
 });
 
 describe("createServerApp — FlowState readiness", () => {
-  it("reports 503 while stores initialize, then 200 once ready", async () => {
+  it("reports 503 on /healthz while initializing, then 200; the API waits for init", async () => {
     const adapter = gatedAdapter();
     const fs = createFlowState({
       flows: { noop: noopFlow },
@@ -191,11 +192,13 @@ describe("createServerApp — FlowState readiness", () => {
     expect(before.status).toBe(503);
     expect((await before.json()).status).toBe("initializing");
 
-    // the API also rejects with 503 while initializing
-    const apiBefore = await app.fetch(new Request(url("/api/flows/noop/ping")));
-    expect(apiBefore.status).toBe(503);
-
+    // The API waits for init rather than returning a spurious 503 (a serverless
+    // host has no /healthz gate, so the cold-start invoke must not be rejected).
+    const apiPromise = app.fetch(new Request(url("/api/flows/noop/ping")));
     adapter.release();
+    const apiRes = await apiPromise;
+    expect(apiRes.status).not.toBe(503);
+
     await new Promise((r) => setTimeout(r, 20));
 
     const after = await app.fetch(new Request(url("/healthz")));

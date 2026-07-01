@@ -22,7 +22,10 @@ import {
 
 /** Options for {@link createServerApp}. Defaults match `createFlowApiRouter`. */
 export interface ServerAppOptions {
-  /** API mount prefix. Default `"/api/flows"`. */
+  /**
+   * API mount prefix. Default `"/api/flows"`. Interpolated raw into a Hono route
+   * pattern, so avoid `:` and `*` (Hono pattern syntax) in a custom value.
+   */
   basePath?: string;
   /** Health endpoint path. Default `"/healthz"`. 200 once ready, 503 before. */
   healthPath?: string;
@@ -116,19 +119,24 @@ export function createServerApp(
   });
 
   const dispatch = async (c: Context): Promise<Response> => {
-    if (initError !== undefined) {
-      return Response.json({ error: "Server failed to initialize" }, { status: 500 });
-    }
-    if (!ready || router === undefined) {
-      return Response.json({ error: "Server initializing" }, { status: 503 });
+    // Await the (lazy) router rather than snapshotting `ready`: a serverless host
+    // has no `/healthz` gate, so the invoke that triggers a cold start must wait
+    // for store init instead of getting a spurious 503. `/healthz` keeps the
+    // point-in-time snapshot (below) where a PaaS needs it. For the long-lived
+    // host this turns "503 during boot" into "the request waits until ready".
+    let resolved: FlowApiRouter;
+    try {
+      resolved = await routerPromise;
+    } catch {
+      return c.json({ error: "Server failed to initialize" }, 500);
     }
     const method = c.req.method.toUpperCase();
-    const handler = router[method as keyof FlowApiRouter];
+    const handler = resolved[method as keyof FlowApiRouter];
     if (handler === undefined) {
       // Methods the router doesn't expose (PUT, HEAD, OPTIONS, ...) get 405.
       // HEAD is deliberately not normalized to GET — that would execute the GET
       // action handler (with its side effects) just to discard the body.
-      return Response.json({ error: "Method not allowed" }, { status: 405 });
+      return c.json({ error: "Method not allowed" }, 405);
     }
     const path = pathSegments(c.req.path, basePath);
     return handler(c.req.raw, { params: { path } });
@@ -137,6 +145,11 @@ export function createServerApp(
   // The bare mount and everything under it both reach the engine router.
   hono.all(basePath, dispatch);
   hono.all(`${basePath}/*`, dispatch);
+
+  // Keep API errors uniformly JSON: a router throw would otherwise fall through
+  // to Hono's default plain-text 500. Only custom transport-adapter routes throw
+  // uncaught — the engine's canonical `handle` catches internally.
+  hono.onError((_err, c) => c.json({ error: "Internal server error" }, 500));
 
   // Match the prior `serve()` 404 shape (JSON, not Hono's default plain text).
   hono.notFound((c) => c.json({ error: "Not found" }, 404));

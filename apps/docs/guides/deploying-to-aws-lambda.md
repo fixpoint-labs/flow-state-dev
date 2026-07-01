@@ -60,6 +60,8 @@ aws lambda create-function-url-config \
 
 Without `RESPONSE_STREAM`, Lambda buffers the whole response and SSE events arrive only after the flow finishes.
 
+`--auth-type NONE` is for the smoke test only. The flow API reads `userId` from the request body, so a fully public URL lets any caller act as any user and run billed model calls. For production, put IAM auth, an API Gateway authorizer, or your own auth proxy in front of the function.
+
 ---
 
 ## 3. Configure memory and timeout
