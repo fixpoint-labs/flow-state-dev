@@ -154,7 +154,7 @@ Tiers describe *who maintains the adapter*, NOT production-suitability — those
 | **MongoDB** (FIX-83) | ✓ (`$set`/`$inc`/`$push`, `findOneAndUpdate` CAS) | event collection + change-stream *tail* (oplog-bounded, not a durable log) | Atlas Vector (Atlas-only) | GridFS | — | Community | Cloud/Atlas sweet spot; replica-set cost self-host |
 | **Upstash** (FIX-85) | KV CAS | Redis **Streams** (replayable) + Pub/Sub-as-wakeup | Upstash Vector (sibling) | — | — | Community | The serverless/edge answer (HTTP REST) |
 | **NATS JetStream** (proposed) | KV CAS — *caveated, not recommended as `primary`* | ✓ (Streams + KV-watch + pub/sub) | — | Object Store | — | Community (streams) | Single-host & K8s strong; sidecar for Node; weak serverless |
-| **SurrealDB** (FIX-86) | ✓ | ✓ (LIVE SELECT) | ✓ (HNSW) | — | ✓ (RELATE) | Niche | All-in-one local/single-host; young; TiKV ops for scale |
+| **SurrealDB** (FIX-86) | ✓ | request-events table/changefeed (`SHOW CHANGES`) + `LIVE SELECT` *tail* | ✓ (HNSW) | — | ✓ (RELATE) | Niche | All-in-one local/single-host; young; TiKV ops for scale |
 
 **Two cross-cutting constraints on this matrix:**
 - **The "Streams/subscribe" cell must be a *replayable* substrate, not bare Pub/Sub.** The landed `RequestStore` contract is not live-only: events are durably written (`persistEvents`), replayed by `getEvents(fromSequence)`, then tailed by `subscribeToEvents`, and the locked stream contract guarantees `Last-Event-ID` / `starting_after` resume. A Pub/Sub-only adapter would drop events for disconnected clients and break resume. So a stream adapter needs a durable ordered log (Redis/Upstash **Streams**, NATS JetStream **Streams**, Postgres event table) with Pub/Sub/SSE/NOTIFY used only as the wake-up nudge.
@@ -253,8 +253,11 @@ Steps 3–7 are independent of each other and can be prioritized separately; non
 
 **9.2 Surfaces affected:**
 - [x] Reference docs — **extend** `apps/docs/docs/persistence/overview.md` (no new page, no sidebar change)
-- [x] Package READMEs — `packages/store-postgres/README.md` gets a one-line "LISTEN/NOTIFY is a wakeup, not a durable bus; the ceiling and the move to Valkey/NATS" note; `store-sqlite` README a "local/single-host fit" note
-- [x] Architecture docs — `state-and-scopes.md` and `streaming.md` are accurate, **but `docs/architecture/server-and-client.md` is stale and must be corrected** (it outranks this strategy in the authority hierarchy, so leaving it is worse than no doc): line ~13 lists engine persistence as only "filesystem + in-memory" (omits SQLite/Postgres), and line ~105 comments `// Production: filesystem (default)` — the opposite of the new posture (filesystem is dev-only; SQLite/Postgres are the production backends, and `createFilesystemStores` itself now warns its event persistence is unsuitable for production load). Update both spots in the docs follow-up before FIX-664 is closed.
+- [x] Package READMEs — `packages/store-postgres/README.md` gets a one-line "LISTEN/NOTIFY is a wakeup, not a durable bus; the ceiling and the move to Valkey/NATS" note; `store-sqlite` README a "local/single-host fit" note; **and `packages/engine/README.md` must be corrected** — it owns the `filesystemStores` export and currently documents `createFilesystemStores` as "Persistent stores for development **and production**" (plus a filesystem-default example), which contradicts the dev-only reclassification. Reclassify filesystem as dev-only there too, or the engine API docs will keep recommending it for production.
+- [x] Architecture docs — `streaming.md` is accurate, **but two authoritative pages are stale and must be corrected** (they outrank this strategy, so leaving them is worse than no doc):
+  - `docs/architecture/server-and-client.md` — line ~13 lists engine persistence as only "filesystem + in-memory" (omits SQLite/Postgres), and line ~105 comments `// Production: filesystem (default)` — the opposite of the new posture.
+  - `docs/architecture/state-and-scopes.md` — its "Persistence Adapters" section (~lines 268–272) says only **three** adapters ship (in-memory, SQLite, filesystem) and **omits Postgres entirely** while recommending SQLite "for … production"; under the new posture Postgres is a first-class production backend and SQLite is the local/single-host recommendation. (Verify its delta-verb section too — it must not imply SQLite/filesystem lack the delta verbs, given they read-mutate-rewrite them.)
+  Correct both in the docs follow-up before FIX-664 is closed; `createFilesystemStores` itself already warns its event persistence is unsuitable for production load, so the docs must not contradict that.
 - [x] Guides — no *new* guide yet (a "compose your stores" guide waits on the events/vectors/blobs slots), **but the existing trading-desk walkthrough is stale and must be fixed in the same follow-up if it's used as the resource-vs-table example** (see §9.5): `apps/docs/guides/trading-desk-walkthrough.md:235-246` still shows `createFilesystemStores`, while the app (`labs/trading-desk/lib/server.ts`) now shares Postgres-backed stores via `fsdev.config.ts` (FIX-772). Either refresh that section to the shared-Postgres + app-owned-tables pattern, or don't cross-link it as the worked example.
 - [ ] Blog — no
 
@@ -278,9 +281,12 @@ Insertion points:
     tables pattern the app actually uses now (see §9.2 Guides); don't link to the stale section.
 Audience: a developer who has built a flow on the default store and is now choosing a production backend.
 Code examples:
-  - One minimal composed-profile snippet showing the slot map with a (future) separate events/vectors
-    slot — ~8 lines — to make "composition by slot" concrete. Keep it aligned with the existing
-    `stores: { default: { primary: ... } }` examples already on the page.
+  - One minimal composed-profile snippet — but it MUST use only *shipped* slots. Today's
+    `CapabilitySlotMap` (`packages/engine/src/stores/store-adapter.ts`) exposes only `primary`,
+    `blobs`, `queue`, `scheduler`; a snippet with `events:` / `vectors:` keys would not typecheck and
+    step 2 may land before those follow-ups. So show `stores: { default: { primary: ... } }` (aligned
+    with the existing page examples), and describe the future events/vectors split in prose only until
+    those slots ship — do not publish a non-compiling composition example.
 Links-out: store-postgres README (LISTEN/NOTIFY ceiling), trading-desk walkthrough (resource vs. table).
 Voice notes: the term "capability slot" is already introduced on this page — reuse it, don't redefine;
   avoid "powerful/seamless"; watch em-dashes; no internal FIX-IDs in published prose.
