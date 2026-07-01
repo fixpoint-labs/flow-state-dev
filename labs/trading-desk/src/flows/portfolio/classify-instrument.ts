@@ -54,8 +54,9 @@ function looksLikeCusip(symbol: string): boolean {
  *  A bond/option mark cannot be negative or zero, so a typo / OCR error like
  *  `-98.5` or `0` becomes a null mark (the row then shows "—") rather than a
  *  value that would subtract the holding from NAV — the same real-money gate
- *  cost-basis import already applies. */
-function validMarkPrice(price: number | null | undefined): number | null {
+ *  cost-basis import already applies. Exported so the PDF import can re-derive a
+ *  bond/option mark from `value ÷ quantity` under the same guard. */
+export function validMarkPrice(price: number | null | undefined): number | null {
   return typeof price === "number" && Number.isFinite(price) && price > 0 ? price : null;
 }
 
@@ -118,6 +119,21 @@ function parseOccOption(
  *  "invalid ticker" before it is ever classified. */
 export function isOccOptionSymbol(symbol: string): boolean {
   return parseOccOption(symbol.trim().toUpperCase(), null) !== null;
+}
+
+/** Whether a symbol can transit the CSV import transport — the shape
+ *  `parsePortfolioCsv` accepts: a normal exchange / CUSIP / crypto-pair ticker
+ *  (`[A-Z0-9.-]{1,12}`) OR an OCC option symbol. The SINGLE source of truth for
+ *  that gate, shared by the CSV parser's ticker check and the PDF import's
+ *  reconciliation. A row is shown importable in the PDF review ONLY when the
+ *  commit path (`importHoldings` → `parsePortfolioCsv`) will actually accept its
+ *  symbol — so a classifier-`other` symbol with spaces / >12 chars / special
+ *  characters (a fund name like `PRIVATE FUND`, or `@@@`) is reported skipped up
+ *  front rather than shown importable and then rejected as an invalid ticker at
+ *  commit. */
+export function isImportableSymbol(symbol: string): boolean {
+  const normalized = symbol.trim().toUpperCase();
+  return looksLikeEquityTicker(normalized) || parseOccOption(normalized, null) !== null;
 }
 
 /** The cash-equivalent classification (CASH lines + money-market funds). */

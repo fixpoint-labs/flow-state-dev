@@ -260,6 +260,57 @@ describe("toCanonicalRows — mapping + skip rules", () => {
     };
     expect(toCanonicalRows(ext).rows[0].costBasis).toBeNull();
   });
+
+  it("skips a symbol the CSV transport can't carry — review matches commit (FIX-773)", () => {
+    // A classifier-`other` row whose symbol has a space / is >12 chars fails the
+    // CSV ticker gate `importHoldings` re-parses through, so it must be reported
+    // skipped here rather than shown importable and then rejected at commit.
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: "PRIVATE FUND", quantity: 10, costBasis: null, price: 5, value: 50 },
+        { ticker: "AAPL", quantity: 1, costBasis: null, price: 150, value: 150 },
+      ],
+      statedTotal: null,
+    };
+    const { rows, skipped } = toCanonicalRows(ext);
+    expect(rows.map((r) => r.ticker)).toEqual(["AAPL"]);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0].ticker).toBe("PRIVATE FUND");
+    expect(skipped[0].reason).toMatch(/symbol format/i);
+    // The skip is consistent with the CSV commit path: the untransportable symbol
+    // errors there too, so skipping it up front is honest (not an arbitrary drop).
+    const csvErrors = parsePortfolioCsv("ticker,quantity\nPRIVATE FUND,10").errors;
+    expect(csvErrors).toHaveLength(1);
+    expect(csvErrors[0].reason).toBe("invalid ticker");
+  });
+
+  it("marks a value-less bond row with a NULL mark, never the raw price column (FIX-773)", () => {
+    // A percent-of-par bond with quantity + price but no value: the raw price 98.5
+    // is convention-ambiguous (face-amount quantity), so persisting it as the mark
+    // would value NAV ~100× off. With no value to derive `value ÷ quantity` from,
+    // the mark stays null (the row shows "—") — the same rows `reconcile` marks
+    // unchecked.
+    const ext: PdfExtraction = {
+      rows: [{ ticker: "912828YK0", quantity: 10000, costBasis: null, price: 98.5, value: null }],
+      statedTotal: null,
+    };
+    const bond = toCanonicalRows(ext).rows.find((r) => r.ticker === "912828YK0");
+    expect(bond?.assetType).toBe("bond");
+    expect(bond?.attributes).toMatchObject({ kind: "bond", markPrice: null });
+  });
+
+  it("still detects a value-less MMF from its ~$1.00 price (classification uses the price, the mark does not)", () => {
+    // An MMF with no value column: classification still needs the raw ~$1.00 price
+    // (the XX + $1.00 rule), and a cash-equivalent carries no mark, so nulling the
+    // bond/option mark never breaks MMF detection.
+    const ext: PdfExtraction = {
+      rows: [{ ticker: "SPAXX", quantity: 500, costBasis: null, price: 1.0, value: null }],
+      statedTotal: null,
+    };
+    const mmf = toCanonicalRows(ext).rows.find((r) => r.ticker === "SPAXX");
+    expect(mmf?.assetType).toBe("money_market");
+    expect(mmf?.attributes).toEqual({ kind: "cash_equivalent" });
+  });
 });
 
 describe("canonicalRowsToCsv — feeds the EXISTING CSV parser cleanly", () => {

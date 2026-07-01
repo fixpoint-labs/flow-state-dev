@@ -34,7 +34,11 @@
  */
 import { z } from "zod";
 import type { CanonicalRow } from "./portfolio-schema";
-import { classifyInstrument } from "./classify-instrument";
+import {
+  classifyInstrument,
+  isImportableSymbol,
+  validMarkPrice,
+} from "./classify-instrument";
 
 /**
  * One holding row as transcribed by the extraction generator from the statement
@@ -143,8 +147,13 @@ function withinTolerance(
  *
  * FIX-773 Slice B turned import from a FILTER into a CLASSIFIER: bond CUSIPs,
  * money-market funds, and cash lines are no longer DROPPED — `classifyInstrument`
- * preserves them as typed holdings. The only genuinely non-position rows that
- * stay skipped are a row with NO symbol at all and a row with null/zero quantity.
+ * preserves them as typed holdings. Rows stay skipped for three reasons: NO
+ * symbol at all, null/zero quantity, OR a symbol the CSV import transport can't
+ * carry (spaces / >12 chars / special characters — a fund name like `PRIVATE
+ * FUND`). The last check keeps the review HONEST: `importHoldings` re-parses the
+ * serialized rows through `parsePortfolioCsv`, whose ticker gate rejects such
+ * symbols, so marking them importable here would show "importable" in review and
+ * then fail at commit. Nothing is dropped by ASSET TYPE — only by symbol format.
  */
 function classifyRow(row: ExtractedRow): { importable: boolean; reason: string | null } {
   const ticker = (row.ticker ?? "").trim().toUpperCase();
@@ -153,6 +162,9 @@ function classifyRow(row: ExtractedRow): { importable: boolean; reason: string |
   }
   if (row.quantity === null || row.quantity === 0) {
     return { importable: false, reason: "no share quantity" };
+  }
+  if (!isImportableSymbol(ticker)) {
+    return { importable: false, reason: "unsupported symbol format — cannot import" };
   }
   return { importable: true, reason: null };
 }
@@ -296,24 +308,31 @@ export function toCanonicalRows(extraction: PdfExtraction): CanonicalMapping {
       return;
     }
     const ticker = (row.ticker as string).trim().toUpperCase();
-    // FIX-773 Slice C: the carried mark is the statement's per-UNIT VALUE
-    // (`value ÷ quantity`), NOT the raw quoted `price` column — so
-    // `quantity × mark` reconstructs the statement's position value regardless of
-    // quoting convention (percent-of-par bonds, per-share vs per-contract
-    // options). Falls back to the price column only when the statement printed no
-    // value. MMF detection still needs the raw price (the XX + ~$1.00 rule), so
-    // that is passed separately.
-    const perUnitValue =
+    // The per-unit statement value (`value ÷ quantity`), or null when the
+    // statement printed no value. This is the ONLY honest source for a bond/option
+    // mark — the raw `price` column is convention-ambiguous (percent-of-par bonds,
+    // per-share vs per-contract options), so `quantity × mark` only reconstructs
+    // the statement's position value when the mark is derived from its own value.
+    const markFromValue =
       row.value !== null && row.quantity !== null && row.quantity !== 0
         ? row.value / row.quantity
-        : row.price;
-    // FIX-773 Slice B: classify the preserved row. The per-unit value doubles as
-    // the MMF signal — a money-market fund's value ÷ quantity is ~$1.00, the same
-    // ~$1.00 the XX-suffix rule checks — so one value serves both the mark and the
-    // detection.
+        : null;
+    // For CLASSIFICATION only, fall back to the raw price when no value was
+    // printed — the MMF signal is the XX suffix + a ~$1.00 price, and a money
+    // market's value ÷ quantity and its printed price are both ~$1.00. This never
+    // becomes a persisted bond/option mark (see the override below).
+    const detectionPrice = markFromValue ?? row.price;
     const { assetClass, assetType, attributes } = classifyInstrument(ticker, {
-      price: perUnitValue,
+      price: detectionPrice,
     });
+    // A bond/option mark is re-derived from `value ÷ quantity` ONLY. When the
+    // statement carried no value, the mark stays null (the row shows "—") rather
+    // than persisting the raw price column and valuing NAV up to 100× off — the
+    // same rows `reconcile` marks `unchecked` for exactly this ambiguity.
+    const markedAttributes =
+      attributes.kind === "bond" || attributes.kind === "option"
+        ? { ...attributes, markPrice: validMarkPrice(markFromValue) }
+        : attributes;
     rows.push({
       ticker,
       quantity: row.quantity as number,
@@ -323,7 +342,7 @@ export function toCanonicalRows(extraction: PdfExtraction): CanonicalMapping {
       acquiredDate: null,
       assetClass,
       assetType,
-      attributes,
+      attributes: markedAttributes,
     });
   });
 

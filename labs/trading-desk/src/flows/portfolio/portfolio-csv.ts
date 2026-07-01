@@ -17,7 +17,7 @@
  */
 import type { AssetType, CanonicalRow } from "./portfolio-schema";
 import { assetTypeSchema } from "./portfolio-schema";
-import { classifyInstrument, isOccOptionSymbol } from "./classify-instrument";
+import { classifyInstrument, isImportableSymbol } from "./classify-instrument";
 
 /** The CSV-mappable canonical columns. The taxonomy fields `assetClass` /
  *  `attributes` are NOT parsed from CSV (they are re-derived by the classifier);
@@ -259,8 +259,10 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
     // the equity regex rejects) so an option row reaches the classifier instead of
     // being dropped as "invalid ticker" — the PDF confirm path serializes option
     // rows through this same gate, so rejecting here would lose them despite the
-    // classifier supporting options.
-    if (!/^[A-Z0-9.\-]{1,12}$/.test(rawTicker) && !isOccOptionSymbol(rawTicker)) {
+    // classifier supporting options. `isImportableSymbol` is the SINGLE source of
+    // truth for this gate, shared with the PDF import's `classifyRow` so review and
+    // commit agree on which symbols can transit.
+    if (!isImportableSymbol(rawTicker)) {
       errors.push({ rowNumber, raw, reason: "invalid ticker" });
       continue;
     }

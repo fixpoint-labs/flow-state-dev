@@ -341,8 +341,13 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   currently a static "extracting" state. FIX-773 replaced the old per-row drop
   heuristic with a full CLASSIFIER (`classify-instrument.ts`): CUSIP-shaped tickers
   → bond, `$1.00 XX`-style lines → money_market, `CASH` lines → cash_equivalent,
-  OCC option symbols → option. Only rows with no ticker or zero quantity are
-  skipped; nothing is dropped by asset type. The reconcile arithmetic is unchanged.
+  OCC option symbols → option. Rows are skipped only for no ticker, null/zero
+  quantity, or a symbol the CSV import transport can't carry (spaces / >12 chars /
+  special characters — `isImportableSymbol`, the shared gate the CSV parser and the
+  PDF `classifyRow` both use, so review and commit agree); nothing is dropped by
+  asset type. A bond/option mark is persisted only from `value ÷ quantity` — never
+  the raw price column — so a value-less bond/option row carries a null mark (shows
+  "—") rather than valuing NAV off by a quoting-convention factor.
   The canonical CSV the CONFIRM path serializes now carries `assetType` and
   `markPrice` columns so the classification and the bond's statement mark survive
   the single import gate into `importHoldings`.
