@@ -476,7 +476,7 @@ VERSION:102
     expect(result.warnings.some((w) => w.includes("NODATE") && /trade date/i.test(w))).toBe(true);
   });
 
-  it("warns when a file spans multiple accounts (all land in the one selected account)", async () => {
+  it("refuses a multi-account file (nothing imported, with a warning)", async () => {
     const file = `OFXHEADER:100
 DATA:OFXSGML
 VERSION:102

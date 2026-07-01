@@ -123,7 +123,10 @@ function ofxDateToIso(value: unknown): string | null {
  *  rather than dating it to the epoch (a fake date would corrupt FIFO order and
  *  the acquired-date). */
 function tradeDateOf(invtran: OfxNode | null): string | null {
-  return ofxDateToIso(invtran?.DTTRADE ?? invtran?.DTPOSTED);
+  // Fall back on `DTPOSTED` when `DTTRADE` is absent OR present-but-unparseable
+  // (blank / calendar-invalid). A `??` on the raw values wouldn't fall back for a
+  // present-but-bad `DTTRADE`, dropping a row that has a usable posted date.
+  return ofxDateToIso(invtran?.DTTRADE) ?? ofxDateToIso(invtran?.DTPOSTED);
 }
 
 /** Read a transaction's `FITID`, treating a blank/absent id as null. An empty
@@ -429,6 +432,10 @@ function handleReinvest(ctx: Ctx, agg: OfxNode): void {
   // OFX `TOTAL` is the reinvested cash; when absent, derive it from units ×
   // price (the buy/sell fallback) so the DRIP doesn't record a $0 reinvestment
   // and lose its fingerprint match against the same DRIP from another source.
+  // `abs()` is deliberate here (unlike the INCOME path, which preserves the file
+  // sign): a REINVEST always maps to a dividend (+cash) AND a reinvested buy
+  // (−cash, +shares), and a reversal can't be split into a sensible pair — a
+  // negative-TOTAL reversal would need a manual correction, not an auto-DRIP.
   const total = rawTotal !== null ? Math.abs(rawTotal) : units * (unitPrice ?? 0);
   // The income leg is interest for a reinvested bond/MMF distribution
   // (`INCOMETYPE=INTEREST`), dividend otherwise — same distinction as the plain
@@ -601,7 +608,7 @@ function handleSkip(ctx: Ctx, agg: OfxNode, kind: string, note: string): void {
   const invtran = obj(agg.INVTRAN);
   const secid = obj(agg.SECID);
   const uniqueId = secid ? str(secid.UNIQUEID) : null;
-  const date = ofxDateToIso(invtran?.DTTRADE) ?? "unknown date";
+  const date = tradeDateOf(invtran) ?? "unknown date";
   const security = uniqueId ?? "unknown security";
   ctx.skipped.push({ kind, reason: `${kind} on ${security} (${date}) not imported — ${note}` });
 }

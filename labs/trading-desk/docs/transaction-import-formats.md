@@ -52,7 +52,7 @@ magnitudes from the file; `externalId` = the `FITID`):
 Dates: an OFX `YYYYMMDD[HHMMSS...]` is truncated to `YYYY-MM-DD`. Currency comes
 from the statement's `CURDEF` (default `USD`).
 
-Two known limitations of the OFX shape:
+Known limitations of the OFX shape:
 
 - **Intraday ordering across aggregate types is not preserved.** `ofx-js`
   collapses sibling tags into a keyed object, so the parser emits events grouped
@@ -67,6 +67,23 @@ Two known limitations of the OFX shape:
   account's basis to another, and since OFX `FITID`s are only account-scoped the
   same id across two source accounts would collide on the dedup index and lose a
   row. Export and import one account at a time.
+- **Two identical-fingerprint fills in one file collapse to one.** FIX-774's
+  content fingerprint keys on `(account, tradeDate, type, ticker, quantity,
+  amount)` and its `(account_id, fingerprint)` unique index is unconditional, so
+  two genuinely distinct rows that fingerprint identically — e.g. one market
+  order filled in two same-price, same-day fills, which a broker emits as two
+  aggregates with distinct `FITID`s — dedup to one (counted as `deduplicated`),
+  and the position/basis understates. This is the FIX-774 tradeoff that *buys*
+  cross-source dedup — a file backfill and a Plaid sync of one trade must collapse
+  across different ids — so it is not the file feed's to change; files just make
+  it likelier than manual entry because they carry fill-level history. Record a
+  distinguishing detail if both fills must land. Surfacing `deduplicated > 0` on a
+  first-time import as a warning is a documented follow-up.
+- **Files are decoded as UTF-8.** OFX 1.x headers may declare `CHARSET:1252` and
+  real bank exports can carry Windows-1252 bytes in `SECNAME` / `MEMO`. The body
+  structure is ASCII, so parsing and amounts are unaffected; the damage is
+  confined to replacement characters in `description` / security names.
+  Re-decoding via the header `CHARSET` is a documented follow-up.
 
 ## Security resolution (CUSIP → ticker)
 
