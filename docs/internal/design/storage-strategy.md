@@ -1,9 +1,9 @@
-# FIX-664: Storage Strategy Review — Implementation Spec
+# FIX-664: Storage Strategy — Design & Decision Record
 
 > **Linear issue:** [FIX-664](https://linear.app/fixpoint-labs/issue/FIX-664) — Storage strategy review: re-evaluate store backends given evolving access model (subscribe, graphs, RAG) and hosting dimensions
-> **Type:** Design / strategy decision document (Design · Open Question · Feature)
-> **Status:** Spec draft — necessity verdict *Build as scoped*
-> **Deliverable:** This document. The issue asks for "a documented strategy," not a feature. The spec resolves the eleven open questions, sets the framework's storage posture, and spawns a small set of scoped follow-up issues. It builds no adapters itself.
+> **Type:** Design / strategy decision record (Design · Open Question · Feature) — a peer of `docs/internal/design/store-live-tail.md`, not a `docs/specs/<ISSUE-ID>.md` implementation spec (BP-037). This issue's output *is* a documented strategy that spawns follow-up issues; each spawned issue gets its own spec. `fsd:implement-issue` should not look for a single implementation spec here.
+> **Status:** Design record — necessity verdict *Build as scoped*
+> **Deliverable:** This document. The issue asks for "a documented strategy," not a feature. It resolves the eleven open questions, sets the framework's storage posture, and spawns a small set of scoped follow-up issues. It builds no adapters itself.
 
 ---
 
@@ -176,7 +176,7 @@ Defaults are recommendations, not mandates. Each dimension lists the **default**
 3. **Where do vectors live?** **A separate optional `VectorStore`-shaped capability**, resolved through the slot model, implemented per-adapter — *not* an attribute on records. Embedding provider stays a capability/utility. (Feeds FIX-142.)
 4. **Do graph edges deserve an `EdgeStore`?** **No — defer.** No landed demand; model edges as relational adjacency (recursive CTEs) or app-owned tables; multi-model engines (Surreal) fold them into records in the niche case. Revisit when a concrete graph requirement lands.
 5. **Prescribe compositions or only publish contracts?** **Both, layered:** publish contracts + a composition seam, *and* document recommended compositions per hosting dimension with opinionated defaults. Mandate nothing.
-6. **Single default per hosting dimension?** **Yes — see §4.4.** SQLite local, Postgres single-host/cloud, Postgres+Upstash serverless, with named scale-up paths.
+6. **Single default per hosting dimension?** **Yes — see §4.4.** SQLite local, Postgres single-host/cloud, and — as the serverless *target* (today's shipped path is Vercel/Neon pooled Postgres with polling; see §4.4) — Postgres+Upstash. With named scale-up paths. Read §4.4's today/target labels before quoting these; the target splits are not current guidance.
 7. **Where does Redis fragmentation leave us?** **Default to Valkey (BSD) for self-host, Upstash for serverless; build against RESP via a permissive client; offer Redis-8-AGPL as supported-but-flagged.** Don't pick Dragonfly/Garnet/KeyDB.
 8. **Is JetStream strong enough to replace LISTEN/NOTIFY in the Postgres adapter?** **No — it sits *alongside*, as its own adapter behind `subscribeToEvents`, not inside the Postgres adapter.** LISTEN/NOTIFY stays the Postgres wakeup; JetStream/Valkey become separate stream adapters when scale demands. No Node embed + weak serverless fit rule it out as a default.
 9. **Alignment with the post-PMF think-engine.dev target?** **Open — see §11.** The minimum store surface that platform needs isn't documented internally; flagged for the owner.
@@ -204,7 +204,7 @@ This issue produces the **document** (this file + the Linear spec) and **spawns 
 3. **Spawn: events-as-a-slot** — reconcile FIX-362's EventStore-config split with FIX-569's `subscribeToEvents`/`getEvents`/`persistEvents` surface; formalize an `events` capability slot so events can route to a cheaper/append-only backend (this is what makes the local/cloud/serverless subscription splits above expressible). *Verify (in that issue):* a profile can place events on a different adapter than records; conformance test passes.
 4. **Spawn: vector-store capability shape** — the `VectorStore` slot + per-adapter impls (pgvector first), unblocking FIX-142. Defining this slot's surface (a `VectorStore` contract and/or the resource search API) is part of the follow-up; the current `ResourceRegistry` has no search method today. *Verify (there):* the new vector-search surface returns ranked results against pgvector; adapters without vectors don't fill the slot.
 5. **Spawn: stream adapters behind `subscribeToEvents`** — a Valkey/Redis adapter and/or a NATS JetStream adapter, *when* a deployment outgrows LISTEN/NOTIFY. *Verify (there):* cross-instance live tail works behind the unchanged interface; LISTEN/NOTIFY path unaffected.
-6. **Spawn: `blobs` slot formalization** — wire `ContentStore` to an S3-compatible adapter through the reserved `blobs` slot. *Verify (there):* content reads/writes route to S3; `primary` no longer mandatory for blobs.
+6. **Spawn: `blobs` slot formalization** — *when demand lands* (no landed consumer today — the `blobs` slot is reserved machinery in `resolve-slots.ts`, not a requested feature; wait for a concrete need for large-object/S3-backed content before building) wire `ContentStore` to an S3-compatible adapter through the reserved slot. *Verify (there):* content reads/writes route to S3; `primary` no longer mandatory for blobs.
 7. **Spawn: app-owned-tables guidance** — a docs page + the pool-sharing seam, generalized from trading-desk (FIX-772). *Verify (there):* a second app can adopt the pattern from docs alone.
 
 Steps 3–7 are independent of each other and can be prioritized separately; none blocks step 1 or 2.
