@@ -46,11 +46,15 @@ export function ReportThesisPanel({
 
   // Reset the attempt state whenever the target report changes (the pane swaps
   // session/ticker without remounting this panel), so a stale confirmation from
-  // a previous ticker can't leak into a new, un-adopted one.
+  // a previous ticker can't leak into a new, un-adopted one. Key on the STABLE
+  // `session.sessionId` string, not the `session` object: `useSession` returns a
+  // fresh `SessionView` on every snapshot/stream update — and the adopt's own
+  // resource/request updates are such updates — so depending on the object would
+  // re-run this reset mid-adopt and clear the confirmation that just landed.
   useEffect(() => {
     setAdoptAttempted(false);
     setAdoptBaseline(null);
-  }, [ticker, session]);
+  }, [ticker, session.sessionId]);
 
   const standing = useMemo(
     () => buildStandingThesisModel(ticker, theses),

@@ -77,6 +77,14 @@ function parseOptionalNumber(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** True when a numeric field is NON-blank yet doesn't parse (a typo like "20O").
+ *  Distinct from blank (an intentional clear → null): a typo would otherwise
+ *  silently null out — erasing an existing price/level — so the dialog treats it
+ *  as a validation error and keeps the draft open. */
+function isUnparseableNumber(raw: string): boolean {
+  return raw.trim().length > 0 && parseOptionalNumber(raw) === null;
+}
+
 /** A draft tripwire is kept only if it carries a note; the note is what makes a
  *  tripwire an observable. A note-less row is the user's empty scaffold, dropped
  *  on save. */
@@ -145,6 +153,19 @@ export function thesisFormError(
   form: ThesisFormState,
   existingSourceSessionId: string | null = null,
 ): string | null {
+  // A non-blank unparseable number would collapse to null in the payload and pass
+  // the schema (null is allowed) — silently erasing an existing price/level. Catch
+  // it here BEFORE the payload is built so a typo keeps the editor open. Only
+  // kept tripwires (those with a note) are checked; a note-less row is dropped.
+  if (isUnparseableNumber(form.targetPrice)) return "targetPrice: enter a number (or leave blank)";
+  if (isUnparseableNumber(form.stopPrice)) return "stopPrice: enter a number (or leave blank)";
+  for (let i = 0; i < form.tripwires.length; i++) {
+    const t = form.tripwires[i];
+    if (t.note.trim().length > 0 && isUnparseableNumber(t.level)) {
+      return `tripwires.${i}.level: enter a number (or leave blank)`;
+    }
+  }
+
   const result = thesisInputSchema.safeParse(
     buildSaveThesisPayload(ticker, form, existingSourceSessionId),
   );

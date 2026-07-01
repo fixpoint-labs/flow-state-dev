@@ -55,6 +55,33 @@ describe("saveThesis action", () => {
     expect(typeof stored.updatedAt).toBe("string");
   });
 
+  it("preserves an adopted thesis's sourceSessionId across a bare edit", async () => {
+    // Seed an adopted thesis (has a report link), then edit it via a direct
+    // saveThesis that omits sourceSessionId (schema defaults it to null). The
+    // action must keep the existing link, not erase provenance.
+    await testFlow({
+      flow: portfolioFlow,
+      action: "saveThesis",
+      userId: USER_ID,
+      stores,
+      input: {
+        ticker: "NVDA",
+        entryRationale: "Adopted from a report.",
+        sourceSessionId: "sess_42",
+      },
+    });
+    await testFlow({
+      flow: portfolioFlow,
+      action: "saveThesis",
+      userId: USER_ID,
+      stores,
+      input: { ticker: "NVDA", entryRationale: "Revised by hand." },
+    });
+    const stored = (await thesesOf(stores))["theses/NVDA"];
+    expect(stored.entryRationale).toBe("Revised by hand.");
+    expect(stored.sourceSessionId).toBe("sess_42"); // provenance preserved
+  });
+
   it("preserves createdAt across an edit and bumps updatedAt", async () => {
     await testFlow({
       flow: portfolioFlow,

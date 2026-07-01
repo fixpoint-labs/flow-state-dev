@@ -30,9 +30,9 @@ import { thesisInputSchema } from "./thesis-schema";
 /**
  * Create or update the thesis for a held name. Overwrites in place on
  * `theses/{ticker}` — no revision history in v1; the originating analysis stays
- * preserved via the linked `sourceSessionId`. `createdAt` is preserved across an
- * edit (read from the existing item); `updatedAt` is stamped now. Returns the
- * canonical ticker.
+ * preserved via the linked `sourceSessionId`. `createdAt` and `sourceSessionId`
+ * are preserved across an edit that omits them (read from the existing item);
+ * `updatedAt` is stamped now. Returns the canonical ticker.
  */
 export const saveThesis = handler({
   name: "save-thesis",
@@ -47,6 +47,12 @@ export const saveThesis = handler({
     await ctx.resources.theses.upsert(key, {
       ...input,
       ticker,
+      // Preserve the originating-report link across an edit that omits it. The UI
+      // carries it through, but a direct `saveThesis` caller defaults
+      // `sourceSessionId` to null (schema default), and a bare spread would erase
+      // an adopted thesis's provenance. Only `adoptThesis` sets it; a hand-edit
+      // never clears it — so fall back to the existing value.
+      sourceSessionId: input.sourceSessionId ?? existing?.state.sourceSessionId ?? null,
       createdAt: existing?.state.createdAt ?? now,
       updatedAt: now,
     });

@@ -190,4 +190,35 @@ describe("thesisFormError", () => {
     expect(err).not.toBeNull();
     expect(err).toContain("tripwires");
   });
+
+  it("rejects a non-blank unparseable price (a typo would silently clear it)", () => {
+    // "20O" (letter O) parses to null → would erase an existing price under the
+    // schema's nullable price. Must surface as an error, not a silent clear.
+    const err = thesisFormError("NVDA", {
+      ...emptyThesisForm(),
+      entryRationale: "Why.",
+      targetPrice: "20O",
+    });
+    expect(err).not.toBeNull();
+    expect(err).toContain("targetPrice");
+  });
+
+  it("flags an unparseable level only on a KEPT tripwire (note present)", () => {
+    // A note-less row is dropped on save, so its junk level is not an error; a
+    // row WITH a note survives, so its junk level must be caught.
+    const dropped = thesisFormError("NVDA", {
+      ...emptyThesisForm(),
+      entryRationale: "Why.",
+      tripwires: [{ kind: "price", note: "  ", level: "9O", byDate: "" }],
+    });
+    expect(dropped).toBeNull();
+
+    const kept = thesisFormError("NVDA", {
+      ...emptyThesisForm(),
+      entryRationale: "Why.",
+      tripwires: [{ kind: "price", note: "Breaks stop", level: "9O", byDate: "" }],
+    });
+    expect(kept).not.toBeNull();
+    expect(kept).toContain("tripwires.0.level");
+  });
 });
