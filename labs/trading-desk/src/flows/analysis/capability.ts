@@ -34,6 +34,7 @@ import {
   fetch as createFetchTool,
   search as createSearchTool,
 } from "@flow-state-dev/tools";
+import { resolveProvider as resolveSearchProvider } from "@flow-state-dev/tools/search";
 import { find_counter_evidence } from "./agents/research/tools/find_counter_evidence";
 import {
   PHASE_2_MEMO_KEYS,
@@ -128,21 +129,23 @@ const searchWeb = createSearchTool();
  * a tool that aborts the generator on its first call. `fetch` always works, so
  * it stays either way. The desk's run requirements only mandate model-provider
  * keys, so a `full` run with no search key is a normal, supported configuration.
+ *
+ * We probe the tools package's own `resolveProvider` (pure — env reads + adapter
+ * lookup, no I/O) rather than hand-copying its `ENV_VAR_MAP`, so this can never
+ * drift when a provider is added/renamed there, and the `perplexity-sonar`
+ * shares-`PERPLEXITY_API_KEY` subtlety is handled by the resolver, not us
+ * (BP-029). NOTE(FIX-676 follow-up): the underlying throw-on-first-call is a
+ * `@flow-state-dev/tools` bug every search consumer hits — the tools layer
+ * should degrade to an error payload or expose its own `hasSearchProvider()`;
+ * this guard is the documented interim (BP-028).
  */
-const SEARCH_PROVIDER_ENV_VARS = [
-  "TAVILY_API_KEY",
-  "EXA_API_KEY",
-  "PERPLEXITY_API_KEY",
-  "SERPER_API_KEY",
-  "BRAVE_SEARCH_API_KEY",
-  "PARALLEL_API_KEY",
-] as const;
-
 function hasSearchProvider(): boolean {
-  return SEARCH_PROVIDER_ENV_VARS.some((name) => {
-    const value = process.env[name];
-    return typeof value === "string" && value.trim() !== "";
-  });
+  try {
+    resolveSearchProvider({});
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The tool set for a search-capable preset: `search` only when a provider key
@@ -557,11 +560,21 @@ export const tradingDesk = defineCapability({
      * `<corroboration>` clause is suppressed (the resolver returns `null`).
      */
     corroborate: {
+      resources: { memos: memosCollection },
       tools: (ctx) =>
         ctx.session.state.costPreset === "full" ? webLookupTools() : [],
       context: {
         corroboration: (_input, ctx) =>
           ctx.session.state.costPreset === "full" ? CORROBORATION_CLAUSE : null,
+        // The shared "references consulted" ledger rides the same `full` gate as
+        // the tools/clause above (see the `referencesConsulted` helper header) so
+        // the tag is impossible to emit on `fast` — even if a prior full/verify
+        // run left citations on a persisted memo (the `fast` re-run leak this
+        // structural gate closes).
+        referencesConsulted: (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatReferencesConsulted(ctx.resources.memos)
+            : null,
       },
     },
 
@@ -569,32 +582,19 @@ export const tradingDesk = defineCapability({
      * FIX-676 — read-only fetch of an already-surfaced link, no new search. For
      * the scenario forecaster and the risk consolidator: they can pull a URL the
      * desk surfaced (via <referencesConsulted>) but cannot run a fresh search.
-     * Gated on `full` like `corroborate`.
+     * Gated on `full` like `corroborate`, and carries the same references ledger.
      */
     reviewReferences: {
+      resources: { memos: memosCollection },
       tools: (ctx) =>
         ctx.session.state.costPreset === "full" ? [fetchArticle] : [],
       context: {
         reviewReferences: (_input, ctx) =>
           ctx.session.state.costPreset === "full" ? REVIEW_REFERENCES_CLAUSE : null,
-      },
-    },
-
-    /**
-     * FIX-676 — the shared "references consulted" ledger. DERIVED from the
-     * `citations` already on every memo (the memos collection IS the ledger —
-     * no separate resource), so a downstream agent can reuse a link the desk
-     * surfaced instead of re-searching. Returns `null` (tag suppressed) until
-     * something has been cited — the steady state on `fast`. Read by every
-     * corroborator and reviewer; NOT by the lenses (independence guarantee,
-     * FIX-655) or the Phase 2 debaters (a synthesis-phase surface; the debate
-     * search question is tracked separately).
-     */
-    referencesConsulted: {
-      resources: { memos: memosCollection },
-      context: {
         referencesConsulted: (_input, ctx) =>
-          formatReferencesConsulted(ctx.resources.memos),
+          ctx.session.state.costPreset === "full"
+            ? formatReferencesConsulted(ctx.resources.memos)
+            : null,
       },
     },
 

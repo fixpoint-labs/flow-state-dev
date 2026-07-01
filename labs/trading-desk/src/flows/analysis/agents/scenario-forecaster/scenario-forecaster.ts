@@ -85,10 +85,10 @@ export const scenarioForecasterGenerator = generator({
       phase2DebateFull: true,
       riskCritiquesFull: true,
       highReasoning: true,
-      // FIX-676 — pull a desk-surfaced link to corroborate a scenario trigger;
-      // no fresh search.
+      // FIX-676 — pull a desk-surfaced link (via the references ledger
+      // `reviewReferences` carries) to corroborate a scenario trigger; no fresh
+      // search.
       reviewReferences: true,
-      referencesConsulted: true,
     }),
   ],
   ...definePromptFile(scenarioForecasterPrompt),

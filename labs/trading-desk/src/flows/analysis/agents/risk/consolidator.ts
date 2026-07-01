@@ -39,9 +39,9 @@ export const riskAssessmentGenerator = generator({
       phase2DebateFull: true,
       highReasoning: true,
       // FIX-676 — no fresh search, but the consolidator can pull a link the desk
-      // already surfaced (via the references ledger) to corroborate a critique.
+      // already surfaced (via the references ledger `reviewReferences` carries)
+      // to corroborate a critique.
       reviewReferences: true,
-      referencesConsulted: true,
     }),
   ],
   ...definePromptFile(riskAssessmentPrompt),

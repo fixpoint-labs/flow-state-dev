@@ -20,7 +20,6 @@ type AnyCap = any;
 const defs = (tradingDesk as AnyCap).__presetDefs;
 const corroborate = defs.corroborate;
 const reviewReferences = defs.reviewReferences;
-const referencesConsulted = defs.referencesConsulted;
 
 function ctxFor(costPreset: "fast" | "full") {
   return { session: { state: { costPreset } }, resources: {} };
@@ -102,13 +101,44 @@ describe("reviewReferences preset", () => {
   });
 });
 
-describe("referencesConsulted preset", () => {
-  it("suppresses the tag (null) when nothing has been cited", async () => {
+describe("references ledger (folded into corroborate + reviewReferences)", () => {
+  const emptyMemos = { getOptional: async () => undefined };
+  // A memos collection where every key carries a citation (worst case for the
+  // fast leak: a persisted full/verify run left citations behind).
+  const memosWithCitation = {
+    getOptional: async () => ({
+      state: { citations: [{ url: "https://ex.com/x", title: "X" }] },
+    }),
+  };
+
+  it("suppresses the tag on `fast` even when memos carry citations (structural gate)", async () => {
+    // Regression for the fast-run leak: re-running a fast session that carries a
+    // user thesis leaves run 1's ungated verify citations on the P6 memo; the
+    // ledger must NOT surface them (and instruct tool-less agents to fetch) on
+    // the fast re-run. The `full` gate on the folded context makes this impossible.
+    const ctx = {
+      session: { state: { costPreset: "fast" } },
+      resources: { memos: memosWithCitation },
+    };
+    expect(await corroborate.context.referencesConsulted({}, ctx)).toBeNull();
+    expect(await reviewReferences.context.referencesConsulted({}, ctx)).toBeNull();
+  });
+
+  it("suppresses the tag on `full` when nothing has been cited", async () => {
     const ctx = {
       session: { state: { costPreset: "full" } },
-      resources: { memos: { getOptional: async () => undefined } },
+      resources: { memos: emptyMemos },
     };
-    const value = await referencesConsulted.context.referencesConsulted({}, ctx);
-    expect(value).toBeNull();
+    expect(await corroborate.context.referencesConsulted({}, ctx)).toBeNull();
+  });
+
+  it("renders the ledger on `full` when memos carry citations", async () => {
+    const ctx = {
+      session: { state: { costPreset: "full" } },
+      resources: { memos: memosWithCitation },
+    };
+    const value = await corroborate.context.referencesConsulted({}, ctx);
+    expect(typeof value).toBe("string");
+    expect(value).toContain("https://ex.com/x");
   });
 });

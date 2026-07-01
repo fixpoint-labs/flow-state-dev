@@ -75,10 +75,10 @@ export const traderGenerator = generator({
       // Phase 5a forecast), so the trader sees only the mandate, not the figure.
       riskMandate: true,
       // FIX-676 — cost-gated web search+fetch to corroborate a specific claim
-      // (a peer comp, a recent event) before sizing, plus the shared
-      // references-consulted ledger so it reuses what the desk already surfaced.
+      // (a peer comp, a recent event) before sizing. `corroborate` also carries
+      // the shared references-consulted ledger so it reuses what the desk already
+      // surfaced.
       corroborate: true,
-      referencesConsulted: true,
     }),
   ],
   ...definePromptFile(traderPrompt),

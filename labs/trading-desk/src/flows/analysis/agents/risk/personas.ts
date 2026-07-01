@@ -57,11 +57,11 @@ const tradingMemos = (reasoning: boolean) => [
     phase2DebateFull: true,
     reasoning: !!reasoning,
     // FIX-676 — every persona gets cost-gated web search+fetch to corroborate a
-    // claim (recent counter-evidence, a downgrade), plus the references ledger.
-    // All three opt in, not just the conservative officer: arming one side would
-    // tilt the triad's already conservative-leaning synthesis.
+    // claim (recent counter-evidence, a downgrade); `corroborate` also carries
+    // the references ledger. All three opt in, not just the conservative officer:
+    // arming one side would tilt the triad's already conservative-leaning
+    // synthesis.
     corroborate: true,
-    referencesConsulted: true,
   }),
 ] as const;
 

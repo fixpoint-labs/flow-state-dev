@@ -168,9 +168,9 @@ export const portfolioManagerGenerator = generator({
       rewardToRisk: true,
       riskMandate: true,
       // FIX-676 — final corroboration: cost-gated web search+fetch to verify a
-      // specific claim before signing the decision, plus the references ledger.
+      // specific claim before signing the decision. `corroborate` also carries
+      // the references ledger.
       corroborate: true,
-      referencesConsulted: true,
     }),
   ],
   ...definePromptFile(portfolioManagerPrompt),
