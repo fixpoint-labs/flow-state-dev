@@ -104,14 +104,22 @@ the no-config fallback. So the prototype adds one line to
   exercises "goal-completion judgment changes the outcome" *on its own* —
   without it, `doneWhen` collapses into a relay of the human verdict and the
   vet would only prove the checkpoint round-trip, not goal judgment.
-  **(3)** Newest approval task `completed` with `verdict: "approve"` → `done`;
-  `completed` with `verdict: "reject"` → `replan`; still `awaiting_review`
-  with deps met → `blocked_on_human`; otherwise `in_progress`.
+  **(3)** Acceptance met: if no approval task exists yet for the accepted
+  draft → `replan` (it seeds the first approval task); else newest approval
+  task `completed` with `verdict: "approve"` → `done`; `completed` with
+  `verdict: "reject"` → `replan`; still `awaiting_review` with deps met →
+  `blocked_on_human`; otherwise `in_progress`.
 - **`replan`** — a handler, keyed to which `doneWhen` branch fired. On an
-  unmet acceptance criterion: seed a revise task only — no human task yet;
-  approval is requested once the goal check passes. On `reject`: seed a
-  revise task carrying the human's `feedback`, plus a fresh approval task
-  (`awaiting_review`, dep on the revise task).
+  unmet acceptance criterion: seed a revise task only (`assignee: "drafter"`)
+  — no human task yet. When the acceptance check first passes with no open
+  approval task: seed the first approval task (`awaiting_review`,
+  `assignee: "human:approver"`) — `start` never seeds it, so a human can
+  never approve an artifact the goal check hasn't accepted. On `reject`:
+  write the human's `feedback` to the workspace's `latestFeedback` field —
+  the SAME field the capability preset renders and the commit tap echoes
+  (nothing else writes it, so a non-null `feedbackEcho` is unambiguous) —
+  then seed a revise task plus a fresh approval task (`awaiting_review`,
+  dep on the revise task).
 
 An LLM evaluator is a drop-in later — the slot is a block — but the vet keeps
 loop mechanics deterministic so a flaky model can't masquerade as a broken
@@ -145,6 +153,9 @@ Two constraints discovered in review, encoded here:
   productization follow-up, not vet scope.
 
 Board config otherwise: `workers: { drafter }`, `dispatcher: "topological"`.
+The registry form routes every claimable task by `task.assignee` and THROWS
+on a pending task without one — so every draft/revise task is seeded with
+`assignee: "drafter"`; only human tasks carry `human:approver`.
 **No `ctx.suspend()` anywhere in this flow** (success criterion 3).
 
 ### The shared workspace (workstream-as-capability)
@@ -179,7 +190,7 @@ ensureBoard (seed goal tasks if empty)
 
 | Action | Input | Behavior |
 | --- | --- | --- |
-| `start` | `{ goal: string }` | Create the session board if absent, seed draft task + approval task, run the advance loop. |
+| `start` | `{ goal: string }` | Create the session board if absent, seed the draft task only (`assignee: "drafter"`), run the advance loop. No approval task yet — `replan` creates the first one after the acceptance criterion passes. |
 | `decide` | `{ verdict: "approve" \| "reject", feedback?: string }` | Find the open approval task and **`collection.complete(taskId, { verdict, feedback })`** — `awaiting_review → completed` is a legal transition. Explicitly NOT `resumeFromReview`: that re-pends the task, making it claimable, and the registry router throws on the unknown human assignee. Then run the advance loop in the same request. |
 | `advance` | `{}` | Just run the advance loop. Exists to prove a *fresh* request can pick the board up with no other input. |
 | `status` | `{}` | **Zero-model** snapshot read (the trading-desk `runSummary` precedent). |
@@ -277,8 +288,9 @@ incidental wiring.
    reject replans again (`2-reject.json` shows `revisions == 2` and a second
    approval task). The first is the goal-judgment clause on its own; the
    second is the checkpoint clause.
-3. **HITL is pure board semantics.** `rg -n "suspend" apps/kitchen-sink/flows/workstream-vet/`
-   returns nothing; requests 1 and 2 exit 0 with the workstream open.
+3. **HITL is pure board semantics.** `rg -n "suspend" flows/workstream-vet/`
+   (run from `apps/kitchen-sink`, the same cwd as the proof script) returns
+   nothing; requests 1 and 2 exit 0 with the workstream open.
 4. **The shared workspace works via capability injection — proven at two
    layers.** (a) *Capability path:* a vitest unit test (the write-block-tests
    convention, mocked generator via `@flow-state-dev/testing`) asserts the
