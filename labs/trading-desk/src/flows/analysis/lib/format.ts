@@ -291,11 +291,17 @@ export async function formatReferencesConsulted(memos: {
     }
   }
   if (entries.length === 0) return null;
+  // Self-wrap the tag (the `<corroboration>`/`<reviewReferences>` clauses point
+  // agents at `<referencesConsulted>`). This string is contributed VERBATIM via
+  // the preset's array context, so the tag renders exactly once, unescaped — see
+  // the `corroborate` preset note in `capability.ts`.
   return [
+    "<referencesConsulted>",
     "Sources the desk's analysts and prior synthesis agents have already",
     "consulted on the open web. Reuse one of these — you may `fetch` a URL to",
     "read it in full — rather than re-searching the same ground:",
     ...entries,
+    "</referencesConsulted>",
   ].join("\n");
 }
 

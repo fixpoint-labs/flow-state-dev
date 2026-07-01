@@ -490,9 +490,10 @@ export const tradingDesk = defineCapability({
       // `search` only when a provider key is set (the resolver throws otherwise);
       // `fetch` always. Same guard as `corroborate` — see `hasSearchProvider`.
       tools: () => webLookupTools(),
-      context: {
-        verification: () => VERIFICATION_CLAUSE,
-      },
+      // Verbatim array context (not object-form) so the self-wrapping
+      // `<verification>` clause renders once, unescaped — see the `corroborate`
+      // preset note.
+      context: [() => VERIFICATION_CLAUSE],
     },
 
     /** Phase 2 — citation-integrity report (FIX-679), read from session
@@ -531,10 +532,13 @@ export const tradingDesk = defineCapability({
     investigate: {
       tools: (ctx) =>
         ctx.session.state.costPreset === "full" ? [fetchArticle] : [],
-      context: {
-        investigation: (_input, ctx) =>
+      // Verbatim array context (not object-form) so the self-wrapping
+      // `<investigation>` clause renders once, unescaped — see the `corroborate`
+      // preset note.
+      context: [
+        (_input, ctx) =>
           ctx.session.state.costPreset === "full" ? INVESTIGATION_CLAUSE : null,
-      },
+      ],
     },
 
     /**
@@ -563,19 +567,23 @@ export const tradingDesk = defineCapability({
       resources: { memos: memosCollection },
       tools: (ctx) =>
         ctx.session.state.costPreset === "full" ? webLookupTools() : [],
-      context: {
-        corroboration: (_input, ctx) =>
+      // Context is an ARRAY of verbatim (bare-string-returning) entries, NOT an
+      // object map. Object-form `{ key: fn }` context wraps the value in a
+      // kebab-cased `<key>` AND escapes its `<`/`>` — which would double-wrap a
+      // self-wrapping clause and mangle the `<referencesConsulted>` tags the
+      // clause references. Bare strings are injected verbatim (the
+      // GROUNDING_CLAUSE precedent), so the clause and the ledger render their
+      // own tags exactly once, unescaped. Both ride the `full` gate (→ null on
+      // `fast`), so the tags cannot surface on a `fast` re-run even if a prior
+      // full/verify run left citations on a persisted memo.
+      context: [
+        (_input, ctx) =>
           ctx.session.state.costPreset === "full" ? CORROBORATION_CLAUSE : null,
-        // The shared "references consulted" ledger rides the same `full` gate as
-        // the tools/clause above (see the `referencesConsulted` helper header) so
-        // the tag is impossible to emit on `fast` — even if a prior full/verify
-        // run left citations on a persisted memo (the `fast` re-run leak this
-        // structural gate closes).
-        referencesConsulted: (_input, ctx) =>
+        (_input, ctx) =>
           ctx.session.state.costPreset === "full"
             ? formatReferencesConsulted(ctx.resources.memos)
             : null,
-      },
+      ],
     },
 
     /**
@@ -583,19 +591,20 @@ export const tradingDesk = defineCapability({
      * the scenario forecaster and the risk consolidator: they can pull a URL the
      * desk surfaced (via <referencesConsulted>) but cannot run a fresh search.
      * Gated on `full` like `corroborate`, and carries the same references ledger.
+     * Verbatim array context — see the `corroborate` note above.
      */
     reviewReferences: {
       resources: { memos: memosCollection },
       tools: (ctx) =>
         ctx.session.state.costPreset === "full" ? [fetchArticle] : [],
-      context: {
-        reviewReferences: (_input, ctx) =>
+      context: [
+        (_input, ctx) =>
           ctx.session.state.costPreset === "full" ? REVIEW_REFERENCES_CLAUSE : null,
-        referencesConsulted: (_input, ctx) =>
+        (_input, ctx) =>
           ctx.session.state.costPreset === "full"
             ? formatReferencesConsulted(ctx.resources.memos)
             : null,
-      },
+      ],
     },
 
     /** Valuation spine — computed deterministic anchor for the final

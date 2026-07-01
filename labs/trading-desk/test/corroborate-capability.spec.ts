@@ -22,7 +22,30 @@ const corroborate = defs.corroborate;
 const reviewReferences = defs.reviewReferences;
 
 function ctxFor(costPreset: "fast" | "full") {
-  return { session: { state: { costPreset } }, resources: {} };
+  // Include an empty memos stub so the ledger context entry (which reads
+  // `ctx.resources.memos`) resolves to null rather than throwing.
+  return {
+    session: { state: { costPreset } },
+    resources: { memos: { getOptional: async () => undefined } },
+  };
+}
+
+// corroborate/reviewReferences `context` is an ARRAY of verbatim entries (not an
+// object map) so self-wrapping clauses render unescaped. Resolve every entry and
+// return the non-null strings, joined — mirrors how the framework injects them.
+async function resolveContext(
+  preset: { context: unknown },
+  ctx: unknown,
+): Promise<string> {
+  const entries = Array.isArray(preset.context)
+    ? preset.context
+    : [preset.context];
+  const out: string[] = [];
+  for (const e of entries) {
+    const v = typeof e === "function" ? await e({}, ctx) : e;
+    if (v != null) out.push(v as string);
+  }
+  return out.join("\n");
 }
 
 // The search-exposing presets gate the `search` tool on a configured provider
@@ -71,13 +94,14 @@ describe("corroborate preset", () => {
     expect(await corroborate.tools(ctxFor("fast"))).toEqual([]);
   });
 
-  it("injects the corroboration clause only on full", () => {
-    const onFull = corroborate.context.corroboration({}, ctxFor("full"));
-    const onFast = corroborate.context.corroboration({}, ctxFor("fast"));
-    expect(typeof onFull).toBe("string");
+  it("injects the corroboration clause only on full", async () => {
+    const onFull = await resolveContext(corroborate, ctxFor("full"));
+    const onFast = await resolveContext(corroborate, ctxFor("fast"));
     expect(onFull).toContain("<corroboration>");
     expect(onFull).toContain("citations");
-    expect(onFast).toBeNull();
+    // Exactly one opening tag — verbatim, not double-wrapped by an object key.
+    expect(onFull.match(/<corroboration>/g)?.length).toBe(1);
+    expect(onFast).not.toContain("<corroboration>");
   });
 });
 
@@ -92,12 +116,12 @@ describe("reviewReferences preset", () => {
     expect(await reviewReferences.tools(ctxFor("fast"))).toEqual([]);
   });
 
-  it("injects the reviewReferences clause only on full", () => {
-    const onFull = reviewReferences.context.reviewReferences({}, ctxFor("full"));
-    const onFast = reviewReferences.context.reviewReferences({}, ctxFor("fast"));
-    expect(typeof onFull).toBe("string");
+  it("injects the reviewReferences clause only on full", async () => {
+    const onFull = await resolveContext(reviewReferences, ctxFor("full"));
+    const onFast = await resolveContext(reviewReferences, ctxFor("fast"));
     expect(onFull).toContain("<reviewReferences>");
-    expect(onFast).toBeNull();
+    expect(onFull.match(/<reviewReferences>/g)?.length).toBe(1);
+    expect(onFast).not.toContain("<reviewReferences>");
   });
 });
 
@@ -116,29 +140,42 @@ describe("references ledger (folded into corroborate + reviewReferences)", () =>
     // user thesis leaves run 1's ungated verify citations on the P6 memo; the
     // ledger must NOT surface them (and instruct tool-less agents to fetch) on
     // the fast re-run. The `full` gate on the folded context makes this impossible.
+    // The ledger BLOCK is identified by its closing tag (the clause only
+    // *mentions* the opening `<referencesConsulted>` inline, so we can't key on
+    // that). On fast, no ledger block is emitted.
     const ctx = {
       session: { state: { costPreset: "fast" } },
       resources: { memos: memosWithCitation },
     };
-    expect(await corroborate.context.referencesConsulted({}, ctx)).toBeNull();
-    expect(await reviewReferences.context.referencesConsulted({}, ctx)).toBeNull();
+    expect(await resolveContext(corroborate, ctx)).not.toContain(
+      "</referencesConsulted>",
+    );
+    expect(await resolveContext(reviewReferences, ctx)).not.toContain(
+      "</referencesConsulted>",
+    );
   });
 
-  it("suppresses the tag on `full` when nothing has been cited", async () => {
+  it("suppresses the ledger block on `full` when nothing has been cited", async () => {
     const ctx = {
       session: { state: { costPreset: "full" } },
       resources: { memos: emptyMemos },
     };
-    expect(await corroborate.context.referencesConsulted({}, ctx)).toBeNull();
+    expect(await resolveContext(corroborate, ctx)).not.toContain(
+      "</referencesConsulted>",
+    );
   });
 
-  it("renders the ledger on `full` when memos carry citations", async () => {
+  it("renders the ledger block (unescaped) on `full` with citations", async () => {
     const ctx = {
       session: { state: { costPreset: "full" } },
       resources: { memos: memosWithCitation },
     };
-    const value = await corroborate.context.referencesConsulted({}, ctx);
-    expect(typeof value).toBe("string");
-    expect(value).toContain("https://ex.com/x");
+    const rendered = await resolveContext(corroborate, ctx);
+    expect(rendered).toContain("</referencesConsulted>");
+    expect(rendered).toContain("https://ex.com/x");
+    // Verbatim self-wrap: the ledger's own tags are NOT escaped, and it is not
+    // double-wrapped (exactly one closing tag).
+    expect(rendered).not.toContain("&lt;/referencesConsulted&gt;");
+    expect(rendered.match(/<\/referencesConsulted>/g)?.length).toBe(1);
   });
 });

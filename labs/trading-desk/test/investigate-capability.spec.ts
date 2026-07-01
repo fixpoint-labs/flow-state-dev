@@ -40,13 +40,26 @@ describe("investigate preset", () => {
     expect(tools).toEqual([]);
   });
 
-  it("injects the INVESTIGATION_CLAUSE only on full", () => {
-    const onFull = investigate.context.investigation({}, ctxFor("full"));
-    const onFast = investigate.context.investigation({}, ctxFor("fast"));
-    expect(typeof onFull).toBe("string");
+  it("injects the INVESTIGATION_CLAUSE only on full", async () => {
+    // `context` is a verbatim array (not an object map) so the self-wrapping
+    // <investigation> clause renders once, unescaped — resolve the entries.
+    const resolve = async (preset: AnyCap, cost: "fast" | "full") => {
+      const entries: unknown[] = Array.isArray(preset.context)
+        ? preset.context
+        : [preset.context];
+      const out: string[] = [];
+      for (const e of entries) {
+        const v = typeof e === "function" ? await e({}, ctxFor(cost)) : e;
+        if (v != null) out.push(v as string);
+      }
+      return out.join("\n");
+    };
+    const onFull = await resolve(investigate, "full");
+    const onFast = await resolve(investigate, "fast");
     expect(onFull).toContain("<investigation>");
     expect(onFull).toContain("citations");
-    // Null on fast suppresses the <investigation> tag entirely.
-    expect(onFast).toBeNull();
+    expect(onFull.match(/<investigation>/g)?.length).toBe(1);
+    // Nothing emitted on fast → the <investigation> tag is suppressed entirely.
+    expect(onFast).not.toContain("<investigation>");
   });
 });
