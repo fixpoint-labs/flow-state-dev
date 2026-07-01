@@ -460,11 +460,13 @@ time horizon, optional target/stop, and a link to the originating report.
   thesis off the collection (`ctx.resources.theses.getOptional(thesisKey(ticker))`)
   and freezes it onto `state.standingThesis` (the `portfolioContext` /
   `riskMandate` snapshot pattern; does NOT join the keying tuple). The
-  `standingThesis` capability preset renders `<standingThesis>` from frozen state
-  (suppressed to null when absent), opted into by the trader (P3) and PM (P5)
-  ONLY — the analysts stay blind so the independent evidence is uncontaminated.
-  **`<standingThesis>` is distinct from `userThesis`'s `<userThesis>`** (the Phase
-  6 hypothesis-under-audit) — never the same tag.
+  `standingThesis` capability preset renders `<standing-thesis>` from frozen state
+  (object-form context, so the key auto-kebabs — the `portfolioContext` /
+  `riskMandate` precedent; suppressed to null when absent), opted into by the
+  trader (P3) and PM (P5) ONLY — the analysts stay blind so the independent
+  evidence is uncontaminated. **`<standing-thesis>` is distinct from
+  `userThesis`'s self-wrapped `<userThesis>`** (the Phase 6 hypothesis-under-audit)
+  — never the same tag.
 
 - **`hasStandingThesis` echo (snapshot + RunSummary).** The PM commit derives
   `hasStandingThesis` from frozen state (never LLM-emitted, the

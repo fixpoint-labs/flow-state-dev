@@ -4,7 +4,8 @@
  * Three raw `fsdev run` steps from `labs/trading-desk` (config search is
  * cwd-only), all sharing one throwaway `TRADING_DESK_DATA_DIR` so they hit the
  * same PGlite backing and the same CLI principal:
- *   1. portfolio saveThesis  — write the thesis through the real action + repo.
+ *   1. portfolio saveThesis  — write the thesis through the real action into the
+ *                               user-scoped `theses` resource collection.
  *   2. analysis analyze       — seedSession reads + freezes it; trader/PM see
  *                               <standingThesis>; the PM commit derives the echo.
  *   3. analysis runSummary    — zero-model read-back.

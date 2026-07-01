@@ -144,7 +144,7 @@ export function thesisKey(ticker: string): string {
  * aggregation — so it is an FSD RESOURCE, not a relational table (unlike
  * accounts/holdings/ledger, which earned the app tables with FK cascades and
  * cross-account rollups). It is also agent-facing state: the analysis seed reads
- * it and injects `<standingThesis>` into the trader/PM prompts — exactly what
+ * it and injects `<standing-thesis>` into the trader/PM prompts — exactly what
  * resources are for. Being a resource buys the client read path (`useResource
  * CollectionList`) and live `resource_change` streaming for free, so there is no
  * bespoke read route or manual refetch.

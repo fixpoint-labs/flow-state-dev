@@ -2,7 +2,7 @@
  * Standing per-position thesis injection (FIX-760).
  *
  * Two seams:
- *  1. `formatStandingThesis` (pure) renders the `<standingThesis>` inner content
+ *  1. `formatStandingThesis` (pure) renders the `<standing-thesis>` inner content
  *     when a thesis is present and suppresses (returns null) when absent / empty
  *     — the BP-018 guard-on-required-field, the `formatPortfolioContext`
  *     precedent the framework uses to omit the tag.

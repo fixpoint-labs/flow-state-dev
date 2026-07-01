@@ -39,12 +39,17 @@ export function ReportThesisPanel({
   const { theses, loading, refetch } = useTheses(session);
   const [adopting, setAdopting] = useState(false);
   const [adoptAttempted, setAdoptAttempted] = useState(false);
+  // The record's `recordedAsOf` (updatedAt) captured at click time, so a re-adopt
+  // confirms only once the live record actually advances past it. null when no
+  // thesis existed at click (a first adopt).
+  const [adoptBaseline, setAdoptBaseline] = useState<string | null>(null);
 
-  // Reset the attempt flag whenever the target report changes (the pane swaps
+  // Reset the attempt state whenever the target report changes (the pane swaps
   // session/ticker without remounting this panel), so a stale confirmation from
   // a previous ticker can't leak into a new, un-adopted one.
   useEffect(() => {
     setAdoptAttempted(false);
+    setAdoptBaseline(null);
   }, [ticker, session]);
 
   const standing = useMemo(
@@ -52,20 +57,30 @@ export function ReportThesisPanel({
     [ticker, theses],
   );
 
-  // Confirm "Adopted ✓" only once the thesis ACTUALLY exists for this ticker
-  // (the live collection reflects the committed write) AND we attempted it —
-  // `sendAction` resolves at stream-attach, before the handler commits and before
-  // a no-decision / write failure surfaces, so an optimistic confirm would show a
-  // false success. Tying it to the live record means a failed adopt never confirms.
-  const adopted = adoptAttempted && standing !== null;
+  // Confirm "Adopted ✓" only once the live record reflects THIS adopt. `sendAction`
+  // resolves at stream-attach, before the handler commits and before a
+  // no-decision / stale-decision failure surfaces, so an optimistic confirm would
+  // show a false success. A first adopt is safe on `standing !== null` alone (there
+  // was no record before). A RE-adopt is not: `standing` is already non-null, so we
+  // also require the record to be report-derived AND its `recordedAsOf` to have
+  // advanced past the value captured at click time — a failed re-adopt leaves the
+  // old record (and its timestamp) untouched, so it never confirms.
+  const adopted =
+    adoptAttempted &&
+    standing !== null &&
+    standing.fromReport &&
+    standing.recordedAsOf !== adoptBaseline;
 
   const handleAdopt = useCallback(async () => {
     setAdopting(true);
+    // Capture the pre-adopt record identity so the confirm above can tell a
+    // committed (re-)adopt from a no-op failure that left the old record in place.
+    setAdoptBaseline(standing?.recordedAsOf ?? null);
     try {
       // Derive-only: the action reads the stored decision snapshot — no input.
       await session.sendAction("adoptThesis", {});
       // sendAction resolves before the write commits; refetch as a backstop to the
-      // live stream. The confirmation gates on `standing` actually appearing.
+      // live stream. The confirmation gates on the live record advancing.
       refetch();
       setAdoptAttempted(true);
     } catch (err) {
@@ -73,7 +88,7 @@ export function ReportThesisPanel({
     } finally {
       setAdopting(false);
     }
-  }, [session, refetch]);
+  }, [session, refetch, standing]);
 
   // Adoption needs: the run finished (`runComplete` flips only after the PM
   // commits a decision), the theses read to have landed (so an existing thesis is

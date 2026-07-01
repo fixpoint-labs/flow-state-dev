@@ -5,10 +5,13 @@
  * the conditions that would prove it wrong, a time horizon, and an optional link
  * back to the analysis report it came from. It is keyed household × ticker — one
  * thesis per name regardless of which account holds it (intent is about the name;
- * account location is a tax question). Like accounts/holdings/ledger it lives in
- * the app-owned relational layer (FIX-772), NOT an FSD resource; this leaf is the
- * shared shape the editor validates client-side, the action re-validates
- * server-side, and the repository maps rows to (BP-019: imports only `zod`, no
+ * account location is a tax question). Unlike accounts/holdings/ledger (which
+ * earned the FIX-772 `app.*` tables), a thesis is a flat household × ticker
+ * document with no FK/join/aggregation, so it lives in a user-scoped FSD resource
+ * collection (`thesesCollection`, `portfolio-resources.ts`), NOT a relational
+ * table. This leaf is the shared shape the editor validates client-side, the
+ * `saveThesis` / `adoptThesis` actions re-validate server-side, and the
+ * collection stores as its state (BP-019: imports only `zod`, no
  * `@flow-state-dev/core`, so it stays bundle-safe).
  *
  * `invalidationConditions` is freeform prose; `tripwires` are the optional
@@ -23,8 +26,8 @@
 import { z } from "zod";
 
 /** What kind of observable a tripwire watches: a price level, a named event, or
- *  a calendar date. Stored inside the `tripwires` jsonb column (enum enforced
- *  here at the boundary), so adding a kind later needs no migration. */
+ *  a calendar date. Stored inside the record's `tripwires` array field (enum
+ *  enforced here at the boundary), so adding a kind later needs no schema change. */
 export const tripwireKindSchema = z.enum(["price", "event", "date"]);
 export type TripwireKind = z.infer<typeof tripwireKindSchema>;
 
@@ -44,7 +47,7 @@ export const tripwireSchema = z.object({
   kind: tripwireKindSchema,
   note: z.string().min(1).max(300),
   // A price tripwire's level is a price, so reject zero/negative (a nonsensical
-  // level would pollute the `<standingThesis>` prompt). Null for non-price kinds.
+  // level would pollute the `<standing-thesis>` prompt). Null for non-price kinds.
   level: z.number().positive().finite().nullable().default(null),
   byDate: isoDate.nullable().default(null),
 });
@@ -57,8 +60,8 @@ export type TimeHorizon = z.infer<typeof timeHorizonSchema>;
 /**
  * The user-suppliable thesis fields — what the editor sends, what `adoptThesis`
  * derives. `ticker` is the household × ticker key (the `userId` half is resolved
- * server-side from the caller identity, never trusted from the client); the
- * repository owns the timestamps. `entryRationale` is required and non-empty — a
+ * server-side from the resource scope, never trusted from the client); the
+ * actions own the timestamps. `entryRationale` is required and non-empty — a
  * thesis with no "why" is meaningless. `sourceSessionId` links the originating
  * analysis report (null for a hand-written thesis).
  */
@@ -66,7 +69,7 @@ export const thesisInputSchema = z.object({
   ticker: z.string().min(1).max(12),
   // `.trim()` first so a whitespace-only rationale (a direct/bypass caller) fails
   // `.min(1)` — the formatter only suppresses an exactly empty string, so a blank
-  // "why" must never persist into the `<standingThesis>` prompt.
+  // "why" must never persist into the `<standing-thesis>` prompt.
   entryRationale: z.string().trim().min(1).max(4000),
   invalidationConditions: z.string().max(4000).nullable().default(null),
   tripwires: z.array(tripwireSchema).max(20).default([]),
@@ -80,10 +83,10 @@ export const thesisInputSchema = z.object({
 export type ThesisInputFields = z.infer<typeof thesisInputSchema>;
 
 /**
- * The persisted-and-mapped read shape the repository returns and the standing-
- * thesis context injection consumes. Adds the repository-owned timestamps to the
- * input fields; numerics are coerced to JS `number` and timestamps to ISO-8601 at
- * the read boundary (the FIX-772 `mapHolding` precedent).
+ * The collection's stored state shape — what the resource holds and the standing-
+ * thesis context injection consumes. Adds the action-owned timestamps to the
+ * input fields; `createdAt` is stamped on first write and preserved on edit,
+ * `updatedAt` bumped on every write (both ISO-8601 strings).
  */
 export const thesisRecordSchema = thesisInputSchema.extend({
   createdAt: z.string(),

@@ -252,7 +252,7 @@ Per-position thesis records (optional):
   freeform is what people actually write. The record carries both.
 - **Injected into analysis when the desk runs a held name.** At run start the
   desk reads the standing thesis for the ticker and shows it to the trader and the
-  PM as a `<standingThesis>` block — they reason with the user's standing intent,
+  PM as a `<standing-thesis>` block — they reason with the user's standing intent,
   not just position size. The analysts stay blind to it, so the independent
   evidence is uncontaminated. This is distinct from the per-run thesis the Phase 6
   validator audits: the standing thesis is context the desk holds about a position,

@@ -598,7 +598,7 @@ export function formatRiskMandate(
 
 /**
  * Render the user's STANDING per-position thesis (FIX-760) as the inner content
- * of the `<standingThesis>` prompt block the trader (P3) and PM (P5) reason with.
+ * of the `<standing-thesis>` prompt block the trader (P3) and PM (P5) reason with.
  * This is the durable "why we hold this name" — distinct from the per-run
  * `<userThesis>` (the hypothesis the Phase 6 validator audits): the standing
  * thesis is CONTEXT the decision tier sees, like position size, never the run's
@@ -607,7 +607,8 @@ export function formatRiskMandate(
  * Guards on the required `entryRationale` (BP-018, the `formatPortfolioContext`
  * precedent): a partial/empty read (a nullable single resource that surfaced as
  * `{}`) suppresses the tag rather than throwing. Returns the inner content; the
- * capability context key wraps it as `<standingThesis>`.
+ * capability's object-form context key auto-wraps it as the kebab-case
+ * `<standing-thesis>` tag (the `portfolioContext` / `riskMandate` precedent).
  */
 export function formatStandingThesis(
   thesis: ThesisRecord | null | undefined,
