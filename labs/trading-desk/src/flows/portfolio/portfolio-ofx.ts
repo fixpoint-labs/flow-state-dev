@@ -495,13 +495,14 @@ function handleTransfer(ctx: Ctx, agg: OfxNode, kind: string): void {
     return;
   }
   const quantity = tferAction === "OUT" ? -rawUnits : rawUnits;
-  // Preserve a broker-supplied cost basis when the TRANSFER carries one
-  // (`UNITPRICE`, else total `AVGCOSTBASIS` / units). Only then is a transfer-in
-  // a KNOWN-basis lot; with no cost the lot stays basis-unknown (never zero).
-  const avgCostBasis = num(agg.AVGCOSTBASIS);
-  const transferUnitCost =
-    num(agg.UNITPRICE) ??
-    (avgCostBasis !== null && rawUnits > 0 ? avgCostBasis / rawUnits : null);
+  // Preserve a broker-supplied cost basis ONLY from `UNITPRICE`, which OFX
+  // defines unambiguously as price-per-share. `AVGCOSTBASIS` is deliberately
+  // NOT used: its unit convention is inconsistent across OFX versions/brokers
+  // (a total dollar amount in some, per-share in others), and guessing wrong is
+  // a silent order-of-magnitude basis error — the exact real-money footgun this
+  // parser refuses. A transfer-in carrying only `AVGCOSTBASIS` (no `UNITPRICE`)
+  // therefore stays basis-unknown (honest over silently-wrong), never zero.
+  const transferUnitCost = num(agg.UNITPRICE);
   const hasBasis = quantity > 0 && transferUnitCost !== null;
   ctx.events.push(
     baseEvent(ctx, invtran, {

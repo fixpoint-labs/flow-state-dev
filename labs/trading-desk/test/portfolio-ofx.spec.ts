@@ -168,7 +168,7 @@ VERSION:102
     expect(result.events[0].basisUnknown).toMatch(/no acquisition cost/);
   });
 
-  it("preserves a broker-supplied cost basis on a transfer-in (known lot, not basis-unknown)", async () => {
+  it("preserves a broker-supplied cost basis from UNITPRICE on a transfer-in (known lot)", async () => {
     const file = `OFXHEADER:100
 DATA:OFXSGML
 VERSION:102
@@ -179,7 +179,24 @@ VERSION:102
 <SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
     const result = await parseOfxTransactions(file);
     expect(result.events[0]).toMatchObject({ type: "transfer", quantity: 10, unitPrice: 150 });
-    expect(result.events[0].basisUnknown).toBeNull(); // basis supplied → known lot
+    expect(result.events[0].basisUnknown).toBeNull(); // UNITPRICE supplied → known lot
+  });
+
+  it("leaves a transfer-in basis-unknown when only AVGCOSTBASIS is present (ambiguous unit convention, never guessed)", async () => {
+    // AVGCOSTBASIS is total-dollars in some OFX versions and per-share in others;
+    // deriving a per-share cost from it would be a silent order-of-magnitude error,
+    // so with no unambiguous UNITPRICE the lot is basis-unknown, not a guess.
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<TRANSFER><INVTRAN><FITID>T3<DTTRADE>20260301</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>10<TFERACTION>IN<POSTYPE>LONG<AVGCOSTBASIS>1500</TRANSFER>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events[0]).toMatchObject({ type: "transfer", quantity: 10, unitPrice: null });
+    expect(result.events[0].basisUnknown).toMatch(/no acquisition cost/);
   });
 
   it("skips a short sale (SELLSHORT) rather than emitting a phantom long-sell", async () => {
