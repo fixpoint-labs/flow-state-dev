@@ -42,20 +42,23 @@ export const assetTypeSchema = z.enum([
 ]);
 export type AssetType = z.infer<typeof assetTypeSchema>;
 
-/** Per-type attributes, discriminated by `kind`. Lab-honest minimum, not a full security master.
- *  The `none` member is the default for equity / etf / mutual_fund / crypto / other. */
+/** Per-type attributes, discriminated by `kind`. Lab-honest minimum, not a full
+ *  security master — a field is here only when an import path populates it and a
+ *  consumer reads it (BP-038). `coupon`/`maturity`/`yield` are NOT here: no import
+ *  carries them and nothing renders them; JSONB means adding them (with a real
+ *  producer) later is free. The `none` member is the default for equity / etf /
+ *  mutual_fund / crypto / other.
+ *
+ *  `markPrice` is the carried per-UNIT statement value (statement `value ÷
+ *  quantity`), NOT a raw quoted price — so `quantity × markPrice` reconstructs
+ *  the statement's position value regardless of quoting convention (percent-of-par
+ *  bonds, per-share vs per-contract options). Null when the import carried no
+ *  value (the row then shows "—"). The holding model has no price column, so this
+ *  freeform-jsonb field is where the mark persists (FIX-823 adds a real one). */
 export const holdingAttributesSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("bond"),
     cusip: z.string().nullable().default(null),
-    coupon: z.number().nullable().default(null),
-    maturity: z.string().nullable().default(null),
-    yield: z.number().nullable().default(null),
-    /** Carried per-unit statement mark (FIX-773 Slice C). A bond has no live
-     *  quote, so it is valued at the price the import carried; null when the
-     *  import had none (the row then shows "—"). Stamped by `classifyInstrument`
-     *  when a price is supplied; the holding model has no price column, so this
-     *  freeform-jsonb field is where the mark persists (FIX-823 adds a real one). */
     markPrice: z.number().nullable().default(null),
   }),
   z.object({
@@ -64,12 +67,13 @@ export const holdingAttributesSchema = z.discriminatedUnion("kind", [
     strike: z.number(),
     expiry: z.string(),
     right: z.enum(["call", "put"]),
+    /** Contract size (100 for a standard equity option) — descriptive metadata.
+     *  Valuation does NOT re-multiply by it: `markPrice` is already the per-unit
+     *  value from the statement, which incorporates the contract multiplier. */
     multiplier: z.number().default(100),
-    /** Carried per-CONTRACT statement mark (FIX-773 Slice C) — see the bond
-     *  member. The option's market value multiplies this by `multiplier`. */
     markPrice: z.number().nullable().default(null),
   }),
-  z.object({ kind: z.literal("cash_equivalent"), yield: z.number().nullable().default(null) }),
+  z.object({ kind: z.literal("cash_equivalent") }),
   z.object({ kind: z.literal("none") }),
 ]);
 export type HoldingAttributes = z.infer<typeof holdingAttributesSchema>;

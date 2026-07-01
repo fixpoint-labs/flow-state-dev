@@ -52,7 +52,7 @@ describe("resolveHoldingPrice — per-type valuation rule", () => {
     const h = holding({
       assetType: "money_market",
       assetClass: "cash",
-      attributes: { kind: "cash_equivalent", yield: null },
+      attributes: { kind: "cash_equivalent" },
     });
     expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 1, priceSource: "par" });
   });
@@ -66,7 +66,7 @@ describe("resolveHoldingPrice — per-type valuation rule", () => {
     const h = holding({
       assetType: "bond",
       assetClass: "fixed_income",
-      attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: 98.5 },
+      attributes: { kind: "bond", cusip: "X", markPrice: 98.5 },
     });
     expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 98.5, priceSource: "statement" });
   });
@@ -75,7 +75,7 @@ describe("resolveHoldingPrice — per-type valuation rule", () => {
     const h = holding({
       assetType: "bond",
       assetClass: "fixed_income",
-      attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: null },
+      attributes: { kind: "bond", cusip: "X", markPrice: null },
     });
     expect(resolveHoldingPrice(h, undefined)).toEqual({ price: null, priceSource: "unavailable" });
   });
@@ -95,25 +95,26 @@ describe("resolveHoldingPrice — per-type valuation rule", () => {
   });
 });
 
-describe("holdingMarketValue — type-resolved value (option multiplier)", () => {
+describe("holdingMarketValue — type-resolved value (uniform quantity × price)", () => {
   it("equity value = quantity × price", () => {
     expect(holdingMarketValue(holding({ quantity: 10 }), { price: 200 })).toBe(2000);
   });
 
   it("money_market value = quantity × par", () => {
-    const h = holding({ quantity: 1500, assetType: "money_market", assetClass: "cash", attributes: { kind: "cash_equivalent", yield: null } });
+    const h = holding({ quantity: 1500, assetType: "money_market", assetClass: "cash", attributes: { kind: "cash_equivalent" } });
     expect(holdingMarketValue(h, undefined)).toBe(1500);
   });
 
   it("bond value = quantity × mark", () => {
-    const h = holding({ quantity: 5, assetType: "bond", assetClass: "fixed_income", attributes: { kind: "bond", cusip: "X", coupon: null, maturity: null, yield: null, markPrice: 98.5 } });
+    const h = holding({ quantity: 5, assetType: "bond", assetClass: "fixed_income", attributes: { kind: "bond", cusip: "X", markPrice: 98.5 } });
     expect(holdingMarketValue(h, undefined)).toBe(492.5);
   });
 
-  it("option value = quantity × mark × multiplier", () => {
+  it("option value = quantity × mark (mark is the per-unit statement value; multiplier is descriptive, never re-applied)", () => {
     const h = holding({ quantity: 2, assetType: "option", assetClass: "equity", attributes: { kind: "option", underlying: "AAPL", strike: 190, expiry: "2026-06-21", right: "call", multiplier: 100, markPrice: 12.4 } });
-    // 2 × 12.4 × 100 = 2480
-    expect(holdingMarketValue(h, undefined)).toBe(2480);
+    // 2 × 12.4 = 24.8 — the mark is ALREADY the per-contract value, so we do NOT
+    // multiply by the 100 contract multiplier again (it is baked into the mark).
+    expect(holdingMarketValue(h, undefined)).toBe(24.8);
   });
 
   it("null price → null value (the real-money gate)", () => {
@@ -127,7 +128,7 @@ describe("holdingUnrealizedPL — type-aware P/L", () => {
     expect(holdingUnrealizedPL(h, { price: 120 })).toBe(200);
   });
 
-  it("option uP/L scales by the contract multiplier, like its value", () => {
+  it("option uP/L = (mark − cost) × quantity, consistent with its value (no multiplier re-applied)", () => {
     const h = holding({
       quantity: 2,
       costBasis: 5.2,
@@ -135,8 +136,10 @@ describe("holdingUnrealizedPL — type-aware P/L", () => {
       assetClass: "equity",
       attributes: { kind: "option", underlying: "AAPL", strike: 190, expiry: "2026-06-21", right: "call", multiplier: 100, markPrice: 12.4 },
     });
-    // (12.4 − 5.2) × 2 × 100 = 1440 — NOT 14.40 (the pre-fix unscaled bug).
-    expect(holdingUnrealizedPL(h, undefined)).toBeCloseTo(1440, 6);
+    // (12.4 − 5.2) × 2 = 14.4 — the mark and the cost basis are both per-unit
+    // statement values, so uP/L never re-applies the contract multiplier (it stays
+    // consistent with holdingMarketValue's quantity × mark).
+    expect(holdingUnrealizedPL(h, undefined)).toBeCloseTo(14.4, 6);
   });
 
   it("null cost basis → null uP/L (never fabricated)", () => {

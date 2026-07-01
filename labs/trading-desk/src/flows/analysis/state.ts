@@ -15,11 +15,13 @@
  * aborted before producing a recommendation. Known causes:
  *   - `"unresolvable-ticker"` — the pre-flight guard could not resolve
  *      the ticker (missing fixture / all live providers unavailable).
- *   - `"unsupported-asset-type"` — the symbol classifies as a non-equity
- *      instrument (bond / option / crypto pair / cash) the equity-only analyst
- *      bench cannot research. Stopped cleanly rather than hallucinating a stock
- *      report (the FIX-605 lesson, extended to asset type by FIX-773). ETFs and
- *      crypto analysis are FIX-777's job, which widens this gate per type.
+ *   - `"unsupported-asset-type"` — the symbol classifies as an unambiguously
+ *      non-equity instrument (a bond CUSIP / an OCC option / a `…-USD` crypto
+ *      pair) the equity-only analyst bench cannot research. Stopped cleanly rather
+ *      than hallucinating a stock report (the FIX-605 lesson, extended to asset
+ *      type by FIX-773). Cash/money-market placeholders (`CASH`/`USD`) and other
+ *      ticker-shaped symbols are NOT stopped — they pass to ticker resolution.
+ *      ETF and crypto analysis are FIX-777's job, which widens this gate.
  *   - `"phase-1-missing-primary"` — the `fundamentals` OR `companyProfile`
  *      analyst errored. These two are non-substitutable, so phases 2–5
  *      would be synthesizing on hollow input even if other analysts succeeded.

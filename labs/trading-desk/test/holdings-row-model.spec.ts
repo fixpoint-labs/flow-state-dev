@@ -52,6 +52,8 @@ describe("buildHoldingRowModel", () => {
     // (120 − 100) × 10 = +$200, a gain → "up" drives the green coloring
     expect(m.upl.text).toBe("+$200.00");
     expect(m.upl.direction).toBe("up");
+    // A live quote is the honest provenance — no non-live marker in the UI.
+    expect(m.priceSource).toBe("quote");
   });
 
   it("renders a loss with a down direction (never mis-colored)", () => {
@@ -113,13 +115,16 @@ describe("buildHoldingRowModel", () => {
       costBasis: null,
       assetType: "bond",
       assetClass: "fixed_income",
-      attributes: { kind: "bond", cusip: "912828YK0", coupon: null, maturity: null, yield: null, markPrice: 98.5 },
+      attributes: { kind: "bond", cusip: "912828YK0", markPrice: 98.5 },
     });
     const m = buildHoldingRowModel(bond, undefined, "USD", 492.5);
     expect(m.typeLabel).toBe("BOND");
     expect(m.price).toBe("$98.50");
     expect(m.value).toBe("$492.50");
     expect(m.weight).toBe("100.0%");
+    // The price is a carried statement mark, NOT a live quote — the UI flags it so
+    // it is never read as a quote (the honesty this slice adds).
+    expect(m.priceSource).toBe("statement");
   });
 
   it("values an MMF at par $1.00 even with no quote", () => {
@@ -129,12 +134,14 @@ describe("buildHoldingRowModel", () => {
       costBasis: null,
       assetType: "money_market",
       assetClass: "cash",
-      attributes: { kind: "cash_equivalent", yield: null },
+      attributes: { kind: "cash_equivalent" },
     });
     const m = buildHoldingRowModel(mmf, undefined, "USD", 1500);
     expect(m.typeLabel).toBe("MMF");
     expect(m.price).toBe("$1.00");
     expect(m.value).toBe("$1,500.00");
+    // Valued at par — provenance is "par", not a live quote.
+    expect(m.priceSource).toBe("par");
   });
 
   it("shows — for an unpriced bond but still renders its type (no fabricated price)", () => {
@@ -144,12 +151,14 @@ describe("buildHoldingRowModel", () => {
       costBasis: null,
       assetType: "bond",
       assetClass: "fixed_income",
-      attributes: { kind: "bond", cusip: "999999XX9", coupon: null, maturity: null, yield: null, markPrice: null },
+      attributes: { kind: "bond", cusip: "999999XX9", markPrice: null },
     });
     const m = buildHoldingRowModel(bond, undefined, "USD", 1000);
     expect(m.typeLabel).toBe("BOND");
     expect(m.price).toBe(DASH);
     expect(m.value).toBe(DASH);
     expect(m.weight).toBe(DASH);
+    // No mark and no quote → unavailable provenance (and the "—" gate above).
+    expect(m.priceSource).toBe("unavailable");
   });
 });

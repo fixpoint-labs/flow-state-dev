@@ -104,8 +104,10 @@ function parseOccOption(
     expiry,
     right: rightChar === "C" ? "call" : "put",
     multiplier: 100,
-    // The carried statement mark (FIX-773 Slice C): a finite positive price →
-    // stamped, else null. An option is valued at this mark × multiplier (no quote).
+    // The carried per-UNIT statement value (FIX-773 Slice C): a finite positive
+    // number → stamped, else null. An option is valued at `quantity × markPrice`
+    // (no quote); the multiplier is descriptive only — the per-unit value already
+    // incorporates it, so valuation never re-multiplies (see value-holding.ts).
     markPrice: validMarkPrice(markPrice),
   };
 }
@@ -122,14 +124,13 @@ export function isOccOptionSymbol(symbol: string): boolean {
 const CASH_EQUIVALENT: Classification = {
   assetClass: "cash",
   assetType: "money_market",
-  attributes: { kind: "cash_equivalent", yield: null },
+  attributes: { kind: "cash_equivalent" },
 };
 
 /** The bond classification for a given symbol (the CUSIP becomes the bond's
- *  recorded cusip; the remaining bond fields are unknown at import → null). The
- *  carried statement mark (FIX-773 Slice C) is stamped from `mark` when a finite
- *  price is supplied — a bond has no live quote, so this mark is the only value
- *  it ever carries; null when the import had none. */
+ *  recorded cusip). `markPrice` is the carried per-UNIT statement value passed by
+ *  the importer (see `classifyInstrument`) — a bond has no live quote, so this
+ *  mark is the only value it ever carries; null when the import had none. */
 function bondClassification(
   symbol: string,
   markPrice: number | null | undefined,
@@ -140,9 +141,6 @@ function bondClassification(
     attributes: {
       kind: "bond",
       cusip: symbol,
-      coupon: null,
-      maturity: null,
-      yield: null,
       markPrice: validMarkPrice(markPrice),
     },
   };
@@ -167,8 +165,10 @@ export function classifyInstrument(
   opts?: { price?: number | null; assetTypeHint?: AssetType | null },
 ): Classification {
   const normalized = symbol.trim().toUpperCase();
-  // The carried statement mark, threaded into the bond/option attributes (a bond
-  // / option has no live quote, so this import-carried price is its value).
+  // The carried per-UNIT statement value (statement value ÷ quantity), threaded
+  // into the bond/option attributes. A bond/option has no live quote, so this is
+  // its value; using value÷quantity (not a raw quoted price) keeps valuation
+  // convention-proof — see `holdingAttributesSchema.markPrice`.
   const markPrice = opts?.price;
 
   // A hint wins when it is a valid AssetType AND its required attributes are
@@ -186,7 +186,9 @@ export function classifyInstrument(
     } else if (hint === "crypto") {
       return { assetClass: "crypto", assetType: "crypto", attributes: { kind: "none" } };
     } else {
-      // equity / etf / mutual_fund / other — equity-class display types.
+      // equity / etf / mutual_fund / other — equity-class display types. NOTE: a
+      // bond mutual fund also rolls up to `equity` asset class here (v1); precise
+      // fund asset-class tagging is the FIX-762/801 classification-source concern.
       const assetClass: AssetClass = hint === "other" ? "alternative" : "equity";
       return { assetClass, assetType: hint, attributes: { kind: "none" } };
     }

@@ -188,13 +188,26 @@ export function reconcile(
 
   const rows: RowReconciliation[] = extraction.rows.map((row, i) => {
     const { importable, reason } = classifyRow(row);
+    // Bond and option quoting conventions vary (percent-of-par bonds with a
+    // face-amount quantity; per-share vs per-contract option premiums), so
+    // `quantity × price = value` is NOT a valid arithmetic check for them — it
+    // would false-flag a correctly transcribed row (or false-pass a 100×-off one).
+    // Mark those rows `unchecked` rather than compute a misleading `computedValue`;
+    // the persisted position value comes from the statement's own `value ÷
+    // quantity` (see `toCanonicalRows`), which is convention-proof.
+    const assetType =
+      row.ticker !== null
+        ? classifyInstrument(row.ticker, { price: row.price }).assetType
+        : "other";
+    const conventionDependent = assetType === "bond" || assetType === "option";
+
     const computedValue =
-      row.quantity !== null && row.price !== null
+      !conventionDependent && row.quantity !== null && row.price !== null
         ? row.quantity * row.price
         : null;
 
     let status: RowReconciliation["status"];
-    if (computedValue === null || row.value === null) {
+    if (conventionDependent || computedValue === null || row.value === null) {
       status = "unchecked";
     } else if (withinTolerance(computedValue, row.value, rowAbs, rowRel)) {
       status = "ok";
@@ -283,10 +296,23 @@ export function toCanonicalRows(extraction: PdfExtraction): CanonicalMapping {
       return;
     }
     const ticker = (row.ticker as string).trim().toUpperCase();
-    // FIX-773 Slice B: classify the preserved row. The price enables MMF
-    // detection (XX-suffix fund at ~$1.00 → cash-equivalent).
+    // FIX-773 Slice C: the carried mark is the statement's per-UNIT VALUE
+    // (`value ÷ quantity`), NOT the raw quoted `price` column — so
+    // `quantity × mark` reconstructs the statement's position value regardless of
+    // quoting convention (percent-of-par bonds, per-share vs per-contract
+    // options). Falls back to the price column only when the statement printed no
+    // value. MMF detection still needs the raw price (the XX + ~$1.00 rule), so
+    // that is passed separately.
+    const perUnitValue =
+      row.value !== null && row.quantity !== null && row.quantity !== 0
+        ? row.value / row.quantity
+        : row.price;
+    // FIX-773 Slice B: classify the preserved row. The per-unit value doubles as
+    // the MMF signal — a money-market fund's value ÷ quantity is ~$1.00, the same
+    // ~$1.00 the XX-suffix rule checks — so one value serves both the mark and the
+    // detection.
     const { assetClass, assetType, attributes } = classifyInstrument(ticker, {
-      price: row.price,
+      price: perUnitValue,
     });
     rows.push({
       ticker,
@@ -323,11 +349,12 @@ export function toCanonicalRows(extraction: PdfExtraction): CanonicalMapping {
  * `parsePortfolioCsv` re-derives those from the symbol + this `assetType` hint.
  *
  * FIX-773 Slice C: a SECOND extra column, `markPrice`, carries a bond/option
- * row's carried statement mark as ONE flat number (`attributes.markPrice`, blank
- * for any non-bond/option row). It is deliberately NOT named `price` — the CSV
- * parser maps a bare `price` to costBasis (its documented last-resort synonym),
- * which is exactly wrong for a current mark; `markPrice` is in NO costBasis
- * synonym list, so it round-trips back into the bond/option attributes only.
+ * row's per-unit statement value as ONE flat number (`attributes.markPrice`,
+ * blank for any non-bond/option row). It is deliberately NOT named `price` — the
+ * CSV parser maps a bare `price` to costBasis (its documented last-resort
+ * synonym), which is exactly wrong for a current mark; `markPrice` is in NO
+ * costBasis synonym list, so it round-trips back into the bond/option attributes
+ * only.
  */
 export function canonicalRowsToCsv(rows: CanonicalRow[]): string {
   const header = "ticker,quantity,costBasis,assetType,markPrice";

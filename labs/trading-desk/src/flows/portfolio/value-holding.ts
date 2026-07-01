@@ -20,8 +20,29 @@
  *  - bond / option → the carried statement mark (`attributes.markPrice`),
  *    `"statement"` when present else `"unavailable"`;
  *  - other → `"unavailable"`.
+ *
+ * `markPrice` is the per-UNIT statement value (value ÷ quantity, computed at
+ * import), so market value is simply `quantity × markPrice` for every type — no
+ * contract multiplier or quoting-convention factor is re-applied here (the
+ * statement's own value already baked those in). This is what keeps a
+ * percent-of-par bond and a per-contract-vs-per-share option from valuing 100×
+ * off.
  */
-import type { Holding } from "./portfolio-schema";
+import type { AssetType, Holding } from "./portfolio-schema";
+
+/** Asset types valued from a LIVE quote (as opposed to a carried statement mark
+ *  or par). The Portfolio pane fetches quotes only for these — a bond / option /
+ *  cash / money-market symbol is valued without a quote, so sending it through
+ *  the live provider path just burns retries and can surface a misleading quote
+ *  (e.g. `CASH` = Pathward). */
+export function usesLiveQuote(assetType: AssetType): boolean {
+  return (
+    assetType === "equity" ||
+    assetType === "etf" ||
+    assetType === "mutual_fund" ||
+    assetType === "crypto"
+  );
+}
 
 /** Where a holding's resolved per-unit price came from — surfaced so the UI can
  *  label provenance honestly (a statement mark is not a live quote). */
@@ -80,10 +101,10 @@ export function resolveHoldingPrice(
 }
 
 /**
- * Market value of a holding using the type-resolved price. For an option the
- * value multiplies by the contract `multiplier` (a per-contract mark covers
- * `multiplier` shares of the underlying). Null price → null value (the
- * real-money gate). Pure.
+ * Market value of a holding using the type-resolved per-unit price/value:
+ * `quantity × price`. For bond/option the price is the carried per-unit statement
+ * value, so no contract multiplier is re-applied (see the module doc). Null price
+ * → null value (the real-money gate). Pure.
  */
 export function holdingMarketValue(
   holding: Pick<Holding, "quantity" | "assetType" | "assetClass" | "attributes">,
@@ -91,21 +112,14 @@ export function holdingMarketValue(
 ): number | null {
   const { price } = resolveHoldingPrice(holding, quote);
   if (price === null) return null;
-  return holding.quantity * price * optionMultiplier(holding);
-}
-
-/** The contract multiplier applied to an option's value/P/L (a per-contract mark
- *  covers `multiplier` shares), or 1 for every other type. */
-function optionMultiplier(holding: Pick<Holding, "attributes">): number {
-  return holding.attributes.kind === "option" ? holding.attributes.multiplier : 1;
+  return holding.quantity * price;
 }
 
 /**
- * Unrealized P/L of a holding using the type-resolved price, consistent with
- * {@link holdingMarketValue}: `(price − costBasis) × quantity × multiplier`, so an
- * option's P/L scales by its contract multiplier exactly as its value does (a raw
- * `quantity`-only P/L would understate options 100×). Null when the price or the
- * cost basis is unknown — never fabricated from a partial input. Pure.
+ * Unrealized P/L of a holding, consistent with {@link holdingMarketValue}:
+ * `(price − costBasis) × quantity`, where `price` is the type-resolved per-unit
+ * value. Null when the price or the cost basis is unknown — never fabricated from
+ * a partial input. Pure.
  */
 export function holdingUnrealizedPL(
   holding: Pick<Holding, "quantity" | "costBasis" | "assetType" | "assetClass" | "attributes">,
@@ -114,5 +128,5 @@ export function holdingUnrealizedPL(
   const { price } = resolveHoldingPrice(holding, quote);
   const cost = finiteOrNull(holding.costBasis);
   if (price === null || cost === null) return null;
-  return (price - cost) * holding.quantity * optionMultiplier(holding);
+  return (price - cost) * holding.quantity;
 }

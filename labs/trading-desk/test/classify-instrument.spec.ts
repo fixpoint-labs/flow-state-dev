@@ -44,9 +44,6 @@ describe("classifyInstrument — symbol-shape inference (one case per rule)", ()
     expect(r.attributes).toEqual({
       kind: "bond",
       cusip: "912828YK0",
-      coupon: null,
-      maturity: null,
-      yield: null,
       markPrice: null,
     });
     expect(holdingAttributesSchema.safeParse(r.attributes).success).toBe(true);
@@ -56,7 +53,7 @@ describe("classifyInstrument — symbol-shape inference (one case per rule)", ()
     const r = classifyInstrument("SPAXX", { price: 1.0 });
     expect(r.assetClass).toBe("cash");
     expect(r.assetType).toBe("money_market");
-    expect(r.attributes).toEqual({ kind: "cash_equivalent", yield: null });
+    expect(r.attributes).toEqual({ kind: "cash_equivalent" });
     expect(holdingAttributesSchema.safeParse(r.attributes).success).toBe(true);
   });
 
@@ -71,7 +68,7 @@ describe("classifyInstrument — symbol-shape inference (one case per rule)", ()
     const r = classifyInstrument("CASH");
     expect(r.assetClass).toBe("cash");
     expect(r.assetType).toBe("money_market");
-    expect(r.attributes).toEqual({ kind: "cash_equivalent", yield: null });
+    expect(r.attributes).toEqual({ kind: "cash_equivalent" });
     expect(holdingAttributesSchema.safeParse(r.attributes).success).toBe(true);
   });
 
@@ -120,9 +117,6 @@ describe("classifyInstrument — assetTypeHint overrides symbol shape", () => {
     expect(r.attributes).toEqual({
       kind: "bond",
       cusip: "XYZ",
-      coupon: null,
-      maturity: null,
-      yield: null,
       markPrice: null,
     });
     expect(holdingAttributesSchema.safeParse(r.attributes).success).toBe(true);
@@ -198,6 +192,6 @@ describe("classifyInstrument — carries the statement mark (FIX-773 Slice C)", 
 
   it("does not stamp a mark onto a money_market (it values at par, not a mark)", () => {
     const r = classifyInstrument("SPAXX", { price: 1.0 });
-    expect(r.attributes).toEqual({ kind: "cash_equivalent", yield: null });
+    expect(r.attributes).toEqual({ kind: "cash_equivalent" });
   });
 });

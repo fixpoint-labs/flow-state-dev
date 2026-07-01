@@ -45,7 +45,11 @@ import {
 import { LedgerTable } from "./ledger-table";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import { useLedger } from "./use-ledger";
-import { holdingMarketValue, holdingUnrealizedPL } from "@/src/flows/portfolio/value-holding";
+import {
+  holdingMarketValue,
+  holdingUnrealizedPL,
+  usesLiveQuote,
+} from "@/src/flows/portfolio/value-holding";
 import { DASH, formatMoney, formatSignedMoney } from "./portfolio-format";
 
 type PortfolioPaneProps = {
@@ -130,7 +134,15 @@ export function PortfolioPane({
   // Fetch prices for the union of held tickers. Dispatch → refresh → the
   // `portfolioQuotes` resource updates and `useResource` re-projects.
   const fetchPrices = useCallback(async () => {
-    const tickers = [...new Set(holdings.map((h) => h.ticker.toUpperCase()))];
+    // Only quote-valued types (equity/etf/mutual_fund/crypto) need a live quote;
+    // bond/option value at their carried mark and cash/MMF at par (BP-033), so
+    // fetching those would just burn retries and could surface a misleading quote
+    // (e.g. CASH = Pathward). Filter at the source.
+    const tickers = [
+      ...new Set(
+        holdings.filter((h) => usesLiveQuote(h.assetType)).map((h) => h.ticker.toUpperCase()),
+      ),
+    ];
     if (tickers.length === 0) return;
     setIsFetchingPrices(true);
     try {
@@ -152,7 +164,14 @@ export function PortfolioPane({
   // resource sync), so an effect is correct here (BP-010). Keyed on the sorted
   // ticker signature so it doesn't refire on unrelated re-renders.
   const tickerSignature = useMemo(
-    () => [...new Set(holdings.map((h) => h.ticker.toUpperCase()))].sort().join(","),
+    () =>
+      [
+        ...new Set(
+          holdings.filter((h) => usesLiveQuote(h.assetType)).map((h) => h.ticker.toUpperCase()),
+        ),
+      ]
+        .sort()
+        .join(","),
     [holdings],
   );
   useEffect(() => {

@@ -176,6 +176,27 @@ export const importHoldings = handler({
     const errors: RowError[] = [...parsed.errors];
     const warnings: string[] = [...parsed.warnings];
 
+    // Cash double-count guard (FIX-773). A cash-class row (a money-market fund or
+    // a `CASH` line) values at par $1.00 and lands in NAV as a position; the
+    // account's own `cashBalance` field ALSO counts as cash. When a statement
+    // carries its sweep/MMF as a line AND the account has a non-zero cash balance,
+    // the same dollars can be counted twice. We can't tell which is authoritative,
+    // so we surface it as a warning (never silently net them) — the real-money
+    // honesty gate. Uses the post-import effective balance (`input.cashBalance`
+    // wins when the import also sets it, else the account's existing balance).
+    const effectiveCash =
+      input.cashBalance !== null ? input.cashBalance : account.cashBalance;
+    const cashRows = parsed.rows.filter((r) => r.assetClass === "cash");
+    if (cashRows.length > 0 && effectiveCash !== 0) {
+      warnings.push(
+        `${cashRows.length} cash/money-market row(s) (${cashRows
+          .map((r) => r.ticker)
+          .join(", ")}) import alongside a non-zero account cash balance ` +
+          `(${effectiveCash}) — verify the sweep/MMF isn't counted twice (once as a ` +
+          `holding valued at par, once as the account's cash balance).`,
+      );
+    }
+
     // Report counts: compare the parsed rows against the account's existing
     // tickers. The repository owns the actual write (upsert-in-place / atomic
     // replace); these counts are the UI-facing summary of the change.

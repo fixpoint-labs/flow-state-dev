@@ -97,6 +97,32 @@ describe("reconcile — per-row shares*price ~= value", () => {
     };
     expect(reconcile(ext).rows[0].status).toBe("unchecked");
   });
+
+  it("marks a bond 'unchecked' — quantity × price ≠ value is a false flag for percent-of-par bonds (FIX-773)", () => {
+    // A percent-of-par bond: 10,000 face at a mark of 98.5 (percent of par) →
+    // value 9,850. quantity × price = 10000 × 98.5 = 985,000 ≠ 9,850, so a naive
+    // arithmetic check would false-flag a correctly transcribed row. The classifier
+    // recognizes the CUSIP as a bond, so reconcile marks it unchecked instead.
+    const ext: PdfExtraction = {
+      rows: [{ ticker: "912828YK0", quantity: 10000, costBasis: null, price: 98.5, value: 9850 }],
+      statedTotal: null,
+    };
+    const row = reconcile(ext).rows[0];
+    expect(row.status).toBe("unchecked");
+    // No misleading computedValue is offered for a convention-dependent row.
+    expect(row.computedValue).toBeNull();
+  });
+
+  it("marks an option 'unchecked' — per-contract vs per-share premium is convention-dependent (FIX-773)", () => {
+    // An OCC option row: 2 contracts, a per-share premium of 12.4, statement value
+    // 2,480 (2 × 100 × 12.4). quantity × price = 24.8 ≠ 2,480, so the arithmetic
+    // check is invalid — reconcile marks it unchecked, not mismatch.
+    const ext: PdfExtraction = {
+      rows: [{ ticker: "AAPL  260618C00190000", quantity: 2, costBasis: null, price: 12.4, value: 2480 }],
+      statedTotal: null,
+    };
+    expect(reconcile(ext).rows[0].status).toBe("unchecked");
+  });
 });
 
 describe("reconcile — total sum vs stated total", () => {
@@ -303,5 +329,24 @@ describe("canonicalRowsToCsv — feeds the EXISTING CSV parser cleanly", () => {
     const bond = parsed.rows.find((r) => r.ticker === "912828YK0");
     expect(bond?.assetType).toBe("bond");
     expect(bond?.attributes).toMatchObject({ kind: "bond", markPrice: 98.5 });
+  });
+
+  it("stores the PER-UNIT statement value (value ÷ quantity), NOT the raw price column (FIX-773)", () => {
+    // A percent-of-par bond: 10,000 face, the statement's Price column is 98.5
+    // (percent of par), and the Value column is 9,850. The carried mark must be
+    // value ÷ quantity = 0.985 — the per-unit value — so quantity × mark
+    // reconstructs 9,850, NOT the raw 98.5 (which would value the bond 100× off).
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: "912828YK0", quantity: 10000, costBasis: null, price: 98.5, value: 9850 },
+      ],
+      statedTotal: null,
+    };
+    const { rows } = toCanonicalRows(ext);
+    const bond = rows.find((r) => r.ticker === "912828YK0");
+    expect(bond?.attributes).toMatchObject({ kind: "bond", markPrice: 0.985 });
+    // quantity × mark reconstructs the statement's own position value.
+    const mark = bond?.attributes.kind === "bond" ? bond.attributes.markPrice : null;
+    expect((bond?.quantity ?? 0) * (mark ?? 0)).toBeCloseTo(9850, 6);
   });
 });

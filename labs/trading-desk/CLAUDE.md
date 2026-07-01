@@ -285,12 +285,17 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   `asset_class` (one of `equity / fixed_income / cash / crypto / alternative`)
   and `asset_type` (one of `equity / etf / mutual_fund / bond / money_market /
   crypto / option / other`), plus a discriminated `attributes` jsonb column that
-  carries per-type fields — bond: `cusip / coupon / maturity / yield` + carried
-  `markPrice` (a finite positive statement mark; a negative/zero OCR typo is
-  rejected to null); option: `underlying / strike / expiry / right / multiplier`
-  + mark; cash_equivalent: `yield`. Classification is denormalized
-  per holding row; a security-master table is a deferred option, not built. The
-  classifier lives in `src/flows/portfolio/classify-instrument.ts`.
+  carries per-type fields — bond: `cusip` + carried `markPrice`; option:
+  `underlying / strike / expiry / right / multiplier` + `markPrice`;
+  cash_equivalent: no extra fields. `markPrice` is the carried per-UNIT statement
+  value (statement `value ÷ quantity`, a finite positive number; a negative/zero
+  OCR typo is rejected to null), NOT a raw quoted price — so `quantity × markPrice`
+  reconstructs the position value regardless of quoting convention. Speculative
+  fields with no producer and no consumer (`coupon / maturity / yield`) are cut
+  per BP-038; JSONB means adding them later (with a real producer) is free.
+  Classification is denormalized per holding row; a security-master table is a
+  deferred option, not built. The classifier lives in
+  `src/flows/portfolio/classify-instrument.ts`.
 - **Domain types vs persistence.** `accountStateSchema` / `holdingSchema`
   (`portfolio-schema.ts`) are now DOMAIN types — input/CSV validation and the
   inline-holdings `AccountState` shape the repository projects (`toAccountStates`)
@@ -357,13 +362,19 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   `QUOTE_RETRIES` with backoff) so a 20+ holding portfolio doesn't trip Yahoo's
   rate limiter and drop a random subset to `—`. **FIX-773 introduced per-type
   valuation** via `src/flows/portfolio/value-holding.ts` (`resolveHoldingPrice` /
-  `holdingMarketValue`): equity / ETF / crypto holdings use the live quote; money
-  market and cash-equivalent holdings value at par ($1.00/share); bond and option
-  holdings use the carried statement mark (`attributes.markPrice`; options
-  additionally multiply by the contract multiplier). Any row with no applicable
-  price still degrades to `—` (real-money gate). `build-portfolio-context.ts` NAV
-  now includes bond and money-market mass. The HoldingsTable shows a compact
-  asset-type chip alongside each row. Bonds use the carried statement mark in v1;
+  `holdingMarketValue`): equity / ETF / mutual-fund / crypto holdings use the live
+  quote (`usesLiveQuote` gates the pane's quote fan-out to exactly these types);
+  money market and cash-equivalent holdings value at par ($1.00/share); bond and
+  option holdings use the carried per-unit statement mark (`attributes.markPrice`).
+  Market value is uniformly `quantity × price` for every type — the mark is the
+  per-unit statement value, so no contract multiplier or quoting-convention factor
+  is re-applied (the multiplier is descriptive metadata only). Any row with no
+  applicable price still degrades to `—` (real-money gate). The resolved price's
+  provenance (`quote` / `statement` / `par`) is surfaced in the HoldingsTable as a
+  marker + tooltip so a statement mark is never read as a live quote.
+  `build-portfolio-context.ts` NAV now includes bond and money-market mass. The
+  HoldingsTable shows a compact asset-type chip alongside each row. Bonds use the
+  carried statement mark in v1;
   durable last-known-price persistence across sessions is FIX-823 (deferred), and
   ETF look-through is FIX-801 (deferred).
 - **Derived money math** (market value, weight %, unrealized P/L, rollups) lives

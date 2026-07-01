@@ -15,7 +15,7 @@
  */
 "use client";
 
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AssetType, Holding } from "@/src/flows/portfolio/portfolio-schema";
@@ -24,6 +24,7 @@ import {
   resolveHoldingPrice,
   holdingMarketValue,
   holdingUnrealizedPL,
+  type PriceSource,
 } from "@/src/flows/portfolio/value-holding";
 import {
   DASH,
@@ -68,9 +69,29 @@ export type HoldingRowModel = {
   quantity: string;
   avgCost: string;
   price: string;
+  /** Provenance of `price` (FIX-773 Slice C): a live quote, a carried statement
+   *  mark, par, or none. Surfaced as a marker + tooltip so a stale statement mark
+   *  is never shown as if it were a live quote (the honesty this module polices). */
+  priceSource: PriceSource;
   value: string;
   weight: string;
   upl: { text: string; direction: "up" | "down" | "flat" };
+};
+
+/** The marker appended after a price to signal a non-live source. A live quote
+ *  gets none; a carried statement mark and par are flagged so the number is not
+ *  mistaken for a live quote. */
+const PRICE_SOURCE_MARK: Record<PriceSource, string> = {
+  quote: "",
+  statement: "*",
+  par: "≈",
+  unavailable: "",
+};
+const PRICE_SOURCE_TITLE: Record<PriceSource, string> = {
+  quote: "live quote",
+  statement: "carried statement mark (not a live quote)",
+  par: "valued at par ($1.00)",
+  unavailable: "no price available",
 };
 
 /** Build the shared view model behind a table row AND a mobile card. Pure —
@@ -86,10 +107,8 @@ export function buildHoldingRowModel(
   currency: string,
   accountTotal: number | null,
 ): HoldingRowModel {
-  const { price } = resolveHoldingPrice(holding, quote);
+  const { price, priceSource } = resolveHoldingPrice(holding, quote);
   const value = holdingMarketValue(holding, quote);
-  // Type-aware P/L: scales by the option contract multiplier exactly as `value`
-  // does, so an option's P/L isn't understated 100× against its value.
   const upl = holdingUnrealizedPL(holding, quote);
   return {
     ticker: holding.ticker,
@@ -98,6 +117,7 @@ export function buildHoldingRowModel(
     avgCost:
       holding.costBasis === null ? DASH : formatMoney(holding.costBasis, currency),
     price: formatMoney(price, currency),
+    priceSource,
     value: formatMoney(value, currency),
     weight: formatPercent(weight(value, accountTotal)),
     upl: formatSignedMoney(upl, currency),
@@ -118,6 +138,20 @@ function directionColor(direction: "up" | "down" | "flat"): string {
 /** ▲/▼ marker matching the row's P/L direction; empty when flat. */
 function directionMarker(direction: "up" | "down" | "flat"): string {
   return direction === "up" ? " ▲" : direction === "down" ? " ▼" : "";
+}
+
+/** A price with a small non-live-source marker + tooltip (FIX-773 Slice C), so a
+ *  carried statement mark or a par value is not read as a live quote. */
+function PriceText({ model }: { model: HoldingRowModel }): ReactElement {
+  const mark = PRICE_SOURCE_MARK[model.priceSource];
+  return (
+    <span title={PRICE_SOURCE_TITLE[model.priceSource]}>
+      {model.price}
+      {mark !== "" && (
+        <sup className="ml-0.5 text-[color:var(--c-fg-faint)]">{mark}</sup>
+      )}
+    </span>
+  );
 }
 
 export function HoldingsTable({
@@ -169,7 +203,9 @@ export function HoldingsTable({
               </td>
               <td className={numCellClass}>{m.quantity}</td>
               <td className={numCellClass}>{m.avgCost}</td>
-              <td className={numCellClass}>{m.price}</td>
+              <td className={numCellClass}>
+                <PriceText model={m} />
+              </td>
               <td className={numCellClass}>{m.value}</td>
               <td className={numCellClass}>{m.weight}</td>
               <td
@@ -213,7 +249,7 @@ export function HoldingsTable({
             <dl className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-0.5">
               <CardStat label="Qty" value={m.quantity} />
               <CardStat label="Avg cost" value={m.avgCost} />
-              <CardStat label="Price" value={m.price} />
+              <CardStat label="Price" value={<PriceText model={m} />} />
               <CardStat label="Weight" value={m.weight} />
               <CardStat
                 label="Unrl P/L"
@@ -246,7 +282,7 @@ function CardStat({
   valueColor,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   valueColor?: string;
 }): ReactElement {
   return (

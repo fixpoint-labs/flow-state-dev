@@ -70,7 +70,7 @@ describe("holdings taxonomy — non-equity round-trip", () => {
       acquiredDate: null,
       assetClass: "fixed_income",
       assetType: "bond",
-      attributes: { kind: "bond", cusip: "912828YK0", coupon: null, maturity: null, yield: null, markPrice: null },
+      attributes: { kind: "bond", cusip: "912828YK0", markPrice: 98.5 },
     };
     const option: CanonicalRow = {
       ticker: "AAPL_C200",
@@ -96,7 +96,7 @@ describe("holdings taxonomy — non-equity round-trip", () => {
       acquiredDate: null,
       assetClass: "cash",
       assetType: "money_market",
-      attributes: { kind: "cash_equivalent", yield: 5.1 },
+      attributes: { kind: "cash_equivalent" },
     };
 
     await repo.upsertHoldings("acc-1", "devuser", [bond, option, cash], "upsert");
@@ -108,17 +108,14 @@ describe("holdings taxonomy — non-equity round-trip", () => {
     expect(byTicker.T912828YK0.attributes).toEqual({
       kind: "bond",
       cusip: "912828YK0",
-      coupon: null,
-      maturity: null,
-      yield: null,
-      markPrice: null,
+      markPrice: 98.5,
     });
 
     expect(byTicker.AAPL_C200.assetType).toBe("option");
     expect(byTicker.AAPL_C200.attributes).toEqual(option.attributes);
 
     expect(byTicker.VMFXX.assetClass).toBe("cash");
-    expect(byTicker.VMFXX.attributes).toEqual({ kind: "cash_equivalent", yield: 5.1 });
+    expect(byTicker.VMFXX.attributes).toEqual({ kind: "cash_equivalent" });
   });
 });
 
