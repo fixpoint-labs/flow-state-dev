@@ -91,7 +91,12 @@ the no-config fallback. So the prototype adds one line to
 
 ### Deterministic loop blocks (no LLM — keeps the control experiment clean)
 
-- **`doneWhen`** — a handler. Reads the newest approval task: `completed` with
+- **`doneWhen`** — a handler. Checked **first**: any required task `errored` /
+  `cancelled` (retry budget exhausted) → `errored`. The board runs
+  `onError: "skip"` and the `wait`/`shouldExit` drain also exits when a task
+  has errored and nothing is claimable — without this branch a failed drafter
+  would fall through to `in_progress` and the snapshot would report a dead run
+  as merely stuck. Then: newest approval task `completed` with
   `verdict: "approve"` → `done`; `completed` with `verdict: "reject"` →
   `replan`; still `awaiting_review` with deps met → `blocked_on_human`;
   otherwise `in_progress`.
@@ -120,11 +125,15 @@ Two constraints discovered in review, encoded here:
   second collection) is deferred.
 - **Idle mode:** `onIdle: "complete-or-blocked"` treats `awaiting_review` as
   in-flight and would spin on the open human task. The board therefore runs
-  `onIdle: "wait"` with
-  `shouldExit: (c) => c.count({ status: ["in_progress"] }) === 0 && !hasClaimableTask(c)`
-  — exit when nothing is running and nothing is claimable, i.e. when only
-  human-blocked work remains. A first-class `complete-or-external` idle mode
-  is a named productization follow-up, not vet scope.
+  `onIdle: "wait"` with a `shouldExit` of: nothing `in_progress` AND no
+  claimable task — i.e. exit when only human-blocked (or terminal) work
+  remains. "Claimable" must be a **local ~5-line predicate** (a `pending`
+  task whose deps are all `completed`, via `collection.list({ status:
+  "pending" })` + dep checks): the substrate's `hasClaimableTask` lives in
+  `packages/patterns/src/task-board/shared.ts` and is NOT exported from the
+  public subpath, and the vet is zero-`packages/*` by rule. A first-class
+  `complete-or-external` idle mode (and exporting the predicate) is a named
+  productization follow-up, not vet scope.
 
 Board config otherwise: `workers: { drafter }`, `dispatcher: "topological"`.
 **No `ctx.suspend()` anywhere in this flow** (success criterion 3).
@@ -182,13 +191,23 @@ not a terminal answer":
 
 Run from `apps/kitchen-sink` (config search is cwd-only). One session
 throughout; every invocation is a **separate OS process** — that separation is
-the point. **`STORE_TYPE=filesystem` is required**: the kitchen-sink `dev`
-profile defaults to in-memory stores, which would fail the cross-request
-criterion for harness reasons, not concept reasons. With it, state persists
-under `.fsdev/data`.
+the point. Three env preconditions, all of the "harness failure must not look
+like concept failure" kind:
+
+- **`FSD_ENV=dev`** — kitchen-sink selects the `prod` (Postgres) profile
+  whenever `FSD_ENV=prod` or a `DATABASE_URL`/`FSD_DB_URL` is present in the
+  shell; the explicit `dev` pin makes the profile deterministic.
+- **`STORE_TYPE=filesystem`** — the `dev` profile defaults to in-memory
+  stores, which would fail the cross-request criterion for harness reasons.
+  With it, state persists under `.fsdev/data`.
+- **`AI_GATEWAY_API_KEY`** must be set — the drafter's `intent/utility` model
+  resolves through the Vercel gateway, which the config only wires when the
+  key is present. Without it, request 1 dies before ever touching the board.
 
 ```bash
+export FSD_ENV=dev
 export STORE_TYPE=filesystem
+# AI_GATEWAY_API_KEY must already be set — verify before starting.
 SID=wsvet_$(date +%s)
 
 # Request 1 — start. Expect: draft written, then the request ENDS with the
@@ -240,10 +259,14 @@ incidental wiring.
    `artifacts.revisions == 1` and a second approval task in `2-reject.json`.
 3. **HITL is pure board semantics.** `rg -n "suspend" apps/kitchen-sink/flows/workstream-vet/`
    returns nothing; requests 1 and 2 exit 0 with the workstream open.
-4. **The shared workspace works via capability injection.** The drafter's
-   commit tap lands the draft in the workspace resource; the revise pass shows
-   the capability's context preset carried the human feedback into the
-   drafter's second run (the revision reflects it); `status` reads the
+4. **The shared workspace works via capability injection — proven
+   deterministically.** The drafter's commit tap lands the draft in the
+   workspace resource AND stamps a `feedbackEcho` field read from the *same
+   workspace field the capability's context preset renders* — so
+   `2-reject.json` showing `feedbackEcho == "Too long; …"` proves the injected
+   data path was live at generation time, independent of what the model chose
+   to do with it. Whether the revision *visibly reflects* the feedback is a
+   non-gating observation, never a pass/fail criterion. `status` reads the
    artifact back without touching the drafter.
 5. **The control degenerates.** `4-control.json` shows `startUnchecked` ≈
    planAndExecute — proving workstream's differentiation is exactly the two
