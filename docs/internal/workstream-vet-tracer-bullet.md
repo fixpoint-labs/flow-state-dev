@@ -49,18 +49,20 @@ Recon (2026-07-01) against the live substrate:
 | Piece | State | Where |
 | --- | --- | --- |
 | Task statuses incl. `blocked` / `awaiting_review`, transitions enforced | ✅ exists | `packages/tasks/src/schema/task-status.ts` |
-| `feedback` field on tasks; `resumeFromReview`, `complete` mutators | ✅ exists | `packages/tasks/src/schema/task.ts`, `collection/types.ts` |
+| `feedback` field on tasks; `complete` / `resumeFromReview` mutators | ✅ exists | `packages/tasks/src/schema/task.ts`, `collection/types.ts` |
 | CAS-guarded claim/lease semantics | ✅ exists | `packages/tasks/src/collection/sequencer-backed.ts` |
 | Evaluate/replan loop *within one request* | ✅ exists | `planAndExecute` evaluator → `loopBack` |
 | Cross-request board backing | ✅ substrate (`backing: "resource"`), ❌ **no factory uses it** — all built-ins hardcode `backing: "request"`; skill boards explicitly reject session scope in Wave 1 (`packages/patterns/src/skill-registry.ts:122`) | `packages/tasks/src/collection/get-or-create.ts` |
-| Human (non-worker) assignee | ⚠️ substrate `assignee` is free-form, **but** the registry worker-step throws on a claimable task with an unknown assignee (`packages/patterns/src/task-board/blocks/worker-step.ts:213`) | must be born non-claimable |
+| Board drain that can exit while a human task is open | ⚠️ **`complete-or-blocked` cannot**: `awaiting_review` counts as in-flight and keeps the loop alive (FIX-443 §10.1, `packages/patterns/src/task-board/blocks/check-board.ts:83-97`). The vet must use `onIdle: "wait"` + a `shouldExit` that ignores `awaiting_review` | `packages/patterns/src/task-board/blocks/check-board.ts` |
+| Human (non-worker) assignee | ⚠️ substrate `assignee` is free-form, **but** the registry worker-step throws on a claimable task with an unknown assignee (`packages/patterns/src/task-board/blocks/worker-step.ts:213`) | must be born non-claimable, and must never transition back to `pending` |
 | Workstream-shared board/tools as a capability | ✅ machinery (`defineCapability`), composition is new | `packages/core` |
+| CLI persistence across processes | ⚠️ kitchen-sink's `dev` profile is `inMemoryStores()` unless `STORE_TYPE=filesystem` | `apps/kitchen-sink/fsdev.config.ts:102-117` |
 
 So the vet's genuinely new ground is exactly: (a) a resource-backed,
 session-scoped board driven by `taskBoard`'s collection-factory slot, (b) a
-human task modeled as `awaiting_review`-from-birth, (c) a workstream-level
-`doneWhen`/`replan` loop that spans requests, (d) the shared-workspace
-capability injected into every member.
+human task modeled as `awaiting_review`-from-birth with a drain that can exit
+around it, (c) a workstream-level `doneWhen`/`replan` loop that spans requests,
+(d) the shared-workspace capability injected into every member.
 
 ## Design
 
@@ -68,11 +70,20 @@ capability injected into every member.
 home). **Zero changes to `packages/*`.** Everything below is app-space
 composition; if something can't be composed, that is itself a finding.
 
+**Registration:** when a `fsdev.config.ts` is present, `fsdev run` resolves
+flows from the FlowState registry only — conventional-directory discovery is
+the no-config fallback. So the prototype adds one line to
+`apps/kitchen-sink/fsdev.config.ts`'s `flows` map. App-space, throwaway.
+
 ### Roles
 
 - **drafter** — the only model-backed worker. A generator on a cheap intent
-  model (`intent/utility`) that writes/revises a brief into the shared
-  workspace resource. Registered in the board's `workers` map.
+  model (`intent/utility`) whose **structured output** is the draft
+  (`{ draft: string }`, strict per BP-016). A deterministic commit `.tap`
+  after the generator persists the draft to the shared workspace resource
+  (the memo-writer precedent — never rely on the model *voluntarily* calling
+  a write tool for proof evidence; a skipped tool call must not be
+  mistakable for a failed concept).
 - **approver** — a human. **Not a worker.** Exists only as tasks with
   `assignee: "human:approver"`, seeded with `status: "awaiting_review"` so the
   drain loop can never claim them (default eligibility claims `pending` only —
@@ -94,25 +105,39 @@ concept.
 
 ### The board
 
-A session-scoped resource collection declared on the flow
-(`resources: { boards: workstreamBoards }`, pattern `boards/{id}`), handed to
-`taskBoard` via its collection-factory slot as
+A session-scoped **wildcard** resource collection declared on the flow
+(`resources: { workstreamTasks: ... }`, pattern `workstreamTasks/*`), handed
+to `taskBoard` via its collection-factory slot as
 `getOrCreateTaskCollection({ backing: "resource", collection: ... })`. This is
 the seam Wave 1 deferred, exercised in app space.
 
-Board config: `workers: { drafter }`, `dispatcher: "topological"`,
-`onIdle: "complete-or-blocked"` — the drain exits cleanly when nothing is
-claimable, which is precisely what lets a request end while the workstream is
-open. **No `ctx.suspend()` anywhere in this flow** (success criterion 3).
+Two constraints discovered in review, encoded here:
+
+- **Pattern shape:** collection patterns take wildcards, not `{id}` braces,
+  and the task collection creates instances with *string* task-id keys — so
+  the collection's instances ARE the tasks (`workstreamTasks/<taskId>`). The
+  vet runs one board per session; multi-board identity (a key prefix or a
+  second collection) is deferred.
+- **Idle mode:** `onIdle: "complete-or-blocked"` treats `awaiting_review` as
+  in-flight and would spin on the open human task. The board therefore runs
+  `onIdle: "wait"` with
+  `shouldExit: (c) => c.count({ status: ["in_progress"] }) === 0 && !hasClaimableTask(c)`
+  — exit when nothing is running and nothing is claimable, i.e. when only
+  human-blocked work remains. A first-class `complete-or-external` idle mode
+  is a named productization follow-up, not vet scope.
+
+Board config otherwise: `workers: { drafter }`, `dispatcher: "topological"`.
+**No `ctx.suspend()` anywhere in this flow** (success criterion 3).
 
 ### The shared workspace (workstream-as-capability)
 
 `workstreamWorkspace` — a session resource holding the draft + revision
-history, wrapped in a capability that contributes: a context preset (board
-summary + latest feedback) and a `write_draft` tool. The drafter opts in via
-`uses: [workstreamCap]`. This proves the "every member gets the shared surface
-by one `uses` injection" claim with n=1 member; multi-member injection is the
-same mechanism.
+history, wrapped in a capability that contributes a context preset (board
+summary + latest human feedback) to every member via `uses`. The drafter's
+draft lands in the resource through the deterministic commit tap (above), and
+`status` reads it back without touching the drafter. This proves the "every
+member gets the shared surface by one `uses` injection" claim with n=1 member;
+multi-member injection is the same mechanism.
 
 ### The advance loop (the hand-rolled workstream)
 
@@ -120,7 +145,8 @@ One sequencer, re-entered by every action:
 
 ```
 ensureBoard (seed goal tasks if empty)
-  → taskBoard drain            (claims pending drafter tasks, runs them)
+  → taskBoard drain            (claims pending drafter tasks, runs them;
+                                exits via shouldExit when only human tasks remain)
   → doneWhen                   (handler; classifies the board)
   → replan (only on "replan")  (handler; seeds revise + approval tasks)
   → loopBack to drain          (when replan seeded work, maxIterations guard)
@@ -131,10 +157,11 @@ ensureBoard (seed goal tasks if empty)
 
 | Action | Input | Behavior |
 | --- | --- | --- |
-| `start` | `{ goal: string }` | Create board `boards/main` if absent, seed draft task + approval task, run the advance loop. |
-| `decide` | `{ verdict: "approve" \| "reject", feedback?: string }` | Find the open approval task, `complete` it with the verdict/feedback (via `resumeFromReview` semantics), then run the advance loop in the same request. |
+| `start` | `{ goal: string }` | Create the session board if absent, seed draft task + approval task, run the advance loop. |
+| `decide` | `{ verdict: "approve" \| "reject", feedback?: string }` | Find the open approval task and **`collection.complete(taskId, { verdict, feedback })`** — `awaiting_review → completed` is a legal transition. Explicitly NOT `resumeFromReview`: that re-pends the task, making it claimable, and the registry router throws on the unknown human assignee. Then run the advance loop in the same request. |
 | `advance` | `{}` | Just run the advance loop. Exists to prove a *fresh* request can pick the board up with no other input. |
 | `status` | `{}` | **Zero-model** snapshot read (the trading-desk `runSummary` precedent). |
+| `startUnchecked` | `{ goal: string }` | **The control.** Same drafter, same board wiring, but no approval task and no `doneWhen`/`replan` — drain once and return. Must be behaviorally equivalent to `planAndExecute` on the same goal. |
 
 ### The snapshot (what a request returns)
 
@@ -155,9 +182,13 @@ not a terminal answer":
 
 Run from `apps/kitchen-sink` (config search is cwd-only). One session
 throughout; every invocation is a **separate OS process** — that separation is
-the point.
+the point. **`STORE_TYPE=filesystem` is required**: the kitchen-sink `dev`
+profile defaults to in-memory stores, which would fail the cross-request
+criterion for harness reasons, not concept reasons. With it, state persists
+under `.fsdev/data`.
 
 ```bash
+export STORE_TYPE=filesystem
 SID=wsvet_$(date +%s)
 
 # Request 1 — start. Expect: draft written, then the request ENDS with the
@@ -187,13 +218,18 @@ pnpm fsdev run workstream-vet decide \
   -i '{"verdict":"approve"}' \
   --session "$SID" --capture .fsdev/wsvet/3-approve.json --quiet
 # assert: workstreamStatus == "done"; blockedOnYou empty.
+
+# Control — same goal, no doneWhen / no human task. Must finish in ONE request.
+pnpm fsdev run workstream-vet startUnchecked \
+  -i '{"goal":"Produce an approved brief on ACME"}' \
+  --session "${SID}_control" --capture .fsdev/wsvet/4-control.json --quiet
+# assert: workstreamStatus == "done" in this single request; no approval task
+#         ever existed; artifacts.revisions == 0 — i.e. planAndExecute-shaped.
 ```
 
-**Control experiment** — the same flow with `doneWhen` + the human task
-removed (a one-flag variant action, `startUnchecked`): it must complete in a
-single request with output equivalent to `planAndExecute` on the same goal.
-This is the falsifiable check that the delta (goal loop + human checkpoint) is
-what the three-request behavior above is made of — not incidental wiring.
+The control run is the falsifiable check that the delta (goal loop + human
+checkpoint) is what the three-request behavior above is made of — not
+incidental wiring.
 
 ## Success criteria (each with an evidence path — BP-003)
 
@@ -202,13 +238,16 @@ what the three-request behavior above is made of — not incidental wiring.
 2. **Goal evaluation changes the outcome.** The reject path *replans* (revise
    task seeded and executed) rather than terminating — visible as
    `artifacts.revisions == 1` and a second approval task in `2-reject.json`.
-3. **HITL is pure board semantics.** `grep -r "suspend" apps/kitchen-sink/flows/workstream-vet/`
+3. **HITL is pure board semantics.** `rg -n "suspend" apps/kitchen-sink/flows/workstream-vet/`
    returns nothing; requests 1 and 2 exit 0 with the workstream open.
 4. **The shared workspace works via capability injection.** The drafter's
-   output lands in the workspace resource through the capability's tool, and
-   `status` reads it back without touching the drafter.
-5. **The control degenerates.** `startUnchecked` ≈ planAndExecute — proving
-   workstream's differentiation is exactly the two clauses under test.
+   commit tap lands the draft in the workspace resource; the revise pass shows
+   the capability's context preset carried the human feedback into the
+   drafter's second run (the revision reflects it); `status` reads the
+   artifact back without touching the drafter.
+5. **The control degenerates.** `4-control.json` shows `startUnchecked` ≈
+   planAndExecute — proving workstream's differentiation is exactly the two
+   clauses under test.
 
 ## Kill criteria
 
@@ -216,7 +255,9 @@ what the three-request behavior above is made of — not incidental wiring.
   or `packages/*` changes → the floor doesn't exist yet; the Layer-2
   conventions must not assume it. File the substrate issue; pause the noun.
 - The human task cannot be represented without modifying worker-step /
-  registry semantics → same: pattern-first follow-up, not app-space vet.
+  registry / check-board semantics → same: pattern-first follow-up, not
+  app-space vet. (The `onIdle: "wait"` + `shouldExit` route is the app-space
+  escape; if *that* proves insufficient, this criterion trips.)
 - The control experiment shows no meaningful delta → workstream is a costume
   over planAndExecute; keep strategies as the vocabulary and drop workstream
   from the centerpiece position.
@@ -233,11 +274,13 @@ what the three-request behavior above is made of — not incidental wiring.
   pattern; the vet uses a static team.
 - **Nested workstreams / board-in-board** — one board + subtasks for now;
   isolation-needing children are the concept doc's deferred question.
+- **Multi-board identity** — one board per session in the vet; a key-prefix or
+  second-collection scheme comes with productization.
 - **Claim/conflict hardening for concurrent multi-writer boards** — required
   before the durable ceiling, unexercised by a single-request-at-a-time vet.
 - **Any `packages/*` change** — incl. reversing the Wave-1 "no session-scoped
-  skill boards" decision. On green, that reversal is the productization PR's
-  explicit, reviewed decision.
+  skill boards" decision and adding a `complete-or-external` idle mode. On
+  green, both are the productization PR's explicit, reviewed decisions.
 
 ## Decision log (carried in from the design conversation)
 
@@ -246,8 +289,16 @@ what the three-request behavior above is made of — not incidental wiring.
 - **assign** = place an existing agent into a role (v1). **hire** = mint a new
   agent from an archetype (deferred).
 - Human checkpoints are *tasks*, not gate config. No `gates:` knob exists.
+- Human decisions land via `complete(taskId, output)`, never
+  `resumeFromReview` — re-pending a human task makes it claimable and the
+  worker registry throws on unknown assignees.
 - Board default scope is **session**; a request advances a slice. Request-
   bounded boards cap the concept and were rejected.
+- Board idle mode for the vet is `wait` + `shouldExit` (ignore
+  `awaiting_review`), because `complete-or-blocked` deliberately holds the
+  loop open for review tasks (FIX-443 §10.1).
+- Proof evidence must be deterministic: the draft persists via a commit tap,
+  not a voluntary model tool call; `doneWhen`/`replan` are handlers.
 - The workstream injects its shared board + tools into every member as a
   capability (`uses`), reusing the existing capability machinery.
 - Housing on green: the runtime pattern → `packages/patterns` (beside
@@ -260,8 +311,11 @@ what the three-request behavior above is made of — not incidental wiring.
 
 1. `workstream()` factory in `packages/patterns` implementing the proven loop;
    `assign`/`assemble` in `packages/workforce`.
-2. Update the Layer 2 concept doc's package decision (one-package plan →
+2. A first-class board idle mode that exits cleanly around open external
+   (human/event) tasks — `complete-or-external` — replacing the vet's
+   `wait` + `shouldExit` workaround.
+3. Update the Layer 2 concept doc's package decision (one-package plan →
    additive pattern + workforce sugar) so doc and code agree.
-3. The Wave-1 session-board reversal as its own reviewed change.
-4. Evaluator-as-generator variant of `doneWhen` (drop-in, slot is a block).
-5. The FIX-867 conventions writeup (b), now standing on a vetted centerpiece.
+4. The Wave-1 session-board reversal as its own reviewed change.
+5. Evaluator-as-generator variant of `doneWhen` (drop-in, slot is a block).
+6. The FIX-867 conventions writeup (b), now standing on a vetted centerpiece.
