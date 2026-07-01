@@ -21,15 +21,20 @@ import type { ThesisRecord } from "@/src/flows/portfolio/thesis-schema";
  * `loading` is true until the FULL household list is in (initial read + every
  * remaining page) — distinct from a loaded-but-empty household — so a consumer
  * (the report's adopt button) suppresses an overwrite-adopt until it actually
- * knows whether a thesis exists. `refetch` is retained for callers that want an
- * explicit re-pull, though the live stream makes it unnecessary in practice.
+ * knows whether a thesis exists. A read ERROR is also reported as `loading`
+ * (not-ready): on a transient collection-read failure the hook leaves `items`
+ * empty, and treating that as a loaded-empty household would let the report panel
+ * offer Adopt (or open a blank editor) and overwrite an existing thesis on the
+ * next successful write — so affordances stay disabled until a read succeeds.
+ * `refetch` is retained for callers that want an explicit re-pull, though the
+ * live stream makes it unnecessary in practice.
  */
 export function useTheses(session: SessionView): {
   theses: ThesisRecord[];
   loading: boolean;
   refetch: () => void;
 } {
-  const { items, isLoading, refetch, loadMore, pagination } =
+  const { items, isLoading, error, refetch, loadMore, pagination } =
     useResourceCollectionList<ThesisRecord>(session, "theses", { limit: 200 });
 
   // Page through the whole household. A truncated first page would make a
@@ -49,6 +54,12 @@ export function useTheses(session: SessionView): {
     [items],
   );
   // Not "done loading" until the initial read lands AND no more pages remain, so
-  // a per-ticker "has a thesis?" check is never made against a partial list.
-  return { theses, loading: isLoading || pagination?.hasMore === true, refetch };
+  // a per-ticker "has a thesis?" check is never made against a partial list. A
+  // read error also counts as not-ready: an empty `items` from a failed read must
+  // not read as a loaded-empty household (which would enable an overwrite-adopt).
+  return {
+    theses,
+    loading: isLoading || pagination?.hasMore === true || error !== undefined,
+    refetch,
+  };
 }

@@ -19,6 +19,7 @@ import {
   buildSaveThesisPayload,
   canSaveThesis,
   emptyThesisForm,
+  thesisFormError,
   thesisRecordToForm,
 } from "../components/portfolio/thesis-form";
 import type { ThesisRecord } from "../src/flows/portfolio/thesis-schema";
@@ -155,5 +156,38 @@ describe("canSaveThesis", () => {
     expect(canSaveThesis(emptyThesisForm())).toBe(false);
     expect(canSaveThesis({ ...emptyThesisForm(), entryRationale: "   " })).toBe(false);
     expect(canSaveThesis({ ...emptyThesisForm(), entryRationale: "Real why." })).toBe(true);
+  });
+});
+
+describe("thesisFormError", () => {
+  // The dialog validates against the same schema the action re-validates, so an
+  // input the server would reject keeps the editor open instead of dispatching,
+  // closing, and silently dropping the draft.
+  it("returns null for a valid draft", () => {
+    const form = { ...emptyThesisForm(), entryRationale: "Why.", targetPrice: "200" };
+    expect(thesisFormError("NVDA", form)).toBeNull();
+  });
+
+  it("rejects a nonpositive target/stop price (would poison the prompt context)", () => {
+    const neg = { ...emptyThesisForm(), entryRationale: "Why.", stopPrice: "-5" };
+    const err = thesisFormError("NVDA", neg);
+    expect(err).not.toBeNull();
+    expect(err).toContain("stopPrice");
+  });
+
+  it("rejects more than 20 tripwires (the schema cap)", () => {
+    const tripwires = Array.from({ length: 21 }, (_, i) => ({
+      kind: "event" as const,
+      note: `falsifier ${i}`,
+      level: "",
+      byDate: "",
+    }));
+    const err = thesisFormError("NVDA", {
+      ...emptyThesisForm(),
+      entryRationale: "Why.",
+      tripwires,
+    });
+    expect(err).not.toBeNull();
+    expect(err).toContain("tripwires");
   });
 });

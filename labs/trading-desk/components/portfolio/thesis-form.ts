@@ -9,12 +9,13 @@
  * fabricated value; an unparseable number maps to `null` (the server re-validates
  * with `thesisInputSchema`, so the client validation is deliberately light).
  */
-import type {
-  ThesisInputFields,
-  ThesisRecord,
-  TimeHorizon,
-  Tripwire,
-  TripwireKind,
+import {
+  thesisInputSchema,
+  type ThesisInputFields,
+  type ThesisRecord,
+  type TimeHorizon,
+  type Tripwire,
+  type TripwireKind,
 } from "@/src/flows/portfolio/thesis-schema";
 
 /** A tripwire row as the editor holds it: every field is a raw string so an
@@ -127,4 +128,28 @@ export function buildSaveThesisPayload(
  *  disabled state. */
 export function canSaveThesis(form: ThesisFormState): boolean {
   return form.entryRationale.trim().length > 0;
+}
+
+/**
+ * Validate the built payload against the SAME `thesisInputSchema` the action
+ * re-validates server-side, returning the first human-readable error (field-
+ * prefixed) or null when valid. The dialog calls this on save so an input the
+ * server would reject — a nonpositive target/stop price, more than 20 tripwires —
+ * keeps the editor open instead of dispatching, closing, and silently losing the
+ * draft to a stream failure the UI never sees (`sendAction` resolves at
+ * stream-attach, before the validation failure surfaces). `canSaveThesis` gates
+ * the blank-form case (empty rationale); this covers the typed-but-invalid case.
+ */
+export function thesisFormError(
+  ticker: string,
+  form: ThesisFormState,
+  existingSourceSessionId: string | null = null,
+): string | null {
+  const result = thesisInputSchema.safeParse(
+    buildSaveThesisPayload(ticker, form, existingSourceSessionId),
+  );
+  if (result.success) return null;
+  const issue = result.error.issues[0];
+  const field = issue.path.join(".");
+  return field.length > 0 ? `${field}: ${issue.message}` : issue.message;
 }

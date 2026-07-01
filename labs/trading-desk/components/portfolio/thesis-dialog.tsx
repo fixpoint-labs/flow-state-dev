@@ -29,6 +29,7 @@ import {
   buildSaveThesisPayload,
   canSaveThesis,
   emptyThesisForm,
+  thesisFormError,
   thesisRecordToForm,
   type ThesisFormState,
   type TripwireDraft,
@@ -87,6 +88,9 @@ export function ThesisDialog({
 }: ThesisDialogProps): ReactElement {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [form, setForm] = useState<ThesisFormState>(emptyThesisForm());
+  // Server-schema validation error surfaced on a save attempt (a nonpositive
+  // price, >20 tripwires) — keeps the editor open so the draft isn't lost.
+  const [error, setError] = useState<string | null>(null);
 
   // Drive the native <dialog> imperatively from `open` (matches the other dialogs).
   useEffect(() => {
@@ -97,10 +101,12 @@ export function ThesisDialog({
   }, [open]);
 
   // Reset/pre-fill the draft on each open so a prior cancel doesn't leak stale
-  // text, and an edit pre-fills from the existing record.
+  // text, and an edit pre-fills from the existing record. Also clears any prior
+  // validation error so a fresh open never opens showing a stale message.
   useEffect(() => {
     if (open) {
       setForm(existing !== null ? thesisRecordToForm(existing) : emptyThesisForm());
+      setError(null);
     }
   }, [open, existing]);
 
@@ -129,9 +135,19 @@ export function ThesisDialog({
 
   const handleSave = (): void => {
     if (!canSave) return;
+    const sourceSessionId = existing?.sourceSessionId ?? null;
+    // Validate client-side against the same schema the action re-validates. A
+    // dispatch resolves at stream-attach, before a server rejection surfaces, so
+    // an invalid save would close the editor and silently drop the draft; block
+    // here and keep the dialog open with the reason instead.
+    const validationError = thesisFormError(ticker, form, sourceSessionId);
+    if (validationError !== null) {
+      setError(validationError);
+      return;
+    }
     // Carry the existing report link through an edit so a Portfolio edit of an
     // adopted thesis doesn't erase its originating `sourceSessionId`.
-    onSave(buildSaveThesisPayload(ticker, form, existing?.sourceSessionId ?? null));
+    onSave(buildSaveThesisPayload(ticker, form, sourceSessionId));
     onClose();
   };
 
@@ -316,6 +332,15 @@ export function ThesisDialog({
             )}
           </div>
         </div>
+
+        {error !== null ? (
+          <p
+            role="alert"
+            className="border-t border-[color:var(--c-warn)]/40 bg-[color:var(--c-warn)]/10 px-4 py-2 text-[11px] text-[color:var(--c-warn)]"
+          >
+            {error}
+          </p>
+        ) : null}
 
         <footer className="flex items-center gap-2 border-t border-[color:var(--c-border)] px-4 py-3">
           {existing !== null ? (
