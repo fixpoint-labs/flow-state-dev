@@ -91,17 +91,26 @@ the no-config fallback. So the prototype adds one line to
 
 ### Deterministic loop blocks (no LLM — keeps the control experiment clean)
 
-- **`doneWhen`** — a handler. Checked **first**: any required task `errored` /
-  `cancelled` (retry budget exhausted) → `errored`. The board runs
-  `onError: "skip"` and the `wait`/`shouldExit` drain also exits when a task
-  has errored and nothing is claimable — without this branch a failed drafter
-  would fall through to `in_progress` and the snapshot would report a dead run
-  as merely stuck. Then: newest approval task `completed` with
-  `verdict: "approve"` → `done`; `completed` with `verdict: "reject"` →
-  `replan`; still `awaiting_review` with deps met → `blocked_on_human`;
-  otherwise `in_progress`.
-- **`replan`** — a handler. On `reject`, seeds two tasks: a revise task for the
-  drafter carrying the human's `feedback`, and a fresh approval task
+- **`doneWhen`** — a handler, evaluated in this order. **(1)** Any required
+  task `errored` / `cancelled` (retry budget exhausted) → `errored`. The board
+  runs `onError: "skip"` and the `wait`/`shouldExit` drain also exits when a
+  task has errored and nothing is claimable — without this branch a failed
+  drafter would fall through to `in_progress` and the snapshot would report a
+  dead run as merely stuck. **(2) Deterministic acceptance check, independent
+  of any human**: the goal carries a machine-checkable criterion (the vet
+  pins `minRevisions: 1` — a deliberately mechanical stand-in for a real
+  acceptance evaluator; an LLM evaluator is a drop-in since the slot is a
+  block). Unmet → `replan` with no human in the loop. This clause is what
+  exercises "goal-completion judgment changes the outcome" *on its own* —
+  without it, `doneWhen` collapses into a relay of the human verdict and the
+  vet would only prove the checkpoint round-trip, not goal judgment.
+  **(3)** Newest approval task `completed` with `verdict: "approve"` → `done`;
+  `completed` with `verdict: "reject"` → `replan`; still `awaiting_review`
+  with deps met → `blocked_on_human`; otherwise `in_progress`.
+- **`replan`** — a handler, keyed to which `doneWhen` branch fired. On an
+  unmet acceptance criterion: seed a revise task only — no human task yet;
+  approval is requested once the goal check passes. On `reject`: seed a
+  revise task carrying the human's `feedback`, plus a fresh approval task
   (`awaiting_review`, dep on the revise task).
 
 An LLM evaluator is a drop-in later — the slot is a block — but the vet keeps
@@ -150,7 +159,11 @@ multi-member injection is the same mechanism.
 
 ### The advance loop (the hand-rolled workstream)
 
-One sequencer, re-entered by every action:
+One sequencer, re-entered by every **mutating** action (`start`, `decide`,
+`advance`). `status` bypasses it entirely — a pure snapshot read must never
+drain the board, or a read-back that happens to see claimable work would
+advance it and the persistence proof would stop distinguishing reads from
+advancement:
 
 ```
 ensureBoard (seed goal tasks if empty)
@@ -183,7 +196,7 @@ not a terminal answer":
   goal: string,
   tasks: Array<{ id, title, status, assignee, attempts }>,
   blockedOnYou: Array<{ id, title, feedbackWanted: boolean }>,  // open human tasks with deps met
-  artifacts: { draft: string | null, revisions: number },
+  artifacts: { draft: string | null, revisions: number, feedbackEcho: string | null },
 }
 ```
 
@@ -216,16 +229,20 @@ pnpm fsdev run workstream-vet start \
   -i '{"goal":"Produce an approved brief on ACME"}' \
   --session "$SID" --capture .fsdev/wsvet/1-start.json --quiet
 # assert: exit 0; snapshot.workstreamStatus == "blocked_on_human";
-#         artifacts.draft != null; blockedOnYou has the approval task.
+#         artifacts.draft != null; blockedOnYou has the approval task;
+#         artifacts.revisions == 1 — the acceptance check already forced one
+#         auto-replan BEFORE any human was involved (goal judgment changed
+#         the outcome on its own).
 
 # Request 2 — human rejects with feedback. Expect: replan, drafter revises,
 # blocked on the NEW approval task.
 pnpm fsdev run workstream-vet decide \
   -i '{"verdict":"reject","feedback":"Too long; cut to one page and add pricing."}' \
   --session "$SID" --capture .fsdev/wsvet/2-reject.json --quiet
-# assert: snapshot shows a revise task completed (drafter ran again),
-#         artifacts.revisions == 1, workstreamStatus == "blocked_on_human",
-#         a FRESH approval task in blockedOnYou (not the original).
+# assert: snapshot shows another revise task completed (human-driven this
+#         time), artifacts.revisions == 2, feedbackEcho == "Too long; …",
+#         workstreamStatus == "blocked_on_human", a FRESH approval task in
+#         blockedOnYou (not the original).
 
 # Request 2b — cold read-back from yet another process (board persistence).
 pnpm fsdev run workstream-vet status -i '{}' \
@@ -254,20 +271,26 @@ incidental wiring.
 
 1. **The board outlives a request.** `2b-status.json` (a fresh process, zero
    models) lists the same tasks request 2 left behind.
-2. **Goal evaluation changes the outcome.** The reject path *replans* (revise
-   task seeded and executed) rather than terminating — visible as
-   `artifacts.revisions == 1` and a second approval task in `2-reject.json`.
+2. **Goal evaluation changes the outcome — twice, from two independent
+   sources.** The acceptance check replans with no human involved
+   (`1-start.json` shows `revisions == 1` before any `decide`), and the human
+   reject replans again (`2-reject.json` shows `revisions == 2` and a second
+   approval task). The first is the goal-judgment clause on its own; the
+   second is the checkpoint clause.
 3. **HITL is pure board semantics.** `rg -n "suspend" apps/kitchen-sink/flows/workstream-vet/`
    returns nothing; requests 1 and 2 exit 0 with the workstream open.
-4. **The shared workspace works via capability injection — proven
-   deterministically.** The drafter's commit tap lands the draft in the
-   workspace resource AND stamps a `feedbackEcho` field read from the *same
-   workspace field the capability's context preset renders* — so
-   `2-reject.json` showing `feedbackEcho == "Too long; …"` proves the injected
-   data path was live at generation time, independent of what the model chose
-   to do with it. Whether the revision *visibly reflects* the feedback is a
-   non-gating observation, never a pass/fail criterion. `status` reads the
-   artifact back without touching the drafter.
+4. **The shared workspace works via capability injection — proven at two
+   layers.** (a) *Capability path:* a vitest unit test (the write-block-tests
+   convention, mocked generator via `@flow-state-dev/testing`) asserts the
+   drafter's RENDERED context contains the feedback the preset formats — the
+   only deterministic proof that the preset actually reached the generator; a
+   post-generator read can pass even if `uses` was never wired. (b) *Data
+   path, headlessly:* the commit tap stamps `feedbackEcho` (surfaced on the
+   snapshot's `artifacts`) read from the same workspace field the preset
+   renders, so `2-reject.json` shows the injected data was live at generation
+   time. Whether the revision *visibly reflects* the feedback stays a
+   non-gating observation. `status` reads the artifact back without touching
+   the drafter.
 5. **The control degenerates.** `4-control.json` shows `startUnchecked` ≈
    planAndExecute — proving workstream's differentiation is exactly the two
    clauses under test.
@@ -322,6 +345,10 @@ incidental wiring.
   loop open for review tasks (FIX-443 §10.1).
 - Proof evidence must be deterministic: the draft persists via a commit tap,
   not a voluntary model tool call; `doneWhen`/`replan` are handlers.
+- Goal acceptance is a deterministic criterion checked BEFORE any human task
+  is seeded (`minRevisions` stand-in), so goal judgment is exercised
+  independently of the approval round-trip — the two clauses under test must
+  not collapse into one.
 - The workstream injects its shared board + tools into every member as a
   capability (`uses`), reusing the existing capability machinery.
 - Housing on green: the runtime pattern → `packages/patterns` (beside
