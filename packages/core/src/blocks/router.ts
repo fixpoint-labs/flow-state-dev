@@ -152,23 +152,27 @@ export function router<
     TResources, TMergedTargetSchemas, TCapabilities
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
-  // Unique route names are required for EVERY router (FIX-814): the durable
-  // `router_decision` records a bare route name, and resume validates the
-  // re-selected route against it. Whether a branch can suspend is not
-  // statically decidable (a gate can hide arbitrarily deep, or in a dynamic
-  // generator tool), so the constraint is universal, not suspendability-scoped.
+  // A route name must map to exactly ONE distinct definition (FIX-814): the
+  // durable `router_decision` records a bare route name, and resume validates
+  // the re-selected route against it. Reference-equal duplicates (the same
+  // block listed under two aliases, e.g. via `utility.keyedRouter`) are
+  // unambiguous and tolerated; two DIFFERENT definitions sharing a name are
+  // rejected. Whether a branch can suspend is not statically decidable (a
+  // gate can hide arbitrarily deep, or in a dynamic generator tool), so the
+  // constraint is universal, not suspendability-scoped.
   {
-    const seen = new Set<string>();
+    const seenByName = new Map<string, BlockDefinition<any, any>>();
     // `routes` is required by the type but tolerated as absent at runtime
     // elsewhere in this builder (e.g. type-only/transient test fixtures).
     for (const route of config.routes ?? []) {
-      if (seen.has(route.name)) {
+      const prior = seenByName.get(route.name);
+      if (prior !== undefined && prior !== route) {
         throw new Error(
-          `Router "${config.name}" declares duplicate route name "${route.name}". ` +
+          `Router "${config.name}" declares duplicate route name "${route.name}" across two different blocks. ` +
           `Route names must be unique so the recorded router decision is unambiguous on resume.`
         );
       }
-      seen.add(route.name);
+      seenByName.set(route.name, route);
     }
   }
 
@@ -295,7 +299,7 @@ export function router<
       const traceLookupInstanceId =
         ctx._withExecutionScope === undefined
           // Standalone path: the selected block ran under the outer scope's
-          // identity. Route by name match (fallback).
+          // identity, so its trace (if any) carries that instance id.
           ? ctx._blockIdentity?.blockInstanceId ?? ""
           : selectedInstanceId;
       const traceId =

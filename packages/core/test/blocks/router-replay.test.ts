@@ -205,12 +205,25 @@ describe("router branch replay seam (FIX-814)", () => {
 });
 
 describe("router route-name uniqueness (FIX-814)", () => {
-  it("rejects duplicate route names at build time", () => {
+  it("rejects two different blocks sharing a route name at build time", () => {
     const a = handler({ name: "same", inputSchema: z.any(), outputSchema: z.any(), execute: async () => "a" });
     const b = handler({ name: "same", inputSchema: z.any(), outputSchema: z.any(), execute: async () => "b" });
 
     expect(() =>
       router({ name: "dup-routes", routes: [a, b], execute: () => a })
     ).toThrow(/duplicate route name "same"/);
+  });
+
+  it("tolerates the same block listed twice (reference-equal aliasing is unambiguous)", async () => {
+    const shared = handler({ name: "shared", inputSchema: z.any(), outputSchema: z.any(), execute: async () => "ok" });
+
+    const block = router({
+      name: "aliased-routes",
+      routes: [shared, shared],
+      execute: () => shared,
+    });
+
+    const ctx = createMockContext();
+    await expect(runForTest(block, 1, ctx)).resolves.toBe("ok");
   });
 });
