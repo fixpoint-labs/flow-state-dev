@@ -8,7 +8,7 @@ You are an implementation agent. Given a Linear issue ID, your job is to pull th
 
 ## Core Principles
 
-**The spec is the source of truth, not the issue description.** The issue description says *what* and *why*. The spec says *how* — it lives at `docs/specs/<ISSUE-ID>.md` in the repo (the reviewed artifact) and is mirrored to the attached Linear document; the two are kept in sync, so read either. Always read both issue and spec, but when they conflict on implementation details, the spec wins. If no spec exists, behavior depends on category (see Step 2).
+**The spec is the source of truth, not the issue description.** The issue description says *what* and *why*. The spec says *how* — it is authored at `docs/specs/<ISSUE-ID>.md` on the spec PR branch (`spec/<ISSUE-ID>`, PR titled `spec(<ISSUE-ID>)`) and mirrored to the attached Linear document. The spec PR is a review vehicle, not a merge target: it exists to collect feedback, and this skill closes it unmerged at Step 3 — so the spec file is NOT on main. The two copies should be in sync but may have drifted, and the spec PR may carry review comments never folded into either copy — Step 1 reconciles all of this before any code is written. When issue and spec conflict on implementation details, the spec wins. If no spec exists, behavior depends on category (see Step 2).
 
 **Bugs and features follow different disciplines.** Step 4 reads the Linear category label and routes:
 
@@ -19,7 +19,7 @@ Both disciplines are embedded into the implementer sub-agent prompt at dispatch 
 
 ## Workflow
 
-**Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open **implementation** PR (`gh pr list --search "FIX-N in:title,body" --state open`, or the URL recorded on the Linear issue). **Ignore the docs-only spec PR** (`spec(FIX-N)` title / `spec/FIX-N` branch from `fsd:create-spec`) — that's the spec artifact, not the implementation; matching it would wrongly jump to PR-feedback mode and skip the build. If an implementation PR exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
+**Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open **implementation** PR (`gh pr list --search "FIX-N in:title,body" --state open`, or the URL recorded on the Linear issue). **Ignore the docs-only spec PR** (`spec(FIX-N)` title / `spec/FIX-N` branch from `fsd:create-spec`, open or closed) — that's the spec artifact, not the implementation; matching it would wrongly jump to PR-feedback mode and skip the build. If an implementation PR exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
 
 ### Step 1: Pull the Linear Issue
 
@@ -27,7 +27,12 @@ Fetch everything about the issue:
 
 1. `get_issue` with `includeRelations: true` — get the full issue: description, labels, priority, relations
 2. `list_comments` — read any discussion or decisions
-3. **Read the spec** — prefer `docs/specs/<ISSUE-ID>.md` in the repo; otherwise fetch the attached Linear document with `get_document` (titled `{ISSUE-ID}: ... — Implementation Spec`). They're kept in sync; if both exist and differ, reconcile before implementing.
+3. **Read the spec — from both homes, plus the spec-PR review.** The spec lives in two places that should match but may not: the spec PR branch and the Linear document.
+   1. **Locate the spec PR**: `gh pr list --search "spec({ISSUE-ID}) in:title" --state all --json number,state,headRefName,url`. It may be open (normal) or already closed (a prior run got past Step 3).
+   2. **Read the repo copy** from the PR head, using the `headRefName` returned by the previous step (git refs are case-sensitive — don't retype the branch name): `git fetch origin {headRefName} && git show FETCH_HEAD:docs/specs/{ISSUE-ID}.md`. If the branch is gone (PR closed with branch deleted), fetch `pull/{N}/head` instead and read from `FETCH_HEAD` the same way.
+   3. **Read the Linear copy** with `get_document` (titled `{ISSUE-ID}: ... — Implementation Spec`).
+   4. **Read the spec-PR discussion** — all three comment surfaces, same commands as Step 10.1 (inline review comments, top-level PR comments, review submissions). Reviewers critique the design here; some feedback may have been applied to the spec text, some may not.
+   5. **Reconcile.** While the spec PR is still open, the PR head is usually the fresher copy (review fixes land there first) — but check timestamps rather than assuming; produce one authoritative spec text and mirror it to the Linear document *now*, so Linear is correct before the spec PR closes at Step 3. If the spec PR is already closed, the Linear document is authoritative — read the PR only for its review history, and never mirror the old PR file back over Linear. Either way, for each substantive spec-PR comment, check whether the spec text addresses it; collect the ones that don't as open questions for Step 2.
 4. If the issue has sub-tasks, fetch those too — they may represent the intended PR breakdown
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search with `list_issues` using it as a query.
@@ -52,7 +57,7 @@ Before starting work, check:
    - If blockers are still "In Progress" or "Todo" → tell the user what's blocking and stop
    - If blockers are "Done" but code isn't on main → check if there's a merged PR. If not, flag it
 
-3. **Open questions?** If the spec has an "Open Questions" section with unresolved items → present them to the user and wait for answers before proceeding
+3. **Open questions?** If the spec has an "Open Questions" section with unresolved items, or Step 1 surfaced substantive spec-PR review comments the spec text never addressed → present them to the user and wait for answers before proceeding. Once answered, fold the decisions into the spec text and update the Linear document before moving on — after Step 3 closes the spec PR, Linear is the only live copy, and sub-agent prompts are built from it
 
 If all clear, move to Step 3.
 
@@ -60,7 +65,15 @@ If all clear, move to Step 3.
 
 1. Ensure main is up to date: `git checkout main && git pull`
 2. Create the branch: `fix/{ISSUE-ID}` (e.g., `fix/FIX-123`) — lowercase the ID
-3. Update the Linear issue state to "In Development" using `save_issue`
+3. **Close the spec PR — never merge it.** The spec PR exists to collect review; merging it would accumulate point-in-time spec docs on main that go stale the moment implementation deviates. The Linear document (reconciled in Step 1) is the durable copy, and the closed PR keeps the review history findable. Close with a comment and delete the branch:
+
+   ```bash
+   gh pr close {spec-pr} --delete-branch \
+     --comment "Spec review complete — implementation starting on fix/{issue-id}. Canonical spec is the Linear document on {ISSUE-ID}; review history stays on this PR."
+   ```
+
+   Skip if there's no spec PR (bug without a spec, agent-brief issue) or it's already closed. From this point on, the Linear document is the only live copy — any mid-implementation spec edit happens there.
+4. Update the Linear issue state to "In Development" using `save_issue`
 
 ### Step 4: Determine Category and Complexity
 
@@ -284,20 +297,20 @@ Once the PR is open, this skill owns it until it merges. Whenever the skill is r
 
 #### 10.1: Enumerate every comment and review on the PR
 
-Use `gh` to read everything attached to the PR. There are three distinct comment surfaces — you must check all three:
+Use `gh` to read everything attached to the PR. There are three distinct comment surfaces — you must check all three, and always `--paginate` (these endpoints return 30 items per page by default; a busy PR silently loses the rest):
 
 ```bash
 # repo identifiers (use jq to extract from the PR URL or run once and cache)
 gh pr view {PR} --json url,headRefName,number,reviewDecision,baseRefName
 
 # 1) inline review comments (attached to specific lines of code)
-gh api repos/{owner}/{repo}/pulls/{PR}/comments
+gh api --paginate repos/{owner}/{repo}/pulls/{PR}/comments
 
 # 2) top-level PR conversation comments
-gh api repos/{owner}/{repo}/issues/{PR}/comments
+gh api --paginate repos/{owner}/{repo}/issues/{PR}/comments
 
 # 3) review submissions (the wrapper around inline comments + a body)
-gh api repos/{owner}/{repo}/pulls/{PR}/reviews
+gh api --paginate repos/{owner}/{repo}/pulls/{PR}/reviews
 ```
 
 For each comment, fetch its existing reactions so you can identify which ones you've already processed:
@@ -386,6 +399,7 @@ The skill exits this loop only when the PR is merged or closed.
 ## Guidelines
 
 - **Spec drives everything.** Don't improvise beyond the spec. If the spec is wrong, flag it — don't silently deviate.
+- **The spec PR is a review vehicle, not a merge target.** It closes (unmerged) at Step 3. Mirror any Step 1 reconciliation to the Linear document before closing — after the close, Linear is the sole live spec. Never re-open or merge a spec PR.
 - **Sub-agents get full context.** Never make a sub-agent read files to understand their task. Paste the relevant spec sections directly into the prompt.
 - **Sequential implementation, parallel review.** Tasks execute in order (they often depend on prior tasks). Reviews run in parallel (they're independent).
 - **Fix before presenting.** The user should see clean work, not a list of known issues. Fix everything the reviewers flag before Step 8.
