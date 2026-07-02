@@ -148,7 +148,7 @@ docs/
 
 ## Skills Library
 
-Development task skills live in `.claude/skills/`. Use these when performing common development tasks:
+Development task skills live in `agents/skills/` — the harness-neutral home, since Claude is our main harness but not our only one. `.claude/skills` is a symlink to it so Claude Code's skill discovery keeps working; don't put files under `.claude/skills` directly. Use these when performing common development tasks:
 
 ### Workflow skills
 

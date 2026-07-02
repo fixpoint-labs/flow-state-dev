@@ -1,6 +1,6 @@
 ---
 name: fsd:plan_day
-description: Identify unblocked Linear tasks based on what's on main and in open PRs, prioritize up to 8 for today, clean stale todos, and generate a work plan for each as a file in .claude/todos/.
+description: Identify unblocked Linear tasks based on what's on main and in open PRs, prioritize up to 8 for today, clean stale todos, and generate a work plan for each as a file in agents/todos/.
 argument-hint: "[optional focus area or filter]"
 ---
 
@@ -30,7 +30,7 @@ Use Linear MCP tools to fetch:
 - Recently completed issues (last week) for context on momentum
 
 #### 1c: Existing Todos
-Read the current `.claude/todos/` directory:
+Read the current `agents/todos/` directory (if a legacy `.claude/todos/` directory still exists locally, include its files and migrate keepers to `agents/todos/`):
 - List all existing todo files
 - Read each one to understand its status and whether it's still relevant
 - Note any that reference issues which are now completed or cancelled in Linear
@@ -43,7 +43,7 @@ Read orientation docs to understand current phase and priorities:
 
 ### Step 2: Clean Stale Todos
 
-Before generating new plans, clean up `.claude/todos/`:
+Before generating new plans, clean up `agents/todos/`:
 
 1. **Remove completed todos** — if the Linear issue is in "Done"/"Cancelled" state, delete the todo file
 2. **Remove outdated todos** — if the task description no longer matches the Linear issue (e.g., scope changed significantly), delete the file so it gets regenerated fresh
@@ -71,7 +71,7 @@ Select up to **8 tasks**. If $ARGUMENTS specifies a focus area, weight tasks in 
 
 ### Step 4: Generate Todo Files
 
-For each selected task, create a todo file in `.claude/todos/`. Skip tasks that already have a valid, up-to-date todo file (preserved in Step 2).
+For each selected task, create a todo file in `agents/todos/`. Skip tasks that already have a valid, up-to-date todo file (preserved in Step 2).
 
 **File naming:** `{linear-id}-{priority}-{kebab-description}.md`
 Example: `FSD-142-p2-fix-sse-resume-token.md`

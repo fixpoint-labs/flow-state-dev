@@ -153,7 +153,7 @@ Substitute `{ISSUE_ID}` with the uppercase Linear ID (e.g. `FIX-123`) and `{issu
 
 **Transport: `claude --remote` only — through the wrapper script.**
 
-- ✅ `node .claude/skills/dispatch-remote/dispatch.mjs <<'EOF' … EOF` (the wrapper around `claude --remote`)
+- ✅ `node agents/skills/dispatch-remote/dispatch.mjs <<'EOF' … EOF` (the wrapper around `claude --remote`)
 - ❌ `claude agents …` — that's the local background-agent CLI; it does not create cloud remote sessions
 - ❌ `RemoteTrigger` tool — not used for this skill
 - ❌ Calling `claude --remote` directly from the Bash tool — claude only prints the dispatch banner ("Created remote session: …", "View: …", "Resume with: …") when stdout is a TTY. From a normal subprocess stdout is a pipe, claude auto-engages `--print` mode, the banner is suppressed, and the call errors with "Input must be provided … when using --print" because `--remote` already consumed the positional argument. The wrapper runs claude under `script(1)` to allocate a pseudo-terminal so the banner is emitted and parseable.
@@ -163,7 +163,7 @@ Note: `claude --remote` is a working flag even though it does not appear in `cla
 The wrapper scrubs the env, disconnects stdin, parses the CLI output, and returns JSON:
 
 ```bash
-node .claude/skills/dispatch-remote/dispatch.mjs <<'EOF'
+node agents/skills/dispatch-remote/dispatch.mjs <<'EOF'
 <PROMPT_FROM_STEP_3>
 EOF
 ```
@@ -195,7 +195,7 @@ Remind the user: remote tasks run independently. They update Linear themselves, 
 - **Linear is the source of truth for state.** Don't infer "ready for dev" from chat ("the user said this one's reviewed"). Read the issue state via `get_issue`. If the user disagrees with what Linear says, fix Linear first, then dispatch.
 - **One issue per remote task.** No batching, no multi-issue prompts. Each remote task owns one branch and one PR.
 - **Skipped silently means lost work.** If you skip an issue, tell the user why in the summary. Better to over-report than to lose a dispatch.
-- **Always go through the wrapper script.** Never invoke `claude --remote` directly from Bash inside a claude session — the dispatch banner is only printed when stdout is a TTY, and a subprocess pipe is not. The wrapper allocates a pseudo-terminal via `script(1)` so the banner is emitted and parseable. Use `node .claude/skills/dispatch-remote/dispatch.mjs <<'EOF' … EOF`.
+- **Always go through the wrapper script.** Never invoke `claude --remote` directly from Bash inside a claude session — the dispatch banner is only printed when stdout is a TTY, and a subprocess pipe is not. The wrapper allocates a pseudo-terminal via `script(1)` so the banner is emitted and parseable. Use `node agents/skills/dispatch-remote/dispatch.mjs <<'EOF' … EOF`.
 - **Resolve open questions with `AskUserQuestion`, not free-form prose.** Anything ambiguous — batch selection, state conflicts, missing labels, unresolved spec questions — goes through Step 2.5 with 2–4 concrete options and a recommendation. Free-form "what do you want me to do?" loses momentum and forces the user to write a paragraph; structured options let them click.
 
 ## Common Mistakes
@@ -203,7 +203,7 @@ Remind the user: remote tasks run independently. They update Linear themselves, 
 | Mistake | Fix |
 |---------|-----|
 | Building the prompt by string-interpolating user chat context | Inline the relevant context as plain prose; the remote agent can't see chat |
-| Calling `claude --remote "..."` directly from Bash | Use `node .claude/skills/dispatch-remote/dispatch.mjs <<'EOF' … EOF` — the wrapper runs claude under `script(1)` so stdout is a PTY and the dispatch banner is printed (otherwise `--print` mode auto-engages and the banner is suppressed) |
+| Calling `claude --remote "..."` directly from Bash | Use `node agents/skills/dispatch-remote/dispatch.mjs <<'EOF' … EOF` — the wrapper runs claude under `script(1)` so stdout is a PTY and the dispatch banner is printed (otherwise `--print` mode auto-engages and the banner is suppressed) |
 | Reaching for `claude agents` because `claude --help` doesn't list `--remote` | `--remote` is a hidden but working flag; `claude agents` is the local background-agent surface, not the cloud dispatch path. Always go through the wrapper script. |
 | Reaching for the `RemoteTrigger` tool | Not used here. This skill dispatches exclusively via the `claude --remote` wrapper script. |
 | Embedding unescaped quotes or backticks in the prompt | The wrapper takes the prompt on stdin via heredoc — no shell escaping needed |
