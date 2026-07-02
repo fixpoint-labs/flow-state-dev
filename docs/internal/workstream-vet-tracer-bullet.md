@@ -194,7 +194,18 @@ ensureBoard (seed goal tasks if empty)
 | `decide` | `{ verdict: "approve" \| "reject", feedback?: string }` | Find the open approval task and **`collection.complete(taskId, { verdict, feedback })`** — `awaiting_review → completed` is a legal transition. Explicitly NOT `resumeFromReview`: that re-pends the task, making it claimable, and the registry router throws on the unknown human assignee. Then run the advance loop in the same request. |
 | `advance` | `{}` | Just run the advance loop. Exists to prove a *fresh* request can pick the board up with no other input. |
 | `status` | `{}` | **Zero-model** snapshot read (the trading-desk `runSummary` precedent). |
+| `resolve` | `{ taskId?: string \| null, output: unknown }` | **The general human-resolution surface.** Complete any ACTIONABLE human task — approval seat or WORK seat — with an arbitrary output, then advance. `decide` is sugar over this shape (output = the verdict). |
 | `startUnchecked` | `{ goal: string }` | **The control.** Same drafter, same board wiring, but no approval task and no `doneWhen`/`replan` — drain once and return. Must be behaviorally equivalent to `planAndExecute` on the same goal. |
+
+**Human WORK tasks (extension, 2026-07-02):** `start` accepts
+`humanBriefFirst: true`, seeding a whole task assigned to a human
+(`human:requester`, "provide the requirements") that dep-gates the first
+draft. The human's `resolve` output flows into the drafter through ordinary
+substrate dep materialization — no custom plumbing. This forced a classifier
+reorder: the **generic human-gate check runs before the acceptance check**
+(any actionable human task → `blocked_on_human`), otherwise a work task
+gating the first draft trips a spurious acceptance replan before the
+requirements exist.
 
 ### The snapshot (what a request returns)
 
@@ -403,6 +414,15 @@ full proof script ran green with the drafter mocked
    ACTIONABLE approval (deps completed), closing a race where a premature
    approve could mark the workstream done before the revised draft existed.
 
+**Human-work extension (2026-07-02), also GREEN:** `start` with
+`humanBriefFirst: true` → `blocked_on_human` on the requirements task with
+the draft still gated (`pending`, zero models, and — the classifier-order
+proof — no spurious acceptance replan at `draftsWritten: 0`); `resolve` with
+real requirements → the gated draft unlocked and ran with the human's output
+in its rendered call (dep materialization, verified in the capture), the
+acceptance auto-revise fired, first approval seeded; `decide approve` →
+`done`. 16/16 unit tests.
+
 **Verdict evidence: the workstream is load-bearing.** The checked/control
 delta is exactly the two clauses under test, both exercised independently.
 One classification bug was found and fixed by the unit tests (an
@@ -411,6 +431,132 @@ not `blocked_on_human`). One cosmetic substrate note for productization:
 under the factory backing the board-meta item reports
 `terminationReason: "blocked-by-failures"` when exiting around an open
 `awaiting_review` task — misleading label, harmless behavior.
+
+## Learnings & implications (the two phases)
+
+The vet's zero-`packages/*` constraint forced everything the real primitive
+should own into app space — and each point of friction is a signpost. This
+section is the record the productization spec and the workforce-conventions
+writeup should be written against.
+
+### L1 — A workstream is a durable process with an interaction protocol
+
+The prototype's actions are the tell: `start` posts a goal, `decide` posts a
+verdict, `resolve` posts a task output, `advance` posts nothing — and all of
+them run the identical advance loop. That's not N actions; it's ONE protocol:
+
+> workstream = a durable, identified, session-lived process + a uniform
+> surface: **post** (task / guidance / goal revision), **resolve** (complete
+> an external task), **advance**, **snapshot**. Every interaction is a post
+> followed by an advance; the request is just the vehicle.
+
+"Durable" means more than resumable-after-interruption: the process exists
+across calls, and callers add tasks or nudge it mid-flight. The concept doc
+derived the same shape from theory (§11: a request is one way to interact
+with an ongoing workstream); the build re-derived it from friction.
+
+Corollary: **the advance loop belongs to the runtime, not to actions.**
+`doneWhen`/`replan` proved out as the right *slots*; the loop that drives
+them (and advance-on-post) is the primitive's job.
+
+### L2 — Approval is the degenerate human task; `resolve` is the primitive
+
+A whole task can be assigned to a human (`human:*` seats): goal = real work,
+output = whatever downstream tasks consume via ordinary dep materialization
+(proven end-to-end in the extension). An approval is just a human task whose
+output schema is a verdict — `decide` is sugar over `resolve`. Consequences:
+
+- The classifier's generic human-gate (any actionable human task →
+  `blocked_on_human`) must precede goal-acceptance evaluation.
+- "Resolve only actionable tasks" (deps completed) is *protocol*, not app
+  logic — the substrate's resolve operation should enforce it for everyone.
+- Human/external participants deserve first-class representation (a declared
+  external-assignee kind), not the born-`awaiting_review` trick + a registry
+  that throws on unknown assignees.
+
+### L3 — Two HITL mechanisms, one decision rule
+
+FSD now demonstrably has two: durable-suspend (`ctx.suspend()`, request-
+scoped) and board-task HITL (process-scoped, proven here with zero suspend
+machinery). They are complementary, split by *who owes the answer and does
+the current request need it to finish*:
+
+- **Suspend** when the CURRENT CALLER must answer for the CURRENT REQUEST to
+  complete — synchronous feel, user present, one gate in a pipeline.
+- **Board task** when the PROCESS needs human work independent of any
+  request — possibly a different person, a different channel, hours later,
+  DAG-positioned so sibling work continues around it. Suspend pauses a
+  pipeline at a point; a board task gates only its dependents.
+- They compose: a suspended request can be the *transport* that delivers a
+  resolve. Transport choice, not model choice.
+
+### L4 — The workspace splits three ways: state / content / journal
+
+- **State** = the standardized workstream envelope (status, goal, gate
+  counters) — pattern-owned, identical across workstreams. This is what
+  makes a GENERIC workstream inspector and a universal `blockedOnYou`
+  possible. The prototype wrongly mixed app payload (`draft`,
+  `feedbackEcho`) into it.
+- **Content** = the members' scratchpad — freeform, schema-less, rendered
+  into context via `readContent`. In the file-conventions layer this is
+  literally a markdown document.
+- **Journal** = the append-only record of posts/decisions/replans.
+  `feedbackEcho` is a one-slot journal we reinvented under review pressure
+  because the real one doesn't exist; the board's transient `task-change`
+  items are the stream that wants to become a durable resource journal.
+  **The resource-journal seam is a substrate dependency both phases want.**
+
+### L5 — Substrate punch-list (each found the hard way)
+
+1. Resource-backed boards need a front door (the collection-factory escape
+   works but nothing exposes it).
+2. A first-class `complete-or-external` idle mode + export the claimable
+   predicate.
+3. First-class external assignees (see L2).
+4. Resolve-only-actionable enforced by the substrate (see L2).
+5. Task-level message payloads: `TaskInit` has no feedback/guidance slot —
+   we smuggled it through `input`; the post/journal design should own this.
+6. Cosmetic: board-meta labels a human-blocked exit `"blocked-by-failures"`.
+
+### Phase A — the standalone pattern (FSD)
+
+The earlier "workstream() returns a sequencer you paste into actions" sketch
+is the PROTOTYPE's shape, not the feature's. The real shape is a process
+definition that GENERATES its interaction surface:
+
+```
+defineWorkstream({ goal, strategy, team | executor, doneWhen?, replan?, workspace? })
+  → standard actions auto-exposed: post / resolve / advance / snapshot
+  → standardized envelope state; content + journal for everything else
+```
+
+Scope: the factory + the L5 punch-list, on-demand/foreground only. Durable
+BACKGROUND advancement stays the deferred ceiling — nothing in the vet
+forced it forward.
+
+### Phase B — the workforce conventions (workstream at the center)
+
+The learnings simplify Phase B:
+
+- The action gradient collapses: a `workstream:` action is "which posts does
+  this channel expose"; `employ:` is a workstream-of-one whose post is the
+  user message; channels/schedules/events are all *sources of posts to a
+  process* — one mental model.
+- The workspace maps onto the org metaphor natively: journal = the project
+  log, content = the working documents, state = the standardized status
+  report. Authors never write an envelope schema; custom scratch is just
+  markdown — exactly what a file-first authoring layer wants.
+- The standardized envelope buys the 90% case a finished feel: one generic
+  workstream status view for every app.
+- "Nudge a running workstream by posting" is the same surface a runtime
+  executor (and the roster-introspection work) would use — the seam we
+  agreed to name-not-build now has a concrete shape.
+
+### Not established (honesty ledger)
+
+Multi-member concurrency under real contention, event gates, the dynamic
+executor, model-quality behavior (drafter mocked), durable background
+advancement. None block Phase A's on-demand scope; all stay named-deferred.
 
 ## Follow-ups on green (not part of the vet)
 

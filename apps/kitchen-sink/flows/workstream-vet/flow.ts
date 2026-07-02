@@ -16,6 +16,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import {
   advanceLoop,
   decideAction,
+  resolveAction,
   snapshot,
   startAction,
   startUncheckedAction,
@@ -27,7 +28,9 @@ const workstreamVetFlow = defineFlow({
   requireUser: true,
   actions: {
     start: { block: startAction },
+    // `decide` is approval sugar over `resolve` — kept to show the shape.
     decide: { block: decideAction },
+    resolve: { block: resolveAction },
     advance: { block: advanceLoop },
     status: { block: snapshot },
     startUnchecked: { block: startUncheckedAction },

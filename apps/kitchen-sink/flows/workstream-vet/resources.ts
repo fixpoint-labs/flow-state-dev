@@ -21,8 +21,17 @@ export const BOARD_COLLECTION_ID = "wsvet-board";
 /** The only model-backed worker; every draft/revise task carries this assignee. */
 export const DRAFTER = "drafter";
 
-/** Human tasks carry this assignee and are born `awaiting_review` (never claimable). */
+/**
+ * Human participants: any assignee under this prefix is external — born
+ * `awaiting_review` (never claimable) and resolved via a later request.
+ */
+export const HUMAN_PREFIX = "human:";
+
+/** The reviewer seat: approval tasks (output = verdict + feedback). */
 export const HUMAN_APPROVER = "human:approver";
+
+/** A WORK seat: a whole task assigned to a human, output consumed by deps. */
+export const HUMAN_REQUESTER = "human:requester";
 
 /**
  * Deterministic acceptance stand-in (spec: goal judgment must be exercised

@@ -23,16 +23,23 @@ export const drafterGenerator = generator({
   inputSchema: z.object({
     goal: z.string(),
     feedback: z.string().nullable(),
+    /** Upstream human work-task output, materialized via task deps. */
+    requirements: z.string().nullable(),
   }),
   outputSchema: draftOutputSchema,
   prompt:
     "You draft short written briefs for a workstream. The <workstream-workspace> " +
     "context carries the objective and, on a revision pass, the human feedback " +
     "the new draft must address. Keep drafts under 150 words.",
-  user: (input) =>
-    input.feedback == null
-      ? `Write the draft. Goal: ${input.goal}`
-      : `Revise the draft to address this reviewer feedback: ${input.feedback}`,
+  user: (input) => {
+    const req =
+      input.requirements == null
+        ? ""
+        : ` Requirements provided by the human requester: ${input.requirements}`;
+    return input.feedback == null
+      ? `Write the draft. Goal: ${input.goal}.${req}`
+      : `Revise the draft to address this reviewer feedback: ${input.feedback}.${req}`;
+  },
   itemVisibility: { client: true, history: false },
 });
 
@@ -62,13 +69,25 @@ export const persistDraft = handler({
  */
 export const drafterWorker = sequencer({ name: "wsvet-drafter" })
   .step(
-    (wi: TaskWorkerInput) => ({
-      goal: wi.goal,
-      feedback:
-        ((wi.input as { feedback?: string | null } | undefined)?.feedback ??
-          wi.feedback ??
-          null) as string | null,
-    }),
+    (wi: TaskWorkerInput) => {
+      // Dep outputs are substrate-materialized (packWorkerInput): a human
+      // WORK task upstream lands here without any custom plumbing.
+      const depValues = Object.values(wi.deps ?? {});
+      const firstDep = depValues[0];
+      return {
+        goal: wi.goal,
+        feedback:
+          ((wi.input as { feedback?: string | null } | undefined)?.feedback ??
+            wi.feedback ??
+            null) as string | null,
+        requirements:
+          firstDep == null
+            ? null
+            : typeof firstDep === "string"
+              ? firstDep
+              : JSON.stringify(firstDep),
+      };
+    },
     drafterGenerator,
   )
   .tap(persistDraft);

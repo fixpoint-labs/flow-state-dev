@@ -20,6 +20,8 @@ import { board, boardCollection } from "./board";
 import {
   DRAFTER,
   HUMAN_APPROVER,
+  HUMAN_PREFIX,
+  HUMAN_REQUESTER,
   MIN_DRAFTS,
   workspaceResource,
   workstreamTasksCollection,
@@ -45,6 +47,20 @@ export type WorkstreamDecision = z.infer<typeof decisionSchema>;
 
 const taskTime = (t: Task): number =>
   typeof t.createdAt === "number" ? t.createdAt : Date.parse(String(t.createdAt));
+
+/** Any external participant — approval seats and work seats alike. */
+const isHuman = (t: Task): boolean =>
+  (t.assignee ?? "").startsWith(HUMAN_PREFIX);
+
+/** Open human tasks the human can actually act on (deps all completed). */
+function actionableHumanTasks(c: TaskCollectionRef): Task[] {
+  const completed = new Set(c.list({ status: "completed" }).map((t) => t.id));
+  return c
+    .list({ status: "awaiting_review" })
+    .filter(isHuman)
+    .filter((t) => (t.deps ?? []).every((dep) => completed.has(dep)))
+    .sort((a, b) => taskTime(a) - taskTime(b));
+}
 
 /** Newest approval task, or undefined before the first one is seeded. */
 function newestApproval(c: TaskCollectionRef): Task | undefined {
@@ -80,12 +96,27 @@ export function classifyBoard(
       : { decision: "in_progress", reason: null, feedback: null };
   }
 
-  // (2) Deterministic acceptance check — independent of any human.
+  // (2) The generic human gate — approval seats and WORK seats alike. Any
+  // actionable human task (deps completed) means the ball is in a human's
+  // court. This MUST run before the acceptance check: a human work task
+  // gating the first draft would otherwise trip acceptance-replan and seed
+  // a spurious, ungated revise task before the requirements even exist.
+  if (actionableHumanTasks(c).length > 0) {
+    return { decision: "blocked_on_human", reason: null, feedback: null };
+  }
+
+  // Remaining pending/in-flight machine work (or a human task gated on it)
+  // belongs to the drain, not to a replan decision.
+  if (c.count({ status: ["pending", "in_progress"] }) > 0) {
+    return { decision: "in_progress", reason: null, feedback: null };
+  }
+
+  // (3) Deterministic acceptance check — independent of any human.
   if ((ws.draftsWritten ?? 0) < MIN_DRAFTS) {
     return { decision: "replan", reason: "acceptance", feedback: null };
   }
 
-  // (3) The approval round-trip.
+  // (4) The approval round-trip.
   const approval = newestApproval(c);
   if (approval === undefined) {
     return { decision: "replan", reason: "seed-approval", feedback: null };
@@ -98,17 +129,6 @@ export function classifyBoard(
       return { decision: "done", reason: null, feedback: null };
     }
     return { decision: "replan", reason: "rejected", feedback: out?.feedback ?? null };
-  }
-  if (approval.status === "awaiting_review") {
-    // Only "blocked on you" when the human can actually act: an approval
-    // whose dep (the revise task) hasn't completed yet is still in-flight
-    // work, not a human gate. Without this check, a `status` read mid-cycle
-    // would report blocked_on_human with an empty blockedOnYou list.
-    const completed = new Set(c.list({ status: "completed" }).map((t) => t.id));
-    const actionable = (approval.deps ?? []).every((dep) => completed.has(dep));
-    return actionable
-      ? { decision: "blocked_on_human", reason: null, feedback: null }
-      : { decision: "in_progress", reason: null, feedback: null };
   }
   return { decision: "in_progress", reason: null, feedback: null };
 }
@@ -230,11 +250,11 @@ export function buildSnapshot(
       ? "in_progress"
       : d.decision;
 
-  const completed = new Set(c.list({ status: "completed" }).map((t) => t.id));
-  const blockedOnYou = c
-    .list({ status: "awaiting_review", assignee: HUMAN_APPROVER })
-    .filter((t) => (t.deps ?? []).every((dep) => completed.has(dep)))
-    .map((t) => ({ id: t.id, title: t.title ?? t.goal, feedbackWanted: true }));
+  const blockedOnYou = actionableHumanTasks(c).map((t) => ({
+    id: t.id,
+    title: t.title ?? t.goal,
+    feedbackWanted: true,
+  }));
 
   return {
     workstreamStatus: status,
@@ -284,13 +304,19 @@ export const snapshotUnchecked = handler({
 // ---------------------------------------------------------------------------
 
 /**
- * Seed the workstream: the draft task ONLY (`assignee: "drafter"`). No
- * approval task — `replan` creates the first one after the acceptance
- * criterion passes. Idempotent: a non-empty board is left untouched.
+ * Seed the workstream: the draft task (`assignee: "drafter"`), optionally
+ * gated on a human WORK task (`humanBriefFirst`) — a whole task assigned to
+ * a human, whose resolved output flows into the drafter via ordinary dep
+ * materialization. No approval task is ever seeded here — `replan` creates
+ * the first one after the acceptance criterion passes. Idempotent: a
+ * non-empty board is left untouched.
  */
 export const seedStart = handler({
   name: "wsvet-seed",
-  inputSchema: z.object({ goal: z.string() }),
+  inputSchema: z.object({
+    goal: z.string(),
+    humanBriefFirst: z.boolean().default(false),
+  }),
   resources: loopResources,
   execute: async (input, ctx: any) => {
     const c = await boardCollection(ctx);
@@ -299,13 +325,58 @@ export const seedStart = handler({
       ...s,
       goal: input.goal,
     }));
+
+    const deps: string[] = [];
+    if (input.humanBriefFirst) {
+      const brief = await c.addTask({
+        goal: "Provide the requirements the draft must satisfy.",
+        title: "Requirements (human)",
+        assignee: HUMAN_REQUESTER,
+        status: "awaiting_review",
+      });
+      deps.push(brief.id);
+    }
+
     await c.addTask({
       goal: input.goal,
       title: "Draft",
       context: "Write the first draft.",
       assignee: DRAFTER,
+      deps,
       input: { feedback: null },
     });
+  },
+});
+
+/**
+ * The GENERAL human-resolution surface: complete any actionable human task
+ * (approval seat or work seat) with an arbitrary output. `decide` is sugar
+ * over this shape with the approval verdict as the output. Refuses
+ * non-actionable tasks — a task whose deps haven't completed is not the
+ * human's to act on yet.
+ */
+export const resolveTask = handler({
+  name: "wsvet-resolve",
+  inputSchema: z.object({
+    taskId: z.string().nullable().default(null),
+    output: z.unknown(),
+  }),
+  outputSchema: z.object({ ok: z.boolean(), taskId: z.string() }),
+  resources: loopResources,
+  execute: async (input, ctx: any) => {
+    const c = await boardCollection(ctx);
+    const actionable = actionableHumanTasks(c);
+    const task =
+      input.taskId == null
+        ? actionable[actionable.length - 1]
+        : actionable.find((t) => t.id === input.taskId);
+    if (task === undefined) {
+      throw new Error(
+        "workstream-vet: no actionable human task to resolve — nothing is blocked on you",
+      );
+    }
+    await c.complete(task.id, (input.output ?? null) as never);
+    return { ok: true, taskId: task.id };
   },
 });
 
@@ -365,9 +436,23 @@ export const advanceLoop = sequencer({ name: "wsvet-advance" })
 
 export const startAction = sequencer({
   name: "wsvet-start",
-  inputSchema: z.object({ goal: z.string() }),
+  inputSchema: z.object({
+    goal: z.string(),
+    humanBriefFirst: z.boolean().default(false),
+  }),
 })
   .tap(seedStart)
+  .step(advanceLoop);
+
+/** General resolve: post any human task's output, then advance. */
+export const resolveAction = sequencer({
+  name: "wsvet-resolve-action",
+  inputSchema: z.object({
+    taskId: z.string().nullable().default(null),
+    output: z.unknown(),
+  }),
+})
+  .step(resolveTask)
   .step(advanceLoop);
 
 export const decideAction = sequencer({

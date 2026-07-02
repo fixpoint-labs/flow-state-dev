@@ -46,11 +46,13 @@ import {
   classifyBoard,
   doneWhen,
   replan,
+  resolveTask,
   seedStart,
 } from "../flows/workstream-vet/loop";
 import {
   DRAFTER,
   HUMAN_APPROVER,
+  HUMAN_REQUESTER,
   workspaceResource,
   workstreamTasksCollection,
   type WorkspaceState,
@@ -123,7 +125,7 @@ describe("workstream-vet: capability context (criterion 4a)", () => {
 
     const result = await executeBlock({
       block: drafterGenerator,
-      input: { goal: "Brief ACME", feedback: null },
+      input: { goal: "Brief ACME", feedback: null, requirements: null },
       ctx,
     });
     expect(result.error).toBeUndefined();
@@ -188,7 +190,10 @@ describe("workstream-vet: goal judgment independent of approval", () => {
   it("acceptance-unmet → replan with no human involvement", async () => {
     const ctx = await createCtx();
     await executeBlock({ block: seedStart, input: { goal: "Brief ACME" }, ctx });
-    // One draft written (< MIN_DRAFTS) — acceptance criterion unmet.
+    // Emulate the drain: the draft task ran once (< MIN_DRAFTS).
+    const c0 = await boardCollection(ctx);
+    const draft = await c0.claim("w1");
+    await c0.complete(draft!.id, { draft: "v1" });
     await ctx.resources.wsvetWorkspace.updateState((s: WorkspaceState) => ({
       ...s,
       draftsWritten: 1,
@@ -207,6 +212,9 @@ describe("workstream-vet: goal judgment independent of approval", () => {
   it("acceptance met with no approval yet → replan seeds the FIRST approval", async () => {
     const ctx = await createCtx();
     await executeBlock({ block: seedStart, input: { goal: "Brief ACME" }, ctx });
+    const c0 = await boardCollection(ctx);
+    const draft = await c0.claim("w1");
+    await c0.complete(draft!.id, { draft: "v1" });
     await ctx.resources.wsvetWorkspace.updateState((s: WorkspaceState) => ({
       ...s,
       draftsWritten: 2,
@@ -232,6 +240,9 @@ describe("workstream-vet: the human decision", () => {
   async function ctxAtApprovalGate() {
     const ctx = await createCtx();
     await executeBlock({ block: seedStart, input: { goal: "Brief ACME" }, ctx });
+    const c0 = await boardCollection(ctx);
+    const draft = await c0.claim("w1");
+    await c0.complete(draft!.id, { draft: "v1" });
     await ctx.resources.wsvetWorkspace.updateState((s: WorkspaceState) => ({
       ...s,
       draftsWritten: 2,
@@ -322,6 +333,70 @@ describe("workstream-vet: persist tap (criterion 4b)", () => {
     expect(state.draft).toBe("v2 draft");
     expect(state.draftsWritten).toBe(2);
     expect(state.feedbackEcho).toBe("Too long.");
+  });
+});
+
+describe("workstream-vet: human WORK tasks (a whole task assigned to a human)", () => {
+  it("a human work task gating the draft classifies blocked_on_human — never a spurious acceptance replan", async () => {
+    const ctx = await createCtx();
+    await executeBlock({
+      block: seedStart,
+      input: { goal: "Brief ACME", humanBriefFirst: true },
+      ctx,
+    });
+
+    const c = await boardCollection(ctx);
+    expect(c.count()).toBe(2);
+    expect(c.count({ assignee: HUMAN_REQUESTER, status: "awaiting_review" })).toBe(1);
+    // The draft is dep-gated on the human work task — nothing claimable.
+    expect(hasClaimable(c)).toBe(false);
+
+    // draftsWritten is 0 (< MIN_DRAFTS), but the classifier must NOT fire
+    // the acceptance replan — the ball is in the human's court.
+    const d = await executeBlock({ block: doneWhen, input: {}, ctx });
+    expect(d.output).toMatchObject({ decision: "blocked_on_human" });
+    const snap = buildSnapshot(c, ws(ctx).state, { checkGoal: true });
+    expect(snap.blockedOnYou).toHaveLength(1);
+    expect(snap.blockedOnYou[0]!.title).toBe("Requirements (human)");
+  });
+
+  it("resolve completes the work task with arbitrary output and unlocks the gated draft", async () => {
+    const ctx = await createCtx();
+    await executeBlock({
+      block: seedStart,
+      input: { goal: "Brief ACME", humanBriefFirst: true },
+      ctx,
+    });
+
+    const result = await executeBlock({
+      block: resolveTask,
+      input: { taskId: null, output: { requirements: "Must include a pricing table." } },
+      ctx,
+    });
+    expect(result.error).toBeUndefined();
+
+    const c = await boardCollection(ctx);
+    const brief = c.list({ assignee: HUMAN_REQUESTER })[0]!;
+    expect(brief.status).toBe("completed");
+    expect(brief.output).toMatchObject({
+      requirements: "Must include a pricing table.",
+    });
+    // The human's output now gates nothing: the draft is claimable, and the
+    // substrate will materialize the work-task output into the drafter's
+    // input via deps.
+    expect(hasClaimable(c)).toBe(true);
+  });
+
+  it("resolve refuses when nothing is actionable", async () => {
+    const ctx = await createCtx();
+    const result = await executeBlock({
+      block: resolveTask,
+      input: { taskId: null, output: {} },
+      ctx,
+    });
+    expect(result.error?.message ?? String(result.error)).toContain(
+      "no actionable human task",
+    );
   });
 });
 
