@@ -25,10 +25,11 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 
 // A stray FSDEV_DEFAULT_MODEL in the shell makes createExecutionContext's
 // default resolver throw ("set, but no intents are declared"). No test here
-// ever calls a model — neutralize the override for this process.
+// ever calls a REAL model — neutralize the override for this process.
 delete process.env.FSDEV_DEFAULT_MODEL;
 import { defineFlow, handler } from "@flow-state-dev/core";
 import {
@@ -37,7 +38,7 @@ import {
   executeBlock,
 } from "@flow-state-dev/engine";
 import { formatWorkspaceContext } from "../flows/workstream-vet/capability";
-import { persistDraft } from "../flows/workstream-vet/drafter";
+import { drafterGenerator, persistDraft } from "../flows/workstream-vet/drafter";
 import { boardCollection, hasClaimable } from "../flows/workstream-vet/board";
 import {
   applyDecision,
@@ -87,6 +88,50 @@ async function createCtx() {
 const ws = (ctx: any): { state: WorkspaceState } => ctx.resources.wsvetWorkspace;
 
 describe("workstream-vet: capability context (criterion 4a)", () => {
+  it("the capability preset carries the workspace feedback into the drafter's rendered call", async () => {
+    // The load-bearing 4a proof: run the REAL drafter generator against a
+    // mock model resolver and inspect what reached the model. `input.feedback`
+    // is deliberately null, so the ONLY path for the feedback string into the
+    // call is the capability's context preset (`uses: [workstreamWorkspaceCap]`).
+    // This fails if the `uses` wiring is dropped or the preset stops rendering.
+    const mock = mockGenerator({
+      name: "wsvet-drafter-gen",
+      script: [
+        { when: () => true, then: { structuredOutput: { draft: "revised" } } },
+      ],
+    });
+    const stores = createInMemoryStores();
+    const ctx = (await createExecutionContext({
+      flow: makeTestFlow(),
+      actionName: "run",
+      requestId: "req_cap",
+      sessionId: "sess_cap",
+      userId: "user_1",
+      stores,
+      modelResolver: createMockModelResolver({
+        generators: { "wsvet-drafter-gen": mock },
+        policy: "error",
+      }),
+    })) as any;
+
+    await ctx.resources.wsvetWorkspace.updateState((s: WorkspaceState) => ({
+      ...s,
+      goal: "Brief ACME",
+      draftsWritten: 1,
+      latestFeedback: "Add pricing details.",
+    }));
+
+    const result = await executeBlock({
+      block: drafterGenerator,
+      input: { goal: "Brief ACME", feedback: null },
+      ctx,
+    });
+    expect(result.error).toBeUndefined();
+    expect(mock.calls.length).toBeGreaterThan(0);
+    const rendered = JSON.stringify(mock.calls);
+    expect(rendered).toContain("Add pricing details.");
+  });
+
   it("renders the human feedback the preset formats", () => {
     const rendered = formatWorkspaceContext({
       goal: "Produce an approved brief on ACME",
@@ -224,6 +269,17 @@ describe("workstream-vet: the human decision", () => {
     const snap = buildSnapshot(c, ws(ctx).state, { checkGoal: true });
     expect(snap.blockedOnYou).toHaveLength(0);
     expect(snap.workstreamStatus).toBe("in_progress");
+
+    // The fresh approval's revise-dep hasn't completed — a premature decide
+    // must NOT be able to land on it (it isn't the human's to act on yet).
+    const premature = await executeBlock({
+      block: applyDecision,
+      input: { verdict: "approve", feedback: null },
+      ctx,
+    });
+    expect(premature.error?.message ?? String(premature.error)).toContain(
+      "no open approval task",
+    );
   });
 
   it("approve → done", async () => {

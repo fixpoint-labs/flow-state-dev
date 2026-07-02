@@ -7,7 +7,7 @@
  * - `wsvetTasks` — the board. A wildcard resource collection whose instances
  *   ARE the tasks (`getOrCreateTaskCollection({ backing: "resource" })`
  *   creates one instance per task id). Session scope is what lets the board
- *   outlive a request — the seam Wave 1 deferred.
+ *   outlive a request — the seam this vet exists to exercise.
  * - `wsvetWorkspace` — the shared workspace every workstream member reads.
  *   Holds the goal, the current draft, and the human-feedback field the
  *   capability preset renders and the persist tap echoes.

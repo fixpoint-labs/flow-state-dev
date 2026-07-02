@@ -325,8 +325,14 @@ export const applyDecision = handler({
   resources: loopResources,
   execute: async (input, ctx: any) => {
     const c = await boardCollection(ctx);
+    // Actionable only: an approval whose revise-dep hasn't completed is not
+    // yet the human's to decide (mirrors blockedOnYou / classifyBoard).
+    // Without this filter, a premature decide could mark the workstream done
+    // before the revised draft exists.
+    const completed = new Set(c.list({ status: "completed" }).map((t) => t.id));
     const open = c
       .list({ status: "awaiting_review", assignee: HUMAN_APPROVER })
+      .filter((t) => (t.deps ?? []).every((dep) => completed.has(dep)))
       .sort((a, b) => taskTime(a) - taskTime(b));
     const task = open[open.length - 1];
     if (task === undefined) {

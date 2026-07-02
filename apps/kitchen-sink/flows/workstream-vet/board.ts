@@ -4,7 +4,7 @@
  * The seam this vet exists to exercise: a `taskBoard` driven through its
  * collection-FACTORY slot with a resource-backed collection over the
  * session-scoped `wsvetTasks` resource collection — the cross-request
- * backing every built-in factory hardcodes away (Wave 1 deferred it).
+ * backing none of the built-in factories expose.
  *
  * Idle mode is `wait` + a local `shouldExit`: `complete-or-blocked` counts
  * `awaiting_review` as in-flight (FIX-443 §10.1) and would spin on the open

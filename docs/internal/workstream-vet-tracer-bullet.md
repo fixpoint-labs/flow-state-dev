@@ -224,14 +224,20 @@ like concept failure" kind:
 - **`STORE_TYPE=filesystem`** — the `dev` profile defaults to in-memory
   stores, which would fail the cross-request criterion for harness reasons.
   With it, state persists under `.fsdev/data`.
-- **`AI_GATEWAY_API_KEY`** must be set — the drafter's `intent/utility` model
-  resolves through the Vercel gateway, which the config only wires when the
-  key is present. Without it, request 1 dies before ever touching the board.
+- **A model source, one of two modes.** Default for the vet:
+  **`KITCHEN_SINK_TEST_MODE=1`** — the deterministic `wsvet-drafter-gen` mock
+  (`test/mock-flowstate.ts`), so loop mechanics are tested with zero provider
+  dependence (this is the mode the Results below ran in). Optional live pass:
+  unset the test mode and set **`AI_GATEWAY_API_KEY`** — the drafter's
+  `intent/utility` model resolves through the Vercel gateway, which the
+  config only wires when the key is present; without either, request 1 dies
+  before ever touching the board.
 
 ```bash
 export FSD_ENV=dev
 export STORE_TYPE=filesystem
-# AI_GATEWAY_API_KEY must already be set — verify before starting.
+export KITCHEN_SINK_TEST_MODE=1   # deterministic mock drafter (the default)
+# Live-model variant instead: unset KITCHEN_SINK_TEST_MODE and set AI_GATEWAY_API_KEY.
 SID=wsvet_$(date +%s)
 
 # Request 1 — start. Expect: draft written, then the request ENDS with the
@@ -388,9 +394,14 @@ full proof script ran green with the drafter mocked
 4. **`decide approve`** → `done`, `blockedOnYou` empty. ✅
 5. **Control (`startUnchecked`)** → done in ONE request, one task total,
    `revisions == 0`, no approval task ever existed — planAndExecute-shaped. ✅
-6. `rg -in "suspend" flows/workstream-vet/` → no matches; 12/12 unit tests
-   (`test/workstream-vet.test.ts`) pass, incl. criterion 4a (rendered
-   context contains the feedback) and 4b (the tap echo).
+6. `rg -in "suspend" flows/workstream-vet/` → no matches; 13/13 unit tests
+   (`test/workstream-vet.test.ts`) pass, incl. criterion 4a in its strong
+   form — the REAL drafter generator run against a mock model resolver with
+   `input.feedback: null`, proving the capability preset is the only path
+   that carried the workspace feedback into the rendered call — and 4b (the
+   tap echo). The tests also enforce that a decide can only land on an
+   ACTIONABLE approval (deps completed), closing a race where a premature
+   approve could mark the workstream done before the revised draft existed.
 
 **Verdict evidence: the workstream is load-bearing.** The checked/control
 delta is exactly the two clauses under test, both exercised independently.
