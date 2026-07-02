@@ -19,6 +19,7 @@
  * Memoized: the pool / PGlite instance, the store backing, and the repository
  * are created exactly once per process.
  */
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import type { StoreAdapter } from "@flow-state-dev/engine";
@@ -70,6 +71,10 @@ async function buildBacking(): Promise<Backing> {
       repository: createPortfolioRepository(createDb(pool)),
     };
   }
+  // PGlite's NodeFS mkdirs only the leaf data dir (non-recursive), so a missing
+  // `.fsdev/` parent makes its lazy init throw ENOENT — surfaced confusingly as
+  // a failed `CREATE SCHEMA "drizzle"` on the first query. Ensure the full path.
+  mkdirSync(PGLITE_DATA_DIR, { recursive: true });
   const pglite = new PGlite(PGLITE_DATA_DIR);
   const db = await createMigratedPgliteDb(pglite, MIGRATIONS_DIR);
   const executor: QueryExecutor = {
