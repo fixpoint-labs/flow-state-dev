@@ -14,8 +14,8 @@ export type RouteUnavailableDetails = {
   routerName: string;
   /** The route name persisted in the request's `router_decision` item. */
   recordedRoute: string;
-  /** The route the re-run selector picked on resume (when it picked one). */
-  reselectedRoute?: string;
+  /** The route the re-run selector picked on resume. */
+  reselectedRoute: string;
   /** Whether the recorded route still appears in the router's route table. */
   recordedRouteDeclared: boolean;
 };
@@ -37,7 +37,7 @@ export class RouteUnavailableError extends FlowError {
     super(
       `Router "${details.routerName}" cannot resume: the recorded decision selected route "${details.recordedRoute}" but ${cause}.`,
       {
-        code: "ROUTE_UNAVAILABLE",
+        code: "route_unavailable",
         retryable: false,
         blockName: details.routerName,
         scope: "block",

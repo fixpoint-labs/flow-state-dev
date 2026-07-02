@@ -10,7 +10,6 @@ import type {
 } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
-import type { OutputItem } from "../items/types";
 import type {
   InferCapabilities,
   InferCapabilityResources,

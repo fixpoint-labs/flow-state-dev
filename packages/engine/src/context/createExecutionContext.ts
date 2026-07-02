@@ -399,41 +399,32 @@ function buildTraceEmitters(
       });
   }
 
+  // Shared added→done emit chain. Failures resolve (best-effort) so trace
+  // plumbing never breaks primary execution.
+  function emitPair(
+    item: BlockTraceItem | RouterDecisionItem | StateSnapshotItem
+  ): Promise<void> {
+    return emCtx.response
+      .emitItemAdded(item)
+      .then(() => {
+        recordTrace("trace.item.added", item);
+        return emCtx.response.emitItemDone(item);
+      })
+      .then(() => recordTrace("trace.item.done", item))
+      .catch(() => { /* trace emission is best-effort */ });
+  }
+
   return {
     blockTrace(item) {
-      void emCtx.response
-        .emitItemAdded(item)
-        .then(() => {
-          recordTrace("trace.item.added", item);
-          return emCtx.response.emitItemDone(item);
-        })
-        .then(() => recordTrace("trace.item.done", item))
-        .catch(() => { /* trace emission is best-effort */ });
+      void emitPair(item);
     },
-    routerDecision(item) {
-      // Unlike the other trace emitters this one returns its emit chain
-      // (FIX-814): the router awaits it before dispatching the selected
-      // branch, so a suspension inside the branch can never persist before
-      // its `router_decision` anchor lands in the response log. Failures
-      // still resolve (best-effort) so trace plumbing never blocks routing.
-      return emCtx.response
-        .emitItemAdded(item)
-        .then(() => {
-          recordTrace("trace.item.added", item);
-          return emCtx.response.emitItemDone(item);
-        })
-        .then(() => recordTrace("trace.item.done", item))
-        .catch(() => { /* trace emission is best-effort */ });
-    },
+    // Unlike the other trace emitters this one returns its emit chain
+    // (FIX-814): the router awaits it before dispatching the selected
+    // branch, so a suspension inside the branch can never persist before
+    // its `router_decision` anchor lands in the response log.
+    routerDecision: emitPair,
     stateSnapshot(item) {
-      void emCtx.response
-        .emitItemAdded(item)
-        .then(() => {
-          recordTrace("trace.item.added", item);
-          return emCtx.response.emitItemDone(item);
-        })
-        .then(() => recordTrace("trace.item.done", item))
-        .catch(() => { /* trace emission is best-effort */ });
+      void emitPair(item);
     },
   };
 }
