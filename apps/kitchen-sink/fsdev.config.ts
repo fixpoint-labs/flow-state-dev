@@ -27,6 +27,7 @@ import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
+import workstreamVetFlow from "@/flows/workstream-vet/flow";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
@@ -60,6 +61,8 @@ const flowstate = createFlowState({
     chatAgent: chatAgentFlow,
     richTextComponent: richTextComponentFlow,
     weeklyDigest: weeklyDigestFlow,
+    // Throwaway workstream vet (docs/internal/workstream-vet-tracer-bullet.md).
+    workstreamVet: workstreamVetFlow,
   },
   models: {
     default: "vercel/anthropic/claude-sonnet-4.6",

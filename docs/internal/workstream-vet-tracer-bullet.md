@@ -369,6 +369,38 @@ incidental wiring.
 - HITL model: the board model (this vet), not durable `ctx.suspend()`.
   Convergence between the two is a named follow-up.
 
+## Results (2026-07-02) — GREEN
+
+The prototype is built at `apps/kitchen-sink/flows/workstream-vet/` and the
+full proof script ran green with the drafter mocked
+(`KITCHEN_SINK_TEST_MODE=1`, deterministic `wsvet-drafter-gen` mock in
+`test/mock-flowstate.ts`) over `STORE_TYPE=filesystem`:
+
+1. **`start`** → exit 0, `blocked_on_human`, draft present, approval task in
+   `blockedOnYou`, and `revisions == 1` — the acceptance check forced an
+   auto-replan before any human was involved. ✅
+2. **`decide reject`** → second (human-driven) revision, `revisions == 2`,
+   `feedbackEcho == "Too long; …"` (the tap read it from the workspace field
+   the preset renders), a FRESH approval task open. ✅
+3. **`status`** (separate process, 1 item, zero models) → identical board
+   contents to request 2 — the session board round-tripped across OS
+   processes. ✅
+4. **`decide approve`** → `done`, `blockedOnYou` empty. ✅
+5. **Control (`startUnchecked`)** → done in ONE request, one task total,
+   `revisions == 0`, no approval task ever existed — planAndExecute-shaped. ✅
+6. `rg -in "suspend" flows/workstream-vet/` → no matches; 12/12 unit tests
+   (`test/workstream-vet.test.ts`) pass, incl. criterion 4a (rendered
+   context contains the feedback) and 4b (the tap echo).
+
+**Verdict evidence: the workstream is load-bearing.** The checked/control
+delta is exactly the two clauses under test, both exercised independently.
+One classification bug was found and fixed by the unit tests (an
+`awaiting_review` approval with an unmet dep must classify `in_progress`,
+not `blocked_on_human`). One cosmetic substrate note for productization:
+under the factory backing the board-meta item reports
+`terminationReason: "blocked-by-failures"` when exiting around an open
+`awaiting_review` task — misleading label, harmless behavior.
+
 ## Follow-ups on green (not part of the vet)
 
 1. `workstream()` factory in `packages/patterns` implementing the proven loop;
