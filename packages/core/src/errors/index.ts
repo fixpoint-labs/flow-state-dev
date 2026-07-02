@@ -16,6 +16,8 @@ export type {
   SequencerOutputSchemaErrorDetails,
   SequencerSchemaMismatchErrorDetails
 } from "./sequencer-output-schema-error";
+export { RouteUnavailableError } from "./route-unavailable-error";
+export type { RouteUnavailableDetails } from "./route-unavailable-error";
 export { rootCause, isAbortLike } from "./abort";
 export { serializeError, errorDetailsWithCause } from "./serialize-error";
 export type { SerializedError } from "./serialize-error";

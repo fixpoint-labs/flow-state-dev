@@ -343,6 +343,10 @@ function createDeprecatedAlias<TFn extends (...args: any[]) => any>(
  *   - emits item.added then item.done via the response emitter,
  *   - fire-and-forgets a TraceStore append for both events.
  *
+ * `blockTrace`/`stateSnapshot` are fire-and-forget end to end; `routerDecision`
+ * returns its emit chain so the router can await the decision anchor before
+ * dispatching the selected branch (FIX-814).
+ *
  * Trace types (`block_trace`, `router_decision`, `state_snapshot`) resolve
  * to `{ client: false, history: false }` by `item.type` in
  * `resolveItemVisibility` — no stamp needed.
@@ -364,7 +368,7 @@ function buildTraceEmitters(
   } | undefined
 ): {
   blockTrace: (item: BlockTraceItem) => void;
-  routerDecision: (item: RouterDecisionItem) => void;
+  routerDecision: (item: RouterDecisionItem) => Promise<void>;
   stateSnapshot: (item: StateSnapshotItem) => void;
 } {
   const requestId = emCtx.requestId;
@@ -407,7 +411,12 @@ function buildTraceEmitters(
         .catch(() => { /* trace emission is best-effort */ });
     },
     routerDecision(item) {
-      void emCtx.response
+      // Unlike the other trace emitters this one returns its emit chain
+      // (FIX-814): the router awaits it before dispatching the selected
+      // branch, so a suspension inside the branch can never persist before
+      // its `router_decision` anchor lands in the response log. Failures
+      // still resolve (best-effort) so trace plumbing never blocks routing.
+      return emCtx.response
         .emitItemAdded(item)
         .then(() => {
           recordTrace("trace.item.added", item);
@@ -2162,7 +2171,9 @@ export async function createExecutionContext<
         });
       }
 
-      // Emit router_decision trace item — fire-and-forget to avoid blocking routing.
+      // Emit router_decision trace item. The emit chain is returned so the
+      // router can await the decision anchor's durability before dispatching
+      // the selected branch (FIX-814).
       const itemIndex = emittedItemCount++;
       const decisionItem: RouterDecisionItem = {
         id: `item_router_${itemIndex}_${Math.random().toString(16).slice(2)}`,
@@ -2179,7 +2190,7 @@ export async function createExecutionContext<
         routerName,
         selectedRoute: selectedBlockName
       };
-      requestTraceEmitters.routerDecision(decisionItem);
+      return requestTraceEmitters.routerDecision(decisionItem);
     },
     // FIX-573: unified block-trace lifecycle hook. Maintains one
     // block_trace item per block instance, stamped on `added` and patched

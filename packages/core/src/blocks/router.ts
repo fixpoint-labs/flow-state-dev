@@ -8,7 +8,6 @@ import type {
   InferBlockResources,
   InferStateFromSchema
 } from "../types/block";
-import { asRuntime } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type { OutputItem } from "../items/types";
@@ -24,8 +23,8 @@ import type {
 
 import { buildBlock, extractDeclaredResources, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
-import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
+import type { ReplayLog } from "./internal/replay-log";
 import {
   blockPathBranch,
   buildBlockInstanceId,
@@ -33,6 +32,8 @@ import {
   ROOT_BLOCK_PATH
 } from "./internal/block-instance-id";
 import { isBlockDefinition } from "./internal/utils";
+import { executeBlock, stashInputHint } from "./sequencer";
+import { RouteUnavailableError } from "../errors/route-unavailable-error";
 
 /**
  * Merge the router's own declared resources with resources from all route blocks.
@@ -152,6 +153,26 @@ export function router<
     TResources, TMergedTargetSchemas, TCapabilities
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+  // Unique route names are required for EVERY router (FIX-814): the durable
+  // `router_decision` records a bare route name, and resume validates the
+  // re-selected route against it. Whether a branch can suspend is not
+  // statically decidable (a gate can hide arbitrarily deep, or in a dynamic
+  // generator tool), so the constraint is universal, not suspendability-scoped.
+  {
+    const seen = new Set<string>();
+    // `routes` is required by the type but tolerated as absent at runtime
+    // elsewhere in this builder (e.g. type-only/transient test fixtures).
+    for (const route of config.routes ?? []) {
+      if (seen.has(route.name)) {
+        throw new Error(
+          `Router "${config.name}" declares duplicate route name "${route.name}". ` +
+          `Route names must be unique so the recorded router decision is unambiguous on resume.`
+        );
+      }
+      seen.add(route.name);
+    }
+  }
+
   const { declaredResources: capResources, resolvedCapabilities } = resolveCapabilities(config, "router");
   // Merge capability resources with the router's own + route resources.
   // capResources already includes the router's own declared resources (via resolveCapabilities).
@@ -217,96 +238,76 @@ export function router<
         );
       }
 
-      ctx._runtimeHooks?.onRouteSelected?.(config.name, selected.name, ctx._blockIdentity?.blockInstanceId);
+      // Decision replay (FIX-814): on same-request continuation, `execute`
+      // re-runs (it must be pure — see the suspendable-router contract in
+      // docs/architecture/execution-and-errors.md) so any per-call wrapper it
+      // returns (`route.connectInput(...)`) is preserved. The fresh selection
+      // is VALIDATED against the durably recorded `router_decision`; a
+      // mismatch — re-decision drift or a removed route — is fatal, never a
+      // silent branch switch.
+      const requestId = ctx.request.identity.id;
+      const routerPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
+      const replayLog = (ctx as { _replayLog?: ReplayLog })._replayLog;
+      const recordedDecision = replayLog?.recordedRouterDecision(`${requestId}:${routerPath}`);
+      if (recordedDecision !== undefined && recordedDecision.selectedRoute !== selected.name) {
+        throw new RouteUnavailableError({
+          routerName: config.name,
+          recordedRoute: recordedDecision.selectedRoute,
+          reselectedRoute: selected.name,
+          recordedRouteDeclared: config.routes.some(
+            (route) => route.name === recordedDecision.selectedRoute
+          )
+        });
+      }
 
-      const startedAt = Date.now();
+      // Await the decision anchor's durability BEFORE dispatching the branch
+      // (FIX-814): the hook's `router_decision` write was fire-and-forget,
+      // so a suspension inside the branch could persist before its anchor,
+      // orphaning the decision for the resume path.
+      await ctx._runtimeHooks?.onRouteSelected?.(config.name, selected.name, ctx._blockIdentity?.blockInstanceId);
+
       // FIX-573 §5: the routed block's input source matches whatever the
-      // router itself received. Forward the router's own `_blockInputHint`
-      // (or fall back to inline-rawInput for the request entry point) onto
-      // the scoped child ctx so its `added`-phase trace stamps the right
-      // source.
+      // router itself received. Stash the router's own `_blockInputHint`
+      // (or fall back to inline-rawInput for the request entry point) so
+      // `executeBlock` forwards it onto the scoped child ctx and its
+      // `added`-phase trace stamps the right source.
       const routerInputHint =
         (ctx as { _blockInputHint?: import("../items/types").BlockValueInternal<unknown> })._blockInputHint
         ?? ({ kind: "inline" as const, value: input });
-      const runSelected = async (scopedCtx: BlockContext): Promise<TOutput> => {
-        (scopedCtx as { _blockInputHint?: import("../items/types").BlockValueInternal<unknown> })
-          ._blockInputHint = routerInputHint;
-        scopedCtx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input, selected.transient);
-        resolveActiveStatusMessage(selected, input, scopedCtx);
-        try {
-          const output = await asRuntime(selected).run(input, scopedCtx);
-          scopedCtx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt, selected.transient);
-          return output;
-        } catch (error) {
-          scopedCtx._runtimeHooks?.onBlockError?.(selected.name, selected.kind, error, Date.now() - startedAt, selected.transient, scopedCtx);
-          throw error;
-        }
-      };
+
+      const selectedPath = extendBlockPath(routerPath, blockPathBranch(selected.name));
+      const selectedInstanceId = buildBlockInstanceId(requestId, selectedPath, 0);
+
+      // Dispatch the selected child through the replay seam (FIX-814):
+      // `executeBlock` owns the scoped-child lifecycle (execution scope,
+      // lifecycle hooks, container config, block-level rescue) AND consults
+      // `ctx._replayLog`, so on resume a branch that already completed injects
+      // its recorded output instead of re-executing.
+      stashInputHint(ctx, routerInputHint);
+      const out = (await executeBlock(selected, input, ctx, selectedPath)) as TOutput;
 
       // Router output is always pass-through from the selected route (FIX-413).
       // After the selected block emits its block_trace, record a `ref`
-      // descriptor on the outer ctx so the router's own block_trace.output carries
-      // the ref instead of duplicating content. Set AFTER runSelected below.
-      const installRouterHint = (selectedInstanceId: string): void => {
-        const id = findBlockTraceIdByInstance(ctx, selectedInstanceId);
-        if (id === undefined) return;
+      // descriptor on the outer ctx so the router's own block_trace.output
+      // carries the ref instead of duplicating content. When the branch
+      // completed via the replay short-circuit (which deliberately emits no
+      // fresh trace), fall back to the prior run's recorded trace id so the
+      // ref contract holds on resume too (FIX-814).
+      const traceLookupInstanceId =
+        ctx._withExecutionScope === undefined
+          // Standalone path: the selected block ran under the outer scope's
+          // identity. Route by name match (fallback).
+          ? ctx._blockIdentity?.blockInstanceId ?? ""
+          : selectedInstanceId;
+      const traceId =
+        findBlockTraceIdByInstance(ctx, traceLookupInstanceId)
+        ?? replayLog?.recordedBlockTraceId(`${requestId}:${selectedPath}`);
+      if (traceId !== undefined) {
         (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
           kind: "ref",
-          sourceItemId: id
+          sourceItemId: traceId
         };
-      };
-
-      if (ctx._withExecutionScope === undefined) {
-        const out = await runSelected(ctx);
-        // Standalone path: selected block's blockInstanceId comes from the
-        // outer scope's identity. Route by name match (fallback).
-        installRouterHint(ctx._blockIdentity?.blockInstanceId ?? "");
-        return out;
       }
-
-      const containerConfig =
-        selected.kind === "sequencer" || selected.kind === "router"
-          ? (selected.config as { container?: { component?: string; label?: string | ((input: unknown) => string); metadata?: Record<string, unknown> | ((input: unknown) => Record<string, unknown>); } }).container
-          : undefined;
-
-      const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
-      const selectedPath = extendBlockPath(parentPath, blockPathBranch(selected.name));
-      const selectedInstanceId = buildBlockInstanceId(
-        ctx.request.identity.id,
-        selectedPath,
-        0
-      );
-
-      const out = await ctx._withExecutionScope(
-        {
-          name: selected.name,
-          kind: selected.kind,
-          instanceId: selectedInstanceId,
-          path: selectedPath,
-          stateSchema: selected.kind === "sequencer" ? selected.config.stateSchema : undefined,
-          input,
-          container:
-            containerConfig === undefined
-              ? undefined
-              : {
-                  component: containerConfig.component,
-                  label:
-                    typeof containerConfig.label === "function"
-                      ? containerConfig.label(input as any)
-                      : containerConfig.label,
-                  metadata:
-                    typeof containerConfig.metadata === "function"
-                      ? containerConfig.metadata(input as any)
-                      : containerConfig.metadata
-                }
-        },
-        runSelected
-      );
-
-      // After the selected block has emitted its block_trace, record the
-      // router's own ref descriptor so its outer emitter carries a ref, not
-      // a duplicate of the selected block's content (FIX-413).
-      installRouterHint(selectedInstanceId);
       return out;
     }
   });

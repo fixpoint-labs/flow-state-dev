@@ -81,6 +81,8 @@ The composition layer — the sequencer DSL callbacks (`.map`, `.stepIf`, `.work
 
 Push nondeterminism to a block boundary. Compute the timestamp or id inside a generator or handler whose output is recorded, or wrap it in `runOnce` so the value is fixed on the first run and replayed after. The composition layer then sees the same value both times.
 
+A router's `execute` selector is part of this layer too, with one difference: the framework checks it. The selector re-runs on resume, and the framework validates the fresh selection against the decision recorded on the first run. If the selector reads something that changed while the request was paused and picks a different route, resume fails with `RouteUnavailableError` instead of silently switching branches. Keep router selectors pure over their input — and the same goes for the mapping closures on any `connectInput`/`connectOutput` wrapper the selector returns.
+
 ## See also
 
 - [Idempotency and `runOnce`](./idempotency.md) — provider-key idempotency for exactly-once across crashes.
