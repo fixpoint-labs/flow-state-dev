@@ -517,6 +517,14 @@ the current request need it to finish*:
 5. Task-level message payloads: `TaskInit` has no feedback/guidance slot —
    we smuggled it through `input`; the post/journal design should own this.
 6. Cosmetic: board-meta labels a human-blocked exit `"blocked-by-failures"`.
+7. Factory-backed boards can't name their collection: `task-board-meta`
+   items emit `collectionId: "factory-supplied"` while the collection's own
+   `task-change` items carry the real id — renderers that group by
+   `collectionId` (kitchen-sink, DevTool) show a meta-only board. The
+   factory form should accept an explicit `collectionId`.
+8. Per-session action `concurrency: "reject"` is the app-level guard against
+   racing mutating requests (duplicate seeds); true multi-writer seed
+   atomicity belongs to the deferred board-concurrency hardening.
 
 ### Phase A — the standalone pattern (FSD)
 

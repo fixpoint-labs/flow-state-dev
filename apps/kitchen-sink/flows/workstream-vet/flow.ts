@@ -27,13 +27,17 @@ const workstreamVetFlow = defineFlow({
   kind: "workstream-vet",
   requireUser: true,
   actions: {
-    start: { block: startAction },
+    // Mutating actions reject per-session concurrent dispatch: two racing
+    // `start`s on a fresh session could both see an empty board and seed
+    // duplicate chains (full multi-writer seed atomicity is the deferred
+    // board-concurrency substrate work; this is the action-level guard).
+    start: { block: startAction, concurrency: "reject" },
     // `decide` is approval sugar over `resolve` — kept to show the shape.
-    decide: { block: decideAction },
-    resolve: { block: resolveAction },
-    advance: { block: advanceLoop },
+    decide: { block: decideAction, concurrency: "reject" },
+    resolve: { block: resolveAction, concurrency: "reject" },
+    advance: { block: advanceLoop, concurrency: "reject" },
     status: { block: snapshot },
-    startUnchecked: { block: startUncheckedAction },
+    startUnchecked: { block: startUncheckedAction, concurrency: "reject" },
   },
   resources: {
     wsvetTasks: workstreamTasksCollection,

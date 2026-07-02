@@ -414,6 +414,14 @@ describe("workstream-vet: board predicates and terminal states", () => {
     expect(hasClaimable(c)).toBe(true); // `b` unlocked
   });
 
+  it("doneWhen refuses an unstarted session — no empty-goal work is ever seeded", async () => {
+    const ctx = await createCtx();
+    const result = await executeBlock({ block: doneWhen, input: {}, ctx });
+    expect(result.error?.message ?? String(result.error)).toContain(
+      "no workstream started",
+    );
+  });
+
   it("an errored task classifies the workstream as errored, not stuck", async () => {
     const ctx = await createCtx();
     const c = await boardCollection(ctx);

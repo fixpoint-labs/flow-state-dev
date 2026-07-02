@@ -149,6 +149,14 @@ export const doneWhen = handler({
   resources: loopResources,
   execute: async (_input, ctx: any) => {
     const c = await boardCollection(ctx);
+    // A mistimed `advance` on a session with no workstream must fail loudly:
+    // classifying an empty board would trip the acceptance replan, seed a
+    // revise task against an empty goal, and burn model calls on nothing.
+    if (c.count() === 0) {
+      throw new Error(
+        "workstream-vet: no workstream started in this session — call `start` first",
+      );
+    }
     return classifyBoard(c, ctx.resources.wsvetWorkspace.state, { checkGoal: true });
   },
 });
