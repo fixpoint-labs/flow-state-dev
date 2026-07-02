@@ -324,4 +324,59 @@ describe("router decision cannot be honored on resume (FIX-814)", () => {
     expect(resumed.error?.message).toMatch(/branchA/);
     expect((await stores.request.get(requestId))?.status).toBe("failed");
   });
+
+  it("fails the same way when the router is the ROOT action block (no wrapping sequencer)", async () => {
+    const runs = { a: 0, b: 0 };
+    const branchA = handler({
+      name: "branchA",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        runs.a += 1;
+        return ctx.suspend!({ reason: "human_approval", message: "A?" });
+      }
+    });
+    const branchB = handler({
+      name: "branchB",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async () => {
+        runs.b += 1;
+        return "B";
+      }
+    });
+    const selectorState = { which: "a" };
+    const decide = router({
+      name: "decide",
+      routes: [branchA, branchB],
+      execute: () => (selectorState.which === "a" ? branchA : branchB)
+    });
+    const flow = defineFlow({
+      kind: "fix814-root-router-redecide",
+      actions: { run: { block: decide, inputSchema: z.any() } }
+    })();
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+
+    selectorState.which = "b";
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    const resumed = await approve(flow, stores, provider, requestId, suspension);
+
+    // Never a silent branch switch, in the root-router topology too.
+    expect(resumed.error).toBeDefined();
+    expect(resumed.error?.message).toMatch(/cannot resume/);
+    expect(runs.b).toBe(0);
+    expect(runs.a).toBe(1);
+  });
 });
