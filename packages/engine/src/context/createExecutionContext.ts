@@ -421,8 +421,28 @@ function buildTraceEmitters(
     // Unlike the other trace emitters this one returns its emit chain
     // (FIX-814): the router awaits it before dispatching the selected
     // branch, so a suspension inside the branch can never persist before
-    // its `router_decision` anchor lands in the response log.
-    routerDecision: emitPair,
+    // its `router_decision` anchor lands in the response log. A failed emit
+    // still resolves — routing must not fail on trace plumbing — degrading
+    // that request to no-decision-validation on resume (the pre-FIX-814
+    // contract: the re-run selector's purity keeps the branch stable, and
+    // branch memoization rides `block_trace` records, not this item). The
+    // degradation is loud, not silent, so operators can see the anchor was
+    // lost.
+    routerDecision(item) {
+      return emCtx.response
+        .emitItemAdded(item)
+        .then(() => {
+          recordTrace("trace.item.added", item);
+          return emCtx.response.emitItemDone(item);
+        })
+        .then(() => recordTrace("trace.item.done", item))
+        .catch(() => {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[flow-state-dev] router_decision emit failed for router "${item.routerName}" (request ${requestId}); resume will skip decision validation for it.`
+          );
+        });
+    },
     stateSnapshot(item) {
       void emitPair(item);
     },
