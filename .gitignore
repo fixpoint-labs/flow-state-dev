@@ -20,6 +20,8 @@ docs/superpowers/*
 packages/devtool/dist-client/*
 .claude/**/_drafts/*
 .claude/worktrees/
+agents/**/_drafts/*
+agents/todos/*
 docs/internal/design-memos/*
 *.code-workspace
 .tmp/*
