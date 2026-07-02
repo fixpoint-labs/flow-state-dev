@@ -29,10 +29,10 @@ Fetch everything about the issue:
 2. `list_comments` — read any discussion or decisions
 3. **Read the spec — from both homes, plus the spec-PR review.** The spec lives in two places that should match but may not: the spec PR branch and the Linear document.
    1. **Locate the spec PR**: `gh pr list --search "spec({ISSUE-ID}) in:title" --state all --json number,state,headRefName,url`. It may be open (normal) or already closed (a prior run got past Step 3).
-   2. **Read the repo copy** from the PR head, using the `headRefName` returned by the previous step (git refs are case-sensitive — don't retype the branch name): `git fetch origin {headRefName} && git show origin/{headRefName}:docs/specs/{ISSUE-ID}.md`. If the branch is gone (PR closed with branch deleted), use `git fetch origin pull/{N}/head && git show FETCH_HEAD:docs/specs/{ISSUE-ID}.md`.
+   2. **Read the repo copy** from the PR head, using the `headRefName` returned by the previous step (git refs are case-sensitive — don't retype the branch name): `git fetch origin {headRefName} && git show FETCH_HEAD:docs/specs/{ISSUE-ID}.md`. If the branch is gone (PR closed with branch deleted), fetch `pull/{N}/head` instead and read from `FETCH_HEAD` the same way.
    3. **Read the Linear copy** with `get_document` (titled `{ISSUE-ID}: ... — Implementation Spec`).
    4. **Read the spec-PR discussion** — all three comment surfaces, same commands as Step 10.1 (inline review comments, top-level PR comments, review submissions). Reviewers critique the design here; some feedback may have been applied to the spec text, some may not.
-   5. **Reconcile.** If the two copies differ, the PR head is usually the fresher one (review fixes land there first) — but check timestamps rather than assuming. Produce one authoritative spec text and mirror it to the Linear document *now*, so Linear is correct before the spec PR closes at Step 3. For each substantive spec-PR comment, check whether the spec text addresses it; collect the ones that don't as open questions for Step 2.
+   5. **Reconcile.** While the spec PR is still open, the PR head is usually the fresher copy (review fixes land there first) — but check timestamps rather than assuming; produce one authoritative spec text and mirror it to the Linear document *now*, so Linear is correct before the spec PR closes at Step 3. If the spec PR is already closed, the Linear document is authoritative — read the PR only for its review history, and never mirror the old PR file back over Linear. Either way, for each substantive spec-PR comment, check whether the spec text addresses it; collect the ones that don't as open questions for Step 2.
 4. If the issue has sub-tasks, fetch those too — they may represent the intended PR breakdown
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search with `list_issues` using it as a query.
@@ -57,7 +57,7 @@ Before starting work, check:
    - If blockers are still "In Progress" or "Todo" → tell the user what's blocking and stop
    - If blockers are "Done" but code isn't on main → check if there's a merged PR. If not, flag it
 
-3. **Open questions?** If the spec has an "Open Questions" section with unresolved items, or Step 1 surfaced substantive spec-PR review comments the spec text never addressed → present them to the user and wait for answers before proceeding
+3. **Open questions?** If the spec has an "Open Questions" section with unresolved items, or Step 1 surfaced substantive spec-PR review comments the spec text never addressed → present them to the user and wait for answers before proceeding. Once answered, fold the decisions into the spec text and update the Linear document before moving on — after Step 3 closes the spec PR, Linear is the only live copy, and sub-agent prompts are built from it
 
 If all clear, move to Step 3.
 
@@ -297,20 +297,20 @@ Once the PR is open, this skill owns it until it merges. Whenever the skill is r
 
 #### 10.1: Enumerate every comment and review on the PR
 
-Use `gh` to read everything attached to the PR. There are three distinct comment surfaces — you must check all three:
+Use `gh` to read everything attached to the PR. There are three distinct comment surfaces — you must check all three, and always `--paginate` (these endpoints return 30 items per page by default; a busy PR silently loses the rest):
 
 ```bash
 # repo identifiers (use jq to extract from the PR URL or run once and cache)
 gh pr view {PR} --json url,headRefName,number,reviewDecision,baseRefName
 
 # 1) inline review comments (attached to specific lines of code)
-gh api repos/{owner}/{repo}/pulls/{PR}/comments
+gh api --paginate repos/{owner}/{repo}/pulls/{PR}/comments
 
 # 2) top-level PR conversation comments
-gh api repos/{owner}/{repo}/issues/{PR}/comments
+gh api --paginate repos/{owner}/{repo}/issues/{PR}/comments
 
 # 3) review submissions (the wrapper around inline comments + a body)
-gh api repos/{owner}/{repo}/pulls/{PR}/reviews
+gh api --paginate repos/{owner}/{repo}/pulls/{PR}/reviews
 ```
 
 For each comment, fetch its existing reactions so you can identify which ones you've already processed:
