@@ -114,6 +114,36 @@ describe("ingestLedgerEvents — idempotency", () => {
     expect(report.inserted).toBe(0);
     expect(report.deduplicated).toBe(1);
   });
+
+  it("ingests a batch large enough to exceed the wire protocol's 16-bit param count", async () => {
+    // The Postgres extended-protocol Bind message carries the bound-parameter
+    // count as a 16-bit integer. At 17 params per ledger row, an unchunked
+    // multi-row INSERT crosses 32,767 params at 1,928 rows — PGlite reads the
+    // wrapped count as negative and dies with `RangeError: Invalid array
+    // length`, wedging the (single) connection for every later query; node-pg
+    // hits its own 65,535 ceiling at 3,856 rows. A year-scale brokerage OFX
+    // backfill (FIX-775) is realistically thousands of rows, so the insert
+    // must chunk. 2,500 rows crosses the PGlite boundary with margin.
+    const batch = Array.from({ length: 2500 }, (_, i) =>
+      ev({
+        ticker: "AAPL",
+        tradeDate: "2026-01-10",
+        quantity: 1,
+        unitPrice: 100 + i,
+        amount: -(100 + i),
+        externalId: `bulk-${i}`,
+        source: "file",
+      }),
+    );
+
+    const report = await repo.ingestLedgerEvents(batch, "devuser");
+    expect(report.inserted).toBe(2500);
+    expect(report.deduplicated).toBe(0);
+
+    // The connection must survive the ingest — a follow-up read works.
+    const rows = await repo.getLedger("devuser", { limit: 5 });
+    expect(rows).toHaveLength(5);
+  });
 });
 
 describe("ingestLedgerEvents — household scoping", () => {

@@ -516,15 +516,24 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
           });
         }
 
-        const insertedRows =
-          values.length === 0
-            ? []
-            : await tx
-                .insert(ledgerEvents)
-                .values(values)
-                .onConflictDoNothing()
-                .returning({ id: ledgerEvents.id });
-        const inserted = insertedRows.length;
+        // Chunked: the wire protocol's Bind message carries the bound-param
+        // count as a 16-bit integer, so one multi-row INSERT tops out at
+        // 32,767 params on PGlite (the count wraps negative and kills the
+        // single dev connection with `RangeError: Invalid array length`) and
+        // 65,535 on node-pg. At 17 params per row, a year-scale OFX backfill
+        // (FIX-775) crosses the PGlite line at 1,928 rows. 1,000 rows/chunk
+        // (17k params) clears both ceilings; the chunks share this
+        // transaction, so the batch stays atomic.
+        const INSERT_CHUNK_ROWS = 1000;
+        let inserted = 0;
+        for (let i = 0; i < values.length; i += INSERT_CHUNK_ROWS) {
+          const insertedRows = await tx
+            .insert(ledgerEvents)
+            .values(values.slice(i, i + INSERT_CHUNK_ROWS))
+            .onConflictDoNothing()
+            .returning({ id: ledgerEvents.id });
+          inserted += insertedRows.length;
+        }
 
         // Basis is derived: recompute on every touched account in the same tx.
         for (const id of accountIds) await recomputeBasis(tx, id);
