@@ -94,6 +94,7 @@
   "devDependencies": {
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
+    "ai": "^7.0.15",
     "zod": "^3.25.76"
   },
   "scripts": {

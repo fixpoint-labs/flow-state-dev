@@ -99,6 +99,40 @@ describe("isRetryableError", () => {
     expect(isRetryableError(new Error("ECONNREFUSED"))).toBe(true);
     expect(isRetryableError(new Error("ETIMEDOUT"))).toBe(true);
   });
+
+  // Real AI SDK 7 error instances — pins the duck-typed reads
+  // (`isRetryable`, `LoadAPIKeyError` constructor name, `statusCode`)
+  // against the installed SDK, not hand-built fakes.
+  describe("against real AI SDK 7 error instances", () => {
+    it("treats a v7 LoadAPIKeyError as non-retryable (falls to next model)", async () => {
+      const { LoadAPIKeyError } = await import("ai");
+      const err = new LoadAPIKeyError({ message: "OPENAI_API_KEY is missing" });
+      expect(err.constructor.name).toBe("LoadAPIKeyError");
+      expect(err.name).toBe("AI_LoadAPIKeyError");
+      expect(isRetryableError(err)).toBe(false);
+    });
+
+    it("honours a v7 APICallError's own isRetryable flag", async () => {
+      const { APICallError } = await import("ai");
+      const retryable = new APICallError({
+        message: "rate limited",
+        url: "https://api.example.com",
+        requestBodyValues: {},
+        statusCode: 429
+      });
+      expect(retryable.isRetryable).toBe(true);
+      expect(isRetryableError(retryable)).toBe(true);
+
+      const nonRetryable = new APICallError({
+        message: "bad request",
+        url: "https://api.example.com",
+        requestBodyValues: {},
+        statusCode: 400
+      });
+      expect(nonRetryable.isRetryable).toBe(false);
+      expect(isRetryableError(nonRetryable)).toBe(false);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
