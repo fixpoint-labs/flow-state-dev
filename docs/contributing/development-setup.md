@@ -4,7 +4,7 @@ Guide for setting up the Flow State Dev monorepo for local development.
 
 ## Prerequisites
 
-- **Node.js** >= 18 (Node 20+ recommended)
+- **Node.js** >= 22
 - **pnpm** 10.4.1 (`corepack enable && corepack prepare pnpm@10.4.1`)
 
 ## Initial Setup

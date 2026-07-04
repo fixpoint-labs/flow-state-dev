@@ -12,7 +12,7 @@ A focused guide on integrating flow-state-dev with a Next.js App Router applicat
 ## Prerequisites
 
 - **Next.js 15+** (App Router) — required by `@flow-state-dev/next` and `@flow-state-dev/vercel/next`
-- **Node.js 18+** (20+ recommended)
+- **Node.js 22+**
 - **pnpm** or npm/yarn
 
 You'll need the framework packages: core, server, client, and react. The server runs your flows. The client talks to the server over HTTP and SSE. React wraps the client with hooks.

@@ -145,7 +145,7 @@ expect(result.output).toBeDefined();
 ## Quick start
 
 ```bash
-# Prerequisites: Node.js >=18, pnpm@10.4.1
+# Prerequisites: Node.js >=22, pnpm@10.4.1
 pnpm install
 pnpm typecheck
 pnpm test

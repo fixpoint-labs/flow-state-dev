@@ -66,7 +66,7 @@ fsdev run my-flow action -i '{}' --dotenv apps/my-app/.env.local
 
 `--dotenv` is repeatable and resolved relative to cwd, and absolute paths work. A file you name that doesn't exist is an error, which is the opposite of the silent walk-up: naming a file is a claim it's there, so a typo stops the run instead of vanishing.
 
-One naming note. The flag is `--dotenv`, not `--env-file`, because Node 20.6+ and tsx already treat `--env-file` as a built-in flag. Under `pnpm fsdev` (which runs through tsx), Node would grab `--env-file` before the CLI ever parsed it.
+One naming note. The flag is `--dotenv`, not `--env-file`, because Node and tsx already treat `--env-file` as a built-in flag. Under `pnpm fsdev` (which runs through tsx), Node would grab `--env-file` before the CLI ever parsed it.
 
 The simpler alternative to all of this is to run from the app directory, where both the config and its `.env.local` sit in cwd:
 
@@ -120,7 +120,7 @@ A `.ts` config needs a runtime that can load TypeScript. Inside the framework mo
 
 Native type stripping ignores `tsconfig` path aliases. Keep the config's import chain on relative paths (`./src/flows/chat/flow`), not aliases like `@/flows/chat/flow`, or the import will fail to resolve.
 
-One sharp edge: the CLI's `engines` field allows Node 20. Node 20 does **not** strip TypeScript, so a `.ts` config will not load there. Allowed-to-install is not the same as can-load-a-`.ts`-config. If you're on Node 20, run under tsx or ship an `.mjs` config.
+One sharp edge: the CLI's `engines` field allows any Node 22, but type stripping is only on by default from Node 22.18. On earlier 22.x releases a `.ts` config will not load. Allowed-to-install is not the same as can-load-a-`.ts`-config. If you're on an earlier 22.x, run under tsx or ship an `.mjs` config.
 
 ## See also
 

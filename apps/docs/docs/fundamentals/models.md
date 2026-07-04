@@ -640,6 +640,16 @@ preset/thinking-*                       → intent/reason or intent/plan
 
 The runtime error still references FIX-517 (normalized reasoning levels). That feature was deferred and never shipped; for callers migrating from `preset/thinking-*`, see [Thinking and reasoning](#thinking-and-reasoning) above for the `providerOptions` escape hatch that ships today.
 
+## AI SDK 7
+
+The framework's built-in model resolver talks to providers through the Vercel AI SDK, and it now runs on AI SDK 7. Nothing changes in the framework's own API, but a few things land on you as a consumer:
+
+- **Node.js 22 or newer.** AI SDK 7 requires it, so every published `@flow-state-dev/*` package now declares `engines.node: ">=22"`.
+- **Escape hatches need v7 in your app too.** If you use `wrapAiSdkModel`, pass `providerTools`, or hand raw provider model instances to a generator, bump your own `ai` and `@ai-sdk/*` dependencies to the v7-paired majors. A v6 provider model handed to the framework's v7 runtime is exactly the spec-version mismatch the major exists to prevent.
+- **System messages keep working.** AI SDK 7 rejects `role: "system"` entries inside `messages` by default. The framework's adapter opts back in with `allowSystemInMessages: true`, so system prompts, prompt-caching anchors, and multi-step tool loops behave as before. Only direct AI SDK callers need to care.
+- **MCP transports no longer follow redirects.** `@ai-sdk/mcp@2` flipped the default from follow to reject, and the framework keeps the new default. If your MCP server sits behind a redirect, configure the transport with the direct URL.
+- **OpenRouter lags one major.** `@openrouter/ai-sdk-provider` has no release that declares `ai@7` peer support yet. Its models still load and run at runtime — v7 accepts models built against the previous provider spec — but installing it reports an unmet peer dependency until OpenRouter ships a v7-compatible release.
+
 ## What to Read Next
 
 - [Server Setup](/docs/server/setup) — wiring the resolver into your app
