@@ -80,7 +80,6 @@
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",
     "@flow-state-dev/core": "workspace:*",
-    "ai": "^6.0.93",
     "p-retry": "^6.2.0",
     "path-to-regexp": "^8.2.0"
   },

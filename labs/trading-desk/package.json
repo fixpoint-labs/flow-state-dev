@@ -15,8 +15,8 @@
     "migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
-    "@ai-sdk/gateway": "^3.0.51",
-    "@ai-sdk/xai": "^3.0.91",
+    "@ai-sdk/gateway": "^4.0.12",
+    "@ai-sdk/xai": "^4.0.6",
     "@electric-sql/pglite": "^0.2.17",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
@@ -26,7 +26,7 @@
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "@flow-state-dev/tools": "workspace:*",
-    "ai": "^6.0.97",
+    "ai": "^7.0.15",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "exa-js": "^2.13.0",
