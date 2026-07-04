@@ -732,6 +732,9 @@ importers:
         specifier: ^3.24.0
         version: 3.25.1(zod@3.25.76)
     devDependencies:
+      '@ai-sdk/openai':
+        specifier: ^4.0.7
+        version: 4.0.7(zod@3.25.76)
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13

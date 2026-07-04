@@ -153,6 +153,7 @@
     "zod-to-json-schema": "^3.24.0"
   },
   "devDependencies": {
+    "@ai-sdk/openai": "^4.0.7",
     "@types/node": "^22.0.0",
     "@types/picomatch": "^3.0.1"
   },
