@@ -978,3 +978,80 @@ describe("createAiSdkModelResolver — structured output recovery (FIX-841)", ()
     ).rejects.toThrow();
   });
 });
+
+describe("createAiSdkModelResolver — toModelOutput bridge (AI SDK 7 tool-result content)", () => {
+  it("materialises the mapped string as a v7-canonical content/text tool-result the next step sees", async () => {
+    // AI SDK 7 canonicalized tool-result content parts: the `content` variant
+    // accepts only `text` and `file` entries (the v6 `image-*`/legacy `file-*`
+    // variants are gone). The framework mapper returns a plain string; the
+    // resolver wraps it as a content/text envelope — this pins that the text
+    // reaches the model's next step and that no legacy variant is emitted.
+    let call = 0;
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => {
+        call++;
+        if (call === 1) {
+          return {
+            content: [
+              { type: "tool-call", toolCallId: "call_1", toolName: "recall", input: '{"q":"notes"}' }
+            ],
+            finishReason: { unified: "tool-calls", raw: undefined },
+            usage: {
+              inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+              outputTokens: { total: 3, text: undefined, reasoning: undefined }
+            },
+            warnings: []
+          };
+        }
+        return {
+          content: [{ type: "text", text: "done" }],
+          finishReason: { unified: "stop", raw: undefined },
+          usage: {
+            inputTokens: { total: 8, noCache: 8, cacheRead: undefined, cacheWrite: undefined },
+            outputTokens: { total: 2, text: 2, reasoning: undefined }
+          },
+          warnings: []
+        };
+      }
+    });
+
+    const resolver = createAiSdkModelResolver(() => model);
+    const result = await resolver("openai/gpt-4o-mini", "gen").generate({
+      messages: [{ role: "user", content: "go" }],
+      tools: [
+        {
+          name: "recall",
+          description: "recall notes",
+          parameters: z.object({ q: z.string() }),
+          execute: async () => ({ items: [{ id: "m1", content: "the full structured payload" }] }),
+          toModelOutput: async () => "1 memory: the full structured payload"
+        }
+      ],
+      maxSteps: 2
+    });
+
+    expect(result.text).toBe("done");
+    expect(model.doGenerateCalls.length).toBe(2);
+
+    // The second step's prompt carries the tool result the model actually
+    // sees — the mapped summary string, not the structured execute() output.
+    const secondPrompt = model.doGenerateCalls[1]!.prompt as Array<{
+      role: string;
+      content: Array<Record<string, unknown>>;
+    }>;
+    const toolMessage = secondPrompt.find((m) => m.role === "tool");
+    expect(toolMessage).toBeDefined();
+    const resultPart = toolMessage!.content.find((p) => p.type === "tool-result") as {
+      output: { type: string; value: Array<{ type: string; text?: string }> };
+    };
+    expect(resultPart.output.type).toBe("content");
+    expect(resultPart.output.value).toEqual([
+      { type: "text", text: "1 memory: the full structured payload" }
+    ]);
+    // No legacy media variants survive the bridge.
+    for (const entry of resultPart.output.value) {
+      expect(["text", "file"]).toContain(entry.type);
+    }
+    expect(JSON.stringify(secondPrompt)).not.toContain("the full structured payload\",\"id\"");
+  });
+});
