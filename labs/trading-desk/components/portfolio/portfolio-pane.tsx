@@ -1,7 +1,9 @@
 /**
- * PortfolioPane — the Portfolio view. Per-account holdings tables with per-
- * account + total rollups, an account selector / add-account control, a CSV
- * import control, and a refresh-prices action.
+ * PortfolioPane — the Portfolio view. An account summary-card grid (value,
+ * cash, uP/L $ + %, position count); clicking a card opens that account's
+ * detail view (`AccountDetail`) with Holdings / Transactions / Income tabs.
+ * The toolbar (add account, imports, add transaction, refresh prices) and the
+ * portfolio-level totals stay above both views.
  *
  * Data path:
  *  - Accounts (with inline holdings) come from the app-owned tables via the
@@ -33,8 +35,11 @@ import { useResource } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import type { Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
+import { deriveLots } from "@/src/flows/portfolio/lots";
+import type { TermLot } from "./holding-term";
 import type { PortfolioQuotesState } from "@/src/flows/portfolio/portfolio-resources";
-import { AccountSection } from "./account-section";
+import { AccountCard } from "./account-card";
+import { AccountDetail } from "./account-detail";
 import { AddAccountDialog, type NewAccountDraft } from "./add-account-dialog";
 import { ImportCsvDialog, type ImportSubmit } from "./import-csv-dialog";
 import { ImportPdfDialog } from "./import-pdf-dialog";
@@ -46,13 +51,14 @@ import {
   AddTransactionDialog,
   type NewLedgerEvent,
 } from "./add-transaction-dialog";
-import { LedgerTable } from "./ledger-table";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import { useLedger } from "./use-ledger";
+import { useIncome } from "./use-income";
 import {
   DASH,
   formatMoney,
   formatSignedMoney,
+  formatSignedPercent,
   marketValue,
   unrealizedPL,
 } from "./portfolio-format";
@@ -65,8 +71,13 @@ type PortfolioPaneProps = {
   hasSession: boolean;
 };
 
-/** Per-account computed rollups, indexed by accountId. */
-type AccountRollup = { value: number | null; upl: number | null };
+/** Per-account computed rollups, indexed by accountId. `uplPct` is the P/L as
+ *  a fraction of the computable cost base (null when there is none). */
+type AccountRollup = {
+  value: number | null;
+  upl: number | null;
+  uplPct: number | null;
+};
 
 export function PortfolioPane({
   session,
@@ -74,6 +85,7 @@ export function PortfolioPane({
 }: PortfolioPaneProps): ReactElement {
   const { accounts, refetch: refetchAccounts } = usePortfolioAccounts(session);
   const { events: ledgerEvents, refetch: refetchLedger } = useLedger(session);
+  const { income, refetch: refetchIncome } = useIncome(session);
   const { clientData: quotesData } = useResource(session, "portfolioQuotes");
 
   const [addOpen, setAddOpen] = useState(false);
@@ -84,6 +96,9 @@ export function PortfolioPane({
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(
     undefined,
   );
+  /** The account whose detail view (holdings/transactions/income tabs) is
+   *  open; null shows the summary-card grid. */
+  const [openAccountId, setOpenAccountId] = useState<string | null>(null);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
 
   // Holdings ride inline in each account record. Index them by accountId for
@@ -98,6 +113,50 @@ export function PortfolioPane({
     [accounts],
   );
 
+  // Ledger-derived income, shaped for its consumers: a per-account
+  // ticker→dividends map for the holdings tables, per-account and portfolio
+  // dividend totals for the summary lines (BP-010 — derived, memoed). Totals
+  // include income earned on since-closed positions and ticker-less
+  // account-level dividends (e.g. fund distributions) — earned is earned.
+  const { dividendsByAccount, dividendTotals, totalDividends } = useMemo(() => {
+    const dividendsByAccount = new Map<string, Map<string, number>>();
+    const dividendTotals = new Map<string, number>();
+    let totalDividends: number | null = null;
+    for (const r of income) {
+      if (r.dividends !== 0) {
+        dividendTotals.set(r.accountId, (dividendTotals.get(r.accountId) ?? 0) + r.dividends);
+        totalDividends = (totalDividends ?? 0) + r.dividends;
+      }
+      if (r.ticker === null) continue;
+      const acct = dividendsByAccount.get(r.accountId) ?? new Map<string, number>();
+      acct.set(r.ticker.toUpperCase(), r.dividends);
+      dividendsByAccount.set(r.accountId, acct);
+    }
+    return { dividendsByAccount, dividendTotals, totalDividends };
+  }, [income]);
+
+  // Open FIFO lots per account per ticker, derived client-side from the
+  // already-fetched ledger (deriveLots is a pure browser-safe leaf — the same
+  // reduction the server's position materialization runs). Feeds the per-lot
+  // short/long term split; a holding with no ledger history falls back to its
+  // own acquiredDate inside the row model.
+  const lotsByAccount = useMemo(() => {
+    const map = new Map<string, Map<string, TermLot[]>>();
+    for (const event of ledgerEvents) {
+      if (!map.has(event.accountId)) map.set(event.accountId, new Map());
+    }
+    for (const [accountId, perTicker] of map) {
+      const { lots } = deriveLots(ledgerEvents.filter((e) => e.accountId === accountId));
+      for (const lot of lots) {
+        const key = lot.ticker.toUpperCase();
+        const list = perTicker.get(key) ?? [];
+        list.push({ quantity: lot.quantity, acquiredDate: lot.acquiredDate });
+        perTicker.set(key, list);
+      }
+    }
+    return map;
+  }, [ledgerEvents]);
+
   // Price map: ticker (upper) → quote. Read from the resource the action wrote.
   const quotes = quotesData as PortfolioQuotesState | null;
   const priceMap = useMemo(() => {
@@ -107,31 +166,44 @@ export function PortfolioPane({
   }, [quotes]);
 
   // Per-account rollups + grand totals, derived (BP-010). A value is null when
-  // no holding in the account has a known price (degrades to "—").
-  const { rollups, totalValue, totalUpl } = useMemo(() => {
+  // no holding in the account has a known price (degrades to "—"). The P/L
+  // percent bases on the cost of the holdings whose P/L was computable — the
+  // same subset the dollar figure sums, so $ and % always describe one book.
+  const { rollups, totalValue, totalUpl, totalUplPct } = useMemo(() => {
     const rollups = new Map<string, AccountRollup>();
     let totalValue: number | null = null;
     let totalUpl: number | null = null;
+    let totalCost = 0;
     for (const account of accounts) {
       const accHoldings = holdingsByAccount.get(account.accountId) ?? [];
       let value: number | null = null;
       let upl: number | null = null;
+      let cost = 0;
       for (const h of accHoldings) {
         const price = priceMap.get(h.ticker.toUpperCase())?.price ?? null;
         const v = marketValue(h.quantity, price);
         if (v !== null) value = (value ?? 0) + v;
         const p = unrealizedPL(h.quantity, h.costBasis, price);
-        if (p !== null) upl = (upl ?? 0) + p;
+        if (p !== null) {
+          upl = (upl ?? 0) + p;
+          cost += (h.costBasis as number) * h.quantity;
+        }
       }
       // Cash counts toward account + portfolio value.
       if (account.cashBalance !== 0 || value !== null) {
         value = (value ?? 0) + account.cashBalance;
       }
-      rollups.set(account.accountId, { value, upl });
+      const uplPct = upl !== null && cost !== 0 ? upl / cost : null;
+      rollups.set(account.accountId, { value, upl, uplPct });
       if (value !== null) totalValue = (totalValue ?? 0) + value;
-      if (upl !== null) totalUpl = (totalUpl ?? 0) + upl;
+      if (upl !== null) {
+        totalUpl = (totalUpl ?? 0) + upl;
+        totalCost += cost;
+      }
     }
-    return { rollups, totalValue, totalUpl };
+    const totalUplPct =
+      totalUpl !== null && totalCost !== 0 ? totalUpl / totalCost : null;
+    return { rollups, totalValue, totalUpl, totalUplPct };
   }, [accounts, holdingsByAccount, priceMap]);
 
   // Fetch prices for the union of held tickers. Dispatch → refresh → the
@@ -201,16 +273,17 @@ export function PortfolioPane({
     async (submit: TransactionImportSubmit) => {
       try {
         await session.sendAction("importTransactions", submit);
-        // An import writes ledger events AND recomputes derived basis on the
-        // affected holdings, so refetch both the ledger and the accounts.
+        // An import writes ledger events AND materializes the derived positions
+        // into holdings, so refetch the ledger, the accounts, and the income.
         refetchLedger();
         refetchAccounts();
+        refetchIncome();
         await fetchPrices();
       } catch (err) {
         console.error("[trading-desk] importTransactions failed", err);
       }
     },
-    [session, refetchLedger, refetchAccounts, fetchPrices],
+    [session, refetchLedger, refetchAccounts, refetchIncome, fetchPrices],
   );
 
   const handleRecordTransaction = useCallback(
@@ -218,15 +291,16 @@ export function PortfolioPane({
       try {
         await session.sendAction("recordLedgerEvent", event);
         // sendAction returns a request envelope, not handler output — refetch
-        // the ledger for the committed row, and the accounts too (an ingest
-        // recomputes derived basis on existing holdings).
+        // the ledger for the committed row, the accounts (an ingest
+        // materializes derived positions into holdings), and the income.
         refetchLedger();
         refetchAccounts();
+        refetchIncome();
       } catch (err) {
         console.error("[trading-desk] recordLedgerEvent failed", err);
       }
     },
-    [session, refetchLedger, refetchAccounts],
+    [session, refetchLedger, refetchAccounts, refetchIncome],
   );
 
   const handleDeleteHolding = useCallback(
@@ -245,6 +319,9 @@ export function PortfolioPane({
     async (accountId: string) => {
       try {
         await session.sendAction("deleteAccount", { accountId });
+        // The open detail view (if it was this account) no longer exists —
+        // return to the card grid.
+        setOpenAccountId((open) => (open === accountId ? null : open));
         refetchAccounts();
       } catch (err) {
         console.error("[trading-desk] deleteAccount failed", err);
@@ -272,6 +349,11 @@ export function PortfolioPane({
   }
 
   const totalUplFmt = formatSignedMoney(totalUpl, "USD");
+  const totalUplPctFmt = formatSignedPercent(totalUplPct);
+  const openAccount =
+    openAccountId === null
+      ? undefined
+      : accounts.find((a) => a.accountId === openAccountId);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -387,6 +469,13 @@ export function PortfolioPane({
               }}
             >
               {totalUplFmt.text}
+              {totalUplPctFmt === DASH ? "" : ` (${totalUplPctFmt})`}
+            </span>
+          </span>
+          <span>
+            total dividends{" "}
+            <span className="text-[color:var(--c-fg)]">
+              {formatMoney(totalDividends, "USD")}
             </span>
           </span>
         </div>
@@ -401,47 +490,68 @@ export function PortfolioPane({
         Money figures are display approximations, not precise accounting.
       </div>
 
-      {/* Account sections */}
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+      {/* Accounts: a clickable summary-card grid, or one opened account's
+          detail view (Holdings / Transactions / Income tabs). `@container` so
+          the card-grid column count tracks the pane's width, not the viewport
+          (the HoldingsTable precedent). */}
+      <div className="@container flex-1 space-y-4 overflow-y-auto p-4">
         {accounts.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
             <p className="text-sm text-[color:var(--c-fg)]">No accounts yet</p>
             <p className="max-w-md text-xs text-[color:var(--c-fg-muted)]">
-              Add an account, then import a brokerage CSV. The same ticker in two
-              accounts is tracked as two distinct holdings.
+              Add an account, then import a brokerage CSV or transaction file.
+              The same ticker in two accounts is tracked as two distinct
+              holdings.
             </p>
           </div>
+        ) : openAccount !== undefined ? (
+          <AccountDetail
+            account={openAccount}
+            holdings={holdingsByAccount.get(openAccount.accountId) ?? []}
+            ledgerEvents={ledgerEvents}
+            income={income}
+            prices={priceMap}
+            dividends={dividendsByAccount.get(openAccount.accountId) ?? new Map()}
+            lots={lotsByAccount.get(openAccount.accountId) ?? new Map()}
+            accountValue={rollups.get(openAccount.accountId)?.value ?? null}
+            accountUpl={rollups.get(openAccount.accountId)?.upl ?? null}
+            accountUplPct={rollups.get(openAccount.accountId)?.uplPct ?? null}
+            accountDividends={dividendTotals.get(openAccount.accountId) ?? null}
+            onBack={() => setOpenAccountId(null)}
+            onDeleteHolding={(ticker) =>
+              void handleDeleteHolding(openAccount.accountId, ticker)
+            }
+            onDeleteAccount={() => void handleDeleteAccount(openAccount.accountId)}
+          />
         ) : (
-          accounts.map((account) => {
-            const rollup = rollups.get(account.accountId) ?? {
-              value: null,
-              upl: null,
-            };
-            return (
-              <AccountSection
-                key={account.accountId}
-                account={account}
-                holdings={holdingsByAccount.get(account.accountId) ?? []}
-                prices={priceMap}
-                accountValue={rollup.value}
-                accountUpl={rollup.upl}
-                onDeleteHolding={(ticker) =>
-                  void handleDeleteHolding(account.accountId, ticker)
-                }
-                onDeleteAccount={() => void handleDeleteAccount(account.accountId)}
-              />
-            );
-          })
+          <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-2 @6xl:grid-cols-3">
+            {accounts.map((account) => {
+              const rollup = rollups.get(account.accountId) ?? {
+                value: null,
+                upl: null,
+                uplPct: null,
+              };
+              return (
+                <AccountCard
+                  key={account.accountId}
+                  account={account}
+                  holdingsCount={
+                    (holdingsByAccount.get(account.accountId) ?? []).length
+                  }
+                  accountValue={rollup.value}
+                  accountUpl={rollup.upl}
+                  accountUplPct={rollup.uplPct}
+                  accountDividends={dividendTotals.get(account.accountId) ?? null}
+                  onOpen={() => {
+                    setOpenAccountId(account.accountId);
+                    // The import/add dialogs default to the account in focus.
+                    setSelectedAccountId(account.accountId);
+                  }}
+                />
+              );
+            })}
+          </div>
         )}
-
-        {/* Transactions ledger (FIX-774): the durable cash/share-movement
-            record below the account sections. */}
-        <section className="space-y-2">
-          <h2 className="font-mono text-[10px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-            Transactions
-          </h2>
-          <LedgerTable events={ledgerEvents} />
-        </section>
       </div>
 
       <AddAccountDialog

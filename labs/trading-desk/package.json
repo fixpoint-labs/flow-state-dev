@@ -12,6 +12,7 @@
     "test": "vitest run --root . --passWithNoTests",
     "test:watch": "vitest --root . --passWithNoTests",
     "db:generate": "drizzle-kit generate",
+    "db:clean": "tsx scripts/db-clean.ts",
     "migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {

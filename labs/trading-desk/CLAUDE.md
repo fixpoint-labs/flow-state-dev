@@ -378,19 +378,49 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   is a data migration, so it is fixed now); the per-feed normalizers that map
   Plaid/OFX representations onto it land with FIX-775/FIX-853.
 
-- **Basis is derived, not declared (`lots.ts`).** `deriveLots` is a PURE FIFO
-  reduction over the non-voided events: share-adding events (driven by the SIGN of
-  `quantity`, not the type label, so a buy, a reinvested dividend, and a
+- **Positions are derived, not declared (`lots.ts`).** `deriveLots` is a PURE
+  FIFO reduction over the non-voided events: share-adding events (driven by the
+  SIGN of `quantity`, not the type label, so a buy, a reinvested dividend, and a
   transfer-in are uniform) push lots; sells/transfers-out consume them
-  oldest-first. `recomputeHoldingsBasis` runs inside the ingest/void transaction
-  and writes each derived position's weighted average cost → `holdings.costBasis`
-  and earliest open-lot date → `holdings.acquiredDate`, but ONLY for existing
-  holdings whose ticker the ledger derives a position for — quantity stays with
-  the holdings table (a quantity mismatch is FIX-853's reconciliation, not an
-  overwrite). A transfer-in with no acquisition record is a **basis-unknown** lot:
+  oldest-first. `materializePositions` runs inside the ingest/void transaction
+  and MATERIALIZES the derived positions into the holdings table — **the ledger
+  is the authority wherever it has share history**: a derived open position is
+  UPSERTED (quantity, weighted average cost → `holdings.costBasis`, earliest
+  open-lot date → `holdings.acquiredDate` — a snapshot row disagreeing with real
+  trade history is overwritten), a fully-closed position's row is DELETED (the
+  Portfolio view shows active holdings only; history and income stay in the
+  ledger), a ticker whose share history is entirely voided keeps its row with
+  basis cleared (a correction returns it to snapshot authority), and a
+  CSV/PDF-snapshot-only ticker (no ledger share history) is untouched. So a
+  transaction-file import alone produces a visible portfolio — no snapshot
+  needed. A transfer-in with no acquisition record is a **basis-unknown** lot:
   it writes `null` cost, never zero (zero-fill would massively overstate gains).
   FIFO is the IRS default; specific-lot sales, wash sales, and corporate-action
   basis allocation are deferred.
+
+- **Income is aggregated from the ledger at read time (`getIncomeSummary`).**
+  Dividends + interest per `(account, ticker)`, summing non-voided events —
+  deliberately NOT a holdings column, because income survives a position closing
+  (the holdings row is deleted; the dividends were still earned). Ticker-less
+  rows are account-level income (interest, MMF sweeps). Read via
+  `GET /api/portfolio/income` (the `ledger` route precedent); the Portfolio UI
+  shows a Dividends column on active holdings ("—" when no history — never $0
+  asserted from ignorance) and a per-account Income tab that includes closed
+  positions (tagged `closed`). The Portfolio view itself is an account
+  summary-card grid (value, cash, uP/L as $ and %, position count); clicking a
+  card opens `AccountDetail` with Holdings / Transactions / Income tabs — there
+  is no flat all-accounts table layout anymore.
+
+- **Holding-period term is classified PER LOT
+  (`components/portfolio/holding-term.ts`).** The Holdings Term column reads
+  "Long", "Short · N mo to long", or an honest mixed "xL / yS · N mo" split — a
+  position bought across dates is never labeled by its earliest lot alone. The
+  long boundary is the IRS rule (held MORE than one year; the anniversary day
+  itself is still short), and the countdown is calendar months until the LAST
+  short lot turns long. Lots derive client-side from the already-fetched ledger
+  via `deriveLots` (a pure leaf — no extra route); a CSV-snapshot-only holding
+  falls back to its declared `acquiredDate` as one pseudo-lot, and undated
+  shares render "—" / "N undated" — never guessed into a term.
 
 - **Manual entry (`recordLedgerEvent`).** The user-driven writer. The action input
   omits `source`/`external_id`; the handler fixes `source: "manual"` (a manual row
@@ -461,7 +491,7 @@ kitchen-sink precedent (FIX-184): both shells render, CSS picks one — no
 - **Pane reflow rules:** `ThesesPane`'s 200px `MemoSidebar` is `hidden lg:block`
   inline and opens as a native `<dialog>` drawer below `lg` (the "Phases"
   button) — same imperative open/close idiom as the app's other dialogs, so
-  ESC/focus-trap/backdrop come from the browser. `HoldingsTable` renders the 8-column table only when its own
+  ESC/focus-trap/backdrop come from the browser. `HoldingsTable` renders the 10-column table only when its own
   container is ≥ `@3xl` (a CSS container query, not a viewport breakpoint) and
   stacks one card per holding below that — both layouts read the SAME
   `buildHoldingRowModel` view model (`test/holdings-row-model.spec.ts`), so the

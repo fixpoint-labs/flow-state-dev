@@ -311,6 +311,57 @@ your relational entities in your own tables. Migrations live in
 on the PGlite dev backing and via `scripts/migrate.ts` on deploy. It's a pattern
 for any multi-tier FSD app, not a desk-only hack.
 
+Three GET read routes expose the repository to the Portfolio UI (reads go
+through routes rather than actions because `sendAction` returns a request
+envelope, not handler output). All take a required `userId` query param and
+are dev-posture client-asserted — a real deployment must resolve the caller
+identity server-side:
+
+- [`/api/portfolio/accounts`](app/api/portfolio/accounts/route.ts) — accounts
+  with inline holdings (`{ accounts: AccountState[] }`).
+- [`/api/portfolio/ledger`](app/api/portfolio/ledger/route.ts) — transaction
+  ledger rows, newest first (`{ events: LedgerRow[] }`); optional `accountId`,
+  `ticker`, and `limit` params narrow the read.
+- [`/api/portfolio/income`](app/api/portfolio/income/route.ts) — ledger-derived
+  income per `(account, ticker)`: `{ income: { accountId, ticker, dividends,
+  interest, lastEventDate }[] }`, summing non-voided `dividend`/`interest`
+  events. `ticker: null` rows are account-level income; income earned on a
+  since-closed position still appears (the holdings row is gone, the dividends
+  were still earned). Optional `accountId` param filters to one account.
+
+## Portfolio view
+
+The Portfolio tab is the durable record of what you own. It opens on a grid of
+account summary cards — each shows the account's value, cash, unrealized P/L
+as a dollar figure and a percent of cost, total dividends earned, and position
+count. Click a card to open the account, which has three tabs:
+
+- **Holdings** — the account's active positions: quantity, average cost,
+  price, value, weight, unrealized P/L ($ and %), dividends earned, and a
+  **Term** column classifying the position's holding period per lot — `Long`,
+  `Short · 7 mo to long`, or an honest `60L / 40S · 7 mo` split when the
+  position was bought across dates. The long/short boundary follows the IRS
+  rule (long means held *more than* one year), and the countdown is calendar
+  months until the last short lot turns long.
+- **Transactions** — the account's ledger: every buy, sell, dividend,
+  interest, deposit, withdrawal, transfer, and fee, newest first. Voided
+  (corrected) rows stay visible but struck through.
+- **Income** — dividends and interest per ticker, including positions you've
+  since sold (tagged `closed`) and account-level cash income.
+
+Positions can come from two sources: a holdings snapshot (CSV or statement
+PDF), or a **transaction-history file** (OFX / QFX / QBO) — the latter alone
+is enough: importing your broker's transaction export reconstructs the
+positions, their cost basis (FIFO), acquisition dates, hold periods, and
+dividend history. Where a snapshot and the trade history disagree, the trade
+history wins. Re-importing a file is always safe — duplicate events are
+detected and dropped, never double-counted.
+
+The real-money display rules hold everywhere: a value that depends on a
+missing price or an unrecorded history renders `—`, never a fabricated number
+or an asserted `$0`; money figures are labeled display approximations, and
+average cost is informational, not tax basis.
+
 ## Custom instructions
 
 The status bar carries a gear icon that opens a settings dialog where you can
