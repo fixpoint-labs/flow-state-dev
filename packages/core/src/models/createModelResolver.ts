@@ -187,10 +187,13 @@ function importModule(packageName: string): Promise<Record<string, unknown>> {
  * `instanceof` to stay realm/module safe, matching the existing duck-typed
  * error checks in `isRetryableError`.
  */
-function providerLoadError(message: string, cause: unknown): Error {
-  const error = new Error(message, {
-    cause: cause instanceof Error ? cause : new Error(String(cause)),
-  });
+function providerLoadError(message: string, cause?: unknown): Error {
+  const error =
+    cause === undefined
+      ? new Error(message)
+      : new Error(message, {
+          cause: cause instanceof Error ? cause : new Error(String(cause)),
+        });
   error.name = "ProviderLoadError";
   return error;
 }
@@ -243,7 +246,10 @@ async function instantiateProvider(
 
   const factory = resolveFactoryExport(mod, info.factory);
   if (factory === undefined) {
-    throw new Error(
+    // Wrong-major installs (resolvable, importable, missing the expected
+    // factory) are load failures too — same marker so fallback loops skip
+    // the candidate instead of aborting streaming intents.
+    throw providerLoadError(
       `Provider package "${info.pkg}" does not export "${info.factory}". ` +
         `The installed version may be incompatible with this framework.`
     );
@@ -274,7 +280,7 @@ async function instantiateGateway(
 
   const factory = resolveFactoryExport(mod, info.factory);
   if (factory === undefined) {
-    throw new Error(
+    throw providerLoadError(
       `Gateway package "${info.pkg}" does not export "${info.factory}". ` +
         `The installed version may be incompatible with this framework.`
     );

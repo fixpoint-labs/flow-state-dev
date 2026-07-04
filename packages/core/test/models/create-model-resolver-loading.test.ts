@@ -191,7 +191,10 @@ describe("createModelResolver — provider package loading", () => {
    * mock provider.
    */
   async function withBrokenGoogleInstall(
-    fn: (resolver: ReturnType<typeof createModelResolver>) => Promise<void>
+    fn: (resolver: ReturnType<typeof createModelResolver>) => Promise<void>,
+    // Default body throws at import time; callers can substitute a module
+    // that loads fine but lacks the expected factory export (wrong major).
+    indexJsBody = `throw new Error("broken install: module evaluation failed");\n`
   ): Promise<void> {
     const appRoot = mkdtempSync(join(tmpdir(), "fsdev-broken-install-"));
     const pkgDir = join(appRoot, "node_modules", "@ai-sdk", "google");
@@ -206,10 +209,7 @@ describe("createModelResolver — provider package loading", () => {
         exports: { ".": "./index.js" },
       })
     );
-    writeFileSync(
-      join(pkgDir, "index.js"),
-      `throw new Error("broken install: module evaluation failed");\n`
-    );
+    writeFileSync(join(pkgDir, "index.js"), indexJsBody);
 
     const originalCwd = process.cwd();
     process.chdir(appRoot);
@@ -280,6 +280,28 @@ describe("createModelResolver — provider package loading", () => {
         .join("");
       expect(text).toBe("via-fallback:gpt-5.4-mini");
     });
+  });
+
+  it("stream on an intent falls through a wrong-major install (module loads, factory export missing)", async () => {
+    await withBrokenGoogleInstall(
+      async (resolver) => {
+        const model = resolver("intent/chat");
+        const chunks: Array<{ type: string; textDelta?: string }> = [];
+        for await (const chunk of model.stream!({
+          messages: [{ role: "user", content: "hi" }],
+        })) {
+          chunks.push(chunk as { type: string; textDelta?: string });
+        }
+        const text = chunks
+          .filter((c) => c.type === "text_delta")
+          .map((c) => c.textDelta)
+          .join("");
+        expect(text).toBe("via-fallback:gpt-5.4-mini");
+      },
+      // Module evaluates cleanly but exports the wrong surface — an old
+      // major without `createGoogle`. Must be skipped like an import failure.
+      `export const createGoogleGenerativeAI = () => () => ({});\n`
+    );
   });
 
   it("generate on an intent falls through the same broken install (mirror check)", async () => {
