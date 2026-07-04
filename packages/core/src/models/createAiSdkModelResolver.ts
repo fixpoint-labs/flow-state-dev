@@ -340,7 +340,13 @@ function buildAiSdkRequest(
   // alias the model previously saw matches the alias it sees now.
   const request: Record<string, unknown> = {
     model: languageModel,
-    messages: sanitizeToolNamesInMessages(options.messages)
+    messages: sanitizeToolNamesInMessages(options.messages),
+    // AI SDK 7 rejects system messages inside `messages` by default. The
+    // framework deliberately keeps the system prefix in `messages` (rather
+    // than migrating to the `instructions` option): `applyCaching` anchors
+    // Anthropic cache markers on the last `role: "system"` message, and the
+    // generator's prepareStep slices the system prefix out of `messages`.
+    allowSystemInMessages: true
   };
 
   // Compile block tools — include execute if provided (enables AI SDK auto-execution)
@@ -412,7 +418,7 @@ function buildAiSdkRequest(
   }
 
   // Multi-step: stopWhen controls when the AI SDK's loop terminates.
-  // Default is stepCountIs(1) in the SDK, so only override when > 1.
+  // Default is isStepCount(1) in the SDK, so only override when > 1.
   const maxSteps = options.maxSteps ?? 1;
   if (maxSteps > 1) {
     request.stopWhen = isStepCount(maxSteps);
@@ -568,14 +574,17 @@ function normalizeSteps(
  * Extract the provider-reported model id from an AI SDK result, when
  * present. Surfaces as the preferred `actual` for `ModelIdentity`. Returns
  * undefined when the provider didn't report a modelId.
+ *
+ * On AI SDK 7 the top-level `response` is deprecated (generate) or a
+ * PromiseLike (stream); the final step's `response` carries the id. Reads
+ * `finalStep.response` first and falls back to a plain `response` for
+ * callers that pass a step record or an error payload.
  */
 function extractProviderModelId(result: Record<string, unknown>): string | undefined {
-  const response = result.response;
-  if (response !== null && typeof response === "object") {
-    const id = (response as Record<string, unknown>).modelId;
-    if (typeof id === "string" && id.length > 0) return id;
-  }
-  return undefined;
+  const finalStep = asRecord(result.finalStep);
+  const response = asRecord(finalStep?.response) ?? asRecord(result.response);
+  const id = response?.modelId;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
 }
 
 function normalizeGenerateResult(
@@ -587,11 +596,22 @@ function normalizeGenerateResult(
     normalizeStructuredOutput(result) ??
     parseStructuredOutputFromText(text);
 
-  const rawProviderMeta = result.providerMetadata ?? result.experimental_providerMetadata;
+  // AI SDK 7: top-level `toolCalls` accumulates across steps and top-level
+  // `providerMetadata` is deprecated — final-step values live on `finalStep`.
+  // The framework result keeps v6 semantics (final step only) for both, so a
+  // multi-step run whose final step ends in text does not re-report earlier
+  // steps' tool calls. Top-level reads remain as fallback for hand-built
+  // records (BP-030). `usage` deliberately stays the top-level accumulated
+  // total: cost accounting wants the whole call, per-step usage is in `steps`.
+  const finalStep = asRecord(result.finalStep);
+  const rawProviderMeta =
+    finalStep?.providerMetadata ??
+    result.providerMetadata ??
+    result.experimental_providerMetadata;
   return {
     text,
     structuredOutput,
-    toolCalls: normalizeToolCalls(result.toolCalls, toolNameMap),
+    toolCalls: normalizeToolCalls(finalStep?.toolCalls ?? result.toolCalls, toolNameMap),
     finishReason: normalizeFinishReason(result.finishReason),
     usage: normalizeUsage(result.usage, rawProviderMeta),
     providerMetadata: asProviderMetadata(rawProviderMeta),
@@ -600,22 +620,44 @@ function normalizeGenerateResult(
   };
 }
 
+/**
+ * Settled finish metadata gathered from a v7 `StreamTextResult` once the
+ * stream has completed. Every field is awaited by the caller before it gets
+ * here — the v7 result exposes them as PromiseLike properties, and handing
+ * a raw promise to the normalizers would silently drop the metadata.
+ */
+interface SettledStreamFinish {
+  /** `await result.finalStep` — final-step-only values (text, toolCalls, providerMetadata, response). */
+  finalStep: Record<string, unknown> | undefined;
+  /** `await result.finishReason` — the last step's unified finish reason. */
+  finishReason: unknown;
+  /** `await result.usage` — accumulated total across all steps (cost accounting wants the whole call). */
+  usage: unknown;
+  /** `await result.sources` — sources collected across all steps. */
+  sources: unknown;
+}
+
 function normalizeFinishChunk(
-  result: Record<string, unknown>,
+  final: SettledStreamFinish,
   toolNameMap?: ToolNameMap
 ): Omit<GeneratorModelStreamChunk, "type"> {
-  const text = typeof result.text === "string" ? result.text : undefined;
-  const rawProviderMeta = result.providerMetadata ?? result.experimental_providerMetadata;
+  const step = final.finalStep ?? {};
+  const text = typeof step.text === "string" ? step.text : undefined;
+  const rawProviderMeta = step.providerMetadata;
+  const finishReason =
+    normalizeFinishReason(final.finishReason) ??
+    normalizeFinishReason(step.finishReason);
+  const usage = normalizeUsage(final.usage, rawProviderMeta);
   return {
-    finishReason: normalizeFinishReason(result.finishReason),
-    usage: normalizeUsage(result.usage, rawProviderMeta),
+    finishReason,
+    usage,
     fullResult: {
       text,
-      toolCalls: normalizeToolCalls(result.toolCalls, toolNameMap),
-      finishReason: normalizeFinishReason(result.finishReason),
-      usage: normalizeUsage(result.usage, rawProviderMeta),
+      toolCalls: normalizeToolCalls(step.toolCalls, toolNameMap),
+      finishReason,
+      usage,
       providerMetadata: asProviderMetadata(rawProviderMeta),
-      sources: normalizeSources(result.sources)
+      sources: normalizeSources(final.sources)
     }
   };
 }
@@ -869,7 +911,7 @@ function createGeneratorModelFromAiSdk(
       // provider id when present.
       let resolvedIdentity = buildResolvedIdentity(undefined, identityHints, modelId);
 
-      // onError: AI SDK v6 callback for streaming errors. Captures errors
+      // onError: AI SDK callback for streaming errors. Captures errors
       // inline rather than letting them surface as unhandled rejections.
       (request as Record<string, unknown>).onError = ({ error }: { error: unknown }) => {
         const rec = error as Record<string, unknown> | undefined;
@@ -885,15 +927,16 @@ function createGeneratorModelFromAiSdk(
 
       const result = streamText(request as any);
 
-      // Attach a no-op catch to suppress unhandled rejections from the
-      // streamText result promise. We handle errors explicitly below via
-      // try/catch on `await result`. Without this, AI SDK internal promises
-      // (e.g., AI_NoOutputGeneratedError) surface as uncaught rejections.
-      (result as any as Promise<unknown>).catch?.(() => {});
+      // Track tool names announced by `tool-input-start` so subsequent
+      // `tool-input-delta` parts (which carry only `id`/`delta` on the wire)
+      // can report the tool they belong to.
+      const toolNamesByCallId = new Map<string, string>();
 
-      // Iterate fullStream to capture tool-call events during multi-step loops,
-      // not just text deltas. AI SDK v6 fullStream part types use hyphenated
-      // names: "text-delta", "reasoning-delta", "tool-call", "source", etc.
+      // Iterate `result.stream` to capture tool-call events during
+      // multi-step loops, not just text deltas. AI SDK 7 `TextStreamPart`
+      // types use hyphenated names: "text-delta", "reasoning-delta",
+      // "tool-input-delta", "tool-call", "source", "finish", etc.; text and
+      // reasoning deltas carry their payload in `text`.
       for await (const part of (result as any).stream) {
         const partRecord = part as Record<string, unknown>;
         let chunk: GeneratorModelStreamChunk | undefined;
@@ -901,14 +944,15 @@ function createGeneratorModelFromAiSdk(
         if (partRecord.type === "text-delta") {
           chunk = {
             type: "text_delta",
-            textDelta: (partRecord.textDelta ?? partRecord.text) as string
+            textDelta: partRecord.text as string
           };
-        } else if (partRecord.type === "reasoning" || partRecord.type === "reasoning-delta") {
+        } else if (partRecord.type === "reasoning-delta") {
           chunk = {
             type: "reasoning_delta",
-            reasoningDelta: (partRecord.textDelta ?? partRecord.delta ?? partRecord.text) as string
+            reasoningDelta: partRecord.text as string
           };
         } else if (partRecord.type === "tool-input-start") {
+          toolNamesByCallId.set(partRecord.id as string, partRecord.toolName as string);
           chunk = {
             type: "tool_input_start",
             toolInput: {
@@ -917,9 +961,10 @@ function createGeneratorModelFromAiSdk(
             }
           };
         } else if (partRecord.type === "tool-input-delta") {
-          // AI SDK v6 fullStream emits tool-input-delta with incremental args.
+          // Incremental tool arguments. The part carries only `id`/`delta`;
+          // the tool name is inherited from the matching `tool-input-start`.
           // Map to framework tool_call_delta so clients can show progress.
-          const rawToolName = (partRecord.toolName as string | undefined) ?? "";
+          const rawToolName = toolNamesByCallId.get(partRecord.id as string) ?? "";
           chunk = {
             type: "tool_call_delta",
             toolCallDelta: {
@@ -934,7 +979,7 @@ function createGeneratorModelFromAiSdk(
             toolCallDelta: {
               toolCallId: partRecord.toolCallId as string,
               toolName: resolveOriginalToolName(partRecord.toolName as string, toolNameMap),
-              argsDelta: JSON.stringify(partRecord.args)
+              argsDelta: JSON.stringify(partRecord.input)
             }
           };
         } else if (partRecord.type === "tool-result") {
@@ -943,11 +988,13 @@ function createGeneratorModelFromAiSdk(
             toolResult: {
               toolCallId: partRecord.toolCallId as string,
               toolName: resolveOriginalToolName(partRecord.toolName as string, toolNameMap),
-              result: partRecord.output ?? partRecord.result
+              result: partRecord.output
             }
           };
-        } else if (partRecord.type === "source" || partRecord.type === "source-url") {
+        } else if (partRecord.type === "source") {
           // Source references from provider-native tools (e.g., web search).
+          // v7 source parts are flat; only the `sourceType: "url"` variant
+          // carries a `url` (the `document` variant is filtered out here).
           const url = partRecord.url as string | undefined;
           if (typeof url === "string") {
             chunk = {
@@ -979,14 +1026,34 @@ function createGeneratorModelFromAiSdk(
         }
       }
 
-      // Resolve the streamText result promise to get usage/finish metadata.
-      // AI SDK may throw AI_NoOutputGeneratedError here when the model
-      // produces no output (e.g., due to malformed history messages).
-      // Catch and re-throw as a clear error rather than leaking as an
-      // unhandled rejection from detached internal promises.
-      let finalResult: Record<string, unknown> | undefined;
+      // Gather finish metadata from the settled result. AI SDK 7's
+      // StreamTextResult is not awaitable: finish values live on PromiseLike
+      // properties that settle once the stream completes, and any property
+      // the finish path consumes MUST be awaited here — a raw promise handed
+      // to the normalizers would silently drop the metadata. The awaits may
+      // reject (e.g. AI_NoOutputGeneratedError when the model produces no
+      // output, abort errors on cancellation); catch and re-throw as a clear
+      // error rather than leaking an unhandled rejection.
+      let settledFinish: SettledStreamFinish;
       try {
-        finalResult = (await result) as unknown as Record<string, unknown>;
+        const resultPromises = result as unknown as {
+          finalStep: PromiseLike<unknown>;
+          finishReason: PromiseLike<unknown>;
+          usage: PromiseLike<unknown>;
+          sources: PromiseLike<unknown>;
+        };
+        const [finalStep, finishReason, usage, sources] = await Promise.all([
+          resultPromises.finalStep,
+          resultPromises.finishReason,
+          resultPromises.usage,
+          resultPromises.sources
+        ]);
+        settledFinish = {
+          finalStep: asRecord(finalStep),
+          finishReason,
+          usage,
+          sources
+        };
       } catch (err: unknown) {
         // FIX-663: preserve the original error as `cause` so the wrap chain
         // is walkable (via `rootCause`/`isAbortLike`). Previously this threw
@@ -1002,11 +1069,11 @@ function createGeneratorModelFromAiSdk(
       }
       // Refine identity with the provider-reported model id, when present.
       resolvedIdentity = buildResolvedIdentity(
-        extractProviderModelId(finalResult ?? {}),
+        extractProviderModelId(settledFinish.finalStep ?? {}),
         identityHints,
         modelId
       );
-      const finishChunk = normalizeFinishChunk(finalResult, toolNameMap);
+      const finishChunk = normalizeFinishChunk(settledFinish, toolNameMap);
       if (finishChunk.fullResult !== undefined) {
         finishChunk.fullResult.resolvedIdentity = resolvedIdentity;
       }

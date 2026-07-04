@@ -111,10 +111,14 @@ describe("ModelIdentity — wrapAiSdkModel (streaming)", () => {
     expect(textChunk.resolvedIdentity).toBeDefined();
     expect(textChunk.resolvedIdentity.actual).toBe("openai/gpt-5.5");
 
+    // AI SDK 7 surfaces the provider-reported id on the final step's
+    // response metadata, so the finish chunk refines `actual` to it (and
+    // keeps the framework string as `requested`).
     const finishChunk = chunks[chunks.length - 1];
     expect(finishChunk.type).toBe("finish");
     expect(finishChunk.resolvedIdentity).toBeDefined();
-    expect(finishChunk.resolvedIdentity.actual).toBe("openai/gpt-5.5");
+    expect(finishChunk.resolvedIdentity.actual).toBe("gpt-5.5-2025-04-12");
+    expect(finishChunk.resolvedIdentity.requested).toBe("openai/gpt-5.5");
   });
 });
 
