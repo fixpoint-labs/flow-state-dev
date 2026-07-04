@@ -11,6 +11,7 @@
     "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
     "test": "vitest run --root .",
     "test:watch": "vitest --root .",
+    "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui"
