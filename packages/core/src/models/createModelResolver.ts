@@ -178,6 +178,23 @@ function importModule(packageName: string): Promise<Record<string, unknown>> {
   return pending;
 }
 
+/**
+ * Wrap a provider/gateway package load failure with a stable marker
+ * (`name: "ProviderLoadError"`). The lazy `GeneratorModel` split means a
+ * resolvable-but-broken install surfaces at first generate/stream instead of
+ * at resolve time (where v6 filtered it), so `fallbackModel`'s loops
+ * recognize this name and skip to the next candidate. Name-based rather than
+ * `instanceof` to stay realm/module safe, matching the existing duck-typed
+ * error checks in `isRetryableError`.
+ */
+function providerLoadError(message: string, cause: unknown): Error {
+  const error = new Error(message, {
+    cause: cause instanceof Error ? cause : new Error(String(cause)),
+  });
+  error.name = "ProviderLoadError";
+  return error;
+}
+
 /** Look up a named factory export, tolerating CJS default-namespace interop. */
 function resolveFactoryExport(
   mod: Record<string, unknown>,
@@ -217,10 +234,10 @@ async function instantiateProvider(
   try {
     mod = await importModule(info.pkg);
   } catch (err) {
-    throw new Error(
+    throw providerLoadError(
       `Provider package "${info.pkg}" failed to load. ` +
         `Install it to use ${providerName} models directly.`,
-      { cause: err instanceof Error ? err : new Error(String(err)) }
+      err
     );
   }
 
@@ -248,10 +265,10 @@ async function instantiateGateway(
   try {
     mod = await importModule(info.pkg);
   } catch (err) {
-    throw new Error(
+    throw providerLoadError(
       `Gateway package "${info.pkg}" failed to load. ` +
         `Install it to use the ${gatewayType} gateway.`,
-      { cause: err instanceof Error ? err : new Error(String(err)) }
+      err
     );
   }
 
@@ -783,6 +800,45 @@ export function createModelResolver(
   }
 
   /**
+   * Resolve a gateway-served model: eager wrap when the gateway instance is
+   * already cached (explicit instance or previously loaded package),
+   * otherwise a lazily loaded package-backed model. `missingKeyMessage`
+   * keeps each call site's distinct missing-API-key error.
+   */
+  function resolveGatewayModel(
+    gwType: string,
+    apiKey: string | undefined,
+    providerName: string,
+    modelId: string,
+    modelString: string,
+    identity: { requested: string; gateway: string },
+    missingKeyMessage: string
+  ): GeneratorModel {
+    const cachedGateway = gatewayCache.get(gwType);
+    if (cachedGateway !== undefined) {
+      return wrapAiSdkModel(
+        gatewayLanguageModel(cachedGateway, providerName, modelId),
+        modelString,
+        identity
+      );
+    }
+
+    if (!apiKey) {
+      throw new Error(missingKeyMessage);
+    }
+
+    ensureGatewayPackageAvailable(gwType);
+    return createLazyGeneratorModel(modelString, async () => {
+      const entry = await loadGateway(gwType, apiKey);
+      return wrapAiSdkModel(
+        gatewayLanguageModel(entry, providerName, modelId),
+        modelString,
+        identity
+      );
+    });
+  }
+
+  /**
    * Resolve a single direct or gateway model string (no intents). Throws on
    * unavailable providers / missing packages. Used by both top-level
    * resolution and intent candidate resolution.
@@ -826,38 +882,22 @@ export function createModelResolver(
         requested: identityOverrides?.requested ?? modelString,
         gateway: gwType,
       };
-      const cachedGateway = gatewayCache.get(gwType);
+      const gwEntry = options?.gateways?.[gwType];
+      const apiKey =
+        (isGatewayConfig(gwEntry) ? gwEntry.apiKey : undefined) ??
+        process.env[GATEWAY_ENV_VARS[gwType] ?? ""] ??
+        undefined;
 
-      if (cachedGateway !== undefined) {
-        model = wrapAiSdkModel(
-          gatewayLanguageModel(cachedGateway, providerName, modelId),
-          modelString,
-          identity
-        );
-      } else {
-        const gwEntry = options?.gateways?.[gwType];
-        const apiKey =
-          (isGatewayConfig(gwEntry) ? gwEntry.apiKey : undefined) ??
-          process.env[GATEWAY_ENV_VARS[gwType] ?? ""] ??
-          undefined;
-
-        if (!apiKey) {
-          throw new Error(
-            `No API key found for gateway "${gwType}". ` +
-              `Set ${GATEWAY_ENV_VARS[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
-          );
-        }
-
-        ensureGatewayPackageAvailable(gwType);
-        model = createLazyGeneratorModel(modelString, async () => {
-          const entry = await loadGateway(gwType, apiKey);
-          return wrapAiSdkModel(
-            gatewayLanguageModel(entry, providerName, modelId),
-            modelString,
-            identity
-          );
-        });
-      }
+      model = resolveGatewayModel(
+        gwType,
+        apiKey,
+        providerName,
+        modelId,
+        modelString,
+        identity,
+        `No API key found for gateway "${gwType}". ` +
+          `Set ${GATEWAY_ENV_VARS[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
+      );
     } else {
       // Direct: provider/model
       const providerName = parsed.provider!;
@@ -896,33 +936,16 @@ export function createModelResolver(
         // resolves "however it can".
         const gw = findGatewayForProvider(providerName);
         if (gw) {
-          const gatewayIdentity = { ...identity, gateway: gw.gatewayType };
-          const cachedGateway = gatewayCache.get(gw.gatewayType);
-          if (cachedGateway !== undefined) {
-            model = wrapAiSdkModel(
-              gatewayLanguageModel(cachedGateway, providerName, modelId),
-              modelString,
-              gatewayIdentity
-            );
-          } else {
-            if (!gw.apiKey) {
-              throw new Error(
-                `No API key found for gateway "${gw.gatewayType}" while ` +
-                  `falling back from direct "${providerName}".`
-              );
-            }
-            const gwType = gw.gatewayType;
-            const gwApiKey = gw.apiKey;
-            ensureGatewayPackageAvailable(gwType);
-            model = createLazyGeneratorModel(modelString, async () => {
-              const entry = await loadGateway(gwType, gwApiKey);
-              return wrapAiSdkModel(
-                gatewayLanguageModel(entry, providerName, modelId),
-                modelString,
-                gatewayIdentity
-              );
-            });
-          }
+          model = resolveGatewayModel(
+            gw.gatewayType,
+            gw.apiKey,
+            providerName,
+            modelId,
+            modelString,
+            { ...identity, gateway: gw.gatewayType },
+            `No API key found for gateway "${gw.gatewayType}" while ` +
+              `falling back from direct "${providerName}".`
+          );
         } else {
           const directFailed = directLoadFailed.has(providerName);
           if (directError && !directFailed) {

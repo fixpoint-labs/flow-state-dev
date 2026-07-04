@@ -171,4 +171,124 @@ describe("createModelResolver — provider package loading", () => {
       rmSync(appRoot, { recursive: true, force: true });
     }
   });
+
+  // -------------------------------------------------------------------------
+  // Broken-install intent fallback (AI SDK 7 migration regression)
+  //
+  // v6 executed provider packages at resolve time, so a candidate whose
+  // package resolved on disk but failed to execute was filtered before the
+  // fallback model was built. The lazy loader defers execution to the first
+  // generate/stream call, so the same broken install now surfaces there as a
+  // ProviderLoadError — and the intent fallback loops must skip the candidate.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build a fake app root whose node_modules contains a BROKEN
+   * `@ai-sdk/google`: the package resolves on disk (passing the sync
+   * availability filter) but its module body throws at import time. Runs
+   * `fn` with a resolver created from a fresh module instance anchored to
+   * that app root; the intent's second candidate is served by an explicit
+   * mock provider.
+   */
+  async function withBrokenGoogleInstall(
+    fn: (resolver: ReturnType<typeof createModelResolver>) => Promise<void>
+  ): Promise<void> {
+    const appRoot = mkdtempSync(join(tmpdir(), "fsdev-broken-install-"));
+    const pkgDir = join(appRoot, "node_modules", "@ai-sdk", "google");
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(
+      join(pkgDir, "package.json"),
+      JSON.stringify({
+        name: "@ai-sdk/google",
+        version: "0.0.0-test",
+        type: "module",
+        main: "./index.js",
+        exports: { ".": "./index.js" },
+      })
+    );
+    writeFileSync(
+      join(pkgDir, "index.js"),
+      `throw new Error("broken install: module evaluation failed");\n`
+    );
+
+    const originalCwd = process.cwd();
+    process.chdir(appRoot);
+    try {
+      vi.resetModules();
+      const { createModelResolver: createFromAppRoot } = await import(
+        "../../src/models/createModelResolver"
+      );
+      const resolver = createFromAppRoot({
+        keys: { google: "test-key" },
+        intents: { chat: ["google/gemini-3", "openai/gpt-5.4-mini"] },
+        defaultModel: "openai/gpt-5.4-mini",
+        providers: {
+          openai: (modelId: string) =>
+            new MockLanguageModelV3({
+              doGenerate: async () => ({
+                content: [{ type: "text", text: `via-fallback:${modelId}` }],
+                finishReason: { unified: "stop", raw: undefined },
+                usage: {
+                  inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+                  outputTokens: { total: 1, text: 1, reasoning: undefined },
+                },
+                warnings: [],
+              }),
+              doStream: {
+                stream: new ReadableStream({
+                  start(controller) {
+                    controller.enqueue({
+                      type: "text-delta",
+                      id: "t1",
+                      delta: `via-fallback:${modelId}`,
+                    } as any);
+                    controller.enqueue({
+                      type: "finish",
+                      finishReason: { unified: "stop", raw: undefined },
+                      usage: {
+                        inputTokens: { total: 1, noCache: 1 },
+                        outputTokens: { total: 1, text: 1 },
+                      },
+                    } as any);
+                    controller.close();
+                  },
+                }),
+              },
+            }),
+        },
+      });
+      await fn(resolver);
+    } finally {
+      process.chdir(originalCwd);
+      vi.resetModules();
+      rmSync(appRoot, { recursive: true, force: true });
+    }
+  }
+
+  it("stream on an intent falls through a resolvable-but-broken provider install to the next candidate", async () => {
+    await withBrokenGoogleInstall(async (resolver) => {
+      const model = resolver("intent/chat");
+      const chunks: Array<{ type: string; textDelta?: string }> = [];
+      for await (const chunk of model.stream!({
+        messages: [{ role: "user", content: "hi" }],
+      })) {
+        chunks.push(chunk as { type: string; textDelta?: string });
+      }
+      const text = chunks
+        .filter((c) => c.type === "text_delta")
+        .map((c) => c.textDelta)
+        .join("");
+      expect(text).toBe("via-fallback:gpt-5.4-mini");
+    });
+  });
+
+  it("generate on an intent falls through the same broken install (mirror check)", async () => {
+    await withBrokenGoogleInstall(async (resolver) => {
+      const model = resolver("intent/chat");
+      const result = await model.generate({
+        messages: [{ role: "user", content: "hi" }],
+      });
+      expect(result.text).toBe("via-fallback:gpt-5.4-mini");
+    });
+  });
 });

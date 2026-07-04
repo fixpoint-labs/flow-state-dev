@@ -1016,7 +1016,7 @@ describe("createAiSdkModelResolver — toModelOutput bridge (AI SDK 7 tool-resul
     });
 
     const resolver = createAiSdkModelResolver(() => model);
-    const result = await resolver("openai/gpt-4o-mini", "gen").generate({
+    const result = await resolver("openai/gpt-5.4-mini", "gen").generate({
       messages: [{ role: "user", content: "go" }],
       tools: [
         {

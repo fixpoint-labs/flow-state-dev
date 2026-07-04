@@ -602,18 +602,18 @@ function normalizeGenerateResult(
   // `providerMetadata` is deprecated — final-step values live on `finalStep`.
   // The framework result keeps v6 semantics (final step only) for both, so a
   // multi-step run whose final step ends in text does not re-report earlier
-  // steps' tool calls. Top-level reads remain as fallback for hand-built
-  // records (BP-030). `usage` deliberately stays the top-level accumulated
-  // total: cost accounting wants the whole call, per-step usage is in `steps`.
+  // steps' tool calls. The only caller passes a real `generateText` result,
+  // where `finalStep` is non-optional — no top-level fallbacks (falling back
+  // to accumulated `result.toolCalls` would silently reintroduce
+  // across-steps semantics). `usage` deliberately stays the top-level
+  // accumulated total: cost accounting wants the whole call, per-step usage
+  // is in `steps`.
   const finalStep = asRecord(result.finalStep);
-  const rawProviderMeta =
-    finalStep?.providerMetadata ??
-    result.providerMetadata ??
-    result.experimental_providerMetadata;
+  const rawProviderMeta = finalStep?.providerMetadata;
   return {
     text,
     structuredOutput,
-    toolCalls: normalizeToolCalls(finalStep?.toolCalls ?? result.toolCalls, toolNameMap),
+    toolCalls: normalizeToolCalls(finalStep?.toolCalls, toolNameMap),
     finishReason: normalizeFinishReason(result.finishReason),
     usage: normalizeUsage(result.usage, rawProviderMeta),
     providerMetadata: asProviderMetadata(rawProviderMeta),
@@ -703,6 +703,20 @@ function detectProviderName(languageModel: unknown): string | undefined {
  * provider doesn't support search tools.
  *
  * Unsupported config fields for a given provider are silently ignored.
+ *
+ * CONSTRAINT: the factory names below are string-indexed off the provider's
+ * `.tools` namespace — a provider-package rename silently disables
+ * `search: true` (this function just returns undefined) while the mocked
+ * suite stays green. Inventory re-verified against the v7-paired provider
+ * packages (2026-07-04):
+ * - `@ai-sdk/anthropic@4.0.8` exports `anthropic.tools.webSearch_20250305`
+ *   (a newer `webSearch_20260209` also exists — not adopted, parity).
+ * - `@ai-sdk/openai@4.0.7` (installed core devDependency):
+ *   `createOpenAI(...).tools.webSearch` — pinned by the real-factory smoke
+ *   in `test/models/provider-search-tools.test.ts`.
+ * - `@ai-sdk/google@4.0.8` exports `google.tools.googleSearch`.
+ * Anthropic/Google are not installed in this workspace, so their names are
+ * covered by this inventory rather than a smoke test.
  */
 function mapToProviderSearchTool(
   providerName: string,
