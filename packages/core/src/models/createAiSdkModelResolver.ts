@@ -1,4 +1,4 @@
-import { generateText, streamText, Output, stepCountIs } from "ai";
+import { generateText, streamText, Output, isStepCount } from "ai";
 import type {
   CachingConfig,
   GeneratorModel,
@@ -415,7 +415,7 @@ function buildAiSdkRequest(
   // Default is stepCountIs(1) in the SDK, so only override when > 1.
   const maxSteps = options.maxSteps ?? 1;
   if (maxSteps > 1) {
-    request.stopWhen = stepCountIs(maxSteps);
+    request.stopWhen = isStepCount(maxSteps);
   }
 
   // prepareStep: called by the AI SDK before each step in the multi-step
@@ -894,7 +894,7 @@ function createGeneratorModelFromAiSdk(
       // Iterate fullStream to capture tool-call events during multi-step loops,
       // not just text deltas. AI SDK v6 fullStream part types use hyphenated
       // names: "text-delta", "reasoning-delta", "tool-call", "source", etc.
-      for await (const part of (result as any).fullStream) {
+      for await (const part of (result as any).stream) {
         const partRecord = part as Record<string, unknown>;
         let chunk: GeneratorModelStreamChunk | undefined;
 
