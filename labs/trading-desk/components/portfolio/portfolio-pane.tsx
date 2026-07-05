@@ -247,8 +247,12 @@ export function PortfolioPane({
     void fetchPrices();
     // fetchPrices is intentionally omitted: it closes over `holdings` which
     // changes identity every render; the ticker signature is the real trigger.
+    // `hasSession` IS a trigger: when accounts load before the auto-created
+    // session is ready, `fetchPrices` early-returns; re-run once the session
+    // arrives so imported/existing holdings get live prices without a manual
+    // refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tickerSignature]);
+  }, [tickerSignature, hasSession]);
 
   // Every mutation is an awaited REST call that returns its real result, then an
   // explicit refetch of the affected reads — no flow round-trip, no request

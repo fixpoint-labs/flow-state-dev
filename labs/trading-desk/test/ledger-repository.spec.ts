@@ -340,6 +340,24 @@ describe("ingestLedgerEvents — position materialization (ledger wins)", () => 
     // The history is still in the ledger, not erased with the position.
     expect(await repo.getLedger("devuser", { ticker: "AAPL" })).toHaveLength(2);
   });
+
+  it("keeps a snapshot holding (basis cleared) when a partial import has only a disposal", async () => {
+    // A CSV snapshot declared 100 AAPL. The user imports an OFX range containing
+    // only a SELL (the acquisition predates the range), so `deriveLots` clamps the
+    // oversell to no open lot. This is an INCOMPLETE import, not a close — the
+    // still-held position must NOT be deleted, or it vanishes until full history
+    // is imported.
+    await repo.upsertHoldings("acc-1", "devuser", [holding("AAPL", 100, 50)], "upsert");
+    await repo.ingestLedgerEvents(
+      [ev({ type: "sell", tradeDate: "2026-04-10", quantity: -10, unitPrice: 150, amount: 1500 })],
+      "devuser",
+    );
+    const { holdings } = await repo.getPortfolio("devuser");
+    const aapl = holdings.find((h) => h.ticker === "AAPL");
+    expect(aapl).toBeDefined(); // snapshot position preserved, not deleted
+    expect(aapl?.quantity).toBe(100); // snapshot quantity untouched (ledger can't derive it)
+    expect(aapl?.costBasis).toBeNull(); // derived basis cleared (acquisition not in range)
+  });
 });
 
 describe("getIncomeSummary", () => {

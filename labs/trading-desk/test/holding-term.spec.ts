@@ -33,6 +33,15 @@ describe("computeHoldingTerm", () => {
     expect(dayPast.longQty).toBe(10);
     expect(dayPast.shortQty).toBe(0);
     expect(dayPast.monthsToAllLong).toBeNull();
+
+    // The UI passes `new Date()` — a mid-day instant on the anniversary must NOT
+    // read as long (compare by calendar date, not time-of-day).
+    const middayAnniversary = computeHoldingTerm(
+      [lot(10, "2025-07-04")],
+      new Date(Date.UTC(2026, 6, 4, 19, 47, 0)),
+    );
+    expect(middayAnniversary.shortQty).toBe(10);
+    expect(middayAnniversary.longQty).toBe(0);
   });
 
   it("splits mixed lots per lot and counts months until the LAST short lot turns long", () => {

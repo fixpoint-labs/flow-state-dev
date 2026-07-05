@@ -266,10 +266,16 @@ function computeFingerprint(e: LedgerEventInput): string {
  * - A ticker with a derived OPEN position gets its holdings row UPSERTED —
  *   quantity, weighted-average cost, and earliest open-lot acquisition date all
  *   come from the derivation (unknown-basis lots write `null` cost, never zero).
- * - A ticker with non-voided share history but NO open position (fully sold /
- *   netted flat) has its holdings row DELETED — the position is closed, and the
- *   Portfolio view shows active holdings only. Its history (and income) stays
- *   in the ledger.
+ * - A ticker with non-voided share history that INCLUDES an acquisition but nets
+ *   to NO open position (fully sold / netted flat) has its holdings row DELETED —
+ *   the position is genuinely closed, and the Portfolio view shows active
+ *   holdings only. Its history (and income) stays in the ledger.
+ * - A ticker whose in-range share history is only DISPOSALS (a partial import —
+ *   e.g. a date range with just a sell / transfer-out — so `deriveLots` clamps
+ *   the oversell to no open lot) is NOT a close: the acquisition simply isn't in
+ *   the file yet. Its existing (snapshot) row is KEPT with `cost_basis` /
+ *   `acquired_date` CLEARED, never deleted — deleting would hide a still-held
+ *   position until the full history is imported.
  * - A ticker whose share history is ENTIRELY voided keeps its existing row but
  *   has `cost_basis` / `acquired_date` CLEARED — a correction must not leave
  *   stale basis behind, but voiding bad rows shouldn't nuke a snapshot-declared
@@ -300,16 +306,36 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
       .map((r) => r.ticker as string),
   );
   if (activeTickers.size === 0 && voidedOnlyTickers.size === 0) return; // no share history
+  // Tickers with a live ACQUISITION (share-adding) event. A ticker that derives
+  // to no open position is only a genuine CLOSE if it had an acquisition that was
+  // consumed; a ticker with only disposals in range (oversell clamped away) is an
+  // INCOMPLETE import, not a close — so we must not delete its snapshot row.
+  const acquiredTickers = new Set(
+    rows
+      .filter((r) => r.voidedAt === null && isShareMove(r) && (r.quantity as number) > 0)
+      .map((r) => r.ticker as string),
+  );
   const { positions } = deriveLots(rows);
   const posByTicker = new Map(positions.map((p) => [p.ticker, p]));
 
   for (const ticker of activeTickers) {
     const p = posByTicker.get(ticker);
     if (p === undefined) {
-      // Fully closed — the active-holdings view drops it; history stays in the ledger.
-      await tx
-        .delete(holdings)
-        .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, ticker)));
+      if (acquiredTickers.has(ticker)) {
+        // Genuine close: acquisition(s) all consumed — the active-holdings view
+        // drops it; history stays in the ledger.
+        await tx
+          .delete(holdings)
+          .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, ticker)));
+      } else {
+        // Only disposals in range (oversell clamped) — a partial import over a
+        // snapshot position. Keep the row; clear derived basis (can't derive it
+        // without the acquisition), never delete a still-held position.
+        await tx
+          .update(holdings)
+          .set({ costBasis: null, acquiredDate: null, updatedAt: sql`now()` })
+          .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, ticker)));
+      }
       continue;
     }
     const values = {

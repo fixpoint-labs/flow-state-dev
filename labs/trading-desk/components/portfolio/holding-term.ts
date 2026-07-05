@@ -57,7 +57,12 @@ function monthsUntil(from: number, to: number): number {
 /** Classify a position's lots into long / short / unknown shares as of a date,
  *  with the months remaining until the whole dated position is long. */
 export function computeHoldingTerm(lots: TermLot[], asOf: Date): TermSummary {
-  const now = asOf.getTime();
+  // Compare by CALENDAR DATE, not instant. `asOf` from the UI is `new Date()`
+  // (carries the current time) and `longBoundary` is midnight UTC on the
+  // anniversary, so a raw `getTime()` compare would flip a lot to long any time
+  // after 00:00 UTC on the anniversary day — but that day is itself still short
+  // (the boundary is exclusive). Normalize `asOf` to UTC midnight of its date.
+  const now = Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate());
   let longQty = 0;
   let shortQty = 0;
   let unknownQty = 0;
