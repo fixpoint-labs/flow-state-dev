@@ -1,7 +1,8 @@
 /**
- * Integration tests for the OFX transaction-file import action (FIX-775),
- * driven through the real `runAction` engine via `testFlow` against a PGlite
- * repository (the `portfolio-actions.spec.ts` precedent).
+ * Integration tests for the OFX transaction-file import (FIX-775) — the
+ * `importTransactionFile` domain function (FIX-736 follow-up: portfolio writes
+ * are plain functions behind REST routes, not flow actions), tested directly
+ * against a PGlite repository.
  *
  * Intent encoded — the file-import feed writes through the FIX-774 ingestion
  * contract and reconstructs basis:
@@ -11,22 +12,13 @@
  *   3. A missing/foreign account is reported, not thrown (the import edge guard).
  *   4. CUSIP-only securities and skipped corporate actions surface in the report.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
-import { testFlow } from "@flow-state-dev/testing";
+import { beforeEach, describe, expect, it } from "vitest";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/src/db/repository";
 import type { FileImportReport } from "@/src/flows/portfolio/transaction-import-schema";
+import { importTransactionFile } from "@/src/flows/portfolio/portfolio-writes";
 
-const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
-  getRepository: async () => {
-    if (!repoState.repo) throw new Error("test repository not initialized");
-    return repoState.repo;
-  },
-}));
-
-import portfolioFlow from "../src/flows/portfolio/flow";
+let repo: PortfolioRepository;
 
 const USER_ID = "devuser";
 const ACCT = "acct-1";
@@ -45,36 +37,27 @@ VERSION:102
 </OFX>`;
 
 async function importFile(
-  stores: ReturnType<typeof createInMemoryStores>,
   accountId: string,
   content: string,
   filename = "export.qfx",
-): Promise<{ status: string; output: FileImportReport }> {
-  const result = await testFlow({
-    flow: portfolioFlow,
-    action: "importTransactions",
-    userId: USER_ID,
-    stores,
-    input: { accountId, content, filename },
-  });
-  return { status: result.status, output: result.output as FileImportReport };
+): Promise<{ output: FileImportReport }> {
+  const output = await importTransactionFile({ accountId, content, filename }, USER_ID, repo);
+  return { output };
 }
 
 beforeEach(async () => {
-  repoState.repo = await makeTestRepository();
+  repo = await makeTestRepository();
 });
 
-describe("importTransactions action", () => {
+describe("importTransactionFile", () => {
   it("ingests an OFX file's buys and reconstructs the holding's basis", async () => {
-    const stores = createInMemoryStores();
-    await seedAccount(repoState.repo!, {
+    await seedAccount(repo, {
       accountId: ACCT,
       userId: USER_ID,
       holdings: [{ ticker: "AAPL", quantity: 10, costBasis: null, acquiredDate: null }],
     });
 
-    const { status, output } = await importFile(stores, ACCT, OFX_FILE);
-    expect(status).toBe("completed");
+    const { output } = await importFile(ACCT, OFX_FILE);
     expect(output.detectedFormat).toBe("qfx");
     // Two buys ingested (the SPLIT is skipped, not an event).
     expect(output.inserted).toBe(2);
@@ -85,51 +68,46 @@ describe("importTransactions action", () => {
     expect(output.unresolvedSecurities).toEqual([{ cusip: "316175207", name: null }]);
 
     // Basis derived from the imported buy (10 @ 150), written onto the holding.
-    const { holdings } = await repoState.repo!.getPortfolio(USER_ID);
+    const { holdings } = await repo.getPortfolio(USER_ID);
     const aapl = holdings.find((h) => h.ticker === "AAPL");
     expect(aapl?.costBasis).toBe(150);
     expect(aapl?.acquiredDate).toBe("2026-01-05");
   });
 
   it("is idempotent — re-importing the same file inserts nothing new", async () => {
-    const stores = createInMemoryStores();
-    await seedAccount(repoState.repo!, { accountId: ACCT, userId: USER_ID });
+    await seedAccount(repo, { accountId: ACCT, userId: USER_ID });
 
-    const first = await importFile(stores, ACCT, OFX_FILE);
+    const first = await importFile(ACCT, OFX_FILE);
     expect(first.output.inserted).toBe(2);
 
-    const second = await importFile(stores, ACCT, OFX_FILE);
+    const second = await importFile(ACCT, OFX_FILE);
     expect(second.output.inserted).toBe(0);
     expect(second.output.deduplicated).toBe(2);
 
-    expect(await repoState.repo!.getLedger(USER_ID)).toHaveLength(2); // not 4
+    expect(await repo.getLedger(USER_ID)).toHaveLength(2); // not 4
   });
 
   it("creates the positions when importing into an empty account (no snapshot needed)", async () => {
-    const stores = createInMemoryStores();
-    await seedAccount(repoState.repo!, { accountId: ACCT, userId: USER_ID }); // no holdings
-    const { output } = await importFile(stores, ACCT, OFX_FILE);
+    await seedAccount(repo, { accountId: ACCT, userId: USER_ID }); // no holdings
+    const { output } = await importFile(ACCT, OFX_FILE);
     expect(output.inserted).toBeGreaterThan(0);
     // The ingest materializes the derived positions — the import alone yields a
     // visible portfolio, so there is no "import a snapshot first" warning.
     expect(output.warnings.some((w) => /no holdings yet/i.test(w))).toBe(false);
-    const { holdings } = await repoState.repo!.getPortfolio(USER_ID);
+    const { holdings } = await repo.getPortfolio(USER_ID);
     expect(holdings.length).toBeGreaterThan(0);
   });
 
   it("reports (does not throw) when the target account does not exist", async () => {
-    const stores = createInMemoryStores();
-    const { status, output } = await importFile(stores, "no-such-account", OFX_FILE);
-    expect(status).toBe("completed");
+    const { output } = await importFile("no-such-account", OFX_FILE);
     expect(output.inserted).toBe(0);
     expect(output.warnings.join(" ")).toMatch(/not found/i);
-    expect(await repoState.repo!.getLedger(USER_ID)).toHaveLength(0);
+    expect(await repo.getLedger(USER_ID)).toHaveLength(0);
   });
 
   it("reports a clear parse error for a non-OFX file", async () => {
-    const stores = createInMemoryStores();
-    await seedAccount(repoState.repo!, { accountId: ACCT, userId: USER_ID });
-    const { output } = await importFile(stores, ACCT, "ticker,quantity\nAAPL,10", "trades.csv");
+    await seedAccount(repo, { accountId: ACCT, userId: USER_ID });
+    const { output } = await importFile(ACCT, "ticker,quantity\nAAPL,10", "trades.csv");
     expect(output.inserted).toBe(0);
     expect(output.parseErrors.length).toBeGreaterThan(0);
     expect(output.parseErrors[0].reason).toMatch(/only OFX-family/i);

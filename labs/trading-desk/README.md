@@ -311,23 +311,38 @@ your relational entities in your own tables. Migrations live in
 on the PGlite dev backing and via `scripts/migrate.ts` on deploy. It's a pattern
 for any multi-tier FSD app, not a desk-only hack.
 
-Three GET read routes expose the repository to the Portfolio UI (reads go
-through routes rather than actions because `sendAction` returns a request
-envelope, not handler output). All take a required `userId` query param and
-are dev-posture client-asserted — a real deployment must resolve the caller
-identity server-side:
+The whole portfolio domain — accounts, holdings, ledger — is exposed to the UI
+as a plain REST surface over the repository, reads AND writes. It is a
+deliberate showcase boundary: **flows are for the agentic pipeline** (the
+`analysis` flow) and the genuinely flow-shaped portfolio work (`getQuotes`,
+which writes the cross-flow quote cache, and `extractHoldingsFromPdf`, a
+streaming LLM extraction) — **plain routes are for domain CRUD.** Forcing CRUD
+through a flow buys nothing and costs a real return value (`sendAction` returns
+a request envelope, not the handler's output — so an import report can't reach
+the UI) plus a bound-session requirement. The write logic is plain functions in
+[`portfolio-writes.ts`](src/flows/portfolio/portfolio-writes.ts); the routes are
+thin HTTP adapters that own zod validation. All routes take `userId` (query
+param on GET/DELETE, body field on POST) — dev-posture client-asserted, so a
+real deployment must resolve the caller identity server-side.
 
-- [`/api/portfolio/accounts`](app/api/portfolio/accounts/route.ts) — accounts
-  with inline holdings (`{ accounts: AccountState[] }`).
-- [`/api/portfolio/ledger`](app/api/portfolio/ledger/route.ts) — transaction
-  ledger rows, newest first (`{ events: LedgerRow[] }`); optional `accountId`,
-  `ticker`, and `limit` params narrow the read.
-- [`/api/portfolio/income`](app/api/portfolio/income/route.ts) — ledger-derived
-  income per `(account, ticker)`: `{ income: { accountId, ticker, dividends,
-  interest, lastEventDate }[] }`, summing non-voided `dividend`/`interest`
-  events. `ticker: null` rows are account-level income; income earned on a
-  since-closed position still appears (the holdings row is gone, the dividends
-  were still earned). Optional `accountId` param filters to one account.
+Reads:
+
+- `GET /api/portfolio/accounts` — accounts with inline holdings.
+- `GET /api/portfolio/ledger` — transaction ledger rows, newest first; optional
+  `accountId` / `ticker` / `limit`.
+- `GET /api/portfolio/income` — ledger-derived income per `(account, ticker)`:
+  dividends + interest, summing non-voided events. `ticker: null` rows are
+  account-level income; income earned on a since-closed position still appears
+  (the holdings row is gone, the dividends were still earned).
+
+Writes (each returns its real result — the id, the import report, the ingest
+counts):
+
+- `POST /api/portfolio/accounts` — create or update an account · `DELETE` — delete one.
+- `POST /api/portfolio/holdings/import` — import a holdings CSV · `DELETE
+  /api/portfolio/holdings` — delete one holding.
+- `POST /api/portfolio/ledger` — record a manual ledger event.
+- `POST /api/portfolio/transactions/import` — import an OFX/QFX/QBO file.
 
 ## Portfolio view
 

@@ -1,18 +1,17 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useFlowContext, type SessionView } from "@flow-state-dev/react";
+import { useFlowContext } from "@flow-state-dev/react";
 import { useApiQuery } from "@/lib/use-api-query";
 import type { IncomeSummaryRow } from "@/src/db/repository";
 
 /**
  * Read the user's ledger-derived income summary (dividends + interest per
- * account/ticker) from the `/api/portfolio/income` read route. Mirrors
- * `useLedger` exactly — the same app-owned-table read path and the same
- * stream-settle refetch backstop, because the same writes (an ingest, a void)
- * that move the ledger also move the income aggregate.
+ * account/ticker) from the `/api/portfolio/income` read route. A thin
+ * `useApiQuery` wrapper — the same writes that move the ledger (record event /
+ * import) move this aggregate, and the pane refetches income right after each,
+ * so no stream-settle backstop is needed (FIX-736 follow-up).
  */
-export function useIncome(session: SessionView): {
+export function useIncome(): {
   income: IncomeSummaryRow[];
   refetch: () => void;
 } {
@@ -21,14 +20,5 @@ export function useIncome(session: SessionView): {
   const { data, refetch } = useApiQuery<{ income: IncomeSummaryRow[] }>(
     `/api/portfolio/income?userId=${encodeURIComponent(uid)}`,
   );
-
-  // Backstop: refetch when an in-flight action on this session completes, so a
-  // write's committed result lands even though `sendAction` resolved earlier.
-  const wasStreaming = useRef(false);
-  useEffect(() => {
-    if (wasStreaming.current && !session.isStreaming) refetch();
-    wasStreaming.current = session.isStreaming;
-  }, [session.isStreaming, refetch]);
-
   return { income: data?.income ?? [], refetch };
 }

@@ -1,25 +1,18 @@
 /**
  * The `portfolio` flow definition.
  *
- * The portfolio domain (Spine B) is the system of record for what the user
- * owns and the write surface for it: the account/holdings mutations, the price
- * fetch, and the PDF-import extraction. Accounts + holdings live in the
- * app-owned relational tables (FIX-772); the write actions reach them via the
- * repository. The remaining resources are user-scoped shared
- * (`flowIsolation: false` → bare `{userId}`): the `portfolioQuotes` cache the
- * analysis flow reads at seed, and the per-session `pdfImport` scratch. This is
- * the bare `defineFlow` contract — actions, resources, and the (empty)
- * session-state shape.
+ * This flow holds ONLY the genuinely flow-shaped portfolio work: `getQuotes`
+ * (fetches live prices and writes the cross-flow `portfolioQuotes` resource the
+ * analysis flow reads at seed) and `extractHoldingsFromPdf` (an LLM generator
+ * that streams and writes the `pdfImport` scratch). Everything else the
+ * portfolio domain needs is basic relational CRUD, which lives in plain REST
+ * routes (`app/api/portfolio/*`) over the app-owned tables (FIX-772), NOT in
+ * flow actions — a flow buys CRUD nothing and costs it a request-envelope
+ * return and a bound-session requirement (FIX-736 follow-up; the write logic is
+ * `src/flows/portfolio/portfolio-writes.ts`). This is the showcase boundary:
+ * flows for agentic / streaming / cross-flow work, routes for domain CRUD.
  */
 import { defineFlow } from "@flow-state-dev/core";
-import {
-  deleteAccount,
-  deleteHolding,
-  importHoldings,
-  importTransactions,
-  recordLedgerEvent,
-  saveAccount,
-} from "./portfolio-actions";
 import { getQuotes } from "./get-quotes";
 import { extractHoldingsFromPdf } from "./extract-holdings-action";
 import {
@@ -35,12 +28,6 @@ const portfolioFlow = defineFlow({
   requireUser: true,
 
   actions: {
-    saveAccount: { block: saveAccount },
-    deleteAccount: { block: deleteAccount },
-    importHoldings: { block: importHoldings },
-    deleteHolding: { block: deleteHolding },
-    recordLedgerEvent: { block: recordLedgerEvent },
-    importTransactions: { block: importTransactions },
     getQuotes: { block: getQuotes },
     extractHoldingsFromPdf: { block: extractHoldingsFromPdf },
   },

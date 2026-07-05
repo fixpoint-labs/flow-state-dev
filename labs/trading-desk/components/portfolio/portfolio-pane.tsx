@@ -31,8 +31,9 @@ import {
 } from "react";
 import { Plus, Upload, FileText, RefreshCw, Receipt, FileUp } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
-import { useResource } from "@flow-state-dev/react";
+import { useResource, useFlowContext } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
+import { apiMutate } from "@/lib/use-api-query";
 import type { Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import { deriveLots } from "@/src/flows/portfolio/lots";
@@ -83,9 +84,11 @@ export function PortfolioPane({
   session,
   hasSession,
 }: PortfolioPaneProps): ReactElement {
-  const { accounts, refetch: refetchAccounts } = usePortfolioAccounts(session);
-  const { events: ledgerEvents, refetch: refetchLedger } = useLedger(session);
-  const { income, refetch: refetchIncome } = useIncome(session);
+  const { userId } = useFlowContext();
+  const uid = userId ?? "devuser";
+  const { accounts, refetch: refetchAccounts } = usePortfolioAccounts();
+  const { events: ledgerEvents, refetch: refetchLedger } = useLedger();
+  const { income, refetch: refetchIncome } = useIncome();
   const { clientData: quotesData } = useResource(session, "portfolioQuotes");
 
   const [addOpen, setAddOpen] = useState(false);
@@ -209,6 +212,11 @@ export function PortfolioPane({
   // Fetch prices for the union of held tickers. Dispatch → refresh → the
   // `portfolioQuotes` resource updates and `useResource` re-projects.
   const fetchPrices = useCallback(async () => {
+    // Prices are the one portfolio feature that still needs a bound session:
+    // `getQuotes` writes the cross-flow `portfolioQuotes` resource, so it stays
+    // a flow action. Without a session (cold start, no analysis run yet) prices
+    // stay "—" and the rest of the pane (CRUD) still works.
+    if (!hasSession) return;
     const tickers = [...new Set(holdings.map((h) => h.ticker.toUpperCase()))];
     if (tickers.length === 0) return;
     setIsFetchingPrices(true);
@@ -242,22 +250,30 @@ export function PortfolioPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tickerSignature]);
 
+  // Every mutation is an awaited REST call that returns its real result, then an
+  // explicit refetch of the affected reads — no flow round-trip, no request
+  // envelope, no session needed (FIX-736 follow-up). `userId` is passed in the
+  // body/query, the client-asserted dev posture the read routes already use.
   const handleAddAccount = useCallback(
     async (draft: NewAccountDraft) => {
       try {
-        await session.sendAction("saveAccount", { accountId: null, ...draft });
+        await apiMutate("/api/portfolio/accounts", "POST", {
+          userId: uid,
+          accountId: null,
+          ...draft,
+        });
         refetchAccounts();
       } catch (err) {
         console.error("[trading-desk] saveAccount failed", err);
       }
     },
-    [session, refetchAccounts],
+    [uid, refetchAccounts],
   );
 
   const handleImport = useCallback(
     async (submit: ImportSubmit) => {
       try {
-        await session.sendAction("importHoldings", submit);
+        await apiMutate("/api/portfolio/holdings/import", "POST", { userId: uid, ...submit });
         // Holdings ride along inside the account record, so refetching accounts
         // is enough — there is no separate holdings list to refresh.
         refetchAccounts();
@@ -266,13 +282,16 @@ export function PortfolioPane({
         console.error("[trading-desk] importHoldings failed", err);
       }
     },
-    [session, refetchAccounts, fetchPrices],
+    [uid, refetchAccounts, fetchPrices],
   );
 
   const handleImportTransactions = useCallback(
     async (submit: TransactionImportSubmit) => {
       try {
-        await session.sendAction("importTransactions", submit);
+        await apiMutate("/api/portfolio/transactions/import", "POST", {
+          userId: uid,
+          ...submit,
+        });
         // An import writes ledger events AND materializes the derived positions
         // into holdings, so refetch the ledger, the accounts, and the income.
         refetchLedger();
@@ -283,16 +302,15 @@ export function PortfolioPane({
         console.error("[trading-desk] importTransactions failed", err);
       }
     },
-    [session, refetchLedger, refetchAccounts, refetchIncome, fetchPrices],
+    [uid, refetchLedger, refetchAccounts, refetchIncome, fetchPrices],
   );
 
   const handleRecordTransaction = useCallback(
     async (event: NewLedgerEvent) => {
       try {
-        await session.sendAction("recordLedgerEvent", event);
-        // sendAction returns a request envelope, not handler output — refetch
-        // the ledger for the committed row, the accounts (an ingest
-        // materializes derived positions into holdings), and the income.
+        await apiMutate("/api/portfolio/ledger", "POST", { userId: uid, ...event });
+        // An ingest materializes derived positions into holdings, so refetch the
+        // ledger, the accounts, and the income.
         refetchLedger();
         refetchAccounts();
         refetchIncome();
@@ -300,54 +318,46 @@ export function PortfolioPane({
         console.error("[trading-desk] recordLedgerEvent failed", err);
       }
     },
-    [session, refetchLedger, refetchAccounts, refetchIncome],
+    [uid, refetchLedger, refetchAccounts, refetchIncome],
   );
 
   const handleDeleteHolding = useCallback(
     async (accountId: string, ticker: string) => {
       try {
-        await session.sendAction("deleteHolding", { accountId, ticker });
+        const params = new URLSearchParams({ userId: uid, accountId, ticker });
+        await apiMutate(`/api/portfolio/holdings?${params}`, "DELETE");
         refetchAccounts();
       } catch (err) {
         console.error("[trading-desk] deleteHolding failed", err);
       }
     },
-    [session, refetchAccounts],
+    [uid, refetchAccounts],
   );
 
   const handleDeleteAccount = useCallback(
     async (accountId: string) => {
       try {
-        await session.sendAction("deleteAccount", { accountId });
+        const params = new URLSearchParams({ userId: uid, accountId });
+        await apiMutate(`/api/portfolio/accounts?${params}`, "DELETE");
         // The open detail view (if it was this account) no longer exists —
         // return to the card grid.
         setOpenAccountId((open) => (open === accountId ? null : open));
         refetchAccounts();
+        refetchLedger();
+        refetchIncome();
       } catch (err) {
         console.error("[trading-desk] deleteAccount failed", err);
       }
     },
-    [session, refetchAccounts],
+    [uid, refetchAccounts, refetchLedger, refetchIncome],
   );
 
-  // Empty-state: no bound session. Reads no longer need one (accounts come from
-  // the API route), but the write actions (add / import / delete) and the live
-  // price fetch still dispatch through a session. Spec §12.1 recommendation (a)
-  // would auto-create a junk session; we take the honest empty-state CTA instead
-  // — a session is bound once any analysis has run.
-  if (!hasSession) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
-        <p className="text-sm text-[color:var(--c-fg)]">No session yet</p>
-        <p className="max-w-md text-xs text-[color:var(--c-fg-muted)]">
-          Adding accounts, importing holdings, and refreshing prices run through a
-          session. Run an analysis first (New Analysis), then return here to manage
-          the portfolio.
-        </p>
-      </div>
-    );
-  }
-
+  // No whole-pane empty state anymore: account/holdings/ledger management is
+  // plain REST and works with no bound session (FIX-736 follow-up). Only the two
+  // genuinely flow-shaped features need a session — live prices (`getQuotes`,
+  // which fetchPrices no-ops without one) and PDF import (a streaming generator,
+  // its button disabled below). So a cold-start user can build their portfolio
+  // immediately; prices fill in once an analysis has been run.
   const totalUplFmt = formatSignedMoney(totalUpl, "USD");
   const totalUplPctFmt = formatSignedPercent(totalUplPct);
   const openAccount =
@@ -385,17 +395,19 @@ export function PortfolioPane({
         <button
           type="button"
           onClick={() => setImportPdfOpen(true)}
-          disabled={accounts.length === 0}
+          disabled={accounts.length === 0 || !hasSession}
           className={cn(
             "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
-            accounts.length === 0
+            accounts.length === 0 || !hasSession
               ? "cursor-not-allowed opacity-50"
               : "hover:bg-[color:var(--c-surface-2)]",
           )}
           title={
             accounts.length === 0
               ? "Add an account first"
-              : "Import holdings from a statement PDF"
+              : !hasSession
+                ? "PDF import uses an AI extraction pass — run an analysis first to start a session"
+                : "Import holdings from a statement PDF"
           }
         >
           <FileText className="h-3 w-3" aria-hidden /> Import PDF
@@ -439,10 +451,15 @@ export function PortfolioPane({
         <button
           type="button"
           onClick={() => void fetchPrices()}
-          disabled={holdings.length === 0 || isFetchingPrices}
+          disabled={holdings.length === 0 || isFetchingPrices || !hasSession}
+          title={
+            !hasSession
+              ? "Live prices need a session — run an analysis first"
+              : "Refresh live prices"
+          }
           className={cn(
             "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px]",
-            holdings.length === 0 || isFetchingPrices
+            holdings.length === 0 || isFetchingPrices || !hasSession
               ? "cursor-not-allowed opacity-50"
               : "hover:bg-[color:var(--c-surface-2)]",
           )}

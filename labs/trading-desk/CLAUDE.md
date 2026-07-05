@@ -120,16 +120,20 @@ src/flows/analysis/
     valuation.ts valuation-spine.ts fair-value.ts expected-return.ts
     rating-engine.ts setup-score.ts sector-resolution.ts   (analysis / scoring math)
 
-src/flows/portfolio/             The `portfolio` flow — owns the account/holdings/price domain (Spine B)
-  flow.ts                        defineFlow — portfolio actions, resources, and (empty) session state
+src/flows/portfolio/             The `portfolio` domain (Spine B) — account/holdings/ledger/price
+  flow.ts                        defineFlow — ONLY the flow-shaped actions: getQuotes + extractHoldingsFromPdf
+                                   (domain CRUD is REST routes, not actions — see portfolio-writes.ts)
   state.ts                       sessionStateSchema (minimal; this flow has no run state)
   portfolio-schema.ts            pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
   portfolio-csv.ts               pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
   portfolio-resources.ts         BP-019 leaf: portfolioQuotesResource (user-scoped shared) + pdfImportResource
                                    (session-scoped scratch). Accounts/holdings are NOT resources — they live in
                                    the app-owned tables (FIX-772; see src/db/ + lib/portfolio-db.ts below).
-  portfolio-actions.ts           saveAccount / deleteAccount / importHoldings / deleteHolding handlers
-                                   (call the portfolio repository, not a resource)
+  portfolio-writes.ts            saveAccount / deleteAccount / importHoldingsCsv / deleteHolding /
+                                   recordManualEvent / importTransactionFile — plain domain functions
+                                   (input, userId, repo) behind the app/api/portfolio/* REST routes (FIX-736
+                                   follow-up). NOT flow actions: CRUD gains nothing from a flow and loses the
+                                   real return value + gains a session requirement. Routes own zod validation.
   get-quotes.ts                  getQuotes read handler (last-close per ticker, fixture/live, null degrades)
   portfolio-pdf.ts               pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
   extract-pdf-text.server.ts     NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
@@ -144,7 +148,12 @@ src/db/                          App-owned relational layer (FIX-772) — accoun
   migrations/                    drizzle-kit generated SQL + journal (run in-process on PGlite dev, via
                                  scripts/migrate.ts on deploy)
 lib/portfolio-db.ts              getBacking() (PGlite dev / shared pg.Pool deploy) + getRepository() singleton
-app/api/portfolio/accounts/      GET route: read accounts+holdings via the repository (the UI read path)
+app/api/portfolio/              REST surface over the repository — reads AND writes (FIX-736 follow-up):
+  accounts/route.ts               GET list · POST save · DELETE
+  holdings/route.ts               DELETE one holding · holdings/import/route.ts POST (CSV import)
+  ledger/route.ts                 GET list · POST record manual event
+  transactions/import/route.ts    POST (OFX/QFX/QBO file import)
+  income/route.ts                 GET ledger-derived dividends + interest
 
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
@@ -422,14 +431,15 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   falls back to its declared `acquiredDate` as one pseudo-lot, and undated
   shares render "—" / "N undated" — never guessed into a term.
 
-- **Manual entry (`recordLedgerEvent`).** The user-driven writer. The action input
-  omits `source`/`external_id`; the handler fixes `source: "manual"` (a manual row
+- **Manual entry (`recordManualEvent`).** The user-driven writer. The request
+  omits `source`/`external_id`; the function fixes `source: "manual"` (a manual row
   can't claim to be a Plaid/file row) and ingests through the same contract. This
   is the path for a transfer-in basis hole — set `basisUnknown` and the derived
-  lot is flagged. The UI reads the ledger via `GET /api/portfolio/ledger` (the
-  `accounts` route precedent — a read route, not an action, since `sendAction`
-  returns a request envelope not handler output) and renders the transactions pane
-  + add-transaction dialog in `components/portfolio/`.
+  lot is flagged. The UI both reads (`GET /api/portfolio/ledger`) and writes
+  (`POST /api/portfolio/ledger`) the ledger through plain REST routes — accounts/
+  holdings/ledger are basic CRUD, so they're routes over the repository, not flow
+  actions (FIX-736 follow-up; see `portfolio-writes.ts`). The transactions pane +
+  add-transaction dialog live in `components/portfolio/`.
 
 - **Limitations (v1).** FIFO only; no wash sales or corporate-action basis math;
   non-equity events (bonds/options/MMF) are recorded with their symbol but not
@@ -449,10 +459,10 @@ normalizer, not a new ingestion path. One parser covers the whole OFX family
 (QFX/QBO/raw OFX, 1.x SGML and 2.x XML — `ofx-js` auto-detects).
 
 Files: `portfolio-ofx.ts` (pure browser-safe parser — runs in both the dialog
-preview and the server action), `transaction-file.ts` (format dispatcher),
-`importTransactions` in `portfolio-actions.ts` (re-parses server-side, injects
-`accountId` + `source: "file"`, returns a `FileImportReport`),
-`ImportTransactionsDialog`. Format grammar, the aggregate→canonical mapping, and
+preview and the server route), `transaction-file.ts` (format dispatcher),
+`importTransactionFile` in `portfolio-writes.ts` behind `POST
+/api/portfolio/transactions/import` (re-parses server-side, injects `accountId`
++ `source: "file"`, returns a `FileImportReport`), `ImportTransactionsDialog`. Format grammar, the aggregate→canonical mapping, and
 the v1 limitations live in [`docs/transaction-import-formats.md`](docs/transaction-import-formats.md);
 the real-file goal check is `goals/transaction-file-import/reconstructs-basis-from-ofx/`.
 
