@@ -415,7 +415,20 @@ function handleReinvest(ctx: Ctx, agg: OfxNode): void {
   const tradeDate = requireTradeDate(ctx, invtran, "reinvest");
   if (tradeDate === null) return;
   const ticker = resolveTicker(ctx, obj(agg.SECID));
-  const units = Math.abs(num(agg.UNITS) ?? 0);
+  // A DRIP reversal/correction exports as REINVEST with NEGATIVE units (shares
+  // removed). abs()-ing it (as the `units` line below does) would book a phantom
+  // positive dividend + buy — growing shares and income instead of undoing them.
+  // v1 doesn't model reversals (same stance as the negative-TOTAL note below), so
+  // skip-with-warning rather than normalize the sign away.
+  const signedUnits = num(agg.UNITS);
+  if (signedUnits !== null && signedUnits < 0) {
+    const fitid = fitidOf(invtran);
+    ctx.warnings.push(
+      `A reinvestment (DRIP) reversal${fitid ? ` (${fitid})` : ""} with negative units was skipped — v1 doesn't model DRIP reversals; record it manually.`,
+    );
+    return;
+  }
+  const units = Math.abs(signedUnits ?? 0);
   if (!hasShareLegs(ctx, ticker, units, "reinvest")) return;
   const unitPrice = num(agg.UNITPRICE);
   const rawTotal = num(agg.TOTAL);

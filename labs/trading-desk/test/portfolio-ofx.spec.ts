@@ -445,6 +445,21 @@ ${body}
     expect(result.skipped.some((s) => s.kind === "BUYOPT")).toBe(true);
   });
 
+  it("skips a REINVEST reversal (negative UNITS) instead of abs()-ing it into a phantom DRIP", async () => {
+    // A DRIP correction/reversal exports as REINVEST with negative units. abs()
+    // would grow shares + income instead of undoing them; v1 doesn't model
+    // reversals, so it's skipped with a warning (not a phantom dividend + buy).
+    const result = await parseOfxTransactions(
+      wrap(
+        "<REINVEST><INVTRAN><FITID>RI-REV<DTTRADE>20260215</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><INCOMETYPE>DIV<UNITS>-0.5<UNITPRICE>200<TOTAL>100</REINVEST>",
+      ),
+    );
+    expect(result.events).toHaveLength(0);
+    expect(
+      result.warnings.some((w) => w.includes("RI-REV") && /reversal/i.test(w)),
+    ).toBe(true);
+  });
+
   it("records reinvested interest (REINVEST INCOMETYPE=INTEREST) as interest, not dividend", async () => {
     const result = await parseOfxTransactions(
       wrap(
