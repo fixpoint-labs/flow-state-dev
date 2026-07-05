@@ -271,14 +271,12 @@ function hasShareLegs(ctx: Ctx, ticker: string | null, units: number, kind: stri
 function handleBuy(ctx: Ctx, agg: OfxNode): void {
   const buy = obj(agg.INVBUY);
   if (buy === null) return;
-  // A short-side close — an equity buy-to-cover (`BUYTYPE=BUYTOCOVER`) or an
-  // option buy-to-close (`OPTBUYTYPE=BUYTOCLOSE`, the option subtype `BUYTYPE`
-  // never carries) — closes a position v1 never opened (short opens are skipped),
-  // so booking it as a long buy would create a phantom long lot. Skip-with-
-  // warning. (A buy-to-open falls through.)
-  if (str(agg.BUYTYPE) === "BUYTOCOVER" || str(agg.OPTBUYTYPE) === "BUYTOCLOSE") {
+  // A buy-to-cover closes a short v1 never opened (short opens are skipped), so
+  // booking it as a long buy would create a phantom long lot. Skip-with-warning.
+  // (Options never reach here — `BUYOPT` is skipped wholesale; see `handleOptionSkip`.)
+  if (str(agg.BUYTYPE) === "BUYTOCOVER") {
     ctx.warnings.push(
-      "A short-side close (buy-to-cover / option buy-to-close) was skipped — v1 reconstructs long positions only; record it manually.",
+      "A buy-to-cover (closing a short) was skipped — v1 reconstructs long positions only; record it manually.",
     );
     return;
   }
@@ -300,17 +298,22 @@ function handleBuy(ctx: Ctx, agg: OfxNode): void {
       `Buy of ${ticker ?? "a security"} has no price or total — its lot has unknown cost basis.`,
     );
   }
+  // OFX `TOTAL` is net of commission/fees; when it's absent, fold the fee back in
+  // so `amount` is the all-in cash either way (the fingerprint keys on `amount`,
+  // so the two paths must agree for dedup).
+  const amount = total === null ? -(units * (unitPrice ?? 0) + (fee ?? 0)) : -Math.abs(total);
   ctx.events.push(
     baseEvent(ctx, invtran, {
       type: "buy",
       tradeDate,
       ticker,
       quantity: units,
-      unitPrice: unitPrice === null ? null : Math.abs(unitPrice),
-      // OFX `TOTAL` is net of commission/fees; when it's absent, fold the fee
-      // back in so `amount` means the same all-in cash either way (the
-      // fingerprint keys on `amount`, so the two paths must agree for dedup).
-      amount: total === null ? -(units * (unitPrice ?? 0) + (fee ?? 0)) : -Math.abs(total),
+      // `unitPrice` is the cost-basis-per-share `deriveLots` reads, so it must be
+      // the ALL-IN cost (execution price + commission/fees), not the raw
+      // `UNITPRICE` — otherwise a commissioned buy understates basis by the
+      // commission. `amount` already carries the all-in cash, so basis = |amount|/units.
+      unitPrice: noCost ? null : Math.abs(amount) / units,
+      amount,
       fee,
       basisUnknown: noCost ? "buy with no price or total in file" : null,
     }),
@@ -321,15 +324,12 @@ function handleBuy(ctx: Ctx, agg: OfxNode): void {
 function handleSell(ctx: Ctx, agg: OfxNode): void {
   const sell = obj(agg.INVSELL);
   if (sell === null) return;
-  // A short OPENING — an equity short sale (`SELLTYPE=SELLSHORT`) or an option
-  // sell-to-open (`OPTSELLTYPE=SELLTOOPEN`, the option subtype `SELLTYPE` never
-  // carries) — creates a negative position v1's long-only FIFO can't model: a
-  // naive long-sell is silently clamped away, and a later buy-to-close imports
-  // as a phantom new long lot. Skip-with-warning. (A SELLTOCLOSE is a normal
-  // long disposal and falls through.)
-  if (str(agg.SELLTYPE) === "SELLSHORT" || str(agg.OPTSELLTYPE) === "SELLTOOPEN") {
+  // A short sale (`SELLTYPE=SELLSHORT`) opens a negative position v1's long-only
+  // FIFO can't model (a naive long-sell is silently clamped away). Skip-with-
+  // warning. (Options never reach here — `SELLOPT` is skipped wholesale.)
+  if (str(agg.SELLTYPE) === "SELLSHORT") {
     ctx.warnings.push(
-      "A short opening (SELLSHORT / option sell-to-open) was skipped — v1 reconstructs long positions only; record it manually.",
+      "A short sale (SELLSHORT) was skipped — v1 reconstructs long positions only; record it manually.",
     );
     return;
   }
@@ -458,7 +458,9 @@ function handleReinvest(ctx: Ctx, agg: OfxNode): void {
       tradeDate,
       ticker,
       quantity: units,
-      unitPrice: unitPrice === null ? null : Math.abs(unitPrice),
+      // Basis-per-share is the reinvested cash spread over the units (all-in),
+      // the same cost `deriveLots` reads — `total / units`, not the raw price.
+      unitPrice: total / units,
       amount: -total,
       fee: null,
       basisUnknown: null,
@@ -614,6 +616,23 @@ function handleSkip(ctx: Ctx, agg: OfxNode, kind: string, note: string): void {
   ctx.skipped.push({ kind, reason: `${kind} on ${security} (${date}) not imported — ${note}` });
 }
 
+/** Option trades (`BUYOPT` / `SELLOPT`) are NOT modeled in v1 and are surfaced
+ *  in `skipped`, never recorded. Routing them through the equity path would store
+ *  the per-share premium as basis and ignore the `SHPERCTRCT` contract multiplier
+ *  (a ~100× basis error), and the short legs (sell-to-open / buy-to-close) can't
+ *  be modeled by long-only FIFO. Proper option modeling is FIX-773. */
+function handleOptionSkip(ctx: Ctx, agg: OfxNode, kind: string): void {
+  const inner = obj(agg.INVBUY) ?? obj(agg.INVSELL);
+  const invtran = inner ? obj(inner.INVTRAN) : null;
+  const secid = inner ? obj(inner.SECID) : null;
+  const uniqueId = secid ? str(secid.UNIQUEID) : null;
+  const date = tradeDateOf(invtran) ?? "unknown date";
+  ctx.skipped.push({
+    kind,
+    reason: `${kind} on ${uniqueId ?? "an option"} (${date}) not imported — options aren't modeled in v1 (contract multiplier / short legs are FIX-773); record it manually.`,
+  });
+}
+
 const CORPORATE_ACTION_NOTE = "record manually; v1 does not adjust basis for corporate actions";
 
 /** The aggregate dispatch table. A tag absent here is reported as an unhandled
@@ -621,14 +640,16 @@ const CORPORATE_ACTION_NOTE = "record manually; v1 does not adjust basis for cor
 const HANDLERS: Record<string, (ctx: Ctx, agg: OfxNode) => void> = {
   BUYSTOCK: handleBuy,
   BUYMF: handleBuy,
-  BUYOPT: handleBuy,
   BUYDEBT: handleBuy,
   BUYOTHER: handleBuy,
   SELLSTOCK: handleSell,
   SELLMF: handleSell,
-  SELLOPT: handleSell,
   SELLDEBT: handleSell,
   SELLOTHER: handleSell,
+  // Options are not modeled in v1 (FIX-773) — surfaced in `skipped`, never fed to
+  // the equity path (which would 100×-misprice basis via the missing multiplier).
+  BUYOPT: (ctx, agg) => handleOptionSkip(ctx, agg, "BUYOPT"),
+  SELLOPT: (ctx, agg) => handleOptionSkip(ctx, agg, "SELLOPT"),
   INCOME: handleIncome,
   REINVEST: handleReinvest,
   TRANSFER: (ctx, agg) => handleTransfer(ctx, agg, "TRANSFER"),
@@ -661,7 +682,14 @@ const NON_TRANSACTION_TAGS = new Set(["DTSTART", "DTEND"]);
  * is surfaced in the result rather than thrown.
  */
 export async function parseOfxTransactions(content: string): Promise<OfxParseResult> {
-  const parsed = (await parseOfx(content)) as { OFX?: OfxNode };
+  // `ofx-js` cannot tokenize an attributed root (`<OFX xmlns="...">`) — it fails
+  // to split the header from the body and returns `OFX` as the string "undefined"
+  // (no events). A real 2.x export may namespace the root, so strip attributes
+  // from the opening `<OFX ...>` tag (only) before parsing. `\b` keeps this off
+  // `<OFXHEADER>`/`<?OFX?>`; XML forbids a raw `>` in an attribute value, so
+  // `[^>]*` stops at the tag close; the non-global replace touches only the root.
+  const normalized = content.replace(/<OFX\b[^>]*>/i, "<OFX>");
+  const parsed = (await parseOfx(normalized)) as { OFX?: OfxNode };
   const root = obj(parsed.OFX ?? null);
   if (root === null) {
     throw new Error("not a valid OFX file: missing <OFX> root");

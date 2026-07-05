@@ -41,7 +41,10 @@ export type TransactionFileParse = {
  *  processing instruction, or a bare `<OFX>` root.) Content beats extension. */
 function looksLikeOfx(content: string): boolean {
   const head = content.trimStart().slice(0, 512);
-  return /^OFXHEADER\s*:/i.test(head) || /<\?OFX[\s?]/i.test(head) || /<OFX>/i.test(head);
+  // `<OFX[\s>]` matches a bare `<OFX>` AND a 2.x root carrying whitespace /
+  // namespace attributes (`<OFX xmlns=...>`), which the parser handles but a
+  // literal `<OFX>` check would reject as "unrecognized".
+  return /^OFXHEADER\s*:/i.test(head) || /<\?OFX[\s?]/i.test(head) || /<OFX[\s>]/i.test(head);
 }
 
 /** The format label from the filename extension, defaulting to `ofx`. */

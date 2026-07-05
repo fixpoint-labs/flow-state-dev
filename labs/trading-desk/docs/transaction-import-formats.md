@@ -30,6 +30,14 @@ several `INVSTMTTRNRS`, one per account). Securities are referenced by
 `SECLISTMSGSRSV1 → SECLIST` block, whose `SECINFO` carries the name and an
 optional `TICKER`.
 
+**Investment statements only.** The importer walks `INVSTMTMSGSRSV1`
+(brokerage) statements. A *bank*-format export — a checking/savings QBO or OFX
+whose body is `BANKMSGSRSV1 → BANKTRANLIST` (`STMTTRN` cash rows), which is what
+a typical QuickBooks `.qbo` download is — carries no investment statement, so it
+imports nothing and reports a clear "no investment statement found" warning. This
+is a portfolio cost-basis importer, not a bank-transaction importer; a
+`BANKTRANLIST` cash path is a possible follow-up, not v1.
+
 ## Aggregate → canonical event mapping
 
 Every event is normalized to the canonical `LedgerEventInput` (signs by TYPE,
@@ -37,8 +45,9 @@ magnitudes from the file; `externalId` = the `FITID`):
 
 | OFX aggregate | Canonical `type` | quantity | amount | Notes |
 | -- | -- | -- | -- | -- |
-| `BUYSTOCK` / `BUYMF` / `BUYOPT` / `BUYDEBT` / `BUYOTHER` | `buy` | `+UNITS` | `−|TOTAL|` | `unitPrice` from `UNITPRICE`; `fee` = `COMMISSION`+`FEES` |
-| `SELLSTOCK` / `SELLMF` / `SELLOPT` / `SELLDEBT` / `SELLOTHER` | `sell` | `−|UNITS|` | `+|TOTAL|` | |
+| `BUYSTOCK` / `BUYMF` / `BUYDEBT` / `BUYOTHER` | `buy` | `+UNITS` | `−|TOTAL|` | `unitPrice` = all-in basis `|amount|/UNITS` (execution price + commission, the cost `deriveLots` reads), NOT raw `UNITPRICE`; `fee` = `COMMISSION`+`FEES` |
+| `SELLSTOCK` / `SELLMF` / `SELLDEBT` / `SELLOTHER` | `sell` | `−|UNITS|` | `+|TOTAL|` | |
+| `BUYOPT` / `SELLOPT` | — (skipped) | — | — | options aren't modeled in v1; the `SHPERCTRCT` contract multiplier (a ~100× basis error if ignored) and short legs (sell-to-open / buy-to-close) are FIX-773. Surfaced in `skipped` |
 | `INCOME` (`INCOMETYPE` DIV/CGLONG/CGSHORT) | `dividend` | null | `+|TOTAL|` | |
 | `INCOME` (`INCOMETYPE` INTEREST) | `interest` | null | `+|TOTAL|` | |
 | `REINVEST` | `dividend` + `buy` | — / `+UNITS` | `+|TOTAL|` / `−|TOTAL|` | two events; the buy is a new lot; ids `FITID:div` + `FITID` |
@@ -117,7 +126,7 @@ parses to:
 ```ts
 {
   type: "buy", ticker: "AAPL", tradeDate: "2026-01-05", settleDate: "2026-01-07",
-  quantity: 10, unitPrice: 150, amount: -1504.95, fee: 4.95,
+  quantity: 10, unitPrice: 150.495, amount: -1504.95, fee: 4.95,
   externalId: "A1", currency: "USD", basisUnknown: null,
 }
 ```

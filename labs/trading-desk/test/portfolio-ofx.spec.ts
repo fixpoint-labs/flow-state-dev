@@ -69,7 +69,10 @@ describe("parseOfxTransactions — one parser for the OFX family", () => {
         tradeDate: "2026-01-05",
         settleDate: "2026-01-07",
         quantity: 10,
-        unitPrice: 150,
+        // basis-per-share is ALL-IN (execution price + commission): |amount|/units
+        // = 1504.95 / 10, NOT the raw UNITPRICE 150 — a commissioned buy's lot cost
+        // must include the commission or `deriveLots` understates basis.
+        unitPrice: 150.495,
         amount: -1504.95, // signed: cash out
         fee: 4.95,
         externalId: "BUY-AAPL-1",
@@ -282,6 +285,24 @@ VERSION:102
   it("throws on a non-OFX document", async () => {
     await expect(parseOfxTransactions("ticker,quantity\nAAPL,10")).rejects.toThrow(/OFX/);
   });
+
+  it("parses a namespaced/attributed 2.x root (<OFX xmlns=...>) to real events", async () => {
+    // A conformant 2.x export can namespace the root. `ofx-js` can't tokenize an
+    // attributed root (it returns OFX as the string "undefined", zero events), so
+    // the parser strips the root tag's attributes before handing it over. Without
+    // that, this buy would silently vanish.
+    const file = `<?xml version="1.0" encoding="US-ASCII"?>
+<?OFX OFXHEADER="200" VERSION="200"?>
+<OFX xmlns="http://ofx.net/types/2003/04" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD</CURDEF>
+<INVACCTFROM><ACCTID>X999</ACCTID></INVACCTFROM><INVTRANLIST>
+<BUYSTOCK><INVBUY><INVTRAN><FITID>NS1</FITID><DTTRADE>20260105</DTTRADE></INVTRAN><SECID><UNIQUEID>037833100</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID><UNITS>10</UNITS><UNITPRICE>150</UNITPRICE><TOTAL>-1500</TOTAL></INVBUY><BUYTYPE>BUY</BUYTYPE></BUYSTOCK>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID><TICKER>AAPL</TICKER></SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1>
+</OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({ type: "buy", ticker: "AAPL", externalId: "NS1" });
+  });
 });
 
 describe("parseOfxTransactions — malformed-leg guards", () => {
@@ -377,14 +398,16 @@ ${body}
     );
   });
 
-  it("skips an option sell-to-open (OPTSELLTYPE=SELLTOOPEN) — a short opening long-only FIFO can't model", async () => {
+  it("skips an option sell (SELLOPT) wholesale — the contract multiplier + short legs aren't modeled in v1", async () => {
     const result = await parseOfxTransactions(
       wrap(
         "<SELLOPT><INVSELL><INVTRAN><FITID>SO1<DTTRADE>20260110</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>-1<UNITPRICE>2.5<TOTAL>250</INVSELL><OPTSELLTYPE>SELLTOOPEN<SHPERCTRCT>100</SELLOPT>",
       ),
     );
+    // Options never reach the equity path (which would store the per-share premium
+    // as basis and ignore SHPERCTRCT, a ~100× error) — surfaced in `skipped`.
     expect(result.events).toHaveLength(0);
-    expect(result.warnings.some((w) => /sell-to-open/i.test(w))).toBe(true);
+    expect(result.skipped.some((s) => s.kind === "SELLOPT")).toBe(true);
   });
 
   it("floors a no-proceeds sell with a fee at 0 (never a negative sell amount)", async () => {
@@ -412,14 +435,14 @@ ${body}
     ).toBe(true);
   });
 
-  it("skips an option buy-to-close (OPTBUYTYPE=BUYTOCLOSE) — a short-side close long-only FIFO can't model", async () => {
+  it("skips an option buy (BUYOPT) wholesale — the contract multiplier + short legs aren't modeled in v1", async () => {
     const result = await parseOfxTransactions(
       wrap(
         "<BUYOPT><INVBUY><INVTRAN><FITID>BC1<DTTRADE>20260110</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>1<UNITPRICE>2.5<TOTAL>-250</INVBUY><OPTBUYTYPE>BUYTOCLOSE<SHPERCTRCT>100</BUYOPT>",
       ),
     );
     expect(result.events).toHaveLength(0);
-    expect(result.warnings.some((w) => /buy-to-close/i.test(w))).toBe(true);
+    expect(result.skipped.some((s) => s.kind === "BUYOPT")).toBe(true);
   });
 
   it("records reinvested interest (REINVEST INCOMETYPE=INTEREST) as interest, not dividend", async () => {
@@ -457,7 +480,27 @@ VERSION:102
 </INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
 <SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
     const result = await parseOfxTransactions(file);
-    expect(result.events[0]).toMatchObject({ amount: -1505, fee: 5 }); // 10*150 + 5
+    // amount is the all-in cash, and unitPrice is the all-in basis-per-share
+    // (1505/10 = 150.5), matching the TOTAL-present path so the two fingerprint
+    // identically.
+    expect(result.events[0]).toMatchObject({ amount: -1505, fee: 5, unitPrice: 150.5 });
+  });
+
+  it("folds the commission into unitPrice (basis-per-share) on a buy that DOES report TOTAL", async () => {
+    // OFX TOTAL is net of commission; the lot's cost basis `deriveLots` reads is
+    // `unitPrice`, so a commissioned buy must carry the all-in |TOTAL|/units, not
+    // the raw execution UNITPRICE — else basis understates by the commission.
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<BUYSTOCK><INVBUY><INVTRAN><FITID>B1<DTTRADE>20260105</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><UNITS>10<UNITPRICE>150<COMMISSION>4.95<TOTAL>-1504.95</INVBUY><BUYTYPE>BUY</BUYSTOCK>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    // 1504.95 / 10 = 150.495 (execution 150 + 0.495/share commission), NOT 150.
+    expect(result.events[0]).toMatchObject({ amount: -1504.95, fee: 4.95, unitPrice: 150.495 });
   });
 
   it("preserves a negative INCOME (a dividend reversal), never abs() into a phantom credit", async () => {
