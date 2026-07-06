@@ -343,6 +343,72 @@ your relational entities in your own tables. Migrations live in
 on the PGlite dev backing and via `scripts/migrate.ts` on deploy. It's a pattern
 for any multi-tier FSD app, not a desk-only hack.
 
+The whole portfolio domain — accounts, holdings, ledger — is exposed to the UI
+as a plain REST surface over the repository, reads AND writes. It is a
+deliberate showcase boundary: **flows are for the agentic pipeline** (the
+`analysis` flow) and the genuinely flow-shaped portfolio work (`getQuotes`,
+which writes the cross-flow quote cache, and `extractHoldingsFromPdf`, a
+streaming LLM extraction) — **plain routes are for domain CRUD.** Forcing CRUD
+through a flow buys nothing and costs a real return value (`sendAction` returns
+a request envelope, not the handler's output — so an import report can't reach
+the UI) plus a bound-session requirement. The write logic is plain functions in
+[`portfolio-writes.ts`](src/flows/portfolio/portfolio-writes.ts); the routes are
+thin HTTP adapters that own zod validation. All routes take `userId` (query
+param on GET/DELETE, body field on POST) — dev-posture client-asserted, so a
+real deployment must resolve the caller identity server-side.
+
+Reads:
+
+- `GET /api/portfolio/accounts` — accounts with inline holdings.
+- `GET /api/portfolio/ledger` — transaction ledger rows, newest first; optional
+  `accountId` / `ticker` / `limit`.
+- `GET /api/portfolio/income` — ledger-derived income per `(account, ticker)`:
+  dividends + interest, summing non-voided events. `ticker: null` rows are
+  account-level income; income earned on a since-closed position still appears
+  (the holdings row is gone, the dividends were still earned).
+
+Writes (each returns its real result — the id, the import report, the ingest
+counts):
+
+- `POST /api/portfolio/accounts` — create or update an account · `DELETE` — delete one.
+- `POST /api/portfolio/holdings/import` — import a holdings CSV · `DELETE
+  /api/portfolio/holdings` — delete one holding.
+- `POST /api/portfolio/ledger` — record a manual ledger event.
+- `POST /api/portfolio/transactions/import` — import an OFX/QFX/QBO file.
+
+## Portfolio view
+
+The Portfolio tab is the durable record of what you own. It opens on a grid of
+account summary cards — each shows the account's value, cash, unrealized P/L
+as a dollar figure and a percent of cost, total dividends earned, and position
+count. Click a card to open the account, which has three tabs:
+
+- **Holdings** — the account's active positions: quantity, average cost,
+  price, value, weight, unrealized P/L ($ and %), dividends earned, and a
+  **Term** column classifying the position's holding period per lot — `Long`,
+  `Short · 7 mo to long`, or an honest `60L / 40S · 7 mo` split when the
+  position was bought across dates. The long/short boundary follows the IRS
+  rule (long means held *more than* one year), and the countdown is calendar
+  months until the last short lot turns long.
+- **Transactions** — the account's ledger: every buy, sell, dividend,
+  interest, deposit, withdrawal, transfer, and fee, newest first. Voided
+  (corrected) rows stay visible but struck through.
+- **Income** — dividends and interest per ticker, including positions you've
+  since sold (tagged `closed`) and account-level cash income.
+
+Positions can come from two sources: a holdings snapshot (CSV or statement
+PDF), or a **transaction-history file** (OFX / QFX / QBO) — the latter alone
+is enough: importing your broker's transaction export reconstructs the
+positions, their cost basis (FIFO), acquisition dates, hold periods, and
+dividend history. Where a snapshot and the trade history disagree, the trade
+history wins. Re-importing a file is always safe — duplicate events are
+detected and dropped, never double-counted.
+
+The real-money display rules hold everywhere: a value that depends on a
+missing price or an unrecorded history renders `—`, never a fabricated number
+or an asserted `$0`; money figures are labeled display approximations, and
+average cost is informational, not tax basis.
+
 ## Custom instructions
 
 The status bar carries a gear icon that opens a settings dialog where you can

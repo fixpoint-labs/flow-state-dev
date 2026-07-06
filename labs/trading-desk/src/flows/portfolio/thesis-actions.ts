@@ -20,7 +20,7 @@
  * session-scoped decision snapshot) and writes the same cross-flow collection.
  *
  * No generator output schemas here — `thesisInputSchema` is a deterministic input
- * shape, so BP-016 has no surface (mirrors `portfolio-actions.ts`).
+ * shape, so BP-016 has no surface (mirrors `portfolio-writes.ts`).
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";

@@ -19,7 +19,7 @@ When modifying this app, follow the conventions below. The patterns here
 are also written up in the project-level docs — read those first if you
 haven't:
 
-- [`docs/contributing/best-practices.md`](../../docs/contributing/best-practices.md) — hard rules (BP-001 through BP-020)
+- [`docs/contributing/best-practices.md`](../../docs/contributing/best-practices.md) — hard rules (BP-001–BP-039): universal rules + the situational index live here; per-category situational rule text lives in [`docs/contributing/best-practices/`](../../docs/contributing/best-practices/) (e.g. `generators.md`, `resources.md`)
 - [`docs/contributing/building-apps.md`](../../docs/contributing/building-apps.md) — patterns and tradeoffs
 - [`docs/architecture/capabilities.md`](../../docs/architecture/capabilities.md) — capability model
 
@@ -120,16 +120,20 @@ src/flows/analysis/
     valuation.ts valuation-spine.ts fair-value.ts expected-return.ts
     rating-engine.ts setup-score.ts sector-resolution.ts   (analysis / scoring math)
 
-src/flows/portfolio/             The `portfolio` flow — owns the account/holdings/price domain (Spine B)
-  flow.ts                        defineFlow — portfolio actions, resources, and (empty) session state
+src/flows/portfolio/             The `portfolio` domain (Spine B) — account/holdings/ledger/price
+  flow.ts                        defineFlow — ONLY the flow-shaped actions: getQuotes + extractHoldingsFromPdf
+                                   (domain CRUD is REST routes, not actions — see portfolio-writes.ts)
   state.ts                       sessionStateSchema (minimal; this flow has no run state)
   portfolio-schema.ts            pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
   portfolio-csv.ts               pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
   portfolio-resources.ts         BP-019 leaf: portfolioQuotesResource (user-scoped shared) + pdfImportResource
                                    (session-scoped scratch). Accounts/holdings are NOT resources — they live in
                                    the app-owned tables (FIX-772; see src/db/ + lib/portfolio-db.ts below).
-  portfolio-actions.ts           saveAccount / deleteAccount / importHoldings / deleteHolding handlers
-                                   (call the portfolio repository, not a resource)
+  portfolio-writes.ts            saveAccount / deleteAccount / importHoldingsCsv / deleteHolding /
+                                   recordManualEvent / importTransactionFile — plain domain functions
+                                   (input, userId, repo) behind the app/api/portfolio/* REST routes (FIX-736
+                                   follow-up). NOT flow actions: CRUD gains nothing from a flow and loses the
+                                   real return value + gains a session requirement. Routes own zod validation.
   get-quotes.ts                  getQuotes read handler (last-close per ticker, fixture/live, null degrades)
   portfolio-pdf.ts               pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
   extract-pdf-text.server.ts     NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
@@ -144,7 +148,12 @@ src/db/                          App-owned relational layer (FIX-772) — accoun
   migrations/                    drizzle-kit generated SQL + journal (run in-process on PGlite dev, via
                                  scripts/migrate.ts on deploy)
 lib/portfolio-db.ts              getBacking() (PGlite dev / shared pg.Pool deploy) + getRepository() singleton
-app/api/portfolio/accounts/      GET route: read accounts+holdings via the repository (the UI read path)
+app/api/portfolio/              REST surface over the repository — reads AND writes (FIX-736 follow-up):
+  accounts/route.ts               GET list · POST save · DELETE
+  holdings/route.ts               DELETE one holding · holdings/import/route.ts POST (CSV import)
+  ledger/route.ts                 GET list · POST record manual event
+  transactions/import/route.ts    POST (OFX/QFX/QBO file import)
+  income/route.ts                 GET ledger-derived dividends + interest
 
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
@@ -378,28 +387,59 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   is a data migration, so it is fixed now); the per-feed normalizers that map
   Plaid/OFX representations onto it land with FIX-775/FIX-853.
 
-- **Basis is derived, not declared (`lots.ts`).** `deriveLots` is a PURE FIFO
-  reduction over the non-voided events: share-adding events (driven by the SIGN of
-  `quantity`, not the type label, so a buy, a reinvested dividend, and a
+- **Positions are derived, not declared (`lots.ts`).** `deriveLots` is a PURE
+  FIFO reduction over the non-voided events: share-adding events (driven by the
+  SIGN of `quantity`, not the type label, so a buy, a reinvested dividend, and a
   transfer-in are uniform) push lots; sells/transfers-out consume them
-  oldest-first. `recomputeHoldingsBasis` runs inside the ingest/void transaction
-  and writes each derived position's weighted average cost → `holdings.costBasis`
-  and earliest open-lot date → `holdings.acquiredDate`, but ONLY for existing
-  holdings whose ticker the ledger derives a position for — quantity stays with
-  the holdings table (a quantity mismatch is FIX-853's reconciliation, not an
-  overwrite). A transfer-in with no acquisition record is a **basis-unknown** lot:
+  oldest-first. `materializePositions` runs inside the ingest/void transaction
+  and MATERIALIZES the derived positions into the holdings table — **the ledger
+  is the authority wherever it has share history**: a derived open position is
+  UPSERTED (quantity, weighted average cost → `holdings.costBasis`, earliest
+  open-lot date → `holdings.acquiredDate` — a snapshot row disagreeing with real
+  trade history is overwritten), a fully-closed position's row is DELETED (the
+  Portfolio view shows active holdings only; history and income stay in the
+  ledger), a ticker whose share history is entirely voided keeps its row with
+  basis cleared (a correction returns it to snapshot authority), and a
+  CSV/PDF-snapshot-only ticker (no ledger share history) is untouched. So a
+  transaction-file import alone produces a visible portfolio — no snapshot
+  needed. A transfer-in with no acquisition record is a **basis-unknown** lot:
   it writes `null` cost, never zero (zero-fill would massively overstate gains).
   FIFO is the IRS default; specific-lot sales, wash sales, and corporate-action
   basis allocation are deferred.
 
-- **Manual entry (`recordLedgerEvent`).** The user-driven writer. The action input
-  omits `source`/`external_id`; the handler fixes `source: "manual"` (a manual row
+- **Income is aggregated from the ledger at read time (`getIncomeSummary`).**
+  Dividends + interest per `(account, ticker)`, summing non-voided events —
+  deliberately NOT a holdings column, because income survives a position closing
+  (the holdings row is deleted; the dividends were still earned). Ticker-less
+  rows are account-level income (interest, MMF sweeps). Read via
+  `GET /api/portfolio/income` (the `ledger` route precedent); the Portfolio UI
+  shows a Dividends column on active holdings ("—" when no history — never $0
+  asserted from ignorance) and a per-account Income tab that includes closed
+  positions (tagged `closed`). The Portfolio view itself is an account
+  summary-card grid (value, cash, uP/L as $ and %, position count); clicking a
+  card opens `AccountDetail` with Holdings / Transactions / Income tabs — there
+  is no flat all-accounts table layout anymore.
+
+- **Holding-period term is classified PER LOT
+  (`components/portfolio/holding-term.ts`).** The Holdings Term column reads
+  "Long", "Short · N mo to long", or an honest mixed "xL / yS · N mo" split — a
+  position bought across dates is never labeled by its earliest lot alone. The
+  long boundary is the IRS rule (held MORE than one year; the anniversary day
+  itself is still short), and the countdown is calendar months until the LAST
+  short lot turns long. Lots derive client-side from the already-fetched ledger
+  via `deriveLots` (a pure leaf — no extra route); a CSV-snapshot-only holding
+  falls back to its declared `acquiredDate` as one pseudo-lot, and undated
+  shares render "—" / "N undated" — never guessed into a term.
+
+- **Manual entry (`recordManualEvent`).** The user-driven writer. The request
+  omits `source`/`external_id`; the function fixes `source: "manual"` (a manual row
   can't claim to be a Plaid/file row) and ingests through the same contract. This
   is the path for a transfer-in basis hole — set `basisUnknown` and the derived
-  lot is flagged. The UI reads the ledger via `GET /api/portfolio/ledger` (the
-  `accounts` route precedent — a read route, not an action, since `sendAction`
-  returns a request envelope not handler output) and renders the transactions pane
-  + add-transaction dialog in `components/portfolio/`.
+  lot is flagged. The UI both reads (`GET /api/portfolio/ledger`) and writes
+  (`POST /api/portfolio/ledger`) the ledger through plain REST routes — accounts/
+  holdings/ledger are basic CRUD, so they're routes over the repository, not flow
+  actions (FIX-736 follow-up; see `portfolio-writes.ts`). The transactions pane +
+  add-transaction dialog live in `components/portfolio/`.
 
 - **Limitations (v1).** FIFO only; no wash sales or corporate-action basis math;
   non-equity events (bonds/options/MMF) are recorded with their symbol but not
@@ -409,6 +449,34 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   genuine identical second fill, so record a distinguishing detail if both must
   land. Live sync (Plaid) is FIX-853, and historical file import (OFX/CSV) is
   FIX-775 — both write through this issue's `ingestLedgerEvents` contract.
+
+## File import (OFX/QFX/QBO) — FIX-775
+
+Imports a brokerage transaction-history file to bootstrap the ledger from real
+trades, so basis is reconstructed (FIX-774 derivation) instead of declared. The
+first *second source* through FIX-774's `ingestLedgerEvents` contract: it adds a
+normalizer, not a new ingestion path. One parser covers the whole OFX family
+(QFX/QBO/raw OFX, 1.x SGML and 2.x XML — `ofx-js` auto-detects).
+
+Files: `portfolio-ofx.ts` (pure browser-safe parser — runs in both the dialog
+preview and the server route), `transaction-file.ts` (format dispatcher),
+`importTransactionFile` in `portfolio-writes.ts` behind `POST
+/api/portfolio/transactions/import` (re-parses server-side, injects `accountId`
++ `source: "file"`, returns a `FileImportReport`), `ImportTransactionsDialog`. Format grammar, the aggregate→canonical mapping, and
+the v1 limitations live in [`docs/transaction-import-formats.md`](docs/transaction-import-formats.md);
+the real-file goal check is `goals/transaction-file-import/reconstructs-basis-from-ofx/`.
+
+Two load-bearing decisions:
+
+- **Signs normalize by aggregate TYPE, not the file's convention** (buy
+  `+qty`/`−amount`, sell `−qty`/`+amount`). This is what makes cross-source dedup
+  work — a file backfill and a Plaid sync of the same trade hit the same FIX-774
+  fingerprint.
+- **Honest over silently-wrong.** Anything FIFO can't model is surfaced, never
+  fed to the lot math: corporate actions and short opens → `skipped`/warned,
+  CUSIP-only securities → `unresolvedSecurities`, malformed rows (no date, no
+  amount, blank FITID) → skipped. The parser never fabricates a value to make a
+  row land.
 
 ## Per-position thesis records (FIX-760)
 
@@ -507,7 +575,7 @@ kitchen-sink precedent (FIX-184): both shells render, CSS picks one — no
 - **Pane reflow rules:** `ThesesPane`'s 200px `MemoSidebar` is `hidden lg:block`
   inline and opens as a native `<dialog>` drawer below `lg` (the "Phases"
   button) — same imperative open/close idiom as the app's other dialogs, so
-  ESC/focus-trap/backdrop come from the browser. `HoldingsTable` renders the 8-column table only when its own
+  ESC/focus-trap/backdrop come from the browser. `HoldingsTable` renders the 10-column table only when its own
   container is ≥ `@3xl` (a CSS container query, not a viewport breakpoint) and
   stacks one card per holding below that — both layouts read the SAME
   `buildHoldingRowModel` view model (`test/holdings-row-model.spec.ts`), so the

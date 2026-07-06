@@ -86,6 +86,7 @@ const sidebars: SidebarsConfig = {
               ],
             },
             "server/connection-resilience",
+            "server/host-adapters",
             "persistence/overview",
           ],
         },
