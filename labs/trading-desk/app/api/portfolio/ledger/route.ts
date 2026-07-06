@@ -1,15 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getRepository } from "@/lib/portfolio-db";
+import {
+  recordManualEvent,
+  recordEventSchema,
+} from "@/src/flows/portfolio/portfolio-writes";
 
-// Server-only read of the transaction ledger (FIX-774). The ledger is an
-// app-owned table, not a resource, so the Portfolio UI's transactions pane reads
-// it here (the `accounts` route precedent). `userId` is the household scope;
-// optional `accountId` / `ticker` filters and a `limit` cap narrow the read.
+// The transaction ledger REST surface (FIX-774) — an app-owned table, not a
+// resource. GET reads it (the Portfolio transactions view); POST records one
+// manual event, returning the ingest report directly. Basic CRUD, so a plain
+// route rather than a flow action (FIX-736 follow-up). Historical file import
+// (OFX) is the sibling `transactions/import` route.
 //
-// AUTH POSTURE (dev-only): `userId` is client-asserted, exactly as the lab's
-// other read routes and flow routes are (single-user lab, USER_ID = "devuser").
-// A real multi-user deployment MUST resolve the caller identity server-side and
-// ignore a client-supplied `userId` before trusting it — otherwise it is an IDOR.
+// AUTH POSTURE (dev-only): `userId` is client-asserted (query param on GET,
+// body field on POST). A real multi-user deployment MUST resolve the caller
+// identity server-side before trusting it — otherwise it is an IDOR.
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
@@ -26,4 +31,17 @@ export async function GET(req: NextRequest) {
   const repo = await getRepository();
   const events = await repo.getLedger(userId, { accountId, ticker, limit });
   return NextResponse.json({ events });
+}
+
+const recordPayload = recordEventSchema.extend({ userId: z.string().min(1) });
+
+export async function POST(req: NextRequest) {
+  const parsed = recordPayload.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+  }
+  const { userId, ...input } = parsed.data;
+  const repo = await getRepository();
+  const report = await recordManualEvent(input, userId, repo);
+  return NextResponse.json(report);
 }

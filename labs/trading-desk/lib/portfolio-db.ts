@@ -19,6 +19,7 @@
  * Memoized: the pool / PGlite instance, the store backing, and the repository
  * are created exactly once per process.
  */
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import type { StoreAdapter } from "@flow-state-dev/engine";
@@ -78,6 +79,10 @@ async function buildBacking(): Promise<Backing> {
       repository: createPortfolioRepository(createDb(pool)),
     };
   }
+  // PGlite's NodeFS mkdirs only the leaf data dir (non-recursive), so a missing
+  // `.fsdev/` parent makes its lazy init throw ENOENT — surfaced confusingly as
+  // a failed `CREATE SCHEMA "drizzle"` on the first query. Ensure the full path.
+  mkdirSync(PGLITE_DATA_DIR, { recursive: true });
   const pglite = new PGlite(PGLITE_DATA_DIR);
   const db = await createMigratedPgliteDb(pglite, MIGRATIONS_DIR);
   const executor: QueryExecutor = {
@@ -92,12 +97,26 @@ async function buildBacking(): Promise<Backing> {
   return { storesOptions: { executor }, repository: createPortfolioRepository(db) };
 }
 
-let backingPromise: Promise<Backing> | null = null;
+// Anchored on `globalThis`, not a module-level `let`: Next.js dev compiles
+// route handlers into separately-bundled module graphs, so the app's own
+// route (`/api/flows/[...path]`) and the plain read routes
+// (`/api/portfolio/*`) can each load their own copy of this module — a plain
+// module-scoped singleton would then build TWO backings, opening two `PGlite`
+// instances against the same `.fsdev/pglite` directory. PGlite is single
+// user/connection only; a second live instance on the same directory
+// corrupts reads and writes on both (surfaces as e.g. `RangeError: Invalid
+// array length` or `Invalid input for string type` deep in the driver). The
+// `globalThis` key is the standard Next.js fix (the Prisma-client-in-dev
+// precedent) — it is shared across every module instance in the one Node
+// process, however many times this file gets re-bundled.
+const BACKING_KEY = Symbol.for("flow-state-dev.trading-desk.portfolio-db.backing");
+type GlobalWithBacking = typeof globalThis & { [BACKING_KEY]?: Promise<Backing> };
 
 /** The shared store backing + repository, built once per process. */
 export function getBacking(): Promise<Backing> {
-  backingPromise ??= buildBacking();
-  return backingPromise;
+  const g = globalThis as GlobalWithBacking;
+  g[BACKING_KEY] ??= buildBacking();
+  return g[BACKING_KEY];
 }
 
 /** The portfolio repository — the single source of truth for accounts and

@@ -1,16 +1,21 @@
 /**
- * Integration tests for the portfolio write actions + getQuotes, driven through
- * the real `runAction` engine via `testFlow`.
+ * Tests for the portfolio write surface + `getQuotes`.
  *
- * These lock the load-bearing data-model properties of the single-collection
- * model: holdings live inline in each `accounts/{accountId}` record; upsert is
- * non-destructive and replaces only the named ticker; replace-account sets the
- * account's holdings to exactly the parsed rows; saveAccount preserves an
- * account's holdings across a metadata edit; the SAME ticker in two accounts is
- * two independent entries (one per account's array); deleteHolding removes a
- * single entry; deleteAccount drops the account; the import report counts are
- * honest; and getQuotes degrades a missing fixture to a null price (never a
- * fabricated number).
+ * The account / holdings / ledger writes are plain domain functions behind REST
+ * routes (FIX-736 follow-up — `src/flows/portfolio/portfolio-writes.ts`), so
+ * they're tested by calling those functions directly against a PGlite
+ * repository (parsing inputs through the request schemas the routes use, so the
+ * defaults are exercised too). `getQuotes` is the one portfolio FLOW action that
+ * remains (it writes the cross-flow `portfolioQuotes` resource), so it's still
+ * driven through `testFlow`.
+ *
+ * These lock the load-bearing data-model properties: holdings are keyed
+ * `(account_id, ticker)`; upsert is non-destructive and replaces only the named
+ * ticker; replace-account sets holdings to exactly the parsed rows; a metadata
+ * edit preserves holdings (separate table); the SAME ticker in two accounts is
+ * two independent rows; deleteHolding removes one; deleteAccount cascades; the
+ * import report counts are honest; a manual event attributes to `manual` and
+ * recomputes basis; and getQuotes degrades a missing fixture to a null price.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
@@ -21,12 +26,20 @@ import {
   type AccountRow,
   type PortfolioRepository,
 } from "@/src/db/repository";
+import {
+  deleteAccount,
+  deleteHolding,
+  importHoldingsCsv,
+  importHoldingsSchema,
+  recordEventSchema,
+  recordManualEvent,
+  saveAccount,
+  saveAccountSchema,
+} from "@/src/flows/portfolio/portfolio-writes";
 
-// The portfolio actions moved to the `portfolio` flow (FIX-736) and now read/
-// write accounts + holdings through the app-owned repository (FIX-772) rather
-// than an FSD resource. Mock the repo to a fresh in-memory PGlite instance per
-// test; the dispatched actions and the assertion reads below share it, so the
-// reads observe exactly what the actions wrote.
+// `getQuotes` (still a flow action) doesn't touch the repository, so only the
+// mock's presence matters for it; the write functions receive `repoState.repo!`
+// explicitly. One fresh in-memory PGlite instance per test.
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
 vi.mock("@/lib/portfolio-db", () => ({
   getRepository: async () => {
@@ -38,8 +51,7 @@ vi.mock("@/lib/portfolio-db", () => ({
 import portfolioFlow from "../src/flows/portfolio/flow";
 
 const USER_ID = "devuser";
-// portfolioQuotes is still user-scoped (flowIsolation: false), keyed at bare
-// {userId}; the getQuotes test reads it there.
+// portfolioQuotes is user-scoped (flowIsolation: false), keyed at bare {userId}.
 const USER_KEY = USER_ID;
 
 type StoredHolding = {
@@ -53,27 +65,28 @@ async function userAccounts(): Promise<AccountRow[]> {
   return repoState.repo!.getAccountsForUser(USER_ID);
 }
 
-/** Read one account record's holdings (or undefined if the account is absent),
- *  via the repository's inline-holdings projection. */
+/** Read one account record's holdings (or undefined if the account is absent). */
 async function holdingsOf(accountId: string): Promise<StoredHolding[] | undefined> {
   const portfolio = await repoState.repo!.getPortfolio(USER_ID);
   const account = toAccountStates(portfolio).find((a) => a.accountId === accountId);
   return account?.holdings;
 }
 
+// Thin wrappers: parse the input through the route's request schema (applying
+// defaults) then call the domain function against the test repository — exactly
+// what the REST routes do, minus the HTTP layer.
+const importHoldings = (input: unknown) =>
+  importHoldingsCsv(importHoldingsSchema.parse(input), USER_ID, repoState.repo!);
+const recordEvent = (input: unknown) =>
+  recordManualEvent(recordEventSchema.parse(input), USER_ID, repoState.repo!);
+
 /** Create an account so imports (which require an existing account) can run. */
-async function createAccount(
-  stores: ReturnType<typeof createInMemoryStores>,
-  accountId: string,
-  name = "Test Account",
-): Promise<void> {
-  await testFlow({
-    flow: portfolioFlow,
-    action: "saveAccount",
-    userId: USER_ID,
-    stores,
-    input: { accountId, name, type: "taxable" },
-  });
+async function createAccount(accountId: string, name = "Test Account"): Promise<void> {
+  await saveAccount(
+    saveAccountSchema.parse({ accountId, name, type: "taxable" }),
+    USER_ID,
+    repoState.repo!,
+  );
 }
 
 beforeEach(async () => {
@@ -83,22 +96,14 @@ beforeEach(async () => {
 const A1 = "acct-roth";
 const A2 = "acct-taxable";
 
-describe("importHoldings action", () => {
+describe("importHoldingsCsv", () => {
   it("upsert imports new holdings into the account record", async () => {
-    const stores = createInMemoryStores();
-    await createAccount(stores, A1);
-    const result = await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        mode: "upsert",
-        csvText: "ticker,quantity,costBasis\nNVDA,10,100\nAAPL,5,150",
-      },
+    await createAccount(A1);
+    await importHoldings({
+      accountId: A1,
+      mode: "upsert",
+      csvText: "ticker,quantity,costBasis\nNVDA,10,100\nAAPL,5,150",
     });
-    expect(result.status).toBe("completed");
 
     const holdings = await holdingsOf(A1);
     expect(holdings).toContainEqual(
@@ -110,27 +115,13 @@ describe("importHoldings action", () => {
   });
 
   it("reports an error and imports nothing when the account does not exist", async () => {
-    const stores = createInMemoryStores();
-    const result = await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: "no-such-account",
-        mode: "upsert",
-        csvText: "ticker,quantity\nNVDA,10",
-      },
+    const report = await importHoldings({
+      accountId: "no-such-account",
+      mode: "upsert",
+      csvText: "ticker,quantity\nNVDA,10",
     });
-    expect(result.status).toBe("completed");
     // The edge guard: zero counts + an explanatory warning, and no record
     // materializes for the missing account.
-    const report = result.output as {
-      imported: number;
-      updated: number;
-      deleted: number;
-      warnings: string[];
-    };
     expect(report.imported).toBe(0);
     expect(report.updated).toBe(0);
     expect(report.deleted).toBe(0);
@@ -140,107 +131,62 @@ describe("importHoldings action", () => {
   });
 
   it("upsert replaces the named ticker but leaves other holdings untouched", async () => {
-    const stores = createInMemoryStores();
-    await createAccount(stores, A1);
-    // First import: NVDA + AAPL.
-    await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        mode: "upsert",
-        csvText: "ticker,quantity,costBasis\nNVDA,10,100\nAAPL,5,150",
-      },
+    await createAccount(A1);
+    await importHoldings({
+      accountId: A1,
+      mode: "upsert",
+      csvText: "ticker,quantity,costBasis\nNVDA,10,100\nAAPL,5,150",
     });
     // Second import: only NVDA, new quantity. AAPL must survive.
-    const second = await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        mode: "upsert",
-        csvText: "ticker,quantity,costBasis\nNVDA,99,120",
-      },
+    await importHoldings({
+      accountId: A1,
+      mode: "upsert",
+      csvText: "ticker,quantity,costBasis\nNVDA,99,120",
     });
-    expect(second.status).toBe("completed");
 
     const holdings = await holdingsOf(A1);
     expect(holdings).toContainEqual(
       expect.objectContaining({ ticker: "NVDA", quantity: 99, costBasis: 120 }),
     );
-    // AAPL untouched.
     expect(holdings).toContainEqual(
       expect.objectContaining({ ticker: "AAPL", quantity: 5 }),
     );
   });
 
   it("replace-account sets holdings to exactly the parsed rows", async () => {
-    const stores = createInMemoryStores();
-    await createAccount(stores, A1);
-    await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        mode: "upsert",
-        csvText: "ticker,quantity\nNVDA,10\nAAPL,5\nMSFT,3",
-      },
+    await createAccount(A1);
+    await importHoldings({
+      accountId: A1,
+      mode: "upsert",
+      csvText: "ticker,quantity\nNVDA,10\nAAPL,5\nMSFT,3",
     });
-    // Replace with a snapshot that has only TSLA.
-    const replace = await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        mode: "replace-account",
-        csvText: "ticker,quantity\nTSLA,7",
-      },
+    await importHoldings({
+      accountId: A1,
+      mode: "replace-account",
+      csvText: "ticker,quantity\nTSLA,7",
     });
-    expect(replace.status).toBe("completed");
 
     const holdings = await holdingsOf(A1);
     expect(holdings).toEqual([
       expect.objectContaining({ ticker: "TSLA", quantity: 7 }),
     ]);
-    // The three prior holdings are gone (the array is exactly the parsed rows).
     expect(holdings?.map((h) => h.ticker)).not.toContain("NVDA");
     expect(holdings?.map((h) => h.ticker)).not.toContain("AAPL");
     expect(holdings?.map((h) => h.ticker)).not.toContain("MSFT");
   });
 
   it("tracks the SAME ticker in two accounts as independent entries", async () => {
-    const stores = createInMemoryStores();
-    await createAccount(stores, A1);
-    await createAccount(stores, A2);
-    await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        mode: "upsert",
-        csvText: "ticker,quantity,costBasis\nNVDA,10,100",
-      },
+    await createAccount(A1);
+    await createAccount(A2);
+    await importHoldings({
+      accountId: A1,
+      mode: "upsert",
+      csvText: "ticker,quantity,costBasis\nNVDA,10,100",
     });
-    await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A2,
-        mode: "upsert",
-        csvText: "ticker,quantity,costBasis\nNVDA,4,80",
-      },
+    await importHoldings({
+      accountId: A2,
+      mode: "upsert",
+      csvText: "ticker,quantity,costBasis\nNVDA,4,80",
     });
 
     const a1 = await holdingsOf(A1);
@@ -251,7 +197,6 @@ describe("importHoldings action", () => {
     expect(a2).toContainEqual(
       expect.objectContaining({ ticker: "NVDA", quantity: 4, costBasis: 80 }),
     );
-    // One entry per account's array — importing into A2 did not clobber A1's NVDA.
     expect(a1?.find((h) => h.ticker === "NVDA")).not.toEqual(
       a2?.find((h) => h.ticker === "NVDA"),
     );
@@ -260,35 +205,23 @@ describe("importHoldings action", () => {
 
 describe("saveAccount", () => {
   it("preserves an account's holdings across a metadata edit", async () => {
-    const stores = createInMemoryStores();
-    await createAccount(stores, A1, "Original Name");
-    await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        mode: "upsert",
-        csvText: "ticker,quantity,costBasis\nNVDA,10,100",
-      },
+    await createAccount(A1, "Original Name");
+    await importHoldings({
+      accountId: A1,
+      mode: "upsert",
+      csvText: "ticker,quantity,costBasis\nNVDA,10,100",
     });
-    // Edit metadata only (rename). The holdings array must survive.
-    const edit = await testFlow({
-      flow: portfolioFlow,
-      action: "saveAccount",
-      userId: USER_ID,
-      stores,
-      input: { accountId: A1, name: "Renamed", type: "Roth", cashBalance: 500 },
-    });
-    expect(edit.status).toBe("completed");
+    // Edit metadata only (rename). The holdings must survive.
+    await saveAccount(
+      saveAccountSchema.parse({ accountId: A1, name: "Renamed", type: "Roth", cashBalance: 500 }),
+      USER_ID,
+      repoState.repo!,
+    );
 
     const accounts = await userAccounts();
     const account = accounts.find((a) => a.accountId === A1);
     expect(account?.name).toBe("Renamed");
     expect(account?.cashBalance).toBe(500);
-    // The holding was NOT wiped by the metadata edit (holdings are a separate
-    // table, so an account upsert never touches positions).
     const holdings = await holdingsOf(A1);
     expect(holdings).toContainEqual(
       expect.objectContaining({ ticker: "NVDA", quantity: 10 }),
@@ -298,27 +231,13 @@ describe("saveAccount", () => {
 
 describe("deleteHolding", () => {
   it("removes one ticker from the account's holdings, leaving the rest", async () => {
-    const stores = createInMemoryStores();
-    await createAccount(stores, A1);
-    await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        mode: "upsert",
-        csvText: "ticker,quantity\nNVDA,10\nAAPL,5",
-      },
+    await createAccount(A1);
+    await importHoldings({
+      accountId: A1,
+      mode: "upsert",
+      csvText: "ticker,quantity\nNVDA,10\nAAPL,5",
     });
-    const del = await testFlow({
-      flow: portfolioFlow,
-      action: "deleteHolding",
-      userId: USER_ID,
-      stores,
-      input: { accountId: A1, ticker: "NVDA" },
-    });
-    expect(del.status).toBe("completed");
+    await deleteHolding(A1, "NVDA", USER_ID, repoState.repo!);
 
     const holdings = await holdingsOf(A1);
     expect(holdings?.map((h) => h.ticker)).toEqual(["AAPL"]);
@@ -326,19 +245,12 @@ describe("deleteHolding", () => {
 });
 
 describe("deleteAccount", () => {
-  it("removes the account (and its inline holdings) entirely", async () => {
-    const stores = createInMemoryStores();
-    await createAccount(stores, A1, "My Roth IRA");
-    await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        mode: "upsert",
-        csvText: "ticker,quantity\nNVDA,10",
-      },
+  it("removes the account (and its holdings) entirely", async () => {
+    await createAccount(A1, "My Roth IRA");
+    await importHoldings({
+      accountId: A1,
+      mode: "upsert",
+      csvText: "ticker,quantity\nNVDA,10",
     });
 
     const accountsBefore = await userAccounts();
@@ -348,51 +260,31 @@ describe("deleteAccount", () => {
     });
     expect(await holdingsOf(A1)).toHaveLength(1);
 
-    await testFlow({
-      flow: portfolioFlow,
-      action: "deleteAccount",
-      userId: USER_ID,
-      stores,
-      input: { accountId: A1 },
-    });
+    await deleteAccount(A1, USER_ID, repoState.repo!);
+
     const accountsAfter = await userAccounts();
     expect(accountsAfter.find((a) => a.accountId === A1)).toBeUndefined();
-    // The FK cascade dropped the account's holdings too: getPortfolio returns
-    // no holding rows for the deleted account.
+    // The FK cascade dropped the account's holdings too.
     const { holdings } = await repoState.repo!.getPortfolio(USER_ID);
     expect(holdings.some((h) => h.accountId === A1)).toBe(false);
   });
 });
 
-describe("recordLedgerEvent action", () => {
+describe("recordManualEvent", () => {
   it("records a manual event, attributes it to the manual source, and recomputes basis", async () => {
-    const stores = createInMemoryStores();
-    await createAccount(stores, A1);
-    await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: { accountId: A1, mode: "upsert", csvText: "ticker,quantity\nAAPL,10" },
-    });
+    await createAccount(A1);
+    await importHoldings({ accountId: A1, mode: "upsert", csvText: "ticker,quantity\nAAPL,10" });
 
-    const result = await testFlow({
-      flow: portfolioFlow,
-      action: "recordLedgerEvent",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        type: "buy",
-        tradeDate: "2026-01-10",
-        ticker: "AAPL",
-        quantity: 10,
-        unitPrice: 150,
-        amount: -1500,
-      },
+    const report = await recordEvent({
+      accountId: A1,
+      type: "buy",
+      tradeDate: "2026-01-10",
+      ticker: "AAPL",
+      quantity: 10,
+      unitPrice: 150,
+      amount: -1500,
     });
-    expect(result.status).toBe("completed");
-    expect(result.output).toMatchObject({ inserted: 1, deduplicated: 0 });
+    expect(report).toMatchObject({ inserted: 1, deduplicated: 0 });
 
     const ledger = await repoState.repo!.getLedger(USER_ID);
     expect(ledger).toHaveLength(1);
@@ -404,30 +296,17 @@ describe("recordLedgerEvent action", () => {
   });
 
   it("canonicalizes a lower-case ticker so basis lands on the upper-case holding", async () => {
-    const stores = createInMemoryStores();
-    await createAccount(stores, A1);
-    await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: { accountId: A1, mode: "upsert", csvText: "ticker,quantity\nAAPL,10" },
-    });
-    // A direct caller passes a lower-case, padded ticker — the action normalizes it.
-    await testFlow({
-      flow: portfolioFlow,
-      action: "recordLedgerEvent",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        type: "buy",
-        tradeDate: "2026-01-10",
-        ticker: " aapl ",
-        quantity: 10,
-        unitPrice: 150,
-        amount: -1500,
-      },
+    await createAccount(A1);
+    await importHoldings({ accountId: A1, mode: "upsert", csvText: "ticker,quantity\nAAPL,10" });
+    // A direct caller passes a lower-case, padded ticker — normalized here.
+    await recordEvent({
+      accountId: A1,
+      type: "buy",
+      tradeDate: "2026-01-10",
+      ticker: " aapl ",
+      quantity: 10,
+      unitPrice: 150,
+      amount: -1500,
     });
     const ledger = await repoState.repo!.getLedger(USER_ID);
     expect(ledger[0].ticker).toBe("AAPL"); // stored upper-case
@@ -436,30 +315,17 @@ describe("recordLedgerEvent action", () => {
   });
 
   it("records a basis-unknown transfer-in without zero-filling the basis", async () => {
-    const stores = createInMemoryStores();
-    await createAccount(stores, A1);
-    await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: { accountId: A1, mode: "upsert", csvText: "ticker,quantity\nTSLA,5" },
-    });
+    await createAccount(A1);
+    await importHoldings({ accountId: A1, mode: "upsert", csvText: "ticker,quantity\nTSLA,5" });
 
-    await testFlow({
-      flow: portfolioFlow,
-      action: "recordLedgerEvent",
-      userId: USER_ID,
-      stores,
-      input: {
-        accountId: A1,
-        type: "transfer",
-        tradeDate: "2026-01-10",
-        ticker: "TSLA",
-        quantity: 5,
-        amount: 0,
-        basisUnknown: "transferred in; no acquisition record",
-      },
+    await recordEvent({
+      accountId: A1,
+      type: "transfer",
+      tradeDate: "2026-01-10",
+      ticker: "TSLA",
+      quantity: 5,
+      amount: 0,
+      basisUnknown: "transferred in; no acquisition record",
     });
 
     const { holdings } = await repoState.repo!.getPortfolio(USER_ID);
@@ -467,7 +333,6 @@ describe("recordLedgerEvent action", () => {
   });
 
   it("rejects a manual event targeting an account the caller does not own", async () => {
-    const stores = createInMemoryStores();
     // Account belongs to "other"; devuser must not be able to write to it.
     await repoState.repo!.upsertAccount({
       id: "foreign",
@@ -475,14 +340,10 @@ describe("recordLedgerEvent action", () => {
       name: "Theirs",
       type: "taxable",
     });
-    const result = await testFlow({
-      flow: portfolioFlow,
-      action: "recordLedgerEvent",
-      userId: USER_ID,
-      stores,
-      input: { accountId: "foreign", type: "deposit", tradeDate: "2026-01-10", amount: 100 },
-    });
-    expect(result.status).not.toBe("completed");
+    // The ownership guard throws inside the ingest transaction, rolling it back.
+    await expect(
+      recordEvent({ accountId: "foreign", type: "deposit", tradeDate: "2026-01-10", amount: 100 }),
+    ).rejects.toThrow();
     expect(await repoState.repo!.getLedger(USER_ID)).toHaveLength(0);
   });
 });
@@ -500,8 +361,6 @@ describe("getQuotes action", () => {
     });
     expect(result.status).toBe("completed");
 
-    // portfolioQuotes is now user-scoped (flowIsolation: false), keyed at bare
-    // {userId} — readable cross-flow so the report flow can seed from it.
     const userResources = (await stores.resourceState.getAll(
       "user",
       USER_KEY,
