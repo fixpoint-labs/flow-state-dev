@@ -167,6 +167,7 @@ function traderStructuredOutput() {
         "DC revenue print misses",
       ],
       dependsOn: ["AI cap-ex cycle length"],
+      citations: null,
     },
   };
 }
@@ -199,6 +200,7 @@ function personaCritiqueOutput(posture: "aggressive" | "conservative") {
         holdingPeriod: "unchanged" as const,
         invalidation: "unchanged" as const,
       },
+      citations: null,
     },
   };
 }
@@ -229,6 +231,7 @@ function neutralCritiqueOutput() {
           dismissalCategory: "out-of-scope" as const,
         },
       ],
+      citations: null,
     },
   };
 }
@@ -285,6 +288,7 @@ function riskAssessmentStructuredOutput() {
       },
       confidenceCalibration: "calibrated" as const,
       calibrationRationale: "Conviction aligns with the evidence base.",
+      citations: null,
     },
   };
 }
@@ -362,6 +366,7 @@ function portfolioManagerStructuredOutput(
         sizeStance: "",
         mandateOverrideReason: "",
       },
+      citations: null,
     },
   };
 }
@@ -469,6 +474,7 @@ function makeUpstreamMocks() {
             ],
             distribution: "concentrated",
             evidenceBasis: "sufficient",
+            citations: null,
           },
         },
       ],

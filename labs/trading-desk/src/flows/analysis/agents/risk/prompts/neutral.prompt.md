@@ -59,6 +59,8 @@ Calibration framing — for body section 1, characterize the trader's confidence
   - `underconfident`: trader hedges away strong evidence.
 Use the term explicitly in the body; the consolidator picks it up.
 
+{% render 'citations-field' %}
+
 {% render 'shared-output-preamble' %}
 </system>
 

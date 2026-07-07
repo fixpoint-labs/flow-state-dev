@@ -11,7 +11,7 @@ import type {
   RoundRobinContributionEntry,
   RoundRobinContributionsState,
 } from "@flow-state-dev/patterns/round-robin";
-import { AGENTS, PHASE_1_MEMO_KEYS } from "../registry";
+import { AGENTS, ALL_MEMO_KEYS, PHASE_1_MEMO_KEYS } from "../registry";
 import type { CitationIntegrity } from "../resources";
 import type { PortfolioContextInput } from "../flow-schema";
 import type { LensConvergenceState } from "../agents/lenses/lens-convergence-resource";
@@ -243,6 +243,66 @@ export async function formatAnalystMemos(memos: {
     blocks.push(formatMemoBlock(`${role}`, ref?.state));
   }
   return blocks.join("\n\n");
+}
+
+/**
+ * Render the desk's "references consulted" ledger (FIX-676) as the
+ * `<referencesConsulted>` prompt block.
+ *
+ * The ledger is DERIVED from the `citations` already stored on every memo —
+ * there is no separate resource. The Phase 1 analysts' investigative fetches
+ * (the `investigate` preset) and the synthesis corroborators (the `corroborate`
+ * preset) both write the URLs they fetched into their memo's `citations`, so the
+ * memos collection IS the ledger. Reading it lets a downstream agent reuse a
+ * link the desk already surfaced instead of re-searching the same ground.
+ *
+ * Walks `ALL_MEMO_KEYS` (so a new participant is picked up automatically),
+ * collects each memo's `citations`, dedups by URL (first citer wins), and
+ * attributes each to the citing agent's role. Returns `null` (tag suppressed)
+ * when nothing has been cited yet — the steady state on the `fast` preset, where
+ * no agent fetches. Permissive reads: `citations` is enforced by
+ * `memoStateSchema` at write time, so a present array is trustworthy enough for
+ * prompt rendering.
+ */
+export async function formatReferencesConsulted(memos: {
+  getOptional: (k: string) => Promise<{ state: any } | undefined>;
+}): Promise<string | null> {
+  const seen = new Set<string>();
+  const entries: string[] = [];
+  for (const [, mapping] of Object.entries(ALL_MEMO_KEYS)) {
+    const ref = await memos.getOptional(mapping.collectionKey);
+    const citations = (ref?.state as { citations?: unknown } | undefined)
+      ?.citations;
+    if (!Array.isArray(citations)) continue;
+    const role = AGENTS[mapping.agentName]?.role ?? mapping.agentName;
+    for (const c of citations as Array<{ url?: unknown; title?: unknown }>) {
+      if (
+        c == null ||
+        typeof c.url !== "string" ||
+        c.url === "" ||
+        seen.has(c.url)
+      ) {
+        continue;
+      }
+      seen.add(c.url);
+      const title =
+        typeof c.title === "string" && c.title !== "" ? c.title : c.url;
+      entries.push(`- "${title}" — ${c.url} (consulted by ${role})`);
+    }
+  }
+  if (entries.length === 0) return null;
+  // Self-wrap the tag (the `<corroboration>`/`<reviewReferences>` clauses point
+  // agents at `<referencesConsulted>`). This string is contributed VERBATIM via
+  // the preset's array context, so the tag renders exactly once, unescaped — see
+  // the `corroborate` preset note in `capability.ts`.
+  return [
+    "<referencesConsulted>",
+    "Sources the desk's analysts and prior synthesis agents have already",
+    "consulted on the open web. Reuse one of these — you may `fetch` a URL to",
+    "read it in full — rather than re-searching the same ground:",
+    ...entries,
+    "</referencesConsulted>",
+  ].join("\n");
 }
 
 /** Render contributions filtered to one stance, grouped by round. Returns

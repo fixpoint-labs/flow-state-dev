@@ -332,6 +332,8 @@ export const commitPortfolioManagerMemo = handler({
         // FIX-752 — the mandate decision mirror for the PmHero panel. Null on a
         // mandate-blind run.
         mandateDecision,
+        // FIX-676 — pass through any URLs the PM fetched (null when none).
+        citations: decision.citations,
       },
     );
 
