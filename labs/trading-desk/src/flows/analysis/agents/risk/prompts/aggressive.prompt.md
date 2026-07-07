@@ -32,6 +32,8 @@ Use `unchanged` only when the trader's choice on that lever is already aggressiv
 
 Set `dismissedRisks` to the empty array `[]`. Dismissing risks is the neutral persona's job; you raise them.
 
+{% render 'citations-field' %}
+
 {% render 'shared-output-preamble' %}
 </system>
 

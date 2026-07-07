@@ -53,6 +53,8 @@ export const commitScenarioForecastMemo = memoHandler({
         probabilitySum: rawSum,
         horizon,
         evidenceBasis: forecast.evidenceBasis,
+        // FIX-676 — pass through any URLs the forecaster fetched (null when none).
+        citations: forecast.citations,
       },
     );
   },

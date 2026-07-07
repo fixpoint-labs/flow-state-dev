@@ -121,6 +121,7 @@ function decision(opts: {
       sizeStance: "stance",
       mandateOverrideReason: opts.overrideReason ?? "",
     },
+    citations: null,
   };
 }
 

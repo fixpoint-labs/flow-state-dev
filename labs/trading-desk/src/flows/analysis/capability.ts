@@ -34,6 +34,7 @@ import {
   fetch as createFetchTool,
   search as createSearchTool,
 } from "@flow-state-dev/tools";
+import { resolveProvider as resolveSearchProvider } from "@flow-state-dev/tools/search";
 import { find_counter_evidence } from "./agents/research/tools/find_counter_evidence";
 import {
   PHASE_2_MEMO_KEYS,
@@ -60,6 +61,7 @@ import {
   formatMemoBlock,
   formatPersonaCritique,
   formatPortfolioContext,
+  formatReferencesConsulted,
   formatRewardToRisk,
   formatRiskAssessmentExtensions,
   formatRiskMandate,
@@ -114,9 +116,44 @@ const INVESTIGATION_CLAUSE = [
  *  from the generator that consumed it. */
 const fetchArticle = createFetchTool();
 
-/** Shared `search` tool instance for the `verify` preset (Phase 6). Auto-
- *  detects the best available web-search provider from env. */
+/** Shared `search` tool instance for the `verify` + `corroborate` presets.
+ *  Auto-detects the best available web-search provider from env. */
 const searchWeb = createSearchTool();
+
+/**
+ * True when at least one web-search provider key is configured.
+ *
+ * The `@flow-state-dev/tools` search resolver THROWS ("No search provider
+ * available") when none is set — it has no keyless fallback, unlike `fetch`
+ * (which always degrades to a builtin reader). So the search-exposing presets
+ * must DROP the `search` tool when no key is present, rather than hand the model
+ * a tool that aborts the generator on its first call. `fetch` always works, so
+ * it stays either way. The desk's run requirements only mandate model-provider
+ * keys, so a `full` run with no search key is a normal, supported configuration.
+ *
+ * We probe the tools package's own `resolveProvider` (pure — env reads + adapter
+ * lookup, no I/O) rather than hand-copying its `ENV_VAR_MAP`, so this can never
+ * drift when a provider is added/renamed there, and the `perplexity-sonar`
+ * shares-`PERPLEXITY_API_KEY` subtlety is handled by the resolver, not us
+ * (BP-029). NOTE(FIX-676 follow-up): the underlying throw-on-first-call is a
+ * `@flow-state-dev/tools` bug every search consumer hits — the tools layer
+ * should degrade to an error payload or expose its own `hasSearchProvider()`;
+ * this guard is the documented interim (BP-028).
+ */
+function hasSearchProvider(): boolean {
+  try {
+    resolveSearchProvider({});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The tool set for a search-capable preset: `search` only when a provider key
+ *  is configured (else it would throw on first call), plus `fetch` always. */
+function webLookupTools() {
+  return hasSearchProvider() ? [searchWeb, fetchArticle] : [fetchArticle];
+}
 
 /**
  * Codifies the verification contract for the Phase 6 `verify` preset. Paired
@@ -131,15 +168,19 @@ const searchWeb = createSearchTool();
  */
 const VERIFICATION_CLAUSE = [
   "<verification>",
-  "You have `search` and `fetch` tools. Use them to independently verify the",
-  "user's thesis and the pipeline's findings — do not rely on your own",
-  "training knowledge alone.",
+  "You may have `search` and `fetch` tools (a `search` tool appears only when a",
+  "web-search provider is configured; `fetch` is always present). Use them to",
+  "independently verify the user's thesis and the pipeline's findings — do not",
+  "rely on your own training knowledge alone.",
   "",
   "- When the user's thesis or a memo names a specific, checkable claim (a",
   "  deal, acquisition, partnership, number, event, or date), search for it",
   "  before judging it supported or contradicted. If an analyst memo reports",
   "  it found no coverage of a claim, search yourself before concluding the",
   "  claim is false — absence in one analyst's feed is not disproof.",
+  "- If no `search` tool is present (no provider configured), verify only what",
+  "  you can by `fetch`ing a URL the memos cite or that appears in context; for",
+  "  anything you cannot reach, mark it a blind spot rather than asserting it.",
   "- Fetch the most material 1-3 URLs when a search snippet is not enough.",
   "  Add every URL you actually fetched to the `citations` array with its",
   "  title. Do not cite URLs you did not fetch.",
@@ -162,6 +203,61 @@ const GROUNDING_CLAUSE = [
   "assess X\" rather than fabricating to fill the shape. Quoted figures,",
   "named entities, dates, and events must trace to an upstream artifact.",
   "</grounding>",
+].join("\n");
+
+/**
+ * Codifies the corroboration contract for the cost-gated `corroborate` preset
+ * (FIX-676). Same `search` + `fetch` tools as `verify`, but — like
+ * `investigate` — HARD-GATED on `costPreset === "full"` so cheap runs perform no
+ * web lookups and this clause is suppressed entirely (the resolver returns
+ * `null`). The synthesis corroborators (trader, the three risk personas, the PM)
+ * use it to corroborate a SPECIFIC claim, never to re-run the analysts'
+ * discovery; the per-memo call cap is stated here, not enforced in tool-state
+ * (the `counterEvidence`/`investigate` precedent). It points the agent at
+ * <referencesConsulted> first so it reuses a link the desk already surfaced
+ * rather than re-searching the same ground.
+ */
+const CORROBORATION_CLAUSE = [
+  "<corroboration>",
+  "You may have `search` and `fetch` tools (a `search` tool appears only when a",
+  "web-search provider is configured; `fetch` is always present). Use them ONLY",
+  "to corroborate a specific, checkable claim you are about to rely on (a",
+  "peer/sector comp, a recent event, a regulatory action, a downgrade, a number)",
+  "that the upstream memos and <data> do not already settle. Do NOT re-run the",
+  "analysts' discovery or broadly research the company — the memos are your",
+  "evidence base; this is a targeted second source.",
+  "",
+  "Check <referencesConsulted> FIRST: if the desk already surfaced a relevant",
+  "URL, `fetch` it rather than issuing a new search. If no `search` tool is",
+  "present, corroborate only by `fetch`ing a URL already in <referencesConsulted>",
+  "or <data>. Budget: at most 2 searches and 2 fetches for this memo. Prefer a",
+  "search snippet; fetch only when the snippet is not enough.",
+  "",
+  "Every claim that rests on a lookup must trace to a URL you actually fetched;",
+  "add it to the `citations` array with its title. Do not cite a URL you did not",
+  "fetch. If the lookup is inconclusive, say so in the body and do not raise your",
+  "conviction for an unverified claim. If <data> and the memos already answer the",
+  "question, do not search — emit `citations: null`.",
+  "</corroboration>",
+].join("\n");
+
+/**
+ * Codifies the read-only review contract for the `reviewReferences` preset
+ * (FIX-676). For synthesis agents that should be able to PULL a link the desk
+ * already surfaced (the scenario forecaster and the risk consolidator) but
+ * should NOT issue new web searches. Cost-gated on `full` like `corroborate`;
+ * the `fetch` tool and this clause are both absent on `fast`.
+ */
+const REVIEW_REFERENCES_CLAUSE = [
+  "<reviewReferences>",
+  "You do not have web search. You may `fetch` a URL listed in",
+  "<referencesConsulted> to read in full a source the desk already surfaced —",
+  "use it only to corroborate a specific claim you are about to rely on. Add any",
+  "URL you actually fetch to the `citations` array with its title; do not cite a",
+  "URL you did not fetch, and do not fetch a URL that is not already in",
+  "<referencesConsulted>. A missing source is not license to fabricate — say",
+  "\"could not corroborate\" instead.",
+  "</reviewReferences>",
 ].join("\n");
 
 async function memoState(ctx: { resources: any }, collectionKey: string): Promise<unknown> {
@@ -392,10 +488,13 @@ export const tradingDesk = defineCapability({
      *  the validator's job is to verify claims, and it only runs on an
      *  explicit user-thesis opt-in. */
     verify: {
-      tools: () => [searchWeb, fetchArticle],
-      context: {
-        verification: () => VERIFICATION_CLAUSE,
-      },
+      // `search` only when a provider key is set (the resolver throws otherwise);
+      // `fetch` always. Same guard as `corroborate` — see `hasSearchProvider`.
+      tools: () => webLookupTools(),
+      // Verbatim array context (not object-form) so the self-wrapping
+      // `<verification>` clause renders once, unescaped — see the `corroborate`
+      // preset note.
+      context: [() => VERIFICATION_CLAUSE],
     },
 
     /** Phase 2 — citation-integrity report (FIX-679), read from session
@@ -434,10 +533,13 @@ export const tradingDesk = defineCapability({
     investigate: {
       tools: (ctx) =>
         ctx.session.state.costPreset === "full" ? [fetchArticle] : [],
-      context: {
-        investigation: (_input, ctx) =>
+      // Verbatim array context (not object-form) so the self-wrapping
+      // `<investigation>` clause renders once, unescaped — see the `corroborate`
+      // preset note.
+      context: [
+        (_input, ctx) =>
           ctx.session.state.costPreset === "full" ? INVESTIGATION_CLAUSE : null,
-      },
+      ],
     },
 
     /**
@@ -453,6 +555,57 @@ export const tradingDesk = defineCapability({
       resources: { memos: memosCollection, p2Contributions: phase2Contributions },
       tools: (ctx) =>
         ctx.session.state.costPreset === "full" ? [find_counter_evidence] : [],
+    },
+
+    /**
+     * FIX-676 — cost-gated synthesis web search + fetch. Mirrors `verify`'s tool
+     * set, gated like `investigate` (full only). Opted into by the trader (P3),
+     * all three risk personas (P4 — all-or-none, so search does not tilt the
+     * triad), and the PM (P5b). On `fast` the tools are absent and the
+     * `<corroboration>` clause is suppressed (the resolver returns `null`).
+     */
+    corroborate: {
+      resources: { memos: memosCollection },
+      tools: (ctx) =>
+        ctx.session.state.costPreset === "full" ? webLookupTools() : [],
+      // Context is an ARRAY of verbatim (bare-string-returning) entries, NOT an
+      // object map. Object-form `{ key: fn }` context wraps the value in a
+      // kebab-cased `<key>` AND escapes its `<`/`>` — which would double-wrap a
+      // self-wrapping clause and mangle the `<referencesConsulted>` tags the
+      // clause references. Bare strings are injected verbatim (the
+      // GROUNDING_CLAUSE precedent), so the clause and the ledger render their
+      // own tags exactly once, unescaped. Both ride the `full` gate (→ null on
+      // `fast`), so the tags cannot surface on a `fast` re-run even if a prior
+      // full/verify run left citations on a persisted memo.
+      context: [
+        (_input, ctx) =>
+          ctx.session.state.costPreset === "full" ? CORROBORATION_CLAUSE : null,
+        (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatReferencesConsulted(ctx.resources.memos)
+            : null,
+      ],
+    },
+
+    /**
+     * FIX-676 — read-only fetch of an already-surfaced link, no new search. For
+     * the scenario forecaster and the risk consolidator: they can pull a URL the
+     * desk surfaced (via <referencesConsulted>) but cannot run a fresh search.
+     * Gated on `full` like `corroborate`, and carries the same references ledger.
+     * Verbatim array context — see the `corroborate` note above.
+     */
+    reviewReferences: {
+      resources: { memos: memosCollection },
+      tools: (ctx) =>
+        ctx.session.state.costPreset === "full" ? [fetchArticle] : [],
+      context: [
+        (_input, ctx) =>
+          ctx.session.state.costPreset === "full" ? REVIEW_REFERENCES_CLAUSE : null,
+        (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatReferencesConsulted(ctx.resources.memos)
+            : null,
+      ],
     },
 
     /** Valuation spine — computed deterministic anchor for the final
@@ -631,6 +784,7 @@ export {
   formatMemoBlock,
   formatPersonaCritique,
   formatPortfolioContext,
+  formatReferencesConsulted,
   formatRewardToRisk,
   formatRiskAssessmentExtensions,
   formatRiskMandate,

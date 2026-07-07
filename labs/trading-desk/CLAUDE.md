@@ -934,6 +934,70 @@ always-on counterpart, so generators don't need to mirror those on their
 own `resources:` slot. Add a new variant when you want a different
 preset to participate in the cost gate.
 
+### Synthesis-phase web search — the `corroborate` preset
+
+Phase 1 has `investigate` (discovery → bounded fetch) and Phase 6 has
+`verify` (ungated search+fetch, user-thesis only). The synthesis phases
+in between get a third affordance: **`corroborate`** — cost-gated,
+agent-initiated web `search` + `fetch` to back up a *specific* claim
+before committing to it. Two presets carry it:
+
+- **`corroborate`** — exposes the shared `search` + `fetch` tools and the
+  `<corroboration>` clause, HARD-GATED on `costPreset === "full"` (the
+  `investigate` gate, the `verify` tool set). Opted into by the trader
+  (P3), **all three** risk personas (P4), and the PM (P5b). The risk
+  triad is all-or-none on purpose: arming only one persona would tilt the
+  desk's already conservative-leaning synthesis. The per-memo call cap
+  (2 searches + 2 fetches) lives in the clause, not in tool state (the
+  `counterEvidence` precedent). The clause requires every lookup-backed
+  claim to trace to a URL the agent actually fetched, added to the
+  `citations` array.
+- **`reviewReferences`** — exposes `fetch` (no `search`) plus the
+  `<reviewReferences>` clause, same `full` gate. For synthesis agents
+  that should be able to *pull* a link the desk already surfaced but not
+  run a fresh search: the scenario forecaster and the risk consolidator.
+
+**Both presets also render the shared "references consulted" ledger** as a
+`<referencesConsulted>` tag (same `full` gate as their tools/clause) so a
+downstream agent reuses a link rather than re-searching the same ground.
+The ledger is DERIVED from the `citations` already on every memo — there
+is no separate resource. `formatReferencesConsulted` (`lib/format.ts`)
+walks `ALL_MEMO_KEYS`, collects each memo's `citations`, dedups by URL
+(first citer wins), and attributes each to the citing agent. Folding the
+ledger into the two tool presets (rather than a standalone
+`referencesConsulted` preset) makes the `fast` no-op **structural**: the
+`full` gate means a persisted citation from a prior full/`verify` run can
+never surface `<referencesConsulted>` on a `fast` re-run. The lenses
+(independence guarantee, FIX-655) and the Phase 2 debaters (open-web
+rejected by FIX-679; debate-phase search tracked separately) get neither
+preset, so neither reads the ledger.
+
+Each corroborator/reviewer's output schema carries a nullable
+`citations: z.array(memoCitation)` (the Phase 1 / Phase 6 pattern,
+BP-016-safe), and its writer passes it through so the memo renders a
+"Sources" footer. The `citations` field's prompt contract is a shared
+`{% render 'citations-field' %}` partial for the four risk prompts (whose
+copies were identical); the trader/PM/forecaster variants stay inline
+(their output-shape lists differ). To add another corroborator: list
+`corroborate: true` (or `reviewReferences: true`) in its `uses` and add
+the `citations` field to its output schema — the ledger comes with the
+preset.
+
+> **Search-provider guard.** `search` is dropped (fetch-only) when no
+> web-search provider key is configured — the `@flow-state-dev/tools`
+> resolver *throws* with none, which would abort the generator. The guard
+> probes the tools package's own `resolveProvider({})` (try/catch) rather
+> than hand-copying its env-var list, so it can't drift. The underlying
+> throw-on-first-call is a tools-package bug (every search consumer hits
+> it); degrading it there is a documented follow-up (BP-028).
+
+> **Not cached.** `@flow-state-dev/tools` `search`/`fetch` have no cache
+> layer (unlike the desk's own data tools, which wrap `getOrFetch`), so a
+> second agent that re-`fetch`es the same URL pays a fresh request. The
+> references ledger is what avoids the duplicate *search*; a cheap
+> duplicate *fetch* would need caching added at the tool level — a
+> `@flow-state-dev/tools` change, deliberately out of scope here.
+
 ## Adding a new tool
 
 Tools follow the per-tool-file pattern. Each tool file owns its provider

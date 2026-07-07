@@ -393,6 +393,7 @@ After processing the batch:
   `gh pr edit {PR} --add-reviewer {handle}`
 - If the PR is approved with no open threads, it's ready to merge — but defer the merge decision to the user unless the workflow explicitly allows auto-merge.
 - If new activity arrives later, re-enter at Step 10.1.
+- If merge conflicts are detected (and you should check), then automatically handle them. If there is any major concern about how to merge, ask the user first before merging
 
 The skill exits this loop only when the PR is merged or closed.
 
