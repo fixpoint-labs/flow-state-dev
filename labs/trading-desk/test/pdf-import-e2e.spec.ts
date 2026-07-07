@@ -10,18 +10,22 @@
  * linearization logic is unit-tested in `extract-pdf-text.server.spec.ts`.
  *
  * Asserts the two seams the slice rests on:
- *  1. `extractHoldingsFromPdf` runs the decode + (mocked) generator and writes
- *     the transcribed rows + stated total to the session-scoped `pdfImport`
- *     resource — the channel the dialog reads (sendAction returns only a status
- *     envelope). The action imports NOTHING.
+ *  1. `extractHoldingsFromPdf` (still a flow action — a streaming LLM generator)
+ *     runs the decode + (mocked) generator and writes the transcribed rows +
+ *     stated total to the session-scoped `pdfImport` resource — the channel the
+ *     dialog reads. The extract step imports NOTHING.
  *  2. The confirmed rows, mapped to canonical CSV by the pure
- *     `toCanonicalRows` / `canonicalRowsToCsv`, flow through the EXISTING
- *     `importHoldings` action: real holdings land in the target account's inline
- *     `holdings` array with `costBasis: null`, and the skipped junk rows (MMF,
- *     contra-CUSIP) never reach storage.
+ *     `toCanonicalRows` / `canonicalRowsToCsv`, flow through the SAME
+ *     `importHoldingsCsv` the direct CSV path uses (a plain domain function
+ *     behind the `holdings/import` route now, FIX-736 follow-up): real holdings
+ *     land with `costBasis: null`, and the skipped junk rows (MMF, contra-CUSIP)
+ *     never reach storage.
  *
  * The reconciliation arithmetic itself is unit-tested in `portfolio-pdf.spec.ts`;
- * this spec verifies the wiring around it.
+ * this spec verifies the wiring around it. (The `pdfImport` scratch is no longer
+ * cleared server-side on import — it's a per-session resource overwritten by the
+ * next extraction, and the dialog gates its review render on a fresh-extraction
+ * phase, so a stale value is never read as current.)
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -54,8 +58,15 @@ vi.mock("@/lib/portfolio-db", () => ({
   },
 }));
 
-// The PDF-import + holdings actions moved to the `portfolio` flow (FIX-736).
+// `extractHoldingsFromPdf` stays a flow action (streaming generator); the CSV
+// import is a plain domain function now (FIX-736 follow-up).
 import portfolioFlow from "../src/flows/portfolio/flow";
+import {
+  importHoldingsCsv,
+  importHoldingsSchema,
+  saveAccount,
+  saveAccountSchema,
+} from "@/src/flows/portfolio/portfolio-writes";
 import {
   canonicalRowsToCsv,
   toCanonicalRows,
@@ -79,17 +90,13 @@ async function holdingsOf(accountId: string) {
   return toAccountStates(portfolio).find((a) => a.accountId === accountId)?.holdings ?? [];
 }
 
-/** Create the target account — `importHoldings` requires an existing account. */
-async function createAccount(
-  stores: ReturnType<typeof createInMemoryStores>,
-): Promise<void> {
-  await testFlow({
-    flow: portfolioFlow,
-    action: "saveAccount",
-    userId: USER_ID,
-    stores,
-    input: { accountId: ACCOUNT, name: "PDF Account", type: "taxable" },
-  });
+/** Create the target account — the import requires an existing account. */
+async function createAccount(): Promise<void> {
+  await saveAccount(
+    saveAccountSchema.parse({ accountId: ACCOUNT, name: "PDF Account", type: "taxable" }),
+    USER_ID,
+    repoState.repo!,
+  );
 }
 
 /** What the (mocked) extraction generator "transcribes" from the statement. */
@@ -143,10 +150,9 @@ describe("extractHoldingsFromPdf action", () => {
   });
 });
 
-describe("confirmed PDF rows flow into the EXISTING importHoldings", () => {
+describe("confirmed PDF rows flow into importHoldingsCsv", () => {
   it("imports real + MMF holdings TYPED (costBasis null) and skips only the zero-qty contra row", async () => {
-    const stores = createInMemoryStores();
-    await createAccount(stores);
+    await createAccount();
 
     // The dialog's confirm step: map the (reviewed) extraction to canonical CSV.
     const { rows, skipped } = toCanonicalRows(extractionOutput());
@@ -156,14 +162,16 @@ describe("confirmed PDF rows flow into the EXISTING importHoldings", () => {
     expect(rows.map((r) => r.ticker)).toEqual(["AAPL", "MSFT", "TIMXX"]);
     expect(skipped.map((s) => s.ticker)).toEqual(["436CVR021"]);
 
-    const result = await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      stores,
-      input: { accountId: ACCOUNT, mode: "upsert", csvText },
-    });
-    expect(result.status).toBe("completed");
+    // The confirm path POSTs this CSV to the holdings/import route, which calls
+    // the same function directly here.
+    const report = await importHoldingsCsv(
+      importHoldingsSchema.parse({ accountId: ACCOUNT, mode: "upsert", csvText }),
+      USER_ID,
+      repoState.repo!,
+    );
+    // AAPL + MSFT + the preserved MMF (TIMXX) all import; only the zero-qty
+    // contra-CUSIP is skipped (FIX-773: the MMF is no longer dropped).
+    expect(report.imported).toBe(3);
 
     const holdings = await holdingsOf(ACCOUNT);
 
@@ -189,67 +197,5 @@ describe("confirmed PDF rows flow into the EXISTING importHoldings", () => {
     );
     // The zero-quantity contra-CUSIP row never reached storage.
     expect(holdings.map((h) => h.ticker)).not.toContain("436CVR021");
-  });
-});
-
-describe("importHoldings clears the consumed pdfImport scratch", () => {
-  it("resets pdfImport to null after a confirmed import, so a 2nd import can't read it", async () => {
-    const stores = createInMemoryStores();
-    const sessionId = "pdf-clear-session";
-    // The import only runs (and clears the scratch) against an existing account.
-    await createAccount(stores);
-
-    // 1. Extraction populates the session-scoped scratch resource.
-    const extractResult = await testFlow({
-      flow: portfolioFlow,
-      action: "extractHoldingsFromPdf",
-      userId: USER_ID,
-      sessionId,
-      stores,
-      input: { pdfBase64: PDF_BASE64 },
-      generators: {
-        "extract-holdings-generator": mockGenerator({
-          name: "extract-holdings-generator",
-          script: [{ structuredOutput: extractionOutput() }],
-        }),
-      },
-      unmockedGeneratorPolicy: "error",
-    });
-    expect(extractResult.status).toBe("completed");
-
-    // Precondition: the scratch holds the extraction.
-    const afterExtract = (await stores.resourceState.getAll(
-      "session",
-      sessionId,
-    )) as Record<string, { extraction?: PdfExtraction } | null>;
-    expect(afterExtract.pdfImport?.extraction?.rows).toHaveLength(4);
-
-    // 2. The confirmed import (same session) consumes the reviewed rows.
-    const { rows } = toCanonicalRows(extractionOutput());
-    const importResult = await testFlow({
-      flow: portfolioFlow,
-      action: "importHoldings",
-      userId: USER_ID,
-      sessionId,
-      stores,
-      input: {
-        accountId: ACCOUNT,
-        mode: "upsert",
-        csvText: canonicalRowsToCsv(rows),
-      },
-    });
-    expect(importResult.status).toBe("completed");
-
-    // The scratch is cleared — the next PDF import opens against no extraction,
-    // never the prior one. "Cleared" is asserted the way the dialog reads it
-    // (`pdfData?.extraction ?? null`): the store may represent a nulled state as
-    // `null` OR `{}` (a framework representation quirk), so the intent is that
-    // `.extraction` is gone, not that the raw value is literally null. This is
-    // the bug fix — a stale extraction is no longer read as the current one.
-    const afterImport = (await stores.resourceState.getAll(
-      "session",
-      sessionId,
-    )) as Record<string, { extraction?: unknown } | null>;
-    expect(afterImport.pdfImport?.extraction ?? null).toBeNull();
   });
 });

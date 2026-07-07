@@ -1,30 +1,28 @@
 /**
- * `serve(app, options)` — stand up a long-lived Node `http` server for a
- * `FlowState` (or a pre-built `FlowApiRouter`).
+ * `serve(app, options)` — stand up a long-lived Node server for a `FlowState`
+ * (or a pre-built `FlowApiRouter`).
  *
  * This is the web-process host adapter: the counterpart to `@flow-state-dev/vercel`
- * (serverless) and a worker runtime (background). It resolves the router,
- * bridges `node:http` ↔ Web `Request`/`Response` (streaming SSE unbuffered),
- * exposes a `/healthz` endpoint for PaaS health checks, optionally serves a
- * static asset directory with SPA fallback, and wires `SIGTERM`/`SIGINT` to a
- * graceful shutdown that disposes the router and the `FlowState`.
+ * (serverless) and a worker runtime (background). It is a thin long-lived wrapper
+ * over the portable Hono app from `createServerApp` (health checks + the engine
+ * router) run on `@hono/node-server`. On top of that app it adds the concerns a
+ * self-host needs but a serverless target does not: a static asset directory with
+ * SPA fallback (the DevTool UI), and `SIGTERM`/`SIGINT`-driven graceful shutdown
+ * that disposes the router and the `FlowState`. SSE streams unbuffered because the
+ * app returns the engine's streaming `Response` straight through to `@hono/node-server`.
+ *
+ * Two behaviour notes vs. the previous hand-rolled bridge: static/SPA serving is
+ * now GET-only (Hono also answers HEAD), where the old server handed any method
+ * on a non-API path to the SPA fallback; and a mid-stream SSE failure is handled
+ * inside `@hono/node-server` rather than logged to stderr, so there is no longer a
+ * server-side signal when a live stream dies mid-flight.
  */
-import {
-  createServer,
-  type Server,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
-import type { AddressInfo } from "node:net";
+import type { Server } from "node:http";
+import { serve as honoServe } from "@hono/node-server";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
-import {
-  disposeFlowApiRouter,
-  isFlowState,
-  type FlowApiRouter,
-  type FlowState,
-} from "@flow-state-dev/engine";
-import { handleApiRequest } from "./bridge";
+import type { FlowApiRouter, FlowState } from "@flow-state-dev/engine";
+import { createServerApp } from "./app";
 
 /** Options for {@link serve}. All have sensible defaults for PaaS hosting. */
 export interface ServeOptions {
@@ -63,8 +61,6 @@ export interface ServeHandle {
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "0.0.0.0";
-const DEFAULT_BASE_PATH = "/api/flows";
-const DEFAULT_HEALTH_PATH = "/healthz";
 const DEFAULT_SHUTDOWN_GRACE_MS = 10_000;
 
 /** MIME types for static asset serving. */
@@ -110,68 +106,24 @@ export function serve(
 ): Promise<ServeHandle> {
   const port = resolvePort(options.port);
   const host = options.host ?? DEFAULT_HOST;
-  const basePath = options.basePath ?? DEFAULT_BASE_PATH;
-  const healthPath = options.healthPath ?? DEFAULT_HEALTH_PATH;
   const staticDir = options.staticDir;
   const shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
   const handleSignals = options.handleSignals ?? true;
 
-  const flowState = isFlowState(app) ? app : undefined;
-
-  // Kick off router resolution. For a FlowState this triggers store init; the
-  // server is ready once it resolves. A raw router is ready immediately.
-  let router: FlowApiRouter | undefined;
-  let ready = false;
-  let initError: Error | undefined;
-  const routerPromise: Promise<FlowApiRouter> = flowState
-    ? flowState.getRouter()
-    : Promise.resolve(app as FlowApiRouter);
-  routerPromise.then(
-    (r) => {
-      router = r;
-      ready = true;
-    },
-    (err: unknown) => {
-      initError = err instanceof Error ? err : new Error(String(err));
-    },
-  );
-
-  const onStreamError = (err: Error) => {
-    process.stderr.write(`[serve] SSE stream error: ${err.message}\n`);
-  };
-
-  const server = createServer(async (req, res) => {
-    const url = req.url ?? "/";
-    const path = url.split("?")[0];
-
-    if (path === healthPath) {
-      handleHealth(res, ready, initError);
-      return;
-    }
-
-    if (path.startsWith(basePath)) {
-      if (initError !== undefined) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Server failed to initialize" }));
-        return;
-      }
-      if (!ready || router === undefined) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Server initializing" }));
-        return;
-      }
-      await handleApiRequest(req, res, url, router, { basePath, onStreamError });
-      return;
-    }
-
-    if (staticDir !== undefined) {
-      await serveStaticFile(res, url, staticDir);
-      return;
-    }
-
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Not found" }));
+  // `basePath`/`healthPath` defaults live in `createServerApp`; pass through.
+  const { app: honoApp, dispose } = createServerApp(app, {
+    basePath: options.basePath,
+    healthPath: options.healthPath,
   });
+
+  // Static assets + SPA fallback for the DevTool UI, GET-only (Hono also answers
+  // HEAD). Registered after the portable app's health/API routes, so it only
+  // catches what they don't.
+  if (staticDir !== undefined) {
+    honoApp.get("*", (c) => serveStaticResponse(c.req.path, staticDir));
+  }
+
+  let server: Server;
 
   // Memoize so concurrent callers (e.g. a SIGTERM handler and an explicit
   // `handle.close()`) share one teardown and all await its completion.
@@ -202,18 +154,7 @@ export function serve(
       timer.unref?.();
     });
 
-    // Let an in-flight init settle so dispose is clean, then tear down.
-    try {
-      await routerPromise;
-    } catch {
-      // init failed; nothing to dispose on the router side.
-    }
-    if (router !== undefined) {
-      await disposeFlowApiRouter(router);
-    }
-    if (flowState !== undefined) {
-      await flowState.dispose();
-    }
+    await dispose();
   };
 
   const onSignal = () => {
@@ -221,66 +162,50 @@ export function serve(
   };
 
   return new Promise<ServeHandle>((resolveServe, rejectServe) => {
-    server.once("error", rejectServe);
-    server.listen(port, host, () => {
-      server.off("error", rejectServe);
-      // Only take ownership of process signals once the bind succeeds, so a
-      // failed listen (e.g. EADDRINUSE) doesn't leave teardown handlers — which
-      // would dispose the FlowState — registered for a server that never started.
-      // Callers managing their own signals opt out via `handleSignals: false`.
-      if (handleSignals) {
-        process.on("SIGTERM", onSignal);
-        process.on("SIGINT", onSignal);
-      }
-      const boundPort = (server.address() as AddressInfo).port;
-      resolveServe({ server, port: boundPort, close });
-    });
+    const onError = (err: Error) => rejectServe(err);
+    server = honoServe(
+      {
+        fetch: honoApp.fetch,
+        port,
+        hostname: host,
+        // Keep Node's native global Request/Response rather than swapping in the
+        // adapter's lightweight versions process-wide — avoids surprising other
+        // code (and test files) sharing the process.
+        overrideGlobalObjects: false,
+      },
+      (info) => {
+        server.off("error", onError);
+        // Only take ownership of process signals once the bind succeeds, so a
+        // failed listen (e.g. EADDRINUSE) doesn't leave teardown handlers — which
+        // would dispose the FlowState — registered for a server that never started.
+        // Callers managing their own signals opt out via `handleSignals: false`.
+        if (handleSignals) {
+          process.on("SIGTERM", onSignal);
+          process.on("SIGINT", onSignal);
+        }
+        resolveServe({ server, port: info.port, close });
+      },
+    ) as Server;
+    server.once("error", onError);
   });
 }
 
-/** Respond to a health probe: 200 once ready, 503 while initializing, 500 on init failure. */
-function handleHealth(
-  res: ServerResponse,
-  ready: boolean,
-  initError: Error | undefined,
-): void {
-  if (initError !== undefined) {
-    // A permanent init failure (bad config, unreachable store) won't resolve by
-    // retrying — return 500 so a PaaS fails the deploy fast instead of treating
-    // a 503 as transient and spinning in a health-check retry loop.
-    res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "error", message: initError.message }));
-    return;
-  }
-  if (ready) {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok" }));
-    return;
-  }
-  res.writeHead(503, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ status: "initializing" }));
-}
-
 /**
- * Serve a static file from `staticDir`, falling back to `index.html` for
- * unmatched routes (SPA routing). Guards against directory traversal.
+ * Serve a static file from `staticDir` as a Web `Response`, falling back to
+ * `index.html` for unmatched routes (SPA routing). Guards against directory
+ * traversal.
  */
-async function serveStaticFile(
-  res: ServerResponse,
-  url: string,
+async function serveStaticResponse(
+  pathname: string,
   staticDir: string,
-): Promise<void> {
-  const cleanUrl = url.split("?")[0];
-
+): Promise<Response> {
   let filePath: string;
-  if (cleanUrl === "/" || cleanUrl === "") {
+  if (pathname === "/" || pathname === "") {
     filePath = join(staticDir, "index.html");
   } else {
-    const normalized = resolve(staticDir, "." + cleanUrl);
+    const normalized = resolve(staticDir, "." + pathname);
     if (normalized !== staticDir && !normalized.startsWith(staticDir + sep)) {
-      res.writeHead(403);
-      res.end("Forbidden");
-      return;
+      return new Response("Forbidden", { status: 403 });
     }
     filePath = normalized;
   }
@@ -296,18 +221,17 @@ async function serveStaticFile(
     const ext = extname(filePath);
     const mimeType = MIME_TYPES[ext] ?? "application/octet-stream";
 
-    res.writeHead(200, { "Content-Type": mimeType });
-    res.end(content);
+    return new Response(content, { status: 200, headers: { "content-type": mimeType } });
   } catch {
     // SPA fallback: serve index.html for unmatched routes.
     try {
-      const indexPath = join(staticDir, "index.html");
-      const content = await readFile(indexPath);
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(content);
+      const content = await readFile(join(staticDir, "index.html"));
+      return new Response(content, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
     } catch {
-      res.writeHead(404);
-      res.end("Not found");
+      return new Response("Not found", { status: 404 });
     }
   }
 }

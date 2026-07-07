@@ -56,6 +56,49 @@ export function formatPercent(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+/** Format a signed return fraction as "+12.3%" / "-4.0%". `null` → "—".
+ *  Zero renders without a sign, matching {@link formatSignedMoney}. */
+export function formatSignedPercent(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return DASH;
+  const base = `${(Math.abs(value) * 100).toFixed(1)}%`;
+  if (value > 0) return `+${base}`;
+  if (value < 0) return `-${base}`;
+  return base;
+}
+
+/** Market value = quantity × current price. `null` price → null value. */
+export function marketValue(
+  quantity: number,
+  price: number | null,
+): number | null {
+  if (price === null || !Number.isFinite(price)) return null;
+  return quantity * price;
+}
+
+/** Unrealized P/L = (price − avg cost) × quantity. `null` if either price or
+ *  cost basis is unknown — never fabricated from a partial input. */
+export function unrealizedPL(
+  quantity: number,
+  costBasis: number | null,
+  price: number | null,
+): number | null {
+  if (price === null || costBasis === null) return null;
+  if (!Number.isFinite(price) || !Number.isFinite(costBasis)) return null;
+  return (price - costBasis) * quantity;
+}
+
+/** Unrealized P/L as a fraction of cost = (price − avg cost) / avg cost.
+ *  `null` when either input is unknown or cost is zero (a zero-cost position
+ *  has no meaningful return base) — never fabricated from a partial input. */
+export function unrealizedPLPercent(
+  costBasis: number | null,
+  price: number | null,
+): number | null {
+  if (price === null || costBasis === null || costBasis === 0) return null;
+  if (!Number.isFinite(price) || !Number.isFinite(costBasis)) return null;
+  return (price - costBasis) / costBasis;
+}
+
 /** Weight = this holding's market value / a total. `null` when either is
  *  unknown or the total is zero. */
 export function weight(

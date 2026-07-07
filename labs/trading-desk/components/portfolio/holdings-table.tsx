@@ -1,6 +1,6 @@
 /**
  * HoldingsTable — one account's holdings. Two layouts off ONE view model:
- * a dense 8-column table when the container is wide (desktop panes), and a
+ * a dense 10-column table when the container is wide (desktop panes), and a
  * stacked card list when it is narrow (phones — FIX-757). The switch is a CSS
  * container query (`@container` / `@3xl:`), so the component adapts to the
  * width it actually renders at, not the viewport.
@@ -20,6 +20,7 @@ import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AssetType, Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
+import { computeHoldingTerm, formatTerm, type TermLot } from "./holding-term";
 import {
   resolveHoldingPrice,
   holdingMarketValue,
@@ -32,6 +33,8 @@ import {
   formatPercent,
   formatQuantity,
   formatSignedMoney,
+  formatSignedPercent,
+  unrealizedPLPercent,
   weight,
 } from "./portfolio-format";
 
@@ -39,6 +42,13 @@ type HoldingsTableProps = {
   holdings: Holding[];
   /** ticker (upper-case) → resolved quote. Missing entry = price unknown. */
   prices: Map<string, Quote>;
+  /** ticker (upper-case) → dividends earned (ledger-derived, FIX-774). A
+   *  missing entry means no dividend history recorded — renders "—", not $0. */
+  dividends: Map<string, number>;
+  /** ticker (upper-case) → open FIFO lots (ledger-derived), for the per-lot
+   *  short/long term split. A holding with no entry falls back to its own
+   *  `acquiredDate` as one pseudo-lot; no date at all renders "—". */
+  lots: Map<string, TermLot[]>;
   currency: string;
   /** Account total market value, for weight %. `null` while prices load. */
   accountTotal: number | null;
@@ -76,6 +86,15 @@ export type HoldingRowModel = {
   value: string;
   weight: string;
   upl: { text: string; direction: "up" | "down" | "flat" };
+  /** Unrealized P/L as a signed percent of cost ("+12.3%"); "—" when price or
+   *  cost is unknown. */
+  uplPct: string;
+  /** Dividends earned on this holding per the ledger; "—" when none recorded
+   *  (no history ≠ zero income). */
+  dividends: string;
+  /** Holding-period term: "Long", "Short · N mo to long", a mixed "xL / yS ·
+   *  N mo" split, or "—" for undated shares. */
+  term: string;
 };
 
 /** The marker appended after a price to signal a non-live source. A live quote
@@ -100,16 +119,31 @@ const PRICE_SOURCE_TITLE: Record<PriceSource, string> = {
  *  FIX-773 Slice C: the price is resolved BY TYPE (`value-holding.ts`) — equity
  *  via the live quote, a bond/option at its carried statement mark, MMF/cash at
  *  par — so a bond/MMF shows a real value with no live quote. uP/L stays vs the
- *  informational `costBasis` (null for a snapshot-imported bond → "—"). */
+ *  informational `costBasis` (null for a snapshot-imported bond → "—").
+ *
+ *  The term classifies per LOT when ledger lots exist; a lot-less holding falls
+ *  back to its own `acquiredDate` as one pseudo-lot ("—" when undated). `asOf`
+ *  defaults to now; tests pin it. */
 export function buildHoldingRowModel(
   holding: Holding,
   quote: Quote | undefined,
   currency: string,
   accountTotal: number | null,
+  dividendsEarned: number | null = null,
+  lots: TermLot[] | null = null,
+  asOf: Date = new Date(),
 ): HoldingRowModel {
+  // FIX-773 Slice C: value BY TYPE (bond/option → carried mark, MMF/cash → par,
+  // equity/etf/crypto → live quote), NOT `quote?.price` alone — else a bond/MMF
+  // with no live quote regresses to "—". `price` is the type-resolved per-unit
+  // value, so uP/L and uplPct below stay consistent with the market value.
   const { price, priceSource } = resolveHoldingPrice(holding, quote);
   const value = holdingMarketValue(holding, quote);
   const upl = holdingUnrealizedPL(holding, quote);
+  const termLots =
+    lots !== null && lots.length > 0
+      ? lots
+      : [{ quantity: holding.quantity, acquiredDate: holding.acquiredDate }];
   return {
     ticker: holding.ticker,
     typeLabel: TYPE_LABELS[holding.assetType],
@@ -121,6 +155,9 @@ export function buildHoldingRowModel(
     value: formatMoney(value, currency),
     weight: formatPercent(weight(value, accountTotal)),
     upl: formatSignedMoney(upl, currency),
+    uplPct: formatSignedPercent(unrealizedPLPercent(holding.costBasis, price)),
+    dividends: formatMoney(dividendsEarned, currency),
+    term: formatTerm(computeHoldingTerm(termLots, asOf)),
   };
 }
 
@@ -157,6 +194,8 @@ function PriceText({ model }: { model: HoldingRowModel }): ReactElement {
 export function HoldingsTable({
   holdings,
   prices,
+  dividends,
+  lots,
   currency,
   accountTotal,
   onDeleteHolding,
@@ -164,18 +203,25 @@ export function HoldingsTable({
   if (holdings.length === 0) {
     return (
       <p className="px-2 py-3 text-[11.5px] text-[color:var(--c-fg-muted)]">
-        No holdings yet. Import a CSV to add positions.
+        No holdings yet. Import a CSV or a transaction file to add positions.
       </p>
     );
   }
 
   const rows = holdings.map((h) =>
-    buildHoldingRowModel(h, prices.get(h.ticker.toUpperCase()), currency, accountTotal),
+    buildHoldingRowModel(
+      h,
+      prices.get(h.ticker.toUpperCase()),
+      currency,
+      accountTotal,
+      dividends.get(h.ticker.toUpperCase()) ?? null,
+      lots.get(h.ticker.toUpperCase()) ?? null,
+    ),
   );
 
   return (
     <div className="@container">
-      {/* Wide container (≥ @3xl / 768px): the dense 8-column table. */}
+      {/* Wide container (≥ @3xl / 768px): the dense 10-column table. */}
       <table className="hidden w-full border-collapse @3xl:table">
         <thead>
           <tr className="border-b border-[color:var(--c-border)]">
@@ -186,6 +232,8 @@ export function HoldingsTable({
             <th className={cn(headerClass, "text-right")}>Value</th>
             <th className={cn(headerClass, "text-right")}>Weight</th>
             <th className={cn(headerClass, "text-right")}>Unrl P/L</th>
+            <th className={cn(headerClass, "text-right")}>Dividends</th>
+            <th className={cn(headerClass, "text-right")}>Term</th>
             <th className={cn(headerClass, "text-right")} aria-label="Actions" />
           </tr>
         </thead>
@@ -213,8 +261,11 @@ export function HoldingsTable({
                 style={{ color: directionColor(m.upl.direction) }}
               >
                 {m.upl.text}
+                {m.uplPct === DASH ? "" : ` (${m.uplPct})`}
                 {directionMarker(m.upl.direction)}
               </td>
+              <td className={numCellClass}>{m.dividends}</td>
+              <td className={cn(numCellClass, "whitespace-nowrap")}>{m.term}</td>
               <td className={cn(cellClass, "text-right")}>
                 <DeleteHoldingButton
                   ticker={m.ticker}
@@ -253,9 +304,11 @@ export function HoldingsTable({
               <CardStat label="Weight" value={m.weight} />
               <CardStat
                 label="Unrl P/L"
-                value={`${m.upl.text}${directionMarker(m.upl.direction)}`}
+                value={`${m.upl.text}${m.uplPct === DASH ? "" : ` (${m.uplPct})`}${directionMarker(m.upl.direction)}`}
                 valueColor={directionColor(m.upl.direction)}
               />
+              <CardStat label="Dividends" value={m.dividends} />
+              <CardStat label="Term" value={m.term} />
             </dl>
           </li>
         ))}

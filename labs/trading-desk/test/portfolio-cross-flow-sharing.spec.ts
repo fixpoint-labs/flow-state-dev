@@ -43,7 +43,10 @@ vi.mock("@/lib/portfolio-db", () => ({
   },
 }));
 
-import portfolioFlow from "../src/flows/portfolio/flow";
+import {
+  saveAccount,
+  saveAccountSchema,
+} from "@/src/flows/portfolio/portfolio-writes";
 import reportFlow from "../src/flows/analysis/flow";
 
 const USER_ID = "shared-user";
@@ -351,26 +354,20 @@ describe("portfolio cross-flow sharing (shared repository)", () => {
   it("an account written via the portfolio flow is readable via the report flow", async () => {
     const stores = createInMemoryStores();
 
-    // Step 1: write an IRA account through the PORTFOLIO flow. saveAccount
-    // upserts it into the shared (mocked) repository for {userId}.
-    const writeResult = await testFlow({
-      flow: portfolioFlow,
-      action: "saveAccount",
-      userId: USER_ID,
-      sessionId: "portfolio-session",
-      stores,
-      input: {
-        accountId: null,
-        name: "IRA",
-        type: "IRA",
-        cashBalance: 500,
-      },
-    });
-    expect(writeResult.status).toBe("completed");
+    // Step 1: write an IRA account through the portfolio WRITE surface (a plain
+    // domain function behind the accounts route now, FIX-736 follow-up). It
+    // upserts into the shared repository for {userId} — the same repository the
+    // report flow's seedSession reads. That the write is a route and the read is
+    // a flow makes this cross-surface sharing the more honest test.
+    await saveAccount(
+      saveAccountSchema.parse({ accountId: null, name: "IRA", type: "IRA", cashBalance: 500 }),
+      USER_ID,
+      repoState.repo!,
+    );
 
     // Step 2: run the REPORT flow's `analyze` — NO seed.user.resources for
     // accounts. The only way portfolio.accounts can contain the IRA is if
-    // seedSession reads it from the shared repository the portfolio flow wrote.
+    // seedSession reads it from the shared repository the write above populated.
     const analyzeResult = await testFlow({
       flow: reportFlow,
       action: "analyze",

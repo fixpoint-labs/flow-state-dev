@@ -6,7 +6,7 @@ sidebar_position: 1
 
 How to configure the flow-state.dev server runtime in your application.
 
-The runtime is the part that registers your flows, runs actions, persists state, and streams results. You describe it once with a config object and hand that object to a platform adapter. The adapter mounts it as HTTP route handlers.
+The runtime is the part that registers your flows, runs actions, persists state, and streams results. You describe it once with a config object and hand that object to a platform adapter. The adapter mounts it as HTTP route handlers. See [Host adapters](/docs/server/host-adapters) for which adapter fits your platform.
 
 ## A single config object
 

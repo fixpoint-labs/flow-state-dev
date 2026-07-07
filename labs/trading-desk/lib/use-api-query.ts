@@ -43,3 +43,32 @@ export function useApiQuery<T>(url: string): { data: T | null; refetch: () => vo
 
   return { data, refetch };
 }
+
+/**
+ * Fire a mutating request against one of the app's own JSON routes and return
+ * the parsed result. The portfolio write surface is plain REST (FIX-736 follow-
+ * up): a mutation is an awaited `fetch` that returns its real result — no flow
+ * round-trip, no request envelope, no stream-settle refetch guessing. The
+ * caller `await`s this, then triggers the relevant `refetch`. Throws on a
+ * non-2xx response, surfacing the route's `{ error }` message when present so
+ * the caller can show it.
+ */
+export async function apiMutate<T>(
+  url: string,
+  method: "POST" | "DELETE",
+  body?: unknown,
+): Promise<T> {
+  const res = await fetch(url, {
+    method,
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const message = await res
+      .json()
+      .then((b: { error?: string }) => b.error)
+      .catch(() => null);
+    throw new Error(message ?? `${method} ${url} failed (${res.status})`);
+  }
+  return (await res.json()) as T;
+}
