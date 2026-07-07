@@ -47,6 +47,7 @@ import { AgentBadge } from "@/components/agent-badge";
 import { ThesisHeader } from "./thesis-header";
 import { ThesisBody } from "./thesis-body";
 import { PmHero } from "./pm-hero";
+import { ReportThesisPanel } from "./report-thesis-panel";
 import { LensCard } from "./lens-card";
 import { ScenarioPanel } from "./scenario-panel";
 import { WritingSkeleton } from "./writing-skeleton";
@@ -473,10 +474,22 @@ function PmHeroWithScenarios({
     };
   }, [scenarioItem, data]);
 
+  // Pass the REAL completion signal (not a hard-coded true): `runComplete` flips
+  // only after the PM commit writes the decision snapshot, so the adopt button
+  // never offers an action that would fail with `no-decision` (e.g. the Summary
+  // tab opened manually mid-run). The thesis panel sits above the hero.
+  const { session: live } = useClientData(session, { session: ["runComplete"] });
+  const runComplete = live?.runComplete === true;
   return (
-    <PmHero
-      agent={agent}
-      label={data?.label ?? null}
+    <div className="flex flex-col gap-5">
+      <ReportThesisPanel
+        session={session}
+        ticker={data?.ticker ?? null}
+        runComplete={runComplete}
+      />
+      <PmHero
+        agent={agent}
+        label={data?.label ?? null}
       headline={data?.headline ?? null}
       rating={data?.rating ?? null}
       body={data?.body ?? null}
@@ -493,7 +506,8 @@ function PmHeroWithScenarios({
       lensConvergence={data?.lensConvergence ?? null}
       snapshotAsOf={data?.portfolioFit?.snapshotAsOf ?? null}
       mandateDecision={data?.mandateDecision ?? null}
-    />
+      />
+    </div>
   );
 }
 

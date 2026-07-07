@@ -74,6 +74,10 @@ export const traderGenerator = generator({
       // reward-to-risk figure is not yet computed at Phase 3 (it derives from the
       // Phase 5a forecast), so the trader sees only the mandate, not the figure.
       riskMandate: true,
+      // FIX-760 — the trader sees the user's STANDING thesis for a held name
+      // (their durable "why"), so its sizing weighs standing intent, not just
+      // position size. Thesis-blind when none is recorded.
+      standingThesis: true,
       // FIX-676 — cost-gated web search+fetch to corroborate a specific claim
       // (a peer comp, a recent event) before sizing. `corroborate` also carries
       // the shared references-consulted ledger so it reuses what the desk already

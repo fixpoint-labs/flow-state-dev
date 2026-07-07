@@ -371,6 +371,10 @@ export const commitPortfolioManagerMemo = handler({
       rewardToRiskLossAdjustedGlr: mandateDecision?.lossAdjustedGlr ?? null,
       worstCaseReturnPct: mandateDecision?.worstCaseReturnPct ?? null,
       capacityVetoed: mandateDecision?.capacityVetoed ?? null,
+      // Standing-thesis echo (FIX-760) — true when a durable thesis was frozen
+      // and reached the decision tier. Derived from frozen state, the
+      // `hasPortfolioContext` precedent (never trusted from the LLM).
+      hasStandingThesis: ctx.session.state.standingThesis != null,
       decidedAt,
       outcomeRealizedPrice: null,
       outcomeAsOf: null,

@@ -16,7 +16,7 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
@@ -48,7 +48,15 @@ type HoldingsTableProps = {
   currency: string;
   /** Account total market value, for weight %. `null` while prices load. */
   accountTotal: number | null;
+  /** Household tickers (upper-case) that have a standing thesis (FIX-760). */
+  thesisTickers: ReadonlySet<string>;
+  /** Whether the household theses have finished loading. The thesis button is
+   *  disabled until then, so a click can't open a blank editor against a partial
+   *  list and overwrite an unloaded thesis (FIX-760). Defaults to true. */
+  thesisReady?: boolean;
   onDeleteHolding: (ticker: string) => void;
+  /** Open the thesis editor for one holding (the per-holding thesis affordance). */
+  onEditThesis: (ticker: string) => void;
 };
 
 /** Render-ready strings for one holding row/card. Every price-derived field
@@ -70,13 +78,19 @@ export type HoldingRowModel = {
   /** Holding-period term: "Long", "Short · N mo to long", a mixed "xL / yS ·
    *  N mo" split, or "—" for undated shares. */
   term: string;
+  /** Whether the household has a standing thesis for this name (FIX-760).
+   *  Derived from the household thesis set; drives the quiet per-holding
+   *  indicator in BOTH the table cell and the stacked card. */
+  hasThesis: boolean;
 };
 
 /** Build the shared view model behind a table row AND a mobile card. Pure —
  *  exported for the node-env spec (`test/holdings-row-model.spec.ts`). The
  *  term classifies per LOT when ledger lots exist; a lot-less holding falls
  *  back to its own `acquiredDate` as one pseudo-lot ("—" when undated).
- *  `asOf` defaults to now; tests pin it. */
+ *  `asOf` defaults to now; tests pin it. `thesisTickers` is the household's set
+ *  of upper-cased tickers that have a thesis (household × ticker, FIX-760);
+ *  omitted → no thesis indicator. */
 export function buildHoldingRowModel(
   holding: Holding,
   quote: Quote | undefined,
@@ -84,6 +98,7 @@ export function buildHoldingRowModel(
   accountTotal: number | null,
   dividendsEarned: number | null = null,
   lots: TermLot[] | null = null,
+  thesisTickers?: ReadonlySet<string>,
   asOf: Date = new Date(),
 ): HoldingRowModel {
   const price = quote?.price ?? null;
@@ -105,6 +120,7 @@ export function buildHoldingRowModel(
     uplPct: formatSignedPercent(unrealizedPLPercent(holding.costBasis, price)),
     dividends: formatMoney(dividendsEarned, currency),
     term: formatTerm(computeHoldingTerm(termLots, asOf)),
+    hasThesis: thesisTickers?.has(holding.ticker.toUpperCase()) ?? false,
   };
 }
 
@@ -131,7 +147,10 @@ export function HoldingsTable({
   lots,
   currency,
   accountTotal,
+  thesisTickers,
+  thesisReady = true,
   onDeleteHolding,
+  onEditThesis,
 }: HoldingsTableProps): ReactElement {
   if (holdings.length === 0) {
     return (
@@ -149,6 +168,7 @@ export function HoldingsTable({
       accountTotal,
       dividends.get(h.ticker.toUpperCase()) ?? null,
       lots.get(h.ticker.toUpperCase()) ?? null,
+      thesisTickers,
     ),
   );
 
@@ -176,7 +196,17 @@ export function HoldingsTable({
               key={m.ticker}
               className="border-b border-[color:var(--c-border)]/40"
             >
-              <td className={cn(cellClass, "font-semibold")}>{m.ticker}</td>
+              <td className={cn(cellClass, "font-semibold")}>
+                <span className="inline-flex items-center gap-1">
+                  {m.ticker}
+                  <ThesisButton
+                    ticker={m.ticker}
+                    hasThesis={m.hasThesis}
+                    disabled={!thesisReady}
+                    onEdit={onEditThesis}
+                  />
+                </span>
+              </td>
               <td className={numCellClass}>{m.quantity}</td>
               <td className={numCellClass}>{m.avgCost}</td>
               <td className={numCellClass}>{m.price}</td>
@@ -217,6 +247,12 @@ export function HoldingsTable({
               <span className="font-mono text-[12.5px] font-semibold text-[color:var(--c-fg)]">
                 {m.ticker}
               </span>
+              <ThesisButton
+                ticker={m.ticker}
+                hasThesis={m.hasThesis}
+                disabled={!thesisReady}
+                onEdit={onEditThesis}
+              />
               <span className="ml-auto font-mono text-[12.5px] tabular-nums text-[color:var(--c-fg)]">
                 {m.value}
               </span>
@@ -264,6 +300,53 @@ function CardStat({
         {value}
       </dd>
     </div>
+  );
+}
+
+/** The shared per-holding thesis affordance (table cell + card header). A quiet
+ *  notebook glyph: filled-accent when a thesis exists, faint when it doesn't.
+ *  Clicking opens the thesis editor (pre-filled when one exists). The flag
+ *  travels through the row model, so both layouts get the indicator identically. */
+function ThesisButton({
+  ticker,
+  hasThesis,
+  disabled = false,
+  onEdit,
+}: {
+  ticker: string;
+  hasThesis: boolean;
+  /** Disabled until the household theses finish loading — a click against a
+   *  partial list could blank-edit and overwrite an unloaded thesis (FIX-760). */
+  disabled?: boolean;
+  onEdit: (ticker: string) => void;
+}): ReactElement {
+  return (
+    <button
+      type="button"
+      onClick={() => onEdit(ticker)}
+      disabled={disabled}
+      className={cn(
+        "rounded p-0.5",
+        disabled
+          ? "cursor-not-allowed text-[color:var(--c-fg-faint)] opacity-40"
+          : cn(
+              "hover:bg-[color:var(--c-surface-2)]",
+              hasThesis
+                ? "text-[color:var(--c-accent)]"
+                : "text-[color:var(--c-fg-faint)] hover:text-[color:var(--c-fg-muted)]",
+            ),
+      )}
+      aria-label={hasThesis ? `Edit thesis for ${ticker}` : `Add thesis for ${ticker}`}
+      title={
+        disabled
+          ? "Loading theses…"
+          : hasThesis
+            ? `Thesis recorded — edit ${ticker}`
+            : `Add a thesis for ${ticker}`
+      }
+    >
+      <NotebookPen className="h-3 w-3" aria-hidden />
+    </button>
   );
 }
 

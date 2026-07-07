@@ -60,9 +60,18 @@ type AccountDetailProps = {
   /** Total dividends earned in this account per the ledger (incl. closed
    *  positions); `null` when none recorded. */
   accountDividends: number | null;
+  /** Household tickers (upper-case) that have a standing thesis (FIX-760).
+   *  Household × ticker, so the set is shared across every account. */
+  thesisTickers: ReadonlySet<string>;
+  /** Whether the household theses have finished loading; the per-holding thesis
+   *  editor affordance is disabled until then so it can't blank-edit/overwrite
+   *  an unloaded thesis (FIX-760). */
+  thesisReady?: boolean;
   onBack: () => void;
   onDeleteHolding: (ticker: string) => void;
   onDeleteAccount: () => void;
+  /** Open the thesis editor for one holding (the per-holding thesis affordance). */
+  onEditThesis: (ticker: string) => void;
 };
 
 export function AccountDetail({
@@ -77,9 +86,12 @@ export function AccountDetail({
   accountUpl,
   accountUplPct,
   accountDividends,
+  thesisTickers,
+  thesisReady = true,
   onBack,
   onDeleteHolding,
   onDeleteAccount,
+  onEditThesis,
 }: AccountDetailProps): ReactElement {
   const [tab, setTab] = useState<AccountTab>("holdings");
 
@@ -192,7 +204,10 @@ export function AccountDetail({
             lots={lots}
             currency={account.currency}
             accountTotal={accountValue}
+            thesisTickers={thesisTickers}
+            thesisReady={thesisReady}
             onDeleteHolding={onDeleteHolding}
+            onEditThesis={onEditThesis}
           />
         ) : tab === "transactions" ? (
           <div className="p-2">

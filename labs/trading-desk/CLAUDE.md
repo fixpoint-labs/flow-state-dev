@@ -478,6 +478,80 @@ Two load-bearing decisions:
   amount, blank FITID) → skipped. The parser never fabricates a value to make a
   row land.
 
+## Per-position thesis records (FIX-760)
+
+The durable "why" behind a holding — entry rationale, invalidation conditions,
+time horizon, optional target/stop, and a link to the originating report.
+
+- **Why a resource, not a table.** Unlike accounts/holdings/ledger (which earned
+  the FIX-772 `app.*` tables with FK cascades + cross-account `GROUP BY ticker`
+  rollups + FIFO lot derivation), a thesis is a **flat household × ticker
+  document** — no FK, no join, no aggregation — and it is **agent-facing state**
+  (the seed injects it into the trader/PM prompts). That is the resource sweet
+  spot, so it is a **user-scoped resource collection**, not a relational table.
+  Being a resource buys the live client read path (`useResourceCollectionList`)
+  and `resource_change` streaming for free — no bespoke read route, no manual
+  refetch. (This is the inverse of FIX-858: holdings/positions are genuinely
+  relational and need FIX-858's API-backed-resource projection to reach the
+  surface; a thesis just *is* a resource.)
+
+- **The collection — `thesesCollection` (`portfolio-resources.ts`).** Pattern
+  `theses/*`, `scope: "user"`, `flowIsolation: false` (keys at bare
+  `theses/{TICKER}` under the user, cross-flow like `portfolioQuotes`).
+  `client: { state: { read: true }, live: true }`. The mutation verbs take the
+  **bare** key (`thesisKey(ticker)` = the canonical upper-case ticker); the
+  framework prepends the `theses/` prefix, so the stored key / client `item.topic`
+  is `theses/{TICKER}`. Keyed household × ticker, NOT per account — intent is
+  about the name. There is deliberately **no holdings link** — a thesis can
+  outlive an exited position (post-mortem) and exist before a buy settles
+  (adopt-then-buy).
+
+- **The schema leaf — `src/flows/portfolio/thesis-schema.ts`.** Browser-safe
+  (imports only `zod`): `thesisInputSchema` (the user-suppliable fields the editor
+  validates and the action re-validates), `thesisRecordSchema` (the collection's
+  state shape, adds `createdAt`/`updatedAt`), `tripwireSchema`. NOT generator
+  outputs — `.default()`/`.nullable()` are fine; do NOT add them to
+  `output-schemas-strict.spec.ts` (the `accountStateSchema` precedent).
+
+- **Two write paths, one collection.** The portfolio flow owns the hand-edit
+  path — `saveThesis` / `deleteThesis` (`src/flows/portfolio/thesis-actions.ts`),
+  ticker canonicalized to upper-case. The analysis flow owns the derive-from-report
+  path — `adoptThesis` (`orchestration/adopt-thesis-action.ts`), which reads the
+  session's decision snapshot + trader memo SERVER-SIDE (v1 is derive-only; the
+  user edits afterward) and upserts with the `sourceSessionId` captured
+  automatically. Both `ctx.resources.theses.upsert(thesisKey, ...)` — overwrite in
+  place, no revision history in v1; the action stamps `createdAt` (preserved on
+  edit) / `updatedAt`. The trader memo's `invalidationCriteria` is a `string[]`,
+  joined to a bullet list for the thesis's freeform field.
+
+- **Injection — read at seed, frozen, trader + PM only.** `seedSession` reads the
+  thesis off the collection (`ctx.resources.theses.getOptional(thesisKey(ticker))`)
+  and freezes it onto `state.standingThesis` (the `portfolioContext` /
+  `riskMandate` snapshot pattern; does NOT join the keying tuple). The
+  `standingThesis` capability preset renders `<standing-thesis>` from frozen state
+  (object-form context, so the key auto-kebabs — the `portfolioContext` /
+  `riskMandate` precedent; suppressed to null when absent), opted into by the
+  trader (P3) and PM (P5) ONLY — the analysts stay blind so the independent
+  evidence is uncontaminated. **`<standing-thesis>` is distinct from
+  `userThesis`'s self-wrapped `<userThesis>`** (the Phase 6 hypothesis-under-audit)
+  — never the same tag.
+
+- **`hasStandingThesis` echo (snapshot + RunSummary).** The PM commit derives
+  `hasStandingThesis` from frozen state (never LLM-emitted, the
+  `hasPortfolioContext` precedent) onto the decision snapshot, mirrored to
+  `RunSummary`. It is the deterministic PASS signal the
+  `goals/trading-desk-thesis/standing-thesis-injected` goal check reads.
+
+- **Read path is the resource itself.** The Portfolio + report UI read the
+  collection via `use-theses.ts` (`useResourceCollectionList(session, "theses")`,
+  live — no route, no refetch). A per-holding indicator flows through the holdings
+  row model so both the table and the stacked-card layout show it.
+
+- **Limitations (v1).** Household × ticker only (per-sleeve theses defer to
+  FIX-771); overwrite on edit, no revision history; `adoptThesis` is derive-only
+  (no edit-before-save). The review loop that re-checks tripwires and fills the
+  snapshot `outcome*` fields is FIX-763 (this is its blocker).
+
 ## Responsive / mobile layout
 
 The desk branches its **shell** at the `lg` breakpoint (1024px); content
