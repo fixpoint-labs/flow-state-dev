@@ -35,6 +35,7 @@ import { z } from "zod";
 import { citationIntegritySchema } from "./resources";
 import { portfolioContextInput } from "./flow-schema";
 import { riskMandateSchema } from "./lib/risk-mandate";
+import { thesisRecordSchema } from "../portfolio/thesis-schema";
 
 export const sessionStateSchema = z.object({
   ticker: z.string().default("NVDA"),
@@ -90,6 +91,14 @@ export const sessionStateSchema = z.object({
   // it. Null → mandate-blind: no worth-it size gate, the run behaves exactly as
   // before FIX-752.
   riskMandate: riskMandateSchema.nullable().default(null),
+  // Standing per-position thesis for the run's ticker (FIX-760), read from the
+  // user-scoped `theses` resource collection at `seedSession` and frozen here. The pipeline
+  // (P1–P2) runs blind to it — only the trader (P3) and PM (P5) read it via the
+  // `standingThesis` capability preset, so the independent analyst evidence stays
+  // uncontaminated (the `portfolioContext` injection points). Distinct from the
+  // per-run `userThesis` (the Phase 6 hypothesis-under-audit) — this is durable
+  // standing intent, never merged with it. Null → thesis-blind run.
+  standingThesis: thesisRecordSchema.nullable().default(null),
 });
 
 export type SessionState = z.infer<typeof sessionStateSchema>;

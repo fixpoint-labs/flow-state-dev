@@ -49,6 +49,7 @@ import { PriceOverlay, type PriceOverlayLevel } from "./charts/price-overlay";
 import { PortfolioFitBlock } from "./portfolio-fit-block";
 import { LensConvergenceBlock } from "./lens-convergence-block";
 import { MandatePanel } from "../theses/mandate-panel";
+import { ReportThesisPanel } from "../theses/report-thesis-panel";
 import { cn } from "@/lib/utils";
 
 export type ReportSummaryProps = {
@@ -74,7 +75,7 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
   const { clientData: spineRaw } = useResource(session, "valuationSpine");
   const { clientData: priceRaw } = useResource(session, "priceHistory");
   const { session: stop } = useClientData(session, {
-    session: ["stoppedReason", "stoppedMessage"],
+    session: ["stoppedReason", "stoppedMessage", "runComplete"],
   });
 
   const stoppedReason = (stop?.stoppedReason ?? null) as string | null;
@@ -127,7 +128,18 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
         trade={summary.trade}
       />
 
-      <ConvictionStrip nodes={summary.conviction} />      
+      {/* FIX-760: adopt-as-thesis + the standing-thesis card for the analyzed
+          name. Pass the REAL `runComplete` (not hard-coded true): the Summary tab
+          can be opened manually mid-run, and `runComplete` flips only after the PM
+          commit writes the decision snapshot, so the adopt button never offers an
+          action that would fail with `no-decision`. */}
+      <ReportThesisPanel
+        session={session}
+        ticker={summary.ticker === "" ? null : summary.ticker}
+        runComplete={stop?.runComplete === true}
+      />
+
+      <ConvictionStrip nodes={summary.conviction} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">

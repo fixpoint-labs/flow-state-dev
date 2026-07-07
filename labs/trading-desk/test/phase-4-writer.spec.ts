@@ -150,6 +150,7 @@ const aggressiveCritique = {
     invalidation: "looser" as const,
   },
   dismissedRisks: [],
+  citations: null,
 };
 
 const conservativeCritique = {
@@ -235,6 +236,7 @@ const riskAssessment = {
   },
   confidenceCalibration: "calibrated" as const,
   calibrationRationale: "Conviction aligns with the evidence base.",
+  citations: null,
 };
 
 describe("Phase 4 writer taps", () => {

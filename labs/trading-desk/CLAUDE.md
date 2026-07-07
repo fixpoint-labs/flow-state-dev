@@ -541,6 +541,80 @@ Two load-bearing decisions:
   amount, blank FITID) → skipped. The parser never fabricates a value to make a
   row land.
 
+## Per-position thesis records (FIX-760)
+
+The durable "why" behind a holding — entry rationale, invalidation conditions,
+time horizon, optional target/stop, and a link to the originating report.
+
+- **Why a resource, not a table.** Unlike accounts/holdings/ledger (which earned
+  the FIX-772 `app.*` tables with FK cascades + cross-account `GROUP BY ticker`
+  rollups + FIFO lot derivation), a thesis is a **flat household × ticker
+  document** — no FK, no join, no aggregation — and it is **agent-facing state**
+  (the seed injects it into the trader/PM prompts). That is the resource sweet
+  spot, so it is a **user-scoped resource collection**, not a relational table.
+  Being a resource buys the live client read path (`useResourceCollectionList`)
+  and `resource_change` streaming for free — no bespoke read route, no manual
+  refetch. (This is the inverse of FIX-858: holdings/positions are genuinely
+  relational and need FIX-858's API-backed-resource projection to reach the
+  surface; a thesis just *is* a resource.)
+
+- **The collection — `thesesCollection` (`portfolio-resources.ts`).** Pattern
+  `theses/*`, `scope: "user"`, `flowIsolation: false` (keys at bare
+  `theses/{TICKER}` under the user, cross-flow like `portfolioQuotes`).
+  `client: { state: { read: true }, live: true }`. The mutation verbs take the
+  **bare** key (`thesisKey(ticker)` = the canonical upper-case ticker); the
+  framework prepends the `theses/` prefix, so the stored key / client `item.topic`
+  is `theses/{TICKER}`. Keyed household × ticker, NOT per account — intent is
+  about the name. There is deliberately **no holdings link** — a thesis can
+  outlive an exited position (post-mortem) and exist before a buy settles
+  (adopt-then-buy).
+
+- **The schema leaf — `src/flows/portfolio/thesis-schema.ts`.** Browser-safe
+  (imports only `zod`): `thesisInputSchema` (the user-suppliable fields the editor
+  validates and the action re-validates), `thesisRecordSchema` (the collection's
+  state shape, adds `createdAt`/`updatedAt`), `tripwireSchema`. NOT generator
+  outputs — `.default()`/`.nullable()` are fine; do NOT add them to
+  `output-schemas-strict.spec.ts` (the `accountStateSchema` precedent).
+
+- **Two write paths, one collection.** The portfolio flow owns the hand-edit
+  path — `saveThesis` / `deleteThesis` (`src/flows/portfolio/thesis-actions.ts`),
+  ticker canonicalized to upper-case. The analysis flow owns the derive-from-report
+  path — `adoptThesis` (`orchestration/adopt-thesis-action.ts`), which reads the
+  session's decision snapshot + trader memo SERVER-SIDE (v1 is derive-only; the
+  user edits afterward) and upserts with the `sourceSessionId` captured
+  automatically. Both `ctx.resources.theses.upsert(thesisKey, ...)` — overwrite in
+  place, no revision history in v1; the action stamps `createdAt` (preserved on
+  edit) / `updatedAt`. The trader memo's `invalidationCriteria` is a `string[]`,
+  joined to a bullet list for the thesis's freeform field.
+
+- **Injection — read at seed, frozen, trader + PM only.** `seedSession` reads the
+  thesis off the collection (`ctx.resources.theses.getOptional(thesisKey(ticker))`)
+  and freezes it onto `state.standingThesis` (the `portfolioContext` /
+  `riskMandate` snapshot pattern; does NOT join the keying tuple). The
+  `standingThesis` capability preset renders `<standing-thesis>` from frozen state
+  (object-form context, so the key auto-kebabs — the `portfolioContext` /
+  `riskMandate` precedent; suppressed to null when absent), opted into by the
+  trader (P3) and PM (P5) ONLY — the analysts stay blind so the independent
+  evidence is uncontaminated. **`<standing-thesis>` is distinct from
+  `userThesis`'s self-wrapped `<userThesis>`** (the Phase 6 hypothesis-under-audit)
+  — never the same tag.
+
+- **`hasStandingThesis` echo (snapshot + RunSummary).** The PM commit derives
+  `hasStandingThesis` from frozen state (never LLM-emitted, the
+  `hasPortfolioContext` precedent) onto the decision snapshot, mirrored to
+  `RunSummary`. It is the deterministic PASS signal the
+  `goals/trading-desk-thesis/standing-thesis-injected` goal check reads.
+
+- **Read path is the resource itself.** The Portfolio + report UI read the
+  collection via `use-theses.ts` (`useResourceCollectionList(session, "theses")`,
+  live — no route, no refetch). A per-holding indicator flows through the holdings
+  row model so both the table and the stacked-card layout show it.
+
+- **Limitations (v1).** Household × ticker only (per-sleeve theses defer to
+  FIX-771); overwrite on edit, no revision history; `adoptThesis` is derive-only
+  (no edit-before-save). The review loop that re-checks tripwires and fills the
+  snapshot `outcome*` fields is FIX-763 (this is its blocker).
+
 ## Responsive / mobile layout
 
 The desk branches its **shell** at the `lg` breakpoint (1024px); content
@@ -922,6 +996,70 @@ Available `*Full` variants today: `phase1MemosFull`, `phase2DebateFull`,
 always-on counterpart, so generators don't need to mirror those on their
 own `resources:` slot. Add a new variant when you want a different
 preset to participate in the cost gate.
+
+### Synthesis-phase web search — the `corroborate` preset
+
+Phase 1 has `investigate` (discovery → bounded fetch) and Phase 6 has
+`verify` (ungated search+fetch, user-thesis only). The synthesis phases
+in between get a third affordance: **`corroborate`** — cost-gated,
+agent-initiated web `search` + `fetch` to back up a *specific* claim
+before committing to it. Two presets carry it:
+
+- **`corroborate`** — exposes the shared `search` + `fetch` tools and the
+  `<corroboration>` clause, HARD-GATED on `costPreset === "full"` (the
+  `investigate` gate, the `verify` tool set). Opted into by the trader
+  (P3), **all three** risk personas (P4), and the PM (P5b). The risk
+  triad is all-or-none on purpose: arming only one persona would tilt the
+  desk's already conservative-leaning synthesis. The per-memo call cap
+  (2 searches + 2 fetches) lives in the clause, not in tool state (the
+  `counterEvidence` precedent). The clause requires every lookup-backed
+  claim to trace to a URL the agent actually fetched, added to the
+  `citations` array.
+- **`reviewReferences`** — exposes `fetch` (no `search`) plus the
+  `<reviewReferences>` clause, same `full` gate. For synthesis agents
+  that should be able to *pull* a link the desk already surfaced but not
+  run a fresh search: the scenario forecaster and the risk consolidator.
+
+**Both presets also render the shared "references consulted" ledger** as a
+`<referencesConsulted>` tag (same `full` gate as their tools/clause) so a
+downstream agent reuses a link rather than re-searching the same ground.
+The ledger is DERIVED from the `citations` already on every memo — there
+is no separate resource. `formatReferencesConsulted` (`lib/format.ts`)
+walks `ALL_MEMO_KEYS`, collects each memo's `citations`, dedups by URL
+(first citer wins), and attributes each to the citing agent. Folding the
+ledger into the two tool presets (rather than a standalone
+`referencesConsulted` preset) makes the `fast` no-op **structural**: the
+`full` gate means a persisted citation from a prior full/`verify` run can
+never surface `<referencesConsulted>` on a `fast` re-run. The lenses
+(independence guarantee, FIX-655) and the Phase 2 debaters (open-web
+rejected by FIX-679; debate-phase search tracked separately) get neither
+preset, so neither reads the ledger.
+
+Each corroborator/reviewer's output schema carries a nullable
+`citations: z.array(memoCitation)` (the Phase 1 / Phase 6 pattern,
+BP-016-safe), and its writer passes it through so the memo renders a
+"Sources" footer. The `citations` field's prompt contract is a shared
+`{% render 'citations-field' %}` partial for the four risk prompts (whose
+copies were identical); the trader/PM/forecaster variants stay inline
+(their output-shape lists differ). To add another corroborator: list
+`corroborate: true` (or `reviewReferences: true`) in its `uses` and add
+the `citations` field to its output schema — the ledger comes with the
+preset.
+
+> **Search-provider guard.** `search` is dropped (fetch-only) when no
+> web-search provider key is configured — the `@flow-state-dev/tools`
+> resolver *throws* with none, which would abort the generator. The guard
+> probes the tools package's own `resolveProvider({})` (try/catch) rather
+> than hand-copying its env-var list, so it can't drift. The underlying
+> throw-on-first-call is a tools-package bug (every search consumer hits
+> it); degrading it there is a documented follow-up (BP-028).
+
+> **Not cached.** `@flow-state-dev/tools` `search`/`fetch` have no cache
+> layer (unlike the desk's own data tools, which wrap `getOrFetch`), so a
+> second agent that re-`fetch`es the same URL pays a fresh request. The
+> references ledger is what avoids the duplicate *search*; a cheap
+> duplicate *fetch* would need caching added at the tool level — a
+> `@flow-state-dev/tools` change, deliberately out of scope here.
 
 ## Adding a new tool
 

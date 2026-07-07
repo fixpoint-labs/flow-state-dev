@@ -23,7 +23,7 @@
  * explained in their prompts.
  */
 import { z } from "zod";
-import { thesisSection } from "../../resources";
+import { memoCitation, thesisSection } from "../../resources";
 
 const adjustmentShape = z.object({
   sizing: z.enum(["larger", "smaller", "unchanged"]),
@@ -67,6 +67,12 @@ export const personaCritiqueOutputSchema = z.object({
       ]),
     }),
   ),
+  // FIX-676 — URLs the persona actually fetched while corroborating a claim via
+  // the `corroborate` preset (all three personas opt in — all-or-none, so search
+  // does not tilt the triad). Null when nothing was fetched and always null on
+  // `fast`. Shared schema, so a persona that did not fetch emits `citations:
+  // null`. Rendered as a "Sources" footer.
+  citations: z.array(memoCitation).nullable(),
 });
 
 export type PersonaCritiqueOutput = z.infer<typeof personaCritiqueOutputSchema>;
@@ -128,6 +134,11 @@ export const riskAssessmentOutputSchema = z.object({
     "underconfident",
   ]),
   calibrationRationale: z.string(),
+  // FIX-676 — URLs the consolidator actually fetched via the `reviewReferences`
+  // preset (it can pull a link the desk already surfaced, but cannot run a fresh
+  // search). Null when nothing was fetched and always null on `fast`. Rendered as
+  // a "Sources" footer.
+  citations: z.array(memoCitation).nullable(),
 });
 
 export type RiskAssessmentOutput = z.infer<typeof riskAssessmentOutputSchema>;

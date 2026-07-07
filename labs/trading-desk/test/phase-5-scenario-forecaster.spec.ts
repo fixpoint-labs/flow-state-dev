@@ -115,6 +115,7 @@ function scenarioForecast(
     ],
     distribution: overrides.distribution ?? "concentrated",
     evidenceBasis: overrides.evidenceBasis ?? "sufficient",
+    citations: null,
   };
 }
 

@@ -169,6 +169,7 @@ function portfolioDecision(
       sizeStance: "",
       mandateOverrideReason: "",
     },
+    citations: null,
   };
 }
 

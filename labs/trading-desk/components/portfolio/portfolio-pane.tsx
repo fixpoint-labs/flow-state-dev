@@ -39,6 +39,7 @@ import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import { deriveLots } from "@/src/flows/portfolio/lots";
 import type { TermLot } from "./holding-term";
 import type { PortfolioQuotesState } from "@/src/flows/portfolio/portfolio-resources";
+import type { ThesisInputFields } from "@/src/flows/portfolio/thesis-schema";
 import { AccountCard } from "./account-card";
 import { AccountDetail } from "./account-detail";
 import { AddAccountDialog, type NewAccountDraft } from "./add-account-dialog";
@@ -52,9 +53,11 @@ import {
   AddTransactionDialog,
   type NewLedgerEvent,
 } from "./add-transaction-dialog";
+import { ThesisDialog } from "./thesis-dialog";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import { useLedger } from "./use-ledger";
 import { useIncome } from "./use-income";
+import { useTheses } from "./use-theses";
 import {
   holdingMarketValue,
   holdingUnrealizedPL,
@@ -92,6 +95,9 @@ export function PortfolioPane({
   const { accounts, refetch: refetchAccounts } = usePortfolioAccounts();
   const { events: ledgerEvents, refetch: refetchLedger } = useLedger();
   const { income, refetch: refetchIncome } = useIncome();
+  // Theses remain a user-scoped FSD resource (live client read), so this stays
+  // session-based — unlike accounts/ledger/income which moved to REST routes.
+  const { theses, loading: thesesLoading, refetch: refetchTheses } = useTheses(session);
   const { clientData: quotesData } = useResource(session, "portfolioQuotes");
 
   const [addOpen, setAddOpen] = useState(false);
@@ -99,6 +105,9 @@ export function PortfolioPane({
   const [importOpen, setImportOpen] = useState(false);
   const [importPdfOpen, setImportPdfOpen] = useState(false);
   const [importTxnOpen, setImportTxnOpen] = useState(false);
+  // The ticker whose thesis editor is open (null = closed). The dialog pre-fills
+  // from the existing thesis for this ticker, if any.
+  const [thesisTicker, setThesisTicker] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(
     undefined,
   );
@@ -118,6 +127,20 @@ export function PortfolioPane({
     () => accounts.flatMap((a) => a.holdings),
     [accounts],
   );
+
+  // Household tickers (upper) that have a standing thesis, for the per-holding
+  // indicator. Derived (BP-010). The thesis is keyed household × ticker, so the
+  // set is shared across every account.
+  const thesisTickers = useMemo(
+    () => new Set(theses.map((t) => t.ticker.toUpperCase())),
+    [theses],
+  );
+  // The existing thesis for the open editor's ticker, if any (pre-fill source).
+  const editingThesis = useMemo(() => {
+    if (thesisTicker === null) return null;
+    const upper = thesisTicker.toUpperCase();
+    return theses.find((t) => t.ticker.toUpperCase() === upper) ?? null;
+  }, [thesisTicker, theses]);
 
   // Ledger-derived income, shaped for its consumers: a per-account
   // ticker→dividends map for the holdings tables, per-account and portfolio
@@ -380,12 +403,43 @@ export function PortfolioPane({
     [uid, refetchAccounts, refetchLedger, refetchIncome],
   );
 
+  // Thesis writes stay flow actions (theses are a reactive user-scoped resource,
+  // not a REST table), so they need a bound session — the affordance is gated on
+  // `hasSession && !thesesLoading` below, so these only fire when a session exists.
+  const handleSaveThesis = useCallback(
+    async (payload: ThesisInputFields) => {
+      try {
+        await session.sendAction("saveThesis", payload);
+        // sendAction returns a request envelope, not handler output — refetch
+        // for the committed row so the per-holding indicator updates.
+        refetchTheses();
+      } catch (err) {
+        console.error("[trading-desk] saveThesis failed", err);
+      }
+    },
+    [session, refetchTheses],
+  );
+
+  const handleDeleteThesis = useCallback(
+    async (ticker: string) => {
+      try {
+        await session.sendAction("deleteThesis", { ticker });
+        refetchTheses();
+      } catch (err) {
+        console.error("[trading-desk] deleteThesis failed", err);
+      }
+    },
+    [session, refetchTheses],
+  );
+
   // No whole-pane empty state anymore: account/holdings/ledger management is
-  // plain REST and works with no bound session (FIX-736 follow-up). Only the two
+  // plain REST and works with no bound session (FIX-736 follow-up). Only the
   // genuinely flow-shaped features need a session — live prices (`getQuotes`,
-  // which fetchPrices no-ops without one) and PDF import (a streaming generator,
-  // its button disabled below). So a cold-start user can build their portfolio
-  // immediately; prices fill in once an analysis has been run.
+  // which fetchPrices no-ops without one), PDF import (a streaming generator, its
+  // button disabled below), and thesis editing (a reactive resource — the
+  // per-holding editor is disabled until the session-backed theses load). So a
+  // cold-start user can build their portfolio immediately; prices and thesis
+  // affordances fill in once an analysis has been run.
   const totalUplFmt = formatSignedMoney(totalUpl, "USD");
   const totalUplPctFmt = formatSignedPercent(totalUplPct);
   const openAccount =
@@ -563,10 +617,16 @@ export function PortfolioPane({
             accountUplPct={rollups.get(openAccount.accountId)?.uplPct ?? null}
             accountDividends={dividendTotals.get(openAccount.accountId) ?? null}
             onBack={() => setOpenAccountId(null)}
+            thesisTickers={thesisTickers}
+            // Gate the thesis editor until the household theses load (session-
+            // backed resource; no session → never ready), so a click can't open
+            // a blank editor against a partial list and overwrite an unloaded one.
+            thesisReady={hasSession && !thesesLoading}
             onDeleteHolding={(ticker) =>
               void handleDeleteHolding(openAccount.accountId, ticker)
             }
             onDeleteAccount={() => void handleDeleteAccount(openAccount.accountId)}
+            onEditThesis={(ticker) => setThesisTicker(ticker)}
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-2 @6xl:grid-cols-3">
@@ -641,6 +701,14 @@ export function PortfolioPane({
         accounts={accounts}
         defaultAccountId={selectedAccountId ?? accounts[0]?.accountId}
         onSubmit={(event) => void handleRecordTransaction(event)}
+      />
+      <ThesisDialog
+        open={thesisTicker !== null}
+        onClose={() => setThesisTicker(null)}
+        ticker={thesisTicker ?? ""}
+        existing={editingThesis}
+        onSave={(payload) => void handleSaveThesis(payload)}
+        onDelete={(ticker) => void handleDeleteThesis(ticker)}
       />
     </div>
   );

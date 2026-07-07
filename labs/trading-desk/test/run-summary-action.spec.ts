@@ -34,6 +34,7 @@ const completedSnapshot: DecisionSnapshotState = {
   rewardToRiskLossAdjustedGlr: 2.4,
   worstCaseReturnPct: -10,
   capacityVetoed: false,
+  hasStandingThesis: null,
   decidedAt: "2026-06-25T00:00:00.000Z",
   outcomeRealizedPrice: null,
   outcomeAsOf: null,
