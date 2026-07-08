@@ -641,4 +641,43 @@ describe("realized gains materialization (FIX-874) — real-path goal check", ()
     expect(gains).toHaveLength(1);
     expect(gains[0]).toMatchObject({ ticker: "AAPL", proceeds: 1500, costBasis: 1000, gain: 500, term: "long" });
   });
+
+  it("chunks the realized-gains insert so a large sell history can't corrupt the connection (FIX-874 dev-DB break)", async () => {
+    // 2,200 one-share lots closed by a single sell → 2,200 realized rows. At 15
+    // bound params/row that is 33,000 params, over PGlite's 32,767 (signed
+    // 16-bit) per-INSERT ceiling. An UNCHUNKED insert silently desyncs the wire
+    // protocol: it throws nothing, but every later query on the shared dev
+    // connection returns empty — reads go blank and writes fail. Because
+    // `backfillRealizedGains` runs this materializer on every dev boot, one
+    // active account bricked the entire app. The read-backs below only survive
+    // if `materializeRealizedGains` chunks the insert.
+    const LOTS = 2200;
+    const base = new Date("2015-01-01T00:00:00Z").getTime();
+    const isoDay = (i: number) => new Date(base + i * 86_400_000).toISOString().slice(0, 10);
+    const buys = Array.from({ length: LOTS }, (_, i) =>
+      ev({
+        ticker: "AAPL",
+        tradeDate: isoDay(i),
+        quantity: 1,
+        unitPrice: 10,
+        amount: -10,
+        source: "file",
+        externalId: `B-${i}`,
+      }),
+    );
+    const closeAll = sell({
+      ticker: "AAPL",
+      tradeDate: "2026-06-01",
+      quantity: -LOTS,
+      amount: LOTS * 20,
+      source: "file",
+      externalId: "S-1",
+    });
+    await repo.ingestLedgerEvents([...buys, closeAll], "devuser");
+
+    // The connection must still serve BOTH the materialized rows and an
+    // unrelated read — both come back empty if the oversized insert corrupted it.
+    expect(await repo.getRealizedGains("devuser")).toHaveLength(LOTS);
+    expect(await repo.getAccountsForUser("devuser")).toHaveLength(1);
+  });
 });

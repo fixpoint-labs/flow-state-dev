@@ -540,9 +540,23 @@ async function materializeRealizedGains(tx: Tx, accountId: string): Promise<void
     disposalEventId: d.disposalEventId,
     lotIndex: d.lotIndex,
   }));
-  await tx.insert(realizedGains).values(values).onConflictDoNothing({
-    target: [realizedGains.disposalEventId, realizedGains.lotIndex],
-  });
+  // Chunked for the same reason the ledger insert is (see `ingestLedgerEvents`):
+  // the wire protocol's Bind message carries the bound-param count as a 16-bit
+  // integer, so one multi-row INSERT tops out at 32,767 params on PGlite (the
+  // count wraps negative and silently kills the single dev connection — every
+  // later query then returns empty) and 65,535 on node-pg. At 15 params per row
+  // an active account crosses the PGlite line at ~2,185 disposals. 1,000
+  // rows/chunk (15k params) clears both ceilings; the chunks share this
+  // transaction, so the recompute stays atomic.
+  const INSERT_CHUNK_ROWS = 1000;
+  for (let i = 0; i < values.length; i += INSERT_CHUNK_ROWS) {
+    await tx
+      .insert(realizedGains)
+      .values(values.slice(i, i + INSERT_CHUNK_ROWS))
+      .onConflictDoNothing({
+        target: [realizedGains.disposalEventId, realizedGains.lotIndex],
+      });
+  }
 }
 
 /**
