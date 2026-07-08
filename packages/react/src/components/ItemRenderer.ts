@@ -67,7 +67,11 @@ const NON_RENDERABLE_TYPES = new Set([
   "resource_change",
   // Audit record of a resolved suspension (FIX-811). Client-visible for the
   // log, but apps render their resume UI off the `suspension` item, not this.
-  "suspension_resume"
+  "suspension_resume",
+  // Crash-recovery re-entry marker (FIX-865). Client-visible/persisted for the
+  // audit trail, but has no default UI — apps that want a visual seam render
+  // it themselves off the item, not via the JSON dev-fallback.
+  "continuation"
 ]);
 
 // ---------------------------------------------------------------------------

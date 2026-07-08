@@ -116,6 +116,7 @@ Returns:
     <button onClick={() => session.resumeLatestRequest()}>Resume</button>
   )}
   ```
+- `continueRequest(requestId)` — Continue a crash-interrupted request under its OWN id and stream the re-entry's items back into `session.items`. Unlike `resumeLatestRequest` (which re-dispatches the most recent request via `/retry` under a new id), this targets a specific `requestId` — the caller resolves which interrupted request to continue rather than assuming "latest". POSTs inline with `Accept: text/event-stream`; on a 202 fallback it reconnects via GET rather than re-POSTing.
 - `getOwnedItems(ownedBy)` — Items owned by a container scope (O(1) indexed lookup)
 - `refresh()` — Manually refetch
 

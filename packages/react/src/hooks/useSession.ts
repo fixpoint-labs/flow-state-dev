@@ -195,6 +195,24 @@ export type SessionView = {
     data?: unknown;
     resumedBy?: string;
   }) => Promise<void>;
+  /**
+   * Continue a crash-interrupted request under its OWN id (FIX-865) and stream
+   * the re-entry's items back into this session's `items`. Unlike
+   * `resumeLatestRequest` (which re-dispatches the session's most recent
+   * request via `/retry` under a NEW id), this targets a specific `requestId`
+   * — the caller resolves which interrupted request to continue, this does
+   * not assume "latest".
+   *
+   * POSTs inline with `Accept: text/event-stream` so the continuation streams
+   * from the same POST response on the instance that handled it (mirrors
+   * `resumeSuspension`'s inline-streaming rationale — essential on
+   * serverless). If the server instead returns a 202 (no inline streaming
+   * support), the continuation has already been accepted server-side — this
+   * does NOT re-POST `/continue` (the record has left `interrupted`, so a
+   * second POST would 409/race). It cancels the unused body and reconnects
+   * via a GET stream instead.
+   */
+  continueRequest: (requestId: string) => Promise<void>;
   refresh: () => Promise<void>;
   /**
    * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
@@ -1376,6 +1394,73 @@ export function useSession(
     ]
   );
 
+  const continueRequest = useCallback(
+    async (requestId: string): Promise<void> => {
+      if (sessionId === undefined) return;
+
+      if (streamHandleRef.current !== null) {
+        streamHandleRef.current.close();
+        streamHandleRef.current = null;
+      }
+      setError(null);
+      setIsFinishing(false);
+      setIsStuck(false);
+      latestRequestIdAfterDropRef.current = null;
+      // The continuation re-enters the SAME request id (FIX-865), same
+      // re-entry contract as resumeSuspension's FIX-811 case.
+      activeRequestIdRef.current = requestId;
+
+      try {
+        // Single inline-streaming POST — mirrors resumeSuspension. Never
+        // followed by a second POST via the JSON `continue()` method: once
+        // this request has gone out, the server has already accepted it
+        // (SSE or 202), so a fallback POST would race/409 against the
+        // now-non-interrupted record.
+        const postResponse = await recoveryClient.continueStream({
+          flowKind: resolvedFlowKind,
+          sessionId,
+          requestId
+        });
+
+        const contentType = postResponse.headers.get("content-type") ?? "";
+        if (contentType.includes("text/event-stream")) {
+          if (itemConfig.enabled) {
+            attachToStream(requestId, undefined, postResponse);
+          } else {
+            postResponse.body?.cancel().catch(() => {});
+            void refreshSnapshot();
+            void refreshLatestRequest();
+          }
+          return;
+        }
+
+        // Fallback: server returned 202 JSON (no inline streaming). The
+        // continuation is already accepted server-side — reconnect via GET
+        // and pull the snapshot rather than re-POSTing /continue.
+        postResponse.body?.cancel().catch(() => {});
+        if (itemConfig.enabled) {
+          attachToStream(requestId);
+        }
+        void refreshSnapshot();
+        void refreshLatestRequest();
+      } catch (cause) {
+        const normalized = cause instanceof Error ? cause : new Error(String(cause));
+        activeRequestIdRef.current = null;
+        setError(normalized);
+        throw normalized;
+      }
+    },
+    [
+      sessionId,
+      recoveryClient,
+      resolvedFlowKind,
+      itemConfig.enabled,
+      attachToStream,
+      refreshSnapshot,
+      refreshLatestRequest
+    ]
+  );
+
   const subscribeAudioDelta = useCallback(
     (handler: (event: ContentAudioDeltaEvent) => void) => {
       audioDeltaListenersRef.current.add(handler);
@@ -1411,6 +1496,7 @@ export function useSession(
     dismissRequest,
     resumeLatestRequest,
     resumeSuspension,
+    continueRequest,
     refresh,
     subscribeAudioDelta
   };
