@@ -72,6 +72,21 @@ function suspensionLogicalId(item: OutputItem): string | undefined {
  *    boundary, merged with Rule 1's so the later boundary wins. A block that ran
  *    once (one trace) — including a completed block injected from the log on
  *    replay — has no boundary and is left untouched.
+ * 4. **Generator tool-call de-duplication (FIX-814).** A generator that suspends
+ *    inside its tool loop re-runs on resume, setting a Rule-1/3 boundary on the
+ *    generator's own logical path. But a `tool_output` carries its parent
+ *    generator's `blockInstanceId` as provenance, so a completed *sibling* tool
+ *    call that settled on run 1 (below the boundary) would be dropped even
+ *    though resume never re-runs it — it is injected from the log, not
+ *    re-emitted, so no run-2 copy replaces it. Losing it would make a post-resume
+ *    `GET`/`useSession` incomplete. Tool calls are memoized per `toolCall.callId`,
+ *    so `tool_output`s are collapsed by (logical path + callId) instead of by the
+ *    generator's re-run boundary: the canonical one per callId is the `completed`
+ *    (or highest-index) record — the run-2 approved result supersedes its run-1
+ *    `failed`(SUSPENSION) gate record for the same callId, while a completed
+ *    sibling with no run-2 copy survives. `tool_output` is therefore exempt from
+ *    the Rule-1/3 boundary. Non-generator (`.asTool()`) outputs have unique
+ *    synthesized callIds, so this is a no-op for them.
  *
  * Order and identity of the surviving items are preserved. A request that never
  * suspended is returned unchanged (no resolved suspensions, no duplicate
@@ -141,7 +156,47 @@ export function collapseToCanonicalLog<T extends OutputItem>(items: readonly T[]
     }
   }
 
-  if (supersededBefore.size === 0 && canonicalTrace.size === 0) return [...items];
+  // Rule 4: per (logical path + callId) canonical `tool_output`. Keyed the same
+  // way Rule 2 keys traces — a `completed` output always beats a non-completed
+  // one; among same-rank outputs the higher itemIndex wins. This dedups a
+  // gate's run-1 `failed`(SUSPENSION) record against its run-2 `completed`
+  // result and keeps a completed sibling that has no run-2 copy.
+  //
+  // Keying assumes a tool call id is unique within a generator instance — true
+  // for real providers, whose call ids are globally unique. The tool's own
+  // block path additionally folds the model-step index for gate-matching, but
+  // the persisted `tool_output` carries only the generator's provenance + the
+  // bare call id, so this dedup can't distinguish two steps that reuse one call
+  // id. A composite `.asTool()` block that itself suspends is the one narrow
+  // exception: it synthesizes a fresh call id per run, so its superseded run-1
+  // `failed` record has no same-key replacement and survives here (an
+  // observability-only artifact in `GET`, never an execution effect).
+  const canonicalToolOutput = new Map<string, { id: string; itemIndex: number; completed: boolean }>();
+  for (const item of items) {
+    if (item.type !== "tool_output") continue;
+    const logicalId = logicalIdOf(item.provenance?.blockInstanceId);
+    const callId = (item as { toolCall?: { callId?: string } }).toolCall?.callId;
+    if (logicalId === undefined || callId === undefined) continue;
+    const key = `${logicalId}::${callId}`;
+    const completed = item.status === "completed";
+    const prior = canonicalToolOutput.get(key);
+    if (prior === undefined) {
+      canonicalToolOutput.set(key, { id: item.id, itemIndex: item.itemIndex, completed });
+      continue;
+    }
+    const better =
+      (completed && !prior.completed) ||
+      (completed === prior.completed && item.itemIndex > prior.itemIndex);
+    if (better) canonicalToolOutput.set(key, { id: item.id, itemIndex: item.itemIndex, completed });
+  }
+
+  if (
+    supersededBefore.size === 0 &&
+    canonicalTrace.size === 0 &&
+    canonicalToolOutput.size === 0
+  ) {
+    return [...items];
+  }
 
   return items.filter((item) => {
     if ((item.type as string) === "block_trace") {
@@ -152,6 +207,23 @@ export function collapseToCanonicalLog<T extends OutputItem>(items: readonly T[]
     }
     // The audit pair is always retained.
     if (item.type === "suspension" || item.type === "suspension_resume") return true;
+    // Rule 4: `tool_output` is deduped per callId (above), NOT by the
+    // generator's re-run boundary — a completed sibling injected from the log on
+    // resume has no run-2 copy and must survive.
+    if (item.type === "tool_output") {
+      const logicalId = logicalIdOf(item.provenance?.blockInstanceId);
+      const callId = (item as { toolCall?: { callId?: string } }).toolCall?.callId;
+      if (logicalId === undefined || callId === undefined) return true;
+      const canonical = canonicalToolOutput.get(`${logicalId}::${callId}`);
+      return canonical === undefined || canonical.id === item.id;
+    }
+    // `generator_step` is a replay-only artifact keyed per generator-path +
+    // step (FIX-814). The suspending generator re-runs on resume, which sets a
+    // supersession boundary on its logical path — but these artifacts are the
+    // substrate a LATER resume cycle reconstructs from, so they must survive
+    // collapse like the audit pair. They are never client/history-visible, so
+    // retaining them cannot leak into a `GET`/`useSession` view.
+    if ((item.type as string) === "generator_step") return true;
     const logicalId = logicalIdOf(item.provenance?.blockInstanceId);
     if (logicalId === undefined) return true;
     const boundary = supersededBefore.get(logicalId);

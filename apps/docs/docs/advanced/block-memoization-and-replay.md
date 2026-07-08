@@ -41,6 +41,8 @@ const notifyAndWait = handler({
 
 The email is not in the block's output, so memoization can't protect it. On resume the block re-runs from the top, `sendEmail` fires again, and only then does `ctx.suspend()` return the resume data.
 
+Generators are a partial exception worth knowing. When a generator suspends inside its tool loop, the suspended tool re-runs from the top like any other suspending block, so the same sharp edge applies to that tool's pre-gate side effects. But the generator's prior model turns and completed sibling tools are replayed from the item log rather than regenerated — the model is not re-called for them. See [Generator and router suspend/resume](./generator-and-router-suspend-resume.md).
+
 ## `ctx.runOnce(key, fn)` — the handler-only guard
 
 Wrap a side effect in `ctx.runOnce(key, fn)` to keep it from firing twice. The first call for a given `(requestId, key)` runs `fn` and remembers the result; later calls in the same process return the remembered value without running `fn` again.

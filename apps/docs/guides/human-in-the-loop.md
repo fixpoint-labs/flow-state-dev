@@ -258,6 +258,46 @@ if (answer === SUSPENSION_SKIPPED) {
 
 The card shows a Skip control whenever `allow` includes `"skip"`. To build a fully custom input instead of the default cards, reach for `useSuspensionForm(item)` — see [React client](/docs/client/react#beyond-approval-questions-forms-and-selections).
 
+## Suspension inside the tool loop
+
+So far the gate has been a sequencer step. But the highest-value place to pause is often inside an agent: the model wants to call a tool that does something consequential (publish, send, charge), and you want a human to sign off before it fires. A generator's tools are just blocks, so the gate goes right where the tool runs.
+
+Call `ctx.suspend()` inside the tool's `execute`, before the tool does its real work. When the model calls that tool, the whole request pauses and emits the same `suspension` item as any other gate. The client resolves it the same way, with the same card and the same hooks. On approval the tool runs its body and the agent continues to its answer; the model is not re-called for the turns that already ran.
+
+```ts title="src/flows/writer/flow.ts"
+import { generator, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const publishPost = handler({
+  name: "publish-post",
+  inputSchema: z.object({ title: z.string(), body: z.string() }),
+  outputSchema: z.object({ url: z.string() }),
+  execute: async (input, ctx) => {
+    // Pause before publishing. On resume this returns the human's payload;
+    // on reject it throws, and the model sees a denial result.
+    const decision = await ctx.suspend!({
+      reason: "human_approval",
+      message: `Publish "${input.title}"?`,
+      resumeSchema: z.object({ note: z.string().nullable() }),
+    });
+
+    const url = await cms.publish(input.title, input.body, decision.note);
+    return { url }; // the model sees this, not the resume payload
+  },
+});
+
+const writer = generator({
+  name: "writer",
+  model: "openai/gpt-5.4-mini",
+  prompt: "You draft and publish posts. Call publish-post when the draft is ready.",
+  inputSchema: z.object({ request: z.string() }),
+  user: (input) => input.request,
+  tools: [publishPost],
+});
+```
+
+There's one rule worth internalizing before you ship this: the suspending tool re-enters from the top on resume, so put `ctx.suspend()` before any side effect (or guard pre-gate work with `runOnce`). A router's chosen branch can suspend the same way and keeps its branch stable across the pause. The [generator and router suspend/resume](/docs/advanced/generator-and-router-suspend-resume) reference covers the full contract, the reconstruction rules, and the v1 limits.
+
 ## Custom approval UI with `useApproval`
 
 When you want your own card, build it on `useApproval`. The hook is headless: it owns the resume call, the in-flight and error state, a guard against double-resume, and the resolved outcome. You bring the markup.

@@ -21,7 +21,7 @@ Visibility is a pure function of `(item.type, item.itemVisibility)`. The devtool
 
 Items fall into three visibility categories based on their `type`:
 
-**Trace types** (`block_trace`, `router_decision`, `state_snapshot`) always resolve to `{ client: false, history: false }` by their type alone. No stamp needed — the type is sufficient.
+**Trace types** (`block_trace`, `router_decision`, `state_snapshot`, `generator_step`) always resolve to `{ client: false, history: false }` by their type alone. No stamp needed — the type is sufficient.
 
 **Conversational types** (`message`, `reasoning`, `tool_output`) use `item.itemVisibility` if present, otherwise default to `{ client: true, history: true }`.
 
@@ -109,6 +109,8 @@ Consumers reading historical items should use `resolveBlockValue(item.output, lo
 
 **`state_snapshot`** captures the full sequencer state at each step boundary. Carries `key: blockInstanceId` so consumers treat new emissions for the same key as in-place updates (one logical item per sequencer that updates N times, not N items per sequencer per turn). When `durable: true` (the sequencer default; see FIX-401), the runtime side-channels these into `stores.checkpoints` for resume by the future durable execution runtime (FIX-141). Items themselves still stay out of the request items log.
 
+**`generator_step`** is a replay-only record of one step of a generator's framework-owned tool loop. The loop writes one per tool-calling step, *before* it dispatches that step's tools, keyed by the generator's logical path + step number (accumulating — never overwritten). It carries the step's buffered pre-tool assistant text and the full framework tool-call array (ids/names/aliases/args); the step-0 artifact additionally carries the compiled prelude (the assembled system/user/history messages). It exists purely so a suspended generator can resume: on continuation the generator rebuilds its conversation from these artifacts plus the persistent `tool_output` items, rather than re-calling the model for recorded steps (FIX-814). Because the loop buffers per-step text in memory and never emits a per-step assistant `message`, this artifact is the only durable record of a step's assistant turn — which is also what makes a crash between "model step returned" and "tool dispatched" recoverable. It is never client- or history-visible and never surfaces via `GET`/`useSession`; `collapseToCanonicalLog` retains it across resume cycles like the `suspension`/`suspension_resume` audit pair.
+
 ## Persistence
 
 Items fall into three buckets:
@@ -184,6 +186,7 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 | `block_trace` | Every block (auto, lifecycle: in_progress → updates → terminal) | — | — | Trace | Persistent |
 | `router_decision` | Router (auto, on selection) | — | — | Trace | Persistent |
 | `state_snapshot` | Sequencer (at step boundaries) | — | — | Trace | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
+| `generator_step` | Generator owned loop (once per tool-calling step, before dispatch) | — | — | Trace | Persistent (replay-only; retained across resume collapse; never in `GET`/`useSession`) |
 
 **Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Visibility category` = how `resolveItemVisibility(item)` determines visibility. Conversational types use `item.itemVisibility` (default `{ client: true, history: true }`). Structural types have fixed per-type defaults. Trace types always resolve to `{ client: false, history: false }`.
 

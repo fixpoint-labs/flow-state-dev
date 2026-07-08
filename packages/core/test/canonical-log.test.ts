@@ -79,4 +79,70 @@ describe("collapseToCanonicalLog", () => {
     const out = collapseToCanonicalLog(items);
     expect(messageIds(out).sort()).toEqual(["m2", "sm1"]);
   });
+
+  it("retains generator_step artifacts even when their generator path re-ran (FIX-814)", () => {
+    // A suspending generator re-runs on resume (two traces on its path → a
+    // supersession boundary), but its replay-only `generator_step` artifacts
+    // are the substrate a later resume cycle reconstructs from — they must
+    // survive collapse like the audit pair, at any itemIndex.
+    const genStep = (id: string, itemIndex: number, stepNumber: number): OutputItem =>
+      ({
+        id,
+        type: "generator_step",
+        status: "completed",
+        itemIndex,
+        stepNumber,
+        blockInstanceId: GATE,
+        provenance: { blockInstanceId: GATE },
+      }) as unknown as OutputItem;
+
+    const items = [
+      trace("t1", 0, "in_progress"),
+      genStep("gs0", 1, 0), // run-1 artifact, below the boundary
+      message("m1", 2), // run-1 emission — superseded
+      trace("t2", 3, "completed"),
+      message("m2", 4), // run-2 emission — canonical
+    ];
+    const out = collapseToCanonicalLog(items);
+    // The superseded run-1 message is dropped, but the generator_step survives.
+    expect(messageIds(out)).toEqual(["m2"]);
+    expect(out.some((i) => (i.type as string) === "generator_step" && i.id === "gs0")).toBe(true);
+  });
+
+  it("keeps a completed sibling tool_output but supersedes a gate's failed one per callId (FIX-814, Rule 4)", () => {
+    // A generator suspended inside a two-tool step, then re-ran on resume (two
+    // traces → a boundary on the generator path). `tool_output`s carry the
+    // GENERATOR's blockInstanceId as provenance, so the boundary would drop the
+    // completed sibling (`s1`) that settled on run 1 and is only injected — not
+    // re-emitted — on resume. Rule 4 dedups per callId instead: the sibling
+    // survives; the gate's run-1 failed(SUSPENSION) record is superseded by its
+    // run-2 completed result.
+    const toolOutput = (
+      id: string,
+      itemIndex: number,
+      callId: string,
+      status: string
+    ): OutputItem =>
+      ({
+        id,
+        type: "tool_output",
+        status,
+        itemIndex,
+        blockName: callId === "s1" ? "sibling" : "gate",
+        output: status === "completed" ? { via: callId } : undefined,
+        provenance: { blockInstanceId: GATE },
+        toolCall: { callId, name: callId === "s1" ? "sibling" : "gate" },
+      }) as unknown as OutputItem;
+
+    const items = [
+      trace("t1", 0, "in_progress"), // run-1 generator (suspended)
+      toolOutput("s1c", 1, "s1", "completed"), // completed sibling — must survive
+      toolOutput("g1f", 2, "g1", "failed"), // gate's suspended record — superseded
+      trace("t2", 3, "completed"), // run-2 generator (resumed)
+      toolOutput("g1c", 4, "g1", "completed"), // gate's approved result — canonical
+    ];
+    const out = collapseToCanonicalLog(items);
+    const toolIds = out.filter((i) => i.type === "tool_output").map((i) => i.id);
+    expect(toolIds).toEqual(["s1c", "g1c"]);
+  });
 });

@@ -186,6 +186,14 @@ A request can suspend and resume more than once. Each cycle appends to the same 
 
 This holds across a process restart, not just an in-process pause. A continuation replays the request from the top of the action, so resuming a *later* gate re-reaches the earlier ones. Those earlier gates were already resolved on the durable log, so they replay their recorded resolutions in order instead of pausing again, and the request runs through to completion. A flow with two sequential `ctx.suspend()` gates resumed at the second gate after the server restarted completes the same as it would in one process.
 
+## Suspending in generators and routers
+
+The examples above pause at a sequencer step, but a pause can also land inside a generator's tool loop or inside a router's chosen branch. The mechanics are the same: `ctx.suspend()` inside a tool's `execute` pauses the whole request, and resume continues on the same request id.
+
+The difference is what gets replayed. A generator rebuilds its model conversation from the durable item log on resume instead of re-calling the model, so prior turns and completed sibling tools are not regenerated; only the suspended tool re-enters. A router re-runs its selector and validates the branch against the decision it recorded on the first pass, so the branch stays stable across the pause.
+
+See [Generator and router suspend/resume](./generator-and-router-suspend-resume.md) for the tool-approval walkthrough, the reconstruction rules, and the v1 limits.
+
 ## What `ctx.suspend()` returns
 
 On resume, `ctx.suspend()` returns the resolver's payload (`data`) for `approve` and `submit`. The two non-payload outcomes are different:

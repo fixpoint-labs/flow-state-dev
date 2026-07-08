@@ -12,6 +12,7 @@ import type { ItemVisibility, ModelIdentity } from "../../items/types";
 import { sanitizeToolName } from "../../helpers/tool-name";
 import { getEmitterItemCount } from "./utils";
 import { toError } from "./utils";
+import { SuspensionError, SuspensionRejectedError } from "../../errors/suspension-error";
 import { errorDetailsWithCause } from "../../errors/serialize-error";
 
 /**
@@ -34,6 +35,26 @@ export type EmitToolOutputAttribution = {
    * tool-loop path; the `.asTool()` path leaves it absent.
    */
   model?: ModelIdentity;
+  /**
+   * The disambiguated, model-facing alias the tool was compiled under
+   * (FIX-814). Recorded on `tool_output.toolCall.alias` so resume
+   * reconstruction rebuilds the tool dictionary exactly as the model saw it —
+   * including `ensureUniqueAlias` suffixes for colliding tool names. Absent on
+   * the legacy `.asTool()` path, where alias falls back to
+   * `sanitizeToolName(blockName)` (today's behavior, no regression).
+   */
+  alias?: string;
+  /**
+   * Settle-time model-output mapper (FIX-814). When set, the success path
+   * computes the persisted `tool_output.modelOutput` by applying it to the
+   * tool's real output — once, here at settle time — so resume never recomputes
+   * a mapper that could observe drifted state. When absent, `modelOutput` is
+   * the raw output. Sourced from a tool's `mapModelOutput` declaration by the
+   * owned-loop executor; the mapper receives only `output` (its `ctx` is bound
+   * by the caller). Defensive: a throw falls back to the raw output rather than
+   * failing the (successful) tool call.
+   */
+  mapModelOutput?: (output: unknown) => unknown | Promise<unknown>;
   /**
    * Cache-hit attribution (FIX-610). When set, the emitted `tool_output`
    * item carries `cached: true` plus the supplied `cacheAgeMs` and (when
@@ -104,7 +125,10 @@ export async function emitToolOutputAround(
     toolCall: {
       callId: attribution.callId,
       name: blockName,
-      alias: sanitizeToolName(blockName),
+      // Record the adapter's disambiguated alias when the owned loop supplied
+      // it (FIX-814); the legacy `.asTool()` path leaves it absent and falls
+      // back to the sanitized block name, preserving prior behavior.
+      alias: attribution.alias ?? sanitizeToolName(blockName),
       arguments: typeof args === "string" ? args : JSON.stringify(args),
       generatorBlock: attribution.generatorBlock,
     },
@@ -114,12 +138,23 @@ export async function emitToolOutputAround(
 
   try {
     const output = await runInner(ctx, itemId);
+    // Compute the model-facing result ONCE, at settle time, and persist it so
+    // resume reconstruction never recomputes the mapper (FIX-814).
+    let modelOutput: unknown = output;
+    if (attribution.mapModelOutput !== undefined) {
+      try {
+        modelOutput = await attribution.mapModelOutput(output);
+      } catch {
+        modelOutput = output;
+      }
+    }
     item.status = "completed";
     item.output = output;
+    item.modelOutput = modelOutput;
     await ctx.response.emit({
       type: "item.updated",
       id: itemId,
-      patch: { status: "completed", output },
+      patch: { status: "completed", output, modelOutput },
     });
     await ctx.response.emit({ type: "item.done", item });
     return output;
@@ -132,9 +167,17 @@ export async function emitToolOutputAround(
     item.status = "failed";
     item.output = undefined;
     const details = errorDetailsWithCause(err);
+    // Discriminate a suspension-origin failure from an ordinary tool error
+    // (FIX-814). A tool that called `ctx.suspend()` (the winning gate, or a
+    // losing concurrent suspension) propagates a `SuspensionError` /
+    // `SuspensionRejectedError` through here; stamping `code: "SUSPENSION"`
+    // lets resume reconstruction re-enter its gate instead of replaying it to
+    // the model as a genuine failure. Overrides any incidental `err.code`.
+    const isSuspension =
+      error instanceof SuspensionError || error instanceof SuspensionRejectedError;
     item.error = {
       message: err.message,
-      ...(err.code ? { code: err.code } : {}),
+      ...(isSuspension ? { code: "SUSPENSION" } : err.code ? { code: err.code } : {}),
       ...(details ? { details } : {}),
     };
     await ctx.response.emit({
