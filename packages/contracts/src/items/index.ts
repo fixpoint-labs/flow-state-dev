@@ -18,6 +18,7 @@ export type {
   BlockValue,
   ComponentItem,
   ContainerItem,
+  ContinuationItem,
   /** @deprecated The `context` item type has been removed from the OutputItem union. */
   ContextItem,
   ErrorItem,

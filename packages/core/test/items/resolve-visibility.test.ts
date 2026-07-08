@@ -4,8 +4,8 @@
  * trace-by-type, the new {false,true} corner, structural defaults, and
  * handler-emit fallback.
  */
-import { describe, expect, it } from "vitest";
-import type { OutputItem, ItemVisibility } from "../../src/items/types";
+import { describe, expect, expectTypeOf, it } from "vitest";
+import type { ContinuationItem, OutputItem, ItemVisibility } from "../../src/items/types";
 import { resolveItemVisibility } from "../../src/items/resolve-visibility";
 
 const baseProv = {
@@ -102,6 +102,7 @@ describe("resolveItemVisibility", () => {
       "source",
       "suspension",
       "suspension_resume",
+      "continuation",
     ]) {
       it(`${structType} → {client:true, history:false}`, () => {
         const item = makeItem({ type: structType } as any);
@@ -116,5 +117,9 @@ describe("resolveItemVisibility", () => {
         expect(resolveItemVisibility(item)).toEqual({ client: true, history: false });
       });
     }
+  });
+
+  it("ContinuationItem is part of the OutputItem union", () => {
+    expectTypeOf<Extract<OutputItem, { type: "continuation" }>>().toEqualTypeOf<ContinuationItem>();
   });
 });

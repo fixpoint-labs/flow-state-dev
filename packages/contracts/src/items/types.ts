@@ -583,6 +583,28 @@ export type SuspensionResumeItem = OutputItemBase & {
   resolvedAt: number;
 };
 
+/**
+ * Emitted when a durable action re-enters after a crash mid-execution (DevTool
+ * continuation, FIX-865). Marks the seam between the prior durable log and the
+ * live re-run that followed. Not a HITL item — no suspension is involved.
+ *
+ * Visibility: client=true, history=false — structural, falling through to
+ * `STRUCTURAL_DEFAULT`. Non-transient, so a `GET` returns the crash-recovery
+ * boundary as part of the audit trail.
+ */
+export type ContinuationItem = OutputItemBase & {
+  type: "continuation";
+  /** Why re-entry happened. Crash-recovery /continue today; reserved for future triggers. */
+  trigger: "recovery";
+  /** Count of items already in the durable log at re-entry (the seam position). Named
+   *  "prior", not "replayed": the prior log may include retained partial/in-progress rows,
+   *  not only injected completed outputs. */
+  priorItemCount: number;
+  /** Logical block path where live execution resumed (the in-flight block re-run). */
+  resumedAtPath?: string;
+  continuedAt: number;
+};
+
 export type OutputItem =
   | MessageItem
   | ReasoningItem
@@ -595,4 +617,5 @@ export type OutputItem =
   | StateChangeItem
   | ResourceChangeItem
   | SuspensionItem
-  | SuspensionResumeItem;
+  | SuspensionResumeItem
+  | ContinuationItem;
