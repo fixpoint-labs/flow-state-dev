@@ -653,6 +653,82 @@ describe("generator owned step loop — non-streaming", () => {
     });
   });
 
+  it("replies a deactivated colliding-tool error under the alias the model used", async () => {
+    // Two tools sanitize-collide: `foo.bar` → `foo_bar`, `foo/bar` →
+    // `foo_bar_2`. Step 1 deactivates `foo/bar` (alias `foo_bar_2`). If the
+    // model still calls `foo_bar_2`, the error tool-result must be attached to
+    // `foo_bar_2` — the alias the model used — not re-sanitized to `foo_bar`,
+    // which would mis-correlate the result with the OTHER (still-active) tool.
+    let resolveCount = 0;
+    const dotRuns = vi.fn();
+    const slashRuns = vi.fn();
+    const dotTool = handler({
+      name: "foo.bar",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => {
+        dotRuns();
+        return { ok: true };
+      },
+    });
+    const slashTool = handler({
+      name: "foo/bar",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => {
+        slashRuns();
+        return { ok: true };
+      },
+    });
+
+    const { model, seen } = stepModel([
+      // Step 0: both tools active; call the dot tool (alias foo_bar) to advance.
+      (options) => {
+        expect(options.tools!.map((t) => t.name)).toEqual(["foo_bar", "foo_bar_2"]);
+        return {
+          toolCalls: [{ toolCallId: "d0", toolName: "foo_bar", args: {} }],
+          finishReason: "tool-calls",
+        };
+      },
+      // Step 1: foo/bar (foo_bar_2) deactivated; model calls it anyway.
+      (options) => {
+        expect(options.tools!.map((t) => t.name)).toEqual(["foo_bar"]);
+        return {
+          toolCalls: [{ toolCallId: "s1", toolName: "foo_bar_2", args: {} }],
+          finishReason: "tool-calls",
+        };
+      },
+      () => ({ text: "done", finishReason: "stop" }),
+    ]);
+
+    const block = generator({
+      name: "collide-deactivate-gen",
+      model,
+      prompt: "p",
+      tools: () => {
+        resolveCount += 1;
+        return resolveCount <= 1 ? [dotTool, slashTool] : [dotTool];
+      },
+    });
+
+    await expect(runForTest(block, {}, createMockContext())).resolves.toBe("done");
+    // The dot tool ran once (step 0); the deactivated slash tool never ran.
+    expect(dotRuns).toHaveBeenCalledTimes(1);
+    expect(slashRuns).not.toHaveBeenCalled();
+
+    // The error tool-result is keyed to the alias the model used (foo_bar_2),
+    // preserving correlation with the deactivated tool — NOT re-sanitized to
+    // foo_bar (the other, still-active tool).
+    const errResult = toolMessages(seen[2]!.messages)
+      .map((m) => (m.content as Array<Record<string, unknown>>)[0]!)
+      .find((p) => p.toolCallId === "s1")!;
+    expect(errResult.toolName).toBe("foo_bar_2");
+    expect(errResult.output).toEqual({
+      type: "error-text",
+      value: 'Model called unknown tool "foo/bar"',
+    });
+  });
+
   it("continues past a deferred provider-only step (finishReason tool-calls) to the terminal text", async () => {
     // A deferred provider tool (AI SDK v7 supportsDeferredResults) returns a
     // provider-executed call whose result isn't ready this turn, with
@@ -1122,12 +1198,14 @@ describe("generator owned step loop — streaming", () => {
   });
 });
 
-describe("createFallbackModel — step method forwarding", () => {
+describe("createFallbackModel — no step methods (single candidate owns the loop)", () => {
   const okStepModel = (modelId: string, text: string): GeneratorModel => ({
     modelId,
     async generate() {
       return { text: `${text}-legacy` };
     },
+    // A step-capable candidate — but the fallback wrapper must NOT surface
+    // step methods, so a generation over the group uses the legacy loop.
     async generateStep() {
       return { text, finishReason: "stop" };
     },
@@ -1141,15 +1219,13 @@ describe("createFallbackModel — step method forwarding", () => {
     },
   });
 
-  const legacyOnlyModel = (modelId: string): GeneratorModel => ({
-    modelId,
-    async generate() {
-      return { text: "legacy-only" };
-    },
-  });
-
-  it("exposes generateStep/streamStep iff every candidate implements them", () => {
-    const allCapable = createFallbackModel({
+  it("never exposes generateStep/streamStep even when every candidate implements them", () => {
+    // A step method called once per step would restart fallback from the
+    // first candidate each step, so a candidate could be handed another
+    // provider's turn history mid-loop. Dropping the methods forces the
+    // legacy `generate({ maxSteps })` path, where one candidate owns the
+    // whole loop. Candidate-pinning for owned loops is deferred to PR3.
+    const fallback = createFallbackModel({
       groupName: "caps",
       models: [
         { modelId: "a", providerName: "p", model: okStepModel("a", "A") },
@@ -1157,33 +1233,43 @@ describe("createFallbackModel — step method forwarding", () => {
       ],
       retryPolicy: { maxAttemptsPerModel: 1, baseDelayMs: 0, maxDelayMs: 0 },
     });
-    expect(typeof allCapable.generateStep).toBe("function");
-    expect(typeof allCapable.streamStep).toBe("function");
-
-    const mixed = createFallbackModel({
-      groupName: "mixed",
-      models: [
-        { modelId: "a", providerName: "p", model: okStepModel("a", "A") },
-        { modelId: "b", providerName: "p", model: legacyOnlyModel("b") },
-      ],
-      retryPolicy: { maxAttemptsPerModel: 1, baseDelayMs: 0, maxDelayMs: 0 },
-    });
-    expect(mixed.generateStep).toBeUndefined();
-    expect(mixed.streamStep).toBeUndefined();
+    expect(fallback.generateStep).toBeUndefined();
+    expect(fallback.streamStep).toBeUndefined();
   });
 
-  it("falls through failing candidates and fires onResolved for the winner", async () => {
+  it("a generator with a model array takes the legacy path (generateStep undefined → SDK-owned loop)", async () => {
+    // The generator routes on `model.generateStep === undefined`. A fallback
+    // group therefore drives the legacy `generate({ maxSteps })` loop; assert
+    // the candidate's `generate` (not `generateStep`) is what runs.
+    let sawMaxSteps: number | undefined;
+    const candidate: GeneratorModel = {
+      modelId: "cand",
+      async generate(options) {
+        sawMaxSteps = options.maxSteps;
+        return { text: "from-generate" };
+      },
+      async generateStep() {
+        throw new Error("owned loop must not run for a fallback group");
+      },
+    };
+    const ctx = createMockContext({
+      resolveModel: (() => candidate) as never,
+    });
+
+    const block = generator({
+      name: "fallback-array-gen",
+      model: ["primary/model", "backup/model"],
+      prompt: "p",
+    });
+
+    await expect(runForTest(block, {}, ctx)).resolves.toBe("from-generate");
+    expect(sawMaxSteps).toBe(8);
+  });
+
+  it("still falls through failing candidates via generate and fires onResolved", async () => {
     const failing: GeneratorModel = {
       modelId: "bad",
       async generate() {
-        throw new Error("nope");
-      },
-      async generateStep() {
-        const err = new Error("rate limited") as Error & { statusCode: number };
-        err.statusCode = 429;
-        throw err;
-      },
-      async *streamStep() {
         const err = new Error("rate limited") as Error & { statusCode: number };
         err.statusCode = 429;
         throw err;
@@ -1203,15 +1289,8 @@ describe("createFallbackModel — step method forwarding", () => {
       },
     });
 
-    const result = await fallback.generateStep!({ messages: [] });
-    expect(result.text).toBe("WIN");
-
-    const chunks: GeneratorModelStreamChunk[] = [];
-    for await (const chunk of fallback.streamStep!({ messages: [] })) {
-      chunks.push(chunk);
-    }
-    expect(chunks.some((c) => c.type === "text_delta" && c.textDelta === "WIN")).toBe(true);
-
-    expect(resolved).toEqual(["good", "good"]);
+    const result = await fallback.generate({ messages: [] });
+    expect(result.text).toBe("WIN-legacy");
+    expect(resolved).toEqual(["good"]);
   });
 });

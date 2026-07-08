@@ -252,12 +252,19 @@ async function* executeStreamWithFallback(
  * On retryable errors, retries the current model up to `maxAttemptsPerModel`,
  * then falls back to the next model in the list.
  *
- * Single-step methods (`generateStep`/`streamStep`) are exposed only when
- * EVERY candidate implements them: the framework-owned step loop picks its
- * path once per run, and a group that advertised step support but had a
- * step-less candidate would silently drop that candidate from fallback.
- * (`stream` keeps its historical some-semantics — step-less candidates are
- * skipped inside the loop.)
+ * DELIBERATELY exposes only `generate`/`stream`, NOT the single-step
+ * `generateStep`/`streamStep`. The framework-owned step loop calls a step
+ * method once PER step, and each call would restart fallback from the first
+ * candidate — so a candidate that retryable-fails on step 0 (a sibling wins)
+ * then recovers on step 1 would be handed the *other* provider's turn history
+ * (including provider-specific reasoning-signature blocks in
+ * `responseMessages`) that it will reject. A single candidate must own a whole
+ * tool loop. With no step methods, a generator using a fallback model group
+ * takes the legacy SDK-owned `generate({ maxSteps })` path (checked via
+ * `model.generateStep === undefined`), where one candidate owns the entire
+ * loop — identical to pre-PR2 behavior. Pinning a candidate for the duration
+ * of an owned loop (so fallback groups can drive it too) is deferred to PR3,
+ * where in-loop suspension needs step-capable models.
  */
 export function createFallbackModel(config: FallbackModelConfig): GeneratorModel {
   const { models, defaults, retryPolicy, groupName, onResolved } = config;
@@ -271,8 +278,6 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
   }
 
   const hasStreamSupport = models.some((m) => m.model.stream !== undefined);
-  const hasGenerateStepSupport = models.every((m) => m.model.generateStep !== undefined);
-  const hasStreamStepSupport = models.every((m) => m.model.streamStep !== undefined);
 
   return {
     modelId: `fsd:${groupName}`,
@@ -296,33 +301,6 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
             groupName,
             onResolved,
             (model) => model.stream,
-            options
-          )
-      : undefined,
-
-    // Per-candidate retry/default-merge/onResolved wrapping identical to
-    // `generate`; a candidate's failure falls through to the next model.
-    generateStep: hasGenerateStepSupport
-      ? async (options): Promise<GeneratorModelResult> =>
-          executeWithFallback(
-            models,
-            retryPolicy,
-            groupName,
-            (model, entry) =>
-              model.generateStep!(mergeDefaults(options, defaults, entry.providerName)),
-            onResolved
-          )
-      : undefined,
-
-    // Before-first-chunk fallback semantics identical to `stream`.
-    streamStep: hasStreamStepSupport
-      ? (options: Parameters<NonNullable<GeneratorModel["streamStep"]>>[0]) =>
-          executeStreamWithFallback(
-            models,
-            defaults,
-            groupName,
-            onResolved,
-            (model) => model.streamStep,
             options
           )
       : undefined,
