@@ -16,7 +16,9 @@
  *    row in a group has a null proceeds / cost basis / gain, that group's total
  *    is null and renders "—", never a fabricated partial number. The same gate
  *    propagates to the by-year and grand totals — a total that silently omitted
- *    an unknown contributor would misstate realized gains.
+ *    an unknown contributor would misstate realized gains. The totals extend the
+ *    currency rule too: a year (or the grand total) whose rows span more than
+ *    one currency is null rather than a single-currency-labeled USD + EUR sum.
  */
 import type { RealizedGainRow } from "@/src/db/repository";
 
@@ -104,32 +106,48 @@ export function buildRealizedGainsRowModel(
 }
 
 /** The all-up realized-gain totals: one figure per year and one grand total.
- *  Each is null when ANY contributing group's gain is null (the "—" gate). */
+ *  Each is null (renders "—") when ANY contributing group's gain is null (the
+ *  "—" gate) OR the contributing rows span more than one currency (see
+ *  `totalGain`). */
 export type RealizedGainTotals = {
-  /** year → summed realized gain (null if any of that year's groups is null). */
+  /** year → summed realized gain (null if any of that year's groups is null, or
+   *  that year mixes currencies). */
   byYear: Map<number, number | null>;
-  /** Summed realized gain across every year (null if any group is null). */
+  /** Summed realized gain across every year (null if any group is null, or the
+   *  set mixes currencies). */
   grandTotal: number | null;
 };
 
+/** Sum realized gain across a set of rolled-up rows, honest about the two ways
+ *  the figure can't be stated as one number: a null contributing gain (the "—"
+ *  gate), OR more than one currency in the set. The table renders these totals
+ *  in the single account currency, so summing USD + EUR into one labeled figure
+ *  would be a fabricated number — the same reason currency is part of the row
+ *  key. Either case → null → "—". */
+function totalGain(models: RealizedGainRowModel[]): number | null {
+  const currencies = new Set(models.map((m) => m.currency));
+  if (currencies.size > 1) return null;
+  return nullableSum(models.map((m) => m.gain));
+}
+
 /**
  * Compute the by-year and grand-total realized gain from the row models. Both
- * follow the same real-money gate as the rows: a null contributing gain makes
- * the enclosing total null. Pure — no IO.
+ * follow the same real-money gates as the rows: a null contributing gain, or a
+ * currency mix, makes the enclosing total null. Pure — no IO.
  */
 export function computeRealizedGainTotals(
   models: RealizedGainRowModel[],
 ): RealizedGainTotals {
-  const perYear = new Map<number, (number | null)[]>();
+  const perYear = new Map<number, RealizedGainRowModel[]>();
   for (const m of models) {
     const list = perYear.get(m.year);
-    if (list === undefined) perYear.set(m.year, [m.gain]);
-    else list.push(m.gain);
+    if (list === undefined) perYear.set(m.year, [m]);
+    else list.push(m);
   }
   const byYear = new Map<number, number | null>();
-  for (const [year, gains] of perYear) byYear.set(year, nullableSum(gains));
+  for (const [year, yearModels] of perYear) byYear.set(year, totalGain(yearModels));
   return {
     byYear,
-    grandTotal: nullableSum(models.map((m) => m.gain)),
+    grandTotal: totalGain(models),
   };
 }

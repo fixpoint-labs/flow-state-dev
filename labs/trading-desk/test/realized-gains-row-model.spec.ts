@@ -130,6 +130,24 @@ describe("computeRealizedGainTotals", () => {
     expect(totals.grandTotal).toBe(330);
   });
 
+  it("nulls a year and the grand total when its rows span more than one currency", () => {
+    // The table renders totals in the single account currency, so a USD + EUR
+    // year total would be a fabricated figure — the same reason currency is part
+    // of the row key. It renders "—", not a mixed-currency sum.
+    const models = buildRealizedGainsRowModel([
+      gain({ id: "a", ticker: "NVDA", disposedDate: "2026-03-15", currency: "USD", gain: 200 }),
+      gain({ id: "b", ticker: "SAP", disposedDate: "2026-06-01", currency: "EUR", gain: 150 }),
+      gain({ id: "c", ticker: "JPM", disposedDate: "2025-02-10", currency: "USD", gain: 50 }),
+    ]);
+    const totals = computeRealizedGainTotals(models);
+    // 2026 mixes USD + EUR → unknown, never 350.
+    expect(totals.byYear.get(2026)).toBeNull();
+    // 2025 is single-currency → still a real figure.
+    expect(totals.byYear.get(2025)).toBe(50);
+    // The whole set mixes currencies → the grand total is unknown.
+    expect(totals.grandTotal).toBeNull();
+  });
+
   it("propagates the null gate: a null group gain nulls its year and the grand total", () => {
     const models = buildRealizedGainsRowModel([
       gain({ id: "a", ticker: "NVDA", disposedDate: "2026-03-15", gain: 200 }),
