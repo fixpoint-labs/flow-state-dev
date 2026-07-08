@@ -76,7 +76,7 @@ function backgroundTrace(
   );
 }
 
-describe("completed background `.work()` trace replays across a cold restart on Postgres (FIX-866 Contract C)", () => {
+describe("completed background `.work()` trace replays across a cold restart on Postgres (Contract C)", () => {
   let pglite: PGlite | undefined;
   const originalEnv = { ...process.env };
 

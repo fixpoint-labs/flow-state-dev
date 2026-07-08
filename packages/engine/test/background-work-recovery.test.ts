@@ -25,6 +25,13 @@
  *     re-suspension on recovery proves the replayed output is still observable to
  *     a later sibling. A drop-but-don't-re-run regression keeps the counter at 1
  *     yet loses the value, so the counter alone would go green falsely.
+ *
+ * NOTE: the two suites described above (the original investigation) simulate the
+ * crash by flipping a `suspended` record to `interrupted`. The three suites added
+ * below for FIX-866 use the **reachable** recovery paths instead (a gate-
+ * `suspended` request is never swept to `interrupted`, so the flip models a state
+ * production never produces) — see each suite's own docblock: mid-drain fan-out
+ * and cross-store recovery drive `/resume` with a `resumeContext`.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -577,9 +584,33 @@ describe("attached durable background-work recovery — failed background task u
       stores,
       runtimeConfig: { durabilityProvider: provider }
     });
+    // Track settlement so we can prove the parent does NOT fail while `slow` is
+    // still parked. This is the assertion with real teeth: under drain-then-throw
+    // `runPromise` stays pending until the whole scope drains; under a fail-fast
+    // regression `failing`'s throw would settle it here, before `slow` finishes.
+    let runSettled = false;
+    void runPromise.then(
+      () => {
+        runSettled = true;
+      },
+      () => {
+        runSettled = true;
+      }
+    );
 
     // Let both tasks dispatch and `failing` throw; `slow` is still parked.
     await flush();
+    expect(failRuns).toBe(1); // failing already threw
+    expect(slowRuns).toBe(1); // slow entered and is parked on its gate
+
+    // drain-then-throw teeth: give any fail-fast settling a real macrotask tick
+    // to land, then assert the run has NOT settled while `slow` is still parked.
+    // (The `order` marker below cannot distinguish drain-then-throw from fail-
+    // fast on its own — the two orderings coincide under microtask scheduling —
+    // so this is the load-bearing check.)
+    await new Promise((r) => setTimeout(r, 10));
+    expect(runSettled).toBe(false);
+
     // Release the slow task; only now can `drainScope`'s Promise.all resolve and
     // the first failure re-throw into the parent.
     slowGate.resolve();
@@ -587,11 +618,9 @@ describe("attached durable background-work recovery — failed background task u
     order.push("parent-failed");
     const requestId = initial.requestId!;
 
-    expect(failRuns).toBe(1);
-    expect(slowRuns).toBe(1);
     // Parent failure is surfaced (not isolated) once the scope's work drains.
     expect((await stores.request.get(requestId))?.status).toBe("failed");
-    // drain-then-throw, NOT fail-fast: `slow` settled before the parent failed.
+    // Corroborates the ordering: `slow` ran to completion before the parent failed.
     expect(order).toEqual(["fail", "slow", "parent-failed"]);
 
     // Non-continuability lives at the ROUTE layer: the `/continue` handler's

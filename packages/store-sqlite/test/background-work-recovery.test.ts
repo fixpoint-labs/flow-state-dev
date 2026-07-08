@@ -69,7 +69,7 @@ function backgroundTrace(
   );
 }
 
-describe("completed background `.work()` trace replays across a cold restart (FIX-866 Contract C)", () => {
+describe("completed background `.work()` trace replays across a cold restart (Contract C)", () => {
   let dir: string | undefined;
   const originalEnv = { ...process.env };
 
