@@ -19,6 +19,8 @@ import { createPostgresStores } from "@flow-state-dev/store-postgres";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
+import { createDb } from "@/src/db/client";
+import { createPortfolioRepository } from "@/src/db/repository";
 
 const url = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 if (!url) {
@@ -40,7 +42,12 @@ try {
   await migrate(drizzle(pool), {
     migrationsFolder: path.join(process.cwd(), "src", "db", "migrations"),
   });
-  console.log("[migrate] Framework + app schema up to date.");
+  // One-time realized-gains rollout (FIX-874): materialize every existing
+  // account's realized gains, so history isn't empty until an unrelated mutation
+  // touches each account. Idempotent (delete-then-reinsert under a per-account
+  // advisory lock), so it's safe to run on every deploy.
+  await createPortfolioRepository(createDb(pool)).backfillRealizedGains();
+  console.log("[migrate] Framework + app schema up to date; realized gains backfilled.");
 } catch (error) {
   console.error("[migrate] Failed:", error);
   process.exitCode = 1;
