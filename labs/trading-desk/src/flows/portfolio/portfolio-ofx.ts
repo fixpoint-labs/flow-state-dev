@@ -617,13 +617,12 @@ function handleBankTran(ctx: Ctx, agg: OfxNode): void {
   });
 }
 
-/** Resolve a SPLIT aggregate's ratio to positive-integer numerator/denominator.
+/** Resolve a SPLIT aggregate's ratio to a positive numerator/denominator.
  *  Prefers the explicit `NUMERATOR`/`DENOMINATOR` (OFX's clean split ratio, e.g.
- *  10/1), falling back to the holder's `NEWUNITS`/`OLDUNITS` share counts. Returns
- *  null when neither yields a positive-INTEGER pair — a fabricated or fractional
- *  ratio would silently mis-rebase basis (and a non-integer would fail the
- *  `splitAttributesSchema` read and no-op the split), so the caller skips-with-
- *  warning rather than guess. */
+ *  10/1), falling back to the holder's `NEWUNITS`/`OLDUNITS` share counts — which
+ *  may be FRACTIONAL for a fractional-share account (their ratio is still exact).
+ *  Returns null only when neither yields a positive pair — the caller then
+ *  skips-with-warning rather than fabricate a ratio. */
 function resolveSplitRatio(agg: OfxNode): { numerator: number; denominator: number } | null {
   const positive = (n: number | null): n is number => n !== null && n > 0;
   const numerator = num(agg.NUMERATOR);
