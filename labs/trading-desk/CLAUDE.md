@@ -560,8 +560,11 @@ filing-grade. Full methodology in [`docs/tax-estimate.md`](docs/tax-estimate.md)
   all-voided account must clear its stale rows. Concurrency is a per-account
   `pg_advisory_xact_lock` (acquired in SORTED account order — deadlock-free),
   with `(disposal_event_id, lot_index)` unique as defense-in-depth. Exported
-  `backfillRealizedGains()` is the one-time rollout surface (loop every account
-  under the lock; idempotent).
+  `backfillRealizedGains()` is the rollout surface (loop every account under the
+  lock; idempotent) — run from BOTH the deploy migrator (`scripts/migrate.ts`)
+  AND dev startup (`lib/portfolio-db.ts`, the PGlite branch), so sells imported
+  before the migration materialize without waiting for a later ingest/void in
+  either environment.
 - **Honest basis, two axes (never zero-filled).** Term follows the
   acquisition-DATE axis (a transfer-in or over-sell → `term: "unknown"`);
   `costBasis`/`gain` follow the amount-known axis (a no-price buy → null gain, a
