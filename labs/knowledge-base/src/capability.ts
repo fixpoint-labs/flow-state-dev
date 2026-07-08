@@ -38,11 +38,12 @@ const RESERVED_CONCEPT_IDS = new Set(RESERVED_FILENAMES.map((f) => f.replace(/\.
 /**
  * Reject a concept id that collides with an OKF-reserved filename: creating
  * one would clobber the bundle's own root listing or log file on the next
- * `exportOkf`. Path traversal, absolute paths, and empty ids are already
- * rejected by the collection's own key resolution (every `collection.create`
- * / `getOptional` call normalizes the key and throws on `..`/empty/control
- * characters before this fn is reached), so this only needs to guard names
- * OKF reserves that the collection layer has no reason to know about.
+ * `exportOkf`. The collection's own key resolution already sanitizes ids
+ * before this fn is reached — every `collection.create` / `getOptional` call
+ * runs `normalizeResourcePath`, which throws on `..` traversal, empty ids,
+ * and control characters, and strips leading slashes so an "absolute" id
+ * can't escape the prefix-scoped keyspace. So this only needs to guard the
+ * names OKF reserves that the collection layer has no reason to know about.
  */
 function assertSafeConceptId(id: string): void {
   if (RESERVED_CONCEPT_IDS.has(id)) {
@@ -119,7 +120,10 @@ export function createKnowledgeBaseCapability() {
           try {
             await r.writeContent(body);
           } catch (err) {
-            await c.delete(id); // roll back so a retry isn't blocked by "already exists"
+            // Roll back the state row so a retry isn't blocked by "already exists". If the
+            // rollback ALSO fails (e.g. the same store outage), keep the original write error
+            // as the thrown cause — masking it with the delete error would hide the real fault.
+            await c.delete(id).catch(() => {});
             throw err;
           }
         },
