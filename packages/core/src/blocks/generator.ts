@@ -1230,31 +1230,52 @@ async function executeOwnedStepToolCalls(
 }
 
 /**
- * Builds the messages appended after a tool-calling step: ONE assistant
- * message carrying ALL of the step's tool-call parts (plus the step's text),
- * then one tool-result message per settled call in call order. Tool names in
- * these messages use the adapter-stable alias; result payloads mirror what
- * the AI SDK feeds the model (`mapModelOutput` applied in memory, errors as
- * `error-text`).
+ * Builds the messages appended after a tool-calling step.
+ *
+ * Assistant turn — live-fidelity first: when the step result carries RAW
+ * `responseMessages` (the AI SDK adapter populates them from the step's
+ * `response.messages`), their assistant portion is appended VERBATIM. That
+ * preserves reasoning/thinking parts and provider-specific payloads (e.g.
+ * Anthropic thinking signatures, which MUST round-trip in the assistant
+ * turn of a tool loop) that the normalized step fields cannot carry; the
+ * raw messages already use the model-facing aliases since the loop
+ * pre-renames its tools. When `responseMessages` is absent (step-capable
+ * non-AI-SDK models, mocks), falls back to ONE constructed assistant
+ * message carrying ALL of the step's tool-call parts plus the step's text.
+ *
+ * Tool results are ALWAYS FSD-constructed — FSD ran the tools, so the raw
+ * response contains no results for the execute-less framework tools — one
+ * tool-result message per settled call in call order, payloads mirroring
+ * what the AI SDK feeds the model (`mapModelOutput` applied in memory,
+ * errors as `error-text`).
  */
 async function buildOwnedStepMessages(
-  stepText: string | undefined,
+  step: { text?: string; responseMessages?: unknown[] } | undefined,
   settled: SettledToolCall[],
   ctx: BlockContext
 ): Promise<unknown[]> {
   const aliasFor = (s: SettledToolCall): string =>
     s.entry?.alias ?? sanitizeToolName(s.call.toolName);
 
-  const messages: unknown[] = [
-    buildAssistantToolCallMessage(
-      settled.map((s) => ({
-        toolCallId: s.call.toolCallId,
-        toolName: aliasFor(s),
-        input: s.call.args,
-      })),
-      stepText
-    ),
-  ];
+  const rawAssistant = (step?.responseMessages ?? []).filter(
+    (m) =>
+      typeof m === "object" &&
+      m !== null &&
+      (m as { role?: unknown }).role === "assistant"
+  );
+
+  const messages: unknown[] = rawAssistant.length > 0
+    ? [...rawAssistant]
+    : [
+        buildAssistantToolCallMessage(
+          settled.map((s) => ({
+            toolCallId: s.call.toolCallId,
+            toolName: aliasFor(s),
+            input: s.call.args,
+          })),
+          step?.text
+        ),
+      ];
 
   for (const s of settled) {
     let output: LLMToolResultOutput;
@@ -1455,7 +1476,7 @@ async function runOwnedGenerateLoop(params: {
     }
 
     const settled = await executeOwnedStepToolCalls(calls, toolset);
-    messages = [...messages, ...(await buildOwnedStepMessages(step.text, settled, ctx))];
+    messages = [...messages, ...(await buildOwnedStepMessages(step, settled, ctx))];
     steps.push({
       text: step.text,
       toolCalls: calls,
@@ -2026,7 +2047,7 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
       );
     }
 
-    messages = [...messages, ...(await buildOwnedStepMessages(stepFinal?.text, settled, ctx))];
+    messages = [...messages, ...(await buildOwnedStepMessages(stepFinal, settled, ctx))];
     steps.push({
       text: stepFinal?.text,
       toolCalls: calls,

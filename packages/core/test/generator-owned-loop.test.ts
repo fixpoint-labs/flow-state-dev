@@ -395,6 +395,72 @@ describe("generator owned step loop — non-streaming", () => {
     });
   });
 
+  it("appends the raw responseMessages assistant turn verbatim (reasoning preserved), tool results FSD-built", async () => {
+    const echo = handler({
+      name: "echo",
+      inputSchema: z.object({ v: z.string() }),
+      outputSchema: z.object({ v: z.string() }),
+      execute: (input) => ({ v: input.v }),
+    });
+
+    // Raw assistant turn as a provider/SDK would return it — reasoning part
+    // with a provider signature plus the tool-call part.
+    const rawAssistant = {
+      role: "assistant",
+      content: [
+        {
+          type: "reasoning",
+          text: "let me think",
+          providerOptions: { anthropic: { signature: "sig_abc" } },
+        },
+        { type: "tool-call", toolCallId: "r1", toolName: "echo", input: { v: "hi" } },
+      ],
+    };
+
+    const { model, seen } = stepModel([
+      () => ({
+        toolCalls: [{ toolCallId: "r1", toolName: "echo", args: { v: "hi" } }],
+        finishReason: "tool-calls",
+        responseMessages: [rawAssistant],
+      }),
+      () => ({ text: "done", finishReason: "stop" }),
+    ]);
+
+    const block = generator({
+      name: "reasoning-gen",
+      model,
+      prompt: "p",
+      tools: [echo],
+    });
+
+    await expect(runForTest(block, {}, createMockContext())).resolves.toBe("done");
+
+    const step2 = seen[1]!.messages as Array<Record<string, unknown>>;
+    // The raw assistant message is appended VERBATIM (reasoning + provider
+    // signature intact) — not a reconstructed one.
+    const assistants = assistantMessages(step2).filter(
+      (m) =>
+        Array.isArray(m.content) &&
+        (m.content as Array<{ type: string }>).some((p) => p.type === "tool-call")
+    );
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0]).toEqual(rawAssistant);
+
+    // Tool results stay FSD-constructed (FSD ran the tool; the raw response
+    // has no result for an execute-less tool).
+    const results = toolMessages(step2).map(
+      (m) => (m.content as Array<Record<string, unknown>>)[0]!
+    );
+    expect(results).toEqual([
+      {
+        type: "tool-result",
+        toolCallId: "r1",
+        toolName: "echo",
+        output: { type: "json", value: { v: "hi" } },
+      },
+    ]);
+  });
+
   it("synthesizes the same tool_call_progress items as the legacy non-streaming path", async () => {
     const echo = handler({
       name: "echo",

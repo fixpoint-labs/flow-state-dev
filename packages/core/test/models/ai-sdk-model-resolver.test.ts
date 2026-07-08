@@ -1168,3 +1168,39 @@ describe("createAiSdkModelResolver — single-step methods (generateStep / strea
     ]);
   });
 });
+
+describe("createAiSdkModelResolver — raw responseMessages carrier", () => {
+  it("generateStep surfaces the step's raw response.messages (reasoning parts included)", async () => {
+    const usage = {
+      inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+      outputTokens: { total: 4, text: 4, reasoning: undefined },
+    };
+    const mockModel = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [
+          { type: "reasoning", text: "thinking about it" },
+          { type: "tool-call", toolCallId: "call_1", toolName: "lookup", input: '{"q":"x"}' },
+        ],
+        finishReason: { unified: "tool-calls", raw: undefined },
+        usage,
+        warnings: [],
+      }),
+    });
+
+    const model = wrapAiSdkModel(mockModel);
+    const result = await model.generateStep!({
+      messages: [{ role: "user", content: "go" }],
+      tools: [{ name: "lookup", parameters: z.object({ q: z.string() }) }],
+    });
+
+    // The raw assistant turn is surfaced verbatim so the framework-owned
+    // loop can round-trip reasoning parts between steps.
+    expect(result.responseMessages).toBeDefined();
+    const assistant = (result.responseMessages as Array<Record<string, unknown>>).find(
+      (m) => m.role === "assistant"
+    )!;
+    const partTypes = (assistant.content as Array<{ type: string }>).map((p) => p.type);
+    expect(partTypes).toContain("reasoning");
+    expect(partTypes).toContain("tool-call");
+  });
+});
