@@ -77,6 +77,14 @@ export const ledgerEventInputSchema = z.object({
   externalId: z.string().nullable().default(null),
   description: z.string().nullable().default(null),
   basisUnknown: z.string().nullable().default(null),
+  /** Reason a `sell`'s cash proceeds are unknown — set by a feed normalizer
+   *  (FIX-775's OFX importer on a no-`TOTAL`/no-`UNITPRICE` sell) when the file
+   *  couldn't supply the amount. Realized-gains derivation (FIX-874) nulls
+   *  proceeds/gain and excludes such a row rather than fabricating a full loss
+   *  off a placeholder `amount:0`; a genuine $0 sale leaves this null. Import-only
+   *  — the manual route forces it null so a caller can't blank a real sale's
+   *  proceeds. */
+  proceedsUnknown: z.string().nullable().default(null),
 });
 export type LedgerEventInput = z.infer<typeof ledgerEventInputSchema>;
 
@@ -118,6 +126,9 @@ export type LedgerRow = {
   externalId: string | null;
   description: string | null;
   basisUnknown: string | null;
+  /** Reason a `sell`'s proceeds are unknown (import placeholder); null otherwise.
+   *  Drives FIX-874's realized-gains exclusion. */
+  proceedsUnknown: string | null;
   voidedAt: string | null;
   createdAt: string;
 };

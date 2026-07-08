@@ -219,6 +219,7 @@ function baseEvent(
     amount: number;
     fee: number | null;
     basisUnknown: string | null;
+    proceedsUnknown?: string | null;
     externalIdSuffix?: string;
   },
 ): FileLedgerEvent {
@@ -238,6 +239,7 @@ function baseEvent(
     externalId,
     description: invtran ? str(invtran.MEMO) : null,
     basisUnknown: fields.basisUnknown,
+    proceedsUnknown: fields.proceedsUnknown ?? null,
   };
 }
 
@@ -344,10 +346,17 @@ function handleSell(ctx: Ctx, agg: OfxNode): void {
   const fee = feeOf(sell);
   // A sell with neither price nor total still removes shares (the disposal
   // happened), but its cash proceeds are unknown — record it (so FIFO consumes
-  // the lot) and warn rather than silently understating proceeds.
-  if (total === null && unitPrice === null) {
+  // the lot) and flag it `proceedsUnknown` so FIX-874's realized-gains derivation
+  // nulls proceeds/gain and excludes it, rather than fabricating a full capital
+  // loss off the placeholder `amount:0`. Distinct from a genuine $0 sale (which
+  // leaves the marker null and derives a real loss).
+  const proceedsUnknown =
+    total === null && unitPrice === null
+      ? "import-no-proceeds: sell had no TOTAL or UNITPRICE in the file"
+      : null;
+  if (proceedsUnknown !== null) {
     ctx.warnings.push(
-      `Sell of ${ticker} has no price or total — recorded as a disposal, but proceeds are unknown.`,
+      `Sell of ${ticker} has no price or total — recorded as a disposal with unknown proceeds (excluded from realized-gain totals until corrected).`,
     );
   }
   ctx.events.push(
@@ -366,6 +375,7 @@ function handleSell(ctx: Ctx, agg: OfxNode): void {
       amount: total === null ? Math.max(0, units * (unitPrice ?? 0) - (fee ?? 0)) : Math.abs(total),
       fee,
       basisUnknown: null,
+      proceedsUnknown,
     }),
   );
 }
@@ -613,6 +623,7 @@ function handleBankTran(ctx: Ctx, agg: OfxNode): void {
     externalId: fitid,
     description: str(stmt.NAME) ?? str(stmt.MEMO),
     basisUnknown: null,
+    proceedsUnknown: null,
   });
 }
 

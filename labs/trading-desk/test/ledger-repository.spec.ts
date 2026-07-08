@@ -28,6 +28,7 @@ import {
 } from "@/src/db/repository";
 import type { LedgerEventInput } from "@/src/flows/portfolio/ledger-schema";
 import type { CanonicalRow } from "@/src/flows/portfolio/portfolio-schema";
+import { estimateTaxLiability, summarizeForTaxEstimate } from "@/src/flows/portfolio/tax-estimate";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
 
@@ -63,6 +64,7 @@ function ev(overrides: Partial<LedgerEventInput> = {}): LedgerEventInput {
     externalId: null,
     description: null,
     basisUnknown: null,
+    proceedsUnknown: null,
     ...overrides,
   };
 }
@@ -436,5 +438,160 @@ describe("getLedger", () => {
   it("scopes the read to the household", async () => {
     await repo.ingestLedgerEvents([ev()], "devuser");
     expect(await repo.getLedger("intruder")).toHaveLength(0);
+  });
+});
+
+describe("realized gains materialization (FIX-874) — real-path goal check", () => {
+  // GOAL: current-year realized gains split ST/LT + a profile-driven estimate
+  // that stays correct as sales are added and voided. Deterministic, no model —
+  // the PGlite ingest→materialize→read→void→re-read path, plus the route-level
+  // estimate composition over the real reads (taxable-account/USD filter).
+  const sell = (over: Partial<LedgerEventInput>): LedgerEventInput =>
+    ev({ type: "sell", quantity: -10, unitPrice: null, amount: 0, ...over });
+
+  it("materializes ST/LT-split realized gains with correct totals, and retracts on void", async () => {
+    await repo.ingestLedgerEvents(
+      [
+        // A long lot (2024) and a short lot (2026) of AAPL.
+        ev({ ticker: "AAPL", tradeDate: "2024-01-01", quantity: 10, unitPrice: 100, amount: -1000 }),
+        ev({ ticker: "AAPL", tradeDate: "2026-02-01", quantity: 10, unitPrice: 200, amount: -2000 }),
+        // Sell 15 in 2026 for 4500 total → 10 long (proceeds 3000, gain 2000),
+        // 5 short (proceeds 1500, gain 500).
+        sell({
+          ticker: "AAPL",
+          tradeDate: "2026-06-01",
+          quantity: -15,
+          amount: 4500,
+          source: "file",
+          externalId: "SELL-1",
+        }),
+      ],
+      "devuser",
+    );
+
+    const gains = await repo.getRealizedGains("devuser");
+    expect(gains).toHaveLength(2);
+    const long = gains.find((g) => g.term === "long");
+    const short = gains.find((g) => g.term === "short");
+    expect(long).toMatchObject({ proceeds: 3000, costBasis: 1000, gain: 2000 });
+    expect(short).toMatchObject({ proceeds: 1500, costBasis: 1000, gain: 500 });
+
+    // Void the sell → its realized rows retract.
+    const voided = await repo.voidLedgerEvents("acc-1", ["SELL-1"], "file", "devuser");
+    expect(voided).toBe(1);
+    expect(await repo.getRealizedGains("devuser")).toHaveLength(0);
+  });
+
+  it("excludes IRA gains AND dividends from the composed estimate", async () => {
+    await repo.upsertAccount({ id: "ira-1", userId: "devuser", name: "IRA", type: "IRA" });
+    // Taxable: a realized long gain + a dividend. IRA: an equal gain + dividend.
+    await repo.ingestLedgerEvents(
+      [
+        ev({ accountId: "acc-1", ticker: "AAPL", tradeDate: "2024-01-01", quantity: 10, unitPrice: 100, amount: -1000 }),
+        sell({ accountId: "acc-1", ticker: "AAPL", tradeDate: "2026-06-01", quantity: -10, amount: 3000, source: "file", externalId: "TX-1" }),
+        ev({ accountId: "acc-1", type: "dividend", ticker: "AAPL", tradeDate: "2026-03-01", quantity: null, unitPrice: null, amount: 100 }),
+        ev({ accountId: "ira-1", ticker: "MSFT", tradeDate: "2024-01-01", quantity: 10, unitPrice: 100, amount: -1000 }),
+        sell({ accountId: "ira-1", ticker: "MSFT", tradeDate: "2026-06-01", quantity: -10, amount: 3000, source: "file", externalId: "TX-2" }),
+        ev({ accountId: "ira-1", type: "dividend", ticker: "MSFT", tradeDate: "2026-03-01", quantity: null, unitPrice: null, amount: 100 }),
+      ],
+      "devuser",
+    );
+    await repo.upsertTaxProfile("devuser", {
+      filingStatus: "single",
+      marginalOrdinaryRatePct: 24,
+      ltcgRatePct: 15,
+      stateRatePct: null,
+    });
+
+    // Compose the estimate the way the route does: taxable-account + USD filter.
+    const accountsForUser = await repo.getAccountsForUser("devuser");
+    const taxableIds = new Set(accountsForUser.filter((a) => a.type === "taxable").map((a) => a.accountId));
+    const summary = summarizeForTaxEstimate({
+      realized: await repo.getRealizedGains("devuser", {}),
+      income: await repo.getIncomeSummaryByYear("devuser", {}),
+      taxableAccountIds: taxableIds,
+      year: 2026,
+    });
+    // Only the taxable account counts: 2000 long gain + 100 dividend, NOT double.
+    expect(summary.longGains).toBe(2000);
+    expect(summary.dividends).toBe(100);
+    const estimate = estimateTaxLiability({
+      profile: await repo.getTaxProfile("devuser"),
+      year: 2026,
+      ...summary,
+    });
+    // (2000 + 100) × 0.15 = 315 — the IRA's identical gain+dividend are excluded.
+    expect(estimate.estimatedTotal).toBeCloseTo(315);
+  });
+
+  it("surfaces basis-unknown and unmatched disposals as null/unknown, not dropped or zeroed", async () => {
+    await repo.ingestLedgerEvents(
+      [
+        // A transfer-in with no basis, later sold → gain null, term unknown.
+        ev({ ticker: "TSLA", type: "transfer", tradeDate: "2026-01-01", quantity: 5, unitPrice: null, amount: 0, basisUnknown: "no acquisition record" }),
+        sell({ ticker: "TSLA", tradeDate: "2026-06-01", quantity: -5, amount: 1000, source: "file", externalId: "S-TSLA" }),
+        // An over-sell with no lot → unmatched remainder row.
+        sell({ ticker: "NFLX", tradeDate: "2026-06-01", quantity: -3, amount: 900, source: "file", externalId: "S-NFLX" }),
+      ],
+      "devuser",
+    );
+    const gains = await repo.getRealizedGains("devuser");
+    const tsla = gains.find((g) => g.ticker === "TSLA");
+    const nflx = gains.find((g) => g.ticker === "NFLX");
+    expect(tsla).toMatchObject({ gain: null, term: "unknown", proceeds: 1000 });
+    expect(nflx).toMatchObject({ gain: null, term: "unknown", costBasis: null, proceeds: 900 });
+
+    // Both are excluded from ST/LT buckets but surfaced in basisUnknown.
+    const summary = summarizeForTaxEstimate({
+      realized: gains,
+      income: [],
+      taxableAccountIds: new Set(["acc-1"]),
+      year: 2026,
+    });
+    expect(summary.shortGains).toBe(0);
+    expect(summary.longGains).toBe(0);
+    expect(summary.basisUnknownCount).toBe(2);
+    expect(summary.basisUnknownProceeds).toBe(1900);
+  });
+
+  it("does not duplicate realized rows on an idempotent re-ingest", async () => {
+    const batch = [
+      ev({ ticker: "AAPL", tradeDate: "2026-01-01", quantity: 10, unitPrice: 100, amount: -1000 }),
+      sell({ ticker: "AAPL", tradeDate: "2026-06-01", quantity: -10, amount: 1500, source: "file", externalId: "R-1" }),
+    ];
+    await repo.ingestLedgerEvents(batch, "devuser");
+    await repo.ingestLedgerEvents(batch, "devuser"); // re-run
+    expect(await repo.getRealizedGains("devuser")).toHaveLength(1);
+  });
+
+  it("filters realized gains and income-by-year by year, and round-trips the tax profile", async () => {
+    await repo.ingestLedgerEvents(
+      [
+        ev({ ticker: "AAPL", tradeDate: "2024-01-01", quantity: 20, unitPrice: 100, amount: -2000 }),
+        sell({ ticker: "AAPL", tradeDate: "2025-06-01", quantity: -5, amount: 700, source: "file", externalId: "Y-25" }),
+        sell({ ticker: "AAPL", tradeDate: "2026-06-01", quantity: -5, amount: 800, source: "file", externalId: "Y-26" }),
+        ev({ type: "dividend", ticker: "AAPL", tradeDate: "2025-03-01", quantity: null, unitPrice: null, amount: 40 }),
+        ev({ type: "dividend", ticker: "AAPL", tradeDate: "2026-03-01", quantity: null, unitPrice: null, amount: 60 }),
+      ],
+      "devuser",
+    );
+    expect(await repo.getRealizedGains("devuser", { year: 2025 })).toHaveLength(1);
+    expect(await repo.getRealizedGains("devuser", { year: 2026 })).toHaveLength(1);
+    const income2026 = await repo.getIncomeSummaryByYear("devuser", { year: 2026 });
+    expect(income2026).toHaveLength(1);
+    expect(income2026[0]).toMatchObject({ year: 2026, dividends: 60 });
+
+    const saved = await repo.upsertTaxProfile("devuser", {
+      filingStatus: "mfj",
+      marginalOrdinaryRatePct: 22,
+      ltcgRatePct: 15,
+      stateRatePct: 5,
+    });
+    expect(saved).toMatchObject({ filingStatus: "mfj", marginalOrdinaryRatePct: 22, stateRatePct: 5 });
+    const reread = await repo.getTaxProfile("devuser");
+    expect(reread).toMatchObject({ filingStatus: "mfj", ltcgRatePct: 15, stateRatePct: 5 });
+    // Upsert replaces in place.
+    await repo.upsertTaxProfile("devuser", { filingStatus: "single", marginalOrdinaryRatePct: 32, ltcgRatePct: 20, stateRatePct: null });
+    expect((await repo.getTaxProfile("devuser"))?.filingStatus).toBe("single");
   });
 });

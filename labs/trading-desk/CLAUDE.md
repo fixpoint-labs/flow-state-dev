@@ -311,9 +311,10 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   for the seed + UI. The Drizzle tables (`src/db/schema.ts`) are the persistence.
   These zod schemas are NOT generator outputs, so `.default()` / `.nullable()`
   are fine (BP-016 only constrains generator outputs) — do NOT add them to
-  `output-schemas-strict.spec.ts`. Cost basis is **average cost (informational)**,
-  forward-compatible to tax-lots; tax-lots / realized P/L / dividends are
-  documented future seams, not built.
+  `output-schemas-strict.spec.ts`. Cost basis is **average cost (informational)**
+  on the holdings snapshot; **realized gains** are now derived and persisted
+  per-lot (FIX-874, see below) and **dividends/interest** are aggregated from the
+  ledger (FIX-774). Specific-lot tax-lots and wash-sale math remain deferred.
 - **CSV import** (`portfolio-csv.ts`) is a PURE, browser-safe parser: a synonym
   table maps real brokerage headers, bad rows are REPORTED (with 1-based row
   numbers) never thrown, duplicate tickers merge to a quantity-weighted average
@@ -468,7 +469,8 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   basis allocation are deferred.
 
 - **Income is aggregated from the ledger at read time (`getIncomeSummary`).**
-  Dividends + interest per `(account, ticker)`, summing non-voided events —
+  Dividends + interest per `(account, ticker)`, summing non-voided events (FIX-874
+  adds a year-dimensioned `getIncomeSummaryByYear` alongside it) —
   deliberately NOT a holdings column, because income survives a position closing
   (the holdings row is deleted; the dividends were still earned). Ticker-less
   rows are account-level income (interest, MMF sweeps). Read via
@@ -540,6 +542,73 @@ Two load-bearing decisions:
   CUSIP-only securities → `unresolvedSecurities`, malformed rows (no date, no
   amount, blank FITID) → skipped. The parser never fabricates a value to make a
   row land.
+
+## Realized gains + tax estimate (FIX-874)
+
+The realized side of the book — every sale's gain/loss, short/long classified,
+plus a rough current-year tax estimate. A planning estimate, explicitly not
+filing-grade. Full methodology in [`docs/tax-estimate.md`](docs/tax-estimate.md).
+
+- **Derivation & persistence.** `deriveLots` (`lots.ts`) now returns a third
+  `disposals` array (`RealizedDisposal`, `realized-gains.ts`) — one record per
+  (sell event × consumed FIFO lot), emitted ONLY on `type === "sell"` (a
+  `transfer`-out consumes lots but is not a taxable disposition).
+  `materializeRealizedGains` (`repository.ts`) mirrors `materializePositions`:
+  a full recompute into `app.realized_gains` on the SAME ingest/void seam, so
+  realized gains stay live and **retract on a void**. Unlike
+  `materializePositions`, its DELETE is UNCONDITIONAL (no early-return) — an
+  all-voided account must clear its stale rows. Concurrency is a per-account
+  `pg_advisory_xact_lock` (acquired in SORTED account order — deadlock-free),
+  with `(disposal_event_id, lot_index)` unique as defense-in-depth. Exported
+  `backfillRealizedGains()` is the one-time rollout surface (loop every account
+  under the lock; idempotent).
+- **Honest basis, two axes (never zero-filled).** Term follows the
+  acquisition-DATE axis (a transfer-in or over-sell → `term: "unknown"`);
+  `costBasis`/`gain` follow the amount-known axis (a no-price buy → null gain, a
+  currency mismatch → null both). A disposal feeds the ST/LT tax buckets only
+  when `gain !== null` AND `term !== "unknown"`; the rest surface as
+  `basisUnknownProceeds`/count. `holding-period.ts` (`longBoundary` +
+  `classifyTerm`) is the ONE copy of the IRS ST/LT rule — `holding-term.ts`
+  imports `longBoundary` from it (BP-034).
+- **Proceeds-unknown marker.** An OFX sell with no `TOTAL`/`UNITPRICE` is
+  recorded with a `proceedsUnknown` reason (`ledger_events.proceeds_unknown`),
+  so derivation nulls proceeds/gain and excludes it rather than fabricating a
+  loss off `amount:0`. The marker joins `computeFingerprint` **only when set**,
+  so a placeholder can't dedup-collide with a genuine $0 sale while genuine rows
+  keep byte-identical hashes (no fingerprint-recompute migration). Import-only —
+  the manual route forces it null.
+- **Shared ingest invariant + currency.** `ingestLedgerEvents` (the one boundary
+  every writer funnels through — manual, file, future Plaid) enforces the
+  share-event invariant (only buy/sell/transfer carry a non-null quantity; a
+  quantity-bearing row needs a ticker; buy `+`, sell `−`, transfer either) — a
+  violation throws + rolls back the batch — and normalizes `currency`
+  (`.trim().toUpperCase()` + 3-letter check) so the tax route's exact
+  `currency === "USD"` filter is trustworthy.
+- **Year-dimensioned income.** `getIncomeSummaryByYear` groups by
+  `(account, ticker, year, currency)` alongside the untouched all-time
+  `getIncomeSummary`.
+- **Tax profile + upper-bound estimate.** `app.tax_profiles` (filing status +
+  marginal ordinary rate + LTCG rate + optional flat state rate). The estimate
+  (`tax-estimate.ts`, `estimateTaxLiability`) is a deliberate UPPER BOUND — user
+  rates applied directly to each bucket, no bracket tables. Keeps ST/LT netting +
+  Schedule-D cross-net, the $3k/$1.5k-MFS loss cap + carryforward (display-only),
+  per-bucket income floors, and a taxable-account/USD filter
+  (`summarizeForTaxEstimate`, shared by the route and its goal-check test). Only
+  `account.type === "taxable"` accounts feed it.
+- **REST.** One composite `GET /api/portfolio/tax?userId&year` (profile +
+  all-year realized + all-year income-by-year + the current-year estimate,
+  composed in-handler via the pure leaf — no `getTaxEstimate` method); `year`
+  scopes ONLY the estimate; `PUT /api/portfolio/tax-profile` writes the profile.
+- **UI.** A per-account **Realized Gains** tab (`realized-gains-table.tsx` +
+  `realized-gains-row-model.ts` — rolled up by ticker/year/term/currency, `—` for
+  null basis) and a household **tax-estimate card** + **profile dialog**
+  (`use-tax.ts`). `useTax` refetch joins the fan-out after every ledger mutation,
+  a profile save, AND every account save/delete (account type/currency and the FK
+  cascade are tax inputs).
+- **Limitations (v1).** FIFO only; sell-only realization; no wash sales /
+  corporate actions / NIIT; dividends assumed qualified; flat state rate;
+  display-approximation (JS-number) figures; multi-currency excluded from the
+  estimate.
 
 ## Per-position thesis records (FIX-760)
 

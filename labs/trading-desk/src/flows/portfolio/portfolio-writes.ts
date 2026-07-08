@@ -28,7 +28,9 @@ import type { FileImportReport } from "./transaction-import-schema";
 import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
 import { accountTypeSchema, assetClassSchema, type AssetClass } from "./portfolio-schema";
 import { ledgerEventInputSchema, type IngestReport } from "./ledger-schema";
+import { taxProfileInputSchema, type TaxProfileInput } from "./tax-schema";
 import { detectAndParseTransactionFile } from "./transaction-file";
+import type { TaxProfileRow } from "@/src/db/repository";
 
 /** CSV import feedback (a plain handler-style result, not a generator output).
  *  `errors`/`warnings` carry the per-row + import-level notes the dialog can
@@ -65,6 +67,10 @@ export const recordEventSchema = ledgerEventInputSchema.omit({
   externalId: true,
 });
 export type RecordEventInput = z.infer<typeof recordEventSchema>;
+
+/** Request body for a tax-profile save (the route re-applies `userId`). */
+export const saveTaxProfileSchema = taxProfileInputSchema;
+export type SaveTaxProfileInput = TaxProfileInput;
 
 /** Request body for a CSV holdings import. */
 export const importHoldingsSchema = z.object({
@@ -168,10 +174,27 @@ export async function recordManualEvent(
 ): Promise<IngestReport> {
   const ticker =
     input.ticker === null ? null : input.ticker.trim().toUpperCase() || null;
+  // `proceedsUnknown` is import-only (a feed normalizer's signal that a file
+  // couldn't supply proceeds). Force it null on the manual path so a caller can't
+  // null out a real sale's proceeds by hand.
   return repo.ingestLedgerEvents(
-    [{ ...input, ticker, source: "manual", externalId: null }],
+    [{ ...input, ticker, source: "manual", externalId: null, proceedsUnknown: null }],
     userId,
   );
+}
+
+/**
+ * Save (create or replace) the user's tax profile (FIX-874) — filing status and
+ * the marginal/LTCG/state rates that drive the upper-bound estimate. Keyed on
+ * `userId` (the household), so a save overwrites in place. The route owns zod
+ * validation (the `ledger` route precedent).
+ */
+export async function saveTaxProfile(
+  input: SaveTaxProfileInput,
+  userId: string,
+  repo: PortfolioRepository,
+): Promise<TaxProfileRow> {
+  return repo.upsertTaxProfile(userId, input);
 }
 
 /**
