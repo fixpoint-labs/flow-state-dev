@@ -21,6 +21,7 @@
  * (zero-fill would massively overstate realized gains).
  */
 import type { LedgerRow } from "./ledger-schema";
+import { classifyTerm } from "./holding-period";
 
 /** Floating-point tolerance for treating a residual share quantity as closed. */
 const QTY_EPSILON = 1e-9;
@@ -51,21 +52,126 @@ export type DerivedPosition = {
   hasUnknownBasis: boolean;
 };
 
-/** A mutable open lot used while reducing the event stream. */
-type OpenLot = { quantity: number; costPerShare: number | null; acquiredDate: string };
+/**
+ * One realized disposal: a sale's gain against ONE consumed FIFO lot (or the
+ * unmatched remainder of an over-sell, which has no lot → unknown acquisition).
+ * Emitted ONLY for `sell` events — a `transfer`-out consumes lots but is not a
+ * taxable disposition.
+ *
+ * TWO INDEPENDENT provenance axes drive the nullable fields, never conflated:
+ *   - acquisition-DATE axis → `acquiredDate` / `term`. Known only for a `buy`
+ *     (its trade date IS the acquisition); a transfer-in's date is when it
+ *     arrived, not when it was acquired → `acquiredDate: null`, `term: "unknown"`
+ *     even when the broker basis is known.
+ *   - BASIS axis → `costBasis` / `gain`. Null when the consumed lot has no cost
+ *     (a flagged basis-unknown transfer-in or a no-price buy) or on a
+ *     currency mismatch. Independent of the date axis.
+ */
+export type RealizedDisposal = {
+  ticker: string;
+  /** The sell event's `tradeDate` (ISO `YYYY-MM-DD`). */
+  disposedDate: string;
+  /** The consumed lot's acquisition date; null when unknowable (any transfer-in
+   *  lot, or an unmatched over-sell). A buy — even a no-price buy — has a date. */
+  acquiredDate: string | null;
+  /** Shares consumed from THIS lot (or the unmatched remainder). */
+  quantity: number;
+  /** `(quantity / totalSellQty) × sellEvent.amount` — always known (amount taken
+   *  at face value, so an `amount: 0` sell yields `0`). */
+  proceeds: number;
+  /** `quantity × lot.costPerShare`; null when the lot's basis is unknown or on a
+   *  currency mismatch. */
+  costBasis: number | null;
+  /** `proceeds − costBasis`; null whenever `costBasis` is null. */
+  gain: number | null;
+  /** `classifyTerm(acquiredDate, disposedDate)` — "unknown" iff `acquiredDate` is null. */
+  term: "short" | "long" | "unknown";
+  /** The SELL event's currency. */
+  currency: string;
+  /** Reason the basis is unknown (mirrors the lot's flag / "no-price-buy" /
+   *  "no-acquisition-lot" / "currency-mismatch"); null on a known-basis row. */
+  basisUnknown: string | null;
+  /** The sell ledger event id (provenance). */
+  disposalEventId: string;
+  /** 0-based ordinal of the consumed lot within this sell (FIFO order); the
+   *  unmatched remainder gets the next index. `(disposalEventId, lotIndex)` is a
+   *  stable identity across re-derivation. */
+  lotIndex: number;
+};
 
 /**
- * Reduce a ledger event stream into current positions and their open lots.
+ * A mutable open lot used while reducing the event stream. Carries two provenance
+ * flags the disposal emission needs but the open-lot/position projection ignores:
+ * `acquisitionDateKnown` (true only for a `buy`) and `currency` (the acquisition
+ * event's), plus `basisUnknownReason` (the reason string when `costPerShare` is null).
+ */
+type OpenLot = {
+  quantity: number;
+  costPerShare: number | null;
+  acquiredDate: string;
+  acquisitionDateKnown: boolean;
+  currency: string;
+  basisUnknownReason: string | null;
+};
+
+/** Build one realized-disposal row from a sell event and the lot it consumed. */
+function realizedRow(
+  sell: LedgerRow,
+  lot: OpenLot,
+  quantity: number,
+  totalSellQty: number,
+  lotIndex: number,
+): RealizedDisposal {
+  const proceeds = (quantity / totalSellQty) * sell.amount;
+  const acquiredDate = lot.acquisitionDateKnown ? lot.acquiredDate : null;
+  let costBasis: number | null;
+  let basisUnknown: string | null;
+  if (sell.currency !== lot.currency) {
+    // USD proceeds − EUR basis is a nonsense figure — null both, never a mix.
+    costBasis = null;
+    basisUnknown = "currency-mismatch";
+  } else if (lot.costPerShare === null) {
+    costBasis = null;
+    basisUnknown = lot.basisUnknownReason;
+  } else {
+    costBasis = quantity * lot.costPerShare;
+    basisUnknown = null;
+  }
+  return {
+    ticker: sell.ticker as string,
+    disposedDate: sell.tradeDate,
+    acquiredDate,
+    quantity,
+    proceeds,
+    costBasis,
+    gain: costBasis === null ? null : proceeds - costBasis,
+    term: classifyTerm(acquiredDate, sell.tradeDate),
+    currency: sell.currency,
+    basisUnknown,
+    disposalEventId: sell.id,
+    lotIndex,
+  };
+}
+
+/**
+ * Reduce a ledger event stream into current positions, their open lots, and the
+ * realized disposals produced along the way.
  *
  * Voided rows (tombstones) and cash events are ignored. Share-adding events
  * enqueue a lot; share-removing events consume open lots oldest-first (an
  * over-sell beyond the held quantity is clamped — bad data never produces a
  * negative position). The returned `positions` carry only tickers with a
  * remaining open quantity; a fully-closed position is omitted.
+ *
+ * `disposals` records one realized row per (SELL event × consumed lot), plus one
+ * per unmatched over-sell remainder. Lot CONSUMPTION stays sign-driven (a
+ * transfer-out consumes lots too); only the realized-record EMISSION is gated on
+ * `type === "sell"`, since a transfer-out is not a taxable disposition.
  */
 export function deriveLots(events: LedgerRow[]): {
   positions: DerivedPosition[];
   lots: Lot[];
+  disposals: RealizedDisposal[];
 } {
   // Order by trade date; within a single day, process acquisitions before
   // disposals so a same-day sell consumes that day's buy rather than over-selling
@@ -87,6 +193,7 @@ export function deriveLots(events: LedgerRow[]): {
     });
 
   const open = new Map<string, OpenLot[]>();
+  const disposals: RealizedDisposal[] = [];
 
   for (const { e } of ordered) {
     const ticker = e.ticker;
@@ -99,15 +206,35 @@ export function deriveLots(events: LedgerRow[]): {
       const derivedCost =
         e.unitPrice ?? (e.amount !== 0 ? Math.abs(e.amount / qty) : null);
       const costPerShare = e.basisUnknown !== null ? null : derivedCost;
+      const basisUnknownReason =
+        e.basisUnknown !== null ? e.basisUnknown : costPerShare === null ? "no-price-buy" : null;
       const lots = open.get(ticker) ?? [];
-      lots.push({ quantity: qty, costPerShare, acquiredDate: e.tradeDate });
+      lots.push({
+        quantity: qty,
+        costPerShare,
+        acquiredDate: e.tradeDate,
+        // Only a buy's trade date is a real acquisition date; a transfer-in's is
+        // when it arrived, not when it was originally acquired.
+        acquisitionDateKnown: e.type === "buy",
+        currency: e.currency,
+        basisUnknownReason,
+      });
       open.set(ticker, lots);
     } else {
-      // Disposal: consume open lots oldest-first.
-      let remaining = -qty;
+      // Disposal: consume open lots oldest-first. Only a sell realizes a gain;
+      // a transfer-out still consumes lots but emits no realized record.
+      const isSell = e.type === "sell";
+      const totalSellQty = -qty;
+      let remaining = totalSellQty;
+      let lotIndex = 0;
       const lots = open.get(ticker) ?? [];
       while (remaining > QTY_EPSILON && lots.length > 0) {
         const lot = lots[0];
+        const consumed = lot.quantity <= remaining + QTY_EPSILON ? lot.quantity : remaining;
+        if (isSell) {
+          disposals.push(realizedRow(e, lot, consumed, totalSellQty, lotIndex));
+          lotIndex += 1;
+        }
         if (lot.quantity <= remaining + QTY_EPSILON) {
           remaining -= lot.quantity;
           lots.shift();
@@ -115,6 +242,25 @@ export function deriveLots(events: LedgerRow[]): {
           lot.quantity -= remaining;
           remaining = 0;
         }
+      }
+      // Unmatched over-sell remainder: shares sold beyond the held quantity have
+      // no acquisition lot → unknown date and unknown basis, real pro-rata proceeds.
+      if (isSell && remaining > QTY_EPSILON) {
+        const proceeds = (remaining / totalSellQty) * e.amount;
+        disposals.push({
+          ticker,
+          disposedDate: e.tradeDate,
+          acquiredDate: null,
+          quantity: remaining,
+          proceeds,
+          costBasis: null,
+          gain: null,
+          term: "unknown",
+          currency: e.currency,
+          basisUnknown: "no-acquisition-lot",
+          disposalEventId: e.id,
+          lotIndex,
+        });
       }
       open.set(ticker, lots);
     }
@@ -156,5 +302,5 @@ export function deriveLots(events: LedgerRow[]): {
     });
   }
 
-  return { positions, lots };
+  return { positions, lots, disposals };
 }
