@@ -162,6 +162,35 @@ describe("materializePositions — inconsistent-history guard (FIX-876)", () => 
     expect(healed?.dataQuality).toBeNull();
   });
 
+  it("clears a stale inconsistent-history flag when a fresh snapshot is imported for the ticker", async () => {
+    // Reproduce the flagged state from an over-selling ledger...
+    await repo.ingestLedgerEvents([buy(12, 900, "2024-01-01"), sell(50, "2024-07-31")], "devuser");
+    expect((await nvda())?.dataQuality).toBe("inconsistent_history");
+
+    // ...then the user imports a fresh CSV/PDF snapshot for the SAME ticker (a
+    // new authoritative position). The snapshot upsert must clear the stale flag,
+    // not keep blanking the freshly-imported numbers as "—".
+    await repo.upsertHoldings(
+      "acc-1",
+      "devuser",
+      [
+        {
+          ticker: "NVDA",
+          quantity: 122,
+          costBasis: 90,
+          acquiredDate: null,
+          assetClass: "equity",
+          assetType: "equity",
+          attributes: { kind: "none" },
+        },
+      ],
+      "upsert",
+    );
+    const row = await nvda();
+    expect(row?.quantity).toBe(122);
+    expect(row?.dataQuality).toBeNull();
+  });
+
   it("dedups a re-recorded same-date split (numerator/denominator excluded from the fingerprint)", async () => {
     await repo.ingestLedgerEvents([buy(10, 900, "2024-01-01")], "devuser");
     await repo.ingestLedgerEvents([splitEvt(10, 1, "2024-06-10")], "devuser");

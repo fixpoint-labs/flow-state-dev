@@ -774,6 +774,11 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
                 quantity: sql`excluded.quantity`,
                 costBasis: sql`excluded.cost_basis`,
                 acquiredDate: sql`excluded.acquired_date`,
+                // A snapshot import is a fresh, authoritative position from the
+                // user — clear any stale inconsistent-history flag (FIX-876) so a
+                // re-import for a previously over-sold ticker doesn't keep blanking
+                // the freshly-imported numbers as "—".
+                dataQuality: null,
                 // Re-classification is load-bearing: an upsert that changes a
                 // held ticker's class/type/attributes must overwrite the old
                 // values, not silently keep them (FIX-773).
