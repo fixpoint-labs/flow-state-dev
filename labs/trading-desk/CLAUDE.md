@@ -120,16 +120,20 @@ src/flows/analysis/
     valuation.ts valuation-spine.ts fair-value.ts expected-return.ts
     rating-engine.ts setup-score.ts sector-resolution.ts   (analysis / scoring math)
 
-src/flows/portfolio/             The `portfolio` flow — owns the account/holdings/price domain (Spine B)
-  flow.ts                        defineFlow — portfolio actions, resources, and (empty) session state
+src/flows/portfolio/             The `portfolio` domain (Spine B) — account/holdings/ledger/price
+  flow.ts                        defineFlow — ONLY the flow-shaped actions: getQuotes + extractHoldingsFromPdf
+                                   (domain CRUD is REST routes, not actions — see portfolio-writes.ts)
   state.ts                       sessionStateSchema (minimal; this flow has no run state)
   portfolio-schema.ts            pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
   portfolio-csv.ts               pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
   portfolio-resources.ts         BP-019 leaf: portfolioQuotesResource (user-scoped shared) + pdfImportResource
                                    (session-scoped scratch). Accounts/holdings are NOT resources — they live in
                                    the app-owned tables (FIX-772; see src/db/ + lib/portfolio-db.ts below).
-  portfolio-actions.ts           saveAccount / deleteAccount / importHoldings / deleteHolding handlers
-                                   (call the portfolio repository, not a resource)
+  portfolio-writes.ts            saveAccount / deleteAccount / importHoldingsCsv / deleteHolding /
+                                   recordManualEvent / importTransactionFile — plain domain functions
+                                   (input, userId, repo) behind the app/api/portfolio/* REST routes (FIX-736
+                                   follow-up). NOT flow actions: CRUD gains nothing from a flow and loses the
+                                   real return value + gains a session requirement. Routes own zod validation.
   get-quotes.ts                  getQuotes read handler (last-close per ticker, fixture/live, null degrades)
   portfolio-pdf.ts               pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
   extract-pdf-text.server.ts     NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
@@ -144,7 +148,12 @@ src/db/                          App-owned relational layer (FIX-772) — accoun
   migrations/                    drizzle-kit generated SQL + journal (run in-process on PGlite dev, via
                                  scripts/migrate.ts on deploy)
 lib/portfolio-db.ts              getBacking() (PGlite dev / shared pg.Pool deploy) + getRepository() singleton
-app/api/portfolio/accounts/      GET route: read accounts+holdings via the repository (the UI read path)
+app/api/portfolio/              REST surface over the repository — reads AND writes (FIX-736 follow-up):
+  accounts/route.ts               GET list · POST save · DELETE
+  holdings/route.ts               DELETE one holding · holdings/import/route.ts POST (CSV import)
+  ledger/route.ts                 GET list · POST record manual event
+  transactions/import/route.ts    POST (OFX/QFX/QBO file import)
+  income/route.ts                 GET ledger-derived dividends + interest
 
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
@@ -378,28 +387,59 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   is a data migration, so it is fixed now); the per-feed normalizers that map
   Plaid/OFX representations onto it land with FIX-775/FIX-853.
 
-- **Basis is derived, not declared (`lots.ts`).** `deriveLots` is a PURE FIFO
-  reduction over the non-voided events: share-adding events (driven by the SIGN of
-  `quantity`, not the type label, so a buy, a reinvested dividend, and a
+- **Positions are derived, not declared (`lots.ts`).** `deriveLots` is a PURE
+  FIFO reduction over the non-voided events: share-adding events (driven by the
+  SIGN of `quantity`, not the type label, so a buy, a reinvested dividend, and a
   transfer-in are uniform) push lots; sells/transfers-out consume them
-  oldest-first. `recomputeHoldingsBasis` runs inside the ingest/void transaction
-  and writes each derived position's weighted average cost → `holdings.costBasis`
-  and earliest open-lot date → `holdings.acquiredDate`, but ONLY for existing
-  holdings whose ticker the ledger derives a position for — quantity stays with
-  the holdings table (a quantity mismatch is FIX-853's reconciliation, not an
-  overwrite). A transfer-in with no acquisition record is a **basis-unknown** lot:
+  oldest-first. `materializePositions` runs inside the ingest/void transaction
+  and MATERIALIZES the derived positions into the holdings table — **the ledger
+  is the authority wherever it has share history**: a derived open position is
+  UPSERTED (quantity, weighted average cost → `holdings.costBasis`, earliest
+  open-lot date → `holdings.acquiredDate` — a snapshot row disagreeing with real
+  trade history is overwritten), a fully-closed position's row is DELETED (the
+  Portfolio view shows active holdings only; history and income stay in the
+  ledger), a ticker whose share history is entirely voided keeps its row with
+  basis cleared (a correction returns it to snapshot authority), and a
+  CSV/PDF-snapshot-only ticker (no ledger share history) is untouched. So a
+  transaction-file import alone produces a visible portfolio — no snapshot
+  needed. A transfer-in with no acquisition record is a **basis-unknown** lot:
   it writes `null` cost, never zero (zero-fill would massively overstate gains).
   FIFO is the IRS default; specific-lot sales, wash sales, and corporate-action
   basis allocation are deferred.
 
-- **Manual entry (`recordLedgerEvent`).** The user-driven writer. The action input
-  omits `source`/`external_id`; the handler fixes `source: "manual"` (a manual row
+- **Income is aggregated from the ledger at read time (`getIncomeSummary`).**
+  Dividends + interest per `(account, ticker)`, summing non-voided events —
+  deliberately NOT a holdings column, because income survives a position closing
+  (the holdings row is deleted; the dividends were still earned). Ticker-less
+  rows are account-level income (interest, MMF sweeps). Read via
+  `GET /api/portfolio/income` (the `ledger` route precedent); the Portfolio UI
+  shows a Dividends column on active holdings ("—" when no history — never $0
+  asserted from ignorance) and a per-account Income tab that includes closed
+  positions (tagged `closed`). The Portfolio view itself is an account
+  summary-card grid (value, cash, uP/L as $ and %, position count); clicking a
+  card opens `AccountDetail` with Holdings / Transactions / Income tabs — there
+  is no flat all-accounts table layout anymore.
+
+- **Holding-period term is classified PER LOT
+  (`components/portfolio/holding-term.ts`).** The Holdings Term column reads
+  "Long", "Short · N mo to long", or an honest mixed "xL / yS · N mo" split — a
+  position bought across dates is never labeled by its earliest lot alone. The
+  long boundary is the IRS rule (held MORE than one year; the anniversary day
+  itself is still short), and the countdown is calendar months until the LAST
+  short lot turns long. Lots derive client-side from the already-fetched ledger
+  via `deriveLots` (a pure leaf — no extra route); a CSV-snapshot-only holding
+  falls back to its declared `acquiredDate` as one pseudo-lot, and undated
+  shares render "—" / "N undated" — never guessed into a term.
+
+- **Manual entry (`recordManualEvent`).** The user-driven writer. The request
+  omits `source`/`external_id`; the function fixes `source: "manual"` (a manual row
   can't claim to be a Plaid/file row) and ingests through the same contract. This
   is the path for a transfer-in basis hole — set `basisUnknown` and the derived
-  lot is flagged. The UI reads the ledger via `GET /api/portfolio/ledger` (the
-  `accounts` route precedent — a read route, not an action, since `sendAction`
-  returns a request envelope not handler output) and renders the transactions pane
-  + add-transaction dialog in `components/portfolio/`.
+  lot is flagged. The UI both reads (`GET /api/portfolio/ledger`) and writes
+  (`POST /api/portfolio/ledger`) the ledger through plain REST routes — accounts/
+  holdings/ledger are basic CRUD, so they're routes over the repository, not flow
+  actions (FIX-736 follow-up; see `portfolio-writes.ts`). The transactions pane +
+  add-transaction dialog live in `components/portfolio/`.
 
 - **Limitations (v1).** FIFO only; no wash sales or corporate-action basis math;
   non-equity events (bonds/options/MMF) are recorded with their symbol but not
@@ -409,6 +449,108 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   genuine identical second fill, so record a distinguishing detail if both must
   land. Live sync (Plaid) is FIX-853, and historical file import (OFX/CSV) is
   FIX-775 — both write through this issue's `ingestLedgerEvents` contract.
+
+## File import (OFX/QFX/QBO) — FIX-775
+
+Imports a brokerage transaction-history file to bootstrap the ledger from real
+trades, so basis is reconstructed (FIX-774 derivation) instead of declared. The
+first *second source* through FIX-774's `ingestLedgerEvents` contract: it adds a
+normalizer, not a new ingestion path. One parser covers the whole OFX family
+(QFX/QBO/raw OFX, 1.x SGML and 2.x XML — `ofx-js` auto-detects).
+
+Files: `portfolio-ofx.ts` (pure browser-safe parser — runs in both the dialog
+preview and the server route), `transaction-file.ts` (format dispatcher),
+`importTransactionFile` in `portfolio-writes.ts` behind `POST
+/api/portfolio/transactions/import` (re-parses server-side, injects `accountId`
++ `source: "file"`, returns a `FileImportReport`), `ImportTransactionsDialog`. Format grammar, the aggregate→canonical mapping, and
+the v1 limitations live in [`docs/transaction-import-formats.md`](docs/transaction-import-formats.md);
+the real-file goal check is `goals/transaction-file-import/reconstructs-basis-from-ofx/`.
+
+Two load-bearing decisions:
+
+- **Signs normalize by aggregate TYPE, not the file's convention** (buy
+  `+qty`/`−amount`, sell `−qty`/`+amount`). This is what makes cross-source dedup
+  work — a file backfill and a Plaid sync of the same trade hit the same FIX-774
+  fingerprint.
+- **Honest over silently-wrong.** Anything FIFO can't model is surfaced, never
+  fed to the lot math: corporate actions and short opens → `skipped`/warned,
+  CUSIP-only securities → `unresolvedSecurities`, malformed rows (no date, no
+  amount, blank FITID) → skipped. The parser never fabricates a value to make a
+  row land.
+
+## Per-position thesis records (FIX-760)
+
+The durable "why" behind a holding — entry rationale, invalidation conditions,
+time horizon, optional target/stop, and a link to the originating report.
+
+- **Why a resource, not a table.** Unlike accounts/holdings/ledger (which earned
+  the FIX-772 `app.*` tables with FK cascades + cross-account `GROUP BY ticker`
+  rollups + FIFO lot derivation), a thesis is a **flat household × ticker
+  document** — no FK, no join, no aggregation — and it is **agent-facing state**
+  (the seed injects it into the trader/PM prompts). That is the resource sweet
+  spot, so it is a **user-scoped resource collection**, not a relational table.
+  Being a resource buys the live client read path (`useResourceCollectionList`)
+  and `resource_change` streaming for free — no bespoke read route, no manual
+  refetch. (This is the inverse of FIX-858: holdings/positions are genuinely
+  relational and need FIX-858's API-backed-resource projection to reach the
+  surface; a thesis just *is* a resource.)
+
+- **The collection — `thesesCollection` (`portfolio-resources.ts`).** Pattern
+  `theses/*`, `scope: "user"`, `flowIsolation: false` (keys at bare
+  `theses/{TICKER}` under the user, cross-flow like `portfolioQuotes`).
+  `client: { state: { read: true }, live: true }`. The mutation verbs take the
+  **bare** key (`thesisKey(ticker)` = the canonical upper-case ticker); the
+  framework prepends the `theses/` prefix, so the stored key / client `item.topic`
+  is `theses/{TICKER}`. Keyed household × ticker, NOT per account — intent is
+  about the name. There is deliberately **no holdings link** — a thesis can
+  outlive an exited position (post-mortem) and exist before a buy settles
+  (adopt-then-buy).
+
+- **The schema leaf — `src/flows/portfolio/thesis-schema.ts`.** Browser-safe
+  (imports only `zod`): `thesisInputSchema` (the user-suppliable fields the editor
+  validates and the action re-validates), `thesisRecordSchema` (the collection's
+  state shape, adds `createdAt`/`updatedAt`), `tripwireSchema`. NOT generator
+  outputs — `.default()`/`.nullable()` are fine; do NOT add them to
+  `output-schemas-strict.spec.ts` (the `accountStateSchema` precedent).
+
+- **Two write paths, one collection.** The portfolio flow owns the hand-edit
+  path — `saveThesis` / `deleteThesis` (`src/flows/portfolio/thesis-actions.ts`),
+  ticker canonicalized to upper-case. The analysis flow owns the derive-from-report
+  path — `adoptThesis` (`orchestration/adopt-thesis-action.ts`), which reads the
+  session's decision snapshot + trader memo SERVER-SIDE (v1 is derive-only; the
+  user edits afterward) and upserts with the `sourceSessionId` captured
+  automatically. Both `ctx.resources.theses.upsert(thesisKey, ...)` — overwrite in
+  place, no revision history in v1; the action stamps `createdAt` (preserved on
+  edit) / `updatedAt`. The trader memo's `invalidationCriteria` is a `string[]`,
+  joined to a bullet list for the thesis's freeform field.
+
+- **Injection — read at seed, frozen, trader + PM only.** `seedSession` reads the
+  thesis off the collection (`ctx.resources.theses.getOptional(thesisKey(ticker))`)
+  and freezes it onto `state.standingThesis` (the `portfolioContext` /
+  `riskMandate` snapshot pattern; does NOT join the keying tuple). The
+  `standingThesis` capability preset renders `<standing-thesis>` from frozen state
+  (object-form context, so the key auto-kebabs — the `portfolioContext` /
+  `riskMandate` precedent; suppressed to null when absent), opted into by the
+  trader (P3) and PM (P5) ONLY — the analysts stay blind so the independent
+  evidence is uncontaminated. **`<standing-thesis>` is distinct from
+  `userThesis`'s self-wrapped `<userThesis>`** (the Phase 6 hypothesis-under-audit)
+  — never the same tag.
+
+- **`hasStandingThesis` echo (snapshot + RunSummary).** The PM commit derives
+  `hasStandingThesis` from frozen state (never LLM-emitted, the
+  `hasPortfolioContext` precedent) onto the decision snapshot, mirrored to
+  `RunSummary`. It is the deterministic PASS signal the
+  `goals/trading-desk-thesis/standing-thesis-injected` goal check reads.
+
+- **Read path is the resource itself.** The Portfolio + report UI read the
+  collection via `use-theses.ts` (`useResourceCollectionList(session, "theses")`,
+  live — no route, no refetch). A per-holding indicator flows through the holdings
+  row model so both the table and the stacked-card layout show it.
+
+- **Limitations (v1).** Household × ticker only (per-sleeve theses defer to
+  FIX-771); overwrite on edit, no revision history; `adoptThesis` is derive-only
+  (no edit-before-save). The review loop that re-checks tripwires and fills the
+  snapshot `outcome*` fields is FIX-763 (this is its blocker).
 
 ## Responsive / mobile layout
 
@@ -433,7 +575,7 @@ kitchen-sink precedent (FIX-184): both shells render, CSS picks one — no
 - **Pane reflow rules:** `ThesesPane`'s 200px `MemoSidebar` is `hidden lg:block`
   inline and opens as a native `<dialog>` drawer below `lg` (the "Phases"
   button) — same imperative open/close idiom as the app's other dialogs, so
-  ESC/focus-trap/backdrop come from the browser. `HoldingsTable` renders the 8-column table only when its own
+  ESC/focus-trap/backdrop come from the browser. `HoldingsTable` renders the 10-column table only when its own
   container is ≥ `@3xl` (a CSS container query, not a viewport breakpoint) and
   stacks one card per holding below that — both layouts read the SAME
   `buildHoldingRowModel` view model (`test/holdings-row-model.spec.ts`), so the
@@ -791,6 +933,70 @@ Available `*Full` variants today: `phase1MemosFull`, `phase2DebateFull`,
 always-on counterpart, so generators don't need to mirror those on their
 own `resources:` slot. Add a new variant when you want a different
 preset to participate in the cost gate.
+
+### Synthesis-phase web search — the `corroborate` preset
+
+Phase 1 has `investigate` (discovery → bounded fetch) and Phase 6 has
+`verify` (ungated search+fetch, user-thesis only). The synthesis phases
+in between get a third affordance: **`corroborate`** — cost-gated,
+agent-initiated web `search` + `fetch` to back up a *specific* claim
+before committing to it. Two presets carry it:
+
+- **`corroborate`** — exposes the shared `search` + `fetch` tools and the
+  `<corroboration>` clause, HARD-GATED on `costPreset === "full"` (the
+  `investigate` gate, the `verify` tool set). Opted into by the trader
+  (P3), **all three** risk personas (P4), and the PM (P5b). The risk
+  triad is all-or-none on purpose: arming only one persona would tilt the
+  desk's already conservative-leaning synthesis. The per-memo call cap
+  (2 searches + 2 fetches) lives in the clause, not in tool state (the
+  `counterEvidence` precedent). The clause requires every lookup-backed
+  claim to trace to a URL the agent actually fetched, added to the
+  `citations` array.
+- **`reviewReferences`** — exposes `fetch` (no `search`) plus the
+  `<reviewReferences>` clause, same `full` gate. For synthesis agents
+  that should be able to *pull* a link the desk already surfaced but not
+  run a fresh search: the scenario forecaster and the risk consolidator.
+
+**Both presets also render the shared "references consulted" ledger** as a
+`<referencesConsulted>` tag (same `full` gate as their tools/clause) so a
+downstream agent reuses a link rather than re-searching the same ground.
+The ledger is DERIVED from the `citations` already on every memo — there
+is no separate resource. `formatReferencesConsulted` (`lib/format.ts`)
+walks `ALL_MEMO_KEYS`, collects each memo's `citations`, dedups by URL
+(first citer wins), and attributes each to the citing agent. Folding the
+ledger into the two tool presets (rather than a standalone
+`referencesConsulted` preset) makes the `fast` no-op **structural**: the
+`full` gate means a persisted citation from a prior full/`verify` run can
+never surface `<referencesConsulted>` on a `fast` re-run. The lenses
+(independence guarantee, FIX-655) and the Phase 2 debaters (open-web
+rejected by FIX-679; debate-phase search tracked separately) get neither
+preset, so neither reads the ledger.
+
+Each corroborator/reviewer's output schema carries a nullable
+`citations: z.array(memoCitation)` (the Phase 1 / Phase 6 pattern,
+BP-016-safe), and its writer passes it through so the memo renders a
+"Sources" footer. The `citations` field's prompt contract is a shared
+`{% render 'citations-field' %}` partial for the four risk prompts (whose
+copies were identical); the trader/PM/forecaster variants stay inline
+(their output-shape lists differ). To add another corroborator: list
+`corroborate: true` (or `reviewReferences: true`) in its `uses` and add
+the `citations` field to its output schema — the ledger comes with the
+preset.
+
+> **Search-provider guard.** `search` is dropped (fetch-only) when no
+> web-search provider key is configured — the `@flow-state-dev/tools`
+> resolver *throws* with none, which would abort the generator. The guard
+> probes the tools package's own `resolveProvider({})` (try/catch) rather
+> than hand-copying its env-var list, so it can't drift. The underlying
+> throw-on-first-call is a tools-package bug (every search consumer hits
+> it); degrading it there is a documented follow-up (BP-028).
+
+> **Not cached.** `@flow-state-dev/tools` `search`/`fetch` have no cache
+> layer (unlike the desk's own data tools, which wrap `getOrFetch`), so a
+> second agent that re-`fetch`es the same URL pays a fresh request. The
+> references ledger is what avoids the duplicate *search*; a cheap
+> duplicate *fetch* would need caching added at the tool level — a
+> `@flow-state-dev/tools` change, deliberately out of scope here.
 
 ## Adding a new tool
 

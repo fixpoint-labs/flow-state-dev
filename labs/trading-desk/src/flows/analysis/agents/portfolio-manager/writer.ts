@@ -332,6 +332,8 @@ export const commitPortfolioManagerMemo = handler({
         // FIX-752 — the mandate decision mirror for the PmHero panel. Null on a
         // mandate-blind run.
         mandateDecision,
+        // FIX-676 — pass through any URLs the PM fetched (null when none).
+        citations: decision.citations,
       },
     );
 
@@ -369,6 +371,10 @@ export const commitPortfolioManagerMemo = handler({
       rewardToRiskLossAdjustedGlr: mandateDecision?.lossAdjustedGlr ?? null,
       worstCaseReturnPct: mandateDecision?.worstCaseReturnPct ?? null,
       capacityVetoed: mandateDecision?.capacityVetoed ?? null,
+      // Standing-thesis echo (FIX-760) — true when a durable thesis was frozen
+      // and reached the decision tier. Derived from frozen state, the
+      // `hasPortfolioContext` precedent (never trusted from the LLM).
+      hasStandingThesis: ctx.session.state.standingThesis != null,
       decidedAt,
       outcomeRealizedPrice: null,
       outcomeAsOf: null,

@@ -31,10 +31,16 @@ import { technicalDataResource } from "../technical-data-resource";
 import { profileDataResource } from "../profile-data-resource";
 import { priceHistoryResource } from "../price-history-resource";
 import { valuationSpineResource } from "../valuation-spine-resource";
+import { decisionSnapshotResource } from "../decision-snapshot-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
-import { portfolioQuotesResource } from "../../portfolio/portfolio-resources";
+import {
+  portfolioQuotesResource,
+  thesesCollection,
+  thesisKey,
+} from "../../portfolio/portfolio-resources";
+import type { ThesisRecord } from "../../portfolio/thesis-schema";
 import { buildPortfolioContext } from "../build-portfolio-context";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 import { getRepository } from "@/lib/portfolio-db";
@@ -58,12 +64,14 @@ export const seedSession = handler({
   sessionStateSchema,
   resources: {
     portfolioQuotes: portfolioQuotesResource,
+    theses: thesesCollection,
     financialsData: financialsDataResource,
     quantData: quantDataResource,
     technicalData: technicalDataResource,
     profileData: profileDataResource,
     priceHistory: priceHistoryResource,
     valuationSpine: valuationSpineResource,
+    decisionSnapshot: decisionSnapshotResource,
     ...memoResources,
   },
   execute: async (input, ctx) => {
@@ -97,6 +105,12 @@ export const seedSession = handler({
     // exactly as for an unwritten resource.)
     await ctx.resources.priceHistory.setState(null);
     await ctx.resources.valuationSpine.setState(null);
+    // Reset the decision-of-record too, so a re-run that stops before the PM
+    // commits (or is mid-flight) can't leave the PRIOR run's decision readable —
+    // which `adoptThesis` would otherwise save as the current thesis (it only
+    // gates on a present `finalRating`). The PM commit re-writes it on a clean
+    // run; a stopped re-run correctly has no decision to adopt.
+    await ctx.resources.decisionSnapshot.setState(null);
 
     // Freeze the per-run thesis at seed time so editing the form mid-run
     // can't affect the session that's already analyzing. A non-null
@@ -115,13 +129,11 @@ export const seedSession = handler({
     // holdings (read via the repository, FIX-772) and the last-known quotes
     // resource. `toAccountStates` nests holdings into the inline-array shape
     // `buildPortfolioContext` consumes — same snapshot as the prior resource read.
-    const allAccounts = toAccountStates(
-      await (await getRepository()).getPortfolio(
-        // `requireUser: true` guarantees a user; the fallback matches the
-        // framework's key resolution and satisfies the optional type.
-        ctx.request.identity.userId ?? "unknown_user",
-      ),
-    );
+    // `requireUser: true` guarantees a user; the fallback matches the framework's
+    // key resolution and satisfies the optional type.
+    const uid = ctx.request.identity.userId ?? "unknown_user";
+    const repo = await getRepository();
+    const allAccounts = toAccountStates(await repo.getPortfolio(uid));
     const scoped = input.selectedAccountIds.length
       ? allAccounts.filter((a) => input.selectedAccountIds.includes(a.accountId))
       : allAccounts;
@@ -138,6 +150,14 @@ export const seedSession = handler({
     const riskMandate =
       resolveMandate(input.riskMandate) ??
       mostConservativeMandate(scoped.map((a) => a.riskMandate));
+
+    // Standing per-position thesis for this name (FIX-760), read from the
+    // user-scoped `theses` collection (household × ticker, flowIsolation:false →
+    // cross-flow) and frozen onto state. The trader (P3) + PM (P5) read it via
+    // the `standingThesis` preset; the analysts stay blind. Null → thesis-blind
+    // run. The key upper-cases the ticker (the holdings canonicalization).
+    const thesisRef = await ctx.resources.theses.getOptional(thesisKey(input.ticker));
+    const standingThesis = (thesisRef?.state as ThesisRecord | undefined) ?? null;
 
     await ctx.session.patchState({
       ticker: input.ticker,
@@ -162,6 +182,9 @@ export const seedSession = handler({
       selectedAccountIds: input.selectedAccountIds,
       // Effective risk-appetite mandate (FIX-752), frozen for the run.
       riskMandate,
+      // Standing per-position thesis (FIX-760), frozen for the run. Null →
+      // thesis-blind.
+      standingThesis,
     });
     return input;
   },

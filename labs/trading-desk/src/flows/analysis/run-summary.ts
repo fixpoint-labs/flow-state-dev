@@ -87,6 +87,11 @@ export const runSummaryStateSchema = z.object({
   rewardToRiskLossAdjustedGlr: z.number().nullable().default(null),
   worstCaseReturnPct: z.number().nullable().default(null),
 
+  // Standing-thesis echo (FIX-760) — true when a durable per-position thesis was
+  // injected into the decision tier on this run. The goal check's PASS signal.
+  // Null on a stopped / errored run that never reached the PM.
+  hasStandingThesis: z.boolean().nullable().default(null),
+
   // Per-memo status + an error rollup.
   memos: z.array(runSummaryMemoSchema),
   memoErrors: z.number(),
@@ -185,6 +190,7 @@ export function buildRunSummary(input: BuildRunSummaryInput): RunSummary {
     capacityVetoed: decision?.capacityVetoed ?? null,
     rewardToRiskLossAdjustedGlr: decision?.rewardToRiskLossAdjustedGlr ?? null,
     worstCaseReturnPct: decision?.worstCaseReturnPct ?? null,
+    hasStandingThesis: decision?.hasStandingThesis ?? null,
 
     memos: memoLines,
     memoErrors,

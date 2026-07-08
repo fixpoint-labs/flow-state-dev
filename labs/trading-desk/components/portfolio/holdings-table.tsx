@@ -1,6 +1,6 @@
 /**
  * HoldingsTable — one account's holdings. Two layouts off ONE view model:
- * a dense 8-column table when the container is wide (desktop panes), and a
+ * a dense 10-column table when the container is wide (desktop panes), and a
  * stacked card list when it is narrow (phones — FIX-757). The switch is a CSS
  * container query (`@container` / `@3xl:`), so the component adapts to the
  * width it actually renders at, not the viewport.
@@ -16,18 +16,21 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
+import { computeHoldingTerm, formatTerm, type TermLot } from "./holding-term";
 import {
   DASH,
   formatMoney,
   formatPercent,
   formatQuantity,
   formatSignedMoney,
+  formatSignedPercent,
   marketValue,
   unrealizedPL,
+  unrealizedPLPercent,
   weight,
 } from "./portfolio-format";
 
@@ -35,10 +38,25 @@ type HoldingsTableProps = {
   holdings: Holding[];
   /** ticker (upper-case) → resolved quote. Missing entry = price unknown. */
   prices: Map<string, Quote>;
+  /** ticker (upper-case) → dividends earned (ledger-derived, FIX-774). A
+   *  missing entry means no dividend history recorded — renders "—", not $0. */
+  dividends: Map<string, number>;
+  /** ticker (upper-case) → open FIFO lots (ledger-derived), for the per-lot
+   *  short/long term split. A holding with no entry falls back to its own
+   *  `acquiredDate` as one pseudo-lot; no date at all renders "—". */
+  lots: Map<string, TermLot[]>;
   currency: string;
   /** Account total market value, for weight %. `null` while prices load. */
   accountTotal: number | null;
+  /** Household tickers (upper-case) that have a standing thesis (FIX-760). */
+  thesisTickers: ReadonlySet<string>;
+  /** Whether the household theses have finished loading. The thesis button is
+   *  disabled until then, so a click can't open a blank editor against a partial
+   *  list and overwrite an unloaded thesis (FIX-760). Defaults to true. */
+  thesisReady?: boolean;
   onDeleteHolding: (ticker: string) => void;
+  /** Open the thesis editor for one holding (the per-holding thesis affordance). */
+  onEditThesis: (ticker: string) => void;
 };
 
 /** Render-ready strings for one holding row/card. Every price-derived field
@@ -51,19 +69,45 @@ export type HoldingRowModel = {
   value: string;
   weight: string;
   upl: { text: string; direction: "up" | "down" | "flat" };
+  /** Unrealized P/L as a signed percent of cost ("+12.3%"); "—" when price or
+   *  cost is unknown. */
+  uplPct: string;
+  /** Dividends earned on this holding per the ledger; "—" when none recorded
+   *  (no history ≠ zero income). */
+  dividends: string;
+  /** Holding-period term: "Long", "Short · N mo to long", a mixed "xL / yS ·
+   *  N mo" split, or "—" for undated shares. */
+  term: string;
+  /** Whether the household has a standing thesis for this name (FIX-760).
+   *  Derived from the household thesis set; drives the quiet per-holding
+   *  indicator in BOTH the table cell and the stacked card. */
+  hasThesis: boolean;
 };
 
 /** Build the shared view model behind a table row AND a mobile card. Pure —
- *  exported for the node-env spec (`test/holdings-row-model.spec.ts`). */
+ *  exported for the node-env spec (`test/holdings-row-model.spec.ts`). The
+ *  term classifies per LOT when ledger lots exist; a lot-less holding falls
+ *  back to its own `acquiredDate` as one pseudo-lot ("—" when undated).
+ *  `asOf` defaults to now; tests pin it. `thesisTickers` is the household's set
+ *  of upper-cased tickers that have a thesis (household × ticker, FIX-760);
+ *  omitted → no thesis indicator. */
 export function buildHoldingRowModel(
   holding: Holding,
   quote: Quote | undefined,
   currency: string,
   accountTotal: number | null,
+  dividendsEarned: number | null = null,
+  lots: TermLot[] | null = null,
+  thesisTickers?: ReadonlySet<string>,
+  asOf: Date = new Date(),
 ): HoldingRowModel {
   const price = quote?.price ?? null;
   const value = marketValue(holding.quantity, price);
   const upl = unrealizedPL(holding.quantity, holding.costBasis, price);
+  const termLots =
+    lots !== null && lots.length > 0
+      ? lots
+      : [{ quantity: holding.quantity, acquiredDate: holding.acquiredDate }];
   return {
     ticker: holding.ticker,
     quantity: formatQuantity(holding.quantity),
@@ -73,6 +117,10 @@ export function buildHoldingRowModel(
     value: formatMoney(value, currency),
     weight: formatPercent(weight(value, accountTotal)),
     upl: formatSignedMoney(upl, currency),
+    uplPct: formatSignedPercent(unrealizedPLPercent(holding.costBasis, price)),
+    dividends: formatMoney(dividendsEarned, currency),
+    term: formatTerm(computeHoldingTerm(termLots, asOf)),
+    hasThesis: thesisTickers?.has(holding.ticker.toUpperCase()) ?? false,
   };
 }
 
@@ -95,25 +143,38 @@ function directionMarker(direction: "up" | "down" | "flat"): string {
 export function HoldingsTable({
   holdings,
   prices,
+  dividends,
+  lots,
   currency,
   accountTotal,
+  thesisTickers,
+  thesisReady = true,
   onDeleteHolding,
+  onEditThesis,
 }: HoldingsTableProps): ReactElement {
   if (holdings.length === 0) {
     return (
       <p className="px-2 py-3 text-[11.5px] text-[color:var(--c-fg-muted)]">
-        No holdings yet. Import a CSV to add positions.
+        No holdings yet. Import a CSV or a transaction file to add positions.
       </p>
     );
   }
 
   const rows = holdings.map((h) =>
-    buildHoldingRowModel(h, prices.get(h.ticker.toUpperCase()), currency, accountTotal),
+    buildHoldingRowModel(
+      h,
+      prices.get(h.ticker.toUpperCase()),
+      currency,
+      accountTotal,
+      dividends.get(h.ticker.toUpperCase()) ?? null,
+      lots.get(h.ticker.toUpperCase()) ?? null,
+      thesisTickers,
+    ),
   );
 
   return (
     <div className="@container">
-      {/* Wide container (≥ @3xl / 768px): the dense 8-column table. */}
+      {/* Wide container (≥ @3xl / 768px): the dense 10-column table. */}
       <table className="hidden w-full border-collapse @3xl:table">
         <thead>
           <tr className="border-b border-[color:var(--c-border)]">
@@ -124,6 +185,8 @@ export function HoldingsTable({
             <th className={cn(headerClass, "text-right")}>Value</th>
             <th className={cn(headerClass, "text-right")}>Weight</th>
             <th className={cn(headerClass, "text-right")}>Unrl P/L</th>
+            <th className={cn(headerClass, "text-right")}>Dividends</th>
+            <th className={cn(headerClass, "text-right")}>Term</th>
             <th className={cn(headerClass, "text-right")} aria-label="Actions" />
           </tr>
         </thead>
@@ -133,7 +196,17 @@ export function HoldingsTable({
               key={m.ticker}
               className="border-b border-[color:var(--c-border)]/40"
             >
-              <td className={cn(cellClass, "font-semibold")}>{m.ticker}</td>
+              <td className={cn(cellClass, "font-semibold")}>
+                <span className="inline-flex items-center gap-1">
+                  {m.ticker}
+                  <ThesisButton
+                    ticker={m.ticker}
+                    hasThesis={m.hasThesis}
+                    disabled={!thesisReady}
+                    onEdit={onEditThesis}
+                  />
+                </span>
+              </td>
               <td className={numCellClass}>{m.quantity}</td>
               <td className={numCellClass}>{m.avgCost}</td>
               <td className={numCellClass}>{m.price}</td>
@@ -144,8 +217,11 @@ export function HoldingsTable({
                 style={{ color: directionColor(m.upl.direction) }}
               >
                 {m.upl.text}
+                {m.uplPct === DASH ? "" : ` (${m.uplPct})`}
                 {directionMarker(m.upl.direction)}
               </td>
+              <td className={numCellClass}>{m.dividends}</td>
+              <td className={cn(numCellClass, "whitespace-nowrap")}>{m.term}</td>
               <td className={cn(cellClass, "text-right")}>
                 <DeleteHoldingButton
                   ticker={m.ticker}
@@ -171,6 +247,12 @@ export function HoldingsTable({
               <span className="font-mono text-[12.5px] font-semibold text-[color:var(--c-fg)]">
                 {m.ticker}
               </span>
+              <ThesisButton
+                ticker={m.ticker}
+                hasThesis={m.hasThesis}
+                disabled={!thesisReady}
+                onEdit={onEditThesis}
+              />
               <span className="ml-auto font-mono text-[12.5px] tabular-nums text-[color:var(--c-fg)]">
                 {m.value}
               </span>
@@ -183,9 +265,11 @@ export function HoldingsTable({
               <CardStat label="Weight" value={m.weight} />
               <CardStat
                 label="Unrl P/L"
-                value={`${m.upl.text}${directionMarker(m.upl.direction)}`}
+                value={`${m.upl.text}${m.uplPct === DASH ? "" : ` (${m.uplPct})`}${directionMarker(m.upl.direction)}`}
                 valueColor={directionColor(m.upl.direction)}
               />
+              <CardStat label="Dividends" value={m.dividends} />
+              <CardStat label="Term" value={m.term} />
             </dl>
           </li>
         ))}
@@ -216,6 +300,53 @@ function CardStat({
         {value}
       </dd>
     </div>
+  );
+}
+
+/** The shared per-holding thesis affordance (table cell + card header). A quiet
+ *  notebook glyph: filled-accent when a thesis exists, faint when it doesn't.
+ *  Clicking opens the thesis editor (pre-filled when one exists). The flag
+ *  travels through the row model, so both layouts get the indicator identically. */
+function ThesisButton({
+  ticker,
+  hasThesis,
+  disabled = false,
+  onEdit,
+}: {
+  ticker: string;
+  hasThesis: boolean;
+  /** Disabled until the household theses finish loading — a click against a
+   *  partial list could blank-edit and overwrite an unloaded thesis (FIX-760). */
+  disabled?: boolean;
+  onEdit: (ticker: string) => void;
+}): ReactElement {
+  return (
+    <button
+      type="button"
+      onClick={() => onEdit(ticker)}
+      disabled={disabled}
+      className={cn(
+        "rounded p-0.5",
+        disabled
+          ? "cursor-not-allowed text-[color:var(--c-fg-faint)] opacity-40"
+          : cn(
+              "hover:bg-[color:var(--c-surface-2)]",
+              hasThesis
+                ? "text-[color:var(--c-accent)]"
+                : "text-[color:var(--c-fg-faint)] hover:text-[color:var(--c-fg-muted)]",
+            ),
+      )}
+      aria-label={hasThesis ? `Edit thesis for ${ticker}` : `Add thesis for ${ticker}`}
+      title={
+        disabled
+          ? "Loading theses…"
+          : hasThesis
+            ? `Thesis recorded — edit ${ticker}`
+            : `Add a thesis for ${ticker}`
+      }
+    >
+      <NotebookPen className="h-3 w-3" aria-hidden />
+    </button>
   );
 }
 

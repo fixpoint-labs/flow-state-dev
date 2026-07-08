@@ -95,4 +95,111 @@ describe("buildHoldingRowModel", () => {
     expect(m.weight).toBe(DASH);
     expect(m.value).toBe("$1,200.00");
   });
+
+  it("renders uP/L percent from cost and blanks it with the dollar figure", () => {
+    // price 120 on cost 100 → +20%; the % and $ figures always describe the
+    // same book, so a missing price blanks both.
+    const priced = buildHoldingRowModel(holding(), quote(120), "USD", 2400);
+    expect(priced.uplPct).toBe("+20.0%");
+    const unpriced = buildHoldingRowModel(holding(), undefined, "USD", 2400);
+    expect(unpriced.uplPct).toBe(DASH);
+    expect(unpriced.upl.text).toBe(DASH);
+    // A zero cost basis has no return base — "—", not Infinity.
+    const zeroCost = buildHoldingRowModel(
+      holding({ costBasis: 0 }),
+      quote(120),
+      "USD",
+      2400,
+    );
+    expect(zeroCost.uplPct).toBe(DASH);
+  });
+
+  it("classifies term per ledger lot, falling back to the holding's own acquiredDate", () => {
+    const asOf = new Date(Date.UTC(2026, 6, 4));
+    // Ledger lots present → per-lot mixed split, NOT the earliest-date label.
+    // (`thesisTickers` sits before the pinned `asOf`, so pass `undefined` for it.)
+    const mixed = buildHoldingRowModel(
+      holding({ acquiredDate: "2024-01-10" }),
+      quote(120),
+      "USD",
+      2400,
+      null,
+      [
+        { quantity: 6, acquiredDate: "2024-01-10" },
+        { quantity: 4, acquiredDate: "2026-04-04" },
+      ],
+      undefined,
+      asOf,
+    );
+    expect(mixed.term).toBe("6L / 4S · 9 mo");
+    // No ledger lots → the declared acquiredDate is one pseudo-lot.
+    const csvOnly = buildHoldingRowModel(
+      holding({ acquiredDate: "2024-01-10" }),
+      quote(120),
+      "USD",
+      2400,
+      null,
+      null,
+      undefined,
+      asOf,
+    );
+    expect(csvOnly.term).toBe("Long");
+    // No date anywhere → unknown, never a guessed term.
+    const undated = buildHoldingRowModel(
+      holding({ acquiredDate: null }),
+      quote(120),
+      "USD",
+      2400,
+      null,
+      null,
+      undefined,
+      asOf,
+    );
+    expect(undated.term).toBe(DASH);
+  });
+
+  it("shows dividends earned when recorded and blanks when there is no history", () => {
+    // No dividend history ≠ zero income — "—" is the honest render, $0 would
+    // assert knowledge the ledger doesn't have.
+    const withIncome = buildHoldingRowModel(holding(), quote(120), "USD", 2400, 55.5);
+    expect(withIncome.dividends).toBe("$55.50");
+    const noHistory = buildHoldingRowModel(holding(), quote(120), "USD", 2400, null);
+    expect(noHistory.dividends).toBe(DASH);
+  });
+
+  // The `hasThesis` flag flows through the ONE row model so both the desktop
+  // table and the mobile card show the per-holding thesis indicator by
+  // construction (the same parity guarantee as the price gates above).
+  describe("hasThesis indicator", () => {
+    it("is true when the household has a thesis for the ticker (case-insensitive)", () => {
+      const m = buildHoldingRowModel(
+        holding({ ticker: "nvda" }),
+        quote(120),
+        "USD",
+        2400,
+        null,
+        null,
+        new Set(["NVDA"]),
+      );
+      expect(m.hasThesis).toBe(true);
+    });
+
+    it("is false when no thesis exists for the ticker", () => {
+      const m = buildHoldingRowModel(
+        holding(),
+        quote(120),
+        "USD",
+        2400,
+        null,
+        null,
+        new Set(["AAPL"]),
+      );
+      expect(m.hasThesis).toBe(false);
+    });
+
+    it("defaults to false when the thesis-ticker set is omitted", () => {
+      const m = buildHoldingRowModel(holding(), quote(120), "USD", 2400);
+      expect(m.hasThesis).toBe(false);
+    });
+  });
 });

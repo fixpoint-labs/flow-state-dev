@@ -1,0 +1,9 @@
+{
+  "_note": "MSFT: bought 8@100, a DRIP reinvest adds 0.5 → 8.5 open (basis known). TSLA: transferred in 12 with no acquisition price → basis-unknown lot. All securities resolve to tickers (no unresolved). No corporate actions.",
+  "positions": [
+    { "ticker": "MSFT", "quantity": 8.5, "basisUnknown": false },
+    { "ticker": "TSLA", "quantity": 12, "basisUnknown": true }
+  ],
+  "unresolvedCusips": [],
+  "skipped": 0
+}
