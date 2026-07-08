@@ -46,6 +46,28 @@ describe("utility.intentRouter", () => {
     expect(block.name).toBe("support-triage");
   });
 
+  it("shares one wrapper when categories (and fallback) reuse a handler, and still routes it", async () => {
+    const shared = handler({
+      name: "shared-handler",
+      execute: (input) => ({ handled: input })
+    });
+
+    // Two categories plus the fallback all alias one handler. The factory
+    // reuses one connectInput wrapper per distinct handler, so the inner
+    // router's route names stay unambiguous (FIX-814 build validation).
+    const block = utility.intentRouter({
+      name: "aliased-triage",
+      categories: {
+        billing: { description: "Billing issues", handler: shared },
+        technical: { description: "Technical issues", handler: shared }
+      },
+      fallback: shared
+    });
+
+    const ctx = makeContext("technical", 0.9);
+    await expect(runForTest(block, { q: "help" }, ctx)).resolves.toEqual({ handled: { q: "help" } });
+  });
+
   it("routes to the exact matched category handler", async () => {
     const billing = handler({
       name: "billing-handler",

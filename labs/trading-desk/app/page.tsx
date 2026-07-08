@@ -140,8 +140,8 @@ function TradingDeskApp(): ReactElement {
   // Lazy initializer so the date is captured at the first render of this
   // mount, not at module load. Avoids stale "today" in long-running servers.
   const [date, setDate] = useState(() => todayIsoDate());
-  const [costPreset, setCostPreset] = useState<CostPreset>("fast");
-  const [dataSource, setDataSource] = useState<DataSourceMode>("fixture");
+  const [costPreset, setCostPreset] = useState<CostPreset>("full");
+  const [dataSource, setDataSource] = useState<DataSourceMode>("live");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   // In-page view switcher (spec 02 §6.1: in-page branch, not new routes). The
   // `view` enum reserves `"portfolio"` in the type (TradingDeskView) so the

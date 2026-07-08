@@ -12,9 +12,16 @@
  * render a terminal "complete" state without inferring it from item counts.
  *
  * `stoppedReason` is the human-readable reason an `analyze` run was
- * aborted before producing a recommendation. Two known causes:
+ * aborted before producing a recommendation. Known causes:
  *   - `"unresolvable-ticker"` — the pre-flight guard could not resolve
  *      the ticker (missing fixture / all live providers unavailable).
+ *   - `"unsupported-asset-type"` — the symbol classifies as an unambiguously
+ *      non-equity instrument (a bond CUSIP / an OCC option / a `…-USD` crypto
+ *      pair) the equity-only analyst bench cannot research. Stopped cleanly rather
+ *      than hallucinating a stock report (the FIX-605 lesson, extended to asset
+ *      type by FIX-773). Cash/money-market placeholders (`CASH`/`USD`) and other
+ *      ticker-shaped symbols are NOT stopped — they pass to ticker resolution.
+ *      ETF and crypto analysis are FIX-777's job, which widens this gate.
  *   - `"phase-1-missing-primary"` — the `fundamentals` OR `companyProfile`
  *      analyst errored. These two are non-substitutable, so phases 2–5
  *      would be synthesizing on hollow input even if other analysts succeeded.
@@ -28,6 +35,7 @@ import { z } from "zod";
 import { citationIntegritySchema } from "./resources";
 import { portfolioContextInput } from "./flow-schema";
 import { riskMandateSchema } from "./lib/risk-mandate";
+import { thesisRecordSchema } from "../portfolio/thesis-schema";
 
 export const sessionStateSchema = z.object({
   ticker: z.string().default("NVDA"),
@@ -48,7 +56,12 @@ export const sessionStateSchema = z.object({
   maxDebateRounds: z.number().int().min(1).max(2).default(1),
   runComplete: z.boolean().default(false),
   stoppedReason: z
-    .enum(["unresolvable-ticker", "phase-1-missing-primary", "phase-1-no-data"])
+    .enum([
+      "unresolvable-ticker",
+      "unsupported-asset-type",
+      "phase-1-missing-primary",
+      "phase-1-no-data",
+    ])
     .nullable()
     .default(null),
   stoppedMessage: z.string().nullable().default(null),
@@ -78,6 +91,14 @@ export const sessionStateSchema = z.object({
   // it. Null → mandate-blind: no worth-it size gate, the run behaves exactly as
   // before FIX-752.
   riskMandate: riskMandateSchema.nullable().default(null),
+  // Standing per-position thesis for the run's ticker (FIX-760), read from the
+  // user-scoped `theses` resource collection at `seedSession` and frozen here. The pipeline
+  // (P1–P2) runs blind to it — only the trader (P3) and PM (P5) read it via the
+  // `standingThesis` capability preset, so the independent analyst evidence stays
+  // uncontaminated (the `portfolioContext` injection points). Distinct from the
+  // per-run `userThesis` (the Phase 6 hypothesis-under-audit) — this is durable
+  // standing intent, never merged with it. Null → thesis-blind run.
+  standingThesis: thesisRecordSchema.nullable().default(null),
 });
 
 export type SessionState = z.infer<typeof sessionStateSchema>;

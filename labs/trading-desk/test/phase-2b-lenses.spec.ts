@@ -176,6 +176,7 @@ function phase3to5Mocks() {
           ],
           direction: "long" as const, sizePct: 1.4, stopPrice: 132, targetPrice: 185,
           holdingPeriod: "months" as const, invalidationCriteria: ["x"], dependsOn: ["AI cap-ex cycle length"],
+          citations: null,
         },
       }],
     }),
@@ -202,6 +203,7 @@ function persona(posture: "aggressive" | "conservative") {
     posture, raisedRisks: [{ description: "r", severity: "medium" as const }],
     proposedAdjustments: { sizing: "unchanged" as const, holdingPeriod: "unchanged" as const, invalidation: "unchanged" as const },
     dismissedRisks: [],
+    citations: null,
   } };
 }
 function neutralPersona() {
@@ -211,6 +213,7 @@ function neutralPersona() {
     posture: "neutral" as const, raisedRisks: [],
     proposedAdjustments: { sizing: "unchanged" as const, holdingPeriod: "unchanged" as const, invalidation: "tighter" as const },
     dismissedRisks: [{ description: "x", reason: "y", dismissalCategory: "out-of-scope" as const }],
+    citations: null,
   } };
 }
 function riskAssessment() {
@@ -226,6 +229,7 @@ function riskAssessment() {
       invalidation: { direction: "tighter" as const, rationale: "r", attributedTo: "conservative" as const },
     },
     confidenceCalibration: "calibrated" as const, calibrationRationale: "r",
+    citations: null,
   } };
 }
 function scenario() {
@@ -239,6 +243,7 @@ function scenario() {
       { name: "Down", probability: 0.2, trigger: "t", triggerSource: "riskAssessment", expectedOutcome: "o", tradeBehavior: "b" },
     ],
     distribution: "concentrated", evidenceBasis: "sufficient",
+    citations: null,
   } };
 }
 function pm() {
@@ -261,6 +266,7 @@ function pm() {
     traderDependencyDispositions: [{ index: 0, status: "carried" as const, note: "x" }],
     primaryScenario: "Base", ratingOverrideReason: "",
     portfolioFit: { action: "initiate" as const, targetWeightPct: 2, sizingRationale: "x", concentrationRisk: "", suggestedAccount: "", convictionBasis: "robust across philosophies — convergent" },
+    citations: null,
   } };
 }
 

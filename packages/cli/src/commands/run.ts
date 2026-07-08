@@ -37,6 +37,8 @@ import { loadEnvFiles, loadExplicitEnvFiles } from "../load-env";
 /** NDJSON event types emitted to stdout during flow execution. */
 export type FlowEvent =
   | { type: "item_added"; item: OutputItem }
+  | { type: "item_updated"; itemId: string; patch: Record<string, unknown> }
+  | { type: "item_done"; item: OutputItem }
   | { type: "content_delta"; itemId: string; delta: string }
   | { type: "state_change"; scope: string; resourcePath: string; changeType: string }
   | { type: "flow_complete"; output: unknown; durationMs: number; items: number }
@@ -561,6 +563,23 @@ function mapStreamEventToNdjson(event: RequestStreamEventWithId): FlowEvent | un
       const item = (event as any).item as OutputItem | undefined;
       if (item !== undefined) {
         return { type: "item_added", item };
+      }
+      return undefined;
+    }
+
+    case "item.updated": {
+      const itemId = (event as any).itemId as string | undefined;
+      const patch = (event as any).patch as Record<string, unknown> | undefined;
+      if (itemId !== undefined && patch !== undefined) {
+        return { type: "item_updated", itemId, patch };
+      }
+      return undefined;
+    }
+
+    case "item.done": {
+      const item = (event as any).item as OutputItem | undefined;
+      if (item !== undefined) {
+        return { type: "item_done", item };
       }
       return undefined;
     }

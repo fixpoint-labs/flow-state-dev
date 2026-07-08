@@ -85,7 +85,7 @@ pnpm fsdev run analysis runSummary \
    raw `fsdev run` (single NVDA run + runSummary, assert completed + decision +
    PM memo). Drop `manifest.fixture.json`. Update the changeset; reword the
    `TRADING_DESK_DATA_DIR` comment (no longer batch-specific).
-4. **Skill:** `.claude/skills/verify-trading-desk/SKILL.md` — the workflow above.
+4. **Skill:** `agents/skills/verify-trading-desk/SKILL.md` — the workflow above.
 5. **Docs:** `AGENTS.md` "Verifying flow changes" pointer; `labs/trading-desk/
    CLAUDE.md` "Verifying changes headlessly" rewritten to the raw two-step.
 6. `pnpm --filter @flow-state-dev/trading-desk test` + core resolver tests green.

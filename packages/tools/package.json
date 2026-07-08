@@ -89,20 +89,20 @@
     }
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "@mozilla/readability": "^0.6.0",
-    "ai": "^6.0.93",
+    "ai": "^7.0.15",
     "linkedom": "^0.18.12",
     "shell-quote": "^1.8.3",
     "turndown": "^7.2.4",
-    "zod": "^3.24.1"
+    "zod": "^3.25.76"
   },
   "peerDependencies": {
-    "@ai-sdk/mcp": "^1.0.0",
+    "@ai-sdk/mcp": "^2.0.7",
     "@mendable/firecrawl-js": "^1.15.0",
     "@tavily/core": "^0.7.0",
     "exa-js": "^1.5.0",
@@ -126,7 +126,7 @@
     }
   },
   "devDependencies": {
-    "@ai-sdk/mcp": "^1.0.0",
+    "@ai-sdk/mcp": "^2.0.7",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/shell-quote": "^1.7.5",

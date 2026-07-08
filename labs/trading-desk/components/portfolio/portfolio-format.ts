@@ -8,6 +8,8 @@
  * APPROXIMATIONS (JS floats), not precise accounting — the UI labels them so.
  */
 
+import type { AssetClass } from "@/src/flows/portfolio/portfolio-schema";
+
 /** The sentinel for an unknown / unavailable value. Used everywhere a current
  *  price is missing so the table degrades gracefully (BP-020 spirit). */
 export const DASH = "—";
@@ -56,6 +58,16 @@ export function formatPercent(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+/** Format a signed return fraction as "+12.3%" / "-4.0%". `null` → "—".
+ *  Zero renders without a sign, matching {@link formatSignedMoney}. */
+export function formatSignedPercent(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return DASH;
+  const base = `${(Math.abs(value) * 100).toFixed(1)}%`;
+  if (value > 0) return `+${base}`;
+  if (value < 0) return `-${base}`;
+  return base;
+}
+
 /** Market value = quantity × current price. `null` price → null value. */
 export function marketValue(
   quantity: number,
@@ -77,6 +89,18 @@ export function unrealizedPL(
   return (price - costBasis) * quantity;
 }
 
+/** Unrealized P/L as a fraction of cost = (price − avg cost) / avg cost.
+ *  `null` when either input is unknown or cost is zero (a zero-cost position
+ *  has no meaningful return base) — never fabricated from a partial input. */
+export function unrealizedPLPercent(
+  costBasis: number | null,
+  price: number | null,
+): number | null {
+  if (price === null || costBasis === null || costBasis === 0) return null;
+  if (!Number.isFinite(price) || !Number.isFinite(costBasis)) return null;
+  return (price - costBasis) / costBasis;
+}
+
 /** Weight = this holding's market value / a total. `null` when either is
  *  unknown or the total is zero. */
 export function weight(
@@ -85,4 +109,34 @@ export function weight(
 ): number | null {
   if (value === null || total === null || total === 0) return null;
   return value / total;
+}
+
+/** One asset-class row of the portfolio allocation breakdown: the summed market
+ *  value in that class and its fraction (0..1) of the priced total. */
+export type AllocationSlice = {
+  assetClass: AssetClass;
+  value: number;
+  weight: number;
+};
+
+/** Group per-holding market values into an allocation-by-class breakdown.
+ *
+ *  An entry with a `null` value (no resolvable price) contributes 0 mass — the
+ *  same "—" real-money gate the rest of this module applies, so an unpriced bond
+ *  ETF never fabricates a weight. A class whose priced mass is 0 is omitted.
+ *  Slices are ordered by value descending (largest exposure first); `weight` is
+ *  the slice's fraction of the priced total. Pure — no IO. */
+export function allocationByClass(
+  entries: { assetClass: AssetClass; value: number | null }[],
+): AllocationSlice[] {
+  const totals = new Map<AssetClass, number>();
+  for (const { assetClass, value } of entries) {
+    if (value === null || !Number.isFinite(value)) continue;
+    totals.set(assetClass, (totals.get(assetClass) ?? 0) + value);
+  }
+  const total = [...totals.values()].reduce((sum, v) => sum + v, 0);
+  if (total === 0) return [];
+  return [...totals.entries()]
+    .map(([assetClass, value]) => ({ assetClass, value, weight: value / total }))
+    .sort((a, b) => b.value - a.value);
 }

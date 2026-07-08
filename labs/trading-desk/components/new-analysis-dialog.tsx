@@ -41,8 +41,7 @@ const COST_PRESET_OPTIONS = [
 ];
 
 /** Data-source toggle options. Single consumer — see `COST_PRESET_OPTIONS`. */
-const DATA_SOURCE_OPTIONS = [
-  { value: "fixture" as const, label: "fixture", title: "Hand-curated JSON" },
+const DATA_SOURCE_OPTIONS = [  
   {
     value: "live" as const,
     label: "live",
@@ -55,6 +54,7 @@ const DATA_SOURCE_OPTIONS = [
     title:
       "Live data, and write every tool response to the fixture corpus so this run can be replayed offline (needs the live API keys)",
   },
+  { value: "fixture" as const, label: "fixture", title: "Hand-curated JSON" },
 ];
 
 /** The minimum thesis length the server treats as auditable. Mirrors the

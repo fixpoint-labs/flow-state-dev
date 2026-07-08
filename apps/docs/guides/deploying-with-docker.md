@@ -23,7 +23,7 @@ A multi-stage build keeps the final image small. The first stage installs depend
 
 ```dockerfile title="Dockerfile"
 # --- Build stage ---
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
@@ -40,7 +40,7 @@ COPY src/ ./src/
 RUN pnpm build
 
 # --- Production stage ---
-FROM node:20-slim AS runner
+FROM node:22-slim AS runner
 
 # better-sqlite3 needs these at runtime if used
 RUN apt-get update && apt-get install -y --no-install-recommends \

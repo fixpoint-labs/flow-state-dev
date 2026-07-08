@@ -36,7 +36,15 @@ async function freshRepo(): Promise<PortfolioRepository> {
 }
 
 function holding(ticker: string, quantity: number, costBasis: number | null = null): CanonicalRow {
-  return { ticker, quantity, costBasis, acquiredDate: null };
+  return {
+    ticker,
+    quantity,
+    costBasis,
+    acquiredDate: null,
+    assetClass: "equity",
+    assetType: "equity",
+    attributes: { kind: "none" },
+  };
 }
 
 function ev(overrides: Partial<LedgerEventInput> = {}): LedgerEventInput {
@@ -113,6 +121,36 @@ describe("ingestLedgerEvents — idempotency", () => {
     const report = await repo.ingestLedgerEvents([b], "devuser");
     expect(report.inserted).toBe(0);
     expect(report.deduplicated).toBe(1);
+  });
+
+  it("ingests a batch large enough to exceed the wire protocol's 16-bit param count", async () => {
+    // The Postgres extended-protocol Bind message carries the bound-parameter
+    // count as a 16-bit integer. At 17 params per ledger row, an unchunked
+    // multi-row INSERT crosses 32,767 params at 1,928 rows — PGlite reads the
+    // wrapped count as negative and dies with `RangeError: Invalid array
+    // length`, wedging the (single) connection for every later query; node-pg
+    // hits its own 65,535 ceiling at 3,856 rows. A year-scale brokerage OFX
+    // backfill (FIX-775) is realistically thousands of rows, so the insert
+    // must chunk. 2,500 rows crosses the PGlite boundary with margin.
+    const batch = Array.from({ length: 2500 }, (_, i) =>
+      ev({
+        ticker: "AAPL",
+        tradeDate: "2026-01-10",
+        quantity: 1,
+        unitPrice: 100 + i,
+        amount: -(100 + i),
+        externalId: `bulk-${i}`,
+        source: "file",
+      }),
+    );
+
+    const report = await repo.ingestLedgerEvents(batch, "devuser");
+    expect(report.inserted).toBe(2500);
+    expect(report.deduplicated).toBe(0);
+
+    // The connection must survive the ingest — a follow-up read works.
+    const rows = await repo.getLedger("devuser", { limit: 5 });
+    expect(rows).toHaveLength(5);
   });
 });
 
@@ -262,6 +300,113 @@ describe("ingestLedgerEvents — derived basis", () => {
     );
     const { holdings } = await repo.getPortfolio("devuser");
     expect(holdings.find((h) => h.ticker === "AAPL")?.costBasis).toBe(123); // unchanged
+  });
+});
+
+describe("ingestLedgerEvents — position materialization (ledger wins)", () => {
+  it("creates a holdings row from a transaction-only import (no prior holding)", async () => {
+    // The FIX-775 first-import path: the user has NO snapshot — the ledger alone
+    // must produce a visible active holding, or the Portfolio view stays empty.
+    await repo.ingestLedgerEvents(
+      [
+        ev({ ticker: "NVDA", tradeDate: "2026-01-05", quantity: 4, unitPrice: 500, amount: -2000 }),
+        ev({ ticker: "NVDA", tradeDate: "2026-02-05", quantity: 6, unitPrice: 600, amount: -3600 }),
+      ],
+      "devuser",
+    );
+    const { holdings } = await repo.getPortfolio("devuser");
+    const nvda = holdings.find((h) => h.ticker === "NVDA");
+    expect(nvda?.quantity).toBe(10);
+    expect(nvda?.costBasis).toBeCloseTo((4 * 500 + 6 * 600) / 10); // 560
+    expect(nvda?.acquiredDate).toBe("2026-01-05"); // hold period anchor
+  });
+
+  it("overwrites a disagreeing snapshot quantity with the ledger-derived position", async () => {
+    // A CSV declared 100 shares, but the actual trade history says 25 — the
+    // transaction record is ground truth, so the snapshot loses.
+    await repo.upsertHoldings("acc-1", "devuser", [holding("AAPL", 100, 50)], "upsert");
+    await repo.ingestLedgerEvents(
+      [ev({ tradeDate: "2026-01-10", quantity: 25, unitPrice: 200, amount: -5000 })],
+      "devuser",
+    );
+    const { holdings } = await repo.getPortfolio("devuser");
+    const aapl = holdings.find((h) => h.ticker === "AAPL");
+    expect(aapl?.quantity).toBe(25);
+    expect(aapl?.costBasis).toBe(200);
+  });
+
+  it("deletes the holdings row when the ledger position fully closes", async () => {
+    await repo.ingestLedgerEvents(
+      [
+        ev({ tradeDate: "2026-01-10", quantity: 10, unitPrice: 100, amount: -1000 }),
+        ev({ type: "sell", tradeDate: "2026-04-10", quantity: -10, unitPrice: 150, amount: 1500 }),
+      ],
+      "devuser",
+    );
+    const { holdings } = await repo.getPortfolio("devuser");
+    expect(holdings.find((h) => h.ticker === "AAPL")).toBeUndefined(); // closed — not active
+    // The history is still in the ledger, not erased with the position.
+    expect(await repo.getLedger("devuser", { ticker: "AAPL" })).toHaveLength(2);
+  });
+
+  it("keeps a snapshot holding (basis cleared) when a partial import has only a disposal", async () => {
+    // A CSV snapshot declared 100 AAPL. The user imports an OFX range containing
+    // only a SELL (the acquisition predates the range), so `deriveLots` clamps the
+    // oversell to no open lot. This is an INCOMPLETE import, not a close — the
+    // still-held position must NOT be deleted, or it vanishes until full history
+    // is imported.
+    await repo.upsertHoldings("acc-1", "devuser", [holding("AAPL", 100, 50)], "upsert");
+    await repo.ingestLedgerEvents(
+      [ev({ type: "sell", tradeDate: "2026-04-10", quantity: -10, unitPrice: 150, amount: 1500 })],
+      "devuser",
+    );
+    const { holdings } = await repo.getPortfolio("devuser");
+    const aapl = holdings.find((h) => h.ticker === "AAPL");
+    expect(aapl).toBeDefined(); // snapshot position preserved, not deleted
+    expect(aapl?.quantity).toBe(100); // snapshot quantity untouched (ledger can't derive it)
+    expect(aapl?.costBasis).toBeNull(); // derived basis cleared (acquisition not in range)
+  });
+});
+
+describe("getIncomeSummary", () => {
+  it("sums dividends and interest per (account, ticker), surviving a position close", async () => {
+    await repo.ingestLedgerEvents(
+      [
+        ev({ ticker: "AAPL", tradeDate: "2026-01-10", quantity: 10, unitPrice: 100, amount: -1000 }),
+        ev({ type: "dividend", ticker: "AAPL", tradeDate: "2026-02-01", quantity: null, unitPrice: null, amount: 25 }),
+        ev({ type: "dividend", ticker: "AAPL", tradeDate: "2026-05-01", quantity: null, unitPrice: null, amount: 30 }),
+        // Fully close the position AFTER the dividends were earned.
+        ev({ type: "sell", ticker: "AAPL", tradeDate: "2026-06-01", quantity: -10, unitPrice: 150, amount: 1500 }),
+        // Account-level interest with no security.
+        ev({ type: "interest", ticker: null, tradeDate: "2026-03-01", quantity: null, unitPrice: null, amount: 5 }),
+      ],
+      "devuser",
+    );
+    const income = await repo.getIncomeSummary("devuser");
+
+    const aapl = income.find((r) => r.ticker === "AAPL");
+    expect(aapl?.dividends).toBe(55); // earned income outlives the closed position
+    expect(aapl?.interest).toBe(0);
+    expect(aapl?.lastEventDate).toBe("2026-05-01");
+
+    const cash = income.find((r) => r.ticker === null);
+    expect(cash?.interest).toBe(5);
+    expect(cash?.dividends).toBe(0);
+  });
+
+  it("excludes voided income events and scopes to the household", async () => {
+    await repo.ingestLedgerEvents(
+      [
+        ev({ type: "dividend", ticker: "MSFT", quantity: null, unitPrice: null, amount: 40, source: "file", externalId: "div-1" }),
+        ev({ type: "dividend", ticker: "MSFT", tradeDate: "2026-02-10", quantity: null, unitPrice: null, amount: 60, source: "file", externalId: "div-2" }),
+      ],
+      "devuser",
+    );
+    await repo.voidLedgerEvents("acc-1", ["div-2"], "file", "devuser");
+
+    const income = await repo.getIncomeSummary("devuser");
+    expect(income.find((r) => r.ticker === "MSFT")?.dividends).toBe(40); // voided 60 excluded
+    expect(await repo.getIncomeSummary("intruder")).toHaveLength(0);
   });
 });
 

@@ -50,6 +50,17 @@ function statusCodeError(message: string, statusCode: number): Error {
   return err;
 }
 
+/**
+ * Mirrors the marker `createModelResolver`'s lazy loader stamps on
+ * provider/gateway package load failures (`name: "ProviderLoadError"`).
+ * The fallback loops recognize it by name (realm/module safe).
+ */
+function providerLoadError(message: string): Error {
+  const err = new Error(message, { cause: new Error("import failed") });
+  err.name = "ProviderLoadError";
+  return err;
+}
+
 const FAST_RETRY = {
   maxAttemptsPerModel: 2,
   baseDelayMs: 1,
@@ -98,6 +109,40 @@ describe("isRetryableError", () => {
     expect(isRetryableError(new Error("fetch failed"))).toBe(true);
     expect(isRetryableError(new Error("ECONNREFUSED"))).toBe(true);
     expect(isRetryableError(new Error("ETIMEDOUT"))).toBe(true);
+  });
+
+  // Real AI SDK 7 error instances — pins the duck-typed reads
+  // (`isRetryable`, `LoadAPIKeyError` constructor name, `statusCode`)
+  // against the installed SDK, not hand-built fakes.
+  describe("against real AI SDK 7 error instances", () => {
+    it("treats a v7 LoadAPIKeyError as non-retryable (falls to next model)", async () => {
+      const { LoadAPIKeyError } = await import("ai");
+      const err = new LoadAPIKeyError({ message: "OPENAI_API_KEY is missing" });
+      expect(err.constructor.name).toBe("LoadAPIKeyError");
+      expect(err.name).toBe("AI_LoadAPIKeyError");
+      expect(isRetryableError(err)).toBe(false);
+    });
+
+    it("honours a v7 APICallError's own isRetryable flag", async () => {
+      const { APICallError } = await import("ai");
+      const retryable = new APICallError({
+        message: "rate limited",
+        url: "https://api.example.com",
+        requestBodyValues: {},
+        statusCode: 429
+      });
+      expect(retryable.isRetryable).toBe(true);
+      expect(isRetryableError(retryable)).toBe(true);
+
+      const nonRetryable = new APICallError({
+        message: "bad request",
+        url: "https://api.example.com",
+        requestBodyValues: {},
+        statusCode: 400
+      });
+      expect(nonRetryable.isRetryable).toBe(false);
+      expect(isRetryableError(nonRetryable)).toBe(false);
+    });
   });
 });
 
@@ -194,6 +239,27 @@ describe("createFallbackModel", () => {
       expect(failingGenerate).toHaveBeenCalledTimes(1); // no retry
     });
 
+    it("skips a candidate whose provider package fails to load (mirror of the stream path)", async () => {
+      const failingGenerate = vi
+        .fn()
+        .mockRejectedValue(
+          providerLoadError('Provider package "@ai-sdk/anthropic" failed to load.')
+        );
+
+      const model = createFallbackModel({
+        groupName: "fast",
+        models: [
+          mockEntry("anthropic/claude-haiku", { generate: failingGenerate }),
+          mockEntry("openai/gpt-5.4-mini"),
+        ],
+        retryPolicy: FAST_RETRY,
+      });
+
+      const result = await model.generate({ messages: [] });
+      expect(result.text).toBe("response from openai/gpt-5.4-mini");
+      expect(failingGenerate).toHaveBeenCalledTimes(1); // no retry — broken installs don't heal
+    });
+
     it("throws with summary when all models fail", async () => {
       const model = createFallbackModel({
         groupName: "fast",
@@ -271,6 +337,65 @@ describe("createFallbackModel", () => {
         chunks.push(chunk);
       }
       expect(chunks[0]?.textDelta).toBe("fallback");
+    });
+
+    it("falls through to the next model when the first candidate's provider package fails to load", async () => {
+      // A resolvable-but-broken install surfaces from the lazy loader as a
+      // ProviderLoadError-marked rejection before any chunk is yielded. The
+      // install cannot succeed on retry, but the next candidate uses a
+      // different package — the stream loop must skip to it, mirroring the
+      // generate loop's non-retryable fall-through (AI SDK 7 migration: v6
+      // filtered such candidates at resolve time).
+      async function* brokenLoadStream(): AsyncGenerator<any> {
+        throw providerLoadError('Provider package "@ai-sdk/anthropic" failed to load.');
+      }
+
+      async function* workingStream() {
+        yield { type: "text_delta" as const, textDelta: "fallback" };
+        yield { type: "finish" as const, finishReason: "stop" };
+      }
+
+      const model = createFallbackModel({
+        groupName: "fast",
+        models: [
+          mockEntry("anthropic/claude-haiku", { stream: brokenLoadStream }),
+          mockEntry("openai/gpt-5.4-mini", { stream: workingStream }),
+        ],
+        retryPolicy: FAST_RETRY,
+      });
+
+      const chunks = [];
+      for await (const chunk of model.stream!({ messages: [] })) {
+        chunks.push(chunk);
+      }
+      expect(chunks[0]?.textDelta).toBe("fallback");
+    });
+
+    it("still surfaces an arbitrary non-retryable error instead of falling through", async () => {
+      // Only provider-load failures get the skip treatment; other
+      // non-retryable model errors (auth, bad request) must surface.
+      async function* failingStream(): AsyncGenerator<any> {
+        throw nonRetryableError("auth failed");
+      }
+
+      async function* workingStream() {
+        yield { type: "text_delta" as const, textDelta: "should not reach" };
+      }
+
+      const model = createFallbackModel({
+        groupName: "fast",
+        models: [
+          mockEntry("anthropic/claude-haiku", { stream: failingStream }),
+          mockEntry("openai/gpt-5.4-mini", { stream: workingStream }),
+        ],
+        retryPolicy: FAST_RETRY,
+      });
+
+      await expect(async () => {
+        for await (const _chunk of model.stream!({ messages: [] })) {
+          // drain
+        }
+      }).rejects.toThrow("auth failed");
     });
   });
 

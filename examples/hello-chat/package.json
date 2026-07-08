@@ -9,15 +9,16 @@
     "start": "next start",
     "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
     "test": "vitest run --root .",
-    "test:watch": "vitest --root ."
+    "test:watch": "vitest --root .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.30",
+    "@ai-sdk/openai": "^4.0.7",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
-    "ai": "^6.0.97",
+    "ai": "^7.0.15",
     "clsx": "^2.1.1",
     "lucide-react": "^0.575.0",
     "next": "^16.1.6",

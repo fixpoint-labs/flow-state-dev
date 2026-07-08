@@ -35,6 +35,7 @@ function sessionState(overrides: Partial<SessionState> = {}): SessionState {
     portfolio: null,
     selectedAccountIds: [],
     riskMandate: null,
+    standingThesis: null,
     ...overrides,
   };
 }
@@ -59,6 +60,7 @@ function decisionSnapshot(
     rewardToRiskLossAdjustedGlr: 2.1,
     worstCaseReturnPct: -12.4,
     capacityVetoed: false,
+    hasStandingThesis: null,
     decidedAt: "2026-06-25T00:00:00.000Z",
     outcomeRealizedPrice: null,
     outcomeAsOf: null,

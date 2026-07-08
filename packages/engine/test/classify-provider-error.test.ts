@@ -88,3 +88,87 @@ describe("classifyProviderError via normalizeError", () => {
     expect(normalized.code).toBe("custom_code");
   });
 });
+
+/**
+ * The fakes above pin the structural contract; these pin that real AI SDK 7
+ * error instances still satisfy it — marker symbol present, `AI_*` name tags
+ * unchanged, `statusCode` surfaced. `ai` is a test-only devDependency here;
+ * `src/` stays structural with no AI SDK import (module-realm safety).
+ */
+describe("classifyProviderError against real AI SDK 7 errors", () => {
+  it("real v7 errors carry the marker symbol and AI_* name tags", async () => {
+    const { APICallError, LoadAPIKeyError, NoObjectGeneratedError } = await import("ai");
+    const apiErr = new APICallError({
+      message: "Too Many Requests",
+      url: "https://api.example.com",
+      requestBodyValues: {},
+      statusCode: 429
+    });
+    const keyErr = new LoadAPIKeyError({ message: "missing key" });
+    const objErr = new NoObjectGeneratedError({ message: "no object" });
+
+    for (const err of [apiErr, keyErr, objErr]) {
+      expect((err as unknown as Record<symbol, unknown>)[AI_SDK_ERROR_MARKER]).toBe(true);
+    }
+    expect(apiErr.name).toBe("AI_APICallError");
+    expect(keyErr.name).toBe("AI_LoadAPIKeyError");
+    expect(objErr.name).toBe("AI_NoObjectGeneratedError");
+    expect(apiErr.statusCode).toBe(429);
+  });
+
+  it("maps a real v7 429 APICallError to RateLimitError", async () => {
+    const { APICallError } = await import("ai");
+    const normalized = normalizeError(
+      new APICallError({
+        message: "Too Many Requests",
+        url: "https://api.example.com",
+        requestBodyValues: {},
+        statusCode: 429
+      })
+    );
+
+    expect(normalized).toBeInstanceOf(RateLimitError);
+    expect(normalized.retryable).toBe(true);
+  });
+
+  it("maps a real v7 503 APICallError to ProviderUnavailableError", async () => {
+    const { APICallError } = await import("ai");
+    const normalized = normalizeError(
+      new APICallError({
+        message: "Service Unavailable",
+        url: "https://api.example.com",
+        requestBodyValues: {},
+        statusCode: 503
+      })
+    );
+
+    expect(normalized).toBeInstanceOf(ProviderUnavailableError);
+  });
+
+  it("maps a real v7 context-length APICallError to ContextLengthError", async () => {
+    const { APICallError } = await import("ai");
+    const normalized = normalizeError(
+      new APICallError({
+        message: "This model's maximum context length is 8192 tokens",
+        url: "https://api.example.com",
+        requestBodyValues: {},
+        statusCode: 400
+      })
+    );
+
+    expect(normalized).toBeInstanceOf(ContextLengthError);
+    expect(normalized.retryable).toBe(false);
+  });
+
+  it("leaves a real v7 LoadAPIKeyError on the generic FlowError path (no misclassification)", async () => {
+    const { LoadAPIKeyError } = await import("ai");
+    const normalized = normalizeError(new LoadAPIKeyError({ message: "OPENAI_API_KEY missing" }));
+
+    expect(normalized).toBeInstanceOf(FlowError);
+    expect(normalized).not.toBeInstanceOf(RateLimitError);
+    expect(normalized).not.toBeInstanceOf(TimeoutError);
+    expect(normalized).not.toBeInstanceOf(ProviderUnavailableError);
+    expect(normalized.code).toBe("execution_error");
+    expect((normalized.cause as Error)?.name).toBe("AI_LoadAPIKeyError");
+  });
+});

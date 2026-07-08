@@ -8,7 +8,7 @@ Build a streaming chat in five minutes. By the end you have a typed flow, a Next
 
 ## Prerequisites
 
-- Node.js 20 or newer
+- Node.js 22 or newer
 - pnpm (or npm/yarn)
 - An API key from OpenAI, Anthropic, or Google. See [Setting Up Models](/docs/getting-started/setting-up-models) for the full list.
 

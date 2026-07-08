@@ -439,7 +439,13 @@ export interface BlockContext<
     onBlockStart?: (blockName: string, blockKind: string, input: unknown, transient?: boolean) => void;
     onBlockComplete?: (blockName: string, blockKind: string, output: unknown, durationMs: number, transient?: boolean) => void;
     onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number, transient?: boolean, ctx?: BlockContext) => void;
-    onRouteSelected?: (routerName: string, selectedBlockName: string, blockInstanceId?: string) => void;
+    /**
+     * Fired when a router selects a route, before the branch dispatches. May
+     * return a promise that resolves once the `router_decision` trace item has
+     * landed in the response log — the router awaits it so a suspension inside
+     * the chosen branch can never persist before its decision anchor (FIX-814).
+     */
+    onRouteSelected?: (routerName: string, selectedBlockName: string, blockInstanceId?: string) => void | Promise<void>;
     onGeneratorModelResult?: (payload: {
       model: string;
       usage?: GeneratorModelUsage;

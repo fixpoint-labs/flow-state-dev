@@ -101,6 +101,20 @@ describe("utility.keyedRouter", () => {
     await expect(runForTest(block, { which: "beta" }, ctx)).resolves.toBe("B");
   });
 
+  it("allows two keys to alias the same block (FIX-814 uniqueness tolerates reference-equal routes)", async () => {
+    const shared = handler({ name: "shared", execute: () => "S" });
+
+    const block = utility.keyedRouter({
+      name: "aliased",
+      blocks: { alice: shared, bob: shared },
+      select: (input: { which: string }) => input.which,
+    });
+
+    const ctx = createMockContext();
+    await expect(runForTest(block, { which: "alice" }, ctx)).resolves.toBe("S");
+    await expect(runForTest(block, { which: "bob" }, ctx)).resolves.toBe("S");
+  });
+
   it("throws with the registered key list when no match and no fallback", async () => {
     const alpha = handler({ name: "alpha", execute: () => "A" });
     const beta = handler({ name: "beta", execute: () => "B" });

@@ -44,6 +44,8 @@ Use `unchanged` when no persona made a load-bearing case for change — attribut
 
 Populate `confidenceCalibration` with one of `overconfident` / `calibrated` / `underconfident`, and `calibrationRationale` with a one-sentence justification. The PM uses this to inform confidence.
 
+{% render 'citations-field' %}
+
 If a `<valuationSpine>` block is present, use it as a quantitative
 cross-check: does the trader's proposed direction align with the expected
 excess return? Is the target price consistent with fair value? Flag

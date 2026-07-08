@@ -461,6 +461,42 @@ describe("--capture", () => {
     expect(result.success).toBe(true);
   });
 
+  it("captures item_updated and item_done events (trace lifecycle)", async () => {
+    const capturePath = join(captureDir, "lifecycle.json");
+
+    await executeRunCommand("echo", "respond", {
+      input: '{"message": "lifecycle"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      capture: capturePath,
+      quiet: true,
+    });
+
+    const payload = JSON.parse(readFileSync(capturePath, "utf-8"));
+    const events = payload.events as FlowEvent[];
+
+    const updated = events.filter((e) => e.type === "item_updated");
+    expect(updated.length).toBeGreaterThan(0);
+    for (const event of updated) {
+      expect(typeof (event as any).itemId).toBe("string");
+      expect((event as any).patch).toBeTypeOf("object");
+    }
+
+    const done = events.filter((e) => e.type === "item_done");
+    expect(done.length).toBeGreaterThan(0);
+    for (const event of done) {
+      expect((event as any).item).toBeTypeOf("object");
+      expect(typeof (event as any).item.id).toBe("string");
+    }
+
+    // item.done carries the finalized item, so patches (e.g. a generator's
+    // modelUsage) applied after item.added are observable in the capture.
+    const addedIds = events
+      .filter((e) => e.type === "item_added")
+      .map((e) => (e as any).item.id);
+    expect(addedIds).toContain((done[0] as any).item.id);
+  });
+
   it("captures error events when the flow fails", async () => {
     const capturePath = join(captureDir, "fail.json");
 

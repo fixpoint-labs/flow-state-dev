@@ -506,6 +506,8 @@ The interface methods are `saveCheckpoint`, `loadCheckpoint`, `suspend`, `loadSu
 
 `SuspensionStore` and `LeaseStore` ship with in-memory, filesystem, SQLite, and Postgres adapters. See the [Durable Execution guide](https://flow-state.dev/docs/advanced/durable-execution) for usage patterns.
 
+A suspension inside a router's chosen branch resumes the same branch: the recorded `router_decision` is validated against the re-run selector before dispatch (a mismatch fails with `RouteUnavailableError`), and completed work inside the branch replays from the durable log instead of re-executing.
+
 ### Durability retention
 
 Durability records accumulate on long-lived hosts: a completed run's checkpoints are dead weight, a resolved suspension is only worth keeping for a window, and a crashed run leaves records that `cleanup()` never fires for. `createDurabilitySweeper` is an opt-in periodic job that reclaims them, modeled on the stale-request sweeper (`setInterval` + `unref`, `inFlight` guard, idempotent `dispose`, no-op handle when disabled).

@@ -1682,8 +1682,18 @@ export function generator<
 
       let prepareStepFn: PrepareStepFn | undefined;
       if (hasDynamicPrompt || hasDynamicContext || hasDynamicTools) {
+        // AI SDK 7 carry-forward: a returned `messages` override becomes the
+        // input of later steps, so the prefix at the head of `currentMessages`
+        // is whatever this callback last returned — not the assembly-time
+        // prefix. Track the length of the prefix we last wrote so every step
+        // slices off exactly that prefix; slicing by `systemPrefixCount` would
+        // leak stale context whenever the fresh prefix length differs.
+        let currentPrefixCount = systemPrefixCount;
         prepareStepFn = async ({ stepNumber, messages: currentMessages, steps: _steps }) => {
           if (stepNumber === 0) {
+            // Fresh loop (also after a fallback retry re-enters at step 0):
+            // the input messages carry the assembly-time prefix.
+            currentPrefixCount = systemPrefixCount;
             return undefined;
           }
 
@@ -1717,7 +1727,8 @@ export function generator<
 
           // Replace the system prefix with fresh values; keep conversation
           // messages (history, user, accumulated tool calls/results).
-          const conversationMessages = currentMessages.slice(systemPrefixCount);
+          const conversationMessages = currentMessages.slice(currentPrefixCount);
+          currentPrefixCount = freshSystemPrefix.length;
           return {
             messages: [...freshSystemPrefix, ...conversationMessages],
             activeTools

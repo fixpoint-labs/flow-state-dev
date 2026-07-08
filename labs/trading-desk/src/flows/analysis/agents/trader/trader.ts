@@ -18,7 +18,7 @@ import { z } from "zod";
 import { PHASE_3_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { loadPrompt } from "../../lib/prompt";
-import { thesisSection } from "../../resources";
+import { memoCitation, thesisSection } from "../../resources";
 import { sessionStateSchema } from "../../state";
 import { traderApproachGenerator } from "./approach";
 
@@ -45,6 +45,11 @@ export const tradeProposalOutputSchema = z.object({
   holdingPeriod: z.enum(["days", "weeks", "months", "quarters"]),
   invalidationCriteria: z.array(z.string()),
   dependsOn: z.array(z.string()),
+  // FIX-676 — URLs the trader actually fetched while corroborating a claim via
+  // the `corroborate` preset's search/fetch tools. Null when nothing was fetched
+  // (and always null on the `fast` preset). The renderer shows these as a
+  // "Sources" footer, same as Phase 1.
+  citations: z.array(memoCitation).nullable(),
 });
 
 export type TradeProposalOutput = z.infer<typeof tradeProposalOutputSchema>;
@@ -69,6 +74,15 @@ export const traderGenerator = generator({
       // reward-to-risk figure is not yet computed at Phase 3 (it derives from the
       // Phase 5a forecast), so the trader sees only the mandate, not the figure.
       riskMandate: true,
+      // FIX-760 — the trader sees the user's STANDING thesis for a held name
+      // (their durable "why"), so its sizing weighs standing intent, not just
+      // position size. Thesis-blind when none is recorded.
+      standingThesis: true,
+      // FIX-676 — cost-gated web search+fetch to corroborate a specific claim
+      // (a peer comp, a recent event) before sizing. `corroborate` also carries
+      // the shared references-consulted ledger so it reuses what the desk already
+      // surfaced.
+      corroborate: true,
     }),
   ],
   ...definePromptFile(traderPrompt),

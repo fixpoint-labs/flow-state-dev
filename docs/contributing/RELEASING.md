@@ -108,4 +108,4 @@ This checklist runs once for the initial npm publish:
 
 ## Node.js version requirement
 
-All packages declare `engines.node: ">=20"`. Node 22 is the current active LTS. Node 20 reached EOL on April 30, 2026 but is still permitted by the engine floor. ESM-only; no CommonJS dual-build.
+All packages declare `engines.node: ">=22"`. Node 22 is the current active LTS, and AI SDK 7 (the framework's generator provider layer) requires Node 22+. ESM-only; no CommonJS dual-build.

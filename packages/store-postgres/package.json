@@ -50,7 +50,7 @@
     }
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "sideEffects": false,
   "dependencies": {
@@ -62,7 +62,7 @@
     "@flow-state-dev/scheduled": "workspace:*"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.2.17",
+    "@electric-sql/pglite": "^0.5.4",
     "@flow-state-dev/scheduled": "workspace:*",
     "@types/pg": "^8.11.0",
     "@types/node": "^22.0.0"

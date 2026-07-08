@@ -8,6 +8,7 @@
  * per-call provider preference overrides.
  */
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import type { GeneratorModel, ModelResolver, ResolveModelCallOptions } from "../types/model";
 import type {
   RetryPolicy,
@@ -111,7 +112,7 @@ const DEFAULT_RETRY_POLICY: Required<RetryPolicy> = {
 const PROVIDER_PACKAGES: Record<string, { pkg: string; factory: string }> = {
   anthropic: { pkg: "@ai-sdk/anthropic", factory: "createAnthropic" },
   openai: { pkg: "@ai-sdk/openai", factory: "createOpenAI" },
-  google: { pkg: "@ai-sdk/google", factory: "createGoogleGenerativeAI" },
+  google: { pkg: "@ai-sdk/google", factory: "createGoogle" },
 };
 
 const GATEWAY_PACKAGES: Record<string, { pkg: string; factory: string }> = {
@@ -128,65 +129,196 @@ const GATEWAY_ENV_VARS: Record<string, string> = {
 const _require = createRequire(import.meta.url);
 const _cwdRequire = createRequire(new URL(`file://${process.cwd()}/`));
 
-function tryRequire(packageName: string): Record<string, unknown> | undefined {
+/**
+ * Resolve a package specifier to an absolute file path WITHOUT executing the
+ * module. AI SDK 7 packages are ESM-only, so execution needs dynamic
+ * `import()` (async) — but availability decisions (intent candidate
+ * filtering, direct→gateway fall-through, `resolveId`) must stay
+ * synchronous. CJS resolution still finds ESM-only packages (their exports
+ * maps carry a `default` condition); only execution would fail.
+ *
+ * Falls back to resolving from `process.cwd()` (app root) for pnpm strict
+ * isolation, where the app installs the provider package but this package
+ * cannot see it from its own location.
+ */
+function tryResolveModulePath(packageName: string): string | undefined {
   try {
-    return _require(packageName);
+    return _require.resolve(packageName);
   } catch {
-    // Fallback: resolve from cwd (app root) for pnpm strict isolation
     try {
-      return _cwdRequire(packageName);
+      return _cwdRequire.resolve(packageName);
     } catch {
       return undefined;
     }
   }
 }
 
+function isModuleResolvable(packageName: string): boolean {
+  return tryResolveModulePath(packageName) !== undefined;
+}
+
+// Single-flight module execution cache. Failed imports stay cached: a broken
+// install does not repair itself mid-process, and re-probing on every call
+// would repeat the failure.
+const moduleExecutionCache = new Map<string, Promise<Record<string, unknown>>>();
+
+/** Execute a provider/gateway package via dynamic `import()` (ESM-safe). */
+function importModule(packageName: string): Promise<Record<string, unknown>> {
+  let pending = moduleExecutionCache.get(packageName);
+  if (pending === undefined) {
+    pending = (async () => {
+      const resolvedPath = tryResolveModulePath(packageName);
+      if (resolvedPath === undefined) {
+        throw new Error(`Package "${packageName}" is not installed.`);
+      }
+      return (await import(pathToFileURL(resolvedPath).href)) as Record<string, unknown>;
+    })();
+    moduleExecutionCache.set(packageName, pending);
+  }
+  return pending;
+}
+
+/**
+ * Wrap a provider/gateway package load failure with a stable marker
+ * (`name: "ProviderLoadError"`). The lazy `GeneratorModel` split means a
+ * resolvable-but-broken install surfaces at first generate/stream instead of
+ * at resolve time (where v6 filtered it), so `fallbackModel`'s loops
+ * recognize this name and skip to the next candidate. Name-based rather than
+ * `instanceof` to stay realm/module safe, matching the existing duck-typed
+ * error checks in `isRetryableError`.
+ */
+function providerLoadError(message: string, cause?: unknown): Error {
+  const error =
+    cause === undefined
+      ? new Error(message)
+      : new Error(message, {
+          cause: cause instanceof Error ? cause : new Error(String(cause)),
+        });
+  error.name = "ProviderLoadError";
+  return error;
+}
+
+/** Look up a named factory export, tolerating CJS default-namespace interop. */
+function resolveFactoryExport(
+  mod: Record<string, unknown>,
+  factoryName: string
+): ((opts: { apiKey: string }) => unknown) | undefined {
+  const direct = mod[factoryName];
+  if (typeof direct === "function") {
+    return direct as (opts: { apiKey: string }) => unknown;
+  }
+  const viaDefault = (mod.default as Record<string, unknown> | undefined)?.[factoryName];
+  return typeof viaDefault === "function"
+    ? (viaDefault as (opts: { apiKey: string }) => unknown)
+    : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Internal provider loading
 // ---------------------------------------------------------------------------
 
-function loadProviderSync(
+/**
+ * Execute a provider package and instantiate its factory. Async because AI
+ * SDK 7 provider packages are ESM-only. Callers gate on the synchronous
+ * availability check first, so failures here mean a resolvable-but-broken
+ * install — surfaced with the actionable package name, never an opaque ESM
+ * resolution error.
+ */
+async function instantiateProvider(
   providerName: string,
   apiKey: string
-): (modelId: string) => unknown {
+): Promise<(modelId: string) => unknown> {
   const info = PROVIDER_PACKAGES[providerName];
   if (!info) {
     throw new Error(`Unknown provider: "${providerName}"`);
   }
 
-  const mod = tryRequire(info.pkg);
-  if (!mod || typeof mod[info.factory] !== "function") {
-    throw new Error(
-      `Provider package "${info.pkg}" is not installed. ` +
-        `Install it to use ${providerName} models directly.`
+  let mod: Record<string, unknown>;
+  try {
+    mod = await importModule(info.pkg);
+  } catch (err) {
+    throw providerLoadError(
+      `Provider package "${info.pkg}" failed to load. ` +
+        `Install it to use ${providerName} models directly.`,
+      err
     );
   }
 
-  const factory = mod[info.factory] as (opts: { apiKey: string }) => unknown;
+  const factory = resolveFactoryExport(mod, info.factory);
+  if (factory === undefined) {
+    // Wrong-major installs (resolvable, importable, missing the expected
+    // factory) are load failures too — same marker so fallback loops skip
+    // the candidate instead of aborting streaming intents.
+    throw providerLoadError(
+      `Provider package "${info.pkg}" does not export "${info.factory}". ` +
+        `The installed version may be incompatible with this framework.`
+    );
+  }
   return factory({ apiKey }) as (modelId: string) => unknown;
 }
 
-function loadGatewaySync(
+/** Async counterpart of {@link instantiateProvider} for gateway packages. */
+async function instantiateGateway(
   gatewayType: string,
   apiKey: string
-): { gateway: Record<string, unknown>; type: string } {
+): Promise<{ gateway: Record<string, unknown>; type: string }> {
   const info = GATEWAY_PACKAGES[gatewayType];
   if (!info) {
     throw new Error(`Unknown gateway type: "${gatewayType}"`);
   }
 
-  const mod = tryRequire(info.pkg);
-  if (!mod || typeof mod[info.factory] !== "function") {
-    throw new Error(
-      `Gateway package "${info.pkg}" is not installed. ` +
-        `Install it to use the ${gatewayType} gateway.`
+  let mod: Record<string, unknown>;
+  try {
+    mod = await importModule(info.pkg);
+  } catch (err) {
+    throw providerLoadError(
+      `Gateway package "${info.pkg}" failed to load. ` +
+        `Install it to use the ${gatewayType} gateway.`,
+      err
     );
   }
 
-  const factory = mod[info.factory] as (opts: { apiKey: string }) => unknown;
+  const factory = resolveFactoryExport(mod, info.factory);
+  if (factory === undefined) {
+    throw providerLoadError(
+      `Gateway package "${info.pkg}" does not export "${info.factory}". ` +
+        `The installed version may be incompatible with this framework.`
+    );
+  }
   return {
     gateway: factory({ apiKey }) as Record<string, unknown>,
     type: gatewayType,
+  };
+}
+
+/**
+ * Wraps an async model constructor behind the synchronous
+ * {@link GeneratorModel} surface. Package execution (dynamic `import()`)
+ * happens on the first `generate`/`stream` call and is cached single-flight;
+ * resolution-time code paths stay fully synchronous, preserving the public
+ * `ModelResolver` contract on ESM-only AI SDK 7 packages.
+ *
+ * `resolveSearchTool` returns undefined by design: package-loaded models
+ * never carried a provider `.tools` namespace through `wrapAiSdkModel`
+ * before this split either, so provider search tools remain unavailable on
+ * this path (parity).
+ */
+function createLazyGeneratorModel(
+  modelId: string,
+  loadModel: () => Promise<GeneratorModel>
+): GeneratorModel {
+  let pending: Promise<GeneratorModel> | undefined;
+  const load = () => (pending ??= loadModel());
+  return {
+    modelId,
+    async generate(options) {
+      return (await load()).generate(options);
+    },
+    async *stream(options) {
+      const inner = await load();
+      yield* inner.stream!(options);
+    },
+    resolveSearchTool: () => undefined,
   };
 }
 
@@ -510,16 +642,22 @@ export function createModelResolver(
   // Cache for resolved models
   const cache = new Map<string, GeneratorModel>();
 
-  // Cache for auto-loaded provider resolvers (by provider name)
-  const providerCache = new Map<string, ProviderResolver>();
+  // Single-flight cache for lazily executed provider packages (by provider
+  // name). Values are promises: package execution is async (ESM-only) and
+  // happens on first generate/stream, not at resolve time.
+  const providerLoadCache = new Map<string, Promise<ProviderResolver>>();
 
-  // Providers whose direct package load has been attempted and failed
-  // (bundled Next.js: key present in env, but `@ai-sdk/openai` not requireable).
-  // Cached so we don't reprobe on every call.
+  // Providers whose direct package cannot be resolved on disk
+  // (bundled Next.js: key present in env, but `@ai-sdk/openai` not
+  // resolvable). Cached so we don't reprobe on every call.
   const directLoadFailed = new Set<string>();
 
-  // Cache for auto-loaded gateway resolvers (by gateway type)
+  // Cache for gateway instances (explicit instances from options.gateways,
+  // plus lazily loaded package-backed gateways once their import completes).
   const gatewayCache = new Map<string, { gateway: Record<string, unknown>; type: string }>();
+
+  // Single-flight cache for lazily executed gateway packages (by type).
+  const gatewayLoadCache = new Map<string, Promise<{ gateway: Record<string, unknown>; type: string }>>();
 
   // Seed gateway cache with explicit instances from options.gateways. Config
   // objects (`{ type, apiKey }`) are handled lazily by resolveSingleModel via
@@ -540,33 +678,75 @@ export function createModelResolver(
   const intentCacheKey = (name: string, pref: ProviderPreference | undefined) =>
     `${name}::${(normalizePreference(pref) ?? []).join("|")}`;
 
-  function getProviderResolver(providerName: string): ProviderResolver | undefined {
-    if (explicitProviders?.has(providerName)) {
-      return explicitProviders.get(providerName)!;
-    }
-
-    if (providerCache.has(providerName)) {
-      return providerCache.get(providerName)!;
-    }
-
+  /**
+   * Sync availability check for the auto-loaded (package) direct-provider
+   * path. True when the provider has an API key and its package resolves on
+   * disk. Module resolution (not execution) keeps this synchronous — the
+   * three sync decision points depend on it: the intent candidate filter,
+   * the direct→gateway fall-through (FIX-609), and public `resolveId`.
+   * Explicit provider instances are handled separately by the caller.
+   */
+  function isPackageProviderAvailable(providerName: string): boolean {
     const info = availability.get(providerName);
-    if (!info) return undefined;
+    if (!info || info.source !== "key") return false;
+    if (directLoadFailed.has(providerName)) return false;
 
-    if (info.source === "key") {
-      if (directLoadFailed.has(providerName)) return undefined;
-      try {
-        const resolver = loadProviderSync(providerName, info.apiKey!);
-        providerCache.set(providerName, resolver);
-        return resolver;
-      } catch {
-        // Direct package not loadable (e.g. bundled Next.js): mark as failed
-        // and let the caller try a gateway fallback for the same provider.
-        directLoadFailed.add(providerName);
-        return undefined;
-      }
+    const pkg = PROVIDER_PACKAGES[providerName]?.pkg;
+    if (pkg === undefined || !isModuleResolvable(pkg)) {
+      // Direct package not resolvable (e.g. bundled Next.js): mark as failed
+      // and let the caller try a gateway fallback for the same provider.
+      directLoadFailed.add(providerName);
+      return false;
     }
+    return true;
+  }
 
-    return undefined;
+  /** Single-flight lazy execution of an available provider package. */
+  function loadPackageProvider(providerName: string): Promise<ProviderResolver> {
+    let pending = providerLoadCache.get(providerName);
+    if (pending === undefined) {
+      const info = availability.get(providerName)!;
+      pending = instantiateProvider(providerName, info.apiKey!);
+      providerLoadCache.set(providerName, pending);
+    }
+    return pending;
+  }
+
+  /**
+   * Sync guard for a package-backed gateway: same actionable "not installed"
+   * error the eager loader used to throw at resolve time, kept synchronous so
+   * intent filtering and `resolveId` drop gateway candidates correctly.
+   */
+  function ensureGatewayPackageAvailable(gatewayType: string): void {
+    const info = GATEWAY_PACKAGES[gatewayType];
+    if (!info) {
+      throw new Error(`Unknown gateway type: "${gatewayType}"`);
+    }
+    if (!isModuleResolvable(info.pkg)) {
+      throw new Error(
+        `Gateway package "${info.pkg}" is not installed. ` +
+          `Install it to use the ${gatewayType} gateway.`
+      );
+    }
+  }
+
+  /** Single-flight lazy execution of a gateway package. */
+  function loadGateway(
+    gatewayType: string,
+    apiKey: string
+  ): Promise<{ gateway: Record<string, unknown>; type: string }> {
+    let pending = gatewayLoadCache.get(gatewayType);
+    if (pending === undefined) {
+      pending = instantiateGateway(gatewayType, apiKey).then((entry) => {
+        // Populate the sync cache so later fall-through decisions
+        // (findGatewayForProvider) see the loaded gateway, matching the
+        // pre-migration behavior where loading happened at resolve time.
+        gatewayCache.set(gatewayType, entry);
+        return entry;
+      });
+      gatewayLoadCache.set(gatewayType, pending);
+    }
+    return pending;
   }
 
   /**
@@ -611,22 +791,57 @@ export function createModelResolver(
     return undefined;
   }
 
-  function resolveViaGateway(
-    gatewayType: string,
+  function gatewayLanguageModel(
+    entry: { gateway: Record<string, unknown>; type: string },
     providerName: string,
     modelId: string
   ): unknown {
-    const cached = gatewayCache.get(gatewayType);
-    if (cached === undefined) {
-      throw new Error(`Gateway "${gatewayType}" is not configured.`);
-    }
-    const { gateway, type } = cached;
+    const { gateway, type } = entry;
     const gatewayModelId = `${providerName}/${modelId}`;
 
     if (type === "openrouter") {
       return (gateway as any).chat(gatewayModelId);
     }
     return (gateway as any).languageModel(gatewayModelId);
+  }
+
+  /**
+   * Resolve a gateway-served model: eager wrap when the gateway instance is
+   * already cached (explicit instance or previously loaded package),
+   * otherwise a lazily loaded package-backed model. `missingKeyMessage`
+   * keeps each call site's distinct missing-API-key error.
+   */
+  function resolveGatewayModel(
+    gwType: string,
+    apiKey: string | undefined,
+    providerName: string,
+    modelId: string,
+    modelString: string,
+    identity: { requested: string; gateway: string },
+    missingKeyMessage: string
+  ): GeneratorModel {
+    const cachedGateway = gatewayCache.get(gwType);
+    if (cachedGateway !== undefined) {
+      return wrapAiSdkModel(
+        gatewayLanguageModel(cachedGateway, providerName, modelId),
+        modelString,
+        identity
+      );
+    }
+
+    if (!apiKey) {
+      throw new Error(missingKeyMessage);
+    }
+
+    ensureGatewayPackageAvailable(gwType);
+    return createLazyGeneratorModel(modelString, async () => {
+      const entry = await loadGateway(gwType, apiKey);
+      return wrapAiSdkModel(
+        gatewayLanguageModel(entry, providerName, modelId),
+        modelString,
+        identity
+      );
+    });
   }
 
   /**
@@ -667,77 +882,76 @@ export function createModelResolver(
         );
       }
 
-      if (!gatewayCache.has(gwType)) {
-        const gwEntry = options?.gateways?.[gwType];
-        const apiKey =
-          (isGatewayConfig(gwEntry) ? gwEntry.apiKey : undefined) ??
-          process.env[GATEWAY_ENV_VARS[gwType] ?? ""] ??
-          undefined;
-
-        if (!apiKey) {
-          throw new Error(
-            `No API key found for gateway "${gwType}". ` +
-              `Set ${GATEWAY_ENV_VARS[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
-          );
-        }
-
-        gatewayCache.set(gwType, loadGatewaySync(gwType, apiKey));
-      }
-
-      const languageModel = resolveViaGateway(
-        gwType,
-        parsed.provider!,
-        parsed.modelId!
-      );
-      model = wrapAiSdkModel(languageModel, modelString, {
+      const providerName = parsed.provider!;
+      const modelId = parsed.modelId!;
+      const identity = {
         requested: identityOverrides?.requested ?? modelString,
         gateway: gwType,
-      });
+      };
+      const gwEntry = options?.gateways?.[gwType];
+      const apiKey =
+        (isGatewayConfig(gwEntry) ? gwEntry.apiKey : undefined) ??
+        process.env[GATEWAY_ENV_VARS[gwType] ?? ""] ??
+        undefined;
+
+      model = resolveGatewayModel(
+        gwType,
+        apiKey,
+        providerName,
+        modelId,
+        modelString,
+        identity,
+        `No API key found for gateway "${gwType}". ` +
+          `Set ${GATEWAY_ENV_VARS[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
+      );
     } else {
       // Direct: provider/model
       const providerName = parsed.provider!;
       const modelId = parsed.modelId!;
+      const identity = { requested: identityOverrides?.requested ?? modelString };
 
-      const resolver = getProviderResolver(providerName);
+      const explicit = explicitProviders?.get(providerName);
       let directLanguageModel: unknown;
       let directError: unknown;
-      if (resolver) {
+      if (explicit !== undefined) {
         try {
-          directLanguageModel = resolver(modelId);
+          directLanguageModel = explicit(modelId);
         } catch (err) {
-          // Factory threw. Don't poison directLoadFailed — that set is for
-          // package-load failures caught inside getProviderResolver; this
-          // failure is per-invocation. Preserving the original error lets
-          // the no-gateway branch below surface it instead of the generic
-          // "failed to load" message.
+          // Explicit factory threw (e.g. a provider that isn't loadable in a
+          // bundled runtime). Don't poison directLoadFailed — that set is for
+          // package-resolution failures; this failure is per-invocation.
+          // Preserving the original error lets the no-gateway branch below
+          // surface it instead of the generic "failed to load" message.
           directError = err;
         }
       }
-      if (resolver && directError === undefined) {
-        model = wrapAiSdkModel(directLanguageModel, modelString, {
-          requested: identityOverrides?.requested ?? modelString,
+
+      if (explicit !== undefined && directError === undefined) {
+        model = wrapAiSdkModel(directLanguageModel, modelString, identity);
+      } else if (explicit === undefined && isPackageProviderAvailable(providerName)) {
+        // Auto-loaded provider package: available on disk, executed lazily
+        // (dynamic import) on first generate/stream.
+        model = createLazyGeneratorModel(modelString, async () => {
+          const providerResolver = await loadPackageProvider(providerName);
+          return wrapAiSdkModel(providerResolver(modelId), modelString, identity);
         });
       } else {
-        // Direct path unavailable (no package, or package failed to load in a
-        // bundled runtime). Fall through to any configured/auto-detected
+        // Direct path unavailable (no package, or the explicit factory threw
+        // in a bundled runtime). Fall through to any configured/auto-detected
         // gateway that can serve this provider — bare `provider/model`
         // resolves "however it can".
         const gw = findGatewayForProvider(providerName);
         if (gw) {
-          if (!gatewayCache.has(gw.gatewayType)) {
-            if (!gw.apiKey) {
-              throw new Error(
-                `No API key found for gateway "${gw.gatewayType}" while ` +
-                  `falling back from direct "${providerName}".`
-              );
-            }
-            gatewayCache.set(gw.gatewayType, loadGatewaySync(gw.gatewayType, gw.apiKey));
-          }
-          const languageModel = resolveViaGateway(gw.gatewayType, providerName, modelId);
-          model = wrapAiSdkModel(languageModel, modelString, {
-            requested: identityOverrides?.requested ?? modelString,
-            gateway: gw.gatewayType,
-          });
+          model = resolveGatewayModel(
+            gw.gatewayType,
+            gw.apiKey,
+            providerName,
+            modelId,
+            modelString,
+            { ...identity, gateway: gw.gatewayType },
+            `No API key found for gateway "${gw.gatewayType}" while ` +
+              `falling back from direct "${providerName}".`
+          );
         } else {
           const directFailed = directLoadFailed.has(providerName);
           if (directError && !directFailed) {

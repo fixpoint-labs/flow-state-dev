@@ -55,6 +55,12 @@ export const decisionSnapshotStateSchema = z.object({
   rewardToRiskLossAdjustedGlr: z.number().nullable().default(null),
   worstCaseReturnPct: z.number().nullable().default(null),
   capacityVetoed: z.boolean().nullable().default(null),
+  // Standing-thesis echo (FIX-760). True when a durable per-position thesis was
+  // frozen onto the run and reached the decision tier (trader + PM). Derived in
+  // the PM commit, never LLM-emitted (the `hasPortfolioContext` precedent) — the
+  // deterministic signal the goal check reads to prove the standing thesis was
+  // injected. Null on a stopped/in-progress run that never reached the PM.
+  hasStandingThesis: z.boolean().nullable().default(null),
   // Provenance.
   decidedAt: z.string(), // ISO commit time
   // Outcome-tracking fields — NULL on write; a FUTURE feature fills these.
@@ -99,6 +105,7 @@ export const decisionSnapshotResource = defineResource({
       "rewardToRiskLossAdjustedGlr",
       "worstCaseReturnPct",
       "capacityVetoed",
+      "hasStandingThesis",
       "decidedAt",
       "outcomeRealizedPrice",
       "outcomeAsOf",

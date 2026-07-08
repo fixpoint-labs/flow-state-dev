@@ -164,6 +164,7 @@ function traderStructuredOutput() {
         "DC revenue print misses",
       ],
       dependsOn: ["AI cap-ex cycle length"],
+      citations: null,
     },
   };
 }

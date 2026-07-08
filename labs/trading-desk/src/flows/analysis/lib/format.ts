@@ -11,12 +11,13 @@ import type {
   RoundRobinContributionEntry,
   RoundRobinContributionsState,
 } from "@flow-state-dev/patterns/round-robin";
-import { AGENTS, PHASE_1_MEMO_KEYS } from "../registry";
+import { AGENTS, ALL_MEMO_KEYS, PHASE_1_MEMO_KEYS } from "../registry";
 import type { CitationIntegrity } from "../resources";
 import type { PortfolioContextInput } from "../flow-schema";
 import type { LensConvergenceState } from "../agents/lenses/lens-convergence-resource";
 import type { RewardToRiskState } from "../reward-to-risk-resource";
 import type { RiskMandate } from "./risk-mandate";
+import type { ThesisRecord } from "../../portfolio/thesis-schema";
 
 /** Render a memo state as a compact prompt block. Permissive `any` —
  *  body shape is enforced by `memoStateSchema` at write time, so reads
@@ -243,6 +244,66 @@ export async function formatAnalystMemos(memos: {
     blocks.push(formatMemoBlock(`${role}`, ref?.state));
   }
   return blocks.join("\n\n");
+}
+
+/**
+ * Render the desk's "references consulted" ledger (FIX-676) as the
+ * `<referencesConsulted>` prompt block.
+ *
+ * The ledger is DERIVED from the `citations` already stored on every memo —
+ * there is no separate resource. The Phase 1 analysts' investigative fetches
+ * (the `investigate` preset) and the synthesis corroborators (the `corroborate`
+ * preset) both write the URLs they fetched into their memo's `citations`, so the
+ * memos collection IS the ledger. Reading it lets a downstream agent reuse a
+ * link the desk already surfaced instead of re-searching the same ground.
+ *
+ * Walks `ALL_MEMO_KEYS` (so a new participant is picked up automatically),
+ * collects each memo's `citations`, dedups by URL (first citer wins), and
+ * attributes each to the citing agent's role. Returns `null` (tag suppressed)
+ * when nothing has been cited yet — the steady state on the `fast` preset, where
+ * no agent fetches. Permissive reads: `citations` is enforced by
+ * `memoStateSchema` at write time, so a present array is trustworthy enough for
+ * prompt rendering.
+ */
+export async function formatReferencesConsulted(memos: {
+  getOptional: (k: string) => Promise<{ state: any } | undefined>;
+}): Promise<string | null> {
+  const seen = new Set<string>();
+  const entries: string[] = [];
+  for (const [, mapping] of Object.entries(ALL_MEMO_KEYS)) {
+    const ref = await memos.getOptional(mapping.collectionKey);
+    const citations = (ref?.state as { citations?: unknown } | undefined)
+      ?.citations;
+    if (!Array.isArray(citations)) continue;
+    const role = AGENTS[mapping.agentName]?.role ?? mapping.agentName;
+    for (const c of citations as Array<{ url?: unknown; title?: unknown }>) {
+      if (
+        c == null ||
+        typeof c.url !== "string" ||
+        c.url === "" ||
+        seen.has(c.url)
+      ) {
+        continue;
+      }
+      seen.add(c.url);
+      const title =
+        typeof c.title === "string" && c.title !== "" ? c.title : c.url;
+      entries.push(`- "${title}" — ${c.url} (consulted by ${role})`);
+    }
+  }
+  if (entries.length === 0) return null;
+  // Self-wrap the tag (the `<corroboration>`/`<reviewReferences>` clauses point
+  // agents at `<referencesConsulted>`). This string is contributed VERBATIM via
+  // the preset's array context, so the tag renders exactly once, unescaped — see
+  // the `corroborate` preset note in `capability.ts`.
+  return [
+    "<referencesConsulted>",
+    "Sources the desk's analysts and prior synthesis agents have already",
+    "consulted on the open web. Reuse one of these — you may `fetch` a URL to",
+    "read it in full — rather than re-searching the same ground:",
+    ...entries,
+    "</referencesConsulted>",
+  ].join("\n");
 }
 
 /** Render contributions filtered to one stance, grouped by round. Returns
@@ -592,5 +653,63 @@ export function formatRiskMandate(
       0,
     )}% of a full-Kelly stake (fractional-Kelly); a name that does NOT clear is held to a token size (at or below ${mandate.unclearedCapPct}% of NAV). The mandate only ever reduces size, never inflates it, and never changes the rating.`,
   );
+  return lines.join("\n");
+}
+
+/**
+ * Render the user's STANDING per-position thesis (FIX-760) as the inner content
+ * of the `<standing-thesis>` prompt block the trader (P3) and PM (P5) reason with.
+ * This is the durable "why we hold this name" — distinct from the per-run
+ * `<userThesis>` (the hypothesis the Phase 6 validator audits): the standing
+ * thesis is CONTEXT the decision tier sees, like position size, never the run's
+ * hypothesis-under-test. The analysts stay blind to it.
+ *
+ * Guards on the required `entryRationale` (BP-018, the `formatPortfolioContext`
+ * precedent): a partial/empty read (a nullable single resource that surfaced as
+ * `{}`) suppresses the tag rather than throwing. Returns the inner content; the
+ * capability's object-form context key auto-wraps it as the kebab-case
+ * `<standing-thesis>` tag (the `portfolioContext` / `riskMandate` precedent).
+ */
+export function formatStandingThesis(
+  thesis: ThesisRecord | null | undefined,
+): string | null {
+  if (
+    thesis == null ||
+    typeof thesis !== "object" ||
+    typeof (thesis as Partial<ThesisRecord>).entryRationale !== "string" ||
+    (thesis as Partial<ThesisRecord>).entryRationale === ""
+  ) {
+    return null;
+  }
+  const lines: string[] = [];
+  lines.push(
+    "The user holds this name with a STANDING thesis — their durable reason for the position, NOT a hypothesis to test. Treat it as standing intent (like position size); do not let it bias the evidence, but weigh it when sizing and deciding.",
+  );
+  if (thesis.updatedAt) {
+    lines.push(`Recorded as of ${thesis.updatedAt.slice(0, 10)}.`);
+  }
+  lines.push(`Entry rationale: ${thesis.entryRationale}`);
+  if (thesis.timeHorizon != null) {
+    lines.push(`Intended horizon: ${thesis.timeHorizon}.`);
+  }
+  const levels: string[] = [];
+  if (thesis.targetPrice != null) levels.push(`target ~$${thesis.targetPrice}`);
+  if (thesis.stopPrice != null) levels.push(`stop ~$${thesis.stopPrice}`);
+  if (levels.length > 0) lines.push(`Levels: ${levels.join(", ")}.`);
+  if (thesis.invalidationConditions != null && thesis.invalidationConditions !== "") {
+    lines.push(`What would make this wrong: ${thesis.invalidationConditions}`);
+  }
+  if (thesis.tripwires.length > 0) {
+    lines.push("Tripwires (observable falsifiers):");
+    for (const t of thesis.tripwires) {
+      const detail =
+        t.kind === "price" && t.level != null
+          ? ` (price ${t.level})`
+          : t.byDate != null
+            ? ` (by ${t.byDate})`
+            : "";
+      lines.push(`- [${t.kind}] ${t.note}${detail}`);
+    }
+  }
   return lines.join("\n");
 }

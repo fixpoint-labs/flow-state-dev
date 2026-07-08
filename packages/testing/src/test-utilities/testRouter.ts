@@ -30,7 +30,9 @@ export async function testRouter<TBlock extends BlockDefinition<any, any>>(
       ...blockCtx._runtimeHooks,
       onRouteSelected: (routerName: string, routeName: string, instanceId?: string) => {
         selectedRoute = routeName;
-        existingOnRouteSelected?.(routerName, routeName, instanceId);
+        // Forward the wrapped hook's promise so the router's decision-anchor
+        // await (FIX-814) still covers the original hook's write.
+        return existingOnRouteSelected?.(routerName, routeName, instanceId);
       }
     };
     return originalRun.call(runtime, input as any, ctx as any);

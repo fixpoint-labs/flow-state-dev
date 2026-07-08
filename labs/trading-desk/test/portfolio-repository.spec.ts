@@ -52,7 +52,15 @@ function account(overrides: Partial<AccountInput> = {}): AccountInput {
 }
 
 function row(ticker: string, quantity: number, costBasis: number | null = null): CanonicalRow {
-  return { ticker, quantity, costBasis, acquiredDate: null };
+  return {
+    ticker,
+    quantity,
+    costBasis,
+    acquiredDate: null,
+    assetClass: "equity",
+    assetType: "equity",
+    attributes: { kind: "none" },
+  };
 }
 
 let repo: PortfolioRepository;

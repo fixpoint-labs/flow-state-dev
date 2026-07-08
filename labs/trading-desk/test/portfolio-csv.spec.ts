@@ -27,6 +27,10 @@ describe("parsePortfolioCsv", () => {
       quantity: 12.5,
       costBasis: 118.4,
       acquiredDate: "2024-03-15",
+      // CSV import is equity-only in Slice A (FIX-773); classification is later.
+      assetClass: "equity",
+      assetType: "equity",
+      attributes: { kind: "none" },
     });
   });
 
@@ -138,5 +142,139 @@ describe("parsePortfolioCsv", () => {
     const result = parsePortfolioCsv(csv);
     expect(result.rows).toEqual([]);
     expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
+  it("classifies imported rows by symbol shape (bond CUSIP + crypto pair)", () => {
+    // A bond CUSIP and a crypto pair both pass the ticker regex, so they import —
+    // and now arrive TYPED, not silently flattened to equity (FIX-773 Slice B).
+    const csv = [
+      "ticker,quantity",
+      "912828YK0,5",
+      "BTC-USD,0.25",
+      "AAPL,10",
+    ].join("\n");
+    const result = parsePortfolioCsv(csv);
+    expect(result.errors).toEqual([]);
+    const byTicker = new Map(result.rows.map((r) => [r.ticker, r]));
+    expect(byTicker.get("912828YK0")).toMatchObject({
+      assetType: "bond",
+      assetClass: "fixed_income",
+      attributes: { kind: "bond", cusip: "912828YK0" },
+    });
+    expect(byTicker.get("BTC-USD")).toMatchObject({
+      assetType: "crypto",
+      assetClass: "crypto",
+    });
+    // A plain equity with no type column infers equity.
+    expect(byTicker.get("AAPL")).toMatchObject({
+      assetType: "equity",
+      assetClass: "equity",
+      attributes: { kind: "none" },
+    });
+  });
+
+  it("accepts an OCC option symbol (which the equity ticker regex rejects)", () => {
+    // An OCC symbol is 18–21 chars, so the equity regex rejects it; the importer
+    // must still let it through to the classifier (the PDF confirm path serializes
+    // option rows through this same gate). markPrice carries the per-contract mark.
+    const csv = [
+      "ticker,quantity,markPrice",
+      "AAPL240621C00190000,2,12.4",
+    ].join("\n");
+    const result = parsePortfolioCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows[0]).toMatchObject({
+      assetType: "option",
+      assetClass: "equity",
+      attributes: { kind: "option", underlying: "AAPL", strike: 190, markPrice: 12.4 },
+    });
+  });
+
+  it("lets an explicit `type` column override symbol-shape inference", () => {
+    // GLD looks like a plain equity by shape; the type column says it's an ETF.
+    const csv = ["ticker,quantity,type", "GLD,3,etf"].join("\n");
+    const result = parsePortfolioCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows[0]).toMatchObject({
+      ticker: "GLD",
+      assetType: "etf",
+      assetClass: "equity",
+    });
+  });
+
+  it("keeps the classification on a dedupe-merged row", () => {
+    // A non-ETF symbol so the explicit `bond` type hint (not the known-bond-ETF
+    // set, which would classify a real ETF ticker like VWOB as etf/fixed_income)
+    // is what drives the classification through the dedupe merge.
+    const csv = [
+      "ticker,quantity,type",
+      "ZBND,10,bond",
+      "ZBND,30,bond",
+    ].join("\n");
+    const result = parsePortfolioCsv(csv);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      ticker: "ZBND",
+      quantity: 40,
+      assetType: "bond",
+      assetClass: "fixed_income",
+      attributes: { kind: "bond", cusip: "ZBND" },
+    });
+    expect(
+      result.warnings.some((w) => w.includes("merged") && w.includes("ZBND")),
+    ).toBe(true);
+  });
+});
+
+describe("parsePortfolioCsv — FIX-773 review fixes", () => {
+  it("detects a money-market fund from a plain price column (no markPrice column)", () => {
+    // A raw brokerage export: SPAXX at $1.00 in the standard `price` column (which
+    // maps to costBasis). With no `markPrice` column, the ~$1.00 must still drive
+    // money-market detection so the row values at par and joins the cash guard —
+    // not stored as equity and sent through the live-quote path.
+    const csv = "ticker,quantity,price\nSPAXX,1500,1.00";
+    const { rows } = parsePortfolioCsv(csv);
+    const spaxx = rows.find((r) => r.ticker === "SPAXX");
+    expect(spaxx?.assetClass).toBe("cash");
+    expect(spaxx?.assetType).toBe("money_market");
+    expect(spaxx?.attributes).toEqual({ kind: "cash_equivalent" });
+  });
+
+  it("never stores a bond's cost basis as its carried mark", () => {
+    // A bond CUSIP with a cost column but no markPrice column: the cost must NOT
+    // masquerade as a current mark (the mark stays null → the row shows "—").
+    const csv = "ticker,quantity,costBasis\n912828YK0,10,98.5";
+    const { rows } = parsePortfolioCsv(csv);
+    const bond = rows.find((r) => r.ticker === "912828YK0");
+    expect(bond?.assetType).toBe("bond");
+    expect(bond?.attributes).toMatchObject({ kind: "bond", markPrice: null });
+    expect(bond?.costBasis).toBe(98.5);
+  });
+
+  it("keys an OCC option to one holding across compact and space-padded spellings", () => {
+    // The SAME contract in both spellings must merge to one holding, or NAV and
+    // position counts double-count it.
+    const csv =
+      "ticker,quantity,markPrice\n" +
+      "AAPL240621C00190000,2,12.40\n" +
+      "AAPL  240621C00190000,3,12.40";
+    const { rows, warnings } = parsePortfolioCsv(csv);
+    const opts = rows.filter((r) => r.assetType === "option");
+    expect(opts).toHaveLength(1);
+    expect(opts[0].ticker).toBe("AAPL240621C00190000");
+    expect(opts[0].quantity).toBe(5);
+    expect(warnings.some((w) => w.includes("merged"))).toBe(true);
+  });
+
+  it("quantity-weights the carried mark when merging duplicate bond lots", () => {
+    // Two lots of the same CUSIP with slightly different marks: the merged mark is
+    // quantity-weighted so `mergedQty × mark` reconstructs the summed value.
+    // (10 × 98) + (30 × 99) = 3950 over 40 units → 98.75.
+    const csv =
+      "ticker,quantity,markPrice\n912828YK0,10,98\n912828YK0,30,99";
+    const { rows } = parsePortfolioCsv(csv);
+    const bond = rows.find((r) => r.ticker === "912828YK0");
+    expect(bond?.quantity).toBe(40);
+    expect(bond?.attributes).toMatchObject({ kind: "bond", markPrice: 98.75 });
   });
 });
