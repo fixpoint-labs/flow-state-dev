@@ -66,6 +66,16 @@ export type GeneratorModelToolCall = {
   toolCallId: string;
   toolName: string;
   args: unknown;
+  /**
+   * True when the provider executed this tool call server-side (e.g. a
+   * provider-native web search / other `providerTools`), rather than the
+   * model requesting a framework tool for the caller to run. The
+   * framework-owned step loop uses this to skip provider-executed calls
+   * (their results are already in the raw response) instead of mistaking
+   * them for hallucinated unknown tools. Absent/false for ordinary
+   * model-requested framework tool calls.
+   */
+  providerExecuted?: boolean;
 };
 
 export type GeneratorModelUsage = {
@@ -131,6 +141,21 @@ export type GeneratorModelResult = {
   steps?: GeneratorStepResult[];
   /** Sources from provider-native tools (e.g., web search results). */
   sources?: GeneratorModelSource[];
+  /**
+   * The final step's RAW provider/SDK response messages (AI SDK v7
+   * `response.messages`): the assistant turn exactly as the provider
+   * produced it, including reasoning/thinking parts and their
+   * provider-specific payloads (e.g. Anthropic thinking signatures) that
+   * the normalized fields above cannot carry. In-memory live-fidelity
+   * carrier for the framework-owned step loop: when a `generateStep` /
+   * `streamStep` result carries it, the loop appends the assistant portion
+   * of these messages verbatim for the step's turn instead of
+   * reconstructing an assistant message, so reasoning-model tool loops
+   * round-trip their thinking blocks. Never persisted; adapters may omit
+   * it (the loop falls back to constructed messages). Tool names inside
+   * these messages are the model-facing aliases, untranslated.
+   */
+  responseMessages?: unknown[];
   /**
    * Resolved identity of the model that produced this result. Internal carrier
    * threaded from `wrapAiSdkModel` / `createFallbackModel` up to the generator
@@ -201,38 +226,85 @@ export type PrepareStepFn = (stepInfo: {
   steps: GeneratorStepResult[];
 }) => Promise<PrepareStepResult | undefined | void>;
 
+/**
+ * Options common to every `GeneratorModel` call — single-step and
+ * multi-step alike. One call's worth of request configuration: the
+ * conversation, the tool dictionary, output/token/abort/provider knobs.
+ */
+export type GeneratorModelCallOptions = {
+  messages: unknown[];
+  tools?: GeneratorModelTool[];
+  providerTools?: ProviderTool[];
+  outputSchema?: ZodTypeAny;
+  maxTokens?: number;
+  signal?: AbortSignal;
+  providerOptions?: Record<string, unknown>;
+  /**
+   * Prompt-cache config. When set, the AI SDK adapter stamps provider-
+   * specific cache markers (e.g. Anthropic `cacheControl`) on the
+   * request before dispatch. Omitted or `undefined` uses framework
+   * defaults (auto breakpoints, 5m TTL, enabled).
+   */
+  caching?: CachingConfig;
+};
+
+/**
+ * Options for the SDK-driven multi-step methods (`generate` / `stream`).
+ * Extends the per-call options with the loop policy the model implementation
+ * runs internally: `maxSteps` bounds the tool loop and `prepareStep` lets
+ * the caller reshape each step's request before dispatch.
+ */
+export type GeneratorModelLoopOptions = GeneratorModelCallOptions & {
+  maxSteps?: number;
+  prepareStep?: PrepareStepFn;
+};
+
 export interface GeneratorModel {
   modelId: string;
-  generate(options: {
-    messages: unknown[];
-    tools?: GeneratorModelTool[];
-    providerTools?: ProviderTool[];
-    outputSchema?: ZodTypeAny;
-    maxTokens?: number;
-    signal?: AbortSignal;
-    maxSteps?: number;
-    providerOptions?: Record<string, unknown>;
-    prepareStep?: PrepareStepFn;
-    /**
-     * Prompt-cache config. When set, the AI SDK adapter stamps provider-
-     * specific cache markers (e.g. Anthropic `cacheControl`) on the
-     * request before dispatch. Omitted or `undefined` uses framework
-     * defaults (auto breakpoints, 5m TTL, enabled).
-     */
-    caching?: CachingConfig;
-  }): Promise<GeneratorModelResult>;
-  stream?(options: {
-    messages: unknown[];
-    tools?: GeneratorModelTool[];
-    providerTools?: ProviderTool[];
-    outputSchema?: ZodTypeAny;
-    maxTokens?: number;
-    signal?: AbortSignal;
-    maxSteps?: number;
-    providerOptions?: Record<string, unknown>;
-    prepareStep?: PrepareStepFn;
-    caching?: CachingConfig;
-  }): AsyncIterable<GeneratorModelStreamChunk>;
+  /**
+   * SDK-driven multi-step generation: one call runs the model's internal
+   * tool loop to completion (bounded by `maxSteps`), auto-executing any
+   * tool that carries an `execute` closure. Used by the generator block
+   * for models that do not implement {@link generateStep}.
+   */
+  generate(options: GeneratorModelLoopOptions): Promise<GeneratorModelResult>;
+  /**
+   * SDK-driven multi-step streaming counterpart to {@link generate}: the
+   * model runs the whole tool loop internally and yields deltas across all
+   * steps, terminating with a `finish` chunk carrying the full result.
+   */
+  stream?(options: GeneratorModelLoopOptions): AsyncIterable<GeneratorModelStreamChunk>;
+  /**
+   * Single-step generation for the framework-owned tool loop. One call is
+   * exactly one provider model call — no internal multi-step iteration, no
+   * `maxSteps`, no `prepareStep` (the framework owns loop policy and per-step
+   * reshaping). The model never executes framework tools: callers pass tools
+   * WITHOUT `execute`, and the step's requested tool calls are returned on
+   * the result's `toolCalls` for the caller to run itself. A returned
+   * `steps` array, when present, has at most one entry.
+   *
+   * OPTIONAL: models that omit it (hand-rolled test mocks, the public
+   * `mockGenerator`, third-party adapters, and `createFallbackModel` groups)
+   * fall back to the SDK-driven multi-step path via {@link generate}. The
+   * framework-owned loop — and suspension support built on it in a later
+   * change — requires step-capable models; the AI SDK adapter implements it.
+   * A fallback model group deliberately does NOT, so one candidate owns the
+   * whole loop rather than switching candidates mid-loop (see
+   * `createFallbackModel`).
+   */
+  generateStep?(options: GeneratorModelCallOptions): Promise<GeneratorModelResult>;
+  /**
+   * Single-step streaming counterpart to {@link generateStep}: one call is
+   * one provider model call that keeps yielding deltas *within* the step
+   * (text, reasoning, tool-call argument fragments, sources) and terminates
+   * with a `finish` chunk whose `fullResult` carries the step's assistant
+   * turn. Framework tools are passed without `execute` and are never run by
+   * the model — the framework executes them between steps.
+   *
+   * OPTIONAL, with the same fallback semantics as {@link generateStep}:
+   * models without it stream via the SDK-driven multi-step {@link stream}.
+   */
+  streamStep?(options: GeneratorModelCallOptions): AsyncIterable<GeneratorModelStreamChunk>;
   /**
    * Resolves a provider-native search tool from normalized config.
    * Returns undefined if the provider does not support search tools.
