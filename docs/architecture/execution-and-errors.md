@@ -361,6 +361,16 @@ Completed blocks are not re-executed. The runtime replays each one's recorded `b
 
 `SuspensionError` is a control-flow signal, not a block failure — rescue handlers never fire for it. `SuspensionRejectedError` and `SuspensionTimeoutError` are ordinary catchable errors thrown on resume when the suspension was rejected or timed out.
 
+### Background work under replay (locked contract)
+
+Background blocks (`.work()`, `.workIf()`, `.forEachBackground()`) ride the **same** `executeBlock` replay gate as foreground steps. There is one replay rule for both, not two. On continuation:
+
+- A background block whose logical path holds a `completed` `block_trace` is injected from the log; its body is skipped — identical to a completed foreground step.
+- An in-flight background task (no `completed` trace at continuation time) re-runs from the top. There is no intra-task checkpoint, so in-flight background work is **at-least-once**, not exactly-once. Non-idempotent side effects guard themselves with `ctx.runOnce` (a per-item key under `forEachBackground`, since `runOnce` dedupes by `(requestId, key)`) plus a provider idempotency key.
+- The suspend path does **not** drain or abort the work pool. This is the deliberate asymmetry with the terminal/success path, which drains unconditionally (`drainRequestWorkPool`). Background work in-flight at suspension is therefore a reachable, supported state, recovered by the re-run rule above — not an error to defend against.
+- A failed background task is isolated and drop-and-logged: it emits a `failed` `block_trace` (never `completed`), the failure is logged, and it does **not** drive request terminal status (the foreground `result.error` does). `.waitForWork({ failOnError: true })` promotes a failure into the parent by **drain-then-throw**: it drains the scope's queued work, then throws the first failure, so the parent reaches `failed` only after the scope settles (not fail-fast). A `failed` request is not continuable on the same id (the `/continue` route accepts only `interrupted` records); only `/retry` re-runs it as a fresh request.
+- All of the above presuppose retained `block_trace` items. Trace capture is gated by trace observability (off when `NODE_ENV === "production"`) and suppressed by `transient: true`. With no retained trace, `ReplayLog.getCompletedOutput` returns `undefined` and completed background work re-runs on continuation — exactly as foreground work does under the same precondition.
+
 ### Retention model
 
 Durability records (checkpoints, suspension records, leases) are reclaimed by two mechanisms with a deliberate division of labor.
