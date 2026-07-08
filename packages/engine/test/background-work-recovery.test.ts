@@ -31,6 +31,8 @@ import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { handleContinueRequest } from "../src/routes/recovery-routes";
+import type { InboundTransportHost } from "../src/transports/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { buildItemLookup, resolveBlockValue } from "@flow-state-dev/core/items";
@@ -423,5 +425,207 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
     // Re-run iterations: their continued-run output was recorded.
     expect(iterOutput(2)).toEqual({ done: true, item: "c" });
     expect(iterOutput(3)).toEqual({ done: true, item: "d" });
+  });
+});
+
+/**
+ * **Contract B** (FIX-866 §4.2): a failed background task under a COMPLETED
+ * parent is *drop-and-log* — it emits a `failed` `block_trace`, is never
+ * retried, and does NOT drive the request's terminal status (the foreground
+ * result does). Correctness-critical background work opts into
+ * `.waitForWork({ failOnError: true })`, which surfaces the failure into the
+ * parent (parent → `failed`) — but *drain-then-throw*, not fail-fast: the
+ * scope's queued work all settles before the first failure re-throws. A
+ * `failed` request is not continuable on the same id; that guard lives in the
+ * `/continue` HTTP route, not the bare `continueRequest` helper.
+ *
+ * `FSDEV_TRACE_OBSERVABILITY` is forced on (as the mid-drain suite does) so the
+ * `failed` `block_trace` is retained — trace capture is gated on it.
+ */
+describe("attached durable background-work recovery — failed background task under a completed parent (Contract B)", () => {
+  const originalEnv = { ...process.env };
+  beforeEach(() => {
+    process.env.FSDEV_TRACE_OBSERVABILITY = "true";
+  });
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("drops-and-logs a failed `.work()` under a completed parent — request completes, one `failed` trace, no retry", async () => {
+    // The failing background handler throws. It must be isolated: its failure
+    // is logged and traced, but the foreground result (not the background
+    // outcome) drives the request's terminal status.
+    let failingRuns = 0;
+    const failing = handler({
+      name: "reindex",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async () => {
+        failingRuns += 1;
+        throw new Error("background reindex boom");
+      }
+    });
+    // A trivial foreground step so the parent reaches `completed` on its own.
+    const done = handler({
+      name: "done",
+      inputSchema: z.any(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async () => ({ ok: true })
+    });
+
+    const flow = defineFlow({
+      kind: "bgwork-fail-drop-and-log",
+      actions: {
+        run: {
+          // No `.waitForWork()` — the failed task is fire-and-forget and is
+          // only awaited by the terminal drain, which isolates its failure.
+          block: sequencer({ name: "seq", durable: true }).work(failing).step(done),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "bgwork-fail-drop-and-log" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+    await flush();
+
+    // The failed background task does NOT drive request status: the foreground
+    // finished, so the request is terminal-`completed`.
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+
+    // Exactly one `failed` `block_trace` for the failing work block, at its
+    // logical path `…/work[<step>]`. The enum is
+    // `in_progress | completed | failed | planned` — there is no `errored`.
+    const items = (await stores.request.get(requestId))?.items ?? [];
+    const failedWorkTraces = (items as BlockTraceItem[]).filter(
+      (i) =>
+        i.type === "block_trace" &&
+        i.status === "failed" &&
+        /\/work\[\d+\]$/.test(parseBlockInstanceId(i.blockInstanceId)?.path ?? "")
+    );
+    expect(failedWorkTraces).toHaveLength(1);
+    expect(failedWorkTraces[0]!.status).toBe("failed");
+
+    // Not retried: a completed request has no `interrupted` record to continue,
+    // so nothing re-runs the failing handler.
+    expect(failingRuns).toBe(1);
+  });
+
+  it("`.waitForWork({ failOnError: true })` drains-then-throws into the parent (→ failed), and the failed request is not continuable at the route", async () => {
+    // Two tasks in one scope: `failing` throws immediately; `slow` blocks on a
+    // test-controlled deferred. drain-then-throw means `drainScope` awaits ALL
+    // matching entries (Promise.all) before re-throwing the first failure, so
+    // the parent must not fail until `slow` has settled. A resolve-order marker
+    // encodes that timing — a fail-fast regression would flip it.
+    const order: string[] = [];
+    let failRuns = 0;
+    let slowRuns = 0;
+    const slowGate = deferred();
+
+    const failing = handler({
+      name: "failing",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async () => {
+        failRuns += 1;
+        order.push("fail");
+        throw new Error("background boom");
+      }
+    });
+    const slow = handler({
+      name: "slow",
+      inputSchema: z.any(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async () => {
+        slowRuns += 1;
+        await slowGate.promise;
+        order.push("slow");
+        return { ok: true };
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "bgwork-failonerror-drain-then-throw",
+      actions: {
+        run: {
+          block: sequencer({ name: "seq", durable: true })
+            .work(failing)
+            .work(slow)
+            .waitForWork({ failOnError: true }),
+          inputSchema: z.any()
+        }
+      }
+    })({ id: "bgwork-failonerror-drain-then-throw" });
+
+    const { stores, provider } = createDurableStores();
+
+    // Don't await: `waitForWork` parks on `slow` inside `drainScope`.
+    const runPromise = runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "sess-b2",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+
+    // Let both tasks dispatch and `failing` throw; `slow` is still parked.
+    await flush();
+    // Release the slow task; only now can `drainScope`'s Promise.all resolve and
+    // the first failure re-throw into the parent.
+    slowGate.resolve();
+    const initial = await runPromise;
+    order.push("parent-failed");
+    const requestId = initial.requestId!;
+
+    expect(failRuns).toBe(1);
+    expect(slowRuns).toBe(1);
+    // Parent failure is surfaced (not isolated) once the scope's work drains.
+    expect((await stores.request.get(requestId))?.status).toBe("failed");
+    // drain-then-throw, NOT fail-fast: `slow` settled before the parent failed.
+    expect(order).toEqual(["fail", "slow", "parent-failed"]);
+
+    // Non-continuability lives at the ROUTE layer: the `/continue` handler's
+    // `interrupted`-only status guard rejects a `failed` record before it ever
+    // reaches the host. (The bare `continueRequest` helper has no status check,
+    // so asserting there would be vacuous — this drives the route handler.)
+    let hostCalled = false;
+    const host = {
+      continueRequest: async () => {
+        hostCalled = true;
+        throw new Error("host.continueRequest must not be reached for a failed record");
+      }
+    } as unknown as InboundTransportHost;
+
+    const response = await handleContinueRequest(
+      new Request("http://localhost/continue", { method: "POST" }),
+      {
+        kind: "continue_request",
+        flowKind: "bgwork-failonerror-drain-then-throw",
+        sessionId: "sess-b2",
+        requestId
+      },
+      {
+        registry: registryFor(flow),
+        stores,
+        runtimeConfig: { durabilityProvider: provider },
+        host
+      }
+    );
+
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain("failed");
+    expect(body.error).toContain("interrupted");
+    expect(hostCalled).toBe(false);
   });
 });
