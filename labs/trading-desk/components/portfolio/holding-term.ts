@@ -3,18 +3,21 @@
  *
  * US capital-gains terms: a lot is LONG-term once held MORE than one year
  * (sold on the day exactly one year after acquisition it is still short-term),
- * so the boundary is `asOf > acquiredDate + 1 year`. Classification is PER LOT
- * — a position bought across dates is honestly mixed, not labeled by its
- * earliest lot. Lots come from the FIFO derivation (`deriveLots`) for
- * ledger-backed positions; a CSV-snapshot-only holding degrades to one pseudo-
- * lot at its declared `acquiredDate`, and undated shares are UNKNOWN — never
- * guessed into a term.
+ * so the boundary is `asOf > acquiredDate + 1 year`. The boundary rule itself
+ * lives in the shared leaf `src/flows/portfolio/holding-period.ts`
+ * (`longBoundary`) — realized-gains classification uses the same rule.
+ * Classification here is PER LOT — a position bought across dates is honestly
+ * mixed, not labeled by its earliest lot. Lots come from the FIFO derivation
+ * (`deriveLots`) for ledger-backed positions; a CSV-snapshot-only holding
+ * degrades to one pseudo-lot at its declared `acquiredDate`, and undated
+ * shares are UNKNOWN — never guessed into a term.
  *
  * Browser-safe pure functions (the `portfolio-format` precedent): the caller
  * supplies `asOf`, so tests pin dates and the UI passes `new Date()`.
  */
 
 import { DASH, formatQuantity } from "./portfolio-format";
+import { longBoundary } from "../../src/flows/portfolio/holding-period";
 
 /** One dated parcel of shares for term math. `acquiredDate` is ISO
  *  `YYYY-MM-DD`; null means the acquisition date is unknown. */
@@ -32,13 +35,6 @@ export type TermSummary = {
    *  when the entire dated position is long. Null when nothing is short. */
   monthsToAllLong: number | null;
 };
-
-/** The UTC instant a lot crosses into long-term: one year after acquisition,
- *  exclusive (the anniversary day itself is still short). */
-function longBoundary(acquiredDate: string): number {
-  const [y, m, d] = acquiredDate.split("-").map(Number);
-  return Date.UTC(y + 1, m - 1, d);
-}
 
 /** Whole calendar months from `from` up to `to` (both UTC ms), ceiling — a
  *  partial month counts as one, and anything in the future is at least 1. So
