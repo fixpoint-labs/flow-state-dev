@@ -16,7 +16,7 @@
  * rollups — ever sees a string.
  */
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type {
   AccountState,
   AccountType,
@@ -845,12 +845,20 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         if (owner === undefined) {
           throw new Error(`Account ${accountId} is not owned by the requesting user.`);
         }
-        // Tickers the OLD ledger was the AUTHORITY for (had live share history) —
-        // so the reset can drop any the new file no longer backs. `materialize`
-        // only reconciles tickers present in the NEW ledger, so without this a
-        // position materialized from a since-wiped trade would survive the "clean
-        // slate" as a stale row. A CSV/PDF-snapshot-only ticker never had ledger
-        // share history, so it is NOT in this set and is correctly preserved.
+        // Tickers the OLD ledger held genuine AUTHORITY for — so the reset can
+        // drop any the new file no longer backs. `materialize` only reconciles
+        // tickers present in the NEW ledger, so without this a position
+        // materialized from a since-wiped trade would survive the "clean slate" as
+        // a stale row. The authority set mirrors materialize's DELETE/flag rule
+        // exactly: only a ticker with a live ACQUISITION (`quantity > 0` —
+        // matching `acquiredTickers`) established a ledger-derived position.
+        //   - A CSV/PDF-snapshot-only ticker never had ledger share history →
+        //     not in this set → its snapshot is preserved.
+        //   - A ticker whose old history was ONLY disposals (materialize keeps its
+        //     snapshot as a partial import) has no acquisition → not in this set →
+        //     preserved, not wrongly orphaned.
+        //   - A ticker whose share history is entirely voided (`isNull(voidedAt)`
+        //     excludes it) has returned to snapshot authority → preserved.
         const beforeRows = await tx
           .selectDistinct({ ticker: ledgerEvents.ticker })
           .from(ledgerEvents)
@@ -858,10 +866,7 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             and(
               eq(ledgerEvents.accountId, accountId),
               isNotNull(ledgerEvents.ticker),
-              isNotNull(ledgerEvents.quantity),
-              // LIVE authority only: a ticker whose share history is entirely
-              // voided has already returned to snapshot authority, so it must not
-              // drive an orphan delete (which would wrongly drop its snapshot row).
+              gt(ledgerEvents.quantity, "0"),
               isNull(ledgerEvents.voidedAt),
             ),
           );

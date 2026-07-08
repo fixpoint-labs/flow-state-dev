@@ -677,13 +677,16 @@ function handleSplit(ctx: Ctx, agg: OfxNode): void {
   });
   // Cash-in-lieu of a fractional share is real money — record it as a separate
   // cash row (a distinct external id so it doesn't collide with the split on the
-  // dedup index) and warn that it's a cash-in-lieu leg the user may want to
-  // reclassify. A zero/absent FRACCASH is no cash event.
+  // dedup index) and warn. It is recorded as a `deposit`, NOT a `dividend`:
+  // cash-in-lieu is disposal/sale proceeds, not dividend income, so a `dividend`
+  // would inflate `getIncomeSummary`'s Dividends total. `deposit` lands the cash
+  // without asserting income (cash-in-lieu SALE math is out of scope; this just
+  // surfaces the money honestly). A zero/absent FRACCASH is no cash event.
   const fracCash = num(agg.FRACCASH);
   if (fracCash !== null && fracCash > 0) {
     ctx.events.push(
       baseEvent(ctx, invtran, {
-        type: "dividend",
+        type: "deposit",
         tradeDate,
         ticker,
         quantity: null,
@@ -695,7 +698,7 @@ function handleSplit(ctx: Ctx, agg: OfxNode): void {
       }),
     );
     ctx.warnings.push(
-      `Split of ${ticker} paid ${fracCash} cash-in-lieu of a fractional share — recorded as a cash row (reclassify if needed).`,
+      `Split of ${ticker} paid ${fracCash} cash-in-lieu of a fractional share — recorded as a cash (deposit) row, not dividend income (reclassify if needed).`,
     );
   }
 }

@@ -201,4 +201,35 @@ describe("replaceLedgerFromFile — reconciles holdings to the new source of tru
     expect(holdings.some((h) => h.ticker === "MSFT")).toBe(true); // snapshot survived
     expect(holdings.some((h) => h.ticker === "NVDA")).toBe(true);
   });
+
+  it("preserves a snapshot whose old ledger history was disposals-only (no acquisition)", async () => {
+    // MSFT: a snapshot holding + a sell-only ledger history (a partial import that
+    // `materializePositions` keeps as a snapshot, never a close). It has no
+    // acquisition, so it never established ledger authority — a reset that omits it
+    // must NOT orphan-delete the snapshot.
+    await repo.upsertHoldings(
+      "acc-1",
+      "devuser",
+      [
+        {
+          ticker: "MSFT",
+          quantity: 5,
+          costBasis: 100,
+          acquiredDate: null,
+          assetClass: "equity",
+          assetType: "equity",
+          attributes: { kind: "none" },
+        },
+      ],
+      "upsert",
+    );
+    await repo.ingestLedgerEvents(
+      [{ ...evt({ type: "sell", ticker: "MSFT", quantity: -2, amount: 200 }), tradeDate: "2024-03-01" }],
+      "devuser",
+    );
+
+    await repo.replaceLedgerFromFile("acc-1", "devuser", [buy(10, 100, "2024-01-01")]);
+    const { holdings } = await repo.getPortfolio("devuser");
+    expect(holdings.some((h) => h.ticker === "MSFT")).toBe(true); // snapshot preserved
+  });
 });

@@ -315,8 +315,14 @@ VERSION:102
     const split = result.events.find((e) => e.type === "split");
     const cash = result.events.find((e) => e.type !== "split");
     expect(split?.attributes).toEqual({ numerator: 3, denominator: 2 });
-    // The cash-in-lieu is real money — surfaced, not dropped, with a distinct id.
-    expect(cash).toMatchObject({ ticker: "AAPL", amount: 12.5, externalId: "SP4:fraccash" });
+    // The cash-in-lieu is real money — surfaced (not dropped) with a distinct id,
+    // and as a `deposit`, NOT a `dividend` (it must not inflate income totals).
+    expect(cash).toMatchObject({
+      type: "deposit",
+      ticker: "AAPL",
+      amount: 12.5,
+      externalId: "SP4:fraccash",
+    });
     expect(result.warnings.some((w) => /cash-in-lieu/.test(w))).toBe(true);
   });
 

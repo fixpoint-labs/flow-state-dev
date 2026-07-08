@@ -30,6 +30,37 @@ describe("buildPortfolioContext", () => {
     expect(buildPortfolioContext([], [], null)).toBeNull();
   });
 
+  it("surfaces an inconsistent-history holding as unknown, not a $0 position (FIX-876)", () => {
+    // A flagged holding (an unaccounted split over-sold the ledger) has a
+    // meaningless quantity 0. It must NOT reach the trader/PM as a priced $0 /
+    // 0%-weight position — it's an unknown input: null marketValue/weight, counted
+    // in totalHoldings (coverage) but not pricedHoldings/NAV.
+    const accounts = [
+      account({
+        cashBalance: 1000,
+        holdings: [
+          {
+            ticker: "NVDA",
+            quantity: 0,
+            costBasis: null,
+            acquiredDate: null,
+            assetClass: "equity",
+            assetType: "equity",
+            attributes: { kind: "none" },
+            dataQuality: "inconsistent_history",
+          },
+        ],
+      }),
+    ];
+    const out = buildPortfolioContext(accounts, [{ ticker: "NVDA", price: 120, asOf: "2026-05-06" }], "2026-05-06");
+    expect(out?.totalNav).toBe(1000); // cash only — the flagged holding adds nothing
+    expect(out?.totalHoldings).toBe(1);
+    expect(out?.pricedHoldings).toBe(0);
+    const nvda = out?.holdings.find((h) => h.ticker === "NVDA");
+    expect(nvda?.marketValue).toBeNull();
+    expect(nvda?.weightPct).toBeNull();
+  });
+
   it("computes marketValue, NAV and weights from quantity × live price + cash", () => {
     const accounts = [
       account({

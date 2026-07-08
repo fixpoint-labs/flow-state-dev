@@ -104,6 +104,9 @@ export function ImportTransactionsDialog({
     setContent("");
     setPreview(null);
     setFilename(file.name);
+    // A destructive REPLACE confirmation is tied to the exact account+file it was
+    // typed for — a new file invalidates it (FIX-876 review).
+    setReplaceConfirm("");
     try {
       const text = await file.text();
       const parsed = await detectAndParseTransactionFile(text, file.name);
@@ -177,7 +180,13 @@ export function ImportTransactionsDialog({
             </span>
             <select
               value={accountId}
-              onChange={(e) => setAccountId(e.currentTarget.value)}
+              onChange={(e) => {
+                setAccountId(e.currentTarget.value);
+                // Changing the target invalidates a REPLACE confirmation typed for
+                // the previous account (a reset must never fire against an account
+                // the user didn't just acknowledge — FIX-876 review).
+                setReplaceConfirm("");
+              }}
               className={cn(inputClass, "max-w-xs")}
             >
               {accounts.length === 0 ? (
@@ -221,7 +230,10 @@ export function ImportTransactionsDialog({
                 type="radio"
                 name="import-mode"
                 checked={mode === "append"}
-                onChange={() => setMode("append")}
+                onChange={() => {
+                  setMode("append");
+                  setReplaceConfirm("");
+                }}
                 className="mt-0.5"
               />
               <span>
@@ -234,7 +246,10 @@ export function ImportTransactionsDialog({
                 type="radio"
                 name="import-mode"
                 checked={mode === "replace"}
-                onChange={() => setMode("replace")}
+                onChange={() => {
+                  setMode("replace");
+                  setReplaceConfirm("");
+                }}
                 className="mt-0.5"
               />
               <span>
