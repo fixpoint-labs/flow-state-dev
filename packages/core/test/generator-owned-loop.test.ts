@@ -1022,7 +1022,6 @@ describe("createFallbackModel — step method forwarding", () => {
         const err = new Error("rate limited") as Error & { statusCode: number };
         err.statusCode = 429;
         throw err;
-        yield undefined as never;
       },
     };
 
