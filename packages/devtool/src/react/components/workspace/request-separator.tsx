@@ -31,6 +31,8 @@ type RequestSeparatorProps = {
   onReplayFromCursor?: () => void;
   onReconnect?: () => void;
   onContinue?: () => void;
+  /** True while a continuation is already streaming for this request (FIX-865). */
+  isContinuing?: boolean;
 };
 
 /** Visual styling for the scheduled `origin` badge — small, secondary. */
@@ -79,6 +81,7 @@ export function RequestSeparator({
   onReplayFromCursor,
   onReconnect,
   onContinue,
+  isContinuing,
 }: RequestSeparatorProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [provenanceOpen, setProvenanceOpen] = useState(false);
@@ -88,7 +91,7 @@ export function RequestSeparator({
   // marked interrupted, and only when the source isn't webhook — the
   // `/continue` route rejects webhook-sourced requests server-side, so this
   // client-side gate avoids a guaranteed 404 from the menu.
-  const showContinue = status === "interrupted" && source !== "webhook";
+  const showContinue = status === "interrupted" && source !== "webhook" && !isContinuing;
   const hasOverflow = showReplayControls || showContinue || isDebugMode;
   const durationText = formatDuration(duration, isActive);
 

@@ -74,6 +74,8 @@ type StreamViewProps = {
   onReplayFromCursor?: (requestId: string) => void;
   onReconnect?: (requestId: string) => void;
   onContinue?: (requestId: string) => void;
+  /** True while a continuation is already streaming for the given request (FIX-865). */
+  isContinuing?: (requestId: string) => boolean;
 };
 
 export function StreamView({
@@ -84,6 +86,7 @@ export function StreamView({
   onReplayFromCursor,
   onReconnect,
   onContinue,
+  isContinuing,
 }: StreamViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -169,6 +172,7 @@ export function StreamView({
               onReplayFromCursor={onReplayFromCursor ? () => onReplayFromCursor(group.requestId) : undefined}
               onReconnect={onReconnect ? () => onReconnect(group.requestId) : undefined}
               onContinue={onContinue ? () => onContinue(group.requestId) : undefined}
+              isContinuing={isContinuing?.(group.requestId)}
             />
             <div className="px-4 py-2 space-y-1">
               {group.items.map((item) => (

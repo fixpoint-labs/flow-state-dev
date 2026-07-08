@@ -239,4 +239,18 @@ describe("RequestSeparator (crash-recovery Continue action)", () => {
     fireEvent.click(screen.getByText("Continue"));
     expect(onContinue).toHaveBeenCalledOnce();
   });
+
+  it("hides the Continue action while a continuation is already streaming for this request", () => {
+    const onContinue = vi.fn();
+    renderSeparator({
+      ...baseProps,
+      status: "interrupted",
+      source: "http",
+      onContinue,
+      isContinuing: true,
+    });
+    const trigger = screen.queryByTitle("More actions");
+    if (trigger) fireEvent.click(trigger);
+    expect(screen.queryByText("Continue")).not.toBeInTheDocument();
+  });
 });

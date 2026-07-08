@@ -349,7 +349,7 @@ function PanelContent({ className }: { className?: string }) {
     },
     [],
   );
-  const { continueRequest } = useContinueRequest({
+  const { continueRequest, isContinuing } = useContinueRequest({
     recoveryClient,
     flowKind: activeFlowKind,
     sessionId: effectiveSessionId,
@@ -508,6 +508,7 @@ function PanelContent({ className }: { className?: string }) {
                 onReplayFromCursor={handleReplayFromCursor}
                 onReconnect={handleReconnect}
                 onContinue={handleContinue}
+                isContinuing={isContinuing}
               />
             </TabsContent>
 
