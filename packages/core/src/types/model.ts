@@ -284,11 +284,13 @@ export interface GeneratorModel {
    * `steps` array, when present, has at most one entry.
    *
    * OPTIONAL: models that omit it (hand-rolled test mocks, the public
-   * `mockGenerator`, third-party adapters) fall back to the SDK-driven
-   * multi-step path via {@link generate}. The framework-owned loop — and
-   * suspension support built on it in a later change — requires
-   * step-capable models; the AI SDK adapter and `createFallbackModel`
-   * always implement it.
+   * `mockGenerator`, third-party adapters, and `createFallbackModel` groups)
+   * fall back to the SDK-driven multi-step path via {@link generate}. The
+   * framework-owned loop — and suspension support built on it in a later
+   * change — requires step-capable models; the AI SDK adapter implements it.
+   * A fallback model group deliberately does NOT, so one candidate owns the
+   * whole loop rather than switching candidates mid-loop (see
+   * `createFallbackModel`).
    */
   generateStep?(options: GeneratorModelCallOptions): Promise<GeneratorModelResult>;
   /**
