@@ -360,6 +360,60 @@ describe("recordManualEvent", () => {
     expect(holdings.find((h) => h.ticker === "TSLA")?.costBasis).toBeNull(); // not 0
   });
 
+  it("records a manual split that rebases the holding's derived lots (FIX-876)", async () => {
+    await createAccount(A1);
+    // A pre-split buy establishes the lot; the split then rebases it 4:1.
+    await recordEvent({
+      accountId: A1,
+      type: "buy",
+      tradeDate: "2024-01-01",
+      ticker: "AAPL",
+      quantity: 10,
+      unitPrice: 400,
+      amount: -4000,
+    });
+    const report = await recordEvent({
+      accountId: A1,
+      type: "split",
+      tradeDate: "2024-06-10",
+      ticker: "AAPL",
+      amount: 0,
+      attributes: { numerator: 4, denominator: 1 },
+    });
+    expect(report).toMatchObject({ inserted: 1 });
+    const { holdings } = await repoState.repo!.getPortfolio(USER_ID);
+    const aapl = holdings.find((h) => h.ticker === "AAPL");
+    expect(aapl?.quantity).toBe(40); // 10 × 4
+    expect(aapl?.costBasis).toBe(100); // 400 ÷ 4
+  });
+
+  it("rejects a split with no ratio at the schema boundary (refine)", () => {
+    // The `refineLedgerEvent` boundary: a split MUST carry { numerator, denominator }.
+    expect(() =>
+      recordEventSchema.parse({
+        accountId: A1,
+        type: "split",
+        tradeDate: "2024-06-10",
+        ticker: "AAPL",
+        amount: 0,
+      }),
+    ).toThrow();
+  });
+
+  it("rejects attributes on a non-split event at the schema boundary (refine)", () => {
+    expect(() =>
+      recordEventSchema.parse({
+        accountId: A1,
+        type: "buy",
+        tradeDate: "2024-06-10",
+        ticker: "AAPL",
+        quantity: 10,
+        amount: -100,
+        attributes: { numerator: 4, denominator: 1 },
+      }),
+    ).toThrow();
+  });
+
   it("rejects a manual event targeting an account the caller does not own", async () => {
     // Account belongs to "other"; devuser must not be able to write to it.
     await repoState.repo!.upsertAccount({

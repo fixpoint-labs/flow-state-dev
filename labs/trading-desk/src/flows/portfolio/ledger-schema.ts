@@ -21,9 +21,10 @@
 import { z } from "zod";
 
 /** The typed event kinds the ledger records. `buy`/`sell`/`transfer` carry a
- *  signed `quantity` (they move lots); the rest are cash events. Stored as a
- *  plain `text` column — the enum is enforced here at the boundary, so adding a
- *  kind (e.g. when FIX-773 lands non-equity events) needs no enum-alter migration. */
+ *  signed `quantity` (they move lots); `split` is a corporate action that rebases
+ *  the open lots by a ratio (no share delta, no cash — see {@link splitAttributesSchema});
+ *  the rest are cash events. Stored as a plain `text` column — the enum is
+ *  enforced here at the boundary, so adding a kind needs no enum-alter migration. */
 export const ledgerEventTypeSchema = z.enum([
   "buy",
   "sell",
@@ -33,8 +34,34 @@ export const ledgerEventTypeSchema = z.enum([
   "withdrawal",
   "transfer",
   "fee",
+  "split",
 ]);
 export type LedgerEventType = z.infer<typeof ledgerEventTypeSchema>;
+
+/**
+ * A stock-split corporate action, carried on a `split` event's `attributes`
+ * jsonb (FIX-876). A 10-for-1 forward split is `{ numerator: 10, denominator: 1 }`;
+ * a 1-for-10 reverse split is `{ numerator: 1, denominator: 10 }`. The ratio is
+ * `numerator / denominator` (see {@link splitRatio}). Both are positive and
+ * finite — normally integers (manual entry and OFX `NUMERATOR`/`DENOMINATOR`),
+ * but the OFX `NEWUNITS`/`OLDUNITS` fallback may supply a fractional-share
+ * holder's raw counts (121.9346 → 12.19346 for a 10-for-1), whose ratio is still
+ * exact — so this is not `.int()`-constrained. A split multiplies OPEN lots
+ * (`quantity × ratio`, `costPerShare ÷ ratio`); it is not a share delta, so
+ * `deriveLots` branches on the `type`, not the sign of `quantity`.
+ */
+export const splitAttributesSchema = z.object({
+  numerator: z.number().positive().finite(),
+  denominator: z.number().positive().finite(),
+});
+export type SplitAttributes = z.infer<typeof splitAttributesSchema>;
+
+/** The split ratio a split event applies to open lots — `numerator /
+ *  denominator` (10-for-1 → 10; reverse 1-for-10 → 0.1). Browser-safe leaf
+ *  helper so `deriveLots` (server + client) reads one definition. */
+export function splitRatio(attrs: SplitAttributes): number {
+  return attrs.numerator / attrs.denominator;
+}
 
 /** Which feed wrote a row. `manual` is the only writer in this PR; `file`
  *  (FIX-775) and `plaid` (FIX-853) write through the same contract. */
@@ -59,14 +86,15 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected ISO date YYYY-
  * which Postgres `numeric` would store as `'NaN'` and which would poison the
  * fingerprint (`NaN.toFixed(8)` → `"NaN"`) — reject them at the boundary.
  */
-export const ledgerEventInputSchema = z.object({
+export const ledgerEventInputObject = z.object({
   accountId: z.string(),
   type: ledgerEventTypeSchema,
   /** ISO `YYYY-MM-DD`, the date the event occurred (trade date preferred). */
   tradeDate: isoDate,
   settleDate: isoDate.nullable().default(null),
   ticker: z.string().nullable().default(null),
-  /** Signed share delta; null for cash events. */
+  /** Signed share delta; null for cash events AND for a `split` (which rebases
+   *  open lots by a ratio rather than moving shares). */
   quantity: z.number().finite().nullable().default(null),
   unitPrice: z.number().finite().nullable().default(null),
   /** Signed cash impact on the account. */
@@ -77,7 +105,65 @@ export const ledgerEventInputSchema = z.object({
   externalId: z.string().nullable().default(null),
   description: z.string().nullable().default(null),
   basisUnknown: z.string().nullable().default(null),
+  /** Corporate-action payload (FIX-876). Non-null ONLY for a `split`, where it
+   *  parses as {@link splitAttributesSchema}; null for every other kind. The
+   *  cross-field {@link refineLedgerEvent} enforces that boundary. `unknown` so
+   *  the schema stays forward-compatible to future corporate actions without a
+   *  discriminated-union churn here (the repository stores it as jsonb). */
+  attributes: z.unknown().nullable().default(null),
 });
+
+/** The minimal cross-field shape {@link refineLedgerEvent} reads — typed as the
+ *  subset so the same refine applies to both the full input schema and the
+ *  manual-entry omit (`recordEventSchema`, which drops `source`/`externalId`). */
+type LedgerEventRefinable = {
+  type: LedgerEventType;
+  ticker: string | null;
+  quantity: number | null;
+  amount: number;
+  // Optional because `z.unknown()` makes the inferred key optional; a missing
+  // key reads the same as an explicit `null` below (both fail the split parse
+  // and pass the non-split "must be null" branch).
+  attributes?: unknown;
+};
+
+/**
+ * Cross-field validation shared by the full input schema and the manual-entry
+ * omit. A `split` MUST carry valid `{ numerator, denominator }` attributes, a
+ * ticker, a null `quantity`, and a zero `amount` (it rebases open lots, it does
+ * not move shares or cash). Every OTHER kind MUST leave `attributes` null (a
+ * stray corporate-action payload on a buy is bad data, rejected at the boundary).
+ */
+export function refineLedgerEvent(data: LedgerEventRefinable, ctx: z.RefinementCtx): void {
+  if (data.type === "split") {
+    if (!splitAttributesSchema.safeParse(data.attributes).success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["attributes"],
+        message: "a split requires { numerator, denominator } as positive integers",
+      });
+    }
+    if (data.ticker === null) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["ticker"], message: "a split requires a ticker" });
+    }
+    if (data.quantity !== null) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["quantity"], message: "a split carries no share quantity" });
+    }
+    if (data.amount !== 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["amount"], message: "a split carries no cash amount" });
+    }
+  } else if (data.attributes != null) {
+    // `!= null` catches both null and a missing key (undefined); only a real
+    // payload on a non-split event is rejected.
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["attributes"],
+      message: "attributes is only valid on a split event",
+    });
+  }
+}
+
+export const ledgerEventInputSchema = ledgerEventInputObject.superRefine(refineLedgerEvent);
 export type LedgerEventInput = z.infer<typeof ledgerEventInputSchema>;
 
 /**
@@ -118,6 +204,10 @@ export type LedgerRow = {
   externalId: string | null;
   description: string | null;
   basisUnknown: string | null;
+  /** Corporate-action payload (FIX-876) — the split ratio for a `split` row,
+   *  null for every other kind. Typed here (not `unknown`) so `deriveLots` reads
+   *  `numerator`/`denominator` with types. */
+  attributes: SplitAttributes | null;
   voidedAt: string | null;
   createdAt: string;
 };

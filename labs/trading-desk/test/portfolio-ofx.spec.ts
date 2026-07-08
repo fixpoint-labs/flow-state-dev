@@ -12,7 +12,8 @@
  *      unresolved and the event keys by the CUSIP (never dropped).
  *   4. REINVEST becomes two events (the income + the reinvested buy/new lot).
  *   5. A transfer-in with no price is `basisUnknown` (never zero).
- *   6. Corporate actions (SPLIT/RETOFCAP) are skipped-with-warning, not ingested.
+ *   6. A SPLIT is ingested as a first-class `split` event (FIX-876); RETOFCAP
+ *      stays skipped-with-warning, not ingested.
  *   7. FITID becomes the `externalId` (the dedup key).
  */
 import { describe, expect, it } from "vitest";
@@ -228,19 +229,135 @@ VERSION:102
     expect(result.skipped.some((s) => s.kind === "JRNLSEC")).toBe(true);
   });
 
-  it("skips a SPLIT with a warning instead of corrupting basis", async () => {
+  it("ingests a SPLIT as a split event with numerator/denominator (FIX-876)", async () => {
     const file = `OFXHEADER:100
 DATA:OFXSGML
 VERSION:102
 
 <OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
 <SPLIT><INVTRAN><FITID>SP1<DTTRADE>20260401</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><OLDUNITS>10<NEWUNITS>40<NUMERATOR>4<DENOMINATOR>1</SPLIT>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.skipped).toEqual([]);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({
+      type: "split",
+      ticker: "AAPL",
+      tradeDate: "2026-04-01",
+      quantity: null,
+      amount: 0,
+      externalId: "SP1",
+      attributes: { numerator: 4, denominator: 1 },
+    });
+  });
+
+  it("falls back to NEWUNITS/OLDUNITS when NUMERATOR/DENOMINATOR are absent", async () => {
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<SPLIT><INVTRAN><FITID>SP2<DTTRADE>20260401</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><OLDUNITS>10<NEWUNITS>100</SPLIT>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events[0]).toMatchObject({
+      type: "split",
+      attributes: { numerator: 100, denominator: 10 },
+    });
+  });
+
+  it("accepts a fractional NEWUNITS/OLDUNITS ratio (a fractional-share account)", async () => {
+    // A fractional-share holder's raw before/after counts for a 10-for-1 split.
+    // The ratio (121.9346 / 12.19346) is exact even though the counts aren't whole,
+    // so the split must ingest, not skip.
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<SPLIT><INVTRAN><FITID>SP5<DTTRADE>20240610</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><OLDUNITS>12.19346<NEWUNITS>121.9346</SPLIT>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>NVDA</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({
+      type: "split",
+      attributes: { numerator: 121.9346, denominator: 12.19346 },
+    });
+  });
+
+  it("skips a SPLIT with no usable ratio, with a warning (never a fabricated ratio)", async () => {
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<SPLIT><INVTRAN><FITID>SP3<DTTRADE>20260401</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID></SPLIT>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events).toHaveLength(0);
+    expect(result.warnings.some((w) => /no usable ratio/.test(w))).toBe(true);
+  });
+
+  it("still records FRACCASH cash-in-lieu even when the split ratio is unusable", async () => {
+    // A SPLIT with no usable ratio but a FRACCASH leg: the split is skipped, but
+    // the cash-in-lieu is independent real money and must NOT be dropped.
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<SPLIT><INVTRAN><FITID>SP7<DTTRADE>20240610</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><FRACCASH>7.25</SPLIT>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>NVDA</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events.some((e) => e.type === "split")).toBe(false); // no ratio → no split
+    expect(result.events.find((e) => e.type === "deposit")).toMatchObject({
+      ticker: "NVDA",
+      amount: 7.25,
+      externalId: "SP7:fraccash",
+    });
+    expect(result.warnings.some((w) => /no usable ratio/.test(w))).toBe(true);
+  });
+
+  it("records a FRACCASH cash-in-lieu leg as a separate cash event, with a warning", async () => {
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<SPLIT><INVTRAN><FITID>SP4<DTTRADE>20260401</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><NUMERATOR>3<DENOMINATOR>2<FRACCASH>12.50</SPLIT>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>AAPL</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    const split = result.events.find((e) => e.type === "split");
+    const cash = result.events.find((e) => e.type !== "split");
+    expect(split?.attributes).toEqual({ numerator: 3, denominator: 2 });
+    // The cash-in-lieu is real money — surfaced (not dropped) with a distinct id,
+    // and as a `deposit`, NOT a `dividend` (it must not inflate income totals).
+    expect(cash).toMatchObject({
+      type: "deposit",
+      ticker: "AAPL",
+      amount: 12.5,
+      externalId: "SP4:fraccash",
+    });
+    expect(result.warnings.some((w) => /cash-in-lieu/.test(w))).toBe(true);
+  });
+
+  it("still skips RETOFCAP (its basis math is out of scope)", async () => {
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<RETOFCAP><INVTRAN><FITID>RC1<DTTRADE>20260401</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TOTAL>5.00</RETOFCAP>
 </INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1></OFX>`;
     const result = await parseOfxTransactions(file);
     expect(result.events).toHaveLength(0);
-    expect(result.skipped).toEqual([
-      { kind: "SPLIT", reason: expect.stringContaining("not imported") },
-    ]);
+    expect(result.skipped.some((s) => s.kind === "RETOFCAP")).toBe(true);
   });
 });
 

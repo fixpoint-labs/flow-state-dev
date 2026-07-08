@@ -78,6 +78,13 @@ export const holdings = appSchema.table(
     quantity: numeric("quantity").notNull(),
     costBasis: numeric("cost_basis"),
     acquiredDate: date("acquired_date", { mode: "string" }),
+    // Data-integrity flag (FIX-876). Null for a normal row; `inconsistent_history`
+    // when an acquired ticker's disposals exceed everything ever held (impossible
+    // without an unaccounted corporate action) — the position is materialized as a
+    // FLAGGED zero-quantity row and surfaced for review rather than silently
+    // deleted. A recorded split that explains the gap self-heals the row back to
+    // null on the next materialization.
+    dataQuality: text("data_quality"),
     // Two-level asset taxonomy (FIX-773). `asset_class` is the allocation bucket
     // every drift/exposure/mandate consumer groups on; `asset_type` routes
     // display + valuation. Both default to `equity` so the pre-taxonomy rows
@@ -148,6 +155,13 @@ export const ledgerEvents = appSchema.table(
     fingerprint: text("fingerprint").notNull(),
     description: text("description"),
     basisUnknown: text("basis_unknown"),
+    // Corporate-action payload (FIX-876) — the `{ numerator, denominator }` split
+    // ratio for a `split` event, null for every other kind (enforced at the zod
+    // boundary in `ledger-schema.ts`). A nullable jsonb column (the
+    // `holdings.attributes` precedent) so future corporate actions need no further
+    // migration. Deliberately EXCLUDED from the content fingerprint (a split's
+    // numerator/denominator don't key dedup — see `computeFingerprint`).
+    attributes: jsonb("attributes"),
     voidedAt: timestamp("voided_at", { withTimezone: true, mode: "string" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
       .notNull()

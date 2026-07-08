@@ -536,10 +536,97 @@ Two load-bearing decisions:
   work — a file backfill and a Plaid sync of the same trade hit the same FIX-774
   fingerprint.
 - **Honest over silently-wrong.** Anything FIFO can't model is surfaced, never
-  fed to the lot math: corporate actions and short opens → `skipped`/warned,
-  CUSIP-only securities → `unresolvedSecurities`, malformed rows (no date, no
-  amount, blank FITID) → skipped. The parser never fabricates a value to make a
-  row land.
+  fed to the lot math: the corporate actions it still can't model (`RETOFCAP`,
+  `CLOSUREOPT`) and short opens → `skipped`/warned, CUSIP-only securities →
+  `unresolvedSecurities`, malformed rows (no date, no amount, blank FITID) →
+  skipped. Stock splits are the exception — they are now ingested (see below).
+  The parser never fabricates a value to make a row land.
+
+## Stock splits / corporate actions (FIX-876)
+
+Positions are FIFO-derived from the ledger, and the ledger now models **stock
+splits** — the one corporate action naive FIFO can't ignore. Before this, a
+split's pre-split trades (small share counts, big prices) and post-split trades
+(10× shares, 1/10 price) lived in mismatched units, so FIFO over-sold the small
+pre-split lots with the larger post-split sells, netted the position negative, and
+`materializePositions` silently deleted the holdings row. NVDA's 10-for-1 split
+(2024-06-10) did exactly this in `WF: Investing Accounts`.
+
+- **A split is a first-class ledger event.** `ledgerEventTypeSchema` includes
+  `"split"`; a `split` row carries no share delta or cash (`quantity: null`,
+  `amount: 0`) — its ratio lives on a nullable `attributes` jsonb column as
+  `{ numerator, denominator }` (10-for-1 → `{10, 1}`; reverse 1-for-10 →
+  `{1, 10}`). `ledger-schema.ts` validates the boundary in `refineLedgerEvent`: a
+  `split` requires valid attributes + a ticker + null quantity + zero amount;
+  every other kind must leave `attributes` null. The fingerprint **excludes**
+  numerator/denominator, so a manual split and a same-date file re-import dedup to
+  one — the residual failure is only the cross-DATE case (record at the ex-date).
+
+- **`deriveLots` rebases open lots (`lots.ts`).** A `split` is recognized by its
+  `type`, not the sign of `quantity`. It multiplies the ticker's OPEN lots
+  (`quantity × ratio`, `costPerShare ÷ ratio`) while **preserving each lot's
+  acquisition date** (the IRS holding period is unchanged by a split). It sorts
+  **before** same-day trades (a split is effective at the open, so same-day trades
+  are already in post-split units — applying it after would double-adjust). Forward
+  and reverse splits both flow through this one rule. `deriveLots` also returns an
+  `oversold: Set<string>` — the post-rebase inconsistency signal a legitimately-
+  split position never trips.
+
+- **The inconsistent-position guard (`materializePositions`).** An acquired ticker
+  that derives to no open position **and** is `oversold` (disposals exceed
+  everything ever held — impossible without an unaccounted corporate action) is
+  **never silently deleted**. It materializes a **flagged** row (`quantity: 0`,
+  basis cleared, `dataQuality: "inconsistent_history"`) surfaced in `HoldingsTable`
+  + the mobile card with a ⚠ marker. A clean net-zero close
+  still deletes. Recording the missing split **self-heals** the flagged row (the
+  oversell disappears, the position derives, the upsert clears the flag to null).
+
+- **One-click resolve (`inferSplit` / `previewSplitResult` + `ResolveSplitDialog`).**
+  The flagged ⚠ marker is a **button** that opens a resolver pre-filled with a
+  DETECTED split. Two pure browser-safe leaves in `lots.ts` back it: `inferSplit`
+  reads the ticker's largest date-ordered price CLIFF (a split divides the price by
+  the ratio), snaps it to a standard ratio, and VERIFIES the candidate actually
+  clears the over-sell before returning it (a guess that doesn't reconcile → null,
+  never fabricated); `previewSplitResult` dry-runs `deriveLots` with the candidate
+  split appended so the dialog shows the **resulting** position (shares / avg cost /
+  value) LIVE as the user edits the ratio/date — the "verify the amount before you
+  confirm" gate. Confirm is disabled until the ratio resolves the over-sell, and
+  records through the same manual-ledger POST path (`recordManualEvent`); the row
+  self-heals on refetch. Detection is a heuristic (single forward/reverse split;
+  a sparse or very volatile history may not auto-detect — the ratio/date stay
+  editable and previewed).
+
+- **Import + entry surfaces.** The OFX importer ingests `SPLIT` (`portfolio-ofx.ts`
+  `handleSplit`: ratio from `NUMERATOR`/`DENOMINATOR`, fallback `NEWUNITS`/
+  `OLDUNITS`; `FRACCASH` → a separate cash row + warning; no usable ratio →
+  skipped). A "Split" type in the add-transaction dialog records one by hand
+  through the same contract. Transaction import gains a **reset-account mode**
+  (`mode: "append" | "replace"`): `replace` atomically wipes the account's ledger
+  and repopulates from the file (behind a typed `REPLACE` confirmation that warns
+  it removes manual entries), via `repo.replaceLedgerFromFile`.
+
+- **The NVDA data fix** is a one-time recorded event, not a schema hack:
+  `pnpm --filter @flow-state-dev/trading-desk nvda-split` records the 2024-06-10
+  10:1 split into `WF: Investing Accounts` through the real `ingestLedgerEvents`
+  contract (idempotent — re-running dedups), restoring the derived 121.9346-share
+  position.
+
+- **Limitations (accepted).** A split rebases **ledger-derived** lots (from
+  imported/recorded trades). A holding that exists only as a **CSV/PDF snapshot**
+  (no ledger share history) has no lots to rebase, so recording a split against it
+  is a no-op on the derived quantity — the split still shows in the transactions
+  list, but the position won't change until its trade history is in the ledger
+  (import the trades, or use a transaction-file import). Cross-source split dedup
+  is date-sensitive: the fingerprint excludes numerator/denominator (so a manual
+  split and a same-date file re-import of the *same* split collapse to one), which
+  means a split recorded at two *different* dates double-applies (→ ratio²) and two
+  *same-date* splits with *different* ratios dedup to whichever landed first —
+  record at the broker **ex-date**, and use reset mode to correct a mis-entered
+  split. A full account reset destroys manual corrections by design — the guard
+  makes the resulting gap *visible* (a flagged row), not silent. Backfill is lazy
+  (existing accounts re-materialize only when next touched). Return-of-capital /
+  option closures / spinoffs / mergers / cash-in-lieu math / multi-currency and a
+  forward splits feed (FIX-804) stay out of scope.
 
 ## Per-position thesis records (FIX-760)
 

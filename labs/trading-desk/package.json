@@ -13,7 +13,8 @@
     "test:watch": "vitest --root . --passWithNoTests",
     "db:generate": "drizzle-kit generate",
     "db:clean": "tsx scripts/db-clean.ts",
-    "migrate": "tsx scripts/migrate.ts"
+    "migrate": "tsx scripts/migrate.ts",
+    "nvda-split": "tsx scripts/record-nvda-split.ts"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^4.0.12",

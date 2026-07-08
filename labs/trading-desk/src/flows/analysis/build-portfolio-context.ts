@@ -77,7 +77,13 @@ export function buildPortfolioContext(
       // place (`value-holding.ts`), shared with the holdings table. So a
       // majority-bond/MMF book contributes its real mass to NAV, not a sliver.
       const price = priceByTicker.get(h.ticker.toUpperCase()) ?? null;
-      const marketValue = holdingMarketValue(h, { price });
+      // A FIX-876 `inconsistent_history` holding (an unaccounted split over-sold
+      // the ledger) has a meaningless quantity 0 — valuing it would assert a $0 /
+      // 0%-weight position to the trader/PM. Treat it as UNKNOWN (null): it counts
+      // toward `totalHoldings` (coverage honesty) but not `pricedHoldings`/NAV, and
+      // its weight is null — surfaced as an inconsistent input, never a fake $0.
+      const marketValue =
+        h.dataQuality === "inconsistent_history" ? null : holdingMarketValue(h, { price });
       if (marketValue != null) {
         knownMarketValueTotal += marketValue;
         pricedHoldings += 1;
