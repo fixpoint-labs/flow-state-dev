@@ -352,6 +352,183 @@ describe("generator owned step loop — non-streaming", () => {
     }
   });
 
+  it("skips a provider-executed tool call (no run, no unknown-tool error, no extra step)", async () => {
+    // A step-capable model returns a provider-executed call (web_search ran
+    // server-side) plus final text and the raw assistant turn. FSD must NOT
+    // execute it, must NOT surface an unknown-tool error, and must NOT loop —
+    // the step is terminal from FSD's view (no framework calls to run).
+    const rawAssistant = {
+      role: "assistant",
+      content: [
+        { type: "tool-call", toolCallId: "ws1", toolName: "web_search", input: { q: "x" } },
+        { type: "text", text: "the answer" },
+      ],
+    };
+
+    const { model, seen } = stepModel([
+      () => ({
+        text: "the answer",
+        toolCalls: [
+          { toolCallId: "ws1", toolName: "web_search", args: { q: "x" }, providerExecuted: true },
+        ],
+        finishReason: "stop",
+        responseMessages: [rawAssistant],
+      }),
+    ]);
+
+    const emitted: Array<{ type: string; item?: Record<string, unknown> }> = [];
+    const ctx = createMockContext({
+      response: {
+        emit: (event: unknown) => {
+          emitted.push(event as never);
+        },
+        getItems: () => emitted.filter((e) => e.item).map((e) => e.item),
+      } as never,
+    });
+
+    const block = generator({
+      name: "provider-only-gen",
+      model,
+      prompt: "p",
+      search: true,
+    });
+
+    await expect(runForTest(block, {}, ctx)).resolves.toBe("the answer");
+    // Exactly one step consumed — no looping on the provider-executed call.
+    expect(seen.length).toBe(1);
+    // No tool_output emitted (FSD ran nothing).
+    expect(
+      emitted.filter((e) => e.type === "item.done" && e.item?.type === "tool_output")
+    ).toHaveLength(0);
+  });
+
+  it("runs framework tools but skips provider-executed calls in a mixed step, carrying both results forward", async () => {
+    const frameworkRuns: unknown[] = [];
+    const fetchTool = handler({
+      name: "fetchDoc",
+      inputSchema: z.object({ id: z.string() }),
+      outputSchema: z.object({ body: z.string() }),
+      execute: (input) => {
+        frameworkRuns.push(input);
+        return { body: `doc:${input.id}` };
+      },
+    });
+
+    // Step 0: one provider-executed web_search (+ its raw role:"tool" result)
+    // AND one framework fetchDoc call. The raw response carries the assistant
+    // turn (both tool-call parts) and the provider tool-result message.
+    const rawAssistant = {
+      role: "assistant",
+      content: [
+        { type: "tool-call", toolCallId: "ws1", toolName: "web_search", input: { q: "x" } },
+        { type: "tool-call", toolCallId: "fd1", toolName: "fetchDoc", input: { id: "42" } },
+      ],
+    };
+    const rawProviderResult = {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "ws1",
+          toolName: "web_search",
+          output: { type: "json", value: { hits: ["a", "b"] } },
+        },
+      ],
+    };
+
+    const { model, seen } = stepModel([
+      () => ({
+        toolCalls: [
+          { toolCallId: "ws1", toolName: "web_search", args: { q: "x" }, providerExecuted: true },
+          { toolCallId: "fd1", toolName: "fetchDoc", args: { id: "42" } },
+        ],
+        finishReason: "tool-calls",
+        responseMessages: [rawAssistant, rawProviderResult],
+      }),
+      () => ({ text: "done", finishReason: "stop" }),
+    ]);
+
+    const block = generator({
+      name: "mixed-gen",
+      model,
+      prompt: "p",
+      tools: [fetchTool],
+      search: true,
+    });
+
+    await expect(runForTest(block, {}, createMockContext())).resolves.toBe("done");
+    // The framework tool ran exactly once; the provider call did not run.
+    expect(frameworkRuns).toEqual([{ id: "42" }]);
+    expect(seen.length).toBe(2);
+
+    // Step 1's messages carry the raw assistant turn, the PROVIDER result
+    // (from raw), then the FSD-built FRAMEWORK result — correctly ordered.
+    const step2 = seen[1]!.messages as Array<Record<string, unknown>>;
+    const assistantIdx = step2.findIndex((m) => m.role === "assistant" && Array.isArray(m.content));
+    const providerResultIdx = step2.findIndex(
+      (m) =>
+        m.role === "tool" &&
+        (m.content as Array<Record<string, unknown>>)[0]?.toolCallId === "ws1"
+    );
+    const frameworkResultIdx = step2.findIndex(
+      (m) =>
+        m.role === "tool" &&
+        (m.content as Array<Record<string, unknown>>)[0]?.toolCallId === "fd1"
+    );
+    expect(assistantIdx).toBeGreaterThanOrEqual(0);
+    expect(providerResultIdx).toBeGreaterThan(assistantIdx);
+    expect(frameworkResultIdx).toBeGreaterThan(providerResultIdx);
+
+    // The provider result is the raw one verbatim; the framework result is
+    // FSD-built from the tool's output.
+    expect((step2[providerResultIdx]!.content as Array<Record<string, unknown>>)[0]!.output).toEqual({
+      type: "json",
+      value: { hits: ["a", "b"] },
+    });
+    expect((step2[frameworkResultIdx]!.content as Array<Record<string, unknown>>)[0]!.output).toEqual({
+      type: "json",
+      value: { body: "doc:42" },
+    });
+  });
+
+  it("still surfaces a model-visible error for a genuine hallucinated unknown tool", async () => {
+    // A NON-provider-executed call that resolves to no framework tool is a
+    // hallucination — the skip logic must not swallow it.
+    const real = handler({
+      name: "real",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+    });
+
+    const { model, seen } = stepModel([
+      () => ({
+        toolCalls: [{ toolCallId: "h1", toolName: "ghost", args: {} }],
+        finishReason: "tool-calls",
+      }),
+      () => ({ text: "recovered", finishReason: "stop" }),
+    ]);
+
+    const block = generator({
+      name: "hallucinated-gen",
+      model,
+      prompt: "p",
+      tools: [real],
+    });
+
+    await expect(runForTest(block, {}, createMockContext())).resolves.toBe("recovered");
+    // The loop DID continue (framework call present, even if unknown) and the
+    // model saw the error result.
+    expect(seen.length).toBe(2);
+    const result = toolMessages(seen[1]!.messages).map(
+      (m) => (m.content as Array<Record<string, unknown>>)[0]!
+    )[0]!;
+    expect(result.output).toEqual({
+      type: "error-text",
+      value: 'Model called unknown tool "ghost"',
+    });
+  });
+
   it("aggregates per-step usage into one onGeneratorModelResult report", async () => {
     const echo = handler({
       name: "echo",

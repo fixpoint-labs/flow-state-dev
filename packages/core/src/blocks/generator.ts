@@ -1197,6 +1197,28 @@ interface SettledToolCall {
 }
 
 /**
+ * Partitions a step's tool calls into the ones FSD must run and the ones it
+ * must NOT. Provider-executed calls (web search / other `providerTools`) ran
+ * server-side inside the model call — their results are already in the raw
+ * response — so FSD skips them; they are also excluded from the
+ * loop-continuation decision (a step whose only calls are provider-executed
+ * is terminal from FSD's view). A NON-provider-executed call that resolves
+ * to no framework tool is a genuine hallucinated unknown tool and stays in
+ * `frameworkCalls` so it surfaces the model-visible error.
+ */
+function partitionStepCalls(
+  calls: GeneratorModelToolCall[]
+): { frameworkCalls: GeneratorModelToolCall[]; providerCalls: GeneratorModelToolCall[] } {
+  const frameworkCalls: GeneratorModelToolCall[] = [];
+  const providerCalls: GeneratorModelToolCall[] = [];
+  for (const call of calls) {
+    if (call.providerExecuted === true) providerCalls.push(call);
+    else frameworkCalls.push(call);
+  }
+  return { frameworkCalls, providerCalls };
+}
+
+/**
  * Executes a step's tool calls CONCURRENTLY (matching the SDK's same-step
  * behavior) and settles ALL siblings. Errors — including `SuspensionError` /
  * `SuspensionRejectedError`, which are deliberately NOT special-cased in
@@ -1243,11 +1265,15 @@ async function executeOwnedStepToolCalls(
  * non-AI-SDK models, mocks), falls back to ONE constructed assistant
  * message carrying ALL of the step's tool-call parts plus the step's text.
  *
- * Tool results are ALWAYS FSD-constructed — FSD ran the tools, so the raw
- * response contains no results for the execute-less framework tools — one
- * tool-result message per settled call in call order, payloads mirroring
- * what the AI SDK feeds the model (`mapModelOutput` applied in memory,
- * errors as `error-text`).
+ * FRAMEWORK tool results are ALWAYS FSD-constructed — FSD ran those tools,
+ * and the raw response contains no results for the execute-less framework
+ * tools — one tool-result message per settled framework call in call order,
+ * payloads mirroring what the AI SDK feeds the model (`mapModelOutput`
+ * applied in memory, errors as `error-text`). PROVIDER-executed tool results
+ * (role:"tool" messages the SDK put in the raw response) are carried forward
+ * verbatim as part of the raw turn, so the model keeps its search results.
+ * Ordering stays provider-valid: assistant turn (all tool-call parts) →
+ * provider results (from raw) → framework results (FSD).
  */
 async function buildOwnedStepMessages(
   step: { text?: string; responseMessages?: unknown[] } | undefined,
@@ -1257,15 +1283,17 @@ async function buildOwnedStepMessages(
   const aliasFor = (s: SettledToolCall): string =>
     s.entry?.alias ?? sanitizeToolName(s.call.toolName);
 
-  const rawAssistant = (step?.responseMessages ?? []).filter(
-    (m) =>
-      typeof m === "object" &&
-      m !== null &&
-      (m as { role?: unknown }).role === "assistant"
-  );
+  // Carry the raw turn forward verbatim (assistant + provider tool-result
+  // messages, preserving the SDK's own ordering) when present. This keeps
+  // reasoning/thinking parts and provider-executed tool results intact.
+  const rawTurn = (step?.responseMessages ?? []).filter((m) => {
+    if (typeof m !== "object" || m === null) return false;
+    const role = (m as { role?: unknown }).role;
+    return role === "assistant" || role === "tool";
+  });
 
-  const messages: unknown[] = rawAssistant.length > 0
-    ? [...rawAssistant]
+  const messages: unknown[] = rawTurn.length > 0
+    ? [...rawTurn]
     : [
         buildAssistantToolCallMessage(
           settled.map((s) => ({
@@ -1347,7 +1375,9 @@ async function applyOwnedPrepareStep(params: {
       // Mirrors the AI SDK adapter's prepareStep bridge, which re-resolves a
       // returned modelId for that step only. Requires the resolved model to
       // support this loop's step method; otherwise the override is skipped
-      // with a warning.
+      // with a warning. Like the SDK bridge, this re-resolves by id alone —
+      // any block-level `preferProvider` call option is intentionally not
+      // threaded through a per-step model switch.
       const resolved = ctx.resolveModel(prep.modelId, blockName);
       if (resolved[params.requires] !== undefined) {
         stepModel = resolved;
@@ -1461,11 +1491,15 @@ async function runOwnedGenerateLoop(params: {
     }
 
     const calls = remapStepToolCalls(step.toolCalls, toolset) ?? [];
+    // Provider-executed calls (web search etc.) ran server-side and are not
+    // FSD's to run; only framework calls gate continuation and get executed.
+    const { frameworkCalls } = partitionStepCalls(calls);
 
-    if (calls.length === 0 || !params.runTools) {
-      // Final step — no calls to run, or `loop.runTools: false` surfaces the
-      // calls and TERMINATES (no tool-result messages are ever produced when
-      // tools aren't run, so looping on would feed an orphaned tool turn).
+    if (frameworkCalls.length === 0 || !params.runTools) {
+      // Final step from FSD's view — no framework calls to run (provider-only
+      // steps included), or `loop.runTools: false` surfaces the calls and
+      // TERMINATES (no tool-result messages are ever produced when tools
+      // aren't run, so looping on would feed an orphaned tool turn).
       steps.push({
         text: step.text,
         toolCalls: calls.length > 0 ? calls : undefined,
@@ -1475,7 +1509,7 @@ async function runOwnedGenerateLoop(params: {
       break;
     }
 
-    const settled = await executeOwnedStepToolCalls(calls, toolset);
+    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset);
     messages = [...messages, ...(await buildOwnedStepMessages(step, settled, ctx))];
     steps.push({
       text: step.text,
@@ -2017,7 +2051,10 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
     usage = addGeneratorUsage(usage, stepFinal?.usage);
 
     const calls = stepFinal?.toolCalls ?? [];
-    if (calls.length === 0 || !runTools) {
+    // Provider-executed calls (web search etc.) ran server-side and are not
+    // FSD's to run; only framework calls gate continuation and get executed.
+    const { frameworkCalls } = partitionStepCalls(calls);
+    if (frameworkCalls.length === 0 || !runTools) {
       steps.push({
         text: stepFinal?.text,
         toolCalls: calls.length > 0 ? calls : undefined,
@@ -2027,7 +2064,7 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
       break;
     }
 
-    const settled = await executeOwnedStepToolCalls(calls, toolset);
+    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset);
 
     // Completed tool_call_progress items for successful calls, synthesized
     // through the same handler the legacy stream's `tool_result` chunks use.
@@ -2426,13 +2463,21 @@ export function generator<
         ? (normalizedConfig.agentName ?? blockName)
         : undefined;
 
-      // Compile tools: with execute wrappers (AI SDK auto-runs them) or
-      // without (model suggests calls but doesn't execute them).
-      const compiledTools = toolBlocks.length > 0
-        ? (runTools
-            ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName, itemVisibility, agentName)
-            : compileToolsForModel(toolBlocks))
-        : [];
+      // Compile tools for a LEGACY (SDK-owned) model call: with execute
+      // wrappers (AI SDK auto-runs them) or without (model suggests calls but
+      // doesn't execute them). The framework-owned loops never use these —
+      // they build their own executors via `compileOwnedLoopToolset` — so
+      // this is computed lazily at the two legacy call sites only, avoiding
+      // per-tool `buildToolExecutor` closures on every owned-path generation
+      // (the real AI-SDK adapter always takes the owned path). `hasTools`
+      // gates on the raw block/provider-tool counts (1:1 with what would be
+      // compiled), so streaming/emission decisions are unaffected.
+      const compileLegacyTools = (): GeneratorModelTool[] =>
+        toolBlocks.length > 0
+          ? (runTools
+              ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName, itemVisibility, agentName)
+              : compileToolsForModel(toolBlocks))
+          : [];
 
       // Streaming path: text output + model supports streaming (SDK-owned
       // `stream` or the framework-owned per-step `streamStep`). We stream
@@ -2440,7 +2485,7 @@ export function generator<
       // whenever identity is set (so text deltas flow to the client).
       // Identity-less, tool-less generators fall through to non-streaming
       // and skip message emission entirely.
-      const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
+      const hasTools = toolBlocks.length > 0 || resolvedProviderTools.length > 0;
       const canStream = (itemVisibility !== undefined || hasTools)
         && isTextOutputSchema(outputSchema)
         && (model.stream !== undefined || model.streamStep !== undefined);
@@ -2506,7 +2551,7 @@ export function generator<
           return await executeStreamingGeneration(
             model,
             messages,
-            compiledTools,
+            compileLegacyTools(),
             resolvedProviderTools,
             normalizedConfig,
             outputSchema,
@@ -2568,9 +2613,11 @@ export function generator<
               providerOptions: resolvedProviderOpts,
               caching: resolvedCaching,
             })
-          : await model.generate({
+          : await (async () => {
+              const legacyTools = compileLegacyTools();
+              return model.generate({
               messages,
-              tools: compiledTools.length > 0 ? compiledTools : undefined,
+              tools: legacyTools.length > 0 ? legacyTools : undefined,
               providerTools: resolvedProviderTools.length > 0 ? resolvedProviderTools : undefined,
               outputSchema: generateOutputSchema,
               maxTokens: normalizedConfig.maxTokens,
@@ -2580,6 +2627,7 @@ export function generator<
               caching: resolvedCaching,
               prepareStep: prepareStepFn
             });
+            })();
       } catch (err) {
         surfaceModelCallError(err, ctx, blockName);
       }

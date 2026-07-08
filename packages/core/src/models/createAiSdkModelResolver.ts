@@ -165,7 +165,11 @@ function normalizeToolCalls(
     toolCalls.push({
       toolCallId,
       toolName: resolveOriginalToolName(toolName, toolNameMap),
-      args
+      args,
+      // v7 tool-call parts carry `providerExecuted: true` when the provider
+      // ran the tool server-side (e.g. web search). Propagate it so the
+      // framework-owned loop skips these instead of trying to run them.
+      ...(candidate.providerExecuted === true ? { providerExecuted: true } : {})
     });
   }
 

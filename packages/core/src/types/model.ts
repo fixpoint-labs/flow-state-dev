@@ -66,6 +66,16 @@ export type GeneratorModelToolCall = {
   toolCallId: string;
   toolName: string;
   args: unknown;
+  /**
+   * True when the provider executed this tool call server-side (e.g. a
+   * provider-native web search / other `providerTools`), rather than the
+   * model requesting a framework tool for the caller to run. The
+   * framework-owned step loop uses this to skip provider-executed calls
+   * (their results are already in the raw response) instead of mistaking
+   * them for hallucinated unknown tools. Absent/false for ordinary
+   * model-requested framework tool calls.
+   */
+  providerExecuted?: boolean;
 };
 
 export type GeneratorModelUsage = {
