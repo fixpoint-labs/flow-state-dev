@@ -197,3 +197,113 @@ export function deriveLots(events: LedgerRow[]): {
 
   return { positions, lots, oversold };
 }
+
+/** Standard split ratios an inferred cliff is snapped to (forward; a reverse
+ *  split uses the inverse). A split produces a clean, large, one-day price
+ *  division that dwarfs normal volatility, so an inferred ratio is trusted only
+ *  when it lands within {@link SPLIT_SNAP_TOLERANCE} of one of these. */
+const STANDARD_SPLIT_RATIOS = [2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 25, 30, 40, 50];
+const SPLIT_SNAP_TOLERANCE = 0.2; // inferred cliff within ±20% of a standard ratio
+
+/** Snap a raw price ratio to the nearest standard split ratio, with its relative
+ *  error; null when the nearest is outside tolerance (don't guess a non-standard
+ *  ratio). */
+function snapSplitRatio(raw: number): { ratio: number; err: number } | null {
+  let best: number | null = null;
+  let bestErr = Infinity;
+  for (const r of STANDARD_SPLIT_RATIOS) {
+    const err = Math.abs(raw - r) / r;
+    if (err < bestErr) {
+      bestErr = err;
+      best = r;
+    }
+  }
+  return best !== null && bestErr <= SPLIT_SNAP_TOLERANCE ? { ratio: best, err: bestErr } : null;
+}
+
+/** A detected-but-unconfirmed split proposal (FIX-876 follow-up). */
+export type InferredSplit = { numerator: number; denominator: number; tradeDate: string };
+
+/** Build a synthetic `split` `LedgerRow` for a dry-run derivation. Only the
+ *  fields `deriveLots` reads matter; the rest are inert placeholders. */
+function syntheticSplitRow(ticker: string, s: InferredSplit): LedgerRow {
+  return {
+    id: "inferred-split",
+    accountId: "",
+    userId: "",
+    type: "split",
+    ticker,
+    tradeDate: s.tradeDate,
+    settleDate: null,
+    quantity: null,
+    unitPrice: null,
+    amount: 0,
+    fee: null,
+    currency: "USD",
+    source: "manual",
+    externalId: null,
+    description: null,
+    basisUnknown: null,
+    attributes: { numerator: s.numerator, denominator: s.denominator },
+    voidedAt: null,
+    createdAt: s.tradeDate,
+  };
+}
+
+/**
+ * Best-effort detection of a MISSING stock split for an over-sold ticker (the
+ * FIX-876 auto-resolve). Meant for a ticker `deriveLots` reports as `oversold`
+ * (its disposals exceed everything ever held — the signature of a pre/post-split
+ * units mismatch). It infers the ratio from the largest price CLIFF between the
+ * ticker's date-ordered priced trades (a split divides the price by the ratio),
+ * snaps it to a standard ratio, and then VERIFIES the candidate actually resolves
+ * the over-sell before returning it — a guess that doesn't reconcile the position
+ * is discarded (returns null), never fabricated. Heuristic by design: it covers
+ * the common single forward/reverse split; a very volatile name or multiple
+ * splits on one ticker may not resolve (and stay flagged). Pure + browser-safe so
+ * the UI can both detect and preview the result client-side.
+ */
+export function inferSplit(events: LedgerRow[], ticker: string): InferredSplit | null {
+  const priced = events
+    .filter(
+      (e) =>
+        e.voidedAt === null &&
+        e.ticker === ticker &&
+        e.type !== "split" &&
+        e.quantity !== null &&
+        Math.abs(e.quantity) > QTY_EPSILON &&
+        e.unitPrice !== null &&
+        e.unitPrice > 0,
+    )
+    .map((e, idx) => ({ price: e.unitPrice as number, date: e.tradeDate, idx }))
+    .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.idx - b.idx));
+  if (priced.length < 2) return null;
+
+  // Scan adjacent (date-ordered) trades for the cleanest price cliff — a drop is a
+  // forward split (R:1), a rise is a reverse split (1:R). Keep the best snap.
+  let best: InferredSplit | null = null;
+  let bestErr = Infinity;
+  for (let i = 0; i + 1 < priced.length; i++) {
+    const before = priced[i].price;
+    const after = priced[i + 1].price;
+    const date = priced[i + 1].date;
+    const fwd = snapSplitRatio(before / after);
+    if (fwd !== null && fwd.err < bestErr) {
+      bestErr = fwd.err;
+      best = { numerator: fwd.ratio, denominator: 1, tradeDate: date };
+    }
+    const rev = snapSplitRatio(after / before);
+    if (rev !== null && rev.err < bestErr) {
+      bestErr = rev.err;
+      best = { numerator: 1, denominator: rev.ratio, tradeDate: date };
+    }
+  }
+  if (best === null) return null;
+
+  // Verify: the candidate must actually reconcile the ticker (no more over-sell,
+  // and a real position derives). Otherwise it's a bad guess — discard it.
+  const { oversold, positions } = deriveLots([...events, syntheticSplitRow(ticker, best)]);
+  if (oversold.has(ticker)) return null;
+  if (!positions.some((p) => p.ticker === ticker)) return null;
+  return best;
+}
