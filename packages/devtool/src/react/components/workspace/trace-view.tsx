@@ -362,6 +362,10 @@ function TraceNodeView({
     );
   }
 
+  if (node.type === "divider" && node.item) {
+    return <TraceDividerView item={node.item} depth={depth} />;
+  }
+
   if (node.type === "item" && node.item) {
     const item = node.item;
     const isSelected = selectedItemId === item.id;
@@ -386,6 +390,36 @@ function TraceNodeView({
   }
 
   return null;
+}
+
+/**
+ * Boundary marker for a `continuation` or `suspension_resume` item (FIX-865).
+ * Separates the prior durable log (rendered above, via `rawItems` so retained
+ * partial rows survive) from the live re-run that followed a crash-recovery
+ * `/continue` or a resolved HITL suspension. Not "N items replayed" —
+ * `priorItemCount` deliberately counts prior log rows, which can include
+ * non-replayed partial rows (see `ContinuationItem`'s doc comment).
+ */
+function TraceDividerView({ item, depth }: { item: DevtoolItem; depth: number }) {
+  const label =
+    item.type === "continuation"
+      ? `continued here — ${item.priorItemCount} prior item${item.priorItemCount === 1 ? "" : "s"}`
+      : item.type === "suspension_resume"
+        ? `resumed — ${item.resolution}`
+        : "";
+
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-1"
+      style={{ paddingLeft: `${depth * 16 + 12}px` }}
+    >
+      <div className="h-px flex-1 bg-amber-800/40" />
+      <span className="shrink-0 text-[10px] font-mono uppercase tracking-wide text-amber-400/80">
+        {label}
+      </span>
+      <div className="h-px flex-1 bg-amber-800/40" />
+    </div>
+  );
 }
 
 /** Visual marker for blocks dispatched onto the work queue. */

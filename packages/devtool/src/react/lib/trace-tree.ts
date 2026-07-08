@@ -28,7 +28,7 @@ export type StateSnapshot = {
 };
 
 export type TraceNode = {
-  type: "request" | "block" | "item";
+  type: "request" | "block" | "item" | "divider";
   id: string;
   requestId?: string;
   action?: string;
@@ -62,6 +62,12 @@ export type TraceNode = {
    * first pass of a loop reads `[iter 0]`.
    */
   iterationIndex?: number;
+  /**
+   * For `type: "item"` nodes, the underlying item. For `type: "divider"`
+   * nodes (FIX-865), the `continuation` or `suspension_resume` boundary item
+   * itself — the divider renders from its fields (e.g. `priorItemCount`,
+   * `resolution`) rather than going through `getItemPreview`.
+   */
   item?: DevtoolItem;
   /** The lifecycle trace item for this block (used for detail panel on click). */
   traceItem?: DevtoolItem;
@@ -79,17 +85,50 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
     const parentOf = new Map<string, string>();
     const rootBlocks: TraceNode[] = [];
     const orphanItems: TraceNode[] = [];
+    // Chronological sort key for every root-level node (block or orphan/
+    // divider item), keyed by node id — the block's key is its earliest
+    // item's `itemIndex`; an orphan/divider's key is its own. Used to place
+    // the continuation/suspension_resume divider (FIX-865) at its correct
+    // position relative to sibling root blocks, rather than always last.
+    const rootOrderKey = new Map<string, number>();
 
-    for (const item of group.items) {
+    // Use the raw (uncollapsed) item list when available (FIX-865 §6): the
+    // canonical collapse (`collapseToCanonicalLog`, applied upstream for the
+    // chat-style stream view) strips superseded pre-recovery rows, which
+    // would erase exactly the prior-log rows the continuation/
+    // suspension_resume divider needs to render above it. `group.items` is
+    // the fallback for callers/fixtures that don't carry `rawItems`.
+    const sourceItems = (group.rawItems ?? group.items) as DevtoolItem[];
+
+    for (const item of sourceItems) {
+      // Continuation / suspension_resume boundary markers (FIX-865): render
+      // as a top-level divider rather than nesting under whichever block
+      // owns runtime-provenance items, so the prior-log/live-continuation
+      // seam is visible across the whole request.
+      if (item.type === "continuation" || item.type === "suspension_resume") {
+        const dividerNode: TraceNode = {
+          type: "divider",
+          id: item.id,
+          item,
+          children: [],
+          isExpanded: false,
+        };
+        orphanItems.push(dividerNode);
+        rootOrderKey.set(dividerNode.id, item.itemIndex);
+        continue;
+      }
+
       const prov = item.provenance;
       if (!prov) {
-        orphanItems.push({
+        const orphanNode: TraceNode = {
           type: "item",
           id: item.id,
           item,
           children: [],
           isExpanded: false,
-        });
+        };
+        orphanItems.push(orphanNode);
+        rootOrderKey.set(orphanNode.id, item.itemIndex);
         continue;
       }
 
@@ -108,6 +147,7 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
           isExpanded: isLast,
         };
         blockMap.set(prov.blockInstanceId, blockNode);
+        rootOrderKey.set(blockNode.id, item.itemIndex);
       } else if (blockNode.phase === undefined && prov.phase !== undefined) {
         // First seen item didn't carry phase (defensive — provenance.phase is
         // always set today); backfill from any subsequent item that does.
@@ -232,7 +272,7 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       if (blockNode.blockDuration !== undefined) {
         continue;
       }
-      const blockItems = group.items.filter(
+      const blockItems = sourceItems.filter(
         (i) => i.provenance?.blockInstanceId === blockNode.blockInstanceId,
       );
       const blockTs = blockItems.map((i) => i.ts).filter(Boolean);
@@ -252,6 +292,16 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       }
     }
 
+    // Root-level children in chronological order (FIX-865): blocks and
+    // orphan/divider items are collected separately above (existing
+    // block-vs-orphan structure preserved for readability), then merged here
+    // by each node's earliest `itemIndex` so a continuation/suspension_resume
+    // divider lands between the prior-log blocks and the live-continuation
+    // ones instead of always trailing at the end.
+    const children = [...rootBlocks, ...orphanItems].sort(
+      (a, b) => (rootOrderKey.get(a.id) ?? 0) - (rootOrderKey.get(b.id) ?? 0),
+    );
+
     return {
       type: "request" as const,
       id: `req-${group.requestId}`,
@@ -259,7 +309,7 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       action: group.action,
       status: group.status,
       duration: group.duration,
-      children: [...rootBlocks, ...orphanItems],
+      children,
       isExpanded: isLast,
     };
   });

@@ -465,4 +465,82 @@ describe("buildTraceTree", () => {
     expect(blocks).toHaveLength(2);
     expect(blocks.every((b) => b.iterationIndex === undefined)).toBe(true);
   });
+
+  describe("continuation / suspension_resume boundary (FIX-865)", () => {
+    it("renders a continuation item as a divider node separating prior items from the live continuation", () => {
+      const items = [
+        makeItem({
+          id: "before-1",
+          type: "message",
+          itemIndex: 0,
+          provenance: makeProvenance("before-block", "before-inst"),
+        }),
+        // A background block that completed before the crash — retained in
+        // the prior log (not re-run on continuation).
+        makeItem({
+          id: "bg-before-1",
+          type: "message",
+          itemIndex: 1,
+          provenance: { blockName: "bg-before", blockInstanceId: "bg-before-inst", phase: "work" as const },
+        }),
+        {
+          id: "cont-1",
+          type: "continuation",
+          status: "completed",
+          requestId: "req-1",
+          itemIndex: 2,
+          ts: Date.now(),
+          trigger: "recovery",
+          priorItemCount: 2,
+          continuedAt: Date.now(),
+        } as unknown as OutputItem,
+        makeItem({
+          id: "after-1",
+          type: "message",
+          itemIndex: 3,
+          provenance: makeProvenance("after-block", "after-inst"),
+        }),
+        // A background block freshly re-dispatched on the live continuation.
+        makeItem({
+          id: "bg-after-1",
+          type: "message",
+          itemIndex: 4,
+          provenance: { blockName: "bg-after", blockInstanceId: "bg-after-inst", phase: "work" as const },
+        }),
+      ];
+
+      // Use `rawItems` — the uncollapsed source the divider logic must read
+      // from — rather than `items` (which the canonical collapse strips).
+      const tree = buildTraceTree([makeGroup({ items: [], rawItems: items })]);
+      const requestNode = tree[0];
+
+      const dividerIndex = requestNode.children.findIndex((n) => n.type === "divider");
+      expect(dividerIndex).toBeGreaterThanOrEqual(0);
+      expect(requestNode.children[dividerIndex].item?.type).toBe("continuation");
+
+      const before = requestNode.children.slice(0, dividerIndex);
+      const after = requestNode.children.slice(dividerIndex + 1);
+
+      const beforeNames = before.map((n) => n.blockName);
+      const afterNames = after.map((n) => n.blockName);
+
+      expect(beforeNames).toEqual(["before-block", "bg-before"]);
+      expect(afterNames).toEqual(["after-block", "bg-after"]);
+
+      // Regression: BG phase survives on both sides of the divider.
+      const bgBefore = before.find((n) => n.blockName === "bg-before");
+      const bgAfter = after.find((n) => n.blockName === "bg-after");
+      expect(bgBefore?.phase).toBe("work");
+      expect(bgAfter?.phase).toBe("work");
+    });
+
+    it("falls back to `items` when `rawItems` is not provided", () => {
+      const items = [
+        makeItem({ id: "a", type: "message", itemIndex: 0, provenance: makeProvenance("a-block", "a-inst") }),
+      ];
+      const tree = buildTraceTree([makeGroup({ items })]);
+      expect(tree[0].children).toHaveLength(1);
+      expect(tree[0].children[0].blockName).toBe("a-block");
+    });
+  });
 });

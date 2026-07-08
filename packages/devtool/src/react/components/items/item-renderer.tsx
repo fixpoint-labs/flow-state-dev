@@ -23,6 +23,7 @@ import { RouterDecisionItemView } from "./router-decision-item";
 import { SourceItemView } from "./source-item";
 import { SuspensionItemView } from "./suspension-item";
 import { SuspensionResumeItemView } from "./suspension-resume-item";
+import { ContinuationItemView } from "./continuation-item";
 // FIX-573: BlockDebugItemView is gone with the unified block_trace lifecycle.
 import { useDebug } from "../../context/debug-context";
 import { useSelection } from "../../context/selection-context";
@@ -125,6 +126,8 @@ function ItemContent({ item }: { item: DevtoolItem }) {
       return <SuspensionItemView item={item} />;
     case "suspension_resume":
       return <SuspensionResumeItemView item={item} />;
+    case "continuation":
+      return <ContinuationItemView item={item} />;
     case "state_snapshot":
       return <StateSnapshotItemView item={item} />;
     default:

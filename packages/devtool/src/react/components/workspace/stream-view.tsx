@@ -9,7 +9,10 @@
  *   - Components / containers
  *   - Status (transient progress indicators, e.g. "Using web_search…")
  *   - Sources (citation URLs from provider-native search)
+ *   - Continuation / suspension_resume boundary markers (crash-recovery and
+ *     HITL-resume seams, FIX-865) — rendered as compact divider rows
  *
+
  * Operational items (block_output lifecycle, router_decision, context,
  * state_change, resource_change) are filtered out — they live in trace view.
  */
@@ -59,6 +62,8 @@ const STREAM_TYPES = new Set([
   "container",
   "status",
   "source",
+  "continuation",
+  "suspension_resume",
 ]);
 
 type StreamViewProps = {
