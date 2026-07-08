@@ -124,7 +124,7 @@ describe("computeRealizedGainTotals", () => {
       gain({ id: "b", ticker: "AAPL", disposedDate: "2026-06-01", term: "short", gain: 80 }),
       gain({ id: "c", ticker: "JPM", disposedDate: "2025-02-10", term: "long", gain: 50 }),
     ]);
-    const totals = computeRealizedGainTotals(models);
+    const totals = computeRealizedGainTotals(models, "USD");
     expect(totals.byYear.get(2026)).toBe(280);
     expect(totals.byYear.get(2025)).toBe(50);
     expect(totals.grandTotal).toBe(330);
@@ -139,13 +139,30 @@ describe("computeRealizedGainTotals", () => {
       gain({ id: "b", ticker: "SAP", disposedDate: "2026-06-01", currency: "EUR", gain: 150 }),
       gain({ id: "c", ticker: "JPM", disposedDate: "2025-02-10", currency: "USD", gain: 50 }),
     ]);
-    const totals = computeRealizedGainTotals(models);
+    const totals = computeRealizedGainTotals(models, "USD");
     // 2026 mixes USD + EUR → unknown, never 350.
     expect(totals.byYear.get(2026)).toBeNull();
     // 2025 is single-currency → still a real figure.
     expect(totals.byYear.get(2025)).toBe(50);
     // The whole set mixes currencies → the grand total is unknown.
     expect(totals.grandTotal).toBeNull();
+  });
+
+  it("nulls a total whose rows are a single currency that isn't the account currency", () => {
+    // A USD account holding only EUR disposals: the rows don't MIX currencies,
+    // but a EUR sum labeled in the account's USD would still be a fabricated
+    // cross-currency figure. The per-row EUR gains still show; the total is "—".
+    const models = buildRealizedGainsRowModel([
+      gain({ id: "a", ticker: "SAP", disposedDate: "2026-03-15", currency: "EUR", gain: 200 }),
+      gain({ id: "b", ticker: "BMW", disposedDate: "2026-06-01", currency: "EUR", gain: 150 }),
+    ]);
+    const totals = computeRealizedGainTotals(models, "USD");
+    expect(totals.byYear.get(2026)).toBeNull();
+    expect(totals.grandTotal).toBeNull();
+    // A EUR account with those same EUR rows CAN state the total.
+    const eurTotals = computeRealizedGainTotals(models, "EUR");
+    expect(eurTotals.byYear.get(2026)).toBe(350);
+    expect(eurTotals.grandTotal).toBe(350);
   });
 
   it("propagates the null gate: a null group gain nulls its year and the grand total", () => {
@@ -155,7 +172,7 @@ describe("computeRealizedGainTotals", () => {
       gain({ id: "b", ticker: "AAPL", disposedDate: "2026-06-01", gain: null, costBasis: null }),
       gain({ id: "c", ticker: "JPM", disposedDate: "2025-02-10", gain: 50 }),
     ]);
-    const totals = computeRealizedGainTotals(models);
+    const totals = computeRealizedGainTotals(models, "USD");
     // 2026 has an unknown-gain group → the year total is unknown (—), not 200.
     expect(totals.byYear.get(2026)).toBeNull();
     // 2025 is fully known.

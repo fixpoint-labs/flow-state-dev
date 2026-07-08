@@ -69,7 +69,10 @@ export function RealizedGainsTable({
     () => buildRealizedGainsRowModel(realizedGains),
     [realizedGains],
   );
-  const totals = useMemo(() => computeRealizedGainTotals(rows), [rows]);
+  const totals = useMemo(
+    () => computeRealizedGainTotals(rows, currency),
+    [rows, currency],
+  );
   const showCurrency = useMemo(
     () => rows.some((r) => r.currency !== "USD"),
     [rows],

@@ -472,6 +472,15 @@ function assertShareEventInvariant(e: LedgerEventInput): void {
   if (e.type === "sell" && e.quantity >= 0) {
     throw new Error(`A sell must have a negative quantity (got ${e.quantity}).`);
   }
+  // Sell proceeds are cash IN — non-negative by the sign convention (buy `−`,
+  // sell `+`). The realized-gains path (FIX-874) allocates `amount` directly as
+  // proceeds, so a negative sell amount would persist negative proceeds and an
+  // overstated capital loss. Guard the sign at this shared boundary (the file
+  // parser already floors proceeds at 0; this catches a manual/caller row). A
+  // genuine $0 sale is still allowed.
+  if (e.type === "sell" && e.amount < 0) {
+    throw new Error(`A sell must have non-negative proceeds (got ${e.amount}).`);
+  }
 }
 
 /** Serialize same-account recomputes (FIX-874). Held for the rest of the

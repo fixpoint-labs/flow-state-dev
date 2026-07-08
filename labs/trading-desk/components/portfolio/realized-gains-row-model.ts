@@ -17,8 +17,10 @@
  *    is null and renders "—", never a fabricated partial number. The same gate
  *    propagates to the by-year and grand totals — a total that silently omitted
  *    an unknown contributor would misstate realized gains. The totals extend the
- *    currency rule too: a year (or the grand total) whose rows span more than
- *    one currency is null rather than a single-currency-labeled USD + EUR sum.
+ *    currency rule too: a year (or the grand total) is null unless every one of
+ *    its rows is in the account currency the total is labeled in — a
+ *    multi-currency mix, or a single foreign currency, both render "—" rather
+ *    than a mislabeled cross-currency sum.
  */
 import type { RealizedGainRow } from "@/src/db/repository";
 
@@ -107,36 +109,45 @@ export function buildRealizedGainsRowModel(
 
 /** The all-up realized-gain totals: one figure per year and one grand total.
  *  Each is null (renders "—") when ANY contributing group's gain is null (the
- *  "—" gate) OR the contributing rows span more than one currency (see
- *  `totalGain`). */
+ *  "—" gate) OR the contributing rows aren't all in the account currency the
+ *  total is labeled in (see `totalGain`). */
 export type RealizedGainTotals = {
   /** year → summed realized gain (null if any of that year's groups is null, or
-   *  that year mixes currencies). */
+   *  that year isn't wholly in the account currency). */
   byYear: Map<number, number | null>;
   /** Summed realized gain across every year (null if any group is null, or the
-   *  set mixes currencies). */
+   *  set isn't wholly in the account currency). */
   grandTotal: number | null;
 };
 
-/** Sum realized gain across a set of rolled-up rows, honest about the two ways
- *  the figure can't be stated as one number: a null contributing gain (the "—"
- *  gate), OR more than one currency in the set. The table renders these totals
- *  in the single account currency, so summing USD + EUR into one labeled figure
- *  would be a fabricated number — the same reason currency is part of the row
- *  key. Either case → null → "—". */
-function totalGain(models: RealizedGainRowModel[]): number | null {
+/** Sum realized gain across a set of rolled-up rows, honest about the ways the
+ *  figure can't be stated as one number in the account currency (which is what
+ *  the table labels these totals in): a null contributing gain (the "—" gate),
+ *  more than one currency in the set, OR a single currency that isn't the
+ *  account currency (a USD account holding only EUR disposals — summing those
+ *  and labeling the result USD fabricates a cross-currency figure, the same
+ *  reason currency is part of the row key). Any of these → null → "—". An empty
+ *  set is 0 (no disposals, no gain). */
+function totalGain(
+  models: RealizedGainRowModel[],
+  accountCurrency: string,
+): number | null {
   const currencies = new Set(models.map((m) => m.currency));
   if (currencies.size > 1) return null;
+  if (currencies.size === 1 && !currencies.has(accountCurrency)) return null;
   return nullableSum(models.map((m) => m.gain));
 }
 
 /**
  * Compute the by-year and grand-total realized gain from the row models. Both
- * follow the same real-money gates as the rows: a null contributing gain, or a
- * currency mix, makes the enclosing total null. Pure — no IO.
+ * follow the same real-money gates as the rows: a null contributing gain, or any
+ * currency the account-currency total can't honestly state, makes the enclosing
+ * total null. `accountCurrency` is the currency the table labels the totals in.
+ * Pure — no IO.
  */
 export function computeRealizedGainTotals(
   models: RealizedGainRowModel[],
+  accountCurrency: string,
 ): RealizedGainTotals {
   const perYear = new Map<number, RealizedGainRowModel[]>();
   for (const m of models) {
@@ -145,9 +156,10 @@ export function computeRealizedGainTotals(
     else list.push(m);
   }
   const byYear = new Map<number, number | null>();
-  for (const [year, yearModels] of perYear) byYear.set(year, totalGain(yearModels));
+  for (const [year, yearModels] of perYear)
+    byYear.set(year, totalGain(yearModels, accountCurrency));
   return {
     byYear,
-    grandTotal: totalGain(models),
+    grandTotal: totalGain(models, accountCurrency),
   };
 }

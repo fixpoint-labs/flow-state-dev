@@ -170,6 +170,25 @@ describe("ingestLedgerEvents — household scoping", () => {
   });
 });
 
+describe("ingestLedgerEvents — share-event invariant", () => {
+  it("rejects a sell with negative proceeds (would persist an overstated loss)", async () => {
+    // The realized-gains path (FIX-874) uses `amount` as proceeds; a negative
+    // sell amount would materialize negative proceeds. Guard it at ingest.
+    await expect(
+      repo.ingestLedgerEvents([ev({ type: "sell", quantity: -10, amount: -1300 })], "devuser"),
+    ).rejects.toThrow(/non-negative proceeds/);
+    expect(await repo.getLedger("devuser")).toHaveLength(0); // batch rolled back
+  });
+
+  it("still allows a genuine $0 sale", async () => {
+    const r = await repo.ingestLedgerEvents(
+      [ev({ type: "sell", quantity: -10, amount: 0 })],
+      "devuser",
+    );
+    expect(r.inserted).toBe(1);
+  });
+});
+
 describe("voidLedgerEvents", () => {
   it("tombstones rows by (source, external_id) and excludes them from derivation", async () => {
     await repo.upsertHoldings("acc-1", "devuser", [holding("AAPL", 10)], "upsert");
