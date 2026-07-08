@@ -109,6 +109,16 @@ export type RecoveryClient = {
    */
   continue: (options: ContinueRequestOptions) => Promise<ContinueRequestResult>;
   /**
+   * Streaming sibling of {@link RecoveryClient.continue}. POSTs to the same
+   * `/continue` route with `Accept: text/event-stream` so the server returns
+   * the continuation's SSE stream directly from the POST response, and
+   * returns the raw {@link Response} whose body is that stream — mirroring
+   * {@link RecoveryClient.resumeSuspensionStream}'s inline-streaming
+   * approach so serverless deployments (no shared pub/sub) still see the
+   * continued run live, without a separate GET reconnect.
+   */
+  continueStream: (options: ContinueRequestOptions) => Promise<Response>;
+  /**
    * Resolve a pending durable-execution suspension by approving or rejecting
    * it. POSTs to the resume endpoint, which re-dispatches the action from the
    * suspension point and returns the new request id alongside the original.
@@ -214,6 +224,30 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
       });
 
       return { requestId: payload.requestId };
+    },
+
+    continueStream: async ({ flowKind, sessionId, requestId }) => {
+      requireNonEmpty(flowKind, "flowKind");
+      requireNonEmpty(sessionId, "sessionId");
+      requireNonEmpty(requestId, "requestId");
+
+      const response = await fetcher(
+        buildFlowApiUrl({
+          baseUrl: options.baseUrl,
+          path: `/api/flows/${encodeURIComponent(flowKind)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/continue`
+        }),
+        {
+          method: "POST",
+          headers: { "accept": "text/event-stream" }
+        }
+      );
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(`Continue request failed (${response.status}): ${text}`.trim());
+      }
+
+      return response;
     },
 
     resumeSuspension: async (flowKind, requestId, body) => {

@@ -134,6 +134,97 @@ describe("createRecoveryClient", () => {
     });
   });
 
+  describe("continue", () => {
+    it("posts to the canonical continue path and returns the request id", async () => {
+      const fetcher = vi.fn<ClientFetch>(async () =>
+        createJsonResponse({ requestId: "req_1" }, 202)
+      );
+
+      const client = createRecoveryClient({ fetcher });
+      const result = await client.continue({
+        flowKind: "chat",
+        sessionId: "sess_1",
+        requestId: "req_1"
+      });
+
+      expect(result).toEqual({ requestId: "req_1" });
+      expect(fetcher.mock.calls[0]?.[0]).toBe(
+        "/api/flows/chat/sessions/sess_1/requests/req_1/continue"
+      );
+      expect(fetcher.mock.calls[0]?.[1]?.method).toBe("POST");
+    });
+  });
+
+  describe("continueStream", () => {
+    it("posts to the canonical continue path with Accept: text/event-stream and returns the raw response", async () => {
+      const sse = new Response("data: {}\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream" }
+      });
+      const fetcher = vi.fn<ClientFetch>(async () => sse);
+
+      const client = createRecoveryClient({ fetcher });
+      const response = await client.continueStream({
+        flowKind: "chat",
+        sessionId: "sess_1",
+        requestId: "req_1"
+      });
+
+      expect(response).toBe(sse);
+      expect(fetcher.mock.calls[0]?.[0]).toBe(
+        "/api/flows/chat/sessions/sess_1/requests/req_1/continue"
+      );
+      const init = fetcher.mock.calls[0]?.[1];
+      expect(init?.method).toBe("POST");
+      expect((init?.headers as Record<string, string>)?.accept).toBe(
+        "text/event-stream"
+      );
+    });
+
+    it("targets the specific request id, not a latest-request shorthand", async () => {
+      const sse = new Response("data: {}\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream" }
+      });
+      const fetcher = vi.fn<ClientFetch>(async () => sse);
+
+      const client = createRecoveryClient({ fetcher });
+      await client.continueStream({
+        flowKind: "chat",
+        sessionId: "sess_1",
+        requestId: "req_1"
+      });
+      await client.continueStream({
+        flowKind: "chat",
+        sessionId: "sess_1",
+        requestId: "req_2"
+      });
+
+      const [firstUrl] = fetcher.mock.calls[0] ?? [];
+      const [secondUrl] = fetcher.mock.calls[1] ?? [];
+      expect(firstUrl).toBe("/api/flows/chat/sessions/sess_1/requests/req_1/continue");
+      expect(secondUrl).toBe("/api/flows/chat/sessions/sess_1/requests/req_2/continue");
+      expect(firstUrl).not.toBe(secondUrl);
+    });
+
+    it("throws on a non-ok response", async () => {
+      const fetcher = vi.fn<ClientFetch>(async () => new Response("nope", { status: 409 }));
+      const client = createRecoveryClient({ fetcher });
+      await expect(
+        client.continueStream({ flowKind: "chat", sessionId: "sess_1", requestId: "req_1" })
+      ).rejects.toThrow(/Continue request failed \(409\)/);
+    });
+
+    it("rejects an empty requestId before hitting the network", async () => {
+      const fetcher = vi.fn<ClientFetch>();
+      const client = createRecoveryClient({ fetcher });
+      await expect(
+        client.continueStream({ flowKind: "chat", sessionId: "sess_1", requestId: " " })
+      ).rejects.toThrow(/requestId/);
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+  });
+
   describe("resumeSuspension", () => {
     it("posts to the resume endpoint with the action body and parses the response", async () => {
       const fetcher = vi.fn<ClientFetch>(async () =>
