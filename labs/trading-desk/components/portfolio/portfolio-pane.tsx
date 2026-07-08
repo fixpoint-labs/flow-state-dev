@@ -53,6 +53,7 @@ import {
   AddTransactionDialog,
   type NewLedgerEvent,
 } from "./add-transaction-dialog";
+import { ResolveSplitDialog } from "./resolve-split-dialog";
 import { ThesisDialog } from "./thesis-dialog";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import { useLedger } from "./use-ledger";
@@ -119,6 +120,9 @@ export function PortfolioPane({
   // The ticker whose thesis editor is open (null = closed). The dialog pre-fills
   // from the existing thesis for this ticker, if any.
   const [thesisTicker, setThesisTicker] = useState<string | null>(null);
+  // The ticker whose "resolve split" dialog is open (null = closed), for a
+  // flagged inconsistent-history holding (FIX-876).
+  const [resolveSplitTicker, setResolveSplitTicker] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(
     undefined,
   );
@@ -697,6 +701,7 @@ export function PortfolioPane({
             onSetAssetClass={(ticker, assetClass) =>
               void handleSetAssetClass(openAccount.accountId, ticker, assetClass)
             }
+            onResolveSplit={(ticker) => setResolveSplitTicker(ticker)}
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-2 @6xl:grid-cols-3">
@@ -772,6 +777,22 @@ export function PortfolioPane({
         defaultAccountId={selectedAccountId ?? accounts[0]?.accountId}
         onSubmit={(event) => void handleRecordTransaction(event)}
       />
+      {/* Resolve-split dialog for a flagged inconsistent-history holding
+          (FIX-876). Only reachable from an open account's holdings table, so it
+          binds to that account; its ledger + quote drive the live preview, and
+          confirming records the split through the same manual-ledger path. */}
+      {openAccount !== undefined && resolveSplitTicker !== null ? (
+        <ResolveSplitDialog
+          open
+          onClose={() => setResolveSplitTicker(null)}
+          ticker={resolveSplitTicker}
+          accountId={openAccount.accountId}
+          currency={openAccount.currency}
+          events={ledgerEvents.filter((e) => e.accountId === openAccount.accountId)}
+          quote={priceMap.get(resolveSplitTicker.toUpperCase())}
+          onConfirm={(event) => void handleRecordTransaction(event)}
+        />
+      ) : null}
       <ThesisDialog
         open={thesisTicker !== null}
         onClose={() => setThesisTicker(null)}

@@ -307,3 +307,20 @@ export function inferSplit(events: LedgerRow[], ticker: string): InferredSplit |
   if (!positions.some((p) => p.ticker === ticker)) return null;
   return best;
 }
+
+/**
+ * Dry-run the position a ticker WOULD derive to if the given split were recorded
+ * (FIX-876 auto-resolve preview). Pure: re-runs `deriveLots` with a synthetic
+ * split appended, so the "Resolve split" UI can show the resulting share count +
+ * average cost live as the user adjusts the ratio/date — the "verify the amount
+ * before you confirm" gate. Returns null when the ticker still doesn't derive a
+ * position (e.g. the ratio is too small and the over-sell persists).
+ */
+export function previewSplitResult(
+  events: LedgerRow[],
+  ticker: string,
+  split: InferredSplit,
+): DerivedPosition | null {
+  const { positions } = deriveLots([...events, syntheticSplitRow(ticker, split)]);
+  return positions.find((p) => p.ticker === ticker) ?? null;
+}

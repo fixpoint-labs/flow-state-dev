@@ -12,7 +12,7 @@
  *   5. A fully-closed position is omitted (no current holding).
  */
 import { describe, expect, it } from "vitest";
-import { deriveLots, inferSplit } from "@/src/flows/portfolio/lots";
+import { deriveLots, inferSplit, previewSplitResult } from "@/src/flows/portfolio/lots";
 import type { LedgerRow } from "@/src/flows/portfolio/ledger-schema";
 
 let seq = 0;
@@ -321,5 +321,37 @@ describe("deriveLots — stock splits (FIX-876)", () => {
     const nvda = positions.find((p) => p.ticker === "NVDA");
     expect(nvda?.quantity).toBeCloseTo(121.9346, 4);
     expect(nvda?.avgCost).toBeCloseTo(90, 6); // 900 ÷ 10
+  });
+
+  it("previewSplitResult dry-runs the position a candidate split WOULD produce", () => {
+    // 12 pre-split shares + a 50-share post-split sell — over-sold without a split.
+    // Previewing a 10:1 split shows the resolved position (120 rebased − 50 = 70)
+    // WITHOUT mutating the ledger, so the confirm dialog can show the post-calc amount.
+    const events = [
+      row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+      row({ ticker: "NVDA", type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+    ];
+    const preview = previewSplitResult(events, "NVDA", {
+      numerator: 10,
+      denominator: 1,
+      tradeDate: "2024-06-10",
+    });
+    expect(preview?.quantity).toBe(70);
+    expect(preview?.avgCost).toBeCloseTo(90, 6); // 900 ÷ 10
+    // The candidate is a dry run: the source events are untouched (no split row added).
+    expect(events).toHaveLength(2);
+  });
+
+  it("previewSplitResult returns null when the candidate ratio still leaves an over-sell", () => {
+    // A 2:1 split only doubles 12 → 24 shares, still short of the 50-share sell.
+    const preview = previewSplitResult(
+      [
+        row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+        row({ ticker: "NVDA", type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+      ],
+      "NVDA",
+      { numerator: 2, denominator: 1, tradeDate: "2024-06-10" },
+    );
+    expect(preview).toBeNull();
   });
 });

@@ -577,9 +577,24 @@ pre-split lots with the larger post-split sells, netted the position negative, a
   everything ever held — impossible without an unaccounted corporate action) is
   **never silently deleted**. It materializes a **flagged** row (`quantity: 0`,
   basis cleared, `dataQuality: "inconsistent_history"`) surfaced in `HoldingsTable`
-  + the mobile card with a ⚠ "review transactions" marker. A clean net-zero close
+  + the mobile card with a ⚠ marker. A clean net-zero close
   still deletes. Recording the missing split **self-heals** the flagged row (the
   oversell disappears, the position derives, the upsert clears the flag to null).
+
+- **One-click resolve (`inferSplit` / `previewSplitResult` + `ResolveSplitDialog`).**
+  The flagged ⚠ marker is a **button** that opens a resolver pre-filled with a
+  DETECTED split. Two pure browser-safe leaves in `lots.ts` back it: `inferSplit`
+  reads the ticker's largest date-ordered price CLIFF (a split divides the price by
+  the ratio), snaps it to a standard ratio, and VERIFIES the candidate actually
+  clears the over-sell before returning it (a guess that doesn't reconcile → null,
+  never fabricated); `previewSplitResult` dry-runs `deriveLots` with the candidate
+  split appended so the dialog shows the **resulting** position (shares / avg cost /
+  value) LIVE as the user edits the ratio/date — the "verify the amount before you
+  confirm" gate. Confirm is disabled until the ratio resolves the over-sell, and
+  records through the same manual-ledger POST path (`recordManualEvent`); the row
+  self-heals on refetch. Detection is a heuristic (single forward/reverse split;
+  a sparse or very volatile history may not auto-detect — the ratio/date stay
+  editable and previewed).
 
 - **Import + entry surfaces.** The OFX importer ingests `SPLIT` (`portfolio-ofx.ts`
   `handleSplit`: ratio from `NUMERATOR`/`DENOMINATOR`, fallback `NEWUNITS`/

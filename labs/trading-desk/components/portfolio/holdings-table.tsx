@@ -64,6 +64,9 @@ type HoldingsTableProps = {
   /** Manually set a holding's allocation class (marks it a manual override, so
    *  auto-classification preserves it). */
   onSetAssetClass: (ticker: string, assetClass: AssetClass) => void;
+  /** Open the "resolve split" dialog for a flagged inconsistent-history row
+   *  (FIX-876). Omitted → the ⚠ marker is a static badge (no resolve action). */
+  onResolveSplit?: (ticker: string) => void;
 };
 
 /** Short uppercase type chips (FIX-773 Slice C). Dense, terminal-style — `EQ`
@@ -237,6 +240,7 @@ export function HoldingsTable({
   onDeleteHolding,
   onEditThesis,
   onSetAssetClass,
+  onResolveSplit,
 }: HoldingsTableProps): ReactElement {
   if (holdings.length === 0) {
     return (
@@ -286,7 +290,11 @@ export function HoldingsTable({
                 <span className="inline-flex items-center gap-1">
                   {m.ticker}
                   <TypeChip label={m.typeLabel} />
-                  {m.inconsistent ? <InconsistentBadge /> : null}
+                  {m.inconsistent ? (
+                    <InconsistentBadge
+                      onResolve={onResolveSplit ? () => onResolveSplit(m.ticker) : undefined}
+                    />
+                  ) : null}
                   <AssetClassPicker
                     ticker={m.ticker}
                     assetClass={m.assetClass}
@@ -343,7 +351,11 @@ export function HoldingsTable({
                 {m.ticker}
               </span>
               <TypeChip label={m.typeLabel} />
-              {m.inconsistent ? <InconsistentBadge /> : null}
+              {m.inconsistent ? (
+                <InconsistentBadge
+                  onResolve={onResolveSplit ? () => onResolveSplit(m.ticker) : undefined}
+                />
+              ) : null}
               <AssetClassPicker
                 ticker={m.ticker}
                 assetClass={m.assetClass}
@@ -384,16 +396,32 @@ export function HoldingsTable({
  *  ticker in BOTH layouts when the ledger derived this ticker to an impossible
  *  over-sold state (typically an unrecorded split). It replaces the row's numbers
  *  (blanked to "—" in the row model) so a real position is never silently dropped
- *  nor shown as a fabricated figure. */
-function InconsistentBadge(): ReactElement {
+ *  nor shown as a fabricated figure. When `onResolve` is provided it is a button
+ *  that opens the one-click split resolver ("⚠ resolve"); otherwise a static
+ *  "⚠ review" marker. */
+function InconsistentBadge({ onResolve }: { onResolve?: () => void }): ReactElement {
+  const className =
+    "rounded-sm px-1 py-px font-mono text-[8.5px] uppercase leading-none tracking-wider text-[color:var(--c-warn)]";
+  const style = { border: "1px solid var(--c-warn)" };
+  const title =
+    "Inconsistent history — disposals exceed everything held, usually an unrecorded stock split. Record the split to fix (click to resolve).";
+  if (onResolve === undefined) {
+    return (
+      <span className={className} style={style} title={title}>
+        ⚠ review
+      </span>
+    );
+  }
   return (
-    <span
-      className="rounded-sm px-1 py-px font-mono text-[8.5px] uppercase leading-none tracking-wider text-[color:var(--c-warn)]"
-      style={{ border: "1px solid var(--c-warn)" }}
-      title="Inconsistent history — disposals exceed everything held, usually an unrecorded stock split. Review this account's transactions (record the split to fix)."
+    <button
+      type="button"
+      onClick={onResolve}
+      className={cn(className, "cursor-pointer hover:bg-[color:var(--c-warn)]/10")}
+      style={style}
+      title={title}
     >
-      ⚠ review
-    </span>
+      ⚠ resolve
+    </button>
   );
 }
 
