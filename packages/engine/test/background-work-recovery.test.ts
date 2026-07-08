@@ -28,10 +28,13 @@
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { BlockTraceItem } from "@flow-state-dev/core/items";
+import { buildItemLookup, resolveBlockValue } from "@flow-state-dev/core/items";
+import { parseBlockInstanceId } from "@flow-state-dev/core/items/internal";
 
 function createDurableStores() {
   const stores = createInMemoryStores();
@@ -47,6 +50,24 @@ function registryFor(flow: FlowInstance) {
   const registry = createFlowRegistry();
   registry.register(flow as never);
   return registry;
+}
+
+type Deferred<T = void> = { promise: Promise<T>; resolve: (value: T) => void };
+function deferred<T = void>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+/** Yield the microtask/macrotask queue a few times so coalesced item/trace
+ *  flushes (the `persistItems` microtask, block_trace `in_progress→completed`
+ *  mutation) land before we snapshot request state. */
+async function flush(ticks = 3): Promise<void> {
+  for (let i = 0; i < ticks; i += 1) {
+    await new Promise((r) => setTimeout(r, 0));
+  }
 }
 
 describe("attached durable background-work recovery", () => {
@@ -210,5 +231,197 @@ describe("attached durable background-work recovery", () => {
     const reSusp = pending.find((s) => s.suspensionId !== firstSusp.suspensionId);
     expect(reSusp).toBeDefined();
     expect((reSusp!.data as { observed?: unknown }).observed).toEqual({ done: true });
+  });
+});
+
+/**
+ * The two tests above drain via `.waitForWork()` before the gate, so every
+ * iteration is COMPLETE at crash time — they never exercise a fan-out caught
+ * genuinely mid-drain. This suite removes the barrier: `.forEachBackground` is
+ * dispatched fire-and-forget and the gate suspends while some iterations are
+ * still in flight. That pins **Contract A** (FIX-866 §4.2): completed-and-
+ * retained iterations are injected on recovery (handler stays at 1 execution);
+ * in-flight iterations have no `completed` trace and re-run from scratch
+ * (handler climbs to 2) — at-least-once, not exactly-once.
+ *
+ * Recovery uses the **reachable** `/resume` path (§4.3 primary), NOT the
+ * unreachable suspended→`interrupted` flip the two tests above use: a
+ * gate-`suspended` request is never swept to `interrupted`
+ * (`detectInterruptedRequests` guards on `in_progress`), so that flip models a
+ * state production never produces. We pre-resolve the gate suspension and
+ * `continueRequest` WITH a `resumeContext`, exactly as the resume route does;
+ * the replay re-runs the sequencer from the top and re-dispatches the fan-out.
+ *
+ * `FSDEV_TRACE_OBSERVABILITY` is forced on: `block_trace` capture (the
+ * ReplayLog's only source) is gated on it, so without this the completed
+ * iterations would retain no trace and re-run — proving nothing about replay.
+ */
+describe("attached durable background-work recovery — mid-drain fan-out", () => {
+  const originalEnv = { ...process.env };
+  beforeEach(() => {
+    process.env.FSDEV_TRACE_OBSERVABILITY = "true";
+  });
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("injects the iterations that completed pre-crash and re-runs the ones caught in flight", async () => {
+    // Per-item invocation counter. Incremented at handler ENTRY (before any
+    // await), so an iteration that merely STARTED already reads 1 — the
+    // contract's distinction is completed-and-injected (stays 1) vs
+    // in-flight-and-re-run (climbs to 2), not started-vs-not-started.
+    const elemRuns: Record<string, number> = {};
+
+    // First-run gates: a,b are released by the test (they complete and write
+    // `completed` traces pre-crash); c,d are NEVER released, so their first-run
+    // promises stay parked and cannot advance a counter or emit a completed
+    // trace AFTER the simulated crash. This is the harness half of §4.3: the
+    // suspend path neither drains nor aborts the work pool, so a live first-run
+    // promise that later resolved would contaminate the post-crash assertions.
+    // Second-run gates release c,d on the continued run so the terminal drain
+    // can settle the re-dispatched work.
+    const firstRun: Record<string, Deferred> = {
+      a: deferred(),
+      b: deferred(),
+      c: deferred(),
+      d: deferred()
+    };
+    const secondRun: Record<string, Deferred> = { c: deferred(), d: deferred() };
+
+    const elem = handler({
+      name: "reindexOne",
+      inputSchema: z.string(),
+      outputSchema: z.object({ done: z.boolean(), item: z.string() }),
+      execute: async (item: string) => {
+        const n = (elemRuns[item] = (elemRuns[item] ?? 0) + 1);
+        const barrier = n === 1 ? firstRun[item] : secondRun[item];
+        if (barrier !== undefined) await barrier.promise;
+        return { done: true, item };
+      }
+    });
+
+    // No `.waitForWork()` before the gate — the fan-out is genuinely mid-drain
+    // when the gate suspends. The gate parks on `readyToSuspend` so the TEST
+    // controls the exact crash instant (after a,b's traces flush, while c,d are
+    // still parked), removing the flush race a self-timing gate would carry.
+    const readyToSuspend = deferred();
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        await readyToSuspend.promise;
+        return ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "bgwork-crash-foreach-middrain",
+      actions: {
+        run: {
+          block: sequencer({ name: "seq", durable: true })
+            .forEachBackground((v: { items: string[] }) => v.items, elem)
+            .step(gate),
+          inputSchema: z.object({ items: z.array(z.string()) })
+        }
+      }
+    })({ id: "bgwork-crash-foreach-middrain" });
+
+    const { stores, provider } = createDurableStores();
+
+    // Kick off the run but DON'T await it: the gate is parked, so the run stays
+    // alive while we choreograph which iterations finish before the crash.
+    const runPromise = runAction({
+      flow,
+      actionName: "run",
+      input: { items: ["a", "b", "c", "d"] },
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+
+    // Let the fan-out dispatch and all four handlers enter, then complete only
+    // a (index 0) and b (index 1); let their `completed` traces flush.
+    await flush();
+    firstRun.a.resolve();
+    firstRun.b.resolve();
+    await flush();
+    // Snapshot the crash: the gate suspends with c,d still in flight.
+    readyToSuspend.resolve();
+    const initial = await runPromise;
+    const requestId = initial.requestId!;
+
+    // All four handlers were ENTERED on the first run (fan-out concurrency ≥ 4).
+    expect(elemRuns).toEqual({ a: 1, b: 1, c: 1, d: 1 });
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+
+    // Pre-crash the log carries `completed` iter traces for a,b only; c,d were
+    // parked before returning, so their traces are not `completed`.
+    const iterCompletedIndices = (items: readonly { type: string }[]): number[] =>
+      (items as BlockTraceItem[])
+        .filter((i) => i.type === "block_trace" && i.status === "completed")
+        .map((t) => parseBlockInstanceId(t.blockInstanceId)?.path ?? "")
+        .map((p) => /\/forEachBackground\[\d+\]\/iter\[(\d+)\]$/.exec(p)?.[1])
+        .filter((m): m is string => m !== undefined && m !== null)
+        .map((m) => Number(m));
+    const preItems = (await stores.request.get(requestId))?.items ?? [];
+    expect(new Set(iterCompletedIndices(preItems))).toEqual(new Set([0, 1]));
+
+    // Recover via the REACHABLE /resume path: pre-resolve the gate suspension
+    // and continue WITH a resumeContext (the shape the resume route drives).
+    const [susp] = await provider.listSuspended({ status: "pending" });
+    await provider.suspend({ ...susp, status: "approved", resolvedAt: Date.now() });
+
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      resumeContext: {
+        suspensionId: susp.suspensionId,
+        action: "approve",
+        data: undefined,
+        resumedBy: "reviewer"
+      },
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    // Release the RE-DISPATCHED c,d so the resolved-gate → terminal drain can
+    // settle them. Resolving before `await finished` is safe whether the
+    // handlers have reached their await yet or not. Because this shape reaches
+    // terminal (single gate resolved), the terminal drain settles the re-run
+    // work before `finished` resolves — so asserting after `finished` is sound
+    // (the §4.3 second-run hazard only applies to a re-suspending shape).
+    secondRun.c.resolve();
+    secondRun.d.resolve();
+    await finished;
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+
+    // (a) Completed-before-crash iterations were INJECTED, not re-run (a,b stay
+    // at 1). In-flight iterations RE-RAN from scratch on the continued run (c,d
+    // climb to 2) — at-least-once, not exactly-once.
+    expect(elemRuns).toEqual({ a: 1, b: 1, c: 2, d: 2 });
+
+    // (b) The SPECIFIC completed iteration's recorded output survived recovery,
+    // verified per-index via the block_trace logical path — NOT
+    // `ctx.getBlockOutput(elem)`, which resolves by block NAME to the most-
+    // recent completed sibling and so cannot attribute output to iteration 0
+    // (a re-run in-flight iteration could satisfy that check while an earlier
+    // completed iteration silently lost its output).
+    const finalItems = (await stores.request.get(requestId))?.items ?? [];
+    const lookup = buildItemLookup(finalItems as never);
+    const iterOutput = (index: number): unknown => {
+      const trace = (finalItems as BlockTraceItem[])
+        .filter((i) => i.type === "block_trace" && i.status === "completed")
+        .find((t) => {
+          const path = parseBlockInstanceId(t.blockInstanceId)?.path ?? "";
+          return new RegExp(`/forEachBackground\\[\\d+\\]/iter\\[${index}\\]$`).test(path);
+        });
+      return trace === undefined ? undefined : resolveBlockValue(trace.output as never, lookup);
+    };
+    // Injected iterations: their pre-crash output is preserved in the log.
+    expect(iterOutput(0)).toEqual({ done: true, item: "a" });
+    expect(iterOutput(1)).toEqual({ done: true, item: "b" });
+    // Re-run iterations: their continued-run output was recorded.
+    expect(iterOutput(2)).toEqual({ done: true, item: "c" });
+    expect(iterOutput(3)).toEqual({ done: true, item: "d" });
   });
 });
