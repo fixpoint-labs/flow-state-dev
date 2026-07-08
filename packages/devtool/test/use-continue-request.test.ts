@@ -57,7 +57,7 @@ describe("useContinueRequest", () => {
     recoveryClient = { continueStream: vi.fn().mockResolvedValue(fakeResponse) };
   });
 
-  it("calls recoveryClient.continueStream with {flowKind, sessionId, requestId}", async () => {
+  it("calls recoveryClient.continueStream with {flowKind, sessionId, requestId, includeTrace: true}", async () => {
     const onItems = vi.fn();
     const { result } = renderHook(() =>
       useContinueRequest({
@@ -72,10 +72,13 @@ describe("useContinueRequest", () => {
       await result.current.continueRequest("req_1", []);
     });
 
+    // The DevTool always wants trace items for the resumed portion so the
+    // Trace tab can show what ran (FIX-865 gap fix).
     expect(recoveryClient.continueStream).toHaveBeenCalledWith({
       flowKind: "demo",
       sessionId: "sess_1",
       requestId: "req_1",
+      includeTrace: true,
     });
   });
 

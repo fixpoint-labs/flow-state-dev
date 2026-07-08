@@ -223,6 +223,45 @@ describe("createRecoveryClient", () => {
       ).rejects.toThrow(/requestId/);
       expect(fetcher).not.toHaveBeenCalled();
     });
+
+    it("appends ?include=trace when includeTrace is true", async () => {
+      const sse = new Response("data: {}\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream" }
+      });
+      const fetcher = vi.fn<ClientFetch>(async () => sse);
+
+      const client = createRecoveryClient({ fetcher });
+      await client.continueStream({
+        flowKind: "chat",
+        sessionId: "sess_1",
+        requestId: "req_1",
+        includeTrace: true
+      });
+
+      expect(fetcher.mock.calls[0]?.[0]).toBe(
+        "/api/flows/chat/sessions/sess_1/requests/req_1/continue?include=trace"
+      );
+    });
+
+    it("does not append include=trace when includeTrace is omitted", async () => {
+      const sse = new Response("data: {}\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream" }
+      });
+      const fetcher = vi.fn<ClientFetch>(async () => sse);
+
+      const client = createRecoveryClient({ fetcher });
+      await client.continueStream({
+        flowKind: "chat",
+        sessionId: "sess_1",
+        requestId: "req_1"
+      });
+
+      expect(fetcher.mock.calls[0]?.[0]).toBe(
+        "/api/flows/chat/sessions/sess_1/requests/req_1/continue"
+      );
+    });
   });
 
   describe("resumeSuspension", () => {

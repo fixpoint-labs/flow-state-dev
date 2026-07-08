@@ -57,6 +57,14 @@ export type ContinueRequestOptions = {
   sessionId: string;
   /** The interrupted request to continue under its own id. */
   requestId: string;
+  /**
+   * Request trace-channel items (`block_trace`/`router_decision`/
+   * `state_snapshot`) on the continuation's inline SSE stream, mirroring the
+   * GET stream route's `?include=trace`. Only consumed by
+   * {@link RecoveryClient.continueStream} — the non-streaming
+   * {@link RecoveryClient.continue} ignores it. Default `false`.
+   */
+  includeTrace?: boolean;
 };
 
 export type ContinueRequestResult = {
@@ -226,7 +234,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
       return { requestId: payload.requestId };
     },
 
-    continueStream: async ({ flowKind, sessionId, requestId }) => {
+    continueStream: async ({ flowKind, sessionId, requestId, includeTrace }) => {
       requireNonEmpty(flowKind, "flowKind");
       requireNonEmpty(sessionId, "sessionId");
       requireNonEmpty(requestId, "requestId");
@@ -234,7 +242,8 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
       const response = await fetcher(
         buildFlowApiUrl({
           baseUrl: options.baseUrl,
-          path: `/api/flows/${encodeURIComponent(flowKind)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/continue`
+          path: `/api/flows/${encodeURIComponent(flowKind)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/continue`,
+          query: includeTrace ? { include: "trace" } : undefined
         }),
         {
           method: "POST",

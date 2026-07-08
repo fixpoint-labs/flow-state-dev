@@ -50,12 +50,21 @@ export type CreateLiveRequestStreamOptions = {
    * interleave the resume items ahead of the pre-suspension history.
    */
   startItemIndex?: number;
+  /**
+   * When `true`, forward every event (including trace-channel items like
+   * `block_trace`/`router_decision`/`state_snapshot`) instead of applying the
+   * client-visibility filter. Mirrors the GET stream route's `?include=trace`
+   * opt-in (`stream-routes.ts`). Default `false`/omitted preserves today's
+   * filtered behavior.
+   */
+  includeTrace?: boolean;
 };
 
 /**
  * Creates a LiveRequestStream that bridges a `ResponseEmitter` to an
  * SSE-shaped readable stream. Events that pass the client-visible filter are
- * forwarded to the underlying handle; trace items are dropped at this layer.
+ * forwarded to the underlying handle; trace items are dropped at this layer
+ * unless `includeTrace` is set, in which case every event is forwarded.
  */
 export function createLiveRequestStream(
   options: CreateLiveRequestStreamOptions
@@ -66,7 +75,7 @@ export function createLiveRequestStream(
     pingIntervalMs: options.sseHeartbeatMs
   });
 
-  const shouldForward = createClientEventFilter();
+  const shouldForward = options.includeTrace ? () => true : createClientEventFilter();
 
   const onEvent = (event: RequestStreamEventWithId): void => {
     if (handle.closed) {

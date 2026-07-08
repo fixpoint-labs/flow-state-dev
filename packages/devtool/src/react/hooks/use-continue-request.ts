@@ -63,7 +63,12 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
     async (requestId: string, existingItems: OutputItem[]) => {
       if (!flowKind || !sessionId) return;
 
-      const response = await recoveryClient.continueStream({ flowKind, sessionId, requestId });
+      const response = await recoveryClient.continueStream({
+        flowKind,
+        sessionId,
+        requestId,
+        includeTrace: true,
+      });
 
       // Seed with the row's existing items so the continuation stream merges
       // on top rather than clearing them.

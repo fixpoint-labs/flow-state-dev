@@ -88,6 +88,18 @@ function continuationItems(items: readonly { type: string }[] | undefined): Cont
   return ((items ?? []) as ContinuationItem[]).filter((i) => i.type === "continuation");
 }
 
+async function drain(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  return text;
+}
+
 describe("ContinuationItem — crash-recovery /continue (FIX-865)", () => {
   it("emits exactly one continuation item with trigger 'recovery' and a correct priorItemCount", async () => {
     const flow = buildCrashFlow("fix865-continue-basic");
@@ -219,5 +231,42 @@ describe("ContinuationItem — crash-recovery /continue (FIX-865)", () => {
     // No cross-contamination of ids between the two requests' continuation items.
     expect(continuationItems(afterA?.items)[0].requestId).toBe(requestIdA);
     expect(continuationItems(afterB?.items)[0].requestId).toBe(requestIdB);
+  });
+});
+
+describe("continueRequest's live stream — includeTrace (FIX-865 gap fix)", () => {
+  it("forwards block_trace items from the resumed portion when includeTrace is true", async () => {
+    const flow = buildCrashFlow("fix865-continue-includetrace-on");
+    const { stores, provider } = createDurableStores();
+    const requestId = await runToInterrupted(flow, stores, provider);
+
+    const { liveStream, finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      runtimeConfig: { durabilityProvider: provider },
+      includeTrace: true
+    });
+    const text = await drain(liveStream!.readable);
+    await finished;
+
+    expect(text).toContain("block_trace");
+  });
+
+  it("still filters out block_trace items by default (no includeTrace — regression check)", async () => {
+    const flow = buildCrashFlow("fix865-continue-includetrace-off");
+    const { stores, provider } = createDurableStores();
+    const requestId = await runToInterrupted(flow, stores, provider);
+
+    const { liveStream, finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const text = await drain(liveStream!.readable);
+    await finished;
+
+    expect(text).not.toContain("block_trace");
   });
 });

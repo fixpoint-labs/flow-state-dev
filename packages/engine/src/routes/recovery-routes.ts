@@ -197,8 +197,12 @@ export async function handleContinueRequest(
 
   try {
     // Same-id re-entry with no resumeContext — replay injects completed blocks
-    // and re-runs the in-flight one.
-    const handle = await ctx.host.continueRequest({ requestId: route.requestId });
+    // and re-runs the in-flight one. `?include=trace` (mirroring the GET stream
+    // route) opts the caller's inline SSE response into trace-channel items —
+    // the DevTool's per-row Continue needs `block_trace`/`router_decision`/
+    // `state_snapshot` from the resumed portion for its Trace tab.
+    const includeTrace = new URL(request.url).searchParams.get("include") === "trace";
+    const handle = await ctx.host.continueRequest({ requestId: route.requestId, includeTrace });
 
     const accept = request.headers.get("accept") ?? "";
     if (accept.includes("text/event-stream") && handle.liveStream !== null) {

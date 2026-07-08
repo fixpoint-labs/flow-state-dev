@@ -35,6 +35,13 @@ export interface ContinueRequestOptions {
    * `liveStream` is `null` on the result (the caller owns streaming).
    */
   responseEmitter?: ResponseEmitter;
+  /**
+   * Forward trace-channel items (`block_trace`/`router_decision`/
+   * `state_snapshot`) on the created live stream instead of filtering them
+   * out. Only takes effect when `responseEmitter` is not supplied (a BYO
+   * emitter's owner controls forwarding). Default `false`.
+   */
+  includeTrace?: boolean;
 }
 
 export interface ContinueRequestResult {
@@ -105,7 +112,8 @@ export async function continueRequest(
           maxBufferSize: runtimeConfig.maxResponseBufferSize,
           sseHeartbeatMs,
           startSequenceNumber: lastSeq,
-          startItemIndex: nextItemIndex
+          startItemIndex: nextItemIndex,
+          includeTrace: options.includeTrace
         })
       : null;
 
