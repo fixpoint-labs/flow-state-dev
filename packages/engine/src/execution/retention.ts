@@ -54,8 +54,8 @@ export async function applyRetentionPolicy(
     // session id. Always pass the tenant (possibly undefined).
     tenantId,
     status: "completed",
-    // maxItems policy below counts `req.items.length` per request.
-    withItems: true,
+    // No `withItems` — maxAge needs only timestamps and maxItems counts via
+    // `countItems`, so item payloads stay out of the retention read (FIX-685).
   });
 
   // Exclude current request, sort oldest-first by completion time
@@ -89,20 +89,26 @@ export async function applyRetentionPolicy(
 
   // Phase 2: maxItems — count items from newest requests, evict the rest
   if (policy.maxItems !== undefined) {
-    // Count items in the current request (always kept)
-    const currentRequest = await stores.request.get(currentRequestId);
-    let totalItems = currentRequest?.items?.length ?? 0;
+    const maxItems = policy.maxItems;
+    // Counts are independent per request, so fetch them concurrently (one DB
+    // round trip per request on backed adapters) before the order-dependent
+    // greedy walk. The current request is always kept; count it too.
+    const newestFirst = [...remaining].reverse();
+    const [currentCount, ...historyCounts] = await Promise.all([
+      stores.request.countItems(currentRequestId),
+      ...newestFirst.map((req) => stores.request.countItems(req.id)),
+    ]);
 
     // Walk newest-first, accumulating items until budget is exceeded
-    const newestFirst = [...remaining].reverse();
+    let totalItems = currentCount;
     const keep = new Set<string>();
-    for (const req of newestFirst) {
-      const reqItemCount = req.items?.length ?? 0;
-      if (totalItems + reqItemCount <= policy.maxItems) {
+    newestFirst.forEach((req, i) => {
+      const reqItemCount = historyCounts[i] ?? 0;
+      if (totalItems + reqItemCount <= maxItems) {
         totalItems += reqItemCount;
         keep.add(req.id);
       }
-    }
+    });
 
     // Delete requests that didn't fit
     for (const req of remaining) {

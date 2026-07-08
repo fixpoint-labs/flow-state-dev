@@ -620,6 +620,58 @@ describe("SQLite store adapter", () => {
       ]);
     });
 
+    it("countItems counts table rows without parsing item payloads", async () => {
+      const store = freshRequestStore();
+      await seedRequest(store, "req_cnt");
+      store.persistItems("req_cnt", [
+        makeMessageItem("req_cnt", "a", 0, "x") as unknown as OutputItem,
+        makeMessageItem("req_cnt", "b", 1, "y") as unknown as OutputItem
+      ]);
+      await store.flushItems("req_cnt");
+
+      // Corrupt the payloads out-of-band: a count that parsed item JSON would
+      // throw, so a correct answer proves payloads were never materialized.
+      db.prepare(
+        "UPDATE request_items SET data = 'not-json' WHERE request_id = ?"
+      ).run("req_cnt");
+
+      expect(await store.countItems("req_cnt")).toBe(2);
+    });
+
+    it("countItems merges legacy data.items with table rows, table wins on collision", async () => {
+      const store = freshRequestStore();
+      const legacyA = makeMessageItem("cnt_merge", "shared", 0, "legacy-version");
+      const legacyB = makeMessageItem("cnt_merge", "legacy-only", 1, "legacy-b");
+      const record = makeRequestRecord("cnt_merge", "flow-a", "run", "u", "sess", {
+        items: [legacyA as unknown as OutputItem, legacyB as unknown as OutputItem]
+      });
+      db.prepare(
+        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
+          "VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)"
+      ).run(
+        "cnt_merge",
+        record.flowKind,
+        record.userId,
+        record.sessionId ?? null,
+        record.status,
+        record.version,
+        record.createdAt,
+        record.updatedAt,
+        JSON.stringify(record)
+      );
+
+      store.persistItems("cnt_merge", [
+        makeMessageItem("cnt_merge", "shared", 2, "table-version") as unknown as OutputItem,
+        makeMessageItem("cnt_merge", "table-only", 3, "table-c") as unknown as OutputItem
+      ]);
+      await store.flushItems("cnt_merge");
+
+      // Union by id: shared, legacy-only, table-only — matches get().items.
+      expect(await store.countItems("cnt_merge")).toBe(3);
+      const got = await store.get("cnt_merge");
+      expect(got!.items).toHaveLength(3);
+    });
+
     it("set strips items from the requests blob", async () => {
       const store = freshRequestStore();
       const record = makeRequestRecord("req_strip", "flow-a", "run", "u");

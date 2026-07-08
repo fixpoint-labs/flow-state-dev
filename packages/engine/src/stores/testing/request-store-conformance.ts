@@ -455,6 +455,69 @@ export function createRequestStoreConformanceTests(
     });
   });
 
+  describe(`${name} (RequestStore countItems conformance)`, () => {
+    async function withStore(
+      run: (store: RequestStore) => Promise<void>
+    ): Promise<void> {
+      const store = await createStore();
+      try {
+        await run(store);
+      } finally {
+        if (cleanup !== undefined) await cleanup(store);
+      }
+    }
+
+    it("returns 0 for an unknown request", async () => {
+      await withStore(async (store) => {
+        expect(await store.countItems("req_count_missing")).toBe(0);
+      });
+    });
+
+    // Mirrors the persistence conformance dual-write (persistItems + record
+    // snapshot via set) so record-backed and table-backed adapters agree.
+    it("counts the persisted item log", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_count_conformance";
+        const items = [
+          makeItem(requestId, 0),
+          makeItem(requestId, 1),
+          makeItem(requestId, 2)
+        ];
+        store.persistItems(requestId, items);
+        await store.flushItems(requestId);
+        await store.set(requestId, makeRecord(requestId, "completed", items), "any");
+
+        expect(await store.countItems(requestId)).toBe(3);
+      });
+    });
+
+    // The count contract is "what get(id).items would contain" — verified
+    // across a same-request continuation where the merged log spans two
+    // persist waves (FIX-811 union semantics).
+    it("matches get().items length across a same-request continuation", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_count_continuation";
+        const pre = [makeItem(requestId, 0), makeItem(requestId, 1)];
+        store.persistItems(requestId, pre);
+        await store.flushItems(requestId);
+        await store.set(requestId, makeRecord(requestId, "suspended", pre), "any");
+
+        const merged = [...pre, makeItem(requestId, 2), makeItem(requestId, 3)];
+        store.persistItems(requestId, merged);
+        await store.flushItems(requestId);
+        await store.set(
+          requestId,
+          makeRecord(requestId, "completed", merged),
+          "any"
+        );
+
+        const reread = await store.get(requestId);
+        expect(await store.countItems(requestId)).toBe(reread?.items?.length);
+        expect(await store.countItems(requestId)).toBe(4);
+      });
+    });
+  });
+
   // Reference for downstream tests that want to assert overflow behavior
   // directly on the BoundedQueue rather than through the iterator.
   void StoreSubscriptionError;

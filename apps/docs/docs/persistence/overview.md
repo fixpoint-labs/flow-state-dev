@@ -105,6 +105,7 @@ The store interface is pluggable. If you need Redis, an alternative SQL backend,
 Backed adapters store items incrementally rather than inside the request record's JSONB column. The SQLite and Postgres adapters write one row per item into a dedicated child table (`request_items`); the filesystem store appends items and events to an append-only log instead. The change avoids a write-amplification pathology on long-running requests (on Postgres, a TOAST rewrite under serverless-throttled autovacuum). The framework surface is unchanged — the same `RequestStore.persistItems` and `get` shape — but two operator-visible consequences are worth knowing. See [Persistence cost model](/docs/server/setup#persistence-cost-model) for how each backend stores its data.
 
 - `RequestStore.list()` no longer populates `record.items` by default on any adapter; pass `withItems: true` to opt in.
+- `RequestStore.countItems(requestId)` returns how many items a request holds without loading their payloads — session retention's `maxItems` check uses it so a sweep stays cheap on long histories. A custom store must implement it; the backed adapters answer with an indexed `COUNT` on `request_items`.
 - Upgrade is lazy (no offline backfill), but the deploy is **forward-only**. Validate in staging before rolling out.
 
 See the [`@flow-state-dev/store-postgres` README](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/store-postgres/README.md#items-storage) for the schema, the optional storage-reclamation steps (`pg_repack`), and the rollback constraints.

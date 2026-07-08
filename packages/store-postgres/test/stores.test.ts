@@ -653,6 +653,58 @@ describe("PostgreSQL store adapter", () => {
       ]);
     });
 
+    it("countItems counts table rows for a post-migration record", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_cnt",
+        makeRequestRecord("req_cnt", "flow-a", "run", "u"),
+        "any"
+      );
+      s.request.persistItems("req_cnt", [
+        makeMessageItem("req_cnt", "a", 0, "x") as any,
+        makeMessageItem("req_cnt", "b", 1, "y") as any
+      ]);
+      await s.request.flushItems("req_cnt");
+
+      expect(await s.request.countItems("req_cnt")).toBe(2);
+      expect(await s.request.countItems("req_cnt_missing")).toBe(0);
+    });
+
+    it("countItems merges legacy data.items with table rows, table wins on collision", async () => {
+      const s = await freshStores();
+      const legacyA = makeMessageItem("cnt_merge", "shared", 0, "legacy-version");
+      const legacyB = makeMessageItem("cnt_merge", "legacy-only", 1, "legacy-b");
+      const record = makeRequestRecord("cnt_merge", "flow-a", "run", "u", "sess", {
+        items: [legacyA as any, legacyB as any]
+      });
+      const executor = pgliteExecutor(pglite);
+      await executor.query(
+        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
+          "VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9::jsonb)",
+        [
+          "cnt_merge",
+          record.flowKind,
+          record.userId,
+          record.sessionId ?? null,
+          record.status,
+          record.version,
+          record.createdAt,
+          record.updatedAt,
+          JSON.stringify(record)
+        ]
+      );
+      s.request.persistItems("cnt_merge", [
+        makeMessageItem("cnt_merge", "shared", 2, "table-version") as any,
+        makeMessageItem("cnt_merge", "table-only", 3, "table-c") as any
+      ]);
+      await s.request.flushItems("cnt_merge");
+
+      // Union by id: shared, legacy-only, table-only — matches get().items.
+      expect(await s.request.countItems("cnt_merge")).toBe(3);
+      const got = await s.request.get("cnt_merge");
+      expect(got!.items).toHaveLength(3);
+    });
+
     it("list default leaves items undefined", async () => {
       const s = await freshStores();
       await s.request.set(

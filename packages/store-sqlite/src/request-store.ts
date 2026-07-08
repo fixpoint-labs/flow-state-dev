@@ -192,6 +192,12 @@ export function createSQLiteRequestStore(
   const selectItemsStmt = db.prepare(
     "SELECT data FROM request_items WHERE request_id = ? ORDER BY sequence ASC"
   );
+  const countItemsStmt = db.prepare(
+    "SELECT COUNT(*) AS c FROM request_items WHERE request_id = ?"
+  );
+  const selectItemIdsStmt = db.prepare(
+    "SELECT item_id FROM request_items WHERE request_id = ?"
+  );
   const deleteItemsStmt = db.prepare(
     "DELETE FROM request_items WHERE request_id = ?"
   );
@@ -401,6 +407,28 @@ export function createSQLiteRequestStore(
 
     async flushItems(_requestId: string): Promise<void> {
       // No-op: queueMicrotask writes complete before any await resumes
+    },
+
+    async countItems(requestId: string): Promise<number> {
+      // Mirror the `get` dual-read (FIX-686): records persisted before the
+      // child table existed may still carry blob items, and the table wins on
+      // id collision. The common (post-migration) path is an indexed COUNT
+      // plus one record-row read — item payloads are never parsed.
+      const record = await base.get(requestId);
+      const legacy = record?.items;
+      if (!Array.isArray(legacy) || legacy.length === 0) {
+        return (countItemsStmt.get(requestId) as { c: number }).c;
+      }
+      const tableIds = new Set(
+        (selectItemIdsStmt.all(requestId) as Array<{ item_id: string }>).map(
+          (row) => row.item_id
+        )
+      );
+      let count = tableIds.size;
+      for (const item of legacy) {
+        if (!tableIds.has(item.id)) count += 1;
+      }
+      return count;
     },
 
     persistEvents(requestId: string, events: RequestStreamEvent[]): void {

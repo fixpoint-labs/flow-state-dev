@@ -89,6 +89,10 @@ export class InMemoryRequestStore implements RequestStore {
     // No-op: nothing to flush in memory
   }
 
+  async countItems(requestId: string): Promise<number> {
+    return this.records.get(requestId)?.items?.length ?? 0;
+  }
+
   persistEvents(requestId: string, events: RequestStreamEvent[]): void {
     // Append incrementally — the emitter now sends only new events per call.
     const existing = this.eventsByRequestId.get(requestId);
