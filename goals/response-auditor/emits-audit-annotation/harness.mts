@@ -1,90 +1,88 @@
 /**
- * Deterministic real-path driver for the audit-annotation goal check. Run via
- * `tsx -e` from `apps/kitchen-sink` (by run.mts) so `@flow-state-dev/*` and `zod`
- * resolve from the app's node_modules — goals/ is not a package.
+ * Real-path driver for the audit-annotation goal check. Run via `tsx -e` from
+ * `apps/kitchen-sink` (by run.mts) so `@flow-state-dev/*`, `@thought-fabric/core`,
+ * and `zod` resolve from the app's node_modules — goals/ is not a package.
  *
- * A real generator produces a response with a real model, then `responseAuditor`
- * (with an always-surfacing analyzer) runs over it through the real block engine.
- * The always-surface analyzer fixes the one stochastic input that isn't FIX-847's
- * concern — whether the model flags bias — so the check reliably exercises
- * FIX-847's contribution: on surfaced results the pattern emits an
- * `audit-annotation` component item. Reports observations on a single
- * `__GOAL__<json>` line; run.mts owns the assertions.
+ * Runs the REAL `biasAnalyzer` (the same one `apps/kitchen-sink`'s bias-check
+ * wires into `responseAuditor`) over a held-out, deliberately one-sided
+ * response, through the real block engine, with a real model bound via the
+ * Vercel AI Gateway. The response text is a fixture rather than
+ * generator-produced, so the only stochastic step is the real analyzer's
+ * judgment call — that judgment, and whether it causes `responseAuditor` to
+ * emit an `audit-annotation` component item, is exactly what FIX-847 added.
+ * Reports observations on a single `__GOAL__<json>` line; run.mts owns the
+ * assertions and retries (analyzer judgment is inherently probabilistic).
  */
 import { z } from "zod";
 import { createGateway } from "@ai-sdk/gateway";
-import { createModelResolver, generator, handler } from "@flow-state-dev/core";
+import { createModelResolver, sequencer } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
+import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import {
   responseAuditor,
   AnalyzerResultSchema,
   auditorInputSchema,
 } from "@flow-state-dev/patterns/response-auditor";
 
-// Gateway-prefixed id so the real Vercel AI Gateway resolver serves it.
 const MODEL = process.env.GOAL_MODEL ?? "vercel/openai/gpt-5.4-mini";
-const topic = process.env.GOAL_TOPIC ?? "In one sentence, describe a sunrise.";
+const userInput = process.env.GOAL_USER_INPUT ?? "";
+const aiResponse = process.env.GOAL_AI_RESPONSE ?? "";
 
-// Real resolver bound to the gateway — testBlock mocks generators by default,
-// so injecting this is what makes the generator hit a real model.
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const modelResolver = createModelResolver({
   gateways: gatewayApiKey ? { vercel: createGateway({ apiKey: gatewayApiKey }) } : undefined,
 });
 
-const respond = generator({
-  name: "respond",
-  model: MODEL,
-  inputSchema: z.object({ topic: z.string() }),
-  prompt: "Answer in one sentence.",
-  user: (i: { topic: string }) => i.topic,
-  outputSchema: z.object({ text: z.string() }),
-});
-
-const alwaysSurface = handler({
-  name: "always-surface",
-  inputSchema: auditorInputSchema,
+// Same adapter shape as apps/kitchen-sink/flows/chat-agent/run/bias-check.ts:
+// bridges biasAnalyzer's (userInput/aiResponse -> BiasAnalyzerOutput) contract
+// to responseAuditor's (userInput/response -> AnalyzerResult) contract.
+const biasAnalyzerAdapter = sequencer({
+  name: "bias-adapter-goal",
+  inputSchema: z.object({ userInput: z.string(), response: z.string() }),
   outputSchema: AnalyzerResultSchema,
-  execute: (input: { userInput: string; response: string }) => ({
-    analyzerId: "always-surface",
-    category: "test",
-    score: 0.9,
-    shouldSurface: true,
-    annotations: [
-      {
-        type: "note",
-        label: "Always surfaced",
-        severity: "info" as const,
-        description: input.response.slice(0, 60),
-      },
-    ],
-  }),
-});
+})
+  .map((input: { userInput: string; response: string }) => ({
+    userInput: input.userInput,
+    aiResponse: input.response,
+  }))
+  .step(biasAnalyzer({ model: MODEL }))
+  .map((output: Record<string, unknown>) => {
+    const annotations = (output.annotations as Array<Record<string, unknown>>) ?? [];
+    const severity = output.severity as string;
+    return {
+      analyzerId: output.analyzerId as string,
+      category: output.category as string,
+      score: output.score as number,
+      shouldSurface: (output.score as number) >= 0.3,
+      annotations: annotations.map((a) => ({
+        type: a.biasType as string,
+        label: (a.biasType as string).replace(/_/g, " "),
+        severity: severity as "info" | "warning" | "critical",
+        description: a.description as string,
+        evidence: a.evidence as string | undefined,
+      })),
+    };
+  });
 
 async function main(): Promise<void> {
-  // 1. Real model produces the response text that gets audited.
-  const gen = await testBlock(respond, { input: { topic }, modelResolver });
-  const response = String((gen.output as { text?: string } | undefined)?.text ?? "");
-
-  // 2. Real auditor runs over it through the real block engine and emits.
   const audit = await testBlock(
-    responseAuditor({ analyzers: [alwaysSurface], threshold: 0.3 }),
-    { input: { userInput: topic, response }, modelResolver },
+    responseAuditor({ analyzers: [biasAnalyzerAdapter], threshold: 0.3 }),
+    { input: { userInput, response: aiResponse } as z.infer<typeof auditorInputSchema>, modelResolver },
   );
 
   const card = audit.items.find(
-    (i: { type?: string; component?: string; data?: unknown }) =>
-      i.type === "component" &&
-      (i as { component?: string }).component === "audit-annotation",
+    (i: { type?: string; component?: string }) =>
+      i.type === "component" && (i as { component?: string }).component === "audit-annotation",
   );
 
   const result = {
-    generatorOk: gen.error === null && response.length > 0,
     auditorError: audit.error === null ? null : String(audit.error),
     cardEmitted: card !== undefined,
     surfaced: card
       ? ((card as { data?: { surfacedResults?: unknown[] } }).data?.surfacedResults ?? []).length
       : 0,
+    overallScore:
+      (audit.output as { overallScore?: number } | undefined)?.overallScore ?? null,
     model: MODEL,
   };
   console.log("__GOAL__" + JSON.stringify(result));

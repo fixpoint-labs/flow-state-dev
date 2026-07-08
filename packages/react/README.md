@@ -344,7 +344,7 @@ Register renderers via `FlowProvider` or pass them directly to `ItemRenderer`.
 
 ### Presentational components moved to `@flow-state-dev/ui`
 
-`ModelBadge` and the audit-annotation card are no longer exported from this package. They live in the [`@flow-state-dev/ui`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/ui) registry, where you own the source after installing it. Install `ModelBadge` with `fsdev ui add model-badge` and import it from `@/components/flow-state/model-badge`. Audit annotations render through the ui `audit-annotation` component, fed by the `responseAuditor` pattern's emitted component item, so no per-item wiring is needed.
+`ModelBadge`, `AuditAnnotation`, and `AuditAnnotationProgress` are no longer exported from this package. `ModelBadge` and `AuditAnnotation` live in the [`@flow-state-dev/ui`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/ui) registry (see [Flow-Aware Components](https://flow-state.dev/docs/ui/flow-aware-components)), where you own the source after installing it. Install `ModelBadge` with `fsdev ui add model-badge` and import it from `@/components/flow-state/model-badge`. Audit annotations render through the ui `audit-annotation` component, fed by the `responseAuditor` pattern's emitted component item, so no per-item wiring is needed. `AuditAnnotationProgress` had no consumers and was removed outright; there is no replacement.
 
 ## Connection resilience
 

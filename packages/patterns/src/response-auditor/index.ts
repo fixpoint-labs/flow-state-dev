@@ -126,18 +126,16 @@ function createApplyThreshold(threshold: number) {
  * threshold output unchanged (composed via `.tapIf`).
  *
  * Append-only (no `key`): a fixed key would collapse distinct auditor
- * invocations in one request to a single card. The `inputSchema` guards the
- * emitted shape against drift from the `apply-threshold` output.
+ * invocations in one request to a single card.
  */
 const emitAuditAnnotation = handler({
   name: "emit-audit-annotation",
-  inputSchema: z.object({
-    results: z.array(AnalyzerResultSchema),
-    surfacedResults: z.array(AnalyzerResultSchema),
-    overallScore: z.number(),
-  }),
+  // `.tapIf`'s value is already the apply-threshold step's validated output —
+  // re-declaring that shape here would just be a second copy to keep in sync
+  // (debate's equivalent emit tap uses the same z.any() convention).
+  inputSchema: z.any(),
   execute: (input, ctx) => {
-    ctx.emit.component("audit-annotation", input);
+    ctx.emit.component("audit-annotation", input as Record<string, unknown>);
   },
 });
 
