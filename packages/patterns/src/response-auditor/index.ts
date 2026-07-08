@@ -119,6 +119,28 @@ function createApplyThreshold(threshold: number) {
   });
 }
 
+/**
+ * Emits the surfaced audit results as an `audit-annotation` component item so a
+ * registered renderer (the `@flow-state-dev/ui` audit card, wired into
+ * `chatAssistantRenderers`) can display them. Side-effect only: it forwards the
+ * threshold output unchanged (composed via `.tapIf`).
+ *
+ * Append-only (no `key`): a fixed key would collapse distinct auditor
+ * invocations in one request to a single card. The `inputSchema` guards the
+ * emitted shape against drift from the `apply-threshold` output.
+ */
+const emitAuditAnnotation = handler({
+  name: "emit-audit-annotation",
+  inputSchema: z.object({
+    results: z.array(AnalyzerResultSchema),
+    surfacedResults: z.array(AnalyzerResultSchema),
+    overallScore: z.number(),
+  }),
+  execute: (input, ctx) => {
+    ctx.emit.component("audit-annotation", input);
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Rescue fallback for analyzer errors
 // ---------------------------------------------------------------------------
@@ -183,6 +205,7 @@ export function responseAuditor(config: ResponseAuditorConfig) {
   // 4. map filters out nulls from failed analyzers
   // 5. aggregateResults computes overall score
   // 6. applyThreshold filters to surfaced results
+  // 7. emit an audit-annotation component item when anything surfaced
 
   return sequencer({
     name: "response-auditor",
@@ -200,5 +223,6 @@ export function responseAuditor(config: ResponseAuditorConfig) {
     )
     .map((results: unknown[]) => results.filter(Boolean))
     .step(aggregateResults)
-    .step(thresholdBlock);
+    .step(thresholdBlock)
+    .tapIf((out) => out.surfacedResults.length > 0, emitAuditAnnotation);
 }

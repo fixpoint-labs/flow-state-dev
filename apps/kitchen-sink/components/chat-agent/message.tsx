@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { MessageItem } from "@flow-state-dev/core/items";
-import { ModelBadge } from "@flow-state-dev/react";
+import { ModelBadge } from "@/components/flow-state/model-badge";
 import { Message } from "@/components/flow-state/message";
 import { useSessionItems } from "@/components/flow-state/session-items-context";
 import { getStyleOption, type ThinkingStyle } from "@/components/thinking-style-selector";

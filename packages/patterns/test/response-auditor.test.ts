@@ -322,6 +322,45 @@ describe("response auditor pattern", () => {
     expect(blockOutputs.length).toBeGreaterThan(0);
   });
 
+  it("emits an audit-annotation component item when results surface", async () => {
+    const auditor = responseAuditor({
+      analyzers: [echoAnalyzer],
+      threshold: 0.3,
+    });
+
+    const result = await testBlock(auditor, {
+      input: { userInput: "Hello world", response: "Hi there!" },
+    });
+
+    const cards = result.items.filter(
+      (item) =>
+        item.type === "component" &&
+        (item as { component?: string }).component === "audit-annotation",
+    );
+    expect(cards).toHaveLength(1);
+
+    const data = (cards[0] as { data: { surfacedResults: unknown[] } }).data;
+    expect(data.surfacedResults).toHaveLength(1);
+  });
+
+  it("does not emit an audit-annotation card when nothing surfaces", async () => {
+    const auditor = responseAuditor({
+      analyzers: [lowScoreAnalyzer], // score 0.1, shouldSurface false
+      threshold: 0.5,
+    });
+
+    const result = await testBlock(auditor, {
+      input: { userInput: "Test", response: "Response" },
+    });
+
+    const cards = result.items.filter(
+      (item) =>
+        item.type === "component" &&
+        (item as { component?: string }).component === "audit-annotation",
+    );
+    expect(cards).toHaveLength(0);
+  });
+
   it("handles empty analyzer list", async () => {
     const auditor = responseAuditor({
       analyzers: [],

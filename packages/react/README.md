@@ -342,23 +342,9 @@ function ChatBubble({ item }: { item: MessageItem }) {
 
 Register renderers via `FlowProvider` or pass them directly to `ItemRenderer`.
 
-### `<ModelBadge>`
+### Presentational components moved to `@flow-state-dev/ui`
 
-Renders the `ModelIdentity` carried on any generator-emitted item or `block_trace` as a small pill. The `actual` model id is the visible label; the tooltip lists the requested string and gateway when present. Renders nothing when `model` is undefined, so it's safe to pass `item.model` directly from any item.
-
-```tsx
-import { ModelBadge } from "@flow-state-dev/react";
-import type { MessageItem } from "@flow-state-dev/core/items";
-
-function AssistantMessage({ item }: { item: MessageItem }) {
-  return (
-    <div>
-      <ModelBadge model={item.model} />
-      <div>{item.content[0]?.text}</div>
-    </div>
-  );
-}
-```
+`ModelBadge` and the audit-annotation card are no longer exported from this package. They live in the [`@flow-state-dev/ui`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/ui) registry, where you own the source after installing it. Install `ModelBadge` with `fsdev ui add model-badge` and import it from `@/components/flow-state/model-badge`. Audit annotations render through the ui `audit-annotation` component, fed by the `responseAuditor` pattern's emitted component item, so no per-item wiring is needed.
 
 ## Connection resilience
 

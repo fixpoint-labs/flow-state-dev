@@ -51,6 +51,8 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `question` | Free-text answer card for a `human_input` suspension |
 | `selection` | Single (enum) or multi (array of enum) choice card for a `human_input` suspension |
 | `form` | Flat-object form card for a `human_input` suspension — one control per scalar/enum property |
+| `model-badge` | Small pill showing the `ModelIdentity` that answered. Renders nothing when the model is undefined |
+| `audit-annotation` | Compact card for `responseAuditor` findings: severity indicators, per-analyzer scores, evidence. Fed by the `audit-annotation` component item |
 
 ## Framework Integration
 
@@ -83,6 +85,8 @@ const renderers = {
   component: { plan: false },   // suppress plan rendering
 };
 ```
+
+`chatAssistantRenderers` also maps `component: { "audit-annotation": AuditAnnotation }`, so a `responseAuditor` that surfaces findings renders its audit card automatically. The pattern emits the `audit-annotation` component item when results surface, and the renderer picks it up, so there's no manual emit per response.
 
 ### Plan Component
 

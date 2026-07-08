@@ -2,8 +2,9 @@
  * Bias check pipeline — runs in the background after the router produces output.
  *
  * Wraps `biasAnalyzer` in `responseAuditor` for threshold filtering + UI
- * display, and emits an `audit-annotation` component when the auditor surfaces
- * results. Skips the LLM calls entirely when the `biasCheck` feature is off.
+ * display. The auditor emits the `audit-annotation` component item itself when
+ * it surfaces results, so no manual emit is needed here. Skips the LLM calls
+ * entirely when the `biasCheck` feature is off.
  */
 import { sequencer } from "@flow-state-dev/core";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
@@ -69,20 +70,4 @@ export const biasCheck = sequencer({
   .stepIf(
     (_input, ctx) => !!(ctx.session.state.features as any).biasCheck,
     auditor,
-  )
-  .tap((result: unknown, ctx) => {
-    // Emit component item when auditor produced surfaced results.
-    if (result && typeof result === "object" && "surfacedResults" in result) {
-      const data = result as {
-        surfacedResults: unknown[];
-        results: unknown[];
-        overallScore: number;
-      };
-      if (data.surfacedResults.length > 0) {
-        ctx.emitComponent(
-          "audit-annotation",
-          data as unknown as Record<string, unknown>,
-        );
-      }
-    }
-  });
+  );
