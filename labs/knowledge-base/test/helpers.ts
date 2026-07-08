@@ -10,8 +10,20 @@ import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createExecutionContext, createInMemoryStores } from "@flow-state-dev/engine";
 import { conceptCollection, type ConceptState } from "../src/concepts";
 
-/** A fresh, empty concept collection backed by in-memory stores. */
-export async function makeConceptCollection(): Promise<ResourceCollectionRef<ConceptState>> {
+let callCounter = 0;
+
+/**
+ * A fresh concept collection backed by in-memory stores, bound to `userId`
+ * (default `"user_1"`). Each call gets its own session — like a stateless
+ * MCP `tools/call` — so calling this twice for the same `userId` (with the
+ * same `stores`) simulates two separate requests from one principal, and
+ * calling it for a different `userId` exercises per-principal isolation
+ * under `scope: "user"`.
+ */
+export async function makeConceptCollection(
+  userId: string = "user_1",
+  stores = createInMemoryStores(),
+): Promise<ResourceCollectionRef<ConceptState>> {
   const block = handler({
     name: "noop",
     resources: { concepts: conceptCollection },
@@ -22,13 +34,14 @@ export async function makeConceptCollection(): Promise<ResourceCollectionRef<Con
     actions: { run: { inputSchema: z.string(), block } },
   })();
 
+  callCounter += 1;
   const ctx = await createExecutionContext({
     flow,
     actionName: "run",
-    requestId: "req_1",
-    sessionId: "sess_1",
-    userId: "user_1",
-    stores: createInMemoryStores(),
+    requestId: `req_${callCounter}`,
+    sessionId: `sess_${callCounter}`,
+    userId,
+    stores,
   });
 
   return (ctx as { resources: Record<string, unknown> }).resources

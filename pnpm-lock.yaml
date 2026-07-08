@@ -415,27 +415,45 @@ importers:
 
   goals:
     dependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.4
+        version: 0.5.4
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../packages/core
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../packages/engine
+      '@flow-state-dev/mcp':
+        specifier: workspace:*
+        version: link:../packages/mcp
+      '@flow-state-dev/node':
+        specifier: workspace:*
+        version: link:../packages/node
+      '@flow-state-dev/store-postgres':
+        specifier: workspace:*
+        version: link:../packages/store-postgres
       zod:
         specifier: ^3.25.76
         version: 3.25.76
 
   labs/knowledge-base:
     dependencies:
-      '@ai-sdk/gateway':
-        specifier: ^4.0.12
-        version: 4.0.12(zod@3.25.76)
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@flow-state-dev/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      '@flow-state-dev/node':
+        specifier: workspace:*
+        version: link:../../packages/node
+      '@flow-state-dev/store-postgres':
+        specifier: workspace:*
+        version: link:../../packages/store-postgres
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
@@ -446,6 +464,9 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.4
+        version: 0.5.4
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../packages/testing
