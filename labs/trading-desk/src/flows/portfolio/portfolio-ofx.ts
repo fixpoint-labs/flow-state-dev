@@ -625,14 +625,17 @@ function handleBankTran(ctx: Ctx, agg: OfxNode): void {
  *  `splitAttributesSchema` read and no-op the split), so the caller skips-with-
  *  warning rather than guess. */
 function resolveSplitRatio(agg: OfxNode): { numerator: number; denominator: number } | null {
-  const positiveInt = (n: number | null): n is number =>
-    n !== null && Number.isInteger(n) && n > 0;
+  const positive = (n: number | null): n is number => n !== null && n > 0;
   const numerator = num(agg.NUMERATOR);
   const denominator = num(agg.DENOMINATOR);
-  if (positiveInt(numerator) && positiveInt(denominator)) return { numerator, denominator };
+  if (positive(numerator) && positive(denominator)) return { numerator, denominator };
+  // Fall back to the holder's before/after share counts. These may be FRACTIONAL
+  // for a fractional-share account (e.g. 121.9346 → 12.19346 for a 10-for-1), so
+  // accept any positive pair — the ratio `NEWUNITS / OLDUNITS` is exact regardless
+  // of whether the raw counts are whole. Only a non-positive pair is unusable.
   const newUnits = num(agg.NEWUNITS);
   const oldUnits = num(agg.OLDUNITS);
-  if (positiveInt(newUnits) && positiveInt(oldUnits)) {
+  if (positive(newUnits) && positive(oldUnits)) {
     return { numerator: newUnits, denominator: oldUnits };
   }
   return null;

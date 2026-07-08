@@ -77,6 +77,20 @@ describe("materializePositions — inconsistent-history guard (FIX-876)", () => 
     expect(row?.dataQuality).toBe("inconsistent_history");
   });
 
+  it("flags an oversold ticker even when a later buy leaves a residual position", async () => {
+    // 12 pre-split shares, a 50-share post-split sale (over-sells), then a later
+    // 60-share buy. FIFO clamps its way to a 60-share open position, but the
+    // history is inconsistent (an unrecorded split) and that 60 is wrong — the
+    // pre-split lots weren't rebased. It must flag, not show the fabricated number.
+    await repo.ingestLedgerEvents(
+      [buy(12, 900, "2024-01-01"), sell(50, "2024-07-31"), buy(60, 120, "2024-08-01")],
+      "devuser",
+    );
+    const row = await nvda();
+    expect(row?.quantity).toBe(0);
+    expect(row?.dataQuality).toBe("inconsistent_history");
+  });
+
   it("still DELETES a clean net-zero close (a genuine exit, not an inconsistency)", async () => {
     await repo.ingestLedgerEvents([buy(10, 100, "2024-01-01"), sell(10, "2024-02-01")], "devuser");
     expect(await nvda()).toBeUndefined();
@@ -144,5 +158,47 @@ describe("replaceLedgerFromFile — reconciles holdings to the new source of tru
     await repo.replaceLedgerFromFile("acc-1", "devuser", [buy(10, 100, "2024-01-01")]);
     const after = await repo.getPortfolio("devuser");
     expect(after.holdings.map((h) => h.ticker)).toEqual(["NVDA"]);
+  });
+
+  it("rejects events targeting a different account than the reset target", async () => {
+    await repo.upsertAccount({ id: "acc-2", userId: "devuser", name: "Other", type: "taxable" });
+    // Events for a DIFFERENT owned account must not wipe acc-1 and repopulate acc-2.
+    await expect(
+      repo.replaceLedgerFromFile("acc-1", "devuser", [
+        { ...buy(1, 1, "2024-01-01"), accountId: "acc-2" },
+      ]),
+    ).rejects.toThrow();
+  });
+
+  it("does not orphan-delete a ticker whose ledger history is entirely voided", async () => {
+    // MSFT: a snapshot holding + a ledger buy that is then voided (returning it to
+    // snapshot authority). A reset that omits MSFT must NOT delete its row — voided
+    // history has no live authority to drive an orphan delete.
+    await repo.upsertHoldings(
+      "acc-1",
+      "devuser",
+      [
+        {
+          ticker: "MSFT",
+          quantity: 5,
+          costBasis: 100,
+          acquiredDate: null,
+          assetClass: "equity",
+          assetType: "equity",
+          attributes: { kind: "none" },
+        },
+      ],
+      "upsert",
+    );
+    await repo.ingestLedgerEvents(
+      [{ ...msftBuy(), source: "file", externalId: "M1" }],
+      "devuser",
+    );
+    await repo.voidLedgerEvents("acc-1", ["M1"], "file", "devuser");
+
+    await repo.replaceLedgerFromFile("acc-1", "devuser", [buy(10, 100, "2024-01-01")]);
+    const { holdings } = await repo.getPortfolio("devuser");
+    expect(holdings.some((h) => h.ticker === "MSFT")).toBe(true); // snapshot survived
+    expect(holdings.some((h) => h.ticker === "NVDA")).toBe(true);
   });
 });

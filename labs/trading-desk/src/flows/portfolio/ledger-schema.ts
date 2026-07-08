@@ -41,15 +41,18 @@ export type LedgerEventType = z.infer<typeof ledgerEventTypeSchema>;
 /**
  * A stock-split corporate action, carried on a `split` event's `attributes`
  * jsonb (FIX-876). A 10-for-1 forward split is `{ numerator: 10, denominator: 1 }`;
- * a 1-for-10 reverse split is `{ numerator: 1, denominator: 10 }`. Both are
- * positive integers — the ratio is `numerator / denominator` (see
- * {@link splitRatio}). A split multiplies OPEN lots (`quantity × ratio`,
- * `costPerShare ÷ ratio`); it is not a share delta, so `deriveLots` branches on
- * the `type`, not the sign of `quantity`.
+ * a 1-for-10 reverse split is `{ numerator: 1, denominator: 10 }`. The ratio is
+ * `numerator / denominator` (see {@link splitRatio}). Both are positive and
+ * finite — normally integers (manual entry and OFX `NUMERATOR`/`DENOMINATOR`),
+ * but the OFX `NEWUNITS`/`OLDUNITS` fallback may supply a fractional-share
+ * holder's raw counts (121.9346 → 12.19346 for a 10-for-1), whose ratio is still
+ * exact — so this is not `.int()`-constrained. A split multiplies OPEN lots
+ * (`quantity × ratio`, `costPerShare ÷ ratio`); it is not a share delta, so
+ * `deriveLots` branches on the `type`, not the sign of `quantity`.
  */
 export const splitAttributesSchema = z.object({
-  numerator: z.number().int().positive(),
-  denominator: z.number().int().positive(),
+  numerator: z.number().positive().finite(),
+  denominator: z.number().positive().finite(),
 });
 export type SplitAttributes = z.infer<typeof splitAttributesSchema>;
 

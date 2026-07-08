@@ -268,6 +268,26 @@ VERSION:102
     });
   });
 
+  it("accepts a fractional NEWUNITS/OLDUNITS ratio (a fractional-share account)", async () => {
+    // A fractional-share holder's raw before/after counts for a 10-for-1 split.
+    // The ratio (121.9346 / 12.19346) is exact even though the counts aren't whole,
+    // so the split must ingest, not skip.
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<SPLIT><INVTRAN><FITID>SP5<DTTRADE>20240610</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><OLDUNITS>12.19346<NEWUNITS>121.9346</SPLIT>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>NVDA</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({
+      type: "split",
+      attributes: { numerator: 121.9346, denominator: 12.19346 },
+    });
+  });
+
   it("skips a SPLIT with no usable ratio, with a warning (never a fabricated ratio)", async () => {
     const file = `OFXHEADER:100
 DATA:OFXSGML

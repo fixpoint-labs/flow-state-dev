@@ -458,23 +458,27 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
 
   for (const ticker of activeTickers) {
     const p = posByTicker.get(ticker);
+    // Inconsistent history (FIX-876): an acquired ticker whose disposals exceed
+    // everything ever held — impossible without an unaccounted corporate action
+    // (an unrecorded split is the canonical cause). This is checked FIRST, before
+    // the derived position: an oversell makes the whole derivation untrustworthy,
+    // so even when a LATER buy leaves a residual open position that FIFO clamped
+    // its way to, the number is wrong (the pre-split lots weren't rebased). NEVER
+    // show that fabricated quantity and never silently delete: materialize a
+    // FLAGGED zero-quantity row (basis cleared) surfaced in the Portfolio UI with
+    // a "review transactions" marker. Recording the missing split clears the
+    // oversell, so the position then derives and the flag self-heals below.
+    if (acquiredTickers.has(ticker) && oversold.has(ticker)) {
+      await upsertMaterializedHolding(tx, accountId, ticker, {
+        quantity: "0",
+        costBasis: null,
+        acquiredDate: null,
+        dataQuality: "inconsistent_history",
+      });
+      continue;
+    }
     if (p === undefined) {
-      if (acquiredTickers.has(ticker) && oversold.has(ticker)) {
-        // Inconsistent history (FIX-876): an acquired ticker whose disposals
-        // exceed everything ever held — impossible without an unaccounted
-        // corporate action (an unrecorded split is the canonical cause). NEVER
-        // silently delete a real position: materialize a FLAGGED zero-quantity
-        // row (basis cleared) surfaced in the Portfolio UI with a "review
-        // transactions" marker. Recording the missing split self-heals it (the
-        // oversell disappears, the position derives, the branch below clears the
-        // flag).
-        await upsertMaterializedHolding(tx, accountId, ticker, {
-          quantity: "0",
-          costBasis: null,
-          acquiredDate: null,
-          dataQuality: "inconsistent_history",
-        });
-      } else if (acquiredTickers.has(ticker)) {
+      if (acquiredTickers.has(ticker)) {
         // Genuine close: acquisition(s) all consumed and NO oversell — the
         // active-holdings view drops it; history stays in the ledger.
         await tx
@@ -493,9 +497,9 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
       }
       continue;
     }
-    // A derived open position is consistent by construction — the shared upsert
-    // classifies by ticker (so a transaction-materialized holding carries its real
-    // asset class, not the `equity` default) and clears any prior
+    // A derived open position with no oversell is consistent by construction — the
+    // shared upsert classifies by ticker (so a transaction-materialized holding
+    // carries its real asset class, not the `equity` default) and clears any prior
     // `inconsistent_history` flag (FIX-876: a recorded split that explains an
     // earlier oversell self-heals the row).
     await upsertMaterializedHolding(tx, accountId, ticker, {
@@ -822,6 +826,15 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
     },
 
     async replaceLedgerFromFile(accountId, userId, events) {
+      // Scope the reset to EXACTLY one account: every event must target `accountId`.
+      // `ingestEventsInTx` accepts any account the user owns, so without this a
+      // caller passing events for a different owned account would wipe THIS account
+      // and repopulate the OTHER — a destructive mis-scope. Reject before any write.
+      if (events.some((e) => e.accountId !== accountId)) {
+        throw new Error(
+          `replaceLedgerFromFile: every event must target account ${accountId}.`,
+        );
+      }
       return db.transaction(async (tx) => {
         // Ownership-guard the target account up front, so a wipe never touches a
         // foreign account (the whole transaction rolls back on a throw).
@@ -846,6 +859,10 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
               eq(ledgerEvents.accountId, accountId),
               isNotNull(ledgerEvents.ticker),
               isNotNull(ledgerEvents.quantity),
+              // LIVE authority only: a ticker whose share history is entirely
+              // voided has already returned to snapshot authority, so it must not
+              // drive an orphan delete (which would wrongly drop its snapshot row).
+              isNull(ledgerEvents.voidedAt),
             ),
           );
         const ledgerAuthoritativeBefore = new Set(
