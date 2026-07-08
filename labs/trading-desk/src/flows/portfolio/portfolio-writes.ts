@@ -180,11 +180,19 @@ export async function recordManualEvent(
   // silently fail to record. Canonicalize the sign here — the OFX importer's
   // `Math.abs(total)` precedent — so the manual path and the invariant agree.
   const amount = input.type === "sell" ? Math.abs(input.amount) : input.amount;
+  // A cash event (dividend/interest/deposit/withdrawal/fee) carries no shares, but
+  // the dialog's optional Quantity field can still submit a literal 0. The
+  // share-event invariant (FIX-874) rejects a non-share type carrying any
+  // quantity, so that 0 would throw and roll back a valid cash entry after the
+  // dialog closed. Null it for non-share types — a cash row has no quantity.
+  const isShareType =
+    input.type === "buy" || input.type === "sell" || input.type === "transfer";
+  const quantity = isShareType ? input.quantity : null;
   // `proceedsUnknown` is import-only (a feed normalizer's signal that a file
   // couldn't supply proceeds). Force it null on the manual path so a caller can't
   // null out a real sale's proceeds by hand.
   return repo.ingestLedgerEvents(
-    [{ ...input, amount, ticker, source: "manual", externalId: null, proceedsUnknown: null }],
+    [{ ...input, amount, quantity, ticker, source: "manual", externalId: null, proceedsUnknown: null }],
     userId,
   );
 }

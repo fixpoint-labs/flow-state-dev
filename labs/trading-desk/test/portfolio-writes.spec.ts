@@ -67,6 +67,21 @@ describe("recordManualEvent — sell proceeds sign", () => {
     expect(gains[0]).toMatchObject({ proceeds: 1500, costBasis: 1000, gain: 500 });
   });
 
+  it("records a cash event whose optional quantity field was typed as 0", async () => {
+    // The dialog can submit a literal 0 for a dividend's quantity; the share-event
+    // invariant would reject a non-share type carrying a quantity, so the manual
+    // writer must null it. A valid dividend must still land.
+    const report = await recordManualEvent(
+      manual({ type: "dividend", ticker: "AAPL", quantity: 0, unitPrice: null, amount: 42, tradeDate: "2026-03-01" }),
+      "devuser",
+      repo,
+    );
+    expect(report.inserted).toBe(1);
+    const div = (await repo.getLedger("devuser")).find((r) => r.type === "dividend");
+    expect(div?.quantity).toBeNull();
+    expect(div?.amount).toBe(42);
+  });
+
   it("leaves a positive sell amount untouched", async () => {
     await recordManualEvent(manual({ type: "buy", quantity: 10, unitPrice: 100, amount: -1000 }), "devuser", repo);
     await recordManualEvent(
