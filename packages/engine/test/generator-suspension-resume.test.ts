@@ -244,6 +244,60 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
     expect(JSON.stringify(step1[0]!.output)).toContain("denied");
   });
 
+  // 2a. REJECTION visibility — denial inherits the generator's itemVisibility --
+  it("rejection denial tool_output inherits a history:false generator's visibility (no leak)", async () => {
+    const gate = handler({
+      name: "risky_op",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ran: z.boolean() }),
+      execute: async (_input, ctx) => {
+        await ctx.suspend!({ reason: "approval", message: "Run risky op?" });
+        return { ran: true };
+      },
+    });
+
+    const { model } = stepModel([
+      () => ({
+        toolCalls: [{ toolCallId: "c1", toolName: "risky_op", args: {} }],
+        finishReason: "tool-calls",
+      }),
+      () => ({ text: "cancelled", finishReason: "stop" }),
+    ]);
+
+    // A client-hidden, history-excluded generator: its denial must not be more
+    // visible than its ordinary tool outputs.
+    const gen = generator({
+      name: "agent",
+      model,
+      prompt: "p",
+      tools: [gate],
+      itemVisibility: { client: false, history: false },
+    });
+    const flow = defineFlow({
+      kind: "gen-reject-vis",
+      actions: { run: { block: sequencer({ name: "seq", durable: true }).step(gen), inputSchema: anyInput } },
+    })({ id: "gen-reject-vis" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      flow, actionName: "run", input: {}, userId: "u1", stores,
+      runtimeConfig: { durabilityProvider: provider },
+    });
+    const requestId = initial.requestId!;
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    await resolve(flow, stores, provider, requestId, suspension, "reject");
+
+    const record = await stores.request.get(requestId);
+    const denial = completedToolOutputs(record!.items ?? []).find(
+      (i: any) => (i.output as any)?.denied === true,
+    ) as any;
+    expect(denial).toBeDefined();
+    // The bug: the denial fell back to the conversational default
+    // { client: true, history: true } and leaked. It must carry the
+    // generator's visibility instead.
+    expect(denial.itemVisibility).toMatchObject({ client: false, history: false });
+  });
+
   // 2b. REJECTION then a LATER gate — denied call not re-entered (round-8) ----
   it("a rejected gate is not re-entered when a LATER gate suspends and resumes", async () => {
     let gateAEnters = 0;

@@ -1116,6 +1116,12 @@ interface OwnedLoopToolset {
   entries: OwnedLoopToolEntry[];
   byName: Map<string, OwnedLoopToolEntry>;
   byAlias: Map<string, OwnedLoopToolEntry>;
+  /** The generator's item visibility, carried so items emitted OUTSIDE a tool's
+   * `execute` closure — e.g. the resume reject path's denial `tool_output` —
+   * inherit the same visibility as ordinary tool outputs (a `history:false`
+   * generator's denial must not leak into history/the model conversation). */
+  itemVisibility: ItemVisibility | undefined;
+  agentName: string | undefined;
 }
 
 /**
@@ -1171,6 +1177,8 @@ function compileOwnedLoopToolset(
     entries,
     byName: new Map(entries.map((e) => [e.block.name, e] as const)),
     byAlias: new Map(entries.map((e) => [e.alias, e] as const)),
+    itemVisibility,
+    agentName,
   };
 }
 
@@ -1512,7 +1520,18 @@ async function runResumeStep(
               entry.block,
               ctx,
               c.arguments,
-              { callId: c.toolCallId, generatorBlock: blockName, alias: entry.alias },
+              {
+                callId: c.toolCallId,
+                generatorBlock: blockName,
+                alias: entry.alias,
+                // Inherit the generator's visibility/attribution so a denial
+                // for a `history:false` (or client-hidden) generator is not
+                // more visible than its ordinary tool outputs (Greptile P1).
+                ...(toolset.itemVisibility !== undefined
+                  ? { itemVisibility: toolset.itemVisibility }
+                  : {}),
+                ...(toolset.agentName !== undefined ? { agentName: toolset.agentName } : {}),
+              },
               async () => denial,
             );
             output = toolResultOutputForModel(denial);
