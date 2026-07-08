@@ -254,6 +254,8 @@ export type {
   CachingConfig,
   CachingTtl,
   GeneratorModel,
+  GeneratorModelCallOptions,
+  GeneratorModelLoopOptions,
   GeneratorModelResult,
   GeneratorModelSource,
   GeneratorModelTool,

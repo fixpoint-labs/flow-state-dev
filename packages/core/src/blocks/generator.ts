@@ -25,12 +25,22 @@ import type {
   GeneratorModel,
   GeneratorModelResult,
   GeneratorModelSource,
+  GeneratorModelStreamChunk,
   GeneratorModelTool,
+  GeneratorModelToolCall,
+  GeneratorModelUsage,
   GeneratorSearchConfig,
+  GeneratorStepResult,
   ModelIdentity,
   PrepareStepFn,
   ProviderTool
 } from "../types/model";
+import {
+  buildAssistantToolCallMessage,
+  buildToolResultMessage,
+  toolResultOutputForModel,
+  type LLMToolResultOutput,
+} from "../models/llm-messages";
 import type { ModelSelection } from "../models/selectModel";
 import { isModelSelection } from "../models/selectModel";
 import type { ProviderPreference } from "../models/types";
@@ -48,7 +58,7 @@ import type {
 
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
-import { sanitizeToolName } from "../helpers/tool-name";
+import { sanitizeToolName, computeToolAliases, assertUniqueToolNames } from "../helpers/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
   objectFormHasNestedFunction,
@@ -60,7 +70,7 @@ import {
   type PromptFile,
   type PromptFileBrand,
 } from "../prompt/prompt-file";
-import { getEmitterItemCount } from "./internal/utils";
+import { getEmitterItemCount, toError } from "./internal/utils";
 import {
   assembleMessages,
   buildSystemPrefix,
@@ -1063,6 +1073,850 @@ function surfaceModelCallError(err: unknown, ctx: BlockContext, blockName: strin
   throw err;
 }
 
+// ---------------------------------------------------------------------------
+// Framework-owned step loop (FIX-814 PR2)
+//
+// When the resolved model implements the single-step contract
+// (`generateStep` / `streamStep`), the generator drives the multi-step tool
+// loop itself: one model call per step, framework tools executed by FSD
+// between steps via the same `buildToolExecutor` closures the SDK path
+// attaches (cache/retry/emission/scope behavior identical), inter-step
+// messages built from the shared `llm-messages` builders. Models without
+// the step methods run the legacy SDK-owned multi-step path unchanged —
+// that path is the compatibility surface for hand-rolled test mocks, the
+// public `mockGenerator`, and third-party adapters.
+// ---------------------------------------------------------------------------
+
+/** Per-tool state for the owned loop: model-facing alias, the model tool
+ * (no execute — the model must never run framework tools), the framework
+ * executor closure, and the optional model-output mapper. */
+interface OwnedLoopToolEntry {
+  block: GeneratorTool;
+  /** Disambiguated model-facing alias (see `computeToolAliases`). */
+  alias: string;
+  /** Tool as passed to each step call — pre-renamed to `alias`, no execute. */
+  modelTool: GeneratorModelTool;
+  execute: (args: unknown, options?: { toolCallId?: string }) => Promise<unknown>;
+  mapModelOutput?: (output: unknown, ctx: BlockContext) => string | Promise<string>;
+}
+
+interface OwnedLoopToolset {
+  entries: OwnedLoopToolEntry[];
+  byName: Map<string, OwnedLoopToolEntry>;
+  byAlias: Map<string, OwnedLoopToolEntry>;
+}
+
+/**
+ * Compiles the owned loop's toolset. Tools passed to step calls are
+ * pre-renamed to their disambiguated alias so the adapter's own alias pass
+ * is a no-op and the tool dictionary is stable across steps — bare
+ * re-sanitization of inter-step messages would drop `ensureUniqueAlias`
+ * suffixes and mis-correlate colliding names.
+ */
+function compileOwnedLoopToolset(
+  tools: GeneratorTool[],
+  ctx: BlockContext,
+  flowTools: ToolsConfig | undefined,
+  generatorBlockName: string,
+  itemVisibility: ItemVisibility | undefined,
+  agentName: string | undefined,
+): OwnedLoopToolset {
+  const aliases = computeToolAliases(tools.map((t) => t.name));
+  const statusGuard = { active: 0, saved: "" };
+  const entries = tools.map((tool): OwnedLoopToolEntry => ({
+    block: tool,
+    alias: aliases.get(tool.name)!,
+    modelTool: {
+      name: aliases.get(tool.name)!,
+      description: tool.description,
+      parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"],
+    },
+    execute: buildToolExecutor(
+      tool,
+      { flowTools, generatorBlockName, itemVisibility, agentName, statusGuard },
+      ctx,
+    ),
+    mapModelOutput: asRuntime(tool)._modelOutputMapper as
+      | ((output: unknown, ctx: BlockContext) => string | Promise<string>)
+      | undefined,
+  }));
+  return {
+    entries,
+    byName: new Map(entries.map((e) => [e.block.name, e] as const)),
+    byAlias: new Map(entries.map((e) => [e.alias, e] as const)),
+  };
+}
+
+/** Maps a model-reported tool name (usually the alias, since step tools are
+ * pre-renamed) back to the framework block name for items and step metadata. */
+function frameworkToolName(name: string, toolset: OwnedLoopToolset): string {
+  return toolset.byAlias.get(name)?.block.name ?? name;
+}
+
+/** Remaps a step result's tool calls to framework names. */
+function remapStepToolCalls(
+  calls: GeneratorModelToolCall[] | undefined,
+  toolset: OwnedLoopToolset
+): GeneratorModelToolCall[] | undefined {
+  if (calls === undefined) return undefined;
+  return calls.map((call) => ({ ...call, toolName: frameworkToolName(call.toolName, toolset) }));
+}
+
+/** Sums per-step usage into the run aggregate the legacy SDK-owned path
+ * reports (the SDK accumulates usage across internal steps the same way). */
+function addGeneratorUsage(
+  total: GeneratorModelUsage | undefined,
+  step: GeneratorModelUsage | undefined
+): GeneratorModelUsage | undefined {
+  if (step === undefined) return total;
+  if (total === undefined) return { ...step };
+  const out: GeneratorModelUsage = {
+    promptTokens: total.promptTokens + step.promptTokens,
+    completionTokens: total.completionTokens + step.completionTokens,
+    totalTokens: total.totalTokens + step.totalTokens,
+  };
+  if (total.cacheCreationInputTokens !== undefined || step.cacheCreationInputTokens !== undefined) {
+    out.cacheCreationInputTokens =
+      (total.cacheCreationInputTokens ?? 0) + (step.cacheCreationInputTokens ?? 0);
+  }
+  if (total.cacheReadInputTokens !== undefined || step.cacheReadInputTokens !== undefined) {
+    out.cacheReadInputTokens =
+      (total.cacheReadInputTokens ?? 0) + (step.cacheReadInputTokens ?? 0);
+  }
+  return out;
+}
+
+/** One settled framework tool call within a step. `call.toolName` carries the
+ * framework block name; `entry` is absent when the model called an unknown tool. */
+interface SettledToolCall {
+  call: GeneratorModelToolCall;
+  entry?: OwnedLoopToolEntry;
+  ok: boolean;
+  output?: unknown;
+  error?: Error;
+}
+
+/**
+ * Partitions a step's tool calls into the ones FSD must run and the ones it
+ * must NOT. Provider-executed calls (web search / other `providerTools`) ran
+ * server-side inside the model call — their results are already in the raw
+ * response — so FSD skips them; they are also excluded from the
+ * loop-continuation decision (a step whose only calls are provider-executed
+ * is terminal from FSD's view). A NON-provider-executed call that resolves
+ * to no framework tool is a genuine hallucinated unknown tool and stays in
+ * `frameworkCalls` so it surfaces the model-visible error.
+ */
+function partitionStepCalls(
+  calls: GeneratorModelToolCall[]
+): { frameworkCalls: GeneratorModelToolCall[]; providerCalls: GeneratorModelToolCall[] } {
+  const frameworkCalls: GeneratorModelToolCall[] = [];
+  const providerCalls: GeneratorModelToolCall[] = [];
+  for (const call of calls) {
+    if (call.providerExecuted === true) providerCalls.push(call);
+    else frameworkCalls.push(call);
+  }
+  return { frameworkCalls, providerCalls };
+}
+
+/**
+ * Executes a step's tool calls CONCURRENTLY (matching the SDK's same-step
+ * behavior) and settles ALL siblings. Errors — including `SuspensionError` /
+ * `SuspensionRejectedError`, which are deliberately NOT special-cased in
+ * this behavior-preserving refactor — become model-visible failed results,
+ * exactly like the SDK-owned loop produced (the failed `tool_output` item is
+ * emitted inside `emitToolOutputAround`). Suspension propagation is wired in
+ * a later change.
+ */
+async function executeOwnedStepToolCalls(
+  calls: GeneratorModelToolCall[],
+  toolset: OwnedLoopToolset,
+  activeToolNames: string[] | undefined
+): Promise<SettledToolCall[]> {
+  return Promise.all(
+    calls.map(async (call): Promise<SettledToolCall> => {
+      const entry = toolset.byName.get(call.toolName) ?? toolset.byAlias.get(call.toolName);
+      // A call that resolves to no tool (hallucinated) OR to a tool the step
+      // deactivated via `prepareStep.activeTools` is surfaced as a
+      // model-visible unknown-tool error and NOT executed — matching the
+      // legacy SDK path, which only advertised the active tools to the model
+      // and rejected calls outside that set.
+      const inactive =
+        entry !== undefined &&
+        activeToolNames !== undefined &&
+        !activeToolNames.includes(entry.block.name);
+      if (entry === undefined || inactive) {
+        // Keep `entry` in the INACTIVE case: the tool exists in the toolset
+        // (just deactivated this step), so the error tool-result must reply
+        // under the tool's disambiguated alias — the one the model called.
+        // `call.toolName` is already remapped to the framework name, so
+        // re-sanitizing it would drop an `ensureUniqueAlias` suffix and
+        // mis-correlate colliding tools (`foo.bar`/`foo/bar`). A genuinely
+        // unknown tool (entry === undefined) has no alias; there `call.toolName`
+        // is the model's original name (remap is a no-op for names not in the
+        // toolset) so `sanitizeToolName` of it is already model-facing.
+        return {
+          call,
+          ...(entry !== undefined ? { entry } : {}),
+          ok: false,
+          error: new Error(`Model called unknown tool "${call.toolName}"`),
+        };
+      }
+      try {
+        const output = await entry.execute(call.args, { toolCallId: call.toolCallId });
+        return { call, entry, ok: true, output };
+      } catch (err) {
+        return { call, entry, ok: false, error: toError(err) };
+      }
+    })
+  );
+}
+
+/**
+ * Builds the messages appended after a tool-calling step.
+ *
+ * Assistant turn — live-fidelity first: when the step result carries RAW
+ * `responseMessages` (the AI SDK adapter populates them from the step's
+ * `response.messages`), their assistant portion is appended VERBATIM. That
+ * preserves reasoning/thinking parts and provider-specific payloads (e.g.
+ * Anthropic thinking signatures, which MUST round-trip in the assistant
+ * turn of a tool loop) that the normalized step fields cannot carry; the
+ * raw messages already use the model-facing aliases since the loop
+ * pre-renames its tools. When `responseMessages` is absent (step-capable
+ * non-AI-SDK models, mocks), falls back to ONE constructed assistant
+ * message carrying ALL of the step's tool-call parts plus the step's text.
+ *
+ * FRAMEWORK tool results are ALWAYS FSD-constructed — FSD ran those tools,
+ * and the raw response contains no results for the execute-less framework
+ * tools — one tool-result message per settled framework call in call order,
+ * payloads mirroring what the AI SDK feeds the model (`mapModelOutput`
+ * applied in memory, errors as `error-text`). PROVIDER-executed tool results
+ * (role:"tool" messages the SDK put in the raw response) are carried forward
+ * verbatim as part of the raw turn, so the model keeps its search results.
+ * Ordering stays provider-valid: assistant turn (all tool-call parts) →
+ * provider results (from raw) → framework results (FSD).
+ */
+async function buildOwnedStepMessages(
+  step: { text?: string; responseMessages?: unknown[] } | undefined,
+  settled: SettledToolCall[],
+  ctx: BlockContext
+): Promise<unknown[]> {
+  const aliasFor = (s: SettledToolCall): string =>
+    s.entry?.alias ?? sanitizeToolName(s.call.toolName);
+
+  // Carry the raw turn forward verbatim (assistant + provider tool-result
+  // messages, preserving the SDK's own ordering) when present. This keeps
+  // reasoning/thinking parts and provider-executed tool results intact.
+  const rawTurn = (step?.responseMessages ?? []).filter((m) => {
+    if (typeof m !== "object" || m === null) return false;
+    const role = (m as { role?: unknown }).role;
+    return role === "assistant" || role === "tool";
+  });
+
+  const messages: unknown[] = rawTurn.length > 0
+    ? [...rawTurn]
+    : [
+        buildAssistantToolCallMessage(
+          settled.map((s) => ({
+            toolCallId: s.call.toolCallId,
+            toolName: aliasFor(s),
+            input: s.call.args,
+          })),
+          step?.text
+        ),
+      ];
+
+  for (const s of settled) {
+    let output: LLMToolResultOutput;
+    if (!s.ok) {
+      output = { type: "error-text", value: s.error?.message ?? "unknown error" };
+    } else {
+      const mapped = s.entry?.mapModelOutput !== undefined
+        ? await s.entry.mapModelOutput(s.output, ctx)
+        : undefined;
+      output = toolResultOutputForModel(s.output, mapped);
+    }
+    messages.push(
+      buildToolResultMessage(
+        { toolCallId: s.call.toolCallId, toolName: aliasFor(s) },
+        output
+      )
+    );
+  }
+
+  return messages;
+}
+
+/** Throws promptly when the request signal already aborted, so the owned
+ * loop stops between steps instead of issuing another model call. */
+function throwIfAborted(ctx: BlockContext): void {
+  if (ctx.signal?.aborted === true) {
+    const reason = (ctx.signal as { reason?: unknown }).reason;
+    if (reason instanceof Error) throw reason;
+    const err = new Error("This operation was aborted");
+    err.name = "AbortError";
+    throw err;
+  }
+}
+
+/** Shared per-step preamble for both owned loops: applies the generator's
+ * `prepareStep` result FSD-side (message replacement carries forward,
+ * `activeTools` filters the toolset by framework name, `modelId` re-resolves
+ * through `ctx.resolveModel` for this step only). */
+async function applyOwnedPrepareStep(params: {
+  prepareStep: PrepareStepFn | undefined;
+  stepNumber: number;
+  messages: unknown[];
+  steps: GeneratorStepResult[];
+  activeToolNames: string[] | undefined;
+  model: GeneratorModel;
+  /** Which step method the calling loop needs on a `modelId`-override model. */
+  requires: "generateStep" | "streamStep";
+  ctx: BlockContext;
+  blockName: string;
+}): Promise<{
+  messages: unknown[];
+  activeToolNames: string[] | undefined;
+  stepModel: GeneratorModel;
+}> {
+  const { prepareStep, stepNumber, steps, ctx, blockName } = params;
+  let { messages, activeToolNames } = params;
+  let stepModel = params.model;
+  if (prepareStep !== undefined) {
+    const prep = await prepareStep({ stepNumber, messages, steps });
+    if (prep?.messages !== undefined) {
+      // AI SDK 7 carry-forward semantics: a returned override becomes the
+      // input of later steps (the loop keeps appending onto it).
+      messages = prep.messages as unknown[];
+    }
+    if (prep?.activeTools !== undefined) {
+      activeToolNames = prep.activeTools;
+    }
+    if (prep?.modelId !== undefined) {
+      // Mirrors the AI SDK adapter's prepareStep bridge, which re-resolves a
+      // returned modelId for that step only. Requires the resolved model to
+      // support this loop's step method; otherwise the override is skipped
+      // with a warning. Like the SDK bridge, this re-resolves by id alone —
+      // any block-level `preferProvider` call option is intentionally not
+      // threaded through a per-step model switch.
+      const resolved = ctx.resolveModel(prep.modelId, blockName);
+      if (resolved[params.requires] !== undefined) {
+        stepModel = resolved;
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[generator] "${blockName}" prepareStep modelId "${prep.modelId}" resolved to a model without ${params.requires}; keeping the current model for this step`
+        );
+      }
+    }
+  }
+  return { messages, activeToolNames, stepModel };
+}
+
+/** Filters the toolset by the active framework tool names (when set) and
+ * returns the model-facing tool array for a step call. */
+function activeStepTools(
+  toolset: OwnedLoopToolset,
+  activeToolNames: string[] | undefined
+): GeneratorModelTool[] | undefined {
+  const entries = activeToolNames === undefined
+    ? toolset.entries
+    : toolset.entries.filter((e) => activeToolNames.includes(e.block.name));
+  return entries.length > 0 ? entries.map((e) => e.modelTool) : undefined;
+}
+
+/**
+ * The framework-owned NON-STREAMING step loop. Behavior-preserving stand-in
+ * for the single `model.generate({ maxSteps })` call: drives up to
+ * `maxSteps` single-step calls, executes framework tools between steps, and
+ * returns a `GeneratorModelResult` shaped like the SDK-owned path's result
+ * (final-step text/structuredOutput/toolCalls, aggregate usage, per-step
+ * `steps`, sources accumulated across steps) so the caller's downstream
+ * handling — candidate resolution, usage hook, source emission,
+ * `tool_call_progress` synthesis, repair, final message emission — runs
+ * unchanged.
+ */
+async function runOwnedGenerateLoop(params: {
+  model: GeneratorModel;
+  messages: unknown[];
+  toolBlocks: GeneratorTool[];
+  providerTools: ProviderTool[];
+  outputSchema: ZodTypeAny | undefined;
+  maxTokens: number | undefined;
+  maxSteps: number;
+  runTools: boolean;
+  flowTools: ToolsConfig | undefined;
+  blockName: string;
+  ctx: BlockContext;
+  itemVisibility: ItemVisibility | undefined;
+  agentName: string | undefined;
+  prepareStep: PrepareStepFn | undefined;
+  providerOptions: Record<string, unknown> | undefined;
+  caching: CachingConfig | undefined;
+}): Promise<GeneratorModelResult> {
+  const { model, ctx, blockName } = params;
+  const toolset = compileOwnedLoopToolset(
+    params.toolBlocks,
+    ctx,
+    params.flowTools,
+    blockName,
+    params.itemVisibility,
+    params.agentName,
+  );
+
+  let messages = params.messages;
+  const steps: GeneratorStepResult[] = [];
+  const sources: GeneratorModelSource[] = [];
+  let usage: GeneratorModelUsage | undefined;
+  let last: GeneratorModelResult | undefined;
+  let identity: ModelIdentity | undefined;
+  let activeToolNames: string[] | undefined;
+
+  for (let stepNumber = 0; stepNumber < params.maxSteps; stepNumber += 1) {
+    throwIfAborted(ctx);
+    const prep = await applyOwnedPrepareStep({
+      prepareStep: params.prepareStep,
+      stepNumber,
+      messages,
+      steps,
+      activeToolNames,
+      model,
+      requires: "generateStep",
+      ctx,
+      blockName,
+    });
+    messages = prep.messages;
+    activeToolNames = prep.activeToolNames;
+
+    const step = await prep.stepModel.generateStep!({
+      messages,
+      tools: activeStepTools(toolset, activeToolNames),
+      providerTools: params.providerTools.length > 0 ? params.providerTools : undefined,
+      outputSchema: params.outputSchema,
+      maxTokens: params.maxTokens,
+      signal: ctx.signal,
+      providerOptions: params.providerOptions,
+      caching: params.caching,
+    });
+
+    last = step;
+    if (step.resolvedIdentity !== undefined) {
+      // Per-step identity stamping: tools executed after this step attribute
+      // their `tool_output` to the model that actually issued the calls.
+      identity = step.resolvedIdentity;
+      (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = identity;
+    }
+    usage = addGeneratorUsage(usage, step.usage);
+    if (step.sources !== undefined) {
+      sources.push(...step.sources);
+    }
+
+    const calls = remapStepToolCalls(step.toolCalls, toolset) ?? [];
+    // Provider-executed calls (web search etc.) ran server-side and are not
+    // FSD's to run; only framework calls gate execution.
+    const { frameworkCalls } = partitionStepCalls(calls);
+
+    // `loop.runTools: false` surfaces the calls and TERMINATES unconditionally
+    // (no tool-result messages are ever produced when tools aren't run, so
+    // looping would feed an orphaned tool turn).
+    // Otherwise, break only when there are no framework calls to run AND the
+    // step is TERMINAL. A provider-only step with `finishReason: "tool-calls"`
+    // (a DEFERRED provider tool whose result isn't ready this turn) is NOT
+    // terminal — fall through so its raw assistant turn (carrying the provider
+    // call+result via responseMessages) is appended and the loop continues,
+    // matching the SDK-owned loop. maxSteps still bounds it.
+    const isTerminalStep = step.finishReason !== "tool-calls";
+    if (!params.runTools || (frameworkCalls.length === 0 && isTerminalStep)) {
+      steps.push({
+        text: step.text,
+        toolCalls: calls.length > 0 ? calls : undefined,
+        finishReason: step.finishReason,
+        usage: step.usage,
+      });
+      break;
+    }
+
+    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset, activeToolNames);
+    messages = [...messages, ...(await buildOwnedStepMessages(step, settled, ctx))];
+    steps.push({
+      text: step.text,
+      toolCalls: calls,
+      toolResults: settled
+        .filter((s) => s.ok)
+        .map((s) => ({
+          toolCallId: s.call.toolCallId,
+          toolName: s.call.toolName,
+          result: s.output,
+        })),
+      finishReason: step.finishReason,
+      usage: step.usage,
+    });
+  }
+
+  return {
+    text: last?.text,
+    structuredOutput: last?.structuredOutput,
+    toolCalls: remapStepToolCalls(last?.toolCalls, toolset),
+    finishReason: last?.finishReason,
+    usage,
+    providerMetadata: last?.providerMetadata,
+    steps: steps.length > 0 ? steps : undefined,
+    sources: sources.length > 0 ? sources : undefined,
+    resolvedIdentity: identity,
+  };
+}
+
+/**
+ * Creates the mutable emission state shared by the legacy single-call stream
+ * and the framework-owned per-step stream. One state instance spans the
+ * WHOLE run (all steps): text deltas accumulate into a single assistant
+ * message item, reasoning/message items are emitted lazily in stream order,
+ * and the resolved model identity refines as chunks report it. Seeding also
+ * primes `ctx._currentModelIdentity` so tools called on the very first turn
+ * still stamp an identity on their `tool_output` items.
+ */
+function createStreamEmissionState(
+  model: GeneratorModel,
+  ctx: BlockContext,
+  blockName: string,
+  itemVisibility: ItemVisibility | undefined,
+  agentName: string | undefined,
+) {
+  const identity = ctx._blockIdentity;
+  // Resolved model identity stamped on each emitted item and propagated to
+  // BlockTraceItem.model via onGeneratorModelResult. Initialized from the
+  // first chunk that carries it; refined on the `finish` chunk. The pre-
+  // chunk seed lets a tool called on the very first AI SDK turn still stamp
+  // an identity on its `tool_output` item.
+  const resolvedIdentity: ModelIdentity | undefined = { actual: model.modelId };
+  (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = resolvedIdentity;
+  return {
+    emit: itemVisibility !== undefined,
+    itemId: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    contentPartIndex: 0,
+    provenance: {
+      blockName: identity?.blockName ?? blockName,
+      blockInstanceId: identity?.blockInstanceId ?? blockName,
+      parentBlockInstanceId: identity?.parentBlockInstanceId,
+      phase: identity?.phase ?? ("main" as const)
+    },
+    ownedBy: identity?.ownedBy,
+    taskId: identity?.taskId,
+    itemVisibility,
+    agentName,
+    // Reasoning and message items are emitted lazily so their order in the
+    // item list matches the natural stream order (reasoning before text).
+    reasoningItemId: `item_reasoning_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    reasoningContentIndex: 0,
+    reasoningStarted: false,
+    reasoningAccumulated: "",
+    messageItem: null as Record<string, unknown> | null,
+    messageEmitted: false,
+    accumulated: "",
+    resolvedIdentity,
+    finalResult: undefined as GeneratorModelResult | undefined,
+  };
+}
+
+type StreamEmissionState = ReturnType<typeof createStreamEmissionState>;
+
+/**
+ * Processes one framework stream chunk: emits the incremental
+ * message/reasoning/tool_call_progress/source items and updates the shared
+ * emission state. Extracted verbatim from the legacy streaming loop so the
+ * SDK-owned single-call stream and the framework-owned per-step stream share
+ * identical wire behavior.
+ */
+async function handleGeneratorStreamChunk(
+  chunk: GeneratorModelStreamChunk,
+  s: StreamEmissionState,
+  ctx: BlockContext,
+): Promise<void> {
+  const { emit, itemVisibility, agentName, provenance, ownedBy, taskId } = s;
+  if (chunk.resolvedIdentity !== undefined) {
+    s.resolvedIdentity = chunk.resolvedIdentity;
+    (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = s.resolvedIdentity;
+  }
+  if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
+    if (emit) {
+      if (!s.reasoningStarted) {
+        s.reasoningStarted = true;
+        const reasoningItem = {
+          id: s.reasoningItemId,
+          type: "reasoning" as const,
+          status: "in_progress" as const,
+          transient: false,
+          requestId: ctx.request.identity.id,
+          itemIndex: getEmitterItemCount(ctx.response),
+          provenance,
+          ts: Date.now(),
+          ownedBy,
+          taskId,
+          itemVisibility,
+          agentName,
+          model: s.resolvedIdentity,
+          summary: [{ type: "reasoning_text" as const, text: "" }]
+        };
+        await ctx.response.emit({ type: "item.added", item: reasoningItem });
+        await ctx.response.emit({
+          type: "content.added",
+          itemId: s.reasoningItemId,
+          contentIndex: s.reasoningContentIndex,
+          content: { type: "reasoning_text", text: "" }
+        });
+      }
+      s.reasoningAccumulated += chunk.reasoningDelta;
+      await ctx.response.emit({
+        type: "content.delta",
+        itemId: s.reasoningItemId,
+        contentIndex: s.reasoningContentIndex,
+        delta: chunk.reasoningDelta
+      });
+    }
+  } else if (chunk.type === "text_delta" && chunk.textDelta !== undefined) {
+    if (!s.messageEmitted) {
+      if (emit && s.reasoningStarted) {
+        await ctx.response.emit({
+          type: "content.done",
+          itemId: s.reasoningItemId,
+          contentIndex: s.reasoningContentIndex,
+          content: { type: "reasoning_text", text: s.reasoningAccumulated }
+        });
+        const completedReasoning = {
+          id: s.reasoningItemId,
+          type: "reasoning" as const,
+          status: "completed" as const,
+          transient: false,
+          requestId: ctx.request.identity.id,
+          itemIndex: getEmitterItemCount(ctx.response),
+          provenance,
+          ts: Date.now(),
+          ownedBy,
+          taskId,
+          itemVisibility,
+          agentName,
+          model: s.resolvedIdentity,
+          summary: [{ type: "reasoning_text" as const, text: s.reasoningAccumulated }]
+        };
+        await ctx.response.emit({ type: "item.done", item: completedReasoning });
+      }
+
+      if (emit) {
+        s.messageItem = {
+          id: s.itemId,
+          type: "message" as const,
+          role: "assistant" as const,
+          status: "in_progress" as const,
+          transient: false,
+          requestId: ctx.request.identity.id,
+          itemIndex: getEmitterItemCount(ctx.response),
+          provenance,
+          ts: Date.now(),
+          ownedBy,
+          taskId,
+          itemVisibility,
+          agentName,
+          model: s.resolvedIdentity,
+          content: [{ type: "output_text" as const, text: "" }]
+        };
+        await ctx.response.emit({ type: "item.added", item: s.messageItem });
+        await ctx.response.emit({
+          type: "content.added",
+          itemId: s.itemId,
+          contentIndex: s.contentPartIndex,
+          content: { type: "output_text", text: "" }
+        });
+      }
+      s.messageEmitted = true;
+    }
+    s.accumulated += chunk.textDelta;
+    if (emit) {
+      await ctx.response.emit({
+        type: "content.delta",
+        itemId: s.itemId,
+        contentIndex: s.contentPartIndex,
+        delta: chunk.textDelta
+      });
+    }
+  } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
+    if (emit) {
+      const delta = chunk.toolCallDelta;
+      const toolCallItem = {
+        id: `item_toolcall_${delta.toolCallId}`,
+        type: "tool_call_progress" as const,
+        status: "in_progress" as const,
+        transient: true,
+        requestId: ctx.request.identity.id,
+        itemIndex: getEmitterItemCount(ctx.response),
+        provenance,
+        ts: Date.now(),
+        ownedBy,
+        taskId,
+        itemVisibility,
+        agentName,
+        model: s.resolvedIdentity,
+        toolCallId: delta.toolCallId,
+        toolName: delta.toolName,
+        argsDelta: delta.argsDelta
+      };
+      await ctx.response.emit({ type: "item.added", item: toolCallItem });
+      await ctx.response.emit({ type: "item.done", item: toolCallItem });
+    }
+  } else if (chunk.type === "tool_result" && chunk.toolResult !== undefined) {
+    if (emit) {
+      const tr = chunk.toolResult;
+      const toolResultItem = {
+        id: `item_toolresult_${tr.toolCallId}`,
+        type: "tool_call_progress" as const,
+        status: "completed" as const,
+        transient: true,
+        requestId: ctx.request.identity.id,
+        itemIndex: getEmitterItemCount(ctx.response),
+        provenance,
+        ts: Date.now(),
+        ownedBy,
+        taskId,
+        itemVisibility,
+        agentName,
+        model: s.resolvedIdentity,
+        toolCallId: tr.toolCallId,
+        toolName: tr.toolName,
+        result: tr.result
+      };
+      await ctx.response.emit({ type: "item.added", item: toolResultItem });
+      await ctx.response.emit({ type: "item.done", item: toolResultItem });
+    }
+  } else if (chunk.type === "source_url" && chunk.source !== undefined) {
+    if (emit) {
+      const sourceItem = buildSourceItem(chunk.source, ctx, provenance, itemVisibility, agentName, s.resolvedIdentity);
+      await ctx.response.emit({ type: "item.added", item: sourceItem });
+      await ctx.response.emit({ type: "item.done", item: sourceItem });
+    }
+  } else if (chunk.type === "finish") {
+    s.finalResult = chunk.fullResult;
+    if (s.finalResult?.resolvedIdentity !== undefined) {
+      s.resolvedIdentity = s.finalResult.resolvedIdentity;
+    }
+  }
+}
+
+/**
+ * Post-stream finalization shared by both streaming paths: closes out
+ * reasoning, emits the message envelope when no text arrived, validates the
+ * accumulated text against the output schema, emits `content.done` +
+ * `item.done`, and installs the FIX-480 ref-output hint. Returns the parsed
+ * output; the caller reports usage via `onGeneratorModelResult` (legacy
+ * passes the final result's usage, the owned loop its per-step aggregate).
+ */
+async function finalizeStreamedMessage(
+  s: StreamEmissionState,
+  ctx: BlockContext,
+  outputSchema: ZodTypeAny,
+  blockName: string,
+): Promise<unknown> {
+  const { emit, itemVisibility, agentName, provenance, ownedBy, taskId } = s;
+  // If no text deltas arrived, still finalize reasoning and emit a message
+  // envelope so downstream consumers see a completed assistant turn.
+  if (!s.messageEmitted) {
+    if (emit && s.reasoningStarted) {
+      await ctx.response.emit({
+        type: "content.done",
+        itemId: s.reasoningItemId,
+        contentIndex: s.reasoningContentIndex,
+        content: { type: "reasoning_text", text: s.reasoningAccumulated }
+      });
+      const completedReasoning = {
+        id: s.reasoningItemId,
+        type: "reasoning" as const,
+        status: "completed" as const,
+        transient: false,
+        requestId: ctx.request.identity.id,
+        itemIndex: getEmitterItemCount(ctx.response),
+        provenance,
+        ts: Date.now(),
+        ownedBy,
+        taskId,
+        itemVisibility,
+        agentName,
+        model: s.resolvedIdentity,
+        summary: [{ type: "reasoning_text" as const, text: s.reasoningAccumulated }]
+      };
+      await ctx.response.emit({ type: "item.done", item: completedReasoning });
+    }
+    if (emit) {
+      s.messageItem = {
+        id: s.itemId,
+        type: "message" as const,
+        role: "assistant" as const,
+        status: "in_progress" as const,
+        transient: false,
+        requestId: ctx.request.identity.id,
+        itemIndex: getEmitterItemCount(ctx.response),
+        provenance,
+        ts: Date.now(),
+        ownedBy,
+        taskId,
+        itemVisibility,
+        agentName,
+        model: s.resolvedIdentity,
+        content: [{ type: "output_text" as const, text: "" }]
+      };
+      await ctx.response.emit({ type: "item.added", item: s.messageItem });
+      await ctx.response.emit({
+        type: "content.added",
+        itemId: s.itemId,
+        contentIndex: s.contentPartIndex,
+        content: { type: "output_text", text: "" }
+      });
+    }
+    s.messageEmitted = true;
+  }
+
+  // Validate output through the schema
+  const parsed = parseOutputWithSchema<unknown>(outputSchema, s.accumulated, blockName, "stream");
+  if (!parsed.success) {
+    logUnparseableCandidate(blockName, s.accumulated, parsed.error, 'stream');
+    throw parsed.error;
+  }
+
+  // Emit content.done and completed item (only when identity is declared).
+  if (emit && s.messageItem) {
+    await ctx.response.emit({
+      type: "content.done",
+      itemId: s.itemId,
+      contentIndex: s.contentPartIndex,
+      content: { type: "output_text", text: s.accumulated }
+    });
+    const completedItem = {
+      ...s.messageItem,
+      status: "completed" as const,
+      model: s.resolvedIdentity,
+      content: [{ type: "output_text" as const, text: s.accumulated }]
+    };
+    await ctx.response.emit({ type: "item.done", item: completedItem });
+  }
+
+  // FIX-480 §3.2: when this generator's logical output IS the streamed
+  // text, emit a `block_trace.output { kind: "ref", sourceItemId: <messageId> }`
+  // instead of inlining the same string. The `parsed.output === accumulated`
+  // check guards against post-validation transforms (e.g.
+  // `z.string().transform(s => s.trim())`) where the returned value
+  // diverges from what was streamed; in that case we fall back to inline.
+  // Skip empty strings — a ref to an empty message resolves to "" too,
+  // but inline is cheaper and avoids a dangling-looking pointer.
+  if (
+    emit &&
+    s.messageItem !== null &&
+    isTextOutputSchema(outputSchema) &&
+    typeof parsed.output === "string" &&
+    parsed.output.length > 0 &&
+    parsed.output === s.accumulated
+  ) {
+    ctx._blockOutputHint = { kind: "ref", sourceItemId: s.itemId };
+  }
+
+  return parsed.output;
+}
+
 async function executeStreamingGeneration<TInput, TOutput>(
   model: GeneratorModel,
   messages: unknown[],
@@ -1079,39 +1933,9 @@ async function executeStreamingGeneration<TInput, TOutput>(
   resolvedProviderOpts?: Record<string, unknown>,
   resolvedCaching?: CachingConfig
 ): Promise<TOutput> {
-  const emit = itemVisibility !== undefined;
-  const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const contentPartIndex = 0;
-  const identity = ctx._blockIdentity;
-  const provenance = {
-    blockName: identity?.blockName ?? blockName,
-    blockInstanceId: identity?.blockInstanceId ?? blockName,
-    parentBlockInstanceId: identity?.parentBlockInstanceId,
-    phase: identity?.phase ?? ("main" as const)
-  };
-  const ownedBy = identity?.ownedBy;
-  const taskId = identity?.taskId;
-  let reasoningAccumulated = "";
-  // Resolved model identity stamped on each emitted item and propagated to
-  // BlockTraceItem.model via onGeneratorModelResult. Initialized from the
-  // first chunk that carries it; refined on the `finish` chunk. The pre-
-  // chunk seed lets a tool called on the very first AI SDK turn still stamp
-  // an identity on its `tool_output` item.
-  let resolvedIdentity: ModelIdentity | undefined = { actual: model.modelId };
-  (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = resolvedIdentity;
-
-  // Reasoning and message items are emitted lazily so their order in the
-  // item list matches the natural stream order (reasoning before text).
-  const reasoningItemId = `item_reasoning_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const reasoningContentIndex = 0;
-  let reasoningStarted = false;
-
-  let messageItem: Record<string, unknown> | null = null;
-  let messageEmitted = false;
-  let finalResult: GeneratorModelResult | undefined;
+  const s = createStreamEmissionState(model, ctx, blockName, itemVisibility, agentName);
 
   // Stream text deltas (tool calls are handled internally by the AI SDK)
-  let accumulated = "";
   for await (const chunk of model.stream!({
     messages,
     tools: compiledTools.length > 0 ? compiledTools : undefined,
@@ -1123,281 +1947,203 @@ async function executeStreamingGeneration<TInput, TOutput>(
     caching: resolvedCaching,
     prepareStep
   })) {
-    if (chunk.resolvedIdentity !== undefined) {
-      resolvedIdentity = chunk.resolvedIdentity;
-      (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = resolvedIdentity;
-    }
-    if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
-      if (emit) {
-        if (!reasoningStarted) {
-          reasoningStarted = true;
-          const reasoningItem = {
-            id: reasoningItemId,
-            type: "reasoning" as const,
-            status: "in_progress" as const,
-            transient: false,
-            requestId: ctx.request.identity.id,
-            itemIndex: getEmitterItemCount(ctx.response),
-            provenance,
-            ts: Date.now(),
-            ownedBy,
-            taskId,
-            itemVisibility,
-            agentName,
-            model: resolvedIdentity,
-            summary: [{ type: "reasoning_text" as const, text: "" }]
-          };
-          await ctx.response.emit({ type: "item.added", item: reasoningItem });
-          await ctx.response.emit({
-            type: "content.added",
-            itemId: reasoningItemId,
-            contentIndex: reasoningContentIndex,
-            content: { type: "reasoning_text", text: "" }
-          });
-        }
-        reasoningAccumulated += chunk.reasoningDelta;
-        await ctx.response.emit({
-          type: "content.delta",
-          itemId: reasoningItemId,
-          contentIndex: reasoningContentIndex,
-          delta: chunk.reasoningDelta
-        });
-      }
-    } else if (chunk.type === "text_delta" && chunk.textDelta !== undefined) {
-      if (!messageEmitted) {
-        if (emit && reasoningStarted) {
-          await ctx.response.emit({
-            type: "content.done",
-            itemId: reasoningItemId,
-            contentIndex: reasoningContentIndex,
-            content: { type: "reasoning_text", text: reasoningAccumulated }
-          });
-          const completedReasoning = {
-            id: reasoningItemId,
-            type: "reasoning" as const,
-            status: "completed" as const,
-            transient: false,
-            requestId: ctx.request.identity.id,
-            itemIndex: getEmitterItemCount(ctx.response),
-            provenance,
-            ts: Date.now(),
-            ownedBy,
-            taskId,
-            itemVisibility,
-            agentName,
-            model: resolvedIdentity,
-            summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
-          };
-          await ctx.response.emit({ type: "item.done", item: completedReasoning });
-        }
-
-        if (emit) {
-          messageItem = {
-            id: itemId,
-            type: "message" as const,
-            role: "assistant" as const,
-            status: "in_progress" as const,
-            transient: false,
-            requestId: ctx.request.identity.id,
-            itemIndex: getEmitterItemCount(ctx.response),
-            provenance,
-            ts: Date.now(),
-            ownedBy,
-            taskId,
-            itemVisibility,
-            agentName,
-            model: resolvedIdentity,
-            content: [{ type: "output_text" as const, text: "" }]
-          };
-          await ctx.response.emit({ type: "item.added", item: messageItem });
-          await ctx.response.emit({
-            type: "content.added",
-            itemId,
-            contentIndex: contentPartIndex,
-            content: { type: "output_text", text: "" }
-          });
-        }
-        messageEmitted = true;
-      }
-      accumulated += chunk.textDelta;
-      if (emit) {
-        await ctx.response.emit({
-          type: "content.delta",
-          itemId,
-          contentIndex: contentPartIndex,
-          delta: chunk.textDelta
-        });
-      }
-    } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
-      if (emit) {
-        const delta = chunk.toolCallDelta;
-        const toolCallItem = {
-          id: `item_toolcall_${delta.toolCallId}`,
-          type: "tool_call_progress" as const,
-          status: "in_progress" as const,
-          transient: true,
-          requestId: ctx.request.identity.id,
-          itemIndex: getEmitterItemCount(ctx.response),
-          provenance,
-          ts: Date.now(),
-          ownedBy,
-          taskId,
-          itemVisibility,
-          agentName,
-          model: resolvedIdentity,
-          toolCallId: delta.toolCallId,
-          toolName: delta.toolName,
-          argsDelta: delta.argsDelta
-        };
-        await ctx.response.emit({ type: "item.added", item: toolCallItem });
-        await ctx.response.emit({ type: "item.done", item: toolCallItem });
-      }
-    } else if (chunk.type === "tool_result" && chunk.toolResult !== undefined) {
-      if (emit) {
-        const tr = chunk.toolResult;
-        const toolResultItem = {
-          id: `item_toolresult_${tr.toolCallId}`,
-          type: "tool_call_progress" as const,
-          status: "completed" as const,
-          transient: true,
-          requestId: ctx.request.identity.id,
-          itemIndex: getEmitterItemCount(ctx.response),
-          provenance,
-          ts: Date.now(),
-          ownedBy,
-          taskId,
-          itemVisibility,
-          agentName,
-          model: resolvedIdentity,
-          toolCallId: tr.toolCallId,
-          toolName: tr.toolName,
-          result: tr.result
-        };
-        await ctx.response.emit({ type: "item.added", item: toolResultItem });
-        await ctx.response.emit({ type: "item.done", item: toolResultItem });
-      }
-    } else if (chunk.type === "source_url" && chunk.source !== undefined) {
-      if (emit) {
-        const sourceItem = buildSourceItem(chunk.source, ctx, provenance, itemVisibility, agentName, resolvedIdentity);
-        await ctx.response.emit({ type: "item.added", item: sourceItem });
-        await ctx.response.emit({ type: "item.done", item: sourceItem });
-      }
-    } else if (chunk.type === "finish") {
-      finalResult = chunk.fullResult;
-      if (finalResult?.resolvedIdentity !== undefined) {
-        resolvedIdentity = finalResult.resolvedIdentity;
-      }
-    }
+    await handleGeneratorStreamChunk(chunk, s, ctx);
   }
 
-  // If no text deltas arrived, still finalize reasoning and emit a message
-  // envelope so downstream consumers see a completed assistant turn.
-  if (!messageEmitted) {
-    if (emit && reasoningStarted) {
-      await ctx.response.emit({
-        type: "content.done",
-        itemId: reasoningItemId,
-        contentIndex: reasoningContentIndex,
-        content: { type: "reasoning_text", text: reasoningAccumulated }
-      });
-      const completedReasoning = {
-        id: reasoningItemId,
-        type: "reasoning" as const,
-        status: "completed" as const,
-        transient: false,
-        requestId: ctx.request.identity.id,
-        itemIndex: getEmitterItemCount(ctx.response),
-        provenance,
-        ts: Date.now(),
-        ownedBy,
-        taskId,
-        itemVisibility,
-        agentName,
-        model: resolvedIdentity,
-        summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
-      };
-      await ctx.response.emit({ type: "item.done", item: completedReasoning });
-    }
-    if (emit) {
-      messageItem = {
-        id: itemId,
-        type: "message" as const,
-        role: "assistant" as const,
-        status: "in_progress" as const,
-        transient: false,
-        requestId: ctx.request.identity.id,
-        itemIndex: getEmitterItemCount(ctx.response),
-        provenance,
-        ts: Date.now(),
-        ownedBy,
-        taskId,
-        itemVisibility,
-        agentName,
-        model: resolvedIdentity,
-        content: [{ type: "output_text" as const, text: "" }]
-      };
-      await ctx.response.emit({ type: "item.added", item: messageItem });
-      await ctx.response.emit({
-        type: "content.added",
-        itemId,
-        contentIndex: contentPartIndex,
-        content: { type: "output_text", text: "" }
-      });
-    }
-    messageEmitted = true;
-  }
-
-  // Validate output through the schema
-  const parsed = parseOutputWithSchema<unknown>(outputSchema, accumulated, blockName, "stream");
-  if (!parsed.success) {
-    logUnparseableCandidate(blockName, accumulated, parsed.error, 'stream');
-    throw parsed.error;
-  }
-
-  // Emit content.done and completed item (only when identity is declared).
-  if (emit && messageItem) {
-    await ctx.response.emit({
-      type: "content.done",
-      itemId,
-      contentIndex: contentPartIndex,
-      content: { type: "output_text", text: accumulated }
-    });
-    const completedItem = {
-      ...messageItem,
-      status: "completed" as const,
-      model: resolvedIdentity,
-      content: [{ type: "output_text" as const, text: accumulated }]
-    };
-    await ctx.response.emit({ type: "item.done", item: completedItem });
-  }
-
-  // FIX-480 §3.2: when this generator's logical output IS the streamed
-  // text, emit a `block_trace.output { kind: "ref", sourceItemId: <messageId> }`
-  // instead of inlining the same string. The `parsed.output === accumulated`
-  // check guards against post-validation transforms (e.g.
-  // `z.string().transform(s => s.trim())`) where the returned value
-  // diverges from what was streamed; in that case we fall back to inline.
-  // Skip empty strings — a ref to an empty message resolves to "" too,
-  // but inline is cheaper and avoids a dangling-looking pointer.
-  if (
-    emit &&
-    messageItem !== null &&
-    isTextOutputSchema(outputSchema) &&
-    typeof parsed.output === "string" &&
-    parsed.output.length > 0 &&
-    parsed.output === accumulated
-  ) {
-    ctx._blockOutputHint = { kind: "ref", sourceItemId: itemId };
-  }
+  const output = await finalizeStreamedMessage(s, ctx, outputSchema, blockName);
 
   ctx._runtimeHooks?.onGeneratorModelResult?.({
     model: model.modelId,
-    usage: finalResult?.usage,
-    providerMetadata: finalResult?.providerMetadata,
-    identity: resolvedIdentity
+    usage: s.finalResult?.usage,
+    providerMetadata: s.finalResult?.providerMetadata,
+    identity: s.resolvedIdentity
   });
 
-  return parsed.output as TOutput;
+  return output as TOutput;
+}
+
+/** Remaps a chunk's model-facing tool names (the pre-renamed aliases) back
+ * to framework block names so emitted `tool_call_progress` items match the
+ * legacy stream's shape. Returns the original chunk when nothing changes. */
+function remapChunkToolNames(
+  chunk: GeneratorModelStreamChunk,
+  toolset: OwnedLoopToolset
+): GeneratorModelStreamChunk {
+  if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
+    const mapped = frameworkToolName(chunk.toolCallDelta.toolName, toolset);
+    if (mapped === chunk.toolCallDelta.toolName) return chunk;
+    return { ...chunk, toolCallDelta: { ...chunk.toolCallDelta, toolName: mapped } };
+  }
+  if (chunk.type === "tool_result" && chunk.toolResult !== undefined) {
+    const mapped = frameworkToolName(chunk.toolResult.toolName, toolset);
+    if (mapped === chunk.toolResult.toolName) return chunk;
+    return { ...chunk, toolResult: { ...chunk.toolResult, toolName: mapped } };
+  }
+  if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
+    const mapped = frameworkToolName(chunk.toolInput.toolName, toolset);
+    if (mapped === chunk.toolInput.toolName) return chunk;
+    return { ...chunk, toolInput: { ...chunk.toolInput, toolName: mapped } };
+  }
+  if (chunk.type === "finish" && chunk.fullResult?.toolCalls !== undefined) {
+    return {
+      ...chunk,
+      fullResult: {
+        ...chunk.fullResult,
+        toolCalls: remapStepToolCalls(chunk.fullResult.toolCalls, toolset),
+      },
+    };
+  }
+  return chunk;
+}
+
+/**
+ * The framework-owned STREAMING step loop. Same loop structure as
+ * `runOwnedGenerateLoop`, but each step streams through `streamStep` and
+ * forwards its chunks through the SHARED chunk handler, so the wire behavior
+ * (incremental message/reasoning emission, tool_call_progress, sources) is
+ * identical to the legacy single-call stream — only the loop boundary moves
+ * to FSD. After FSD runs a step's tools, the completed `tool_call_progress`
+ * items are synthesized through the same handler the legacy `tool_result`
+ * chunks flow through.
+ */
+async function executeOwnedStreamingGeneration<TInput, TOutput>(
+  model: GeneratorModel,
+  initialMessages: unknown[],
+  toolBlocks: GeneratorTool[],
+  providerTools: ProviderTool[],
+  config: GeneratorConfig<any, any, TInput, TOutput>,
+  outputSchema: ZodTypeAny,
+  blockName: string,
+  maxSteps: number,
+  runTools: boolean,
+  ctx: BlockContext,
+  itemVisibility: ItemVisibility | undefined,
+  agentName: string | undefined,
+  prepareStep?: PrepareStepFn,
+  resolvedProviderOpts?: Record<string, unknown>,
+  resolvedCaching?: CachingConfig
+): Promise<TOutput> {
+  const s = createStreamEmissionState(model, ctx, blockName, itemVisibility, agentName);
+  const toolset = compileOwnedLoopToolset(
+    toolBlocks,
+    ctx,
+    config.flowTools,
+    blockName,
+    itemVisibility,
+    agentName,
+  );
+
+  let messages = initialMessages;
+  const steps: GeneratorStepResult[] = [];
+  let usage: GeneratorModelUsage | undefined;
+  let lastFinish: GeneratorModelResult | undefined;
+  let activeToolNames: string[] | undefined;
+
+  for (let stepNumber = 0; stepNumber < maxSteps; stepNumber += 1) {
+    throwIfAborted(ctx);
+    const prep = await applyOwnedPrepareStep({
+      prepareStep,
+      stepNumber,
+      messages,
+      steps,
+      activeToolNames,
+      model,
+      requires: "streamStep",
+      ctx,
+      blockName,
+    });
+    messages = prep.messages;
+    activeToolNames = prep.activeToolNames;
+
+    // Reset so this step's `finish` chunk is what we read below, not a
+    // previous step's.
+    s.finalResult = undefined;
+    for await (const chunk of prep.stepModel.streamStep!({
+      messages,
+      tools: activeStepTools(toolset, activeToolNames),
+      providerTools: providerTools.length > 0 ? providerTools : undefined,
+      maxTokens: config.maxTokens,
+      signal: ctx.signal,
+      providerOptions: resolvedProviderOpts,
+      caching: resolvedCaching,
+    })) {
+      await handleGeneratorStreamChunk(remapChunkToolNames(chunk, toolset), s, ctx);
+    }
+
+    // Widened read: the handler mutates `s.finalResult` inside the loop, so
+    // TS's narrowing from the reset above must not stick.
+    const stepFinal = (s as { finalResult: GeneratorModelResult | undefined }).finalResult;
+    lastFinish = stepFinal;
+    usage = addGeneratorUsage(usage, stepFinal?.usage);
+
+    const calls = stepFinal?.toolCalls ?? [];
+    // Provider-executed calls (web search etc.) ran server-side and are not
+    // FSD's to run; only framework calls gate execution. Break only when
+    // `!runTools` (unconditional) or there are no framework calls AND the step
+    // is TERMINAL — a deferred provider-only step (`finishReason: "tool-calls"`)
+    // falls through so its raw turn is carried and the loop continues (bounded
+    // by maxSteps). See the non-streaming twin for the full rationale.
+    const { frameworkCalls } = partitionStepCalls(calls);
+    const isTerminalStep = stepFinal?.finishReason !== "tool-calls";
+    if (!runTools || (frameworkCalls.length === 0 && isTerminalStep)) {
+      steps.push({
+        text: stepFinal?.text,
+        toolCalls: calls.length > 0 ? calls : undefined,
+        finishReason: stepFinal?.finishReason,
+        usage: stepFinal?.usage,
+      });
+      break;
+    }
+
+    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset, activeToolNames);
+
+    // Completed tool_call_progress items for successful calls, synthesized
+    // through the same handler the legacy stream's `tool_result` chunks use.
+    for (const st of settled) {
+      if (!st.ok) continue;
+      await handleGeneratorStreamChunk(
+        {
+          type: "tool_result",
+          toolResult: {
+            toolCallId: st.call.toolCallId,
+            toolName: st.call.toolName,
+            result: st.output,
+          },
+        },
+        s,
+        ctx,
+      );
+    }
+
+    messages = [...messages, ...(await buildOwnedStepMessages(stepFinal, settled, ctx))];
+    steps.push({
+      text: stepFinal?.text,
+      toolCalls: calls,
+      toolResults: settled
+        .filter((st) => st.ok)
+        .map((st) => ({
+          toolCallId: st.call.toolCallId,
+          toolName: st.call.toolName,
+          result: st.output,
+        })),
+      finishReason: stepFinal?.finishReason,
+      usage: stepFinal?.usage,
+    });
+  }
+
+  const output = await finalizeStreamedMessage(s, ctx, outputSchema, blockName);
+
+  // ONE aggregate usage report for the whole run, matching the legacy
+  // path's single report (the SDK accumulates usage across its internal
+  // steps the same way).
+  ctx._runtimeHooks?.onGeneratorModelResult?.({
+    model: model.modelId,
+    usage,
+    providerMetadata: lastFinish?.providerMetadata,
+    identity: s.resolvedIdentity
+  });
+
+  return output as TOutput;
 }
 
 export function generator<
@@ -1616,7 +2362,26 @@ export function generator<
       }
 
       const autoDescribe = normalizedConfig.describeTools !== false;
-      const toolBlocks = await resolveTools(normalizedConfig.tools, input, ctx);
+      const resolvedToolBlocks = await resolveTools(normalizedConfig.tools, input, ctx);
+      // Dedupe by object identity first: capability presets can contribute the
+      // SAME tool instance twice (e.g. a tool present in both a skills catalog
+      // and a feature-flag preset), which is harmless — it's one tool. Only
+      // then reject exact-duplicate NAMES across DISTINCT blocks: the
+      // framework-owned loop keys its toolset by name/alias, so two different
+      // blocks sharing a `.name` would collapse to one entry and run the wrong
+      // tool. Checked here — the earliest point the full resolved set (user +
+      // capability + dynamic tools) is known; generator tools are
+      // resolver-driven, so unlike the router's static routes this can't be a
+      // pure construction-time check. Sanitization-collisions (`foo.bar` vs
+      // `foo/bar`) are NOT rejected — `computeToolAliases` disambiguates those.
+      const seenToolRefs = new Set<GeneratorTool>();
+      const toolBlocks: GeneratorTool[] = [];
+      for (const t of resolvedToolBlocks) {
+        if (seenToolRefs.has(t)) continue;
+        seenToolRefs.add(t);
+        toolBlocks.push(t);
+      }
+      assertUniqueToolNames(toolBlocks.map((t) => t.name), `Generator "${blockName}"`);
 
       const promptFileBrand = getPromptFileBrand(normalizedConfig.prompt);
       const configMeta: PromptFileConfigMeta = {
@@ -1748,21 +2513,32 @@ export function generator<
         ? (normalizedConfig.agentName ?? blockName)
         : undefined;
 
-      // Compile tools: with execute wrappers (AI SDK auto-runs them) or
-      // without (model suggests calls but doesn't execute them).
-      const compiledTools = toolBlocks.length > 0
-        ? (runTools
-            ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName, itemVisibility, agentName)
-            : compileToolsForModel(toolBlocks))
-        : [];
+      // Compile tools for a LEGACY (SDK-owned) model call: with execute
+      // wrappers (AI SDK auto-runs them) or without (model suggests calls but
+      // doesn't execute them). The framework-owned loops never use these —
+      // they build their own executors via `compileOwnedLoopToolset` — so
+      // this is computed lazily at the two legacy call sites only, avoiding
+      // per-tool `buildToolExecutor` closures on every owned-path generation
+      // (the real AI-SDK adapter always takes the owned path). `hasTools`
+      // gates on the raw block/provider-tool counts (1:1 with what would be
+      // compiled), so streaming/emission decisions are unaffected.
+      const compileLegacyTools = (): GeneratorModelTool[] =>
+        toolBlocks.length > 0
+          ? (runTools
+              ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName, itemVisibility, agentName)
+              : compileToolsForModel(toolBlocks))
+          : [];
 
-      // Streaming path: text output + model supports streaming. We stream
+      // Streaming path: text output + model supports streaming (SDK-owned
+      // `stream` or the framework-owned per-step `streamStep`). We stream
       // whenever tools are present (so tool `execute` closures fire) or
       // whenever identity is set (so text deltas flow to the client).
       // Identity-less, tool-less generators fall through to non-streaming
       // and skip message emission entirely.
-      const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
-      const canStream = (itemVisibility !== undefined || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
+      const hasTools = toolBlocks.length > 0 || resolvedProviderTools.length > 0;
+      const canStream = (itemVisibility !== undefined || hasTools)
+        && isTextOutputSchema(outputSchema)
+        && (model.stream !== undefined || model.streamStep !== undefined);
 
       // Emit debug capture for devtool inspection before the LLM call. Use
       // the same combined-system-message assembly the model sees so the
@@ -1800,10 +2576,32 @@ export function generator<
 
       if (canStream) {
         try {
+          // Framework-owned per-step loop when the model is step-capable;
+          // legacy SDK-owned multi-step stream otherwise (compatibility path
+          // for mocks and third-party adapters without `streamStep`).
+          if (model.streamStep !== undefined) {
+            return await executeOwnedStreamingGeneration(
+              model,
+              messages,
+              toolBlocks,
+              resolvedProviderTools,
+              normalizedConfig,
+              outputSchema,
+              blockName,
+              maxSteps,
+              runTools,
+              ctx,
+              itemVisibility,
+              agentName,
+              prepareStepFn,
+              resolvedProviderOpts,
+              resolvedCaching
+            );
+          }
           return await executeStreamingGeneration(
             model,
             messages,
-            compiledTools,
+            compileLegacyTools(),
             resolvedProviderTools,
             normalizedConfig,
             outputSchema,
@@ -1828,7 +2626,12 @@ export function generator<
       (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = {
         actual: model.modelId,
       };
-      // Non-streaming: single call, model handles multi-step loop via maxSteps.
+      // Non-streaming. Step-capable models run the framework-owned per-step
+      // loop (`runOwnedGenerateLoop`); models without `generateStep` run the
+      // legacy path — a single call where the model handles the multi-step
+      // loop via maxSteps (compatibility path for mocks and third-party
+      // adapters). Both produce the same GeneratorModelResult shape, so all
+      // downstream handling is shared.
       //
       // A ZodString output ("text" generators, including the z.string() default)
       // can't be a structured-output root: OpenAI and the AI Gateway require the
@@ -1841,18 +2644,40 @@ export function generator<
       const generateOutputSchema = isTextOutputSchema(outputSchema) ? undefined : outputSchema;
       let generation: GeneratorModelResult;
       try {
-        generation = await model.generate({
-          messages,
-          tools: compiledTools.length > 0 ? compiledTools : undefined,
-          providerTools: resolvedProviderTools.length > 0 ? resolvedProviderTools : undefined,
-          outputSchema: generateOutputSchema,
-          maxTokens: normalizedConfig.maxTokens,
-          signal: ctx.signal,
-          maxSteps,
-          providerOptions: resolvedProviderOpts,
-          caching: resolvedCaching,
-          prepareStep: prepareStepFn
-        });
+        generation = model.generateStep !== undefined
+          ? await runOwnedGenerateLoop({
+              model,
+              messages,
+              toolBlocks,
+              providerTools: resolvedProviderTools,
+              outputSchema: generateOutputSchema,
+              maxTokens: normalizedConfig.maxTokens,
+              maxSteps,
+              runTools,
+              flowTools: normalizedConfig.flowTools,
+              blockName,
+              ctx,
+              itemVisibility,
+              agentName,
+              prepareStep: prepareStepFn,
+              providerOptions: resolvedProviderOpts,
+              caching: resolvedCaching,
+            })
+          : await (async () => {
+              const legacyTools = compileLegacyTools();
+              return model.generate({
+              messages,
+              tools: legacyTools.length > 0 ? legacyTools : undefined,
+              providerTools: resolvedProviderTools.length > 0 ? resolvedProviderTools : undefined,
+              outputSchema: generateOutputSchema,
+              maxTokens: normalizedConfig.maxTokens,
+              signal: ctx.signal,
+              maxSteps,
+              providerOptions: resolvedProviderOpts,
+              caching: resolvedCaching,
+              prepareStep: prepareStepFn
+            });
+            })();
       } catch (err) {
         surfaceModelCallError(err, ctx, blockName);
       }

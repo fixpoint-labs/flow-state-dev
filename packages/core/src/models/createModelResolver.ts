@@ -129,6 +129,17 @@ const GATEWAY_ENV_VARS: Record<string, string> = {
 const _require = createRequire(import.meta.url);
 const _cwdRequire = createRequire(new URL(`file://${process.cwd()}/`));
 
+// Bundlers (Next.js/Turbopack, webpack) statically analyze the syntactic form
+// `require.resolve(x)` and warn "Module not found: Can't resolve (...)" for
+// every optional provider package — including ones the app never installed —
+// on every compile. These resolves are runtime-only, against the app's
+// node_modules, and must never be bundled. Turbopack does NOT honor a
+// `turbopackIgnore` comment on `require.resolve` (only on `import()`), so we
+// call `.resolve` through a bound reference: the indirection breaks the
+// bundler's syntactic match while preserving identical runtime behavior.
+const _resolve = _require.resolve.bind(_require);
+const _cwdResolve = _cwdRequire.resolve.bind(_cwdRequire);
+
 /**
  * Resolve a package specifier to an absolute file path WITHOUT executing the
  * module. AI SDK 7 packages are ESM-only, so execution needs dynamic
@@ -143,10 +154,10 @@ const _cwdRequire = createRequire(new URL(`file://${process.cwd()}/`));
  */
 function tryResolveModulePath(packageName: string): string | undefined {
   try {
-    return _require.resolve(packageName);
+    return _resolve(packageName);
   } catch {
     try {
-      return _cwdRequire.resolve(packageName);
+      return _cwdResolve(packageName);
     } catch {
       return undefined;
     }
@@ -171,7 +182,12 @@ function importModule(packageName: string): Promise<Record<string, unknown>> {
       if (resolvedPath === undefined) {
         throw new Error(`Package "${packageName}" is not installed.`);
       }
-      return (await import(pathToFileURL(resolvedPath).href)) as Record<string, unknown>;
+      // webpackIgnore/turbopackIgnore: the specifier is a runtime-computed
+      // file:// URL; leave it to Node's native import at runtime instead of
+      // the bundler (which would emit a "Can't resolve <dynamic>" warning).
+      return (await import(
+        /* webpackIgnore: true */ /* turbopackIgnore: true */ pathToFileURL(resolvedPath).href
+      )) as Record<string, unknown>;
     })();
     moduleExecutionCache.set(packageName, pending);
   }

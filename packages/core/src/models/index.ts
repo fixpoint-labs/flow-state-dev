@@ -50,3 +50,14 @@ export { applyCaching, DEFAULT_CACHING_CONFIG } from "./caching";
 // runs eagerly at `generator()` definition. See BP-016.
 export { makeSchemaStrict, assertStrictCompatible } from "./makeSchemaStrict";
 export type { MakeSchemaStrictOptions, StrictViolation } from "./makeSchemaStrict";
+
+// Visibility-agnostic LLM message builders for tool-loop conversations —
+// shared by the framework-owned generator step loop and the engine's
+// history replay (which wraps them with its visibility gate).
+export {
+  buildAssistantToolCallMessage,
+  buildToolResultMessage,
+  failedToolResultText,
+  toolResultOutputForModel,
+} from "./llm-messages";
+export type { LLMToolCallPart, LLMToolResultOutput } from "./llm-messages";
