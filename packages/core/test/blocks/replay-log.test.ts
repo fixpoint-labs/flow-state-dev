@@ -41,6 +41,25 @@ function blockTrace(
   } as RuntimeItem;
 }
 
+function routerDecisionItem(
+  path: string,
+  selectedRoute: string,
+  itemIndex: number,
+): RuntimeItem {
+  const blockInstanceId = `${REQ}:${path}:0`;
+  return {
+    id: `decision_${path}_${itemIndex}`,
+    type: "router_decision",
+    status: "completed",
+    requestId: REQ,
+    itemIndex,
+    provenance: { blockName: "route", blockInstanceId, phase: "main" as const },
+    ts: 0,
+    routerName: "route",
+    selectedRoute,
+  } as RuntimeItem;
+}
+
 function suspensionItem(
   path: string,
   suspensionId: string,
@@ -258,6 +277,58 @@ describe("buildReplayLog", () => {
       const [resolved] = log.resolvedResumes(`${REQ}:root/step[2]`);
       expect(resolved.skipped).toBe(true);
       expect(resolved.rejected).toBe(false);
+    });
+  });
+
+  describe("recordedRouterDecision (FIX-814)", () => {
+    it("returns the recorded selection for a router's logical path", () => {
+      const log = buildReplayLog([routerDecisionItem("root/step[1]", "branchA", 0)]);
+      expect(log.recordedRouterDecision(`${REQ}:root/step[1]`)).toEqual({
+        selectedRoute: "branchA",
+      });
+    });
+
+    it("returns undefined when the router never decided before the interruption", () => {
+      const log = buildReplayLog([blockTrace("root/step[0]", "completed", 0, 1)]);
+      expect(log.recordedRouterDecision(`${REQ}:root/step[1]`)).toBeUndefined();
+    });
+
+    it("keys decisions per router path, not globally", () => {
+      const log = buildReplayLog([
+        routerDecisionItem("root/step[1]", "branchA", 0),
+        routerDecisionItem("root/step[3]", "branchB", 1),
+      ]);
+      expect(log.recordedRouterDecision(`${REQ}:root/step[1]`)).toEqual({ selectedRoute: "branchA" });
+      expect(log.recordedRouterDecision(`${REQ}:root/step[3]`)).toEqual({ selectedRoute: "branchB" });
+    });
+
+    it("prefers the highest-itemIndex decision for a path (re-emitted on a later cycle)", () => {
+      const log = buildReplayLog([
+        routerDecisionItem("root/step[1]", "branchA", 0),
+        routerDecisionItem("root/step[1]", "branchA", 7),
+      ]);
+      expect(log.recordedRouterDecision(`${REQ}:root/step[1]`)).toEqual({ selectedRoute: "branchA" });
+    });
+  });
+
+  describe("recordedBlockTraceId (FIX-814)", () => {
+    it("returns the canonical completed trace id for a logical path", () => {
+      const trace = blockTrace("root/branch[a]", "completed", 2, "out");
+      const log = buildReplayLog([trace]);
+      expect(log.recordedBlockTraceId(`${REQ}:root/branch[a]`)).toBe((trace as { id: string }).id);
+    });
+
+    it("returns undefined for a path with no completed trace", () => {
+      const log = buildReplayLog([blockTrace("root/branch[a]", "in_progress", 0)]);
+      expect(log.recordedBlockTraceId(`${REQ}:root/branch[a]`)).toBeUndefined();
+    });
+
+    it("tracks the highest-itemIndex completed trace, matching getCompletedOutput", () => {
+      const log = buildReplayLog([
+        blockTrace("root/branch[a]", "completed", 1, "old"),
+        blockTrace("root/branch[a]", "completed", 5, "new"),
+      ]);
+      expect(log.recordedBlockTraceId(`${REQ}:root/branch[a]`)).toBe("trace_root/branch[a]_completed_5");
     });
   });
 });

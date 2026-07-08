@@ -53,8 +53,11 @@ The framework calls `block.run(input, ctx)` which handles input/output validatio
 4. Each step executes via `step.run(stepInput, ctx)`
 
 **Router:**
-1. Call router `execute(input, ctx)` to select a block
-2. Execute selected block via `selected.run(input, ctx)`
+1. Call router `execute(input, ctx)` to select a block. Route names must be unique per router (validated at build) — the durable `router_decision` records a bare route name, so duplicates would make resume ambiguous.
+2. On same-request continuation (FIX-814), validate the fresh selection against the recorded `router_decision` for the router's logical path. Re-running `execute` (rather than skipping it) preserves any per-call route wrapper it returns (`route.connectInput(...)`); a mismatch — the selector re-decided differently, or the recorded route no longer exists — throws `RouteUnavailableError`, never a silent branch switch.
+3. Await the `router_decision` trace write, then dispatch the selected block through `executeBlock` — the same replay seam sequencer children use. On resume, a branch (or a completed descendant inside it) whose logical path holds a committed output is injected from the durable log instead of re-executing. The router's pass-through `ref` output falls back to the prior run's recorded `block_trace` id when the branch was replayed (the short-circuit emits no fresh trace).
+
+**Suspendable-router purity contract (FIX-814).** Because resume re-runs the selector, `execute` on a router whose chosen branch may suspend must be pure — read-only over its input, no side effects (telemetry, state mutation), no ambient state reads that could change across the suspend window. The contract covers the returned wrapper's mapping closures too: a `connectInput` mapper must be pure over the router's own `input`; a `connectOutput` mapper must be pure over the selected child's `output` (plus anything closed over from the router's `input`). Either closure reading ambient state breaks resume determinism. Whether a branch can suspend is not statically decidable (a gate can hide arbitrarily deep, or in a dynamic generator tool), so treat every router that could sit on a durable path as suspendable.
 
 ## Error Model
 
@@ -85,6 +88,7 @@ type FlowError = Error & {
 | `AmbiguousBlockNameError` | No | Block name resolution conflict |
 | `ConcurrentModificationError` | Yes | CAS contention exhausted |
 | `OutputValidationError` | No | Generator output failed `outputSchema` |
+| `RouteUnavailableError` | No | Recorded router decision can't be honored on resume (re-decision drift or removed route) |
 
 Non-Error thrown values are automatically normalized to `FlowError`.
 

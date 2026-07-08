@@ -54,16 +54,26 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
     model: config.model
   });
 
+  // One wrapper per distinct handler, reused across categories (and by the
+  // fallback when it aliases a category handler). The envelope-unwrapping
+  // mapper is identical for every route, so sharing the wrapper is
+  // behavior-preserving — and it keeps route names unique per definition,
+  // which `router()` enforces so resumed decisions stay unambiguous.
+  const wrapperByHandler = new Map<BlockDefinition, BlockDefinition>();
+  const wrapHandler = (block: BlockDefinition): BlockDefinition => {
+    let wrapped = wrapperByHandler.get(block);
+    if (wrapped === undefined) {
+      wrapped = block.connectInput((input: IntentRouterEnvelope) => input.originalInput);
+      wrapperByHandler.set(block, wrapped);
+    }
+    return wrapped;
+  };
+
   const wrappedCategoryRoutes = new Map<string, BlockDefinition>(
-    categoryEntries.map(([category, value]) => [
-      category,
-      value.handler.connectInput((input: IntentRouterEnvelope) => input.originalInput)
-    ])
+    categoryEntries.map(([category, value]) => [category, wrapHandler(value.handler)])
   );
 
-  const wrappedFallback = config.fallback?.connectInput(
-    (input: IntentRouterEnvelope) => input.originalInput
-  );
+  const wrappedFallback = config.fallback === undefined ? undefined : wrapHandler(config.fallback);
 
   // BP-011 deviation (FIX-503): this handler reaches through `asRuntime` to
   // invoke the classifier inside its own execute so the classification result

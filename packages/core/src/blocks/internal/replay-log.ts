@@ -18,7 +18,7 @@
  * re-entry from the persisted items and assigns it to `ctx._replayLog`; the
  * core executor only reads this interface.
  */
-import type { BlockTraceItem, BlockValueInternal } from "../../items/types";
+import type { BlockTraceItem, BlockValueInternal, RouterDecisionItem } from "../../items/types";
 import type { RuntimeItem } from "../../items/internal";
 import { parseBlockInstanceId } from "./block-instance-id";
 import { buildItemLookup, resolveBlockValueInternal } from "../../items/resolve-value";
@@ -72,6 +72,23 @@ export interface ReplayLog {
    * blocks whose trace stays `in_progress` because they re-run on every replay.
    */
   resolvedResumes(blockLogicalId: string): readonly ResolvedResume[];
+  /**
+   * The durably recorded `router_decision` for a router's logical path, or
+   * `undefined` when the router never decided before the interruption. On
+   * re-entry the router re-runs its `execute` selector (preserving any
+   * per-call route wrapper it returns) and VALIDATES the fresh selection
+   * against this record — a mismatch is fatal (`RouteUnavailableError`),
+   * never a silent branch switch (FIX-814).
+   */
+  recordedRouterDecision(blockLogicalId: string): { selectedRoute: string } | undefined;
+  /**
+   * The canonical completed `block_trace` item id for a logical path, or
+   * `undefined` when none exists. Lets a resuming router restore its
+   * pass-through `ref` output descriptor (FIX-413) when its selected child
+   * completed via the replay short-circuit — which deliberately emits no
+   * fresh `block_trace` into the current response (FIX-814).
+   */
+  recordedBlockTraceId(blockLogicalId: string): string | undefined;
 }
 
 /** Strip the trailing `:${attempt}` from a blockInstanceId, yielding its logical id. */
@@ -93,7 +110,12 @@ function logicalIdOf(blockInstanceId: string): string | undefined {
 export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
   const lookup = buildItemLookup(items as readonly { id: string; type: string }[]);
 
-  const completed = new Map<string, { itemIndex: number; output: BlockValueInternal<unknown> }>();
+  const completed = new Map<
+    string,
+    { itemIndex: number; output: BlockValueInternal<unknown>; traceId: string }
+  >();
+  /** Latest recorded `router_decision` per router logical path (FIX-814). */
+  const routerDecisions = new Map<string, { itemIndex: number; selectedRoute: string }>();
   const suspensions: Array<{ logicalId: string; suspensionId: string; itemIndex: number }> = [];
   const resumedIds = new Set<string>();
   /** Resolution payloads keyed by the suspension id they resolved. */
@@ -117,6 +139,20 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
       completed.set(logicalId, {
         itemIndex: trace.itemIndex,
         output: { kind: "inline", value: resolved },
+        traceId: trace.id,
+      });
+    } else if (item.type === "router_decision") {
+      // The router's identity is carried on the decision item's provenance
+      // (stamped from the router's own blockInstanceId at emit time). Highest
+      // itemIndex wins, mirroring canonical block_trace selection.
+      const decision = item as RouterDecisionItem;
+      const logicalId = logicalIdOf(decision.provenance.blockInstanceId);
+      if (logicalId === undefined) continue;
+      const prior = routerDecisions.get(logicalId);
+      if (prior !== undefined && decision.itemIndex < prior.itemIndex) continue;
+      routerDecisions.set(logicalId, {
+        itemIndex: decision.itemIndex,
+        selectedRoute: decision.selectedRoute,
       });
     } else if (item.type === "suspension") {
       const susp = item as RuntimeItem & { suspensionId: string; blockInstanceId?: string };
@@ -180,5 +216,10 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
     getCompletedOutput: (blockLogicalId) => completed.get(blockLogicalId)?.output,
     pendingSuspension: () => pending,
     resolvedResumes: (blockLogicalId) => resolvedByLogical.get(blockLogicalId) ?? noResolved,
+    recordedRouterDecision: (blockLogicalId) => {
+      const decision = routerDecisions.get(blockLogicalId);
+      return decision === undefined ? undefined : { selectedRoute: decision.selectedRoute };
+    },
+    recordedBlockTraceId: (blockLogicalId) => completed.get(blockLogicalId)?.traceId,
   };
 }
