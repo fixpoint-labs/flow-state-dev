@@ -1245,8 +1245,18 @@ async function executeOwnedStepToolCalls(
         activeToolNames !== undefined &&
         !activeToolNames.includes(entry.block.name);
       if (entry === undefined || inactive) {
+        // Keep `entry` in the INACTIVE case: the tool exists in the toolset
+        // (just deactivated this step), so the error tool-result must reply
+        // under the tool's disambiguated alias — the one the model called.
+        // `call.toolName` is already remapped to the framework name, so
+        // re-sanitizing it would drop an `ensureUniqueAlias` suffix and
+        // mis-correlate colliding tools (`foo.bar`/`foo/bar`). A genuinely
+        // unknown tool (entry === undefined) has no alias; there `call.toolName`
+        // is the model's original name (remap is a no-op for names not in the
+        // toolset) so `sanitizeToolName` of it is already model-facing.
         return {
           call,
+          ...(entry !== undefined ? { entry } : {}),
           ok: false,
           error: new Error(`Model called unknown tool "${call.toolName}"`),
         };
