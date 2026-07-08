@@ -4,7 +4,7 @@
  * Request ID and replay/cursor/reconnect controls behind overflow menu.
  */
 import { useState } from "react";
-import { MoreHorizontal, Play, SkipForward, RefreshCw } from "lucide-react";
+import { MoreHorizontal, Play, SkipForward, RefreshCw, RotateCcw } from "lucide-react";
 import { StatusBadge } from "../shared/status-badge";
 import { Button } from "../ui/button";
 import { useDebug } from "../../context/debug-context";
@@ -30,6 +30,7 @@ type RequestSeparatorProps = {
   onReplayFull?: () => void;
   onReplayFromCursor?: () => void;
   onReconnect?: () => void;
+  onContinue?: () => void;
 };
 
 /** Visual styling for the scheduled `origin` badge — small, secondary. */
@@ -77,12 +78,18 @@ export function RequestSeparator({
   onReplayFull,
   onReplayFromCursor,
   onReconnect,
+  onContinue,
 }: RequestSeparatorProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [provenanceOpen, setProvenanceOpen] = useState(false);
   const { isDebugMode } = useDebug();
   const showReplayControls = status === "completed" || status === "failed";
-  const hasOverflow = showReplayControls || isDebugMode;
+  // Crash-recovery continuation (FIX-865): only for a run the server actually
+  // marked interrupted, and only when the source isn't webhook — the
+  // `/continue` route rejects webhook-sourced requests server-side, so this
+  // client-side gate avoids a guaranteed 404 from the menu.
+  const showContinue = status === "interrupted" && source !== "webhook";
+  const hasOverflow = showReplayControls || showContinue || isDebugMode;
   const durationText = formatDuration(duration, isActive);
 
   // Scheduled requests carry first-class provenance under the namespaced
@@ -192,6 +199,9 @@ export function RequestSeparator({
                 )}
                 {onReconnect && (
                   <OverflowButton icon={<RefreshCw className="h-3 w-3" />} label="Reconnect" onClick={() => { setMenuOpen(false); onReconnect(); }} />
+                )}
+                {showContinue && onContinue && (
+                  <OverflowButton icon={<RotateCcw className="h-3 w-3" />} label="Continue" onClick={() => { setMenuOpen(false); onContinue(); }} />
                 )}
               </div>
             </>

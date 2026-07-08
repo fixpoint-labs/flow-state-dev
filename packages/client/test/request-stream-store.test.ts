@@ -592,6 +592,27 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
     ]);
     expect(store.getSorted().map((i) => i.id)).toEqual(["t1", "m1"]);
   });
+
+  it("getRaw() keeps the superseded run-1 emission that getSorted() strips", () => {
+    const gate = "req_1:root/step[0]:0";
+    const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
+    const store = createRequestStreamStore();
+    store.loadSnapshot([
+      makeItem({ id: "t1", type: "block_trace", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
+      makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov }),
+      makeItem({ id: "t2", type: "block_trace", status: "completed", itemIndex: 2, ts: 1002, provenance: prov }),
+      makeItem({ id: "m2", type: "message", itemIndex: 3, ts: 1003, provenance: prov })
+    ]);
+
+    expect(store.getSorted().map((i) => i.id)).toEqual(["t2", "m2"]);
+    expect(store.getRaw().map((i) => i.id)).toEqual(["t1", "m1", "t2", "m2"]);
+  });
+
+  it("getRaw() returns a new array on each call", () => {
+    const store = createRequestStreamStore();
+    store.loadSnapshot([makeItem({ id: "m1", type: "message", itemIndex: 0, ts: 1000 })]);
+    expect(store.getRaw()).not.toBe(store.getRaw());
+  });
 });
 
 // ---------------------------------------------------------------------------

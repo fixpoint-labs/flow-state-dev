@@ -156,6 +156,14 @@ export type RequestStreamStore = {
   applyContentDone(itemId: string, contentIndex: number, content: Content): boolean;
   /** Return all items in canonical (collapsed) chronological order. New array each call. */
   getSorted(): OutputItem[];
+  /**
+   * Return all items in chronological order WITHOUT the canonical collapse —
+   * every superseded partial/in-progress row `getSorted()` strips (Rule 3,
+   * crash-recovery re-run) is still present here. Consumers that need to
+   * render the pre-/post-recovery boundary itself (rather than just the
+   * merged live view) read this instead of `getSorted()`. New array each call.
+   */
+  getRaw(): OutputItem[];
   /** Look up a single item by id. */
   getById(id: string): OutputItem | undefined;
   /** Return items whose `ownedBy` matches the given value, sorted chronologically. */
@@ -574,6 +582,10 @@ export function createRequestStreamStore(): RequestStreamStore {
       // until the next mutation; we return a fresh copy so the documented
       // "new array each call" contract holds and no caller can mutate the cache.
       return [...canonical()];
+    },
+
+    getRaw(): OutputItem[] {
+      return buildItemsFromMap(sortedIds, itemsById);
     },
 
     getById(id: string): OutputItem | undefined {

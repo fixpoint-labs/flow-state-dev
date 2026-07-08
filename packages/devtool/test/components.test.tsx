@@ -195,3 +195,48 @@ describe("RequestSeparator (transport source surface)", () => {
     expect(screen.getByText("0 0 1 * *")).toBeInTheDocument();
   });
 });
+
+// ── RequestSeparator (FIX-865 per-run Continue action) ──────
+
+describe("RequestSeparator (crash-recovery Continue action)", () => {
+  const baseProps = {
+    requestId: "req_123",
+    action: "run",
+  };
+
+  it("shows the Continue action for an interrupted, non-webhook-sourced request", () => {
+    const onContinue = vi.fn();
+    renderSeparator({ ...baseProps, status: "interrupted", source: "http", onContinue });
+    fireEvent.click(screen.getByTitle("More actions"));
+    expect(screen.getByText("Continue")).toBeInTheDocument();
+  });
+
+  it.each(["completed", "failed", "in_progress"])(
+    "does not show the Continue action for a %s request",
+    (status) => {
+      const onContinue = vi.fn();
+      renderSeparator({ ...baseProps, status, source: "http", onContinue });
+      const trigger = screen.queryByTitle("More actions");
+      if (trigger) fireEvent.click(trigger);
+      expect(screen.queryByText("Continue")).not.toBeInTheDocument();
+    },
+  );
+
+  it("does not show the Continue action for an interrupted webhook-sourced request", () => {
+    const onContinue = vi.fn();
+    renderSeparator({ ...baseProps, status: "interrupted", source: "webhook", onContinue });
+    // Webhook-sourced + no other overflow-eligible state means no overflow
+    // menu renders at all — the Continue action isn't reachable any way.
+    const trigger = screen.queryByTitle("More actions");
+    if (trigger) fireEvent.click(trigger);
+    expect(screen.queryByText("Continue")).not.toBeInTheDocument();
+  });
+
+  it("invokes onContinue when clicked", () => {
+    const onContinue = vi.fn();
+    renderSeparator({ ...baseProps, status: "interrupted", source: "http", onContinue });
+    fireEvent.click(screen.getByTitle("More actions"));
+    fireEvent.click(screen.getByText("Continue"));
+    expect(onContinue).toHaveBeenCalledOnce();
+  });
+});

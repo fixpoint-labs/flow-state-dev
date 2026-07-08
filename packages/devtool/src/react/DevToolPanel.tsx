@@ -8,7 +8,7 @@
  * `userIdControl="host"` so the panel doesn't expose its own userId editor.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, PanelLeft, RotateCcw, User } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, PanelLeft, User } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
 import { Badge } from "./components/ui/badge";
@@ -39,6 +39,7 @@ import { useRequestStream } from "./hooks/use-request-stream";
 import { useActionDispatch } from "./hooks/use-action-dispatch";
 import { useSessionRequests } from "./hooks/use-session-requests";
 import { useReplay } from "./hooks/use-replay";
+import { useContinueRequest } from "./hooks/use-continue-request";
 import { useLiveMode } from "./hooks/use-live-mode";
 import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
 import { pickFurthestStatus } from "./lib/request-status";
@@ -123,6 +124,9 @@ function PanelContent({ className }: { className?: string }) {
   // auto-subscribed by live mode (toggle stays interactive).
   const [dispatchedRequestId, setDispatchedRequestId] = useState<string | null>(null);
   const [liveItems, setLiveItems] = useState<Map<string, OutputItem[]>>(new Map());
+  // Raw (uncollapsed) counterpart of `liveItems`, populated only by the
+  // per-row Continue action (FIX-865) — see `handleContinueItems` below.
+  const [liveRawItems, setLiveRawItems] = useState<Map<string, OutputItem[]>>(new Map());
 
   const { replayState, isReplaying, replayFull, replayFromCursor, simulateReconnect, clearReplay } = useReplay();
 
@@ -184,7 +188,7 @@ function PanelContent({ className }: { className?: string }) {
     },
   );
 
-  const { liveMode, lockedOn, liveSubscriptionRequestId, liveStatus, latestRequest, showToggle, toggleLiveMode } =
+  const { liveMode, lockedOn, liveSubscriptionRequestId, liveStatus, showToggle, toggleLiveMode } =
     useLiveMode({
       requests,
       streamStatus,
@@ -283,6 +287,11 @@ function PanelContent({ className }: { className?: string }) {
         startedAt: req.startedAtMs ?? req.createdAt,
         duration: req.completedAtMs && req.startedAtMs ? req.completedAtMs - req.startedAtMs : undefined,
         items: liveItems.get(req.id) ?? req.items ?? [],
+        // `req.items` (from `listSessionRequests({ includeItems: true })`) is
+        // the raw, uncollapsed log already — only a live SSE-driven view
+        // (`liveRawItems`, populated by the Continue action) needs its own
+        // raw copy tracked separately from the canonical `items` above.
+        rawItems: liveRawItems.get(req.id) ?? req.items ?? [],
         source: req.source,
         metadata: req.metadata,
       });
@@ -294,10 +303,11 @@ function PanelContent({ className }: { className?: string }) {
         status: liveStreamStatus ?? "in_progress",
         startedAt: Date.now(),
         items: liveItems.get(activeRequestId) ?? [],
+        rawItems: liveRawItems.get(activeRequestId) ?? [],
       });
     }
     return groups;
-  }, [requests, liveItems, activeRequestId, lastResponse, streamState, streamStatus, streamRequestId]);
+  }, [requests, liveItems, liveRawItems, activeRequestId, lastResponse, streamState, streamStatus, streamRequestId]);
 
   const handleSendAction = useCallback(
     async (action: string, input: unknown) => {
@@ -327,38 +337,35 @@ function PanelContent({ className }: { className?: string }) {
     [refreshRequests],
   );
 
-  // The Resume button is only meaningful for the *current* tail of the
-  // session — `latestRequest` comes from `useLiveMode` so the same scan
-  // drives both the Live badge state and this gate.
-  const canResume = latestRequest?.status === "interrupted" && !dispatchedRequestId;
-  const [isResuming, setIsResuming] = useState(false);
+  // Per-row Continue action (FIX-865) — supersedes the legacy top-level
+  // Resume button. Each request row gets its own Continue action in its
+  // separator's overflow menu (gated on `interrupted` + non-webhook source),
+  // so the latest-only Resume button was redundant with (and used a
+  // different, non-inline-streaming code path than) the general case.
+  const handleContinueItems = useCallback(
+    (requestId: string, items: OutputItem[], rawItems: OutputItem[]) => {
+      setLiveItems((prev) => { const next = new Map(prev); next.set(requestId, items); return next; });
+      setLiveRawItems((prev) => { const next = new Map(prev); next.set(requestId, rawItems); return next; });
+    },
+    [],
+  );
+  const { continueRequest } = useContinueRequest({
+    recoveryClient,
+    flowKind: activeFlowKind,
+    sessionId: effectiveSessionId,
+    onItems: handleContinueItems,
+  });
 
-  const handleResume = useCallback(async () => {
-    if (!latestRequest || !effectiveSessionId) return;
-    setIsResuming(true);
-    try {
-      // Crash recovery continues the SAME request under its own id (FIX-811) —
-      // completed blocks replay from the durable log and the in-flight one
-      // re-runs. (Starting over with a new id is the separate retry mode.)
-      const result = await recoveryClient.continue({
-        flowKind: latestRequest.flowKind,
-        sessionId: effectiveSessionId,
-        requestId: latestRequest.id,
+  const handleContinue = useCallback(
+    (requestId: string) => {
+      const req = requests.find((r) => r.id === requestId);
+      const existingItems = liveItems.get(requestId) ?? req?.items ?? [];
+      void continueRequest(requestId, existingItems).catch((err) => {
+        console.error("[devtool] continue failed", err);
       });
-      // Re-attach: lock Live ON and subscribe to the continued (same) id so its
-      // progress to terminal renders without a manual refresh. Bump the token
-      // too — the id is unchanged for an in-place continuation, so the connect
-      // effect won't re-run on the id alone.
-      setActiveRequestId(result.requestId);
-      setDispatchedRequestId(result.requestId);
-      setStreamReconnectToken((t) => t + 1);
-      void refreshRequests();
-    } catch (err) {
-      console.error("[devtool] continue failed", err);
-    } finally {
-      setIsResuming(false);
-    }
-  }, [latestRequest, effectiveSessionId, recoveryClient, refreshRequests]);
+    },
+    [requests, liveItems, continueRequest],
+  );
 
   const handleReplayFull = useCallback(
     (requestId: string) => {
@@ -477,18 +484,6 @@ function PanelContent({ className }: { className?: string }) {
               </TabsList>
               <div className="flex items-center gap-3 min-w-0">
                 <SessionIdBadge sessionId={effectiveSessionId} />
-                {canResume && (
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    onClick={handleResume}
-                    disabled={isResuming}
-                    title="Resume interrupted request"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    {isResuming ? "Resuming…" : "Resume"}
-                  </Button>
-                )}
                 {(liveStatus !== "idle" || showToggle) && (
                   <LiveSwitch
                     on={lockedOn ? true : liveMode}
@@ -512,6 +507,7 @@ function PanelContent({ className }: { className?: string }) {
                 onReplayFull={handleReplayFull}
                 onReplayFromCursor={handleReplayFromCursor}
                 onReconnect={handleReconnect}
+                onContinue={handleContinue}
               />
             </TabsContent>
 

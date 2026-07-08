@@ -29,6 +29,13 @@ export type StreamState = {
   lastSequenceNumber: number;
   /** Every `request.*` status event seen, in arrival order (the resume cursor). */
   statusEvents: RequestStatusEvent[];
+  /**
+   * Chronological items WITHOUT the canonical (crash-recovery) collapse —
+   * the superseded pre-recovery rows `items`/`itemOrder` strip are still
+   * present here, for consumers that need to render the recovery boundary
+   * itself rather than just the merged live view.
+   */
+  rawItems: OutputItem[];
 };
 
 /**
@@ -119,6 +126,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
       itemOrder,
       lastSequenceNumber: store.lastSequenceNumber,
       statusEvents: [...store.statusEvents],
+      rawItems: store.getRaw(),
     };
   }, []);
 
