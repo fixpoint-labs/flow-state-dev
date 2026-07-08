@@ -31,10 +31,12 @@ Fix it by flipping one channel from pull to push: **each session self-reports.**
 
 ## The idea
 
-Each Claude session knows its own `session_id`. A `SessionStart` hook can
-register it the instant the session boots, and the agent can report semantic
-milestones as it hits them. Those reports land in a small hosted service that
-maintains a session registry and owns the Linear board writes.
+Each Claude session knows its own `session_id` (handed to it directly
+in-context) and, being the entity actually dispatched to do the work, knows
+which issue it's working. So the agent registers itself and reports semantic
+milestones as it hits them, via MCP tool calls. Those reports land in a small
+hosted service that maintains a session registry and owns the Linear board
+writes.
 
 That service is itself an **FSD flow exposed as an MCP server** — which the
 framework already supports, so this is mostly assembly.
@@ -66,27 +68,35 @@ framework already supports, so this is mostly assembly.
 ## Architecture
 
 ```
-dispatcher (has authority; knows {issue, stage} at trigger time)
-   │  mints a scoped token, injects it + {issue} into the cloud session env
-   ▼
-cloud Claude session
-   ├─ SessionStart hook  ──HTTP──▶  POST /api/flows/session-control/actions/registerSession
-   │     (shell command: curl; hooks CANNOT call MCP tools)
-   ├─ periodic heartbeat ──HTTP──▶  .../actions/heartbeat
-   └─ the agent          ──MCP───▶  tools/call reportStatus   (semantic milestones)
+cloud Claude session  (dispatched for a specific issue; the agent is TOLD its
+                        own session_id in-context and knows the issue from its
+                        own task — no dispatcher-side injection required)
+   │
+   │  (SessionStart hook: not wired in v1. It can only prove "a session
+   │   exists" — no task/issue info in its payload, no MCP tool access. Left
+   │   as a future, non-load-bearing backstop — see "Registration is
+   │   agent-driven.")
+   │
+   └─ the agent  ──MCP──▶  tools/call registerSession   (first call: sessionId +
+      │                     issue → binds sessionId→issue, returns a capability
+      │                     token scoped to this registration)
+      └─ ──MCP──▶  tools/call reportStatus   (sessionId + capabilityToken +
+                     status; semantic milestones; bumps lastSeen as a side
+                     effect — no separate heartbeat action needed in v1)
                                           │
                                           ▼
                         session-control flow  (mcp.enabled: true, on Vercel)
-                          actions: registerSession · reportStatus · heartbeat
+                          actions: registerSession · reportStatus
                                           │
                         ┌─────────────────┴─────────────────┐
                         ▼                                     ▼
                  session registry store              Linear board writes
-                 (hosted DB: alive, last_seen,       (the flow owns ALL
-                  status, issue, prNumber)            transitions, validated)
+                 (hosted DB: sessionId, issue,        (the flow owns ALL
+                  capabilityToken, status,             transitions, validated)
+                  registeredAt, lastSeen)
                                           ▲
                         liveness sweep (reads the REGISTRY, not Linear):
-                        last_seen older than N min → escalate / mark stalled
+                        lastSeen older than N min → escalate / mark stalled
 ```
 
 The agent never writes Linear directly. It reports *intent* ("I opened PR #606");
@@ -96,37 +106,54 @@ board" buys.
 
 ## The session-control flow
 
-Three described actions (each auto-exposed as an MCP tool and reachable over HTTP):
+Two described actions (each auto-exposed as an MCP tool and reachable over HTTP):
 
-- `registerSession({ sessionId, issue, stage })` — upsert a registry row, mark
-  alive. Fired by the `SessionStart` hook.
-- `reportStatus({ sessionId, status, prNumber? })` — update the row **and** map
-  the status to a board transition. Small vocabulary:
+- `registerSession({ sessionId, issue, stage })` — fired by the **agent**, as
+  its first MCP call. First sight of a `sessionId` binds it to `issue`; a later
+  call claiming a *different* `issue` for an already-bound `sessionId` is
+  rejected. This models the real lifecycle correctly: multiple sessions can
+  work an issue over time (a spec session, then a separate implement session),
+  but a given session, once bound, stays bound to that one issue. Returns an
+  opaque capability token scoped to this registration (see Security).
+- `reportStatus({ sessionId, capabilityToken, status, prNumber? })` — requires
+  the capability token issued at registration; a request with the wrong or
+  missing token for that `sessionId` is rejected. Updates the row, bumps
+  `lastSeen`, and maps `status` to a board transition. Small vocabulary:
   `working · awaiting-review · addressing-feedback · done · errored`. Fired by
   the agent at milestones (skills carry the report steps).
-- `heartbeat({ sessionId })` — bump `last_seen`. Fired by a hook on a timer (and
-  implicitly by every other call).
+
+No separate `heartbeat` action in v1 — `reportStatus` already bumps `lastSeen`
+on every call, which is enough to start. A dedicated timer-driven heartbeat is
+deferred (see Open questions): no verified hook mechanism exists to drive one,
+and inventing an unverified one isn't worth it until the agent's natural
+status cadence proves too coarse for the liveness sweep.
 
 Registry row (one `sessions` table, hosted DB):
 
 ```
-sessionId  ·  issue  ·  stage  ·  status  ·  prNumber?  ·  registeredAt  ·  lastSeen
+sessionId · issue · stage · status · prNumber? · capabilityToken · registeredAt · lastSeen
 ```
 
-## Two entry paths, one flow
+## Registration is agent-driven, not hook-driven
 
-- **Hooks → HTTP.** `SessionStart` and the heartbeat timer are shell commands.
-  They `curl` the HTTP action route. Hooks *cannot* call MCP tools — MCP tools
-  are model-invoked, not shell-invoked. Hooks own registration + liveness (the
-  reliable, lifecycle-driven signals).
-- **Agent → MCP.** Semantic transitions ("opened the PR", "addressing feedback")
-  are not lifecycle events — no hook can observe them. They come from the agent
-  deliberately calling `reportStatus`, driven by explicit steps baked into the
-  `create-spec` / `implement-issue` skills. Reporting becomes part of the skill
-  protocol, not an inference.
+Checked against the actual hook payload: `session-start-hook`'s documented
+`SessionStart` stdin is `{session_id, source, transcript_path, permission_mode,
+hook_event_name, cwd}`, plus three fixed environment variables
+(`$CLAUDE_PROJECT_DIR`, `$CLAUDE_ENV_FILE`, `$CLAUDE_CODE_REMOTE`) — none of it
+task- or issue-related. The hook can prove "a session with this `session_id`
+exists," nothing more. It structurally cannot register a session against an
+issue.
 
-Same flow, same actions, two transports. The split falls out of the framework
-mounting both adapters together.
+So the agent registers itself, via the MCP tool, as its first action — it
+already has both values a registration needs (its own `session_id`, handed to
+it directly in-context the same way this environment hands every session its
+ID for commit trailers, and the `issue`, its assigned task). This is simpler
+than a hook/agent split, not more complex: one caller, one path, no
+hook-to-agent handoff to design.
+
+The `SessionStart` hook's role shrinks to optional and non-load-bearing: a
+best-effort "session exists" ping, useful only as a backstop for a session that
+errors out before ever calling a tool. The design works without it.
 
 ## Principles to lock
 
@@ -154,16 +181,38 @@ agent production DB credentials: the blast radius of a confused-or-injected
 agent would be the entire database. The MCP/HTTP flow is the guarded surface
 instead — validation, rate-limiting, a versioned contract, rotation.
 
-Tighten it with a **per-issue scoped token**: the dispatcher (already
-authoritative) mints a token whose principal is `{ issue, stage }` and injects
-it into the cloud session env; `resolvePrincipal` validates it and the actions
-authorize writes only to that issue's rows and board. Worst case on leak: the
-agent lies about *its own* issue's status. It cannot touch other sessions or the
-rest of the DB.
+**Two layers, not one.** A single shared admission token, configured once at
+the environment level (`${FSDEV_ORCH_TOKEN}` env-interpolated in `.mcp.json`,
+never committed — environments already support configured env vars, so this
+needs no per-dispatch injection), proves "this caller is a legitimate FSD
+session." That's all it proves. It is not enough on its own, because
+`sessionId` and `issue` are both public in this project: session IDs land in
+commit trailers and PR bodies by our own convention, and not only after a
+session ends — an early commit publishes a still-active session's ID to
+`git log`, visible to any other session running concurrently. Issue numbers are
+more exposed still (Linear ticket, PR title). So a shared token plus a
+client-supplied `{sessionId, issue}` pair is forgeable: anything that has read
+one session's commit trailer has every value needed to impersonate it in a
+`reportStatus` call. The `registerSession` first-sight/reject-on-mismatch rule
+doesn't catch this — it only stops a session from reassigning *itself* to a
+different issue, not another caller impersonating an already-bound session.
 
-The token must be env-interpolated in `.mcp.json` (`${FSDEV_ORCH_TOKEN}`), never
-committed. Open question below: whether the web environment can inject a
-*per-session* env var, or only a shared one.
+**Fix: a capability token issued at registration.** `registerSession`'s first
+call for a `sessionId` returns an opaque token scoped to that registration;
+every subsequent `reportStatus` call for that `sessionId` must present it, and
+a mismatched or missing token is rejected. No extra plumbing: the agent is the
+one that calls `registerSession` via MCP, so the token is already sitting in
+its own context from the tool result. Worst case on a compromised session: it
+can lie about *its own* issue's status. It cannot forge calls for another
+session, because it never sees that session's token — only its published,
+non-secret ID.
+
+**Residual, accepted risk.** A race where an attacker registers a fake session
+under a real (but not-yet-published) `session_id`, before the real session's
+first call lands, requires guessing a fresh, high-entropy ID that hasn't leaked
+anywhere yet — a materially harder problem than reading one out of `git log`.
+Reasonable to leave unaddressed for a lab exploration rather than engineer
+against now.
 
 ## Relationship to the choreography redesign
 
@@ -179,32 +228,29 @@ reused here.
 
 ## Open questions
 
-- **Per-session token injection (resolve first — security-critical).** Can the
-  dispatch / web environment inject a per-issue-scoped env var into the cloud
-  session so `.mcp.json` resolves a scoped token? If only a shared token is
-  possible, the fallback is an issue-scoped token set via environment config at
-  dispatch. This gates the blast-radius guarantee above.
-- **Correlation.** Don't lean on `ClaudeRemoteHandle.sessionId` (best-effort,
-  often null). Have the session self-report its own `session_id` at registration
-  under the dispatcher-stamped `issue` key; query "sessions for FIX-123."
-- **Does the cloud runner honor repo `.mcp.json` and `settings.json` hooks?**
-  High confidence on hooks (there is a `session-start-hook` skill for exactly the
-  web environment); `.mcp.json` pickup needs a quick confirm.
+- **Does the cloud runner load a repo-root `.mcp.json`?** Hooks are confirmed
+  (verified against `session-start-hook`'s own documentation — see
+  "Registration is agent-driven"). MCP server pickup from a committed
+  `.mcp.json` is the one remaining transport-level unknown; needs a quick
+  empirical check before wiring a real hook or skill against it.
 - **Registry store.** Stateless serverless rules out `store-sqlite`. Needs a
   hosted DB (Vercel Postgres or similar). One small table.
 - **Status ↔ board mapping ownership.** Keep the `status → Linear state` map a
   pure function (same discipline as the choreography note's `state → action`
   map), tested in isolation and consulted by `reportStatus`.
+- **Dedicated heartbeat.** Deferred — `reportStatus` already bumps `lastSeen`
+  on every call. Revisit only if the agent's natural status cadence proves too
+  coarse for the liveness sweep (e.g. a long silent stretch mid-stage with no
+  status change to report).
 
 ## Sequencing
 
-1. **Prototype the flow in isolation.** A `session-control` flow with the three
+1. **Prototype the flow in isolation.** A `session-control` flow with the two
    actions + a fake board client, proving actions-as-MCP-tools and the
    status→transition path under unit tests. No deployment, no real Claude. This
    is the cheap kernel and it stays entirely in the lab.
-2. **Confirm the two unknowns** (per-session env injection; cloud honors
-   `.mcp.json`) before building the hosted piece — they can invalidate the token
-   model.
+2. **Confirm the one remaining unknown** — does the cloud runner load a
+   repo-root `.mcp.json`? — before building the hosted piece.
 3. **Wire one hook + one skill step** against a locally-run flow to prove the
    round trip end to end.
 4. Only then consider a Vercel deployment + real registry DB.
