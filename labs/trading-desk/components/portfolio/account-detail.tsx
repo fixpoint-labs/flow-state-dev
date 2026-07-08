@@ -2,10 +2,12 @@
  * AccountDetail — one account, opened from its summary card. A back header
  * (name, type chip, rollups, delete-account) over three tabs:
  *
- *   Holdings     — the account's active positions (`HoldingsTable`)
- *   Transactions — the account's ledger rows (`LedgerTable`, account-filtered)
- *   Income       — the account's dividends + interest (`IncomeTable`,
- *                  account-filtered; includes closed positions)
+ *   Holdings       — the account's active positions (`HoldingsTable`)
+ *   Transactions   — the account's ledger rows (`LedgerTable`, account-filtered)
+ *   Income         — the account's dividends + interest (`IncomeTable`,
+ *                    account-filtered; includes closed positions)
+ *   Realized Gains — the account's realized gains by year/term
+ *                    (`RealizedGainsTable`, account-filtered)
  *
  * Pure presentational + local tab state. The parent owns all data (accounts,
  * ledger, income, prices, rollups) and the write handlers; this component
@@ -21,10 +23,11 @@ import { cn } from "@/lib/utils";
 import type { AccountState, AssetClass, Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { LedgerRow } from "@/src/flows/portfolio/ledger-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
-import type { IncomeSummaryRow } from "@/src/db/repository";
+import type { IncomeSummaryRow, RealizedGainRow } from "@/src/db/repository";
 import { HoldingsTable } from "./holdings-table";
 import { LedgerTable } from "./ledger-table";
 import { IncomeTable } from "./income-table";
+import { RealizedGainsTable } from "./realized-gains-table";
 import { TYPE_LABELS } from "./account-card";
 import type { TermLot } from "./holding-term";
 import {
@@ -34,12 +37,13 @@ import {
   formatSignedPercent,
 } from "./portfolio-format";
 
-type AccountTab = "holdings" | "transactions" | "income";
+type AccountTab = "holdings" | "transactions" | "income" | "gains";
 
 const TABS: { id: AccountTab; label: string }[] = [
   { id: "holdings", label: "Holdings" },
   { id: "transactions", label: "Transactions" },
   { id: "income", label: "Income" },
+  { id: "gains", label: "Realized Gains" },
 ];
 
 type AccountDetailProps = {
@@ -49,6 +53,8 @@ type AccountDetailProps = {
   ledgerEvents: LedgerRow[];
   /** The household's full income summary; filtered to this account here. */
   income: IncomeSummaryRow[];
+  /** The household's full realized-gains list; filtered to this account here. */
+  realizedGains: RealizedGainRow[];
   prices: Map<string, Quote>;
   /** ticker (upper-case) → dividends earned in THIS account. */
   dividends: Map<string, number>;
@@ -81,6 +87,7 @@ export function AccountDetail({
   holdings,
   ledgerEvents,
   income,
+  realizedGains,
   prices,
   dividends,
   lots,
@@ -105,6 +112,10 @@ export function AccountDetail({
   const accountIncome = useMemo(
     () => income.filter((r) => r.accountId === account.accountId),
     [income, account.accountId],
+  );
+  const accountRealizedGains = useMemo(
+    () => realizedGains.filter((r) => r.accountId === account.accountId),
+    [realizedGains, account.accountId],
   );
   const activeTickers = useMemo(
     () => new Set(holdings.map((h) => h.ticker)),
@@ -217,12 +228,19 @@ export function AccountDetail({
           <div className="p-2">
             <LedgerTable events={accountLedger} />
           </div>
-        ) : (
+        ) : tab === "income" ? (
           <div className="p-2">
             <IncomeTable
               income={accountIncome}
               accountNames={accountNames}
               activeTickers={activeTickers}
+              currency={account.currency}
+            />
+          </div>
+        ) : (
+          <div className="p-2">
+            <RealizedGainsTable
+              realizedGains={accountRealizedGains}
               currency={account.currency}
             />
           </div>

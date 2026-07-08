@@ -54,9 +54,12 @@ import {
   type NewLedgerEvent,
 } from "./add-transaction-dialog";
 import { ThesisDialog } from "./thesis-dialog";
+import { TaxEstimateCard } from "./tax-estimate-card";
+import { TaxProfileDialog } from "./tax-profile-dialog";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import { useLedger } from "./use-ledger";
 import { useIncome } from "./use-income";
+import { useTax } from "./use-tax";
 import { useTheses } from "./use-theses";
 import {
   holdingMarketValue,
@@ -106,12 +109,22 @@ export function PortfolioPane({
   const { accounts, refetch: refetchAccounts } = usePortfolioAccounts();
   const { events: ledgerEvents, refetch: refetchLedger } = useLedger();
   const { income, refetch: refetchIncome } = useIncome();
+  // The household tax view (profile + realized gains + current-year estimate).
+  // Its refetch joins the fan-out after every ledger mutation, account save/
+  // delete, and a tax-profile save — each of those changes a tax input.
+  const {
+    profile: taxProfile,
+    realizedGains,
+    estimate: taxEstimate,
+    refetch: refetchTax,
+  } = useTax();
   // Theses remain a user-scoped FSD resource (live client read), so this stays
   // session-based — unlike accounts/ledger/income which moved to REST routes.
   const { theses, loading: thesesLoading, refetch: refetchTheses } = useTheses(session);
   const { clientData: quotesData } = useResource(session, "portfolioQuotes");
 
   const [addOpen, setAddOpen] = useState(false);
+  const [taxProfileOpen, setTaxProfileOpen] = useState(false);
   const [addTransactionOpen, setAddTransactionOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importPdfOpen, setImportPdfOpen] = useState(false);
@@ -342,11 +355,14 @@ export function PortfolioPane({
           ...draft,
         });
         refetchAccounts();
+        // A new account (esp. a taxable one) changes the estimate's
+        // taxable-account filter, so the tax read refetches too.
+        refetchTax();
       } catch (err) {
         console.error("[trading-desk] saveAccount failed", err);
       }
     },
-    [uid, refetchAccounts],
+    [uid, refetchAccounts, refetchTax],
   );
 
   const handleImport = useCallback(
@@ -373,15 +389,17 @@ export function PortfolioPane({
         });
         // An import writes ledger events AND materializes the derived positions
         // into holdings, so refetch the ledger, the accounts, and the income.
+        // Sells produce realized gains, so refetch the tax read too.
         refetchLedger();
         refetchAccounts();
         refetchIncome();
+        refetchTax();
         await fetchPrices();
       } catch (err) {
         console.error("[trading-desk] importTransactions failed", err);
       }
     },
-    [uid, refetchLedger, refetchAccounts, refetchIncome, fetchPrices],
+    [uid, refetchLedger, refetchAccounts, refetchIncome, refetchTax, fetchPrices],
   );
 
   const handleRecordTransaction = useCallback(
@@ -389,15 +407,17 @@ export function PortfolioPane({
       try {
         await apiMutate("/api/portfolio/ledger", "POST", { userId: uid, ...event });
         // An ingest materializes derived positions into holdings, so refetch the
-        // ledger, the accounts, and the income.
+        // ledger, the accounts, and the income. A sell realizes a gain, so
+        // refetch the tax read too.
         refetchLedger();
         refetchAccounts();
         refetchIncome();
+        refetchTax();
       } catch (err) {
         console.error("[trading-desk] recordLedgerEvent failed", err);
       }
     },
-    [uid, refetchLedger, refetchAccounts, refetchIncome],
+    [uid, refetchLedger, refetchAccounts, refetchIncome, refetchTax],
   );
 
   const handleDeleteHolding = useCallback(
@@ -441,11 +461,14 @@ export function PortfolioPane({
         refetchAccounts();
         refetchLedger();
         refetchIncome();
+        // The FK cascade removes this account's realized-gain rows, and its
+        // type is a tax input, so refetch the tax read.
+        refetchTax();
       } catch (err) {
         console.error("[trading-desk] deleteAccount failed", err);
       }
     },
-    [uid, refetchAccounts, refetchLedger, refetchIncome],
+    [uid, refetchAccounts, refetchLedger, refetchIncome, refetchTax],
   );
 
   // Thesis writes stay flow actions (theses are a reactive user-scoped resource,
@@ -652,6 +675,13 @@ export function PortfolioPane({
           the card-grid column count tracks the pane's width, not the viewport
           (the HoldingsTable precedent). */}
       <div className="@container flex-1 space-y-4 overflow-y-auto p-4">
+        {/* Household-level realized-gains tax preview — a standalone section
+            above the accounts. */}
+        <TaxEstimateCard
+          estimate={taxEstimate}
+          profile={taxProfile}
+          onEditProfile={() => setTaxProfileOpen(true)}
+        />
         {accounts.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
             <p className="text-sm text-[color:var(--c-fg)]">No accounts yet</p>
@@ -667,6 +697,7 @@ export function PortfolioPane({
             holdings={holdingsByAccount.get(openAccount.accountId) ?? []}
             ledgerEvents={ledgerEvents}
             income={income}
+            realizedGains={realizedGains}
             prices={priceMap}
             dividends={dividendsByAccount.get(openAccount.accountId) ?? new Map()}
             lots={lotsByAccount.get(openAccount.accountId) ?? new Map()}
@@ -762,6 +793,13 @@ export function PortfolioPane({
         accounts={accounts}
         defaultAccountId={selectedAccountId ?? accounts[0]?.accountId}
         onSubmit={(event) => void handleRecordTransaction(event)}
+      />
+      <TaxProfileDialog
+        open={taxProfileOpen}
+        onClose={() => setTaxProfileOpen(false)}
+        userId={uid}
+        profile={taxProfile}
+        onSaved={() => refetchTax()}
       />
       <ThesisDialog
         open={thesisTicker !== null}
