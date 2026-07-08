@@ -37,8 +37,8 @@ describe("buildPortfolioContext", () => {
         name: "Roth IRA",
         cashBalance: 1000,
         holdings: [
-          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
-          { ticker: "AAPL", quantity: 20, costBasis: 150, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "AAPL", quantity: 20, costBasis: 150, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
         ],
       }),
     ];
@@ -66,8 +66,8 @@ describe("buildPortfolioContext", () => {
         type: "taxable",
         cashBalance: 500,
         holdings: [
-          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
-          { ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }, // no quote
+          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }, // no quote
         ],
       }),
     ];
@@ -103,13 +103,13 @@ describe("buildPortfolioContext", () => {
         cashBalance: 0,
         holdings: [
           // equity via quote: 10 × 200 = 2000
-          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
           // bond at carried mark: 5 × 98.5 = 492.5
-          { ticker: "912828YK0", quantity: 5, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "912828YK0", markPrice: 98.5 } },
+          { ticker: "912828YK0", quantity: 5, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "912828YK0", markPrice: 98.5 }, dataQuality: null },
           // MMF at par: 1500 × 1.00 = 1500
-          { ticker: "SPAXX", quantity: 1500, costBasis: null, acquiredDate: null, assetClass: "cash", assetType: "money_market", attributes: { kind: "cash_equivalent" } },
+          { ticker: "SPAXX", quantity: 1500, costBasis: null, acquiredDate: null, assetClass: "cash", assetType: "money_market", attributes: { kind: "cash_equivalent" }, dataQuality: null },
           // unpriced bond: no mark → null marketValue, adds nothing to NAV
-          { ticker: "999999XX9", quantity: 7, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "999999XX9", markPrice: null } },
+          { ticker: "999999XX9", quantity: 7, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "999999XX9", markPrice: null }, dataQuality: null },
         ],
       }),
     ];
@@ -134,7 +134,7 @@ describe("buildPortfolioContext", () => {
     const accounts = [
       account({
         cashBalance: 0,
-        holdings: [{ ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }],
+        holdings: [{ ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }],
       }),
     ];
     const out = buildPortfolioContext(accounts, [], "2026-05-06");

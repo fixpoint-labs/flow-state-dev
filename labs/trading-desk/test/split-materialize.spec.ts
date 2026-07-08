@@ -1,0 +1,148 @@
+/**
+ * Integration tests (embedded PGlite) for the FIX-876 materialization changes:
+ * the inconsistent-history GUARD and the split rebasing on the real repository
+ * path (not just the pure `deriveLots` leaf).
+ *
+ * Intent encoded — the real-money invariant the whole issue exists to protect:
+ *   1. An acquired ticker whose disposals exceed everything ever held (an
+ *      unaccounted split) is materialized as a FLAGGED zero-quantity row
+ *      (`dataQuality: "inconsistent_history"`), NEVER silently deleted.
+ *   2. A clean net-zero close still DELETES its row (a genuine exit).
+ *   3. A split rebases the derived position (correct quantity + basis).
+ *   4. Recording the missing split SELF-HEALS the flagged row back to a real
+ *      position with `dataQuality: null`.
+ */
+import { fileURLToPath } from "node:url";
+import { PGlite } from "@electric-sql/pglite";
+import { beforeEach, describe, expect, it } from "vitest";
+import { createMigratedPgliteDb } from "@/src/db/client";
+import {
+  createPortfolioRepository,
+  type PortfolioRepository,
+} from "@/src/db/repository";
+import type { LedgerEventInput } from "@/src/flows/portfolio/ledger-schema";
+
+const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
+
+async function freshRepo(): Promise<PortfolioRepository> {
+  return createPortfolioRepository(await createMigratedPgliteDb(new PGlite(), MIGRATIONS_DIR));
+}
+
+function evt(over: Partial<LedgerEventInput> & { type: LedgerEventInput["type"] }): LedgerEventInput {
+  return {
+    accountId: "acc-1",
+    tradeDate: "2024-01-01",
+    settleDate: null,
+    ticker: "NVDA",
+    quantity: null,
+    unitPrice: null,
+    amount: 0,
+    fee: null,
+    currency: "USD",
+    source: "manual",
+    externalId: null,
+    description: null,
+    basisUnknown: null,
+    attributes: null,
+    ...over,
+  };
+}
+
+const buy = (quantity: number, unitPrice: number, tradeDate: string): LedgerEventInput =>
+  evt({ type: "buy", quantity, unitPrice, amount: -quantity * unitPrice, tradeDate });
+const sell = (quantity: number, tradeDate: string): LedgerEventInput =>
+  evt({ type: "sell", quantity: -quantity, amount: quantity * 100, tradeDate });
+const splitEvt = (numerator: number, denominator: number, tradeDate: string): LedgerEventInput =>
+  evt({ type: "split", tradeDate, attributes: { numerator, denominator } });
+
+let repo: PortfolioRepository;
+beforeEach(async () => {
+  repo = await freshRepo();
+  await repo.upsertAccount({ id: "acc-1", userId: "devuser", name: "Taxable", type: "taxable" });
+});
+
+async function nvda() {
+  const { holdings } = await repo.getPortfolio("devuser");
+  return holdings.find((h) => h.ticker === "NVDA");
+}
+
+describe("materializePositions — inconsistent-history guard (FIX-876)", () => {
+  it("flags an over-sold acquired ticker instead of deleting it", async () => {
+    // 12 pre-split shares, then a 50-share post-split sell (an unrecorded split):
+    // FIFO over-sells → the position would net negative. It must NOT vanish.
+    await repo.ingestLedgerEvents([buy(12, 900, "2024-01-01"), sell(50, "2024-07-31")], "devuser");
+    const row = await nvda();
+    expect(row).toBeDefined();
+    expect(row?.quantity).toBe(0);
+    expect(row?.dataQuality).toBe("inconsistent_history");
+  });
+
+  it("still DELETES a clean net-zero close (a genuine exit, not an inconsistency)", async () => {
+    await repo.ingestLedgerEvents([buy(10, 100, "2024-01-01"), sell(10, "2024-02-01")], "devuser");
+    expect(await nvda()).toBeUndefined();
+  });
+
+  it("materializes a split-rebased position with the correct quantity and basis", async () => {
+    await repo.ingestLedgerEvents([buy(10, 900, "2024-01-01"), splitEvt(10, 1, "2024-06-10")], "devuser");
+    const row = await nvda();
+    expect(row?.quantity).toBe(100); // 10 × 10
+    expect(row?.costBasis).toBe(90); // 900 ÷ 10
+    expect(row?.dataQuality).toBeNull();
+  });
+
+  it("clears the flag when the over-selling events are voided (no stale flag)", async () => {
+    // File-sourced buy+sell that over-sells → flagged. Voiding both events (the
+    // user undoing a bad import) returns the ticker to snapshot authority; the
+    // `inconsistent_history` flag must not linger on the now-cleared row.
+    await repo.ingestLedgerEvents(
+      [
+        { ...buy(12, 900, "2024-01-01"), source: "file", externalId: "F-BUY" },
+        { ...sell(50, "2024-07-31"), source: "file", externalId: "F-SELL" },
+      ],
+      "devuser",
+    );
+    expect((await nvda())?.dataQuality).toBe("inconsistent_history");
+
+    await repo.voidLedgerEvents("acc-1", ["F-BUY", "F-SELL"], "file", "devuser");
+    expect((await nvda())?.dataQuality ?? null).toBeNull();
+  });
+
+  it("self-heals a flagged row once the missing split is recorded", async () => {
+    // Reproduce the flagged state...
+    await repo.ingestLedgerEvents([buy(12, 900, "2024-01-01"), sell(50, "2024-07-31")], "devuser");
+    expect((await nvda())?.dataQuality).toBe("inconsistent_history");
+
+    // ...then record the split that explains the oversell.
+    await repo.ingestLedgerEvents([splitEvt(10, 1, "2024-06-10")], "devuser");
+    const healed = await nvda();
+    expect(healed?.quantity).toBe(70); // 120 rebased − 50 sold
+    expect(healed?.dataQuality).toBeNull();
+  });
+
+  it("dedups a re-recorded same-date split (numerator/denominator excluded from the fingerprint)", async () => {
+    await repo.ingestLedgerEvents([buy(10, 900, "2024-01-01")], "devuser");
+    await repo.ingestLedgerEvents([splitEvt(10, 1, "2024-06-10")], "devuser");
+    const second = await repo.ingestLedgerEvents([splitEvt(10, 1, "2024-06-10")], "devuser");
+    expect(second.inserted).toBe(0);
+    expect(second.deduplicated).toBe(1);
+    // The split applied exactly once — not squared (×100).
+    expect((await nvda())?.quantity).toBe(100);
+  });
+});
+
+describe("replaceLedgerFromFile — reconciles holdings to the new source of truth (FIX-876)", () => {
+  const msftBuy = (): LedgerEventInput =>
+    evt({ type: "buy", ticker: "MSFT", quantity: 5, unitPrice: 200, amount: -1000, tradeDate: "2024-01-02" });
+
+  it("drops a ledger-derived position the reset file no longer carries", async () => {
+    await repo.ingestLedgerEvents([buy(10, 100, "2024-01-01"), msftBuy()], "devuser");
+    const before = await repo.getPortfolio("devuser");
+    expect(before.holdings.map((h) => h.ticker).sort()).toEqual(["MSFT", "NVDA"]);
+
+    // Reset to a file that carries only NVDA — MSFT's materialized row must go
+    // (its trade history was wiped and the new source doesn't back it).
+    await repo.replaceLedgerFromFile("acc-1", "devuser", [buy(10, 100, "2024-01-01")]);
+    const after = await repo.getPortfolio("devuser");
+    expect(after.holdings.map((h) => h.ticker)).toEqual(["NVDA"]);
+  });
+});

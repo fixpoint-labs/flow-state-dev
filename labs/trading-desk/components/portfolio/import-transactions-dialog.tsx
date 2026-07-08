@@ -26,11 +26,14 @@ import {
 } from "@/src/flows/portfolio/transaction-file";
 import type { AccountState } from "@/src/flows/portfolio/portfolio-schema";
 
-/** What the parent needs to dispatch `importTransactions`. */
+/** What the parent needs to dispatch `importTransactions`. `mode: "replace"`
+ *  (FIX-876) wipes the account's ledger before repopulating; `"append"` is the
+ *  non-destructive default. */
 export type TransactionImportSubmit = {
   accountId: string;
   content: string;
   filename: string | null;
+  mode: "append" | "replace";
 };
 
 type ImportTransactionsDialogProps = {
@@ -61,6 +64,10 @@ export function ImportTransactionsDialog({
   const [content, setContent] = useState("");
   const [filename, setFilename] = useState<string | null>(null);
   const [preview, setPreview] = useState<TransactionFileParse | null>(null);
+  // Reset-account mode (FIX-876): a destructive full wipe, gated behind a typed
+  // `REPLACE` confirmation (the CSV `replace-account` precedent).
+  const [mode, setMode] = useState<"append" | "replace">("append");
+  const [replaceConfirm, setReplaceConfirm] = useState("");
   // Monotonic token for the in-flight file parse. Choosing a new file bumps it;
   // a parse completion only applies if it's still the latest (so a slow parse of
   // an earlier file can't clobber a newer selection).
@@ -80,6 +87,8 @@ export function ImportTransactionsDialog({
       setContent("");
       setFilename(null);
       setPreview(null);
+      setMode("append");
+      setReplaceConfirm("");
     }
   }, [open, defaultAccountId, accounts]);
 
@@ -119,11 +128,14 @@ export function ImportTransactionsDialog({
   };
 
   const eventCount = preview?.events.length ?? 0;
-  const canImport = accountId.length > 0 && eventCount > 0;
+  // A replace requires the exact typed `REPLACE` confirmation before it can fire
+  // (it destroys the account's manual entries — a real-money guard).
+  const replaceConfirmed = mode === "append" || replaceConfirm.trim() === "REPLACE";
+  const canImport = accountId.length > 0 && eventCount > 0 && replaceConfirmed;
 
   const handleSubmit = (): void => {
     if (!canImport) return;
-    onSubmit({ accountId, content, filename });
+    onSubmit({ accountId, content, filename, mode });
     onClose();
   };
 
@@ -196,6 +208,63 @@ export function ImportTransactionsDialog({
               {filename ?? "no file selected"}
             </span>
           </div>
+
+          {/* Import mode (FIX-876). Append is the safe default; replace wipes the
+              account's ledger first (manual entries included), behind a typed
+              REPLACE confirmation. */}
+          <fieldset className="flex flex-col gap-1.5">
+            <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+              Import mode
+            </span>
+            <label className="flex items-start gap-2 text-[11px] text-[color:var(--c-fg)]">
+              <input
+                type="radio"
+                name="import-mode"
+                checked={mode === "append"}
+                onChange={() => setMode("append")}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">Append</span> — add these transactions,
+                de-duplicating any already recorded.
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-[11px] text-[color:var(--c-fg)]">
+              <input
+                type="radio"
+                name="import-mode"
+                checked={mode === "replace"}
+                onChange={() => setMode("replace")}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">Reset account</span> — wipe this
+                account's entire ledger, then repopulate from this file.
+              </span>
+            </label>
+          </fieldset>
+
+          {mode === "replace" ? (
+            <div className="space-y-1.5 rounded-md border border-[color:var(--c-warn)] px-3 py-2">
+              <p className="font-mono text-[10.5px] text-[color:var(--c-warn)]">
+                ⚠ This removes ALL transactions for this account, including manual
+                entries (recorded splits, corrections). They will NOT be restored.
+              </p>
+              <label className="flex flex-col gap-1">
+                <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+                  Type REPLACE to confirm
+                </span>
+                <input
+                  value={replaceConfirm}
+                  onChange={(e) => setReplaceConfirm(e.currentTarget.value)}
+                  className={cn(inputClass, "max-w-[160px]")}
+                  placeholder="REPLACE"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+            </div>
+          ) : null}
 
           {preview ? (
             <div className="space-y-1.5 rounded-md border border-[color:var(--c-border)] bg-[color:var(--c-surface-2)] px-3 py-2">

@@ -25,6 +25,7 @@ function holding(over: Partial<Holding> = {}): Holding {
     assetClass: "equity",
     assetType: "equity",
     attributes: { kind: "none" },
+    dataQuality: null,
     ...over,
   };
 }

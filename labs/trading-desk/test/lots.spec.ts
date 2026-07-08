@@ -35,6 +35,7 @@ function row(overrides: Partial<LedgerRow>): LedgerRow {
     externalId: null,
     description: null,
     basisUnknown: null,
+    attributes: null,
     voidedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -174,5 +175,104 @@ describe("deriveLots — same-day ordering", () => {
     expect(aapl?.quantity).toBe(10);
     expect(aapl?.avgCost).toBe(200);
     expect(aapl?.acquiredDate).toBe("2026-03-01");
+  });
+});
+
+/** A `split` event: no share delta / cash — carries a numerator:denominator ratio. */
+function split(numerator: number, denominator: number, over: Partial<LedgerRow> = {}): LedgerRow {
+  return row({
+    type: "split",
+    quantity: null,
+    unitPrice: null,
+    amount: 0,
+    attributes: { numerator, denominator },
+    ...over,
+  });
+}
+
+describe("deriveLots — stock splits (FIX-876)", () => {
+  it("rebases open lots by the ratio and divides basis, preserving the acquired date", () => {
+    const { positions } = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 10, unitPrice: 900 }),
+      split(10, 1, { tradeDate: "2024-06-10" }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    expect(aapl?.quantity).toBe(100); // 10 × 10
+    expect(aapl?.avgCost).toBe(90); // 900 ÷ 10
+    // The holding period is unchanged by a split (IRS rule) — earliest lot date holds.
+    expect(aapl?.acquiredDate).toBe("2024-01-01");
+  });
+
+  it("supports a reverse split (1-for-10): fewer shares, higher basis", () => {
+    const { positions } = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 100, unitPrice: 5 }),
+      split(1, 10, { tradeDate: "2024-06-10" }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    expect(aapl?.quantity).toBe(10); // 100 × 0.1
+    expect(aapl?.avgCost).toBe(50); // 5 ÷ 0.1
+  });
+
+  it("applies the split BEFORE same-day trades (no double-adjust)", () => {
+    // The split is effective at the open, so a same-day post-split buy is already
+    // in post-split units and must NOT be rebased. Only the pre-split lot scales.
+    const { positions } = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 10, unitPrice: 900 }), // pre-split lot
+      split(10, 1, { tradeDate: "2024-06-10" }),
+      row({ tradeDate: "2024-06-10", quantity: 5, unitPrice: 90 }), // same-day post-split buy
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    // 10×10 (rebased) + 5 (not re-scaled) = 105.
+    expect(aapl?.quantity).toBe(105);
+  });
+
+  it("lets a post-split sell consume the rebased lots correctly", () => {
+    const { positions, oversold } = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+      split(10, 1, { tradeDate: "2024-06-10" }),
+      row({ type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    // 12×10 = 120 rebased shares, minus a 50-share post-split sell = 70.
+    expect(aapl?.quantity).toBe(70);
+    expect(oversold.has("AAPL")).toBe(false);
+  });
+
+  it("flags OVERSOLD when a post-split sell exceeds the un-split holding, and clears it once the split is recorded", () => {
+    // The FIX-876 root cause: 12 pre-split shares, a 50-share post-split sell. With
+    // NO split, FIFO over-sells (only 12 held) → no position AND an oversold signal.
+    const withoutSplit = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+      row({ type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+    ]);
+    expect(withoutSplit.positions.find((p) => p.ticker === "AAPL")).toBeUndefined();
+    expect(withoutSplit.oversold.has("AAPL")).toBe(true);
+
+    // Recording the split explains the gap: the position derives and oversold clears.
+    const withSplit = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+      split(10, 1, { tradeDate: "2024-06-10" }),
+      row({ type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+    ]);
+    expect(withSplit.positions.find((p) => p.ticker === "AAPL")?.quantity).toBe(70);
+    expect(withSplit.oversold.has("AAPL")).toBe(false);
+  });
+
+  it("a split with no open lots for the ticker is a harmless no-op", () => {
+    const { positions } = deriveLots([split(10, 1, { tradeDate: "2024-06-10" })]);
+    expect(positions.find((p) => p.ticker === "AAPL")).toBeUndefined();
+  });
+
+  it("NVDA 10-for-1: a pre-split holding derives to exactly its post-split share count", () => {
+    // The acceptance shape: applying the 10× split to the pre-split trades
+    // reconstructs the true post-split position (the real WF: Investing Accounts
+    // NVDA nets to 121.9346 shares).
+    const { positions } = deriveLots([
+      row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 12.19346, unitPrice: 900 }),
+      split(10, 1, { ticker: "NVDA", tradeDate: "2024-06-10" }),
+    ]);
+    const nvda = positions.find((p) => p.ticker === "NVDA");
+    expect(nvda?.quantity).toBeCloseTo(121.9346, 4);
+    expect(nvda?.avgCost).toBeCloseTo(90, 6); // 900 ÷ 10
   });
 });
