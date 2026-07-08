@@ -11,6 +11,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  canonicalTickerKey,
   classifyInstrument,
   isOccOptionSymbol,
 } from "../src/flows/portfolio/classify-instrument";
@@ -248,5 +249,33 @@ describe("classifyInstrument — known bond ETFs (fixed_income, not equity)", ()
     expect(classifyInstrument("BND", { assetTypeHint: "etf" }).assetClass).toBe(
       "fixed_income",
     );
+  });
+});
+
+describe("classifyInstrument — OCC option date validation (FIX-773 review)", () => {
+  it("parses a standard OCC option (valid expiry)", () => {
+    const r = classifyInstrument("AAPL240621C00190000");
+    expect(r.assetType).toBe("option");
+    expect(r.attributes).toMatchObject({ kind: "option", expiry: "2024-06-21", strike: 190 });
+  });
+
+  it("rejects an impossible expiry (Feb 31) rather than persisting a bad date", () => {
+    // `240231` → 2024-02-31, which `Date` would silently coerce to Mar 2. The
+    // parser must fall through (not an option) instead of stamping a bad expiry.
+    expect(isOccOptionSymbol("AAPL240231C00190000")).toBe(false);
+    const r = classifyInstrument("AAPL240231C00190000");
+    expect(r.assetType).not.toBe("option");
+  });
+});
+
+describe("canonicalTickerKey — OCC dedup key (FIX-773 review)", () => {
+  it("collapses the space-padded OCC form to the compact form", () => {
+    expect(canonicalTickerKey("AAPL  240621C00190000")).toBe("AAPL240621C00190000");
+    expect(canonicalTickerKey("aapl240621c00190000")).toBe("AAPL240621C00190000");
+  });
+
+  it("leaves a normal ticker / CUSIP unchanged (trim + upper only)", () => {
+    expect(canonicalTickerKey(" nvda ")).toBe("NVDA");
+    expect(canonicalTickerKey("912828yk0")).toBe("912828YK0");
   });
 });

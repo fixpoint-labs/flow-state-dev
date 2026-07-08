@@ -17,7 +17,12 @@
  */
 import type { AssetType, CanonicalRow } from "./portfolio-schema";
 import { assetTypeSchema } from "./portfolio-schema";
-import { classifyInstrument, isImportableSymbol } from "./classify-instrument";
+import {
+  canonicalTickerKey,
+  classifyInstrument,
+  isImportableSymbol,
+  validMarkPrice,
+} from "./classify-instrument";
 
 /** The CSV-mappable canonical columns. The taxonomy fields `assetClass` /
  *  `attributes` are NOT parsed from CSV (they are re-derived by the classifier);
@@ -240,10 +245,13 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
      *  duplicate rows share a ticker ⇒ share a classification). Null → the
      *  classifier infers from the symbol shape. */
     assetTypeHint: AssetType | null;
-    /** First non-null `markPrice`-column value seen for this ticker (FIX-773
-     *  Slice C). Fed as the classifier's `price` so a bond/option regains its
-     *  carried statement mark; null → the mark stays null (the bond shows "—"). */
-    markPrice: number | null;
+    /** Quantity-weighted carried mark (FIX-773 Slice C): Σ(qty_i × mark_i) and
+     *  Σ(qty_i) over rows that supplied a `markPrice`. The merged mark is their
+     *  ratio, so `mergedQuantity × mark` reconstructs the summed statement value
+     *  even when duplicate lots of the same bond/option carry slightly different
+     *  marks (rounding / per-lot value÷quantity). Null when no row had a mark. */
+    markWeightedSum: number;
+    markWeightQty: number;
     rowCount: number;
   };
   const byTicker = new Map<string, Acc>();
@@ -254,7 +262,10 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
     const raw = nonEmpty[r];
     const cells = splitCsvLine(raw);
 
-    const rawTicker = (cells[indices.ticker] ?? "").trim().toUpperCase();
+    // Canonicalize before keying: an OCC option's compact and space-padded
+    // spellings collapse to one key, so the same contract can't import as two
+    // holdings and double-count (a normal ticker/CUSIP is unchanged).
+    const rawTicker = canonicalTickerKey(cells[indices.ticker] ?? "");
     // Accept a normal exchange ticker OR an OCC option symbol (18–21 chars, which
     // the equity regex rejects) so an option row reaches the classifier instead of
     // being dropped as "invalid ticker" — the PDF confirm path serializes option
@@ -326,7 +337,8 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
         costWeightQty: costBasis === null ? 0 : quantity,
         acquiredDate,
         assetTypeHint,
-        markPrice,
+        markWeightedSum: markPrice === null ? 0 : quantity * markPrice,
+        markWeightQty: markPrice === null ? 0 : quantity,
         rowCount: 1,
       });
     } else {
@@ -346,9 +358,11 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
       if (existing.assetTypeHint === null && assetTypeHint !== null) {
         existing.assetTypeHint = assetTypeHint;
       }
-      // First non-null mark wins (same ticker ⇒ same carried mark).
-      if (existing.markPrice === null && markPrice !== null) {
-        existing.markPrice = markPrice;
+      // Quantity-weight the carried mark across merged lots (same discipline as
+      // cost basis) so the summed statement value survives differing per-lot marks.
+      if (markPrice !== null) {
+        existing.markWeightedSum += quantity * markPrice;
+        existing.markWeightQty += quantity;
       }
       existing.rowCount += 1;
     }
@@ -361,14 +375,29 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
     }
     const costBasis =
       acc.costWeightQty > 0 ? acc.costWeightedSum / acc.costWeightQty : null;
+    const mark =
+      acc.markWeightQty > 0 ? acc.markWeightedSum / acc.markWeightQty : null;
+    // Detection price for shape inference: the carried mark, else the cost basis.
+    // A brokerage CSV rarely has the nonstandard `markPrice` column, so a sweep /
+    // money-market fund (SPAXX) whose ~$1.00 price landed in the cost column is
+    // still detected as money_market (the XX + ~$1 rule). Cost is used ONLY as a
+    // detection signal — it is NEVER persisted as a bond/option mark (overridden
+    // below), so it can't masquerade as a current mark.
+    const detectionPrice = mark ?? costBasis;
     // FIX-773 Slice B: classify the merged row once from its ticker (+ the
     // optional type-column hint). Same ticker ⇒ same classification, so a single
     // classify call covers the merged accumulator.
     const { assetClass, assetType, attributes } = classifyInstrument(acc.ticker, {
       assetTypeHint: acc.assetTypeHint,
-      // FIX-773 Slice C: re-derive the bond/option mark from the carried column.
-      price: acc.markPrice,
+      price: detectionPrice,
     });
+    // A bond/option mark comes ONLY from the `markPrice` column (the quantity-
+    // weighted mark), never the cost basis — mirror the PDF path so cost can't be
+    // stored as a current mark.
+    const markedAttributes =
+      attributes.kind === "bond" || attributes.kind === "option"
+        ? { ...attributes, markPrice: validMarkPrice(mark) }
+        : attributes;
     rows.push({
       ticker: acc.ticker,
       quantity: acc.quantity,
@@ -376,7 +405,7 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
       acquiredDate: acc.acquiredDate,
       assetClass,
       assetType,
-      attributes,
+      attributes: markedAttributes,
     });
   }
 

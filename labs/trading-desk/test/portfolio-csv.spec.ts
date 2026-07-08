@@ -225,3 +225,56 @@ describe("parsePortfolioCsv", () => {
     ).toBe(true);
   });
 });
+
+describe("parsePortfolioCsv — FIX-773 review fixes", () => {
+  it("detects a money-market fund from a plain price column (no markPrice column)", () => {
+    // A raw brokerage export: SPAXX at $1.00 in the standard `price` column (which
+    // maps to costBasis). With no `markPrice` column, the ~$1.00 must still drive
+    // money-market detection so the row values at par and joins the cash guard —
+    // not stored as equity and sent through the live-quote path.
+    const csv = "ticker,quantity,price\nSPAXX,1500,1.00";
+    const { rows } = parsePortfolioCsv(csv);
+    const spaxx = rows.find((r) => r.ticker === "SPAXX");
+    expect(spaxx?.assetClass).toBe("cash");
+    expect(spaxx?.assetType).toBe("money_market");
+    expect(spaxx?.attributes).toEqual({ kind: "cash_equivalent" });
+  });
+
+  it("never stores a bond's cost basis as its carried mark", () => {
+    // A bond CUSIP with a cost column but no markPrice column: the cost must NOT
+    // masquerade as a current mark (the mark stays null → the row shows "—").
+    const csv = "ticker,quantity,costBasis\n912828YK0,10,98.5";
+    const { rows } = parsePortfolioCsv(csv);
+    const bond = rows.find((r) => r.ticker === "912828YK0");
+    expect(bond?.assetType).toBe("bond");
+    expect(bond?.attributes).toMatchObject({ kind: "bond", markPrice: null });
+    expect(bond?.costBasis).toBe(98.5);
+  });
+
+  it("keys an OCC option to one holding across compact and space-padded spellings", () => {
+    // The SAME contract in both spellings must merge to one holding, or NAV and
+    // position counts double-count it.
+    const csv =
+      "ticker,quantity,markPrice\n" +
+      "AAPL240621C00190000,2,12.40\n" +
+      "AAPL  240621C00190000,3,12.40";
+    const { rows, warnings } = parsePortfolioCsv(csv);
+    const opts = rows.filter((r) => r.assetType === "option");
+    expect(opts).toHaveLength(1);
+    expect(opts[0].ticker).toBe("AAPL240621C00190000");
+    expect(opts[0].quantity).toBe(5);
+    expect(warnings.some((w) => w.includes("merged"))).toBe(true);
+  });
+
+  it("quantity-weights the carried mark when merging duplicate bond lots", () => {
+    // Two lots of the same CUSIP with slightly different marks: the merged mark is
+    // quantity-weighted so `mergedQty × mark` reconstructs the summed value.
+    // (10 × 98) + (30 × 99) = 3950 over 40 units → 98.75.
+    const csv =
+      "ticker,quantity,markPrice\n912828YK0,10,98\n912828YK0,30,99";
+    const { rows } = parsePortfolioCsv(csv);
+    const bond = rows.find((r) => r.ticker === "912828YK0");
+    expect(bond?.quantity).toBe(40);
+    expect(bond?.attributes).toMatchObject({ kind: "bond", markPrice: 98.75 });
+  });
+});

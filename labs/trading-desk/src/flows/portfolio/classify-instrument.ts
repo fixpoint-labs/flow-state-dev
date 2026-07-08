@@ -133,12 +133,16 @@ function parseOccOption(
   const yy = yymmdd.slice(0, 2);
   const mm = yymmdd.slice(2, 4);
   const dd = yymmdd.slice(4, 6);
-  const month = Number(mm);
-  const day = Number(dd);
-  // Reject impossible calendar fields — fall through rather than emit a bad date.
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-
   const expiry = `20${yy}-${mm}-${dd}`;
+  // Reject an impossible calendar date (an OCR/CSV typo like `...0231...` →
+  // `2024-02-31`). Bounding day 1–31 isn't enough — `Date` coerces `2024-02-31`
+  // to March 2, so require the constructed date to ROUND-TRIP (the `parseIsoDate`
+  // discipline). A malformed symbol falls through rather than persisting a bad
+  // expiry on the option attributes.
+  const dt = new Date(`${expiry}T00:00:00Z`);
+  if (Number.isNaN(dt.getTime()) || dt.toISOString().slice(0, 10) !== expiry) {
+    return null;
+  }
   const strike = Number(strikeRaw) / 1000;
   return {
     kind: "option",
@@ -161,6 +165,18 @@ function parseOccOption(
  *  "invalid ticker" before it is ever classified. */
 export function isOccOptionSymbol(symbol: string): boolean {
   return parseOccOption(symbol.trim().toUpperCase(), null) !== null;
+}
+
+/** Canonicalize a symbol for use as the import / dedup / storage key. An OCC
+ *  option has two equivalent spellings — compact (`AAPL240621C00190000`) and the
+ *  21-char space-padded form (`AAPL  240621C00190000`) — which MUST collapse to
+ *  one key, or the same contract imports as two holdings and double-counts in NAV
+ *  and position counts. The compact form is canonical (internal padding removed);
+ *  every non-OCC symbol is returned trimmed/upper-cased unchanged (a normal
+ *  ticker/CUSIP carries no internal spaces). */
+export function canonicalTickerKey(symbol: string): string {
+  const normalized = symbol.trim().toUpperCase();
+  return isOccOptionSymbol(normalized) ? normalized.replace(/ /g, "") : normalized;
 }
 
 /** Whether a symbol can transit the CSV import transport — the shape
