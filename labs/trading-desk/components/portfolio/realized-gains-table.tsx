@@ -22,12 +22,7 @@ import {
   computeRealizedGainTotals,
   type RealizedGainRowModel,
 } from "./realized-gains-row-model";
-import {
-  DASH,
-  formatMoney,
-  formatQuantity,
-  formatSignedMoney,
-} from "./portfolio-format";
+import { formatMoney, formatQuantity, formatSignedMoney } from "./portfolio-format";
 
 type RealizedGainsTableProps = {
   /** Realized-gain rows already filtered to the account by the caller. */
