@@ -439,15 +439,54 @@ should own into app space — and each point of friction is a signpost. This
 section is the record the productization spec and the workforce-conventions
 writeup should be written against.
 
+### L0 — A workstream is exactly one session; a session is its substrate
+
+The keystone (settled 2026-07-02, after the vet). A workstream does not span
+sessions — the moment you ask "what workstreams exist, and how do I message
+one," you have described the session API (list sessions, address a session,
+dispatch an action, read its state). A cross-session workstream would be a
+container spanning containers, and managing it would rebuild session
+management under a second name. So:
+
+> A workstream is bound to **exactly one session**. That session IS its
+> identity, durability, inbox, and lifecycle. The workstream is the *shape*
+> of the work; the session is the *container and address*.
+
+Direction that matters: every workstream is one session (not every session is
+a full workstream — a plain chat is a session you didn't structure as one;
+the degenerate workstream-of-one and a chat session are the same substrate).
+
+Consequences that fall out:
+
+- **Multiple concurrent efforts = multiple sessions**, managed by existing
+  session infrastructure. "List my workstreams" is `listSessions`; "send to
+  workstream X" is `sendAction(sessionId, …)`. Addressing is free.
+- **Collaboration across workstreams is data sharing, not a shared board.**
+  Two session-bound workstreams (a "build" in session A, a "review" in
+  session B) share artifacts through a **user/org-scoped resource**; their
+  boards stay isolated. "Hand off to workstream B" = write a shared resource
+  or dispatch an action into B's session. Expressible with existing scopes —
+  no new primitive.
+- **The envelope is session state; the scratchpad is session content** (see
+  L4). Nothing crosses the session boundary except explicitly-shared
+  user/org resources.
+
+This *closes* two concept-doc open questions (§9): "two sessions, one
+workstream" (doesn't exist) and "membership continuity across workstreams"
+(becomes shared user/org resources). And it deletes "durable board across
+sessions" from the deferred ceiling entirely — that work no longer exists.
+What remains deferred is durable *background advancement within one session*
+(work continuing while the user is away) — a smaller, different thing.
+
 ### L1 — A workstream is a durable process with an interaction protocol
 
 The prototype's actions are the tell: `start` posts a goal, `decide` posts a
 verdict, `resolve` posts a task output, `advance` posts nothing — and all of
 them run the identical advance loop. That's not N actions; it's ONE protocol:
 
-> workstream = a durable, identified, session-lived process + a uniform
-> surface: **post** (task / guidance / goal revision), **resolve** (complete
-> an external task), **advance**, **snapshot**. Every interaction is a post
+> workstream = a durable, session-bound process (L0) + a uniform surface:
+> **post** (task / guidance / goal revision), **resolve** (complete an
+> external task), **advance**, **snapshot**. Every interaction is a post
 > followed by an advance; the request is just the vehicle.
 
 "Durable" means more than resumable-after-interruption: the process exists
@@ -528,19 +567,38 @@ the current request need it to finish*:
 
 ### Phase A — the standalone pattern (FSD)
 
-The earlier "workstream() returns a sequencer you paste into actions" sketch
-is the PROTOTYPE's shape, not the feature's. The real shape is a process
-definition that GENERATES its interaction surface:
+A workstream compiles to a real FSD **flow** (the prototype proved this
+literally: `workstream-vet` is a flow in the kitchen-sink registry —
+actions, session-scoped resources, the works). So `defineWorkstream` is a
+**flow factory**, and the "workstream() returns a sequencer you paste into
+actions" sketch was the PROTOTYPE's shape, not the feature's.
+
+The split that makes it a factory rather than one fixed flow:
+
+- **Pre-built and uniform** (framework-owned, identical for every
+  workstream): the *protocol* — the post/resolve/advance/snapshot actions,
+  the standardized envelope state, and the advance loop. This is what a
+  generic inspector and a universal `blockedOnYou` render against.
+- **Yours** (varies per workstream): the *content* — team, strategy, the
+  `doneWhen`/`replan` slots, the workspace shape.
 
 ```
 defineWorkstream({ goal, strategy, team | executor, doneWhen?, replan?, workspace? })
-  → standard actions auto-exposed: post / resolve / advance / snapshot
-  → standardized envelope state; content + journal for everything else
+  → returns a FLOW: post / resolve / advance / snapshot actions,
+    session-scoped board + workspace resources, the standardized envelope
+  → you register it in your app like any flow (`flows: { myWorkstream }`)
 ```
 
+Three layers, each a thinner skin over the one below (the gradient the
+conventions sit on): `defineWorkstream` (the flow) → `workstream()` (the
+advance-loop-over-a-board pattern, `packages/patterns`) → `taskBoard` +
+strategies. Customization ladder: take a shipped default → fill slots via
+`defineWorkstream` → eject to raw `defineFlow` + blocks.
+
 Scope: the factory + the L5 punch-list, on-demand/foreground only. Durable
-BACKGROUND advancement stays the deferred ceiling — nothing in the vet
-forced it forward.
+BACKGROUND advancement (work continuing *within one session* while the user
+is away) stays the deferred ceiling — nothing in the vet forced it forward,
+and per L0 there is no cross-session ceiling at all.
 
 ### Phase B — the workforce conventions (workstream at the center)
 
@@ -559,12 +617,22 @@ The learnings simplify Phase B:
 - "Nudge a running workstream by posting" is the same surface a runtime
   executor (and the roster-introspection work) would use — the seam we
   agreed to name-not-build now has a concrete shape.
+- **"Always there by default" is a Phase-B property, not a Phase-A one.** The
+  conventions layer may auto-mount a default workstream (the degenerate
+  single-agent front door) so the 90% author defines nothing; at the library
+  level you always `defineWorkstream` explicitly — no auto-magic in the
+  primitive, or you can't reason about which flows exist.
+- **A workstream IS a session** (L0), so managing/listing/messaging
+  workstreams is the session API — the conventions layer exposes efforts as
+  sessions, and multiple concurrent efforts are multiple sessions.
 
 ### Not established (honesty ledger)
 
 Multi-member concurrency under real contention, event gates, the dynamic
 executor, model-quality behavior (drafter mocked), durable background
-advancement. None block Phase A's on-demand scope; all stay named-deferred.
+advancement *within a session*. None block Phase A's on-demand scope; all
+stay named-deferred. Cross-session workstreams are not deferred — per L0 they
+are out of the model entirely (collaboration is shared user/org resources).
 
 ## Follow-ups on green (not part of the vet)
 
