@@ -11,4 +11,4 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| 2026-07-08 | 561d855a (pre-FIX-855 commit; run against the FIX-855 working tree) | N/A — model-free | PASS | Real `serve()` host (`@flow-state-dev/node`) + real MCP transport adapter (`@flow-state-dev/mcp`) + PGlite-executor `postgresStores` (durable `prod` profile, real schema init) over the loopback socket. `create_concept` in request A; a separate request B's `read_concept` carried the held-out passphrase and `list_concepts` carried the id; unauthenticated `tools/call` returned 401. |
+| 2026-07-08 | d2267af0 | N/A — model-free | PASS | Real `serve()` host (`@flow-state-dev/node`) + real MCP transport adapter (`@flow-state-dev/mcp`) + PGlite-executor `postgresStores` (durable `prod` profile, real schema init) over the loopback socket. `create_concept` in request A; a separate request B's `read_concept` carried the held-out passphrase and `list_concepts` carried the id; unauthenticated `tools/call` returned 401. |
