@@ -137,7 +137,18 @@ function collectGeneratorItems(
       }
     } else if (item.type === "tool_output") {
       const to = item as ToolOutputItem;
-      if (to.toolCall.generatorBlock !== undefined) toolOutputs.push(to);
+      // Scope to THIS generator's logical path, not any generator's output. A
+      // `tool_output` carries its owning generator's `blockInstanceId` as
+      // provenance, so two generators in one request that happen to share a
+      // provider call id can't cross-contaminate: without this, a pending call
+      // could consume another generator's completed output and skip re-entering
+      // the approved tool.
+      if (
+        to.toolCall.generatorBlock !== undefined &&
+        logicalIdOfInstance(to.provenance?.blockInstanceId ?? "") === generatorLogicalId
+      ) {
+        toolOutputs.push(to);
+      }
     }
   }
   artifacts.sort((a, b) => a.stepNumber - b.stepNumber);

@@ -252,6 +252,25 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
     expect(r.resumeStep?.stepNumber).toBe(1);
   });
 
+  it("ignores another generator's tool_output that shares a call id (cross-generator scope)", () => {
+    // Two generators in one request that happen to share a provider call id.
+    // The OTHER generator's completed output must not satisfy THIS generator's
+    // pending gate — otherwise the approved tool is silently skipped.
+    const foreign = {
+      ...(toolOutput("g", "gate", "completed", { output: "FOREIGN", modelOutput: "FOREIGN", itemIndex: 200 }) as any),
+      provenance: { blockName: "other", blockInstanceId: `${REQ}:root/step[1]:0`, phase: "main" },
+    } as RuntimeItem;
+    const items = [
+      stepArtifact(0, [{ toolCallId: "g", toolName: "gate", alias: "gate" }]),
+      foreign,
+      toolOutput("g", "gate", "failed", { errorCode: "SUSPENSION", itemIndex: 5 }),
+    ];
+    const r = run(items, gateLogical(0, "gate", "g"))!;
+    // The pending gate must re-enter, NOT be classified completed from the
+    // foreign generator's output.
+    expect(r.resumeStep?.calls[0]?.kind).toBe("pending");
+  });
+
   it("treats a crash-persisted in_progress tool_output as incomplete → re-run, not a model error", () => {
     // A crash mid-tool leaves `item.added` (in_progress) but never `item.done`.
     // The call must re-run on resume (like the absent case), NOT be surfaced to
