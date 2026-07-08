@@ -342,6 +342,25 @@ describe("deriveLots — stock splits (FIX-876)", () => {
     expect(events).toHaveLength(2);
   });
 
+  it("previewSplitResult returns null when the ratio leaves a residual buy open but STILL over-sells", () => {
+    // The subtle case: a too-small split leaves the ticker oversold, but a later
+    // buy clamps its way to a residual open position. `materializePositions` flags
+    // this as inconsistent_history (oversold wins over the residual), so recording
+    // the split would NOT heal the row — the preview must not show a reconciled
+    // position nor enable confirm. 12 pre-split, 2:1 → 24, a 50-share sell (still
+    // over-sells), then a 60-share buy leaves 60 open but oversold stays true.
+    const preview = previewSplitResult(
+      [
+        row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+        row({ ticker: "NVDA", type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+        row({ ticker: "NVDA", tradeDate: "2024-08-01", quantity: 60, unitPrice: 120 }),
+      ],
+      "NVDA",
+      { numerator: 2, denominator: 1, tradeDate: "2024-06-10" },
+    );
+    expect(preview).toBeNull();
+  });
+
   it("previewSplitResult returns null when the candidate ratio still leaves an over-sell", () => {
     // A 2:1 split only doubles 12 → 24 shares, still short of the 50-share sell.
     const preview = previewSplitResult(

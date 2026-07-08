@@ -313,14 +313,20 @@ export function inferSplit(events: LedgerRow[], ticker: string): InferredSplit |
  * (FIX-876 auto-resolve preview). Pure: re-runs `deriveLots` with a synthetic
  * split appended, so the "Resolve split" UI can show the resulting share count +
  * average cost live as the user adjusts the ratio/date — the "verify the amount
- * before you confirm" gate. Returns null when the ticker still doesn't derive a
- * position (e.g. the ratio is too small and the over-sell persists).
+ * before you confirm" gate. Returns null when the candidate would NOT heal the
+ * flagged row — either the ticker still derives no position, OR it is still
+ * `oversold`. The oversold check mirrors `materializePositions`' authority rule:
+ * an oversold ticker materializes FLAGGED regardless of a later residual buy, so
+ * a ratio that clamps its way to a residual open position while still over-selling
+ * must not show a reconciled preview nor enable confirm (recording it wouldn't
+ * clear the flag).
  */
 export function previewSplitResult(
   events: LedgerRow[],
   ticker: string,
   split: InferredSplit,
 ): DerivedPosition | null {
-  const { positions } = deriveLots([...events, syntheticSplitRow(ticker, split)]);
+  const { positions, oversold } = deriveLots([...events, syntheticSplitRow(ticker, split)]);
+  if (oversold.has(ticker)) return null;
   return positions.find((p) => p.ticker === ticker) ?? null;
 }
