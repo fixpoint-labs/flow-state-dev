@@ -67,3 +67,25 @@ export function computeToolAliases(names: string[]): Map<string, string> {
   }
   return aliases;
 }
+
+/**
+ * Throws when two tools in `names` share an EXACT identical name. Distinct
+ * names that merely collide on sanitization (`foo.bar` vs `foo/bar` →
+ * `foo_bar`/`foo_bar_2`) are legitimate and disambiguated by
+ * `computeToolAliases` — this only rejects the unresolvable case where two
+ * tool blocks carry the same `.name`, which would collapse to one entry in
+ * the framework-owned loop's name/alias-keyed maps and run the wrong tool /
+ * reply under the wrong call. Mirrors the router's unique-route-name
+ * validation. `context` names the owning generator in the error.
+ */
+export function assertUniqueToolNames(names: string[], context: string): void {
+  const seen = new Set<string>();
+  for (const name of names) {
+    if (seen.has(name)) {
+      throw new Error(
+        `${context} has two tools named "${name}". Tool names must be unique within a generator.`
+      );
+    }
+    seen.add(name);
+  }
+}

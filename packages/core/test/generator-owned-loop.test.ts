@@ -529,6 +529,171 @@ describe("generator owned step loop — non-streaming", () => {
     });
   });
 
+  it("throws when built with two tools sharing an identical name", async () => {
+    // Exact-duplicate names are unresolvable (the owned loop keys its toolset
+    // by name/alias, collapsing them to one entry). Reject with a clear error
+    // naming the generator and the duplicated name. Distinct names that only
+    // collide on sanitization are fine (covered by the collision test above).
+    const dupA = handler({
+      name: "same-name",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+    });
+    const dupB = handler({
+      name: "same-name",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: false }),
+    });
+
+    const block = generator({
+      name: "dup-tools-gen",
+      model: stepModel([() => ({ text: "x", finishReason: "stop" })]).model,
+      prompt: "p",
+      tools: [dupA, dupB],
+    });
+
+    await expect(runForTest(block, {}, createMockContext())).rejects.toThrow(
+      /Generator "dup-tools-gen" has two tools named "same-name"/
+    );
+  });
+
+  it("allows the SAME tool instance appearing twice (capability preset overlap)", async () => {
+    // Capability presets can contribute the same tool object through two
+    // presets (e.g. a skills catalog + a feature-flag preset). Identical
+    // instances are one tool — dedupe by reference, don't reject.
+    const shared = handler({
+      name: "shared-tool",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+    });
+
+    const { model } = stepModel([() => ({ text: "ok", finishReason: "stop" })]);
+
+    const block = generator({
+      name: "dup-ref-gen",
+      model,
+      prompt: "p",
+      tools: [shared, shared],
+    });
+
+    await expect(runForTest(block, {}, createMockContext())).resolves.toBe("ok");
+  });
+
+  it("does not execute a tool the step deactivated via prepareStep.activeTools", async () => {
+    // Dynamic tools: step 0 exposes [alpha, beta]; before step 1 the tools
+    // resolver drops `beta`, so prepareStep.activeTools narrows to [alpha].
+    // If the model still calls `beta`, the owned loop must surface a
+    // model-visible unknown-tool error and NOT run it (the legacy SDK path
+    // only advertised active tools and rejected out-of-set calls).
+    let resolveCount = 0;
+    const alphaRuns = vi.fn();
+    const betaRuns = vi.fn();
+    const alpha = handler({
+      name: "alpha",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => {
+        alphaRuns();
+        return { ok: true };
+      },
+    });
+    const beta = handler({
+      name: "beta",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => {
+        betaRuns();
+        return { ok: true };
+      },
+    });
+
+    const { model, seen } = stepModel([
+      // Step 0: model calls alpha (active) → runs, loop continues.
+      () => ({
+        toolCalls: [{ toolCallId: "a1", toolName: "alpha", args: {} }],
+        finishReason: "tool-calls",
+      }),
+      // Step 1: model calls beta, which was deactivated for this step.
+      () => ({
+        toolCalls: [{ toolCallId: "b1", toolName: "beta", args: {} }],
+        finishReason: "tool-calls",
+      }),
+      () => ({ text: "done", finishReason: "stop" }),
+    ]);
+
+    const block = generator({
+      name: "active-tools-gen",
+      model,
+      prompt: "p",
+      // Dynamic resolver: first call returns both tools, later calls drop beta.
+      tools: () => {
+        resolveCount += 1;
+        return resolveCount <= 1 ? [alpha, beta] : [alpha];
+      },
+    });
+
+    await expect(runForTest(block, {}, createMockContext())).resolves.toBe("done");
+    expect(alphaRuns).toHaveBeenCalledTimes(1);
+    // Deactivated tool must never run.
+    expect(betaRuns).not.toHaveBeenCalled();
+
+    // Step 1's active-tool dictionary excludes beta, and the stale beta call
+    // surfaced a model-visible unknown-tool error. Step 2's input accumulates
+    // every prior tool result, so select beta's by its call id.
+    expect(seen[1]!.tools!.map((t) => t.name)).toEqual(["alpha"]);
+    const betaResult = toolMessages(seen[2]!.messages)
+      .map((m) => (m.content as Array<Record<string, unknown>>)[0]!)
+      .find((p) => p.toolCallId === "b1")!;
+    expect(betaResult.output).toEqual({
+      type: "error-text",
+      value: 'Model called unknown tool "beta"',
+    });
+  });
+
+  it("continues past a deferred provider-only step (finishReason tool-calls) to the terminal text", async () => {
+    // A deferred provider tool (AI SDK v7 supportsDeferredResults) returns a
+    // provider-executed call whose result isn't ready this turn, with
+    // finishReason "tool-calls" — the model expects another step. FSD has no
+    // framework call to run, but the step is NOT terminal, so the loop must
+    // carry the raw turn forward and continue rather than returning undefined.
+    const rawAssistant1 = {
+      role: "assistant",
+      content: [
+        { type: "tool-call", toolCallId: "d1", toolName: "deferred_search", input: { q: "x" } },
+      ],
+    };
+
+    const { model, seen } = stepModel([
+      () => ({
+        toolCalls: [
+          { toolCallId: "d1", toolName: "deferred_search", args: { q: "x" }, providerExecuted: true },
+        ],
+        // Deferred: result not ready → NOT terminal.
+        finishReason: "tool-calls",
+        responseMessages: [rawAssistant1],
+      }),
+      () => ({ text: "final answer", finishReason: "stop" }),
+    ]);
+
+    const block = generator({
+      name: "deferred-provider-gen",
+      model,
+      prompt: "p",
+      search: true,
+    });
+
+    const result = await runForTest(block, {}, createMockContext());
+    expect(result).toBe("final answer");
+    // Two steps consumed — the loop did NOT terminate on the deferred step.
+    expect(seen.length).toBe(2);
+    // The raw provider turn was carried into the second step's messages.
+    const step2 = seen[1]!.messages as Array<Record<string, unknown>>;
+    expect(step2).toContainEqual(rawAssistant1);
+  });
+
   it("aggregates per-step usage into one onGeneratorModelResult report", async () => {
     const echo = handler({
       name: "echo",

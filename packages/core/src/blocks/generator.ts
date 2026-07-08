@@ -58,7 +58,7 @@ import type {
 
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
-import { sanitizeToolName, computeToolAliases } from "../helpers/tool-name";
+import { sanitizeToolName, computeToolAliases, assertUniqueToolNames } from "../helpers/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
   objectFormHasNestedFunction,
@@ -1229,12 +1229,22 @@ function partitionStepCalls(
  */
 async function executeOwnedStepToolCalls(
   calls: GeneratorModelToolCall[],
-  toolset: OwnedLoopToolset
+  toolset: OwnedLoopToolset,
+  activeToolNames: string[] | undefined
 ): Promise<SettledToolCall[]> {
   return Promise.all(
     calls.map(async (call): Promise<SettledToolCall> => {
       const entry = toolset.byName.get(call.toolName) ?? toolset.byAlias.get(call.toolName);
-      if (entry === undefined) {
+      // A call that resolves to no tool (hallucinated) OR to a tool the step
+      // deactivated via `prepareStep.activeTools` is surfaced as a
+      // model-visible unknown-tool error and NOT executed — matching the
+      // legacy SDK path, which only advertised the active tools to the model
+      // and rejected calls outside that set.
+      const inactive =
+        entry !== undefined &&
+        activeToolNames !== undefined &&
+        !activeToolNames.includes(entry.block.name);
+      if (entry === undefined || inactive) {
         return {
           call,
           ok: false,
@@ -1492,14 +1502,20 @@ async function runOwnedGenerateLoop(params: {
 
     const calls = remapStepToolCalls(step.toolCalls, toolset) ?? [];
     // Provider-executed calls (web search etc.) ran server-side and are not
-    // FSD's to run; only framework calls gate continuation and get executed.
+    // FSD's to run; only framework calls gate execution.
     const { frameworkCalls } = partitionStepCalls(calls);
 
-    if (frameworkCalls.length === 0 || !params.runTools) {
-      // Final step from FSD's view — no framework calls to run (provider-only
-      // steps included), or `loop.runTools: false` surfaces the calls and
-      // TERMINATES (no tool-result messages are ever produced when tools
-      // aren't run, so looping on would feed an orphaned tool turn).
+    // `loop.runTools: false` surfaces the calls and TERMINATES unconditionally
+    // (no tool-result messages are ever produced when tools aren't run, so
+    // looping would feed an orphaned tool turn).
+    // Otherwise, break only when there are no framework calls to run AND the
+    // step is TERMINAL. A provider-only step with `finishReason: "tool-calls"`
+    // (a DEFERRED provider tool whose result isn't ready this turn) is NOT
+    // terminal — fall through so its raw assistant turn (carrying the provider
+    // call+result via responseMessages) is appended and the loop continues,
+    // matching the SDK-owned loop. maxSteps still bounds it.
+    const isTerminalStep = step.finishReason !== "tool-calls";
+    if (!params.runTools || (frameworkCalls.length === 0 && isTerminalStep)) {
       steps.push({
         text: step.text,
         toolCalls: calls.length > 0 ? calls : undefined,
@@ -1509,7 +1525,7 @@ async function runOwnedGenerateLoop(params: {
       break;
     }
 
-    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset);
+    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset, activeToolNames);
     messages = [...messages, ...(await buildOwnedStepMessages(step, settled, ctx))];
     steps.push({
       text: step.text,
@@ -2052,9 +2068,14 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
 
     const calls = stepFinal?.toolCalls ?? [];
     // Provider-executed calls (web search etc.) ran server-side and are not
-    // FSD's to run; only framework calls gate continuation and get executed.
+    // FSD's to run; only framework calls gate execution. Break only when
+    // `!runTools` (unconditional) or there are no framework calls AND the step
+    // is TERMINAL — a deferred provider-only step (`finishReason: "tool-calls"`)
+    // falls through so its raw turn is carried and the loop continues (bounded
+    // by maxSteps). See the non-streaming twin for the full rationale.
     const { frameworkCalls } = partitionStepCalls(calls);
-    if (frameworkCalls.length === 0 || !runTools) {
+    const isTerminalStep = stepFinal?.finishReason !== "tool-calls";
+    if (!runTools || (frameworkCalls.length === 0 && isTerminalStep)) {
       steps.push({
         text: stepFinal?.text,
         toolCalls: calls.length > 0 ? calls : undefined,
@@ -2064,7 +2085,7 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
       break;
     }
 
-    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset);
+    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset, activeToolNames);
 
     // Completed tool_call_progress items for successful calls, synthesized
     // through the same handler the legacy stream's `tool_result` chunks use.
@@ -2331,7 +2352,26 @@ export function generator<
       }
 
       const autoDescribe = normalizedConfig.describeTools !== false;
-      const toolBlocks = await resolveTools(normalizedConfig.tools, input, ctx);
+      const resolvedToolBlocks = await resolveTools(normalizedConfig.tools, input, ctx);
+      // Dedupe by object identity first: capability presets can contribute the
+      // SAME tool instance twice (e.g. a tool present in both a skills catalog
+      // and a feature-flag preset), which is harmless — it's one tool. Only
+      // then reject exact-duplicate NAMES across DISTINCT blocks: the
+      // framework-owned loop keys its toolset by name/alias, so two different
+      // blocks sharing a `.name` would collapse to one entry and run the wrong
+      // tool. Checked here — the earliest point the full resolved set (user +
+      // capability + dynamic tools) is known; generator tools are
+      // resolver-driven, so unlike the router's static routes this can't be a
+      // pure construction-time check. Sanitization-collisions (`foo.bar` vs
+      // `foo/bar`) are NOT rejected — `computeToolAliases` disambiguates those.
+      const seenToolRefs = new Set<GeneratorTool>();
+      const toolBlocks: GeneratorTool[] = [];
+      for (const t of resolvedToolBlocks) {
+        if (seenToolRefs.has(t)) continue;
+        seenToolRefs.add(t);
+        toolBlocks.push(t);
+      }
+      assertUniqueToolNames(toolBlocks.map((t) => t.name), `Generator "${blockName}"`);
 
       const promptFileBrand = getPromptFileBrand(normalizedConfig.prompt);
       const configMeta: PromptFileConfigMeta = {
