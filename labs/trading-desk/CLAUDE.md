@@ -608,7 +608,14 @@ filing-grade. Full methodology in [`docs/tax-estimate.md`](docs/tax-estimate.md)
 - **Limitations (v1).** FIFO only; sell-only realization; no wash sales /
   corporate actions / NIIT; dividends assumed qualified; flat state rate;
   display-approximation (JS-number) figures; multi-currency excluded from the
-  estimate.
+  estimate. Two proceeds-unknown edges, both import-only (the marker is written
+  at import time): an OFX no-proceeds sell imported BEFORE this release was
+  stored as `amount:0` with no marker — indistinguishable from a genuine $0 sale,
+  so the backfill derives it as a real capital loss and it can't be reclassified
+  post-hoc without mis-nulling genuine $0 sales; and correcting a placeholder
+  needs a VOID + re-record, not a re-import (the corrected row shares the
+  `(account, source, externalId)` dedup key and dedups away). A
+  void-and-reimport correction path is the tracked follow-up (FIX-878).
 
 ## Per-position thesis records (FIX-760)
 

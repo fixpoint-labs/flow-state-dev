@@ -46,6 +46,21 @@ A disposal contributes to the ST/LT tax buckets **only when `gain !== null` AND
 `term !== "unknown"`**. Everything else is surfaced honestly (as excluded
 proceeds in the estimate), never zeroed.
 
+> **Two proceeds-unknown caveats — the marker is import-time, so it only
+> protects rows imported by this release onward:**
+>
+> 1. **Legacy no-proceeds sells.** An OFX sell missing both `TOTAL` and
+>    `UNITPRICE` imported *before* this release was stored as `amount: 0` with no
+>    marker — byte-identical to a genuine $0 sale. The backfill therefore derives
+>    it as a real $0-proceeds disposal (a full capital loss). It can't be
+>    reclassified after the fact: any "amount 0 → unknown" heuristic would also
+>    wrongly null genuine $0 sales.
+> 2. **Correcting a placeholder needs a void, not a re-import.** A corrected OFX
+>    row carries the same `(account, source, externalId)` as its placeholder and
+>    dedups away (`ON CONFLICT DO NOTHING`), so re-importing the fixed file does
+>    not lift the exclusion. Void the placeholder and record the corrected
+>    disposal. A void-and-reimport correction path is a tracked follow-up.
+
 ## Income by year
 
 `getIncomeSummaryByYear` is the year-dimensioned parallel to the all-time
