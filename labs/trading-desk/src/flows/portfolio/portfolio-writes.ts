@@ -174,11 +174,17 @@ export async function recordManualEvent(
 ): Promise<IngestReport> {
   const ticker =
     input.ticker === null ? null : input.ticker.trim().toUpperCase() || null;
+  // A sell's proceeds are cash IN — non-negative by the ledger sign convention
+  // (buy `−`, sell `+`). The dialog takes a user-signed amount, so a sale entered
+  // with a negative amount would trip the share-event invariant (FIX-874) and
+  // silently fail to record. Canonicalize the sign here — the OFX importer's
+  // `Math.abs(total)` precedent — so the manual path and the invariant agree.
+  const amount = input.type === "sell" ? Math.abs(input.amount) : input.amount;
   // `proceedsUnknown` is import-only (a feed normalizer's signal that a file
   // couldn't supply proceeds). Force it null on the manual path so a caller can't
   // null out a real sale's proceeds by hand.
   return repo.ingestLedgerEvents(
-    [{ ...input, ticker, source: "manual", externalId: null, proceedsUnknown: null }],
+    [{ ...input, amount, ticker, source: "manual", externalId: null, proceedsUnknown: null }],
     userId,
   );
 }
