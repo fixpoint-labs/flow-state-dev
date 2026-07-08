@@ -15,7 +15,7 @@ import type {
 } from "../types";
 import { makeSchemaStrict } from "./makeSchemaStrict";
 import { applyCaching } from "./caching";
-import { sanitizeToolName } from "../helpers/tool-name";
+import { sanitizeToolName, ensureUniqueAlias } from "../helpers/tool-name";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
 
@@ -234,23 +234,10 @@ function sanitizeToolNamesInMessages(messages: unknown[]): unknown[] {
   return out ?? messages;
 }
 
-// Two distinct framework names can sanitize to the same alias (e.g.
-// `tf.memory/recall` and `tf-memory-recall` both → `tf_memory_recall`).
-// Disambiguate by appending the smallest numeric suffix that's unused in
-// the dictionary we've built so far.
-function ensureUniqueAlias(
-  candidate: string,
-  compiled: Record<string, unknown>
-): string {
-  if (!Object.prototype.hasOwnProperty.call(compiled, candidate)) {
-    return candidate;
-  }
-  let suffix = 2;
-  while (Object.prototype.hasOwnProperty.call(compiled, `${candidate}_${suffix}`)) {
-    suffix += 1;
-  }
-  return `${candidate}_${suffix}`;
-}
+// Alias disambiguation lives in `helpers/tool-name.ts` (`ensureUniqueAlias`,
+// `computeToolAliases`) so the framework-owned generator step loop can
+// pre-compute the exact aliases this adapter assigns. See the seam note on
+// `computeToolAliases`.
 
 function normalizeFinishReason(value: unknown): string | undefined {
   if (typeof value === "string") {
@@ -589,6 +576,23 @@ function extractProviderModelId(result: Record<string, unknown>): string | undef
   return typeof id === "string" && id.length > 0 ? id : undefined;
 }
 
+/**
+ * Extracts a step's RAW response messages (`step.response.messages`, v7's
+ * `ModelMessage[]` for the step's assistant turn + any SDK-executed tool
+ * results). Surfaced as `GeneratorModelResult.responseMessages` — the
+ * live-fidelity carrier the framework-owned step loop appends verbatim so
+ * reasoning/thinking parts (and their provider signatures) round-trip
+ * between steps. Deliberately NOT alias-translated: these messages go back
+ * to the model, so they must keep the model-facing tool aliases.
+ */
+function extractResponseMessages(
+  step: Record<string, unknown> | undefined
+): unknown[] | undefined {
+  const response = asRecord(step?.response);
+  const messages = response?.messages;
+  return Array.isArray(messages) && messages.length > 0 ? messages : undefined;
+}
+
 function normalizeGenerateResult(
   result: Record<string, unknown>,
   toolNameMap?: ToolNameMap
@@ -618,7 +622,8 @@ function normalizeGenerateResult(
     usage: normalizeUsage(result.usage, rawProviderMeta),
     providerMetadata: asProviderMetadata(rawProviderMeta),
     steps: normalizeSteps(result.steps, toolNameMap),
-    sources: normalizeSources(result.sources)
+    sources: normalizeSources(result.sources),
+    responseMessages: extractResponseMessages(finalStep)
   };
 }
 
@@ -659,7 +664,8 @@ function normalizeFinishChunk(
       finishReason,
       usage,
       providerMetadata: asProviderMetadata(rawProviderMeta),
-      sources: normalizeSources(final.sources)
+      sources: normalizeSources(final.sources),
+      responseMessages: extractResponseMessages(step)
     }
   };
 }
@@ -852,7 +858,26 @@ function createGeneratorModelFromAiSdk(
   resolveLanguageModel?: ResolveAiSdkLanguageModel,
   identityHints?: WrapAiSdkModelIdentityHints
 ): GeneratorModel {
-  return {
+  /**
+   * Enforce the single-step contract for `generateStep`/`streamStep`: strip
+   * any `execute` closure so the SDK cannot run framework tools inside the
+   * call. With no executable tools and no `stopWhen` override (the step
+   * option bag has no `maxSteps`), `generateText`/`streamText` run exactly
+   * one provider step and return the step's tool calls unexecuted — a
+   * `tool-calls` finish is a normal return, not an error (structured-output
+   * parsing only fires on a `stop` finish; the lazy `output` getter is
+   * guarded by `normalizeStructuredOutput`).
+   */
+  const asStepOptions = (
+    options: Parameters<NonNullable<GeneratorModel["generateStep"]>>[0]
+  ): Parameters<GeneratorModel["generate"]>[0] => ({
+    ...options,
+    tools: options.tools?.map((tool) =>
+      tool.execute === undefined ? tool : { ...tool, execute: undefined }
+    ),
+  });
+
+  const model: GeneratorModel = {
     modelId,
 
     async generate(options): Promise<GeneratorModelResult> {
@@ -1116,6 +1141,16 @@ function createGeneratorModelFromAiSdk(
       return mapToProviderSearchTool(providerName, tools as Record<string, unknown>, config);
     }
   };
+
+  // Single-step methods for the framework-owned tool loop. Delegate to the
+  // multi-step implementations with the step option bag (no `maxSteps`, no
+  // `prepareStep`), which compiles to a request without `stopWhen` — the
+  // SDK's default `isStepCount(1)` then guarantees exactly one provider
+  // model call per invocation. See `asStepOptions` for the no-execute guard.
+  model.generateStep = (options) => model.generate(asStepOptions(options));
+  model.streamStep = (options) => model.stream!(asStepOptions(options));
+
+  return model;
 }
 
 /**

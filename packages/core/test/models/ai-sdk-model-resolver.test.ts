@@ -1055,3 +1055,116 @@ describe("createAiSdkModelResolver — toModelOutput bridge (AI SDK 7 tool-resul
     expect(JSON.stringify(secondPrompt)).not.toContain("the full structured payload\",\"id\"");
   });
 });
+
+describe("createAiSdkModelResolver — single-step methods (generateStep / streamStep)", () => {
+  const usage = {
+    inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+    outputTokens: { total: 4, text: 4, reasoning: undefined },
+  };
+
+  it("generateStep makes exactly one provider call and returns tool calls unexecuted on a tool-calls finish", async () => {
+    // The owned loop passes tools WITHOUT execute; the step call must return
+    // the requested calls without running anything and without erroring on
+    // finishReason "tool-calls" — even with a structured output schema set
+    // (output parsing only fires on a "stop" finish; the lazy `output`
+    // getter is guarded).
+    const mockModel = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [
+          { type: "tool-call", toolCallId: "call_1", toolName: "lookup", input: '{"q":"x"}' },
+        ],
+        finishReason: { unified: "tool-calls", raw: undefined },
+        usage,
+        warnings: [],
+      }),
+    });
+
+    const model = wrapAiSdkModel(mockModel);
+    const result = await model.generateStep!({
+      messages: [{ role: "user", content: "go" }],
+      tools: [{ name: "lookup", description: "d", parameters: z.object({ q: z.string() }) }],
+      outputSchema: z.object({ answer: z.string() }),
+    });
+
+    expect(mockModel.doGenerateCalls.length).toBe(1);
+    expect(result.toolCalls).toEqual([
+      { toolCallId: "call_1", toolName: "lookup", args: { q: "x" } },
+    ]);
+    expect(result.structuredOutput).toBeUndefined();
+    expect(result.finishReason).toBe("tool-calls");
+  });
+
+  it("generateStep strips execute so the SDK cannot run framework tools inside the step", async () => {
+    const executed: unknown[] = [];
+    const mockModel = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [
+          { type: "tool-call", toolCallId: "call_1", toolName: "lookup", input: '{"q":"x"}' },
+        ],
+        finishReason: { unified: "tool-calls", raw: undefined },
+        usage,
+        warnings: [],
+      }),
+    });
+
+    const model = wrapAiSdkModel(mockModel);
+    await model.generateStep!({
+      messages: [{ role: "user", content: "go" }],
+      tools: [
+        {
+          name: "lookup",
+          parameters: z.object({ q: z.string() }),
+          execute: async (args) => {
+            executed.push(args);
+            return { ok: true };
+          },
+        },
+      ],
+    });
+
+    expect(mockModel.doGenerateCalls.length).toBe(1);
+    expect(executed).toEqual([]);
+  });
+
+  it("streamStep runs a single provider step and finishes with the step's fullResult", async () => {
+    const mockModel = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({
+              type: "tool-call",
+              toolCallId: "s1",
+              toolName: "lookup",
+              input: '{"q":"x"}',
+            } as any);
+            controller.enqueue({
+              type: "finish",
+              finishReason: { unified: "tool-calls", raw: undefined },
+              usage,
+            } as any);
+            controller.close();
+          },
+        }),
+      }),
+    });
+
+    const model = wrapAiSdkModel(mockModel);
+    const chunks: Array<{ type: string }> = [];
+    for await (const chunk of model.streamStep!({
+      messages: [{ role: "user", content: "go" }],
+      tools: [{ name: "lookup", parameters: z.object({ q: z.string() }) }],
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(mockModel.doStreamCalls.length).toBe(1);
+    const finish = chunks.at(-1) as {
+      type: string;
+      fullResult?: { toolCalls?: unknown[] };
+    };
+    expect(finish.type).toBe("finish");
+    expect(finish.fullResult?.toolCalls).toEqual([
+      { toolCallId: "s1", toolName: "lookup", args: { q: "x" } },
+    ]);
+  });
+});

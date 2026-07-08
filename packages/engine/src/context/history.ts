@@ -27,6 +27,11 @@ import type {
 } from "@flow-state-dev/core/items";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
 import { sanitizeToolName } from "@flow-state-dev/core/helpers";
+import {
+  buildAssistantToolCallMessage,
+  buildToolResultMessage,
+  failedToolResultText,
+} from "@flow-state-dev/core/models";
 import type { RequestRecord } from "../stores/types";
 
 /**
@@ -100,7 +105,7 @@ export function itemToLLMMessages(item: OutputItem | BlockTraceItem, allItems: r
   if (item.type === "tool_output") {
     const bto = item as ToolOutputItem;
     const resultText = bto.status === "failed" && bto.error
-      ? `Tool "${bto.toolCall.name}" failed: ${bto.error.message}`
+      ? failedToolResultText(bto.toolCall.name, bto.error.message)
       : typeof bto.output === "string"
         ? bto.output
         : JSON.stringify(bto.output);
@@ -111,26 +116,19 @@ export function itemToLLMMessages(item: OutputItem | BlockTraceItem, allItems: r
     // block name. Items written before the `alias` field existed fall back
     // to deriving it from `name`; once those have aged out, the fallback can
     // be removed.
+    //
+    // The call/result pair is built via the shared visibility-agnostic
+    // builders in `@flow-state-dev/core/models` — the same mapping the
+    // framework-owned generator step loop uses for its live inter-step
+    // messages. This wrapper keeps the history-visibility gate (above) and
+    // the replay-specific text shaping; only the message construction is
+    // shared. History always replays results as a `text` payload (failed
+    // calls included), the shape persisted sessions were built against.
     const replayName = bto.toolCall.alias ?? sanitizeToolName(bto.toolCall.name);
+    const call = { toolCallId: bto.toolCall.callId, toolName: replayName };
     return [
-      {
-        role: "assistant",
-        content: [{
-          type: "tool-call",
-          toolCallId: bto.toolCall.callId,
-          toolName: replayName,
-          input
-        }]
-      },
-      {
-        role: "tool",
-        content: [{
-          type: "tool-result",
-          toolCallId: bto.toolCall.callId,
-          toolName: replayName,
-          output: { type: "text", value: resultText }
-        }]
-      }
+      buildAssistantToolCallMessage([{ ...call, input }]),
+      buildToolResultMessage(call, { type: "text", value: resultText })
     ];
   }
 

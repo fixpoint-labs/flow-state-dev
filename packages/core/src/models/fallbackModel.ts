@@ -173,6 +173,76 @@ async function executeWithFallback<T>(
   );
 }
 
+/**
+ * Streaming fallback loop shared by `stream` and `streamStep`: try each
+ * candidate once, in order; a candidate that fails BEFORE yielding its first
+ * chunk falls through to the next one, while an error after content has been
+ * emitted surfaces (a restart would duplicate already-yielded output).
+ * `pickStream` selects which streaming method to run per candidate
+ * (`model.stream` or `model.streamStep`); candidates without it are skipped.
+ */
+async function* executeStreamWithFallback(
+  models: FallbackModelEntry[],
+  defaults: ModelGroupDefaults | undefined,
+  groupName: string,
+  onResolved: ((entry: FallbackModelEntry) => void) | undefined,
+  pickStream: (
+    model: GeneratorModel
+  ) => GeneratorModel["stream"] | GeneratorModel["streamStep"],
+  options: Record<string, unknown>
+): AsyncGenerator<GeneratorModelStreamChunk> {
+  const errors: Array<{ modelId: string; error: Error }> = [];
+
+  for (let i = 0; i < models.length; i++) {
+    const entry = models[i]!;
+    const streamFn = pickStream(entry.model);
+    if (!streamFn) continue;
+
+    let yieldedFirstChunk = false;
+    try {
+      const merged = mergeDefaults(options, defaults, entry.providerName);
+      for await (const chunk of streamFn.call(
+        entry.model,
+        merged as Parameters<NonNullable<GeneratorModel["stream"]>>[0]
+      )) {
+        if (!yieldedFirstChunk) {
+          yieldedFirstChunk = true;
+          onResolved?.(entry);
+        }
+        yield chunk;
+      }
+      return;
+    } catch (error) {
+      const err =
+        error instanceof Error ? error : new Error(String(error));
+      errors.push({ modelId: entry.modelId, error: err });
+
+      // Provider-load failure: the lazy loader rejected while
+      // executing the candidate's package, before anything streamed.
+      // The install is broken for THIS candidate only — skip to the
+      // next one, mirroring the generate loop. Guarded on "no chunk
+      // yielded" so an error after content has been emitted still
+      // surfaces instead of silently restarting on another model.
+      if (!yieldedFirstChunk && isProviderLoadError(error)) {
+        continue;
+      }
+
+      if (!isRetryableError(error)) {
+        throw error;
+      }
+      // Retryable — fall back to next model
+    }
+  }
+
+  // If we get here, all streaming models failed with retryable errors
+  const summary = errors
+    .map((e) => `  ${e.modelId}: ${e.error.message}`)
+    .join("\n");
+  throw new Error(
+    `All streaming models in group "${groupName}" failed:\n${summary}`
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -181,6 +251,13 @@ async function executeWithFallback<T>(
  * Creates a GeneratorModel that tries models in order with retry-per-model.
  * On retryable errors, retries the current model up to `maxAttemptsPerModel`,
  * then falls back to the next model in the list.
+ *
+ * Single-step methods (`generateStep`/`streamStep`) are exposed only when
+ * EVERY candidate implements them: the framework-owned step loop picks its
+ * path once per run, and a group that advertised step support but had a
+ * step-less candidate would silently drop that candidate from fallback.
+ * (`stream` keeps its historical some-semantics — step-less candidates are
+ * skipped inside the loop.)
  */
 export function createFallbackModel(config: FallbackModelConfig): GeneratorModel {
   const { models, defaults, retryPolicy, groupName, onResolved } = config;
@@ -194,6 +271,8 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
   }
 
   const hasStreamSupport = models.some((m) => m.model.stream !== undefined);
+  const hasGenerateStepSupport = models.every((m) => m.model.generateStep !== undefined);
+  const hasStreamStepSupport = models.every((m) => m.model.streamStep !== undefined);
 
   return {
     modelId: `fsd:${groupName}`,
@@ -210,58 +289,42 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
     },
 
     stream: hasStreamSupport
-      ? async function* stream(
-          options: Parameters<NonNullable<GeneratorModel["stream"]>>[0]
-        ): AsyncGenerator<GeneratorModelStreamChunk> {
-          // For streaming, try each model once. If it fails before yielding
-          // its first chunk, fall back to the next model.
-          const errors: Array<{ modelId: string; error: Error }> = [];
+      ? (options: Parameters<NonNullable<GeneratorModel["stream"]>>[0]) =>
+          executeStreamWithFallback(
+            models,
+            defaults,
+            groupName,
+            onResolved,
+            (model) => model.stream,
+            options
+          )
+      : undefined,
 
-          for (let i = 0; i < models.length; i++) {
-            const entry = models[i]!;
-            if (!entry.model.stream) continue;
+    // Per-candidate retry/default-merge/onResolved wrapping identical to
+    // `generate`; a candidate's failure falls through to the next model.
+    generateStep: hasGenerateStepSupport
+      ? async (options): Promise<GeneratorModelResult> =>
+          executeWithFallback(
+            models,
+            retryPolicy,
+            groupName,
+            (model, entry) =>
+              model.generateStep!(mergeDefaults(options, defaults, entry.providerName)),
+            onResolved
+          )
+      : undefined,
 
-            let yieldedFirstChunk = false;
-            try {
-              const merged = mergeDefaults(options, defaults, entry.providerName);
-              for await (const chunk of entry.model.stream(merged)) {
-                if (!yieldedFirstChunk) {
-                  yieldedFirstChunk = true;
-                  onResolved?.(entry);
-                }
-                yield chunk;
-              }
-              return;
-            } catch (error) {
-              const err =
-                error instanceof Error ? error : new Error(String(error));
-              errors.push({ modelId: entry.modelId, error: err });
-
-              // Provider-load failure: the lazy loader rejected while
-              // executing the candidate's package, before anything streamed.
-              // The install is broken for THIS candidate only — skip to the
-              // next one, mirroring the generate loop. Guarded on "no chunk
-              // yielded" so an error after content has been emitted still
-              // surfaces instead of silently restarting on another model.
-              if (!yieldedFirstChunk && isProviderLoadError(error)) {
-                continue;
-              }
-
-              if (!isRetryableError(error)) {
-                throw error;
-              }
-              // Retryable — fall back to next model
-            }
-          }
-
-          // If we get here, all streaming models failed with retryable errors
-          const summary = errors
-            .map((e) => `  ${e.modelId}: ${e.error.message}`)
-            .join("\n");
-          throw new Error(
-            `All streaming models in group "${groupName}" failed:\n${summary}`
-          );
-        }
+    // Before-first-chunk fallback semantics identical to `stream`.
+    streamStep: hasStreamStepSupport
+      ? (options: Parameters<NonNullable<GeneratorModel["streamStep"]>>[0]) =>
+          executeStreamWithFallback(
+            models,
+            defaults,
+            groupName,
+            onResolved,
+            (model) => model.streamStep,
+            options
+          )
       : undefined,
 
     resolveSearchTool(config: GeneratorSearchConfig) {

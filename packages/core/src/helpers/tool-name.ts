@@ -19,3 +19,51 @@ const TOOL_NAME_ALIAS_PATTERN = /[^a-zA-Z0-9_-]/g;
 export function sanitizeToolName(name: string): string {
   return name.replace(TOOL_NAME_ALIAS_PATTERN, "_");
 }
+
+/**
+ * Two distinct framework names can sanitize to the same alias (e.g.
+ * `tf.memory/recall` and `tf-memory-recall` both → `tf_memory_recall`).
+ * Disambiguate by appending the smallest numeric suffix that's unused in
+ * the dictionary built so far. `taken` is the set of aliases already
+ * assigned (the AI SDK adapter passes its compiled tool dictionary).
+ */
+export function ensureUniqueAlias(
+  candidate: string,
+  taken: Record<string, unknown>
+): string {
+  if (!Object.prototype.hasOwnProperty.call(taken, candidate)) {
+    return candidate;
+  }
+  let suffix = 2;
+  while (Object.prototype.hasOwnProperty.call(taken, `${candidate}_${suffix}`)) {
+    suffix += 1;
+  }
+  return `${candidate}_${suffix}`;
+}
+
+/**
+ * Computes the model-facing alias for each framework tool name, in order,
+ * using the exact `sanitizeToolName` + `ensureUniqueAlias` sequence the AI
+ * SDK adapter applies when compiling its tool dictionary. This is the alias
+ * seam between the framework-owned generator step loop and the adapter: the
+ * loop pre-renames the tools it passes to each step call with these aliases
+ * (so the adapter's own alias pass is a no-op and the dictionary is stable
+ * across steps), and builds inter-step tool-call / tool-result messages
+ * under the same aliases — bare re-sanitization would drop the
+ * `ensureUniqueAlias` suffix and mis-correlate colliding names.
+ *
+ * Returns a map from framework tool name → disambiguated alias. Duplicate
+ * input names keep the first occurrence's alias (a tool list with duplicate
+ * names is invalid upstream).
+ */
+export function computeToolAliases(names: string[]): Map<string, string> {
+  const aliases = new Map<string, string>();
+  const taken: Record<string, true> = {};
+  for (const name of names) {
+    if (aliases.has(name)) continue;
+    const alias = ensureUniqueAlias(sanitizeToolName(name), taken);
+    taken[alias] = true;
+    aliases.set(name, alias);
+  }
+  return aliases;
+}

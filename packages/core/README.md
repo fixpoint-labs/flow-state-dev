@@ -489,6 +489,14 @@ pnpm --filter @flow-state-dev/core test
 - [Resources](https://flow-state.dev/docs/resources/overview) — Data containers and derived client views
 
 
+## Custom model adapters (`GeneratorModel`)
+
+A generator's model resolves to a `GeneratorModel` — the adapter contract between the framework and a provider SDK. The required surface is `generate(options)` (one call that may run a multi-step tool loop internally via `maxSteps`) plus the optional `stream(options)`.
+
+Two optional single-step methods let the framework own the tool loop instead (`generateStep(options)` and `streamStep(options)`): each call performs **exactly one provider model call**, receives tools *without* `execute` (the framework runs tool calls itself and feeds results back as messages on the next step), and returns that step's assistant turn. Adapters can also surface the step's raw provider response messages on the result (`responseMessages`) so reasoning/thinking content round-trips verbatim between steps. The built-in AI-SDK adapter and `createFallbackModel` groups implement both; when a model lacks them (a hand-rolled test mock, an older adapter), generators fall back to the SDK-driven loop automatically. Implement the step methods in a custom adapter to get framework-owned loop semantics — one model call per step, framework-side tool execution, and (in an upcoming change) durable suspension inside the tool loop, which requires a step-capable model.
+
+Two adapter helpers are shared through `@flow-state-dev/core/helpers`: `sanitizeToolName` (provider-safe tool names) and `computeToolAliases` (the sanitize-then-dedupe pass that keeps two colliding tool names distinct in the model-facing dictionary — the generator pre-applies it, so adapters see stable, unique names).
+
 ## Model intents
 
 Generators reference a model with a string. The string can be:
