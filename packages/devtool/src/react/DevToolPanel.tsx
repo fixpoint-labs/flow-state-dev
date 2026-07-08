@@ -212,17 +212,25 @@ function PanelContent({ className }: { className?: string }) {
   // streams in, so SessionContextPanel and its ResourcesPanel can re-fetch
   // the server-side view in step with the runtime. Tracked by count so a
   // batch of N new mutations triggers exactly one refresh cycle per render.
+  // Scans `liveItems` too (not just the watched `streamItems`) so a mutation
+  // that arrives via a per-row Continue action's own stream (FIX-865) — which
+  // only populates `liveItems`, not `streamItems` — also triggers a refresh.
   const lastStateMutationCountRef = useRef(0);
   useEffect(() => {
     let count = 0;
     for (const item of streamItems) {
       if (item.type === "state_change" || item.type === "resource_change") count++;
     }
+    for (const items of liveItems.values()) {
+      for (const item of items) {
+        if (item.type === "state_change" || item.type === "resource_change") count++;
+      }
+    }
     if (count !== lastStateMutationCountRef.current) {
       lastStateMutationCountRef.current = count;
       if (count > 0) setStateRefreshKey((k) => k + 1);
     }
-  }, [streamItems]);
+  }, [streamItems, liveItems]);
 
   // Live mode wants to subscribe to an external in-progress request. Drop any
   // partial liveItems for it so polled `req.items` show through cleanly if SSE
@@ -288,10 +296,12 @@ function PanelContent({ className }: { className?: string }) {
         duration: req.completedAtMs && req.startedAtMs ? req.completedAtMs - req.startedAtMs : undefined,
         items: liveItems.get(req.id) ?? req.items ?? [],
         // `req.items` (from `listSessionRequests({ includeItems: true })`) is
-        // the raw, uncollapsed log already — only a live SSE-driven view
-        // (`liveRawItems`, populated by the Continue action) needs its own
-        // raw copy tracked separately from the canonical `items` above.
-        rawItems: liveRawItems.get(req.id) ?? req.items ?? [],
+        // the raw, uncollapsed log already — but it's the polled snapshot, so
+        // it can be empty/stale while a request is actively streaming. A
+        // per-row Continue action's own stream (`liveRawItems`) takes
+        // priority; for the watched main-stream request, fall back to the
+        // live `streamState.rawItems` (trace-inclusive) before the polled list.
+        rawItems: liveRawItems.get(req.id) ?? (isWatched ? streamState?.rawItems : undefined) ?? req.items ?? [],
         source: req.source,
         metadata: req.metadata,
       });
@@ -303,7 +313,7 @@ function PanelContent({ className }: { className?: string }) {
         status: liveStreamStatus ?? "in_progress",
         startedAt: Date.now(),
         items: liveItems.get(activeRequestId) ?? [],
-        rawItems: liveRawItems.get(activeRequestId) ?? [],
+        rawItems: liveRawItems.get(activeRequestId) ?? streamState?.rawItems ?? [],
       });
     }
     return groups;
@@ -354,6 +364,10 @@ function PanelContent({ className }: { className?: string }) {
     flowKind: activeFlowKind,
     sessionId: effectiveSessionId,
     onItems: handleContinueItems,
+    // The row's status in `requests` (polled) is stale the moment the
+    // continuation settles (terminal status, or a non-streaming 202
+    // fallback) — refresh so it stops reading `interrupted`.
+    onSettled: () => void refreshRequests(),
   });
 
   const handleContinue = useCallback(

@@ -34,6 +34,14 @@ export type UseContinueRequestOptions = {
    * boundary itself.
    */
   onItems: (requestId: string, items: OutputItem[], rawItems: OutputItem[]) => void;
+  /**
+   * Called once the continuation is no longer live for this request — either
+   * a terminal status arrived over the inline stream, or the server fell back
+   * to the non-streaming 202 JSON response. The row's status in the polled
+   * request list is stale at that point (still `interrupted`), so callers
+   * should refresh it.
+   */
+  onSettled?: (requestId: string) => void;
 };
 
 export type UseContinueRequestResult = {
@@ -44,40 +52,77 @@ export type UseContinueRequestResult = {
 };
 
 export function useContinueRequest(options: UseContinueRequestOptions): UseContinueRequestResult {
-  const { recoveryClient, flowKind, sessionId, onItems } = options;
+  const { recoveryClient, flowKind, sessionId, onItems, onSettled } = options;
   const [activeIds, setActiveIds] = useState<ReadonlySet<string>>(new Set());
   const handlesRef = useRef<Map<string, RequestStreamHandle>>(new Map());
 
-  const stop = useCallback((requestId: string) => {
-    handlesRef.current.get(requestId)?.close();
-    handlesRef.current.delete(requestId);
-    setActiveIds((prev) => {
-      if (!prev.has(requestId)) return prev;
-      const next = new Set(prev);
-      next.delete(requestId);
-      return next;
-    });
-  }, []);
+  const stop = useCallback(
+    (requestId: string) => {
+      handlesRef.current.get(requestId)?.close();
+      handlesRef.current.delete(requestId);
+      setActiveIds((prev) => {
+        if (!prev.has(requestId)) return prev;
+        const next = new Set(prev);
+        next.delete(requestId);
+        return next;
+      });
+      onSettled?.(requestId);
+    },
+    [onSettled],
+  );
 
   const continueRequest = useCallback(
     async (requestId: string, existingItems: OutputItem[]) => {
       if (!flowKind || !sessionId) return;
 
-      const response = await recoveryClient.continueStream({
-        flowKind,
-        sessionId,
-        requestId,
-        includeTrace: true,
-      });
+      // Mark this row as continuing BEFORE the POST resolves, not after — the
+      // per-row guard (`isContinuing`) must cover the pending-request window
+      // too, or a slow network lets the row get clicked again before the menu
+      // hides the action, firing a duplicate POST. Clear it again on failure.
+      setActiveIds((prev) => new Set(prev).add(requestId));
+
+      let response: Response;
+      try {
+        response = await recoveryClient.continueStream({
+          flowKind,
+          sessionId,
+          requestId,
+          includeTrace: true,
+        });
+      } catch (err) {
+        setActiveIds((prev) => {
+          if (!prev.has(requestId)) return prev;
+          const next = new Set(prev);
+          next.delete(requestId);
+          return next;
+        });
+        throw err;
+      }
+
+      // The route can legally fall back to the non-streaming 202 JSON
+      // response (e.g. no inline live stream available). The continuation is
+      // still accepted server-side, so treat it the same as a terminal status:
+      // stop tracking it as continuing and let the caller refresh the row.
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("text/event-stream")) {
+        response.body?.cancel().catch(() => {});
+        stop(requestId);
+        return;
+      }
 
       // Seed with the row's existing items so the continuation stream merges
       // on top rather than clearing them.
       const store = createRequestStreamStore();
       store.loadSnapshot(existingItems);
 
-      setActiveIds((prev) => new Set(prev).add(requestId));
-
-      const flush = () => onItems(requestId, store.getSorted(), store.getRaw());
+      // `bindStoreToCallbacks` buffers content.delta events; flushDeltas()
+      // must run before reading a snapshot or generator text never appears
+      // until a later content.done/replacement (mirrors use-request-stream's
+      // flush pattern).
+      const flush = () => {
+        store.flushDeltas();
+        onItems(requestId, store.getSorted(), store.getRaw());
+      };
       const binder = bindStoreToCallbacks(store, { onChange: flush });
 
       const handle = createSSEClientFromResponse({
