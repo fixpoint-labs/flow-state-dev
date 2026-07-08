@@ -75,6 +75,8 @@ The one remaining gap is narrow: the durable write happens *after* `fn` resolves
 
 A block marked `transient: true` records no `block_trace` output, so it has nothing to replay and re-runs on resume. This is the rare case: you want a block to execute fresh every time, even across a pause. Most blocks should retain, so reach for `transient` only when re-execution is what you want.
 
+The memoization gate is uniform: background blocks (`.work()`, `.workIf()`, `.forEachBackground()`) use the same replay index as foreground steps. A background task that completed and retained its trace is injected; one that was in-flight at the crash (or marked `transient: true`, so it retained nothing) re-runs on continuation, exactly as the suspending block does. That re-run makes in-flight background side effects at-least-once, so they need the same `runOnce` guard. See [Durability of background work](./sequencer-side-chains.md#durability-of-background-work) in Side Chains for how that shapes fan-out work.
+
 ## Control-flow determinism
 
 The composition layer — the sequencer DSL callbacks (`.map`, `.stepIf`, `.workIf`, connector functions) — runs again on resume to rebuild the control flow up to the suspending block. Keep nondeterministic calls out of it. `Date.now()`, `Math.random()`, and `uuid()` in a connector or a `.stepIf` predicate can steer execution down a different branch on resume than it took the first time, and the replay index won't line up.

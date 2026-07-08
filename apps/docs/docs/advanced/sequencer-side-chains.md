@@ -362,3 +362,51 @@ const longTask = handler({
 ```
 
 The implementation of the two-signal model is described in `docs/architecture/execution-and-errors.md` for maintainers.
+
+## Durability of background work
+
+On a durable sequencer, background work rides the same crash-recovery machinery as foreground steps. When a request is interrupted and later continued, the runtime does not blindly re-run everything. It reuses the output that blocks recorded on their first run. That reuse is called memoization: instead of executing a block again, the runtime injects the output it captured the first time. Background work is covered by this too, with one rule about work that was still running and one precondition.
+
+### Completed work replays
+
+A `.work()` task, or a single `.forEachBackground()` iteration, that finished before the crash is injected from the log, not re-run. This is the same gate foreground steps use. If the block's recorded trace says `completed`, its output is replayed and the body is skipped. It holds only if the block's trace was retained (see the precondition below).
+
+### In-flight work re-runs from scratch
+
+Work that was still running when the crash hit has no completed trace, so it re-runs from the top on continuation. The guarantee is at-least-once, not exactly-once. The runtime replays completed work. It does not checkpoint partway through a task that never finished.
+
+So any non-idempotent side effect in a background task must guard itself. Wrap it in `ctx.runOnce(key, fn)` and pass a provider idempotency key to the external call. For `.forEachBackground()`, the `runOnce` key must be per-item. `ctx.runOnce` dedupes by `(requestId, key)`, and every iteration reuses the same element handler, so a literal key collapses the whole fan-out into one memo entry. Only the first iteration's side effect would fire. Key on something unique to the item:
+
+```ts
+const notifySubscriber = handler({
+  name: "notify-subscriber",
+  inputSchema: z.object({ id: z.string(), message: z.string() }),
+  outputSchema: z.undefined(),
+  execute: async (item, ctx) => {
+    await ctx.runOnce(`notify:${item.id}`, async () => {
+      await sendPush(item.id, item.message, { idempotencyKey: ctx.idempotencyKey });
+    });
+  },
+});
+```
+
+See [Idempotency and `runOnce`](./idempotency.md) for the provider-key pairing.
+
+### Suspension does not wait for background work
+
+A gate suspends the request without draining the work pool. In-flight background tasks are left running. They are not awaited and not aborted. This is deliberate: a human-approval gate should not block on fire-and-forget analytics. If you need background work finished before a gate, put `.waitForWork()` in front of it.
+
+### Failed work under a completed parent
+
+If a background task fails and the parent goes on to complete, the failure is dropped and logged. There is no recovery path. The request is terminal, so nothing retries the task. This is the best-effort contract side chains are built for.
+
+When background work is required for correctness, opt into `.waitForWork({ failOnError: true })`. It surfaces the failure into the parent, but be precise about how. It is drain-then-throw, not fail-fast. The wait drains the scope's queued work first, then throws the first failure, so the parent becomes `failed` only after the scope settles (or the wait times out). A `failed` request is not continuable on the same id. The only follow-up is a fresh `/retry`.
+
+### Precondition: traces must be retained
+
+Replay reads `block_trace` items. If those items were never recorded, there is nothing to inject and completed work re-runs on continuation. Two cases drop them:
+
+- Trace observability is off. This is the production default when `NODE_ENV=production`.
+- The block is marked `transient: true`, which records no trace by design.
+
+In either case, completed background work behaves like an in-flight task on continuation: it re-runs even though it finished. This precondition applies to foreground and background blocks alike. See [Block memoization and replay](./block-memoization-and-replay.md) for the full picture, and [Durable execution](./durable-execution.md) for where replay fits in the resume lifecycle.
