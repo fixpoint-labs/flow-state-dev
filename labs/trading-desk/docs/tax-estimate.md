@@ -44,7 +44,10 @@ long.
 
 A disposal contributes to the ST/LT tax buckets **only when `gain !== null` AND
 `term !== "unknown"`**. Everything else is surfaced honestly (as excluded
-proceeds in the estimate), never zeroed.
+proceeds in the estimate), never zeroed. A proceeds-unknown placeholder among the
+excluded disposals is **counted, not summed** — its null proceeds never fold into
+the excluded-proceeds dollar figure as `$0`, and the estimate's caveat qualifies
+(or omits) the amount so a no-proceeds sale never reads as "≈ $0 excluded".
 
 > **Two proceeds-unknown caveats — the marker is import-time, so it only
 > protects rows imported by this release onward:**

@@ -26,8 +26,16 @@ export type TaxEstimateInputs = {
   longGains: number;
   dividends: number;
   interest: number;
+  /** Summed proceeds of excluded disposals whose proceeds ARE known (a
+   *  basis/term-unknown but priced sale). Excludes proceeds-unknown placeholders,
+   *  whose proceeds are null — folding those in as $0 would understate the figure
+   *  and make the note read "≈ $0 excluded". */
   basisUnknownProceeds: number;
   basisUnknownCount: number;
+  /** How many of the excluded disposals have UNKNOWN proceeds (the OFX
+   *  proceeds-unknown placeholder). When > 0 the note can't state a complete
+   *  dollar figure. */
+  proceedsUnknownCount: number;
 };
 
 /**
@@ -67,6 +75,7 @@ export function summarizeForTaxEstimate(input: {
     interest: 0,
     basisUnknownProceeds: 0,
     basisUnknownCount: 0,
+    proceedsUnknownCount: 0,
   };
   for (const r of input.realized) {
     if (!input.taxableAccountIds.has(r.accountId)) continue;
@@ -76,7 +85,10 @@ export function summarizeForTaxEstimate(input: {
       if (r.term === "short") out.shortGains += r.gain;
       else out.longGains += r.gain;
     } else {
-      out.basisUnknownProceeds += r.proceeds ?? 0;
+      // A proceeds-unknown placeholder has null proceeds — count it as unknown
+      // rather than folding a fabricated $0 into the excluded-proceeds sum.
+      if (r.proceeds === null) out.proceedsUnknownCount += 1;
+      else out.basisUnknownProceeds += r.proceeds;
       out.basisUnknownCount += 1;
     }
   }
@@ -117,9 +129,12 @@ export type TaxEstimate = {
   effectiveOrdinaryRate: number;
   effectiveLtcgRate: number;
   effectiveStateRate: number;
-  /** Proceeds of disposals excluded from the buckets (unknown basis/term). */
+  /** Proceeds of excluded disposals whose proceeds are KNOWN (unknown basis/term
+   *  but priced). Excludes proceeds-unknown placeholders — see `proceedsUnknownCount`. */
   basisUnknownProceeds: number;
   basisUnknownCount: number;
+  /** How many excluded disposals have unknown proceeds (no dollar figure). */
+  proceedsUnknownCount: number;
   /** Rendered as caveats under the figure. */
   assumptions: string[];
 };
@@ -129,6 +144,7 @@ function emptyEstimate(
   year: number,
   basisUnknownProceeds: number,
   basisUnknownCount: number,
+  proceedsUnknownCount: number,
   assumptions: string[],
 ): TaxEstimate {
   return {
@@ -147,6 +163,7 @@ function emptyEstimate(
     effectiveStateRate: 0,
     basisUnknownProceeds,
     basisUnknownCount,
+    proceedsUnknownCount,
     assumptions,
   };
 }
@@ -167,12 +184,13 @@ export function estimateTaxLiability(input: {
   interest: number;
   basisUnknownProceeds: number;
   basisUnknownCount: number;
+  proceedsUnknownCount: number;
 }): TaxEstimate {
   const { profile, year, shortGains, longGains, dividends, interest } = input;
-  const { basisUnknownProceeds, basisUnknownCount } = input;
+  const { basisUnknownProceeds, basisUnknownCount, proceedsUnknownCount } = input;
 
   if (profile === null) {
-    return emptyEstimate(year, basisUnknownProceeds, basisUnknownCount, [
+    return emptyEstimate(year, basisUnknownProceeds, basisUnknownCount, proceedsUnknownCount, [
       "No tax profile set — enter your filing status and marginal + long-term capital-gains rates for an estimate.",
     ]);
   }
@@ -240,8 +258,19 @@ export function estimateTaxLiability(input: {
     );
   }
   if (basisUnknownCount > 0) {
+    // Never present a precise "$0 excluded" when some excluded disposals have
+    // unknown proceeds — that reads as harmless. Qualify (or drop) the figure.
+    const knownProceedsCount = basisUnknownCount - proceedsUnknownCount;
+    let proceedsClause: string;
+    if (proceedsUnknownCount === 0) {
+      proceedsClause = `≈ $${Math.round(basisUnknownProceeds).toLocaleString()} proceeds`;
+    } else if (knownProceedsCount === 0) {
+      proceedsClause = "proceeds not yet reported";
+    } else {
+      proceedsClause = `≈ $${Math.round(basisUnknownProceeds).toLocaleString()} known proceeds, ${proceedsUnknownCount} with proceeds not yet reported`;
+    }
     assumptions.push(
-      `${basisUnknownCount} disposal(s) with unknown cost basis or holding period (≈ $${Math.round(basisUnknownProceeds).toLocaleString()} proceeds) are excluded from the estimate.`,
+      `${basisUnknownCount} disposal(s) with unknown cost basis or holding period (${proceedsClause}) are excluded from the estimate.`,
     );
   }
 
@@ -261,6 +290,7 @@ export function estimateTaxLiability(input: {
     effectiveStateRate,
     basisUnknownProceeds,
     basisUnknownCount,
+    proceedsUnknownCount,
     assumptions,
   };
 }

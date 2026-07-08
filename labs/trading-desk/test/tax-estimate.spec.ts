@@ -31,6 +31,7 @@ function base(overrides: Partial<Parameters<typeof estimateTaxLiability>[0]> = {
     interest: 0,
     basisUnknownProceeds: 0,
     basisUnknownCount: 0,
+    proceedsUnknownCount: 0,
     ...overrides,
   });
 }
@@ -76,6 +77,7 @@ describe("estimateTaxLiability — upper bound", () => {
       interest: 5000,
       basisUnknownProceeds: 0,
       basisUnknownCount: 0,
+      proceedsUnknownCount: 0,
     });
     expect(e.deductibleLossThisYear).toBe(1500);
   });
@@ -110,6 +112,7 @@ describe("estimateTaxLiability — upper bound", () => {
       interest: 0,
       basisUnknownProceeds: 0,
       basisUnknownCount: 0,
+      proceedsUnknownCount: 0,
     });
     // ordinary 1000 + ltcg 2000 = 3000 taxable; state = 3000 × 0.05 = 150.
     expect(e.estimatedState).toBeCloseTo(150);
@@ -125,6 +128,7 @@ describe("estimateTaxLiability — upper bound", () => {
       interest: 100,
       basisUnknownProceeds: 0,
       basisUnknownCount: 0,
+      proceedsUnknownCount: 0,
     });
     expect(e.estimatedTotal).toBe(0);
     expect(e.assumptions[0]).toMatch(/No tax profile/);
@@ -133,5 +137,24 @@ describe("estimateTaxLiability — upper bound", () => {
   it("surfaces basis-unknown proceeds as an excluded-from-estimate caveat", () => {
     const e = base({ basisUnknownProceeds: 4200, basisUnknownCount: 2 });
     expect(e.assumptions.some((a) => a.includes("2 disposal"))).toBe(true);
+    expect(e.assumptions.some((a) => a.includes("$4,200"))).toBe(true);
+  });
+
+  it("never reports a proceeds-unknown disposal as ≈ $0 excluded", () => {
+    // All excluded disposals have unknown proceeds → no fabricated $0 figure.
+    const allUnknown = base({ basisUnknownCount: 2, proceedsUnknownCount: 2 });
+    const note = allUnknown.assumptions.find((a) => a.includes("2 disposal"));
+    expect(note).toContain("proceeds not yet reported");
+    expect(note).not.toContain("$0");
+
+    // Mixed: one priced, one proceeds-unknown → known $ is qualified, not total.
+    const mixed = base({
+      basisUnknownProceeds: 900,
+      basisUnknownCount: 2,
+      proceedsUnknownCount: 1,
+    });
+    const mixedNote = mixed.assumptions.find((a) => a.includes("2 disposal"));
+    expect(mixedNote).toContain("$900 known proceeds");
+    expect(mixedNote).toContain("1 with proceeds not yet reported");
   });
 });
