@@ -15,6 +15,20 @@
       "when": 1782346042437,
       "tag": "0001_cynical_phalanx",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782706296892,
+      "tag": "0002_burly_toxin",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783465320377,
+      "tag": "0003_friendly_big_bertha",
+      "breakpoints": true
     }
   ]
 }

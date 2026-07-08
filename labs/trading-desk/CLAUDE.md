@@ -290,6 +290,21 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   Postgres via `DATABASE_URL`), shared with the framework store on one pool/
   instance; `lib/portfolio-db.ts` owns that backing. See the FIX-772 spec and the
   `src/db/` layer (`schema.ts`, `client.ts`, `repository.ts`, `migrations/`).
+  **FIX-773 extended each holding row** with a two-level asset taxonomy:
+  `asset_class` (one of `equity / fixed_income / cash / crypto / alternative`)
+  and `asset_type` (one of `equity / etf / mutual_fund / bond / money_market /
+  crypto / option / other`), plus a discriminated `attributes` jsonb column that
+  carries per-type fields — bond: `cusip` + carried `markPrice`; option:
+  `underlying / strike / expiry / right / multiplier` + `markPrice`;
+  cash_equivalent: no extra fields. `markPrice` is the carried per-UNIT statement
+  value (statement `value ÷ quantity`, a finite positive number; a negative/zero
+  OCR typo is rejected to null), NOT a raw quoted price — so `quantity × markPrice`
+  reconstructs the position value regardless of quoting convention. Speculative
+  fields with no producer and no consumer (`coupon / maturity / yield`) are cut
+  per BP-038; JSONB means adding them later (with a real producer) is free.
+  Classification is denormalized per holding row; a security-master table is a
+  deferred option, not built. The classifier lives in
+  `src/flows/portfolio/classify-instrument.ts`.
 - **Domain types vs persistence.** `accountStateSchema` / `holdingSchema`
   (`portfolio-schema.ts`) are now DOMAIN types — input/CSV validation and the
   inline-holdings `AccountState` shape the repository projects (`toAccountStates`)
@@ -306,7 +321,14 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   it client-side for the live preview; the `importHoldings` action re-parses
   server-side (never trusts the client) and returns an `ImportReport`. Default
   mode is `upsert` (non-destructive); `replace-account` is destructive, non-atomic
-  (RISK-P6), and requires a typed `REPLACE` confirmation. See
+  (RISK-P6), and requires a typed `REPLACE` confirmation. FIX-773 added two
+  optional columns: `assetType` (synonyms: `assettype`, `type` — NOT `assetclass`,
+  which is a class-level column whose values aren't valid instrument types) — a
+  per-row classification hint; absent or unrecognized values are inferred from
+  the symbol shape server-side — and `markPrice` (the carried statement mark the
+  PDF round-trip uses for bond and option rows). Non-equity rows (bond CUSIPs,
+  crypto pairs, and OCC option symbols — which the equity ticker regex rejects but
+  the importer now accepts) import as typed holdings rather than being rejected. See
   `docs/portfolio-csv-format.md`.
 - **PDF import** uploads the PDF BYTES and extracts the text SERVER-SIDE. The
   dialog (`import-pdf-dialog.tsx`) base64-encodes the file and dispatches
@@ -325,7 +347,19 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   runs the pure `reconcile()` for review, and the CONFIRM path serializes to CSV
   through the EXISTING `importHoldings` (same as the CSV path). Streaming the
   extraction progress to the dialog is a documented follow-up — the phase UX is
-  currently a static "extracting" state.
+  currently a static "extracting" state. FIX-773 replaced the old per-row drop
+  heuristic with a full CLASSIFIER (`classify-instrument.ts`): CUSIP-shaped tickers
+  → bond, `$1.00 XX`-style lines → money_market, `CASH` lines → cash_equivalent,
+  OCC option symbols → option. Rows are skipped only for no ticker, null/zero
+  quantity, or a symbol the CSV import transport can't carry (spaces / >12 chars /
+  special characters — `isImportableSymbol`, the shared gate the CSV parser and the
+  PDF `classifyRow` both use, so review and commit agree); nothing is dropped by
+  asset type. A bond/option mark is persisted only from `value ÷ quantity` — never
+  the raw price column — so a value-less bond/option row carries a null mark (shows
+  "—") rather than valuing NAV off by a quoting-convention factor.
+  The canonical CSV the CONFIRM path serializes now carries `assetType` and
+  `markPrice` columns so the classification and the bond's statement mark survive
+  the single import gate into `importHoldings`.
 - **Prices** come from `getQuotes` — a read handler that reuses
   `get_price_history`'s fetch idiom directly (`loadFixture` / `getOrFetch`, NOT
   `block.run()` — BP-011-safe) and takes the last bar's `close`. A missing /
@@ -340,12 +374,38 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   real portfolio is mostly `—`. The live fan-out is **bounded + retried** via the
   shared `lib/concurrency.ts` `mapLimit` (cap `QUOTE_CONCURRENCY`, per-ticker
   `QUOTE_RETRIES` with backoff) so a 20+ holding portfolio doesn't trip Yahoo's
-  rate limiter and drop a random subset to `—`.
+  rate limiter and drop a random subset to `—`. **FIX-773 introduced per-type
+  valuation** via `src/flows/portfolio/value-holding.ts` (`resolveHoldingPrice` /
+  `holdingMarketValue`): equity / ETF / mutual-fund / crypto holdings use the live
+  quote (`usesLiveQuote` gates the pane's quote fan-out to exactly these types);
+  money market and cash-equivalent holdings value at par ($1.00/share); bond and
+  option holdings use the carried per-unit statement mark (`attributes.markPrice`).
+  Market value is uniformly `quantity × price` for every type — the mark is the
+  per-unit statement value, so no contract multiplier or quoting-convention factor
+  is re-applied (the multiplier is descriptive metadata only). Any row with no
+  applicable price still degrades to `—` (real-money gate). The resolved price's
+  provenance (`quote` / `statement` / `par`) is surfaced in the HoldingsTable as a
+  marker + tooltip so a statement mark is never read as a live quote.
+  `build-portfolio-context.ts` NAV now includes bond and money-market mass. The
+  HoldingsTable shows a compact asset-type chip alongside each row. Bonds use the
+  carried statement mark in v1;
+  durable last-known-price persistence across sessions is FIX-823 (deferred), and
+  ETF look-through is FIX-801 (deferred).
 - **Derived money math** (market value, weight %, unrealized P/L, rollups) lives
   in `components/portfolio/portfolio-format.ts` (pure) and is computed in
   `useMemo` (BP-010), never stored — it depends on a live quote and the whole-
   portfolio total. Money figures are labeled display approximations; a live +
   as-of provenance line sits near the totals.
+- **Analysis is equity-gated (FIX-773).** The `checkAssetTypeSupported` guard in
+  `orchestration/guards.ts` classifies the analyzed symbol via
+  `classify-instrument.ts` (before ticker resolution, no provider call) and stops
+  the run with `stoppedReason: "unsupported-asset-type"` ONLY on the unambiguously
+  non-equity shapes — a bond CUSIP, an OCC option, a `…-USD` crypto pair. A
+  ticker-shaped symbol passes to the resolver, including the cash-equivalent
+  placeholders `CASH` / `USD` (themselves real tickers — Pathward, a ProShares
+  ETF), so resolution is the arbiter for whether a real instrument exists. ETF and
+  crypto analysis are tracked in FIX-777, which this unblocks (the crypto stop is
+  lifted there).
 - **Empty-state binding (spec §12.1):** user-scoped reads need a bound session
   snapshot. We take the honest empty-state CTA (option b), NOT auto-minting a junk
   session (option a) — the pane prompts the user to run an analysis first when no
@@ -442,13 +502,16 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   add-transaction dialog live in `components/portfolio/`.
 
 - **Limitations (v1).** FIFO only; no wash sales or corporate-action basis math;
-  non-equity events (bonds/options/MMF) are recorded with their symbol but not
-  asset-classified until FIX-773 lands; single-currency. Two manual events with
-  an identical fingerprint (same account/date/type/ticker/quantity/amount) dedup
-  to one — the same dedup that makes re-submits idempotent also collapses a
-  genuine identical second fill, so record a distinguishing detail if both must
-  land. Live sync (Plaid) is FIX-853, and historical file import (OFX/CSV) is
-  FIX-775 — both write through this issue's `ingestLedgerEvents` contract.
+  single-currency. Non-equity events (bonds/options/MMF) are recorded with their
+  symbol; the holdings table now carries a full asset-type classification (FIX-773),
+  but the ledger event rows themselves are not asset-classified — per-event type
+  inference is a separate, deferred concern. Analysis is equity-gated (see above).
+  Two manual events with an identical fingerprint (same account/date/type/ticker/
+  quantity/amount) dedup to one — the same dedup that makes re-submits idempotent
+  also collapses a genuine identical second fill, so record a distinguishing detail
+  if both must land. Live sync (Plaid) is FIX-853, and historical file import
+  (OFX/CSV) is FIX-775 — both write through this issue's `ingestLedgerEvents`
+  contract.
 
 ## File import (OFX/QFX/QBO) — FIX-775
 

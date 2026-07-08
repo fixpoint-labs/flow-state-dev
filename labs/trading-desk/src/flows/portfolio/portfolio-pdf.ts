@@ -34,6 +34,11 @@
  */
 import { z } from "zod";
 import type { CanonicalRow } from "./portfolio-schema";
+import {
+  classifyInstrument,
+  isImportableSymbol,
+  validMarkPrice,
+} from "./classify-instrument";
 
 /**
  * One holding row as transcribed by the extraction generator from the statement
@@ -126,57 +131,6 @@ export type Reconciliation = {
   mismatchCount: number;
 };
 
-/** Ticker validity mirrors the CSV parser EXACTLY (`portfolio-csv.ts`): trimmed,
- *  upper-cased, `/^[A-Z0-9.\-]{1,12}$/`. A contra-CUSIP like "436CVR021" is 9
- *  chars of A-Z0-9 and WOULD pass this regex — so a CUSIP heuristic is applied
- *  on top (see `looksLikeCusip`). The combination is what keeps junk rows out. */
-function isValidTicker(raw: string): boolean {
-  return /^[A-Z0-9.\-]{1,12}$/.test(raw);
-}
-
-/**
- * A CUSIP is 9 alphanumeric characters with at least one digit, typically a mix
- * of letters and digits and no separators. Real exchange tickers are short
- * (<= 5–6 chars) and contra/placeholder CUSIPs surface in the Symbol column
- * when a security has no listed symbol. We treat a 9-character all-alphanumeric
- * token that contains digits as a CUSIP, not a ticker, so it is skipped.
- *
- * This is deliberately conservative: a real 1–6 char symbol (even one with
- * digits, like a warrant) is never caught, and an 8/9-char money-market symbol
- * is short of the 9-with-digits CUSIP signature only if it has no digits — money
- * markets (TIMXX) are handled by the cash/MMF branch below before we get here.
- */
-function looksLikeCusip(ticker: string): boolean {
-  return /^[A-Z0-9]{9}$/.test(ticker) && /[0-9]/.test(ticker);
-}
-
-/** Tokens that indicate a pure cash/sweep placeholder row we treat as not a
- *  holding. Compared case-insensitively against the ticker token. */
-const CASH_LIKE_TICKERS = new Set(["CASH", "USD"]);
-
-/**
- * Money-market-fund detection (broker-agnostic). MMF tickers conventionally end
- * in "XX" (TIMXX, SPAXX, SWVXX, VMFXX, FZFXX, ...) and a stable MMF holds a $1.00
- * NAV. We treat a row as an MMF — and therefore a cash-equivalent, not an equity
- * holding — when the symbol ends in "XX" AND the per-share price sits at ~$1.00.
- *
- * The DUAL signal matters: the suffix alone could (rarely) catch a real equity
- * with an XX ticker, and a $1.00 price alone could be a genuine penny stock.
- * Requiring both keeps the heuristic conservative. A row with no price still
- * imports as a normal holding (no false MMF skip on missing data).
- *
- * Why skip MMFs: they are account-level cash equivalents, not equity positions.
- * Importing one as a holding pollutes the holdings table and would double-count
- * against the account `cashBalance`. We skip + report; the user enters cash via
- * the account's cash field. (A future seam could fold a detected MMF balance
- * INTO the account cash automatically; v1 keeps it explicit and visible.)
- */
-function looksLikeMoneyMarket(ticker: string, price: number | null): boolean {
-  if (!/XX$/.test(ticker)) return false;
-  if (price === null) return false;
-  return Math.abs(price - 1) <= 0.02;
-}
-
 /** Within-tolerance comparison: |a - b| <= max(abs, rel * |b|). */
 function withinTolerance(
   a: number,
@@ -187,27 +141,30 @@ function withinTolerance(
   return Math.abs(a - b) <= Math.max(absTol, relTol * Math.abs(b));
 }
 
-/** Classify whether an extracted row is importable, and why not if it isn't.
- *  Pure — drives both the reconciliation report and `toCanonicalRows`. */
+/**
+ * Classify whether an extracted row is importable, and why not if it isn't.
+ * Pure — drives both the reconciliation report and `toCanonicalRows`.
+ *
+ * FIX-773 Slice B turned import from a FILTER into a CLASSIFIER: bond CUSIPs,
+ * money-market funds, and cash lines are no longer DROPPED — `classifyInstrument`
+ * preserves them as typed holdings. Rows stay skipped for three reasons: NO
+ * symbol at all, null/zero quantity, OR a symbol the CSV import transport can't
+ * carry (spaces / >12 chars / special characters — a fund name like `PRIVATE
+ * FUND`). The last check keeps the review HONEST: `importHoldings` re-parses the
+ * serialized rows through `parsePortfolioCsv`, whose ticker gate rejects such
+ * symbols, so marking them importable here would show "importable" in review and
+ * then fail at commit. Nothing is dropped by ASSET TYPE — only by symbol format.
+ */
 function classifyRow(row: ExtractedRow): { importable: boolean; reason: string | null } {
   const ticker = (row.ticker ?? "").trim().toUpperCase();
   if (ticker.length === 0) {
     return { importable: false, reason: "no symbol (cash, contra, or blank row)" };
   }
-  if (CASH_LIKE_TICKERS.has(ticker)) {
-    return { importable: false, reason: "cash/sweep line, not a holding" };
-  }
-  if (looksLikeMoneyMarket(ticker, row.price)) {
-    return { importable: false, reason: "money-market fund (cash equivalent), not a holding" };
-  }
-  if (looksLikeCusip(ticker)) {
-    return { importable: false, reason: "contra-CUSIP / unlisted security, no real ticker" };
-  }
-  if (!isValidTicker(ticker)) {
-    return { importable: false, reason: "unrecognizable ticker" };
-  }
   if (row.quantity === null || row.quantity === 0) {
     return { importable: false, reason: "no share quantity" };
+  }
+  if (!isImportableSymbol(ticker)) {
+    return { importable: false, reason: "unsupported symbol format — cannot import" };
   }
   return { importable: true, reason: null };
 }
@@ -243,13 +200,26 @@ export function reconcile(
 
   const rows: RowReconciliation[] = extraction.rows.map((row, i) => {
     const { importable, reason } = classifyRow(row);
+    // Bond and option quoting conventions vary (percent-of-par bonds with a
+    // face-amount quantity; per-share vs per-contract option premiums), so
+    // `quantity × price = value` is NOT a valid arithmetic check for them — it
+    // would false-flag a correctly transcribed row (or false-pass a 100×-off one).
+    // Mark those rows `unchecked` rather than compute a misleading `computedValue`;
+    // the persisted position value comes from the statement's own `value ÷
+    // quantity` (see `toCanonicalRows`), which is convention-proof.
+    const assetType =
+      row.ticker !== null
+        ? classifyInstrument(row.ticker, { price: row.price }).assetType
+        : "other";
+    const conventionDependent = assetType === "bond" || assetType === "option";
+
     const computedValue =
-      row.quantity !== null && row.price !== null
+      !conventionDependent && row.quantity !== null && row.price !== null
         ? row.quantity * row.price
         : null;
 
     let status: RowReconciliation["status"];
-    if (computedValue === null || row.value === null) {
+    if (conventionDependent || computedValue === null || row.value === null) {
       status = "unchecked";
     } else if (withinTolerance(computedValue, row.value, rowAbs, rowRel)) {
       status = "ok";
@@ -337,13 +307,42 @@ export function toCanonicalRows(extraction: PdfExtraction): CanonicalMapping {
       });
       return;
     }
+    const ticker = (row.ticker as string).trim().toUpperCase();
+    // The per-unit statement value (`value ÷ quantity`), or null when the
+    // statement printed no value. This is the ONLY honest source for a bond/option
+    // mark — the raw `price` column is convention-ambiguous (percent-of-par bonds,
+    // per-share vs per-contract options), so `quantity × mark` only reconstructs
+    // the statement's position value when the mark is derived from its own value.
+    const markFromValue =
+      row.value !== null && row.quantity !== null && row.quantity !== 0
+        ? row.value / row.quantity
+        : null;
+    // For CLASSIFICATION only, fall back to the raw price when no value was
+    // printed — the MMF signal is the XX suffix + a ~$1.00 price, and a money
+    // market's value ÷ quantity and its printed price are both ~$1.00. This never
+    // becomes a persisted bond/option mark (see the override below).
+    const detectionPrice = markFromValue ?? row.price;
+    const { assetClass, assetType, attributes } = classifyInstrument(ticker, {
+      price: detectionPrice,
+    });
+    // A bond/option mark is re-derived from `value ÷ quantity` ONLY. When the
+    // statement carried no value, the mark stays null (the row shows "—") rather
+    // than persisting the raw price column and valuing NAV up to 100× off — the
+    // same rows `reconcile` marks `unchecked` for exactly this ambiguity.
+    const markedAttributes =
+      attributes.kind === "bond" || attributes.kind === "option"
+        ? { ...attributes, markPrice: validMarkPrice(markFromValue) }
+        : attributes;
     rows.push({
-      ticker: (row.ticker as string).trim().toUpperCase(),
+      ticker,
       quantity: row.quantity as number,
       // A holdings snapshot has no cost basis. Never derive it from the
       // current price — that is the mark, not what the user paid.
       costBasis: null,
       acquiredDate: null,
+      assetClass,
+      assetType,
+      attributes: markedAttributes,
     });
   });
 
@@ -361,9 +360,29 @@ export function toCanonicalRows(extraction: PdfExtraction): CanonicalMapping {
  * blank cost to `null`. We deliberately do NOT emit a `price` column — the CSV
  * parser would map a bare `price` to cost basis (its documented last-resort
  * synonym), which is exactly the wrong thing for a current mark.
+ *
+ * FIX-773 Slice B: ONE extra column, `assetType`, carries the classification
+ * across the CSV seam so a bond stays a bond and an MMF stays a money_market
+ * after the round-trip. We do NOT serialize `assetClass`/`attributes` as JSON —
+ * `splitCsvLine` has no RFC-4180 escaping, so embedded JSON would be fragile;
+ * `parsePortfolioCsv` re-derives those from the symbol + this `assetType` hint.
+ *
+ * FIX-773 Slice C: a SECOND extra column, `markPrice`, carries a bond/option
+ * row's per-unit statement value as ONE flat number (`attributes.markPrice`,
+ * blank for any non-bond/option row). It is deliberately NOT named `price` — the
+ * CSV parser maps a bare `price` to costBasis (its documented last-resort
+ * synonym), which is exactly wrong for a current mark; `markPrice` is in NO
+ * costBasis synonym list, so it round-trips back into the bond/option attributes
+ * only.
  */
 export function canonicalRowsToCsv(rows: CanonicalRow[]): string {
-  const header = "ticker,quantity,costBasis";
-  const lines = rows.map((r) => `${r.ticker},${r.quantity},`);
+  const header = "ticker,quantity,costBasis,assetType,markPrice";
+  const lines = rows.map((r) => {
+    const markPrice =
+      r.attributes.kind === "bond" || r.attributes.kind === "option"
+        ? r.attributes.markPrice ?? ""
+        : "";
+    return `${r.ticker},${r.quantity},,${r.assetType},${markPrice}`;
+  });
   return [header, ...lines].join("\n");
 }

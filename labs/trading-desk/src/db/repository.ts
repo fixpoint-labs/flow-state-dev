@@ -20,10 +20,19 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type {
   AccountState,
   AccountType,
+  AssetClass,
+  AssetType,
   CanonicalRow,
   Holding,
+  HoldingAttributes,
   ImportMode,
 } from "@/src/flows/portfolio/portfolio-schema";
+import {
+  assetClassSchema,
+  assetTypeSchema,
+  holdingAttributesSchema,
+} from "@/src/flows/portfolio/portfolio-schema";
+import { classifyInstrument } from "@/src/flows/portfolio/classify-instrument";
 import type {
   IngestReport,
   LedgerEventInput,
@@ -109,6 +118,20 @@ export interface PortfolioRepository {
   /** Remove a single position — only when its account belongs to `userId` (the
    *  same household-scoping security boundary as {@link deleteAccount}). */
   deleteHolding(accountId: string, ticker: string, userId: string): Promise<void>;
+
+  /**
+   * Set a holding's allocation bucket by hand and mark it `asset_class_manual`,
+   * so auto-classification (ledger materialization / import) preserves it instead
+   * of re-deriving it. Only when the account belongs to `userId` (household
+   * boundary — a foreign account throws, writing nothing). `assetType` and
+   * valuation are left as-is; this edits only the allocation class.
+   */
+  setHoldingAssetClass(
+    accountId: string,
+    userId: string,
+    ticker: string,
+    assetClass: AssetClass,
+  ): Promise<void>;
 
   /**
    * Append events to the ledger, idempotently. The shared ingestion contract
@@ -199,7 +222,30 @@ function mapAccount(row: typeof accounts.$inferSelect): AccountRow {
   };
 }
 
-/** Map a holdings row to the {@link HoldingRow} shape, coercing numerics. */
+/** Validate a holdings row's JSONB `attributes` into the typed
+ *  {@link HoldingAttributes} union. Drizzle returns `jsonb` as a parsed object
+ *  (not a string), but types it loosely, so this re-validates against the
+ *  `kind`-discriminated schema. NEVER throws on a read (the nullable-honest
+ *  precedent): a malformed or legacy value degrades to `{ kind: "none" }`. */
+function parseAttributes(value: unknown): HoldingAttributes {
+  const parsed = holdingAttributesSchema.safeParse(value);
+  return parsed.success ? parsed.data : { kind: "none" };
+}
+
+/** Validate a stored asset-class / asset-type `text` column against its enum,
+ *  degrading an unexpected value (a direct SQL edit, a future rollback) to
+ *  `"equity"` rather than casting it blind — the {@link parseAttributes}
+ *  read-boundary precedent, so the UI's `TYPE_LABELS[assetType]` and the
+ *  per-type valuation switch never see an out-of-enum value. */
+function parseAssetClass(value: string): AssetClass {
+  return assetClassSchema.safeParse(value).success ? (value as AssetClass) : "equity";
+}
+function parseAssetType(value: string): AssetType {
+  return assetTypeSchema.safeParse(value).success ? (value as AssetType) : "equity";
+}
+
+/** Map a holdings row to the {@link HoldingRow} shape, coercing numerics and
+ *  validating the asset-taxonomy columns (FIX-773). */
 function mapHolding(row: typeof holdings.$inferSelect): HoldingRow {
   return {
     accountId: row.accountId,
@@ -207,6 +253,9 @@ function mapHolding(row: typeof holdings.$inferSelect): HoldingRow {
     quantity: Number(row.quantity),
     costBasis: toNumber(row.costBasis),
     acquiredDate: row.acquiredDate,
+    assetClass: parseAssetClass(row.assetClass),
+    assetType: parseAssetType(row.assetType),
+    attributes: parseAttributes(row.attributes),
   };
 }
 
@@ -338,12 +387,19 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
       }
       continue;
     }
+    // Classify by ticker so a transaction-materialized holding carries its real
+    // asset class, not the `equity` column default (the CSV/PDF importer used to
+    // be the only place classification ran; QFX/transaction imports never hit it).
+    const cls = classifyInstrument(ticker);
     const values = {
       accountId,
       ticker,
       quantity: String(p.quantity),
       costBasis: p.avgCost === null ? null : String(p.avgCost),
       acquiredDate: p.acquiredDate,
+      assetClass: cls.assetClass,
+      assetType: cls.assetType,
+      attributes: cls.attributes,
     };
     await tx
       .insert(holdings)
@@ -354,6 +410,11 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
           quantity: values.quantity,
           costBasis: values.costBasis,
           acquiredDate: values.acquiredDate,
+          // Reclassify a non-manual row (self-heals a pre-fix `equity` row);
+          // preserve a user's manual override untouched.
+          assetClass: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.assetClass} ELSE ${cls.assetClass} END`,
+          assetType: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.assetType} ELSE ${cls.assetType} END`,
+          attributes: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.attributes} ELSE ${JSON.stringify(cls.attributes)}::jsonb END`,
           updatedAt: sql`now()`,
         },
       });
@@ -388,6 +449,9 @@ export function toAccountStates(portfolio: {
       quantity: h.quantity,
       costBasis: h.costBasis,
       acquiredDate: h.acquiredDate,
+      assetClass: h.assetClass,
+      assetType: h.assetType,
+      attributes: h.attributes,
     });
     byAccount.set(h.accountId, list);
   }
@@ -481,6 +545,9 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         quantity: String(r.quantity),
         costBasis: r.costBasis === null ? null : String(r.costBasis),
         acquiredDate: r.acquiredDate,
+        assetClass: r.assetClass,
+        assetType: r.assetType,
+        attributes: r.attributes,
       }));
       // Holdings write + optional cash update in ONE transaction, so an import
       // never leaves new holdings paired with stale cash.
@@ -512,6 +579,12 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
                 quantity: sql`excluded.quantity`,
                 costBasis: sql`excluded.cost_basis`,
                 acquiredDate: sql`excluded.acquired_date`,
+                // Re-classification is load-bearing: an upsert that changes a
+                // held ticker's class/type/attributes must overwrite the old
+                // values, not silently keep them (FIX-773).
+                assetClass: sql`excluded.asset_class`,
+                assetType: sql`excluded.asset_type`,
+                attributes: sql`excluded.attributes`,
                 updatedAt: sql`now()`,
               },
             });
@@ -543,6 +616,24 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             ),
           ),
         );
+    },
+
+    async setHoldingAssetClass(accountId, userId, ticker, assetClass) {
+      await db.transaction(async (tx) => {
+        // Household guard (the `upsertHoldings` precedent): confirm ownership up
+        // front and throw, so a foreign account writes nothing.
+        const [owner] = await tx
+          .select({ id: accounts.id })
+          .from(accounts)
+          .where(and(eq(accounts.id, accountId), eq(accounts.userId, userId)));
+        if (owner === undefined) {
+          throw new Error(`Account ${accountId} is not owned by the requesting user.`);
+        }
+        await tx
+          .update(holdings)
+          .set({ assetClass, assetClassManual: true, updatedAt: sql`now()` })
+          .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, ticker)));
+      });
     },
 
     async ingestLedgerEvents(events, userId) {

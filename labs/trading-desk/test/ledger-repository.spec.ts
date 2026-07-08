@@ -36,7 +36,15 @@ async function freshRepo(): Promise<PortfolioRepository> {
 }
 
 function holding(ticker: string, quantity: number, costBasis: number | null = null): CanonicalRow {
-  return { ticker, quantity, costBasis, acquiredDate: null };
+  return {
+    ticker,
+    quantity,
+    costBasis,
+    acquiredDate: null,
+    assetClass: "equity",
+    assetType: "equity",
+    attributes: { kind: "none" },
+  };
 }
 
 function ev(overrides: Partial<LedgerEventInput> = {}): LedgerEventInput {

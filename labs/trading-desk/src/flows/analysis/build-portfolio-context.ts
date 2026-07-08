@@ -7,7 +7,9 @@
  * or sector. Weights are computed once at seed; the flow never recomputes. So
  * this pure, browser-safe function (called server-side in `seedSession`,
  * `orchestration/guards.ts`) computes the snapshot:
- *   - per-holding `marketValue` = quantity × live quote (null when no quote)
+ *   - per-holding `marketValue` = quantity × the TYPE-RESOLVED price
+ *     (`value-holding.ts`, FIX-773 Slice C): equity via live quote, a bond/option
+ *     at its carried statement mark, MMF/cash at par — null when none resolves
  *   - `totalNav` = Σ(known marketValue) + Σ(account.cashBalance)
  *   - per-holding `weightPct` = marketValue / totalNav × 100 (null when either
  *     the price or the NAV is unknown)
@@ -31,6 +33,7 @@
  */
 import type { PortfolioContextInput } from "./flow-schema";
 import type { AccountState } from "../portfolio/portfolio-schema";
+import { holdingMarketValue } from "../portfolio/value-holding";
 
 /** A live quote keyed by upper-case ticker. `price` null when unavailable. */
 export type QuoteLike = { ticker: string; price: number | null; asOf: string | null };
@@ -69,8 +72,12 @@ export function buildPortfolioContext(
     cashTotal += acc.cashBalance;
     for (const h of acc.holdings) {
       totalHoldings += 1;
+      // Value BY TYPE (FIX-773 Slice C): equity via the live quote, a bond/option
+      // at its carried statement mark, MMF/cash at par — the rule lives in ONE
+      // place (`value-holding.ts`), shared with the holdings table. So a
+      // majority-bond/MMF book contributes its real mass to NAV, not a sliver.
       const price = priceByTicker.get(h.ticker.toUpperCase()) ?? null;
-      const marketValue = price != null ? h.quantity * price : null;
+      const marketValue = holdingMarketValue(h, { price });
       if (marketValue != null) {
         knownMarketValueTotal += marketValue;
         pricedHoldings += 1;

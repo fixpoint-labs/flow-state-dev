@@ -61,7 +61,7 @@ describe("seedSession portfolio snapshot (server-side)", () => {
       name: "Taxable",
       type: "taxable",
       cashBalance: 1000,
-      holdings: [{ ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null }],
+      holdings: [{ ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }],
     });
 
     const result = await testBlock(seedSession, {
@@ -95,7 +95,7 @@ describe("seedSession portfolio snapshot (server-side)", () => {
       name: "Taxable",
       type: "taxable",
       cashBalance: 1000,
-      holdings: [{ ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null }],
+      holdings: [{ ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }],
     });
     await seedAccount(repoState.repo!, {
       accountId: ACCOUNT_ID_2,
@@ -103,7 +103,7 @@ describe("seedSession portfolio snapshot (server-side)", () => {
       name: "Roth IRA",
       type: "Roth",
       cashBalance: 500,
-      holdings: [{ ticker: "AAPL", quantity: 5, costBasis: 200, acquiredDate: null }],
+      holdings: [{ ticker: "AAPL", quantity: 5, costBasis: 200, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }],
     });
 
     const result = await testBlock(seedSession, {

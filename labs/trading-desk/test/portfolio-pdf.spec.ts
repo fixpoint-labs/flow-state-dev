@@ -97,6 +97,32 @@ describe("reconcile — per-row shares*price ~= value", () => {
     };
     expect(reconcile(ext).rows[0].status).toBe("unchecked");
   });
+
+  it("marks a bond 'unchecked' — quantity × price ≠ value is a false flag for percent-of-par bonds (FIX-773)", () => {
+    // A percent-of-par bond: 10,000 face at a mark of 98.5 (percent of par) →
+    // value 9,850. quantity × price = 10000 × 98.5 = 985,000 ≠ 9,850, so a naive
+    // arithmetic check would false-flag a correctly transcribed row. The classifier
+    // recognizes the CUSIP as a bond, so reconcile marks it unchecked instead.
+    const ext: PdfExtraction = {
+      rows: [{ ticker: "912828YK0", quantity: 10000, costBasis: null, price: 98.5, value: 9850 }],
+      statedTotal: null,
+    };
+    const row = reconcile(ext).rows[0];
+    expect(row.status).toBe("unchecked");
+    // No misleading computedValue is offered for a convention-dependent row.
+    expect(row.computedValue).toBeNull();
+  });
+
+  it("marks an option 'unchecked' — per-contract vs per-share premium is convention-dependent (FIX-773)", () => {
+    // An OCC option row: 2 contracts, a per-share premium of 12.4, statement value
+    // 2,480 (2 × 100 × 12.4). quantity × price = 24.8 ≠ 2,480, so the arithmetic
+    // check is invalid — reconcile marks it unchecked, not mismatch.
+    const ext: PdfExtraction = {
+      rows: [{ ticker: "AAPL  260618C00190000", quantity: 2, costBasis: null, price: 12.4, value: 2480 }],
+      statedTotal: null,
+    };
+    expect(reconcile(ext).rows[0].status).toBe("unchecked");
+  });
 });
 
 describe("reconcile — total sum vs stated total", () => {
@@ -142,16 +168,74 @@ describe("toCanonicalRows — mapping + skip rules", () => {
       quantity: 5.44149,
       costBasis: null,
       acquiredDate: null,
+      // FIX-773 Slice B: an equity ticker classifies as equity.
+      assetClass: "equity",
+      assetType: "equity",
+      attributes: { kind: "none" },
     });
   });
 
-  it("skips money-market funds, contra-CUSIPs, and reports them", () => {
+  it("PRESERVES bond/MMF/cash rows as typed holdings (classifier, not filter)", () => {
+    // An equity, a bond CUSIP, an MMF (XX + $1.00), and a cash line — FOUR typed
+    // rows, none dropped. This is the real-money intent of Slice B: a statement
+    // row is never silently lost; a non-equity becomes a visible typed holding.
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: "AAPL", quantity: 10, costBasis: null, price: 200, value: 2000 },
+        { ticker: "912828YK0", quantity: 5, costBasis: null, price: 98.5, value: 492.5 },
+        { ticker: "SPAXX", quantity: 1500, costBasis: null, price: 1.0, value: 1500 },
+        { ticker: "CASH", quantity: 250, costBasis: null, price: 1.0, value: 250 },
+      ],
+      statedTotal: 4242.5,
+    };
+    const { rows, skipped } = toCanonicalRows(ext);
+    expect(skipped).toEqual([]);
+    expect(rows).toHaveLength(4);
+
+    const byTicker = new Map(rows.map((r) => [r.ticker, r]));
+    expect(byTicker.get("AAPL")).toMatchObject({ assetType: "equity", assetClass: "equity" });
+    expect(byTicker.get("912828YK0")).toMatchObject({
+      assetType: "bond",
+      assetClass: "fixed_income",
+      attributes: { kind: "bond", cusip: "912828YK0" },
+    });
+    expect(byTicker.get("SPAXX")).toMatchObject({
+      assetType: "money_market",
+      assetClass: "cash",
+      attributes: { kind: "cash_equivalent" },
+    });
+    expect(byTicker.get("CASH")).toMatchObject({
+      assetType: "money_market",
+      assetClass: "cash",
+    });
+  });
+
+  it("still skips a no-symbol row and a zero-quantity row, reporting both", () => {
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: null, quantity: 100, costBasis: null, price: 1, value: 100 },
+        { ticker: "ZEROQTY", quantity: 0, costBasis: null, price: 50, value: 0 },
+        { ticker: "GOOG", quantity: 1, costBasis: null, price: 150, value: 150 },
+      ],
+      statedTotal: null,
+    };
+    const { rows, skipped } = toCanonicalRows(ext);
+    expect(rows.map((r) => r.ticker)).toEqual(["GOOG"]);
+    expect(skipped.map((s) => s.rowNumber).sort()).toEqual([1, 2]);
+    expect(skipped.every((s) => s.reason.length > 0)).toBe(true);
+  });
+
+  it("preserves the MMF as money_market and skips only the zero-qty contra row", () => {
+    // The synthetic extraction's TIMXX (XX + $1.00) is now PRESERVED as a
+    // money-market holding; the contra-CUSIP row is skipped only because its
+    // quantity is 0 (a no-position row), not because of its symbol shape.
     const { rows, skipped } = toCanonicalRows(syntheticExtraction());
-    expect(rows.map((r) => r.ticker)).toEqual(["AAPL", "MSFT"]);
-    const skippedTickers = skipped.map((s) => s.ticker);
-    expect(skippedTickers).toContain("TIMXX");
-    expect(skippedTickers).toContain("436CVR021");
-    // Each skip carries a human reason.
+    expect(rows.map((r) => r.ticker)).toEqual(["AAPL", "MSFT", "TIMXX"]);
+    expect(rows.find((r) => r.ticker === "TIMXX")).toMatchObject({
+      assetType: "money_market",
+      assetClass: "cash",
+    });
+    expect(skipped.map((s) => s.ticker)).toEqual(["436CVR021"]);
     expect(skipped.every((s) => s.reason.length > 0)).toBe(true);
   });
 
@@ -176,6 +260,57 @@ describe("toCanonicalRows — mapping + skip rules", () => {
     };
     expect(toCanonicalRows(ext).rows[0].costBasis).toBeNull();
   });
+
+  it("skips a symbol the CSV transport can't carry — review matches commit (FIX-773)", () => {
+    // A classifier-`other` row whose symbol has a space / is >12 chars fails the
+    // CSV ticker gate `importHoldings` re-parses through, so it must be reported
+    // skipped here rather than shown importable and then rejected at commit.
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: "PRIVATE FUND", quantity: 10, costBasis: null, price: 5, value: 50 },
+        { ticker: "AAPL", quantity: 1, costBasis: null, price: 150, value: 150 },
+      ],
+      statedTotal: null,
+    };
+    const { rows, skipped } = toCanonicalRows(ext);
+    expect(rows.map((r) => r.ticker)).toEqual(["AAPL"]);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0].ticker).toBe("PRIVATE FUND");
+    expect(skipped[0].reason).toMatch(/symbol format/i);
+    // The skip is consistent with the CSV commit path: the untransportable symbol
+    // errors there too, so skipping it up front is honest (not an arbitrary drop).
+    const csvErrors = parsePortfolioCsv("ticker,quantity\nPRIVATE FUND,10").errors;
+    expect(csvErrors).toHaveLength(1);
+    expect(csvErrors[0].reason).toBe("invalid ticker");
+  });
+
+  it("marks a value-less bond row with a NULL mark, never the raw price column (FIX-773)", () => {
+    // A percent-of-par bond with quantity + price but no value: the raw price 98.5
+    // is convention-ambiguous (face-amount quantity), so persisting it as the mark
+    // would value NAV ~100× off. With no value to derive `value ÷ quantity` from,
+    // the mark stays null (the row shows "—") — the same rows `reconcile` marks
+    // unchecked.
+    const ext: PdfExtraction = {
+      rows: [{ ticker: "912828YK0", quantity: 10000, costBasis: null, price: 98.5, value: null }],
+      statedTotal: null,
+    };
+    const bond = toCanonicalRows(ext).rows.find((r) => r.ticker === "912828YK0");
+    expect(bond?.assetType).toBe("bond");
+    expect(bond?.attributes).toMatchObject({ kind: "bond", markPrice: null });
+  });
+
+  it("still detects a value-less MMF from its ~$1.00 price (classification uses the price, the mark does not)", () => {
+    // An MMF with no value column: classification still needs the raw ~$1.00 price
+    // (the XX + $1.00 rule), and a cash-equivalent carries no mark, so nulling the
+    // bond/option mark never breaks MMF detection.
+    const ext: PdfExtraction = {
+      rows: [{ ticker: "SPAXX", quantity: 500, costBasis: null, price: 1.0, value: null }],
+      statedTotal: null,
+    };
+    const mmf = toCanonicalRows(ext).rows.find((r) => r.ticker === "SPAXX");
+    expect(mmf?.assetType).toBe("money_market");
+    expect(mmf?.attributes).toEqual({ kind: "cash_equivalent" });
+  });
 });
 
 describe("canonicalRowsToCsv — feeds the EXISTING CSV parser cleanly", () => {
@@ -184,20 +319,85 @@ describe("canonicalRowsToCsv — feeds the EXISTING CSV parser cleanly", () => {
     const csv = canonicalRowsToCsv(rows);
     const parsed = parsePortfolioCsv(csv);
     expect(parsed.errors).toEqual([]);
-    expect(parsed.rows.map((r) => r.ticker).sort()).toEqual(["AAPL", "MSFT"]);
+    expect(parsed.rows.map((r) => r.ticker).sort()).toEqual(["AAPL", "MSFT", "TIMXX"]);
     // Cost basis must remain null — the snapshot never carried one, and the CSV
     // we emit deliberately has no price column for the parser to misread as cost.
     expect(parsed.rows.every((r) => r.costBasis === null)).toBe(true);
   });
 
-  it("does NOT emit a price column (which the CSV parser would map to cost)", () => {
+  it("survives the classification through the CSV seam (assetType round-trips)", () => {
+    // The PDF classifies; the CSV is the transport between the PDF path and the
+    // server-side parse. The bond must STILL be a bond and the MMF STILL a
+    // money_market after the round-trip — proving the type survives the seam.
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: "AAPL", quantity: 10, costBasis: null, price: 200, value: 2000 },
+        { ticker: "912828YK0", quantity: 5, costBasis: null, price: 98.5, value: 492.5 },
+        { ticker: "SPAXX", quantity: 1500, costBasis: null, price: 1.0, value: 1500 },
+      ],
+      statedTotal: null,
+    };
+    const csv = canonicalRowsToCsv(toCanonicalRows(ext).rows);
+    const parsed = parsePortfolioCsv(csv);
+    expect(parsed.errors).toEqual([]);
+    const byTicker = new Map(parsed.rows.map((r) => [r.ticker, r]));
+    expect(byTicker.get("AAPL")).toMatchObject({ assetType: "equity" });
+    expect(byTicker.get("912828YK0")).toMatchObject({
+      assetType: "bond",
+      assetClass: "fixed_income",
+    });
+    expect(byTicker.get("SPAXX")).toMatchObject({
+      assetType: "money_market",
+      assetClass: "cash",
+    });
+  });
+
+  it("emits a ticker,quantity,costBasis,assetType,markPrice header (no bare price column)", () => {
     const { rows } = toCanonicalRows(syntheticExtraction());
     const csv = canonicalRowsToCsv(rows);
-    expect(csv.split("\n")[0]).toBe("ticker,quantity,costBasis");
-    // No warning about a price→cost mapping, because there is no price column.
+    expect(csv.split("\n")[0]).toBe("ticker,quantity,costBasis,assetType,markPrice");
+    // No warning about a bare-price→cost mapping: `markPrice` is NOT a costBasis
+    // synonym, so the parser never misreads it as cost.
     const parsed = parsePortfolioCsv(csv);
-    expect(parsed.warnings.some((w) => w.toLowerCase().includes("price"))).toBe(
+    expect(parsed.warnings.some((w) => w.toLowerCase().includes("cost"))).toBe(
       false,
     );
+    expect(parsed.rows.every((r) => r.costBasis === null)).toBe(true);
+  });
+
+  it("carries a bond's markPrice through the PDF → CSV round-trip (FIX-773 Slice C)", () => {
+    // A bond is valued at the carried statement mark — it must survive the CSV
+    // seam, or the bond would value at "—" after import.
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: "912828YK0", quantity: 5, costBasis: null, price: 98.5, value: 492.5 },
+      ],
+      statedTotal: null,
+    };
+    const csv = canonicalRowsToCsv(toCanonicalRows(ext).rows);
+    const parsed = parsePortfolioCsv(csv);
+    expect(parsed.errors).toEqual([]);
+    const bond = parsed.rows.find((r) => r.ticker === "912828YK0");
+    expect(bond?.assetType).toBe("bond");
+    expect(bond?.attributes).toMatchObject({ kind: "bond", markPrice: 98.5 });
+  });
+
+  it("stores the PER-UNIT statement value (value ÷ quantity), NOT the raw price column (FIX-773)", () => {
+    // A percent-of-par bond: 10,000 face, the statement's Price column is 98.5
+    // (percent of par), and the Value column is 9,850. The carried mark must be
+    // value ÷ quantity = 0.985 — the per-unit value — so quantity × mark
+    // reconstructs 9,850, NOT the raw 98.5 (which would value the bond 100× off).
+    const ext: PdfExtraction = {
+      rows: [
+        { ticker: "912828YK0", quantity: 10000, costBasis: null, price: 98.5, value: 9850 },
+      ],
+      statedTotal: null,
+    };
+    const { rows } = toCanonicalRows(ext);
+    const bond = rows.find((r) => r.ticker === "912828YK0");
+    expect(bond?.attributes).toMatchObject({ kind: "bond", markPrice: 0.985 });
+    // quantity × mark reconstructs the statement's own position value.
+    const mark = bond?.attributes.kind === "bond" ? bond.attributes.markPrice : null;
+    expect((bond?.quantity ?? 0) * (mark ?? 0)).toBeCloseTo(9850, 6);
   });
 });

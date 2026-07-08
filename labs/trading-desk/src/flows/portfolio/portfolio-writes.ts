@@ -26,7 +26,7 @@ import { z } from "zod";
 import type { PortfolioRepository } from "@/src/db/repository";
 import type { FileImportReport } from "./transaction-import-schema";
 import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
-import { accountTypeSchema } from "./portfolio-schema";
+import { accountTypeSchema, assetClassSchema, type AssetClass } from "./portfolio-schema";
 import { ledgerEventInputSchema, type IngestReport } from "./ledger-schema";
 import { detectAndParseTransactionFile } from "./transaction-file";
 
@@ -133,6 +133,26 @@ export async function deleteHolding(
   await repo.deleteHolding(accountId, ticker.toUpperCase(), userId);
 }
 
+/** Body of the `PATCH /api/portfolio/holdings` asset-class override. */
+export const setHoldingAssetClassSchema = z.object({
+  userId: z.string().min(1),
+  accountId: z.string().min(1),
+  ticker: z.string().min(1),
+  assetClass: assetClassSchema,
+});
+
+/** Manually set a holding's allocation class (marks it `asset_class_manual`, so
+ *  auto-classification preserves it). Household-scoped by the repository. */
+export async function setHoldingAssetClass(
+  accountId: string,
+  ticker: string,
+  userId: string,
+  assetClass: AssetClass,
+  repo: PortfolioRepository,
+): Promise<void> {
+  await repo.setHoldingAssetClass(accountId, userId, ticker.toUpperCase(), assetClass);
+}
+
 /**
  * Record one manual ledger event (FIX-774). Fixes `source: "manual"` (a manual
  * entry can't claim to be a Plaid/file row), canonicalizes the ticker to
@@ -182,6 +202,27 @@ export async function importHoldingsCsv(
   const parsed = parsePortfolioCsv(input.csvText);
   const errors: RowError[] = [...parsed.errors];
   const warnings: string[] = [...parsed.warnings];
+
+  // Cash double-count guard (FIX-773). A cash-class row (a money-market fund or a
+  // `CASH` line) values at par $1.00 and lands in NAV as a position; the account's
+  // own `cashBalance` field ALSO counts as cash. When a statement carries its
+  // sweep/MMF as a line AND the account has a non-zero cash balance, the same
+  // dollars can be counted twice. We can't tell which is authoritative, so we warn
+  // rather than silently net them (the real-money honesty gate). Uses the
+  // post-import effective balance (`input.cashBalance` wins when the import also
+  // sets it, else the account's existing balance).
+  const effectiveCash =
+    input.cashBalance !== null ? input.cashBalance : account.cashBalance;
+  const cashRows = parsed.rows.filter((r) => r.assetClass === "cash");
+  if (cashRows.length > 0 && effectiveCash !== 0) {
+    warnings.push(
+      `${cashRows.length} cash/money-market row(s) (${cashRows
+        .map((r) => r.ticker)
+        .join(", ")}) import alongside a non-zero account cash balance ` +
+        `(${effectiveCash}) — verify the sweep/MMF isn't counted twice (once as a ` +
+        `holding valued at par, once as the account's cash balance).`,
+    );
+  }
 
   // Report counts: compare parsed rows against the account's existing tickers.
   // The repository owns the actual write (upsert-in-place / atomic replace);

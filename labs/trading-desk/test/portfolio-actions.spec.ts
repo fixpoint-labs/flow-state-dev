@@ -114,6 +114,34 @@ describe("importHoldingsCsv", () => {
     );
   });
 
+  it("warns when a cash/MMF row imports alongside a non-zero cash balance (double-count guard, FIX-773)", async () => {
+    await createAccount(A1);
+    // A money-market fund row (XX + ~$1.00 → cash-class, values at par) imported
+    // WHILE the same import sets a non-zero account cash balance. The same dollars
+    // could be counted twice — once as a holding, once as cash — so we warn.
+    const report = await importHoldings({
+      accountId: A1,
+      mode: "upsert",
+      cashBalance: 5000,
+      csvText: "ticker,quantity,markPrice\nSPAXX,1500,1.00\nNVDA,10,",
+    });
+    const joined = report.warnings.join(" ");
+    expect(joined).toMatch(/counted twice/i);
+    expect(joined).toContain("SPAXX");
+    // The equity row is NOT named in the double-count warning.
+    expect(joined).not.toMatch(/NVDA[^,]*counted twice/);
+  });
+
+  it("does NOT warn about double-counting when the cash balance is zero", async () => {
+    await createAccount(A1);
+    const report = await importHoldings({
+      accountId: A1,
+      mode: "upsert",
+      csvText: "ticker,quantity,markPrice\nSPAXX,1500,1.00",
+    });
+    expect(report.warnings.join(" ")).not.toMatch(/counted twice/i);
+  });
+
   it("reports an error and imports nothing when the account does not exist", async () => {
     const report = await importHoldings({
       accountId: "no-such-account",

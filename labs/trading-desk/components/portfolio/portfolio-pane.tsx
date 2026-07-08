@@ -34,7 +34,7 @@ import type { SessionView } from "@flow-state-dev/react";
 import { useResource, useFlowContext } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import { apiMutate } from "@/lib/use-api-query";
-import type { Holding } from "@/src/flows/portfolio/portfolio-schema";
+import type { AssetClass, Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import { deriveLots } from "@/src/flows/portfolio/lots";
 import type { TermLot } from "./holding-term";
@@ -59,13 +59,27 @@ import { useLedger } from "./use-ledger";
 import { useIncome } from "./use-income";
 import { useTheses } from "./use-theses";
 import {
+  holdingMarketValue,
+  holdingUnrealizedPL,
+  usesLiveQuote,
+} from "@/src/flows/portfolio/value-holding";
+import {
   DASH,
+  allocationByClass,
   formatMoney,
+  formatPercent,
   formatSignedMoney,
   formatSignedPercent,
-  marketValue,
-  unrealizedPL,
 } from "./portfolio-format";
+
+/** Display labels for the asset-class allocation breakdown. */
+const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
+  equity: "Equity",
+  fixed_income: "Fixed income",
+  cash: "Cash",
+  crypto: "Crypto",
+  alternative: "Alt",
+};
 
 type PortfolioPaneProps = {
   /** A bound session whose snapshot the user-scoped resource reads project
@@ -206,10 +220,16 @@ export function PortfolioPane({
       let upl: number | null = null;
       let cost = 0;
       for (const h of accHoldings) {
-        const price = priceMap.get(h.ticker.toUpperCase())?.price ?? null;
-        const v = marketValue(h.quantity, price);
+        const quote = priceMap.get(h.ticker.toUpperCase());
+        // Value BY TYPE (FIX-773 Slice C) so the account/portfolio totals and the
+        // weight denominator match the per-row values (bond at mark, MMF at par,
+        // equity via quote). uP/L stays vs the type-resolved price.
+        const v = holdingMarketValue(h, quote);
         if (v !== null) value = (value ?? 0) + v;
-        const p = unrealizedPL(h.quantity, h.costBasis, price);
+        // uP/L BY TYPE too (bond/option vs its mark, equity vs its quote); track
+        // the cost of the computable subset so uplPct bases on the same book the
+        // dollar figure sums.
+        const p = holdingUnrealizedPL(h, quote);
         if (p !== null) {
           upl = (upl ?? 0) + p;
           cost += (h.costBasis as number) * h.quantity;
@@ -232,6 +252,23 @@ export function PortfolioPane({
     return { rollups, totalValue, totalUpl, totalUplPct };
   }, [accounts, holdingsByAccount, priceMap]);
 
+  // Allocation by asset class (BP-010 — derived, memoed, never stored). Each
+  // holding's market value is resolved BY TYPE (same as the totals above) so the
+  // split's denominator matches NAV; account cash balances roll into the `cash`
+  // bucket. An unpriced holding contributes 0 (the "—" real-money gate).
+  const allocation = useMemo(() => {
+    const entries = holdings.map((h) => ({
+      assetClass: h.assetClass,
+      value: holdingMarketValue(h, priceMap.get(h.ticker.toUpperCase())),
+    }));
+    for (const account of accounts) {
+      if (account.cashBalance !== 0) {
+        entries.push({ assetClass: "cash", value: account.cashBalance });
+      }
+    }
+    return allocationByClass(entries);
+  }, [holdings, accounts, priceMap]);
+
   // Fetch prices for the union of held tickers. Dispatch → refresh → the
   // `portfolioQuotes` resource updates and `useResource` re-projects.
   const fetchPrices = useCallback(async () => {
@@ -240,7 +277,15 @@ export function PortfolioPane({
     // a flow action. Without a session (cold start, no analysis run yet) prices
     // stay "—" and the rest of the pane (CRUD) still works.
     if (!hasSession) return;
-    const tickers = [...new Set(holdings.map((h) => h.ticker.toUpperCase()))];
+    // Only quote-valued types (equity/etf/mutual_fund/crypto) need a live quote;
+    // bond/option value at their carried mark and cash/MMF at par (BP-033), so
+    // fetching those would just burn retries and could surface a misleading quote
+    // (e.g. CASH = Pathward). Filter at the source.
+    const tickers = [
+      ...new Set(
+        holdings.filter((h) => usesLiveQuote(h.assetType)).map((h) => h.ticker.toUpperCase()),
+      ),
+    ];
     if (tickers.length === 0) return;
     setIsFetchingPrices(true);
     try {
@@ -262,7 +307,14 @@ export function PortfolioPane({
   // resource sync), so an effect is correct here (BP-010). Keyed on the sorted
   // ticker signature so it doesn't refire on unrelated re-renders.
   const tickerSignature = useMemo(
-    () => [...new Set(holdings.map((h) => h.ticker.toUpperCase()))].sort().join(","),
+    () =>
+      [
+        ...new Set(
+          holdings.filter((h) => usesLiveQuote(h.assetType)).map((h) => h.ticker.toUpperCase()),
+        ),
+      ]
+        .sort()
+        .join(","),
     [holdings],
   );
   useEffect(() => {
@@ -356,6 +408,23 @@ export function PortfolioPane({
         refetchAccounts();
       } catch (err) {
         console.error("[trading-desk] deleteHolding failed", err);
+      }
+    },
+    [uid, refetchAccounts],
+  );
+
+  const handleSetAssetClass = useCallback(
+    async (accountId: string, ticker: string, assetClass: AssetClass) => {
+      try {
+        await apiMutate("/api/portfolio/holdings", "PATCH", {
+          userId: uid,
+          accountId,
+          ticker,
+          assetClass,
+        });
+        refetchAccounts();
+      } catch (err) {
+        console.error("[trading-desk] setHoldingAssetClass failed", err);
       }
     },
     [uid, refetchAccounts],
@@ -553,6 +622,19 @@ export function PortfolioPane({
               {formatMoney(totalDividends, "USD")}
             </span>
           </span>
+          {allocation.length > 0 && (
+            <span>
+              allocation{" "}
+              <span className="text-[color:var(--c-fg)]">
+                {allocation
+                  .map(
+                    (s) =>
+                      `${ASSET_CLASS_LABELS[s.assetClass]} ${formatPercent(s.weight)}`,
+                  )
+                  .join(" · ")}
+              </span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -603,6 +685,9 @@ export function PortfolioPane({
             }
             onDeleteAccount={() => void handleDeleteAccount(openAccount.accountId)}
             onEditThesis={(ticker) => setThesisTicker(ticker)}
+            onSetAssetClass={(ticker, assetClass) =>
+              void handleSetAssetClass(openAccount.accountId, ticker, assetClass)
+            }
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-2 @6xl:grid-cols-3">

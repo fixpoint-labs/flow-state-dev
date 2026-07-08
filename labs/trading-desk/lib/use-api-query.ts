@@ -55,7 +55,7 @@ export function useApiQuery<T>(url: string): { data: T | null; refetch: () => vo
  */
 export async function apiMutate<T>(
   url: string,
-  method: "POST" | "DELETE",
+  method: "POST" | "PATCH" | "DELETE",
   body?: unknown,
 ): Promise<T> {
   const res = await fetch(url, {

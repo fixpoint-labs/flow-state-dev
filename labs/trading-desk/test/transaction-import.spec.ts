@@ -54,7 +54,17 @@ describe("importTransactionFile", () => {
     await seedAccount(repo, {
       accountId: ACCT,
       userId: USER_ID,
-      holdings: [{ ticker: "AAPL", quantity: 10, costBasis: null, acquiredDate: null }],
+      holdings: [
+        {
+          ticker: "AAPL",
+          quantity: 10,
+          costBasis: null,
+          acquiredDate: null,
+          assetClass: "equity",
+          assetType: "equity",
+          attributes: { kind: "none" },
+        },
+      ],
     });
 
     const { output } = await importFile(ACCT, OFX_FILE);
