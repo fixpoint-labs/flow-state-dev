@@ -220,6 +220,11 @@ export function PortfolioPane({
       let upl: number | null = null;
       let cost = 0;
       for (const h of accHoldings) {
+        // A FIX-876 inconsistent-history holding (quantity 0, an unaccounted
+        // split) is an UNKNOWN input — never fold its fake $0 into account/
+        // portfolio totals (mirrors `buildPortfolioContext`). Its row is already
+        // blanked with the ⚠ marker; skip it from the money math entirely.
+        if (h.dataQuality === "inconsistent_history") continue;
         const quote = priceMap.get(h.ticker.toUpperCase());
         // Value BY TYPE (FIX-773 Slice C) so the account/portfolio totals and the
         // weight denominator match the per-row values (bond at mark, MMF at par,
@@ -257,10 +262,14 @@ export function PortfolioPane({
   // split's denominator matches NAV; account cash balances roll into the `cash`
   // bucket. An unpriced holding contributes 0 (the "—" real-money gate).
   const allocation = useMemo(() => {
-    const entries = holdings.map((h) => ({
-      assetClass: h.assetClass,
-      value: holdingMarketValue(h, priceMap.get(h.ticker.toUpperCase())),
-    }));
+    const entries = holdings
+      // Skip inconsistent-history holdings (FIX-876) — an unknown position must not
+      // land as a $0 slice in the allocation breakdown (same gate as the totals).
+      .filter((h) => h.dataQuality !== "inconsistent_history")
+      .map((h) => ({
+        assetClass: h.assetClass,
+        value: holdingMarketValue(h, priceMap.get(h.ticker.toUpperCase())),
+      }));
     for (const account of accounts) {
       if (account.cashBalance !== 0) {
         entries.push({ assetClass: "cash", value: account.cashBalance });

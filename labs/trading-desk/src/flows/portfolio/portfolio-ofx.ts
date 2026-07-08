@@ -655,26 +655,29 @@ function handleSplit(ctx: Ctx, agg: OfxNode): void {
     ctx.warnings.push("A stock split with no identifiable security was skipped — record it manually.");
     return;
   }
+  // Record the split when the ratio resolves; otherwise skip-with-warning. Either
+  // way, DON'T early-return — the FRACCASH cash-in-lieu leg below is INDEPENDENT
+  // real money and must be recorded even when the ratio is unusable.
   const ratio = resolveSplitRatio(agg);
   if (ratio === null) {
     ctx.warnings.push(
-      `A stock split of ${ticker} had no usable ratio (numerator/denominator) — skipped; record it manually.`,
+      `A stock split of ${ticker} had no usable ratio (numerator/denominator) — the split was skipped (record it manually); any cash-in-lieu is still recorded.`,
     );
-    return;
+  } else {
+    ctx.events.push({
+      ...baseEvent(ctx, invtran, {
+        type: "split",
+        tradeDate,
+        ticker,
+        quantity: null,
+        unitPrice: null,
+        amount: 0,
+        fee: null,
+        basisUnknown: null,
+      }),
+      attributes: { numerator: ratio.numerator, denominator: ratio.denominator },
+    });
   }
-  ctx.events.push({
-    ...baseEvent(ctx, invtran, {
-      type: "split",
-      tradeDate,
-      ticker,
-      quantity: null,
-      unitPrice: null,
-      amount: 0,
-      fee: null,
-      basisUnknown: null,
-    }),
-    attributes: { numerator: ratio.numerator, denominator: ratio.denominator },
-  });
   // Cash-in-lieu of a fractional share is real money — record it as a separate
   // cash row (a distinct external id so it doesn't collide with the split on the
   // dedup index) and warn. It is recorded as a `deposit`, NOT a `dividend`:

@@ -511,14 +511,27 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
   }
 
   if (voidedOnlyTickers.size > 0) {
-    // A ticker whose share history is entirely voided returns to snapshot
-    // authority — clear derived basis AND any prior inconsistency flag (FIX-876).
+    const tickers = [...voidedOnlyTickers];
+    // A flagged `inconsistent_history` row was CREATED by the oversold guard (a
+    // real snapshot is never flagged — only ledger materialization sets the flag),
+    // so once its events are all voided it has no basis to exist. DELETE it rather
+    // than leave an unflagged 0-share ghost behind (FIX-876 review).
+    await tx
+      .delete(holdings)
+      .where(
+        and(
+          eq(holdings.accountId, accountId),
+          inArray(holdings.ticker, tickers),
+          eq(holdings.dataQuality, "inconsistent_history"),
+        ),
+      );
+    // The remaining voided-only tickers are snapshot rows returning to snapshot
+    // authority — clear derived basis AND any prior flag (a no-op on the rows just
+    // deleted above).
     await tx
       .update(holdings)
       .set({ costBasis: null, acquiredDate: null, dataQuality: null, updatedAt: sql`now()` })
-      .where(
-        and(eq(holdings.accountId, accountId), inArray(holdings.ticker, [...voidedOnlyTickers])),
-      );
+      .where(and(eq(holdings.accountId, accountId), inArray(holdings.ticker, tickers)));
   }
 }
 

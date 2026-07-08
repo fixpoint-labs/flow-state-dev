@@ -104,10 +104,10 @@ describe("materializePositions — inconsistent-history guard (FIX-876)", () => 
     expect(row?.dataQuality).toBeNull();
   });
 
-  it("clears the flag when the over-selling events are voided (no stale flag)", async () => {
-    // File-sourced buy+sell that over-sells → flagged. Voiding both events (the
-    // user undoing a bad import) returns the ticker to snapshot authority; the
-    // `inconsistent_history` flag must not linger on the now-cleared row.
+  it("removes the flagged ghost row when the over-selling events are voided", async () => {
+    // File-sourced buy+sell that over-sells → a flagged guard-created row (there
+    // was no prior snapshot). Voiding both events (the user undoing a bad import)
+    // must REMOVE the row entirely — not leave a stale 0-share ghost behind.
     await repo.ingestLedgerEvents(
       [
         { ...buy(12, 900, "2024-01-01"), source: "file", externalId: "F-BUY" },
@@ -118,7 +118,36 @@ describe("materializePositions — inconsistent-history guard (FIX-876)", () => 
     expect((await nvda())?.dataQuality).toBe("inconsistent_history");
 
     await repo.voidLedgerEvents("acc-1", ["F-BUY", "F-SELL"], "file", "devuser");
-    expect((await nvda())?.dataQuality ?? null).toBeNull();
+    expect(await nvda()).toBeUndefined(); // ghost deleted, not a 0-share leftover
+  });
+
+  it("preserves a real snapshot (not flagged) when its ledger events are voided", async () => {
+    // A CSV/PDF snapshot for MSFT + a later file buy (materializes from the buy).
+    // Voiding the buy returns MSFT to snapshot authority — the row is KEPT (basis
+    // cleared), only guard-created flagged rows are deleted on void.
+    await repo.upsertHoldings(
+      "acc-1",
+      "devuser",
+      [
+        {
+          ticker: "MSFT",
+          quantity: 5,
+          costBasis: 100,
+          acquiredDate: null,
+          assetClass: "equity",
+          assetType: "equity",
+          attributes: { kind: "none" },
+        },
+      ],
+      "upsert",
+    );
+    await repo.ingestLedgerEvents(
+      [{ ...evt({ type: "buy", ticker: "MSFT", quantity: 5, unitPrice: 100, amount: -500 }), source: "file", externalId: "M9" }],
+      "devuser",
+    );
+    await repo.voidLedgerEvents("acc-1", ["M9"], "file", "devuser");
+    const { holdings } = await repo.getPortfolio("devuser");
+    expect(holdings.some((h) => h.ticker === "MSFT")).toBe(true); // snapshot kept
   });
 
   it("self-heals a flagged row once the missing split is recorded", async () => {

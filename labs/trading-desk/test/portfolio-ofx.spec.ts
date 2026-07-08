@@ -302,6 +302,27 @@ VERSION:102
     expect(result.warnings.some((w) => /no usable ratio/.test(w))).toBe(true);
   });
 
+  it("still records FRACCASH cash-in-lieu even when the split ratio is unusable", async () => {
+    // A SPLIT with no usable ratio but a FRACCASH leg: the split is skipped, but
+    // the cash-in-lieu is independent real money and must NOT be dropped.
+    const file = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD<INVTRANLIST>
+<SPLIT><INVTRAN><FITID>SP7<DTTRADE>20240610</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><FRACCASH>7.25</SPLIT>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><TICKER>NVDA</SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events.some((e) => e.type === "split")).toBe(false); // no ratio → no split
+    expect(result.events.find((e) => e.type === "deposit")).toMatchObject({
+      ticker: "NVDA",
+      amount: 7.25,
+      externalId: "SP7:fraccash",
+    });
+    expect(result.warnings.some((w) => /no usable ratio/.test(w))).toBe(true);
+  });
+
   it("records a FRACCASH cash-in-lieu leg as a separate cash event, with a warning", async () => {
     const file = `OFXHEADER:100
 DATA:OFXSGML
