@@ -18,7 +18,7 @@
 import { useMemo, useState, type ReactElement } from "react";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AccountState, Holding } from "@/src/flows/portfolio/portfolio-schema";
+import type { AccountState, AssetClass, Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { LedgerRow } from "@/src/flows/portfolio/ledger-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import type { IncomeSummaryRow } from "@/src/db/repository";
@@ -72,6 +72,8 @@ type AccountDetailProps = {
   onDeleteAccount: () => void;
   /** Open the thesis editor for one holding (the per-holding thesis affordance). */
   onEditThesis: (ticker: string) => void;
+  /** Manually set a holding's allocation class (marks it a manual override). */
+  onSetAssetClass: (ticker: string, assetClass: AssetClass) => void;
 };
 
 export function AccountDetail({
@@ -92,6 +94,7 @@ export function AccountDetail({
   onDeleteHolding,
   onDeleteAccount,
   onEditThesis,
+  onSetAssetClass,
 }: AccountDetailProps): ReactElement {
   const [tab, setTab] = useState<AccountTab>("holdings");
 
@@ -208,6 +211,7 @@ export function AccountDetail({
             thesisReady={thesisReady}
             onDeleteHolding={onDeleteHolding}
             onEditThesis={onEditThesis}
+            onSetAssetClass={onSetAssetClass}
           />
         ) : tab === "transactions" ? (
           <div className="p-2">

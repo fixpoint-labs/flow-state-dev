@@ -32,6 +32,7 @@ import {
   assetTypeSchema,
   holdingAttributesSchema,
 } from "@/src/flows/portfolio/portfolio-schema";
+import { classifyInstrument } from "@/src/flows/portfolio/classify-instrument";
 import type {
   IngestReport,
   LedgerEventInput,
@@ -117,6 +118,20 @@ export interface PortfolioRepository {
   /** Remove a single position — only when its account belongs to `userId` (the
    *  same household-scoping security boundary as {@link deleteAccount}). */
   deleteHolding(accountId: string, ticker: string, userId: string): Promise<void>;
+
+  /**
+   * Set a holding's allocation bucket by hand and mark it `asset_class_manual`,
+   * so auto-classification (ledger materialization / import) preserves it instead
+   * of re-deriving it. Only when the account belongs to `userId` (household
+   * boundary — a foreign account throws, writing nothing). `assetType` and
+   * valuation are left as-is; this edits only the allocation class.
+   */
+  setHoldingAssetClass(
+    accountId: string,
+    userId: string,
+    ticker: string,
+    assetClass: AssetClass,
+  ): Promise<void>;
 
   /**
    * Append events to the ledger, idempotently. The shared ingestion contract
@@ -372,12 +387,19 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
       }
       continue;
     }
+    // Classify by ticker so a transaction-materialized holding carries its real
+    // asset class, not the `equity` column default (the CSV/PDF importer used to
+    // be the only place classification ran; QFX/transaction imports never hit it).
+    const cls = classifyInstrument(ticker);
     const values = {
       accountId,
       ticker,
       quantity: String(p.quantity),
       costBasis: p.avgCost === null ? null : String(p.avgCost),
       acquiredDate: p.acquiredDate,
+      assetClass: cls.assetClass,
+      assetType: cls.assetType,
+      attributes: cls.attributes,
     };
     await tx
       .insert(holdings)
@@ -388,6 +410,11 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
           quantity: values.quantity,
           costBasis: values.costBasis,
           acquiredDate: values.acquiredDate,
+          // Reclassify a non-manual row (self-heals a pre-fix `equity` row);
+          // preserve a user's manual override untouched.
+          assetClass: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.assetClass} ELSE ${cls.assetClass} END`,
+          assetType: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.assetType} ELSE ${cls.assetType} END`,
+          attributes: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.attributes} ELSE ${JSON.stringify(cls.attributes)}::jsonb END`,
           updatedAt: sql`now()`,
         },
       });
@@ -589,6 +616,24 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             ),
           ),
         );
+    },
+
+    async setHoldingAssetClass(accountId, userId, ticker, assetClass) {
+      await db.transaction(async (tx) => {
+        // Household guard (the `upsertHoldings` precedent): confirm ownership up
+        // front and throw, so a foreign account writes nothing.
+        const [owner] = await tx
+          .select({ id: accounts.id })
+          .from(accounts)
+          .where(and(eq(accounts.id, accountId), eq(accounts.userId, userId)));
+        if (owner === undefined) {
+          throw new Error(`Account ${accountId} is not owned by the requesting user.`);
+        }
+        await tx
+          .update(holdings)
+          .set({ assetClass, assetClassManual: true, updatedAt: sql`now()` })
+          .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, ticker)));
+      });
     },
 
     async ingestLedgerEvents(events, userId) {

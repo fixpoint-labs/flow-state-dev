@@ -203,22 +203,25 @@ describe("parsePortfolioCsv", () => {
   });
 
   it("keeps the classification on a dedupe-merged row", () => {
+    // A non-ETF symbol so the explicit `bond` type hint (not the known-bond-ETF
+    // set, which would classify a real ETF ticker like VWOB as etf/fixed_income)
+    // is what drives the classification through the dedupe merge.
     const csv = [
       "ticker,quantity,type",
-      "VWOB,10,bond",
-      "VWOB,30,bond",
+      "ZBND,10,bond",
+      "ZBND,30,bond",
     ].join("\n");
     const result = parsePortfolioCsv(csv);
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]).toMatchObject({
-      ticker: "VWOB",
+      ticker: "ZBND",
       quantity: 40,
       assetType: "bond",
       assetClass: "fixed_income",
-      attributes: { kind: "bond", cusip: "VWOB" },
+      attributes: { kind: "bond", cusip: "ZBND" },
     });
     expect(
-      result.warnings.some((w) => w.includes("merged") && w.includes("VWOB")),
+      result.warnings.some((w) => w.includes("merged") && w.includes("ZBND")),
     ).toBe(true);
   });
 });

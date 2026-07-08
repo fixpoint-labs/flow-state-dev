@@ -34,7 +34,7 @@ import type { SessionView } from "@flow-state-dev/react";
 import { useResource, useFlowContext } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import { apiMutate } from "@/lib/use-api-query";
-import type { Holding } from "@/src/flows/portfolio/portfolio-schema";
+import type { AssetClass, Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import { deriveLots } from "@/src/flows/portfolio/lots";
 import type { TermLot } from "./holding-term";
@@ -65,10 +65,21 @@ import {
 } from "@/src/flows/portfolio/value-holding";
 import {
   DASH,
+  allocationByClass,
   formatMoney,
+  formatPercent,
   formatSignedMoney,
   formatSignedPercent,
 } from "./portfolio-format";
+
+/** Display labels for the asset-class allocation breakdown. */
+const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
+  equity: "Equity",
+  fixed_income: "Fixed income",
+  cash: "Cash",
+  crypto: "Crypto",
+  alternative: "Alt",
+};
 
 type PortfolioPaneProps = {
   /** A bound session whose snapshot the user-scoped resource reads project
@@ -241,6 +252,23 @@ export function PortfolioPane({
     return { rollups, totalValue, totalUpl, totalUplPct };
   }, [accounts, holdingsByAccount, priceMap]);
 
+  // Allocation by asset class (BP-010 — derived, memoed, never stored). Each
+  // holding's market value is resolved BY TYPE (same as the totals above) so the
+  // split's denominator matches NAV; account cash balances roll into the `cash`
+  // bucket. An unpriced holding contributes 0 (the "—" real-money gate).
+  const allocation = useMemo(() => {
+    const entries = holdings.map((h) => ({
+      assetClass: h.assetClass,
+      value: holdingMarketValue(h, priceMap.get(h.ticker.toUpperCase())),
+    }));
+    for (const account of accounts) {
+      if (account.cashBalance !== 0) {
+        entries.push({ assetClass: "cash", value: account.cashBalance });
+      }
+    }
+    return allocationByClass(entries);
+  }, [holdings, accounts, priceMap]);
+
   // Fetch prices for the union of held tickers. Dispatch → refresh → the
   // `portfolioQuotes` resource updates and `useResource` re-projects.
   const fetchPrices = useCallback(async () => {
@@ -380,6 +408,23 @@ export function PortfolioPane({
         refetchAccounts();
       } catch (err) {
         console.error("[trading-desk] deleteHolding failed", err);
+      }
+    },
+    [uid, refetchAccounts],
+  );
+
+  const handleSetAssetClass = useCallback(
+    async (accountId: string, ticker: string, assetClass: AssetClass) => {
+      try {
+        await apiMutate("/api/portfolio/holdings", "PATCH", {
+          userId: uid,
+          accountId,
+          ticker,
+          assetClass,
+        });
+        refetchAccounts();
+      } catch (err) {
+        console.error("[trading-desk] setHoldingAssetClass failed", err);
       }
     },
     [uid, refetchAccounts],
@@ -577,6 +622,19 @@ export function PortfolioPane({
               {formatMoney(totalDividends, "USD")}
             </span>
           </span>
+          {allocation.length > 0 && (
+            <span>
+              allocation{" "}
+              <span className="text-[color:var(--c-fg)]">
+                {allocation
+                  .map(
+                    (s) =>
+                      `${ASSET_CLASS_LABELS[s.assetClass]} ${formatPercent(s.weight)}`,
+                  )
+                  .join(" · ")}
+              </span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -627,6 +685,9 @@ export function PortfolioPane({
             }
             onDeleteAccount={() => void handleDeleteAccount(openAccount.accountId)}
             onEditThesis={(ticker) => setThesisTicker(ticker)}
+            onSetAssetClass={(ticker, assetClass) =>
+              void handleSetAssetClass(openAccount.accountId, ticker, assetClass)
+            }
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-2 @6xl:grid-cols-3">

@@ -33,6 +33,48 @@ export type Classification = {
  *  `CASH_LIKE_TICKERS` set the PDF importer dropped on before this slice. */
 const CASH_LIKE_SYMBOLS = new Set(["CASH", "USD"]);
 
+/**
+ * Curated set of well-known US bond ETFs (normalized upper-case tickers). These
+ * trade like equities (ticker-shaped, live-quoted) but their exposure is fixed
+ * income — a distinction symbol shape cannot carry (`BND` looks like `AAPL`), so
+ * a curated list is the only cheap signal. INTENTIONALLY INCOMPLETE: the failure
+ * mode is under-coverage (an unlisted bond ETF stays `equity`), never noise. When
+ * a real classification source lands (ETF look-through / a security master), it
+ * replaces this set. Extend by adding tickers here.
+ */
+const KNOWN_BOND_ETFS = new Set([
+  // Aggregate / core
+  "BND", "AGG", "BNDW", "IUSB", "FBND", "SPAB", "SCHZ", "AGGY", "GVI",
+  // Treasury (short → long) + ultra-short
+  "TLT", "IEF", "SHY", "IEI", "SHV", "GOVT", "GOVZ", "VGIT", "VGSH", "VGLT",
+  "SCHO", "SCHR", "SPTL", "SPTI", "SPTS", "GBIL", "SGOV", "BILS", "TBIL",
+  "TLH", "EDV", "ZROZ", "TBT",
+  // TIPS / inflation
+  "TIP", "VTIP", "SCHP", "STIP", "TIPX", "SPIP", "LTPZ",
+  // Corporate — investment grade
+  "LQD", "VCIT", "VCSH", "VCLT", "IGSB", "IGIB", "IGLB", "USIG", "SPIB", "SPLB",
+  "SPSB", "SLQD", "QLTA",
+  // Corporate — high yield
+  "HYG", "JNK", "USHY", "SHYG", "SJNK", "HYLB", "ANGL", "FALN", "HYLS", "SHYL",
+  "HYS", "GHYG",
+  // Floating rate
+  "FLRN", "FLTR", "FLOT", "TFLO", "FLRT", "USFR",
+  // Mortgage-backed
+  "MBB", "VMBS", "SPMB",
+  // Municipal
+  "MUB", "VTEB", "TFI", "SUB", "SHM", "HYD", "PZA", "SMB",
+  // International / emerging markets
+  "BNDX", "EMB", "VWOB", "EMLC", "PCY", "IGOV", "BWX", "EBND", "EMHY",
+  // Broad / multisector / active
+  "BOND", "TOTL", "FTSM", "NEAR", "JPST", "MINT", "ICSH", "GSY", "VRIG", "FLDR",
+]);
+
+/** Whether a (raw) symbol is a known bond ETF. The single source of truth for
+ *  the bond-ETF classification, normalizing case/whitespace before the lookup. */
+export function isKnownBondEtf(symbol: string): boolean {
+  return KNOWN_BOND_ETFS.has(symbol.trim().toUpperCase());
+}
+
 /** Money-market fund signal — mirrors `looksLikeMoneyMarket` in portfolio-pdf.ts:
  *  symbol ends in "XX" AND the per-share price sits at ~$1.00. Both signals are
  *  required (suffix alone could catch a real XX equity; a $1 price alone could be
@@ -143,6 +185,15 @@ const CASH_EQUIVALENT: Classification = {
   attributes: { kind: "cash_equivalent" },
 };
 
+/** A known bond ETF: fixed-income EXPOSURE but an `etf` TYPE — the type keeps it
+ *  on the live-quote valuation path (`usesLiveQuote`), only the class is corrected
+ *  (a `bond` type would wrongly value it off a statement mark and show "—"). */
+const BOND_ETF: Classification = {
+  assetClass: "fixed_income",
+  assetType: "etf",
+  attributes: { kind: "none" },
+};
+
 /** The bond classification for a given symbol (the CUSIP becomes the bond's
  *  recorded cusip). `markPrice` is the carried per-UNIT statement value passed by
  *  the importer (see `classifyInstrument`) — a bond has no live quote, so this
@@ -181,6 +232,14 @@ export function classifyInstrument(
   opts?: { price?: number | null; assetTypeHint?: AssetType | null },
 ): Classification {
   const normalized = symbol.trim().toUpperCase();
+
+  // Known bond ETFs are classified BEFORE the hint block: an `etf`/`equity` hint
+  // conveys the type but not the fixed-income class, so the curated set is
+  // authoritative for its tickers. Bond-ETF tickers never collide with the
+  // CUSIP / OCC-option / money-market / crypto shapes below, so this early return
+  // is safe.
+  if (KNOWN_BOND_ETFS.has(normalized)) return BOND_ETF;
+
   // The carried per-UNIT statement value (statement value ÷ quantity), threaded
   // into the bond/option attributes. A bond/option has no live quote, so this is
   // its value; using value÷quantity (not a raw quoted price) keeps valuation

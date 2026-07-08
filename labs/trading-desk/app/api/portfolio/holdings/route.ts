@@ -1,6 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getRepository } from "@/lib/portfolio-db";
-import { deleteHolding } from "@/src/flows/portfolio/portfolio-writes";
+import {
+  deleteHolding,
+  setHoldingAssetClass,
+  setHoldingAssetClassSchema,
+} from "@/src/flows/portfolio/portfolio-writes";
 
 // Delete one holding by (account, ticker) — the app-owned holdings table
 // (FIX-772). A holding is basic relational CRUD, so it's a plain route, not a
@@ -24,5 +28,21 @@ export async function DELETE(req: NextRequest) {
   }
   const repo = await getRepository();
   await deleteHolding(accountId, ticker, userId, repo);
+  return NextResponse.json({ ok: true });
+}
+
+// Manually override a holding's allocation class (marks it manual so
+// auto-classification preserves it). Same dev-only auth posture as DELETE.
+export async function PATCH(req: NextRequest) {
+  const parsed = setHoldingAssetClassSchema.safeParse(await req.json());
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "userId, accountId, ticker, and a valid assetClass are required" },
+      { status: 400 },
+    );
+  }
+  const { userId, accountId, ticker, assetClass } = parsed.data;
+  const repo = await getRepository();
+  await setHoldingAssetClass(accountId, ticker, userId, assetClass, repo);
   return NextResponse.json({ ok: true });
 }

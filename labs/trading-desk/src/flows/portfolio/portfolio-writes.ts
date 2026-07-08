@@ -26,7 +26,7 @@ import { z } from "zod";
 import type { PortfolioRepository } from "@/src/db/repository";
 import type { FileImportReport } from "./transaction-import-schema";
 import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
-import { accountTypeSchema } from "./portfolio-schema";
+import { accountTypeSchema, assetClassSchema, type AssetClass } from "./portfolio-schema";
 import { ledgerEventInputSchema, type IngestReport } from "./ledger-schema";
 import { detectAndParseTransactionFile } from "./transaction-file";
 
@@ -131,6 +131,26 @@ export async function deleteHolding(
   repo: PortfolioRepository,
 ): Promise<void> {
   await repo.deleteHolding(accountId, ticker.toUpperCase(), userId);
+}
+
+/** Body of the `PATCH /api/portfolio/holdings` asset-class override. */
+export const setHoldingAssetClassSchema = z.object({
+  userId: z.string().min(1),
+  accountId: z.string().min(1),
+  ticker: z.string().min(1),
+  assetClass: assetClassSchema,
+});
+
+/** Manually set a holding's allocation class (marks it `asset_class_manual`, so
+ *  auto-classification preserves it). Household-scoped by the repository. */
+export async function setHoldingAssetClass(
+  accountId: string,
+  ticker: string,
+  userId: string,
+  assetClass: AssetClass,
+  repo: PortfolioRepository,
+): Promise<void> {
+  await repo.setHoldingAssetClass(accountId, userId, ticker.toUpperCase(), assetClass);
 }
 
 /**

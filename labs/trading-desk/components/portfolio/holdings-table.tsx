@@ -18,7 +18,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { Trash2, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AssetType, Holding } from "@/src/flows/portfolio/portfolio-schema";
+import type { AssetClass, AssetType, Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import { computeHoldingTerm, formatTerm, type TermLot } from "./holding-term";
 import {
@@ -61,6 +61,9 @@ type HoldingsTableProps = {
   onDeleteHolding: (ticker: string) => void;
   /** Open the thesis editor for one holding (the per-holding thesis affordance). */
   onEditThesis: (ticker: string) => void;
+  /** Manually set a holding's allocation class (marks it a manual override, so
+   *  auto-classification preserves it). */
+  onSetAssetClass: (ticker: string, assetClass: AssetClass) => void;
 };
 
 /** Short uppercase type chips (FIX-773 Slice C). Dense, terminal-style — `EQ`
@@ -84,6 +87,8 @@ export type HoldingRowModel = {
   ticker: string;
   /** Short uppercase asset-type chip (e.g. `EQ`, `BOND`, `MMF`). */
   typeLabel: string;
+  /** Allocation bucket, for the per-row class picker (the editable override). */
+  assetClass: AssetClass;
   quantity: string;
   avgCost: string;
   price: string;
@@ -162,6 +167,7 @@ export function buildHoldingRowModel(
   return {
     ticker: holding.ticker,
     typeLabel: TYPE_LABELS[holding.assetType],
+    assetClass: holding.assetClass,
     quantity: formatQuantity(holding.quantity),
     avgCost:
       holding.costBasis === null ? DASH : formatMoney(holding.costBasis, currency),
@@ -218,6 +224,7 @@ export function HoldingsTable({
   thesisReady = true,
   onDeleteHolding,
   onEditThesis,
+  onSetAssetClass,
 }: HoldingsTableProps): ReactElement {
   if (holdings.length === 0) {
     return (
@@ -267,6 +274,11 @@ export function HoldingsTable({
                 <span className="inline-flex items-center gap-1">
                   {m.ticker}
                   <TypeChip label={m.typeLabel} />
+                  <AssetClassPicker
+                    ticker={m.ticker}
+                    assetClass={m.assetClass}
+                    onSet={onSetAssetClass}
+                  />
                   <ThesisButton
                     ticker={m.ticker}
                     hasThesis={m.hasThesis}
@@ -318,6 +330,11 @@ export function HoldingsTable({
                 {m.ticker}
               </span>
               <TypeChip label={m.typeLabel} />
+              <AssetClassPicker
+                ticker={m.ticker}
+                assetClass={m.assetClass}
+                onSet={onSetAssetClass}
+              />
               <ThesisButton
                 ticker={m.ticker}
                 hasThesis={m.hasThesis}
@@ -357,6 +374,44 @@ function TypeChip({ label }: { label: string }): ReactElement {
     <span className="rounded-sm border border-[color:var(--c-border)] px-1 py-px font-mono text-[8.5px] uppercase leading-none tracking-wider text-[color:var(--c-fg-faint)]">
       {label}
     </span>
+  );
+}
+
+/** Short labels for the per-row asset-class override picker. */
+const CLASS_OPTIONS: { value: AssetClass; label: string }[] = [
+  { value: "equity", label: "Equity" },
+  { value: "fixed_income", label: "Fixed inc" },
+  { value: "cash", label: "Cash" },
+  { value: "crypto", label: "Crypto" },
+  { value: "alternative", label: "Alt" },
+];
+
+/** A compact native-select override for a holding's allocation class. Auto-
+ *  classification covers the common cases; this is the durable escape hatch for
+ *  a ticker the classifier misses (setting it marks the row a manual override, so
+ *  a later re-import won't revert it). */
+function AssetClassPicker({
+  ticker,
+  assetClass,
+  onSet,
+}: {
+  ticker: string;
+  assetClass: AssetClass;
+  onSet: (ticker: string, assetClass: AssetClass) => void;
+}): ReactElement {
+  return (
+    <select
+      aria-label={`Asset class for ${ticker}`}
+      value={assetClass}
+      onChange={(e) => onSet(ticker, e.target.value as AssetClass)}
+      className="cursor-pointer rounded-sm border border-[color:var(--c-border)] bg-[color:var(--c-surface)] px-1 py-px font-mono text-[8.5px] uppercase leading-none tracking-wider text-[color:var(--c-fg-muted)]"
+    >
+      {CLASS_OPTIONS.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   );
 }
 

@@ -195,3 +195,58 @@ describe("classifyInstrument — carries the statement mark (FIX-773 Slice C)", 
     expect(r.attributes).toEqual({ kind: "cash_equivalent" });
   });
 });
+
+describe("classifyInstrument — known bond ETFs (fixed_income, not equity)", () => {
+  // A bond ETF trades like a stock (ticker-shaped, live-quoted) but its exposure
+  // is fixed income. Symbol shape can't tell BND from AAPL, so a curated set is
+  // the signal. The INTENT: a portfolio of bond ETFs must not read as equity —
+  // else the allocation split is wrong. assetType stays `etf` so valuation keeps
+  // using the live quote (a `bond` type would wrongly value off a statement mark).
+  it.each(["BND", "AGG", "TLT", "LQD", "HYG"])(
+    "classifies %s as fixed_income / etf",
+    (ticker) => {
+      const r = classifyInstrument(ticker);
+      expect(r).toEqual({
+        assetClass: "fixed_income",
+        assetType: "etf",
+        attributes: { kind: "none" },
+      });
+      expect(holdingAttributesSchema.safeParse(r.attributes).success).toBe(true);
+    },
+  );
+
+  // Real portfolio coverage: these are the bond ETFs a QFX-imported bond sleeve
+  // held that the first cut of the list missed (high-yield, floating-rate,
+  // ultra-short treasury). Regression guard against under-coverage.
+  it.each(["USHY", "FLRN", "GBIL", "SHYG", "SJNK", "HYLB", "FLTR"])(
+    "classifies %s (previously-missed bond ETF) as fixed_income",
+    (ticker) => {
+      expect(classifyInstrument(ticker).assetClass).toBe("fixed_income");
+    },
+  );
+
+  it("normalizes case/whitespace before matching the set", () => {
+    expect(classifyInstrument("  bnd ").assetClass).toBe("fixed_income");
+  });
+
+  it("leaves a plain equity ticker as equity (control)", () => {
+    expect(classifyInstrument("AAPL").assetClass).toBe("equity");
+  });
+
+  it("leaves an unknown ETF as equity (curated set is intentionally incomplete)", () => {
+    // QQQ is an equity-index ETF, not in the bond set → stays equity, not
+    // silently reclassified. The set's failure mode is under-coverage, not noise.
+    expect(classifyInstrument("QQQ").assetClass).toBe("equity");
+  });
+
+  it("wins over a stale assetType hint (the set is authoritative for its tickers)", () => {
+    // A brokerage CSV that labels BND `equity` (or `etf`) must still land
+    // fixed_income — the curated set knows the class the hint can't convey.
+    expect(
+      classifyInstrument("BND", { assetTypeHint: "equity" }).assetClass,
+    ).toBe("fixed_income");
+    expect(classifyInstrument("BND", { assetTypeHint: "etf" }).assetClass).toBe(
+      "fixed_income",
+    );
+  });
+});

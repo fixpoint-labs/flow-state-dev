@@ -20,6 +20,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   date,
   index,
   jsonb,
@@ -87,6 +88,11 @@ export const holdings = appSchema.table(
     assetClass: text("asset_class").notNull().default("equity"),
     assetType: text("asset_type").notNull().default("equity"),
     attributes: jsonb("attributes").notNull().default({ kind: "none" }),
+    // Provenance for `asset_class`: `true` once a user sets the class by hand, so
+    // auto-classification (the ledger-materialization + import paths) preserves
+    // the override instead of overwriting it on the next re-derivation. Default
+    // `false` — auto-classified rows stay re-classifiable.
+    assetClassManual: boolean("asset_class_manual").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
       .notNull()
       .default(sql`now()`),
