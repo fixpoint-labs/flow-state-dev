@@ -202,6 +202,23 @@ describe("replaceLedgerFromFile — reconciles holdings to the new source of tru
     expect(holdings.some((h) => h.ticker === "NVDA")).toBe(true);
   });
 
+  it("orphan-deletes a ledger-derived ticker when the reset file only SELLS it (no new acquisition)", async () => {
+    // Old ledger: a buy makes NVDA ledger-authoritative (materialized position).
+    await repo.ingestLedgerEvents([buy(10, 100, "2024-01-01")], "devuser");
+    expect(await nvda()).toBeDefined();
+
+    // Reset file carries only a SELL for NVDA (no new buy) plus a real MSFT buy.
+    // The reset must NOT leave NVDA's old materialized row as a stale position —
+    // the new file doesn't re-establish it (a sell alone isn't an acquisition).
+    await repo.replaceLedgerFromFile("acc-1", "devuser", [
+      { ...sell(3, "2024-03-01") }, // NVDA sell, no acquisition
+      msftBuy(),
+    ]);
+    const { holdings } = await repo.getPortfolio("devuser");
+    expect(holdings.some((h) => h.ticker === "NVDA")).toBe(false); // not stale
+    expect(holdings.some((h) => h.ticker === "MSFT")).toBe(true);
+  });
+
   it("preserves a snapshot whose old ledger history was disposals-only (no acquisition)", async () => {
     // MSFT: a snapshot holding + a sell-only ledger history (a partial import that
     // `materializePositions` keeps as a snapshot, never a close). It has no

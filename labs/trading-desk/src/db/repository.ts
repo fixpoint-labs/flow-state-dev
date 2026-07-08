@@ -880,11 +880,20 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         await tx.delete(ledgerEvents).where(eq(ledgerEvents.accountId, accountId));
         const report = await ingestEventsInTx(tx, events, userId);
         // Reconcile holdings to the new source of truth: drop any ledger-derived
-        // position the new file no longer carries a share move for.
-        const afterTickers = new Set(
-          events.filter((e) => e.quantity !== null && e.ticker !== null).map((e) => e.ticker),
+        // position the new file no longer ESTABLISHES. Symmetric with
+        // `ledgerAuthoritativeBefore` — only a new ACQUISITION (`quantity > 0`)
+        // re-establishes a ticker's position. A reset file that merely SELLS a
+        // previously-derived ticker (no new buy) does NOT keep it: its old
+        // materialized row came from the now-wiped ledger, so leaving it would
+        // show a stale position after the "clean slate" (materialize's
+        // disposals-only "keep as snapshot" rule assumes a real snapshot, which a
+        // reset ledger-derived row is not).
+        const afterAcquired = new Set(
+          events
+            .filter((e) => e.quantity !== null && e.quantity > 0 && e.ticker !== null)
+            .map((e) => e.ticker),
         );
-        const orphans = [...ledgerAuthoritativeBefore].filter((t) => !afterTickers.has(t));
+        const orphans = [...ledgerAuthoritativeBefore].filter((t) => !afterAcquired.has(t));
         if (orphans.length > 0) {
           await tx
             .delete(holdings)
