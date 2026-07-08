@@ -143,6 +143,30 @@ const { newRequestId } = await recovery.retry({
 — the server returns 409 otherwise.
 
 ```ts
+// Continue a crash-interrupted request under its OWN id. Unlike `retry`,
+// no new request is created: completed blocks replay from the durable log
+// and the in-flight block re-runs, transitioning
+// `interrupted -> in_progress -> terminal` in place. Returns the same id.
+const { requestId } = await recovery.continue({
+  flowKind: "chat",
+  sessionId: "sess_1",
+  requestId: "req_1",
+});
+
+// Streaming sibling of `continue`. POSTs to the same `/continue` route with
+// Accept: text/event-stream so the server returns the continuation's SSE
+// stream directly from the POST response, and returns the raw Response
+// whose body is that stream — the inline-SSE counterpart to `continue()`,
+// mirroring resumeSuspensionStream's approach so serverless deployments
+// (no shared pub/sub) still see the continued run live.
+const continued = await recovery.continueStream({
+  flowKind: "chat",
+  sessionId: "sess_1",
+  requestId: "req_1",
+});
+```
+
+```ts
 // Resolve a pending suspension (approve/reject), streaming the continuation.
 // resumeSuspensionStream POSTs with Accept: text/event-stream and returns the
 // raw Response whose body is the resumed run's SSE stream — so the resuming

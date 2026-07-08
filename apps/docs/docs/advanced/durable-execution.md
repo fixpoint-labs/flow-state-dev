@@ -320,6 +320,8 @@ From the detail pane you can **approve** or **reject** a pending suspension and 
 
 The tab reads through the gated debug endpoints, which are disabled by default and loopback-only. It requires a configured `durabilityProvider`; without one, the suspension store is empty and the tab shows nothing to act on.
 
+The same request panel also lists interrupted runs, not just suspensions — a request that stopped abruptly (a crash, a restart, a mid-execution deploy) but is still resumable. See [DevTool — Interrupted runs and crash recovery](/docs/devtool/overview#interrupted-runs-and-crash-recovery) for spotting one and continuing it.
+
 ## See also
 
 - [Human-in-the-Loop guide](/guides/human-in-the-loop) — building an approval gate end to end, from `ctx.suspend()` to the React card that resolves it

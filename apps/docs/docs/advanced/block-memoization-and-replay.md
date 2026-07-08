@@ -89,3 +89,4 @@ A router's `execute` selector is part of this layer too, with one difference: th
 
 - [Idempotency and `runOnce`](./idempotency.md) — provider-key idempotency for exactly-once across crashes.
 - [Durable execution](./durable-execution.md) — suspend/resume, the continuous item log, and where memoization fits in the resume lifecycle.
+- [DevTool — Interrupted runs and crash recovery](/docs/devtool/overview#interrupted-runs-and-crash-recovery) — inspecting a continued run and reading the crash-recovery boundary in the DevTool.
