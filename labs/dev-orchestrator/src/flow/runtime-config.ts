@@ -6,22 +6,14 @@
  * suspensions, and declares NO generators. But `runAction` always builds a
  * model resolver for the execution context, and the default resolver validates
  * any `FSDEV_INTENT_*` environment overrides against the flow's declared intents
- * (here, none) and throws. We therefore pass a trivial resolver that is never
- * actually invoked (no generator ever resolves a model), which also keeps the
- * orchestrator immune to whatever model env a host happens to set.
+ * (here, none) and throws. We therefore pass the lab's shared no-op resolver
+ * (see ../no-model-resolver.ts), which also keeps the orchestrator immune to
+ * whatever model env a host happens to set.
  */
-import type { ModelResolver } from "@flow-state-dev/core/types";
 import type { DurabilityProvider, RuntimeConfig } from "@flow-state-dev/server";
+import { noModelResolver } from "../no-model-resolver";
 
-/** A resolver that throws if ever asked to resolve a model (it never is). */
-export const noModelResolver = Object.assign(
-  (modelId: string) => {
-    throw new Error(
-      `dev-orchestrator flows declare no generators; cannot resolve model "${modelId}".`,
-    );
-  },
-  { resolveId: (modelId: string) => modelId },
-) as unknown as ModelResolver;
+export { noModelResolver };
 
 /** Runtime config for every orchestrator run: durable provider + the no-op resolver. */
 export function orchestratorRuntimeConfig(provider: DurabilityProvider): RuntimeConfig {
