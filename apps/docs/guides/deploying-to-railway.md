@@ -11,7 +11,7 @@ How to deploy a flow-state-dev application as a long-running Node.js server on R
 
 ## Prerequisites
 
-- Node.js 18+ project with flow-state-dev
+- Node.js 22+ project with flow-state-dev
 - A [Railway account](https://railway.app)
 - The [Railway CLI](https://docs.railway.app/guides/cli) — optional but useful
 - At least one LLM provider API key

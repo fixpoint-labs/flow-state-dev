@@ -154,6 +154,32 @@ describe("provider search tool resolution", () => {
   });
 });
 
+describe("real provider search-tool factory smoke (AI SDK 7)", () => {
+  // `mapToProviderSearchTool` string-indexes factory names off the provider's
+  // `.tools` namespace, and the mocked tests above hand-write those names — a
+  // provider-package rename would silently disable `search: true` while they
+  // stay green. This smoke resolves the search tool through the REAL installed
+  // `@ai-sdk/openai` (core devDependency). Anthropic/Google are not installed
+  // in this workspace; their factory names are covered by the documented
+  // inventory at `mapToProviderSearchTool`. No network — factory invocation
+  // only.
+  it("resolves the OpenAI web search tool from the real installed provider", async () => {
+    const { createOpenAI } = await import("@ai-sdk/openai");
+    const provider = createOpenAI({ apiKey: "test" });
+
+    // The string-indexed factory exists on the real v7 provider.
+    expect(typeof (provider as any).tools?.webSearch).toBe("function");
+
+    // And mapToProviderSearchTool (via resolveSearchTool) resolves it.
+    const resolver = createAiSdkModelResolver(provider as any);
+    const model = resolver("gpt-5.4-mini", "gen");
+    const result = model.resolveSearchTool!({});
+    expect(result).toBeDefined();
+    expect(result!.name).toBe("web_search");
+    expect(result!.tool).toBeDefined();
+  });
+});
+
 describe("source normalization in generate results", () => {
   // Note: In real usage, sources are populated on the generateText result
   // by the AI SDK when provider-native search tools are used. The

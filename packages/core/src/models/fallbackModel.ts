@@ -73,6 +73,17 @@ export function isRetryableError(error: unknown): boolean {
   return false;
 }
 
+/**
+ * Provider/gateway package load failure surfaced by `createModelResolver`'s
+ * lazy loader (stamped with `name: "ProviderLoadError"`). A broken install
+ * cannot heal on retry, but the next candidate uses a different package —
+ * both fallback loops skip straight to it. Recognized by name (realm/module
+ * safe), matching the duck-typed checks in {@link isRetryableError}.
+ */
+function isProviderLoadError(error: unknown): boolean {
+  return error instanceof Error && error.name === "ProviderLoadError";
+}
+
 // ---------------------------------------------------------------------------
 // Default merging
 // ---------------------------------------------------------------------------
@@ -133,8 +144,9 @@ async function executeWithFallback<T>(
         const err = error instanceof Error ? error : new Error(String(error));
         errors.push({ modelId: entry.modelId, error: err });
 
-        if (!isRetryableError(error)) {
-          // Non-retryable: skip remaining attempts, try next model
+        if (isProviderLoadError(error) || !isRetryableError(error)) {
+          // Broken provider install or non-retryable error: skip remaining
+          // attempts, try next model
           break;
         }
 
@@ -209,12 +221,12 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
             const entry = models[i]!;
             if (!entry.model.stream) continue;
 
+            let yieldedFirstChunk = false;
             try {
               const merged = mergeDefaults(options, defaults, entry.providerName);
-              let resolvedFired = false;
               for await (const chunk of entry.model.stream(merged)) {
-                if (!resolvedFired) {
-                  resolvedFired = true;
+                if (!yieldedFirstChunk) {
+                  yieldedFirstChunk = true;
                   onResolved?.(entry);
                 }
                 yield chunk;
@@ -225,13 +237,20 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
                 error instanceof Error ? error : new Error(String(error));
               errors.push({ modelId: entry.modelId, error: err });
 
-              if (i === models.length - 1 || !isRetryableError(error)) {
-                // Last model or non-retryable — throw
-                if (!isRetryableError(error)) {
-                  throw error;
-                }
+              // Provider-load failure: the lazy loader rejected while
+              // executing the candidate's package, before anything streamed.
+              // The install is broken for THIS candidate only — skip to the
+              // next one, mirroring the generate loop. Guarded on "no chunk
+              // yielded" so an error after content has been emitted still
+              // surfaces instead of silently restarting on another model.
+              if (!yieldedFirstChunk && isProviderLoadError(error)) {
+                continue;
               }
-              // Fall back to next model
+
+              if (!isRetryableError(error)) {
+                throw error;
+              }
+              // Retryable — fall back to next model
             }
           }
 

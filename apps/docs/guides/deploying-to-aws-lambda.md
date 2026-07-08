@@ -13,7 +13,7 @@ Lambda is a serverless target: functions spin up on demand and stop when idle. T
 
 ## Prerequisites
 
-- A Node.js 20+ project with flow-state-dev
+- A Node.js 22+ project with flow-state-dev
 - An AWS account and the [AWS CLI](https://docs.aws.amazon.com/cli/) configured
 - `@flow-state-dev/node` installed
 - An external store (Lambda's filesystem is ephemeral — see step 4)
@@ -87,7 +87,7 @@ Bundle `src/handler.ts` and its dependencies (esbuild or your bundler of choice)
 # after bundling to dist/handler.js and zipping to function.zip
 aws lambda create-function \
   --function-name my-flow-app \
-  --runtime nodejs20.x \
+  --runtime nodejs22.x \
   --handler handler.handler \
   --zip-file fileb://function.zip \
   --role arn:aws:iam::ACCOUNT_ID:role/my-lambda-role \
@@ -96,7 +96,7 @@ aws lambda create-function \
   --environment "Variables={OPENAI_API_KEY=sk-...,DATABASE_URL=postgres://...}"
 ```
 
-For anything beyond a first deploy, manage this with SAM, CDK, or Terraform rather than raw CLI calls. The pieces are the same: a Node 20 function, a Function URL in `RESPONSE_STREAM` mode, and your environment variables.
+For anything beyond a first deploy, manage this with SAM, CDK, or Terraform rather than raw CLI calls. The pieces are the same: a Node 22 function, a Function URL in `RESPONSE_STREAM` mode, and your environment variables.
 
 ---
 

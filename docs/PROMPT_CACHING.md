@@ -101,7 +101,7 @@ Tools are passed to the AI SDK in a separate slot. Anthropic's cumulative marker
 `GeneratorModelUsage` now carries optional `cacheReadInputTokens` and `cacheCreationInputTokens`. The AI SDK adapter extracts them from either:
 
 - `providerMetadata.anthropic.cacheReadInputTokens` / `cacheCreationInputTokens` (Anthropic's canonical surface), or
-- the AI SDK v6 aggregated `usage.cachedInputTokens` field when a provider reports only there.
+- the AI SDK usage counters — `usage.inputTokenDetails.cacheReadTokens` / `cacheWriteTokens` on AI SDK 7, with the older aggregated `usage.cachedInputTokens` still read as a fallback.
 
 Downstream consumers (sequencer, server executeBlock, DevTool) prefer the normalised usage fields and fall back to provider metadata so existing call paths keep working.
 

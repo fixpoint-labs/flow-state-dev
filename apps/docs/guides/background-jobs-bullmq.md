@@ -24,7 +24,7 @@ If you deploy to Vercel or another serverless platform, you probably don't need 
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - Redis 6+ (local or managed)
 - A flow-state-dev application with at least one flow
 

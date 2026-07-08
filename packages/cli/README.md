@@ -92,6 +92,8 @@ Event types:
 | Type | Description |
 |------|-------------|
 | `item_added` | New output item created |
+| `item_updated` | Patch applied to an existing item (e.g. a trace gaining `modelUsage`) |
+| `item_done` | Item reached its terminal state; carries the finalized item |
 | `content_delta` | Incremental content chunk for an item |
 | `state_change` | Scope state or resource was modified |
 | `flow_complete` | Action completed successfully |

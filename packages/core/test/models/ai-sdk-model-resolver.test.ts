@@ -321,18 +321,21 @@ describe("createAiSdkModelResolver", () => {
     expect(toolInputStarts.length).toBe(1);
     expect((toolInputStarts[0].toolInput as any).toolName).toBe("lookup");
 
-    // tool-input-delta → tool_call_delta (new handler)
+    // tool-input-delta → tool_call_delta. The v7 part carries only
+    // `id`/`delta` on the wire; the resolver inherits the tool name from the
+    // matching tool-input-start so in-progress tool_call_delta chunks carry
+    // a NON-empty tool name alongside a non-empty argsDelta.
     const toolDeltas = chunks.filter(c => c.type === "tool_call_delta");
     expect(toolDeltas.length).toBe(2);
 
     expect(toolDeltas[0].toolCallDelta).toEqual({
       toolCallId: "tc_1",
-      toolName: "",
+      toolName: "lookup",
       argsDelta: '{"q":'
     });
     expect(toolDeltas[1].toolCallDelta).toEqual({
       toolCallId: "tc_1",
-      toolName: "",
+      toolName: "lookup",
       argsDelta: '"val"}'
     });
 
@@ -667,6 +670,256 @@ describe("createAiSdkModelResolver — tool name sanitization", () => {
   });
 });
 
+describe("createAiSdkModelResolver — AI SDK 7 stream part mapping", () => {
+  /** Build a streaming mock from raw V3 provider parts. */
+  function streamingModel(parts: unknown[], opts?: { provider?: string; modelId?: string }) {
+    const model = new MockLanguageModelV3({
+      modelId: opts?.modelId ?? "mock-model-id",
+      doStream: {
+        stream: new ReadableStream({
+          start(controller) {
+            for (const part of parts) controller.enqueue(part as any);
+            controller.close();
+          }
+        })
+      }
+    });
+    if (opts?.provider !== undefined) {
+      (model as any).provider = opts.provider;
+    }
+    return model;
+  }
+
+  const finishPart = {
+    type: "finish",
+    finishReason: { unified: "stop", raw: undefined },
+    usage: {
+      inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+      outputTokens: { total: 3, text: 3, reasoning: undefined }
+    }
+  };
+
+  async function collect(model: ReturnType<typeof wrapAiSdkModel>, options?: Record<string, unknown>) {
+    const chunks: any[] = [];
+    for await (const chunk of model.stream!({
+      messages: [{ role: "user", content: "go" }],
+      ...options
+    })) {
+      chunks.push(chunk);
+    }
+    return chunks;
+  }
+
+  it("maps text-delta and reasoning-delta payloads from the v7 `text` field", async () => {
+    const model = wrapAiSdkModel(streamingModel([
+      { type: "reasoning-delta", id: "r1", delta: "thinking hard" },
+      { type: "text-delta", id: "t1", delta: "hello world" },
+      finishPart
+    ]));
+
+    const chunks = await collect(model);
+    const reasoning = chunks.find((c) => c.type === "reasoning_delta");
+    expect(reasoning?.reasoningDelta).toBe("thinking hard");
+    const text = chunks.find((c) => c.type === "text_delta");
+    expect(text?.textDelta).toBe("hello world");
+  });
+
+  it("maps completed tool-call parts to tool_call_delta with the v7 `input` payload", async () => {
+    const model = wrapAiSdkModel(streamingModel([
+      { type: "tool-call", toolCallId: "call_9", toolName: "lookup", input: '{"q":"status"}' },
+      { ...finishPart, finishReason: { unified: "tool-calls", raw: undefined } }
+    ]));
+
+    const chunks = await collect(model);
+    const toolCall = chunks.find((c) => c.type === "tool_call_delta");
+    expect(toolCall?.toolCallDelta.toolCallId).toBe("call_9");
+    expect(toolCall?.toolCallDelta.toolName).toBe("lookup");
+    // A completed tool-call carries its full arguments as one argsDelta.
+    expect(JSON.parse(toolCall?.toolCallDelta.argsDelta)).toEqual({ q: "status" });
+  });
+
+  it("maps provider-executed tool-result parts to tool_result with the v7 `output` payload", async () => {
+    const model = wrapAiSdkModel(streamingModel([
+      { type: "tool-call", toolCallId: "call_1", toolName: "web_search", input: '{"q":"x"}', providerExecuted: true },
+      { type: "tool-result", toolCallId: "call_1", toolName: "web_search", result: { answer: 42 }, providerExecuted: true },
+      finishPart
+    ]));
+
+    const chunks = await collect(model);
+    const toolResult = chunks.find((c) => c.type === "tool_result");
+    expect(toolResult?.toolResult.toolCallId).toBe("call_1");
+    expect(toolResult?.toolResult.toolName).toBe("web_search");
+    expect(toolResult?.toolResult.result).toEqual({ answer: 42 });
+  });
+
+  it("maps flat v7 source parts (sourceType url) to source_url chunks", async () => {
+    const model = wrapAiSdkModel(streamingModel([
+      {
+        type: "source",
+        sourceType: "url",
+        id: "src_1",
+        url: "https://example.com/doc",
+        title: "Example Doc"
+      },
+      finishPart
+    ]));
+
+    const chunks = await collect(model);
+    const source = chunks.find((c) => c.type === "source_url");
+    expect(source?.source).toMatchObject({
+      type: "source",
+      sourceType: "url",
+      id: "src_1",
+      url: "https://example.com/doc",
+      title: "Example Doc"
+    });
+  });
+
+  it("normalizes the v7 nested usage shape (inputTokenDetails cache counters) on the finish chunk", async () => {
+    const model = wrapAiSdkModel(streamingModel([
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "ok" },
+      { type: "text-end", id: "t1" },
+      {
+        type: "finish",
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 100, noCache: 60, cacheRead: 30, cacheWrite: 10 },
+          outputTokens: { total: 5, text: 5, reasoning: undefined }
+        }
+      }
+    ]));
+
+    const chunks = await collect(model);
+    const finish = chunks[chunks.length - 1];
+    expect(finish.type).toBe("finish");
+    expect(finish.finishReason).toBe("stop");
+    expect(finish.usage).toEqual({
+      promptTokens: 100,
+      completionTokens: 5,
+      totalTokens: 105,
+      cacheReadInputTokens: 30,
+      cacheCreationInputTokens: 10
+    });
+    expect(finish.fullResult?.usage).toEqual(finish.usage);
+    expect(finish.fullResult?.text).toBe("ok");
+  });
+
+  it("keeps null-guards intact when the model reports no usage", async () => {
+    const model = wrapAiSdkModel(streamingModel([
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "ok" },
+      { type: "text-end", id: "t1" },
+      {
+        type: "finish",
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: undefined, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: undefined, text: undefined, reasoning: undefined }
+        }
+      }
+    ]));
+
+    const chunks = await collect(model);
+    const finish = chunks[chunks.length - 1];
+    expect(finish.type).toBe("finish");
+    expect(finish.usage).toBeUndefined();
+    expect(finish.fullResult?.usage).toBeUndefined();
+    expect(finish.fullResult?.text).toBe("ok");
+  });
+
+  it("surfaces mid-stream error parts as a finish chunk with finishReason 'error'", async () => {
+    // A provider error part mid-stream does not stop the v7 stream: the SDK
+    // marks the step's finishReason as "error" and the result promises
+    // resolve. The resolver logs the part and still emits a terminal finish
+    // chunk so the generator sees a completed (failed) turn.
+    const model = wrapAiSdkModel(streamingModel([
+      { type: "text-delta", id: "t1", delta: "partial" },
+      { type: "error", error: new Error("provider boom") }
+    ]));
+
+    const chunks = await collect(model);
+    const finish = chunks[chunks.length - 1];
+    expect(finish.type).toBe("finish");
+    expect(finish.finishReason).toBe("error");
+  });
+
+  it("wraps stream-stopping failures as ModelStreamError with a walkable cause", async () => {
+    // A failure that prevents any step from completing rejects the result's
+    // settled-finish promises; the resolver re-throws it as ModelStreamError
+    // with the original error on the cause chain (FIX-663), never as an
+    // unhandled rejection.
+    const model = wrapAiSdkModel(new MockLanguageModelV3({
+      doStream: async () => {
+        throw new Error("hard boom");
+      }
+    }));
+
+    let caught: unknown;
+    try {
+      await collect(model);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeDefined();
+    expect((caught as Error).name).toBe("ModelStreamError");
+    expect((caught as Error).cause).toBeInstanceOf(Error);
+  });
+
+  it("yields the framework cancel path (ModelStreamError with abort cause), not an unhandled rejection, on abortSignal cancellation", async () => {
+    const model = wrapAiSdkModel(streamingModel([
+      { type: "text-delta", id: "t1", delta: "never consumed" },
+      finishPart
+    ]));
+
+    const controller = new AbortController();
+    controller.abort();
+
+    let caught: unknown;
+    try {
+      await collect(model, { signal: controller.signal });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeDefined();
+    // Walk the wrap chain: cancellation must surface as an abort-shaped
+    // error the framework's isAbortLike/rootCause helpers can classify.
+    const seen: string[] = [];
+    let cursor: unknown = caught;
+    while (cursor instanceof Error) {
+      seen.push(`${cursor.name}: ${cursor.message}`);
+      cursor = cursor.cause;
+    }
+    expect(seen.join(" | ")).toMatch(/abort/i);
+  });
+
+  it("stamps Anthropic cacheControl on resolver-built stream requests (system prefix stays in messages)", async () => {
+    const model = streamingModel(
+      [{ type: "text-delta", id: "t1", delta: "ok" }, finishPart],
+      { provider: "anthropic.messages" }
+    );
+    const resolver = createAiSdkModelResolver(() => model);
+
+    const chunks: unknown[] = [];
+    for await (const chunk of resolver("anthropic/claude-sonnet-4-6", "gen").stream!({
+      messages: [
+        { role: "system", content: makeLargeSystemContent() },
+        { role: "user", content: "hi" }
+      ]
+    })) {
+      chunks.push(chunk);
+    }
+
+    const request = model.doStreamCalls[0]!;
+    const prompt = request.prompt as any[];
+    const systemMsg = prompt.find((m) => m.role === "system");
+    expect(systemMsg?.providerOptions?.anthropic?.cacheControl).toEqual({
+      type: "ephemeral",
+      ttl: "5m"
+    });
+  });
+});
+
 describe("createAiSdkModelResolver — structured output recovery (FIX-841)", () => {
   const verdictSchema = z.object({
     decision: z.enum(["continue", "replan", "complete"]),
@@ -723,5 +976,82 @@ describe("createAiSdkModelResolver — structured output recovery (FIX-841)", ()
         outputSchema: verdictSchema,
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("createAiSdkModelResolver — toModelOutput bridge (AI SDK 7 tool-result content)", () => {
+  it("materialises the mapped string as a v7-canonical content/text tool-result the next step sees", async () => {
+    // AI SDK 7 canonicalized tool-result content parts: the `content` variant
+    // accepts only `text` and `file` entries (the v6 `image-*`/legacy `file-*`
+    // variants are gone). The framework mapper returns a plain string; the
+    // resolver wraps it as a content/text envelope — this pins that the text
+    // reaches the model's next step and that no legacy variant is emitted.
+    let call = 0;
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => {
+        call++;
+        if (call === 1) {
+          return {
+            content: [
+              { type: "tool-call", toolCallId: "call_1", toolName: "recall", input: '{"q":"notes"}' }
+            ],
+            finishReason: { unified: "tool-calls", raw: undefined },
+            usage: {
+              inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+              outputTokens: { total: 3, text: undefined, reasoning: undefined }
+            },
+            warnings: []
+          };
+        }
+        return {
+          content: [{ type: "text", text: "done" }],
+          finishReason: { unified: "stop", raw: undefined },
+          usage: {
+            inputTokens: { total: 8, noCache: 8, cacheRead: undefined, cacheWrite: undefined },
+            outputTokens: { total: 2, text: 2, reasoning: undefined }
+          },
+          warnings: []
+        };
+      }
+    });
+
+    const resolver = createAiSdkModelResolver(() => model);
+    const result = await resolver("openai/gpt-5.4-mini", "gen").generate({
+      messages: [{ role: "user", content: "go" }],
+      tools: [
+        {
+          name: "recall",
+          description: "recall notes",
+          parameters: z.object({ q: z.string() }),
+          execute: async () => ({ items: [{ id: "m1", content: "the full structured payload" }] }),
+          toModelOutput: async () => "1 memory: the full structured payload"
+        }
+      ],
+      maxSteps: 2
+    });
+
+    expect(result.text).toBe("done");
+    expect(model.doGenerateCalls.length).toBe(2);
+
+    // The second step's prompt carries the tool result the model actually
+    // sees — the mapped summary string, not the structured execute() output.
+    const secondPrompt = model.doGenerateCalls[1]!.prompt as Array<{
+      role: string;
+      content: Array<Record<string, unknown>>;
+    }>;
+    const toolMessage = secondPrompt.find((m) => m.role === "tool");
+    expect(toolMessage).toBeDefined();
+    const resultPart = toolMessage!.content.find((p) => p.type === "tool-result") as {
+      output: { type: string; value: Array<{ type: string; text?: string }> };
+    };
+    expect(resultPart.output.type).toBe("content");
+    expect(resultPart.output.value).toEqual([
+      { type: "text", text: "1 memory: the full structured payload" }
+    ]);
+    // No legacy media variants survive the bridge.
+    for (const entry of resultPart.output.value) {
+      expect(["text", "file"]).toContain(entry.type);
+    }
+    expect(JSON.stringify(secondPrompt)).not.toContain("the full structured payload\",\"id\"");
   });
 });

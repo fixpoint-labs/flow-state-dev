@@ -7,7 +7,7 @@ title: Deployment Overview
 
 What to think about when moving a flow-state-dev application from `pnpm dev` to production.
 
-The framework's router is built on Web standard APIs (`Request`, `Response`, `ReadableStream`). It speaks the same `fetch(request)` shape on every runtime, so a thin host adapter is all that connects it to a platform. That means it runs anywhere modern JavaScript runs: Node.js 18+, Vercel serverless functions, AWS Lambda, Railway containers, a Docker image behind nginx. See [Host adapters](/docs/server/host-adapters) for the wrapper that fits each one.
+The framework's router is built on Web standard APIs (`Request`, `Response`, `ReadableStream`). It speaks the same `fetch(request)` shape on every runtime, so a thin host adapter is all that connects it to a platform. That means it runs anywhere modern JavaScript runs: Node.js 22+, Vercel serverless functions, AWS Lambda, Railway containers, a Docker image behind nginx. See [Host adapters](/docs/server/host-adapters) for the wrapper that fits each one.
 
 But each platform handles two things differently: **SSE streaming** and **persistence**. Get those right and everything else is straightforward.
 
