@@ -613,4 +613,32 @@ describe("realized gains materialization (FIX-874) — real-path goal check", ()
     await repo.upsertTaxProfile("devuser", { filingStatus: "single", marginalOrdinaryRatePct: 32, ltcgRatePct: 20, stateRatePct: null });
     expect((await repo.getTaxProfile("devuser"))?.filingStatus).toBe("single");
   });
+
+  it("backfillRealizedGains re-materializes from the ledger when the table is empty (dev rollout gap)", async () => {
+    // Reproduces the dev-startup gap: sells live in the ledger but realized_gains
+    // is empty (imported before the FIX-874 migration; dev has no deploy migrator
+    // to run the backfill). Own db handle so we can clear the materialized table.
+    const pglite = new PGlite();
+    const db = await createMigratedPgliteDb(pglite, MIGRATIONS_DIR);
+    const repo2 = createPortfolioRepository(db);
+    await repo2.upsertAccount({ id: "acc-1", userId: "devuser", name: "Taxable", type: "taxable" });
+    await repo2.ingestLedgerEvents(
+      [
+        ev({ ticker: "AAPL", tradeDate: "2024-01-01", quantity: 10, unitPrice: 100, amount: -1000 }),
+        sell({ ticker: "AAPL", tradeDate: "2026-06-01", quantity: -10, amount: 1500, source: "file", externalId: "R-1" }),
+      ],
+      "devuser",
+    );
+    // Ingest already materialized it; simulate the pre-migration state by clearing
+    // the materialized table, leaving the sell in the ledger.
+    expect(await repo2.getRealizedGains("devuser")).toHaveLength(1);
+    await pglite.query("DELETE FROM app.realized_gains");
+    expect(await repo2.getRealizedGains("devuser")).toHaveLength(0);
+
+    // The backfill (wired into dev startup in lib/portfolio-db.ts) re-derives it.
+    await repo2.backfillRealizedGains();
+    const gains = await repo2.getRealizedGains("devuser");
+    expect(gains).toHaveLength(1);
+    expect(gains[0]).toMatchObject({ ticker: "AAPL", proceeds: 1500, costBasis: 1000, gain: 500, term: "long" });
+  });
 });
