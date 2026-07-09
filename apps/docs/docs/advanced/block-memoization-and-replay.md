@@ -41,6 +41,8 @@ const notifyAndWait = handler({
 
 The email is not in the block's output, so memoization can't protect it. On resume the block re-runs from the top, `sendEmail` fires again, and only then does `ctx.suspend()` return the resume data.
 
+Generators are a partial exception worth knowing. When a generator suspends inside its tool loop, the suspended tool re-runs from the top like any other suspending block, so the same sharp edge applies to that tool's pre-gate side effects. But the generator's prior model turns and completed sibling tools are replayed from the item log rather than regenerated — the model is not re-called for them. See [Generator and router suspend/resume](./generator-and-router-suspend-resume.md).
+
 ## `ctx.runOnce(key, fn)` — the handler-only guard
 
 Wrap a side effect in `ctx.runOnce(key, fn)` to keep it from firing twice. The first call for a given `(requestId, key)` runs `fn` and remembers the result; later calls in the same process return the remembered value without running `fn` again.
@@ -74,6 +76,8 @@ The one remaining gap is narrow: the durable write happens *after* `fn` resolves
 ## `transient: true` — opting out of retention
 
 A block marked `transient: true` records no `block_trace` output, so it has nothing to replay and re-runs on resume. This is the rare case: you want a block to execute fresh every time, even across a pause. Most blocks should retain, so reach for `transient` only when re-execution is what you want.
+
+The memoization gate is uniform: background blocks (`.work()`, `.workIf()`, `.forEachBackground()`) use the same replay index as foreground steps. A background task that completed and retained its trace is injected; one that was in-flight at the crash (or marked `transient: true`, so it retained nothing) re-runs on continuation, exactly as the suspending block does. That re-run makes in-flight background side effects at-least-once, so they need the same `runOnce` guard. See [Durability of background work](./sequencer-side-chains.md#durability-of-background-work) in Side Chains for how that shapes fan-out work.
 
 ## Control-flow determinism
 

@@ -252,19 +252,24 @@ async function* executeStreamWithFallback(
  * On retryable errors, retries the current model up to `maxAttemptsPerModel`,
  * then falls back to the next model in the list.
  *
- * DELIBERATELY exposes only `generate`/`stream`, NOT the single-step
- * `generateStep`/`streamStep`. The framework-owned step loop calls a step
- * method once PER step, and each call would restart fallback from the first
- * candidate — so a candidate that retryable-fails on step 0 (a sibling wins)
- * then recovers on step 1 would be handed the *other* provider's turn history
- * (including provider-specific reasoning-signature blocks in
- * `responseMessages`) that it will reject. A single candidate must own a whole
- * tool loop. With no step methods, a generator using a fallback model group
- * takes the legacy SDK-owned `generate({ maxSteps })` path (checked via
- * `model.generateStep === undefined`), where one candidate owns the entire
- * loop — identical to pre-PR2 behavior. Pinning a candidate for the duration
- * of an owned loop (so fallback groups can drive it too) is deferred to PR3,
- * where in-loop suspension needs step-capable models.
+ * Exposes the single-step `generateStep`/`streamStep` (FIX-814) — but only
+ * over the subset of candidates that implement them — so a generator using a
+ * fallback model group can drive the framework-owned per-step loop (and the
+ * in-loop suspension built on it). Each step call runs the same
+ * per-candidate retry / default-merge / `onResolved` fallback wrapping
+ * `generate`/`stream` already use. When no candidate implements the step
+ * methods, they are absent and the generator falls back to the SDK-owned
+ * `generate({ maxSteps })` path (checked via `model.generateStep === undefined`).
+ *
+ * NOTE (deliberate v1 limitation): this instance is CACHED and shared across
+ * concurrent requests (see `createModelResolver`'s `intentCache`), so it holds
+ * no cross-call "pinned candidate" state — each step call independently
+ * selects a candidate. A candidate that transient-fails mid-loop can therefore
+ * hand its successor another provider's accumulated turn history (including
+ * provider-specific reasoning-signature blocks). True per-loop candidate
+ * pinning needs loop-scoped state that the shared instance cannot safely carry;
+ * see the report. In practice a candidate that succeeded on step 0 typically
+ * continues to win.
  */
 export function createFallbackModel(config: FallbackModelConfig): GeneratorModel {
   const { models, defaults, retryPolicy, groupName, onResolved } = config;
@@ -278,6 +283,8 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
   }
 
   const hasStreamSupport = models.some((m) => m.model.stream !== undefined);
+  const stepModels = models.filter((m) => m.model.generateStep !== undefined);
+  const streamStepModels = models.filter((m) => m.model.streamStep !== undefined);
 
   return {
     modelId: `fsd:${groupName}`,
@@ -301,6 +308,30 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
             groupName,
             onResolved,
             (model) => model.stream,
+            options
+          )
+      : undefined,
+
+    generateStep: stepModels.length > 0
+      ? async (options): Promise<GeneratorModelResult> =>
+          executeWithFallback(
+            stepModels,
+            retryPolicy,
+            groupName,
+            (model, entry) =>
+              model.generateStep!(mergeDefaults(options, defaults, entry.providerName)),
+            onResolved
+          )
+      : undefined,
+
+    streamStep: streamStepModels.length > 0
+      ? (options: Parameters<NonNullable<GeneratorModel["streamStep"]>>[0]) =>
+          executeStreamWithFallback(
+            streamStepModels,
+            defaults,
+            groupName,
+            onResolved,
+            (model) => model.streamStep,
             options
           )
       : undefined,

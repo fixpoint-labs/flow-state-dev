@@ -17,6 +17,11 @@ import type { ModelIdentity } from "../../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../../types/flow";
 import type { GeneratorTool } from "../generator";
 import { toError, withTimeout } from "./utils";
+import {
+  SuspensionError,
+  SuspensionRejectedError,
+  SuspensionTimeoutError,
+} from "../../errors/suspension-error";
 import { emitToolOutputAround } from "./emit-tool-output";
 import {
   buildCacheKey,
@@ -43,6 +48,17 @@ export interface ToolExecutorConfig {
   itemVisibility: ItemVisibility | undefined;
   agentName: string | undefined;
   statusGuard: { active: number; saved: string };
+  /**
+   * The model-facing disambiguated alias this tool was compiled under
+   * (FIX-814). Recorded on the emitted `tool_output.toolCall.alias`. Absent on
+   * legacy call sites, where alias falls back to the sanitized block name.
+   */
+  alias?: string;
+  /**
+   * The tool's `mapModelOutput` mapper, when declared (FIX-814). Applied once
+   * at settle time to compute the persisted `tool_output.modelOutput`.
+   */
+  mapModelOutput?: (output: unknown, ctx: BlockContext) => unknown | Promise<unknown>;
 }
 
 /**
@@ -55,12 +71,12 @@ export function buildToolExecutor(
   tool: GeneratorTool,
   config: ToolExecutorConfig,
   ctx: BlockContext,
-): (args: unknown, options?: { toolCallId?: string }) => Promise<unknown> {
+): (args: unknown, options?: { toolCallId?: string; stepNumber?: number }) => Promise<unknown> {
   const { flowTools, generatorBlockName, itemVisibility, agentName, statusGuard } = config;
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
 
-  return async (args: unknown, options?: { toolCallId?: string }) => {
+  return async (args: unknown, options?: { toolCallId?: string; stepNumber?: number }) => {
     const cacheable = tool.config.cacheable;
     let cacheMiss: { key: string; cfg: BlockCacheableConfig; store: ToolCacheStore } | undefined;
     if (cacheable !== undefined) {
@@ -73,6 +89,8 @@ export function buildToolExecutor(
         itemVisibility,
         agentName,
         options?.toolCallId,
+        config.alias,
+        config.mapModelOutput,
       );
       if (cacheResult.kind === "hit") return cacheResult.output;
       if (cacheResult.kind === "in-flight") return cacheResult.promise;
@@ -132,7 +150,16 @@ export function buildToolExecutor(
     const withScope = (run: (scopedCtx: BlockContext) => Promise<unknown>): Promise<unknown> => {
       if (ctx._withExecutionScope === undefined) return run(ctx);
       const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
-      const toolPath = extendBlockPath(parentPath, blockPathTool(tool.name, options?.toolCallId ?? "0"));
+      // Fold the model step index into the path disambiguator so a provider
+      // that reuses a tool-call id across two different steps of the same
+      // owned loop can't collide on one logical path (FIX-814). The embedded
+      // `:` is escaped by `blockPathTool`. Legacy call sites (no `stepNumber`)
+      // keep the bare `callId` disambiguator, unchanged.
+      const disambiguator =
+        options?.stepNumber !== undefined
+          ? `${options.stepNumber}:${options?.toolCallId ?? "0"}`
+          : (options?.toolCallId ?? "0");
+      const toolPath = extendBlockPath(parentPath, blockPathTool(tool.name, disambiguator));
       const instanceId = buildBlockInstanceId(ctx.request.identity.id, toolPath, 0);
       return ctx._withExecutionScope(
         { name: tool.name, kind: tool.kind, instanceId, path: toolPath, input: args },
@@ -192,6 +219,14 @@ export function buildToolExecutor(
       itemVisibility,
       agentName,
       model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
+      // Persist the model step index alongside the call id (owned loop only) so
+      // resume replay and canonical collapse disambiguate a provider call id
+      // reused across steps — mirroring the step-folded tool path (FIX-814).
+      ...(options.stepNumber !== undefined ? { stepNumber: options.stepNumber } : {}),
+      ...(config.alias !== undefined ? { alias: config.alias } : {}),
+      ...(config.mapModelOutput !== undefined
+        ? { mapModelOutput: (output: unknown) => config.mapModelOutput!(output, ctx) }
+        : {}),
     };
     return await runAndRecord(() =>
       emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
@@ -218,6 +253,8 @@ async function tryServeFromCache(
   itemVisibility: ItemVisibility | undefined,
   agentName: string | undefined,
   toolCallId: string | undefined,
+  alias: string | undefined,
+  mapModelOutput: ((output: unknown, ctx: BlockContext) => unknown | Promise<unknown>) | undefined,
 ): Promise<
   | { kind: "hit"; output: unknown }
   | { kind: "in-flight"; promise: Promise<unknown> }
@@ -263,6 +300,10 @@ async function tryServeFromCache(
         itemVisibility,
         agentName,
         model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
+        ...(alias !== undefined ? { alias } : {}),
+        ...(mapModelOutput !== undefined
+          ? { mapModelOutput: (output: unknown) => mapModelOutput(output, ctx) }
+          : {}),
         cached: {
           ageMs,
           ...(entry.sourceTask !== undefined ? { sourceTask: entry.sourceTask } : {}),
@@ -362,6 +403,18 @@ export async function runWithRetry<TValue>(
       return await run();
     } catch (error) {
       const normalizedError = toError(error);
+      // Suspension control-flow signals are never retryable: retrying would
+      // re-enter the tool/gate under the configured policy before the
+      // generator loop can surface the gate or convert a rejection into the
+      // model-facing denial result (FIX-814). Bail immediately, ahead of the
+      // attempt-count and `retryableErrors` checks.
+      if (
+        normalizedError instanceof SuspensionError ||
+        normalizedError instanceof SuspensionRejectedError ||
+        normalizedError instanceof SuspensionTimeoutError
+      ) {
+        throw normalizedError;
+      }
       if (attempt >= maxAttempts) {
         throw normalizedError;
       }

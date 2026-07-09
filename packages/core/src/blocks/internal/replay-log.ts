@@ -89,6 +89,14 @@ export interface ReplayLog {
    * fresh `block_trace` into the current response (FIX-814).
    */
   recordedBlockTraceId(blockLogicalId: string): string | undefined;
+  /**
+   * The raw prior item log this ReplayLog was built from. Used by generator
+   * resume (FIX-814) to reconstruct the conversation from the durable
+   * `generator_step` / `tool_output` items — a read the accessor-based summary
+   * above cannot serve. These are the pre-resume items only; items emitted
+   * during the resumed run go to the response, not here.
+   */
+  items(): readonly RuntimeItem[];
 }
 
 /** Strip the trailing `:${attempt}` from a blockInstanceId, yielding its logical id. */
@@ -221,5 +229,6 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
       return decision === undefined ? undefined : { selectedRoute: decision.selectedRoute };
     },
     recordedBlockTraceId: (blockLogicalId) => completed.get(blockLogicalId)?.traceId,
+    items: () => items,
   };
 }
