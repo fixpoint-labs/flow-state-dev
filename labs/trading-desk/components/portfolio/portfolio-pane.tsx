@@ -29,7 +29,7 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { Plus, Upload, FileText, RefreshCw, Receipt, FileUp } from "lucide-react";
+import { Plus, Upload, FileText, RefreshCw, Receipt, FileUp, Split } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
 import { useResource, useFlowContext } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
@@ -145,6 +145,11 @@ export function PortfolioPane({
    *  open; null shows the summary-card grid. */
   const [openAccountId, setOpenAccountId] = useState<string | null>(null);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
+  // Split backfill (FIX-874 follow-up): running state + a short result note.
+  const [splitBackfill, setSplitBackfill] = useState<{ running: boolean; note: string | null }>({
+    running: false,
+    note: null,
+  });
 
   // Holdings ride inline in each account record. Index them by accountId for
   // the per-account sections, and flatten them for the price fetch.
@@ -474,6 +479,34 @@ export function PortfolioPane({
     [uid, refetchAccounts],
   );
 
+  // Backfill stock splits from the market-data provider (FIX-874 follow-up), then
+  // refetch every read the corrected lot derivation touches (ledger, holdings,
+  // income, and the realized-gains/tax read). Idempotent server-side.
+  const handleBackfillSplits = useCallback(async () => {
+    setSplitBackfill({ running: true, note: null });
+    try {
+      const report = (await apiMutate("/api/portfolio/splits/backfill", "POST", {
+        userId: uid,
+      })) as { inserted: number; deduplicated: number; splitsFound: number; errors: unknown[] };
+      refetchLedger();
+      refetchAccounts();
+      refetchIncome();
+      refetchTax();
+      const note =
+        report.inserted > 0
+          ? `Added ${report.inserted} split${report.inserted === 1 ? "" : "s"}; realized gains updated.`
+          : report.splitsFound > 0
+            ? "Splits already applied — nothing to add."
+            : "No splits found for your holdings.";
+      const withErrors =
+        report.errors.length > 0 ? `${note} (${report.errors.length} ticker lookup(s) failed)` : note;
+      setSplitBackfill({ running: false, note: withErrors });
+    } catch (err) {
+      console.error("[trading-desk] backfillSplits failed", err);
+      setSplitBackfill({ running: false, note: "Split backfill failed — see console." });
+    }
+  }, [uid, refetchLedger, refetchAccounts, refetchIncome, refetchTax]);
+
   const handleDeleteAccount = useCallback(
     async (accountId: string) => {
       try {
@@ -644,6 +677,24 @@ export function PortfolioPane({
           />
           Refresh prices
         </button>
+        <button
+          type="button"
+          onClick={() => void handleBackfillSplits()}
+          disabled={ledgerEvents.length === 0 || splitBackfill.running}
+          title="Fetch stock splits from market data so realized gains re-derive correctly (fixes split-mangled cost basis)"
+          className={cn(
+            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px]",
+            ledgerEvents.length === 0 || splitBackfill.running
+              ? "cursor-not-allowed opacity-50"
+              : "hover:bg-[color:var(--c-surface-2)]",
+          )}
+        >
+          <Split className={cn("h-3 w-3", splitBackfill.running && "animate-pulse")} aria-hidden />
+          {splitBackfill.running ? "Backfilling…" : "Backfill splits"}
+        </button>
+        {splitBackfill.note ? (
+          <span className="text-[10.5px] text-[color:var(--c-fg-muted)]">{splitBackfill.note}</span>
+        ) : null}
 
         <div className="ml-auto flex items-center gap-4 font-mono text-[11px] text-[color:var(--c-fg-muted)]">
           <span>

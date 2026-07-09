@@ -465,8 +465,11 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   transaction-file import alone produces a visible portfolio — no snapshot
   needed. A transfer-in with no acquisition record is a **basis-unknown** lot:
   it writes `null` cost, never zero (zero-fill would massively overstate gains).
-  FIFO is the IRS default; specific-lot sales, wash sales, and corporate-action
-  basis allocation are deferred.
+  FIFO is the IRS default; specific-lot sales and wash sales are deferred. Stock
+  splits ARE handled (FIX-874 follow-up): a `split` ledger event carries a ratio
+  that `deriveLots` applies to the ticker's open lots at the split date, so
+  pre-split basis lines up with post-split proceeds. Other corporate actions
+  (return-of-capital, spinoffs) remain deferred.
 
 - **Income is aggregated from the ledger at read time (`getIncomeSummary`).**
   Dividends + interest per `(account, ticker)`, summing non-voided events (FIX-874
@@ -538,7 +541,9 @@ Two load-bearing decisions:
   work — a file backfill and a Plaid sync of the same trade hit the same FIX-774
   fingerprint.
 - **Honest over silently-wrong.** Anything FIFO can't model is surfaced, never
-  fed to the lot math: corporate actions and short opens → `skipped`/warned,
+  fed to the lot math: a `SPLIT` becomes a basis-adjusting `split` event
+  (FIX-874 follow-up — `handleSplit`), but the corporate actions FIFO still can't
+  honor (return-of-capital, option closures) and short opens → `skipped`/warned,
   CUSIP-only securities → `unresolvedSecurities`, malformed rows (no date, no
   amount, blank FITID) → skipped. The parser never fabricates a value to make a
   row land.
@@ -608,8 +613,9 @@ filing-grade. Full methodology in [`docs/tax-estimate.md`](docs/tax-estimate.md)
   (`use-tax.ts`). `useTax` refetch joins the fan-out after every ledger mutation,
   a profile save, AND every account save/delete (account type/currency and the FK
   cascade are tax inputs).
-- **Limitations (v1).** FIFO only; sell-only realization; no wash sales /
-  corporate actions / NIIT; dividends assumed qualified; flat state rate;
+- **Limitations (v1).** FIFO only; sell-only realization; splits handled (see
+  below), but no wash sales / other corporate actions / NIIT; dividends assumed
+  qualified; flat state rate;
   display-approximation (JS-number) figures; multi-currency excluded from the
   estimate. Two proceeds-unknown edges, both import-only (the marker is written
   at import time): an OFX no-proceeds sell imported BEFORE this release was
@@ -619,6 +625,24 @@ filing-grade. Full methodology in [`docs/tax-estimate.md`](docs/tax-estimate.md)
   needs a VOID + re-record, not a re-import (the corrected row shares the
   `(account, source, externalId)` dedup key and dedups away). A
   void-and-reimport correction path is the tracked follow-up (FIX-878).
+
+- **Stock splits (FIX-874 follow-up).** A `split` ledger event
+  (`ledger-schema.ts`, `split_ratio` column) carries a ratio (new ÷ old) that
+  `deriveLots` applies to the ticker's open lots at the split date — `quantity ×
+  ratio`, `costPerShare ÷ ratio` — so pre-split basis lines up with post-split
+  proceeds. Without it FIFO matches a ~$48 pre-split lot to a ~$24 post-split
+  sale (a fabricated ~50% loss) and over-sells the split-created shares into
+  basis-unknown remainders — the exact corruption a real imported book showed
+  (SCHO/NVDA/CMG/AVGO/LRCX/ANET 2024 splits). Splits enter the ledger two ways,
+  both through the one `ingestLedgerEvents` contract (so a split dedups by
+  fingerprint regardless of source): the OFX importer emits a `split` from a
+  `SPLIT` record (`handleSplit`, previously skipped), and `backfillSplits`
+  (`portfolio-writes.ts`, behind `POST /api/portfolio/splits/backfill` and the
+  Portfolio pane's "Backfill splits" button) fetches split history from Yahoo
+  (keyless, `fetchYahooSplits`) for every held ticker and materializes the
+  missing events for pre-existing data. `deriveLots` is date-ordered and applies
+  a split after same-day buys, before same-day sells. Only splits are modeled;
+  other corporate actions stay skipped.
 
 ## Per-position thesis records (FIX-760)
 

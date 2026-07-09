@@ -27,6 +27,7 @@ import {
   type PortfolioRepository,
 } from "@/src/db/repository";
 import type { LedgerEventInput } from "@/src/flows/portfolio/ledger-schema";
+import { backfillSplits } from "@/src/flows/portfolio/portfolio-writes";
 import type { CanonicalRow } from "@/src/flows/portfolio/portfolio-schema";
 import { estimateTaxLiability, summarizeForTaxEstimate } from "@/src/flows/portfolio/tax-estimate";
 
@@ -64,6 +65,7 @@ function ev(overrides: Partial<LedgerEventInput> = {}): LedgerEventInput {
     externalId: null,
     description: null,
     basisUnknown: null,
+    splitRatio: null,
     proceedsUnknown: null,
     ...overrides,
   };
@@ -679,5 +681,67 @@ describe("realized gains materialization (FIX-874) — real-path goal check", ()
     // unrelated read — both come back empty if the oversized insert corrupted it.
     expect(await repo.getRealizedGains("devuser")).toHaveLength(LOTS);
     expect(await repo.getAccountsForUser("devuser")).toHaveLength(1);
+  });
+});
+
+describe("backfillSplits (FIX-874 follow-up) — provider split backfill", () => {
+  it("corrects a split-mangled realized gain by backfilling the split from the provider", async () => {
+    // The NVDA scenario: buy 10 @ $1,200, then a 10:1 split the import missed, then
+    // sell all 100 @ $120. Without the split the ledger over-sells (10 held, 100
+    // sold) → a phantom loss + basis-unknown remainder. Backfilling the split makes
+    // realized gain ≈ $0.
+    await repo.ingestLedgerEvents(
+      [
+        ev({ ticker: "NVDA", tradeDate: "2024-01-02", quantity: 10, unitPrice: 1200, amount: -12000, source: "file", externalId: "B-NVDA" }),
+        ev({ type: "sell", ticker: "NVDA", tradeDate: "2024-07-01", quantity: -100, unitPrice: null, amount: 12000, source: "file", externalId: "S-NVDA" }),
+      ],
+      "devuser",
+    );
+    // Before backfill: split-mangled — the realized total is a large phantom loss.
+    const before = await repo.getRealizedGains("devuser");
+    const beforeGain = before.reduce((s, r) => s + (r.gain ?? 0), 0);
+    expect(beforeGain).toBeLessThan(-9000); // ~ -$10,800 fake loss
+
+    const stub = async (ticker: string) =>
+      ticker === "NVDA" ? [{ date: "2024-06-10", ratio: 10 }] : [];
+    const report = await backfillSplits("devuser", repo, stub, "2024-12-31");
+    expect(report.inserted).toBe(1); // one split event written for the account
+    expect(report.splitsFound).toBe(1);
+
+    // After backfill: the split re-derives realized gains to ≈ $0, no basis-unknown.
+    const after = await repo.getRealizedGains("devuser");
+    const afterGain = after.reduce((s, r) => s + (r.gain ?? 0), 0);
+    expect(afterGain).toBeCloseTo(0, 4);
+    expect(after.every((r) => r.gain !== null)).toBe(true);
+  });
+
+  it("is idempotent — a second backfill inserts nothing", async () => {
+    await repo.ingestLedgerEvents(
+      [ev({ ticker: "NVDA", tradeDate: "2024-01-02", quantity: 10, unitPrice: 1200, amount: -12000, source: "file", externalId: "B2" })],
+      "devuser",
+    );
+    const stub = async () => [{ date: "2024-06-10", ratio: 10 }];
+    const first = await backfillSplits("devuser", repo, stub, "2024-12-31");
+    expect(first.inserted).toBe(1);
+    const second = await backfillSplits("devuser", repo, stub, "2024-12-31");
+    expect(second.inserted).toBe(0);
+    expect(second.deduplicated).toBe(1);
+  });
+
+  it("collects a per-ticker provider failure without aborting the rest", async () => {
+    await repo.ingestLedgerEvents(
+      [
+        ev({ ticker: "NVDA", tradeDate: "2024-01-02", quantity: 10, unitPrice: 1200, amount: -12000, source: "file", externalId: "B3" }),
+        ev({ ticker: "AAPL", tradeDate: "2024-01-02", quantity: 10, unitPrice: 100, amount: -1000, source: "file", externalId: "B4" }),
+      ],
+      "devuser",
+    );
+    const stub = async (ticker: string) => {
+      if (ticker === "AAPL") throw new Error("provider 503");
+      return [{ date: "2024-06-10", ratio: 10 }];
+    };
+    const report = await backfillSplits("devuser", repo, stub, "2024-12-31");
+    expect(report.inserted).toBe(1); // NVDA split still written
+    expect(report.errors).toEqual([{ ticker: "AAPL", reason: "provider 503" }]);
   });
 });

@@ -239,6 +239,7 @@ function baseEvent(
     externalId,
     description: invtran ? str(invtran.MEMO) : null,
     basisUnknown: fields.basisUnknown,
+    splitRatio: null,
     proceedsUnknown: fields.proceedsUnknown ?? null,
   };
 }
@@ -623,6 +624,7 @@ function handleBankTran(ctx: Ctx, agg: OfxNode): void {
     externalId: fitid,
     description: str(stmt.NAME) ?? str(stmt.MEMO),
     basisUnknown: null,
+    splitRatio: null,
     proceedsUnknown: null,
   });
 }
@@ -659,6 +661,61 @@ function handleOptionSkip(ctx: Ctx, agg: OfxNode, kind: string): void {
 
 const CORPORATE_ACTION_NOTE = "record manually; v1 does not adjust basis for corporate actions";
 
+/** SPLIT → a `split` event carrying the ratio (new ÷ old). `deriveLots` scales
+ *  the ticker's open lots at this date so pre-split basis lines up with
+ *  post-split proceeds (FIX-874 follow-up) — without it FIFO fabricates a ~50%
+ *  loss and over-sells the split-created shares. The ratio is `NEWUNITS/OLDUNITS`
+ *  (the actual position change), falling back to `NUMERATOR/DENOMINATOR`. A
+ *  split with no resolvable security, no usable date, or no positive ratio is
+ *  skipped-with-reason rather than fed a bad ratio. `FRACCASH` (cash-in-lieu of
+ *  a fractional share) is not modeled in v1. RETOFCAP / CLOSUREOPT stay skipped. */
+function handleSplit(ctx: Ctx, agg: OfxNode): void {
+  const invtran = obj(agg.INVTRAN);
+  const tradeDate = requireTradeDate(ctx, invtran, "split");
+  if (tradeDate === null) return;
+  const ticker = resolveTicker(ctx, obj(agg.SECID));
+  if (ticker === null) {
+    ctx.skipped.push({
+      kind: "SPLIT",
+      reason: `A split (${tradeDate}) has no identifiable security — not imported.`,
+    });
+    return;
+  }
+  const oldUnits = num(agg.OLDUNITS);
+  const newUnits = num(agg.NEWUNITS);
+  const numerator = num(agg.NUMERATOR);
+  const denominator = num(agg.DENOMINATOR);
+  const ratio =
+    oldUnits !== null && newUnits !== null && oldUnits > 0
+      ? newUnits / oldUnits
+      : numerator !== null && denominator !== null && denominator > 0
+        ? numerator / denominator
+        : null;
+  if (ratio === null || !Number.isFinite(ratio) || ratio <= 0) {
+    ctx.skipped.push({
+      kind: "SPLIT",
+      reason: `A split of ${ticker} (${tradeDate}) has no usable ratio (OLD/NEW/NUM/DENOM) — not imported.`,
+    });
+    return;
+  }
+  ctx.events.push({
+    type: "split",
+    tradeDate,
+    settleDate: null,
+    ticker,
+    quantity: null,
+    unitPrice: null,
+    amount: 0,
+    fee: null,
+    currency: ctx.currency,
+    externalId: fitidOf(invtran),
+    description: invtran ? str(invtran.MEMO) : null,
+    basisUnknown: null,
+    splitRatio: ratio,
+    proceedsUnknown: null,
+  });
+}
+
 /** The aggregate dispatch table. A tag absent here is reported as an unhandled
  *  warning rather than silently dropped. */
 const HANDLERS: Record<string, (ctx: Ctx, agg: OfxNode) => void> = {
@@ -690,7 +747,7 @@ const HANDLERS: Record<string, (ctx: Ctx, agg: OfxNode) => void> = {
   MARGININTEREST: handleCashCharge,
   INVEXPENSE: handleCashCharge,
   INVBANKTRAN: handleBankTran,
-  SPLIT: (ctx, agg) => handleSkip(ctx, agg, "SPLIT", CORPORATE_ACTION_NOTE),
+  SPLIT: handleSplit,
   RETOFCAP: (ctx, agg) => handleSkip(ctx, agg, "RETOFCAP", CORPORATE_ACTION_NOTE),
   CLOSUREOPT: (ctx, agg) => handleSkip(ctx, agg, "CLOSUREOPT", CORPORATE_ACTION_NOTE),
 };

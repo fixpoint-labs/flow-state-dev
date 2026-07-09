@@ -14,10 +14,15 @@
  * quantity — cash dividends, interest, deposits, fees) never touch lots.
  *
  * FIFO is the IRS default when shares are not specifically identified, so it is
- * the correct v1. Specific-lot sales, wash sales, and corporate-action basis
- * allocation are deferred (they need data this stream does not carry). A lot
- * with no acquisition record (a transfer-in flagged `basisUnknown`, or a buy
- * with no price) carries `costPerShare: null` and is flagged — NEVER zero-filled
+ * the correct v1. Specific-lot sales and wash sales are deferred (they need data
+ * this stream does not carry). Stock splits ARE handled: a `split` event scales
+ * the ticker's open lots at the split date (quantity × ratio, cost ÷ ratio), so
+ * pre-split basis lines up with post-split proceeds — without it FIFO matches a
+ * ~$48 pre-split lot to a ~$24 post-split sale and fabricates a ~50% loss (and
+ * the extra post-split shares over-sell into basis-unknown remainders). Other
+ * corporate actions (return-of-capital, spinoffs) remain deferred. A lot with no
+ * acquisition record (a transfer-in flagged `basisUnknown`, or a buy with no
+ * price) carries `costPerShare: null` and is flagged — NEVER zero-filled
  * (zero-fill would massively overstate realized gains).
  */
 import { classifyTerm } from "./holding-period";
@@ -90,14 +95,26 @@ export function deriveLots(events: LedgerRow[]): {
   // deterministically (`ORDER BY trade_date, created_at, id`). Intraday sequence
   // within one batch is best-effort (there is no intraday timestamp), not
   // tax-grade.
+  // A `split` carries a ratio, not a share `quantity`, so it survives the filter
+  // on its own predicate. Within a day it sorts AFTER acquisitions and BEFORE
+  // disposals (phase 1): shares bought that day are already in the lot queue when
+  // the split scales them, and that day's sells then draw on the split-adjusted
+  // lots. FIFO order among lots is unchanged (a split scales every open lot).
+  const phase = (e: LedgerRow): 0 | 1 | 2 =>
+    e.type === "split" ? 1 : (e.quantity as number) > 0 ? 0 : 2;
   const ordered = events
-    .filter((e) => e.voidedAt === null && e.quantity !== null && Math.abs(e.quantity) > QTY_EPSILON)
+    .filter((e) =>
+      e.voidedAt === null &&
+      (e.type === "split"
+        ? e.splitRatio !== null && e.splitRatio > 0 && e.ticker !== null
+        : e.quantity !== null && Math.abs(e.quantity) > QTY_EPSILON),
+    )
     .map((e, idx) => ({ e, idx }))
     .sort((a, b) => {
       if (a.e.tradeDate !== b.e.tradeDate) return a.e.tradeDate < b.e.tradeDate ? -1 : 1;
-      const aAcq = (a.e.quantity as number) > 0;
-      const bAcq = (b.e.quantity as number) > 0;
-      if (aAcq !== bAcq) return aAcq ? -1 : 1;
+      const pa = phase(a.e);
+      const pb = phase(b.e);
+      if (pa !== pb) return pa - pb;
       return a.idx - b.idx;
     });
 
@@ -106,9 +123,25 @@ export function deriveLots(events: LedgerRow[]): {
 
   for (const { e } of ordered) {
     const ticker = e.ticker;
-    const qty = e.quantity as number;
     if (ticker === null) continue; // a share move with no security is not a lot
 
+    if (e.type === "split") {
+      // Scale every open lot of this ticker: a 2:1 split doubles shares and halves
+      // per-share cost (total basis is preserved). An unknown-basis lot keeps its
+      // null cost — only the share count scales. A split before the position ever
+      // opens (no lots yet) is a no-op. `splitRatio` is filtered non-null/positive.
+      const ratio = e.splitRatio as number;
+      const lots = open.get(ticker);
+      if (lots !== undefined) {
+        for (const lot of lots) {
+          lot.quantity *= ratio;
+          if (lot.costPerShare !== null) lot.costPerShare /= ratio;
+        }
+      }
+      continue;
+    }
+
+    const qty = e.quantity as number;
     if (qty > 0) {
       // Acquisition: cost is the unit price, else derived from amount/qty, but a
       // flagged basis-unknown transfer-in stays null (never inferred). A `buy`'s

@@ -349,6 +349,7 @@ function mapLedgerRow(row: typeof ledgerEvents.$inferSelect): LedgerRow {
     externalId: row.externalId,
     description: row.description,
     basisUnknown: row.basisUnknown,
+    splitRatio: toNumber(row.splitRatio),
     proceedsUnknown: row.proceedsUnknown,
     voidedAt: row.voidedAt === null ? null : new Date(row.voidedAt).toISOString(),
     createdAt: new Date(row.createdAt).toISOString(),
@@ -425,7 +426,11 @@ function computeFingerprint(e: LedgerEventInput): string {
   // $0 sale of the same account/date/type/ticker/qty/amount (both `amount:0`,
   // both blank-FITID). A genuine row (marker null) keeps the exact pre-FIX-874
   // hash — no fingerprint-recompute migration, back-compat by construction.
-  const withMarker = e.proceedsUnknown !== null ? `${norm}|pu:${e.proceedsUnknown}` : norm;
+  let withMarker = e.proceedsUnknown !== null ? `${norm}|pu:${e.proceedsUnknown}` : norm;
+  // Likewise a `split`'s ratio joins ONLY for a split (which is null-quantity,
+  // zero-amount — otherwise two same-date splits of a ticker would collide);
+  // every non-split row keeps its exact prior hash.
+  if (e.splitRatio != null) withMarker = `${withMarker}|sr:${e.splitRatio.toFixed(8)}`;
   return createHash("sha256").update(withMarker).digest("hex");
 }
 
@@ -458,6 +463,21 @@ function normalizeCurrency(raw: string): string {
  *   transfer-in is `+`, an out is `−`).
  */
 function assertShareEventInvariant(e: LedgerEventInput): void {
+  // A split carries a ratio, not a share quantity: it must have a ticker and a
+  // positive `splitRatio`, and no quantity/amount (it scales lots, moves no cash).
+  if (e.type === "split") {
+    if (e.ticker === null) throw new Error("A split event carries no ticker.");
+    if (e.splitRatio == null || !(e.splitRatio > 0)) {
+      throw new Error(`A split event needs a positive splitRatio (got ${e.splitRatio}).`);
+    }
+    if (e.quantity != null) throw new Error("A split event must not carry a share quantity.");
+    return;
+  }
+  // Only a split may carry a splitRatio (`== null` tolerates an unparsed input
+  // where the field is `undefined` rather than the zod default `null`).
+  if (e.splitRatio != null) {
+    throw new Error(`A ${e.type} event carries a splitRatio — only a split may.`);
+  }
   if (e.quantity === null) return;
   const shareType = e.type === "buy" || e.type === "sell" || e.type === "transfer";
   if (!shareType) {
@@ -957,6 +977,7 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             fingerprint,
             description: e.description,
             basisUnknown: e.basisUnknown,
+            splitRatio: e.splitRatio == null ? null : String(e.splitRatio),
             proceedsUnknown: e.proceedsUnknown,
           });
         }

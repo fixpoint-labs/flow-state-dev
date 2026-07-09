@@ -33,12 +33,22 @@ export const ledgerEventTypeSchema = z.enum([
   "withdrawal",
   "transfer",
   "fee",
+  // A stock split / reverse split (FIX-874 follow-up). Carries no share `quantity`
+  // and no cash `amount`; instead a `splitRatio` (new ÷ old — 2 for a 2:1 forward
+  // split, 0.1 for a 1:10 reverse) that scales the ticker's open lots at the split
+  // date inside `deriveLots`, so pre-split cost basis lines up with post-split
+  // proceeds (without it, FIFO matches ~$48 basis to ~$24 proceeds and fabricates
+  // a ~50% loss). Non-basis corporate actions (return-of-capital, spinoffs) remain
+  // deferred/skipped.
+  "split",
 ]);
 export type LedgerEventType = z.infer<typeof ledgerEventTypeSchema>;
 
-/** Which feed wrote a row. `manual` is the only writer in this PR; `file`
- *  (FIX-775) and `plaid` (FIX-853) write through the same contract. */
-export const ledgerSourceSchema = z.enum(["manual", "file", "plaid"]);
+/** Which feed wrote a row. `manual`, `file` (FIX-775 import), `plaid` (FIX-853
+ *  sync), and `provider` — the split backfill, which materializes `split` events
+ *  from a market-data provider (Yahoo) for tickers whose corporate actions the
+ *  import missed. All write through the same ingest contract. */
+export const ledgerSourceSchema = z.enum(["manual", "file", "plaid", "provider"]);
 export type LedgerSource = z.infer<typeof ledgerSourceSchema>;
 
 /** An ISO `YYYY-MM-DD` calendar date. Validated at the boundary so a bad date
@@ -77,6 +87,11 @@ export const ledgerEventInputSchema = z.object({
   externalId: z.string().nullable().default(null),
   description: z.string().nullable().default(null),
   basisUnknown: z.string().nullable().default(null),
+  /** Split ratio (new ÷ old) for a `split` event; null for every other kind. A
+   *  forward 2:1 split is `2`, a 3:1 is `3`, a 1:10 reverse is `0.1`. Applied to
+   *  the ticker's open lots at the split date in `deriveLots`. Must be finite and
+   *  positive. */
+  splitRatio: z.number().finite().positive().nullable().default(null),
   /** Reason a `sell`'s cash proceeds are unknown — set by a feed normalizer
    *  (FIX-775's OFX importer on a no-`TOTAL`/no-`UNITPRICE` sell) when the file
    *  couldn't supply the amount. Realized-gains derivation (FIX-874) nulls
@@ -126,6 +141,9 @@ export type LedgerRow = {
   externalId: string | null;
   description: string | null;
   basisUnknown: string | null;
+  /** Split ratio (new ÷ old) for a `split` event; null otherwise. Scales the
+   *  ticker's open lots at the split date in `deriveLots`. */
+  splitRatio: number | null;
   /** Reason a `sell`'s proceeds are unknown (import placeholder); null otherwise.
    *  Drives FIX-874's realized-gains exclusion. */
   proceedsUnknown: string | null;

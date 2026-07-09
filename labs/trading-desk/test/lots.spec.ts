@@ -35,11 +35,24 @@ function row(overrides: Partial<LedgerRow>): LedgerRow {
     externalId: null,
     description: null,
     basisUnknown: null,
+    splitRatio: null,
     proceedsUnknown: null,
     voidedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
+}
+
+function split(ticker: string, tradeDate: string, ratio: number): LedgerRow {
+  return row({
+    type: "split",
+    ticker,
+    tradeDate,
+    quantity: null,
+    unitPrice: null,
+    amount: 0,
+    splitRatio: ratio,
+  });
 }
 
 describe("deriveLots — FIFO", () => {
@@ -175,5 +188,82 @@ describe("deriveLots — same-day ordering", () => {
     expect(aapl?.quantity).toBe(10);
     expect(aapl?.avgCost).toBe(200);
     expect(aapl?.acquiredDate).toBe("2026-03-01");
+  });
+});
+
+describe("deriveLots — stock splits (FIX-874 follow-up)", () => {
+  it("a 2:1 split scales open lots so a full sell realizes ~$0, not a phantom loss", () => {
+    // The SCHO scenario: buy 100 @ $48, 2:1 split → 200 @ $24, sell all 200 @ $24.
+    // Real gain ≈ 0. Without split handling FIFO matched $48 basis to $24 proceeds
+    // (a −$2,400 fake loss) AND over-sold 100 shares into a basis-unknown remainder.
+    const { disposals, positions } = deriveLots([
+      row({ ticker: "SCHO", tradeDate: "2024-01-01", quantity: 100, unitPrice: 48, amount: -4800 }),
+      split("SCHO", "2024-11-07", 2),
+      row({ type: "sell", ticker: "SCHO", tradeDate: "2024-12-01", quantity: -200, unitPrice: 24, amount: 4800 }),
+    ]);
+    // Position fully closed, no phantom remainder.
+    expect(positions.find((p) => p.ticker === "SCHO")).toBeUndefined();
+    // Exactly one disposal (the single split-adjusted lot), no over-sell remainder.
+    expect(disposals).toHaveLength(1);
+    const d = disposals[0];
+    expect(d.quantity).toBe(200);
+    expect(d.proceeds).toBeCloseTo(4800, 6);
+    expect(d.costBasis).toBeCloseTo(4800, 6);
+    expect(d.gain).toBeCloseTo(0, 6);
+    expect(d.basisUnknown).toBeNull();
+  });
+
+  it("adjusts the OPEN position quantity + average cost through a split", () => {
+    // NVDA 10:1: buy 10 @ $1,200 → hold 100 @ $120. Total basis preserved.
+    const { positions } = deriveLots([
+      row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 10, unitPrice: 1200, amount: -12000 }),
+      split("NVDA", "2024-06-10", 10),
+    ]);
+    const nvda = positions.find((p) => p.ticker === "NVDA");
+    expect(nvda?.quantity).toBeCloseTo(100, 6);
+    expect(nvda?.avgCost).toBeCloseTo(120, 6);
+    expect(nvda?.acquiredDate).toBe("2024-01-01"); // the split doesn't reset holding period
+  });
+
+  it("handles a reverse split (ratio < 1)", () => {
+    // 1:10 reverse: buy 100 @ $5 → 10 @ $50, sell 10 @ $50 → ~$0 gain.
+    const { disposals } = deriveLots([
+      row({ ticker: "XYZ", tradeDate: "2025-01-01", quantity: 100, unitPrice: 5, amount: -500 }),
+      split("XYZ", "2025-06-01", 0.1),
+      row({ type: "sell", ticker: "XYZ", tradeDate: "2025-07-01", quantity: -10, unitPrice: 50, amount: 500 }),
+    ]);
+    expect(disposals).toHaveLength(1);
+    expect(disposals[0].gain).toBeCloseTo(0, 6);
+  });
+
+  it("splits only the pre-split lots; a post-split buy is unaffected", () => {
+    // Buy 100 @ $48, 2:1 split (→200 @ $24), then buy 50 more @ $24. Hold 250 @ $24.
+    const { positions } = deriveLots([
+      row({ ticker: "SCHO", tradeDate: "2024-01-01", quantity: 100, unitPrice: 48, amount: -4800 }),
+      split("SCHO", "2024-11-07", 2),
+      row({ ticker: "SCHO", tradeDate: "2024-11-20", quantity: 50, unitPrice: 24, amount: -1200 }),
+    ]);
+    const scho = positions.find((p) => p.ticker === "SCHO");
+    expect(scho?.quantity).toBeCloseTo(250, 6);
+    expect(scho?.avgCost).toBeCloseTo(24, 6);
+  });
+
+  it("a split before any lot exists is a harmless no-op", () => {
+    const { positions, disposals } = deriveLots([
+      split("SCHO", "2024-11-07", 2),
+      row({ ticker: "SCHO", tradeDate: "2024-12-01", quantity: 10, unitPrice: 24, amount: -240 }),
+    ]);
+    expect(positions.find((p) => p.ticker === "SCHO")?.quantity).toBe(10);
+    expect(disposals).toHaveLength(0);
+  });
+
+  it("keeps a same-day buy→split→sell consistent (split applies after the buy)", () => {
+    const { disposals } = deriveLots([
+      row({ ticker: "SCHO", tradeDate: "2024-11-07", quantity: 100, unitPrice: 48, amount: -4800 }),
+      split("SCHO", "2024-11-07", 2),
+      row({ type: "sell", ticker: "SCHO", tradeDate: "2024-11-07", quantity: -200, unitPrice: 24, amount: 4800 }),
+    ]);
+    expect(disposals).toHaveLength(1);
+    expect(disposals[0].gain).toBeCloseTo(0, 6);
   });
 });

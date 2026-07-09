@@ -28,4 +28,17 @@ Lifetime net realized gain/loss is now surfaced at a glance too — a "realized"
 figure on each account card and a "total realized" figure on the household
 summary line — reusing that same grand-total logic (per account in its own
 currency, the household in USD; basis-unknown rows noted as "(excl. N)", a
-cross-currency set as "—"). Internal lab change — no public API.
+cross-currency set as "—").
+
+Stock splits are now handled so realized gains aren't wrecked by them. A `split`
+ledger event carries a ratio (new ÷ old) that `deriveLots` applies to a ticker's
+open lots at the split date — pre-split cost basis lines up with post-split
+proceeds, instead of FIFO matching a ~$48 pre-split lot to a ~$24 post-split sale
+(a fabricated ~50% loss) and over-selling the split-created shares into
+basis-unknown remainders. Two ways splits reach the ledger: the OFX importer now
+emits a `split` event from a `SPLIT` record (previously skipped), and a new
+"Backfill splits" action fetches split history from Yahoo (keyless) for every
+held ticker and materializes the missing events for existing data — both funnel
+through the one ingest contract, so a split dedups by fingerprint no matter which
+path wrote it. Realized gains re-derive automatically on the ingest/void seam.
+Internal lab change — no public API.

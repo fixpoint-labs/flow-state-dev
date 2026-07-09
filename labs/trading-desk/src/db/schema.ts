@@ -149,6 +149,10 @@ export const ledgerEvents = appSchema.table(
     fingerprint: text("fingerprint").notNull(),
     description: text("description"),
     basisUnknown: text("basis_unknown"),
+    // Split ratio (new ÷ old) for a `split` event; null for every other kind.
+    // Scales the ticker's open lots at the split date in `deriveLots` so pre-split
+    // basis lines up with post-split proceeds (FIX-874 follow-up).
+    splitRatio: numeric("split_ratio"),
     // Reason a `sell`'s proceeds are unknown — set by a feed normalizer (FIX-775
     // OFX importer) on a no-`TOTAL`/no-`UNITPRICE` sell. FIX-874's realized-gains
     // derivation nulls proceeds/gain and excludes such a row rather than

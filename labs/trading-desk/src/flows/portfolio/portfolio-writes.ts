@@ -27,7 +27,7 @@ import type { PortfolioRepository } from "@/src/db/repository";
 import type { FileImportReport } from "./transaction-import-schema";
 import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
 import { accountTypeSchema, assetClassSchema, type AssetClass } from "./portfolio-schema";
-import { ledgerEventInputSchema, type IngestReport } from "./ledger-schema";
+import { ledgerEventInputSchema, type IngestReport, type LedgerEventInput } from "./ledger-schema";
 import { taxProfileInputSchema, type TaxProfileInput } from "./tax-schema";
 import { detectAndParseTransactionFile } from "./transaction-file";
 import type { TaxProfileRow } from "@/src/db/repository";
@@ -339,4 +339,120 @@ export async function importTransactionFile(
     deduplicated: ingest.deduplicated,
     extraParseErrors: ingest.errors.map((e) => ({ line: null, reason: e.reason })),
   });
+}
+
+/** A market-data split lookup for one ticker over `[from, to]` (ISO dates). The
+ *  route injects the real Yahoo fetcher (`fetchYahooSplits`); tests inject a
+ *  stub. Kept as a parameter so the portfolio domain doesn't import the analysis
+ *  provider layer. */
+export type SplitFetcher = (
+  ticker: string,
+  from: string,
+  to: string,
+) => Promise<{ date: string; ratio: number }[]>;
+
+/** Outcome of a split backfill (a plain result, not a generator output). */
+export type SplitBackfillReport = {
+  /** Distinct tickers with share history that were looked up. */
+  tickersScanned: number;
+  /** Total splits the provider returned across those tickers. */
+  splitsFound: number;
+  /** Split events newly written to the ledger. */
+  inserted: number;
+  /** Split events that already existed (idempotent re-run, or an OFX-imported
+   *  split of the same account/ticker/date/ratio — same fingerprint). */
+  deduplicated: number;
+  /** Per-ticker provider failures — the rest still backfill (honest, not all-or-nothing). */
+  errors: { ticker: string; reason: string }[];
+};
+
+/**
+ * Backfill stock-split events for a household from a market-data provider
+ * (FIX-874 follow-up), so realized gains re-derive correctly for tickers whose
+ * splits the original import missed (the current-data path chosen alongside the
+ * OFX import path). For every `(account, ticker)` with share history it fetches
+ * the ticker's splits and writes one `split` event per split dated on/after that
+ * account's first trade in the ticker. Ingest is idempotent — a re-run, or a
+ * later OFX re-import of the same split, dedups on the fingerprint — so this is
+ * safe to run repeatedly. A provider failure for one ticker is collected and the
+ * rest proceed. Injecting `fetchSplits`/`today` keeps it unit-testable.
+ */
+export async function backfillSplits(
+  userId: string,
+  repo: PortfolioRepository,
+  fetchSplits: SplitFetcher,
+  today: string = new Date().toISOString().slice(0, 10),
+): Promise<SplitBackfillReport> {
+  const events = await repo.getLedger(userId);
+  const SHARE_TYPES = new Set(["buy", "sell", "transfer"]);
+  // (account, ticker) with share history → its earliest trade date; a split
+  // before we ever held the ticker can't touch a lot, so it's not worth writing.
+  const earliestByAcctTicker = new Map<string, string>();
+  const tickers = new Set<string>();
+  let globalEarliest: string | null = null;
+  for (const e of events) {
+    if (e.ticker === null || !SHARE_TYPES.has(e.type)) continue;
+    const ticker = e.ticker.toUpperCase();
+    tickers.add(ticker);
+    const key = `${e.accountId} ${ticker}`;
+    const cur = earliestByAcctTicker.get(key);
+    if (cur === undefined || e.tradeDate < cur) earliestByAcctTicker.set(key, e.tradeDate);
+    if (globalEarliest === null || e.tradeDate < globalEarliest) globalEarliest = e.tradeDate;
+  }
+  if (globalEarliest === null) {
+    return { tickersScanned: 0, splitsFound: 0, inserted: 0, deduplicated: 0, errors: [] };
+  }
+
+  // One provider lookup per ticker (not per account).
+  const splitsByTicker = new Map<string, { date: string; ratio: number }[]>();
+  const errors: { ticker: string; reason: string }[] = [];
+  let splitsFound = 0;
+  for (const ticker of tickers) {
+    try {
+      const splits = await fetchSplits(ticker, globalEarliest, today);
+      splitsByTicker.set(ticker, splits);
+      splitsFound += splits.length;
+    } catch (err) {
+      errors.push({ ticker, reason: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  const toIngest: LedgerEventInput[] = [];
+  for (const [key, earliest] of earliestByAcctTicker) {
+    const sep = key.indexOf(" ");
+    const accountId = key.slice(0, sep);
+    const ticker = key.slice(sep + 1);
+    for (const s of splitsByTicker.get(ticker) ?? []) {
+      if (s.date < earliest) continue;
+      toIngest.push({
+        accountId,
+        type: "split",
+        tradeDate: s.date,
+        settleDate: null,
+        ticker,
+        quantity: null,
+        unitPrice: null,
+        amount: 0,
+        fee: null,
+        currency: "USD",
+        source: "provider",
+        externalId: `yahoo-split:${ticker}:${s.date}`,
+        description: `Split ${ticker} on ${s.date}`,
+        basisUnknown: null,
+        splitRatio: s.ratio,
+        proceedsUnknown: null,
+      });
+    }
+  }
+  if (toIngest.length === 0) {
+    return { tickersScanned: tickers.size, splitsFound, inserted: 0, deduplicated: 0, errors };
+  }
+  const ingest = await repo.ingestLedgerEvents(toIngest, userId);
+  return {
+    tickersScanned: tickers.size,
+    splitsFound,
+    inserted: ingest.inserted,
+    deduplicated: ingest.deduplicated,
+    errors,
+  };
 }

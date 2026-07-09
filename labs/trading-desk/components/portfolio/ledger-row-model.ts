@@ -29,7 +29,16 @@ const TYPE_LABELS: Record<LedgerRow["type"], string> = {
   withdrawal: "Withdrawal",
   transfer: "Transfer",
   fee: "Fee",
+  split: "Split",
 };
+
+/** Render a split ratio as conventional "N:1" / "1:M" notation (a 2:1 forward,
+ *  a 1:10 reverse), falling back to a `×` multiplier for an odd ratio. */
+function formatSplitRatio(ratio: number): string {
+  if (Number.isInteger(ratio)) return `${ratio}:1`;
+  if (Number.isInteger(1 / ratio)) return `1:${Math.round(1 / ratio)}`;
+  return `${ratio.toFixed(2)}×`;
+}
 
 /** Render-ready strings + flags for one ledger row. Every missing value is
  *  `DASH`, never a fabricated number. */
@@ -67,7 +76,11 @@ export function buildLedgerRowModel(row: LedgerRow): LedgerRowModel {
     type: TYPE_LABELS[row.type],
     tradeDate: row.tradeDate,
     ticker: row.ticker ?? DASH,
-    quantity: formatSignedQuantity(row.quantity),
+    // A split moves no shares (null quantity); show its ratio here instead of DASH.
+    quantity:
+      row.type === "split" && row.splitRatio !== null
+        ? formatSplitRatio(row.splitRatio)
+        : formatSignedQuantity(row.quantity),
     amount: formatSignedMoney(row.amount, row.currency),
     source: row.source,
     basisUnknown: row.basisUnknown !== null,

@@ -228,7 +228,7 @@ VERSION:102
     expect(result.skipped.some((s) => s.kind === "JRNLSEC")).toBe(true);
   });
 
-  it("skips a SPLIT with a warning instead of corrupting basis", async () => {
+  it("imports a SPLIT as a `split` event (basis-adjusting), not a skip (1.x SGML)", async () => {
     const file = `OFXHEADER:100
 DATA:OFXSGML
 VERSION:102
@@ -237,10 +237,9 @@ VERSION:102
 <SPLIT><INVTRAN><FITID>SP1<DTTRADE>20260401</INVTRAN><SECID><UNIQUEID>037833100<UNIQUEIDTYPE>CUSIP</SECID><OLDUNITS>10<NEWUNITS>40<NUMERATOR>4<DENOMINATOR>1</SPLIT>
 </INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1></OFX>`;
     const result = await parseOfxTransactions(file);
-    expect(result.events).toHaveLength(0);
-    expect(result.skipped).toEqual([
-      { kind: "SPLIT", reason: expect.stringContaining("not imported") },
-    ]);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({ type: "split", splitRatio: 4, quantity: null });
+    expect(result.skipped.some((s) => s.kind === "SPLIT")).toBe(false);
   });
 });
 
@@ -617,5 +616,37 @@ VERSION:102
     const result = await parseOfxTransactions(file);
     expect(result.events[0]).toMatchObject({ type: "buy", quantity: 10, unitPrice: null });
     expect(result.events[0].basisUnknown).toMatch(/no price or total/);
+  });
+
+  it("emits a `split` event from an OFX SPLIT (ratio NEWUNITS/OLDUNITS), not a skip", async () => {
+    const file = `<?xml version="1.0"?><?OFX OFXHEADER="200" VERSION="200"?>
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD</CURDEF>
+<INVTRANLIST><DTSTART>20240101</DTSTART><DTEND>20240701</DTEND>
+<BUYSTOCK><INVBUY><INVTRAN><FITID>B1</FITID><DTTRADE>20240102</DTTRADE></INVTRAN><SECID><UNIQUEID>67066G104</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID><UNITS>10</UNITS><UNITPRICE>1200</UNITPRICE><TOTAL>-12000</TOTAL></INVBUY><BUYTYPE>BUY</BUYTYPE></BUYSTOCK>
+<SPLIT><INVTRAN><FITID>S1</FITID><DTTRADE>20240610</DTTRADE></INVTRAN><SECID><UNIQUEID>67066G104</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID><OLDUNITS>10</OLDUNITS><NEWUNITS>100</NEWUNITS><NUMERATOR>10</NUMERATOR><DENOMINATOR>1</DENOMINATOR><FRACCASH>0</FRACCASH></SPLIT>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>67066G104</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID><TICKER>NVDA</TICKER></SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    const split = result.events.find((e) => e.type === "split");
+    expect(split).toMatchObject({
+      type: "split",
+      ticker: "NVDA",
+      tradeDate: "2024-06-10",
+      quantity: null,
+      splitRatio: 10, // NEWUNITS 100 / OLDUNITS 10
+    });
+    // No longer surfaced as an un-importable corporate action.
+    expect(result.skipped.some((s) => s.kind === "SPLIT")).toBe(false);
+  });
+
+  it("falls back to NUMERATOR/DENOMINATOR when OLD/NEW units are absent", async () => {
+    const file = `<?xml version="1.0"?><?OFX OFXHEADER="200" VERSION="200"?>
+<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD</CURDEF>
+<INVTRANLIST><DTSTART>20240101</DTSTART><DTEND>20240701</DTEND>
+<SPLIT><INVTRAN><FITID>S2</FITID><DTTRADE>20241107</DTTRADE></INVTRAN><SECID><UNIQUEID>808524805</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID><NUMERATOR>2</NUMERATOR><DENOMINATOR>1</DENOMINATOR></SPLIT>
+</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>
+<SECLISTMSGSRSV1><SECLIST><STOCKINFO><SECINFO><SECID><UNIQUEID>808524805</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID><TICKER>SCHO</TICKER></SECINFO></STOCKINFO></SECLIST></SECLISTMSGSRSV1></OFX>`;
+    const result = await parseOfxTransactions(file);
+    expect(result.events.find((e) => e.type === "split")).toMatchObject({ ticker: "SCHO", splitRatio: 2 });
   });
 });

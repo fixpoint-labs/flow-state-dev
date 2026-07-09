@@ -36,6 +36,13 @@
       "when": 1783536744291,
       "tag": "0004_giant_harpoon",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783597249747,
+      "tag": "0005_slippery_electro",
+      "breakpoints": true
     }
   ]
 }

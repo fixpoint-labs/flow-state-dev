@@ -1,0 +1,1 @@
+ALTER TABLE "app"."ledger_events" ADD COLUMN "split_ratio" numeric;

@@ -69,32 +69,33 @@ describe("importTransactionFile", () => {
 
     const { output } = await importFile(ACCT, OFX_FILE);
     expect(output.detectedFormat).toBe("qfx");
-    // Two buys ingested (the SPLIT is skipped, not an event).
-    expect(output.inserted).toBe(2);
-    expect(output.skipped).toEqual([
-      { kind: "SPLIT", reason: expect.stringContaining("not imported") },
-    ]);
+    // Three events ingested: two buys AND the SPLIT (now a basis-adjusting
+    // `split` event, not a skip — FIX-874 follow-up).
+    expect(output.inserted).toBe(3);
+    expect(output.skipped).toEqual([]);
     // The CUSIP-only security (no ticker in SECLIST) is surfaced for mapping.
     expect(output.unresolvedSecurities).toEqual([{ cusip: "316175207", name: null }]);
 
-    // Basis derived from the imported buy (10 @ 150), written onto the holding.
+    // Basis derived from the buy (10 @ 150) AND adjusted by the 4:1 split
+    // (2026-01-10): the holding is 40 shares at a split-adjusted $37.50 basis.
     const { holdings } = await repo.getPortfolio(USER_ID);
     const aapl = holdings.find((h) => h.ticker === "AAPL");
-    expect(aapl?.costBasis).toBe(150);
-    expect(aapl?.acquiredDate).toBe("2026-01-05");
+    expect(aapl?.quantity).toBe(40);
+    expect(aapl?.costBasis).toBe(37.5);
+    expect(aapl?.acquiredDate).toBe("2026-01-05"); // the split doesn't reset the hold date
   });
 
   it("is idempotent — re-importing the same file inserts nothing new", async () => {
     await seedAccount(repo, { accountId: ACCT, userId: USER_ID });
 
     const first = await importFile(ACCT, OFX_FILE);
-    expect(first.output.inserted).toBe(2);
+    expect(first.output.inserted).toBe(3); // 2 buys + 1 split
 
     const second = await importFile(ACCT, OFX_FILE);
     expect(second.output.inserted).toBe(0);
-    expect(second.output.deduplicated).toBe(2);
+    expect(second.output.deduplicated).toBe(3);
 
-    expect(await repo.getLedger(USER_ID)).toHaveLength(2); // not 4
+    expect(await repo.getLedger(USER_ID)).toHaveLength(3); // not 6
   });
 
   it("creates the positions when importing into an empty account (no snapshot needed)", async () => {

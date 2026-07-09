@@ -178,6 +178,68 @@ async function fetchYahooTimeseries(ticker: string): Promise<YahooTimeseriesResp
   return json;
 }
 
+/** One stock split from a provider: the ex-date and the ratio (new ÷ old). */
+export type ProviderSplit = { date: string; ratio: number };
+
+/**
+ * Fetch a ticker's stock-split history from Yahoo's keyless chart API over
+ * `[from, to]` (ISO dates). Each split becomes `{ date, ratio }` with
+ * `ratio = numerator ÷ denominator` (a 10:1 forward → `10`, a 1:2 reverse →
+ * `0.5`). Sorted oldest-first. Throws on a failed request so the caller can
+ * degrade (a split-less backfill leaves realized gains as they were) rather than
+ * fabricate. Used only by the split backfill — the desk's data tools don't need
+ * corporate actions.
+ */
+export async function fetchYahooSplits(
+  ticker: string,
+  from: string,
+  to: string,
+): Promise<ProviderSplit[]> {
+  const p1 = Math.floor(new Date(from).getTime() / 1000);
+  const p2 = Math.floor(new Date(to).getTime() / 1000);
+  // Yahoo spells class shares with a hyphen, not a dot (BRK.B → BRK-B); leaving
+  // the dot 404s. `/` (preferred/warrant suffixes) gets the same treatment.
+  const symbol = ticker.replace(/[./]/g, "-");
+  const url = new URL(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,
+  );
+  url.searchParams.set("period1", String(p1));
+  url.searchParams.set("period2", String(p2));
+  url.searchParams.set("interval", "1d");
+  url.searchParams.set("events", "split");
+  // One retry: Yahoo's chart endpoint intermittently 404s a valid symbol under
+  // load, so a single flaky response can't silently drop a real split.
+  let res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  if (!res.ok) {
+    await new Promise((r) => setTimeout(r, 300));
+    res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  }
+  if (!res.ok) throw new Error(`Yahoo split fetch for ${ticker} failed: HTTP ${res.status}`);
+  const json = (await res.json()) as {
+    chart?: {
+      result?: Array<{
+        events?: { splits?: Record<string, { date?: number; numerator?: number; denominator?: number }> };
+      }>;
+    };
+  };
+  const splits = json.chart?.result?.[0]?.events?.splits ?? {};
+  const out: ProviderSplit[] = [];
+  for (const s of Object.values(splits)) {
+    if (
+      typeof s.numerator !== "number" ||
+      typeof s.denominator !== "number" ||
+      s.denominator <= 0 ||
+      typeof s.date !== "number"
+    ) {
+      continue;
+    }
+    const ratio = s.numerator / s.denominator;
+    if (!Number.isFinite(ratio) || ratio <= 0) continue;
+    out.push({ date: new Date(s.date * 1000).toISOString().slice(0, 10), ratio });
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
 export async function fetchYahooBalanceSheet(
   input: ToolInput<"get_balance_sheet">,
 ): Promise<ToolOutput<"get_balance_sheet">> {
