@@ -187,6 +187,30 @@ describe("ingestLedgerEvents — share-event invariant", () => {
     );
     expect(r.inserted).toBe(1);
   });
+
+  it("rejects a buy/sell with no quantity (would persist as a phantom cash event)", async () => {
+    // A direct POST or a mis-mapping feed could send a share trade with null
+    // quantity; deriveLots forms no lot, so positions + realized gains would
+    // silently omit it. Reject at the shared boundary, not soft-skip.
+    await expect(
+      repo.ingestLedgerEvents([ev({ type: "buy", quantity: null, amount: -1500 })], "devuser"),
+    ).rejects.toThrow(/must carry a share quantity/);
+    await expect(
+      repo.ingestLedgerEvents([ev({ type: "sell", quantity: null, amount: 1500 })], "devuser"),
+    ).rejects.toThrow(/must carry a share quantity/);
+    expect(await repo.getLedger("devuser")).toHaveLength(0); // both batches rolled back
+  });
+});
+
+describe("upsertAccount — currency normalization", () => {
+  it("stores a lowercase/mixed-case currency uppercased, matching normalized ledger rows", async () => {
+    // The realized-gains total's exact currency check (FIX-874) compares the
+    // account currency against uppercase-normalized ledger rows; persisting
+    // `usd` verbatim would render an all-USD account's totals as `—`.
+    await repo.upsertAccount({ id: "acc-lc", userId: "devuser", name: "Lower", type: "taxable", currency: "usd" });
+    const accounts = await repo.getAccountsForUser("devuser");
+    expect(accounts.find((a) => a.accountId === "acc-lc")?.currency).toBe("USD");
+  });
 });
 
 describe("voidLedgerEvents", () => {

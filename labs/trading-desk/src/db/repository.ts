@@ -497,7 +497,16 @@ function normalizeCurrency(raw: string): string {
  *   transfer-in is `+`, an out is `−`).
  */
 function assertShareEventInvariant(e: LedgerEventInput): void {
-  if (e.quantity === null) return;
+  if (e.quantity === null) {
+    // A `buy`/`sell` with no quantity would persist as a phantom cash event —
+    // `deriveLots` forms no lot, so positions AND realized gains silently omit
+    // the trade. Reject it here rather than store a share trade the derivation
+    // can't see. (A `transfer` with null quantity is a legitimate cash transfer.)
+    if (e.type === "buy" || e.type === "sell") {
+      throw new Error(`A ${e.type} event must carry a share quantity.`);
+    }
+    return;
+  }
   const shareType = e.type === "buy" || e.type === "sell" || e.type === "transfer";
   if (!shareType) {
     throw new Error(`A ${e.type} event carries a share quantity — only buy/sell/transfer may.`);
@@ -967,7 +976,11 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         userId: input.userId,
         name: input.name,
         type: input.type,
-        currency: input.currency ?? "USD",
+        // Normalize on the same boundary the ledger does (`normalizeCurrency`),
+        // so an account saved as `usd` and its uppercase-normalized ledger rows
+        // agree — the realized-gains total's exact currency check (FIX-874)
+        // would otherwise render `—` for a valid single-currency account.
+        currency: normalizeCurrency(input.currency ?? "USD"),
         cashBalance: String(input.cashBalance ?? 0),
         riskMandate: input.riskMandate ?? null,
       };
