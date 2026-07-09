@@ -10,7 +10,8 @@
  *      derived cost basis + acquired date.
  *   2. Re-importing the same file is idempotent (FITID dedup) — no double-count.
  *   3. A missing/foreign account is reported, not thrown (the import edge guard).
- *   4. CUSIP-only securities and skipped corporate actions surface in the report.
+ *   4. CUSIP-only securities surface in the report; a SPLIT is now INGESTED as a
+ *      `split` event that rebases the holding's lots (FIX-876), not skipped.
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
@@ -40,8 +41,13 @@ async function importFile(
   accountId: string,
   content: string,
   filename = "export.qfx",
+  mode: "append" | "replace" = "append",
 ): Promise<{ output: FileImportReport }> {
-  const output = await importTransactionFile({ accountId, content, filename }, USER_ID, repo);
+  const output = await importTransactionFile(
+    { accountId, content, filename, mode },
+    USER_ID,
+    repo,
+  );
   return { output };
 }
 
@@ -69,18 +75,18 @@ describe("importTransactionFile", () => {
 
     const { output } = await importFile(ACCT, OFX_FILE);
     expect(output.detectedFormat).toBe("qfx");
-    // Two buys ingested (the SPLIT is skipped, not an event).
-    expect(output.inserted).toBe(2);
-    expect(output.skipped).toEqual([
-      { kind: "SPLIT", reason: expect.stringContaining("not imported") },
-    ]);
+    // Two buys + one SPLIT ingested (FIX-876: the split is now a first-class event).
+    expect(output.inserted).toBe(3);
+    expect(output.skipped).toEqual([]);
     // The CUSIP-only security (no ticker in SECLIST) is surfaced for mapping.
     expect(output.unresolvedSecurities).toEqual([{ cusip: "316175207", name: null }]);
 
-    // Basis derived from the imported buy (10 @ 150), written onto the holding.
+    // Basis derived from the imported buy (10 @ 150) THEN rebased by the 4:1 split
+    // (2026-01-10): 40 shares at 150 ÷ 4 = 37.5, acquired date preserved.
     const { holdings } = await repo.getPortfolio(USER_ID);
     const aapl = holdings.find((h) => h.ticker === "AAPL");
-    expect(aapl?.costBasis).toBe(150);
+    expect(aapl?.quantity).toBe(40);
+    expect(aapl?.costBasis).toBe(37.5);
     expect(aapl?.acquiredDate).toBe("2026-01-05");
   });
 
@@ -88,13 +94,13 @@ describe("importTransactionFile", () => {
     await seedAccount(repo, { accountId: ACCT, userId: USER_ID });
 
     const first = await importFile(ACCT, OFX_FILE);
-    expect(first.output.inserted).toBe(2);
+    expect(first.output.inserted).toBe(3); // 2 buys + 1 split
 
     const second = await importFile(ACCT, OFX_FILE);
     expect(second.output.inserted).toBe(0);
-    expect(second.output.deduplicated).toBe(2);
+    expect(second.output.deduplicated).toBe(3);
 
-    expect(await repo.getLedger(USER_ID)).toHaveLength(2); // not 4
+    expect(await repo.getLedger(USER_ID)).toHaveLength(3); // not 6
   });
 
   it("creates the positions when importing into an empty account (no snapshot needed)", async () => {
@@ -121,5 +127,74 @@ describe("importTransactionFile", () => {
     expect(output.inserted).toBe(0);
     expect(output.parseErrors.length).toBeGreaterThan(0);
     expect(output.parseErrors[0].reason).toMatch(/only OFX-family/i);
+  });
+
+  // FIX-876: the reset-account import mode.
+  it("reset mode wipes the account's ledger (manual entries included) then repopulates", async () => {
+    await seedAccount(repo, { accountId: ACCT, userId: USER_ID });
+    await importFile(ACCT, OFX_FILE); // 3 file events
+    // A manual entry the reset must destroy (the documented, accepted loss).
+    await repo.ingestLedgerEvents(
+      [
+        {
+          accountId: ACCT,
+          type: "dividend",
+          tradeDate: "2026-02-01",
+          settleDate: null,
+          ticker: "AAPL",
+          quantity: null,
+          unitPrice: null,
+          amount: 12.5,
+          fee: null,
+          currency: "USD",
+          source: "manual",
+          externalId: null,
+          description: null,
+          basisUnknown: null,
+          proceedsUnknown: null,
+          attributes: null,
+        },
+      ],
+      USER_ID,
+    );
+    expect(await repo.getLedger(USER_ID)).toHaveLength(4);
+
+    const { output } = await importFile(ACCT, OFX_FILE, "export.qfx", "replace");
+    expect(output.inserted).toBe(3);
+    // The ledger is EXACTLY the file's 3 events — the manual dividend is gone.
+    const ledger = await repo.getLedger(USER_ID);
+    expect(ledger).toHaveLength(3);
+    expect(ledger.some((e) => e.type === "dividend")).toBe(false);
+  });
+
+  it("replaceLedgerFromFile leaves the ledger untouched when the account isn't the caller's", async () => {
+    await seedAccount(repo, { accountId: ACCT, userId: USER_ID });
+    await importFile(ACCT, OFX_FILE);
+    const before = await repo.getLedger(USER_ID);
+    // A foreign caller: the ownership guard throws BEFORE the wipe, so the whole
+    // transaction rolls back — no partial-wipe window.
+    await expect(
+      repo.replaceLedgerFromFile(ACCT, "intruder", [
+        {
+          accountId: ACCT,
+          type: "buy",
+          tradeDate: "2026-03-01",
+          settleDate: null,
+          ticker: "AAPL",
+          quantity: 1,
+          unitPrice: 100,
+          amount: -100,
+          fee: null,
+          currency: "USD",
+          source: "file",
+          externalId: null,
+          description: null,
+          basisUnknown: null,
+          proceedsUnknown: null,
+          attributes: null,
+        },
+      ]),
+    ).rejects.toThrow();
+    expect(await repo.getLedger(USER_ID)).toHaveLength(before.length);
   });
 });

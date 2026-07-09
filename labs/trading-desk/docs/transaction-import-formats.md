@@ -55,7 +55,8 @@ magnitudes from the file; `externalId` = the `FITID`):
 | `JRNLSEC` | — (skipped) | — | — | an intra-account subaccount journal has no net position effect; surfaced in `skipped` |
 | `INVBANKTRAN` (`STMTTRN`) | `deposit` / `withdrawal` / `interest` / `dividend` / `fee` | null | signed `TRNAMT` | by `TRNTYPE`, sign preserved |
 | `MARGININTEREST` / `INVEXPENSE` | `fee` | null | `−|TOTAL|` | |
-| `SPLIT` / `RETOFCAP` / `CLOSUREOPT` | — (skipped) | — | — | surfaced in `skipped`; v1 does not adjust basis for corporate actions |
+| `SPLIT` | `split` | null | `0` | **ingested** (FIX-876): ratio from `NUMERATOR`/`DENOMINATOR` (fallback `NEWUNITS`/`OLDUNITS`) on the event's `attributes`; `deriveLots` rebases open lots by it. A `FRACCASH` cash-in-lieu leg becomes a separate cash row + warning. No usable ratio or unresolvable security → skipped-with-warning |
+| `RETOFCAP` / `CLOSUREOPT` | — (skipped) | — | — | surfaced in `skipped`; v1 does not adjust basis for these corporate actions |
 | anything else | — (skipped) | — | — | surfaced as a warning, never silently dropped |
 
 Dates: an OFX `YYYYMMDD[HHMMSS...]` is truncated to `YYYY-MM-DD`. Currency comes
@@ -103,6 +104,47 @@ mapping. This keeps a CUSIP-only export (e.g. Fidelity) honest: the events land,
 keyed by CUSIP, and the report says which need a ticker. The consequence: a
 CUSIP-keyed event won't fingerprint-match a ticker-keyed event from another feed,
 and won't attach to a ticker-keyed holding, until mapped.
+
+## Stock splits (FIX-876)
+
+A `SPLIT` aggregate is ingested as a first-class `split` ledger event, not
+skipped. The event carries no share delta or cash — its `attributes` hold the
+`{ numerator, denominator }` ratio (from `NUMERATOR`/`DENOMINATOR`, falling back
+to the holder's `NEWUNITS`/`OLDUNITS`). `deriveLots` applies it by rebasing the
+ticker's open lots (`quantity × ratio`, `costPerShare ÷ ratio`) while preserving
+each lot's acquisition date, so the holding period is unchanged. Forward and
+reverse splits both flow through this one rule. A split sorts **before** same-day
+trades (it is effective at the open, so same-day trades are already in post-split
+units — applying it after would double-adjust). A `FRACCASH` cash-in-lieu leg is
+real money, so it is recorded as a separate cash row and warned, not dropped. A
+split with no usable positive-integer ratio, or whose security can't be resolved,
+is skipped-with-warning — never a fabricated ratio.
+
+Splits can also be entered by hand (the "Split" type in the add-transaction
+dialog) through the same ledger contract. **Cross-source dedup caveat:** the
+content fingerprint excludes numerator/denominator, so a manual split and a
+re-imported file split on the *same* date dedup to one — but on *different* dates
+they double-apply (→ ratio²). Record splits at the broker **ex-date** to line up.
+
+An over-sold position that no split explains (disposals exceed everything ever
+held) is never silently deleted: the holding materializes as a flagged
+`inconsistent_history` row surfaced in the Portfolio UI with a ⚠ "review" marker.
+
+## Reset-account import mode (FIX-876)
+
+A transaction import runs in one of two modes:
+
+- **Append** (default) — add the file's events, de-duplicating any already
+  recorded. Non-destructive.
+- **Reset account** — atomically wipe the account's *entire* ledger (manual
+  entries included — recorded splits, corrections) and repopulate it from the
+  file, then re-materialize positions, all in one transaction (a mid-ingest
+  failure rolls the wipe back — no partial-wipe window). Gated behind a typed
+  `REPLACE` confirmation. This is the clean escape from a cross-source split
+  double-apply: one file becomes the single source of truth. It **destroys manual
+  corrections by design** — after a reset, re-record any manual entries (including
+  a recorded split); if the file lacks a split the position re-breaks, but now
+  *visibly* as an `inconsistent_history` flagged row, not silently.
 
 ## Minimal example
 

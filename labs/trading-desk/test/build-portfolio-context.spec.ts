@@ -30,6 +30,37 @@ describe("buildPortfolioContext", () => {
     expect(buildPortfolioContext([], [], null)).toBeNull();
   });
 
+  it("surfaces an inconsistent-history holding as unknown, not a $0 position (FIX-876)", () => {
+    // A flagged holding (an unaccounted split over-sold the ledger) has a
+    // meaningless quantity 0. It must NOT reach the trader/PM as a priced $0 /
+    // 0%-weight position — it's an unknown input: null marketValue/weight, counted
+    // in totalHoldings (coverage) but not pricedHoldings/NAV.
+    const accounts = [
+      account({
+        cashBalance: 1000,
+        holdings: [
+          {
+            ticker: "NVDA",
+            quantity: 0,
+            costBasis: null,
+            acquiredDate: null,
+            assetClass: "equity",
+            assetType: "equity",
+            attributes: { kind: "none" },
+            dataQuality: "inconsistent_history",
+          },
+        ],
+      }),
+    ];
+    const out = buildPortfolioContext(accounts, [{ ticker: "NVDA", price: 120, asOf: "2026-05-06" }], "2026-05-06");
+    expect(out?.totalNav).toBe(1000); // cash only — the flagged holding adds nothing
+    expect(out?.totalHoldings).toBe(1);
+    expect(out?.pricedHoldings).toBe(0);
+    const nvda = out?.holdings.find((h) => h.ticker === "NVDA");
+    expect(nvda?.marketValue).toBeNull();
+    expect(nvda?.weightPct).toBeNull();
+  });
+
   it("computes marketValue, NAV and weights from quantity × live price + cash", () => {
     const accounts = [
       account({
@@ -37,8 +68,8 @@ describe("buildPortfolioContext", () => {
         name: "Roth IRA",
         cashBalance: 1000,
         holdings: [
-          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
-          { ticker: "AAPL", quantity: 20, costBasis: 150, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "AAPL", quantity: 20, costBasis: 150, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
         ],
       }),
     ];
@@ -66,8 +97,8 @@ describe("buildPortfolioContext", () => {
         type: "taxable",
         cashBalance: 500,
         holdings: [
-          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
-          { ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }, // no quote
+          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }, // no quote
         ],
       }),
     ];
@@ -103,13 +134,13 @@ describe("buildPortfolioContext", () => {
         cashBalance: 0,
         holdings: [
           // equity via quote: 10 × 200 = 2000
-          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+          { ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
           // bond at carried mark: 5 × 98.5 = 492.5
-          { ticker: "912828YK0", quantity: 5, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "912828YK0", markPrice: 98.5 } },
+          { ticker: "912828YK0", quantity: 5, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "912828YK0", markPrice: 98.5 }, dataQuality: null },
           // MMF at par: 1500 × 1.00 = 1500
-          { ticker: "SPAXX", quantity: 1500, costBasis: null, acquiredDate: null, assetClass: "cash", assetType: "money_market", attributes: { kind: "cash_equivalent" } },
+          { ticker: "SPAXX", quantity: 1500, costBasis: null, acquiredDate: null, assetClass: "cash", assetType: "money_market", attributes: { kind: "cash_equivalent" }, dataQuality: null },
           // unpriced bond: no mark → null marketValue, adds nothing to NAV
-          { ticker: "999999XX9", quantity: 7, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "999999XX9", markPrice: null } },
+          { ticker: "999999XX9", quantity: 7, costBasis: null, acquiredDate: null, assetClass: "fixed_income", assetType: "bond", attributes: { kind: "bond", cusip: "999999XX9", markPrice: null }, dataQuality: null },
         ],
       }),
     ];
@@ -134,7 +165,7 @@ describe("buildPortfolioContext", () => {
     const accounts = [
       account({
         cashBalance: 0,
-        holdings: [{ ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }],
+        holdings: [{ ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }],
       }),
     ];
     const out = buildPortfolioContext(accounts, [], "2026-05-06");

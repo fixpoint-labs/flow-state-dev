@@ -27,7 +27,11 @@ import type { PortfolioRepository } from "@/src/db/repository";
 import type { FileImportReport } from "./transaction-import-schema";
 import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
 import { accountTypeSchema, assetClassSchema, type AssetClass } from "./portfolio-schema";
-import { ledgerEventInputSchema, type IngestReport } from "./ledger-schema";
+import {
+  ledgerEventInputObject,
+  refineLedgerEvent,
+  type IngestReport,
+} from "./ledger-schema";
 import { taxProfileInputSchema, type TaxProfileInput } from "./tax-schema";
 import { detectAndParseTransactionFile } from "./transaction-file";
 import type { TaxProfileRow } from "@/src/db/repository";
@@ -61,11 +65,12 @@ export const saveAccountSchema = z.object({
 export type SaveAccountInput = z.infer<typeof saveAccountSchema>;
 
 /** Request body for a manual ledger entry — the canonical event minus the
- *  feed-owned `source` / `externalId` (fixed to `manual` / null here). */
-export const recordEventSchema = ledgerEventInputSchema.omit({
-  source: true,
-  externalId: true,
-});
+ *  feed-owned `source` / `externalId` (fixed to `manual` / null here). Carries
+ *  the same cross-field refine as the full input schema, so a manual `split`
+ *  entry is validated identically (FIX-876). */
+export const recordEventSchema = ledgerEventInputObject
+  .omit({ source: true, externalId: true })
+  .superRefine(refineLedgerEvent);
 export type RecordEventInput = z.infer<typeof recordEventSchema>;
 
 /** Request body for a tax-profile save (the route re-applies `userId`). */
@@ -81,11 +86,14 @@ export const importHoldingsSchema = z.object({
 });
 export type ImportHoldingsInput = z.infer<typeof importHoldingsSchema>;
 
-/** Request body for an OFX-family transaction-file import. */
+/** Request body for an OFX-family transaction-file import. `mode: "replace"`
+ *  (FIX-876) atomically wipes the account's ledger before repopulating it from
+ *  the file; `"append"` (default) is the non-destructive dedup-merge. */
 export const importTransactionsSchema = z.object({
   accountId: z.string(),
   content: z.string(),
   filename: z.string().nullable().default(null),
+  mode: z.enum(["append", "replace"]).default("append"),
 });
 export type ImportTransactionsInput = z.infer<typeof importTransactionsSchema>;
 
@@ -346,7 +354,15 @@ export async function importTransactionFile(
     accountId: input.accountId,
     source: "file" as const,
   }));
-  const ingest = await repo.ingestLedgerEvents(events, userId);
+  // "replace" mode (FIX-876): atomically wipe the account's ledger (manual
+  // entries included) and repopulate from this file, so the file is the single
+  // source of truth — the clean escape from a cross-source split double-apply.
+  // "append" (default) is the non-destructive dedup-merge. Both materialize
+  // positions inside the same transaction.
+  const ingest =
+    input.mode === "replace"
+      ? await repo.replaceLedgerFromFile(input.accountId, userId, events)
+      : await repo.ingestLedgerEvents(events, userId);
 
   return report({
     inserted: ingest.inserted,

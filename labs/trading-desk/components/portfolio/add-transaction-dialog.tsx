@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import type { AccountState } from "@/src/flows/portfolio/portfolio-schema";
 import type {
   LedgerEventType,
+  SplitAttributes,
 } from "@/src/flows/portfolio/ledger-schema";
 
 /** The action input the parent dispatches — the canonical event WITHOUT
@@ -32,6 +33,8 @@ type NewLedgerEvent = {
   unitPrice: number | null;
   description: string | null;
   basisUnknown: string | null;
+  /** Split ratio (FIX-876) — set ONLY for a `split`, null otherwise. */
+  attributes: SplitAttributes | null;
 };
 
 type AddTransactionDialogProps = {
@@ -52,6 +55,7 @@ const TYPE_OPTIONS: ReadonlyArray<{ value: LedgerEventType; label: string }> = [
   { value: "withdrawal", label: "Withdrawal" },
   { value: "transfer", label: "Transfer" },
   { value: "fee", label: "Fee" },
+  { value: "split", label: "Split" },
 ];
 
 const inputClass = cn(
@@ -111,6 +115,9 @@ export function AddTransactionDialog({
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [basisUnknown, setBasisUnknown] = useState("");
+  // Split ratio inputs (FIX-876), used only when type === "split".
+  const [numerator, setNumerator] = useState("");
+  const [denominator, setDenominator] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
 
   // Drive the native <dialog> imperatively from `open` (matches AddAccountDialog).
@@ -133,6 +140,8 @@ export function AddTransactionDialog({
       setAmount("");
       setDescription("");
       setBasisUnknown("");
+      setNumerator("");
+      setDenominator("");
       setError(undefined);
     }
   }, [open, defaultAccountId, accounts]);
@@ -144,6 +153,38 @@ export function AddTransactionDialog({
     }
     if (tradeDate.trim().length === 0) {
       setError("Trade date is required");
+      return;
+    }
+    // A split (FIX-876) carries no cash/quantity — just a ticker and a
+    // numerator:denominator ratio. Validate + emit it on its own path (the same
+    // shape the server's `refineLedgerEvent` enforces: attributes present,
+    // quantity null, amount 0).
+    if (type === "split") {
+      const splitTicker = ticker.trim().toUpperCase();
+      if (splitTicker.length === 0) {
+        setError("Ticker is required for a split");
+        return;
+      }
+      const num = Number(numerator.trim());
+      const den = Number(denominator.trim());
+      if (!Number.isInteger(num) || num <= 0 || !Number.isInteger(den) || den <= 0) {
+        setError("Split ratio must be positive whole numbers (e.g. 10 for 1)");
+        return;
+      }
+      const trimmedNote = description.trim();
+      onSubmit({
+        accountId,
+        type: "split",
+        tradeDate: tradeDate.trim(),
+        amount: 0,
+        ticker: splitTicker,
+        quantity: null,
+        unitPrice: null,
+        description: trimmedNote.length === 0 ? null : trimmedNote,
+        basisUnknown: null,
+        attributes: { numerator: num, denominator: den },
+      });
+      onClose();
       return;
     }
     const amountNum = Number(amount.replace(/[$,\s]/g, ""));
@@ -187,6 +228,7 @@ export function AddTransactionDialog({
       description: trimmedDescription.length === 0 ? null : trimmedDescription,
       basisUnknown:
         type === "transfer" && trimmedBasis.length > 0 ? trimmedBasis : null,
+      attributes: null,
     });
     onClose();
   };
@@ -271,40 +313,71 @@ export function AddTransactionDialog({
                 autoComplete="off"
               />
             </label>
-            <label className="flex flex-1 flex-col gap-1">
-              <span className={labelTextClass}>Quantity</span>
-              <input
-                value={quantity}
-                onChange={(e) => setQuantity(e.currentTarget.value)}
-                className={inputClass}
-                placeholder="10"
-                inputMode="decimal"
-              />
-            </label>
+            {/* A split has no share quantity — it rebases existing lots by a
+                ratio (below), so hide Quantity for it. */}
+            {type !== "split" ? (
+              <label className="flex flex-1 flex-col gap-1">
+                <span className={labelTextClass}>Quantity</span>
+                <input
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.currentTarget.value)}
+                  className={inputClass}
+                  placeholder="10"
+                  inputMode="decimal"
+                />
+              </label>
+            ) : null}
           </div>
 
-          <div className="flex gap-3">
-            <label className="flex flex-1 flex-col gap-1">
-              <span className={labelTextClass}>Unit price</span>
-              <input
-                value={unitPrice}
-                onChange={(e) => setUnitPrice(e.currentTarget.value)}
-                className={inputClass}
-                placeholder="120"
-                inputMode="decimal"
-              />
-            </label>
-            <label className="flex flex-1 flex-col gap-1">
-              <span className={labelTextClass}>Amount</span>
-              <input
-                value={amount}
-                onChange={(e) => setAmount(e.currentTarget.value)}
-                className={inputClass}
-                placeholder="-1200"
-                inputMode="decimal"
-              />
-            </label>
-          </div>
+          {/* A split carries no price/amount; it takes a numerator:denominator
+              ratio instead (10-for-1 → 10 and 1; reverse 1-for-10 → 1 and 10). */}
+          {type === "split" ? (
+            <div className="flex gap-3">
+              <label className="flex flex-1 flex-col gap-1">
+                <span className={labelTextClass}>New shares (numerator)</span>
+                <input
+                  value={numerator}
+                  onChange={(e) => setNumerator(e.currentTarget.value)}
+                  className={inputClass}
+                  placeholder="10"
+                  inputMode="numeric"
+                />
+              </label>
+              <label className="flex flex-1 flex-col gap-1">
+                <span className={labelTextClass}>Per (denominator)</span>
+                <input
+                  value={denominator}
+                  onChange={(e) => setDenominator(e.currentTarget.value)}
+                  className={inputClass}
+                  placeholder="1"
+                  inputMode="numeric"
+                />
+              </label>
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <label className="flex flex-1 flex-col gap-1">
+                <span className={labelTextClass}>Unit price</span>
+                <input
+                  value={unitPrice}
+                  onChange={(e) => setUnitPrice(e.currentTarget.value)}
+                  className={inputClass}
+                  placeholder="120"
+                  inputMode="decimal"
+                />
+              </label>
+              <label className="flex flex-1 flex-col gap-1">
+                <span className={labelTextClass}>Amount</span>
+                <input
+                  value={amount}
+                  onChange={(e) => setAmount(e.currentTarget.value)}
+                  className={inputClass}
+                  placeholder="-1200"
+                  inputMode="decimal"
+                />
+              </label>
+            </div>
+          )}
 
           <label className="flex flex-col gap-1">
             <span className={labelTextClass}>Description (optional)</span>

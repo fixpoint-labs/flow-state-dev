@@ -33,7 +33,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ events });
 }
 
-const recordPayload = recordEventSchema.extend({ userId: z.string().min(1) });
+// `recordEventSchema` now carries a cross-field refine (ZodEffects), which has
+// no `.extend`; intersect the caller-asserted `userId` on instead.
+const recordPayload = z.object({ userId: z.string().min(1) }).and(recordEventSchema);
 
 export async function POST(req: NextRequest) {
   const parsed = recordPayload.safeParse(await req.json().catch(() => null));

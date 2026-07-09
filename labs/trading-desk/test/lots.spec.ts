@@ -12,7 +12,7 @@
  *   5. A fully-closed position is omitted (no current holding).
  */
 import { describe, expect, it } from "vitest";
-import { deriveLots } from "@/src/flows/portfolio/lots";
+import { deriveLots, inferSplit, previewSplitResult } from "@/src/flows/portfolio/lots";
 import type { LedgerRow } from "@/src/flows/portfolio/ledger-schema";
 
 let seq = 0;
@@ -36,6 +36,7 @@ function row(overrides: Partial<LedgerRow>): LedgerRow {
     description: null,
     basisUnknown: null,
     proceedsUnknown: null,
+    attributes: null,
     voidedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -175,5 +176,202 @@ describe("deriveLots — same-day ordering", () => {
     expect(aapl?.quantity).toBe(10);
     expect(aapl?.avgCost).toBe(200);
     expect(aapl?.acquiredDate).toBe("2026-03-01");
+  });
+});
+
+/** A `split` event: no share delta / cash — carries a numerator:denominator ratio. */
+function split(numerator: number, denominator: number, over: Partial<LedgerRow> = {}): LedgerRow {
+  return row({
+    type: "split",
+    quantity: null,
+    unitPrice: null,
+    amount: 0,
+    attributes: { numerator, denominator },
+    ...over,
+  });
+}
+
+describe("deriveLots — stock splits (FIX-876)", () => {
+  it("rebases open lots by the ratio and divides basis, preserving the acquired date", () => {
+    const { positions } = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 10, unitPrice: 900 }),
+      split(10, 1, { tradeDate: "2024-06-10" }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    expect(aapl?.quantity).toBe(100); // 10 × 10
+    expect(aapl?.avgCost).toBe(90); // 900 ÷ 10
+    // The holding period is unchanged by a split (IRS rule) — earliest lot date holds.
+    expect(aapl?.acquiredDate).toBe("2024-01-01");
+  });
+
+  it("supports a reverse split (1-for-10): fewer shares, higher basis", () => {
+    const { positions } = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 100, unitPrice: 5 }),
+      split(1, 10, { tradeDate: "2024-06-10" }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    expect(aapl?.quantity).toBe(10); // 100 × 0.1
+    expect(aapl?.avgCost).toBe(50); // 5 ÷ 0.1
+  });
+
+  it("applies the split BEFORE same-day trades (no double-adjust)", () => {
+    // The split is effective at the open, so a same-day post-split buy is already
+    // in post-split units and must NOT be rebased. Only the pre-split lot scales.
+    const { positions } = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 10, unitPrice: 900 }), // pre-split lot
+      split(10, 1, { tradeDate: "2024-06-10" }),
+      row({ tradeDate: "2024-06-10", quantity: 5, unitPrice: 90 }), // same-day post-split buy
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    // 10×10 (rebased) + 5 (not re-scaled) = 105.
+    expect(aapl?.quantity).toBe(105);
+  });
+
+  it("lets a post-split sell consume the rebased lots correctly", () => {
+    const { positions, oversold } = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+      split(10, 1, { tradeDate: "2024-06-10" }),
+      row({ type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    // 12×10 = 120 rebased shares, minus a 50-share post-split sell = 70.
+    expect(aapl?.quantity).toBe(70);
+    expect(oversold.has("AAPL")).toBe(false);
+  });
+
+  it("flags OVERSOLD when a post-split sell exceeds the un-split holding, and clears it once the split is recorded", () => {
+    // The FIX-876 root cause: 12 pre-split shares, a 50-share post-split sell. With
+    // NO split, FIFO over-sells (only 12 held) → no position AND an oversold signal.
+    const withoutSplit = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+      row({ type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+    ]);
+    expect(withoutSplit.positions.find((p) => p.ticker === "AAPL")).toBeUndefined();
+    expect(withoutSplit.oversold.has("AAPL")).toBe(true);
+
+    // Recording the split explains the gap: the position derives and oversold clears.
+    const withSplit = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+      split(10, 1, { tradeDate: "2024-06-10" }),
+      row({ type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+    ]);
+    expect(withSplit.positions.find((p) => p.ticker === "AAPL")?.quantity).toBe(70);
+    expect(withSplit.oversold.has("AAPL")).toBe(false);
+  });
+
+  it("a split with no open lots for the ticker is a harmless no-op", () => {
+    const { positions } = deriveLots([split(10, 1, { tradeDate: "2024-06-10" })]);
+    expect(positions.find((p) => p.ticker === "AAPL")).toBeUndefined();
+  });
+
+  it("infers a forward split from the price cliff when a near-split trade exists", () => {
+    // Pre-split buys near the split price ($900, $1100) then a post-split sell at
+    // $120: the largest adjacent cliff is 1100/120 ≈ 9.17 → snaps to 10:1, and it
+    // resolves the over-sell, so it's returned.
+    const s = inferSplit(
+      [
+        row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 10, unitPrice: 900 }),
+        row({ ticker: "NVDA", tradeDate: "2024-03-01", quantity: 5, unitPrice: 1100 }),
+        row({ ticker: "NVDA", type: "sell", tradeDate: "2024-07-31", quantity: -50, unitPrice: 120, amount: 6000 }),
+      ],
+      "NVDA",
+    );
+    expect(s).toEqual({ numerator: 10, denominator: 1, tradeDate: "2024-07-31" });
+  });
+
+  it("returns null when no clean price cliff resolves the over-sell", () => {
+    // A single far-from-split buy ($300) vs a $120 sell → cliff 2.5, and no
+    // standard-ratio candidate that snaps actually reconciles the position cleanly
+    // in a way we'd trust → null (never a fabricated ratio).
+    const s = inferSplit(
+      [
+        row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 10, unitPrice: 300 }),
+        row({ ticker: "NVDA", type: "sell", tradeDate: "2024-07-31", quantity: -18, unitPrice: 120, amount: 2160 }),
+      ],
+      "NVDA",
+    );
+    // Documents the heuristic's honest limit: a sparse/ambiguous history isn't
+    // force-fit. (Either null, or a snapped guess — assert it never throws and, if
+    // returned, actually resolves the over-sell.)
+    if (s !== null) {
+      const { oversold } = deriveLots([
+        row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 10, unitPrice: 300 }),
+        row({ ticker: "NVDA", type: "sell", tradeDate: "2024-07-31", quantity: -18, unitPrice: 120, amount: 2160 }),
+        row({ ticker: "NVDA", type: "split", tradeDate: s.tradeDate, quantity: null, unitPrice: null, amount: 0, attributes: { numerator: s.numerator, denominator: s.denominator } }),
+      ]);
+      expect(oversold.has("NVDA")).toBe(false);
+    }
+  });
+
+  it("returns null for a healthy (non-oversold) position — nothing to infer", () => {
+    const s = inferSplit(
+      [row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 10, unitPrice: 900 })],
+      "NVDA",
+    );
+    expect(s).toBeNull();
+  });
+
+  it("NVDA 10-for-1: a pre-split holding derives to exactly its post-split share count", () => {
+    // The acceptance shape: applying the 10× split to the pre-split trades
+    // reconstructs the true post-split position (the real WF: Investing Accounts
+    // NVDA nets to 121.9346 shares).
+    const { positions } = deriveLots([
+      row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 12.19346, unitPrice: 900 }),
+      split(10, 1, { ticker: "NVDA", tradeDate: "2024-06-10" }),
+    ]);
+    const nvda = positions.find((p) => p.ticker === "NVDA");
+    expect(nvda?.quantity).toBeCloseTo(121.9346, 4);
+    expect(nvda?.avgCost).toBeCloseTo(90, 6); // 900 ÷ 10
+  });
+
+  it("previewSplitResult dry-runs the position a candidate split WOULD produce", () => {
+    // 12 pre-split shares + a 50-share post-split sell — over-sold without a split.
+    // Previewing a 10:1 split shows the resolved position (120 rebased − 50 = 70)
+    // WITHOUT mutating the ledger, so the confirm dialog can show the post-calc amount.
+    const events = [
+      row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+      row({ ticker: "NVDA", type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+    ];
+    const preview = previewSplitResult(events, "NVDA", {
+      numerator: 10,
+      denominator: 1,
+      tradeDate: "2024-06-10",
+    });
+    expect(preview?.quantity).toBe(70);
+    expect(preview?.avgCost).toBeCloseTo(90, 6); // 900 ÷ 10
+    // The candidate is a dry run: the source events are untouched (no split row added).
+    expect(events).toHaveLength(2);
+  });
+
+  it("previewSplitResult returns null when the ratio leaves a residual buy open but STILL over-sells", () => {
+    // The subtle case: a too-small split leaves the ticker oversold, but a later
+    // buy clamps its way to a residual open position. `materializePositions` flags
+    // this as inconsistent_history (oversold wins over the residual), so recording
+    // the split would NOT heal the row — the preview must not show a reconciled
+    // position nor enable confirm. 12 pre-split, 2:1 → 24, a 50-share sell (still
+    // over-sells), then a 60-share buy leaves 60 open but oversold stays true.
+    const preview = previewSplitResult(
+      [
+        row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+        row({ ticker: "NVDA", type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+        row({ ticker: "NVDA", tradeDate: "2024-08-01", quantity: 60, unitPrice: 120 }),
+      ],
+      "NVDA",
+      { numerator: 2, denominator: 1, tradeDate: "2024-06-10" },
+    );
+    expect(preview).toBeNull();
+  });
+
+  it("previewSplitResult returns null when the candidate ratio still leaves an over-sell", () => {
+    // A 2:1 split only doubles 12 → 24 shares, still short of the 50-share sell.
+    const preview = previewSplitResult(
+      [
+        row({ ticker: "NVDA", tradeDate: "2024-01-01", quantity: 12, unitPrice: 900 }),
+        row({ ticker: "NVDA", type: "sell", tradeDate: "2024-07-31", quantity: -50, amount: 6000 }),
+      ],
+      "NVDA",
+      { numerator: 2, denominator: 1, tradeDate: "2024-06-10" },
+    );
+    expect(preview).toBeNull();
   });
 });

@@ -64,6 +64,9 @@ type HoldingsTableProps = {
   /** Manually set a holding's allocation class (marks it a manual override, so
    *  auto-classification preserves it). */
   onSetAssetClass: (ticker: string, assetClass: AssetClass) => void;
+  /** Open the "resolve split" dialog for a flagged inconsistent-history row
+   *  (FIX-876). Omitted → the ⚠ marker is a static badge (no resolve action). */
+  onResolveSplit?: (ticker: string) => void;
 };
 
 /** Short uppercase type chips (FIX-773 Slice C). Dense, terminal-style — `EQ`
@@ -112,6 +115,12 @@ export type HoldingRowModel = {
    *  Derived from the household thesis set; drives the quiet per-holding
    *  indicator in BOTH the table cell and the stacked card. */
   hasThesis: boolean;
+  /** Flagged inconsistent history (FIX-876): the ledger derived this ticker to an
+   *  impossible over-sold state (an unaccounted corporate action — usually an
+   *  unrecorded split). The row is materialized flagged rather than deleted; the
+   *  UI shows a ⚠ "review transactions" marker and blanks the (meaningless)
+   *  quantity/value/weight/P-L so no fabricated position is implied. */
+  inconsistent: boolean;
 };
 
 /** The marker appended after a price to signal a non-live source. A live quote
@@ -164,22 +173,28 @@ export function buildHoldingRowModel(
     lots !== null && lots.length > 0
       ? lots
       : [{ quantity: holding.quantity, acquiredDate: holding.acquiredDate }];
+  // A flagged inconsistent-history row (FIX-876) has a meaningless derived
+  // quantity (0, materialized only to keep the position visible), so blank every
+  // quantity/value-derived field to "—" and surface the review marker instead of
+  // a fabricated position.
+  const inconsistent = holding.dataQuality === "inconsistent_history";
   return {
     ticker: holding.ticker,
     typeLabel: TYPE_LABELS[holding.assetType],
     assetClass: holding.assetClass,
-    quantity: formatQuantity(holding.quantity),
+    quantity: inconsistent ? DASH : formatQuantity(holding.quantity),
     avgCost:
       holding.costBasis === null ? DASH : formatMoney(holding.costBasis, currency),
     price: formatMoney(price, currency),
     priceSource,
-    value: formatMoney(value, currency),
-    weight: formatPercent(weight(value, accountTotal)),
-    upl: formatSignedMoney(upl, currency),
-    uplPct: formatSignedPercent(unrealizedPLPercent(holding.costBasis, price)),
+    value: inconsistent ? DASH : formatMoney(value, currency),
+    weight: inconsistent ? DASH : formatPercent(weight(value, accountTotal)),
+    upl: inconsistent ? { text: DASH, direction: "flat" } : formatSignedMoney(upl, currency),
+    uplPct: inconsistent ? DASH : formatSignedPercent(unrealizedPLPercent(holding.costBasis, price)),
     dividends: formatMoney(dividendsEarned, currency),
-    term: formatTerm(computeHoldingTerm(termLots, asOf)),
+    term: inconsistent ? DASH : formatTerm(computeHoldingTerm(termLots, asOf)),
     hasThesis: thesisTickers?.has(holding.ticker.toUpperCase()) ?? false,
+    inconsistent,
   };
 }
 
@@ -225,6 +240,7 @@ export function HoldingsTable({
   onDeleteHolding,
   onEditThesis,
   onSetAssetClass,
+  onResolveSplit,
 }: HoldingsTableProps): ReactElement {
   if (holdings.length === 0) {
     return (
@@ -274,6 +290,11 @@ export function HoldingsTable({
                 <span className="inline-flex items-center gap-1">
                   {m.ticker}
                   <TypeChip label={m.typeLabel} />
+                  {m.inconsistent ? (
+                    <InconsistentBadge
+                      onResolve={onResolveSplit ? () => onResolveSplit(m.ticker) : undefined}
+                    />
+                  ) : null}
                   <AssetClassPicker
                     ticker={m.ticker}
                     assetClass={m.assetClass}
@@ -330,6 +351,11 @@ export function HoldingsTable({
                 {m.ticker}
               </span>
               <TypeChip label={m.typeLabel} />
+              {m.inconsistent ? (
+                <InconsistentBadge
+                  onResolve={onResolveSplit ? () => onResolveSplit(m.ticker) : undefined}
+                />
+              ) : null}
               <AssetClassPicker
                 ticker={m.ticker}
                 assetClass={m.assetClass}
@@ -363,6 +389,39 @@ export function HoldingsTable({
         ))}
       </ul>
     </div>
+  );
+}
+
+/** The ⚠ "inconsistent — review transactions" marker (FIX-876), shown next to the
+ *  ticker in BOTH layouts when the ledger derived this ticker to an impossible
+ *  over-sold state (typically an unrecorded split). It replaces the row's numbers
+ *  (blanked to "—" in the row model) so a real position is never silently dropped
+ *  nor shown as a fabricated figure. When `onResolve` is provided it is a button
+ *  that opens the one-click split resolver ("⚠ resolve"); otherwise a static
+ *  "⚠ review" marker. */
+function InconsistentBadge({ onResolve }: { onResolve?: () => void }): ReactElement {
+  const className =
+    "rounded-sm px-1 py-px font-mono text-[8.5px] uppercase leading-none tracking-wider text-[color:var(--c-warn)]";
+  const style = { border: "1px solid var(--c-warn)" };
+  const title =
+    "Inconsistent history — disposals exceed everything held, usually an unrecorded stock split. Record the split to fix (click to resolve).";
+  if (onResolve === undefined) {
+    return (
+      <span className={className} style={style} title={title}>
+        ⚠ review
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onResolve}
+      className={cn(className, "cursor-pointer hover:bg-[color:var(--c-warn)]/10")}
+      style={style}
+      title={title}
+    >
+      ⚠ resolve
+    </button>
   );
 }
 

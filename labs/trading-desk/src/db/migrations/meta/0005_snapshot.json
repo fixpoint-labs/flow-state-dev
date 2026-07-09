@@ -1,6 +1,6 @@
 {
-  "id": "f853014f-e8d1-41c2-8ef6-e339f7c8573a",
-  "prevId": "070c326b-dacf-40ce-a1b2-d250987cfe96",
+  "id": "7e9ed69d-69f1-4bcc-83f6-083251eae456",
+  "prevId": "f853014f-e8d1-41c2-8ef6-e339f7c8573a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -321,6 +321,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "proceeds_unknown": {
+          "name": "proceeds_unknown",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "attributes": {
           "name": "attributes",
           "type": "jsonb",
@@ -444,6 +450,260 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "app.realized_gains": {
+      "name": "realized_gains",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ticker": {
+          "name": "ticker",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "disposed_date": {
+          "name": "disposed_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "acquired_date": {
+          "name": "acquired_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proceeds": {
+          "name": "proceeds",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cost_basis": {
+          "name": "cost_basis",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gain": {
+          "name": "gain",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "term": {
+          "name": "term",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "basis_unknown": {
+          "name": "basis_unknown",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "disposal_event_id": {
+          "name": "disposal_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lot_index": {
+          "name": "lot_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "realized_gains_account_idx": {
+          "name": "realized_gains_account_idx",
+          "columns": [
+            {
+              "expression": "account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "realized_gains_user_ticker_idx": {
+          "name": "realized_gains_user_ticker_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ticker",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "realized_gains_user_disposed_idx": {
+          "name": "realized_gains_user_disposed_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "disposed_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "realized_gains_disposal_lot_uq": {
+          "name": "realized_gains_disposal_lot_uq",
+          "columns": [
+            {
+              "expression": "disposal_event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lot_index",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "realized_gains_account_id_accounts_id_fk": {
+          "name": "realized_gains_account_id_accounts_id_fk",
+          "tableFrom": "realized_gains",
+          "tableTo": "accounts",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "app.tax_profiles": {
+      "name": "tax_profiles",
+      "schema": "app",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "filing_status": {
+          "name": "filing_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "marginal_ordinary_rate_pct": {
+          "name": "marginal_ordinary_rate_pct",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ltcg_rate_pct": {
+          "name": "ltcg_rate_pct",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state_rate_pct": {
+          "name": "state_rate_pct",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

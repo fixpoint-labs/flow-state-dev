@@ -31,7 +31,8 @@ ALTER TABLE "app"."realized_gains" ADD CONSTRAINT "realized_gains_account_id_acc
 CREATE INDEX "realized_gains_account_idx" ON "app"."realized_gains" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "realized_gains_user_ticker_idx" ON "app"."realized_gains" USING btree ("user_id","ticker");--> statement-breakpoint
 CREATE INDEX "realized_gains_user_disposed_idx" ON "app"."realized_gains" USING btree ("user_id","disposed_date");--> statement-breakpoint
-CREATE UNIQUE INDEX "realized_gains_disposal_lot_uq" ON "app"."realized_gains" USING btree ("disposal_event_id","lot_index");--> statement-breakpoint
+CREATE UNIQUE INDEX "realized_gains_disposal_lot_uq" ON "app"."realized_gains" USING btree ("disposal_event_id","lot_index");
+--> statement-breakpoint
 -- FIX-874: canonicalize existing currencies so the tax route's exact
 -- `currency = 'USD'` filter is trustworthy for rows written before the ingest
 -- normalizer landed (the realized-gains backfill re-derives from these).

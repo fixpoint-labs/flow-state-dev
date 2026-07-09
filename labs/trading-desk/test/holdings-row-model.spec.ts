@@ -31,6 +31,7 @@ function holding(overrides: Partial<Holding> = {}): Holding {
     assetClass: "equity",
     assetType: "equity",
     attributes: { kind: "none" },
+    dataQuality: null,
     ...overrides,
   };
 }
@@ -231,6 +232,34 @@ describe("buildHoldingRowModel", () => {
     expect(withIncome.dividends).toBe("$55.50");
     const noHistory = buildHoldingRowModel(holding(), quote(120), "USD", 2400, null);
     expect(noHistory.dividends).toBe(DASH);
+  });
+
+  // The `inconsistent` flag (FIX-876) flows through the ONE row model so the ⚠
+  // "review transactions" marker + blanked numbers show identically in the table
+  // and the card. It exists so an over-sold position (an unaccounted split) is
+  // never shown as a fabricated figure OR silently dropped.
+  describe("inconsistent-history marker", () => {
+    it("flags an inconsistent row and blanks its quantity/value/weight/P-L", () => {
+      const m = buildHoldingRowModel(
+        holding({ quantity: 0, costBasis: null, dataQuality: "inconsistent_history" }),
+        quote(120),
+        "USD",
+        2400,
+      );
+      expect(m.inconsistent).toBe(true);
+      expect(m.quantity).toBe(DASH);
+      expect(m.value).toBe(DASH);
+      expect(m.weight).toBe(DASH);
+      expect(m.upl.text).toBe(DASH);
+      expect(m.upl.direction).toBe("flat");
+      expect(m.term).toBe(DASH);
+    });
+
+    it("is false for a normal row", () => {
+      const m = buildHoldingRowModel(holding(), quote(120), "USD", 2400);
+      expect(m.inconsistent).toBe(false);
+      expect(m.quantity).toBe("10");
+    });
   });
 
   // The `hasThesis` flag flows through the ONE row model so both the desktop

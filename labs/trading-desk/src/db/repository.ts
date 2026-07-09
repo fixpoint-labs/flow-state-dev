@@ -16,7 +16,7 @@
  * rollups — ever sees a string.
  */
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type {
   AccountState,
   AccountType,
@@ -39,7 +39,9 @@ import type {
   LedgerEventType,
   LedgerRow,
   LedgerSource,
+  SplitAttributes,
 } from "@/src/flows/portfolio/ledger-schema";
+import { splitAttributesSchema } from "@/src/flows/portfolio/ledger-schema";
 import { deriveLots } from "@/src/flows/portfolio/lots";
 import type { RealizedDisposal } from "@/src/flows/portfolio/realized-gains";
 import type { TaxProfileInput } from "@/src/flows/portfolio/tax-schema";
@@ -150,6 +152,23 @@ export interface PortfolioRepository {
    * events passed.
    */
   ingestLedgerEvents(events: LedgerEventInput[], userId: string): Promise<IngestReport>;
+  /**
+   * Reset ONE account's ledger to exactly the given events, atomically (FIX-876
+   * "reset account" import mode). In a SINGLE transaction: ownership-guard the
+   * account against `userId`, DELETE every `ledger_events` row for it (manual
+   * entries — recorded splits, corrections — included), ingest the new events
+   * through the same fingerprint/dedup path {@link ingestLedgerEvents} uses, and
+   * re-materialize positions. A mid-ingest throw rolls the whole thing back, so
+   * there is no partial-wipe window. Improves on the CSV `replace-account` mode by
+   * being atomic; the caller warns that manual corrections are destroyed. Every
+   * event must already carry `input.accountId === accountId` (the caller injects
+   * it); a foreign account throws and writes nothing.
+   */
+  replaceLedgerFromFile(
+    accountId: string,
+    userId: string,
+    events: LedgerEventInput[],
+  ): Promise<IngestReport>;
   /**
    * Tombstone events by `(account_id, source, external_id)` — only the caller's
    * own (`user_id` scoped). Account-scoped because an external id (an OFX FITID)
@@ -326,7 +345,26 @@ function mapHolding(row: typeof holdings.$inferSelect): HoldingRow {
     assetClass: parseAssetClass(row.assetClass),
     assetType: parseAssetType(row.assetType),
     attributes: parseAttributes(row.attributes),
+    dataQuality: parseDataQuality(row.dataQuality),
   };
+}
+
+/** Validate a stored `data_quality` column into the typed
+ *  {@link Holding.dataQuality} value (FIX-876). Degrades an unexpected value to
+ *  `null` (the {@link parseAttributes} read-boundary precedent) so a stray value
+ *  never renders as a bogus flag. */
+function parseDataQuality(value: string | null): "inconsistent_history" | null {
+  return value === "inconsistent_history" ? "inconsistent_history" : null;
+}
+
+/** Read a ledger row's `attributes` jsonb into the typed split payload (FIX-876).
+ *  Non-null only for a `split` row that parses as {@link SplitAttributes}; every
+ *  other kind (and a malformed value) reads null. Never throws on a read (the
+ *  nullable-honest precedent). */
+function parseSplitAttributes(row: typeof ledgerEvents.$inferSelect): SplitAttributes | null {
+  if (row.type !== "split") return null;
+  const parsed = splitAttributesSchema.safeParse(row.attributes);
+  return parsed.success ? parsed.data : null;
 }
 
 /** Map a ledger row to the {@link LedgerRow} shape, coercing numerics to JS
@@ -350,6 +388,7 @@ function mapLedgerRow(row: typeof ledgerEvents.$inferSelect): LedgerRow {
     description: row.description,
     basisUnknown: row.basisUnknown,
     proceedsUnknown: row.proceedsUnknown,
+    attributes: parseSplitAttributes(row),
     voidedAt: row.voidedAt === null ? null : new Date(row.voidedAt).toISOString(),
     createdAt: new Date(row.createdAt).toISOString(),
   };
@@ -560,6 +599,56 @@ async function materializeRealizedGains(tx: Tx, accountId: string): Promise<void
 }
 
 /**
+ * UPSERT a materialized holdings row from a derived position. Shared by the
+ * open-position path and the FIX-876 flagged inconsistent-history path — the two
+ * differ ONLY in the four derived values (quantity/basis/date/dataQuality); the
+ * classification, the insert, and the `assetClassManual`-preserving conflict set
+ * (a user's manual class override survives re-materialization) are identical, so
+ * they live here once rather than drifting across two branches.
+ */
+async function upsertMaterializedHolding(
+  tx: Tx,
+  accountId: string,
+  ticker: string,
+  derived: {
+    quantity: string;
+    costBasis: string | null;
+    acquiredDate: string | null;
+    dataQuality: "inconsistent_history" | null;
+  },
+): Promise<void> {
+  const cls = classifyInstrument(ticker);
+  await tx
+    .insert(holdings)
+    .values({
+      accountId,
+      ticker,
+      quantity: derived.quantity,
+      costBasis: derived.costBasis,
+      acquiredDate: derived.acquiredDate,
+      assetClass: cls.assetClass,
+      assetType: cls.assetType,
+      attributes: cls.attributes,
+      dataQuality: derived.dataQuality,
+    })
+    .onConflictDoUpdate({
+      target: [holdings.accountId, holdings.ticker],
+      set: {
+        quantity: derived.quantity,
+        costBasis: derived.costBasis,
+        acquiredDate: derived.acquiredDate,
+        dataQuality: derived.dataQuality,
+        // Reclassify a non-manual row (self-heals a pre-fix `equity` row);
+        // preserve a user's manual override untouched.
+        assetClass: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.assetClass} ELSE ${cls.assetClass} END`,
+        assetType: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.assetType} ELSE ${cls.assetType} END`,
+        attributes: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.attributes} ELSE ${JSON.stringify(cls.attributes)}::jsonb END`,
+        updatedAt: sql`now()`,
+      },
+    });
+}
+
+/**
  * Materialize an account's ledger-derived positions into its holdings rows,
  * inside the caller's transaction. The ledger is the AUTHORITY wherever it has
  * share history — the holdings table is the materialized view of the derived
@@ -619,70 +708,191 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
       .filter((r) => r.voidedAt === null && isShareMove(r) && (r.quantity as number) > 0)
       .map((r) => r.ticker as string),
   );
-  const { positions } = deriveLots(rows);
+  const { positions, oversold } = deriveLots(rows);
   const posByTicker = new Map(positions.map((p) => [p.ticker, p]));
 
   for (const ticker of activeTickers) {
     const p = posByTicker.get(ticker);
+    // Inconsistent history (FIX-876): an acquired ticker whose disposals exceed
+    // everything ever held — impossible without an unaccounted corporate action
+    // (an unrecorded split is the canonical cause). This is checked FIRST, before
+    // the derived position: an oversell makes the whole derivation untrustworthy,
+    // so even when a LATER buy leaves a residual open position that FIFO clamped
+    // its way to, the number is wrong (the pre-split lots weren't rebased). NEVER
+    // show that fabricated quantity and never silently delete: materialize a
+    // FLAGGED zero-quantity row (basis cleared) surfaced in the Portfolio UI with
+    // a "review transactions" marker. Recording the missing split clears the
+    // oversell, so the position then derives and the flag self-heals below.
+    if (acquiredTickers.has(ticker) && oversold.has(ticker)) {
+      await upsertMaterializedHolding(tx, accountId, ticker, {
+        quantity: "0",
+        costBasis: null,
+        acquiredDate: null,
+        dataQuality: "inconsistent_history",
+      });
+      continue;
+    }
     if (p === undefined) {
       if (acquiredTickers.has(ticker)) {
-        // Genuine close: acquisition(s) all consumed — the active-holdings view
-        // drops it; history stays in the ledger.
+        // Genuine close: acquisition(s) all consumed and NO oversell — the
+        // active-holdings view drops it; history stays in the ledger.
         await tx
           .delete(holdings)
           .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, ticker)));
       } else {
         // Only disposals in range (oversell clamped) — a partial import over a
         // snapshot position. Keep the row; clear derived basis (can't derive it
-        // without the acquisition), never delete a still-held position.
+        // without the acquisition), never delete a still-held position. Clear any
+        // prior inconsistency flag too — this ticker is no longer acquired-and-
+        // oversold, so a stale flag must not linger (FIX-876).
         await tx
           .update(holdings)
-          .set({ costBasis: null, acquiredDate: null, updatedAt: sql`now()` })
+          .set({ costBasis: null, acquiredDate: null, dataQuality: null, updatedAt: sql`now()` })
           .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, ticker)));
       }
       continue;
     }
-    // Classify by ticker so a transaction-materialized holding carries its real
-    // asset class, not the `equity` column default (the CSV/PDF importer used to
-    // be the only place classification ran; QFX/transaction imports never hit it).
-    const cls = classifyInstrument(ticker);
-    const values = {
-      accountId,
-      ticker,
+    // A derived open position with no oversell is consistent by construction — the
+    // shared upsert classifies by ticker (so a transaction-materialized holding
+    // carries its real asset class, not the `equity` default) and clears any prior
+    // `inconsistent_history` flag (FIX-876: a recorded split that explains an
+    // earlier oversell self-heals the row).
+    await upsertMaterializedHolding(tx, accountId, ticker, {
       quantity: String(p.quantity),
       costBasis: p.avgCost === null ? null : String(p.avgCost),
       acquiredDate: p.acquiredDate,
-      assetClass: cls.assetClass,
-      assetType: cls.assetType,
-      attributes: cls.attributes,
-    };
-    await tx
-      .insert(holdings)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [holdings.accountId, holdings.ticker],
-        set: {
-          quantity: values.quantity,
-          costBasis: values.costBasis,
-          acquiredDate: values.acquiredDate,
-          // Reclassify a non-manual row (self-heals a pre-fix `equity` row);
-          // preserve a user's manual override untouched.
-          assetClass: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.assetClass} ELSE ${cls.assetClass} END`,
-          assetType: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.assetType} ELSE ${cls.assetType} END`,
-          attributes: sql`CASE WHEN ${holdings.assetClassManual} THEN ${holdings.attributes} ELSE ${JSON.stringify(cls.attributes)}::jsonb END`,
-          updatedAt: sql`now()`,
-        },
-      });
+      dataQuality: null,
+    });
   }
 
   if (voidedOnlyTickers.size > 0) {
+    const tickers = [...voidedOnlyTickers];
+    // A flagged `inconsistent_history` row was CREATED by the oversold guard (a
+    // real snapshot is never flagged — only ledger materialization sets the flag),
+    // so once its events are all voided it has no basis to exist. DELETE it rather
+    // than leave an unflagged 0-share ghost behind (FIX-876 review).
+    await tx
+      .delete(holdings)
+      .where(
+        and(
+          eq(holdings.accountId, accountId),
+          inArray(holdings.ticker, tickers),
+          eq(holdings.dataQuality, "inconsistent_history"),
+        ),
+      );
+    // The remaining voided-only tickers are snapshot rows returning to snapshot
+    // authority — clear derived basis AND any prior flag (a no-op on the rows just
+    // deleted above).
     await tx
       .update(holdings)
-      .set({ costBasis: null, acquiredDate: null, updatedAt: sql`now()` })
-      .where(
-        and(eq(holdings.accountId, accountId), inArray(holdings.ticker, [...voidedOnlyTickers])),
-      );
+      .set({ costBasis: null, acquiredDate: null, dataQuality: null, updatedAt: sql`now()` })
+      .where(and(eq(holdings.accountId, accountId), inArray(holdings.ticker, tickers)));
   }
+}
+
+/**
+ * Ingest a batch of events inside the caller's transaction: ownership-guard every
+ * referenced account against `userId`, dedup in memory then via `ON CONFLICT DO
+ * NOTHING`, chunk-insert, and re-materialize positions on every touched account.
+ * Shared by {@link PortfolioRepository.ingestLedgerEvents} and
+ * {@link PortfolioRepository.replaceLedgerFromFile} so the reset path reuses the
+ * exact dedup/fingerprint/materialize logic rather than forking it (BP-028).
+ * `inserted + deduplicated` always equals `events.length`.
+ */
+async function ingestEventsInTx(
+  tx: Tx,
+  events: LedgerEventInput[],
+  userId: string,
+): Promise<IngestReport> {
+  if (events.length === 0) return { inserted: 0, deduplicated: 0, errors: [] };
+
+  // Ownership guard: every referenced account must belong to the caller. A
+  // foreign account throws and the whole batch rolls back (defense in depth).
+  // Sorted so the per-account advisory locks below are acquired deterministically
+  // (FIX-874) — two batches touching {A,B} and {B,A} can't deadlock.
+  const accountIds = [...new Set(events.map((e) => e.accountId))].sort();
+  const owned = await tx
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(inArray(accounts.id, accountIds), eq(accounts.userId, userId)));
+  const ownedSet = new Set(owned.map((o) => o.id));
+  for (const id of accountIds) {
+    if (!ownedSet.has(id)) {
+      throw new Error(`Account ${id} is not owned by the requesting user.`);
+    }
+  }
+
+  // In-memory dedup BEFORE the insert so two conflicting rows in the same batch
+  // can't trip an intra-statement conflict and the counts are exact. Prefer the
+  // stable `(source, external_id)` key when present, else the content
+  // fingerprint. Both keys are account-scoped, matching the DB unique indexes.
+  const seen = new Set<string>();
+  const values: (typeof ledgerEvents.$inferInsert)[] = [];
+  for (const e of events) {
+    // Guard the shared derivation contract (FIX-874) and canonicalize the currency
+    // BEFORE the fingerprint/insert — every writer funnels here, so the file
+    // importer (which bypasses the zod schema) is covered too.
+    assertShareEventInvariant(e);
+    const currency = normalizeCurrency(e.currency);
+    const fingerprint = computeFingerprint(e);
+    const key =
+      e.externalId !== null
+        ? `x:${e.accountId}:${e.source}:${e.externalId}`
+        : `f:${e.accountId}:${fingerprint}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    values.push({
+      id: crypto.randomUUID(),
+      accountId: e.accountId,
+      userId,
+      type: e.type,
+      ticker: e.ticker,
+      tradeDate: e.tradeDate,
+      settleDate: e.settleDate,
+      quantity: e.quantity === null ? null : String(e.quantity),
+      unitPrice: e.unitPrice === null ? null : String(e.unitPrice),
+      amount: String(e.amount),
+      fee: e.fee === null ? null : String(e.fee),
+      currency,
+      source: e.source,
+      externalId: e.externalId,
+      fingerprint,
+      description: e.description,
+      basisUnknown: e.basisUnknown,
+      // Reason a sell's proceeds are unknown (FIX-874 import placeholder); nulls
+      // proceeds/gain in derivation rather than fabricating a loss off `amount:0`.
+      proceedsUnknown: e.proceedsUnknown,
+      // Corporate-action payload — the split ratio for a `split`, null otherwise
+      // (the zod boundary guarantees this). Excluded from the fingerprint above,
+      // so a same-date re-import dedups to one row.
+      attributes: e.attributes ?? null,
+    });
+  }
+
+  // Chunked: one multi-row INSERT tops out at 32,767 bound params on PGlite and
+  // 65,535 on node-pg; 1,000 rows/chunk clears both. The chunks share this
+  // transaction, so the batch stays atomic.
+  const INSERT_CHUNK_ROWS = 1000;
+  let inserted = 0;
+  for (let i = 0; i < values.length; i += INSERT_CHUNK_ROWS) {
+    const insertedRows = await tx
+      .insert(ledgerEvents)
+      .values(values.slice(i, i + INSERT_CHUNK_ROWS))
+      .onConflictDoNothing()
+      .returning({ id: ledgerEvents.id });
+    inserted += insertedRows.length;
+  }
+
+  // Serialize same-account recomputes: acquire ALL per-account locks in sorted
+  // order first (deadlock-free), then materialize positions AND realized gains
+  // for each touched account in the same transaction (FIX-874).
+  for (const id of accountIds) await acquireRealizedLock(tx, id);
+  for (const id of accountIds) {
+    await materializePositions(tx, id);
+    await materializeRealizedGains(tx, id);
+  }
+
+  return { inserted, deduplicated: events.length - inserted, errors: [] };
 }
 
 /**
@@ -707,6 +917,7 @@ export function toAccountStates(portfolio: {
       assetClass: h.assetClass,
       assetType: h.assetType,
       attributes: h.attributes,
+      dataQuality: h.dataQuality,
     });
     byAccount.set(h.accountId, list);
   }
@@ -834,6 +1045,11 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
                 quantity: sql`excluded.quantity`,
                 costBasis: sql`excluded.cost_basis`,
                 acquiredDate: sql`excluded.acquired_date`,
+                // A snapshot import is a fresh, authoritative position from the
+                // user — clear any stale inconsistent-history flag (FIX-876) so a
+                // re-import for a previously over-sold ticker doesn't keep blanking
+                // the freshly-imported numbers as "—".
+                dataQuality: null,
                 // Re-classification is load-bearing: an upsert that changes a
                 // held ticker's class/type/attributes must overwrite the old
                 // values, not silently keep them (FIX-773).
@@ -895,105 +1111,92 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
       if (events.length === 0) {
         return { inserted: 0, deduplicated: 0, errors: [] };
       }
+      return db.transaction((tx) => ingestEventsInTx(tx, events, userId));
+    },
+
+    async replaceLedgerFromFile(accountId, userId, events) {
+      // Scope the reset to EXACTLY one account: every event must target `accountId`.
+      // `ingestEventsInTx` accepts any account the user owns, so without this a
+      // caller passing events for a different owned account would wipe THIS account
+      // and repopulate the OTHER — a destructive mis-scope. Reject before any write.
+      if (events.some((e) => e.accountId !== accountId)) {
+        throw new Error(
+          `replaceLedgerFromFile: every event must target account ${accountId}.`,
+        );
+      }
       return db.transaction(async (tx) => {
-        // Ownership guard: every referenced account must belong to the caller.
-        // A foreign account throws and the whole batch rolls back (the
-        // `upsertHoldings` precedent — defense in depth for a future caller that
-        // skips the app-level check).
-        // Sorted so the per-account advisory locks below are acquired in a
-        // deterministic order — two batches touching {A,B} and {B,A} can't
-        // deadlock. Used for the ownership guard, the locks, and the materializers.
-        const accountIds = [...new Set(events.map((e) => e.accountId))].sort();
-        const owned = await tx
+        // Ownership-guard the target account up front, so a wipe never touches a
+        // foreign account (the whole transaction rolls back on a throw).
+        const [owner] = await tx
           .select({ id: accounts.id })
           .from(accounts)
-          .where(and(inArray(accounts.id, accountIds), eq(accounts.userId, userId)));
-        const ownedSet = new Set(owned.map((o) => o.id));
-        for (const id of accountIds) {
-          if (!ownedSet.has(id)) {
-            throw new Error(`Account ${id} is not owned by the requesting user.`);
-          }
+          .where(and(eq(accounts.id, accountId), eq(accounts.userId, userId)));
+        if (owner === undefined) {
+          throw new Error(`Account ${accountId} is not owned by the requesting user.`);
         }
-
-        // In-memory dedup BEFORE the insert so two conflicting rows in the same
-        // batch can't trip an intra-statement conflict and the counts are exact.
-        // Prefer the stable `(source, external_id)` key when present, else the
-        // content fingerprint. Cross-batch / re-run dups are caught again by
-        // `ON CONFLICT DO NOTHING` against both unique indexes.
-        const seen = new Set<string>();
-        const values: (typeof ledgerEvents.$inferInsert)[] = [];
-        for (const e of events) {
-          // Guard the shared derivation contract (FIX-874) and canonicalize the
-          // currency BEFORE the fingerprint/insert — every writer funnels here, so
-          // the file importer (which bypasses the zod schema) is covered too.
-          assertShareEventInvariant(e);
-          const currency = normalizeCurrency(e.currency);
-          const fingerprint = computeFingerprint(e);
-          // Both keys are account-scoped, matching the DB unique indexes
-          // (`(account_id, fingerprint)` and `(account_id, source, external_id)`):
-          // the same feed id (e.g. an OFX FITID) legitimately repeats across
-          // accounts, so it must not collide in-batch.
-          const key =
-            e.externalId !== null
-              ? `x:${e.accountId}:${e.source}:${e.externalId}`
-              : `f:${e.accountId}:${fingerprint}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          values.push({
-            id: crypto.randomUUID(),
-            accountId: e.accountId,
-            userId,
-            type: e.type,
-            ticker: e.ticker,
-            tradeDate: e.tradeDate,
-            settleDate: e.settleDate,
-            quantity: e.quantity === null ? null : String(e.quantity),
-            unitPrice: e.unitPrice === null ? null : String(e.unitPrice),
-            amount: String(e.amount),
-            fee: e.fee === null ? null : String(e.fee),
-            currency,
-            source: e.source,
-            externalId: e.externalId,
-            fingerprint,
-            description: e.description,
-            basisUnknown: e.basisUnknown,
-            proceedsUnknown: e.proceedsUnknown,
-          });
+        // Tickers the OLD ledger held genuine AUTHORITY for — so the reset can
+        // drop any the new file no longer backs. `materialize` only reconciles
+        // tickers present in the NEW ledger, so without this a position
+        // materialized from a since-wiped trade would survive the "clean slate" as
+        // a stale row. The authority set mirrors materialize's DELETE/flag rule
+        // exactly: only a ticker with a live ACQUISITION (`quantity > 0` —
+        // matching `acquiredTickers`) established a ledger-derived position.
+        //   - A CSV/PDF-snapshot-only ticker never had ledger share history →
+        //     not in this set → its snapshot is preserved.
+        //   - A ticker whose old history was ONLY disposals (materialize keeps its
+        //     snapshot as a partial import) has no acquisition → not in this set →
+        //     preserved, not wrongly orphaned.
+        //   - A ticker whose share history is entirely voided (`isNull(voidedAt)`
+        //     excludes it) has returned to snapshot authority → preserved.
+        const beforeRows = await tx
+          .selectDistinct({ ticker: ledgerEvents.ticker })
+          .from(ledgerEvents)
+          .where(
+            and(
+              eq(ledgerEvents.accountId, accountId),
+              isNotNull(ledgerEvents.ticker),
+              gt(ledgerEvents.quantity, "0"),
+              isNull(ledgerEvents.voidedAt),
+            ),
+          );
+        const ledgerAuthoritativeBefore = new Set(
+          beforeRows.map((r) => r.ticker).filter((t): t is string => t !== null),
+        );
+        // Atomic clean slate: DELETE the whole account's ledger (manual entries
+        // included — the caller warns about this), then ingest the new file's
+        // events through the shared path (dedup + re-materialize). If the ingest
+        // throws mid-flight the DELETE rolls back too — no partial wipe.
+        await tx.delete(ledgerEvents).where(eq(ledgerEvents.accountId, accountId));
+        const report = await ingestEventsInTx(tx, events, userId);
+        // Reconcile holdings to the new source of truth: drop any ledger-derived
+        // position the new file no longer ESTABLISHES. Symmetric with
+        // `ledgerAuthoritativeBefore` — only a new ACQUISITION (`quantity > 0`)
+        // re-establishes a ticker's position. A reset file that merely SELLS a
+        // previously-derived ticker (no new buy) does NOT keep it: its old
+        // materialized row came from the now-wiped ledger, so leaving it would
+        // show a stale position after the "clean slate" (materialize's
+        // disposals-only "keep as snapshot" rule assumes a real snapshot, which a
+        // reset ledger-derived row is not).
+        const afterAcquired = new Set(
+          events
+            .filter((e) => e.quantity !== null && e.quantity > 0 && e.ticker !== null)
+            .map((e) => e.ticker),
+        );
+        const orphans = [...ledgerAuthoritativeBefore].filter((t) => !afterAcquired.has(t));
+        if (orphans.length > 0) {
+          await tx
+            .delete(holdings)
+            .where(and(eq(holdings.accountId, accountId), inArray(holdings.ticker, orphans)));
         }
-
-        // Chunked: the wire protocol's Bind message carries the bound-param
-        // count as a 16-bit integer, so one multi-row INSERT tops out at
-        // 32,767 params on PGlite (the count wraps negative and kills the
-        // single dev connection with `RangeError: Invalid array length`) and
-        // 65,535 on node-pg. At 17 params per row, a year-scale OFX backfill
-        // (FIX-775) crosses the PGlite line at 1,928 rows. 1,000 rows/chunk
-        // (17k params) clears both ceilings; the chunks share this
-        // transaction, so the batch stays atomic.
-        const INSERT_CHUNK_ROWS = 1000;
-        let inserted = 0;
-        for (let i = 0; i < values.length; i += INSERT_CHUNK_ROWS) {
-          const insertedRows = await tx
-            .insert(ledgerEvents)
-            .values(values.slice(i, i + INSERT_CHUNK_ROWS))
-            .onConflictDoNothing()
-            .returning({ id: ledgerEvents.id });
-          inserted += insertedRows.length;
+        // `ingestEventsInTx` re-materializes realized gains only for a NON-empty
+        // batch. A reset to an empty (or sell-less) file still wiped this account's
+        // ledger above, so re-materialize here to clear stale realized_gains rows
+        // (FIX-874) — idempotent, and the empty case is the one ingest skipped.
+        if (events.length === 0) {
+          await acquireRealizedLock(tx, accountId);
+          await materializeRealizedGains(tx, accountId);
         }
-
-        // Serialize same-account recomputes: acquire ALL per-account locks in
-        // sorted order first (deadlock-free), then materialize positions AND
-        // realized gains for each touched account in the same transaction.
-        for (const id of accountIds) await acquireRealizedLock(tx, id);
-        for (const id of accountIds) {
-          await materializePositions(tx, id);
-          await materializeRealizedGains(tx, id);
-        }
-
-        return {
-          inserted,
-          deduplicated: events.length - inserted,
-          errors: [],
-        };
+        return report;
       });
     },
 
