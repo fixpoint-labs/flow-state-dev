@@ -515,10 +515,12 @@ const ConversationBody = memo(function ConversationBody({
 
 /**
  * Inline notice that appears above the prompt when the latest request on this
- * session was interrupted. Clicking Resume re-dispatches the same action and
- * starts streaming the new request id. Hidden in every other state — including
- * while a new request is already streaming — so the chat doesn't pile up
- * dueling controls.
+ * session was interrupted. Clicking Resume continues the interrupted request
+ * under its OWN id (crash-recovery re-entry) and streams the re-entry inline —
+ * it does not re-dispatch a fresh request, so the request list shows the same
+ * row transitioning interrupted → completed rather than a new `retryOf`
+ * sibling. Hidden in every other state — including while a new request is
+ * already streaming — so the chat doesn't pile up dueling controls.
  */
 function ResumePrompt({ session }: { session: ReturnType<typeof useSession> }) {
   const [isResuming, setIsResuming] = useState(false);
@@ -527,15 +529,16 @@ function ResumePrompt({ session }: { session: ReturnType<typeof useSession> }) {
     latest?.status === "interrupted" && !session.isStreaming && !session.isFinishing;
 
   const handleResume = useCallback(async () => {
+    if (latest === null) return;
     setIsResuming(true);
     try {
-      await session.resumeLatestRequest();
+      await session.continueRequest(latest.id);
     } catch {
       // Error is already surfaced via session.error.
     } finally {
       setIsResuming(false);
     }
-  }, [session]);
+  }, [session, latest]);
 
   if (!canResume) return null;
 
