@@ -10,7 +10,7 @@
  * turns are never dropped.
  */
 import { describe, it, expect } from "vitest";
-import { reconstructGeneratorResume } from "../src/blocks/internal/generator-resume";
+import { reconstructGeneratorResume, readPersistedPreludePrefixCount } from "../src/blocks/internal/generator-resume";
 import { GeneratorToolUnavailableError, validateResumableTool } from "../src/blocks/internal/generator-resume";
 import { blockPathTool, extendBlockPath } from "../src/blocks/internal/block-instance-id";
 import type { RuntimeItem } from "../src/items/internal";
@@ -121,8 +121,8 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
         ],
         { text: "thinking", prelude: [{ role: "system", content: "sys" }] },
       ),
-      toolOutput("a", "search", "completed", { output: "ra", modelOutput: "ra" }),
-      toolOutput("b", "lookup", "completed", { output: "rb", modelOutput: "rb" }),
+      toolOutput("a", "search", "completed", { output: "ra" }),
+      toolOutput("b", "lookup", "completed", { output: "rb" }),
       // Step 1 holds the pending gate so step 0 is treated as fully-recorded.
       stepArtifact(1, [{ toolCallId: "g", toolName: "approve", alias: "approve" }]),
       toolOutput("g", "approve", "failed", { errorCode: "SUSPENSION" }),
@@ -148,17 +148,19 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
     expect(r.priorSteps).toHaveLength(1);
   });
 
-  it("reads the persisted modelOutput for a completed call (never the raw output)", () => {
+  it("reproduces the live content envelope from a mapper's persisted modelOutput", () => {
     const items = [
       stepArtifact(0, [{ toolCallId: "a", toolName: "t", alias: "t" }]),
+      // A mapper redacted a non-string output to a string; the LIVE path wraps
+      // that in the v7 content envelope, and resume must match — not emit a
+      // bare text result — and must not leak the raw {secret}.
       toolOutput("a", "t", "completed", { output: { secret: true }, modelOutput: "REDACTED" }),
       stepArtifact(1, [{ toolCallId: "g", toolName: "gate", alias: "gate" }]),
       toolOutput("g", "gate", "failed", { errorCode: "SUSPENSION" }),
     ];
     const r = run(items, gateLogical(1, "gate", "g"))!;
     const res = r.messages.find((m: any) => m.role === "tool") as any;
-    // modelOutput "REDACTED" (a string) → text payload, not the raw {secret}.
-    expect(res.content[0].output).toEqual({ type: "text", value: "REDACTED" });
+    expect(res.content[0].output).toEqual({ type: "content", value: [{ type: "text", text: "REDACTED" }] });
   });
 
   it("classifies a step's failed tool_outputs three ways: pending / losing / ordinary", () => {
@@ -172,7 +174,7 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
       toolOutput("p", "gate", "failed", { errorCode: "SUSPENSION" }),
       toolOutput("l", "gate2", "failed", { errorCode: "SUSPENSION" }),
       toolOutput("e", "boom", "failed", { errorMessage: "kaboom" }),
-      toolOutput("ok", "done", "completed", { output: "done!", modelOutput: "done!" }),
+      toolOutput("ok", "done", "completed", { output: "done!" }),
     ];
     const r = run(items, gateLogical(0, "gate", "p"))!;
     const kinds = Object.fromEntries(r.resumeStep!.calls.map((c) => [c.toolName, c.kind]));
@@ -227,7 +229,7 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
       ({ ...(item as any), itemVisibility: { client: false, history: false } }) as RuntimeItem;
     const items = [
       withVis(stepArtifact(0, [{ toolCallId: "a", toolName: "t", alias: "t" }])),
-      withVis(toolOutput("a", "t", "completed", { output: "x", modelOutput: "x" })),
+      withVis(toolOutput("a", "t", "completed", { output: "x" })),
       withVis(stepArtifact(1, [{ toolCallId: "g", toolName: "gate", alias: "gate" }])),
       withVis(toolOutput("g", "gate", "failed", { errorCode: "SUSPENSION" })),
     ];
@@ -242,7 +244,7 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
       // Cycle-0 suspended record...
       toolOutput("a", "gate", "failed", { errorCode: "SUSPENSION", itemIndex: 5 }),
       // ...superseded by the cycle-1 completed record.
-      toolOutput("a", "gate", "completed", { output: "real", modelOutput: "real", itemIndex: 50 }),
+      toolOutput("a", "gate", "completed", { output: "real", itemIndex: 50 }),
       // A later, second gate is now pending.
       stepArtifact(1, [{ toolCallId: "b", toolName: "gate2", alias: "gate2" }]),
       toolOutput("b", "gate2", "failed", { errorCode: "SUSPENSION" }),
@@ -260,7 +262,7 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
     // NOT be satisfied by step 0's completed output.
     const items = [
       stepArtifact(0, [{ toolCallId: "c1", toolName: "a", alias: "a" }]),
-      toolOutput("c1", "a", "completed", { output: "STEP0", modelOutput: "STEP0", stepNumber: 0, itemIndex: 10 }),
+      toolOutput("c1", "a", "completed", { output: "STEP0", stepNumber: 0, itemIndex: 10 }),
       stepArtifact(1, [{ toolCallId: "c1", toolName: "gate", alias: "gate" }]),
       toolOutput("c1", "gate", "failed", { errorCode: "SUSPENSION", stepNumber: 1, itemIndex: 20 }),
     ];
@@ -279,7 +281,7 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
     // The OTHER generator's completed output must not satisfy THIS generator's
     // pending gate — otherwise the approved tool is silently skipped.
     const foreign = {
-      ...(toolOutput("g", "gate", "completed", { output: "FOREIGN", modelOutput: "FOREIGN", itemIndex: 200 }) as any),
+      ...(toolOutput("g", "gate", "completed", { output: "FOREIGN", itemIndex: 200 }) as any),
       provenance: { blockName: "other", blockInstanceId: `${REQ}:root/step[1]:0`, phase: "main" },
     } as RuntimeItem;
     const items = [
@@ -329,6 +331,31 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
     const r = run(items, gateLogical(0, "gate", "g"))!;
     expect(r.preludeIncluded).toBe(true);
     expect((r.messages[0] as any).content).toBe("ORIGINAL-SYSTEM-PROMPT");
+  });
+});
+
+describe("readPersistedPreludePrefixCount (FIX-814)", () => {
+  const withPrefix = (art: RuntimeItem, systemPrefixCount: number): RuntimeItem =>
+    ({ ...(art as any), systemPrefixCount }) as RuntimeItem;
+
+  it("returns the step-0 artifact's persisted prefix count for this generator", () => {
+    const items = [
+      withPrefix(stepArtifact(0, [{ toolCallId: "a", toolName: "t", alias: "t" }], { prelude: [{}] }), 3),
+      stepArtifact(1, [{ toolCallId: "g", toolName: "gate", alias: "gate" }]),
+    ];
+    expect(readPersistedPreludePrefixCount(items, GEN_LOGICAL)).toBe(3);
+  });
+
+  it("returns undefined for a different generator's artifact, and when absent", () => {
+    const foreign = {
+      ...(withPrefix(stepArtifact(0, [{ toolCallId: "a", toolName: "t", alias: "t" }]), 5) as any),
+      blockInstanceId: `${REQ}:root/step[9]:0`,
+    } as RuntimeItem;
+    expect(readPersistedPreludePrefixCount([foreign], GEN_LOGICAL)).toBeUndefined();
+    // Present artifact but no persisted count (older record) → undefined.
+    expect(
+      readPersistedPreludePrefixCount([stepArtifact(0, [{ toolCallId: "a", toolName: "t", alias: "t" }])], GEN_LOGICAL),
+    ).toBeUndefined();
   });
 });
 

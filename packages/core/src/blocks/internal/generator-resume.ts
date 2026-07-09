@@ -87,8 +87,13 @@ export interface ResumeStepCall {
   /** The call arguments the model issued. */
   arguments: unknown;
   kind: ResumeCallKind;
-  /** For `completed`: the persisted model-facing output (`modelOutput ?? output`). */
-  modelOutput?: unknown;
+  /** For `completed`: the tool's raw persisted `output`. */
+  output?: unknown;
+  /** For `completed`: the persisted `modelOutput` (a `mapModelOutput` result),
+   *  present only when the tool declared a mapper. Passed as the mapped-text arg
+   *  to `toolResultOutputForModel` so resume reproduces the live content
+   *  envelope; absent → the raw `output` drives a plain text/json result. */
+  mappedText?: string;
   /** For `failed`: the error message to surface to the model. */
   errorMessage?: string;
   /** The candidate logical id (`${requestId}:${path}`) used for gate matching. */
@@ -153,6 +158,28 @@ function collectGeneratorItems(
   }
   artifacts.sort((a, b) => a.stepNumber - b.stepNumber);
   return { artifacts, toolOutputs };
+}
+
+/**
+ * Reads the persisted step-0 `systemPrefixCount` for a generator's logical path
+ * from the durable log, or `undefined` when there is no step-0 artifact (a
+ * fresh run, or an older record without the field). On resume the loop seeds
+ * `messages` from the persisted prelude, so `prepareStep` must slice off THIS
+ * prefix length rather than a freshly-assembled one that a dynamic
+ * prompt/context could have changed during the approval wait.
+ */
+export function readPersistedPreludePrefixCount(
+  items: readonly RuntimeItem[],
+  generatorLogicalId: string
+): number | undefined {
+  for (const item of items) {
+    if (item.type !== "generator_step") continue;
+    const art = item as GeneratorStepItem;
+    if (art.stepNumber === 0 && logicalIdOfInstance(art.blockInstanceId) === generatorLogicalId) {
+      return art.systemPrefixCount;
+    }
+  }
+  return undefined;
 }
 
 /** Strip the trailing `:attempt` to get `${requestId}:${path}`. */
@@ -275,7 +302,10 @@ export function reconstructGeneratorResume(params: {
         return {
           ...base,
           kind: "completed" as const,
-          modelOutput: to.modelOutput !== undefined ? to.modelOutput : to.output,
+          output: to.output,
+          // `modelOutput` is persisted only when a mapper ran; carry it as the
+          // mapped text so the resumed result envelope matches the live one.
+          mappedText: typeof to.modelOutput === "string" ? to.modelOutput : undefined,
         };
       }
       if (to.status !== "failed") {
@@ -346,9 +376,9 @@ function buildRecordedResultMessage(c: ResumeStepCall): LLMMessage {
       value: failedToolResultText(c.toolName, c.errorMessage ?? "unknown error"),
     });
   }
-  // completed — use the persisted model-facing output verbatim (never
-  // recompute a mapper).
-  return buildToolResultMessage(call, toolResultOutputForModel(c.modelOutput));
+  // completed — rebuild the exact live envelope from the raw output plus the
+  // persisted mapped text (never recompute a mapper).
+  return buildToolResultMessage(call, toolResultOutputForModel(c.output, c.mappedText));
 }
 
 /**

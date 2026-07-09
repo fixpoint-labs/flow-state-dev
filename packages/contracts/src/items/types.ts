@@ -276,14 +276,16 @@ export type ToolOutputItem = OutputItemBase & {
   output: unknown;
   /**
    * The model-facing tool result, computed ONCE when the tool settles during
-   * the live run — via the tool's `mapModelOutput` mapper when it declares one,
-   * or the raw `output` otherwise (FIX-814). Resume reconstruction reads this
-   * back verbatim when rebuilding the tool-result message, so the mapper is
+   * the live run via the tool's `mapModelOutput` mapper (FIX-814). Present
+   * ONLY when the tool declares a mapper — its presence means "a mapper
+   * produced this value," which lets resume reproduce the live content-envelope
+   * shape exactly (`toolResultOutputForModel(output, modelOutput)`) rather than
+   * a bare text/json result. Resume reads it back verbatim, so the mapper is
    * never recomputed on resume (state/code could have drifted across the
    * suspend window, which would hand the resumed model a different result than
-   * the original step saw). Absent on items persisted before this field
-   * existed and on the legacy (non-owned-loop) tool path; readers fall back to
-   * `output`.
+   * the original step saw). Absent when no mapper is declared, on the legacy
+   * (non-owned-loop) tool path, and on items persisted before this field
+   * existed; readers fall back to `output`.
    */
   modelOutput?: unknown;
   /** Resolved identity of the generator that invoked this tool. */
@@ -604,6 +606,14 @@ export type GeneratorStepItem = OutputItemBase & {
    * the step-0 artifact; resume reads it instead of recomputing the prelude.
    */
   prelude?: unknown[];
+  /**
+   * The number of leading system-prefix messages in `prelude` (FIX-814).
+   * Present ONLY on the step-0 artifact. On resume the loop seeds `messages`
+   * from the persisted prelude, so `prepareStep` must slice off THIS prefix
+   * length — not a freshly-assembled one, which can differ if a dynamic
+   * prompt/context changed the prefix during the approval wait.
+   */
+  systemPrefixCount?: number;
 };
 
 /**

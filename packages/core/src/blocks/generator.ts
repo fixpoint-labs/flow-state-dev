@@ -79,6 +79,7 @@ import { ROOT_BLOCK_PATH } from "./internal/block-instance-id";
 import {
   reconstructGeneratorResume,
   validateResumableTool,
+  readPersistedPreludePrefixCount,
   type GeneratorResumeReconstruction,
   type ResumeStepCall,
 } from "./internal/generator-resume";
@@ -1420,6 +1421,7 @@ async function emitGeneratorStep(
   calls: GeneratorModelToolCall[],
   toolset: OwnedLoopToolset,
   prelude: unknown[] | undefined,
+  systemPrefixCount: number | undefined,
 ): Promise<void> {
   const identity = ctx._blockIdentity;
   const blockInstanceId = identity?.blockInstanceId ?? identity?.blockName ?? "generator";
@@ -1449,6 +1451,7 @@ async function emitGeneratorStep(
       arguments: c.args,
     })),
     ...(stepNumber === 0 && prelude !== undefined ? { prelude } : {}),
+    ...(stepNumber === 0 && systemPrefixCount !== undefined ? { systemPrefixCount } : {}),
   };
   await ctx.response.emit({ type: "item.added", item });
   await ctx.response.emit({ type: "item.done", item });
@@ -1491,8 +1494,9 @@ async function runResumeStep(
     const entry = toolset.byName.get(c.toolName) ?? toolset.byAlias.get(c.alias);
     let output: LLMToolResultOutput;
     if (c.kind === "completed") {
-      // Persisted model-facing output, verbatim — no re-run, no mapper.
-      output = toolResultOutputForModel(c.modelOutput);
+      // Rebuild the exact live envelope from the raw output + persisted mapped
+      // text — no re-run, no mapper recompute.
+      output = toolResultOutputForModel(c.output, c.mappedText);
     } else if (c.kind === "failed") {
       output = { type: "error-text", value: failedToolResultText(c.toolName, c.errorMessage ?? "unknown error") };
     } else {
@@ -1739,6 +1743,9 @@ async function runOwnedGenerateLoop(params: {
   prepareStep: PrepareStepFn | undefined;
   providerOptions: Record<string, unknown> | undefined;
   caching: CachingConfig | undefined;
+  /** Leading system-prefix length of the initial `messages`, persisted on the
+   * step-0 artifact so resume can slice the persisted prelude correctly. */
+  systemPrefixCount: number | undefined;
 }): Promise<GeneratorModelResult> {
   const { model, ctx, blockName } = params;
   const toolset = compileOwnedLoopToolset(
@@ -1852,6 +1859,7 @@ async function runOwnedGenerateLoop(params: {
       frameworkCalls,
       toolset,
       stepNumber === 0 ? initialPrelude : undefined,
+      stepNumber === 0 ? params.systemPrefixCount : undefined,
     );
 
     const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset, activeToolNames, stepNumber);
@@ -2340,7 +2348,8 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
   agentName: string | undefined,
   prepareStep?: PrepareStepFn,
   resolvedProviderOpts?: Record<string, unknown>,
-  resolvedCaching?: CachingConfig
+  resolvedCaching?: CachingConfig,
+  systemPrefixCount?: number,
 ): Promise<TOutput> {
   const s = createStreamEmissionState(model, ctx, blockName, itemVisibility, agentName);
   const toolset = compileOwnedLoopToolset(
@@ -2439,6 +2448,7 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
       frameworkCalls,
       toolset,
       stepNumber === 0 ? initialPrelude : undefined,
+      stepNumber === 0 ? systemPrefixCount : undefined,
     );
 
     const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset, activeToolNames, stepNumber);
@@ -2793,13 +2803,26 @@ export function generator<
 
       let prepareStepFn: PrepareStepFn | undefined;
       if (hasDynamicPrompt || hasDynamicContext || hasDynamicTools) {
+        // On resume the loop seeds `messages` from the PERSISTED step-0 prelude
+        // and starts past step 0, so `prepareStep`'s first slice must use that
+        // prelude's persisted prefix length — not the freshly-assembled
+        // `systemPrefixCount`, which a dynamic prompt/context could have changed
+        // during the approval wait (FIX-814). Falls back to the fresh count on a
+        // normal (non-resume) run.
+        const replayLog = (ctx as { _replayLog?: ReplayLog })._replayLog;
+        const persistedPrefixCount = replayLog !== undefined
+          ? readPersistedPreludePrefixCount(
+              replayLog.items() as readonly RuntimeItem[],
+              `${ctx.request.identity.id}:${ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH}`,
+            )
+          : undefined;
         // AI SDK 7 carry-forward: a returned `messages` override becomes the
         // input of later steps, so the prefix at the head of `currentMessages`
         // is whatever this callback last returned — not the assembly-time
         // prefix. Track the length of the prefix we last wrote so every step
         // slices off exactly that prefix; slicing by `systemPrefixCount` would
         // leak stale context whenever the fresh prefix length differs.
-        let currentPrefixCount = systemPrefixCount;
+        let currentPrefixCount = persistedPrefixCount ?? systemPrefixCount;
         prepareStepFn = async ({ stepNumber, messages: currentMessages, steps: _steps }) => {
           if (stepNumber === 0) {
             // Fresh loop (also after a fallback retry re-enters at step 0):
@@ -2941,7 +2964,8 @@ export function generator<
               agentName,
               prepareStepFn,
               resolvedProviderOpts,
-              resolvedCaching
+              resolvedCaching,
+              systemPrefixCount
             );
           }
           return await executeStreamingGeneration(
@@ -3008,6 +3032,7 @@ export function generator<
               prepareStep: prepareStepFn,
               providerOptions: resolvedProviderOpts,
               caching: resolvedCaching,
+              systemPrefixCount,
             })
           : await (async () => {
               const legacyTools = compileLegacyTools();

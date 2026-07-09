@@ -147,23 +147,27 @@ export async function emitToolOutputAround(
 
   try {
     const output = await runInner(ctx, itemId);
-    // Compute the model-facing result ONCE, at settle time, and persist it so
-    // resume reconstruction never recomputes the mapper (FIX-814).
-    let modelOutput: unknown = output;
+    // Apply the tool's `mapModelOutput` ONCE, at settle, and persist the mapped
+    // value so resume never recomputes the mapper (FIX-814). It is recorded
+    // ONLY when a mapper is declared — its presence means "a mapper produced
+    // this," which lets resume reproduce the live content-vs-text envelope
+    // exactly (`toolResultOutputForModel(output, mappedText)`); when absent,
+    // readers fall back to `output`.
+    let modelOutput: unknown;
     if (attribution.mapModelOutput !== undefined) {
       try {
         modelOutput = await attribution.mapModelOutput(output);
       } catch {
-        modelOutput = output;
+        modelOutput = undefined;
       }
     }
     item.status = "completed";
     item.output = output;
-    item.modelOutput = modelOutput;
+    if (modelOutput !== undefined) item.modelOutput = modelOutput;
     await ctx.response.emit({
       type: "item.updated",
       id: itemId,
-      patch: { status: "completed", output, modelOutput },
+      patch: { status: "completed", output, ...(modelOutput !== undefined ? { modelOutput } : {}) },
     });
     await ctx.response.emit({ type: "item.done", item });
     return output;

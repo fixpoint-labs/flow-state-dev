@@ -54,7 +54,7 @@ describe("emitToolOutputAround (FIX-814)", () => {
     expect(done.item.modelOutput).toBe('mapped:{"hits":3}');
   });
 
-  it("modelOutput falls back to raw output when no mapper is declared", async () => {
+  it("omits modelOutput when no mapper is declared (readers fall back to output)", async () => {
     const { ctx, emitted } = makeCtx();
     await emitToolOutputAround(
       block,
@@ -64,7 +64,10 @@ describe("emitToolOutputAround (FIX-814)", () => {
       async () => "plain",
     );
     const done = emitted.find((e) => e.type === "item.done")!;
-    expect(done.item.modelOutput).toBe("plain");
+    // modelOutput is recorded ONLY when a mapper ran; its absence means "use
+    // output" (and keeps resume's raw-vs-content envelope selection correct).
+    expect(done.item.modelOutput).toBeUndefined();
+    expect(done.item.output).toBe("plain");
   });
 
   it("stamps error.code SUSPENSION when the tool throws a SuspensionError", async () => {
