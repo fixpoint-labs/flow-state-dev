@@ -90,6 +90,14 @@ const pipeline = sequencer({
 
 The audit runs in the background while the user sees the chat response immediately. Downstream blocks or the client can check the audit result via `getBlockOutput(auditor)`.
 
+## Rendering the audit
+
+`getBlockOutput(auditor)` is the data path for programmatic consumers. To show the audit in the UI, you don't wire anything per response. When at least one result surfaces (score above threshold, or an analyzer sets `shouldSurface`), the pattern emits an append-only `audit-annotation` component item carrying `{ results, surfacedResults, overallScore }`. Any renderer registered for that component key draws the card.
+
+The [`@flow-state-dev/ui`](/docs/ui/flow-aware-components#auditannotation) registry ships that renderer, and `chatAssistantRenderers` includes it by default, so a chat surface built on those renderers shows the audit card with no extra code. If you're not using `chatAssistantRenderers`, install it standalone with `fsdev ui add audit-annotation` and register it under `renderers.component["audit-annotation"]`.
+
+The emitted item is append-only (no key), so each auditor invocation in a request renders its own card instead of overwriting a previous one. The `getBlockOutput(auditor)` path stays available for downstream blocks that branch on the score.
+
 ## The AnalyzerResult contract
 
 Every analyzer must accept `{ userInput: string, response: string }` and produce output conforming to this schema:

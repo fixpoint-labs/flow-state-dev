@@ -44,6 +44,28 @@ fsdev ui add approval
 
 The card is presentation over the `useApproval` hook from `@flow-state-dev/react`, which owns the resume call and resolved state. It reads the resolution from `SessionItemsProvider`, so wrap your item list in one for the receipt to show on reload. For the full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop).
 
+## ModelBadge
+
+A small pill that shows which model actually answered. It reads a `ModelIdentity` (the `{ actual, requested?, gateway? }` record stamped on every generator-emitted item), renders `actual` as the label, and lists the requested string and gateway in the hover tooltip. It renders nothing when the model is undefined, so passing `item.model` straight from any item is safe.
+
+```bash
+fsdev ui add model-badge
+```
+
+```tsx
+import { ModelBadge } from "@/components/flow-state/model-badge";
+
+<ModelBadge model={item.model} />
+```
+
+## AuditAnnotation
+
+A compact card for [Response Auditor](/docs/patterns/response-auditor) findings. It lists the surfaced results with severity indicators, per-analyzer scores, and the evidence each analyzer flagged. You don't render it by hand: the `responseAuditor` pattern emits an `audit-annotation` component item whenever a result surfaces, and `chatAssistantRenderers` maps that item to this card, so the audit shows up automatically on any chat surface wired with those renderers.
+
+```bash
+fsdev ui add audit-annotation
+```
+
 ## SessionItemsContext
 
 React context for passing session items down to nested components. Required by any component that needs to subscribe to the item stream without prop drilling — `TaskPlan`, `RequestGroup`, and registry components that watch their own items.

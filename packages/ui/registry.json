@@ -186,6 +186,34 @@
       "categories": ["ai", "patterns"]
     },
     {
+      "name": "audit-annotation",
+      "title": "Audit Annotation",
+      "type": "registry:component",
+      "description": "Renders response-auditor findings as a compact card with severity indicators, per-analyzer scores, and evidence. Fed by the audit-annotation component item the responseAuditor pattern emits.",
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/audit-annotation.tsx",
+        "target": "components/flow-state/audit-annotation.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
+      "name": "model-badge",
+      "title": "Model Badge",
+      "type": "registry:component",
+      "description": "Small pill showing the model that actually answered (ModelIdentity). Hover reveals the requested string and gateway; renders nothing when the field is absent.",
+      "dependencies": ["@flow-state-dev/core"],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/model-badge.tsx",
+        "target": "components/flow-state/model-badge.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
       "name": "approval",
       "title": "Approval",
       "type": "registry:component",
@@ -205,7 +233,7 @@
       "type": "registry:component",
       "description": "Pre-wired RendererRegistry mapping all Flow State item types to their default components.",
       "dependencies": ["@flow-state-dev/react"],
-      "registryDependencies": ["message", "reasoning", "tool", "status", "error", "approval"],
+      "registryDependencies": ["message", "reasoning", "tool", "status", "error", "approval", "audit-annotation"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/chat-assistant.tsx",

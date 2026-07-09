@@ -587,10 +587,10 @@ type ModelIdentity = {
 };
 ```
 
-A chat UI can read this directly from any message item to render a per-message model badge:
+A chat UI can read this directly from any message item to render a per-message model badge. `ModelBadge` lives in the [`@flow-state-dev/ui`](../ui/flow-aware-components.md#modelbadge) registry. Install it with `fsdev ui add model-badge`, then import the copy in your project:
 
 ```tsx
-import { ModelBadge } from "@flow-state-dev/react";
+import { ModelBadge } from "@/components/flow-state/model-badge";
 
 <ModelBadge model={item.model} />
 ```
