@@ -390,4 +390,33 @@ describe("useContinueRequest", () => {
     // The pending-window guard must not leak — the row isn't stuck "continuing" forever.
     expect(result.current.isContinuing("req_1")).toBe(false);
   });
+
+  it("clears isContinuing for a request whose handle was closed by a session switch", async () => {
+    const { result, rerender } = renderHook(
+      ({ sessionId }) =>
+        useContinueRequest({
+          recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+          flowKind: "demo",
+          sessionId,
+          onItems: vi.fn(),
+        }),
+      { initialProps: { sessionId: "sess_1" } },
+    );
+
+    await act(async () => {
+      await result.current.continueRequest("req_1", []);
+    });
+    expect(result.current.isContinuing("req_1")).toBe(true);
+
+    // The handle now exists in `handlesRef` — switching session runs the
+    // unmount/switch cleanup effect, which closes it. `handle.close()`
+    // marks the mock client `closed` before `onClose`/`onError` could ever
+    // fire, so `stop()` never runs for this id.
+    act(() => {
+      rerender({ sessionId: "sess_2" });
+    });
+
+    // The row must not be stuck reporting "continuing" under the new owner.
+    expect(result.current.isContinuing("req_1")).toBe(false);
+  });
 });

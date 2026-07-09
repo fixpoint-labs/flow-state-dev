@@ -34,6 +34,23 @@ type ContinueRouteContext = RecoveryRouteContext & {
  */
 const WEBHOOK_SOURCE = "webhook";
 
+/** Transport source stamped by the scheduled-dispatch adapter (`@flow-state-dev/scheduled`). */
+const SCHEDULED_SOURCE = "scheduled";
+
+/**
+ * Whether a request record is a dynamic (resolver-produced) scheduled
+ * dispatch, per its `metadata.schedule.origin` (falling back to the legacy
+ * flat `metadata.origin` for in-flight records enqueued before namespacing —
+ * see `request-separator.tsx`'s matching fallback).
+ */
+function isDynamicScheduleRecord(record: { source: string; metadata?: Record<string, unknown> }): boolean {
+  if (record.source !== SCHEDULED_SOURCE) return false;
+  const scheduleMeta = (record.metadata?.schedule ?? record.metadata) as
+    | { origin?: unknown }
+    | undefined;
+  return scheduleMeta?.origin === "dynamic";
+}
+
 export async function handleRetryRequest(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "retry_request" }>,
@@ -178,6 +195,19 @@ export async function handleContinueRequest(
   // `handleRetryRequest`. Treat as not found.
   if (originalRecord.source === WEBHOOK_SOURCE) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  }
+
+  // A dynamic schedule's action core is produced at dispatch time by a
+  // resolver and carried only on that original dispatch envelope — unlike a
+  // static schedule, it cannot be re-resolved from `flow.schedules.static`
+  // (see `resolve-action-core.ts`), so `continueRequest` has no core to
+  // re-enter with. The DevTool already hides Continue for these records
+  // (`request-separator.tsx`); reject here too so a direct API client can't
+  // reach the same dead end.
+  if (isDynamicScheduleRecord(originalRecord)) {
+    return jsonResponse(409, {
+      error: `Request "${route.requestId}" is a dynamic scheduled dispatch and cannot be continued — its action core is not persisted for recovery.`
+    });
   }
 
   // The route is session-scoped; continuing mutates an existing record's

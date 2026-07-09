@@ -188,8 +188,19 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
   // unmounted owner.
   useEffect(() => {
     return () => {
+      if (handlesRef.current.size === 0) return;
+      const closedIds = Array.from(handlesRef.current.keys());
       for (const handle of handlesRef.current.values()) handle.close();
       handlesRef.current.clear();
+      // `handle.close()` marks the SSE client `closed` before it can fire
+      // onClose/onError, so `stop()` never runs for these ids — clear
+      // `activeIds` directly or switching back to this session would show
+      // the row stuck "continuing" until the panel remounts.
+      setActiveIds((prev) => {
+        const next = new Set(prev);
+        for (const id of closedIds) next.delete(id);
+        return next;
+      });
     };
   }, [flowKind, sessionId]);
 
