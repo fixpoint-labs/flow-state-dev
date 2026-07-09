@@ -21,6 +21,7 @@ import {
   buildRealizedGainsRowModel,
   computeRealizedGainTotals,
   type RealizedGainRowModel,
+  type RealizedGainTotal,
 } from "./realized-gains-row-model";
 import { formatMoney, formatQuantity, formatSignedMoney } from "./portfolio-format";
 
@@ -60,6 +61,33 @@ function GainText({
   const fmt = formatSignedMoney(gain, currency);
   return <span style={{ color: directionColor(fmt.direction) }}>{fmt.text}</span>;
 }
+
+/** A year/grand total: the summed gain, plus an "excludes N (basis unknown)"
+ *  note when some disposals were dropped from the sum for want of a cost basis —
+ *  so the total is stated without silently omitting the unknown rows. Stacks
+ *  right-aligned in both the table cell and the inline card contexts. */
+function TotalGain({
+  total,
+  currency,
+}: {
+  total: RealizedGainTotal;
+  currency: string;
+}): ReactElement {
+  return (
+    <span className="inline-flex flex-col items-end leading-tight">
+      <GainText gain={total.gain} currency={currency} />
+      {total.excludedCount > 0 ? (
+        <span className="font-mono text-[8.5px] font-normal normal-case tracking-normal text-[color:var(--c-fg-faint)]">
+          excludes {total.excludedCount} (basis unknown)
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/** No rows for a year is impossible here (years come from the rows), but Map.get
+ *  is nullable — coalesce to an empty total for the type-checker. */
+const EMPTY_TOTAL: RealizedGainTotal = { gain: null, excludedCount: 0 };
 
 export function RealizedGainsTable({
   realizedGains,
@@ -144,7 +172,7 @@ export function RealizedGainsTable({
                   {year} total
                 </td>
                 <td className={numCellClass}>
-                  <GainText gain={totals.byYear.get(year) ?? null} currency={currency} />
+                  <TotalGain total={totals.byYear.get(year) ?? EMPTY_TOTAL} currency={currency} />
                 </td>
                 {showCurrency ? <td className={cellClass} /> : null}
               </tr>
@@ -157,7 +185,7 @@ export function RealizedGainsTable({
               Total gain/loss
             </td>
             <td className={cn(numCellClass, "font-semibold")}>
-              <GainText gain={totals.grandTotal} currency={currency} />
+              <TotalGain total={totals.grandTotal} currency={currency} />
             </td>
             {showCurrency ? <td className={cellClass} /> : null}
           </tr>
@@ -174,7 +202,7 @@ export function RealizedGainsTable({
                 {year}
               </span>
               <span className="font-mono text-[11.5px] tabular-nums">
-                <GainText gain={totals.byYear.get(year) ?? null} currency={currency} />
+                <TotalGain total={totals.byYear.get(year) ?? EMPTY_TOTAL} currency={currency} />
               </span>
             </div>
             <ul className="flex flex-col gap-2">
@@ -216,7 +244,7 @@ export function RealizedGainsTable({
             Total gain/loss
           </span>
           <span className="font-mono text-[12.5px] font-semibold tabular-nums">
-            <GainText gain={totals.grandTotal} currency={currency} />
+            <TotalGain total={totals.grandTotal} currency={currency} />
           </span>
         </div>
       </div>

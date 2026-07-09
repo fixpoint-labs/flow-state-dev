@@ -15,4 +15,13 @@ estimate, not tax advice. Surfaces a per-account Realized Gains tab and a
 household tax-estimate card + profile dialog, behind a composite
 `GET /api/portfolio/tax` and a `PUT /api/portfolio/tax-profile`. An OFX sell with
 no proceeds is flagged `proceedsUnknown` (fingerprint-safe) so it's excluded
-rather than fabricating a loss. Internal lab change — no public API.
+rather than fabricating a loss. The realized-gains materializer chunks its
+insert (1,000 rows) so an account with thousands of disposals can't exceed
+PGlite's 32,767 (signed 16-bit) per-INSERT parameter ceiling — an unchunked
+insert silently desynced the single dev connection, blanking every subsequent
+read and write across the app (the ledger insert already chunked for the same
+reason). The Realized Gains year/grand totals sum the disposals with a known
+gain and note how many basis-unknown rows they excluded ("excludes N (basis
+unknown)"), matching the tax card, rather than one unknown-basis disposal
+blanking the whole total to "—" (the cross-currency gate still renders "—").
+Internal lab change — no public API.

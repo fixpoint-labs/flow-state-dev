@@ -107,43 +107,72 @@ export function buildRealizedGainsRowModel(
   );
 }
 
-/** The all-up realized-gain totals: one figure per year and one grand total.
- *  Each is null (renders "—") when ANY contributing group's gain is null (the
- *  "—" gate) OR the contributing rows aren't all in the account currency the
- *  total is labeled in (see `totalGain`). */
-export type RealizedGainTotals = {
-  /** year → summed realized gain (null if any of that year's groups is null, or
-   *  that year isn't wholly in the account currency). */
-  byYear: Map<number, number | null>;
-  /** Summed realized gain across every year (null if any group is null, or the
-   *  set isn't wholly in the account currency). */
-  grandTotal: number | null;
+/** A realized-gain total (a year, or the grand total): the summed gain over the
+ *  rows we CAN state, plus a count of the rows excluded because their gain is
+ *  unknown. `gain` is null (renders "—") only when the set can't be stated as one
+ *  figure in the account currency at all (a currency mismatch, or every
+ *  contributing row unknown); a basis-unknown row no longer voids the whole
+ *  total — it drops out of the sum and is surfaced via `excludedCount` instead
+ *  (the tax-estimate card's `basisUnknownCount` precedent). */
+export type RealizedGainTotal = {
+  /** Summed realized gain over the rows with a known gain, in the account
+   *  currency. Null when the set can't be honestly stated as one account-currency
+   *  figure: a multi-currency mix, a single non-account currency, or every
+   *  contributing row unknown (a fabricated "$0" would misread as "no gain"). */
+  gain: number | null;
+  /** Number of rolled-up rows dropped from `gain` because their gain is unknown
+   *  (basis unknown). These render "—" in the table; the total notes them so it
+   *  never silently omits an unknown contributor. */
+  excludedCount: number;
 };
 
-/** Sum realized gain across a set of rolled-up rows, honest about the ways the
- *  figure can't be stated as one number in the account currency (which is what
- *  the table labels these totals in): a null contributing gain (the "—" gate),
- *  more than one currency in the set, OR a single currency that isn't the
- *  account currency (a USD account holding only EUR disposals — summing those
- *  and labeling the result USD fabricates a cross-currency figure, the same
- *  reason currency is part of the row key). Any of these → null → "—". An empty
- *  set is 0 (no disposals, no gain). */
-function totalGain(
+/** The all-up realized-gain totals: one per year and one grand total. */
+export type RealizedGainTotals = {
+  /** year → its {@link RealizedGainTotal}. */
+  byYear: Map<number, RealizedGainTotal>;
+  /** The total across every year. */
+  grandTotal: RealizedGainTotal;
+};
+
+/** Sum realized gain across a set of rolled-up rows for a single account
+ *  currency (which is what the table labels these totals in). Rows with a known
+ *  gain are summed; rows whose gain is unknown are EXCLUDED from the sum and
+ *  counted in `excludedCount` (surfaced, not silently dropped). The figure is
+ *  still "—" (`gain: null`) when it can't be stated in the account currency:
+ *  more than one currency in the set, a single currency that isn't the account
+ *  currency (summing EUR rows and labeling them USD fabricates a cross-currency
+ *  figure — the reason currency is part of the row key), or when every row is
+ *  unknown (a "$0" total would misread as a real zero gain). An empty set is 0
+ *  (no disposals, no gain). */
+function computeTotal(
   models: RealizedGainRowModel[],
   accountCurrency: string,
-): number | null {
+): RealizedGainTotal {
   const currencies = new Set(models.map((m) => m.currency));
-  if (currencies.size > 1) return null;
-  if (currencies.size === 1 && !currencies.has(accountCurrency)) return null;
-  return nullableSum(models.map((m) => m.gain));
+  if (currencies.size > 1) return { gain: null, excludedCount: 0 };
+  if (currencies.size === 1 && !currencies.has(accountCurrency))
+    return { gain: null, excludedCount: 0 };
+  let sum = 0;
+  let known = 0;
+  let excludedCount = 0;
+  for (const m of models) {
+    if (m.gain === null) excludedCount += 1;
+    else {
+      sum += m.gain;
+      known += 1;
+    }
+  }
+  // Rows present but none with a known gain → no statable figure (— + note),
+  // not a fabricated $0. No rows at all → 0 (no disposals, no gain).
+  const gain = models.length > 0 && known === 0 ? null : sum;
+  return { gain, excludedCount };
 }
 
 /**
- * Compute the by-year and grand-total realized gain from the row models. Both
- * follow the same real-money gates as the rows: a null contributing gain, or any
- * currency the account-currency total can't honestly state, makes the enclosing
- * total null. `accountCurrency` is the currency the table labels the totals in.
- * Pure — no IO.
+ * Compute the by-year and grand-total realized gain from the row models. Each
+ * total sums the rows with a known gain and counts the basis-unknown rows it
+ * excluded (see {@link RealizedGainTotal}); the currency gate still renders "—".
+ * `accountCurrency` is the currency the table labels the totals in. Pure — no IO.
  */
 export function computeRealizedGainTotals(
   models: RealizedGainRowModel[],
@@ -155,11 +184,11 @@ export function computeRealizedGainTotals(
     if (list === undefined) perYear.set(m.year, [m]);
     else list.push(m);
   }
-  const byYear = new Map<number, number | null>();
+  const byYear = new Map<number, RealizedGainTotal>();
   for (const [year, yearModels] of perYear)
-    byYear.set(year, totalGain(yearModels, accountCurrency));
+    byYear.set(year, computeTotal(yearModels, accountCurrency));
   return {
     byYear,
-    grandTotal: totalGain(models, accountCurrency),
+    grandTotal: computeTotal(models, accountCurrency),
   };
 }
