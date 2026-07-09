@@ -382,6 +382,33 @@ export function createPostgresRequestStore(
       if (pending) await pending;
     },
 
+    async countItems(requestId: string): Promise<number> {
+      // Mirror the `get` dual-read (FIX-686): records persisted before the
+      // child table existed may still carry blob items, and the table wins on
+      // id collision. The common (post-migration) path is an indexed COUNT
+      // plus one record-row read — item payloads are never loaded.
+      const [countResult, record] = await Promise.all([
+        executor.query(
+          "SELECT COUNT(*)::int AS c FROM request_items WHERE request_id = $1",
+          [requestId]
+        ),
+        base.get(requestId)
+      ]);
+      const tableCount = (countResult.rows[0] as { c: number }).c;
+      const legacy = record?.items;
+      if (!Array.isArray(legacy) || legacy.length === 0) return tableCount;
+      const { rows } = await executor.query(
+        "SELECT item_id FROM request_items WHERE request_id = $1",
+        [requestId]
+      );
+      const tableIds = new Set(rows.map((row) => row.item_id as string));
+      let count = tableIds.size;
+      for (const item of legacy) {
+        if (!tableIds.has(item.id)) count += 1;
+      }
+      return count;
+    },
+
     persistEvents(requestId: string, events: RequestStreamEvent[]): void {
       // Accumulate new events — the emitter now sends only incremental events.
       let pending = pendingNewEvents.get(requestId);

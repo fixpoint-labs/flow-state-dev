@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "../src/stores";
-import type { RequestRecord } from "../src/stores/types";
+import type { RequestListOptions, RequestRecord } from "../src/stores/types";
 import {
   applyRetentionPolicy,
   resolveRetentionPolicy,
@@ -226,6 +226,39 @@ describe("applyRetentionPolicy", () => {
       expect(result.deletedRequestIds).toContain("req_expired");
       expect(result.deletedRequestIds).toContain("req_old");
       expect(result.deletedRequestIds).not.toContain("req_recent");
+    });
+  });
+
+  describe("item over-fetch regression (FIX-685)", () => {
+    it("never asks list() for items and still evicts correctly when list returns none", async () => {
+      const stores = await setupStores([
+        makeRequest("req_1", SESSION_ID, { startedAtMs: 100, completedAtMs: 200, itemCount: 5 }),
+        makeRequest("req_2", SESSION_ID, { startedAtMs: 300, completedAtMs: 400, itemCount: 5 }),
+        makeRequest("req_3", SESSION_ID, { startedAtMs: 500, completedAtMs: 600, itemCount: 5 }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 700, completedAtMs: 800, itemCount: 3 }),
+      ]);
+
+      // Simulate a persistent adapter's lean list: capture the options and
+      // strip items from every result. Counting must go through countItems,
+      // not the list payload.
+      const listCalls: Array<RequestListOptions | undefined> = [];
+      const origList = stores.request.list.bind(stores.request);
+      stores.request.list = async (options?: RequestListOptions) => {
+        listCalls.push(options);
+        const records = await origList(options);
+        return records.map((r) => ({ ...r, items: undefined }));
+      };
+
+      const policy: ResolvedRetentionPolicy = { maxItems: 10 };
+      const result = await applyRetentionPolicy(stores, SESSION_ID, CURRENT_REQ, policy, 900);
+
+      expect(listCalls.length).toBeGreaterThan(0);
+      expect(listCalls.some((o) => o?.withItems === true)).toBe(false);
+      // Same eviction math as the maxItems case above: current (3) + req_3 (5)
+      // fit in 10; req_1 and req_2 are evicted.
+      expect(result.deletedRequestIds).toContain("req_1");
+      expect(result.deletedRequestIds).toContain("req_2");
+      expect(result.deletedRequestIds).not.toContain("req_3");
     });
   });
 

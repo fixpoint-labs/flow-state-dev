@@ -167,6 +167,7 @@ Each store must implement its interface from `@flow-state-dev/engine`:
 - `list(filters?)` — filters include `sessionId`, `userId`, `flowKind`, `status`
 - `persistItems(requestId, items)` — batch item persistence (use microtask batching, non-blocking)
 - `flushItems(requestId)` — wait for all pending item writes to complete (called before terminal status)
+- `countItems(requestId)` — count persisted items without materializing them (retention's `maxItems` check; use an indexed COUNT when items live in a dedicated table)
 - `persistEvents(requestId, events)` — batch event persistence with sequence ordering (non-blocking)
 - `flushEvents(requestId)` — wait for all pending event writes to complete (called before terminal status)
 - `getEvents(requestId)` — retrieve persisted stream events sorted by sequence number (for completed-request replay)

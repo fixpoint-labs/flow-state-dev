@@ -312,6 +312,17 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
   flushItems(requestId: string): Promise<void>;
 
   /**
+   * Count the items persisted for a request without materializing them.
+   * Matches what `get(id)` would surface as `items.length` — including the
+   * legacy dual-read union of pre-migration blob items with child-table
+   * rows — but adapters with a dedicated items table answer with an indexed
+   * COUNT instead of loading item payloads (FIX-685). Returns 0 for an
+   * unknown request. Reflects flushed writes only; callers that just
+   * persisted items should `flushItems` first.
+   */
+  countItems(requestId: string): Promise<number>;
+
+  /**
    * Persist a stream event for a request.
    * Non-blocking — the backend handles async flushing.
    * Events are stored in sequence order for cursor-based replay.

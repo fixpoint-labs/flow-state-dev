@@ -304,6 +304,12 @@ export class FilesystemRequestStore implements RequestStore {
     }
   }
 
+  async countItems(requestId: string): Promise<number> {
+    // Items live inline on the record file, so the count is the record read.
+    const record = await this.store.get(requestId);
+    return record?.items?.length ?? 0;
+  }
+
   persistEvents(requestId: string, events: RequestStreamEvent[]): void {
     // Accumulate new events — the emitter now sends only incremental events.
     let pending = this.pendingNewEvents.get(requestId);
