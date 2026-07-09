@@ -404,7 +404,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleRetryRequest(request, route, {
           registry: options.registry,
           stores,
-          runtimeConfig
+          runtimeConfig,
+          tenantId
         });
       }
 
@@ -413,7 +414,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           host,
           registry: options.registry,
           stores,
-          runtimeConfig
+          runtimeConfig,
+          tenantId
         });
       }
 

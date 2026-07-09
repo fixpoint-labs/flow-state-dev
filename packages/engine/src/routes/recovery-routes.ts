@@ -7,6 +7,7 @@ import type { InboundTransportHost } from "../transports/types";
 import { detectInterruptedRequests, retryRequest } from "../execution/request-recovery";
 import { jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
 import { generateId } from "../utils/generate-id";
+import { tenantMatches } from "../stores/scope-keys";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
 
@@ -15,6 +16,8 @@ type RecoveryRouteContext = {
   stores: StoreRegistry;
   /** Instance-level runtime options (resolvers, voice provider, middleware, logger, …). */
   runtimeConfig: RuntimeConfig;
+  /** Caller's tenant (FIX-682), extracted the same way as every other session-touching route. */
+  tenantId?: string;
 };
 
 type ContinueRouteContext = RecoveryRouteContext & {
@@ -42,6 +45,14 @@ export async function handleRetryRequest(
     return jsonResponse(404, {
       error: `Request "${route.requestId}" not found`
     });
+  }
+
+  // A caller-supplied requestId must belong to the caller's own tenant (FIX-682) —
+  // otherwise this public re-dispatch surface lets one tenant re-run another
+  // tenant's request. Same not-found shape as a missing record, matching the
+  // webhook-source check below.
+  if (!tenantMatches(originalRecord.tenantId, ctx.tenantId)) {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
   // Only allow retrying interrupted or failed requests
@@ -146,6 +157,14 @@ export async function handleContinueRequest(
 ): Promise<Response> {
   const originalRecord = await ctx.stores.request.get(route.requestId);
   if (originalRecord === undefined) {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  }
+
+  // A caller-supplied requestId must belong to the caller's own tenant (FIX-682) —
+  // otherwise the bare sessionId check below is cosmetic and a same-session-id
+  // collision across tenants lets one tenant continue another tenant's
+  // interrupted request. Same not-found shape as a missing record.
+  if (!tenantMatches(originalRecord.tenantId, ctx.tenantId)) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 

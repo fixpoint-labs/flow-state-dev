@@ -142,4 +142,95 @@ describe("tenant route isolation (FIX-682)", () => {
     const res = await createSession(router, "s", "ac:me");
     expect(res.status).toBe(400);
   });
+
+  // The retry/continue routes only ever compared the bare sessionId; a caller
+  // in one tenant who learns another tenant's requestId (logs, UI) could
+  // re-dispatch or re-enter that tenant's request under a colliding bare
+  // session id. These pin the fix: both routes must 404 on a tenant mismatch,
+  // exactly like the webhook-sourced-record checks beside them.
+  describe("retry/continue routes reject a cross-tenant requestId", () => {
+    async function seedInterruptedRequest(
+      stores: ReturnType<typeof createRouter>["stores"],
+      tenantId: string
+    ) {
+      const now = Date.now();
+      await stores.request.set(
+        "req_1",
+        {
+          id: "req_1",
+          flowKind: "demo",
+          actionName: "run",
+          sessionId: "s",
+          tenantId,
+          userId: "u",
+          source: "http",
+          status: "interrupted",
+          startedAtMs: now,
+          state: {},
+          version: 0,
+          createdAt: now,
+          updatedAt: now
+        },
+        "any"
+      );
+    }
+
+    it("404s a retry of another tenant's request under a colliding bare session id", async () => {
+      const { router, stores } = createRouter();
+      await seedInterruptedRequest(stores, "acme");
+
+      const res = await router.POST(
+        new Request("http://localhost/api/flows/demo/sessions/s/requests/req_1/retry", {
+          method: "POST",
+          headers: { "x-tenant-id": "globex" },
+          body: "{}"
+        }),
+        { params: { path: ["demo", "sessions", "s", "requests", "req_1", "retry"] } }
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("404s a retry of another tenant's request with no tenant header", async () => {
+      const { router, stores } = createRouter();
+      await seedInterruptedRequest(stores, "acme");
+
+      const res = await router.POST(
+        new Request("http://localhost/api/flows/demo/sessions/s/requests/req_1/retry", {
+          method: "POST",
+          body: "{}"
+        }),
+        { params: { path: ["demo", "sessions", "s", "requests", "req_1", "retry"] } }
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("404s a continue of another tenant's request under a colliding bare session id", async () => {
+      const { router, stores } = createRouter();
+      await seedInterruptedRequest(stores, "acme");
+
+      const res = await router.POST(
+        new Request("http://localhost/api/flows/demo/sessions/s/requests/req_1/continue", {
+          method: "POST",
+          headers: { "x-tenant-id": "globex" },
+          body: "{}"
+        }),
+        { params: { path: ["demo", "sessions", "s", "requests", "req_1", "continue"] } }
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("404s a continue of another tenant's request with no tenant header", async () => {
+      const { router, stores } = createRouter();
+      await seedInterruptedRequest(stores, "acme");
+
+      const res = await router.POST(
+        new Request("http://localhost/api/flows/demo/sessions/s/requests/req_1/continue", {
+          method: "POST",
+          body: "{}"
+        }),
+        { params: { path: ["demo", "sessions", "s", "requests", "req_1", "continue"] } }
+      );
+      expect(res.status).toBe(404);
+    });
+  });
 });
