@@ -194,13 +194,13 @@ export function RequestSeparator({
                     {requestId}
                   </div>
                 )}
-                {onReplayFull && (
+                {(showReplayControls || isDebugMode) && onReplayFull && (
                   <OverflowButton icon={<Play className="h-3 w-3" />} label="Replay" onClick={() => { setMenuOpen(false); onReplayFull(); }} />
                 )}
-                {onReplayFromCursor && (
+                {(showReplayControls || isDebugMode) && onReplayFromCursor && (
                   <OverflowButton icon={<SkipForward className="h-3 w-3" />} label="From cursor" onClick={() => { setMenuOpen(false); onReplayFromCursor(); }} />
                 )}
-                {onReconnect && (
+                {(showReplayControls || isDebugMode) && onReconnect && (
                   <OverflowButton icon={<RefreshCw className="h-3 w-3" />} label="Reconnect" onClick={() => { setMenuOpen(false); onReconnect(); }} />
                 )}
                 {showContinue && onContinue && (

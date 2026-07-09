@@ -221,7 +221,11 @@ function PanelContent({ className }: { className?: string }) {
     for (const item of streamItems) {
       if (item.type === "state_change" || item.type === "resource_change") count++;
     }
-    for (const items of liveItems.values()) {
+    // `liveItems[streamRequestId]` is a copy of `streamItems` (see the effect
+    // below), so skip it here — otherwise the watched request's own mutations
+    // get counted twice and bump stateRefreshKey/refetch twice per mutation.
+    for (const [id, items] of liveItems) {
+      if (id === streamRequestId) continue;
       for (const item of items) {
         if (item.type === "state_change" || item.type === "resource_change") count++;
       }
@@ -230,7 +234,7 @@ function PanelContent({ className }: { className?: string }) {
       lastStateMutationCountRef.current = count;
       if (count > 0) setStateRefreshKey((k) => k + 1);
     }
-  }, [streamItems, liveItems]);
+  }, [streamItems, liveItems, streamRequestId]);
 
   // Live mode wants to subscribe to an external in-progress request. Drop any
   // partial liveItems for it so polled `req.items` show through cleanly if SSE
@@ -384,6 +388,10 @@ function PanelContent({ className }: { className?: string }) {
   const handleReplayFull = useCallback(
     (requestId: string) => {
       setLiveItems((prev) => { const next = new Map(prev); next.delete(requestId); return next; });
+      // A prior per-row Continue may have left this row's raw trace log in
+      // `liveRawItems`, which takes priority over the replay stream's own
+      // rawItems — clear it so Replay isn't stuck showing the stale continuation.
+      setLiveRawItems((prev) => { const next = new Map(prev); next.delete(requestId); return next; });
       replayFull(requestId);
     },
     [replayFull],
@@ -392,6 +400,7 @@ function PanelContent({ className }: { className?: string }) {
   const handleReplayFromCursor = useCallback(
     (requestId: string) => {
       const items = liveItems.get(requestId) ?? [];
+      setLiveRawItems((prev) => { const next = new Map(prev); next.delete(requestId); return next; });
       replayFromCursor(requestId, items.length);
     },
     [replayFromCursor, liveItems],
@@ -400,6 +409,7 @@ function PanelContent({ className }: { className?: string }) {
   const handleReconnect = useCallback(
     (requestId: string) => {
       const items = liveItems.get(requestId) ?? [];
+      setLiveRawItems((prev) => { const next = new Map(prev); next.delete(requestId); return next; });
       simulateReconnect(requestId, `${requestId}:${items.length}`);
     },
     [simulateReconnect, liveItems],

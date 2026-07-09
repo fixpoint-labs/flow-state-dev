@@ -13,7 +13,7 @@
  * interrupted rows can be continued independently without either affecting
  * the other's state.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import {
   bindStoreToCallbacks,
@@ -144,6 +144,17 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
   );
 
   const isContinuing = useCallback((requestId: string) => activeIds.has(requestId), [activeIds]);
+
+  // Close every open continuation stream when the panel unmounts or switches
+  // to a different flow/session — otherwise a mid-stream continuation keeps
+  // consuming its response and calling onItems/onSettled against a stale or
+  // unmounted owner.
+  useEffect(() => {
+    return () => {
+      for (const handle of handlesRef.current.values()) handle.close();
+      handlesRef.current.clear();
+    };
+  }, [flowKind, sessionId]);
 
   return { continueRequest, isContinuing };
 }
