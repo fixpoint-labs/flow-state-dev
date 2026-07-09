@@ -33,6 +33,14 @@ import type { RealizedDisposal } from "./realized-gains";
 /** Floating-point tolerance for treating a residual share quantity as closed. */
 const QTY_EPSILON = 1e-9;
 
+/** `basisUnknown` reason stamped on the MATCHED disposals of an over-sold sale
+ *  (FIX-876). An over-sell means an unaccounted corporate action (usually a
+ *  missing split), so the lots the sale consumed are in mismatched units and
+ *  their gains are phantom — nulled so the tax estimate (which keys on
+ *  `gain !== null`) excludes them until the split is backfilled and the sale
+ *  reconciles. The proceeds (real cash received) are kept. */
+const OVERSOLD_BASIS_UNKNOWN = "oversold-unreconciled";
+
 /** One open acquisition lot: a dated parcel of shares at a per-share cost. */
 export type Lot = {
   ticker: string;
@@ -170,11 +178,15 @@ export function deriveLots(events: LedgerRow[]): {
       let remaining = totalSellQty;
       let lotIndex = 0;
       const lots = open.get(ticker) ?? [];
+      // Buffer THIS sale's matched disposals: whether the sale over-sold isn't
+      // known until the loop finishes, and an over-sell retroactively taints
+      // every lot it consumed (mismatched units), not just the remainder.
+      const sellDisposals: RealizedDisposal[] = [];
       while (remaining > QTY_EPSILON && lots.length > 0) {
         const lot = lots[0];
         const consumed = Math.min(lot.quantity, remaining);
         if (isSell) {
-          disposals.push(makeDisposal(e, lot, consumed, totalSellQty, lotIndex));
+          sellDisposals.push(makeDisposal(e, lot, consumed, totalSellQty, lotIndex));
           lotIndex += 1;
         }
         if (lot.quantity <= remaining + QTY_EPSILON) {
@@ -185,14 +197,27 @@ export function deriveLots(events: LedgerRow[]): {
           remaining = 0;
         }
       }
-      // Unmatched over-sell remainder (no open lot left). Surface the taxable
-      // sale with an unknown acquisition (FIX-874) so it isn't dropped, AND
+      const overSold = remaining > QTY_EPSILON;
+      if (isSell && overSold) {
+        // The sale consumed every open lot and STILL has a remainder — an
+        // over-sell (a post-split sale against pre-split lots before the split is
+        // backfilled). The lots it did match are in mismatched units, so their
+        // gains are phantom: null each one's basis/gain (keeping real proceeds) so
+        // the tax estimate excludes them (honest over silently-wrong, FIX-874/876)
+        // instead of reporting a fabricated loss. They self-heal once the missing
+        // split is recorded and the sale reconciles.
+        for (const d of sellDisposals) {
+          disposals.push({ ...d, costBasis: null, gain: null, basisUnknown: OVERSOLD_BASIS_UNKNOWN });
+        }
+        // The unmatched remainder (no open lot left) surfaces as an
+        // unknown-acquisition disposal so it isn't dropped.
+        disposals.push(makeUnmatchedDisposal(e, remaining, totalSellQty, lotIndex));
+      } else {
+        for (const d of sellDisposals) disposals.push(d);
+      }
       // SIGNAL the over-sell (FIX-876) so the caller can flag the position or
       // attempt a split auto-resolve rather than treat it as a clean close.
-      if (isSell && remaining > QTY_EPSILON) {
-        disposals.push(makeUnmatchedDisposal(e, remaining, totalSellQty, lotIndex));
-      }
-      if (remaining > QTY_EPSILON) oversold.add(ticker);
+      if (overSold) oversold.add(ticker);
       open.set(ticker, lots);
     }
   }

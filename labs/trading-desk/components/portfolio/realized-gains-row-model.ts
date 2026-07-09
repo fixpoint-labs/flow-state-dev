@@ -41,6 +41,16 @@ export type RealizedGainRowModel = {
   costBasis: number | null;
   /** Summed realized gain/loss; null if any contributing row's gain is null. */
   gain: number | null;
+  /** Sum of ONLY the group's known-gain contributors (a partial sum; 0 when the
+   *  group has no known gain). The totals read this so a MIXED group's known
+   *  portion still counts even though the display `gain` is "—" — a group of a
+   *  priced disposal + a basis-unknown one no longer drops its known gain from
+   *  the year/grand/account totals. */
+  knownGain: number;
+  /** Count of the group's contributors whose gain is unknown (basis unknown).
+   *  The totals sum this for `excludedCount`, so a mixed group reports the actual
+   *  number of excluded disposals, not one-per-collapsed-row. */
+  unknownGainCount: number;
   /** Number of underlying disposal rows in this group. */
   count: number;
 };
@@ -85,6 +95,7 @@ export function buildRealizedGainsRowModel(
 
   const models = [...groups.values()].map((groupRows): RealizedGainRowModel => {
     const first = groupRows[0];
+    const gains = groupRows.map((r) => r.gain);
     return {
       ticker: first.ticker,
       year: disposalYear(first),
@@ -93,7 +104,12 @@ export function buildRealizedGainsRowModel(
       quantity: groupRows.reduce((sum, r) => sum + r.quantity, 0),
       proceeds: nullableSum(groupRows.map((r) => r.proceeds)),
       costBasis: nullableSum(groupRows.map((r) => r.costBasis)),
-      gain: nullableSum(groupRows.map((r) => r.gain)),
+      gain: nullableSum(gains),
+      // The known portion + unknown count are tracked SEPARATELY from the "—"
+      // display gain so the totals don't lose a mixed group's known gain (they
+      // sum `knownGain`, not the collapsed-to-null `gain`).
+      knownGain: gains.reduce((sum: number, g) => (g === null ? sum : sum + g), 0),
+      unknownGainCount: gains.filter((g) => g === null).length,
       count: groupRows.length,
     };
   });
@@ -152,19 +168,23 @@ function computeTotal(
   if (currencies.size > 1) return { gain: null, excludedCount: 0 };
   if (currencies.size === 1 && !currencies.has(accountCurrency))
     return { gain: null, excludedCount: 0 };
+  // Sum at the DISPOSAL level, not the rolled-up-row level: a MIXED group (a
+  // priced disposal + a basis-unknown one sharing a ticker/year/term/currency)
+  // collapses to one null-`gain` display row, but its `knownGain` still counts
+  // toward the total and its `unknownGainCount` toward the excluded note — so a
+  // mixed group no longer drops its known gain or under-reports the excluded
+  // disposal count.
   let sum = 0;
-  let known = 0;
+  let knownContribCount = 0;
   let excludedCount = 0;
   for (const m of models) {
-    if (m.gain === null) excludedCount += 1;
-    else {
-      sum += m.gain;
-      known += 1;
-    }
+    sum += m.knownGain;
+    excludedCount += m.unknownGainCount;
+    knownContribCount += m.count - m.unknownGainCount;
   }
-  // Rows present but none with a known gain → no statable figure (— + note),
-  // not a fabricated $0. No rows at all → 0 (no disposals, no gain).
-  const gain = models.length > 0 && known === 0 ? null : sum;
+  // Rows present but NO known contributor anywhere → no statable figure (— +
+  // note), not a fabricated $0. No rows at all → 0 (no disposals, no gain).
+  const gain = models.length > 0 && knownContribCount === 0 ? null : sum;
   return { gain, excludedCount };
 }
 

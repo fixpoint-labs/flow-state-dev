@@ -673,6 +673,21 @@ filing-grade. Full methodology in [`docs/tax-estimate.md`](docs/tax-estimate.md)
   `basisUnknownProceeds`/count. `holding-period.ts` (`longBoundary` +
   `classifyTerm`) is the ONE copy of the IRS ST/LT rule — `holding-term.ts`
   imports `longBoundary` from it (BP-034).
+- **An over-sold sale's gains are excluded, not phantom.** When a sale over-sells
+  (a post-split sale against pre-split lots before the split is backfilled),
+  `deriveLots` nulls the `costBasis`/`gain` of EVERY lot it matched — not just the
+  unmatched remainder — with `basisUnknown: "oversold-unreconciled"`, keeping the
+  real proceeds. The matched lots are in mismatched units, so their gains are
+  untrustworthy; nulling them keeps the tax estimate from reporting a fabricated
+  loss (the holdings row is already flagged `inconsistent_history`). They
+  self-heal once the split is recorded and the sale reconciles.
+- **Totals sum the KNOWN portion of a mixed rolled-up row.** When a priced
+  disposal and a basis-unknown one share a `(ticker, year, term, currency)` group,
+  the display row reads "—" (one null contributor), but the year/grand/account
+  totals still count the known gain and note the exact excluded-disposal count —
+  the row model carries `knownGain` / `unknownGainCount` alongside the collapsed
+  display `gain` so a mixed group never drops its known gain from the total
+  (`realized-gains-row-model.ts`).
 - **Proceeds-unknown marker.** An OFX sell with no `TOTAL`/`UNITPRICE` is
   recorded with a `proceedsUnknown` reason (`ledger_events.proceeds_unknown`),
   so derivation nulls proceeds/gain and excludes it rather than fabricating a

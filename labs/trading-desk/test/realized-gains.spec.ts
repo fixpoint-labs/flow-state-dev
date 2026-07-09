@@ -9,7 +9,8 @@
  *      even with a KNOWN basis; a no-price buy has a KNOWN term but a null gain.
  *   4. A currency-mismatched sale nulls the gain, never a mixed-currency number.
  *   5. A `transfer`-out is not a disposition — no record.
- *   6. An over-sell surfaces an unmatched row (real proceeds), never dropped.
+ *   6. An over-sell surfaces its rows (real proceeds) but nulls their gains — the
+ *      whole sale is in mismatched units (unaccounted split), so no phantom loss.
  *   7. A proceeds-unknown import placeholder nulls proceeds/gain; a genuine $0
  *      sale is a real loss.
  */
@@ -186,13 +187,25 @@ describe("deriveLots — realized disposals", () => {
     expect(disposals).toHaveLength(0);
   });
 
-  it("surfaces an over-sell remainder as an unknown-acquisition row, not dropped", () => {
-    const { disposals } = deriveLots([
+  it("excludes an over-sold sale's matched gains (phantom units), keeping real proceeds", () => {
+    const { disposals, oversold } = deriveLots([
       row({ id: "b1", type: "buy", tradeDate: "2026-01-01", quantity: 10, unitPrice: 100 }),
       row({ id: "s1", type: "sell", tradeDate: "2026-06-01", quantity: -15, amount: 2250 }),
     ]);
     expect(disposals).toHaveLength(2);
-    expect(disposals[0]).toMatchObject({ quantity: 10, gain: expect.any(Number), lotIndex: 0 });
+    expect(oversold.has("AAPL")).toBe(true);
+    // The over-sell means an unaccounted split, so even the MATCHED 10 shares are
+    // in mismatched units — the gain is phantom. Proceeds (10/15 of 2250 = 1500)
+    // are kept, but basis/gain are nulled so the tax estimate excludes them (they
+    // self-heal once the split is backfilled).
+    expect(disposals[0]).toMatchObject({
+      quantity: 10,
+      proceeds: 1500,
+      costBasis: null,
+      gain: null,
+      basisUnknown: "oversold-unreconciled",
+      lotIndex: 0,
+    });
     // The unmatched 5 shares: real proceeds (5/15 of 2250 = 750), unknown basis.
     expect(disposals[1]).toMatchObject({
       quantity: 5,

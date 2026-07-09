@@ -185,6 +185,32 @@ describe("computeRealizedGainTotals", () => {
     expect(totals.grandTotal).toEqual({ gain: 250, excludedCount: 1 });
   });
 
+  it("preserves the known gain when a known + basis-unknown disposal collapse into ONE row", () => {
+    // Both disposals share (NVDA, 2026, short, USD) — a priced lot AND a no-price
+    // buy consumed by one sale — so they roll up into a SINGLE display row whose
+    // gain is "—" (one null contributor). The total must still count the known
+    // 200 and note the one excluded disposal, not drop the whole group.
+    const models = buildRealizedGainsRowModel([
+      gain({ id: "a", ticker: "NVDA", disposedDate: "2026-03-15", term: "short", gain: 200 }),
+      gain({
+        id: "b",
+        ticker: "NVDA",
+        disposedDate: "2026-06-01",
+        term: "short",
+        gain: null,
+        costBasis: null,
+        basisUnknown: "basis-unknown",
+      }),
+    ]);
+    // The two collapse into one display row that reads "—" (a mixed group).
+    expect(models).toHaveLength(1);
+    expect(models[0].gain).toBeNull();
+    // ...but the total preserves the known 200 and counts the ONE excluded disposal.
+    const totals = computeRealizedGainTotals(models, "USD");
+    expect(totals.byYear.get(2026)).toEqual({ gain: 200, excludedCount: 1 });
+    expect(totals.grandTotal).toEqual({ gain: 200, excludedCount: 1 });
+  });
+
   it("states — (not $0) for a year in which EVERY row's gain is unknown, still counting them", () => {
     // A "$0" total when nothing is known would misread as a real zero gain; the
     // honest figure is "—" with the excluded count surfaced.

@@ -715,8 +715,7 @@ describe("backfillSplits (FIX-874 follow-up) — provider split backfill", () =>
   it("corrects a split-mangled realized gain by backfilling the split from the provider", async () => {
     // The NVDA scenario: buy 10 @ $1,200, then a 10:1 split the import missed, then
     // sell all 100 @ $120. Without the split the ledger over-sells (10 held, 100
-    // sold) → a phantom loss + basis-unknown remainder. Backfilling the split makes
-    // realized gain ≈ $0.
+    // sold). Backfilling the split makes realized gain ≈ $0.
     await repo.ingestLedgerEvents(
       [
         ev({ ticker: "NVDA", tradeDate: "2024-01-02", quantity: 10, unitPrice: 1200, amount: -12000, source: "file", externalId: "B-NVDA" }),
@@ -724,10 +723,12 @@ describe("backfillSplits (FIX-874 follow-up) — provider split backfill", () =>
       ],
       "devuser",
     );
-    // Before backfill: split-mangled — the realized total is a large phantom loss.
+    // Before backfill: the over-sell means an unaccounted split, so every derived
+    // gain is NULLED (excluded from the tax estimate) rather than surfacing a
+    // ~-$10,800 phantom loss off mismatched pre/post-split units.
     const before = await repo.getRealizedGains("devuser");
-    const beforeGain = before.reduce((s, r) => s + (r.gain ?? 0), 0);
-    expect(beforeGain).toBeLessThan(-9000); // ~ -$10,800 fake loss
+    expect(before.length).toBeGreaterThan(0);
+    expect(before.every((r) => r.gain === null)).toBe(true);
 
     const stub = async (ticker: string) =>
       ticker === "NVDA" ? [{ date: "2024-06-10", numerator: 10, denominator: 1 }] : [];
