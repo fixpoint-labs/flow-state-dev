@@ -82,6 +82,22 @@ describe("recordManualEvent — sell proceeds sign", () => {
     expect(div?.amount).toBe(42);
   });
 
+  it("records a cash transfer whose optional quantity field was typed as 0", async () => {
+    // `transfer` is a share type, so a literal 0 in the optional Quantity field
+    // (a cash transfer, blank ticker) would be read as a share move and throw on
+    // the missing ticker — a silent post-close failure. The 0 must canonicalize
+    // to null so it lands as the cash transfer the user meant.
+    const report = await recordManualEvent(
+      manual({ type: "transfer", ticker: null, quantity: 0, unitPrice: null, amount: 500, tradeDate: "2026-04-01" }),
+      "devuser",
+      repo,
+    );
+    expect(report.inserted).toBe(1);
+    const xfer = (await repo.getLedger("devuser")).find((r) => r.type === "transfer");
+    expect(xfer?.quantity).toBeNull();
+    expect(xfer?.amount).toBe(500);
+  });
+
   it("leaves a positive sell amount untouched", async () => {
     await recordManualEvent(manual({ type: "buy", quantity: 10, unitPrice: 100, amount: -1000 }), "devuser", repo);
     await recordManualEvent(

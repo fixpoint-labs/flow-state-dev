@@ -188,14 +188,15 @@ export async function recordManualEvent(
   // silently fail to record. Canonicalize the sign here — the OFX importer's
   // `Math.abs(total)` precedent — so the manual path and the invariant agree.
   const amount = input.type === "sell" ? Math.abs(input.amount) : input.amount;
-  // A cash event (dividend/interest/deposit/withdrawal/fee) carries no shares, but
-  // the dialog's optional Quantity field can still submit a literal 0. The
-  // share-event invariant (FIX-874) rejects a non-share type carrying any
-  // quantity, so that 0 would throw and roll back a valid cash entry after the
-  // dialog closed. Null it for non-share types — a cash row has no quantity.
-  const isShareType =
-    input.type === "buy" || input.type === "sell" || input.type === "transfer";
-  const quantity = isShareType ? input.quantity : null;
+  // The dialog's optional Quantity field can submit a literal 0. A 0 is never a
+  // valid share count: for a cash event (dividend/interest/deposit/withdrawal/fee)
+  // it's noise, and for a `transfer` it means a CASH transfer (no shares) — but
+  // the share-event invariant (FIX-874) reads any non-null quantity as a share
+  // move and throws (a cash transfer has a blank ticker), rolling back a valid
+  // entry after the dialog closed. Canonicalize a 0 to null so the invariant sees
+  // "no shares". (A buy/sell can't be a 0-share trade either — it still fails the
+  // invariant's "must carry a share quantity" check, just with a clearer error.)
+  const quantity = input.quantity === 0 ? null : input.quantity;
   // `proceedsUnknown` is import-only (a feed normalizer's signal that a file
   // couldn't supply proceeds). Force it null on the manual path so a caller can't
   // null out a real sale's proceeds by hand.
