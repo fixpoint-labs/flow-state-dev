@@ -45,6 +45,14 @@ export type EmitToolOutputAttribution = {
    */
   alias?: string;
   /**
+   * The model step index this call belongs to (FIX-814, owned loop only).
+   * Recorded on `tool_output.toolCall.stepNumber` so resume replay and
+   * canonical collapse key by generator path + step + call id, disambiguating
+   * a provider call id reused across steps. Absent on the legacy `.asTool()`
+   * path (single call, no steps).
+   */
+  stepNumber?: number;
+  /**
    * Settle-time model-output mapper (FIX-814). When set, the success path
    * computes the persisted `tool_output.modelOutput` by applying it to the
    * tool's real output — once, here at settle time — so resume never recomputes
@@ -131,6 +139,7 @@ export async function emitToolOutputAround(
       alias: attribution.alias ?? sanitizeToolName(blockName),
       arguments: typeof args === "string" ? args : JSON.stringify(args),
       generatorBlock: attribution.generatorBlock,
+      ...(attribution.stepNumber !== undefined ? { stepNumber: attribution.stepNumber } : {}),
     },
   };
 

@@ -219,6 +219,10 @@ export function buildToolExecutor(
       itemVisibility,
       agentName,
       model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
+      // Persist the model step index alongside the call id (owned loop only) so
+      // resume replay and canonical collapse disambiguate a provider call id
+      // reused across steps — mirroring the step-folded tool path (FIX-814).
+      ...(options.stepNumber !== undefined ? { stepNumber: options.stepNumber } : {}),
       ...(config.alias !== undefined ? { alias: config.alias } : {}),
       ...(config.mapModelOutput !== undefined
         ? { mapModelOutput: (output: unknown) => config.mapModelOutput!(output, ctx) }

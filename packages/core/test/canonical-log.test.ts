@@ -145,4 +145,37 @@ describe("collapseToCanonicalLog", () => {
     const toolIds = out.filter((i) => i.type === "tool_output").map((i) => i.id);
     expect(toolIds).toEqual(["s1c", "g1c"]);
   });
+
+  it("keeps both tool_outputs when two steps reuse one callId (FIX-814, Rule 4 step key)", () => {
+    // Two steps of one generator reuse provider call id "c1". Rule 4 folds the
+    // persisted stepNumber into the key, so they don't collapse into one; a
+    // same-step failed→completed pair still dedups.
+    const stepped = (
+      id: string,
+      itemIndex: number,
+      status: string,
+      stepNumber: number
+    ): OutputItem =>
+      ({
+        id,
+        type: "tool_output",
+        status,
+        itemIndex,
+        blockName: "t",
+        output: status === "completed" ? { step: stepNumber } : undefined,
+        provenance: { blockInstanceId: GATE },
+        toolCall: { callId: "c1", name: "t", stepNumber },
+      }) as unknown as OutputItem;
+
+    const items = [
+      trace("t1", 0, "completed"),
+      stepped("s0", 1, "completed", 0), // step 0 — distinct key
+      stepped("s1f", 2, "failed", 1), // step 1 failed — superseded within step 1
+      stepped("s1c", 3, "completed", 1), // step 1 completed — canonical for step 1
+    ];
+    const ids = collapseToCanonicalLog(items)
+      .filter((i) => i.type === "tool_output")
+      .map((i) => i.id);
+    expect(ids).toEqual(["s0", "s1c"]);
+  });
 });

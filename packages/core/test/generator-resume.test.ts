@@ -60,6 +60,7 @@ function toolOutput(
     errorMessage?: string;
     errorCode?: string;
     itemIndex?: number;
+    stepNumber?: number;
   } = {},
 ): RuntimeItem {
   return {
@@ -79,6 +80,7 @@ function toolOutput(
       alias: opts.alias ?? name,
       arguments: "{}",
       generatorBlock: "gen",
+      ...(opts.stepNumber !== undefined ? { stepNumber: opts.stepNumber } : {}),
     },
     ...(status === "failed"
       ? {
@@ -250,6 +252,26 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
     const res = r.messages.find((m: any) => m.role === "tool") as any;
     expect(res.content[0].output).toEqual({ type: "text", value: "real" });
     expect(r.resumeStep?.stepNumber).toBe(1);
+  });
+
+  it("disambiguates a provider call id reused across two steps by stepNumber", () => {
+    // Step 0 and step 1 of ONE generator reuse call id "c1". The step-0
+    // completed output must pair with step 0, and step 1's pending gate must
+    // NOT be satisfied by step 0's completed output.
+    const items = [
+      stepArtifact(0, [{ toolCallId: "c1", toolName: "a", alias: "a" }]),
+      toolOutput("c1", "a", "completed", { output: "STEP0", modelOutput: "STEP0", stepNumber: 0, itemIndex: 10 }),
+      stepArtifact(1, [{ toolCallId: "c1", toolName: "gate", alias: "gate" }]),
+      toolOutput("c1", "gate", "failed", { errorCode: "SUSPENSION", stepNumber: 1, itemIndex: 20 }),
+    ];
+    const r = run(items, gateLogical(1, "gate", "c1"))!;
+    // Step 0 resolved to its own completed output (not the step-1 record).
+    const res = r.messages.find((m: any) => m.role === "tool") as any;
+    expect(res.content[0].output).toEqual({ type: "text", value: "STEP0" });
+    // Step 1 is the resume step and its call is pending (re-enter), not
+    // completed from step 0's output.
+    expect(r.resumeStep?.stepNumber).toBe(1);
+    expect(r.resumeStep?.calls[0]?.kind).toBe("pending");
   });
 
   it("ignores another generator's tool_output that shares a call id (cross-generator scope)", () => {

@@ -308,6 +308,16 @@ export type ToolOutputItem = OutputItemBase & {
     alias?: string;
     arguments: string;
     generatorBlock: string;
+    /**
+     * Model step index this call belongs to within the generator's owned tool
+     * loop (FIX-814). Resume replay and canonical collapse key by generator
+     * path + `stepNumber` + `callId`, so a provider call id reused across two
+     * steps of one generator run stays distinct. Absent on items persisted
+     * before this field existed and on the legacy (non-owned-loop) `.asTool()`
+     * path (a single call, no steps); readers treat absence as "unstepped" and
+     * fall back to call-id-only keying.
+     */
+    stepNumber?: number;
   };
   /** Present when the tool execution failed (status will be "failed"). */
   error?: {

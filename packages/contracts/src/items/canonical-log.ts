@@ -156,28 +156,36 @@ export function collapseToCanonicalLog<T extends OutputItem>(items: readonly T[]
     }
   }
 
-  // Rule 4: per (logical path + callId) canonical `tool_output`. Keyed the same
-  // way Rule 2 keys traces — a `completed` output always beats a non-completed
-  // one; among same-rank outputs the higher itemIndex wins. This dedups a
-  // gate's run-1 `failed`(SUSPENSION) record against its run-2 `completed`
-  // result and keeps a completed sibling that has no run-2 copy.
+  // Rule 4: per (logical path + step + callId) canonical `tool_output`. Keyed
+  // the same way Rule 2 keys traces — a `completed` output always beats a
+  // non-completed one; among same-rank outputs the higher itemIndex wins. This
+  // dedups a gate's run-1 `failed`(SUSPENSION) record against its run-2
+  // `completed` result and keeps a completed sibling that has no run-2 copy.
   //
-  // Keying assumes a tool call id is unique within a generator instance — true
-  // for real providers, whose call ids are globally unique. The tool's own
-  // block path additionally folds the model-step index for gate-matching, but
-  // the persisted `tool_output` carries only the generator's provenance + the
-  // bare call id, so this dedup can't distinguish two steps that reuse one call
-  // id. A composite `.asTool()` block that itself suspends is the one narrow
+  // The persisted `toolCall.stepNumber` (owned loop) is folded into the key so
+  // a provider call id reused across two steps of one generator stays distinct
+  // (mirrors the step-folded tool path). Items without a `stepNumber` (legacy
+  // `.asTool()` / pre-field records) key on logical path + callId alone,
+  // unchanged. A composite `.asTool()` block that itself suspends is one narrow
   // exception: it synthesizes a fresh call id per run, so its superseded run-1
   // `failed` record has no same-key replacement and survives here (an
   // observability-only artifact in `GET`, never an execution effect).
+  const toolOutputKey = (item: unknown): string | undefined => {
+    const it = item as {
+      provenance?: { blockInstanceId?: string };
+      toolCall?: { callId?: string; stepNumber?: number };
+    };
+    const logicalId = logicalIdOf(it.provenance?.blockInstanceId);
+    const callId = it.toolCall?.callId;
+    if (logicalId === undefined || callId === undefined) return undefined;
+    const step = it.toolCall?.stepNumber;
+    return `${logicalId}::${step ?? ""}::${callId}`;
+  };
   const canonicalToolOutput = new Map<string, { id: string; itemIndex: number; completed: boolean }>();
   for (const item of items) {
     if (item.type !== "tool_output") continue;
-    const logicalId = logicalIdOf(item.provenance?.blockInstanceId);
-    const callId = (item as { toolCall?: { callId?: string } }).toolCall?.callId;
-    if (logicalId === undefined || callId === undefined) continue;
-    const key = `${logicalId}::${callId}`;
+    const key = toolOutputKey(item);
+    if (key === undefined) continue;
     const completed = item.status === "completed";
     const prior = canonicalToolOutput.get(key);
     if (prior === undefined) {
@@ -211,10 +219,9 @@ export function collapseToCanonicalLog<T extends OutputItem>(items: readonly T[]
     // generator's re-run boundary — a completed sibling injected from the log on
     // resume has no run-2 copy and must survive.
     if (item.type === "tool_output") {
-      const logicalId = logicalIdOf(item.provenance?.blockInstanceId);
-      const callId = (item as { toolCall?: { callId?: string } }).toolCall?.callId;
-      if (logicalId === undefined || callId === undefined) return true;
-      const canonical = canonicalToolOutput.get(`${logicalId}::${callId}`);
+      const key = toolOutputKey(item);
+      if (key === undefined) return true;
+      const canonical = canonicalToolOutput.get(key);
       return canonical === undefined || canonical.id === item.id;
     }
     // `generator_step` is a replay-only artifact keyed per generator-path +

@@ -166,19 +166,24 @@ function logicalIdOfInstance(instanceId: string): string {
  * re-entered gate's real return value from an earlier resume cycle) supersedes
  * an earlier `failed` (suspended) record for the same call.
  *
- * Matched on the bare call id (scoped to unconsumed candidates by the caller),
- * which assumes a call id is unique within a generator instance — true for real
- * providers. The suspend/resume gate-matching itself keys off the step-folded
- * tool path, so this pairing is a fidelity concern for the reconstructed
- * conversation, not the gate resolution.
+ * Matched on (callId, stepNumber): the persisted `toolCall.stepNumber` (owned
+ * loop) disambiguates a provider call id reused across two steps of one
+ * generator, mirroring the step-folded tool path. A `tool_output` with no
+ * `stepNumber` (legacy `.asTool()` / pre-field records) matches on call id
+ * alone. Candidates are scoped to this generator and to unconsumed items by the
+ * caller.
  */
 function pickToolOutput(
   toolOutputs: readonly ToolOutputItem[],
-  callId: string
+  callId: string,
+  stepNumber: number
 ): ToolOutputItem | undefined {
   let best: ToolOutputItem | undefined;
   for (const to of toolOutputs) {
     if (to.toolCall.callId !== callId) continue;
+    // A stepped output must belong to this step; an unstepped (legacy) output
+    // matches on call id alone.
+    if (to.toolCall.stepNumber !== undefined && to.toolCall.stepNumber !== stepNumber) continue;
     if (best === undefined) {
       best = to;
       continue;
@@ -257,9 +262,10 @@ export function reconstructGeneratorResume(params: {
       // Prefer a completed output; among ties consume the not-yet-consumed one.
       let to = pickToolOutput(
         toolOutputs.filter((t) => !consumed.has(t)),
-        c.toolCallId
+        c.toolCallId,
+        art.stepNumber
       );
-      if (to === undefined) to = pickToolOutput(toolOutputs, c.toolCallId);
+      if (to === undefined) to = pickToolOutput(toolOutputs, c.toolCallId, art.stepNumber);
       if (to !== undefined) consumed.add(to);
 
       if (to === undefined) {
