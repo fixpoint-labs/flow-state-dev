@@ -87,12 +87,6 @@ export function RequestSeparator({
   const [provenanceOpen, setProvenanceOpen] = useState(false);
   const { isDebugMode } = useDebug();
   const showReplayControls = status === "completed" || status === "failed";
-  // Crash-recovery continuation (FIX-865): only for a run the server actually
-  // marked interrupted, and only when the source isn't webhook — the
-  // `/continue` route rejects webhook-sourced requests server-side, so this
-  // client-side gate avoids a guaranteed 404 from the menu.
-  const showContinue = status === "interrupted" && source !== "webhook" && !isContinuing;
-  const hasOverflow = showReplayControls || showContinue || isDebugMode;
   const durationText = formatDuration(duration, isActive);
 
   // Scheduled requests carry first-class provenance under the namespaced
@@ -115,6 +109,20 @@ export function RequestSeparator({
     (scheduleMeta?.origin === "static" || scheduleMeta?.origin === "dynamic")
       ? scheduleMeta.origin
       : undefined;
+
+  // Crash-recovery continuation (FIX-865): only for a run the server actually
+  // marked interrupted, and only when the source isn't webhook — the
+  // `/continue` route rejects webhook-sourced requests server-side, so this
+  // client-side gate avoids a guaranteed 404 from the menu. A dynamic
+  // schedule's handler core is carried only on its original dispatch
+  // envelope (`resolveActionCore` can re-resolve only `flow.schedules.static`
+  // on recovery), so it also can't be re-entered — gate on `origin` too.
+  const showContinue =
+    status === "interrupted" &&
+    source !== "webhook" &&
+    origin !== "dynamic" &&
+    !isContinuing;
+  const hasOverflow = showReplayControls || showContinue || isDebugMode;
   const sourceChipText = (() => {
     const baseLabel = source !== undefined ? (SOURCE_LABELS[source]?.label ?? source) : "";
     if (scheduleId === undefined) return baseLabel;

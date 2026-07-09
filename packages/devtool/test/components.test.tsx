@@ -253,4 +253,36 @@ describe("RequestSeparator (crash-recovery Continue action)", () => {
     if (trigger) fireEvent.click(trigger);
     expect(screen.queryByText("Continue")).not.toBeInTheDocument();
   });
+
+  // A dynamic schedule's handler core is carried only on its original
+  // dispatch envelope — `resolveActionCore` can only re-resolve a static
+  // schedule (`flow.schedules.static`) on recovery, so `/continue` can't
+  // re-enter it. Gate the client-side action the same way as the webhook
+  // source check just above.
+  it("does not show the Continue action for an interrupted dynamic-schedule request", () => {
+    const onContinue = vi.fn();
+    renderSeparator({
+      ...baseProps,
+      status: "interrupted",
+      source: "scheduled",
+      metadata: { schedule: { scheduleId: "u_1/digest", origin: "dynamic" } },
+      onContinue,
+    });
+    const trigger = screen.queryByTitle("More actions");
+    if (trigger) fireEvent.click(trigger);
+    expect(screen.queryByText("Continue")).not.toBeInTheDocument();
+  });
+
+  it("shows the Continue action for an interrupted static-schedule request", () => {
+    const onContinue = vi.fn();
+    renderSeparator({
+      ...baseProps,
+      status: "interrupted",
+      source: "scheduled",
+      metadata: { schedule: { scheduleId: "monthly-invoices", origin: "static" } },
+      onContinue,
+    });
+    fireEvent.click(screen.getByTitle("More actions"));
+    expect(screen.getByText("Continue")).toBeInTheDocument();
+  });
 });

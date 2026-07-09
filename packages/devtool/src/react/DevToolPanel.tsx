@@ -377,12 +377,25 @@ function PanelContent({ className }: { className?: string }) {
   const handleContinue = useCallback(
     (requestId: string) => {
       const req = requests.find((r) => r.id === requestId);
-      const existingItems = liveItems.get(requestId) ?? req?.items ?? [];
+      // Seed from the raw (uncollapsed) log, not the canonical one — the
+      // continuation store's `loadSnapshot` treats its seed as the raw log
+      // itself (see `use-continue-request`), so seeding from `liveItems`
+      // (already collapsed) loses any earlier continuation's pre-recovery
+      // boundary rows the first update would otherwise overwrite
+      // `liveRawItems` with. Mirrors the same raw-then-canonical priority
+      // `groups` above uses when rendering this row's Trace tab.
+      const isWatched = requestId === streamRequestId && streamState !== undefined;
+      const existingItems =
+        liveRawItems.get(requestId) ??
+        (isWatched ? streamState?.rawItems : undefined) ??
+        liveItems.get(requestId) ??
+        req?.items ??
+        [];
       void continueRequest(requestId, existingItems).catch((err) => {
         console.error("[devtool] continue failed", err);
       });
     },
-    [requests, liveItems, continueRequest],
+    [requests, liveItems, liveRawItems, streamState, streamRequestId, continueRequest],
   );
 
   const handleReplayFull = useCallback(
