@@ -1524,6 +1524,11 @@ async function runResumeStep(
                 callId: c.toolCallId,
                 generatorBlock: blockName,
                 alias: entry.alias,
+                // Carry this step's index so the denial keys by step like every
+                // other tool_output — else `pickToolOutput` (which treats an
+                // unstepped output as matching any step) could let this denial
+                // satisfy a LATER pending gate that reuses the same call id.
+                stepNumber: resumeStep.stepNumber,
                 // Inherit the generator's visibility/attribution so a denial
                 // for a `history:false` (or client-hidden) generator is not
                 // more visible than its ordinary tool outputs (Greptile P1).

@@ -239,6 +239,9 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
     const completed = completedToolOutputs(record!.items ?? []);
     expect(completed.length).toBe(1);
     expect(completed[0]!.output).toMatchObject({ denied: true });
+    // The denial carries its step index (like every tool_output) so a later
+    // turn reusing this call id can't be satisfied by it.
+    expect((completed[0] as any).toolCall.stepNumber).toBe(0);
     const step1 = toolResultParts(seen[1]!.messages);
     expect(step1).toHaveLength(1);
     expect(JSON.stringify(step1[0]!.output)).toContain("denied");
