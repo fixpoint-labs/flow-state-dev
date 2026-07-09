@@ -107,6 +107,7 @@ export function createSSEClientFromResponse(
     options.dedupWindowSize ?? DEFAULT_DEDUP_WINDOW_SIZE
   );
   let closed = false;
+  let errored = false;
   let lastEventId: string | undefined;
 
   if (!options.response.ok) {
@@ -137,12 +138,22 @@ export function createSSEClientFromResponse(
         if (deduper.seen(key)) return;
         dispatchRequestEvent(parsed, options);
       } catch (error) {
+        errored = true;
         options.onError?.(normalizeError(error));
       }
     },
     onError: (error) => {
-      if (!closed) options.onError?.(error);
+      if (closed) return;
+      errored = true;
+      options.onError?.(error);
     }
+  }).then(() => {
+    // The body ended without an abort (local close()) or an error — e.g. the
+    // server closed the connection after a pre-transition failure with no
+    // terminal request-status event. A caller relying solely on
+    // onRequestStatus/onError to know the stream is done would otherwise
+    // never find out.
+    if (!closed && !errored) options.onClose?.();
   });
 
   return {

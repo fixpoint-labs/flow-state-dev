@@ -56,6 +56,18 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
   const [activeIds, setActiveIds] = useState<ReadonlySet<string>>(new Set());
   const handlesRef = useRef<Map<string, RequestStreamHandle>>(new Map());
 
+  // Owner token (bumped whenever flowKind/sessionId changes) so a `/continue`
+  // POST still in flight when the caller switches flow/session can detect,
+  // after its await, that it's no longer for the current owner and bail
+  // before wiring a handle or calling onItems/onSettled into the new view.
+  // The unmount/switch cleanup effect below only closes handles that already
+  // exist in `handlesRef` — a pending POST has no handle yet, so it needs
+  // this separate guard.
+  const ownerRef = useRef(0);
+  useEffect(() => {
+    ownerRef.current += 1;
+  }, [flowKind, sessionId]);
+
   const stop = useCallback(
     (requestId: string) => {
       handlesRef.current.get(requestId)?.close();
@@ -80,6 +92,7 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
       // too, or a slow network lets the row get clicked again before the menu
       // hides the action, firing a duplicate POST. Clear it again on failure.
       setActiveIds((prev) => new Set(prev).add(requestId));
+      const owner = ownerRef.current;
 
       let response: Response;
       try {
@@ -97,6 +110,24 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
           return next;
         });
         throw err;
+      }
+
+      // The caller switched flow/session while this POST was in flight — its
+      // response belongs to a view that's gone. There's no handle for the
+      // unmount/switch cleanup effect to have closed, so bail here instead of
+      // wiring callbacks that would write into the current (unrelated) view.
+      // Clear the `activeIds` entry directly (not via `stop()`) — this
+      // request never got a real continuation for the new owner, so
+      // `onSettled` (a signal to refresh the row) doesn't apply here.
+      if (owner !== ownerRef.current) {
+        response.body?.cancel().catch(() => {});
+        setActiveIds((prev) => {
+          if (!prev.has(requestId)) return prev;
+          const next = new Set(prev);
+          next.delete(requestId);
+          return next;
+        });
+        return;
       }
 
       // The route can legally fall back to the non-streaming 202 JSON
@@ -134,6 +165,12 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
           if (event.status !== "in_progress") stop(requestId);
         },
         onError: () => {
+          stop(requestId);
+        },
+        // The stream can end without ever emitting a terminal status (e.g. a
+        // pre-transition recovery failure) — without this, the row stays
+        // "continuing" until the panel remounts.
+        onClose: () => {
           stop(requestId);
         },
       });

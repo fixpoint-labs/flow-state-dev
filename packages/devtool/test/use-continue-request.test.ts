@@ -316,4 +316,78 @@ describe("useContinueRequest", () => {
     // stuck in the store's buffer until a later content.done/replacement.
     expect(m2?.content?.[0]?.text).toBe("item-m2-more");
   });
+
+  it("stops tracking when the stream closes without a terminal status or error", async () => {
+    const onSettled = vi.fn();
+    const { result } = renderHook(() =>
+      useContinueRequest({
+        recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+        flowKind: "demo",
+        sessionId: "sess_1",
+        onItems: vi.fn(),
+        onSettled,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.continueRequest("req_1", []);
+    });
+    expect(result.current.isContinuing("req_1")).toBe(true);
+
+    // A pre-transition recovery failure can close the body without ever
+    // emitting request.completed/failed or an onError — onClose is the only
+    // signal that fires.
+    const opts = calls[calls.length - 1]!;
+    act(() => {
+      (opts.onClose as () => void)();
+    });
+
+    expect(result.current.isContinuing("req_1")).toBe(false);
+    expect(onSettled).toHaveBeenCalledWith("req_1");
+  });
+
+  it("ignores a /continue response that resolves after the caller switched session", async () => {
+    let resolvePost!: (r: Response) => void;
+    recoveryClient.continueStream.mockReturnValue(
+      new Promise<Response>((resolve) => {
+        resolvePost = resolve;
+      }),
+    );
+    const onItems = vi.fn();
+    const onSettled = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ sessionId }) =>
+        useContinueRequest({
+          recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+          flowKind: "demo",
+          sessionId,
+          onItems,
+          onSettled,
+        }),
+      { initialProps: { sessionId: "sess_1" } },
+    );
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.continueRequest("req_1", []);
+    });
+
+    // The caller switches session while the POST is still in flight — there
+    // is no handle yet for the unmount/switch cleanup effect to close.
+    rerender({ sessionId: "sess_2" });
+
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    await act(async () => {
+      resolvePost({ ...fakeResponse, body: { cancel } } as unknown as Response);
+      await pending;
+    });
+
+    // The stale response must not wire a handle or notify the (now-unrelated) callbacks.
+    expect(calls.length).toBe(0);
+    expect(onItems).not.toHaveBeenCalled();
+    expect(onSettled).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalled();
+    // The pending-window guard must not leak — the row isn't stuck "continuing" forever.
+    expect(result.current.isContinuing("req_1")).toBe(false);
+  });
 });
