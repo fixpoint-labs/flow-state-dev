@@ -13,33 +13,35 @@ import {
   registerSessionOutputSchema,
   type RegisterSessionOutput,
 } from "../schemas";
-import type { SessionRegistryStore } from "../registry";
+import { sessionRegistryCollection } from "../registry";
 
-export function buildRegisterSession(registry: SessionRegistryStore) {
-  return handler({
-    name: "register-session",
-    inputSchema: registerSessionInputSchema,
-    outputSchema: registerSessionOutputSchema,
-    execute: async (input): Promise<RegisterSessionOutput> => {
-      const existing = await registry.get(input.sessionId);
+export const registerSession = handler({
+  name: "register-session",
+  inputSchema: registerSessionInputSchema,
+  outputSchema: registerSessionOutputSchema,
+  resources: { sessions: sessionRegistryCollection },
+  execute: async (input, ctx): Promise<RegisterSessionOutput> => {
+    const sessions = ctx.resources.sessions;
+    const existing = await sessions.getOptional({ sessionId: input.sessionId });
 
-      if (existing !== null) {
-        if (existing.issue !== input.issue) {
-          throw new Error(
-            `Session "${input.sessionId}" is already registered to issue "${existing.issue}" ` +
-              `and cannot be reassigned to "${input.issue}".`,
-          );
-        }
-        // Idempotent re-registration (e.g. a resumed session) — keep the
-        // existing token rather than rotating it.
-        await registry.put({ ...existing, stage: input.stage, lastSeen: Date.now() });
-        return { capabilityToken: existing.capabilityToken };
+    if (existing !== undefined) {
+      if (existing.state.issue !== input.issue) {
+        throw new Error(
+          `Session "${input.sessionId}" is already registered to issue "${existing.state.issue}" ` +
+            `and cannot be reassigned to "${input.issue}".`,
+        );
       }
+      // Idempotent re-registration (e.g. a resumed session) — keep the
+      // existing token rather than rotating it.
+      await existing.patchState({ stage: input.stage, lastSeen: Date.now() });
+      return { capabilityToken: existing.state.capabilityToken };
+    }
 
-      const now = Date.now();
-      const capabilityToken = randomUUID();
-      await registry.put({
-        sessionId: input.sessionId,
+    const now = Date.now();
+    const capabilityToken = randomUUID();
+    await sessions.create(
+      { sessionId: input.sessionId },
+      {
         issue: input.issue,
         stage: input.stage,
         status: null,
@@ -47,8 +49,8 @@ export function buildRegisterSession(registry: SessionRegistryStore) {
         capabilityToken,
         registeredAt: now,
         lastSeen: now,
-      });
-      return { capabilityToken };
-    },
-  });
-}
+      },
+    );
+    return { capabilityToken };
+  },
+});

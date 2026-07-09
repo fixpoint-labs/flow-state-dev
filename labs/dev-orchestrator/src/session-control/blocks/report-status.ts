@@ -15,34 +15,35 @@ import {
   reportStatusOutputSchema,
   type ReportStatusOutput,
 } from "../schemas";
-import type { SessionRegistryStore } from "../registry";
+import { sessionRegistryCollection } from "../registry";
 import { boardStateForStatus } from "../status-map";
 import type { LinearStatusClient } from "../../signals/linear";
 
-export function buildReportStatus(registry: SessionRegistryStore, board: LinearStatusClient) {
+export function buildReportStatus(board: LinearStatusClient) {
   return handler({
     name: "report-status",
     inputSchema: reportStatusInputSchema,
     outputSchema: reportStatusOutputSchema,
-    execute: async (input): Promise<ReportStatusOutput> => {
-      const existing = await registry.get(input.sessionId);
-      if (existing === null) {
+    resources: { sessions: sessionRegistryCollection },
+    execute: async (input, ctx): Promise<ReportStatusOutput> => {
+      const sessions = ctx.resources.sessions;
+      const existing = await sessions.getOptional({ sessionId: input.sessionId });
+      if (existing === undefined) {
         throw new Error(`Session "${input.sessionId}" is not registered. Call registerSession first.`);
       }
-      if (existing.capabilityToken !== input.capabilityToken) {
+      if (existing.state.capabilityToken !== input.capabilityToken) {
         throw new Error(`Invalid capability token for session "${input.sessionId}".`);
       }
 
-      await registry.put({
-        ...existing,
+      await existing.patchState({
         status: input.status,
-        prNumber: input.prNumber ?? existing.prNumber,
+        prNumber: input.prNumber ?? existing.state.prNumber,
         lastSeen: Date.now(),
       });
 
-      const target = boardStateForStatus({ stage: existing.stage, status: input.status });
+      const target = boardStateForStatus({ stage: existing.state.stage, status: input.status });
       if (target !== null) {
-        await board.transitionTo(existing.issue, target);
+        await board.transitionTo(existing.state.issue, target);
       }
 
       return { acknowledged: true };

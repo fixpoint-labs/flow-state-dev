@@ -415,9 +415,6 @@ importers:
       '@flow-state-dev/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
-      '@flow-state-dev/testing':
-        specifier: workspace:*
-        version: link:../../packages/testing
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13

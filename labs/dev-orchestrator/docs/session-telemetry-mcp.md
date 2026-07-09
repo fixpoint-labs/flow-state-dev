@@ -58,8 +58,11 @@ framework already supports, so this is mostly assembly.
   scoped token is validated.
 - **Stateless v1.** Every `tools/call` spins a fresh flow session
   (`sessionId: undefined`, no `Mcp-Session-Id`). Consequence: registry state
-  can't live in flow-session state — it must be rows in a store the actions
-  read/write. That's simpler anyway: no durable suspend/resume in this flow.
+  can't live in *session*-scope state — session-scope storage is keyed by that
+  ephemeral per-call `sessionId` and never survives to the next call. It can
+  live in *user*-scope state, though (see "The session-control flow"), which
+  is what the actual implementation uses. No durable suspend/resume needed in
+  this flow either way.
 - **Mounts alongside HTTP.** `createFlowApiRouter({ adapters: [createMcpTransportAdapter()] })`
   serves the *same actions* over both the MCP route (`/:kind/mcp`) and the plain
   HTTP action route (`POST /api/flows/:kind/actions/:actionName`, router.ts:98).
@@ -90,10 +93,12 @@ cloud Claude session  (dispatched for a specific issue; the agent is TOLD its
                                           │
                         ┌─────────────────┴─────────────────┐
                         ▼                                     ▼
-                 session registry store              Linear board writes
-                 (hosted DB: sessionId, issue,        (the flow owns ALL
-                  capabilityToken, status,             transitions, validated)
-                  registeredAt, lastSeen)
+              user-scoped resource collection        Linear board writes
+              (sessionId, issue, stage, status,       (the flow owns ALL
+               prNumber, capabilityToken,              transitions, validated)
+               registeredAt, lastSeen — persisted
+               via whatever store adapter the
+               deployment configures)
                                           ▲
                         liveness sweep (reads the REGISTRY, not Linear):
                         lastSeen older than N min → escalate / mark stalled
@@ -128,11 +133,26 @@ deferred (see Open questions): no verified hook mechanism exists to drive one,
 and inventing an unverified one isn't worth it until the agent's natural
 status cadence proves too coarse for the liveness sweep.
 
-Registry row (one `sessions` table, hosted DB):
+**Registry storage: a user-scoped FSD resource collection, not a bespoke
+store.** One instance per `sessionId` (`{issue, stage, status, prNumber,
+capabilityToken, registeredAt, lastSeen}`), via `defineResourceCollection`.
+This only works because the flow's `authentication.resolvePrincipal` always
+resolves the same fixed `userId` — there's no real end user, so every MCP
+call, from every Claude session, lands on the same identity, which turns
+"user scope" into shared storage for this flow rather than per-caller data.
+Session scope was ruled out for the reason above (resets every call); user
+scope survives specifically because of that fixed-principal choice. Keyed
+flat by `sessionId` (not `issue`-prefixed) so the reject-on-reassignment
+check stays an O(1) lookup — enumerating sessions by issue would cost an
+O(n) `list()` + filter under this scheme, which is no worse than a bespoke
+store would've been and isn't needed by either current action, so an
+issue-prefixed collection pattern is left for whenever a real consumer
+(the liveness sweep, a dashboard) asks for it.
 
-```
-sessionId · issue · stage · status · prNumber? · capabilityToken · registeredAt · lastSeen
-```
+This buys real persistence for free: the collection is durable under
+whatever store adapter a real deployment configures (`@flow-state-dev/store-postgres`
+already exists for this), not a hand-rolled schema — see the narrowed
+"Registry store" open question below.
 
 ## Registration is agent-driven, not hook-driven
 
@@ -214,6 +234,17 @@ anywhere yet — a materially harder problem than reading one out of `git log`.
 Reasonable to leave unaddressed for a lab exploration rather than engineer
 against now.
 
+**What the prototype actually implements today.** The capability-token
+mechanism above is built and tested. The shared admission token is not — the
+prototype's `resolvePrincipal` unconditionally returns a fixed principal for
+every caller, with no bearer-token check at all. That's fine for a lab
+exploration with no real deployment, but worth being explicit about: the
+admission layer is designed, not yet built. It belongs at the host level
+(`createFlowApiRouter`'s own `resolvePrincipal` / middleware, checked before
+the flow's), not inside `resolvePrincipal`'s fixed-principal trick — that
+trick exists to make user-scope resource routing work, not to authenticate
+anyone.
+
 ## Relationship to the choreography redesign
 
 Complementary, not competing — different axis (work-state vs agent-state). But it
@@ -233,8 +264,14 @@ reused here.
   "Registration is agent-driven"). MCP server pickup from a committed
   `.mcp.json` is the one remaining transport-level unknown; needs a quick
   empirical check before wiring a real hook or skill against it.
-- **Registry store.** Stateless serverless rules out `store-sqlite`. Needs a
-  hosted DB (Vercel Postgres or similar). One small table.
+- **Registry store adapter.** Narrowed by the resource-collection design (see
+  "The session-control flow"): no bespoke schema needed, just the right store
+  adapter. Stateless serverless still rules out `store-sqlite` (a single file
+  doesn't survive across ephemeral function instances) — `@flow-state-dev/store-postgres`
+  is the existing candidate for a real Vercel deployment. Still open: which
+  Postgres, and whether `createFlowApiRouter({ stores })` is the only wiring
+  needed or a real host-level `resolvePrincipal` (see Security) needs to land
+  first.
 - **Status ↔ board mapping ownership.** Keep the `status → Linear state` map a
   pure function (same discipline as the choreography note's `state → action`
   map), tested in isolation and consulted by `reportStatus`.
@@ -245,10 +282,15 @@ reused here.
 
 ## Sequencing
 
-1. **Prototype the flow in isolation.** A `session-control` flow with the two
-   actions + a fake board client, proving actions-as-MCP-tools and the
-   status→transition path under unit tests. No deployment, no real Claude. This
-   is the cheap kernel and it stays entirely in the lab.
+1. **Prototype the flow in isolation — done.** The `session-control` flow with
+   the two actions, a user-scoped resource-collection registry, and a fake
+   board client, proving actions-as-MCP-tools and the status→transition path.
+   Tested at three levels: the pure status→state map, business logic via
+   `runAction` against shared in-memory stores, and a full round-trip through
+   the real MCP JSON-RPC transport (`createMcpTransportAdapter` +
+   `createFlowApiRouter`) — including the forged-token rejection surfacing as
+   a proper MCP tool error. No deployment, no real Claude; stays entirely in
+   the lab (`labs/dev-orchestrator/src/session-control/`).
 2. **Confirm the one remaining unknown** — does the cloud runner load a
    repo-root `.mcp.json`? — before building the hosted piece.
 3. **Wire one hook + one skill step** against a locally-run flow to prove the
