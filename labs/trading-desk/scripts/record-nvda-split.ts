@@ -53,6 +53,7 @@ const report = await repo.ingestLedgerEvents(
       externalId: null,
       description: "NVIDIA 10-for-1 stock split (effective 2024-06-10)",
       basisUnknown: null,
+      proceedsUnknown: null,
       attributes: { numerator: 10, denominator: 1 },
     },
   ],

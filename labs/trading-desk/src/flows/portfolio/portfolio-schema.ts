@@ -20,8 +20,9 @@
  */
 import { z } from "zod";
 
-/** Account tax/registration type. Drives no logic in v1 (display chip only),
- *  but it is the field a future tax-lot / wash-sale model keys off. */
+/** Account tax/registration type. Gates the FIX-874 tax estimate: only
+ *  `type === "taxable"` accounts' realized gains and income feed the estimate
+ *  (IRA/Roth/401k are tax-advantaged and excluded). Also a display chip. */
 export const accountTypeSchema = z.enum(["taxable", "IRA", "Roth", "401k"]);
 export type AccountType = z.infer<typeof accountTypeSchema>;
 

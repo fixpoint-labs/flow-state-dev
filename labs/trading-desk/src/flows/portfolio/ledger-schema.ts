@@ -63,9 +63,11 @@ export function splitRatio(attrs: SplitAttributes): number {
   return attrs.numerator / attrs.denominator;
 }
 
-/** Which feed wrote a row. `manual` is the only writer in this PR; `file`
- *  (FIX-775) and `plaid` (FIX-853) write through the same contract. */
-export const ledgerSourceSchema = z.enum(["manual", "file", "plaid"]);
+/** Which feed wrote a row. `manual`, `file` (FIX-775 import), `plaid` (FIX-853
+ *  sync), and `provider` — the split backfill, which materializes `split` events
+ *  from a market-data provider (Yahoo) for tickers whose corporate actions the
+ *  import missed. All write through the same ingest contract. */
+export const ledgerSourceSchema = z.enum(["manual", "file", "plaid", "provider"]);
 export type LedgerSource = z.infer<typeof ledgerSourceSchema>;
 
 /** An ISO `YYYY-MM-DD` calendar date. Validated at the boundary so a bad date
@@ -105,6 +107,14 @@ export const ledgerEventInputObject = z.object({
   externalId: z.string().nullable().default(null),
   description: z.string().nullable().default(null),
   basisUnknown: z.string().nullable().default(null),
+  /** Reason a `sell`'s cash proceeds are unknown — set by a feed normalizer
+   *  (FIX-775's OFX importer on a no-`TOTAL`/no-`UNITPRICE` sell) when the file
+   *  couldn't supply the amount. Realized-gains derivation (FIX-874) nulls
+   *  proceeds/gain and excludes such a row rather than fabricating a full loss
+   *  off a placeholder `amount:0`; a genuine $0 sale leaves this null. Import-only
+   *  — the manual route forces it null so a caller can't blank a real sale's
+   *  proceeds. */
+  proceedsUnknown: z.string().nullable().default(null),
   /** Corporate-action payload (FIX-876). Non-null ONLY for a `split`, where it
    *  parses as {@link splitAttributesSchema}; null for every other kind. The
    *  cross-field {@link refineLedgerEvent} enforces that boundary. `unknown` so
@@ -204,6 +214,9 @@ export type LedgerRow = {
   externalId: string | null;
   description: string | null;
   basisUnknown: string | null;
+  /** Reason a `sell`'s proceeds are unknown (import placeholder); null otherwise.
+   *  Drives FIX-874's realized-gains exclusion. */
+  proceedsUnknown: string | null;
   /** Corporate-action payload (FIX-876) — the split ratio for a `split` row,
    *  null for every other kind. Typed here (not `unknown`) so `deriveLots` reads
    *  `numerator`/`denominator` with types. */

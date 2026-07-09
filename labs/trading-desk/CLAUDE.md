@@ -311,9 +311,10 @@ the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice)
   for the seed + UI. The Drizzle tables (`src/db/schema.ts`) are the persistence.
   These zod schemas are NOT generator outputs, so `.default()` / `.nullable()`
   are fine (BP-016 only constrains generator outputs) — do NOT add them to
-  `output-schemas-strict.spec.ts`. Cost basis is **average cost (informational)**,
-  forward-compatible to tax-lots; tax-lots / realized P/L / dividends are
-  documented future seams, not built.
+  `output-schemas-strict.spec.ts`. Cost basis is **average cost (informational)**
+  on the holdings snapshot; **realized gains** are now derived and persisted
+  per-lot (FIX-874, see below) and **dividends/interest** are aggregated from the
+  ledger (FIX-774). Specific-lot tax-lots and wash-sale math remain deferred.
 - **CSV import** (`portfolio-csv.ts`) is a PURE, browser-safe parser: a synonym
   table maps real brokerage headers, bad rows are REPORTED (with 1-based row
   numbers) never thrown, duplicate tickers merge to a quantity-weighted average
@@ -468,7 +469,8 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   basis allocation are deferred.
 
 - **Income is aggregated from the ledger at read time (`getIncomeSummary`).**
-  Dividends + interest per `(account, ticker)`, summing non-voided events —
+  Dividends + interest per `(account, ticker)`, summing non-voided events (FIX-874
+  adds a year-dimensioned `getIncomeSummaryByYear` alongside it) —
   deliberately NOT a holdings column, because income survives a position closing
   (the holdings row is deleted; the dividends were still earned). Ticker-less
   rows are account-level income (interest, MMF sweeps). Read via
@@ -605,6 +607,19 @@ pre-split lots with the larger post-split sells, netted the position negative, a
   and repopulates from the file (behind a typed `REPLACE` confirmation that warns
   it removes manual entries), via `repo.replaceLedgerFromFile`.
 
+- **Provider split backfill (`backfillSplits`).** The bulk complement to the
+  per-ticker resolve flow: a "Backfill splits" button on the Portfolio pane
+  (`POST /api/portfolio/splits/backfill`) fetches every held ticker's split
+  history from Yahoo (keyless, `fetchYahooSplits` in the analysis providers —
+  dotted class shares normalized `BRK.B → BRK-B`, one retry on a flaky 404) and
+  materializes the missing `split` events (`source: "provider"`, the same
+  `attributes: { numerator, denominator }` shape) through `ingestLedgerEvents`.
+  Only splits on/after the account's first trade in the ticker are written; a
+  per-ticker provider failure is collected, not fatal; idempotent (a re-run, or
+  an OFX/manual split of the same date, dedups on the fingerprint). The domain
+  function takes the fetcher as a parameter (`SplitFetcher`) so the portfolio
+  layer doesn't import the provider layer and tests inject a stub.
+
 - **The NVDA data fix** is a one-time recorded event, not a schema hack:
   `pnpm --filter @flow-state-dev/trading-desk nvda-split` records the 2024-06-10
   10:1 split into `WF: Investing Accounts` through the real `ingestLedgerEvents`
@@ -627,6 +642,98 @@ pre-split lots with the larger post-split sells, netted the position negative, a
   (existing accounts re-materialize only when next touched). Return-of-capital /
   option closures / spinoffs / mergers / cash-in-lieu math / multi-currency and a
   forward splits feed (FIX-804) stay out of scope.
+
+## Realized gains + tax estimate (FIX-874)
+
+The realized side of the book — every sale's gain/loss, short/long classified,
+plus a rough current-year tax estimate. A planning estimate, explicitly not
+filing-grade. Full methodology in [`docs/tax-estimate.md`](docs/tax-estimate.md).
+
+- **Derivation & persistence.** `deriveLots` (`lots.ts`) now returns a third
+  `disposals` array (`RealizedDisposal`, `realized-gains.ts`) — one record per
+  (sell event × consumed FIFO lot), emitted ONLY on `type === "sell"` (a
+  `transfer`-out consumes lots but is not a taxable disposition).
+  `materializeRealizedGains` (`repository.ts`) mirrors `materializePositions`:
+  a full recompute into `app.realized_gains` on the SAME ingest/void seam, so
+  realized gains stay live and **retract on a void**. Unlike
+  `materializePositions`, its DELETE is UNCONDITIONAL (no early-return) — an
+  all-voided account must clear its stale rows. Concurrency is a per-account
+  `pg_advisory_xact_lock` (acquired in SORTED account order — deadlock-free),
+  with `(disposal_event_id, lot_index)` unique as defense-in-depth. Exported
+  `backfillRealizedGains()` is the rollout surface (loop every account under the
+  lock; idempotent) — run from BOTH the deploy migrator (`scripts/migrate.ts`)
+  AND dev startup (`lib/portfolio-db.ts`, the PGlite branch), so sells imported
+  before the migration materialize without waiting for a later ingest/void in
+  either environment.
+- **Honest basis, two axes (never zero-filled).** Term follows the
+  acquisition-DATE axis (a transfer-in or over-sell → `term: "unknown"`);
+  `costBasis`/`gain` follow the amount-known axis (a no-price buy → null gain, a
+  currency mismatch → null both). A disposal feeds the ST/LT tax buckets only
+  when `gain !== null` AND `term !== "unknown"`; the rest surface as
+  `basisUnknownProceeds`/count. `holding-period.ts` (`longBoundary` +
+  `classifyTerm`) is the ONE copy of the IRS ST/LT rule — `holding-term.ts`
+  imports `longBoundary` from it (BP-034).
+- **An over-sold sale's gains are excluded, not phantom.** When a sale over-sells
+  (a post-split sale against pre-split lots before the split is backfilled),
+  `deriveLots` nulls the `costBasis`/`gain` of EVERY lot it matched — not just the
+  unmatched remainder — with `basisUnknown: "oversold-unreconciled"`, keeping the
+  real proceeds. The matched lots are in mismatched units, so their gains are
+  untrustworthy; nulling them keeps the tax estimate from reporting a fabricated
+  loss (the holdings row is already flagged `inconsistent_history`). They
+  self-heal once the split is recorded and the sale reconciles.
+- **Totals sum the KNOWN portion of a mixed rolled-up row.** When a priced
+  disposal and a basis-unknown one share a `(ticker, year, term, currency)` group,
+  the display row reads "—" (one null contributor), but the year/grand/account
+  totals still count the known gain and note the exact excluded-disposal count —
+  the row model carries `knownGain` / `unknownGainCount` alongside the collapsed
+  display `gain` so a mixed group never drops its known gain from the total
+  (`realized-gains-row-model.ts`).
+- **Proceeds-unknown marker.** An OFX sell with no `TOTAL`/`UNITPRICE` is
+  recorded with a `proceedsUnknown` reason (`ledger_events.proceeds_unknown`),
+  so derivation nulls proceeds/gain and excludes it rather than fabricating a
+  loss off `amount:0`. The marker joins `computeFingerprint` **only when set**,
+  so a placeholder can't dedup-collide with a genuine $0 sale while genuine rows
+  keep byte-identical hashes (no fingerprint-recompute migration). Import-only —
+  the manual route forces it null.
+- **Shared ingest invariant + currency.** `ingestLedgerEvents` (the one boundary
+  every writer funnels through — manual, file, future Plaid) enforces the
+  share-event invariant (only buy/sell/transfer carry a non-null quantity; a
+  quantity-bearing row needs a ticker; buy `+`, sell `−`, transfer either) — a
+  violation throws + rolls back the batch — and normalizes `currency`
+  (`.trim().toUpperCase()` + 3-letter check) so the tax route's exact
+  `currency === "USD"` filter is trustworthy.
+- **Year-dimensioned income.** `getIncomeSummaryByYear` groups by
+  `(account, ticker, year, currency)` alongside the untouched all-time
+  `getIncomeSummary`.
+- **Tax profile + upper-bound estimate.** `app.tax_profiles` (filing status +
+  marginal ordinary rate + LTCG rate + optional flat state rate). The estimate
+  (`tax-estimate.ts`, `estimateTaxLiability`) is a deliberate UPPER BOUND — user
+  rates applied directly to each bucket, no bracket tables. Keeps ST/LT netting +
+  Schedule-D cross-net, the $3k/$1.5k-MFS loss cap + carryforward (display-only),
+  per-bucket income floors, and a taxable-account/USD filter
+  (`summarizeForTaxEstimate`, shared by the route and its goal-check test). Only
+  `account.type === "taxable"` accounts feed it.
+- **REST.** One composite `GET /api/portfolio/tax?userId&year` (profile +
+  all-year realized + all-year income-by-year + the current-year estimate,
+  composed in-handler via the pure leaf — no `getTaxEstimate` method); `year`
+  scopes ONLY the estimate; `PUT /api/portfolio/tax-profile` writes the profile.
+- **UI.** A per-account **Realized Gains** tab (`realized-gains-table.tsx` +
+  `realized-gains-row-model.ts` — rolled up by ticker/year/term/currency, `—` for
+  null basis) and a household **tax-estimate card** + **profile dialog**
+  (`use-tax.ts`). `useTax` refetch joins the fan-out after every ledger mutation,
+  a profile save, AND every account save/delete (account type/currency and the FK
+  cascade are tax inputs).
+- **Limitations (v1).** FIFO only; sell-only realization; no wash sales /
+  corporate actions / NIIT; dividends assumed qualified; flat state rate;
+  display-approximation (JS-number) figures; multi-currency excluded from the
+  estimate. Two proceeds-unknown edges, both import-only (the marker is written
+  at import time): an OFX no-proceeds sell imported BEFORE this release was
+  stored as `amount:0` with no marker — indistinguishable from a genuine $0 sale,
+  so the backfill derives it as a real capital loss and it can't be reclassified
+  post-hoc without mis-nulling genuine $0 sales; and correcting a placeholder
+  needs a VOID + re-record, not a re-import (the corrected row shares the
+  `(account, source, externalId)` dedup key and dedups away). A
+  void-and-reimport correction path is the tracked follow-up (FIX-878).
 
 ## Per-position thesis records (FIX-760)
 

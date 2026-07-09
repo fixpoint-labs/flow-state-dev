@@ -29,7 +29,7 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { Plus, Upload, FileText, RefreshCw, Receipt, FileUp } from "lucide-react";
+import { Plus, Upload, FileText, RefreshCw, Receipt, FileUp, Split } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
 import { useResource, useFlowContext } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
@@ -42,6 +42,12 @@ import type { PortfolioQuotesState } from "@/src/flows/portfolio/portfolio-resou
 import type { ThesisInputFields } from "@/src/flows/portfolio/thesis-schema";
 import { AccountCard } from "./account-card";
 import { AccountDetail } from "./account-detail";
+import { RealizedStat } from "./realized-stat";
+import {
+  buildRealizedGainsRowModel,
+  computeRealizedGainTotals,
+  realizedTotalsByAccount,
+} from "./realized-gains-row-model";
 import { AddAccountDialog, type NewAccountDraft } from "./add-account-dialog";
 import { ImportCsvDialog, type ImportSubmit } from "./import-csv-dialog";
 import { ImportPdfDialog } from "./import-pdf-dialog";
@@ -55,9 +61,12 @@ import {
 } from "./add-transaction-dialog";
 import { ResolveSplitDialog } from "./resolve-split-dialog";
 import { ThesisDialog } from "./thesis-dialog";
+import { TaxEstimateCard } from "./tax-estimate-card";
+import { TaxProfileDialog } from "./tax-profile-dialog";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import { useLedger } from "./use-ledger";
 import { useIncome } from "./use-income";
+import { useTax } from "./use-tax";
 import { useTheses } from "./use-theses";
 import {
   holdingMarketValue,
@@ -107,12 +116,22 @@ export function PortfolioPane({
   const { accounts, refetch: refetchAccounts } = usePortfolioAccounts();
   const { events: ledgerEvents, refetch: refetchLedger } = useLedger();
   const { income, refetch: refetchIncome } = useIncome();
+  // The household tax view (profile + realized gains + current-year estimate).
+  // Its refetch joins the fan-out after every ledger mutation, account save/
+  // delete, and a tax-profile save — each of those changes a tax input.
+  const {
+    profile: taxProfile,
+    realizedGains,
+    estimate: taxEstimate,
+    refetch: refetchTax,
+  } = useTax();
   // Theses remain a user-scoped FSD resource (live client read), so this stays
   // session-based — unlike accounts/ledger/income which moved to REST routes.
   const { theses, loading: thesesLoading, refetch: refetchTheses } = useTheses(session);
   const { clientData: quotesData } = useResource(session, "portfolioQuotes");
 
   const [addOpen, setAddOpen] = useState(false);
+  const [taxProfileOpen, setTaxProfileOpen] = useState(false);
   const [addTransactionOpen, setAddTransactionOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importPdfOpen, setImportPdfOpen] = useState(false);
@@ -130,6 +149,11 @@ export function PortfolioPane({
    *  open; null shows the summary-card grid. */
   const [openAccountId, setOpenAccountId] = useState<string | null>(null);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
+  // Split backfill (FIX-874 follow-up): running state + a short result note.
+  const [splitBackfill, setSplitBackfill] = useState<{ running: boolean; note: string | null }>({
+    running: false,
+    note: null,
+  });
 
   // Holdings ride inline in each account record. Index them by accountId for
   // the per-account sections, and flatten them for the price fetch.
@@ -200,6 +224,24 @@ export function PortfolioPane({
     }
     return map;
   }, [ledgerEvents]);
+
+  // Lifetime net realized gain/loss (all years), reusing the Realized Gains
+  // tab's grand-total logic: per account (in its own currency) for the account
+  // cards, and one household figure (USD, the summary line's label) for the
+  // summary line. Basis-unknown disposals drop out honestly (excludedCount); a
+  // non-USD account nulls the household figure via the currency gate. BP-010.
+  const realizedByAccount = useMemo(
+    () =>
+      realizedTotalsByAccount(
+        realizedGains,
+        new Map(accounts.map((a) => [a.accountId, a.currency])),
+      ),
+    [realizedGains, accounts],
+  );
+  const householdRealized = useMemo(
+    () => computeRealizedGainTotals(buildRealizedGainsRowModel(realizedGains), "USD").grandTotal,
+    [realizedGains],
+  );
 
   // Price map: ticker (upper) → quote. Read from the resource the action wrote.
   const quotes = quotesData as PortfolioQuotesState | null;
@@ -355,11 +397,14 @@ export function PortfolioPane({
           ...draft,
         });
         refetchAccounts();
+        // A new account (esp. a taxable one) changes the estimate's
+        // taxable-account filter, so the tax read refetches too.
+        refetchTax();
       } catch (err) {
         console.error("[trading-desk] saveAccount failed", err);
       }
     },
-    [uid, refetchAccounts],
+    [uid, refetchAccounts, refetchTax],
   );
 
   const handleImport = useCallback(
@@ -386,15 +431,17 @@ export function PortfolioPane({
         });
         // An import writes ledger events AND materializes the derived positions
         // into holdings, so refetch the ledger, the accounts, and the income.
+        // Sells produce realized gains, so refetch the tax read too.
         refetchLedger();
         refetchAccounts();
         refetchIncome();
+        refetchTax();
         await fetchPrices();
       } catch (err) {
         console.error("[trading-desk] importTransactions failed", err);
       }
     },
-    [uid, refetchLedger, refetchAccounts, refetchIncome, fetchPrices],
+    [uid, refetchLedger, refetchAccounts, refetchIncome, refetchTax, fetchPrices],
   );
 
   const handleRecordTransaction = useCallback(
@@ -402,15 +449,17 @@ export function PortfolioPane({
       try {
         await apiMutate("/api/portfolio/ledger", "POST", { userId: uid, ...event });
         // An ingest materializes derived positions into holdings, so refetch the
-        // ledger, the accounts, and the income.
+        // ledger, the accounts, and the income. A sell realizes a gain, so
+        // refetch the tax read too.
         refetchLedger();
         refetchAccounts();
         refetchIncome();
+        refetchTax();
       } catch (err) {
         console.error("[trading-desk] recordLedgerEvent failed", err);
       }
     },
-    [uid, refetchLedger, refetchAccounts, refetchIncome],
+    [uid, refetchLedger, refetchAccounts, refetchIncome, refetchTax],
   );
 
   const handleDeleteHolding = useCallback(
@@ -443,6 +492,34 @@ export function PortfolioPane({
     [uid, refetchAccounts],
   );
 
+  // Backfill stock splits from the market-data provider (FIX-874 follow-up), then
+  // refetch every read the corrected lot derivation touches (ledger, holdings,
+  // income, and the realized-gains/tax read). Idempotent server-side.
+  const handleBackfillSplits = useCallback(async () => {
+    setSplitBackfill({ running: true, note: null });
+    try {
+      const report = (await apiMutate("/api/portfolio/splits/backfill", "POST", {
+        userId: uid,
+      })) as { inserted: number; deduplicated: number; splitsFound: number; errors: unknown[] };
+      refetchLedger();
+      refetchAccounts();
+      refetchIncome();
+      refetchTax();
+      const note =
+        report.inserted > 0
+          ? `Added ${report.inserted} split${report.inserted === 1 ? "" : "s"}; realized gains updated.`
+          : report.splitsFound > 0
+            ? "Splits already applied — nothing to add."
+            : "No splits found for your holdings.";
+      const withErrors =
+        report.errors.length > 0 ? `${note} (${report.errors.length} ticker lookup(s) failed)` : note;
+      setSplitBackfill({ running: false, note: withErrors });
+    } catch (err) {
+      console.error("[trading-desk] backfillSplits failed", err);
+      setSplitBackfill({ running: false, note: "Split backfill failed — see console." });
+    }
+  }, [uid, refetchLedger, refetchAccounts, refetchIncome, refetchTax]);
+
   const handleDeleteAccount = useCallback(
     async (accountId: string) => {
       try {
@@ -454,11 +531,14 @@ export function PortfolioPane({
         refetchAccounts();
         refetchLedger();
         refetchIncome();
+        // The FK cascade removes this account's realized-gain rows, and its
+        // type is a tax input, so refetch the tax read.
+        refetchTax();
       } catch (err) {
         console.error("[trading-desk] deleteAccount failed", err);
       }
     },
-    [uid, refetchAccounts, refetchLedger, refetchIncome],
+    [uid, refetchAccounts, refetchLedger, refetchIncome, refetchTax],
   );
 
   // Thesis writes stay flow actions (theses are a reactive user-scoped resource,
@@ -610,6 +690,24 @@ export function PortfolioPane({
           />
           Refresh prices
         </button>
+        <button
+          type="button"
+          onClick={() => void handleBackfillSplits()}
+          disabled={ledgerEvents.length === 0 || splitBackfill.running}
+          title="Fetch stock splits from market data so realized gains re-derive correctly (fixes split-mangled cost basis)"
+          className={cn(
+            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px]",
+            ledgerEvents.length === 0 || splitBackfill.running
+              ? "cursor-not-allowed opacity-50"
+              : "hover:bg-[color:var(--c-surface-2)]",
+          )}
+        >
+          <Split className={cn("h-3 w-3", splitBackfill.running && "animate-pulse")} aria-hidden />
+          {splitBackfill.running ? "Backfilling…" : "Backfill splits"}
+        </button>
+        {splitBackfill.note ? (
+          <span className="text-[10.5px] text-[color:var(--c-fg-muted)]">{splitBackfill.note}</span>
+        ) : null}
 
         <div className="ml-auto flex items-center gap-4 font-mono text-[11px] text-[color:var(--c-fg-muted)]">
           <span>
@@ -634,6 +732,9 @@ export function PortfolioPane({
             <span className="text-[color:var(--c-fg)]">
               {formatMoney(totalDividends, "USD")}
             </span>
+          </span>
+          <span>
+            total realized <RealizedStat total={householdRealized} currency="USD" />
           </span>
           {allocation.length > 0 && (
             <span>
@@ -665,6 +766,13 @@ export function PortfolioPane({
           the card-grid column count tracks the pane's width, not the viewport
           (the HoldingsTable precedent). */}
       <div className="@container flex-1 space-y-4 overflow-y-auto p-4">
+        {/* Household-level realized-gains tax preview — a standalone section
+            above the accounts. */}
+        <TaxEstimateCard
+          estimate={taxEstimate}
+          profile={taxProfile}
+          onEditProfile={() => setTaxProfileOpen(true)}
+        />
         {accounts.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
             <p className="text-sm text-[color:var(--c-fg)]">No accounts yet</p>
@@ -680,6 +788,7 @@ export function PortfolioPane({
             holdings={holdingsByAccount.get(openAccount.accountId) ?? []}
             ledgerEvents={ledgerEvents}
             income={income}
+            realizedGains={realizedGains}
             prices={priceMap}
             dividends={dividendsByAccount.get(openAccount.accountId) ?? new Map()}
             lots={lotsByAccount.get(openAccount.accountId) ?? new Map()}
@@ -722,6 +831,7 @@ export function PortfolioPane({
                   accountUpl={rollup.upl}
                   accountUplPct={rollup.uplPct}
                   accountDividends={dividendTotals.get(account.accountId) ?? null}
+                  accountRealized={realizedByAccount.get(account.accountId) ?? null}
                   onOpen={() => {
                     setOpenAccountId(account.accountId);
                     // The import/add dialogs default to the account in focus.
@@ -776,6 +886,13 @@ export function PortfolioPane({
         accounts={accounts}
         defaultAccountId={selectedAccountId ?? accounts[0]?.accountId}
         onSubmit={(event) => void handleRecordTransaction(event)}
+      />
+      <TaxProfileDialog
+        open={taxProfileOpen}
+        onClose={() => setTaxProfileOpen(false)}
+        userId={uid}
+        profile={taxProfile}
+        onSaved={() => refetchTax()}
       />
       {/* Resolve-split dialog for a flagged inconsistent-history holding
           (FIX-876). Only reachable from an open account's holdings table, so it

@@ -450,7 +450,7 @@ ${body}
       ),
     );
     expect(result.events[0]).toMatchObject({ type: "sell", quantity: -5 });
-    expect(result.warnings.some((w) => /proceeds are unknown/i.test(w))).toBe(true);
+    expect(result.warnings.some((w) => /unknown proceeds/i.test(w))).toBe(true);
   });
 
   it("derives a REINVEST amount from units × price when TOTAL is absent", async () => {
@@ -537,7 +537,7 @@ ${body}
       ),
     );
     expect(result.events[0]).toMatchObject({ type: "sell", quantity: -5, amount: 0 });
-    expect(result.warnings.some((w) => /proceeds are unknown/i.test(w))).toBe(true);
+    expect(result.warnings.some((w) => /unknown proceeds/i.test(w))).toBe(true);
   });
 
   it("skips a REINVEST with neither cash (TOTAL) nor price (UNITPRICE) — no $0 phantom DRIP", async () => {

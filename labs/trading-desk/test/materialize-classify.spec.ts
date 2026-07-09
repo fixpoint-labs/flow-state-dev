@@ -44,6 +44,7 @@ function buy(ticker: string, tradeDate = "2026-01-10"): LedgerEventInput {
     externalId: null,
     description: null,
     basisUnknown: null,
+    proceedsUnknown: null,
   };
 }
 

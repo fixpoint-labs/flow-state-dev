@@ -43,6 +43,7 @@ function evt(over: Partial<LedgerEventInput> & { type: LedgerEventInput["type"] 
     externalId: null,
     description: null,
     basisUnknown: null,
+    proceedsUnknown: null,
     attributes: null,
     ...over,
   };

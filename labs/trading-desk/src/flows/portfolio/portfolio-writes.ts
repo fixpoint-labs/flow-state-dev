@@ -31,8 +31,11 @@ import {
   ledgerEventInputObject,
   refineLedgerEvent,
   type IngestReport,
+  type LedgerEventInput,
 } from "./ledger-schema";
+import { taxProfileInputSchema, type TaxProfileInput } from "./tax-schema";
 import { detectAndParseTransactionFile } from "./transaction-file";
+import type { TaxProfileRow } from "@/src/db/repository";
 
 /** CSV import feedback (a plain handler-style result, not a generator output).
  *  `errors`/`warnings` carry the per-row + import-level notes the dialog can
@@ -70,6 +73,10 @@ export const recordEventSchema = ledgerEventInputObject
   .omit({ source: true, externalId: true })
   .superRefine(refineLedgerEvent);
 export type RecordEventInput = z.infer<typeof recordEventSchema>;
+
+/** Request body for a tax-profile save (the route re-applies `userId`). */
+export const saveTaxProfileSchema = taxProfileInputSchema;
+export type SaveTaxProfileInput = TaxProfileInput;
 
 /** Request body for a CSV holdings import. */
 export const importHoldingsSchema = z.object({
@@ -176,10 +183,42 @@ export async function recordManualEvent(
 ): Promise<IngestReport> {
   const ticker =
     input.ticker === null ? null : input.ticker.trim().toUpperCase() || null;
+  // A sell's proceeds are cash IN — non-negative by the ledger sign convention
+  // (buy `−`, sell `+`). The dialog takes a user-signed amount, so a sale entered
+  // with a negative amount would trip the share-event invariant (FIX-874) and
+  // silently fail to record. Canonicalize the sign here — the OFX importer's
+  // `Math.abs(total)` precedent — so the manual path and the invariant agree.
+  const amount = input.type === "sell" ? Math.abs(input.amount) : input.amount;
+  // The dialog's optional Quantity field can submit a literal 0. A 0 is never a
+  // valid share count: for a cash event (dividend/interest/deposit/withdrawal/fee)
+  // it's noise, and for a `transfer` it means a CASH transfer (no shares) — but
+  // the share-event invariant (FIX-874) reads any non-null quantity as a share
+  // move and throws (a cash transfer has a blank ticker), rolling back a valid
+  // entry after the dialog closed. Canonicalize a 0 to null so the invariant sees
+  // "no shares". (A buy/sell can't be a 0-share trade either — it still fails the
+  // invariant's "must carry a share quantity" check, just with a clearer error.)
+  const quantity = input.quantity === 0 ? null : input.quantity;
+  // `proceedsUnknown` is import-only (a feed normalizer's signal that a file
+  // couldn't supply proceeds). Force it null on the manual path so a caller can't
+  // null out a real sale's proceeds by hand.
   return repo.ingestLedgerEvents(
-    [{ ...input, ticker, source: "manual", externalId: null }],
+    [{ ...input, amount, quantity, ticker, source: "manual", externalId: null, proceedsUnknown: null }],
     userId,
   );
+}
+
+/**
+ * Save (create or replace) the user's tax profile (FIX-874) — filing status and
+ * the marginal/LTCG/state rates that drive the upper-bound estimate. Keyed on
+ * `userId` (the household), so a save overwrites in place. The route owns zod
+ * validation (the `ledger` route precedent).
+ */
+export async function saveTaxProfile(
+  input: SaveTaxProfileInput,
+  userId: string,
+  repo: PortfolioRepository,
+): Promise<TaxProfileRow> {
+  return repo.upsertTaxProfile(userId, input);
 }
 
 /**
@@ -332,4 +371,123 @@ export async function importTransactionFile(
     deduplicated: ingest.deduplicated,
     extraParseErrors: ingest.errors.map((e) => ({ line: null, reason: e.reason })),
   });
+}
+
+/** A market-data split lookup for one ticker over `[from, to]` (ISO dates),
+ *  returning each split's ex-date and `{ numerator, denominator }` ratio (the
+ *  FIX-876 `splitAttributesSchema` shape). The route injects the real Yahoo
+ *  fetcher (`fetchYahooSplits`); tests inject a stub. Kept as a parameter so the
+ *  portfolio domain doesn't import the analysis provider layer. */
+export type SplitFetcher = (
+  ticker: string,
+  from: string,
+  to: string,
+) => Promise<{ date: string; numerator: number; denominator: number }[]>;
+
+/** Outcome of a split backfill (a plain result, not a generator output). */
+export type SplitBackfillReport = {
+  /** Distinct tickers with share history that were looked up. */
+  tickersScanned: number;
+  /** Total splits the provider returned across those tickers. */
+  splitsFound: number;
+  /** Split events newly written to the ledger. */
+  inserted: number;
+  /** Split events that already existed (idempotent re-run, or an OFX/manual
+   *  split of the same account/ticker/date — same fingerprint). */
+  deduplicated: number;
+  /** Per-ticker provider failures — the rest still backfill (honest, not all-or-nothing). */
+  errors: { ticker: string; reason: string }[];
+};
+
+/**
+ * Backfill stock-split events for a household from a market-data provider, so
+ * realized gains re-derive correctly for tickers whose splits the original
+ * import missed — the bulk, provider-sourced complement to FIX-876's per-ticker
+ * resolve-split flow. For every `(account, ticker)` with share history it
+ * fetches the ticker's splits and writes one `split` event (the FIX-876
+ * `attributes: { numerator, denominator }` shape) per split dated on/after that
+ * account's first trade in the ticker. Ingest is idempotent — a re-run, or a
+ * later OFX re-import / manual record of the same split, dedups on the
+ * fingerprint — so this is safe to run repeatedly. A provider failure for one
+ * ticker is collected and the rest proceed. Injecting `fetchSplits`/`today`
+ * keeps it unit-testable.
+ */
+export async function backfillSplits(
+  userId: string,
+  repo: PortfolioRepository,
+  fetchSplits: SplitFetcher,
+  today: string = new Date().toISOString().slice(0, 10),
+): Promise<SplitBackfillReport> {
+  const events = await repo.getLedger(userId);
+  const SHARE_TYPES = new Set(["buy", "sell", "transfer"]);
+  // (account, ticker) with share history → its earliest trade date; a split
+  // before we ever held the ticker can't touch a lot, so it's not worth writing.
+  const earliestByAcctTicker = new Map<string, string>();
+  const tickers = new Set<string>();
+  let globalEarliest: string | null = null;
+  for (const e of events) {
+    if (e.ticker === null || !SHARE_TYPES.has(e.type)) continue;
+    const ticker = e.ticker.toUpperCase();
+    tickers.add(ticker);
+    const key = `${e.accountId} ${ticker}`;
+    const cur = earliestByAcctTicker.get(key);
+    if (cur === undefined || e.tradeDate < cur) earliestByAcctTicker.set(key, e.tradeDate);
+    if (globalEarliest === null || e.tradeDate < globalEarliest) globalEarliest = e.tradeDate;
+  }
+  if (globalEarliest === null) {
+    return { tickersScanned: 0, splitsFound: 0, inserted: 0, deduplicated: 0, errors: [] };
+  }
+
+  // One provider lookup per ticker (not per account).
+  const splitsByTicker = new Map<string, { date: string; numerator: number; denominator: number }[]>();
+  const errors: { ticker: string; reason: string }[] = [];
+  let splitsFound = 0;
+  for (const ticker of tickers) {
+    try {
+      const splits = await fetchSplits(ticker, globalEarliest, today);
+      splitsByTicker.set(ticker, splits);
+      splitsFound += splits.length;
+    } catch (err) {
+      errors.push({ ticker, reason: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  const toIngest: LedgerEventInput[] = [];
+  for (const [key, earliest] of earliestByAcctTicker) {
+    const sep = key.indexOf(" ");
+    const accountId = key.slice(0, sep);
+    const ticker = key.slice(sep + 1);
+    for (const s of splitsByTicker.get(ticker) ?? []) {
+      if (s.date < earliest) continue;
+      toIngest.push({
+        accountId,
+        type: "split",
+        tradeDate: s.date,
+        settleDate: null,
+        ticker,
+        quantity: null,
+        unitPrice: null,
+        amount: 0,
+        fee: null,
+        currency: "USD",
+        source: "provider",
+        externalId: `yahoo-split:${ticker}:${s.date}`,
+        description: `Split ${ticker} on ${s.date}`,
+        basisUnknown: null,
+        proceedsUnknown: null,
+        attributes: { numerator: s.numerator, denominator: s.denominator },
+      });
+    }
+  }
+  if (toIngest.length === 0) {
+    return { tickersScanned: tickers.size, splitsFound, inserted: 0, deduplicated: 0, errors };
+  }
+  const ingest = await repo.ingestLedgerEvents(toIngest, userId);
+  return {
+    tickersScanned: tickers.size,
+    splitsFound,
+    inserted: ingest.inserted,
+    deduplicated: ingest.deduplicated,
+    errors,
+  };
 }

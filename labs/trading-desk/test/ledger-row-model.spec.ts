@@ -38,6 +38,7 @@ function row(overrides: Partial<LedgerRow> = {}): LedgerRow {
     externalId: null,
     description: null,
     basisUnknown: null,
+    proceedsUnknown: null,
     attributes: null,
     voidedAt: null,
     createdAt: "2026-05-06T00:00:00.000Z",

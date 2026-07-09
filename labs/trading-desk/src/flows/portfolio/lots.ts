@@ -26,10 +26,20 @@
  * with no price) carries `costPerShare: null` and is flagged — NEVER zero-filled
  * (zero-fill would massively overstate realized gains).
  */
+import { classifyTerm } from "./holding-period";
 import { splitRatio, type LedgerRow } from "./ledger-schema";
+import type { RealizedDisposal } from "./realized-gains";
 
 /** Floating-point tolerance for treating a residual share quantity as closed. */
 const QTY_EPSILON = 1e-9;
+
+/** `basisUnknown` reason stamped on the MATCHED disposals of an over-sold sale
+ *  (FIX-876). An over-sell means an unaccounted corporate action (usually a
+ *  missing split), so the lots the sale consumed are in mismatched units and
+ *  their gains are phantom — nulled so the tax estimate (which keys on
+ *  `gain !== null`) excludes them until the split is backfilled and the sale
+ *  reconciles. The proceeds (real cash received) are kept. */
+const OVERSOLD_BASIS_UNKNOWN = "oversold-unreconciled";
 
 /** One open acquisition lot: a dated parcel of shares at a per-share cost. */
 export type Lot = {
@@ -57,8 +67,20 @@ export type DerivedPosition = {
   hasUnknownBasis: boolean;
 };
 
-/** A mutable open lot used while reducing the event stream. */
-type OpenLot = { quantity: number; costPerShare: number | null; acquiredDate: string };
+/** A mutable open lot used while reducing the event stream. Beyond the fields
+ *  the open-position rollup needs, it carries the provenance a realized
+ *  disposal reads when the lot is consumed: whether the acquisition DATE is a
+ *  true acquisition (a `buy`) vs an arrival (`transfer`-in → unknown term), the
+ *  acquisition currency (a differing sell currency nulls the gain), and the
+ *  basis-unknown reason string. */
+type OpenLot = {
+  quantity: number;
+  costPerShare: number | null;
+  acquiredDate: string;
+  acquisitionDateKnown: boolean;
+  currency: string;
+  basisUnknownReason: string | null;
+};
 
 /**
  * Reduce a ledger event stream into current positions and their open lots.
@@ -75,6 +97,7 @@ type OpenLot = { quantity: number; costPerShare: number | null; acquiredDate: st
 export function deriveLots(events: LedgerRow[]): {
   positions: DerivedPosition[];
   lots: Lot[];
+  disposals: RealizedDisposal[];
   oversold: Set<string>;
 } {
   // Order by trade date; within a single day, a split is applied FIRST (it is
@@ -105,6 +128,7 @@ export function deriveLots(events: LedgerRow[]): {
     });
 
   const open = new Map<string, OpenLot[]>();
+  const disposals: RealizedDisposal[] = [];
   const oversold = new Set<string>();
 
   for (const { e } of ordered) {
@@ -129,19 +153,42 @@ export function deriveLots(events: LedgerRow[]): {
     const qty = e.quantity as number;
     if (qty > 0) {
       // Acquisition: cost is the unit price, else derived from amount/qty, but a
-      // flagged basis-unknown transfer-in stays null (never inferred).
+      // flagged basis-unknown transfer-in stays null (never inferred). A `buy`'s
+      // trade date IS the acquisition; a `transfer`-in's is only when it arrived
+      // in this account, so its consumed disposals classify term "unknown".
       const derivedCost =
         e.unitPrice ?? (e.amount !== 0 ? Math.abs(e.amount / qty) : null);
       const costPerShare = e.basisUnknown !== null ? null : derivedCost;
       const lots = open.get(ticker) ?? [];
-      lots.push({ quantity: qty, costPerShare, acquiredDate: e.tradeDate });
+      lots.push({
+        quantity: qty,
+        costPerShare,
+        acquiredDate: e.tradeDate,
+        acquisitionDateKnown: e.type === "buy",
+        currency: e.currency,
+        basisUnknownReason: e.basisUnknown,
+      });
       open.set(ticker, lots);
     } else {
-      // Disposal: consume open lots oldest-first.
-      let remaining = -qty;
+      // Disposal: consume open lots oldest-first. A realized record is emitted
+      // ONLY for a `sell` (a taxable disposition); a `transfer`-out consumes
+      // lots but produces no gain. Consumption stays sign-driven for both.
+      const isSell = e.type === "sell";
+      const totalSellQty = -qty;
+      let remaining = totalSellQty;
+      let lotIndex = 0;
       const lots = open.get(ticker) ?? [];
+      // Buffer THIS sale's matched disposals: whether the sale over-sold isn't
+      // known until the loop finishes, and an over-sell retroactively taints
+      // every lot it consumed (mismatched units), not just the remainder.
+      const sellDisposals: RealizedDisposal[] = [];
       while (remaining > QTY_EPSILON && lots.length > 0) {
         const lot = lots[0];
+        const consumed = Math.min(lot.quantity, remaining);
+        if (isSell) {
+          sellDisposals.push(makeDisposal(e, lot, consumed, totalSellQty, lotIndex));
+          lotIndex += 1;
+        }
         if (lot.quantity <= remaining + QTY_EPSILON) {
           remaining -= lot.quantity;
           lots.shift();
@@ -150,11 +197,27 @@ export function deriveLots(events: LedgerRow[]): {
           remaining = 0;
         }
       }
-      // Disposals drained everything and still had shares left to sell — an
-      // over-sell that (post-rebase) can only happen with an unaccounted corporate
-      // action. Clamp to no negative position, but SIGNAL it so the caller can
-      // flag the position rather than silently treat it as a clean close.
-      if (remaining > QTY_EPSILON) oversold.add(ticker);
+      const overSold = remaining > QTY_EPSILON;
+      if (isSell && overSold) {
+        // The sale consumed every open lot and STILL has a remainder — an
+        // over-sell (a post-split sale against pre-split lots before the split is
+        // backfilled). The lots it did match are in mismatched units, so their
+        // gains are phantom: null each one's basis/gain (keeping real proceeds) so
+        // the tax estimate excludes them (honest over silently-wrong, FIX-874/876)
+        // instead of reporting a fabricated loss. They self-heal once the missing
+        // split is recorded and the sale reconciles.
+        for (const d of sellDisposals) {
+          disposals.push({ ...d, costBasis: null, gain: null, basisUnknown: OVERSOLD_BASIS_UNKNOWN });
+        }
+        // The unmatched remainder (no open lot left) surfaces as an
+        // unknown-acquisition disposal so it isn't dropped.
+        disposals.push(makeUnmatchedDisposal(e, remaining, totalSellQty, lotIndex));
+      } else {
+        for (const d of sellDisposals) disposals.push(d);
+      }
+      // SIGNAL the over-sell (FIX-876) so the caller can flag the position or
+      // attempt a split auto-resolve rather than treat it as a clean close.
+      if (overSold) oversold.add(ticker);
       open.set(ticker, lots);
     }
   }
@@ -195,7 +258,95 @@ export function deriveLots(events: LedgerRow[]): {
     });
   }
 
-  return { positions, lots, oversold };
+  return { positions, lots, disposals, oversold };
+}
+
+/** Allocate a sell's proceeds to one consumed lot and classify the outcome. The
+ *  two provenance axes stay separate: `term` follows the acquisition-DATE axis
+ *  (`acquisitionDateKnown`), `costBasis`/`gain` follow the basis axis, and a
+ *  currency mismatch (a differing-currency sell consuming this lot) nulls the
+ *  basis side so a `USD proceeds − EUR basis` non-number is never surfaced. A
+ *  proceeds-unknown import placeholder nulls proceeds (and therefore gain),
+ *  keeping any known basis. */
+function makeDisposal(
+  e: LedgerRow,
+  lot: OpenLot,
+  consumed: number,
+  totalSellQty: number,
+  lotIndex: number,
+): RealizedDisposal {
+  // Proceeds are the MAGNITUDE of the sell amount — cash received is non-negative.
+  // The ingest invariant now rejects a negative sell amount, but a legacy manual
+  // sell recorded before that guard (the old dialog allowed "negative = cash out")
+  // can still sit in the ledger; `abs` keeps the backfill from materializing
+  // negative proceeds / an inflated loss. A proceeds-unknown placeholder still
+  // nulls it.
+  const proceeds =
+    e.proceedsUnknown !== null ? null : (consumed / totalSellQty) * Math.abs(e.amount);
+  const acquiredDate = lot.acquisitionDateKnown ? lot.acquiredDate : null;
+  let costBasis: number | null;
+  let gain: number | null;
+  let basisUnknown: string | null;
+  if (lot.currency !== e.currency) {
+    costBasis = null;
+    gain = null;
+    basisUnknown = "currency-mismatch";
+  } else if (lot.costPerShare === null) {
+    costBasis = null;
+    gain = null;
+    basisUnknown = lot.basisUnknownReason ?? "basis-unknown";
+  } else {
+    costBasis = consumed * lot.costPerShare;
+    if (proceeds === null) {
+      gain = null;
+      basisUnknown = e.proceedsUnknown;
+    } else {
+      gain = proceeds - costBasis;
+      basisUnknown = null;
+    }
+  }
+  return {
+    ticker: e.ticker as string,
+    disposedDate: e.tradeDate,
+    acquiredDate,
+    quantity: consumed,
+    proceeds,
+    costBasis,
+    gain,
+    term: classifyTerm(acquiredDate, e.tradeDate),
+    currency: e.currency,
+    basisUnknown,
+    disposalEventId: e.id,
+    lotIndex,
+  };
+}
+
+/** The unmatched remainder of an over-sell — real proceeds, no acquisition lot,
+ *  so acquisition/term/basis are all unknown but the sale stays visible. */
+function makeUnmatchedDisposal(
+  e: LedgerRow,
+  remaining: number,
+  totalSellQty: number,
+  lotIndex: number,
+): RealizedDisposal {
+  // `abs` for the same reason as makeDisposal — a legacy negative sell amount
+  // must not surface as negative proceeds on the unmatched remainder.
+  const proceeds =
+    e.proceedsUnknown !== null ? null : (remaining / totalSellQty) * Math.abs(e.amount);
+  return {
+    ticker: e.ticker as string,
+    disposedDate: e.tradeDate,
+    acquiredDate: null,
+    quantity: remaining,
+    proceeds,
+    costBasis: null,
+    gain: null,
+    term: "unknown",
+    currency: e.currency,
+    basisUnknown: e.proceedsUnknown ?? "no-acquisition-lot",
+    disposalEventId: e.id,
+    lotIndex,
+  };
 }
 
 /** Standard split ratios an inferred cliff is snapped to (forward; a reverse
@@ -244,6 +395,7 @@ function syntheticSplitRow(ticker: string, s: InferredSplit): LedgerRow {
     externalId: null,
     description: null,
     basisUnknown: null,
+    proceedsUnknown: null,
     attributes: { numerator: s.numerator, denominator: s.denominator },
     voidedAt: null,
     createdAt: s.tradeDate,

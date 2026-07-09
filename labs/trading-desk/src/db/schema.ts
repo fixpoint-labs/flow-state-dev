@@ -23,6 +23,7 @@ import {
   boolean,
   date,
   index,
+  integer,
   jsonb,
   numeric,
   pgSchema,
@@ -155,6 +156,11 @@ export const ledgerEvents = appSchema.table(
     fingerprint: text("fingerprint").notNull(),
     description: text("description"),
     basisUnknown: text("basis_unknown"),
+    // Reason a `sell`'s proceeds are unknown — set by a feed normalizer (FIX-775
+    // OFX importer) on a no-`TOTAL`/no-`UNITPRICE` sell. FIX-874's realized-gains
+    // derivation nulls proceeds/gain and excludes such a row rather than
+    // fabricating a loss off a placeholder `amount:0`; null for a genuine sale.
+    proceedsUnknown: text("proceeds_unknown"),
     // Corporate-action payload (FIX-876) — the `{ numerator, denominator }` split
     // ratio for a `split` event, null for every other kind (enforced at the zod
     // boundary in `ledger-schema.ts`). A nullable jsonb column (the
@@ -180,3 +186,73 @@ export const ledgerEvents = appSchema.table(
       .where(sql`${table.externalId} is not null`),
   ],
 );
+
+/**
+ * Persisted realized capital gains (FIX-874) — one row per (disposal event ×
+ * consumed FIFO lot), the tax-facing artifact `deriveLots(...).disposals`
+ * discards today. Materialized on the same ingest/void seam as positions
+ * (`materializeRealizedGains`), so it stays live and retracts on void; matches
+ * Form 8949's per-lot granularity (a single sale can be part short, part long).
+ *
+ * The two provenance axes are stored independently: `acquired_date`/`term`
+ * follow the acquisition-DATE axis (null/`"unknown"` for a transfer-in or an
+ * over-sell remainder), while `cost_basis`/`gain`/`proceeds` follow the
+ * amount-known axis (null when basis unknown, proceeds unknown, or the sell
+ * currency differs from the lot's). `proceeds` is nullable ONLY for a
+ * proceeds-unknown import placeholder — a genuine $0 sale stores `0`.
+ *
+ * Concurrency: the table is fully recomputed (delete-all + re-insert per
+ * account) inside the ingest/void transaction under a per-account
+ * `pg_advisory_xact_lock`; the `(disposal_event_id, lot_index)` unique index is
+ * defense-in-depth for the empty-table double-insert window.
+ */
+export const realizedGains = appSchema.table(
+  "realized_gains",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    ticker: text("ticker").notNull(),
+    disposedDate: date("disposed_date", { mode: "string" }).notNull(),
+    acquiredDate: date("acquired_date", { mode: "string" }), // null when acquisition unknown
+    quantity: numeric("quantity").notNull(),
+    proceeds: numeric("proceeds"), // null only for a proceeds-unknown import placeholder
+    costBasis: numeric("cost_basis"), // null when basis unknown
+    gain: numeric("gain"), // null when proceeds or basis unknown
+    term: text("term").notNull(), // 'short' | 'long' | 'unknown' (enum at the zod boundary)
+    currency: text("currency").notNull(), // the disposal sell event's currency (row-level)
+    basisUnknown: text("basis_unknown"), // reason string, mirrors the ledger
+    disposalEventId: text("disposal_event_id").notNull(),
+    lotIndex: integer("lot_index").notNull(), // ordinal within the sell — part of the derived-row identity
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    index("realized_gains_account_idx").on(table.accountId),
+    index("realized_gains_user_ticker_idx").on(table.userId, table.ticker),
+    index("realized_gains_user_disposed_idx").on(table.userId, table.disposedDate),
+    uniqueIndex("realized_gains_disposal_lot_uq").on(table.disposalEventId, table.lotIndex),
+  ],
+);
+
+/**
+ * A household's tax profile (FIX-874) — one row per user. Drives the upper-bound
+ * current-year estimate (OQ #7): the user's marginal ordinary rate and long-term
+ * capital-gains rate are applied directly to each bucket. `filing_status` sets
+ * only the Schedule-D loss cap; the flat state rate is optional. Rate columns are
+ * `numeric` on the 0..100 (percent) scale, coerced to number at the read
+ * boundary and divided by 100 by the estimator.
+ */
+export const taxProfiles = appSchema.table("tax_profiles", {
+  userId: text("user_id").primaryKey(),
+  filingStatus: text("filing_status").notNull(), // enum at the zod boundary
+  marginalOrdinaryRatePct: numeric("marginal_ordinary_rate_pct").notNull(),
+  ltcgRatePct: numeric("ltcg_rate_pct").notNull(),
+  stateRatePct: numeric("state_rate_pct"), // null = federal-only
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .default(sql`now()`),
+});

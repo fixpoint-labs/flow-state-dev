@@ -1,6 +1,8 @@
 # Trading Desk
 
-> **Research only.** Not financial advice. No order execution. No P&L tracking.
+> **Research only.** Not financial advice. No order execution. No live
+> trade-execution or performance P&L (it does keep a realized capital-gains
+> record + a rough tax estimate — planning, not advice).
 
 A multi-phase AI research desk for a single stock. Type a ticker: analyst memo
 slots appear in the navigator, a bull/bear debate unfolds, a research manager
@@ -366,6 +368,9 @@ Reads:
   dividends + interest, summing non-voided events. `ticker: null` rows are
   account-level income; income earned on a since-closed position still appears
   (the holdings row is gone, the dividends were still earned).
+- `GET /api/portfolio/tax` — the composite tax read: the user's tax profile,
+  all-year realized gains, all-year income-by-year, and a current-year estimate.
+  `year` scopes only the estimate.
 
 Writes (each returns its real result — the id, the import report, the ingest
 counts):
@@ -375,13 +380,16 @@ counts):
   /api/portfolio/holdings` — delete one holding.
 - `POST /api/portfolio/ledger` — record a manual ledger event.
 - `POST /api/portfolio/transactions/import` — import an OFX/QFX/QBO file.
+- `PUT /api/portfolio/tax-profile` — save the tax profile (filing status + rates).
 
 ## Portfolio view
 
 The Portfolio tab is the durable record of what you own. It opens on a grid of
 account summary cards — each shows the account's value, cash, unrealized P/L
 as a dollar figure and a percent of cost, total dividends earned, and position
-count. Click a card to open the account, which has three tabs:
+count. Above the grid, a household **tax-estimate card** turns your realized
+gains and dividends into a rough current-year estimate (planning, not advice).
+Click a card to open the account, which has four tabs:
 
 - **Holdings** — the account's active positions: quantity, average cost,
   price, value, weight, unrealized P/L ($ and %), dividends earned, and a
@@ -395,6 +403,9 @@ count. Click a card to open the account, which has three tabs:
   (corrected) rows stay visible but struck through.
 - **Income** — dividends and interest per ticker, including positions you've
   since sold (tagged `closed`) and account-level cash income.
+- **Realized Gains** — every sale's gain or loss, split short-term vs long-term
+  (the axis that drives the tax rate) and grouped by holding and year. Unknown
+  cost basis or holding period shows `—`, never a fabricated zero.
 
 Positions can come from two sources: a holdings snapshot (CSV or statement
 PDF), or a **transaction-history file** (OFX / QFX / QBO) — the latter alone
@@ -406,8 +417,10 @@ detected and dropped, never double-counted.
 
 The real-money display rules hold everywhere: a value that depends on a
 missing price or an unrecorded history renders `—`, never a fabricated number
-or an asserted `$0`; money figures are labeled display approximations, and
-average cost is informational, not tax basis.
+or an asserted `$0`; money figures are labeled display approximations. Average
+cost on the Holdings tab is informational; the Realized Gains tab derives the
+actual per-lot cost basis (FIFO) from your trade history, and the tax estimate
+is a labeled planning approximation — still not filing-grade tax advice.
 
 ## Custom instructions
 
@@ -631,8 +644,11 @@ methodology rather than advice:
 
 ## What this is not
 
-- **Not a trading product.** It does not execute and it does not track
-  P&L. It can reason about a *supplied* portfolio snapshot (see
+- **Not a trading product.** It does not execute orders and it does not track
+  live trade-execution or performance P&L. It *does* keep a realized
+  capital-gains record and a rough tax estimate (planning, clearly labeled not
+  advice — see the Portfolio view). It can reason about a *supplied* portfolio
+  snapshot (see
   "Portfolio-aware analysis" above), but that snapshot is dev-only and
   frozen at dispatch, the sizing is documented-methodology not advice, and
   with no portfolio supplied `sizePct` is still a suggested percentage of a
@@ -663,7 +679,8 @@ methodology rather than advice:
 
 ## Disclaimer
 
-**Research / demo only.** Not financial advice. No execution. No P&L.
+**Research / demo only.** Not financial advice. No order execution. No live
+performance P&L (a realized-gains record + a rough tax estimate, planning only).
 Mirrors upstream `TauricResearch/TradingAgents` positioning.
 
 ## Attribution

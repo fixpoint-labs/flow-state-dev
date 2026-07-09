@@ -94,7 +94,20 @@ async function buildBacking(): Promise<Backing> {
       };
     },
   };
-  return { storesOptions: { executor }, repository: createPortfolioRepository(db) };
+  const repository = createPortfolioRepository(db);
+  // Deploy runs the one-time FIX-874 realized-gains backfill in `scripts/migrate.ts`;
+  // dev has no such pre-step, so run it here once per process. Without it, sells
+  // imported before the `realized_gains` migration stay unmaterialized until each
+  // account happens to get a later ingest/void — the Realized Gains tab reads
+  // empty despite real sell history. Idempotent (delete-then-reinsert per account,
+  // advisory-locked), so re-running each boot is safe; swallow + log so a backfill
+  // hiccup never bricks startup (realized gains just stay as they were).
+  try {
+    await repository.backfillRealizedGains();
+  } catch (err) {
+    console.error("[portfolio-db] realized-gains backfill failed:", err);
+  }
+  return { storesOptions: { executor }, repository };
 }
 
 // Anchored on `globalThis`, not a module-level `let`: Next.js dev compiles

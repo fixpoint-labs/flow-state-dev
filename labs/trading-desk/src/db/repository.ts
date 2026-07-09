@@ -43,8 +43,10 @@ import type {
 } from "@/src/flows/portfolio/ledger-schema";
 import { splitAttributesSchema } from "@/src/flows/portfolio/ledger-schema";
 import { deriveLots } from "@/src/flows/portfolio/lots";
+import type { RealizedDisposal } from "@/src/flows/portfolio/realized-gains";
+import type { TaxProfileInput } from "@/src/flows/portfolio/tax-schema";
 import type { Db } from "./client";
-import { accounts, holdings, ledgerEvents } from "./schema";
+import { accounts, holdings, ledgerEvents, realizedGains, taxProfiles } from "./schema";
 
 /** The Drizzle transaction handle, extracted from `Db.transaction`. The ledger
  *  ingest/void paths materialize positions inside their own transaction, so the
@@ -201,6 +203,40 @@ export interface PortfolioRepository {
     userId: string,
     opts?: { accountId?: string },
   ): Promise<IncomeSummaryRow[]>;
+  /**
+   * Income earned per `(account, ticker, year)` — the year-dimensioned parallel
+   * to {@link getIncomeSummary} (FIX-874), grouped additionally by trade-date
+   * year AND row `currency` (so EUR dividends in a default-USD account don't sum
+   * with USD before the tax route can filter by currency). `getIncomeSummary`
+   * (all-time) is untouched — the existing Income tab is unaffected.
+   */
+  getIncomeSummaryByYear(
+    userId: string,
+    opts?: { year?: number; accountId?: string },
+  ): Promise<IncomeSummaryByYearRow[]>;
+  /**
+   * A household's persisted realized gains (FIX-874), newest disposal first,
+   * optionally scoped by year or account. All-year by default so the Realized
+   * Gains tab can show prior-year history; the tax route filters to the
+   * requested year for the estimate.
+   */
+  getRealizedGains(
+    userId: string,
+    opts?: { year?: number; accountId?: string },
+  ): Promise<RealizedGainRow[]>;
+  /** The user's tax profile, or null when none is saved. */
+  getTaxProfile(userId: string): Promise<TaxProfileRow | null>;
+  /** Create or replace the user's tax profile (keyed on `userId`). */
+  upsertTaxProfile(userId: string, input: TaxProfileInput): Promise<TaxProfileRow>;
+  /**
+   * One-time rollout surface (FIX-874): materialize realized gains for EVERY
+   * existing account under the per-account advisory lock, so history isn't empty
+   * until an unrelated mutation touches each account. Idempotent
+   * (delete-then-reinsert) — safe to re-run. The module-private materializer
+   * isn't reachable from `scripts/`, so this is the callable API a startup /
+   * migration hook imports.
+   */
+  backfillRealizedGains(): Promise<void>;
 }
 
 /** One `(account, ticker)` income aggregate — see
@@ -216,6 +252,40 @@ export type IncomeSummaryRow = {
   /** Trade date of the most recent contributing event (`YYYY-MM-DD`). */
   lastEventDate: string;
 };
+
+/** One `(account, ticker, year, currency)` income aggregate (FIX-874) — the
+ *  year-dimensioned {@link IncomeSummaryRow}. */
+export type IncomeSummaryByYearRow = IncomeSummaryRow & {
+  /** Calendar year of the contributing events (from `trade_date`). */
+  year: number;
+  /** The events' currency — carried so the tax route filters row-level. */
+  currency: string;
+};
+
+/** One persisted realized-gain row (FIX-874) — the read shape of
+ *  `app.realized_gains`, numerics coerced to JS number at the read boundary. */
+export type RealizedGainRow = {
+  id: string;
+  accountId: string;
+  userId: string;
+  ticker: string;
+  disposedDate: string;
+  acquiredDate: string | null;
+  quantity: number;
+  proceeds: number | null;
+  costBasis: number | null;
+  gain: number | null;
+  term: "short" | "long" | "unknown";
+  currency: string;
+  basisUnknown: string | null;
+  disposalEventId: string;
+  lotIndex: number;
+  createdAt: string;
+};
+
+/** The read shape of `app.tax_profiles` (FIX-874) — the input plus its key and
+ *  update stamp. */
+export type TaxProfileRow = TaxProfileInput & { userId: string; updatedAt: string };
 
 /** Coerce a Drizzle `numeric` (string) to a JS number; pass `null` through.
  *  Note: this narrows arbitrary-precision `numeric` to a JS double — fine for
@@ -317,9 +387,58 @@ function mapLedgerRow(row: typeof ledgerEvents.$inferSelect): LedgerRow {
     externalId: row.externalId,
     description: row.description,
     basisUnknown: row.basisUnknown,
+    proceedsUnknown: row.proceedsUnknown,
     attributes: parseSplitAttributes(row),
     voidedAt: row.voidedAt === null ? null : new Date(row.voidedAt).toISOString(),
     createdAt: new Date(row.createdAt).toISOString(),
+  };
+}
+
+/** Map a realized-gains row to {@link RealizedGainRow}, coercing numerics to JS
+ *  number and validating the `term` enum (the `parseAssetType` read-boundary
+ *  precedent — an out-of-enum value degrades to `"unknown"`, never casts blind). */
+function mapRealizedGain(row: typeof realizedGains.$inferSelect): RealizedGainRow {
+  const term =
+    row.term === "short" || row.term === "long" || row.term === "unknown"
+      ? row.term
+      : "unknown";
+  return {
+    id: row.id,
+    accountId: row.accountId,
+    userId: row.userId,
+    ticker: row.ticker,
+    disposedDate: row.disposedDate,
+    acquiredDate: row.acquiredDate,
+    quantity: Number(row.quantity),
+    proceeds: toNumber(row.proceeds),
+    costBasis: toNumber(row.costBasis),
+    gain: toNumber(row.gain),
+    term,
+    currency: row.currency,
+    basisUnknown: row.basisUnknown,
+    disposalEventId: row.disposalEventId,
+    lotIndex: row.lotIndex,
+    createdAt: new Date(row.createdAt).toISOString(),
+  };
+}
+
+/** Map a tax-profiles row to {@link TaxProfileRow}, coercing the percent-scale
+ *  rate numerics to JS number and validating the filing-status enum. */
+function mapTaxProfile(row: typeof taxProfiles.$inferSelect): TaxProfileRow {
+  const filingStatus =
+    row.filingStatus === "single" ||
+    row.filingStatus === "mfj" ||
+    row.filingStatus === "hoh" ||
+    row.filingStatus === "mfs"
+      ? row.filingStatus
+      : "single";
+  return {
+    userId: row.userId,
+    filingStatus,
+    marginalOrdinaryRatePct: Number(row.marginalOrdinaryRatePct),
+    ltcgRatePct: Number(row.ltcgRatePct),
+    stateRatePct: toNumber(row.stateRatePct),
+    updatedAt: new Date(row.updatedAt).toISOString(),
   };
 }
 
@@ -340,7 +459,152 @@ function computeFingerprint(e: LedgerEventInput): string {
     e.quantity === null ? "" : e.quantity.toFixed(8),
     e.amount.toFixed(8),
   ].join("|");
-  return createHash("sha256").update(norm).digest("hex");
+  // The `proceedsUnknown` marker (FIX-874) joins the fingerprint ONLY when set,
+  // so a proceeds-unknown import placeholder can't dedup-collide with a genuine
+  // $0 sale of the same account/date/type/ticker/qty/amount (both `amount:0`,
+  // both blank-FITID). A genuine row (marker null) keeps the exact pre-FIX-874
+  // hash — no fingerprint-recompute migration, back-compat by construction.
+  const withMarker = e.proceedsUnknown !== null ? `${norm}|pu:${e.proceedsUnknown}` : norm;
+  return createHash("sha256").update(withMarker).digest("hex");
+}
+
+/** Canonicalize a currency to an uppercase ISO-4217-shaped code, so the tax
+ *  route's exact `currency === "USD"` filter is trustworthy — `usd`/`Usd`/a
+ *  padded value would otherwise be silently dropped from the taxable total.
+ *  Applied on the shared ingest path (every writer funnels through it). */
+function normalizeCurrency(raw: string): string {
+  const c = raw.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(c)) {
+    throw new Error(`Invalid currency "${raw}" — expected a 3-letter ISO-4217 code.`);
+  }
+  return c;
+}
+
+/**
+ * Enforce the share-event invariant on the shared ingest boundary (FIX-874), the
+ * one path every writer (manual, file, Plaid) funnels through — `deriveLots`
+ * pushes/consumes lots by the SIGN of `quantity` regardless of `type`, so a
+ * mis-typed row corrupts positions AND realized gains. A violation is a
+ * caller/normalizer bug, so it throws and the whole batch rolls back (the
+ * ownership-guard posture) rather than being soft-skipped and miscounted as
+ * `deduplicated`.
+ *
+ * - Only `buy`/`sell`/`transfer` may carry a non-null share `quantity` (a cash
+ *   type carrying one would form a phantom lot).
+ * - Any quantity-bearing row must carry a `ticker` (a share move with no ticker
+ *   forms no lot, so a later sale becomes an unmatched disposal).
+ * - `buy` is `+qty`, `sell` is `−qty`; `transfer` may be either sign (an OFX
+ *   transfer-in is `+`, an out is `−`).
+ */
+function assertShareEventInvariant(e: LedgerEventInput): void {
+  if (e.quantity === null) {
+    // A `buy`/`sell` with no quantity would persist as a phantom cash event —
+    // `deriveLots` forms no lot, so positions AND realized gains silently omit
+    // the trade. Reject it here rather than store a share trade the derivation
+    // can't see. (A `transfer` with null quantity is a legitimate cash transfer.)
+    if (e.type === "buy" || e.type === "sell") {
+      throw new Error(`A ${e.type} event must carry a share quantity.`);
+    }
+    return;
+  }
+  const shareType = e.type === "buy" || e.type === "sell" || e.type === "transfer";
+  if (!shareType) {
+    throw new Error(`A ${e.type} event carries a share quantity — only buy/sell/transfer may.`);
+  }
+  if (e.ticker === null) {
+    throw new Error(`A ${e.type} event carries a quantity but no ticker.`);
+  }
+  if (e.type === "buy" && e.quantity <= 0) {
+    throw new Error(`A buy must have a positive quantity (got ${e.quantity}).`);
+  }
+  if (e.type === "sell" && e.quantity >= 0) {
+    throw new Error(`A sell must have a negative quantity (got ${e.quantity}).`);
+  }
+  // Sell proceeds are cash IN — non-negative by the sign convention (buy `−`,
+  // sell `+`). The realized-gains path (FIX-874) allocates `amount` directly as
+  // proceeds, so a negative sell amount would persist negative proceeds and an
+  // overstated capital loss. Guard the sign at this shared boundary (the file
+  // parser already floors proceeds at 0; this catches a manual/caller row). A
+  // genuine $0 sale is still allowed.
+  if (e.type === "sell" && e.amount < 0) {
+    throw new Error(`A sell must have non-negative proceeds (got ${e.amount}).`);
+  }
+}
+
+/** Serialize same-account recomputes (FIX-874). Held for the rest of the
+ *  ingest/void transaction, so a concurrent void can't be resurrected by an
+ *  in-flight import that read pre-void ledger state (the deterministic unique
+ *  index alone can't catch a deleted-then-reinserted row). Also hardens
+ *  `materializePositions`, which shares the delete/upsert-without-lock exposure.
+ *  Callers acquire locks in SORTED account order so multi-account batches can't
+ *  deadlock. */
+async function acquireRealizedLock(tx: Tx, accountId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`realized:${accountId}`})::int8)`);
+}
+
+/**
+ * Materialize an account's ledger-derived realized gains into `app.realized_gains`
+ * (FIX-874), inside the caller's transaction — the realized-side peer of
+ * {@link materializePositions}. Full recompute: DELETE every row for the account,
+ * re-derive via `deriveLots(rows).disposals`, and re-insert. So a void retracts
+ * gains and a re-ingest is idempotent. The `(disposal_event_id, lot_index)`
+ * unique index catches the empty-table double-insert window; the per-account
+ * advisory lock (acquired by the caller) is the real serialization.
+ *
+ * IMPORTANT: unlike `materializePositions`, the DELETE is UNCONDITIONAL — there
+ * is NO early-return for an account with no share history. An account whose share
+ * history was entirely voided must have its stale realized rows cleared, not
+ * left behind (a retraction bug).
+ */
+async function materializeRealizedGains(tx: Tx, accountId: string): Promise<void> {
+  await tx.delete(realizedGains).where(eq(realizedGains.accountId, accountId));
+  const [account] = await tx
+    .select({ userId: accounts.userId })
+    .from(accounts)
+    .where(eq(accounts.id, accountId));
+  if (account === undefined) return; // account gone (cascade) — nothing to derive
+  const eventRows = await tx
+    .select()
+    .from(ledgerEvents)
+    .where(eq(ledgerEvents.accountId, accountId))
+    .orderBy(ledgerEvents.tradeDate, ledgerEvents.createdAt, ledgerEvents.id);
+  const rows = eventRows.map(mapLedgerRow);
+  const { disposals } = deriveLots(rows);
+  if (disposals.length === 0) return;
+  const values = disposals.map((d: RealizedDisposal) => ({
+    id: crypto.randomUUID(),
+    accountId,
+    userId: account.userId,
+    ticker: d.ticker,
+    disposedDate: d.disposedDate,
+    acquiredDate: d.acquiredDate,
+    quantity: String(d.quantity),
+    proceeds: d.proceeds === null ? null : String(d.proceeds),
+    costBasis: d.costBasis === null ? null : String(d.costBasis),
+    gain: d.gain === null ? null : String(d.gain),
+    term: d.term,
+    currency: d.currency,
+    basisUnknown: d.basisUnknown,
+    disposalEventId: d.disposalEventId,
+    lotIndex: d.lotIndex,
+  }));
+  // Chunked for the same reason the ledger insert is (see `ingestLedgerEvents`):
+  // the wire protocol's Bind message carries the bound-param count as a 16-bit
+  // integer, so one multi-row INSERT tops out at 32,767 params on PGlite (the
+  // count wraps negative and silently kills the single dev connection — every
+  // later query then returns empty) and 65,535 on node-pg. At 15 params per row
+  // an active account crosses the PGlite line at ~2,185 disposals. 1,000
+  // rows/chunk (15k params) clears both ceilings; the chunks share this
+  // transaction, so the recompute stays atomic.
+  const INSERT_CHUNK_ROWS = 1000;
+  for (let i = 0; i < values.length; i += INSERT_CHUNK_ROWS) {
+    await tx
+      .insert(realizedGains)
+      .values(values.slice(i, i + INSERT_CHUNK_ROWS))
+      .onConflictDoNothing({
+        target: [realizedGains.disposalEventId, realizedGains.lotIndex],
+      });
+  }
 }
 
 /**
@@ -553,7 +817,9 @@ async function ingestEventsInTx(
 
   // Ownership guard: every referenced account must belong to the caller. A
   // foreign account throws and the whole batch rolls back (defense in depth).
-  const accountIds = [...new Set(events.map((e) => e.accountId))];
+  // Sorted so the per-account advisory locks below are acquired deterministically
+  // (FIX-874) — two batches touching {A,B} and {B,A} can't deadlock.
+  const accountIds = [...new Set(events.map((e) => e.accountId))].sort();
   const owned = await tx
     .select({ id: accounts.id })
     .from(accounts)
@@ -572,6 +838,11 @@ async function ingestEventsInTx(
   const seen = new Set<string>();
   const values: (typeof ledgerEvents.$inferInsert)[] = [];
   for (const e of events) {
+    // Guard the shared derivation contract (FIX-874) and canonicalize the currency
+    // BEFORE the fingerprint/insert — every writer funnels here, so the file
+    // importer (which bypasses the zod schema) is covered too.
+    assertShareEventInvariant(e);
+    const currency = normalizeCurrency(e.currency);
     const fingerprint = computeFingerprint(e);
     const key =
       e.externalId !== null
@@ -591,12 +862,15 @@ async function ingestEventsInTx(
       unitPrice: e.unitPrice === null ? null : String(e.unitPrice),
       amount: String(e.amount),
       fee: e.fee === null ? null : String(e.fee),
-      currency: e.currency,
+      currency,
       source: e.source,
       externalId: e.externalId,
       fingerprint,
       description: e.description,
       basisUnknown: e.basisUnknown,
+      // Reason a sell's proceeds are unknown (FIX-874 import placeholder); nulls
+      // proceeds/gain in derivation rather than fabricating a loss off `amount:0`.
+      proceedsUnknown: e.proceedsUnknown,
       // Corporate-action payload — the split ratio for a `split`, null otherwise
       // (the zod boundary guarantees this). Excluded from the fingerprint above,
       // so a same-date re-import dedups to one row.
@@ -618,8 +892,14 @@ async function ingestEventsInTx(
     inserted += insertedRows.length;
   }
 
-  // Positions are derived: materialize on every touched account in the same tx.
-  for (const id of accountIds) await materializePositions(tx, id);
+  // Serialize same-account recomputes: acquire ALL per-account locks in sorted
+  // order first (deadlock-free), then materialize positions AND realized gains
+  // for each touched account in the same transaction (FIX-874).
+  for (const id of accountIds) await acquireRealizedLock(tx, id);
+  for (const id of accountIds) {
+    await materializePositions(tx, id);
+    await materializeRealizedGains(tx, id);
+  }
 
   return { inserted, deduplicated: events.length - inserted, errors: [] };
 }
@@ -696,7 +976,11 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         userId: input.userId,
         name: input.name,
         type: input.type,
-        currency: input.currency ?? "USD",
+        // Normalize on the same boundary the ledger does (`normalizeCurrency`),
+        // so an account saved as `usd` and its uppercase-normalized ledger rows
+        // agree — the realized-gains total's exact currency check (FIX-874)
+        // would otherwise render `—` for a valid single-currency account.
+        currency: normalizeCurrency(input.currency ?? "USD"),
         cashBalance: String(input.cashBalance ?? 0),
         riskMandate: input.riskMandate ?? null,
       };
@@ -917,6 +1201,14 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             .delete(holdings)
             .where(and(eq(holdings.accountId, accountId), inArray(holdings.ticker, orphans)));
         }
+        // `ingestEventsInTx` re-materializes realized gains only for a NON-empty
+        // batch. A reset to an empty (or sell-less) file still wiped this account's
+        // ledger above, so re-materialize here to clear stale realized_gains rows
+        // (FIX-874) — idempotent, and the empty case is the one ingest skipped.
+        if (events.length === 0) {
+          await acquireRealizedLock(tx, accountId);
+          await materializeRealizedGains(tx, accountId);
+        }
         return report;
       });
     },
@@ -924,6 +1216,10 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
     async voidLedgerEvents(accountId, externalIds, source, userId) {
       if (externalIds.length === 0) return 0;
       return db.transaction(async (tx) => {
+        // Serialize against a concurrent same-account recompute before touching
+        // the ledger (single account, so ordering is trivial here — the sort
+        // matters only for the multi-account ingest path).
+        await acquireRealizedLock(tx, accountId);
         // Account-scoped: an external id is unique only within its account
         // (the `(account_id, source, external_id)` index), so a void targets one
         // account — voiding by `(source, external_id)` alone would tombstone the
@@ -941,7 +1237,10 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             ),
           )
           .returning({ accountId: ledgerEvents.accountId });
-        if (voidedRows.length > 0) await materializePositions(tx, accountId);
+        if (voidedRows.length > 0) {
+          await materializePositions(tx, accountId);
+          await materializeRealizedGains(tx, accountId);
+        }
         return voidedRows.length;
       });
     },
@@ -986,6 +1285,100 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         interest: Number(r.interest),
         lastEventDate: r.lastEventDate,
       }));
+    },
+
+    async getIncomeSummaryByYear(userId, opts) {
+      const conds = [
+        eq(ledgerEvents.userId, userId),
+        isNull(ledgerEvents.voidedAt),
+        inArray(ledgerEvents.type, ["dividend", "interest"]),
+      ];
+      if (opts?.accountId) conds.push(eq(ledgerEvents.accountId, opts.accountId));
+      const year = sql<number>`extract(year from ${ledgerEvents.tradeDate})::int`;
+      if (opts?.year !== undefined) {
+        conds.push(sql`extract(year from ${ledgerEvents.tradeDate})::int = ${opts.year}`);
+      }
+      const rows = await db
+        .select({
+          accountId: ledgerEvents.accountId,
+          ticker: ledgerEvents.ticker,
+          year,
+          currency: ledgerEvents.currency,
+          dividends: sql<string>`coalesce(sum(${ledgerEvents.amount}) filter (where ${ledgerEvents.type} = 'dividend'), 0)`,
+          interest: sql<string>`coalesce(sum(${ledgerEvents.amount}) filter (where ${ledgerEvents.type} = 'interest'), 0)`,
+          lastEventDate: sql<string>`max(${ledgerEvents.tradeDate})`,
+        })
+        .from(ledgerEvents)
+        .where(and(...conds))
+        // Year AND currency both group keys — else EUR dividends in a USD account
+        // sum with USD before the tax route can filter by currency.
+        .groupBy(ledgerEvents.accountId, ledgerEvents.ticker, year, ledgerEvents.currency)
+        .orderBy(ledgerEvents.ticker);
+      return rows.map((r) => ({
+        accountId: r.accountId,
+        ticker: r.ticker,
+        year: Number(r.year),
+        currency: r.currency,
+        dividends: Number(r.dividends),
+        interest: Number(r.interest),
+        lastEventDate: r.lastEventDate,
+      }));
+    },
+
+    async getRealizedGains(userId, opts) {
+      const conds = [eq(realizedGains.userId, userId)];
+      if (opts?.accountId) conds.push(eq(realizedGains.accountId, opts.accountId));
+      if (opts?.year !== undefined) {
+        conds.push(sql`extract(year from ${realizedGains.disposedDate})::int = ${opts.year}`);
+      }
+      const rows = await db
+        .select()
+        .from(realizedGains)
+        .where(and(...conds))
+        .orderBy(desc(realizedGains.disposedDate), realizedGains.disposalEventId, realizedGains.lotIndex);
+      return rows.map(mapRealizedGain);
+    },
+
+    async getTaxProfile(userId) {
+      const [row] = await db.select().from(taxProfiles).where(eq(taxProfiles.userId, userId));
+      return row === undefined ? null : mapTaxProfile(row);
+    },
+
+    async upsertTaxProfile(userId, input) {
+      const values = {
+        userId,
+        filingStatus: input.filingStatus,
+        marginalOrdinaryRatePct: String(input.marginalOrdinaryRatePct),
+        ltcgRatePct: String(input.ltcgRatePct),
+        stateRatePct: input.stateRatePct === null ? null : String(input.stateRatePct),
+      };
+      const [row] = await db
+        .insert(taxProfiles)
+        .values(values)
+        .onConflictDoUpdate({
+          target: taxProfiles.userId,
+          set: {
+            filingStatus: values.filingStatus,
+            marginalOrdinaryRatePct: values.marginalOrdinaryRatePct,
+            ltcgRatePct: values.ltcgRatePct,
+            stateRatePct: values.stateRatePct,
+            updatedAt: sql`now()`,
+          },
+        })
+        .returning();
+      return mapTaxProfile(row);
+    },
+
+    async backfillRealizedGains() {
+      // Loop every account, each under its own advisory-locked transaction — the
+      // idempotent (delete-then-reinsert) materializer, so re-running is safe.
+      const allAccounts = await db.select({ id: accounts.id }).from(accounts).orderBy(accounts.id);
+      for (const a of allAccounts) {
+        await db.transaction(async (tx) => {
+          await acquireRealizedLock(tx, a.id);
+          await materializeRealizedGains(tx, a.id);
+        });
+      }
     },
   };
 }
