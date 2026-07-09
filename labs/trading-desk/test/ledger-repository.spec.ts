@@ -640,7 +640,11 @@ describe("realized gains materialization (FIX-874) — real-path goal check", ()
     const gains = await repo2.getRealizedGains("devuser");
     expect(gains).toHaveLength(1);
     expect(gains[0]).toMatchObject({ ticker: "AAPL", proceeds: 1500, costBasis: 1000, gain: 500, term: "long" });
-  });
+    // This test builds + migrates its OWN PGlite (it needs a raw handle to clear
+    // realized_gains), on top of the suite beforeEach's — so an explicit timeout,
+    // not Vitest's 5s default, keeps a slow CI runner from failing it before it
+    // verifies the backfill.
+  }, 30_000);
 
   it("chunks the realized-gains insert so a large sell history can't corrupt the connection (FIX-874 dev-DB break)", async () => {
     // 2,200 one-share lots closed by a single sell → 2,200 realized rows. At 15

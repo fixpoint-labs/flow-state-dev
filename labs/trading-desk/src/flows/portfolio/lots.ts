@@ -213,8 +213,14 @@ function makeDisposal(
   totalSellQty: number,
   lotIndex: number,
 ): RealizedDisposal {
+  // Proceeds are the MAGNITUDE of the sell amount — cash received is non-negative.
+  // The ingest invariant now rejects a negative sell amount, but a legacy manual
+  // sell recorded before that guard (the old dialog allowed "negative = cash out")
+  // can still sit in the ledger; `abs` keeps the backfill from materializing
+  // negative proceeds / an inflated loss. A proceeds-unknown placeholder still
+  // nulls it.
   const proceeds =
-    e.proceedsUnknown !== null ? null : (consumed / totalSellQty) * e.amount;
+    e.proceedsUnknown !== null ? null : (consumed / totalSellQty) * Math.abs(e.amount);
   const acquiredDate = lot.acquisitionDateKnown ? lot.acquiredDate : null;
   let costBasis: number | null;
   let gain: number | null;
@@ -261,8 +267,10 @@ function makeUnmatchedDisposal(
   totalSellQty: number,
   lotIndex: number,
 ): RealizedDisposal {
+  // `abs` for the same reason as makeDisposal — a legacy negative sell amount
+  // must not surface as negative proceeds on the unmatched remainder.
   const proceeds =
-    e.proceedsUnknown !== null ? null : (remaining / totalSellQty) * e.amount;
+    e.proceedsUnknown !== null ? null : (remaining / totalSellQty) * Math.abs(e.amount);
   return {
     ticker: e.ticker as string,
     disposedDate: e.tradeDate,

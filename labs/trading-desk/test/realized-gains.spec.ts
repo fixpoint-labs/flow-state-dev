@@ -65,6 +65,19 @@ describe("deriveLots — realized disposals", () => {
     });
   });
 
+  it("reads a legacy negative sell amount as positive proceeds (never an inflated loss)", () => {
+    // Before the FIX-874 ingest guard, the manual dialog allowed a negative sell
+    // amount ("negative = cash out"). deriveLots must read proceeds as the
+    // magnitude so a legacy row — and the backfill that materializes it — doesn't
+    // surface negative proceeds / an inflated capital loss.
+    const { disposals } = deriveLots([
+      row({ id: "b1", tradeDate: "2026-01-01", quantity: 10, unitPrice: 100 }),
+      row({ id: "s1", type: "sell", tradeDate: "2026-06-01", quantity: -10, amount: -1500 }),
+    ]);
+    expect(disposals).toHaveLength(1);
+    expect(disposals[0]).toMatchObject({ proceeds: 1500, costBasis: 1000, gain: 500 });
+  });
+
   it("allocates proceeds pro-rata across two lots with mixed ST/LT", () => {
     const { disposals } = deriveLots([
       row({ id: "b1", tradeDate: "2024-01-01", quantity: 10, unitPrice: 100 }), // long by 2026
