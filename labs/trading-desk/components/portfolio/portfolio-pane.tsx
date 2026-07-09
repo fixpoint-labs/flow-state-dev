@@ -42,6 +42,12 @@ import type { PortfolioQuotesState } from "@/src/flows/portfolio/portfolio-resou
 import type { ThesisInputFields } from "@/src/flows/portfolio/thesis-schema";
 import { AccountCard } from "./account-card";
 import { AccountDetail } from "./account-detail";
+import { RealizedStat } from "./realized-stat";
+import {
+  buildRealizedGainsRowModel,
+  computeRealizedGainTotals,
+  realizedTotalsByAccount,
+} from "./realized-gains-row-model";
 import { AddAccountDialog, type NewAccountDraft } from "./add-account-dialog";
 import { ImportCsvDialog, type ImportSubmit } from "./import-csv-dialog";
 import { ImportPdfDialog } from "./import-pdf-dialog";
@@ -209,6 +215,24 @@ export function PortfolioPane({
     }
     return map;
   }, [ledgerEvents]);
+
+  // Lifetime net realized gain/loss (all years), reusing the Realized Gains
+  // tab's grand-total logic: per account (in its own currency) for the account
+  // cards, and one household figure (USD, the summary line's label) for the
+  // summary line. Basis-unknown disposals drop out honestly (excludedCount); a
+  // non-USD account nulls the household figure via the currency gate. BP-010.
+  const realizedByAccount = useMemo(
+    () =>
+      realizedTotalsByAccount(
+        realizedGains,
+        new Map(accounts.map((a) => [a.accountId, a.currency])),
+      ),
+    [realizedGains, accounts],
+  );
+  const householdRealized = useMemo(
+    () => computeRealizedGainTotals(buildRealizedGainsRowModel(realizedGains), "USD").grandTotal,
+    [realizedGains],
+  );
 
   // Price map: ticker (upper) → quote. Read from the resource the action wrote.
   const quotes = quotesData as PortfolioQuotesState | null;
@@ -645,6 +669,9 @@ export function PortfolioPane({
               {formatMoney(totalDividends, "USD")}
             </span>
           </span>
+          <span>
+            total realized <RealizedStat total={householdRealized} currency="USD" />
+          </span>
           {allocation.length > 0 && (
             <span>
               allocation{" "}
@@ -739,6 +766,7 @@ export function PortfolioPane({
                   accountUpl={rollup.upl}
                   accountUplPct={rollup.uplPct}
                   accountDividends={dividendTotals.get(account.accountId) ?? null}
+                  accountRealized={realizedByAccount.get(account.accountId) ?? null}
                   onOpen={() => {
                     setOpenAccountId(account.accountId);
                     // The import/add dialogs default to the account in focus.

@@ -21,6 +21,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildRealizedGainsRowModel,
   computeRealizedGainTotals,
+  realizedTotalsByAccount,
 } from "../components/portfolio/realized-gains-row-model";
 import type { RealizedGainRow } from "../src/db/repository";
 
@@ -200,5 +201,50 @@ describe("computeRealizedGainTotals", () => {
     const totals = computeRealizedGainTotals([], "USD");
     expect(totals.grandTotal).toEqual({ gain: 0, excludedCount: 0 });
     expect(totals.byYear.size).toBe(0);
+  });
+});
+
+describe("realizedTotalsByAccount", () => {
+  it("gives each account its lifetime net realized total in its own currency", () => {
+    const rows = [
+      // acc1 (USD): a 2025 gain + a 2026 gain across years → summed lifetime.
+      gain({ id: "a", accountId: "acc1", disposedDate: "2025-02-01", gain: 100 }),
+      gain({ id: "b", accountId: "acc1", disposedDate: "2026-02-01", gain: 250 }),
+      // acc2 (EUR): one gain, labeled in its own currency.
+      gain({ id: "c", accountId: "acc2", disposedDate: "2026-03-01", currency: "EUR", gain: 40 }),
+    ];
+    const totals = realizedTotalsByAccount(
+      rows,
+      new Map([
+        ["acc1", "USD"],
+        ["acc2", "EUR"],
+      ]),
+    );
+    expect(totals.get("acc1")).toEqual({ gain: 350, excludedCount: 0 });
+    expect(totals.get("acc2")).toEqual({ gain: 40, excludedCount: 0 });
+  });
+
+  it("sums the known gain per account and counts that account's basis-unknown rows", () => {
+    const rows = [
+      gain({ id: "a", accountId: "acc1", ticker: "NVDA", gain: 200 }),
+      gain({ id: "b", accountId: "acc1", ticker: "AAPL", gain: null, costBasis: null }),
+    ];
+    const totals = realizedTotalsByAccount(rows, new Map([["acc1", "USD"]]));
+    expect(totals.get("acc1")).toEqual({ gain: 200, excludedCount: 1 });
+  });
+
+  it("nulls an account whose disposals aren't in the currency it's labeled in", () => {
+    // A USD-labeled account holding only EUR disposals → "—" (the currency gate),
+    // the same honesty as the per-year totals. An unlisted account defaults USD.
+    const rows = [
+      gain({ id: "a", accountId: "acc1", currency: "EUR", gain: 300 }),
+    ];
+    const totals = realizedTotalsByAccount(rows, new Map([["acc1", "USD"]]));
+    expect(totals.get("acc1")).toEqual({ gain: null, excludedCount: 0 });
+  });
+
+  it("omits accounts with no realized rows (the map has only accounts with history)", () => {
+    const totals = realizedTotalsByAccount([], new Map([["acc1", "USD"]]));
+    expect(totals.size).toBe(0);
   });
 });

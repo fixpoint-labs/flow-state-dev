@@ -24,4 +24,8 @@ reason). The Realized Gains year/grand totals sum the disposals with a known
 gain and note how many basis-unknown rows they excluded ("excludes N (basis
 unknown)"), matching the tax card, rather than one unknown-basis disposal
 blanking the whole total to "—" (the cross-currency gate still renders "—").
-Internal lab change — no public API.
+Lifetime net realized gain/loss is now surfaced at a glance too — a "realized"
+figure on each account card and a "total realized" figure on the household
+summary line — reusing that same grand-total logic (per account in its own
+currency, the household in USD; basis-unknown rows noted as "(excl. N)", a
+cross-currency set as "—"). Internal lab change — no public API.

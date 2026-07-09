@@ -192,3 +192,33 @@ export function computeRealizedGainTotals(
     grandTotal: computeTotal(models, accountCurrency),
   };
 }
+
+/**
+ * Lifetime net realized gain/loss per account — one {@link RealizedGainTotal}
+ * per account (its all-year {@link computeRealizedGainTotals} grand total). This
+ * is the account-card / account-glance figure: a single net number, honest about
+ * basis-unknown rows (`excludedCount`) and cross-currency sets (`gain: null`).
+ * Each account's total is labeled in its own currency (`currencyByAccountId`,
+ * default "USD" if absent — the read routes default accounts to USD). The
+ * household total is NOT this map's job: sum it in one currency with
+ * `computeRealizedGainTotals(buildRealizedGainsRowModel(allRows), "USD")`, whose
+ * currency gate renders "—" if any row isn't in that currency. Pure — no IO.
+ */
+export function realizedTotalsByAccount(
+  rows: RealizedGainRow[],
+  currencyByAccountId: Map<string, string>,
+): Map<string, RealizedGainTotal> {
+  const byAccount = new Map<string, RealizedGainRow[]>();
+  for (const row of rows) {
+    const list = byAccount.get(row.accountId);
+    if (list === undefined) byAccount.set(row.accountId, [row]);
+    else list.push(row);
+  }
+  const totals = new Map<string, RealizedGainTotal>();
+  for (const [accountId, accountRows] of byAccount) {
+    const models = buildRealizedGainsRowModel(accountRows);
+    const currency = currencyByAccountId.get(accountId) ?? "USD";
+    totals.set(accountId, computeRealizedGainTotals(models, currency).grandTotal);
+  }
+  return totals;
+}

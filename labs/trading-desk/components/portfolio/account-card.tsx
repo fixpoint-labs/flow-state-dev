@@ -13,6 +13,8 @@
 import type { ReactElement } from "react";
 import { ChevronRight } from "lucide-react";
 import type { AccountState } from "@/src/flows/portfolio/portfolio-schema";
+import type { RealizedGainTotal } from "./realized-gains-row-model";
+import { RealizedStat } from "./realized-stat";
 import {
   DASH,
   formatMoney,
@@ -42,6 +44,9 @@ type AccountCardProps = {
   /** Total dividends earned in this account per the ledger (incl. closed
    *  positions); `null` when none recorded — renders "—", not $0. */
   accountDividends: number | null;
+  /** Lifetime net realized gain/loss for this account (all years), honest about
+   *  basis-unknown rows; `null` when the account has no realized history. */
+  accountRealized: RealizedGainTotal | null;
   onOpen: () => void;
 };
 
@@ -52,6 +57,7 @@ export function AccountCard({
   accountUpl,
   accountUplPct,
   accountDividends,
+  accountRealized,
   onOpen,
 }: AccountCardProps): ReactElement {
   const uplFmt = formatSignedMoney(accountUpl, account.currency);
@@ -101,6 +107,9 @@ export function AccountCard({
           <span className="text-[color:var(--c-fg)]">
             {formatMoney(accountDividends, account.currency)}
           </span>
+        </span>
+        <span>
+          realized <RealizedStat total={accountRealized} currency={account.currency} />
         </span>
         <span>
           {holdingsCount} {holdingsCount === 1 ? "position" : "positions"}
