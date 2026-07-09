@@ -32,14 +32,6 @@ const TYPE_LABELS: Record<LedgerRow["type"], string> = {
   split: "Split",
 };
 
-/** Render a split ratio as conventional "N:1" / "1:M" notation (a 2:1 forward,
- *  a 1:10 reverse), falling back to a `×` multiplier for an odd ratio. */
-function formatSplitRatio(ratio: number): string {
-  if (Number.isInteger(ratio)) return `${ratio}:1`;
-  if (Number.isInteger(1 / ratio)) return `1:${Math.round(1 / ratio)}`;
-  return `${ratio.toFixed(2)}×`;
-}
-
 /** Render-ready strings + flags for one ledger row. Every missing value is
  *  `DASH`, never a fabricated number. */
 export type LedgerRowModel = {
@@ -68,19 +60,27 @@ function formatSignedQuantity(value: number | null): string {
   return fixed;
 }
 
+/** A split carries no share delta or cash — its `quantity`/`amount` are null/0.
+ *  Surface the split RATIO (e.g. `10:1`) in the quantity column instead, so the
+ *  transactions list shows what the corporate action did (FIX-876). Null for a
+ *  non-split row, or a split with a malformed/absent ratio (never fabricated). */
+function splitRatioLabel(row: LedgerRow): string | null {
+  if (row.type !== "split" || row.attributes === null) return null;
+  return `${row.attributes.numerator}:${row.attributes.denominator}`;
+}
+
 /** Map a persisted `LedgerRow` to its render-ready row model. Pure — exported
  *  for the node-env spec (`test/ledger-row-model.spec.ts`). */
 export function buildLedgerRowModel(row: LedgerRow): LedgerRowModel {
+  const ratio = splitRatioLabel(row);
   return {
     id: row.id,
     type: TYPE_LABELS[row.type],
     tradeDate: row.tradeDate,
     ticker: row.ticker ?? DASH,
-    // A split moves no shares (null quantity); show its ratio here instead of DASH.
-    quantity:
-      row.type === "split" && row.splitRatio !== null
-        ? formatSplitRatio(row.splitRatio)
-        : formatSignedQuantity(row.quantity),
+    // A split shows its ratio here (its quantity is null); every other kind shows
+    // the signed share delta.
+    quantity: ratio ?? formatSignedQuantity(row.quantity),
     amount: formatSignedMoney(row.amount, row.currency),
     source: row.source,
     basisUnknown: row.basisUnknown !== null,

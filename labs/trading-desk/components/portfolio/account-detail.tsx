@@ -80,6 +80,9 @@ type AccountDetailProps = {
   onEditThesis: (ticker: string) => void;
   /** Manually set a holding's allocation class (marks it a manual override). */
   onSetAssetClass: (ticker: string, assetClass: AssetClass) => void;
+  /** Open the "resolve split" dialog for a flagged inconsistent-history holding
+   *  (FIX-876). */
+  onResolveSplit: (ticker: string) => void;
 };
 
 export function AccountDetail({
@@ -102,6 +105,7 @@ export function AccountDetail({
   onDeleteAccount,
   onEditThesis,
   onSetAssetClass,
+  onResolveSplit,
 }: AccountDetailProps): ReactElement {
   const [tab, setTab] = useState<AccountTab>("holdings");
 
@@ -223,6 +227,7 @@ export function AccountDetail({
             onDeleteHolding={onDeleteHolding}
             onEditThesis={onEditThesis}
             onSetAssetClass={onSetAssetClass}
+            onResolveSplit={onResolveSplit}
           />
         ) : tab === "transactions" ? (
           <div className="p-2">

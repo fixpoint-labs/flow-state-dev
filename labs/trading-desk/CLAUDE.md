@@ -465,11 +465,8 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   transaction-file import alone produces a visible portfolio — no snapshot
   needed. A transfer-in with no acquisition record is a **basis-unknown** lot:
   it writes `null` cost, never zero (zero-fill would massively overstate gains).
-  FIFO is the IRS default; specific-lot sales and wash sales are deferred. Stock
-  splits ARE handled (FIX-874 follow-up): a `split` ledger event carries a ratio
-  that `deriveLots` applies to the ticker's open lots at the split date, so
-  pre-split basis lines up with post-split proceeds. Other corporate actions
-  (return-of-capital, spinoffs) remain deferred.
+  FIFO is the IRS default; specific-lot sales, wash sales, and corporate-action
+  basis allocation are deferred.
 
 - **Income is aggregated from the ledger at read time (`getIncomeSummary`).**
   Dividends + interest per `(account, ticker)`, summing non-voided events (FIX-874
@@ -541,12 +538,110 @@ Two load-bearing decisions:
   work — a file backfill and a Plaid sync of the same trade hit the same FIX-774
   fingerprint.
 - **Honest over silently-wrong.** Anything FIFO can't model is surfaced, never
-  fed to the lot math: a `SPLIT` becomes a basis-adjusting `split` event
-  (FIX-874 follow-up — `handleSplit`), but the corporate actions FIFO still can't
-  honor (return-of-capital, option closures) and short opens → `skipped`/warned,
-  CUSIP-only securities → `unresolvedSecurities`, malformed rows (no date, no
-  amount, blank FITID) → skipped. The parser never fabricates a value to make a
-  row land.
+  fed to the lot math: the corporate actions it still can't model (`RETOFCAP`,
+  `CLOSUREOPT`) and short opens → `skipped`/warned, CUSIP-only securities →
+  `unresolvedSecurities`, malformed rows (no date, no amount, blank FITID) →
+  skipped. Stock splits are the exception — they are now ingested (see below).
+  The parser never fabricates a value to make a row land.
+
+## Stock splits / corporate actions (FIX-876)
+
+Positions are FIFO-derived from the ledger, and the ledger now models **stock
+splits** — the one corporate action naive FIFO can't ignore. Before this, a
+split's pre-split trades (small share counts, big prices) and post-split trades
+(10× shares, 1/10 price) lived in mismatched units, so FIFO over-sold the small
+pre-split lots with the larger post-split sells, netted the position negative, and
+`materializePositions` silently deleted the holdings row. NVDA's 10-for-1 split
+(2024-06-10) did exactly this in `WF: Investing Accounts`.
+
+- **A split is a first-class ledger event.** `ledgerEventTypeSchema` includes
+  `"split"`; a `split` row carries no share delta or cash (`quantity: null`,
+  `amount: 0`) — its ratio lives on a nullable `attributes` jsonb column as
+  `{ numerator, denominator }` (10-for-1 → `{10, 1}`; reverse 1-for-10 →
+  `{1, 10}`). `ledger-schema.ts` validates the boundary in `refineLedgerEvent`: a
+  `split` requires valid attributes + a ticker + null quantity + zero amount;
+  every other kind must leave `attributes` null. The fingerprint **excludes**
+  numerator/denominator, so a manual split and a same-date file re-import dedup to
+  one — the residual failure is only the cross-DATE case (record at the ex-date).
+
+- **`deriveLots` rebases open lots (`lots.ts`).** A `split` is recognized by its
+  `type`, not the sign of `quantity`. It multiplies the ticker's OPEN lots
+  (`quantity × ratio`, `costPerShare ÷ ratio`) while **preserving each lot's
+  acquisition date** (the IRS holding period is unchanged by a split). It sorts
+  **before** same-day trades (a split is effective at the open, so same-day trades
+  are already in post-split units — applying it after would double-adjust). Forward
+  and reverse splits both flow through this one rule. `deriveLots` also returns an
+  `oversold: Set<string>` — the post-rebase inconsistency signal a legitimately-
+  split position never trips.
+
+- **The inconsistent-position guard (`materializePositions`).** An acquired ticker
+  that derives to no open position **and** is `oversold` (disposals exceed
+  everything ever held — impossible without an unaccounted corporate action) is
+  **never silently deleted**. It materializes a **flagged** row (`quantity: 0`,
+  basis cleared, `dataQuality: "inconsistent_history"`) surfaced in `HoldingsTable`
+  + the mobile card with a ⚠ marker. A clean net-zero close
+  still deletes. Recording the missing split **self-heals** the flagged row (the
+  oversell disappears, the position derives, the upsert clears the flag to null).
+
+- **One-click resolve (`inferSplit` / `previewSplitResult` + `ResolveSplitDialog`).**
+  The flagged ⚠ marker is a **button** that opens a resolver pre-filled with a
+  DETECTED split. Two pure browser-safe leaves in `lots.ts` back it: `inferSplit`
+  reads the ticker's largest date-ordered price CLIFF (a split divides the price by
+  the ratio), snaps it to a standard ratio, and VERIFIES the candidate actually
+  clears the over-sell before returning it (a guess that doesn't reconcile → null,
+  never fabricated); `previewSplitResult` dry-runs `deriveLots` with the candidate
+  split appended so the dialog shows the **resulting** position (shares / avg cost /
+  value) LIVE as the user edits the ratio/date — the "verify the amount before you
+  confirm" gate. Confirm is disabled until the ratio resolves the over-sell, and
+  records through the same manual-ledger POST path (`recordManualEvent`); the row
+  self-heals on refetch. Detection is a heuristic (single forward/reverse split;
+  a sparse or very volatile history may not auto-detect — the ratio/date stay
+  editable and previewed).
+
+- **Import + entry surfaces.** The OFX importer ingests `SPLIT` (`portfolio-ofx.ts`
+  `handleSplit`: ratio from `NUMERATOR`/`DENOMINATOR`, fallback `NEWUNITS`/
+  `OLDUNITS`; `FRACCASH` → a separate cash row + warning; no usable ratio →
+  skipped). A "Split" type in the add-transaction dialog records one by hand
+  through the same contract. Transaction import gains a **reset-account mode**
+  (`mode: "append" | "replace"`): `replace` atomically wipes the account's ledger
+  and repopulates from the file (behind a typed `REPLACE` confirmation that warns
+  it removes manual entries), via `repo.replaceLedgerFromFile`.
+
+- **Provider split backfill (`backfillSplits`).** The bulk complement to the
+  per-ticker resolve flow: a "Backfill splits" button on the Portfolio pane
+  (`POST /api/portfolio/splits/backfill`) fetches every held ticker's split
+  history from Yahoo (keyless, `fetchYahooSplits` in the analysis providers —
+  dotted class shares normalized `BRK.B → BRK-B`, one retry on a flaky 404) and
+  materializes the missing `split` events (`source: "provider"`, the same
+  `attributes: { numerator, denominator }` shape) through `ingestLedgerEvents`.
+  Only splits on/after the account's first trade in the ticker are written; a
+  per-ticker provider failure is collected, not fatal; idempotent (a re-run, or
+  an OFX/manual split of the same date, dedups on the fingerprint). The domain
+  function takes the fetcher as a parameter (`SplitFetcher`) so the portfolio
+  layer doesn't import the provider layer and tests inject a stub.
+
+- **The NVDA data fix** is a one-time recorded event, not a schema hack:
+  `pnpm --filter @flow-state-dev/trading-desk nvda-split` records the 2024-06-10
+  10:1 split into `WF: Investing Accounts` through the real `ingestLedgerEvents`
+  contract (idempotent — re-running dedups), restoring the derived 121.9346-share
+  position.
+
+- **Limitations (accepted).** A split rebases **ledger-derived** lots (from
+  imported/recorded trades). A holding that exists only as a **CSV/PDF snapshot**
+  (no ledger share history) has no lots to rebase, so recording a split against it
+  is a no-op on the derived quantity — the split still shows in the transactions
+  list, but the position won't change until its trade history is in the ledger
+  (import the trades, or use a transaction-file import). Cross-source split dedup
+  is date-sensitive: the fingerprint excludes numerator/denominator (so a manual
+  split and a same-date file re-import of the *same* split collapse to one), which
+  means a split recorded at two *different* dates double-applies (→ ratio²) and two
+  *same-date* splits with *different* ratios dedup to whichever landed first —
+  record at the broker **ex-date**, and use reset mode to correct a mis-entered
+  split. A full account reset destroys manual corrections by design — the guard
+  makes the resulting gap *visible* (a flagged row), not silent. Backfill is lazy
+  (existing accounts re-materialize only when next touched). Return-of-capital /
+  option closures / spinoffs / mergers / cash-in-lieu math / multi-currency and a
+  forward splits feed (FIX-804) stay out of scope.
 
 ## Realized gains + tax estimate (FIX-874)
 
@@ -613,9 +708,8 @@ filing-grade. Full methodology in [`docs/tax-estimate.md`](docs/tax-estimate.md)
   (`use-tax.ts`). `useTax` refetch joins the fan-out after every ledger mutation,
   a profile save, AND every account save/delete (account type/currency and the FK
   cascade are tax inputs).
-- **Limitations (v1).** FIFO only; sell-only realization; splits handled (see
-  below), but no wash sales / other corporate actions / NIIT; dividends assumed
-  qualified; flat state rate;
+- **Limitations (v1).** FIFO only; sell-only realization; no wash sales /
+  corporate actions / NIIT; dividends assumed qualified; flat state rate;
   display-approximation (JS-number) figures; multi-currency excluded from the
   estimate. Two proceeds-unknown edges, both import-only (the marker is written
   at import time): an OFX no-proceeds sell imported BEFORE this release was
@@ -625,24 +719,6 @@ filing-grade. Full methodology in [`docs/tax-estimate.md`](docs/tax-estimate.md)
   needs a VOID + re-record, not a re-import (the corrected row shares the
   `(account, source, externalId)` dedup key and dedups away). A
   void-and-reimport correction path is the tracked follow-up (FIX-878).
-
-- **Stock splits (FIX-874 follow-up).** A `split` ledger event
-  (`ledger-schema.ts`, `split_ratio` column) carries a ratio (new ÷ old) that
-  `deriveLots` applies to the ticker's open lots at the split date — `quantity ×
-  ratio`, `costPerShare ÷ ratio` — so pre-split basis lines up with post-split
-  proceeds. Without it FIFO matches a ~$48 pre-split lot to a ~$24 post-split
-  sale (a fabricated ~50% loss) and over-sells the split-created shares into
-  basis-unknown remainders — the exact corruption a real imported book showed
-  (SCHO/NVDA/CMG/AVGO/LRCX/ANET 2024 splits). Splits enter the ledger two ways,
-  both through the one `ingestLedgerEvents` contract (so a split dedups by
-  fingerprint regardless of source): the OFX importer emits a `split` from a
-  `SPLIT` record (`handleSplit`, previously skipped), and `backfillSplits`
-  (`portfolio-writes.ts`, behind `POST /api/portfolio/splits/backfill` and the
-  Portfolio pane's "Backfill splits" button) fetches split history from Yahoo
-  (keyless, `fetchYahooSplits`) for every held ticker and materializes the
-  missing events for pre-existing data. `deriveLots` is date-ordered and applies
-  a split after same-day buys, before same-day sells. Only splits are modeled;
-  other corporate actions stay skipped.
 
 ## Per-position thesis records (FIX-760)
 

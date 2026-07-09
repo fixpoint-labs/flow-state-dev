@@ -33,15 +33,22 @@
     {
       "idx": 4,
       "version": "7",
-      "when": 1783536744291,
-      "tag": "0004_giant_harpoon",
+      "when": 1783598995593,
+      "tag": "0004_new_malice",
       "breakpoints": true
     },
     {
       "idx": 5,
       "version": "7",
-      "when": 1783597249747,
-      "tag": "0005_slippery_electro",
+      "when": 1783598995594,
+      "tag": "0005_blushing_jasper_sitwell",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783599000000,
+      "tag": "0006_fold_legacy_split_ratio",
       "breakpoints": true
     }
   ]

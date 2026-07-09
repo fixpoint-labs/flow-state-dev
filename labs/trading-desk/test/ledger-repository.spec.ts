@@ -65,7 +65,6 @@ function ev(overrides: Partial<LedgerEventInput> = {}): LedgerEventInput {
     externalId: null,
     description: null,
     basisUnknown: null,
-    splitRatio: null,
     proceedsUnknown: null,
     ...overrides,
   };
@@ -188,6 +187,30 @@ describe("ingestLedgerEvents — share-event invariant", () => {
       "devuser",
     );
     expect(r.inserted).toBe(1);
+  });
+
+  it("rejects a buy/sell with no quantity (would persist as a phantom cash event)", async () => {
+    // A direct POST or a mis-mapping feed could send a share trade with null
+    // quantity; deriveLots forms no lot, so positions + realized gains would
+    // silently omit it. Reject at the shared boundary, not soft-skip.
+    await expect(
+      repo.ingestLedgerEvents([ev({ type: "buy", quantity: null, amount: -1500 })], "devuser"),
+    ).rejects.toThrow(/must carry a share quantity/);
+    await expect(
+      repo.ingestLedgerEvents([ev({ type: "sell", quantity: null, amount: 1500 })], "devuser"),
+    ).rejects.toThrow(/must carry a share quantity/);
+    expect(await repo.getLedger("devuser")).toHaveLength(0); // both batches rolled back
+  });
+});
+
+describe("upsertAccount — currency normalization", () => {
+  it("stores a lowercase/mixed-case currency uppercased, matching normalized ledger rows", async () => {
+    // The realized-gains total's exact currency check (FIX-874) compares the
+    // account currency against uppercase-normalized ledger rows; persisting
+    // `usd` verbatim would render an all-USD account's totals as `—`.
+    await repo.upsertAccount({ id: "acc-lc", userId: "devuser", name: "Lower", type: "taxable", currency: "usd" });
+    const accounts = await repo.getAccountsForUser("devuser");
+    expect(accounts.find((a) => a.accountId === "acc-lc")?.currency).toBe("USD");
   });
 });
 
@@ -642,7 +665,11 @@ describe("realized gains materialization (FIX-874) — real-path goal check", ()
     const gains = await repo2.getRealizedGains("devuser");
     expect(gains).toHaveLength(1);
     expect(gains[0]).toMatchObject({ ticker: "AAPL", proceeds: 1500, costBasis: 1000, gain: 500, term: "long" });
-  });
+    // This test builds + migrates its OWN PGlite (it needs a raw handle to clear
+    // realized_gains), on top of the suite beforeEach's — so an explicit timeout,
+    // not Vitest's 5s default, keeps a slow CI runner from failing it before it
+    // verifies the backfill.
+  }, 30_000);
 
   it("chunks the realized-gains insert so a large sell history can't corrupt the connection (FIX-874 dev-DB break)", async () => {
     // 2,200 one-share lots closed by a single sell → 2,200 realized rows. At 15
@@ -703,7 +730,7 @@ describe("backfillSplits (FIX-874 follow-up) — provider split backfill", () =>
     expect(beforeGain).toBeLessThan(-9000); // ~ -$10,800 fake loss
 
     const stub = async (ticker: string) =>
-      ticker === "NVDA" ? [{ date: "2024-06-10", ratio: 10 }] : [];
+      ticker === "NVDA" ? [{ date: "2024-06-10", numerator: 10, denominator: 1 }] : [];
     const report = await backfillSplits("devuser", repo, stub, "2024-12-31");
     expect(report.inserted).toBe(1); // one split event written for the account
     expect(report.splitsFound).toBe(1);
@@ -720,7 +747,7 @@ describe("backfillSplits (FIX-874 follow-up) — provider split backfill", () =>
       [ev({ ticker: "NVDA", tradeDate: "2024-01-02", quantity: 10, unitPrice: 1200, amount: -12000, source: "file", externalId: "B2" })],
       "devuser",
     );
-    const stub = async () => [{ date: "2024-06-10", ratio: 10 }];
+    const stub = async () => [{ date: "2024-06-10", numerator: 10, denominator: 1 }];
     const first = await backfillSplits("devuser", repo, stub, "2024-12-31");
     expect(first.inserted).toBe(1);
     const second = await backfillSplits("devuser", repo, stub, "2024-12-31");
@@ -738,7 +765,7 @@ describe("backfillSplits (FIX-874 follow-up) — provider split backfill", () =>
     );
     const stub = async (ticker: string) => {
       if (ticker === "AAPL") throw new Error("provider 503");
-      return [{ date: "2024-06-10", ratio: 10 }];
+      return [{ date: "2024-06-10", numerator: 10, denominator: 1 }];
     };
     const report = await backfillSplits("devuser", repo, stub, "2024-12-31");
     expect(report.inserted).toBe(1); // NVDA split still written

@@ -178,17 +178,18 @@ async function fetchYahooTimeseries(ticker: string): Promise<YahooTimeseriesResp
   return json;
 }
 
-/** One stock split from a provider: the ex-date and the ratio (new ÷ old). */
-export type ProviderSplit = { date: string; ratio: number };
+/** One stock split from a provider: the ex-date and the `{ numerator,
+ *  denominator }` ratio — the FIX-876 `splitAttributesSchema` shape (a 10:1
+ *  forward is `{ numerator: 10, denominator: 1 }`). */
+export type ProviderSplit = { date: string; numerator: number; denominator: number };
 
 /**
  * Fetch a ticker's stock-split history from Yahoo's keyless chart API over
- * `[from, to]` (ISO dates). Each split becomes `{ date, ratio }` with
- * `ratio = numerator ÷ denominator` (a 10:1 forward → `10`, a 1:2 reverse →
- * `0.5`). Sorted oldest-first. Throws on a failed request so the caller can
- * degrade (a split-less backfill leaves realized gains as they were) rather than
- * fabricate. Used only by the split backfill — the desk's data tools don't need
- * corporate actions.
+ * `[from, to]` (ISO dates). Yahoo reports each split's numerator/denominator
+ * natively, so the pair passes through unconverted. Sorted oldest-first. Throws
+ * on a failed request so the caller can degrade (a split-less backfill leaves
+ * realized gains as they were) rather than fabricate. Used only by the split
+ * backfill — the desk's data tools don't need corporate actions.
  */
 export async function fetchYahooSplits(
   ticker: string,
@@ -228,14 +229,18 @@ export async function fetchYahooSplits(
     if (
       typeof s.numerator !== "number" ||
       typeof s.denominator !== "number" ||
-      s.denominator <= 0 ||
+      !(s.numerator > 0) ||
+      !(s.denominator > 0) ||
+      !Number.isFinite(s.numerator / s.denominator) ||
       typeof s.date !== "number"
     ) {
       continue;
     }
-    const ratio = s.numerator / s.denominator;
-    if (!Number.isFinite(ratio) || ratio <= 0) continue;
-    out.push({ date: new Date(s.date * 1000).toISOString().slice(0, 10), ratio });
+    out.push({
+      date: new Date(s.date * 1000).toISOString().slice(0, 10),
+      numerator: s.numerator,
+      denominator: s.denominator,
+    });
   }
   return out.sort((a, b) => (a.date < b.date ? -1 : 1));
 }

@@ -38,8 +38,8 @@ function row(overrides: Partial<LedgerRow> = {}): LedgerRow {
     externalId: null,
     description: null,
     basisUnknown: null,
-    splitRatio: null,
     proceedsUnknown: null,
+    attributes: null,
     voidedAt: null,
     createdAt: "2026-05-06T00:00:00.000Z",
     ...overrides,
@@ -102,5 +102,21 @@ describe("buildLedgerRowModel", () => {
     expect(m.ticker).toBe(DASH);
     expect(m.quantity).toBe(DASH);
     expect(m.amount.text).toBe("+$5,000.00");
+  });
+
+  it("renders a split with its ratio in the quantity column (FIX-876)", () => {
+    const m = buildLedgerRowModel(
+      row({
+        type: "split",
+        quantity: null,
+        unitPrice: null,
+        amount: 0,
+        attributes: { numerator: 10, denominator: 1 },
+      }),
+    );
+    expect(m.type).toBe("Split");
+    // The split carries no share delta — show the 10:1 ratio instead of "—".
+    expect(m.quantity).toBe("10:1");
+    expect(m.amount.text).toBe("$0.00");
   });
 });

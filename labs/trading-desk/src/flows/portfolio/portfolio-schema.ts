@@ -110,6 +110,12 @@ export const holdingSchema = z.object({
   assetType: assetTypeSchema.default("equity"),
   /** Per-type attributes, discriminated by `kind`. Defaults to `{ kind: "none" }`. */
   attributes: holdingAttributesSchema.default({ kind: "none" }),
+  /** Data-integrity flag (FIX-876). `inconsistent_history` when the ledger
+   *  derives this ticker to an impossible over-sold state (an unaccounted
+   *  corporate action — typically an unrecorded split): the row is materialized
+   *  FLAGGED (quantity 0, basis cleared) and surfaced for review rather than
+   *  silently deleted. Null for a normal row. */
+  dataQuality: z.enum(["inconsistent_history"]).nullable().default(null),
 });
 export type Holding = z.infer<typeof holdingSchema>;
 

@@ -27,7 +27,12 @@ import type { PortfolioRepository } from "@/src/db/repository";
 import type { FileImportReport } from "./transaction-import-schema";
 import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
 import { accountTypeSchema, assetClassSchema, type AssetClass } from "./portfolio-schema";
-import { ledgerEventInputSchema, type IngestReport, type LedgerEventInput } from "./ledger-schema";
+import {
+  ledgerEventInputObject,
+  refineLedgerEvent,
+  type IngestReport,
+  type LedgerEventInput,
+} from "./ledger-schema";
 import { taxProfileInputSchema, type TaxProfileInput } from "./tax-schema";
 import { detectAndParseTransactionFile } from "./transaction-file";
 import type { TaxProfileRow } from "@/src/db/repository";
@@ -61,11 +66,12 @@ export const saveAccountSchema = z.object({
 export type SaveAccountInput = z.infer<typeof saveAccountSchema>;
 
 /** Request body for a manual ledger entry — the canonical event minus the
- *  feed-owned `source` / `externalId` (fixed to `manual` / null here). */
-export const recordEventSchema = ledgerEventInputSchema.omit({
-  source: true,
-  externalId: true,
-});
+ *  feed-owned `source` / `externalId` (fixed to `manual` / null here). Carries
+ *  the same cross-field refine as the full input schema, so a manual `split`
+ *  entry is validated identically (FIX-876). */
+export const recordEventSchema = ledgerEventInputObject
+  .omit({ source: true, externalId: true })
+  .superRefine(refineLedgerEvent);
 export type RecordEventInput = z.infer<typeof recordEventSchema>;
 
 /** Request body for a tax-profile save (the route re-applies `userId`). */
@@ -81,11 +87,14 @@ export const importHoldingsSchema = z.object({
 });
 export type ImportHoldingsInput = z.infer<typeof importHoldingsSchema>;
 
-/** Request body for an OFX-family transaction-file import. */
+/** Request body for an OFX-family transaction-file import. `mode: "replace"`
+ *  (FIX-876) atomically wipes the account's ledger before repopulating it from
+ *  the file; `"append"` (default) is the non-destructive dedup-merge. */
 export const importTransactionsSchema = z.object({
   accountId: z.string(),
   content: z.string(),
   filename: z.string().nullable().default(null),
+  mode: z.enum(["append", "replace"]).default("append"),
 });
 export type ImportTransactionsInput = z.infer<typeof importTransactionsSchema>;
 
@@ -174,11 +183,26 @@ export async function recordManualEvent(
 ): Promise<IngestReport> {
   const ticker =
     input.ticker === null ? null : input.ticker.trim().toUpperCase() || null;
+  // A sell's proceeds are cash IN — non-negative by the ledger sign convention
+  // (buy `−`, sell `+`). The dialog takes a user-signed amount, so a sale entered
+  // with a negative amount would trip the share-event invariant (FIX-874) and
+  // silently fail to record. Canonicalize the sign here — the OFX importer's
+  // `Math.abs(total)` precedent — so the manual path and the invariant agree.
+  const amount = input.type === "sell" ? Math.abs(input.amount) : input.amount;
+  // The dialog's optional Quantity field can submit a literal 0. A 0 is never a
+  // valid share count: for a cash event (dividend/interest/deposit/withdrawal/fee)
+  // it's noise, and for a `transfer` it means a CASH transfer (no shares) — but
+  // the share-event invariant (FIX-874) reads any non-null quantity as a share
+  // move and throws (a cash transfer has a blank ticker), rolling back a valid
+  // entry after the dialog closed. Canonicalize a 0 to null so the invariant sees
+  // "no shares". (A buy/sell can't be a 0-share trade either — it still fails the
+  // invariant's "must carry a share quantity" check, just with a clearer error.)
+  const quantity = input.quantity === 0 ? null : input.quantity;
   // `proceedsUnknown` is import-only (a feed normalizer's signal that a file
   // couldn't supply proceeds). Force it null on the manual path so a caller can't
   // null out a real sale's proceeds by hand.
   return repo.ingestLedgerEvents(
-    [{ ...input, ticker, source: "manual", externalId: null, proceedsUnknown: null }],
+    [{ ...input, amount, quantity, ticker, source: "manual", externalId: null, proceedsUnknown: null }],
     userId,
   );
 }
@@ -332,7 +356,15 @@ export async function importTransactionFile(
     accountId: input.accountId,
     source: "file" as const,
   }));
-  const ingest = await repo.ingestLedgerEvents(events, userId);
+  // "replace" mode (FIX-876): atomically wipe the account's ledger (manual
+  // entries included) and repopulate from this file, so the file is the single
+  // source of truth — the clean escape from a cross-source split double-apply.
+  // "append" (default) is the non-destructive dedup-merge. Both materialize
+  // positions inside the same transaction.
+  const ingest =
+    input.mode === "replace"
+      ? await repo.replaceLedgerFromFile(input.accountId, userId, events)
+      : await repo.ingestLedgerEvents(events, userId);
 
   return report({
     inserted: ingest.inserted,
@@ -341,15 +373,16 @@ export async function importTransactionFile(
   });
 }
 
-/** A market-data split lookup for one ticker over `[from, to]` (ISO dates). The
- *  route injects the real Yahoo fetcher (`fetchYahooSplits`); tests inject a
- *  stub. Kept as a parameter so the portfolio domain doesn't import the analysis
- *  provider layer. */
+/** A market-data split lookup for one ticker over `[from, to]` (ISO dates),
+ *  returning each split's ex-date and `{ numerator, denominator }` ratio (the
+ *  FIX-876 `splitAttributesSchema` shape). The route injects the real Yahoo
+ *  fetcher (`fetchYahooSplits`); tests inject a stub. Kept as a parameter so the
+ *  portfolio domain doesn't import the analysis provider layer. */
 export type SplitFetcher = (
   ticker: string,
   from: string,
   to: string,
-) => Promise<{ date: string; ratio: number }[]>;
+) => Promise<{ date: string; numerator: number; denominator: number }[]>;
 
 /** Outcome of a split backfill (a plain result, not a generator output). */
 export type SplitBackfillReport = {
@@ -359,23 +392,25 @@ export type SplitBackfillReport = {
   splitsFound: number;
   /** Split events newly written to the ledger. */
   inserted: number;
-  /** Split events that already existed (idempotent re-run, or an OFX-imported
-   *  split of the same account/ticker/date/ratio — same fingerprint). */
+  /** Split events that already existed (idempotent re-run, or an OFX/manual
+   *  split of the same account/ticker/date — same fingerprint). */
   deduplicated: number;
   /** Per-ticker provider failures — the rest still backfill (honest, not all-or-nothing). */
   errors: { ticker: string; reason: string }[];
 };
 
 /**
- * Backfill stock-split events for a household from a market-data provider
- * (FIX-874 follow-up), so realized gains re-derive correctly for tickers whose
- * splits the original import missed (the current-data path chosen alongside the
- * OFX import path). For every `(account, ticker)` with share history it fetches
- * the ticker's splits and writes one `split` event per split dated on/after that
+ * Backfill stock-split events for a household from a market-data provider, so
+ * realized gains re-derive correctly for tickers whose splits the original
+ * import missed — the bulk, provider-sourced complement to FIX-876's per-ticker
+ * resolve-split flow. For every `(account, ticker)` with share history it
+ * fetches the ticker's splits and writes one `split` event (the FIX-876
+ * `attributes: { numerator, denominator }` shape) per split dated on/after that
  * account's first trade in the ticker. Ingest is idempotent — a re-run, or a
- * later OFX re-import of the same split, dedups on the fingerprint — so this is
- * safe to run repeatedly. A provider failure for one ticker is collected and the
- * rest proceed. Injecting `fetchSplits`/`today` keeps it unit-testable.
+ * later OFX re-import / manual record of the same split, dedups on the
+ * fingerprint — so this is safe to run repeatedly. A provider failure for one
+ * ticker is collected and the rest proceed. Injecting `fetchSplits`/`today`
+ * keeps it unit-testable.
  */
 export async function backfillSplits(
   userId: string,
@@ -394,7 +429,7 @@ export async function backfillSplits(
     if (e.ticker === null || !SHARE_TYPES.has(e.type)) continue;
     const ticker = e.ticker.toUpperCase();
     tickers.add(ticker);
-    const key = `${e.accountId} ${ticker}`;
+    const key = `${e.accountId} ${ticker}`;
     const cur = earliestByAcctTicker.get(key);
     if (cur === undefined || e.tradeDate < cur) earliestByAcctTicker.set(key, e.tradeDate);
     if (globalEarliest === null || e.tradeDate < globalEarliest) globalEarliest = e.tradeDate;
@@ -404,7 +439,7 @@ export async function backfillSplits(
   }
 
   // One provider lookup per ticker (not per account).
-  const splitsByTicker = new Map<string, { date: string; ratio: number }[]>();
+  const splitsByTicker = new Map<string, { date: string; numerator: number; denominator: number }[]>();
   const errors: { ticker: string; reason: string }[] = [];
   let splitsFound = 0;
   for (const ticker of tickers) {
@@ -419,7 +454,7 @@ export async function backfillSplits(
 
   const toIngest: LedgerEventInput[] = [];
   for (const [key, earliest] of earliestByAcctTicker) {
-    const sep = key.indexOf(" ");
+    const sep = key.indexOf(" ");
     const accountId = key.slice(0, sep);
     const ticker = key.slice(sep + 1);
     for (const s of splitsByTicker.get(ticker) ?? []) {
@@ -439,8 +474,8 @@ export async function backfillSplits(
         externalId: `yahoo-split:${ticker}:${s.date}`,
         description: `Split ${ticker} on ${s.date}`,
         basisUnknown: null,
-        splitRatio: s.ratio,
         proceedsUnknown: null,
+        attributes: { numerator: s.numerator, denominator: s.denominator },
       });
     }
   }

@@ -1,6 +1,6 @@
 {
-  "id": "a44c0376-06c2-4389-a517-d6a1c8481230",
-  "prevId": "55cced47-1d01-4274-b764-40746778c12a",
+  "id": "7e9ed69d-69f1-4bcc-83f6-083251eae456",
+  "prevId": "f853014f-e8d1-41c2-8ef6-e339f7c8573a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -122,6 +122,12 @@
         "acquired_date": {
           "name": "acquired_date",
           "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data_quality": {
+          "name": "data_quality",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -315,15 +321,15 @@
           "primaryKey": false,
           "notNull": false
         },
-        "split_ratio": {
-          "name": "split_ratio",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false
-        },
         "proceeds_unknown": {
           "name": "proceeds_unknown",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attributes": {
+          "name": "attributes",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

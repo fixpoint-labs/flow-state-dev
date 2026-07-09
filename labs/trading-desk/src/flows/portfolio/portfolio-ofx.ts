@@ -22,11 +22,12 @@
  *    is recorded keyed by its CUSIP and surfaced in `unresolvedSecurities`,
  *    never silently dropped. A transfer-in with no acquisition price is a
  *    `basisUnknown` lot, never a zero.
- *  - Honest skips: corporate actions naive FIFO can't honor (`SPLIT`,
- *    `RETOFCAP`, `CLOSUREOPT`) are surfaced in `skipped`, not fed to the lot
- *    math where they would corrupt basis. Mergers/spin-offs are not distinct
- *    OFX aggregates — they arrive as `TRANSFER` and land as basis-unknown
- *    transfers, which is honest.
+ *  - Stock splits are ingested as a first-class `split` event (FIX-876) that
+ *    `deriveLots` rebases open lots by — no longer skipped. The remaining
+ *    corporate actions naive FIFO can't honor (`RETOFCAP`, `CLOSUREOPT`) are
+ *    still surfaced in `skipped`, not fed to the lot math where they would
+ *    corrupt basis. Mergers/spin-offs are not distinct OFX aggregates — they
+ *    arrive as `TRANSFER` and land as basis-unknown transfers, which is honest.
  *
  * The parser does NOT set `accountId` or `source`: OFX account ids don't map to
  * our account ids, so the `importTransactions` action injects the user-chosen
@@ -239,7 +240,6 @@ function baseEvent(
     externalId,
     description: invtran ? str(invtran.MEMO) : null,
     basisUnknown: fields.basisUnknown,
-    splitRatio: null,
     proceedsUnknown: fields.proceedsUnknown ?? null,
   };
 }
@@ -624,9 +624,97 @@ function handleBankTran(ctx: Ctx, agg: OfxNode): void {
     externalId: fitid,
     description: str(stmt.NAME) ?? str(stmt.MEMO),
     basisUnknown: null,
-    splitRatio: null,
     proceedsUnknown: null,
   });
+}
+
+/** Resolve a SPLIT aggregate's ratio to a positive numerator/denominator.
+ *  Prefers the explicit `NUMERATOR`/`DENOMINATOR` (OFX's clean split ratio, e.g.
+ *  10/1), falling back to the holder's `NEWUNITS`/`OLDUNITS` share counts — which
+ *  may be FRACTIONAL for a fractional-share account (their ratio is still exact).
+ *  Returns null only when neither yields a positive pair — the caller then
+ *  skips-with-warning rather than fabricate a ratio. */
+function resolveSplitRatio(agg: OfxNode): { numerator: number; denominator: number } | null {
+  const positive = (n: number | null): n is number => n !== null && n > 0;
+  const numerator = num(agg.NUMERATOR);
+  const denominator = num(agg.DENOMINATOR);
+  if (positive(numerator) && positive(denominator)) return { numerator, denominator };
+  // Fall back to the holder's before/after share counts. These may be FRACTIONAL
+  // for a fractional-share account (e.g. 121.9346 → 12.19346 for a 10-for-1), so
+  // accept any positive pair — the ratio `NEWUNITS / OLDUNITS` is exact regardless
+  // of whether the raw counts are whole. Only a non-positive pair is unusable.
+  const newUnits = num(agg.NEWUNITS);
+  const oldUnits = num(agg.OLDUNITS);
+  if (positive(newUnits) && positive(oldUnits)) {
+    return { numerator: newUnits, denominator: oldUnits };
+  }
+  return null;
+}
+
+/** SPLIT → a first-class `split` ledger event (FIX-876) that `deriveLots`
+ *  rebases the ticker's open lots by, instead of the old skip-with-warning. The
+ *  ratio comes from `NUMERATOR`/`DENOMINATOR` (fallback `NEWUNITS`/`OLDUNITS`);
+ *  an unresolvable ticker or a non-positive-integer ratio is skipped-with-warning
+ *  (never a fabricated split). A `FRACCASH` cash-in-lieu leg is real money —
+ *  surfaced as a separate cash row and warned, not dropped. */
+function handleSplit(ctx: Ctx, agg: OfxNode): void {
+  const invtran = obj(agg.INVTRAN);
+  const tradeDate = requireTradeDate(ctx, invtran, "split");
+  if (tradeDate === null) return;
+  const ticker = resolveTicker(ctx, obj(agg.SECID));
+  if (ticker === null) {
+    ctx.warnings.push("A stock split with no identifiable security was skipped — record it manually.");
+    return;
+  }
+  // Record the split when the ratio resolves; otherwise skip-with-warning. Either
+  // way, DON'T early-return — the FRACCASH cash-in-lieu leg below is INDEPENDENT
+  // real money and must be recorded even when the ratio is unusable.
+  const ratio = resolveSplitRatio(agg);
+  if (ratio === null) {
+    ctx.warnings.push(
+      `A stock split of ${ticker} had no usable ratio (numerator/denominator) — the split was skipped (record it manually); any cash-in-lieu is still recorded.`,
+    );
+  } else {
+    ctx.events.push({
+      ...baseEvent(ctx, invtran, {
+        type: "split",
+        tradeDate,
+        ticker,
+        quantity: null,
+        unitPrice: null,
+        amount: 0,
+        fee: null,
+        basisUnknown: null,
+      }),
+      attributes: { numerator: ratio.numerator, denominator: ratio.denominator },
+    });
+  }
+  // Cash-in-lieu of a fractional share is real money — record it as a separate
+  // cash row (a distinct external id so it doesn't collide with the split on the
+  // dedup index) and warn. It is recorded as a `deposit`, NOT a `dividend`:
+  // cash-in-lieu is disposal/sale proceeds, not dividend income, so a `dividend`
+  // would inflate `getIncomeSummary`'s Dividends total. `deposit` lands the cash
+  // without asserting income (cash-in-lieu SALE math is out of scope; this just
+  // surfaces the money honestly). A zero/absent FRACCASH is no cash event.
+  const fracCash = num(agg.FRACCASH);
+  if (fracCash !== null && fracCash > 0) {
+    ctx.events.push(
+      baseEvent(ctx, invtran, {
+        type: "deposit",
+        tradeDate,
+        ticker,
+        quantity: null,
+        unitPrice: null,
+        amount: fracCash,
+        fee: null,
+        basisUnknown: null,
+        externalIdSuffix: ":fraccash",
+      }),
+    );
+    ctx.warnings.push(
+      `Split of ${ticker} paid ${fracCash} cash-in-lieu of a fractional share — recorded as a cash (deposit) row, not dividend income (reclassify if needed).`,
+    );
+  }
 }
 
 /** Record an aggregate as skipped (with a reason) rather than feed it to the
@@ -661,61 +749,6 @@ function handleOptionSkip(ctx: Ctx, agg: OfxNode, kind: string): void {
 
 const CORPORATE_ACTION_NOTE = "record manually; v1 does not adjust basis for corporate actions";
 
-/** SPLIT → a `split` event carrying the ratio (new ÷ old). `deriveLots` scales
- *  the ticker's open lots at this date so pre-split basis lines up with
- *  post-split proceeds (FIX-874 follow-up) — without it FIFO fabricates a ~50%
- *  loss and over-sells the split-created shares. The ratio is `NEWUNITS/OLDUNITS`
- *  (the actual position change), falling back to `NUMERATOR/DENOMINATOR`. A
- *  split with no resolvable security, no usable date, or no positive ratio is
- *  skipped-with-reason rather than fed a bad ratio. `FRACCASH` (cash-in-lieu of
- *  a fractional share) is not modeled in v1. RETOFCAP / CLOSUREOPT stay skipped. */
-function handleSplit(ctx: Ctx, agg: OfxNode): void {
-  const invtran = obj(agg.INVTRAN);
-  const tradeDate = requireTradeDate(ctx, invtran, "split");
-  if (tradeDate === null) return;
-  const ticker = resolveTicker(ctx, obj(agg.SECID));
-  if (ticker === null) {
-    ctx.skipped.push({
-      kind: "SPLIT",
-      reason: `A split (${tradeDate}) has no identifiable security — not imported.`,
-    });
-    return;
-  }
-  const oldUnits = num(agg.OLDUNITS);
-  const newUnits = num(agg.NEWUNITS);
-  const numerator = num(agg.NUMERATOR);
-  const denominator = num(agg.DENOMINATOR);
-  const ratio =
-    oldUnits !== null && newUnits !== null && oldUnits > 0
-      ? newUnits / oldUnits
-      : numerator !== null && denominator !== null && denominator > 0
-        ? numerator / denominator
-        : null;
-  if (ratio === null || !Number.isFinite(ratio) || ratio <= 0) {
-    ctx.skipped.push({
-      kind: "SPLIT",
-      reason: `A split of ${ticker} (${tradeDate}) has no usable ratio (OLD/NEW/NUM/DENOM) — not imported.`,
-    });
-    return;
-  }
-  ctx.events.push({
-    type: "split",
-    tradeDate,
-    settleDate: null,
-    ticker,
-    quantity: null,
-    unitPrice: null,
-    amount: 0,
-    fee: null,
-    currency: ctx.currency,
-    externalId: fitidOf(invtran),
-    description: invtran ? str(invtran.MEMO) : null,
-    basisUnknown: null,
-    splitRatio: ratio,
-    proceedsUnknown: null,
-  });
-}
-
 /** The aggregate dispatch table. A tag absent here is reported as an unhandled
  *  warning rather than silently dropped. */
 const HANDLERS: Record<string, (ctx: Ctx, agg: OfxNode) => void> = {
@@ -747,6 +780,9 @@ const HANDLERS: Record<string, (ctx: Ctx, agg: OfxNode) => void> = {
   MARGININTEREST: handleCashCharge,
   INVEXPENSE: handleCashCharge,
   INVBANKTRAN: handleBankTran,
+  // SPLIT is now ingested as a first-class `split` event (FIX-876) that rebases
+  // open lots — no longer skipped. RETOFCAP/CLOSUREOPT stay skipped (their basis
+  // math is out of scope).
   SPLIT: handleSplit,
   RETOFCAP: (ctx, agg) => handleSkip(ctx, agg, "RETOFCAP", CORPORATE_ACTION_NOTE),
   CLOSUREOPT: (ctx, agg) => handleSkip(ctx, agg, "CLOSUREOPT", CORPORATE_ACTION_NOTE),
