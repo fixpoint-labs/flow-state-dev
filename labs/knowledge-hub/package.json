@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Incubation lab: the Knowledge Hub (FIX-882–884). Scaffold only — a single ping action until the capture/staging/sweeper/workforce work lands.",
+  "description": "Incubation lab: the Knowledge Hub (FIX-882–884). Capture layer — logActivity into a user-scoped inbox with a deterministic mailroom pass; the sweeper/workforce work lands in the follow-on issues.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root . --passWithNoTests",
@@ -13,6 +13,7 @@
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/mcp": "workspace:*",
     "zod": "^3.25.76"
   },
   "devDependencies": {
