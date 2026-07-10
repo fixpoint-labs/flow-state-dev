@@ -217,6 +217,24 @@ Phase 1 (Foundation) — Waves 1.a through 1.k are complete. Core contracts, blo
 - See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidelines
 - See [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community standards
 
+## Sponsors
+
+We're grateful to the sponsors who support the development of `@flow-state-dev`.
+
+<p align="center">
+  <a href="https://neon.com">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sponsors/neon-logo-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="docs/assets/sponsors/neon-logo-light.svg">
+      <img src="docs/assets/sponsors/neon-logo-light.svg" alt="Neon" width="180">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://neon.com"><strong>Neon</strong></a> — Serverless Postgres with branching, autoscaling, and scale-to-zero.
+</p>
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE) for details. Copyright (c) 2026 Fixpoint Labs.
