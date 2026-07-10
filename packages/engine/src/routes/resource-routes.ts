@@ -380,6 +380,16 @@ export async function handleListCollectionState(
     return jsonResponse(403, { error: `State read not permitted for "${route.ref}"` });
   }
 
+  // FIX-858: external collections don't enumerate FSD storage — listing them
+  // through this store-backed route would return a false empty page (`total: 0`),
+  // indistinguishable from "no rows". Cursor-paged listing over the app's
+  // `search` lands in a follow-up; until then, signal unsupported rather than lie.
+  if (isExternalResourceCollection(config)) {
+    return jsonResponse(501, {
+      error: `Listing external collection "${route.ref}" is not supported yet — read items by key, or use search once the pushdown route lands`,
+    });
+  }
+
   const url = new URL(request.url);
   const limitParam = url.searchParams.get("limit");
   const offsetParam = url.searchParams.get("offset");

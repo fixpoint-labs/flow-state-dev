@@ -14,6 +14,7 @@ import {
   handleGetCollectionItemState,
   handleGetCollectionItemContent,
   handleCreateCollectionItem,
+  handleListCollectionState,
 } from "../src/routes/resource-routes";
 import { handleGetSessionState } from "../src/routes/state-routes";
 import { buildResourceSnapshot } from "../src/routes/route-utils";
@@ -150,6 +151,19 @@ describe("external collection — snapshot anchor", () => {
     // The external collection surfaces (empty anchor) under its scope, without
     // enumerating rows.
     expect(body.resources?.user?.portfolio).toEqual({});
+  });
+});
+
+describe("external collection — list route", () => {
+  it("returns 501 (not a false empty page) since list pushdown is a follow-up", async () => {
+    const ctx = await setupCtx();
+    const res = await handleListCollectionState(
+      makeReq("http://x/sessions/sess_1/resources/portfolio"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "portfolio" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    expect(res.status).toBe(501);
+    expect((await res.json()).error).toMatch(/not supported yet/i);
   });
 });
 
