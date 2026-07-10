@@ -1,9 +1,13 @@
 /**
- * PortfolioPane — the Portfolio view. An account summary-card grid (value,
- * cash, uP/L $ + %, position count); clicking a card opens that account's
- * detail view (`AccountDetail`) with Holdings / Transactions / Income tabs.
- * The toolbar (add account, imports, add transaction, refresh prices) and the
- * portfolio-level totals stay above both views.
+ * PortfolioPane — the Portfolio view, split into sidebar-switched perspectives
+ * (FIX-885): **Accounts** (the summary-card grid; clicking a card opens that
+ * account's detail view (`AccountDetail`) with Holdings / Transactions /
+ * Income / Realized Gains tabs) and **Gains & Taxes** (`GainsTaxesSection` —
+ * the household year-by-year realized gains + tax-estimate card). A desktop
+ * left rail / mobile strip (`portfolio-section-nav.tsx`) picks the section.
+ * The toolbar (add account, imports, add transaction, refresh prices), the
+ * portfolio-level totals, and the provenance line stay pinned above every
+ * section; only the content region swaps.
  *
  * Data path:
  *  - Accounts (with inline holdings) come from the app-owned tables via the
@@ -61,7 +65,12 @@ import {
 } from "./add-transaction-dialog";
 import { ResolveSplitDialog } from "./resolve-split-dialog";
 import { ThesisDialog } from "./thesis-dialog";
-import { TaxEstimateCard } from "./tax-estimate-card";
+import { GainsTaxesSection } from "./gains-taxes-section";
+import {
+  PortfolioSectionRail,
+  PortfolioSectionStrip,
+  type PortfolioSection,
+} from "./portfolio-section-nav";
 import { TaxProfileDialog } from "./tax-profile-dialog";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import { useLedger } from "./use-ledger";
@@ -148,6 +157,11 @@ export function PortfolioPane({
   /** The account whose detail view (holdings/transactions/income tabs) is
    *  open; null shows the summary-card grid. */
   const [openAccountId, setOpenAccountId] = useState<string | null>(null);
+  /** The sidebar-selected perspective (FIX-885). Deliberately local state (no
+   *  routing in this app) — resets when the pane unmounts, same lifetime as
+   *  `openAccountId`, which it does NOT reset: returning to Accounts restores
+   *  the open drill-in. */
+  const [section, setSection] = useState<PortfolioSection>("accounts");
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   // Split backfill (FIX-874 follow-up): running state + a short result note.
   const [splitBackfill, setSplitBackfill] = useState<{ running: boolean; note: string | null }>({
@@ -761,87 +775,95 @@ export function PortfolioPane({
         Money figures are display approximations, not precise accounting.
       </div>
 
-      {/* Accounts: a clickable summary-card grid, or one opened account's
-          detail view (Holdings / Transactions / Income tabs). `@container` so
-          the card-grid column count tracks the pane's width, not the viewport
-          (the HoldingsTable precedent). */}
-      <div className="@container flex-1 space-y-4 overflow-y-auto p-4">
-        {/* Household-level realized-gains tax preview — a standalone section
-            above the accounts. */}
-        <TaxEstimateCard
-          estimate={taxEstimate}
-          profile={taxProfile}
-          onEditProfile={() => setTaxProfileOpen(true)}
-        />
-        {accounts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-            <p className="text-sm text-[color:var(--c-fg)]">No accounts yet</p>
-            <p className="max-w-md text-xs text-[color:var(--c-fg-muted)]">
-              Add an account, then import a brokerage CSV or transaction file.
-              The same ticker in two accounts is tracked as two distinct
-              holdings.
-            </p>
-          </div>
-        ) : openAccount !== undefined ? (
-          <AccountDetail
-            account={openAccount}
-            holdings={holdingsByAccount.get(openAccount.accountId) ?? []}
-            ledgerEvents={ledgerEvents}
-            income={income}
-            realizedGains={realizedGains}
-            prices={priceMap}
-            dividends={dividendsByAccount.get(openAccount.accountId) ?? new Map()}
-            lots={lotsByAccount.get(openAccount.accountId) ?? new Map()}
-            accountValue={rollups.get(openAccount.accountId)?.value ?? null}
-            accountUpl={rollups.get(openAccount.accountId)?.upl ?? null}
-            accountUplPct={rollups.get(openAccount.accountId)?.uplPct ?? null}
-            accountDividends={dividendTotals.get(openAccount.accountId) ?? null}
-            onBack={() => setOpenAccountId(null)}
-            thesisTickers={thesisTickers}
-            // Gate the thesis editor until the household theses load (session-
-            // backed resource; no session → never ready), so a click can't open
-            // a blank editor against a partial list and overwrite an unloaded one.
-            thesisReady={hasSession && !thesesLoading}
-            onDeleteHolding={(ticker) =>
-              void handleDeleteHolding(openAccount.accountId, ticker)
-            }
-            onDeleteAccount={() => void handleDeleteAccount(openAccount.accountId)}
-            onEditThesis={(ticker) => setThesisTicker(ticker)}
-            onSetAssetClass={(ticker, assetClass) =>
-              void handleSetAssetClass(openAccount.accountId, ticker, assetClass)
-            }
-            onResolveSplit={(ticker) => setResolveSplitTicker(ticker)}
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-2 @6xl:grid-cols-3">
-            {accounts.map((account) => {
-              const rollup = rollups.get(account.accountId) ?? {
-                value: null,
-                upl: null,
-                uplPct: null,
-              };
-              return (
-                <AccountCard
-                  key={account.accountId}
-                  account={account}
-                  holdingsCount={
-                    (holdingsByAccount.get(account.accountId) ?? []).length
-                  }
-                  accountValue={rollup.value}
-                  accountUpl={rollup.upl}
-                  accountUplPct={rollup.uplPct}
-                  accountDividends={dividendTotals.get(account.accountId) ?? null}
-                  accountRealized={realizedByAccount.get(account.accountId) ?? null}
-                  onOpen={() => {
-                    setOpenAccountId(account.accountId);
-                    // The import/add dialogs default to the account in focus.
-                    setSelectedAccountId(account.accountId);
-                  }}
-                />
-              );
-            })}
-          </div>
-        )}
+      {/* Perspective nav (FIX-885): a pinned segmented strip below `lg`, a left
+          rail at `lg`+. Only the content column swaps between sections; the
+          toolbar / totals / provenance rows above stay pinned. */}
+      <PortfolioSectionStrip value={section} onChange={setSection} />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <PortfolioSectionRail value={section} onChange={setSection} />
+        {/* The section content column. `@container` lives here so the account
+            card-grid column count tracks the column's width, not the viewport
+            (the HoldingsTable precedent). */}
+        <div className="@container flex-1 space-y-4 overflow-y-auto p-4">
+          {section === "gains" ? (
+            /* Gains & Taxes: household year-by-year realized gains + the
+               tax-estimate card (relocated from above the account grid). */
+            <GainsTaxesSection
+              realizedGains={realizedGains}
+              estimate={taxEstimate}
+              profile={taxProfile}
+              onEditProfile={() => setTaxProfileOpen(true)}
+            />
+          ) : accounts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+              <p className="text-sm text-[color:var(--c-fg)]">No accounts yet</p>
+              <p className="max-w-md text-xs text-[color:var(--c-fg-muted)]">
+                Add an account, then import a brokerage CSV or transaction file.
+                The same ticker in two accounts is tracked as two distinct
+                holdings.
+              </p>
+            </div>
+          ) : openAccount !== undefined ? (
+            <AccountDetail
+              account={openAccount}
+              holdings={holdingsByAccount.get(openAccount.accountId) ?? []}
+              ledgerEvents={ledgerEvents}
+              income={income}
+              realizedGains={realizedGains}
+              prices={priceMap}
+              dividends={dividendsByAccount.get(openAccount.accountId) ?? new Map()}
+              lots={lotsByAccount.get(openAccount.accountId) ?? new Map()}
+              accountValue={rollups.get(openAccount.accountId)?.value ?? null}
+              accountUpl={rollups.get(openAccount.accountId)?.upl ?? null}
+              accountUplPct={rollups.get(openAccount.accountId)?.uplPct ?? null}
+              accountDividends={dividendTotals.get(openAccount.accountId) ?? null}
+              onBack={() => setOpenAccountId(null)}
+              thesisTickers={thesisTickers}
+              // Gate the thesis editor until the household theses load (session-
+              // backed resource; no session → never ready), so a click can't open
+              // a blank editor against a partial list and overwrite an unloaded one.
+              thesisReady={hasSession && !thesesLoading}
+              onDeleteHolding={(ticker) =>
+                void handleDeleteHolding(openAccount.accountId, ticker)
+              }
+              onDeleteAccount={() => void handleDeleteAccount(openAccount.accountId)}
+              onEditThesis={(ticker) => setThesisTicker(ticker)}
+              onSetAssetClass={(ticker, assetClass) =>
+                void handleSetAssetClass(openAccount.accountId, ticker, assetClass)
+              }
+              onResolveSplit={(ticker) => setResolveSplitTicker(ticker)}
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-2 @6xl:grid-cols-3">
+              {accounts.map((account) => {
+                const rollup = rollups.get(account.accountId) ?? {
+                  value: null,
+                  upl: null,
+                  uplPct: null,
+                };
+                return (
+                  <AccountCard
+                    key={account.accountId}
+                    account={account}
+                    holdingsCount={
+                      (holdingsByAccount.get(account.accountId) ?? []).length
+                    }
+                    accountValue={rollup.value}
+                    accountUpl={rollup.upl}
+                    accountUplPct={rollup.uplPct}
+                    accountDividends={dividendTotals.get(account.accountId) ?? null}
+                    accountRealized={realizedByAccount.get(account.accountId) ?? null}
+                    onOpen={() => {
+                      setOpenAccountId(account.accountId);
+                      // The import/add dialogs default to the account in focus.
+                      setSelectedAccountId(account.accountId);
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       <AddAccountDialog

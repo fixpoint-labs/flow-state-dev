@@ -276,6 +276,12 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
 The app has a **Portfolio** view (TopBar nav → `components/portfolio/`) backed by
 the `portfolio` flow (`src/flows/portfolio/`). It is the durable record of what
 the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
+The pane is section-switched (FIX-885): a sidebar (`portfolio-section-nav.tsx` —
+desktop left rail / mobile segmented strip) picks between the **Accounts**
+perspective (card grid → `AccountDetail`) and the **Gains & Taxes** perspective
+(`gains-taxes-section.tsx` — household year-by-year realized gains + the
+tax-estimate card); the toolbar/totals/provenance rows stay pinned above both.
+FIX-762's household health view lands as a third `SECTIONS` entry.
 
 - **Data model — app-owned relational tables (FIX-772).** Accounts and holdings
   are NO LONGER an FSD resource. They live in real Postgres tables in a dedicated
@@ -477,10 +483,10 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   `GET /api/portfolio/income` (the `ledger` route precedent); the Portfolio UI
   shows a Dividends column on active holdings ("—" when no history — never $0
   asserted from ignorance) and a per-account Income tab that includes closed
-  positions (tagged `closed`). The Portfolio view itself is an account
-  summary-card grid (value, cash, uP/L as $ and %, position count); clicking a
-  card opens `AccountDetail` with Holdings / Transactions / Income tabs — there
-  is no flat all-accounts table layout anymore.
+  positions (tagged `closed`). The Portfolio view's Accounts perspective is an
+  account summary-card grid (value, cash, uP/L as $ and %, position count);
+  clicking a card opens `AccountDetail` with Holdings / Transactions / Income
+  tabs — there is no flat all-accounts table layout anymore.
 
 - **Holding-period term is classified PER LOT
   (`components/portfolio/holding-term.ts`).** The Holdings Term column reads
