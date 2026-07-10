@@ -61,16 +61,19 @@ export type ResourceQuery = {
  * row key/path — the framework normalizes it through the collection pattern
  * (`resolveCollectionKey`) to the canonical storage path before building URIs or
  * emitting change events.
+ *
+ * Ranking is the hook's RETURN ORDER (the framework preserves it); the snippet is
+ * derived framework-side from rendered content. App-supplied `score` / `snippet`
+ * overrides are deferred until a consumer needs them (BP-038) — they land with
+ * semantic-search ranking (FIX-142 / FIX-833), where an app score is no longer
+ * redundant with hook order. Re-add the two optional fields here + prefer them in
+ * `searchExternalRecords` when that consumer arrives.
  */
 export type ExternalRecordHit<TState extends JsonObject = JsonObject> = {
   /** Within-scope key/path; normalized through the pattern → instance path/uri. */
   key: string;
   /** The record state (validated through `stateSchema` before any consumer sees it). */
   state: TState;
-  /** Optional app relevance score; when omitted, rank = the hook's return order. */
-  score?: number;
-  /** Optional app-supplied snippet; when omitted, the framework derives one from rendered content. */
-  snippet?: string;
 };
 
 /** A page of hits plus the app's opaque cursor for the next page. */
@@ -397,16 +400,12 @@ export async function readExternalRecord<TState extends JsonObject>(
 /**
  * One validated, key-normalized search hit. `storageKey` is the pattern-
  * canonical instance path (`positions/AAPL`) used to build refs/URIs; `key` is
- * the bare key the app returned. `score`/`snippet` are the app's when supplied,
- * left for the framework to derive (rank = hook order, snippet from rendered
- * content) when omitted.
+ * the bare key the app returned. Hits are in the hook's return order — the rank.
  */
 export type ValidatedExternalHit<TState extends JsonObject = JsonObject> = {
   storageKey: string;
   key: string;
   state: TState;
-  score?: number;
-  snippet?: string;
 };
 
 /**
@@ -446,8 +445,6 @@ export async function searchExternalRecords<TState extends JsonObject>(
       storageKey: resolveCollectionKey(config.pattern, hit.key),
       key: hit.key,
       state: parsed.data as TState,
-      score: hit.score,
-      snippet: hit.snippet,
     });
   }
   return { hits, nextCursor: result.nextCursor };

@@ -535,9 +535,36 @@ describe("searchResources — external multi-collection & limit contract (FIX-85
       { query: "shares", prefix: null, limit: 2, cursor: null },
       ctx,
     );
-    // External took both slots; store-backed filled 0. Never exceeds limit.
+    // Combined page never exceeds limit, and the budget split represents BOTH
+    // sources — external doesn't starve store-backed (or vice versa).
     expect(results).toHaveLength(2);
-    expect(results.map((r) => r.uri)).toEqual(["org/positions/AAPL", "org/positions/MSFT"]);
+    expect(results.some((r) => r.uri.startsWith("org/positions/"))).toBe(true);
+    expect(results.some((r) => r.uri.startsWith("org/notes/"))).toBe(true);
+  });
+
+  it("mixed external + store-backed: single page, store-backed never stranded, no cursor", async () => {
+    // A full external page + store-backed matches. Because store-backed can't be
+    // paginated under the external cursor without stranding, mixed mode returns
+    // one page with both represented and NO cursor (rather than hiding store-backed).
+    const list = vi.fn(async () => ({
+      items: [refOf({ path: "positions/AAPL", content: "shares" })],
+      nextCursor: "app-2",
+    }));
+    const ctx = multiCtx(
+      [{ pattern: "positions/*", list }],
+      [{ path: "notes/a", content: "shares shares shares" }],
+    );
+    const { results, nextCursor } = await runForTest(
+      searchResources,
+      { query: "shares", prefix: null, limit: 10, cursor: null },
+      ctx,
+    );
+    // Store-backed appears (not stranded); no cursor is emitted in mixed mode.
+    expect(results.some((r) => r.uri === "org/notes/a")).toBe(true);
+    expect(results.some((r) => r.uri === "org/positions/AAPL")).toBe(true);
+    expect(nextCursor).toBeUndefined();
+    // The external hook is NOT paged (no cursor forwarded) in mixed mode.
+    expect(list).toHaveBeenCalledWith(expect.not.objectContaining({ cursor: expect.anything() }));
   });
 
   it("does not forward one cursor to multiple external collections and emits no cursor", async () => {
