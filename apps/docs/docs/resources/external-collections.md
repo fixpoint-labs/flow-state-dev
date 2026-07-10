@@ -22,7 +22,7 @@ If the framework is a fine home for the data — it has no life outside a flow, 
 
 ## Defining one
 
-You supply two backing functions. `read` resolves one record by its key. `search` resolves a filtered page (the search and list tools use it; those land in a follow-up, but the hook is required now so the contract is stable).
+You supply two backing functions. `read` resolves one record by its key. `search` resolves a filtered page — the agent's search tool, the list route, and `ctx.resources.<name>.list()` all push their query down to it, so your store's engine does the filtering and ranking, never the framework in memory.
 
 ```ts
 import { defineExternalResourceCollection } from "@flow-state-dev/core";
@@ -76,6 +76,34 @@ Each record's `state` comes from your `read` hook, validated through `stateSchem
 
 The snapshot does **not** enumerate your store. A client-visible external collection appears in the `/state` snapshot as an empty anchor (unknown cardinality, never a misleading count of zero); the UI discovers instances through the list/search route and then fetches each by key.
 
+## Searching and listing
+
+Every "find" path pushes its query down to your `search` hook — the framework never lists your store and scores in memory. Your hook returns a page of hits plus an opaque `nextCursor`; pass that cursor back to get the next page.
+
+```ts
+async search({ query, ctx }) {
+  // query: { search?, prefix?, filter?, limit?, cursor? }
+  const rows = await db.positions.find({
+    userId: ctx.userId,
+    q: query.search,
+    after: query.cursor,
+    limit: query.limit ?? 20,
+  });
+  return {
+    hits: rows.map((r) => ({ key: r.ticker, state: r })),
+    nextCursor: rows.nextCursor, // omit on the last page
+  };
+}
+```
+
+Three surfaces consume it:
+
+- **In a block** — `ctx.resources.portfolio.list(query?)` returns `{ items, nextCursor? }`, where each item is a read-only ref (its `state` and rendered content already resolved). A bare string is shorthand for `{ search }`.
+- **The agent** — when the collection is `llmReadable`, `searchResources` routes to your hook instead of scanning content in memory. It returns a `nextCursor` the model can page with. `globResources` and `grepResourceContent` deliberately **skip** external collections: their contract is deterministic path/line matching, which a pushed-down lexical or semantic search can't honor. An agent that already has a record's URI reads it directly with `readResourceContent`.
+- **The UI** — `GET /sessions/:id/resources/:ref?limit=&cursor=` returns one page and the app's `nextCursor`. The React `useResourceCollectionList` hook accumulates pages and exposes `loadMore` / `hasMore` over that cursor.
+
+Hits arrive in the order your hook returns them (your store's ranking), and each is validated through `stateSchema` — a row that fails validation is dropped and logged, so one bad record never sinks the page.
+
 ## The trusted context
 
 Your `read` / `search` hooks receive a `ctx` the framework derives from the request — never from caller input:
@@ -104,5 +132,6 @@ The agent still changes your data — through handlers that call your store dire
 
 - **A hook call per read.** Read-through trades a cached copy for freshness. Reads are memoized per request, but there is no cross-request cache in this slice.
 - **Patterns are wildcard-only.** `positions/*` or `positions/**`. Parameterized `[name]` patterns are rejected at build time — encode the discriminator into a wildcard segment.
-- **The snapshot doesn't enumerate.** There is no `count()`; an honest count would need to either enumerate your store (forbidden) or a hook nobody has asked for yet.
-- **Search / list pushdown and change signals** land in follow-up slices. Today you read individual records by key; the agent search tools and app-driven live refresh come next.
+- **The snapshot doesn't enumerate.** There is no `count()`; an honest count would need to either enumerate your store (forbidden) or a hook nobody has asked for yet. Listing is cursor-paged, so the UI pages through instead of asking "how many."
+- **Search is your store's, not the framework's.** Ranking, filtering, and paging are whatever your `search` hook does. The framework passes the query down and the cursor back; it doesn't re-rank. Glob and grep skip external collections for the same reason — their deterministic contract isn't something a pushed-down search can promise.
+- **App-driven change signals** land in a follow-up slice. Today reads and searches are pull-based; a way for your app to signal a change and refresh an open screen comes next.

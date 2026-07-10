@@ -202,12 +202,14 @@ export type {
   ExternalResourceRef,
   ResourceQuery,
   ResourceSearchResult,
+  ValidatedExternalHit,
 } from "./external-resource-collection";
 
 export {
   defineExternalResourceCollection,
   isExternalResourceCollection,
   readExternalRecord,
+  searchExternalRecords,
 } from "./external-resource-collection";
 
 export type {

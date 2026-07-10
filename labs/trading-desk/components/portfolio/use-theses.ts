@@ -34,7 +34,7 @@ export function useTheses(session: SessionView): {
   loading: boolean;
   refetch: () => void;
 } {
-  const { items, isLoading, error, refetch, loadMore, pagination } =
+  const { items, isLoading, error, refetch, loadMore, hasMore } =
     useResourceCollectionList<ThesisRecord>(session, "theses", { limit: 200 });
 
   // Page through the whole household. A truncated first page would make a
@@ -43,8 +43,8 @@ export function useTheses(session: SessionView): {
   // existing record. A household holds dozens of positions, so this is normally a
   // single page; the loop only matters at the tail.
   useEffect(() => {
-    if (pagination?.hasMore) loadMore();
-  }, [pagination, loadMore]);
+    if (hasMore) loadMore();
+  }, [hasMore, loadMore]);
 
   const theses = useMemo(
     () =>
@@ -59,7 +59,7 @@ export function useTheses(session: SessionView): {
   // not read as a loaded-empty household (which would enable an overwrite-adopt).
   return {
     theses,
-    loading: isLoading || pagination?.hasMore === true || error !== undefined,
+    loading: isLoading || hasMore === true || error !== undefined,
     refetch,
   };
 }

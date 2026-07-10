@@ -21,6 +21,7 @@ import type {
   ResourceConfig,
   ResourceCollectionConfig,
   ResourceCollectionRef,
+  ResourceQuery,
   ResourceRef,
   ResourceRegistry,
   ScopeType,
@@ -32,6 +33,7 @@ import {
   extractBareTopic,
   isExternalResourceCollection,
   readExternalRecord,
+  searchExternalRecords,
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
@@ -860,6 +862,21 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         if (!matchesPattern(pattern, storageKey)) return undefined;
         const state = await readThrough(storageKey);
         return state === undefined ? undefined : makeRef(storageKey);
+      },
+      async list(
+        query?: string | ResourceQuery
+      ): Promise<{ items: ExternalResourceRef<JsonObject>[]; nextCursor?: string }> {
+        // Push the query DOWN to the app's `search` (no in-memory enumeration —
+        // BP-033). A bare string is `{ search }` shorthand.
+        const q: ResourceQuery = typeof query === "string" ? { search: query } : query ?? {};
+        const { hits, nextCursor } = await searchExternalRecords<JsonObject>(extConfig, q, externalCtx());
+        const items = hits.map((hit) => {
+          // Seed the per-request cache so each ref's synchronous `.state`
+          // resolves against the searched state, exactly like a read-through get.
+          cache.set(hit.storageKey, hit.state);
+          return makeRef(hit.storageKey);
+        });
+        return nextCursor === undefined ? { items } : { items, nextCursor };
       },
     };
   }

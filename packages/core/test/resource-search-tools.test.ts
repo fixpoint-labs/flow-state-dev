@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { resourceSearchTools } from "../src/tools/resource-search-tools";
 import type { BlockContext } from "../src/types/block";
 import { createMockContext, runForTest } from "./helpers";
@@ -422,5 +422,167 @@ describe("searchResources", () => {
       ctx,
     );
     expect(results).toHaveLength(2);
+  });
+});
+
+// FIX-858: external collections push the query down to their `search` hook
+// instead of being enumerated + scored in memory. glob/grep skip them entirely.
+describe("searchResources — external collection pushdown (FIX-858)", () => {
+  function externalCtx(opts: {
+    llmReadable?: boolean;
+    list: (q: unknown) => Promise<{ items: any[]; nextCursor?: string }>;
+  }): BlockContext {
+    const entry = {
+      pattern: "positions/*",
+      scope: "org",
+      external: true,
+      config: { llmReadable: opts.llmReadable ?? true },
+      list: opts.list,
+      get: async () => {
+        throw new Error("not found");
+      },
+      getOptional: async () => undefined,
+    };
+    return createMockContext({
+      resources: { list: () => [entry], get: () => undefined } as any,
+    });
+  }
+
+  it("pushes the query to the external search hook and returns its hits + nextCursor", async () => {
+    const list = vi.fn(async () => ({
+      items: [
+        refOf({ path: "positions/AAPL", content: "AAPL 10 shares" }),
+        refOf({ path: "positions/MSFT", content: "MSFT 4 shares" }),
+      ],
+      nextCursor: "p2",
+    }));
+    const ctx = externalCtx({ list });
+    const { results, nextCursor } = await runForTest(
+      searchResources,
+      { query: "shares", prefix: null, limit: 10, cursor: null },
+      ctx,
+    );
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ search: "shares", limit: 10 }));
+    expect(results.map((r) => r.uri)).toEqual(["org/positions/AAPL", "org/positions/MSFT"]);
+    // Rank-preserving: first hit scores highest.
+    expect(results[0]!.score).toBeGreaterThan(results[1]!.score);
+    expect(nextCursor).toBe("p2");
+  });
+
+  it("skips non-llmReadable external collections", async () => {
+    const list = vi.fn(async () => ({ items: [] }));
+    const ctx = externalCtx({ llmReadable: false, list });
+    await runForTest(searchResources, { query: "x", prefix: null, limit: 10, cursor: null }, ctx);
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("a cursor continuation forwards the cursor and advances only external results", async () => {
+    const list = vi.fn(async () => ({
+      items: [refOf({ path: "positions/GOOG", content: "GOOG" })],
+    }));
+    const ctx = externalCtx({ list });
+    const { results, nextCursor } = await runForTest(
+      searchResources,
+      { query: "goog", prefix: null, limit: 10, cursor: "p2" },
+      ctx,
+    );
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ cursor: "p2" }));
+    expect(results.map((r) => r.uri)).toEqual(["org/positions/GOOG"]);
+    expect(nextCursor).toBeUndefined();
+  });
+});
+
+describe("searchResources — external multi-collection & limit contract (FIX-858)", () => {
+  function multiCtx(
+    externals: Array<{
+      pattern: string;
+      llmReadable?: boolean;
+      list: (q: unknown) => Promise<{ items: any[]; nextCursor?: string }>;
+    }>,
+    statics: MockResource[] = [],
+  ): BlockContext {
+    const entries: any[] = statics.map(refOf);
+    for (const e of externals) {
+      entries.push({
+        pattern: e.pattern,
+        scope: "org",
+        external: true,
+        config: { llmReadable: e.llmReadable ?? true },
+        list: e.list,
+        getOptional: async () => undefined,
+      });
+    }
+    return createMockContext({ resources: { list: () => entries, get: () => undefined } as any });
+  }
+
+  it("caps the combined result set to `limit` (external hits + store-backed)", async () => {
+    // External returns a full page of `limit`; store-backed also has matches.
+    const list = vi.fn(async () => ({
+      items: [
+        refOf({ path: "positions/AAPL", content: "shares" }),
+        refOf({ path: "positions/MSFT", content: "shares" }),
+      ],
+    }));
+    const ctx = multiCtx(
+      [{ pattern: "positions/*", list }],
+      [
+        { path: "notes/a", content: "shares shares" },
+        { path: "notes/b", content: "shares" },
+      ],
+    );
+    const { results } = await runForTest(
+      searchResources,
+      { query: "shares", prefix: null, limit: 2, cursor: null },
+      ctx,
+    );
+    // Combined page never exceeds limit, and the budget split represents BOTH
+    // sources — external doesn't starve store-backed (or vice versa).
+    expect(results).toHaveLength(2);
+    expect(results.some((r) => r.uri.startsWith("org/positions/"))).toBe(true);
+    expect(results.some((r) => r.uri.startsWith("org/notes/"))).toBe(true);
+  });
+
+  it("mixed external + store-backed: single page, store-backed never stranded, no cursor", async () => {
+    // A full external page + store-backed matches. Because store-backed can't be
+    // paginated under the external cursor without stranding, mixed mode returns
+    // one page with both represented and NO cursor (rather than hiding store-backed).
+    const list = vi.fn(async () => ({
+      items: [refOf({ path: "positions/AAPL", content: "shares" })],
+      nextCursor: "app-2",
+    }));
+    const ctx = multiCtx(
+      [{ pattern: "positions/*", list }],
+      [{ path: "notes/a", content: "shares shares shares" }],
+    );
+    const { results, nextCursor } = await runForTest(
+      searchResources,
+      { query: "shares", prefix: null, limit: 10, cursor: null },
+      ctx,
+    );
+    // Store-backed appears (not stranded); no cursor is emitted in mixed mode.
+    expect(results.some((r) => r.uri === "org/notes/a")).toBe(true);
+    expect(results.some((r) => r.uri === "org/positions/AAPL")).toBe(true);
+    expect(nextCursor).toBeUndefined();
+    // The external hook is NOT paged (no cursor forwarded) in mixed mode.
+    expect(list).toHaveBeenCalledWith(expect.not.objectContaining({ cursor: expect.anything() }));
+  });
+
+  it("does not forward one cursor to multiple external collections and emits no cursor", async () => {
+    const listA = vi.fn(async () => ({ items: [refOf({ path: "a/1", content: "x" })], nextCursor: "a-2" }));
+    const listB = vi.fn(async () => ({ items: [refOf({ path: "b/1", content: "x" })], nextCursor: "b-2" }));
+    const ctx = multiCtx([
+      { pattern: "a/*", list: listA },
+      { pattern: "b/*", list: listB },
+    ]);
+    const { results, nextCursor } = await runForTest(
+      searchResources,
+      { query: "x", prefix: null, limit: 10, cursor: null },
+      ctx,
+    );
+    // Neither collection received a cursor; no ambiguous cursor is returned.
+    expect(listA).toHaveBeenCalledWith(expect.not.objectContaining({ cursor: expect.anything() }));
+    expect(listB).toHaveBeenCalledWith(expect.not.objectContaining({ cursor: expect.anything() }));
+    expect(nextCursor).toBeUndefined();
+    expect(results.map((r) => r.uri).sort()).toEqual(["org/a/1", "org/b/1"]);
   });
 });

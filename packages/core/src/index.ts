@@ -59,6 +59,7 @@ export {
   defineExternalResourceCollection,
   isExternalResourceCollection,
   readExternalRecord,
+  searchExternalRecords,
 } from "./types/external-resource-collection";
 export type {
   DefinedExternalResourceCollection,
@@ -70,6 +71,7 @@ export type {
   ExternalResourceRef,
   ResourceQuery,
   ResourceSearchResult,
+  ValidatedExternalHit,
 } from "./types/external-resource-collection";
 export {
   normalizeReactiveBinding,

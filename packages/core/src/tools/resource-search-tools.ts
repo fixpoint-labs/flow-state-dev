@@ -25,7 +25,8 @@
 import { z } from "zod";
 import picomatch from "picomatch";
 import { handler } from "../blocks/handler";
-import { collectAllResources, collectReadableResources } from "./resource-tools";
+import { collectAllResources, collectExternalCollections, collectReadableResources } from "./resource-tools";
+import type { ExternalResourceCollectionRef } from "../types/external-resource-collection";
 
 /** Maximum snippet length returned per match, so results stay token-cheap. */
 const MAX_SNIPPET_LENGTH = 200;
@@ -186,6 +187,11 @@ export function resourceSearchTools() {
         .default(null)
         .describe("Restrict to resources at or under this within-scope path prefix (matched on a path boundary, not a bare string prefix)"),
       limit: z.number().int().positive().default(10).describe("Maximum number of results to return"),
+      cursor: z
+        .string()
+        .nullable()
+        .default(null)
+        .describe("Opaque pagination cursor from a prior page's nextCursor (external collections only). Null starts from the first page."),
     }),
     outputSchema: z.object({
       results: z.array(
@@ -195,6 +201,7 @@ export function resourceSearchTools() {
           snippet: z.string(),
         }),
       ),
+      nextCursor: z.string().optional().describe("Present when more external-collection results remain; pass it back as `cursor`."),
     }),
     execute: async (input, ctx) => {
       const terms = input.query
@@ -203,10 +210,58 @@ export function resourceSearchTools() {
         .filter((term) => term.length > 0);
       if (terms.length === 0) return { results: [] };
 
-      const resources = await collectReadableResources(ctx);
-      const scored: Array<{ uri: string; score: number; snippet: string }> = [];
+      // Store-backed readable resources (statics + store-backed collection
+      // instances), scored in memory. Computed up front so the pagination model
+      // can tell a pure-external search (cursor-pageable) from a mixed one.
+      const storeReadable = await collectReadableResources(ctx);
+      const externalCollections = collectExternalCollections(ctx).filter(
+        (ns) => ns.ref.config?.llmReadable === true
+      );
 
-      for (const ref of resources) {
+      // Cursor pagination is only coherent for a SINGLE external collection with
+      // no store-backed set to interleave: an opaque cursor can't fan out to
+      // several stores, and merging a paginated source with a bounded in-memory
+      // one under one cursor either duplicates or strands the bounded rows across
+      // pages. So: pure single-external → cursor-paged; everything else (multi-
+      // external, mixed, pure store-backed) → one non-cursor page (§4.5 scope).
+      const cursorable = externalCollections.length === 1 && storeReadable.length === 0;
+
+      // External hits: push the query DOWN to each readable collection's `search`
+      // (the app engine ranks — no in-memory scan). Rank = hook order (score
+      // descending); snippet derived from rendered content.
+      const externalResults: Array<{ uri: string; score: number; snippet: string }> = [];
+      let nextCursor: string | undefined;
+      for (const ns of externalCollections) {
+        const extRef = ns.ref as unknown as ExternalResourceCollectionRef;
+        const page = await extRef.list({
+          search: input.query,
+          ...(input.prefix !== null ? { prefix: input.prefix } : {}),
+          limit: input.limit,
+          ...(cursorable && input.cursor !== null ? { cursor: input.cursor } : {}),
+        });
+        for (let i = 0; i < page.items.length; i += 1) {
+          const ref = page.items[i]!;
+          const content = await ref.readContent();
+          externalResults.push({
+            uri: ref.uri,
+            score: page.items.length - i,
+            snippet: content ? firstMatchingLine(content, terms) : "",
+          });
+        }
+        if (cursorable && page.nextCursor !== undefined) nextCursor = page.nextCursor;
+      }
+
+      // Pure single external collection: cursor-paged, capped to `limit`.
+      if (cursorable) {
+        const results = externalResults.slice(0, input.limit);
+        return nextCursor === undefined ? { results } : { results, nextCursor };
+      }
+
+      // Otherwise a single non-cursor page. Score the store-backed set, then
+      // SPLIT the budget so neither source starves the other and the merged
+      // result never exceeds `limit`.
+      const scored: Array<{ uri: string; score: number; snippet: string }> = [];
+      for (const ref of storeReadable) {
         if (input.prefix !== null && !matchesPrefix(ref.path, input.prefix)) continue;
         const content = await ref.readContent();
         if (content === null || content === "") continue;
@@ -218,9 +273,18 @@ export function resourceSearchTools() {
 
         scored.push({ uri: ref.uri, score, snippet: firstMatchingLine(content, terms) });
       }
-
       scored.sort((a, b) => b.score - a.score || a.uri.localeCompare(b.uri));
-      return { results: scored.slice(0, input.limit) };
+
+      // Budget split: external gets at least half (or more when store-backed is
+      // small); store-backed fills the rest. Guarantees both are represented and
+      // the total is at most `limit` — no cursor across a mixed/multi source.
+      const extBudget =
+        scored.length === 0
+          ? input.limit
+          : Math.min(externalResults.length, Math.max(Math.ceil(input.limit / 2), input.limit - scored.length));
+      const extSlice = externalResults.slice(0, extBudget);
+      const storeSlice = scored.slice(0, input.limit - extSlice.length);
+      return { results: [...extSlice, ...storeSlice] };
     },
   });
 

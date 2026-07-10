@@ -201,7 +201,7 @@ describe("handleDeleteSession resource-state cleanup", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleListCollectionState", () => {
-  it("returns paginated items in lex order with total/hasMore/nextOffset", async () => {
+  it("returns a page in lex order with an opaque nextCursor when more remain", async () => {
     const ctx = await setupCtx({
       artifacts: {
         "z.md": { title: "Z" },
@@ -225,23 +225,18 @@ describe("handleListCollectionState", () => {
       "artifacts/m.md",
     ]);
     expect(body.items[0].clientData).toEqual({ title: "A" });
-    expect(body.pagination).toEqual({
-      offset: 0,
-      limit: 2,
-      total: 3,
-      hasMore: true,
-      nextOffset: 2,
-    });
+    // Keyset cursor = last storage key of the page; more rows remain.
+    expect(body.nextCursor).toBe("artifacts/m.md");
   });
 
-  it("paginates the second page", async () => {
+  it("paginates the second page by cursor and omits nextCursor on the last page", async () => {
     const ctx = await setupCtx({
       artifacts: {
         "a.md": {}, "b.md": {}, "c.md": {}, "d.md": {},
       },
     });
     const res = await handleListCollectionState(
-      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=2&offset=2"),
+      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=2&cursor=artifacts/b.md"),
       { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
       { registry: ctx.registry, stores: ctx.stores }
     );
@@ -250,8 +245,7 @@ describe("handleListCollectionState", () => {
       "c.md",
       "d.md",
     ]);
-    expect(body.pagination.hasMore).toBe(false);
-    expect(body.pagination.nextOffset).toBe(4);
+    expect(body.nextCursor).toBeUndefined();
   });
 
   it("filters by topicPrefix", async () => {
@@ -270,19 +264,19 @@ describe("handleListCollectionState", () => {
       "alpha-1",
       "alpha-2",
     ]);
-    expect(body.pagination.total).toBe(2);
+    expect(body.nextCursor).toBeUndefined();
   });
 
-  it("returns empty page when offset >= total", async () => {
+  it("returns an empty page with no nextCursor when the cursor is past the end", async () => {
     const ctx = await setupCtx({ artifacts: { "a": {} } });
     const res = await handleListCollectionState(
-      makeReq("http://localhost/sessions/sess_1/resources/artifacts?offset=10"),
+      makeReq("http://localhost/sessions/sess_1/resources/artifacts?cursor=artifacts/zzz"),
       { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
       { registry: ctx.registry, stores: ctx.stores }
     );
     const body = await res.json();
     expect(body.items).toEqual([]);
-    expect(body.pagination.hasMore).toBe(false);
+    expect(body.nextCursor).toBeUndefined();
   });
 
   it("returns 403 when client.state.read is not true", async () => {
@@ -345,56 +339,42 @@ describe("handleListCollectionState", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 for negative offset", async () => {
-    const ctx = await setupCtx();
-    const res = await handleListCollectionState(
-      makeReq("http://localhost/sessions/sess_1/resources/artifacts?offset=-1"),
-      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
-      { registry: ctx.registry, stores: ctx.stores }
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("paginates a 60-item collection with limit=20", async () => {
+  it("walks a 60-item collection page-by-page via cursor", async () => {
     const artifacts: Record<string, { title?: string }> = {};
     for (let i = 0; i < 60; i++) {
       artifacts[`item-${String(i).padStart(3, "0")}`] = { title: `Item ${i}` };
     }
     const ctx = await setupCtx({ artifacts });
 
-    const page1 = await handleListCollectionState(
-      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=20"),
-      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
-      { registry: ctx.registry, stores: ctx.stores }
-    );
-    const body1 = await page1.json();
-    expect(body1.items).toHaveLength(20);
-    expect(body1.pagination).toEqual({
-      offset: 0, limit: 20, total: 60, hasMore: true, nextOffset: 20
-    });
+    const fetchPage = async (cursor?: string) => {
+      const q = `limit=20${cursor !== undefined ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+      const res = await handleListCollectionState(
+        makeReq(`http://localhost/sessions/sess_1/resources/artifacts?${q}`),
+        { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
+        { registry: ctx.registry, stores: ctx.stores }
+      );
+      return res.json();
+    };
 
-    const page2 = await handleListCollectionState(
-      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=20&offset=20"),
-      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
-      { registry: ctx.registry, stores: ctx.stores }
-    );
-    const body2 = await page2.json();
+    const body1 = await fetchPage();
+    expect(body1.items).toHaveLength(20);
+    expect(body1.items[0].topic).toBe("item-000");
+    expect(body1.nextCursor).toBe("artifacts/item-019");
+
+    const body2 = await fetchPage(body1.nextCursor);
     expect(body2.items).toHaveLength(20);
     expect(body2.items[0].topic).toBe("item-020");
     expect(body2.items[0].storageKey).toBe("artifacts/item-020");
-    expect(body2.pagination.nextOffset).toBe(40);
+    expect(body2.nextCursor).toBe("artifacts/item-039");
 
-    const page3 = await handleListCollectionState(
-      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=20&offset=40"),
-      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
-      { registry: ctx.registry, stores: ctx.stores }
-    );
-    const body3 = await page3.json();
+    const body3 = await fetchPage(body2.nextCursor);
     expect(body3.items).toHaveLength(20);
-    expect(body3.pagination.hasMore).toBe(false);
+    expect(body3.items[0].topic).toBe("item-040");
+    // Last page — no cursor remains.
+    expect(body3.nextCursor).toBeUndefined();
   });
 
-  it("returns total: 0 / items: [] for empty collection", async () => {
+  it("returns items: [] with no nextCursor for an empty collection", async () => {
     const ctx = await setupCtx();
     const res = await handleListCollectionState(
       makeReq("http://localhost/sessions/sess_1/resources/artifacts"),
@@ -403,7 +383,7 @@ describe("handleListCollectionState", () => {
     );
     const body = await res.json();
     expect(body.items).toEqual([]);
-    expect(body.pagination.total).toBe(0);
+    expect(body.nextCursor).toBeUndefined();
   });
 });
 
@@ -483,7 +463,6 @@ describe("user-scoped collection reads", () => {
       "accounts/acct_b",
     ]);
     expect(body.items[0].clientData).toEqual({ name: "Brokerage A" });
-    expect(body.pagination.total).toBe(2);
   });
 
   it("filters user-scope items by topicPrefix", async () => {
@@ -504,7 +483,6 @@ describe("user-scoped collection reads", () => {
       "acct_a__AAPL",
       "acct_a__MSFT",
     ]);
-    expect(body.pagination.total).toBe(2);
   });
 
   it("returns 200 + empty list when the user record is missing (not 500)", async () => {
@@ -518,7 +496,6 @@ describe("user-scoped collection reads", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.items).toEqual([]);
-    expect(body.pagination.total).toBe(0);
   });
 
   it("returns a single user-scope item state (was 501)", async () => {

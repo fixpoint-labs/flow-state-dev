@@ -13,31 +13,52 @@ type CollectionEntry = {
 
 /**
  * True for an external resource collection ref (FIX-858) — carries the
- * `external: true` brand. External collections have `pattern` but no `create`,
- * so the store-collection predicate (`"pattern" in entry && "create" in entry`)
- * already excludes them; without this guard, though, its *complement* would
- * misclassify them as a static single resource. They route through their own
- * search/list tools (PR2); until then they are skipped by every store-backed
- * tool path.
+ * `external: true` brand. Both `pattern`-bearing collection kinds (store-backed
+ * and external) are classified by this brand: store-backed CRUD/glob/grep paths
+ * take `collectCollections` (external excluded), while the search-pushdown and
+ * URI-read paths take `collectExternalCollections`.
  */
 function isExternalRef(entry: unknown): boolean {
   return typeof entry === "object" && entry !== null && (entry as { external?: unknown }).external === true;
 }
 
+/**
+ * Store-backed collections only (mutable, `getByPrefix`-enumerable). External
+ * collections carry `pattern` too, so they're classified out by the `external`
+ * brand — CRUD, glob, grep, and full-enumeration paths must never treat a
+ * read-through external collection as a store-backed one.
+ */
 function collectCollections(ctx: BlockContext): CollectionEntry[] {
   const entries: CollectionEntry[] = [];
   const registry = ctx.resources;
   if (registry === undefined) return entries;
 
   for (const entry of registry.list()) {
-    // ResourceCollectionRef has a `pattern` property that ResourceRef does not
-    if ("pattern" in entry && "create" in entry) {
+    // ResourceCollectionRef has a `pattern` property that ResourceRef does not.
+    if ("pattern" in entry && !isExternalRef(entry)) {
       const nsRef = entry as unknown as ResourceCollectionRef<any>;
-      entries.push({
-        name: nsRef.pattern,
-        scope: nsRef.scope,
-        ref: nsRef,
-      });
+      entries.push({ name: nsRef.pattern, scope: nsRef.scope, ref: nsRef });
+    }
+  }
+
+  return entries;
+}
+
+/**
+ * External (read-through) collections only — the search/list-pushdown and
+ * URI-read surface. Classified by the `external` brand; the `ref` here is a
+ * read-only `ExternalResourceCollectionRef` (`get`/`getOptional`/`list`, no
+ * mutators), so callers must only use the read subset.
+ */
+export function collectExternalCollections(ctx: BlockContext): CollectionEntry[] {
+  const entries: CollectionEntry[] = [];
+  const registry = ctx.resources;
+  if (registry === undefined) return entries;
+
+  for (const entry of registry.list()) {
+    if ("pattern" in entry && isExternalRef(entry)) {
+      const nsRef = entry as unknown as ResourceCollectionRef<any>;
+      entries.push({ name: nsRef.pattern, scope: nsRef.scope, ref: nsRef });
     }
   }
 
@@ -292,6 +313,17 @@ export async function resolveResourceByUri(
   const path = uri.slice(slash + 1);
 
   for (const ns of collectCollections(ctx)) {
+    if (ns.scope !== scope) continue;
+    const { key } = tryMatchPath(ns, path);
+    if (key === undefined) continue;
+    const ref = await ns.ref.getOptional(key);
+    if (ref !== undefined && ref.uri === uri) return ref;
+  }
+
+  // External collections (FIX-858): the agent reaches these by a URI it already
+  // learned from a search hit. Resolve directly through the read-through
+  // `getOptional` — the ref already renders content — no list/enumeration.
+  for (const ns of collectExternalCollections(ctx)) {
     if (ns.scope !== scope) continue;
     const { key } = tryMatchPath(ns, path);
     if (key === undefined) continue;

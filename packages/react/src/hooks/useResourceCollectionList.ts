@@ -5,10 +5,7 @@
  * error, accumulated pages via `loadMore`, and refetching on mutations.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type {
-  CollectionItemHandle,
-  CollectionListPage
-} from "@flow-state-dev/client";
+import type { CollectionItemHandle } from "@flow-state-dev/client";
 import {
   useResourceCollection,
   type CollectionListOptions,
@@ -60,13 +57,13 @@ export function applyLiveOverlay<TClient = unknown>(
 export type UseResourceCollectionListResult<TClient = unknown> = {
   /** Items accumulated across `loadMore` calls. */
   items: CollectionItemHandle<TClient>[];
-  /** Pagination metadata for the latest page. */
-  pagination: CollectionListPage["pagination"] | undefined;
+  /** True when another page can be loaded via `loadMore` (an opaque cursor remains). */
+  hasMore: boolean;
   isLoading: boolean;
   error: Error | undefined;
   /** Re-fetch the first page from scratch. */
   refetch: () => void;
-  /** Append the next page; no-op if `pagination.hasMore` is false. */
+  /** Append the next page; no-op when there's nothing more to load. */
   loadMore: () => void;
 };
 
@@ -80,18 +77,21 @@ export function useResourceCollectionList<TClient = unknown>(
   const topicPrefix = options.topicPrefix;
 
   const [items, setItems] = useState<CollectionItemHandle<TClient>[]>([]);
-  const [pagination, setPagination] = useState<CollectionListPage["pagination"] | undefined>(undefined);
+  // Opaque cursor for the NEXT page; `undefined` once the last page is reached.
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const [fetched, setFetched] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | undefined>(undefined);
   // Used to force a refetch when the underlying ref/baseUrl/options change.
   const [generation, setGeneration] = useState(0);
 
   const fetchPage = useCallback(
-    async (offset: number, replace: boolean) => {
+    async (cursor: string | undefined, replace: boolean) => {
       setIsLoading(true);
       setError(undefined);
       try {
-        const queryOptions: CollectionListOptions = { offset };
+        const queryOptions: CollectionListOptions = {};
+        if (cursor !== undefined) queryOptions.cursor = cursor;
         if (limit !== undefined) queryOptions.limit = limit;
         if (topicPrefix !== undefined) queryOptions.topicPrefix = topicPrefix;
         const page = await list(queryOptions);
@@ -99,7 +99,8 @@ export function useResourceCollectionList<TClient = unknown>(
         // shared wrap helper from useResourceCollection (one client per
         // hook tree, not one per convenience hook).
         const handles = page.items.map(wrap);
-        setPagination(page.pagination);
+        setNextCursor(page.nextCursor);
+        setFetched(true);
         setItems((prev) => (replace ? handles : [...prev, ...handles]));
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)));
@@ -113,25 +114,19 @@ export function useResourceCollectionList<TClient = unknown>(
   // Initial / re-fetch whenever inputs change. `generation` lets refetch()
   // force re-run without changing query inputs.
   useEffect(() => {
-    void fetchPage(0, true);
+    void fetchPage(undefined, true);
   }, [fetchPage, generation]);
 
   const refetch = useCallback(() => {
     setGeneration((g) => g + 1);
   }, []);
 
-  const loadMore = useCallback(() => {
-    if (!pagination?.hasMore) return;
-    void fetchPage(pagination.nextOffset, false);
-  }, [fetchPage, pagination]);
-
-  // Initial paint: when the snapshot exposes a prefetched window and we
-  // haven't yet received a fetched page, surface the prefetched items
-  // (including during the in-flight initial load). Once the first page
-  // resolves, `items` takes over. This is the whole point of declaring
-  // `prefetchWindow` — render immediately, no network round-trip.
-  const baseItems =
-    items.length === 0 && prefetched !== undefined ? prefetched : items;
+  // Initial paint: when the snapshot exposes a prefetched window and we haven't
+  // yet received a fetched page, surface the prefetched items (including during
+  // the in-flight initial load). Once the first page resolves, `items` takes
+  // over — render immediately, no network round-trip.
+  const showingPrefetched = !fetched && items.length === 0 && prefetched !== undefined;
+  const baseItems = showingPrefetched ? prefetched : items;
   // Apply the live overlay (FIX-739) over the fetched/prefetched window so a
   // `client.live: true` collection's list reflects mid-stream status changes,
   // deletes, and creates without a refetch. Reactive via `live` (snapshot-derived).
@@ -139,21 +134,28 @@ export function useResourceCollectionList<TClient = unknown>(
     () => applyLiveOverlay(baseItems, live, wrap),
     [baseItems, live, wrap]
   );
-  const surfacedPagination =
-    pagination ??
-    (count !== undefined && prefetched !== undefined
-      ? {
-          offset: 0,
-          limit: prefetched.length,
-          total: count,
-          hasMore: prefetched.length < count,
-          nextOffset: prefetched.length
-        }
-      : undefined);
+
+  // Before the first fetch, `hasMore` is inferred from the prefetched window vs
+  // the total count; after, it's driven by the presence of an opaque cursor.
+  const hasMore = fetched
+    ? nextCursor !== undefined
+    : count !== undefined && prefetched !== undefined
+      ? prefetched.length < count
+      : false;
+
+  const loadMore = useCallback(() => {
+    if (nextCursor !== undefined) {
+      void fetchPage(nextCursor, false);
+      return;
+    }
+    // Still on the prefetched window (no cursor yet) but more remains: run the
+    // first real fetch to establish the paging cursor.
+    if (!fetched && hasMore) void fetchPage(undefined, true);
+  }, [fetchPage, nextCursor, fetched, hasMore]);
 
   return {
     items: surfaced,
-    pagination: surfacedPagination,
+    hasMore,
     isLoading,
     error,
     refetch,

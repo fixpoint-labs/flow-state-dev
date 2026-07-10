@@ -36,7 +36,8 @@ export type CollectionActions = {
 /** Options accepted by `list()` and the convenience list hook. */
 export type CollectionListOptions = {
   limit?: number;
-  offset?: number;
+  /** Opaque pagination cursor from a prior page's `nextCursor`. */
+  cursor?: string;
   topicPrefix?: string;
 };
 
@@ -233,10 +234,7 @@ export function useResourceCollection<TClient = unknown>(
     async (options?: CollectionListOptions): Promise<CollectionListPage> => {
       const sessionId = session.sessionId;
       if (!sessionId) {
-        return {
-          items: [],
-          pagination: { offset: 0, limit: 0, total: 0, hasMore: false, nextOffset: 0 }
-        };
+        return { items: [] };
       }
       const key = cacheKey(options);
       const cached = cacheRef.current.get(key);
