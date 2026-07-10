@@ -1,9 +1,10 @@
 // ---------------------------------------------------------------------------
-// @flow-state-dev/knowledge-base — incubation lab barrel (FIX-813).
+// @flow-state-dev/example-knowledge-base — reference-app barrel (FIX-813).
 //
-// Incubated, not published: an OKF v0.1 interchange adapter + a thin
-// knowledgeBase capability over the resource graph, validated against the
-// example flow in `./flow` before any public-package graduation.
+// A frozen reference app, not a published package: an OKF v0.1 interchange
+// adapter + a thin knowledgeBase capability over the resource graph, exposed
+// through the example flow in `./flow`. The living successor is the Knowledge
+// Hub lab (`labs/knowledge-hub`), where OKF may later graduate to a package.
 // ---------------------------------------------------------------------------
 
 export {

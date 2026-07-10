@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// createKnowledgeBaseCapability — the thin KB composition layer (incubation).
+// createKnowledgeBaseCapability — the thin KB composition layer.
 //
 // Wraps the OKF concept collection and exposes it as a knowledge base. It is a
 // composition over landed primitives, modeled on `createMemoryCapability`:
@@ -15,8 +15,8 @@
 //     CRUD) plus `importBundle` / `exportBundle` (the OKF interchange
 //     boundary).
 //
-// Incubated, not graduated: no public package export, no separate session/user
-// resource tiers — v0 is one collection in one scope.
+// Frozen reference, not graduated: no public package export, no separate
+// session/user resource tiers — v0 is one collection in one scope.
 // ---------------------------------------------------------------------------
 
 import { defineCapability } from "@flow-state-dev/core";

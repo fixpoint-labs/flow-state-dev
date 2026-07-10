@@ -1,0 +1,25 @@
+{
+  "name": "@flow-state-dev/knowledge-hub",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Incubation lab: the Knowledge Hub (FIX-882–884). Scaffold only — a single ping action until the capture/staging/sweeper/workforce work lands.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root . --passWithNoTests",
+    "test:watch": "vitest --root . --passWithNoTests",
+    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts"
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

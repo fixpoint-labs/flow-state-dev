@@ -6,7 +6,7 @@
 // link graph the reference visualizer consumes (nodes + directed edges, with
 // dangling links surfaced). This stands in for loading the bundle in OKF's
 // Cytoscape HTML visualizer: a full headless-browser load is disproportionate
-// for an incubation, so we assert the same input contract the visualizer needs
+// for a reference example, so we assert the same input contract the visualizer needs
 // — every concept parses, `type` is present, the root declares okf_version, and
 // the link graph resolves. Exits non-zero on any conformance failure.
 // ---------------------------------------------------------------------------

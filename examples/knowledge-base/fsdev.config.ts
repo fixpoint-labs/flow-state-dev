@@ -1,5 +1,5 @@
 /**
- * fsdev config for the knowledge-base incubation lab — a secured personal
+ * fsdev config for the knowledge-base example — a secured personal
  * MCP server (FIX-855).
  *
  * `dev` (no Postgres URL set) keeps in-memory stores for local iteration.
@@ -26,7 +26,7 @@ import path from "node:path";
  * misconfiguration for a model-using app, a no-op here.
  */
 function neverResolvesAModel(): never {
-  throw new Error("knowledge-base lab: no generator actions are configured; this flow never resolves a model.");
+  throw new Error("knowledge-base example: no generator actions are configured; this flow never resolves a model.");
 }
 const modelResolver = Object.assign(neverResolvesAModel, {
   resolveId: neverResolvesAModel,

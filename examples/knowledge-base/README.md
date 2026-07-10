@@ -1,18 +1,20 @@
-# @flow-state-dev/knowledge-base (incubation lab)
+# @flow-state-dev/example-knowledge-base (reference app)
 
-An incubation lab for **FIX-813**: an [Open Knowledge Format (OKF)](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing) v0.1 interchange adapter and a thin `knowledgeBase` capability over the resource graph — hardened by **FIX-855** into a secured, user-scoped personal MCP server: a small always-on wiki that Claude (or any MCP client) can read, search, create, update, delete, and link concepts on, over a bearer-secured network connection.
+A complete, working personal knowledge wiki, preserved as a frozen reference app. Built as **FIX-813**: an [Open Knowledge Format (OKF)](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing) v0.1 interchange adapter and a thin `knowledgeBase` capability over the resource graph — hardened by **FIX-855** into a secured, user-scoped personal MCP server: a small always-on wiki that Claude (or any MCP client) can read, search, create, update, delete, and link concepts on, over a bearer-secured network connection.
 
-This is **not a published package** (`private: true`). OKF v0.1 is a one-day-old proof-of-concept, and the typed-edge primitive it maps onto has only one other consumer (memory relations), so the adapter and capability are validated here against a first consumer before any graduation to a public `@flow-state-dev/*` package. The agent-facing content-navigation tools the same issue depends on (`globResources` / `grepResourceContent` / `searchResources`) already shipped in `@flow-state-dev/core` — this lab consumes them, it does not redefine them.
+This grew up in `labs/` and moved here once it was done; its living successor is the Knowledge Hub lab ([`labs/knowledge-hub`](../../labs/knowledge-hub)), which builds a larger system on the same OKF long-term-memory layer. Treat this app as frozen — a self-contained snapshot to read and copy from, not a place for new features.
+
+This is **not a published package** (`private: true`). OKF v0.1 is a proof-of-concept, and the typed-edge primitive it maps onto has only one other consumer (memory relations), so the adapter and capability live here rather than in a public `@flow-state-dev/*` package. OKF extraction into its own package is deferred to the first Knowledge Hub issue that consumes it. The agent-facing content-navigation tools the same issue depends on (`globResources` / `grepResourceContent` / `searchResources`) already shipped in `@flow-state-dev/core` — this example consumes them, it does not redefine them.
 
 ## What's here
 
 | Piece | Where | Status |
 | -- | -- | -- |
-| OKF import/export adapter (`parseOkfBundle` / `importOkf` / `exportOkf`) | `src/okf/` | Incubated |
-| Concept collection (OKF frontmatter → state, links → edges; `scope: "user"`) | `src/concepts.ts` | Incubated |
-| `createKnowledgeBaseCapability()` — nav tools + CRUD `fns` (`listConcepts` / `readConcept` / `createConcept` / `updateConcept` / `deleteConcept` / `relate` / `importBundle` / `exportBundle`) | `src/capability.ts` | Incubated |
-| MCP server flow (`knowledge`) — 8 CRUD/search tools over MCP, bearer-secret auth, CLI-only import/export | `src/flow.ts` | Lab MCP server |
-| Standalone server entry (`serve()`, no app wrapper) | `src/server.ts` | Lab MCP server |
+| OKF import/export adapter (`parseOkfBundle` / `importOkf` / `exportOkf`) | `src/okf/` | Adapter |
+| Concept collection (OKF frontmatter → state, links → edges; `scope: "user"`) | `src/concepts.ts` | Collection |
+| `createKnowledgeBaseCapability()` — nav tools + CRUD `fns` (`listConcepts` / `readConcept` / `createConcept` / `updateConcept` / `deleteConcept` / `relate` / `importBundle` / `exportBundle`) | `src/capability.ts` | Capability |
+| MCP server flow (`knowledge`) — 8 CRUD/search tools over MCP, bearer-secret auth, CLI-only import/export | `src/flow.ts` | MCP server |
+| Standalone server entry (`serve()`, no app wrapper) | `src/server.ts` | MCP server |
 | Sample OKF bundle | `sample-bundle/` | Fixture |
 
 ## Run it
@@ -66,7 +68,7 @@ The standalone entry (`src/server.ts`) calls `serve()` from `@flow-state-dev/nod
 KB_MCP_SECRET=<a-strong-secret> DATABASE_URL=<postgres-url> pnpm serve
 ```
 
-`fsdev.config.ts` picks the `prod` (Postgres) profile automatically once `FSD_DB_URL` or `DATABASE_URL` is set, and **fails closed at config load** if `KB_MCP_SECRET` is missing on that profile — a deploy can never silently fall back to an unauthenticated resolver. With no Postgres URL set, it runs the `dev` profile (in-memory, no secret required) for local iteration. Provisioning the Postgres database and the host's project/secrets is a manual operator step; the lab ships the deployable code, not a live deployment.
+`fsdev.config.ts` picks the `prod` (Postgres) profile automatically once `FSD_DB_URL` or `DATABASE_URL` is set, and **fails closed at config load** if `KB_MCP_SECRET` is missing on that profile — a deploy can never silently fall back to an unauthenticated resolver. With no Postgres URL set, it runs the `dev` profile (in-memory, no secret required) for local iteration. Provisioning the Postgres database and the host's project/secrets is a manual operator step; the example ships the deployable code, not a live deployment.
 
 ## The OKF ↔ FSD mapping
 
@@ -97,7 +99,7 @@ It creates a concept in one HTTP request and reads it back in a genuinely separa
 
 ## v0 scope and known limitations
 
-These are deliberate for the incubation; each is a follow-up, not a bug:
+These are deliberate v0 scope choices; each is a follow-up, not a bug:
 
 - **Interchange only.** Import hydrates the split state/content model; export emits a bundle. No single-file-backed collection variant.
 - **Import is sync, not merge.** Mounting a bundle makes the collection mirror it — concepts not in the incoming bundle are pruned, so a re-mount or a later export matches the mounted bundle rather than unioning prior mounts. This is why OKF import/export stay CLI-only, not MCP tools — a remote client calling them would prune the live corpus.
@@ -105,12 +107,12 @@ These are deliberate for the incubation; each is a follow-up, not a bug:
 - **Links are body-resident.** Import projects body links into edges for navigation; the verbatim body still carries them, so export does not re-emit body links. A *programmatic* edge (added via `relate`, not present in the body) is materialized once into a trailing `# Related` section — which a re-import reads back, so a second export is byte-identical.
 - **`log.md` is not round-tripped.** It is parsed and surfaced by `parseOkfBundle`, but not persisted on import or synthesized on export.
 - **Lexical only.** Navigation is glob/grep/ranked-keyword. No embeddings — semantic recall is the memory / RAG job.
-- **Concurrency is naive last-write-wins.** No optimistic locking on concept writes; acceptable for a single-owner personal wiki. The same applies to `create_concept`'s duplicate-id guard: the existence check isn't atomic with the write (it's a property of the underlying resource store, not this lab), so two racing creates of the same id — e.g. an MCP client's retry-after-timeout — can both pass the check and the later one wins silently rather than erroring. Harmless for one owner working one edit at a time.
+- **Concurrency is naive last-write-wins.** No optimistic locking on concept writes; acceptable for a single-owner personal wiki. The same applies to `create_concept`'s duplicate-id guard: the existence check isn't atomic with the write (it's a property of the underlying resource store, not this example), so two racing creates of the same id — e.g. an MCP client's retry-after-timeout — can both pass the check and the later one wins silently rather than erroring. Harmless for one owner working one edit at a time.
 - **`grep_concepts` runs a caller-supplied regex.** The nav tool matches line by line but is not sandboxed against a catastrophic-backtracking pattern (documented in `@flow-state-dev/core`'s `resourceSearchTools`). This is now reachable remotely, but only by a client that already holds the bearer secret; for a single-owner wiki that's the owner. Isolate the match (RE2 / a worker timeout) before opening the endpoint to untrusted callers.
 - **Auth is a single static bearer secret.** No rotation, no per-client keys, no sign-up/OAuth — the personal-use floor over the host's TLS. A leaked key exposes the whole corpus until manually rotated.
 - **Isolation is native to `scope: "user"`, not yet exercised by a second key.** A second bearer principal would get an isolated corpus automatically (storage keys by `userId`), but v0 wires exactly one (`owner`); multi-user is a later config flip, not a redesign.
 - **No MCP resources, no streaming.** v1 is tools-only, single-JSON results (`resources/list` is empty; `GET`/`DELETE` return 405). Fine for synchronous CRUD.
-- **The Vercel/Next.js serverless posture is documented, not shipped.** The standalone `serve()` host is the only serving path this lab actually builds; a Vercel route handler is a viable alternative (stateless MCP + the same Postgres store work on either host) but is left for a future pass if a serverless deploy is wanted.
+- **The Vercel/Next.js serverless posture is documented, not shipped.** The standalone `serve()` host is the only serving path this example actually builds; a Vercel route handler is a viable alternative (stateless MCP + the same Postgres store work on either host) but is left for a future pass if a serverless deploy is wanted.
 
 ## Decision records
 
@@ -119,6 +121,8 @@ The two evaluation questions FIX-813 asked are answered in the [implementation s
 - **#4** — OKF is an external *interchange boundary*, not a new internal authoring surface. It does not merge or replace the SKILL.md / generator-prompt / resource-template `.md` surfaces.
 - **#5** — Curated KB navigation reduces but does not eliminate vector RAG; they are complements routed by corpus shape. The RAG roadmap (FIX-72 / FIX-71) stays, scoped toward large/uncurated/fuzzy corpora.
 
-## Graduation criteria
+## Status and future
 
-Promote the adapter + capability to a published package once there is a **second consumer** (Storyteller / FIX-759 is the intended one) **and** OKF has stabilized past v0.1.
+This app is frozen: it works, and it stays as-is so it remains a stable reference to read and copy from. New knowledge-system work happens in the Knowledge Hub lab ([`labs/knowledge-hub`](../../labs/knowledge-hub)), not here.
+
+The OKF adapter + capability are the natural candidate for a shared package. That extraction is deferred until the Knowledge Hub actually consumes them (the first real second consumer) and OKF has stabilized past v0.1 — at which point the hub depends on the extracted package while this example keeps its own self-contained copy.
