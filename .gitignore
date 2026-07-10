@@ -27,3 +27,4 @@ docs/internal/design-memos/*
 .tmp/*
 # Turborepo
 .turbo
+graphify-out/*
