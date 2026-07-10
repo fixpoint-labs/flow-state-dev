@@ -82,6 +82,18 @@ describe("external resource collection — read redirect", () => {
     expect(read).toHaveBeenCalledWith({ key: "AAPL", ctx: expect.any(Object) });
   });
 
+  it("rejects out-of-pattern keys before calling read (matches the item route guard)", async () => {
+    // `positions/*` is single-level: `positions/AAPL/history` is out of pattern.
+    // The read hook must never see it — the app store might accept slash-bearing
+    // keys and expose a record the HTTP route would reject.
+    const read = vi.fn(async () => ({ ticker: "AAPL", shares: 1 }));
+    const { ctx } = await createCtx(makePositions({ read }));
+
+    await expect(portfolio(ctx).get("AAPL/history")).rejects.toThrow(/does not match/i);
+    expect(await portfolio(ctx).getOptional("AAPL/history")).toBeUndefined();
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it("getOptional returns undefined when read returns null", async () => {
     const { ctx } = await createCtx(makePositions({ read: async () => null }));
     expect(await portfolio(ctx).getOptional("MSFT")).toBeUndefined();

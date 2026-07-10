@@ -838,6 +838,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       config: { llmReadable: extConfig.llmReadable, pattern, scope: refScope },
       async get(key: string): Promise<ExternalResourceRef<JsonObject>> {
         const storageKey = resolveCollectionKey(pattern, key);
+        // Reject out-of-pattern keys before hitting the app hook — a
+        // single-level `positions/*` must not resolve `positions/AAPL/history`,
+        // matching the item route's guard (the store-backed path is gated by
+        // the prefix cache; the read-through path needs this explicit check).
+        if (!matchesPattern(pattern, storageKey)) {
+          throw new Error(
+            `Key "${storageKey}" does not match external collection pattern "${pattern}"`
+          );
+        }
         const state = await readThrough(storageKey);
         if (state === undefined) {
           throw new Error(
@@ -848,6 +857,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async getOptional(key: string): Promise<ExternalResourceRef<JsonObject> | undefined> {
         const storageKey = resolveCollectionKey(pattern, key);
+        if (!matchesPattern(pattern, storageKey)) return undefined;
         const state = await readThrough(storageKey);
         return state === undefined ? undefined : makeRef(storageKey);
       },

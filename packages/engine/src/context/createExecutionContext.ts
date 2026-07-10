@@ -20,6 +20,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import {
   getPatternPrefix,
+  isExternalResourceCollection,
 } from "@flow-state-dev/core/types";
 import type {
   ItemVisibility,
@@ -1156,6 +1157,12 @@ export async function createExecutionContext<
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): void => {
     for (const config of Object.values(configs)) {
+      // External collections read through their `read` hook, never the store, so
+      // their prefix is NOT bulk-materialized. Seeding it would make a nested
+      // store-backed collection under the same prefix root (e.g. external
+      // `positions/*` + stored `positions/details/*`) read as an authoritative
+      // miss and hide real rows (FIX-858).
+      if (isExternalResourceCollection(config)) continue;
       if (!isCollectionConfig(config)) continue;
       const prefix = getPatternPrefix(config.pattern);
       loadedCollectionPrefixes[scope].add(prefix === "" ? "" : `${prefix}/`);
