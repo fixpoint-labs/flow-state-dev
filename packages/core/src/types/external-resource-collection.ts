@@ -28,7 +28,7 @@ import type { ResourceScope } from "./resource";
 import type { AnchoredPath, CollectionClientConfig } from "./resource";
 import type { ResourceTemplate } from "../resource-template/resource-template";
 import type { DefinedResourceCollection } from "./resource-collection";
-import { isParameterizedPattern, validatePattern } from "./collection-patterns";
+import { isParameterizedPattern, resolveCollectionKey, validatePattern } from "./collection-patterns";
 import { validateClientProjection } from "../helpers/client-projection";
 import type { ProjectedClient } from "../helpers/client-projection";
 import { validateReactTo, type ReactiveBinding } from "./resource-change";
@@ -203,9 +203,9 @@ export interface ExternalResourceRef<TState extends JsonObject = JsonObject> {
  * `defineExternalResourceCollection` resolves to this (not the mutable
  * `ResourceCollectionRef`) through the resource-inference conditionals.
  *
- * PR1 exposes `get` / `getOptional` and the identity/config fields. `list`
- * (search/list pushdown) lands in a later PR and is intentionally absent here,
- * so PR1 caller code cannot type-check a `list()` that has no runtime yet.
+ * Exposes `get` / `getOptional`, the paged `list`, and the identity/config
+ * fields. There is deliberately no `count()` — an exact count would need
+ * forbidden enumeration of the app store (§3.3).
  */
 export interface ExternalResourceCollectionRef<TState extends JsonObject = JsonObject> {
   /** The collection's declared pattern. */
@@ -221,6 +221,14 @@ export interface ExternalResourceCollectionRef<TState extends JsonObject = JsonO
   get(key: string): Promise<ExternalResourceRef<TState>>;
   /** Resolve one instance, or `undefined` when the app has no such record. */
   getOptional(key: string): Promise<ExternalResourceRef<TState> | undefined>;
+  /**
+   * List a page of instances by pushing the query DOWN to the app's `search`
+   * hook (never enumerate-in-memory — BP-033). A bare string is shorthand for
+   * `{ search }`. Returns app-ranked hits resolved to read-only refs plus the
+   * app's opaque `nextCursor` (absent when the result set is exhausted); pass it
+   * back as `query.cursor` for the next page.
+   */
+  list(query?: string | ResourceQuery): Promise<{ items: ExternalResourceRef<TState>[]; nextCursor?: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -384,6 +392,65 @@ export async function readExternalRecord<TState extends JsonObject>(
     );
   }
   return parsed.data as TState;
+}
+
+/**
+ * One validated, key-normalized search hit. `storageKey` is the pattern-
+ * canonical instance path (`positions/AAPL`) used to build refs/URIs; `key` is
+ * the bare key the app returned. `score`/`snippet` are the app's when supplied,
+ * left for the framework to derive (rank = hook order, snippet from rendered
+ * content) when omitted.
+ */
+export type ValidatedExternalHit<TState extends JsonObject = JsonObject> = {
+  storageKey: string;
+  key: string;
+  state: TState;
+  score?: number;
+  snippet?: string;
+};
+
+/**
+ * Invoke an external collection's `search` backing, validate every hit's state
+ * through `stateSchema`, and normalize each hit key to its canonical storage
+ * path. The search-side twin of {@link readExternalRecord} — the single source
+ * of truth for the search+validate contract, shared by the engine's resource
+ * registry (`list`/`search` ref methods), the `searchResources` tool pushdown,
+ * and the cursor list route.
+ *
+ * Unlike a single read, a hit that fails `stateSchema` is DROPPED and logged
+ * (not thrown) — one bad row must not sink a whole page (§4.3). The app's
+ * `nextCursor` is passed straight through for opaque pagination. BP-031: the
+ * same org-binding guard as the read path — an org read with no org coordinate
+ * returns an empty page rather than querying an unscoped bucket.
+ */
+export async function searchExternalRecords<TState extends JsonObject>(
+  config: Pick<ExternalResourceCollectionConfig, "search" | "stateSchema" | "pattern">,
+  query: ResourceQuery,
+  ctx: ExternalResourceContext
+): Promise<{ hits: ValidatedExternalHit<TState>[]; nextCursor?: string }> {
+  if (ctx.scope === "org" && (ctx.orgId === undefined || ctx.scopeId === "")) {
+    return { hits: [] };
+  }
+  const result = await config.search({ query, ctx });
+  const hits: ValidatedExternalHit<TState>[] = [];
+  for (const hit of result.hits) {
+    const parsed = config.stateSchema.safeParse(hit.state);
+    if (!parsed.success) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[flow-state] External collection "${config.pattern}" search hit "${hit.key}" failed stateSchema and was dropped: ${parsed.error.message}`
+      );
+      continue;
+    }
+    hits.push({
+      storageKey: resolveCollectionKey(config.pattern, hit.key),
+      key: hit.key,
+      state: parsed.data as TState,
+      score: hit.score,
+      snippet: hit.snippet,
+    });
+  }
+  return { hits, nextCursor: result.nextCursor };
 }
 
 // ---------------------------------------------------------------------------

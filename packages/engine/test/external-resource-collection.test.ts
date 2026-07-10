@@ -16,6 +16,10 @@ type Position = z.infer<typeof positionSchema>;
 
 function makePositions(opts: {
   read: (args: { key: string; ctx: ExternalResourceContext }) => Promise<Position | null>;
+  search?: (args: { query: unknown; ctx: ExternalResourceContext }) => Promise<{
+    hits: Array<{ key: string; state: Position; score?: number; snippet?: string }>;
+    nextCursor?: string;
+  }>;
   contentTemplate?: ReturnType<typeof parseResourceTemplate>;
   client?: Record<string, unknown>;
 }) {
@@ -24,7 +28,7 @@ function makePositions(opts: {
     scope: "user",
     stateSchema: positionSchema,
     read: opts.read,
-    search: async () => ({ hits: [] }),
+    search: (opts.search ?? (async () => ({ hits: [] }))) as never,
     ...(opts.contentTemplate ? { contentTemplate: opts.contentTemplate } : {}),
     ...(opts.client ? { client: opts.client as never } : {}),
   });
@@ -152,5 +156,46 @@ describe("external resource collection — read redirect", () => {
     expect(ref.upsert).toBeUndefined();
     expect(ref.delete).toBeUndefined();
     expect(ref.external).toBe(true);
+  });
+});
+
+describe("external resource collection — list (search pushdown)", () => {
+  it("pushes the query to search and resolves hits to read-only refs + nextCursor", async () => {
+    const search = vi.fn(async () => ({
+      hits: [
+        { key: "AAPL", state: { ticker: "AAPL", shares: 10 } },
+        { key: "MSFT", state: { ticker: "MSFT", shares: 4 } },
+      ],
+      nextCursor: "page-2",
+    }));
+    const { ctx } = await createCtx(makePositions({ read: async () => null, search }));
+
+    const page = await portfolio(ctx).list({ search: "tech", limit: 2 });
+    expect(search).toHaveBeenCalledWith({ query: { search: "tech", limit: 2 }, ctx: expect.any(Object) });
+    expect(page.nextCursor).toBe("page-2");
+    // Hit keys normalized to the canonical storage path; state resolves synchronously.
+    expect(page.items.map((r) => r.path)).toEqual(["positions/AAPL", "positions/MSFT"]);
+    expect(page.items.map((r) => r.uri)).toEqual(["user/positions/AAPL", "user/positions/MSFT"]);
+    expect(page.items[0].state).toEqual({ ticker: "AAPL", shares: 10 });
+  });
+
+  it("treats a bare string as { search } shorthand", async () => {
+    const search = vi.fn(async () => ({ hits: [] }));
+    const { ctx } = await createCtx(makePositions({ read: async () => null, search }));
+    await portfolio(ctx).list("aapl");
+    expect(search).toHaveBeenCalledWith({ query: { search: "aapl" }, ctx: expect.any(Object) });
+  });
+
+  it("drops schema-invalid hits (one bad row doesn't sink the page)", async () => {
+    const search = vi.fn(async () => ({
+      hits: [
+        { key: "AAPL", state: { ticker: "AAPL", shares: 10 } },
+        { key: "BAD", state: { ticker: "BAD", shares: "lots" } as unknown as Position },
+      ],
+    }));
+    const { ctx } = await createCtx(makePositions({ read: async () => null, search }));
+    const page = await portfolio(ctx).list();
+    expect(page.items.map((r) => r.path)).toEqual(["positions/AAPL"]);
+    expect(page.nextCursor).toBeUndefined();
   });
 });
