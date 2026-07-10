@@ -67,6 +67,21 @@ describe("external resource collection — read redirect", () => {
     expect(read).toHaveBeenCalledWith({ key: "AAPL", ctx: expect.any(Object) });
   });
 
+  it("normalizes the key before calling read (matches the HTTP route's bare topic)", async () => {
+    // A caller-supplied key that resolveCollectionKey normalizes (leading slash,
+    // duplicate separators) must reach `read` as the same bare topic the HTTP
+    // route derives — otherwise the same record is found via one path, missed
+    // via the other.
+    const read = vi.fn(async ({ key }: { key: string }) =>
+      key === "AAPL" ? { ticker: "AAPL", shares: 5 } : null
+    );
+    const { ctx } = await createCtx(makePositions({ read }));
+
+    const ref = await portfolio(ctx).get("/AAPL");
+    expect(ref.path).toBe("positions/AAPL");
+    expect(read).toHaveBeenCalledWith({ key: "AAPL", ctx: expect.any(Object) });
+  });
+
   it("getOptional returns undefined when read returns null", async () => {
     const { ctx } = await createCtx(makePositions({ read: async () => null }));
     expect(await portfolio(ctx).getOptional("MSFT")).toBeUndefined();

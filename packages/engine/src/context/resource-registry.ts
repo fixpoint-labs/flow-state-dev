@@ -29,6 +29,7 @@ import {
   resolveCollectionKey,
   matchesPattern,
   getPatternPrefix,
+  extractBareTopic,
   isExternalResourceCollection,
   readExternalRecord,
 } from "@flow-state-dev/core/types";
@@ -795,13 +796,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         flowKind: "",
       };
 
-    const readThrough = (bareKey: string, storageKey: string): Promise<JsonObject | undefined> => {
+    const readThrough = (storageKey: string): Promise<JsonObject | undefined> => {
       if (cache.has(storageKey)) return Promise.resolve(cache.get(storageKey));
       const pending = inflight.get(storageKey);
       if (pending !== undefined) return pending;
       const run = (async (): Promise<JsonObject | undefined> => {
-        // Shared read+validate contract (throws on schema failure — §4.5).
-        const record = await readExternalRecord(extConfig, bareKey, externalCtx());
+        // Shared read+validate contract (throws on schema failure — §4.5). Feed
+        // the app the pattern-normalized bare topic (not the caller's raw key),
+        // so `.get("/AAPL")` and the HTTP route resolve the same record.
+        const record = await readExternalRecord(extConfig, extractBareTopic(pattern, storageKey), externalCtx());
         if (record === undefined) return undefined;
         const state = isJsonObject(record) ? asJsonObject(record) : ({} as JsonObject);
         cache.set(storageKey, state);
@@ -835,7 +838,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       config: { llmReadable: extConfig.llmReadable, pattern, scope: refScope },
       async get(key: string): Promise<ExternalResourceRef<JsonObject>> {
         const storageKey = resolveCollectionKey(pattern, key);
-        const state = await readThrough(key, storageKey);
+        const state = await readThrough(storageKey);
         if (state === undefined) {
           throw new Error(
             `Resource instance "${storageKey}" not found in external collection "${pattern}"`
@@ -845,7 +848,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async getOptional(key: string): Promise<ExternalResourceRef<JsonObject> | undefined> {
         const storageKey = resolveCollectionKey(pattern, key);
-        const state = await readThrough(key, storageKey);
+        const state = await readThrough(storageKey);
         return state === undefined ? undefined : makeRef(storageKey);
       },
     };

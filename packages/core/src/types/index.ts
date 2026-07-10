@@ -188,6 +188,7 @@ export {
   normalizeResourcePath,
   matchesPattern,
   getPatternPrefix,
+  extractBareTopic,
   extractPatternParams,
 } from "./resource-collection";
 

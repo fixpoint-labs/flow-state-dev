@@ -359,12 +359,22 @@ export function defineExternalResourceCollection<
  * engine's resource registry (which wraps it with a per-request cache +
  * single-flight) and the client route read helpers (which call it directly).
  * `key` is the within-scope row key the app resolves against.
+ *
+ * BP-031: an org-scoped read for a session with no org binding has no trusted
+ * org coordinate (`scopeId` would be `""`), so treat it as absent rather than
+ * let the hook query an empty/unscoped org bucket. Enforced here — the one
+ * place all three call sites (registry handle, scope `client.data` handle, and
+ * the item-state/content routes) funnel through — so the guard can't drift out
+ * of any single caller.
  */
 export async function readExternalRecord<TState extends JsonObject>(
   config: Pick<ExternalResourceCollectionConfig, "read" | "stateSchema" | "pattern">,
   key: string,
   ctx: ExternalResourceContext
 ): Promise<TState | undefined> {
+  if (ctx.scope === "org" && (ctx.orgId === undefined || ctx.scopeId === "")) {
+    return undefined;
+  }
   const raw = await config.read({ key, ctx });
   if (raw === null || raw === undefined) return undefined;
   const parsed = config.stateSchema.safeParse(raw);

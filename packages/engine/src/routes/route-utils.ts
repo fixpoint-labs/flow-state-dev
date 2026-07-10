@@ -12,7 +12,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { buildExternalResourceRef } from "../resources/external-ref";
 import {
-  getPatternPrefix,
+  extractBareTopic,
   isExternalResourceCollection,
   matchesPattern,
   readExternalRecord,
@@ -100,22 +100,10 @@ export async function loadTenantSession(
   return record;
 }
 
-/**
- * Strip the static pattern prefix from a full storage key, leaving the
- * "bare topic" — the identifying portion a collection author addresses
- * items by. Returns the full key unchanged when the prefix doesn't match
- * (defensive against caller mismatches).
- *
- * Example: extractBareTopic("memos/[topic]", "memos/abc") -> "abc".
- */
-export function extractBareTopic(pattern: string, fullKey: string): string {
-  const prefix = getPatternPrefix(pattern);
-  if (prefix.length === 0) return fullKey;
-  if (fullKey === prefix) return "";
-  const sep = prefix + "/";
-  if (fullKey.startsWith(sep)) return fullKey.slice(sep.length);
-  return fullKey;
-}
+// `extractBareTopic` now lives in core alongside `getPatternPrefix` /
+// `resolveCollectionKey` (its inverse). Re-exported here so existing route
+// importers keep resolving it from this module.
+export { extractBareTopic } from "@flow-state-dev/core/types";
 
 export function asObject(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== "object" || value === null) {

@@ -114,12 +114,9 @@ export async function readExternalCollectionState(
   ctx: ExternalResourceContext
 ): Promise<JsonObject | undefined> {
   if (!isExternalResourceCollection(config)) return undefined;
-  // An org-scoped collection read for a session with no org binding has no
-  // trusted org coordinate (`scopeId` would be ""), so treat it as absent
-  // rather than letting the hook query an empty/unscoped org bucket (BP-031).
-  if (ctx.scope === "org" && (ctx.orgId === undefined || ctx.scopeId === "")) {
-    return undefined;
-  }
+  // The org-binding trust guard (BP-031) lives in `readExternalRecord`, so every
+  // read path — this route helper, the registry handle, the scope `client.data`
+  // handle — gets it without a per-caller check.
   const record = await readExternalRecord(
     config as unknown as ExternalResourceCollectionConfig,
     key,

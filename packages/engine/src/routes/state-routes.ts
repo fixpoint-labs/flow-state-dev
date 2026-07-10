@@ -173,21 +173,21 @@ export async function handleGetSessionState(
     configs: sessionConfigs,
     persisted: sessionState,
     persistedContent: sessionContent,
-    externalContext: buildExternalResourceContextFromSession(session, "session", route.sessionId)
+    externalContext: buildExternalResourceContextFromSession(session, "session", route.sessionId, request.signal)
   });
   const userResources = createScopeResources({
     scope: "user",
     configs: userConfigs,
     persisted: userState,
     persistedContent: userContent,
-    externalContext: buildExternalResourceContextFromSession(session, "user", route.sessionId)
+    externalContext: buildExternalResourceContextFromSession(session, "user", route.sessionId, request.signal)
   });
   const orgResources = createScopeResources({
     scope: "org",
     configs: orgConfigs,
     persisted: orgState,
     persistedContent: orgContent,
-    externalContext: buildExternalResourceContextFromSession(session, "org", route.sessionId)
+    externalContext: buildExternalResourceContextFromSession(session, "org", route.sessionId, request.signal)
   });
 
   const sessionClientData = await computeClientData({
