@@ -7,9 +7,11 @@
  */
 import type {
   CollectionClientConfig,
+  ExternalResourceCollectionConfig,
   JsonObject,
+  ResourceQuery,
 } from "@flow-state-dev/core/types";
-import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
+import { getPatternPrefix, matchesPattern, resolveCollectionKey, searchExternalRecords } from "@flow-state-dev/core/types";
 import { resolveClientProjection } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
@@ -344,14 +346,16 @@ function hasTruthyFlag(record: Record<string, unknown> | undefined): boolean {
 }
 
 /**
- * GET /sessions/:sessionId/resources/:ref?limit=&offset=&topicPrefix=
+ * GET /sessions/:sessionId/resources/:ref?limit=&cursor=&topicPrefix=
  *
- * Returns one paginated page of a collection's per-item state. Items are
- * sorted lexicographically by storage key. Gated by `client.state.read`.
- * Works for session, user, and org scope. Session scope keeps its prefix-
- * scoped read optimization; user/org scope resolves the persisted record
- * via `getPersistedData` (a missing user/org record reads as an empty
- * collection, never an error).
+ * Returns one cursor-paged page of a collection's per-item state, plus an
+ * opaque `nextCursor` when more rows remain (absent = last page). Gated by
+ * `client.state.read`; works for session, user, and org scope.
+ *
+ * Store-backed collections page by keyset over lexicographically-sorted storage
+ * keys (`cursor` = the last key returned). External collections (FIX-858) push
+ * the page down to the app's `search` hook and pass its opaque cursor straight
+ * through — the framework never enumerates the app store.
  */
 export async function handleListCollectionState(
   request: Request,
@@ -380,31 +384,39 @@ export async function handleListCollectionState(
     return jsonResponse(403, { error: `State read not permitted for "${route.ref}"` });
   }
 
-  // FIX-858: external collections don't enumerate FSD storage — listing them
-  // through this store-backed route would return a false empty page (`total: 0`),
-  // indistinguishable from "no rows". Cursor-paged listing over the app's
-  // `search` lands in a follow-up; until then, signal unsupported rather than lie.
-  if (isExternalResourceCollection(config)) {
-    return jsonResponse(501, {
-      error: `Listing external collection "${route.ref}" is not supported yet — read items by key, or use search once the pushdown route lands`,
-    });
-  }
-
   const url = new URL(request.url);
   const limitParam = url.searchParams.get("limit");
-  const offsetParam = url.searchParams.get("offset");
+  const cursor = url.searchParams.get("cursor") ?? undefined;
   const topicPrefix = url.searchParams.get("topicPrefix") ?? undefined;
 
   const limit = limitParam !== null ? Number.parseInt(limitParam, 10) : STATE_LIST_DEFAULT_LIMIT;
-  const offset = offsetParam !== null ? Number.parseInt(offsetParam, 10) : 0;
-
   if (!Number.isInteger(limit) || limit < 1 || limit > STATE_LIST_MAX_LIMIT) {
-    return jsonResponse(400, {
-      error: `limit must be 1–${STATE_LIST_MAX_LIMIT}`
-    });
+    return jsonResponse(400, { error: `limit must be 1–${STATE_LIST_MAX_LIMIT}` });
   }
-  if (!Number.isInteger(offset) || offset < 0) {
-    return jsonResponse(400, { error: "offset must be >= 0" });
+
+  // FIX-858: external collections read through their `search` hook — the app
+  // engine runs the page. The opaque `nextCursor` is the app's, echoed back
+  // verbatim on the next request. `topicPrefix` maps to the query's `prefix`.
+  if (isExternalResourceCollection(config)) {
+    const extCtx = buildExternalResourceContextFromSession(session, scope, route.sessionId, request.signal);
+    const query: ResourceQuery = {
+      limit,
+      ...(cursor !== undefined ? { cursor } : {}),
+      ...(topicPrefix !== undefined ? { prefix: topicPrefix } : {}),
+    };
+    const { hits, nextCursor } = await searchExternalRecords(
+      config as unknown as ExternalResourceCollectionConfig,
+      query,
+      extCtx
+    );
+    const items = await Promise.all(
+      hits.map(async (hit) => ({
+        topic: extractBareTopic(config.pattern, hit.storageKey),
+        storageKey: hit.storageKey,
+        clientData: await applyClientData(config, hit.state as JsonObject),
+      }))
+    );
+    return jsonResponse(200, { items, ...(nextCursor !== undefined ? { nextCursor } : {}) });
   }
 
   let persisted: Record<string, JsonObject>;
@@ -428,30 +440,25 @@ export async function handleListCollectionState(
     .filter((k) => matchesPattern(config.pattern, k))
     .filter((k) => topicPrefix === undefined || k.startsWith(topicPrefix))
     .sort();
-  const total = matchedKeys.length;
 
-  const pageKeys = matchedKeys.slice(offset, offset + limit);
+  // Keyset pagination: `cursor` is the last storage key of the prior page, so
+  // the next page is every matched key strictly after it. Stable under inserts
+  // (unlike an offset) and needs no total.
+  const startKeys = cursor !== undefined ? matchedKeys.filter((k) => k > cursor) : matchedKeys;
+  const pageKeys = startKeys.slice(0, limit);
+  const hasMore = startKeys.length > limit;
   const items: Array<{ topic: string; storageKey: string; clientData?: unknown }> = [];
   for (const key of pageKeys) {
     const state = isJsonObject(persisted[key]) ? (persisted[key] as JsonObject) : {};
-    const item: { topic: string; storageKey: string; clientData?: unknown } = {
+    items.push({
       topic: extractBareTopic(config.pattern, key),
-      storageKey: key
-    };
-    item.clientData = await applyClientData(config, state);
-    items.push(item);
+      storageKey: key,
+      clientData: await applyClientData(config, state),
+    });
   }
 
-  return jsonResponse(200, {
-    items,
-    pagination: {
-      offset,
-      limit,
-      total,
-      hasMore: offset + limit < total,
-      nextOffset: Math.min(offset + limit, total)
-    }
-  });
+  const nextCursor = hasMore ? pageKeys[pageKeys.length - 1] : undefined;
+  return jsonResponse(200, { items, ...(nextCursor !== undefined ? { nextCursor } : {}) });
 }
 
 /**

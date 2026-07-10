@@ -159,16 +159,67 @@ describe("external collection — snapshot anchor", () => {
   });
 });
 
-describe("external collection — list route", () => {
-  it("returns 501 (not a false empty page) since list pushdown is a follow-up", async () => {
-    const ctx = await setupCtx();
+describe("external collection — list route (search pushdown)", () => {
+  function searchablePositions(
+    search: (args: { query: unknown; ctx: ExternalResourceContext }) => Promise<{
+      hits: Array<{ key: string; state: { ticker: string; shares: number } }>;
+      nextCursor?: string;
+    }>
+  ) {
+    return defineExternalResourceCollection({
+      pattern: "positions/*",
+      scope: "user",
+      stateSchema: positionSchema,
+      read: async ({ key }: { key: string }) => APP_STORE[key] ?? null,
+      search: search as never,
+      contentTemplate: parseResourceTemplate(`<system>{{ state.ticker }}: {{ state.shares }}</system>`),
+      client: { content: { read: true }, state: { read: true } },
+    });
+  }
+
+  it("pushes limit/cursor/topicPrefix to search and projects hits with the app cursor", async () => {
+    const search = vi.fn(async () => ({
+      hits: [
+        { key: "AAPL", state: { ticker: "AAPL", shares: 10 } },
+        { key: "MSFT", state: { ticker: "MSFT", shares: 5 } },
+      ],
+      nextCursor: "app-cursor-2",
+    }));
+    const ctx = await setupCtx(searchablePositions(search));
+    const res = await handleListCollectionState(
+      makeReq("http://x/sessions/sess_1/resources/portfolio?limit=2&cursor=app-cursor-1&topicPrefix=positions/A"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "portfolio" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(search).toHaveBeenCalledWith({
+      query: { limit: 2, cursor: "app-cursor-1", prefix: "positions/A" },
+      ctx: expect.any(Object),
+    });
+    expect(body.items.map((i: { topic: string }) => i.topic)).toEqual(["AAPL", "MSFT"]);
+    expect(body.items.map((i: { storageKey: string }) => i.storageKey)).toEqual([
+      "positions/AAPL",
+      "positions/MSFT",
+    ]);
+    // clientData is the projected (here identity) hook state.
+    expect(body.items[0].clientData).toEqual({ ticker: "AAPL", shares: 10 });
+    // The app's opaque cursor is passed straight through.
+    expect(body.nextCursor).toBe("app-cursor-2");
+  });
+
+  it("omits nextCursor when the app reports no more pages", async () => {
+    const ctx = await setupCtx(
+      searchablePositions(async () => ({ hits: [{ key: "AAPL", state: { ticker: "AAPL", shares: 10 } }] }))
+    );
     const res = await handleListCollectionState(
       makeReq("http://x/sessions/sess_1/resources/portfolio"),
       { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "portfolio" },
       { registry: ctx.registry, stores: ctx.stores }
     );
-    expect(res.status).toBe(501);
-    expect((await res.json()).error).toMatch(/not supported yet/i);
+    const body = await res.json();
+    expect(body.items).toHaveLength(1);
+    expect(body.nextCursor).toBeUndefined();
   });
 });
 

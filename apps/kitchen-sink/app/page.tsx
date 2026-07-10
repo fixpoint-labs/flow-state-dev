@@ -150,7 +150,7 @@ function KitchenSinkApp() {
   }, [session.detail?.title, flow]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
-  const { items: artifactItems, loadMore: loadMoreArtifacts, pagination: artifactsPagination } = useResourceCollectionList(session, "artifacts", { limit: 50 });
+  const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
 
   const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; activeSkills?: Array<{ name: string; source: string }> } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; selectedModel: string; thinkingEnabled: boolean } | undefined;
