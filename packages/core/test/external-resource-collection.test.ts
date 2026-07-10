@@ -9,7 +9,6 @@ import {
   defineResourceCollection,
   isDefinedResourceCollection,
 } from "../src/types/resource-collection";
-import { defineResource } from "../src/types/resource";
 import { handler } from "../src";
 import { extractDeclaredResources, mergeDeclaredResources } from "../src/blocks/internal/build-block";
 
@@ -132,6 +131,21 @@ describe("defineExternalResourceCollection", () => {
       expectTypeOf<Refs["portfolio"]>().not.toHaveProperty("create");
       expectTypeOf<Refs["portfolio"]>().not.toHaveProperty("upsert");
       expectTypeOf<Refs["portfolio"]>().not.toHaveProperty("delete");
+    });
+
+    it("carries the projected client-data type through ClientDataOf — type-level", () => {
+      const coll = defineExternalResourceCollection({
+        pattern: "positions/*",
+        scope: "user",
+        stateSchema: positionSchema,
+        read: async () => null,
+        search: async () => ({ hits: [] }),
+        client: { expose: ["ticker"] },
+      });
+      type Client = import("../src/types/resource").ClientDataOf<typeof coll>;
+      // `expose: ["ticker"]` → the projection is Pick<state, "ticker">, not the
+      // default JsonValue.
+      expectTypeOf<Client>().toEqualTypeOf<{ ticker: string }>();
     });
 
     it("a plain collection still infers the mutable ref — type-level", () => {

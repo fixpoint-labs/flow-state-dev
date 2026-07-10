@@ -30,6 +30,7 @@ import type { ResourceTemplate } from "../resource-template/resource-template";
 import type { DefinedResourceCollection } from "./resource-collection";
 import { isParameterizedPattern, validatePattern } from "./collection-patterns";
 import { validateClientProjection } from "../helpers/client-projection";
+import type { ProjectedClient } from "../helpers/client-projection";
 import { validateReactTo, type ReactiveBinding } from "./resource-change";
 
 // ---------------------------------------------------------------------------
@@ -248,7 +249,8 @@ export type ExternalCollectionBrand<TStateSchema extends ZodTypeAny = ZodTypeAny
 export type DefinedExternalResourceCollection<
   TState extends JsonObject = JsonObject,
   TStateSchema extends ZodTypeAny = ZodTypeAny,
-> = DefinedResourceCollection<TState> & ExternalCollectionBrand<TStateSchema>;
+  TClient = JsonValue,
+> = DefinedResourceCollection<TState, TClient> & ExternalCollectionBrand<TStateSchema>;
 
 // ---------------------------------------------------------------------------
 // defineExternalResourceCollection()
@@ -260,9 +262,16 @@ type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
  * Define a read-only collection whose instances are resolved from an app-owned
  * store. Shares the collection runtime core; read-only and lazy by type.
  */
-export function defineExternalResourceCollection<const TStateSchema extends ZodTypeAny>(
-  config: ExternalResourceCollectionConfig<TStateSchema>
-): DefinedExternalResourceCollection<AsStateObject<TStateSchema["_output"]>, TStateSchema> {
+export function defineExternalResourceCollection<
+  const TStateSchema extends ZodTypeAny,
+  const TConfig extends ExternalResourceCollectionConfig<TStateSchema> & { stateSchema: TStateSchema },
+>(
+  config: TConfig
+): DefinedExternalResourceCollection<
+  AsStateObject<TStateSchema["_output"]>,
+  TStateSchema,
+  ProjectedClient<AsStateObject<TStateSchema["_output"]>, TConfig["client"]>
+> {
   validatePattern(config.pattern);
 
   // Wildcard-only: a parameterized `[name]` pattern needs an object key, which
@@ -329,7 +338,11 @@ export function defineExternalResourceCollection<const TStateSchema extends ZodT
   return Object.assign({}, config, {
     __brand: "ResourceCollection" as const,
     external: true as const,
-  }) as unknown as DefinedExternalResourceCollection<AsStateObject<TStateSchema["_output"]>, TStateSchema>;
+  }) as unknown as DefinedExternalResourceCollection<
+    AsStateObject<TStateSchema["_output"]>,
+    TStateSchema,
+    ProjectedClient<AsStateObject<TStateSchema["_output"]>, TConfig["client"]>
+  >;
 }
 
 // ---------------------------------------------------------------------------

@@ -17,7 +17,8 @@ import {
   handleListCollectionState,
 } from "../src/routes/resource-routes";
 import { handleGetSessionState } from "../src/routes/state-routes";
-import { buildResourceSnapshot } from "../src/routes/route-utils";
+import { buildResourceSnapshot, createScopeResources } from "../src/routes/route-utils";
+import type { ExternalResourceContext } from "@flow-state-dev/core/types";
 
 const positionSchema = z.object({ ticker: z.string(), shares: z.number() });
 
@@ -130,13 +131,17 @@ describe("external collection — content route", () => {
 });
 
 describe("external collection — snapshot anchor", () => {
-  it("emits an empty anchor with undefined count (no enumeration)", async () => {
+  it("emits a serializable empty anchor (prefetched: [], no false count) classifiable as a collection", async () => {
     const snapshot = await buildResourceSnapshot({
       configs: { portfolio: buildPositions() as unknown as Record<string, unknown> },
       persisted: {},
     });
     expect(snapshot).toBeDefined();
-    expect(snapshot!.portfolio).toEqual({});
+    // `prefetched: []` survives JSON.stringify (unlike `count: undefined` → `{}`),
+    // so the client classifies it as a collection, not a single resource. No
+    // `count` key → honest unknown cardinality (never a false 0).
+    expect(snapshot!.portfolio).toEqual({ prefetched: [] });
+    expect("count" in (snapshot!.portfolio as object)).toBe(false);
   });
 
   it("appears in the /state snapshot with no enumerated instances", async () => {
@@ -149,8 +154,8 @@ describe("external collection — snapshot anchor", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     // The external collection surfaces (empty anchor) under its scope, without
-    // enumerating rows.
-    expect(body.resources?.user?.portfolio).toEqual({});
+    // enumerating rows — and stays classifiable as a collection over the wire.
+    expect(body.resources?.user?.portfolio).toEqual({ prefetched: [] });
   });
 });
 
@@ -164,6 +169,94 @@ describe("external collection — list route", () => {
     );
     expect(res.status).toBe(501);
     expect((await res.json()).error).toMatch(/not supported yet/i);
+  });
+});
+
+describe("external collection — scope clientData handle (createScopeResources)", () => {
+  const ctx: ExternalResourceContext = {
+    scope: "user",
+    scopeId: "user_1",
+    userId: "user_1",
+    flowKind: "ext-flow",
+  };
+
+  it("renders content from the collection's template (shared ref builder — no drift)", async () => {
+    const handles = createScopeResources({
+      scope: "user",
+      configs: { portfolio: buildPositions() as unknown as Record<string, unknown> },
+      persisted: {},
+      externalContext: ctx,
+    });
+    const portfolio = handles.portfolio as unknown as {
+      get(k: string): Promise<{ readContent(): Promise<string | null> }>;
+      getOptional(k: string): Promise<unknown>;
+      list(): Promise<unknown>;
+      count(): Promise<unknown>;
+    };
+    const ref = await portfolio.get("AAPL");
+    // The registry ref renders the template; this scope handle must too.
+    expect(await ref.readContent()).toBe("AAPL: 10");
+    expect(await portfolio.getOptional("NONE")).toBeUndefined();
+  });
+
+  it("throws on list()/count() rather than lying with []/0", async () => {
+    const handles = createScopeResources({
+      scope: "user",
+      configs: { portfolio: buildPositions() as unknown as Record<string, unknown> },
+      persisted: {},
+      externalContext: ctx,
+    });
+    const portfolio = handles.portfolio as unknown as {
+      list(): Promise<unknown>;
+      count(): Promise<unknown>;
+    };
+    await expect(portfolio.list()).rejects.toThrow(/not supported/i);
+    await expect(portfolio.count()).rejects.toThrow(/not supported/i);
+  });
+});
+
+describe("external collection — org read without org binding", () => {
+  it("returns 200 + null (never queries an unscoped org bucket) for a session with no org", async () => {
+    const read = vi.fn(async ({ key }: { key: string }) => APP_STORE[key] ?? null);
+    // An org-scoped external collection...
+    const orgColl = defineExternalResourceCollection({
+      pattern: "positions/*",
+      scope: "org",
+      stateSchema: positionSchema,
+      read,
+      search: async () => ({ hits: [] }),
+      client: { state: { read: true } },
+    });
+    const stores = createInMemoryStores();
+    const block = handler({ name: "noop", resources: { portfolio: orgColl }, execute: () => "ok" });
+    const flow = defineFlow({
+      kind: "ext-flow",
+      actions: { run: { inputSchema: z.string(), block } },
+    })();
+    const registry = createFlowRegistry();
+    registry.register(flow);
+    // ...read for a session with NO orgId.
+    await stores.session.set(
+      "sess_1",
+      {
+        id: "sess_1",
+        flowKind: "ext-flow",
+        userId: "user_1",
+        state: {},
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        journal: [],
+      },
+      "any"
+    );
+    const res = await handleGetCollectionItemState(
+      makeReq("http://x/sessions/sess_1/resources/portfolio/AAPL"),
+      { kind: "get_collection_item_state", sessionId: "sess_1", ref: "portfolio", topic: "AAPL" },
+      { registry, stores }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toBeNull();
+    expect(read).not.toHaveBeenCalled();
   });
 });
 

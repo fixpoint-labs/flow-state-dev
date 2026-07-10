@@ -7,8 +7,10 @@ import type {
   JsonObject,
   ResourceConfig,
   ResourceCollectionConfig,
+  ResourceScope,
   ScopeType,
 } from "@flow-state-dev/core/types";
+import { buildExternalResourceRef } from "../resources/external-ref";
 import {
   getPatternPrefix,
   isExternalResourceCollection,
@@ -302,36 +304,41 @@ export function createScopeResources(options: {
       ): Promise<Record<string, unknown> | undefined> => {
         if (options.externalContext === undefined) return undefined;
         const storageKey = resolveCollectionKey(pattern, key);
-        const state = await readExternalRecord(
+        const state = await readExternalRecord<JsonObject>(
           extConfig,
           extractBareTopic(pattern, storageKey),
           options.externalContext
         );
         if (state === undefined) return undefined;
-        return {
-          path: storageKey,
-          scope: options.scope,
-          uri: `${options.scope}/${storageKey}`,
-          get state() {
-            return isJsonObject(state) ? state : {};
-          },
-          async readContent() {
-            return null;
-          },
-          async readContentRaw() {
-            return null;
-          },
-        };
+        // Same read-only ref shape (and template rendering) as the execution
+        // context's handle — built by the shared helper so the two can't drift.
+        return buildExternalResourceRef({
+          scope: options.scope as ResourceScope,
+          storageKey,
+          readState: () => (isJsonObject(state) ? state : {}),
+          contentTemplate: extConfig.contentTemplate,
+          contentTemplateRef: extConfig.contentTemplateRef,
+          resolveTemplateRef: (ref) => (typeof contentMap[ref] === "string" ? contentMap[ref]! : null),
+        }) as unknown as Record<string, unknown>;
+      };
+      // `list`/`count` DON'T enumerate the app source (discovery is the cursor-
+      // paged list/search route — a follow-up). Throw rather than return a false
+      // empty `[]`/`0` — the same "never lie about cardinality" stance as the
+      // 501 list-state route and the snapshot's absent count.
+      const unsupportedEnumeration = (method: string): never => {
+        throw new Error(
+          `${method}() is not supported for external collection "${pattern}" in a client.data projection — read instances by key; listing/search pushdown is a follow-up`
+        );
       };
       handles[resourceName] = {
         pattern,
         config: extConfig,
         external: true,
         async list() {
-          return [];
+          return unsupportedEnumeration("list");
         },
         async count() {
-          return 0;
+          return unsupportedEnumeration("count");
         },
         async get(key: string | Record<string, string>) {
           const ref = await readThrough(key);
@@ -502,12 +509,14 @@ export async function buildResourceSnapshot(options: {
 
       // FIX-858: external collections are read-through — the snapshot does NOT
       // enumerate the app source (it holds only instances loaded this request,
-      // typically none). Emit an empty anchor with `count: undefined` — an
-      // honest "unknown cardinality", never a misleading 0 — so a client-
-      // visible external collection still appears in the snapshot and a client
-      // can discover instances via the list/search route + per-URI reads.
+      // typically none). Emit an empty anchor keyed on a serializable
+      // `prefetched: []` — NOT `count: undefined`, which `JSON.stringify` drops
+      // to `{}` and the client's `useResource` then misclassifies as a single
+      // resource (it discriminates a collection by a present `count`/`prefetched`
+      // key). `count` stays absent (honest unknown cardinality — never a false 0);
+      // the client discovers instances via the list/search route + per-URI reads.
       if (isExternalResourceCollection(maybeConfig)) {
-        out[resourceName] = { count: undefined };
+        out[resourceName] = { prefetched: [] };
         hasAny = true;
         continue;
       }

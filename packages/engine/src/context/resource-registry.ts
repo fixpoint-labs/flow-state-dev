@@ -46,6 +46,7 @@ import {
   renderResourceTemplate,
 } from "@flow-state-dev/core/resource-template";
 import { loadResourceTemplate } from "../resource-template-loader";
+import { buildExternalResourceRef } from "../resources/external-ref";
 
 function asJsonValue(value: unknown): JsonValue {
   if (
@@ -336,6 +337,10 @@ export async function loadDeclaredScopeContent(
   const collectionReads: Array<Promise<Record<string, string>>> = [];
 
   for (const [accessor, config] of accessors) {
+    // FIX-858: external collections are read-through — they hold no content in
+    // FSD storage, so skip the getByPrefix scan (it would only scan the store
+    // for nothing and undercut the no-copy guarantee).
+    if (isExternalResourceCollection(config)) continue;
     if (isCollectionConfig(config)) {
       const prefix = getPatternPrefix(config.pattern);
       // A non-empty static prefix targets the collection's `prefix/...`
@@ -391,6 +396,8 @@ export async function loadDeclaredResourceState(
   const collectionReads: Array<Promise<Record<string, JsonObject>>> = [];
 
   for (const [accessor, config] of accessors) {
+    // FIX-858: external collections are read-through — skip the store scan.
+    if (isExternalResourceCollection(config)) continue;
     if (isCollectionConfig(config)) {
       const prefix = getPatternPrefix(config.pattern);
       const keyPrefix = prefix === "" ? "" : `${prefix}/`;
@@ -806,52 +813,20 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       return run;
     };
 
-    const makeRef = (storageKey: string): ExternalResourceRef<JsonObject> => {
-      const readState = (): JsonObject => {
-        const cached = cache.get(storageKey);
-        if (cached !== undefined) return cloneValue(cached);
-        const parsed = extConfig.stateSchema.safeParse({});
-        return parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
-      };
-      return {
-        path: storageKey,
+    const makeRef = (storageKey: string): ExternalResourceRef<JsonObject> =>
+      buildExternalResourceRef({
         scope: refScope,
-        uri: `${options.scope}/${storageKey}`,
-        get state() {
-          return readState();
+        storageKey,
+        readState: (): JsonObject => {
+          const cached = cache.get(storageKey);
+          if (cached !== undefined) return cloneValue(cached);
+          const parsed = extConfig.stateSchema.safeParse({});
+          return parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
         },
-        async readContentRaw(): Promise<string | null> {
-          if (isResourceTemplate(extConfig.contentTemplate)) {
-            return extConfig.contentTemplate.source;
-          }
-          if (extConfig.contentTemplateRef !== undefined) {
-            const resolver = options.templateResolverRef?.current;
-            if (!resolver) return null;
-            return resolver(extConfig.contentTemplateRef);
-          }
-          // External collections have no raw content store — content is
-          // template-rendered from state only.
-          return null;
-        },
-        async readContent(): Promise<string | null> {
-          if (isResourceTemplate(extConfig.contentTemplate)) {
-            return renderResourceTemplate(extConfig.contentTemplate, readState());
-          }
-          if (extConfig.contentTemplateRef !== undefined) {
-            const resolver = options.templateResolverRef?.current;
-            if (!resolver) {
-              throw new Error(
-                `Cannot resolve contentTemplateRef "${extConfig.contentTemplateRef}" for external collection instance "${storageKey}" — template resolver not available`
-              );
-            }
-            const rawTemplate = resolver(extConfig.contentTemplateRef);
-            if (rawTemplate === null) return null;
-            return renderResourceTemplate(parseResourceTemplate(rawTemplate), readState());
-          }
-          return null;
-        },
-      };
-    };
+        contentTemplate: extConfig.contentTemplate,
+        contentTemplateRef: extConfig.contentTemplateRef,
+        resolveTemplateRef: (ref) => options.templateResolverRef?.current?.(ref) ?? null,
+      });
 
     return {
       pattern,

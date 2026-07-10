@@ -154,7 +154,7 @@ export async function handleGetCollectionItemContent(
   // FIX-858: external collections have no stored content — the state is read
   // through the app store and the content is template-rendered from it.
   if (isExternalResourceCollection(config)) {
-    const extCtx = buildExternalResourceContextFromSession(session, scope, route.sessionId);
+    const extCtx = buildExternalResourceContextFromSession(session, scope, route.sessionId, _request.signal);
     const extState = await readExternalCollectionState(
       config,
       extractBareTopic(config.pattern, storageKey),
@@ -505,7 +505,7 @@ export async function handleGetCollectionItemState(
   if (isExternalResourceCollection(config)) {
     // FIX-858: read-through to the app store, not FSD storage. The bare topic is
     // the app's within-scope row key.
-    const extCtx = buildExternalResourceContextFromSession(session, scope, route.sessionId);
+    const extCtx = buildExternalResourceContextFromSession(session, scope, route.sessionId, _request.signal);
     value = await readExternalCollectionState(
       config,
       extractBareTopic(config.pattern, storageKey),
