@@ -219,13 +219,18 @@ export function resourceSearchTools() {
       const externalCollections = collectExternalCollections(ctx).filter(
         (ns) => ns.ref.config?.llmReadable === true
       );
+      // An opaque cursor belongs to one store — it can't fan out. Only page
+      // (forward the cursor, emit a nextCursor) when a SINGLE external collection
+      // is the target; with several, return each collection's first page and no
+      // cursor rather than send collection B's cursor to A and lose A's tail.
+      const canCursor = externalCollections.length <= 1;
       for (const ns of externalCollections) {
         const extRef = ns.ref as unknown as ExternalResourceCollectionRef;
         const page = await extRef.list({
           search: input.query,
           ...(input.prefix !== null ? { prefix: input.prefix } : {}),
           limit: input.limit,
-          ...(input.cursor !== null ? { cursor: input.cursor } : {}),
+          ...(canCursor && input.cursor !== null ? { cursor: input.cursor } : {}),
         });
         // Rank-preserving score (app/hook order → descending); snippet rendered
         // from the record's content template.
@@ -238,35 +243,43 @@ export function resourceSearchTools() {
             snippet: content ? firstMatchingLine(content, terms) : "",
           });
         }
-        if (page.nextCursor !== undefined) nextCursor = page.nextCursor;
+        if (canCursor && page.nextCursor !== undefined) nextCursor = page.nextCursor;
       }
+
+      // Cap external hits to the requested limit — several collections can
+      // together exceed it, and the tool's contract is "at most `limit`".
+      const cappedExternal = externalResults.slice(0, input.limit);
 
       // A cursor continuation advances only the external pagination — the
       // bounded store-backed set was fully returned on the first page.
       if (input.cursor !== null) {
         return nextCursor === undefined
-          ? { results: externalResults }
-          : { results: externalResults, nextCursor };
+          ? { results: cappedExternal }
+          : { results: cappedExternal, nextCursor };
       }
 
-      const resources = await collectReadableResources(ctx);
+      // Store-backed results fill the REMAINING budget after external hits, so
+      // the combined set never exceeds `limit`.
+      const remaining = Math.max(0, input.limit - cappedExternal.length);
       const scored: Array<{ uri: string; score: number; snippet: string }> = [];
+      if (remaining > 0) {
+        const resources = await collectReadableResources(ctx);
+        for (const ref of resources) {
+          if (input.prefix !== null && !matchesPrefix(ref.path, input.prefix)) continue;
+          const content = await ref.readContent();
+          if (content === null || content === "") continue;
 
-      for (const ref of resources) {
-        if (input.prefix !== null && !matchesPrefix(ref.path, input.prefix)) continue;
-        const content = await ref.readContent();
-        if (content === null || content === "") continue;
+          const lower = content.toLowerCase();
+          let score = 0;
+          for (const term of terms) score += countOccurrences(lower, term);
+          if (score === 0) continue;
 
-        const lower = content.toLowerCase();
-        let score = 0;
-        for (const term of terms) score += countOccurrences(lower, term);
-        if (score === 0) continue;
-
-        scored.push({ uri: ref.uri, score, snippet: firstMatchingLine(content, terms) });
+          scored.push({ uri: ref.uri, score, snippet: firstMatchingLine(content, terms) });
+        }
+        scored.sort((a, b) => b.score - a.score || a.uri.localeCompare(b.uri));
       }
 
-      scored.sort((a, b) => b.score - a.score || a.uri.localeCompare(b.uri));
-      const results = [...externalResults, ...scored.slice(0, input.limit)];
+      const results = [...cappedExternal, ...scored.slice(0, remaining)];
       return nextCursor === undefined ? { results } : { results, nextCursor };
     },
   });

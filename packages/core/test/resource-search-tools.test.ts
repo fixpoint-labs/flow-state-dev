@@ -491,3 +491,71 @@ describe("searchResources — external collection pushdown (FIX-858)", () => {
     expect(nextCursor).toBeUndefined();
   });
 });
+
+describe("searchResources — external multi-collection & limit contract (FIX-858)", () => {
+  function multiCtx(
+    externals: Array<{
+      pattern: string;
+      llmReadable?: boolean;
+      list: (q: unknown) => Promise<{ items: any[]; nextCursor?: string }>;
+    }>,
+    statics: MockResource[] = [],
+  ): BlockContext {
+    const entries: any[] = statics.map(refOf);
+    for (const e of externals) {
+      entries.push({
+        pattern: e.pattern,
+        scope: "org",
+        external: true,
+        config: { llmReadable: e.llmReadable ?? true },
+        list: e.list,
+        getOptional: async () => undefined,
+      });
+    }
+    return createMockContext({ resources: { list: () => entries, get: () => undefined } as any });
+  }
+
+  it("caps the combined result set to `limit` (external hits + store-backed)", async () => {
+    // External returns a full page of `limit`; store-backed also has matches.
+    const list = vi.fn(async () => ({
+      items: [
+        refOf({ path: "positions/AAPL", content: "shares" }),
+        refOf({ path: "positions/MSFT", content: "shares" }),
+      ],
+    }));
+    const ctx = multiCtx(
+      [{ pattern: "positions/*", list }],
+      [
+        { path: "notes/a", content: "shares shares" },
+        { path: "notes/b", content: "shares" },
+      ],
+    );
+    const { results } = await runForTest(
+      searchResources,
+      { query: "shares", prefix: null, limit: 2, cursor: null },
+      ctx,
+    );
+    // External took both slots; store-backed filled 0. Never exceeds limit.
+    expect(results).toHaveLength(2);
+    expect(results.map((r) => r.uri)).toEqual(["org/positions/AAPL", "org/positions/MSFT"]);
+  });
+
+  it("does not forward one cursor to multiple external collections and emits no cursor", async () => {
+    const listA = vi.fn(async () => ({ items: [refOf({ path: "a/1", content: "x" })], nextCursor: "a-2" }));
+    const listB = vi.fn(async () => ({ items: [refOf({ path: "b/1", content: "x" })], nextCursor: "b-2" }));
+    const ctx = multiCtx([
+      { pattern: "a/*", list: listA },
+      { pattern: "b/*", list: listB },
+    ]);
+    const { results, nextCursor } = await runForTest(
+      searchResources,
+      { query: "x", prefix: null, limit: 10, cursor: null },
+      ctx,
+    );
+    // Neither collection received a cursor; no ambiguous cursor is returned.
+    expect(listA).toHaveBeenCalledWith(expect.not.objectContaining({ cursor: expect.anything() }));
+    expect(listB).toHaveBeenCalledWith(expect.not.objectContaining({ cursor: expect.anything() }));
+    expect(nextCursor).toBeUndefined();
+    expect(results.map((r) => r.uri).sort()).toEqual(["org/a/1", "org/b/1"]);
+  });
+});
