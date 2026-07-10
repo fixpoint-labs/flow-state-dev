@@ -13,14 +13,11 @@
  */
 
 import { z } from "zod";
-import { handler } from "@flow-state-dev/core";
+import { handler, SLASH_COMMAND_PATTERN } from "@flow-state-dev/core";
 import type { SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
 import { getCollection } from "./internal/get-collection";
 import { skillActivatorStateSchema } from "./skill-activation-types";
-
-/** Pattern: `/skill-name` at the start of the message, optional argument tail. */
-const SLASH_PATTERN = /^\/([a-z0-9][a-z0-9-]{0,63})(?:\s+([\s\S]*))?$/;
 
 const inputSchema = z.object({ message: z.string() }).passthrough();
 const outputSchema = z.object({ matched: z.boolean() });
