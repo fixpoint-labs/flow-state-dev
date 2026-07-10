@@ -150,6 +150,22 @@ export function PortfolioPane({
   // awaited POST resolves (see `fetchPrices` below).
   const { quotes, refetch: refetchQuotes } = useQuotes();
 
+  // Portfolio provenance as-of: the OLDEST quote time across ALL rows, not an
+  // arbitrary first row. `getQuotes` is an unordered `WHERE IN`, so `quotes[0]`
+  // is nondeterministic — one fresh row must not make a portfolio with a stale
+  // row look fresher than it is. This is the honest "as of at least" the
+  // analysis seed's `snapshotAsOf` already uses (guards.ts). Prefer each row's
+  // market `asOf`; fall back to the oldest cache `fetchedAt` only when no row
+  // carries a market time.
+  const priceAsOf = useMemo(() => {
+    const oldest = (times: (string | null)[]) =>
+      times.reduce<string | null>(
+        (min, t) => (t === null ? min : min === null || t < min ? t : min),
+        null,
+      );
+    return oldest(quotes.map((q) => q.asOf)) ?? oldest(quotes.map((q) => q.fetchedAt));
+  }, [quotes]);
+
   const [addOpen, setAddOpen] = useState(false);
   const [taxProfileOpen, setTaxProfileOpen] = useState(false);
   const [addTransactionOpen, setAddTransactionOpen] = useState(false);
@@ -681,12 +697,11 @@ export function PortfolioPane({
           durable quote rows (FIX-823). Portfolio holdings are real, so prices are
           always live — independent of the analysis fixture/live toggle. `source`
           is uniformly "live" in the table (fixture rows are never persisted); the
-          as-of is the first row's own market time, falling back to its cache time. */}
+          as-of is the OLDEST market time across all rows ("as of at least"), so a
+          single fresh row can't mask a stale one. */}
       <div className="border-b border-[color:var(--c-border)] px-4 py-1 text-[10px] text-[color:var(--c-fg-faint)]">
         Prices: {quotes[0]?.source ?? "live"}
-        {quotes[0]?.asOf ?? quotes[0]?.fetchedAt
-          ? ` · as of ${quotes[0]?.asOf ?? quotes[0]?.fetchedAt}`
-          : ""}.
+        {priceAsOf ? ` · as of ${priceAsOf}` : ""}.
         Money figures are display approximations, not precise accounting.
       </div>
 
