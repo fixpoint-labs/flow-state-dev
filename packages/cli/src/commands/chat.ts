@@ -19,7 +19,7 @@ import type { ModelResolver } from "@flow-state-dev/core/types";
 import { resolveRuntimeSource, assertNoFlowDirWithConfig, createCliLogger, resolveLogLevel } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
 import { CliError } from "../resolve-block";
-import { EXIT_SUCCESS, EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
+import { EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 import { createHarnessState, bindTarget } from "../chat/state";
 import { listTargets, type FlowActionTarget } from "../chat/targets";
 import { createBuiltinRegistry } from "../chat/registry";
