@@ -5,9 +5,11 @@
  * Income / Realized Gains tabs) and **Gains & Taxes** (`GainsTaxesSection` —
  * the household year-by-year realized gains + tax-estimate card). A desktop
  * left rail / mobile strip (`portfolio-section-nav.tsx`) picks the section.
- * The toolbar (add account, imports, add transaction, refresh prices), the
- * portfolio-level totals, and the provenance line stay pinned above every
- * section; only the content region swaps.
+ * The pinned toolbar holds only the always-relevant bits — refresh prices and
+ * the portfolio-level totals — plus the provenance line; account-management
+ * actions (add account, imports, add transaction, backfill splits) live in the
+ * Accounts perspective (`AccountsActionsBar`), since they don't apply on Gains &
+ * Taxes. Only the content region swaps between sections.
  *
  * Data path:
  *  - Accounts (with inline holdings) come from the app-owned tables via the
@@ -33,7 +35,7 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { Plus, Upload, FileText, RefreshCw, Receipt, FileUp, Split } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
 import { useResource, useFlowContext } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
@@ -46,6 +48,7 @@ import type { PortfolioQuotesState } from "@/src/flows/portfolio/portfolio-resou
 import type { ThesisInputFields } from "@/src/flows/portfolio/thesis-schema";
 import { AccountCard } from "./account-card";
 import { AccountDetail } from "./account-detail";
+import { AccountsActionsBar } from "./accounts-actions-bar";
 import { RealizedStat } from "./realized-stat";
 import {
   buildRealizedGainsRowModel,
@@ -131,6 +134,7 @@ export function PortfolioPane({
   const {
     profile: taxProfile,
     realizedGains,
+    incomeByYear,
     estimate: taxEstimate,
     refetch: refetchTax,
   } = useTax();
@@ -601,87 +605,9 @@ export function PortfolioPane({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Toolbar */}
+      {/* Toolbar — only the always-relevant actions (refresh prices) + totals.
+          Account-management actions live in the Accounts perspective below. */}
       <div className="flex flex-wrap items-center gap-3 border-b border-[color:var(--c-border)] px-4 py-2">
-        <button
-          type="button"
-          onClick={() => setAddOpen(true)}
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium hover:bg-[color:var(--c-surface-2)]"
-        >
-          <Plus className="h-3 w-3" aria-hidden /> Add account
-        </button>
-        <button
-          type="button"
-          onClick={() => setImportOpen(true)}
-          disabled={accounts.length === 0}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
-            accounts.length === 0
-              ? "cursor-not-allowed opacity-50"
-              : "hover:bg-[color:var(--c-surface-2)]",
-          )}
-          title={
-            accounts.length === 0 ? "Add an account first" : "Import holdings CSV"
-          }
-        >
-          <Upload className="h-3 w-3" aria-hidden /> Import CSV
-        </button>
-        <button
-          type="button"
-          onClick={() => setImportPdfOpen(true)}
-          disabled={accounts.length === 0 || !hasSession}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
-            accounts.length === 0 || !hasSession
-              ? "cursor-not-allowed opacity-50"
-              : "hover:bg-[color:var(--c-surface-2)]",
-          )}
-          title={
-            accounts.length === 0
-              ? "Add an account first"
-              : !hasSession
-                ? "PDF import uses an AI extraction pass — run an analysis first to start a session"
-                : "Import holdings from a statement PDF"
-          }
-        >
-          <FileText className="h-3 w-3" aria-hidden /> Import PDF
-        </button>
-        <button
-          type="button"
-          onClick={() => setImportTxnOpen(true)}
-          disabled={accounts.length === 0}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
-            accounts.length === 0
-              ? "cursor-not-allowed opacity-50"
-              : "hover:bg-[color:var(--c-surface-2)]",
-          )}
-          title={
-            accounts.length === 0
-              ? "Add an account first"
-              : "Import a transaction file (OFX/QFX/QBO)"
-          }
-        >
-          <FileUp className="h-3 w-3" aria-hidden /> Import transactions
-        </button>
-        <button
-          type="button"
-          onClick={() => setAddTransactionOpen(true)}
-          disabled={accounts.length === 0}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
-            accounts.length === 0
-              ? "cursor-not-allowed opacity-50"
-              : "hover:bg-[color:var(--c-surface-2)]",
-          )}
-          title={
-            accounts.length === 0
-              ? "Add an account first"
-              : "Record a manual transaction"
-          }
-        >
-          <Receipt className="h-3 w-3" aria-hidden /> Add transaction
-        </button>
         <button
           type="button"
           onClick={() => void fetchPrices()}
@@ -704,24 +630,6 @@ export function PortfolioPane({
           />
           Refresh prices
         </button>
-        <button
-          type="button"
-          onClick={() => void handleBackfillSplits()}
-          disabled={ledgerEvents.length === 0 || splitBackfill.running}
-          title="Fetch stock splits from market data so realized gains re-derive correctly (fixes split-mangled cost basis)"
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px]",
-            ledgerEvents.length === 0 || splitBackfill.running
-              ? "cursor-not-allowed opacity-50"
-              : "hover:bg-[color:var(--c-surface-2)]",
-          )}
-        >
-          <Split className={cn("h-3 w-3", splitBackfill.running && "animate-pulse")} aria-hidden />
-          {splitBackfill.running ? "Backfilling…" : "Backfill splits"}
-        </button>
-        {splitBackfill.note ? (
-          <span className="text-[10.5px] text-[color:var(--c-fg-muted)]">{splitBackfill.note}</span>
-        ) : null}
 
         <div className="ml-auto flex items-center gap-4 font-mono text-[11px] text-[color:var(--c-fg-muted)]">
           <span>
@@ -785,11 +693,30 @@ export function PortfolioPane({
             card-grid column count tracks the column's width, not the viewport
             (the HoldingsTable precedent). */}
         <div className="@container flex-1 space-y-4 overflow-y-auto p-4">
+          {/* Account-management actions live here (not the pinned toolbar) — only
+              on the Accounts perspective's list view, hidden in an open account's
+              detail (which has its own header). */}
+          {section === "accounts" && openAccount === undefined ? (
+            <AccountsActionsBar
+              hasAccounts={accounts.length > 0}
+              hasSession={hasSession}
+              canBackfill={ledgerEvents.length > 0}
+              backfillRunning={splitBackfill.running}
+              backfillNote={splitBackfill.note}
+              onAddAccount={() => setAddOpen(true)}
+              onImportCsv={() => setImportOpen(true)}
+              onImportPdf={() => setImportPdfOpen(true)}
+              onImportTransactions={() => setImportTxnOpen(true)}
+              onAddTransaction={() => setAddTransactionOpen(true)}
+              onBackfillSplits={() => void handleBackfillSplits()}
+            />
+          ) : null}
           {section === "gains" ? (
             /* Gains & Taxes: household year-by-year realized gains + the
                tax-estimate card (relocated from above the account grid). */
             <GainsTaxesSection
               realizedGains={realizedGains}
+              incomeByYear={incomeByYear}
               estimate={taxEstimate}
               profile={taxProfile}
               onEditProfile={() => setTaxProfileOpen(true)}

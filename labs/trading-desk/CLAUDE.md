@@ -278,10 +278,15 @@ the `portfolio` flow (`src/flows/portfolio/`). It is the durable record of what
 the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
 The pane is section-switched (FIX-885): a sidebar (`portfolio-section-nav.tsx` —
 desktop left rail / mobile segmented strip) picks between the **Accounts**
-perspective (card grid → `AccountDetail`) and the **Gains & Taxes** perspective
-(`gains-taxes-section.tsx` — household year-by-year realized gains + the
-tax-estimate card); the toolbar/totals/provenance rows stay pinned above both.
-FIX-762's household health view lands as a third `SECTIONS` entry.
+perspective (an `AccountsActionsBar` — add account / an `ImportMenu` grouping the
+three imports / add transaction / backfill splits — above the card grid →
+`AccountDetail`) and the **Gains & Taxes** perspective (`gains-taxes-section.tsx`
+— the tax-estimate card + `RealizedYearCards`: household by-year cards you drill
+into, toggling between capital gains and total realized income = gains +
+dividends + interest, off the pure `realized-income-by-year.ts` model). Only
+refresh-prices + totals + provenance stay on the pinned toolbar; account actions
+live in the Accounts perspective. FIX-762's household health view lands as a
+third `SECTIONS` entry.
 
 - **Data model — app-owned relational tables (FIX-772).** Accounts and holdings
   are NO LONGER an FSD resource. They live in real Postgres tables in a dedicated

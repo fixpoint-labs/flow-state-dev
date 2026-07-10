@@ -80,9 +80,9 @@ export async function GET(req: NextRequest) {
       "Tax-advantaged accounts (IRA/Roth/401k) are shown for reference but excluded from the estimate.",
     );
   }
-  // `incomeByYear` is consumed here to build the estimate but NOT returned: no
-  // client renders a by-year income view (a deferred follow-up), so shipping it
-  // on the wire would be dead surface (BP-038). Realized gains ARE returned
-  // all-year for the Realized Gains tab's year rollup.
-  return NextResponse.json({ profile, realizedGains, estimate });
+  // `incomeByYear` is returned all-year (alongside realized gains) for the Gains
+  // & Taxes "Total realized income" toggle (FIX-885 follow-up), which sums
+  // capital gains + dividends + interest by year. It is also consumed above to
+  // build the estimate.
+  return NextResponse.json({ profile, realizedGains, incomeByYear, estimate });
 }
