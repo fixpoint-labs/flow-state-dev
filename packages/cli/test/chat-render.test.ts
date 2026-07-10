@@ -57,12 +57,59 @@ describe("createPlainTextRenderer", () => {
     expect(text()).toBe("let me search\n· tool call: search-web\n");
   });
 
-  it("prints a status one-liner", () => {
+  it("prints a persistent (non-transient) status as its own line", () => {
     const { stream, text } = sink();
     const r = createPlainTextRenderer(stream);
     r.onEvent(added({ id: "s1", type: "status", message: "Request was stopped." }));
     r.onTurnEnd({ success: false, durationMs: 3, aborted: true });
     expect(text()).toBe("· status: Request was stopped.\n(interrupted)\n");
+  });
+
+  it("never prints a blank-message status, transient or not", () => {
+    const { stream, text } = sink();
+    const r = createPlainTextRenderer(stream, { isTTY: true });
+    r.onEvent(added({ id: "s1", type: "status", message: "", transient: true }));
+    r.onEvent(added({ id: "s2", type: "status", message: "", transient: false }));
+    r.onTurnEnd({ success: true, durationMs: 1, aborted: false });
+    expect(text()).toBe("");
+  });
+
+  it("suppresses transient in-flight status pings entirely outside a TTY", () => {
+    const { stream, text } = sink();
+    const r = createPlainTextRenderer(stream); // isTTY defaults to false
+    r.onEvent(added({ id: "s1", type: "status", message: "Running search-web...", transient: true }));
+    r.onEvent(added({ id: "s2", type: "status", message: "Synthesizing findings...", transient: true }));
+    r.onTurnEnd({ success: true, durationMs: 1, aborted: false });
+    expect(text()).toBe("");
+  });
+
+  it("redraws a single live status line for transient pings in a TTY, never accumulating", () => {
+    const { stream, text } = sink();
+    const r = createPlainTextRenderer(stream, { isTTY: true });
+    r.onEvent(added({ id: "s1", type: "status", message: "Running search-web...", transient: true }));
+    r.onEvent(added({ id: "s2", type: "status", message: "Synthesizing findings...", transient: true }));
+    r.onTurnEnd({ success: true, durationMs: 1, aborted: false });
+    // Second ping clears the first (\r + spaces the width of the first + \r) before
+    // writing itself; turn end clears the second the same way. No line ever prints.
+    expect(text()).toBe(
+      "Running search-web..." +
+      `\r${" ".repeat("Running search-web...".length)}\r` +
+      "Synthesizing findings..." +
+      `\r${" ".repeat("Synthesizing findings...".length)}\r`
+    );
+    expect(text()).not.toContain("· status:");
+  });
+
+  it("clears a live status line before real content prints, so they never interleave", () => {
+    const { stream, text } = sink();
+    const r = createPlainTextRenderer(stream, { isTTY: true });
+    r.onEvent(added({ id: "s1", type: "status", message: "Thinking...", transient: true }));
+    r.onEvent(added({ id: "m1", type: "message", role: "assistant", content: [] }));
+    r.onEvent(delta("m1", "Hi!"));
+    r.onTurnEnd({ success: true, durationMs: 1, aborted: false });
+    expect(text()).toBe(
+      "Thinking..." + `\r${" ".repeat("Thinking...".length)}\r` + "Hi!\n"
+    );
   });
 
   it("prints system lines on their own line, closing a mid-stream line", () => {

@@ -2320,6 +2320,60 @@ describe("execution runtime", () => {
     expect((await stores.request.get("req_failure"))?.status).toBe("failed");
   });
 
+  it("threads the caller's runtimeConfig.logger into request-lifecycle observer blocks", async () => {
+    // Regression: request.onFinished used to execute via executeBlock without a
+    // logger, silently falling back to DEFAULT_RUNTIME_LOGGER — whose debug/info
+    // levels write via console.debug/console.info, bypassing the caller's log
+    // level entirely and corrupting stdout (NDJSON for `fsdev run`, the
+    // transcript for `fsdev chat`). This asserts the observer's block-execution
+    // trace goes through the CALLER'S logger instead.
+    const debugCalls: string[] = [];
+    const logger = {
+      debug: (message: string) => { debugCalls.push(message); },
+      info: () => {},
+      warn: () => {},
+      error: () => {}
+    };
+    const stores = createInMemoryStores();
+
+    const flow = defineFlow({
+      kind: "observer-logger-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.number() }),
+          block: handler({
+            name: "observer-logger-action",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
+            execute: () => "done"
+          })
+        }
+      },
+      request: {
+        onFinished: handler({
+          name: "observer-logger-onfinished",
+          inputSchema: z.any(),
+          outputSchema: z.any(),
+          execute: () => undefined
+        })
+      }
+    })();
+
+    await runAction({
+      flow,
+      actionName: "run",
+      input: { value: 1 },
+      requestId: "req_observer_logger",
+      sessionId: "sess_observer_logger",
+      userId: "user_observer_logger",
+      stores,
+      runtimeConfig: { logger }
+    });
+
+    expect(debugCalls).toContain("[flow-state] block execution started");
+    expect(debugCalls).toContain("[flow-state] block execution completed");
+  });
+
   it("keeps execution behavior unchanged with explicit no-op seams", async () => {
     const { ctx } = await createRuntimeContext("req_seam_parity");
     const block = handler({

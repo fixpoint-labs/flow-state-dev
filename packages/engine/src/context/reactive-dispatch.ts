@@ -21,6 +21,7 @@ import type {
   ResourceConfig,
   ResourceCollectionConfig,
 } from "@flow-state-dev/core/types";
+import type { RuntimeLogger } from "../execution/logging";
 import { matchesPattern, getPatternPrefix } from "@flow-state-dev/core/types";
 import {
   normalizeReactiveBinding,
@@ -81,6 +82,13 @@ export interface ReactiveDispatcherDeps {
    * under this block (cascade nesting), and its resource loads attribute here.
    */
   runAttributed: <T>(instanceId: string, fn: () => T) => T;
+  /**
+   * The request's configured logger, forwarded to `executeBlock` so reactive
+   * blocks respect the caller's log level instead of falling back to
+   * `DEFAULT_RUNTIME_LOGGER`'s console-based debug/info output (which writes
+   * to stdout and corrupts NDJSON/chat output).
+   */
+  logger?: RuntimeLogger;
 }
 
 /**
@@ -289,6 +297,7 @@ export function createReactiveDispatcher(
           input: runInput,
           ctx,
           metadata: { scope: "block", blockPath, parentBlockInstanceId },
+          logger: deps.logger,
         })
       );
       // A reactive block failure propagates to the mutating call (atomic).

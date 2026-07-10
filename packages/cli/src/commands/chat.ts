@@ -255,7 +255,11 @@ export async function executeChatCommand(
       );
     }
 
-    const renderer = createPlainTextRenderer(options.output ?? process.stdout);
+    const input = options.input ?? process.stdin;
+    const output = options.output ?? process.stdout;
+    const isTTY = Boolean((input as { isTTY?: boolean }).isTTY);
+
+    const renderer = createPlainTextRenderer(output, { isTTY });
     const write = (line: string) => renderer.onSystem(line);
 
     if (initialTarget !== undefined) {
@@ -273,10 +277,6 @@ export async function executeChatCommand(
       write(`No default target bound. ${targets.length} target${targets.length === 1 ? "" : "s"} available — /targets to list, /use <flow> to bind.`);
     }
     write("Type /help for commands, /exit to quit.");
-
-    const input = options.input ?? process.stdin;
-    const output = options.output ?? process.stdout;
-    const isTTY = Boolean((input as { isTTY?: boolean }).isTTY);
 
     const exitCode = await runChatLoop({
       state,

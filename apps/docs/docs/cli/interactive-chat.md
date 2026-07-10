@@ -31,6 +31,8 @@ Anything that isn't a command is a message. It's sent to the default target as `
 
 If an action's input schema rejects `{ message }`, the turn fails with the validation error and a note that the target isn't chat-shaped. The session stays open — switch to another target with `/use` and keep going.
 
+While a turn is running, an in-flight block may report what it's doing right now — "Running search-web...", "Synthesizing findings..." — as a single status line that updates in place rather than scrolling the terminal. It clears as soon as real output (the reply, a tool call) arrives, and it only appears in an interactive terminal; piped output stays silent so scripts never have to filter it out.
+
 ## Slash commands
 
 A line beginning with `/` is a command. Six are built in:
