@@ -11,10 +11,11 @@
  *   KB_MCP_SECRET=... pnpm serve            # standalone host (prod profile)
  */
 import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
 import { postgresStores } from "@flow-state-dev/store-postgres";
 import type { ModelResolver } from "@flow-state-dev/core";
 import knowledgeFlow from "./src/flow";
+import path from "node:path";
 
 /**
  * `knowledge` has no generator actions — pure CRUD, no model calls. Passing
@@ -51,7 +52,7 @@ export default createFlowState({
   modelResolver,
   adapters: [createMcpTransportAdapter()], // mounts POST /api/flows/knowledge/mcp
   stores: {
-    dev: { primary: inMemoryStores() },
+    dev: { primary: filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") }) },
     // Empty options object required by the signature; the adapter then reads
     // FSD_DB_URL -> DATABASE_URL.
     prod: { primary: postgresStores({}) },

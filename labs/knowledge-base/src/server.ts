@@ -44,7 +44,10 @@ if (!isLoopbackHost(host) && !process.env.KB_MCP_SECRET) {
   );
 }
 
+const port = Number(process.env.PORT ?? 3000);
+console.log(`Starting knowledge base server on port ${port}...`);
+
 await serve(flowstate, {
-  port: Number(process.env.PORT ?? 3000),
+  port,
   host,
 });
