@@ -89,6 +89,43 @@ fsdev dev
 
 Without a config, the server discovers flows, registers them in an in-memory flow registry, creates filesystem stores at `.fsdev/data/`, and starts listening. With an `fsdev.config.ts` present, it serves the app's own router (`await flowState.getRouter()`) using the config's registry, resolver, and stores. Because the config builds the router with its own resolver, `--model` together with a config is an error. API routes are served at `/api/flows/*`. The DevTool UI is served for all other paths. See [DevTool Setup](/docs/devtool/setup) and [App Configuration](/docs/cli/configuration) for full details.
 
+### `fsdev chat [flow] [action]`
+
+Start an interactive session (a REPL) over a flow. Type messages that route to a default target and stream replies back; use slash commands to switch the target and inspect the session.
+
+```bash
+fsdev chat hello-chat chat
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-s, --session <id>` | Resume an engine session for the initially bound flow. Requires a bound target. |
+| `-m, --model <model>` | Override model for all generator blocks |
+| `-u, --user <id>` | Engine identity for sessions and turns (default: `cli-user`) |
+| `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
+| `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
+| `--no-config` | Ignore any config and force directory discovery |
+| `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
+| `--quiet` | Suppress runtime logs on stderr |
+| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (default: `warn`) |
+
+**Built-in commands:**
+
+| Command | Description |
+|---------|-------------|
+| `/help` | List the built-in commands |
+| `/targets` | List available `flow · action` targets; the current default is marked |
+| `/use <flow> [action]` | Switch the default target |
+| `/status` | Show target, session id, turn count, and runtime source |
+| `/session [new\|<id>]` | Print, rotate (`new`), or bind (`<id>`) the current flow's session |
+| `/exit` | Leave the session (also Ctrl-D, double Ctrl-C) |
+
+A `/name` that no built-in claims is sent to the flow as chat text (this is how a project's skills are invoked). A leading space escapes command parsing. Messages are sent as `{ message: "<text>" }`; a target whose action rejects that shape fails the turn without ending the session.
+
+Startup binds a default target from the positional arguments, a config `chat.default`, or a sole discovered flow; otherwise the session starts unbound. Runtime resolution matches `fsdev run` (an `fsdev.config.ts` wins over discovery). No new exit codes: startup failures reuse `EXIT_CONFIG_ERROR` / `EXIT_DISCOVERY_ERROR` / `EXIT_INVALID_ARGS`; a failed turn never exits the loop, and in piped (non-TTY) mode a run with any failed turn or built-in exits `EXIT_EXECUTION_ERROR`. See [Interactive Chat](/docs/cli/interactive-chat) for the guide.
+
 ### `fsdev block <specifier>`
 
 Execute a single block in isolation using the testing harness.

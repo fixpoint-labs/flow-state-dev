@@ -5,6 +5,10 @@ sidebar_label: Chat
 
 # Chat transport
 
+> Not to be confused with [`fsdev chat`](/docs/cli/interactive-chat), the CLI's
+> interactive terminal REPL. This page is the *server* transport that drives your
+> flows from chat platforms like Slack and Teams.
+
 `@flow-state-dev/chat-sdk` turns a Vercel Chat SDK bot into an inbound
 transport. Wrap one `Chat` instance and every platform it serves — Slack,
 Microsoft Teams, Google Chat, Discord — drives your flows. Inbound messages
