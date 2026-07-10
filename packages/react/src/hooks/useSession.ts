@@ -195,6 +195,24 @@ export type SessionView = {
     data?: unknown;
     resumedBy?: string;
   }) => Promise<void>;
+  /**
+   * Continue a crash-interrupted request under its OWN id (FIX-865) and stream
+   * the re-entry's items back into this session's `items`. Unlike
+   * `resumeLatestRequest` (which re-dispatches the session's most recent
+   * request via `/retry` under a NEW id), this targets a specific `requestId`
+   * — the caller resolves which interrupted request to continue, this does
+   * not assume "latest".
+   *
+   * POSTs inline with `Accept: text/event-stream` so the continuation streams
+   * from the same POST response on the instance that handled it (mirrors
+   * `resumeSuspension`'s inline-streaming rationale — essential on
+   * serverless). If the server instead returns a 202 (no inline streaming
+   * support), the continuation has already been accepted server-side — this
+   * does NOT re-POST `/continue` (the record has left `interrupted`, so a
+   * second POST would 409/race). It cancels the unused body and reconnects
+   * via a GET stream instead.
+   */
+  continueRequest: (requestId: string) => Promise<void>;
   refresh: () => Promise<void>;
   /**
    * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
@@ -1302,14 +1320,14 @@ export function useSession(
     }
   }, [sessionId, latestRequest, recoveryClient, attachToStream, refreshLatestRequest]);
 
-  const resumeSuspension = useCallback(
-    async (args: {
-      suspensionId: string;
-      requestId: string;
-      action: ResumeAction;
-      data?: unknown;
-      resumedBy?: string;
-    }): Promise<void> => {
+  // Shared by resumeSuspension (FIX-811) and continueRequest (FIX-865): both
+  // re-enter an existing request's own id via a single inline-streaming POST,
+  // never followed by a second POST — once the request has gone out, the
+  // server has already accepted it (SSE or 202), so a fallback POST would
+  // race/409 against the now-resolved record. On a non-streaming 202,
+  // reconnect via GET instead of re-posting.
+  const performInlineReentry = useCallback(
+    async (requestId: string, post: () => Promise<Response>): Promise<void> => {
       if (streamHandleRef.current !== null) {
         streamHandleRef.current.close();
         streamHandleRef.current = null;
@@ -1318,30 +1336,15 @@ export function useSession(
       setIsFinishing(false);
       setIsStuck(false);
       latestRequestIdAfterDropRef.current = null;
-      // The continuation re-enters the suspended request's own id (FIX-811), so
-      // the active request for abort/stuck tracking is that same id.
-      activeRequestIdRef.current = args.requestId;
+      activeRequestIdRef.current = requestId;
 
       try {
-        // Stream the resume: POST with Accept: text/event-stream so the
-        // continuation streams back from the POST response on the same instance.
-        // Mirrors sendAction's inline-streaming path — essential on serverless
-        // where a separate GET stream can't reach the in-flight continuation.
-        const postResponse = await recoveryClient.resumeSuspensionStream(
-          resolvedFlowKind,
-          args.requestId,
-          {
-            suspensionId: args.suspensionId,
-            action: args.action,
-            data: args.data,
-            resumedBy: args.resumedBy ?? userId
-          }
-        );
+        const postResponse = await post();
 
         const contentType = postResponse.headers.get("content-type") ?? "";
         if (contentType.includes("text/event-stream")) {
           if (itemConfig.enabled) {
-            attachToStream(args.requestId, undefined, postResponse);
+            attachToStream(requestId, undefined, postResponse);
           } else {
             postResponse.body?.cancel().catch(() => {});
             void refreshSnapshot();
@@ -1354,7 +1357,7 @@ export function useSession(
         // via GET and pull the snapshot so the resolution still surfaces.
         postResponse.body?.cancel().catch(() => {});
         if (itemConfig.enabled) {
-          attachToStream(args.requestId);
+          attachToStream(requestId);
         }
         void refreshSnapshot();
         void refreshLatestRequest();
@@ -1365,15 +1368,42 @@ export function useSession(
         throw normalized;
       }
     },
-    [
-      recoveryClient,
-      resolvedFlowKind,
-      itemConfig.enabled,
-      userId,
-      attachToStream,
-      refreshSnapshot,
-      refreshLatestRequest
-    ]
+    [itemConfig.enabled, attachToStream, refreshSnapshot, refreshLatestRequest]
+  );
+
+  const resumeSuspension = useCallback(
+    async (args: {
+      suspensionId: string;
+      requestId: string;
+      action: ResumeAction;
+      data?: unknown;
+      resumedBy?: string;
+    }): Promise<void> => {
+      // Stream the resume: POST with Accept: text/event-stream so the
+      // continuation streams back from the POST response on the same instance.
+      // Mirrors sendAction's inline-streaming path — essential on serverless
+      // where a separate GET stream can't reach the in-flight continuation.
+      await performInlineReentry(args.requestId, () =>
+        recoveryClient.resumeSuspensionStream(resolvedFlowKind, args.requestId, {
+          suspensionId: args.suspensionId,
+          action: args.action,
+          data: args.data,
+          resumedBy: args.resumedBy ?? userId
+        })
+      );
+    },
+    [recoveryClient, resolvedFlowKind, userId, performInlineReentry]
+  );
+
+  const continueRequest = useCallback(
+    async (requestId: string): Promise<void> => {
+      if (sessionId === undefined) return;
+
+      await performInlineReentry(requestId, () =>
+        recoveryClient.continueStream({ flowKind: resolvedFlowKind, sessionId, requestId })
+      );
+    },
+    [sessionId, recoveryClient, resolvedFlowKind, performInlineReentry]
   );
 
   const subscribeAudioDelta = useCallback(
@@ -1411,6 +1441,7 @@ export function useSession(
     dismissRequest,
     resumeLatestRequest,
     resumeSuspension,
+    continueRequest,
     refresh,
     subscribeAudioDelta
   };

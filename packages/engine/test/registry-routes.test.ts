@@ -1076,4 +1076,104 @@ describe("createFlowApiRouter", () => {
       expect(response.status).toBe(404);
     });
   });
+
+  // A dynamic schedule's action core is produced at dispatch time by a
+  // resolver and carried only on that dispatch envelope — `resolveActionCore`
+  // can re-resolve only a *static* schedule from `flow.schedules.static` on
+  // recovery. The DevTool already hides Continue for these rows
+  // (`request-separator.tsx`); the route itself must also reject them so a
+  // direct API client can't reach the same dead end.
+  describe("dynamic scheduled requests cannot be continued", () => {
+    function makeFlow(kind: string): FlowInstance {
+      return defineFlow({
+        kind,
+        actions: {
+          run: {
+            inputSchema: z.object({ value: z.string() }),
+            block: handler<{ value: string }, { ok: true }>({
+              name: `${kind}-run`,
+              execute: () => ({ ok: true })
+            })
+          }
+        }
+      })({ id: kind });
+    }
+
+    it("returns 409 when continuing an interrupted dynamic-schedule request", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeFlow("sched-flow"));
+      const stores = createInMemoryStores();
+      const router = createFlowApiRouter({ registry, stores });
+
+      const now = Date.now();
+      await stores.request.set(
+        "req_sched1",
+        {
+          id: "req_sched1",
+          flowKind: "sched-flow",
+          actionName: "run",
+          sessionId: "sess_sched1",
+          userId: "system",
+          source: "scheduled",
+          metadata: { schedule: { scheduleId: "u_1/digest", origin: "dynamic" } },
+          status: "interrupted",
+          startedAtMs: now,
+          state: {},
+          version: 0,
+          createdAt: now,
+          updatedAt: now
+        },
+        "any"
+      );
+
+      const response = await router.POST(
+        new Request(
+          "http://localhost/api/flows/sched-flow/sessions/sess_sched1/requests/req_sched1/continue",
+          { method: "POST", body: "{}" }
+        ),
+        { params: { path: ["sched-flow", "sessions", "sess_sched1", "requests", "req_sched1", "continue"] } }
+      );
+      expect(response.status).toBe(409);
+    });
+
+    it("allows continuing an interrupted static-schedule request (source check passes)", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeFlow("sched-flow2"));
+      const stores = createInMemoryStores();
+      const router = createFlowApiRouter({ registry, stores });
+
+      const now = Date.now();
+      await stores.request.set(
+        "req_sched2",
+        {
+          id: "req_sched2",
+          flowKind: "sched-flow2",
+          actionName: "run",
+          sessionId: "sess_sched2",
+          userId: "system",
+          source: "scheduled",
+          metadata: { schedule: { scheduleId: "monthly-invoices", origin: "static" } },
+          status: "interrupted",
+          startedAtMs: now,
+          state: {},
+          version: 0,
+          createdAt: now,
+          updatedAt: now
+        },
+        "any"
+      );
+
+      const response = await router.POST(
+        new Request(
+          "http://localhost/api/flows/sched-flow2/sessions/sess_sched2/requests/req_sched2/continue",
+          { method: "POST", body: "{}" }
+        ),
+        { params: { path: ["sched-flow2", "sessions", "sess_sched2", "requests", "req_sched2", "continue"] } }
+      );
+      // Not rejected by the dynamic-schedule gate — falls through to
+      // `ctx.host.continueRequest`, which 500s here since this router has no
+      // real transport host wired up. The point under test is that it's not 409.
+      expect(response.status).not.toBe(409);
+    });
+  });
 });

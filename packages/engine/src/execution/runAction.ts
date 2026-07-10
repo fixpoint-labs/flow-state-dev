@@ -12,9 +12,9 @@ import type {
 } from "@flow-state-dev/core/types";
 import { resolveActionCore } from "./resolve-action-core";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { ReplayLog } from "@flow-state-dev/core";
-import type { SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
@@ -268,6 +268,27 @@ function mergeItemsById(
     byId.set(item.id, item);
   }
   return order.map((id) => byId.get(id)!);
+}
+
+/**
+ * Best-effort logical path of the block that was in flight when a crash
+ * interrupted a request — the highest-`itemIndex` `block_trace` whose status
+ * is still `in_progress` in the prior log. Returns `undefined` when none is
+ * found (the field is optional on `ContinuationItem` precisely for this case).
+ */
+function findResumedAtPath(priorItems: readonly RuntimeItem[]): string | undefined {
+  let best: { itemIndex: number; path: string } | undefined;
+  for (const item of priorItems) {
+    if (item.type !== "block_trace") continue;
+    const trace = item as BlockTraceItem;
+    if (trace.status !== "in_progress") continue;
+    const parsed = parseBlockInstanceId(trace.blockInstanceId);
+    if (parsed === undefined) continue;
+    if (best === undefined || trace.itemIndex > best.itemIndex) {
+      best = { itemIndex: trace.itemIndex, path: parsed.path };
+    }
+  }
+  return best?.path;
 }
 
 /**
@@ -1118,6 +1139,27 @@ export async function runActionInternal<
     };
     await response.emitItemAdded(resumeItem);
     await response.emitItemDone(resumeItem);
+  } else if (isReplayMode && replayLog !== undefined && resumeContext === undefined) {
+    // Crash-recovery continuation (FIX-865): audit item marking a `/continue`
+    // re-entry. Mirrors the `suspension_resume` boundary item's shape and
+    // placement (immediately after the point-of-no-return transition, before
+    // any block executes), but for the no-gate-to-resolve recovery path.
+    const resumedAtPath = findResumedAtPath(priorItemsForMerge as unknown as RuntimeItem[]);
+    const continuationItem: ContinuationItem = {
+      id: `item_continuation_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      type: "continuation",
+      status: "completed",
+      trigger: "recovery",
+      priorItemCount: priorItemsForMerge.length,
+      ...(resumedAtPath !== undefined ? { resumedAtPath } : {}),
+      continuedAt: Date.now(),
+      requestId,
+      itemIndex: ctx._reserveItemIndex?.() ?? getResponseItemCount(response),
+      provenance: RUNTIME_PROVENANCE,
+      ts: Date.now()
+    };
+    await response.emitItemAdded(continuationItem);
+    await response.emitItemDone(continuationItem);
   }
 
   const metadata = createExecutionMetadata(ctx, {

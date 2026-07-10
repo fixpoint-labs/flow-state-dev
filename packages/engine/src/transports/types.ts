@@ -37,7 +37,7 @@ import type {
  */
 export type HostContinueRequestOptions = Pick<
   ContinueRequestOptions,
-  "requestId" | "resumeContext" | "signal" | "responseEmitter"
+  "requestId" | "resumeContext" | "signal" | "responseEmitter" | "includeTrace"
 >;
 
 export type { ContinueRequestResult } from "../execution/request-continuation";

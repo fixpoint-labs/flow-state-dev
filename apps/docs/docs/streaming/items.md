@@ -221,6 +221,31 @@ A log fragment across one cycle:
 { "type": "suspension_resume", "suspensionId": "susp_abc123", "resolution": "submitted", "resolvedBy": "user_xyz" }
 ```
 
+## `continuation` — crash-recovery re-entry
+
+When a request that was interrupted by a crash re-enters via `/continue`, the runtime emits a `continuation` item marking the seam between the prior durable log and the live re-run. It's the crash-recovery counterpart to `suspension_resume`: both are audit/boundary items, not conversational content, and neither enters LLM history.
+
+| Type | Emitted when | Client | History |
+|------|--------------|:------:|:-------:|
+| `continuation` | A crash-interrupted request re-enters via `/continue` | ✓ | — |
+
+```ts
+type ContinuationItem = {
+  type: "continuation";
+  trigger: "recovery";
+  priorItemCount: number;
+  resumedAtPath?: string;
+  continuedAt: number;
+};
+```
+
+- **`trigger`** — why re-entry happened. Only `"recovery"` today (crash recovery); the field is reserved for future continuation triggers.
+- **`priorItemCount`** — how many items were already in the durable log at re-entry, i.e. the seam position. Named "prior", not "replayed": the prior log can include retained partial or in-progress rows, not only injected completed outputs.
+- **`resumedAtPath`** — the logical block path where live execution resumed (the in-flight block that gets re-run).
+- **`continuedAt`** — when re-entry happened.
+
+See [Durable execution](/docs/advanced/durable-execution) for the resume lifecycle and [Block memoization and replay](/docs/advanced/block-memoization-and-replay) for what gets restored versus re-run.
+
 ## `content.audio.delta` — streaming TTS audio chunks
 
 When the configured voice provider supports streaming TTS, the server emits `content.audio.delta` events carrying base64-encoded audio chunks for an in-flight `OutputAudioContent` part. These are live-only — they do not replay on reconnect. The durable representation is the eventual `OutputAudioContent` delivered via `content.added`.

@@ -94,6 +94,22 @@ The Resources panel reads from a privileged debug endpoint and shows the full se
 
 Re-stream a previous request to reproduce behavior. Select a completed request and choose replay full or replay from cursor. The DevTool reconnects to the SSE stream and replays the events.
 
+### Interrupted runs and crash recovery
+
+An interrupted run is a request that stopped abruptly — the server crashed, the process restarted, a deploy rolled out mid-execution — but is still resumable. The DevTool lists every interrupted run for a session, not just the most recent one, so you can find and continue an older request even after newer ones have started and finished.
+
+**Spotting an interrupted run.** Each request in the stream and trace views shows a status pill in its header. A request the server marked `interrupted` carries that literal status, distinct from `completed` or `failed`. You don't need a dedicated panel to find it — scroll the session's request list and read the pill.
+
+**The Continue action.** An interrupted request's overflow menu (the `...` button in its header) has a Continue entry. Continue re-enters the *same* request, under the *same* request id: completed blocks are restored from the durable log rather than re-executed, and only the block that was running when the crash hit re-runs. This is different from retry, which creates a brand-new request id and re-runs the original action from scratch. Reach for Continue when you want to pick up exactly where a run left off; reach for retry when you want a clean re-attempt.
+
+Today, that replay granularity stops at the sequencer's own steps. If the crash happened mid-generator or mid-router (rather than between two sequencer steps), the whole generator or router block re-runs on continue rather than resuming from wherever it was internally. Sequencer-level continue is solid; validating richer flows down to the generator/router boundary is tracked separately.
+
+**Reading the boundary.** When a continued run streams back in, the DevTool draws a small divider — "continued here", with a count of prior items — at the point where the crash-recovery re-entry began. Everything above the divider is the prior log; everything below is the live continuation. Be careful how you read "prior" here: it is not a list of every item replayed. The prior log can include rows that were only partially written or still in progress when the crash happened, sitting there as-is, not just the outputs of blocks that had cleanly finished. The divider marks a seam in time, not a guarantee that everything above it finished successfully.
+
+**Background work on continue.** Background work (`.work()`, `.forEachBackground()`) follows the same memoization rule as foreground blocks: a background task that completed and retained its trace before the crash is restored from the log, not re-run. A background task that was still in flight when the crash hit has no completed trace to restore, so it re-runs from the top on continuation — the guarantee is at-least-once, not exactly-once, so any non-idempotent side effect in that task needs its own `runOnce` guard. See [Durability of background work](/docs/advanced/sequencer-side-chains#durability-of-background-work) for the full contract, including the failed-work-under-a-completed-parent case.
+
+**Example.** Start a flow that does enough work to take a few seconds, kill the server mid-run, and restart it. Reopen the DevTool, find the request — its pill now reads `interrupted` — and click Continue from its overflow menu. Watch the stream: the earlier items appear immediately (restored from the log), then the divider, then new items streaming in live as the in-flight block re-runs and the request finishes.
+
 ## Observing resource loads
 
 The block detail panel also records what each block cost in resource loads: which keys hit the store versus the in-memory cache, how long each fetch took, and which prefetch wave or accessor triggered it. It's the signal you need to tune a collection's `prefetchMode` instead of guessing. See [Observing resource loads](./observing-resource-loads.md).

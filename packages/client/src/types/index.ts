@@ -455,6 +455,17 @@ export type RequestSSECallbacks = {
    * an LLM thinking between tokens).
    */
   onHeartbeat?: () => void;
+  /**
+   * Fired once the underlying stream body ends cleanly — i.e. `onError`
+   * did NOT fire and the connection was not `close()`d locally. A stream can
+   * legally end without ever emitting a terminal `onRequestStatus` (e.g. the
+   * server closes after a pre-transition failure), so a caller that only
+   * clears its "in flight" state from `onRequestStatus`/`onError` would
+   * otherwise get stuck. Only implemented by `createSSEClientFromResponse`
+   * today — the reconnecting GET client (`createSSEClient`) has its own
+   * retry lifecycle and does not fire this.
+   */
+  onClose?: () => void;
 };
 
 /**

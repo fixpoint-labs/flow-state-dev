@@ -7,6 +7,7 @@ import type { InboundTransportHost } from "../transports/types";
 import { detectInterruptedRequests, retryRequest } from "../execution/request-recovery";
 import { jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
 import { generateId } from "../utils/generate-id";
+import { tenantMatches } from "../stores/scope-keys";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
 
@@ -15,6 +16,8 @@ type RecoveryRouteContext = {
   stores: StoreRegistry;
   /** Instance-level runtime options (resolvers, voice provider, middleware, logger, …). */
   runtimeConfig: RuntimeConfig;
+  /** Caller's tenant (FIX-682), extracted the same way as every other session-touching route. */
+  tenantId?: string;
 };
 
 type ContinueRouteContext = RecoveryRouteContext & {
@@ -31,6 +34,23 @@ type ContinueRouteContext = RecoveryRouteContext & {
  */
 const WEBHOOK_SOURCE = "webhook";
 
+/** Transport source stamped by the scheduled-dispatch adapter (`@flow-state-dev/scheduled`). */
+const SCHEDULED_SOURCE = "scheduled";
+
+/**
+ * Whether a request record is a dynamic (resolver-produced) scheduled
+ * dispatch, per its `metadata.schedule.origin` (falling back to the legacy
+ * flat `metadata.origin` for in-flight records enqueued before namespacing —
+ * see `request-separator.tsx`'s matching fallback).
+ */
+function isDynamicScheduleRecord(record: { source: string; metadata?: Record<string, unknown> }): boolean {
+  if (record.source !== SCHEDULED_SOURCE) return false;
+  const scheduleMeta = (record.metadata?.schedule ?? record.metadata) as
+    | { origin?: unknown }
+    | undefined;
+  return scheduleMeta?.origin === "dynamic";
+}
+
 export async function handleRetryRequest(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "retry_request" }>,
@@ -42,6 +62,14 @@ export async function handleRetryRequest(
     return jsonResponse(404, {
       error: `Request "${route.requestId}" not found`
     });
+  }
+
+  // A caller-supplied requestId must belong to the caller's own tenant (FIX-682) —
+  // otherwise this public re-dispatch surface lets one tenant re-run another
+  // tenant's request. Same not-found shape as a missing record, matching the
+  // webhook-source check below.
+  if (!tenantMatches(originalRecord.tenantId, ctx.tenantId)) {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
   // Only allow retrying interrupted or failed requests
@@ -149,6 +177,14 @@ export async function handleContinueRequest(
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
+  // A caller-supplied requestId must belong to the caller's own tenant (FIX-682) —
+  // otherwise the bare sessionId check below is cosmetic and a same-session-id
+  // collision across tenants lets one tenant continue another tenant's
+  // interrupted request. Same not-found shape as a missing record.
+  if (!tenantMatches(originalRecord.tenantId, ctx.tenantId)) {
+    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  }
+
   if (originalRecord.flowKind !== route.flowKind) {
     return jsonResponse(400, {
       error: `Flow kind mismatch: request belongs to "${originalRecord.flowKind}", not "${route.flowKind}"`
@@ -159,6 +195,19 @@ export async function handleContinueRequest(
   // `handleRetryRequest`. Treat as not found.
   if (originalRecord.source === WEBHOOK_SOURCE) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  }
+
+  // A dynamic schedule's action core is produced at dispatch time by a
+  // resolver and carried only on that original dispatch envelope — unlike a
+  // static schedule, it cannot be re-resolved from `flow.schedules.static`
+  // (see `resolve-action-core.ts`), so `continueRequest` has no core to
+  // re-enter with. The DevTool already hides Continue for these records
+  // (`request-separator.tsx`); reject here too so a direct API client can't
+  // reach the same dead end.
+  if (isDynamicScheduleRecord(originalRecord)) {
+    return jsonResponse(409, {
+      error: `Request "${route.requestId}" is a dynamic scheduled dispatch and cannot be continued — its action core is not persisted for recovery.`
+    });
   }
 
   // The route is session-scoped; continuing mutates an existing record's
@@ -197,8 +246,12 @@ export async function handleContinueRequest(
 
   try {
     // Same-id re-entry with no resumeContext — replay injects completed blocks
-    // and re-runs the in-flight one.
-    const handle = await ctx.host.continueRequest({ requestId: route.requestId });
+    // and re-runs the in-flight one. `?include=trace` (mirroring the GET stream
+    // route) opts the caller's inline SSE response into trace-channel items —
+    // the DevTool's per-row Continue needs `block_trace`/`router_decision`/
+    // `state_snapshot` from the resumed portion for its Trace tab.
+    const includeTrace = new URL(request.url).searchParams.get("include") === "trace";
+    const handle = await ctx.host.continueRequest({ requestId: route.requestId, includeTrace });
 
     const accept = request.headers.get("accept") ?? "";
     if (accept.includes("text/event-stream") && handle.liveStream !== null) {

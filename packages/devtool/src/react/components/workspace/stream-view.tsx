@@ -9,7 +9,10 @@
  *   - Components / containers
  *   - Status (transient progress indicators, e.g. "Using web_search…")
  *   - Sources (citation URLs from provider-native search)
+ *   - Continuation / suspension_resume boundary markers (crash-recovery and
+ *     HITL-resume seams, FIX-865) — rendered as compact divider rows
  *
+
  * Operational items (block_output lifecycle, router_decision, context,
  * state_change, resource_change) are filtered out — they live in trace view.
  */
@@ -31,6 +34,14 @@ type RequestGroup = {
   startedAt: number;
   duration?: number;
   items: DevtoolItem[];
+  /**
+   * Same item set as `items`, WITHOUT the canonical crash-recovery collapse
+   * (`collapseToCanonicalLog` strips a re-run's superseded pre-recovery rows
+   * for the chat view — see the `filteredGroups` memo below). Carried here so
+   * other views (e.g. the trace tree) can render the recovery boundary
+   * itself. Not consumed by this component.
+   */
+  rawItems?: DevtoolItem[];
   /** Inbound transport that produced the request — undefined for legacy data. */
   source?: string;
   /**
@@ -51,6 +62,8 @@ const STREAM_TYPES = new Set([
   "container",
   "status",
   "source",
+  "continuation",
+  "suspension_resume",
 ]);
 
 type StreamViewProps = {
@@ -60,6 +73,9 @@ type StreamViewProps = {
   onReplayFull?: (requestId: string) => void;
   onReplayFromCursor?: (requestId: string) => void;
   onReconnect?: (requestId: string) => void;
+  onContinue?: (requestId: string) => void;
+  /** True while a continuation is already streaming for the given request (FIX-865). */
+  isContinuing?: (requestId: string) => boolean;
 };
 
 export function StreamView({
@@ -69,6 +85,8 @@ export function StreamView({
   onReplayFull,
   onReplayFromCursor,
   onReconnect,
+  onContinue,
+  isContinuing,
 }: StreamViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -153,6 +171,8 @@ export function StreamView({
               onReplayFull={onReplayFull ? () => onReplayFull(group.requestId) : undefined}
               onReplayFromCursor={onReplayFromCursor ? () => onReplayFromCursor(group.requestId) : undefined}
               onReconnect={onReconnect ? () => onReconnect(group.requestId) : undefined}
+              onContinue={onContinue ? () => onContinue(group.requestId) : undefined}
+              isContinuing={isContinuing?.(group.requestId)}
             />
             <div className="px-4 py-2 space-y-1">
               {group.items.map((item) => (

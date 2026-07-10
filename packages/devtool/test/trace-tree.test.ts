@@ -465,4 +465,154 @@ describe("buildTraceTree", () => {
     expect(blocks).toHaveLength(2);
     expect(blocks.every((b) => b.iterationIndex === undefined)).toBe(true);
   });
+
+  describe("continuation / suspension_resume boundary (FIX-865)", () => {
+    it("renders a continuation item as a divider node separating prior items from the live continuation", () => {
+      const items = [
+        makeItem({
+          id: "before-1",
+          type: "message",
+          itemIndex: 0,
+          provenance: makeProvenance("before-block", "before-inst"),
+        }),
+        // A background block that completed before the crash — retained in
+        // the prior log (not re-run on continuation).
+        makeItem({
+          id: "bg-before-1",
+          type: "message",
+          itemIndex: 1,
+          provenance: { blockName: "bg-before", blockInstanceId: "bg-before-inst", phase: "work" as const },
+        }),
+        {
+          id: "cont-1",
+          type: "continuation",
+          status: "completed",
+          requestId: "req-1",
+          itemIndex: 2,
+          ts: Date.now(),
+          trigger: "recovery",
+          priorItemCount: 2,
+          continuedAt: Date.now(),
+        } as unknown as OutputItem,
+        makeItem({
+          id: "after-1",
+          type: "message",
+          itemIndex: 3,
+          provenance: makeProvenance("after-block", "after-inst"),
+        }),
+        // A background block freshly re-dispatched on the live continuation.
+        makeItem({
+          id: "bg-after-1",
+          type: "message",
+          itemIndex: 4,
+          provenance: { blockName: "bg-after", blockInstanceId: "bg-after-inst", phase: "work" as const },
+        }),
+      ];
+
+      // Use `rawItems` — the uncollapsed source the divider logic must read
+      // from — rather than `items` (which the canonical collapse strips).
+      const tree = buildTraceTree([makeGroup({ items: [], rawItems: items })]);
+      const requestNode = tree[0];
+
+      const dividerIndex = requestNode.children.findIndex((n) => n.type === "divider");
+      expect(dividerIndex).toBeGreaterThanOrEqual(0);
+      expect(requestNode.children[dividerIndex].item?.type).toBe("continuation");
+
+      const before = requestNode.children.slice(0, dividerIndex);
+      const after = requestNode.children.slice(dividerIndex + 1);
+
+      const beforeNames = before.map((n) => n.blockName);
+      const afterNames = after.map((n) => n.blockName);
+
+      expect(beforeNames).toEqual(["before-block", "bg-before"]);
+      expect(afterNames).toEqual(["after-block", "bg-after"]);
+
+      // Regression: BG phase survives on both sides of the divider.
+      const bgBefore = before.find((n) => n.blockName === "bg-before");
+      const bgAfter = after.find((n) => n.blockName === "bg-after");
+      expect(bgBefore?.phase).toBe("work");
+      expect(bgAfter?.phase).toBe("work");
+    });
+
+    it("splits a block that spans the boundary so re-run rows land below the divider", () => {
+      // Crash-recovery continues the SAME request: blockInstanceId is
+      // deterministic (`${requestId}:${path}:${attempt}`) and the in-process
+      // attempt counter restarts at 0, so re-run rows carry the identical
+      // instance id as the pre-crash partial rows. If they merge into the
+      // pre-crash node (keyed at its earliest, pre-crash itemIndex), no root
+      // node sorts after the divider and it trails at the end forever.
+      const items = [
+        makeItem({
+          id: "pre-1",
+          type: "message",
+          itemIndex: 0,
+          provenance: makeProvenance("pipeline", "req-1:root:0"),
+        }),
+        makeItem({
+          id: "pre-child-1",
+          type: "message",
+          itemIndex: 1,
+          provenance: makeProvenance("worker", "req-1:root/step[0]:0", "req-1:root:0"),
+        }),
+        {
+          id: "cont-1",
+          type: "continuation",
+          status: "completed",
+          requestId: "req-1",
+          itemIndex: 2,
+          ts: Date.now(),
+          trigger: "recovery",
+          priorItemCount: 2,
+          continuedAt: Date.now(),
+        } as unknown as OutputItem,
+        makeItem({
+          id: "post-1",
+          type: "message",
+          itemIndex: 3,
+          provenance: makeProvenance("pipeline", "req-1:root:0"),
+        }),
+        makeItem({
+          id: "post-child-1",
+          type: "message",
+          itemIndex: 4,
+          provenance: makeProvenance("worker", "req-1:root/step[0]:0", "req-1:root:0"),
+        }),
+      ];
+
+      const tree = buildTraceTree([makeGroup({ items: [], rawItems: items })]);
+      const children = tree[0].children;
+
+      const dividerIndex = children.findIndex((n) => n.type === "divider");
+      expect(dividerIndex).toBe(1);
+      expect(children).toHaveLength(3);
+
+      // Same logical block renders as one row per side of the boundary.
+      const preNode = children[0];
+      const postNode = children[2];
+      expect(preNode.blockName).toBe("pipeline");
+      expect(postNode.blockName).toBe("pipeline");
+      // Distinct node ids so React keys / expansion / selection don't collide.
+      expect(preNode.id).not.toBe(postNode.id);
+
+      // Each side holds only its own items, and the re-run child nests under
+      // the re-run parent (same-segment nesting), not the pre-crash one.
+      expect(preNode.children.filter((c) => c.type === "item").map((c) => c.id)).toEqual(["pre-1"]);
+      expect(postNode.children.filter((c) => c.type === "item").map((c) => c.id)).toEqual(["post-1"]);
+      const preChild = preNode.children.find((c) => c.type === "block");
+      const postChild = postNode.children.find((c) => c.type === "block");
+      expect(preChild?.blockName).toBe("worker");
+      expect(preChild?.children.map((c) => c.id)).toEqual(["pre-child-1"]);
+      expect(postChild?.blockName).toBe("worker");
+      expect(postChild?.children.map((c) => c.id)).toEqual(["post-child-1"]);
+    });
+
+    it("falls back to `items` when `rawItems` is not provided", () => {
+      const items = [
+        makeItem({ id: "a", type: "message", itemIndex: 0, provenance: makeProvenance("a-block", "a-inst") }),
+      ];
+      const tree = buildTraceTree([makeGroup({ items })]);
+      expect(tree[0].children).toHaveLength(1);
+      expect(tree[0].children[0].blockName).toBe("a-block");
+    });
+  });
 });

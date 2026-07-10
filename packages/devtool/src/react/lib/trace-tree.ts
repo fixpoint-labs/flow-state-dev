@@ -28,7 +28,7 @@ export type StateSnapshot = {
 };
 
 export type TraceNode = {
-  type: "request" | "block" | "item";
+  type: "request" | "block" | "item" | "divider";
   id: string;
   requestId?: string;
   action?: string;
@@ -62,6 +62,12 @@ export type TraceNode = {
    * first pass of a loop reads `[iter 0]`.
    */
   iterationIndex?: number;
+  /**
+   * For `type: "item"` nodes, the underlying item. For `type: "divider"`
+   * nodes (FIX-865), the `continuation` or `suspension_resume` boundary item
+   * itself — the divider renders from its fields (e.g. `priorItemCount`,
+   * `resolution`) rather than going through `getItemPreview`.
+   */
   item?: DevtoolItem;
   /** The lifecycle trace item for this block (used for detail panel on click). */
   traceItem?: DevtoolItem;
@@ -74,30 +80,81 @@ export type TraceNode = {
 export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
   return requestGroups.map((group, groupIndex) => {
     const isLast = groupIndex === requestGroups.length - 1;
+    // Keyed by `${segment}:${blockInstanceId}` — NOT bare instance id. A
+    // crash-recovery `/continue` re-runs the same request, and blockInstanceId
+    // is deterministic (`${requestId}:${path}:${attempt}`) with the attempt
+    // counter restarting in-process, so re-run rows carry the identical id as
+    // the pre-crash partial rows. Merging them into one node would key the
+    // block at its earliest (pre-crash) itemIndex and the boundary divider
+    // would sort after every root node — segmenting at each divider keeps
+    // prior-log rows above it and live-continuation rows below (FIX-865).
     const blockMap = new Map<string, TraceNode>();
-    /** Tracks the parentBlockInstanceId for each block, collected during item iteration. */
+    /** Tracks the segmented parent key for each segmented block key, collected during item iteration. */
     const parentOf = new Map<string, string>();
+    /** Timestamp span per block node, for the duration fallback below. */
+    const tsSpan = new Map<TraceNode, { min: number; max: number; count: number }>();
+    let segment = 0;
     const rootBlocks: TraceNode[] = [];
     const orphanItems: TraceNode[] = [];
+    // Chronological sort key for every root-level node (block or orphan/
+    // divider item), keyed by node id — the block's key is its earliest
+    // item's `itemIndex`; an orphan/divider's key is its own. Used to place
+    // the continuation/suspension_resume divider (FIX-865) at its correct
+    // position relative to sibling root blocks, rather than always last.
+    const rootOrderKey = new Map<string, number>();
 
-    for (const item of group.items) {
+    // Use the raw (uncollapsed) item list when available (FIX-865 §6): the
+    // canonical collapse (`collapseToCanonicalLog`, applied upstream for the
+    // chat-style stream view) strips superseded pre-recovery rows, which
+    // would erase exactly the prior-log rows the continuation/
+    // suspension_resume divider needs to render above it. `group.items` is
+    // the fallback for callers/fixtures that don't carry `rawItems`.
+    const sourceItems = (group.rawItems ?? group.items) as DevtoolItem[];
+
+    for (const item of sourceItems) {
+      // Continuation / suspension_resume boundary markers (FIX-865): render
+      // as a top-level divider rather than nesting under whichever block
+      // owns runtime-provenance items, so the prior-log/live-continuation
+      // seam is visible across the whole request.
+      if (item.type === "continuation" || item.type === "suspension_resume") {
+        const dividerNode: TraceNode = {
+          type: "divider",
+          id: item.id,
+          item,
+          children: [],
+          isExpanded: false,
+        };
+        orphanItems.push(dividerNode);
+        rootOrderKey.set(dividerNode.id, item.itemIndex);
+        segment += 1;
+        continue;
+      }
+
       const prov = item.provenance;
       if (!prov) {
-        orphanItems.push({
+        const orphanNode: TraceNode = {
           type: "item",
           id: item.id,
           item,
           children: [],
           isExpanded: false,
-        });
+        };
+        orphanItems.push(orphanNode);
+        rootOrderKey.set(orphanNode.id, item.itemIndex);
         continue;
       }
 
-      let blockNode = blockMap.get(prov.blockInstanceId);
+      const blockKey = `${segment}:${prov.blockInstanceId}`;
+      let blockNode = blockMap.get(blockKey);
       if (!blockNode) {
         blockNode = {
           type: "block",
-          id: `block-${prov.blockInstanceId}`,
+          // Segment 0 keeps the historical id shape; later segments qualify it
+          // so a boundary-spanning block's two rows don't collide on React
+          // keys, expansion state, or selection.
+          id: segment === 0
+            ? `block-${prov.blockInstanceId}`
+            : `block-s${segment}-${prov.blockInstanceId}`,
           blockName: prov.blockName,
           blockKind: undefined,
           blockInstanceId: prov.blockInstanceId,
@@ -107,7 +164,8 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
           children: [],
           isExpanded: isLast,
         };
-        blockMap.set(prov.blockInstanceId, blockNode);
+        blockMap.set(blockKey, blockNode);
+        rootOrderKey.set(blockNode.id, item.itemIndex);
       } else if (blockNode.phase === undefined && prov.phase !== undefined) {
         // First seen item didn't carry phase (defensive — provenance.phase is
         // always set today); backfill from any subsequent item that does.
@@ -115,9 +173,25 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       }
 
       // Track parent relationship from provenance so the nesting phase can
-      // use it directly instead of re-scanning the items array.
-      if (prov.parentBlockInstanceId && !parentOf.has(prov.blockInstanceId)) {
-        parentOf.set(prov.blockInstanceId, prov.parentBlockInstanceId);
+      // use it directly instead of re-scanning the items array. Parent keys
+      // are segment-qualified: a re-run child nests under the re-run parent
+      // row, not the pre-crash one (fallback in the nesting pass below).
+      if (prov.parentBlockInstanceId && !parentOf.has(blockKey)) {
+        parentOf.set(blockKey, `${segment}:${prov.parentBlockInstanceId}`);
+      }
+
+      // Record the timestamp span per node for the duration fallback below —
+      // a boundary-spanning block has one node per segment, so filtering the
+      // flat item list by instance id would span the crash gap.
+      if (typeof item.ts === "number") {
+        const span = tsSpan.get(blockNode);
+        if (span) {
+          span.min = Math.min(span.min, item.ts);
+          span.max = Math.max(span.max, item.ts);
+          span.count += 1;
+        } else {
+          tsSpan.set(blockNode, { min: item.ts, max: item.ts, count: 1 });
+        }
       }
 
       // FIX-573: block_debug items are gone. The block_trace lifecycle
@@ -199,11 +273,26 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       });
     }
 
-    for (const [instanceId, blockNode] of blockMap) {
-      const parentId = parentOf.get(instanceId);
+    for (const [blockKey, blockNode] of blockMap) {
+      let parentKey = parentOf.get(blockKey);
 
-      if (parentId && parentId !== instanceId && blockMap.has(parentId)) {
-        const parent = blockMap.get(parentId)!;
+      // Same-segment parent missing (e.g. a replayed ancestor emitted no rows
+      // after the boundary) — fall back to the nearest earlier segment's node
+      // so the child still nests rather than floating to root level.
+      if (parentKey && parentKey !== blockKey && !blockMap.has(parentKey)) {
+        const sep = parentKey.indexOf(":");
+        const parentSegment = Number(parentKey.slice(0, sep));
+        const parentId = parentKey.slice(sep + 1);
+        for (let s = parentSegment - 1; s >= 0; s -= 1) {
+          if (blockMap.has(`${s}:${parentId}`)) {
+            parentKey = `${s}:${parentId}`;
+            break;
+          }
+        }
+      }
+
+      if (parentKey && parentKey !== blockKey && blockMap.has(parentKey)) {
+        const parent = blockMap.get(parentKey)!;
         const insertIndex = parent.children.findIndex((c) => c.type === "item");
         if (insertIndex >= 0) {
           parent.children.splice(insertIndex, 0, blockNode);
@@ -227,17 +316,15 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       assignIterationLabels(blockNode.children);
     }
 
-    // Fall back to timestamp-based duration when lifecycle metadata is not available.
+    // Fall back to timestamp-based duration when lifecycle metadata is not
+    // available, using the per-node span collected during item iteration.
     for (const blockNode of blockMap.values()) {
       if (blockNode.blockDuration !== undefined) {
         continue;
       }
-      const blockItems = group.items.filter(
-        (i) => i.provenance?.blockInstanceId === blockNode.blockInstanceId,
-      );
-      const blockTs = blockItems.map((i) => i.ts).filter(Boolean);
-      if (blockTs.length >= 2) {
-        blockNode.blockDuration = Math.max(...blockTs) - Math.min(...blockTs);
+      const span = tsSpan.get(blockNode);
+      if (span && span.count >= 2) {
+        blockNode.blockDuration = span.max - span.min;
       }
     }
 
@@ -252,6 +339,16 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       }
     }
 
+    // Root-level children in chronological order (FIX-865): blocks and
+    // orphan/divider items are collected separately above (existing
+    // block-vs-orphan structure preserved for readability), then merged here
+    // by each node's earliest `itemIndex` so a continuation/suspension_resume
+    // divider lands between the prior-log blocks and the live-continuation
+    // ones instead of always trailing at the end.
+    const children = [...rootBlocks, ...orphanItems].sort(
+      (a, b) => (rootOrderKey.get(a.id) ?? 0) - (rootOrderKey.get(b.id) ?? 0),
+    );
+
     return {
       type: "request" as const,
       id: `req-${group.requestId}`,
@@ -259,7 +356,7 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       action: group.action,
       status: group.status,
       duration: group.duration,
-      children: [...rootBlocks, ...orphanItems],
+      children,
       isExpanded: isLast,
     };
   });

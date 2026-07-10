@@ -82,6 +82,12 @@ function reducer(state: DevToolState, action: Action): DevToolState {
 type DevToolContextValue = DevToolState & {
   baseUrl: string | undefined;
   userIdControl: UserIdControl;
+  /**
+   * Whether interrupted-request sweeps (mount-time and request-row refresh)
+   * are enabled. Off by default so embedded panels don't mutate stale
+   * `in_progress` rows as a side effect of merely opening a session.
+   */
+  autoRecoverInterrupted: boolean;
   dispatch: React.Dispatch<Action>;
   refreshFlows: () => Promise<void>;
   setConfig: (config: DevToolConfig) => void;
@@ -190,13 +196,14 @@ export function DevToolProvider({
       ...state,
       baseUrl,
       userIdControl,
+      autoRecoverInterrupted,
       dispatch,
       refreshFlows,
       setConfig,
       setActiveFlow,
       setActiveSession,
     }),
-    [state, baseUrl, userIdControl, dispatch, refreshFlows, setConfig, setActiveFlow, setActiveSession],
+    [state, baseUrl, userIdControl, autoRecoverInterrupted, dispatch, refreshFlows, setConfig, setActiveFlow, setActiveSession],
   );
 
   return <DevToolContext.Provider value={value}>{children}</DevToolContext.Provider>;

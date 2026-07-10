@@ -469,6 +469,64 @@ describe("createSSEClientFromResponse", () => {
 
     // Should not throw
   });
+
+  it("fires onClose when the body ends without a terminal request-status event", async () => {
+    // e.g. a pre-transition recovery failure: the server closes the
+    // connection without ever emitting request.completed/failed.
+    const onRequestStatus = vi.fn();
+    const onClose = vi.fn();
+
+    const response = new Response("", {
+      status: 200,
+      headers: { "content-type": "text/event-stream" }
+    });
+
+    const handle = createSSEClientFromResponse({ response, onRequestStatus, onClose });
+    await flushSSE();
+
+    expect(onRequestStatus).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+
+    handle.close();
+  });
+
+  it("does not fire onClose when the stream errors", async () => {
+    const onError = vi.fn();
+    const onClose = vi.fn();
+
+    const response = new Response("not found", {
+      status: 404,
+      statusText: "Not Found"
+    });
+
+    const handle = createSSEClientFromResponse({ response, onError, onClose });
+    await flushSSE();
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
+
+    handle.close();
+  });
+
+  it("does not fire onClose after a local handle.close()", async () => {
+    const onClose = vi.fn();
+    const body = new ReadableStream({
+      start() {
+        // Never closes — simulates long-lived SSE
+      }
+    });
+
+    const response = new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" }
+    });
+
+    const handle = createSSEClientFromResponse({ response, onClose });
+    handle.close();
+    await flushSSE();
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
 
 describe("createUserSSEClient", () => {

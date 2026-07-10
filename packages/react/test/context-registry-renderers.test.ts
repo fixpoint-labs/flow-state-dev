@@ -129,6 +129,23 @@ describe("ItemRenderer dispatch", () => {
 
     expect(ItemRenderer({ item: resumeItem })).toBeNull();
   });
+
+  it("returns null for continuation items (non-renderable type, FIX-865)", () => {
+    const continuationItem: OutputItem = {
+      id: "cont_1",
+      type: "continuation",
+      trigger: "recovery",
+      priorItemCount: 4,
+      continuedAt: 3000,
+      status: "completed",
+      requestId: "req_1",
+      itemIndex: 5,
+      provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+      ts: 3000
+    };
+
+    expect(ItemRenderer({ item: continuationItem })).toBeNull();
+  });
 });
 
 describe("suspension RendererRegistry slot", () => {

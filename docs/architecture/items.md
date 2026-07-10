@@ -25,7 +25,7 @@ Items fall into three visibility categories based on their `type`:
 
 **Conversational types** (`message`, `reasoning`, `tool_output`) use `item.itemVisibility` if present, otherwise default to `{ client: true, history: true }`.
 
-**Structural types** (everything else: `component`, `container`, `source`, `status`, `state_change`, `resource_change`, `error`, `suspension`, `suspension_resume`) default to `{ client: true, history: false }`.
+**Structural types** (everything else: `component`, `container`, `source`, `status`, `state_change`, `resource_change`, `error`, `suspension`, `suspension_resume`, `continuation`) default to `{ client: true, history: false }`.
 
 ### The `itemVisibility` field
 
@@ -181,6 +181,7 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 | `error` | Runtime (terminal failure) | ✓ | — | Structural | Persistent |
 | `suspension` | `ctx.suspend()` (durable actions, on suspend) | ✓ | — | Structural | Persistent |
 | `suspension_resume` | Resume (durable actions, on continuation) | ✓ | — | Structural | Persistent. Not rendered client-side — apps render their resume UI off the `suspension` item, not this one. |
+| `continuation` | Runtime (auto, on crash-recovery re-entry) | ✓ | — | Structural | Persistent. Not a HITL item — marks the seam between the prior durable log and the live re-run, for the DevTool and audit trail. |
 | `block_trace` | Every block (auto, lifecycle: in_progress → updates → terminal) | — | — | Trace | Persistent |
 | `router_decision` | Router (auto, on selection) | — | — | Trace | Persistent |
 | `state_snapshot` | Sequencer (at step boundaries) | — | — | Trace | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |

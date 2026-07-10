@@ -371,6 +371,7 @@ export function createInboundTransportHost(
       resumeContext: opts.resumeContext,
       signal: opts.signal,
       responseEmitter: opts.responseEmitter,
+      includeTrace: opts.includeTrace,
       stores,
       flowRegistry: registry,
       runtimeConfig

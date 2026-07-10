@@ -195,3 +195,94 @@ describe("RequestSeparator (transport source surface)", () => {
     expect(screen.getByText("0 0 1 * *")).toBeInTheDocument();
   });
 });
+
+// ── RequestSeparator (FIX-865 per-run Continue action) ──────
+
+describe("RequestSeparator (crash-recovery Continue action)", () => {
+  const baseProps = {
+    requestId: "req_123",
+    action: "run",
+  };
+
+  it("shows the Continue action for an interrupted, non-webhook-sourced request", () => {
+    const onContinue = vi.fn();
+    renderSeparator({ ...baseProps, status: "interrupted", source: "http", onContinue });
+    fireEvent.click(screen.getByTitle("More actions"));
+    expect(screen.getByText("Continue")).toBeInTheDocument();
+  });
+
+  it.each(["completed", "failed", "in_progress"])(
+    "does not show the Continue action for a %s request",
+    (status) => {
+      const onContinue = vi.fn();
+      renderSeparator({ ...baseProps, status, source: "http", onContinue });
+      const trigger = screen.queryByTitle("More actions");
+      if (trigger) fireEvent.click(trigger);
+      expect(screen.queryByText("Continue")).not.toBeInTheDocument();
+    },
+  );
+
+  it("does not show the Continue action for an interrupted webhook-sourced request", () => {
+    const onContinue = vi.fn();
+    renderSeparator({ ...baseProps, status: "interrupted", source: "webhook", onContinue });
+    // Webhook-sourced + no other overflow-eligible state means no overflow
+    // menu renders at all — the Continue action isn't reachable any way.
+    const trigger = screen.queryByTitle("More actions");
+    if (trigger) fireEvent.click(trigger);
+    expect(screen.queryByText("Continue")).not.toBeInTheDocument();
+  });
+
+  it("invokes onContinue when clicked", () => {
+    const onContinue = vi.fn();
+    renderSeparator({ ...baseProps, status: "interrupted", source: "http", onContinue });
+    fireEvent.click(screen.getByTitle("More actions"));
+    fireEvent.click(screen.getByText("Continue"));
+    expect(onContinue).toHaveBeenCalledOnce();
+  });
+
+  it("hides the Continue action while a continuation is already streaming for this request", () => {
+    const onContinue = vi.fn();
+    renderSeparator({
+      ...baseProps,
+      status: "interrupted",
+      source: "http",
+      onContinue,
+      isContinuing: true,
+    });
+    const trigger = screen.queryByTitle("More actions");
+    if (trigger) fireEvent.click(trigger);
+    expect(screen.queryByText("Continue")).not.toBeInTheDocument();
+  });
+
+  // A dynamic schedule's handler core is carried only on its original
+  // dispatch envelope — `resolveActionCore` can only re-resolve a static
+  // schedule (`flow.schedules.static`) on recovery, so `/continue` can't
+  // re-enter it. Gate the client-side action the same way as the webhook
+  // source check just above.
+  it("does not show the Continue action for an interrupted dynamic-schedule request", () => {
+    const onContinue = vi.fn();
+    renderSeparator({
+      ...baseProps,
+      status: "interrupted",
+      source: "scheduled",
+      metadata: { schedule: { scheduleId: "u_1/digest", origin: "dynamic" } },
+      onContinue,
+    });
+    const trigger = screen.queryByTitle("More actions");
+    if (trigger) fireEvent.click(trigger);
+    expect(screen.queryByText("Continue")).not.toBeInTheDocument();
+  });
+
+  it("shows the Continue action for an interrupted static-schedule request", () => {
+    const onContinue = vi.fn();
+    renderSeparator({
+      ...baseProps,
+      status: "interrupted",
+      source: "scheduled",
+      metadata: { schedule: { scheduleId: "monthly-invoices", origin: "static" } },
+      onContinue,
+    });
+    fireEvent.click(screen.getByTitle("More actions"));
+    expect(screen.getByText("Continue")).toBeInTheDocument();
+  });
+});
