@@ -46,6 +46,9 @@
     },
     "examples/*": {
       "entry": ["src/**/index.ts", "test/**/*.{test,spec}.ts"]
+    },
+    "labs/knowledge-hub": {
+      "entry": ["src/index.ts", "fsdev.config.ts", "test/**/*.spec.ts"]
     }
   }
 }

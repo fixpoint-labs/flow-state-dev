@@ -4,7 +4,7 @@
  *
  * Stands up the REAL `serve()` host (`@flow-state-dev/node`) fronting the
  * REAL MCP transport adapter (`@flow-state-dev/mcp`) and the knowledge-base
- * lab's actual flow, backed by a PGlite-executor Postgres store (the
+ * example's actual flow, backed by a PGlite-executor Postgres store (the
  * DURABLE `prod` profile, not in-memory) — so the check exercises schema
  * init + the production persistence wiring, not just in-process cross-
  * session visibility. Drives genuinely separate HTTP requests over the
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
   const { createMcpTransportAdapter } = await import("@flow-state-dev/mcp");
   const { postgresStores } = await import("@flow-state-dev/store-postgres");
   const { serve } = await import("@flow-state-dev/node");
-  const { default: knowledgeFlow } = await import("../../../labs/knowledge-base/src/flow.ts");
+  const { default: knowledgeFlow } = await import("../../../examples/knowledge-base/src/flow.ts");
 
   const modelResolver = Object.assign(neverResolvesAModel, { resolveId: neverResolvesAModel }) as any;
 

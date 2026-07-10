@@ -413,31 +413,7 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  goals:
-    dependencies:
-      '@electric-sql/pglite':
-        specifier: ^0.5.4
-        version: 0.5.4
-      '@flow-state-dev/core':
-        specifier: workspace:*
-        version: link:../packages/core
-      '@flow-state-dev/engine':
-        specifier: workspace:*
-        version: link:../packages/engine
-      '@flow-state-dev/mcp':
-        specifier: workspace:*
-        version: link:../packages/mcp
-      '@flow-state-dev/node':
-        specifier: workspace:*
-        version: link:../packages/node
-      '@flow-state-dev/store-postgres':
-        specifier: workspace:*
-        version: link:../packages/store-postgres
-      zod:
-        specifier: ^3.25.76
-        version: 3.25.76
-
-  labs/knowledge-base:
+  examples/knowledge-base:
     dependencies:
       '@flow-state-dev/core':
         specifier: workspace:*
@@ -467,6 +443,58 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.5.4
         version: 0.5.4
+      '@flow-state-dev/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
+
+  goals:
+    dependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.4
+        version: 0.5.4
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../packages/core
+      '@flow-state-dev/engine':
+        specifier: workspace:*
+        version: link:../packages/engine
+      '@flow-state-dev/mcp':
+        specifier: workspace:*
+        version: link:../packages/mcp
+      '@flow-state-dev/node':
+        specifier: workspace:*
+        version: link:../packages/node
+      '@flow-state-dev/store-postgres':
+        specifier: workspace:*
+        version: link:../packages/store-postgres
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
+  labs/knowledge-hub:
+    dependencies:
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@flow-state-dev/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../packages/testing
@@ -7788,9 +7816,6 @@ packages:
   get-stream@6.0.1:
     resolution: {integrity: sha512-ts6Wi+2j3jQjqi70w5AlN8DFnkSwC+MqmxEzdEALB2qXZYV3X/b1CTfgPLGJNMeAWxdPfU8FO1ms3NUfaHCPYg==}
     engines: {node: '>=10'}
-
-  get-tsconfig@4.13.6:
-    resolution: {integrity: sha512-shZT/QMiSHc/YBLxxOkMtgSid5HFoauqCE3/exfsEcwg1WkeqjG+V40yBbBrsD+jW2HDXcs28xOfcbm2jI8Ddw==}
 
   get-tsconfig@4.14.0:
     resolution: {integrity: sha512-yTb+8DXzDREzgvYmh6s9vHsSVCHeC0G3PI5bEXNBHtmshPnO+S5O7qgLEOn0I5QvMy6kpZN8K1NKGyilLb93wA==}
@@ -19093,10 +19118,6 @@ snapshots:
 
   get-stream@6.0.1: {}
 
-  get-tsconfig@4.13.6:
-    dependencies:
-      resolve-pkg-maps: 1.0.0
-
   get-tsconfig@4.14.0:
     dependencies:
       resolve-pkg-maps: 1.0.0
@@ -23236,7 +23257,7 @@ snapshots:
   tsx@4.21.0:
     dependencies:
       esbuild: 0.27.3
-      get-tsconfig: 4.13.6
+      get-tsconfig: 4.14.0
     optionalDependencies:
       fsevents: 2.3.3
 

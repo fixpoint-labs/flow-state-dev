@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// OKF interchange types (incubation, FIX-813).
+// OKF interchange types (FIX-813).
 //
 // The on-disk OKF v0.1 shape as this adapter sees it after parsing: one
 // concept per non-reserved markdown file, identified by its bundle-relative

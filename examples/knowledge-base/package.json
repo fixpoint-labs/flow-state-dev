@@ -1,9 +1,9 @@
 {
-  "name": "@flow-state-dev/knowledge-base",
+  "name": "@flow-state-dev/example-knowledge-base",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Incubation lab: OKF (Open Knowledge Format) interchange adapter + knowledgeBase capability over the resource graph (FIX-813). Not a published package.",
+  "description": "Reference app: OKF (Open Knowledge Format) interchange adapter + knowledgeBase capability over the resource graph. Frozen as a standalone example; not a published package.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root . --passWithNoTests",

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// The knowledge-base lab's flow: a secured personal MCP server (FIX-855).
+// The knowledge-base example's flow: a secured personal MCP server (FIX-855).
 //
 // Exposes 8 MCP tools (list / read / search / grep / create / update / delete
 // / relate) over the user-scoped concept collection, plus two CLI-only OKF

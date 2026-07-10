@@ -39,7 +39,7 @@ export const conceptStateSchema = z.object({
 export type ConceptState = z.infer<typeof conceptStateSchema>;
 
 /**
- * The default OKF concept collection used by the incubation lab.
+ * The default OKF concept collection used by the knowledge-base example.
  *
  * `scope: "user"` binds the corpus to the authenticated principal rather
  * than the (ephemeral, per-request) session, so it survives across the
