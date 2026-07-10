@@ -5,8 +5,12 @@
   "type": "module",
   "description": "Goal-check library — real-model, out-of-CI runners that prove framework outcomes. Not a published package and not a vitest root; see README.md.",
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/mcp": "workspace:*",
+    "@flow-state-dev/node": "workspace:*",
+    "@flow-state-dev/store-postgres": "workspace:*",
     "zod": "^3.25.76"
   }
 }

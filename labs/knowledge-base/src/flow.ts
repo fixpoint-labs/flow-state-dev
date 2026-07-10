@@ -1,85 +1,207 @@
 // ---------------------------------------------------------------------------
-// The incubation lab's runnable example flow (`fsdev run knowledge ...`).
+// The knowledge-base lab's flow: a secured personal MCP server (FIX-855).
 //
-// Two actions exercise the knowledgeBase capability end to end:
-//   - `explore` — a model-free handler: mount an OKF bundle, then list the
-//     concepts it imported. This is the goal-check seam — it proves the
-//     capability wiring (resources + fns) executes through the real CLI without
-//     needing model credentials.
-//   - `ask` — a generator that navigates the mounted concepts with the glob /
-//     grep / search tools the capability installs, to answer a question. The
-//     agent path; requires a configured model (see fsdev.config.ts).
+// Exposes 8 MCP tools (list / read / search / grep / create / update / delete
+// / relate) over the user-scoped concept collection, plus two CLI-only OKF
+// import/export actions (`mcp: { enabled: false }` — they take server-side
+// filesystem paths, which must never be reachable over a hosted MCP endpoint).
+// Auth is a bearer secret read from `KB_MCP_SECRET`: constructed only when the
+// env var is set, so importing this module in local dev / CI never throws;
+// the hosted (Postgres) profile fails closed on a missing secret at config
+// load instead (see `../fsdev.config.ts`).
 // ---------------------------------------------------------------------------
 
-import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
 import { createKnowledgeBaseCapability } from "./capability";
-
-/** Default bundle for `explore`: the lab's checked-in sample OKF bundle. */
-const SAMPLE_BUNDLE = new URL("../sample-bundle", import.meta.url).pathname;
+import { conceptStateSchema, CONCEPT_PREFIX } from "./concepts";
+import { DEFAULT_EDGE_TYPE } from "./okf/types";
 
 const kb = createKnowledgeBaseCapability();
 
-/** Mount an OKF bundle into the session's concept collection and list the result. */
-const explore = handler({
-  name: "explore",
+/** Every concept ref's `uri` is `${scope}/${CONCEPT_PREFIX}/<id>` — e.g. `user/concepts/topics/react`. */
+const URI_LEAD = `${kb.collection.scope}/${CONCEPT_PREFIX}/`;
+
+/**
+ * Normalize a `search_concepts`/`grep_concepts` result uri back to a bare
+ * concept id; a bare id passes through unchanged. Applied to every id-taking
+ * action (read/update/delete/relate) so pasting a search result into any of
+ * them resolves the concept instead of silently no-op'ing.
+ */
+function conceptIdFromUri(x: string): string {
+  return x.startsWith(URI_LEAD) ? x.slice(URI_LEAD.length) : x;
+}
+
+const noGeneratorPresets = kb.presets({ index: false, search: false });
+
+const listConceptsHandler = handler({
+  name: "listConcepts",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ ids: z.array(z.string()) }),
+  uses: [noGeneratorPresets],
+  execute: async (_input, ctx: any) => ({ ids: await ctx.cap.knowledgeBase.listConcepts() }),
+});
+
+const readConceptHandler = handler({
+  name: "readConcept",
   inputSchema: z.object({
-    bundleDir: z.string().nullable().default(null).describe("OKF bundle directory; defaults to the sample bundle"),
+    id: z.string().describe("Concept id, or a uri returned by search_concepts/grep_concepts"),
   }),
   outputSchema: z.object({
-    imported: z.number(),
-    concepts: z.array(z.string()),
-    warnings: z.array(z.string()),
+    found: z.boolean(),
+    state: conceptStateSchema.nullable(),
+    body: z.string().nullable(),
   }),
-  // A handler only needs the capability's resources + fns; the index/search
-  // presets contribute generator-only context/tools, so turn them off here.
-  uses: [kb.presets({ index: false, search: false })],
+  uses: [noGeneratorPresets],
   execute: async (input, ctx: any) => {
-    const dir = input.bundleDir ?? SAMPLE_BUNDLE;
-    const { imported, warnings } = await ctx.cap.knowledgeBase.importBundle(dir);
-    const concepts = await ctx.cap.knowledgeBase.listConcepts();
-    return { imported, concepts, warnings };
+    const result = await ctx.cap.knowledgeBase.readConcept(conceptIdFromUri(input.id));
+    return result ? { found: true, state: result.state, body: result.body } : { found: false, state: null, body: null };
   },
 });
 
-/** Seed the sample bundle for a self-contained `research` run (state-mutation only). */
-const seedSample = handler({
-  name: "seedSample",
-  inputSchema: z.object({ question: z.string() }),
-  uses: [kb.presets({ index: false, search: false })],
-  execute: async (_input, ctx: any) => {
-    await ctx.cap.knowledgeBase.importBundle(SAMPLE_BUNDLE);
+const createConceptHandler = handler({
+  name: "createConcept",
+  inputSchema: z.object({
+    id: z.string().describe("New concept id, e.g. 'topics/react'"),
+    type: z.string().describe("Concept type — OKF's one required frontmatter field"),
+    title: z.string().nullable().default(null),
+    description: z.string().nullable().default(null),
+    tags: z.array(z.string()).default([]),
+    body: z.string().describe("Markdown body"),
+  }),
+  outputSchema: z.object({ id: z.string() }),
+  uses: [noGeneratorPresets],
+  execute: async (input, ctx: any) => {
+    const { id, type, title, description, tags, body } = input;
+    await ctx.cap.knowledgeBase.createConcept(id, { type, title, description, tags }, body);
+    return { id };
   },
 });
 
-/** Answer a question by navigating the mounted concepts with the nav tools. */
-const ask = generator({
-  name: "ask",
-  model: "intent/chat",
-  uses: [kb],
-  prompt:
-    "You are a librarian for a knowledge base of markdown concepts. The <knowledge> " +
-    "context lists what is available. Use globResources to find concepts by path, " +
-    "grepResourceContent to search bodies, and searchResources to rank by relevance, " +
-    "then answer using the concept content. Cite the concept paths you used.",
-  inputSchema: z.object({ question: z.string() }),
-  user: (input) => input.question,
-  itemVisibility: { client: true, history: true },
+const updateConceptHandler = handler({
+  name: "updateConcept",
+  inputSchema: z.object({
+    id: z.string(),
+    state: conceptStateSchema.partial().nullable().default(null),
+    body: z.string().nullable().default(null),
+  }),
+  outputSchema: z.object({ id: z.string() }),
+  uses: [noGeneratorPresets],
+  execute: async (input, ctx: any) => {
+    const id = conceptIdFromUri(input.id);
+    await ctx.cap.knowledgeBase.updateConcept(id, {
+      state: input.state ?? undefined,
+      body: input.body ?? undefined,
+    });
+    return { id };
+  },
 });
 
-// Self-contained agent path: seed the sample bundle, then let the generator
-// navigate it. `.tap()` runs the seed for its side effect and forwards the
-// original `{ question }` to the generator (BP-012 / BP-014).
-const research = sequencer({ name: "research", inputSchema: z.object({ question: z.string() }) })
-  .tap(seedSample)
-  .step(ask);
+const deleteConceptHandler = handler({
+  name: "deleteConcept",
+  inputSchema: z.object({ id: z.string() }),
+  outputSchema: z.object({ id: z.string() }),
+  uses: [noGeneratorPresets],
+  execute: async (input, ctx: any) => {
+    const id = conceptIdFromUri(input.id);
+    await ctx.cap.knowledgeBase.deleteConcept(id);
+    return { id };
+  },
+});
+
+const relateConceptsHandler = handler({
+  name: "relateConcepts",
+  inputSchema: z.object({
+    from: z.string(),
+    to: z.string(),
+    type: z.string().nullable().default(null),
+  }),
+  outputSchema: z.object({ from: z.string(), to: z.string(), type: z.string() }),
+  uses: [noGeneratorPresets],
+  execute: async (input, ctx: any) => {
+    const from = conceptIdFromUri(input.from);
+    const to = conceptIdFromUri(input.to);
+    const type = input.type ?? DEFAULT_EDGE_TYPE;
+    await ctx.cap.knowledgeBase.relate(from, to, type);
+    return { from, to, type };
+  },
+});
+
+/**
+ * OKF bundle import/export — CLI-only (`mcp: { enabled: false }`). These take
+ * server-side filesystem paths; over a hosted MCP endpoint they would let a
+ * remote client read from / write to / prune arbitrary host paths.
+ */
+const importBundleHandler = handler({
+  name: "importBundle",
+  inputSchema: z.object({ dir: z.string().describe("OKF bundle directory to mount") }),
+  outputSchema: z.object({ imported: z.number(), warnings: z.array(z.string()) }),
+  uses: [noGeneratorPresets],
+  execute: async (input, ctx: any) => {
+    const { imported, warnings } = await ctx.cap.knowledgeBase.importBundle(input.dir);
+    return { imported, warnings };
+  },
+});
+
+const exportBundleHandler = handler({
+  name: "exportBundle",
+  inputSchema: z.object({ dir: z.string().describe("Directory to write the OKF bundle to") }),
+  outputSchema: z.object({ exported: z.number() }),
+  uses: [noGeneratorPresets],
+  execute: async (input, ctx: any) => {
+    const { exported } = await ctx.cap.knowledgeBase.exportBundle(input.dir);
+    return { exported };
+  },
+});
 
 const knowledgeFlow = defineFlow({
   kind: "knowledge",
-  requireUser: true,
+  authentication: {
+    requireUser: true,
+    // No defaultUserId: a missing/invalid key denies rather than serving an
+    // anon principal. Construct the resolver only when the secret is set —
+    // createBearerSecretPrincipalResolver throws on an empty secret, so
+    // importing this module in local dev / CI (no KB_MCP_SECRET) must not
+    // pass "". The hosted (Postgres) profile fails closed on a missing
+    // secret at config load instead (see ../fsdev.config.ts).
+    resolvePrincipal: process.env.KB_MCP_SECRET
+      ? createBearerSecretPrincipalResolver({
+          secret: process.env.KB_MCP_SECRET,
+          principal: { userId: "owner" }, // the single personal user the corpus binds to
+        })
+      : undefined,
+  },
+  mcp: { enabled: true },
   actions: {
-    explore: { block: explore },
-    research: { block: research, userMessage: (input) => input.question },
+    listConcepts: { block: listConceptsHandler, description: "List all concept ids in the knowledge base." },
+    readConcept: { block: readConceptHandler, description: "Read one concept's body and frontmatter by id." },
+    searchConcepts: {
+      block: kb.nav.searchResources,
+      description: "Rank concepts by lexical relevance to a query.",
+    },
+    grepConcepts: {
+      block: kb.nav.grepResourceContent,
+      description: "Find concept lines matching a regex/substring.",
+    },
+    createConcept: { block: createConceptHandler, description: "Create a new concept (frontmatter + body)." },
+    updateConcept: {
+      block: updateConceptHandler,
+      description: "Update an existing concept's frontmatter and/or body.",
+    },
+    deleteConcept: { block: deleteConceptHandler, description: "Delete one concept by id." },
+    relateConcepts: { block: relateConceptsHandler, description: "Add a typed link edge between two concepts." },
+    // OKF import/export are NOT MCP tools — see the handler comments above.
+    importBundle: {
+      block: importBundleHandler,
+      description: "Mount an OKF bundle directory into the knowledge base (CLI-only).",
+      mcp: { enabled: false },
+    },
+    exportBundle: {
+      block: exportBundleHandler,
+      description: "Export the knowledge base as a portable OKF bundle directory (CLI-only).",
+      mcp: { enabled: false },
+    },
   },
   resources: { concepts: kb.collection },
 });

@@ -38,10 +38,17 @@ export const conceptStateSchema = z.object({
 
 export type ConceptState = z.infer<typeof conceptStateSchema>;
 
-/** The default OKF concept collection used by the incubation lab. */
+/**
+ * The default OKF concept collection used by the incubation lab.
+ *
+ * `scope: "user"` binds the corpus to the authenticated principal rather
+ * than the (ephemeral, per-request) session, so it survives across the
+ * stateless MCP fresh-session-per-`tools/call` model and is durable when
+ * backed by Postgres.
+ */
 export const conceptCollection = defineResourceCollection({
   pattern: "concepts/**",
-  scope: "session",
+  scope: "user",
   stateSchema: conceptStateSchema,
   edges: true,
   llmReadable: true,

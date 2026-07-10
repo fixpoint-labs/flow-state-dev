@@ -10,8 +10,10 @@
 //     installed as-is. They are NOT re-aliased under KB-specific names: the KB
 //     vocabulary lives in `fns` helpers and the context formatter, so we avoid a
 //     second, divergent tool surface (decision #4) and shallow wrapper blocks.
-//   - `fns`: `listConcepts` / `readConcept` / `relate` (over `.edges`) plus
-//     `importBundle` / `exportBundle` (the OKF interchange boundary).
+//   - `fns`: `listConcepts` / `readConcept` / `relate` (over `.edges`) /
+//     `createConcept` / `updateConcept` / `deleteConcept` (single-concept
+//     CRUD) plus `importBundle` / `exportBundle` (the OKF interchange
+//     boundary).
 //
 // Incubated, not graduated: no public package export, no separate session/user
 // resource tiers — v0 is one collection in one scope.
@@ -24,10 +26,30 @@ import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
   conceptCollection,
   conceptIdFromPath,
+  conceptStateSchema,
   type ConceptState,
 } from "./concepts";
 import { importOkf, exportOkf } from "./okf/index";
-import { DEFAULT_EDGE_TYPE } from "./okf/types";
+import { DEFAULT_EDGE_TYPE, RESERVED_FILENAMES } from "./okf/types";
+
+/** Concept ids reserved for OKF's own files (SPEC §3.1) — `index.md` / `log.md`. */
+const RESERVED_CONCEPT_IDS = new Set(RESERVED_FILENAMES.map((f) => f.replace(/\.md$/, "")));
+
+/**
+ * Reject a concept id that collides with an OKF-reserved filename: creating
+ * one would clobber the bundle's own root listing or log file on the next
+ * `exportOkf`. The collection's own key resolution already sanitizes ids
+ * before this fn is reached — every `collection.create` / `getOptional` call
+ * runs `normalizeResourcePath`, which throws on `..` traversal, empty ids,
+ * and control characters, and strips leading slashes so an "absolute" id
+ * can't escape the prefix-scoped keyspace. So this only needs to guard the
+ * names OKF reserves that the collection layer has no reason to know about.
+ */
+function assertSafeConceptId(id: string): void {
+  if (RESERVED_CONCEPT_IDS.has(id)) {
+    throw new Error(`knowledgeBase: concept id "${id}" is reserved (OKF ${id}.md)`);
+  }
+}
 
 /** Render the progressive-disclosure concept listing for prompt context. */
 async function formatKnowledgeIndex(
@@ -72,18 +94,56 @@ export function createKnowledgeBaseCapability() {
           const prefix = getPatternPrefix(c.pattern);
           return (await c.list()).map((r) => conceptIdFromPath(r.path, prefix)).sort();
         },
-        /** Rendered content body of one concept, or `null` if absent. */
-        readConcept: async (id: string): Promise<string | null> => {
+        /** One concept's frontmatter state and body, or `null` if absent. */
+        readConcept: async (id: string): Promise<{ state: ConceptState; body: string } | null> => {
           const r = await ref().getOptional(id);
-          return r ? await r.readContent() : null;
+          if (!r) return null;
+          return { state: r.state, body: (await r.readContent()) ?? "" };
         },
-        /** Add a typed link edge between two concepts (default `references`). */
+        /** Add a typed link edge between two concepts (default `references`). Both endpoints must exist. */
         relate: async (from: string, to: string, type: string = DEFAULT_EDGE_TYPE): Promise<void> => {
           const r = await ref().get(from);
           if (r.edges === undefined) {
             throw new Error("knowledgeBase: concept collection has no edge slot");
           }
+          await ref().get(to); // throws if the target doesn't exist — no dangling edges
           await r.edges.add({ from, to, type });
+        },
+        /** Create a NEW concept (frontmatter state + body). Rejects if the id already exists. */
+        createConcept: async (id: string, state: ConceptState, body: string): Promise<void> => {
+          assertSafeConceptId(id);
+          const c = ref();
+          if (await c.getOptional(id)) {
+            throw new Error(`knowledgeBase: concept "${id}" already exists; use updateConcept`);
+          }
+          const r = await c.create(id, state);
+          try {
+            await r.writeContent(body);
+          } catch (err) {
+            // Roll back the state row so a retry isn't blocked by "already exists". If the
+            // rollback ALSO fails (e.g. the same store outage), keep the original write error
+            // as the thrown cause — masking it with the delete error would hide the real fault.
+            await c.delete(id).catch(() => {});
+            throw err;
+          }
+        },
+        /** Update an existing concept's state and/or body (partial; last-write-wins). */
+        updateConcept: async (
+          id: string,
+          patch: { state?: Partial<ConceptState>; body?: string },
+        ): Promise<void> => {
+          const r = await ref().getOptional(id);
+          if (!r) throw new Error(`knowledgeBase: concept "${id}" not found`);
+          if (patch.state !== undefined) {
+            // Validate the MERGED state before persisting — patchState/setState would otherwise
+            // let a malformed patch erase required frontmatter; merge + parse first.
+            await r.setState(conceptStateSchema.parse({ ...r.state, ...patch.state }));
+          }
+          if (patch.body !== undefined) await r.writeContent(patch.body);
+        },
+        /** Delete one concept. No-op if missing. Dangling inbound edges from other concepts are tolerated. */
+        deleteConcept: async (id: string): Promise<void> => {
+          await ref().delete(id);
         },
         /** Mount an external OKF bundle into the collection. */
         importBundle: (dir: string) => importOkf(dir, ref()),
@@ -110,5 +170,9 @@ export function createKnowledgeBaseCapability() {
     },
   });
 
-  return Object.assign(capability, { collection });
+  // `nav` is exposed so a consumer (e.g. the MCP flow's search/grep actions)
+  // can reuse the identical glob/grep/search block instances the generator's
+  // `search` preset installs, rather than a second `resourceSearchTools()`
+  // instantiation — one tool surface (decision #4), not a divergent second.
+  return Object.assign(capability, { collection, nav });
 }
