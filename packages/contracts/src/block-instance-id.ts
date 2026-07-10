@@ -11,11 +11,34 @@
  *   - `path` is a slash-delimited structural locator (e.g. `root/step[0]/iter[2]`).
  *   - `attempt` is a 0-indexed retry counter scoped to `(requestId, path)`.
  *
- * Neither component is URL-encoded; requestId and path are expected to
- * use a restricted character set (alphanumerics, `_`, `-`, `/`, `[`, `]`).
+ * Structural segments the framework generates (`step[N]`, `iter[N]`, …) use a
+ * restricted character set. Segments that embed *user-controlled* values —
+ * tool names and call ids (`blockPathTool`) and router branch names
+ * (`blockPathBranch`) — percent-escape the reserved characters `% / [ ] :`
+ * before embedding, so an opaque call id or branch name cannot inject a path
+ * delimiter. This keeps both exact-equality and prefix matching over the
+ * logical path unambiguous (FIX-814): a sibling call id containing `]`, `[`,
+ * `/`, or `:` can never collide with, or be misread as nested under, another
+ * call's path.
  */
 
 export const ROOT_BLOCK_PATH = "root";
+
+/**
+ * Percent-escapes the characters reserved by the blockInstanceId path grammar
+ * (`%`, `/`, `[`, `]`, `:`) inside a user-controlled segment value. `%` is
+ * encoded first so the escape sequences it introduces are not double-encoded.
+ * Escaping is one-way — path values are compared, never decoded — so no
+ * inverse is provided.
+ */
+function escapeSegmentValue(value: string): string {
+  return value
+    .replace(/%/g, "%25")
+    .replace(/\//g, "%2F")
+    .replace(/\[/g, "%5B")
+    .replace(/\]/g, "%5D")
+    .replace(/:/g, "%3A");
+}
 
 /**
  * Builds a deterministic blockInstanceId from the request, path, and attempt.
@@ -77,10 +100,12 @@ export function blockPathLoop(generation: number): string {
 
 /**
  * Formats a router branch segment. Router branches are named in user code,
- * so we encode them by name rather than positional index.
+ * so we encode them by name rather than positional index. The name is
+ * percent-escaped (it is user-controlled) so a branch name containing a path
+ * delimiter cannot corrupt the structural locator.
  */
 export function blockPathBranch(branchName: string): string {
-  return `branch[${branchName}]`;
+  return `branch[${escapeSegmentValue(branchName)}]`;
 }
 
 /**
@@ -96,9 +121,16 @@ export function blockPathRescue(index: number): string {
  * so durable execution can correlate individual tool invocations. `callId`
  * is typically the model-provided tool call ID, which is stable across
  * resumes — if that's not available, callers may pass a counter instead.
+ *
+ * Both `toolName` and `callId` are user/provider-controlled and therefore
+ * percent-escaped before embedding: an opaque call id containing `]`, `[`,
+ * `/`, or `:` cannot inject a delimiter that would let a sibling call's path
+ * be misread as a prefix of another's (FIX-814). Callers that fold a
+ * model-step index into the disambiguator (e.g. `` `${stepNumber}:${callId}` ``)
+ * rely on the embedded `:` being escaped here.
  */
 export function blockPathTool(toolName: string, callId: string | number): string {
-  return `tool[${toolName}][${callId}]`;
+  return `tool[${escapeSegmentValue(toolName)}][${escapeSegmentValue(String(callId))}]`;
 }
 
 /**

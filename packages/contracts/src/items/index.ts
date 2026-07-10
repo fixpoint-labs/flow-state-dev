@@ -22,6 +22,7 @@ export type {
   /** @deprecated The `context` item type has been removed from the OutputItem union. */
   ContextItem,
   ErrorItem,
+  GeneratorStepItem,
   InvalidationItem,
   ItemProvenance,
   ItemStatus,

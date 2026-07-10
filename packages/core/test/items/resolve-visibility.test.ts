@@ -30,7 +30,7 @@ function makeItem(
 
 describe("resolveItemVisibility", () => {
   describe("trace types keyed by item.type", () => {
-    for (const traceType of ["block_trace", "router_decision", "state_snapshot"]) {
+    for (const traceType of ["block_trace", "router_decision", "state_snapshot", "generator_step"]) {
       it(`${traceType} → {client:false, history:false}`, () => {
         const item = makeItem({ type: traceType });
         expect(resolveItemVisibility(item)).toEqual({ client: false, history: false });

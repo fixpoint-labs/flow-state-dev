@@ -7,6 +7,7 @@
  */
 import type {
   BlockTraceItem,
+  GeneratorStepItem,
   OutputItem,
   RouterDecisionItem,
   StateSnapshotItem
@@ -22,13 +23,15 @@ export { parseBlockInstanceId } from "../block-instance-id";
 
 /**
  * Runtime item union. Public `OutputItem` is the 10 client-visible types;
- * runtime buffers, the trace channel, and devtool consumers carry the three
- * additional trace types (`block_trace`, `router_decision`, `state_snapshot`).
- * Use this alias when narrowing items that may be either kind.
+ * runtime buffers, the trace channel, and devtool consumers carry the
+ * additional trace types (`block_trace`, `router_decision`, `state_snapshot`,
+ * and the replay-only `generator_step`). Use this alias when narrowing items
+ * that may be either kind.
  */
 export type RuntimeItem =
   | OutputItem
   | BlockTraceItem
   | RouterDecisionItem
-  | StateSnapshotItem;
+  | StateSnapshotItem
+  | GeneratorStepItem;
 

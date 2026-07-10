@@ -510,6 +510,8 @@ The interface methods are `saveCheckpoint`, `loadCheckpoint`, `suspend`, `loadSu
 
 A suspension inside a router's chosen branch resumes the same branch: the recorded `router_decision` is validated against the re-run selector before dispatch (a mismatch fails with `RouteUnavailableError`), and completed work inside the branch replays from the durable log instead of re-executing.
 
+A generator tool can also suspend mid-loop (`ctx.suspend()` for tool-call approval). On resume the conversation is rebuilt from the durable item log rather than re-calling the model: prior model turns and completed sibling tools replay from their recorded items, and only the gated tool re-enters to produce its real result. See the [Generator and router suspend/resume](https://flow-state.dev/docs/advanced/generator-and-router-suspend-resume) reference for the contract and limits.
+
 ### Durability retention
 
 Durability records accumulate on long-lived hosts: a completed run's checkpoints are dead weight, a resolved suspension is only worth keeping for a window, and a crashed run leaves records that `cleanup()` never fires for. `createDurabilitySweeper` is an opt-in periodic job that reclaims them, modeled on the stale-request sweeper (`setInterval` + `unref`, `inFlight` guard, idempotent `dispose`, no-op handle when disabled).

@@ -229,6 +229,7 @@ const sidebars: SidebarsConfig = {
         "advanced/concurrency-policies",
         "advanced/block-memoization-and-replay",
         "advanced/durable-execution",
+        "advanced/generator-and-router-suspend-resume",
         "advanced/voice",
         "advanced/sequencer-side-chains",
         "advanced/custom-model-resolver",

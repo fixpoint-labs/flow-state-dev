@@ -1,6 +1,7 @@
 import { z, type ZodTypeAny } from "zod";
 import { OutputValidationError } from "../errors/output-validation-error";
 import { isAbortLike, rootCause } from "../errors/abort";
+import { SuspensionError, SuspensionRejectedError } from "../errors/suspension-error";
 import { jsonSchema } from "ai";
 import { jsonrepair } from "jsonrepair";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -38,6 +39,7 @@ import type {
 import {
   buildAssistantToolCallMessage,
   buildToolResultMessage,
+  failedToolResultText,
   toolResultOutputForModel,
   type LLMToolResultOutput,
 } from "../models/llm-messages";
@@ -71,6 +73,16 @@ import {
   type PromptFileBrand,
 } from "../prompt/prompt-file";
 import { getEmitterItemCount, toError } from "./internal/utils";
+import type { ReplayLog } from "./internal/replay-log";
+import type { RuntimeItem } from "../items/internal";
+import { ROOT_BLOCK_PATH } from "./internal/block-instance-id";
+import {
+  reconstructGeneratorResume,
+  validateResumableTool,
+  readPersistedPreludePrefixCount,
+  type GeneratorResumeReconstruction,
+  type ResumeStepCall,
+} from "./internal/generator-resume";
 import {
   assembleMessages,
   buildSystemPrefix,
@@ -78,6 +90,7 @@ import {
   type PromptFileConfigMeta,
 } from "./internal/message-assembly";
 import { buildToolExecutor } from "./internal/tool-executor";
+import { emitToolOutputAround } from "./internal/emit-tool-output";
 
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
@@ -1096,7 +1109,7 @@ interface OwnedLoopToolEntry {
   alias: string;
   /** Tool as passed to each step call — pre-renamed to `alias`, no execute. */
   modelTool: GeneratorModelTool;
-  execute: (args: unknown, options?: { toolCallId?: string }) => Promise<unknown>;
+  execute: (args: unknown, options?: { toolCallId?: string; stepNumber?: number }) => Promise<unknown>;
   mapModelOutput?: (output: unknown, ctx: BlockContext) => string | Promise<string>;
 }
 
@@ -1104,6 +1117,12 @@ interface OwnedLoopToolset {
   entries: OwnedLoopToolEntry[];
   byName: Map<string, OwnedLoopToolEntry>;
   byAlias: Map<string, OwnedLoopToolEntry>;
+  /** The generator's item visibility, carried so items emitted OUTSIDE a tool's
+   * `execute` closure — e.g. the resume reject path's denial `tool_output` —
+   * inherit the same visibility as ordinary tool outputs (a `history:false`
+   * generator's denial must not leak into history/the model conversation). */
+  itemVisibility: ItemVisibility | undefined;
+  agentName: string | undefined;
 }
 
 /**
@@ -1123,27 +1142,44 @@ function compileOwnedLoopToolset(
 ): OwnedLoopToolset {
   const aliases = computeToolAliases(tools.map((t) => t.name));
   const statusGuard = { active: 0, saved: "" };
-  const entries = tools.map((tool): OwnedLoopToolEntry => ({
-    block: tool,
-    alias: aliases.get(tool.name)!,
-    modelTool: {
-      name: aliases.get(tool.name)!,
-      description: tool.description,
-      parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"],
-    },
-    execute: buildToolExecutor(
-      tool,
-      { flowTools, generatorBlockName, itemVisibility, agentName, statusGuard },
-      ctx,
-    ),
-    mapModelOutput: asRuntime(tool)._modelOutputMapper as
+  const entries = tools.map((tool): OwnedLoopToolEntry => {
+    const alias = aliases.get(tool.name)!;
+    const mapModelOutput = asRuntime(tool)._modelOutputMapper as
       | ((output: unknown, ctx: BlockContext) => string | Promise<string>)
-      | undefined,
-  }));
+      | undefined;
+    return {
+      block: tool,
+      alias,
+      modelTool: {
+        name: alias,
+        description: tool.description,
+        parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"],
+      },
+      execute: buildToolExecutor(
+        tool,
+        {
+          flowTools,
+          generatorBlockName,
+          itemVisibility,
+          agentName,
+          statusGuard,
+          // Record the real disambiguated alias and apply the mapper once at
+          // settle time so `tool_output` carries the exact alias + persisted
+          // `modelOutput` resume reconstruction reads back (FIX-814).
+          alias,
+          ...(mapModelOutput !== undefined ? { mapModelOutput } : {}),
+        },
+        ctx,
+      ),
+      mapModelOutput,
+    };
+  });
   return {
     entries,
     byName: new Map(entries.map((e) => [e.block.name, e] as const)),
     byAlias: new Map(entries.map((e) => [e.alias, e] as const)),
+    itemVisibility,
+    agentName,
   };
 }
 
@@ -1220,19 +1256,27 @@ function partitionStepCalls(
 
 /**
  * Executes a step's tool calls CONCURRENTLY (matching the SDK's same-step
- * behavior) and settles ALL siblings. Errors — including `SuspensionError` /
- * `SuspensionRejectedError`, which are deliberately NOT special-cased in
- * this behavior-preserving refactor — become model-visible failed results,
- * exactly like the SDK-owned loop produced (the failed `tool_output` item is
- * emitted inside `emitToolOutputAround`). Suspension propagation is wired in
- * a later change.
+ * behavior) and settles ALL siblings before deciding anything. Ordinary tool
+ * errors become model-visible failed results, exactly like the SDK-owned loop
+ * produced (the failed `tool_output` item is emitted inside
+ * `emitToolOutputAround`).
+ *
+ * Suspension propagation (FIX-814): a tool that calls `ctx.suspend()` throws a
+ * `SuspensionError`. All siblings still settle first — completed siblings'
+ * `tool_output`s are recorded, and every suspending sibling has emitted its
+ * `SUSPENSION`-coded failed `tool_output` — then, if any sibling suspended,
+ * exactly ONE gate is surfaced: the first suspension in call order is
+ * re-thrown up to `runAction` (first-suspension-wins). The losing concurrent
+ * suspensions are NOT surfaced to the model; they re-enter their own gate on a
+ * later resume cycle (identified by the `SUSPENSION` discriminator).
  */
 async function executeOwnedStepToolCalls(
   calls: GeneratorModelToolCall[],
   toolset: OwnedLoopToolset,
-  activeToolNames: string[] | undefined
+  activeToolNames: string[] | undefined,
+  stepNumber: number
 ): Promise<SettledToolCall[]> {
-  return Promise.all(
+  const settled = await Promise.all(
     calls.map(async (call): Promise<SettledToolCall> => {
       const entry = toolset.byName.get(call.toolName) ?? toolset.byAlias.get(call.toolName);
       // A call that resolves to no tool (hallucinated) OR to a tool the step
@@ -1262,13 +1306,26 @@ async function executeOwnedStepToolCalls(
         };
       }
       try {
-        const output = await entry.execute(call.args, { toolCallId: call.toolCallId });
+        // Fold the step index into the tool's path disambiguator (FIX-814) so
+        // a provider that reuses a call id across steps can't collide.
+        const output = await entry.execute(call.args, {
+          toolCallId: call.toolCallId,
+          stepNumber,
+        });
         return { call, entry, ok: true, output };
       } catch (err) {
         return { call, entry, ok: false, error: toError(err) };
       }
     })
   );
+
+  // First-suspension-wins: after ALL siblings settle, surface exactly one gate.
+  for (const s of settled) {
+    if (!s.ok && s.error instanceof SuspensionError) {
+      throw s.error;
+    }
+  }
+  return settled;
 }
 
 /**
@@ -1344,6 +1401,174 @@ async function buildOwnedStepMessages(
   }
 
   return messages;
+}
+
+/**
+ * Emits the replay-only `generator_step` artifact for a tool-calling step,
+ * BEFORE the loop dispatches that step's tools (FIX-814). Keyed by the
+ * generator's logical path + `stepNumber` and accumulating (one per step), it
+ * is the only durable record of the step's assistant turn: the buffered
+ * pre-tool text and the full framework tool-call array (ids/names/aliases/args)
+ * so resume can rebuild one assistant message per step and recover a crash
+ * before any `tool_output.item.added`. Step 0 additionally carries the compiled
+ * `prelude` so resume reads the original prompt/context instead of re-resolving
+ * dynamic slots that may have observed drifted state during the approval wait.
+ */
+async function emitGeneratorStep(
+  ctx: BlockContext,
+  stepNumber: number,
+  text: string | undefined,
+  calls: GeneratorModelToolCall[],
+  toolset: OwnedLoopToolset,
+  prelude: unknown[] | undefined,
+  systemPrefixCount: number | undefined,
+): Promise<void> {
+  const identity = ctx._blockIdentity;
+  const blockInstanceId = identity?.blockInstanceId ?? identity?.blockName ?? "generator";
+  const itemId = `item_generator_step_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const item: any = {
+    id: itemId,
+    type: "generator_step" as const,
+    status: "completed" as const,
+    requestId: ctx.request.identity.id,
+    itemIndex: getEmitterItemCount(ctx.response),
+    provenance: {
+      blockName: identity?.blockName ?? "generator",
+      blockInstanceId,
+      parentBlockInstanceId: identity?.parentBlockInstanceId,
+      phase: identity?.phase ?? "main",
+    },
+    ts: Date.now(),
+    ownedBy: identity?.ownedBy,
+    taskId: identity?.taskId,
+    blockInstanceId,
+    stepNumber,
+    ...(text !== undefined && text.length > 0 ? { text } : {}),
+    toolCalls: calls.map((c) => ({
+      toolCallId: c.toolCallId,
+      toolName: c.toolName,
+      alias: toolset.byName.get(c.toolName)?.alias ?? sanitizeToolName(c.toolName),
+      arguments: c.args,
+    })),
+    ...(stepNumber === 0 && prelude !== undefined ? { prelude } : {}),
+    ...(stepNumber === 0 && systemPrefixCount !== undefined ? { systemPrefixCount } : {}),
+  };
+  await ctx.response.emit({ type: "item.added", item });
+  await ctx.response.emit({ type: "item.done", item });
+}
+
+/**
+ * Re-runs (or injects) the suspending step's tool calls on resume (FIX-814),
+ * building that step's assistant + tool-result messages. Per-call:
+ *  - `completed` → inject the persisted `modelOutput` (never re-run, never
+ *    recompute a mapper);
+ *  - `failed` → surface the recorded model-visible error;
+ *  - `pending`/`losing`/`missing` → re-enter the tool. The pending gate's
+ *    `ctx.suspend()` returns the resume payload and the tool produces its real
+ *    result; a reject throws `SuspensionRejectedError`, caught HERE (not in
+ *    `emitToolOutputAround`'s generic catch) and converted to a `completed`
+ *    denial `tool_output` so a later resume cycle sees it resolved rather than
+ *    re-entering it; a still-unresolved gate re-throws `SuspensionError` to
+ *    suspend again.
+ * Returns the messages to append and a `GeneratorStepResult` for loop metadata.
+ */
+async function runResumeStep(
+  resumeStep: { stepNumber: number; text?: string; calls: ResumeStepCall[] },
+  toolset: OwnedLoopToolset,
+  ctx: BlockContext,
+  blockName: string,
+): Promise<{ messages: unknown[]; stepResult: GeneratorStepResult }> {
+  const resultMessages: unknown[] = [];
+  const toolResults: Array<{ toolCallId: string; toolName: string; result: unknown }> = [];
+
+  const assistant = buildAssistantToolCallMessage(
+    resumeStep.calls.map((c) => ({
+      toolCallId: c.toolCallId,
+      toolName: c.alias,
+      input: c.arguments,
+    })),
+    resumeStep.text
+  );
+
+  for (const c of resumeStep.calls) {
+    const entry = toolset.byName.get(c.toolName) ?? toolset.byAlias.get(c.alias);
+    let output: LLMToolResultOutput;
+    if (c.kind === "completed") {
+      // Rebuild the exact live envelope from the raw output + persisted mapped
+      // text — no re-run, no mapper recompute.
+      output = toolResultOutputForModel(c.output, c.mappedText);
+    } else if (c.kind === "failed") {
+      output = { type: "error-text", value: failedToolResultText(c.toolName, c.errorMessage ?? "unknown error") };
+    } else {
+      // pending / losing / missing → re-enter the tool body.
+      if (entry === undefined) {
+        output = { type: "error-text", value: `Model called unknown tool "${c.toolName}"` };
+      } else {
+        try {
+          const real = await entry.execute(c.arguments, {
+            toolCallId: c.toolCallId,
+            stepNumber: resumeStep.stepNumber,
+          });
+          const mapped = entry.mapModelOutput !== undefined
+            ? await entry.mapModelOutput(real, ctx)
+            : undefined;
+          output = toolResultOutputForModel(real, mapped);
+          toolResults.push({ toolCallId: c.toolCallId, toolName: c.toolName, result: real });
+        } catch (err) {
+          if (err instanceof SuspensionRejectedError) {
+            // Denial: emit a COMPLETED tool_output so later cycles treat it as
+            // resolved (not a re-enterable failed gate), and surface the denial
+            // to the model.
+            const denial = { denied: true, reason: err.message };
+            await emitToolOutputAround(
+              entry.block,
+              ctx,
+              c.arguments,
+              {
+                callId: c.toolCallId,
+                generatorBlock: blockName,
+                alias: entry.alias,
+                // Carry this step's index so the denial keys by step like every
+                // other tool_output — else `pickToolOutput` (which treats an
+                // unstepped output as matching any step) could let this denial
+                // satisfy a LATER pending gate that reuses the same call id.
+                stepNumber: resumeStep.stepNumber,
+                // Inherit the generator's visibility/attribution so a denial
+                // for a `history:false` (or client-hidden) generator is not
+                // more visible than its ordinary tool outputs (Greptile P1).
+                ...(toolset.itemVisibility !== undefined
+                  ? { itemVisibility: toolset.itemVisibility }
+                  : {}),
+                ...(toolset.agentName !== undefined ? { agentName: toolset.agentName } : {}),
+              },
+              async () => denial,
+            );
+            output = toolResultOutputForModel(denial);
+          } else {
+            // SuspensionError (still pending) or any other control-flow error
+            // propagates to re-suspend / fail the run.
+            throw err;
+          }
+        }
+      }
+    }
+    resultMessages.push(
+      buildToolResultMessage({ toolCallId: c.toolCallId, toolName: c.alias }, output)
+    );
+  }
+
+  return {
+    messages: [assistant, ...resultMessages],
+    stepResult: {
+      text: resumeStep.text,
+      toolCalls: resumeStep.calls.map((c) => ({
+        toolCallId: c.toolCallId,
+        toolName: c.toolName,
+        args: c.arguments,
+      })),
+      toolResults,
+    },
+  };
 }
 
 /** Throws promptly when the request signal already aborted, so the owned
@@ -1425,6 +1650,72 @@ function activeStepTools(
 }
 
 /**
+ * Drives the generator resume pre-phase for an owned loop (FIX-814). Reads the
+ * durable log off `ctx._replayLog`, reconstructs the recorded conversation
+ * (visibility-agnostic), re-runs/injects the suspending step's tool calls, and
+ * reports the step number the live loop should continue from. Returns
+ * `undefined` when this is not a generator-tool resume (no recorded step
+ * artifacts, or no pending gate under this generator) — the loop then runs
+ * fresh from step 0. `onMessages` receives the rebuilt conversation to seed the
+ * loop's `messages`; `onStep` receives each reconstructed/re-run step's
+ * metadata for `prepareStep`/`stopWhen` continuity.
+ */
+async function applyGeneratorResume(args: {
+  ctx: BlockContext;
+  blockName: string;
+  toolset: OwnedLoopToolset;
+  initialPrelude: unknown[];
+  onMessages: (messages: unknown[]) => void;
+  onStep: (step: GeneratorStepResult) => void;
+}): Promise<number | undefined> {
+  const { ctx, blockName, toolset, initialPrelude, onMessages, onStep } = args;
+  const replayLog = (ctx as { _replayLog?: ReplayLog })._replayLog;
+  if (replayLog === undefined) return undefined;
+
+  const generatorPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
+  const requestId = ctx.request.identity.id;
+  const generatorLogicalId = `${requestId}:${generatorPath}`;
+
+  const reconstruction: GeneratorResumeReconstruction | undefined = reconstructGeneratorResume({
+    items: replayLog.items() as readonly RuntimeItem[],
+    requestId,
+    generatorLogicalId,
+    generatorToolBasePath: generatorPath,
+    pendingBlockLogicalId: replayLog.pendingSuspension()?.blockLogicalId,
+  });
+  if (reconstruction === undefined) return undefined;
+
+  // Seed the conversation. When the step-0 prelude was persisted, it is the
+  // authoritative prompt/context (dynamic slots are NOT re-resolved). When
+  // absent (older records), fall back to the freshly-assembled prelude.
+  const seeded = reconstruction.preludeIncluded
+    ? [...reconstruction.messages]
+    : [...initialPrelude, ...reconstruction.messages];
+
+  for (const s of reconstruction.priorSteps) onStep(s);
+
+  if (reconstruction.resumeStep === undefined) {
+    onMessages(seeded);
+    return reconstruction.priorSteps.length;
+  }
+
+  const rs = reconstruction.resumeStep;
+  const pendingCall = rs.calls.find((c) => c.kind === "pending");
+  if (pendingCall !== undefined) {
+    validateResumableTool(
+      blockName,
+      pendingCall.toolName,
+      new Set(toolset.entries.map((e) => e.block.name)),
+    );
+  }
+
+  const { messages: stepMessages, stepResult } = await runResumeStep(rs, toolset, ctx, blockName);
+  onMessages([...seeded, ...stepMessages]);
+  onStep(stepResult);
+  return rs.stepNumber + 1;
+}
+
+/**
  * The framework-owned NON-STREAMING step loop. Behavior-preserving stand-in
  * for the single `model.generate({ maxSteps })` call: drives up to
  * `maxSteps` single-step calls, executes framework tools between steps, and
@@ -1452,6 +1743,9 @@ async function runOwnedGenerateLoop(params: {
   prepareStep: PrepareStepFn | undefined;
   providerOptions: Record<string, unknown> | undefined;
   caching: CachingConfig | undefined;
+  /** Leading system-prefix length of the initial `messages`, persisted on the
+   * step-0 artifact so resume can slice the persisted prelude correctly. */
+  systemPrefixCount: number | undefined;
 }): Promise<GeneratorModelResult> {
   const { model, ctx, blockName } = params;
   const toolset = compileOwnedLoopToolset(
@@ -1464,6 +1758,7 @@ async function runOwnedGenerateLoop(params: {
   );
 
   let messages = params.messages;
+  const initialPrelude = params.messages;
   const steps: GeneratorStepResult[] = [];
   const sources: GeneratorModelSource[] = [];
   let usage: GeneratorModelUsage | undefined;
@@ -1471,7 +1766,25 @@ async function runOwnedGenerateLoop(params: {
   let identity: ModelIdentity | undefined;
   let activeToolNames: string[] | undefined;
 
-  for (let stepNumber = 0; stepNumber < params.maxSteps; stepNumber += 1) {
+  // Resume pre-phase (FIX-814): if this generator's owned loop recorded steps
+  // on a prior run and a suspension under one of its tools is pending, rebuild
+  // the conversation from the durable log instead of re-calling the model for
+  // recorded steps, then re-run/inject the suspending step's tool calls and
+  // continue from the next step.
+  let startStepNumber = 0;
+  const resumeStartStep = await applyGeneratorResume({
+    ctx,
+    blockName,
+    toolset,
+    initialPrelude,
+    onMessages: (m) => { messages = m; },
+    onStep: (s) => { steps.push(s); },
+  });
+  if (resumeStartStep !== undefined) {
+    startStepNumber = resumeStartStep;
+  }
+
+  for (let stepNumber = startStepNumber; stepNumber < params.maxSteps; stepNumber += 1) {
     throwIfAborted(ctx);
     const prep = await applyOwnedPrepareStep({
       prepareStep: params.prepareStep,
@@ -1535,7 +1848,21 @@ async function runOwnedGenerateLoop(params: {
       break;
     }
 
-    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset, activeToolNames);
+    // Persist the step's tool-call metadata + buffered text BEFORE dispatching
+    // any tool (FIX-814), so a crash between the model step returning and tool
+    // dispatch — and any later resume — is recoverable without re-calling the
+    // model. Step 0 also carries the compiled prelude.
+    await emitGeneratorStep(
+      ctx,
+      stepNumber,
+      step.text,
+      frameworkCalls,
+      toolset,
+      stepNumber === 0 ? initialPrelude : undefined,
+      stepNumber === 0 ? params.systemPrefixCount : undefined,
+    );
+
+    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset, activeToolNames, stepNumber);
     messages = [...messages, ...(await buildOwnedStepMessages(step, settled, ctx))];
     steps.push({
       text: step.text,
@@ -2021,7 +2348,8 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
   agentName: string | undefined,
   prepareStep?: PrepareStepFn,
   resolvedProviderOpts?: Record<string, unknown>,
-  resolvedCaching?: CachingConfig
+  resolvedCaching?: CachingConfig,
+  systemPrefixCount?: number,
 ): Promise<TOutput> {
   const s = createStreamEmissionState(model, ctx, blockName, itemVisibility, agentName);
   const toolset = compileOwnedLoopToolset(
@@ -2034,12 +2362,28 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
   );
 
   let messages = initialMessages;
+  const initialPrelude = initialMessages;
   const steps: GeneratorStepResult[] = [];
   let usage: GeneratorModelUsage | undefined;
   let lastFinish: GeneratorModelResult | undefined;
   let activeToolNames: string[] | undefined;
 
-  for (let stepNumber = 0; stepNumber < maxSteps; stepNumber += 1) {
+  // Resume pre-phase (FIX-814) — see `applyGeneratorResume` / the non-streaming
+  // twin. Streaming re-emission of the reconstructed turns onto the wire is
+  // out of scope for this change: reconstructed prior turns seed the model
+  // conversation but are not re-streamed to the client.
+  let startStepNumber = 0;
+  const resumeStartStep = await applyGeneratorResume({
+    ctx,
+    blockName,
+    toolset,
+    initialPrelude,
+    onMessages: (m) => { messages = m; },
+    onStep: (st) => { steps.push(st); },
+  });
+  if (resumeStartStep !== undefined) startStepNumber = resumeStartStep;
+
+  for (let stepNumber = startStepNumber; stepNumber < maxSteps; stepNumber += 1) {
     throwIfAborted(ctx);
     const prep = await applyOwnedPrepareStep({
       prepareStep,
@@ -2095,7 +2439,19 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
       break;
     }
 
-    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset, activeToolNames);
+    // Persist the step's tool-call metadata + buffered text BEFORE dispatch
+    // (FIX-814) — same rationale as the non-streaming twin.
+    await emitGeneratorStep(
+      ctx,
+      stepNumber,
+      stepFinal?.text,
+      frameworkCalls,
+      toolset,
+      stepNumber === 0 ? initialPrelude : undefined,
+      stepNumber === 0 ? systemPrefixCount : undefined,
+    );
+
+    const settled = await executeOwnedStepToolCalls(frameworkCalls, toolset, activeToolNames, stepNumber);
 
     // Completed tool_call_progress items for successful calls, synthesized
     // through the same handler the legacy stream's `tool_result` chunks use.
@@ -2447,13 +2803,26 @@ export function generator<
 
       let prepareStepFn: PrepareStepFn | undefined;
       if (hasDynamicPrompt || hasDynamicContext || hasDynamicTools) {
+        // On resume the loop seeds `messages` from the PERSISTED step-0 prelude
+        // and starts past step 0, so `prepareStep`'s first slice must use that
+        // prelude's persisted prefix length — not the freshly-assembled
+        // `systemPrefixCount`, which a dynamic prompt/context could have changed
+        // during the approval wait (FIX-814). Falls back to the fresh count on a
+        // normal (non-resume) run.
+        const replayLog = (ctx as { _replayLog?: ReplayLog })._replayLog;
+        const persistedPrefixCount = replayLog !== undefined
+          ? readPersistedPreludePrefixCount(
+              replayLog.items() as readonly RuntimeItem[],
+              `${ctx.request.identity.id}:${ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH}`,
+            )
+          : undefined;
         // AI SDK 7 carry-forward: a returned `messages` override becomes the
         // input of later steps, so the prefix at the head of `currentMessages`
         // is whatever this callback last returned — not the assembly-time
         // prefix. Track the length of the prefix we last wrote so every step
         // slices off exactly that prefix; slicing by `systemPrefixCount` would
         // leak stale context whenever the fresh prefix length differs.
-        let currentPrefixCount = systemPrefixCount;
+        let currentPrefixCount = persistedPrefixCount ?? systemPrefixCount;
         prepareStepFn = async ({ stepNumber, messages: currentMessages, steps: _steps }) => {
           if (stepNumber === 0) {
             // Fresh loop (also after a fallback retry re-enters at step 0):
@@ -2595,7 +2964,8 @@ export function generator<
               agentName,
               prepareStepFn,
               resolvedProviderOpts,
-              resolvedCaching
+              resolvedCaching,
+              systemPrefixCount
             );
           }
           return await executeStreamingGeneration(
@@ -2662,6 +3032,7 @@ export function generator<
               prepareStep: prepareStepFn,
               providerOptions: resolvedProviderOpts,
               caching: resolvedCaching,
+              systemPrefixCount,
             })
           : await (async () => {
               const legacyTools = compileLegacyTools();

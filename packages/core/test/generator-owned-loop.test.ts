@@ -226,7 +226,7 @@ describe("generator owned step loop — non-streaming", () => {
     ]);
   });
 
-  it("turns a tool's SuspensionError into a model-visible failed result (no suspension in PR2)", async () => {
+  it("propagates a tool's SuspensionError out of the owned loop (FIX-814 PR3)", async () => {
     const gate = handler({
       name: "gated-tool",
       inputSchema: z.object({}),
@@ -262,26 +262,144 @@ describe("generator owned step loop — non-streaming", () => {
       tools: [gate],
     });
 
-    // The run COMPLETES — the suspension is swallowed as an ordinary tool
-    // error until PR3 wires propagation.
-    await expect(runForTest(block, {}, ctx)).resolves.toBe("carried on");
+    // PR3: the SuspensionError propagates out to runAction (the request
+    // suspends); the model is NOT called a second time.
+    await expect(runForTest(block, {}, ctx)).rejects.toBeInstanceOf(SuspensionError);
+    expect(seen).toHaveLength(1);
 
-    // Model-visible failed tool result on the next step.
-    const results = toolMessages(seen[1]!.messages).map(
-      (m) => (m.content as Array<Record<string, unknown>>)[0]!
-    );
-    expect(results).toHaveLength(1);
-    expect(results[0]!.output).toEqual({
-      type: "error-text",
-      value: "Flow suspended: approval",
-    });
-
-    // Durable failed tool_output emitted, same as the legacy SDK path.
+    // The suspending tool still leaves a durable failed tool_output, now
+    // stamped with the SUSPENSION discriminator so resume can classify it.
     const toolOutputs = emitted.filter(
       (e) => e.type === "item.done" && e.item?.type === "tool_output"
     );
     expect(toolOutputs).toHaveLength(1);
     expect(toolOutputs[0]!.item!.status).toBe("failed");
+    expect((toolOutputs[0]!.item!.error as { code?: string }).code).toBe("SUSPENSION");
+  });
+
+  it("emits a generator_step artifact before dispatching a step's tools (FIX-814)", async () => {
+    const tool = handler({
+      name: "do-thing",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+    });
+    const { model } = stepModel([
+      () => ({
+        toolCalls: [{ toolCallId: "c1", toolName: "do-thing", args: { a: 1 } }],
+        finishReason: "tool-calls",
+      }),
+      () => ({ text: "done", finishReason: "stop" }),
+    ]);
+    const emitted: Array<{ type: string; item?: Record<string, unknown> }> = [];
+    const ctx = createMockContext({
+      response: {
+        emit: (event: unknown) => {
+          emitted.push(event as { type: string; item?: Record<string, unknown> });
+        },
+        getItems: () => emitted.filter((e) => e.item).map((e) => e.item),
+      } as never,
+    });
+    const block = generator({ name: "artifact-gen", model, prompt: "p", tools: [tool] });
+    await runForTest(block, {}, ctx);
+
+    const steps = emitted.filter(
+      (e) => e.type === "item.done" && e.item?.type === "generator_step",
+    );
+    expect(steps).toHaveLength(1);
+    const art = steps[0]!.item!;
+    expect(art.stepNumber).toBe(0);
+    expect((art.toolCalls as Array<{ toolName: string; alias: string }>)[0]).toMatchObject({
+      toolCallId: "c1",
+      toolName: "do-thing",
+      alias: "do-thing",
+    });
+    // Step 0 carries the compiled prelude.
+    expect(Array.isArray(art.prelude)).toBe(true);
+
+    // Ordering: the generator_step artifact is added before the tool_output.
+    const addedTypes = emitted
+      .filter((e) => e.type === "item.added" && (e.item?.type === "generator_step" || e.item?.type === "tool_output"))
+      .map((e) => e.item!.type);
+    expect(addedTypes[0]).toBe("generator_step");
+    expect(addedTypes).toContain("tool_output");
+  });
+
+  it("settles all siblings before surfacing, and surfaces the FIRST suspension (first-wins)", async () => {
+    const okTool = handler({
+      name: "ok-tool",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ v: z.number() }),
+      execute: () => ({ v: 1 }),
+    });
+    const gateA = handler({
+      name: "gate-a",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: () => {
+        throw new SuspensionError({ suspensionId: "A", reason: "approval" });
+      },
+    });
+    const gateB = handler({
+      name: "gate-b",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: () => {
+        throw new SuspensionError({ suspensionId: "B", reason: "approval" });
+      },
+    });
+
+    const { model, seen } = stepModel([
+      () => ({
+        toolCalls: [
+          { toolCallId: "c1", toolName: "ok-tool", args: {} },
+          { toolCallId: "c2", toolName: "gate-a", args: {} },
+          { toolCallId: "c3", toolName: "gate-b", args: {} },
+        ],
+        finishReason: "tool-calls",
+      }),
+    ]);
+
+    const emitted: Array<{ type: string; item?: Record<string, unknown> }> = [];
+    const ctx = createMockContext({
+      response: {
+        emit: (event: unknown) => {
+          emitted.push(event as { type: string; item?: Record<string, unknown> });
+        },
+        getItems: () => emitted.filter((e) => e.item).map((e) => e.item),
+      } as never,
+    });
+
+    const block = generator({
+      name: "multi-gate",
+      model,
+      prompt: "p",
+      tools: [okTool, gateA, gateB],
+    });
+
+    const err = await runForTest(block, {}, ctx).then(
+      () => undefined,
+      (e) => e,
+    );
+    // First suspension by call order (gate-a / "A") wins.
+    expect(err).toBeInstanceOf(SuspensionError);
+    expect((err as SuspensionError).suspensionId).toBe("A");
+    // Model not re-called.
+    expect(seen).toHaveLength(1);
+
+    const toolOutputs = emitted.filter(
+      (e) => e.type === "item.done" && e.item?.type === "tool_output",
+    );
+    const byBlock = Object.fromEntries(
+      toolOutputs.map((e) => [e.item!.blockName as string, e.item!]),
+    );
+    // The completed sibling settled and was recorded.
+    expect(byBlock["ok-tool"]!.status).toBe("completed");
+    // Both suspending siblings left SUSPENSION-coded failed outputs.
+    expect(byBlock["gate-a"]!.status).toBe("failed");
+    expect((byBlock["gate-a"]!.error as { code?: string }).code).toBe("SUSPENSION");
+    expect(byBlock["gate-b"]!.status).toBe("failed");
+    expect((byBlock["gate-b"]!.error as { code?: string }).code).toBe("SUSPENSION");
   });
 
   it("terminates the loop on the surfacing step when loop.runTools is false", async () => {
@@ -1198,14 +1316,14 @@ describe("generator owned step loop — streaming", () => {
   });
 });
 
-describe("createFallbackModel — no step methods (single candidate owns the loop)", () => {
+describe("createFallbackModel — step-method forwarding (FIX-814 PR3)", () => {
   const okStepModel = (modelId: string, text: string): GeneratorModel => ({
     modelId,
     async generate() {
       return { text: `${text}-legacy` };
     },
-    // A step-capable candidate — but the fallback wrapper must NOT surface
-    // step methods, so a generation over the group uses the legacy loop.
+    // A step-capable candidate. PR3 forwards the step methods over the group so
+    // fallback groups can drive the owned per-step loop (and in-loop suspension).
     async generateStep() {
       return { text, finishReason: "stop" };
     },
@@ -1219,12 +1337,10 @@ describe("createFallbackModel — no step methods (single candidate owns the loo
     },
   });
 
-  it("never exposes generateStep/streamStep even when every candidate implements them", () => {
-    // A step method called once per step would restart fallback from the
-    // first candidate each step, so a candidate could be handed another
-    // provider's turn history mid-loop. Dropping the methods forces the
-    // legacy `generate({ maxSteps })` path, where one candidate owns the
-    // whole loop. Candidate-pinning for owned loops is deferred to PR3.
+  it("exposes generateStep/streamStep when candidates implement them", () => {
+    // PR3: the step methods are forwarded (over the candidate subset that
+    // implements them), so a generator over a fallback group takes the
+    // framework-owned per-step loop rather than the legacy `generate({ maxSteps })`.
     const fallback = createFallbackModel({
       groupName: "caps",
       models: [
@@ -1233,37 +1349,52 @@ describe("createFallbackModel — no step methods (single candidate owns the loo
       ],
       retryPolicy: { maxAttemptsPerModel: 1, baseDelayMs: 0, maxDelayMs: 0 },
     });
+    expect(fallback.generateStep).toBeTypeOf("function");
+    expect(fallback.streamStep).toBeTypeOf("function");
+  });
+
+  it("omits generateStep/streamStep when no candidate implements them", () => {
+    const legacyOnly: GeneratorModel = {
+      modelId: "legacy",
+      async generate() {
+        return { text: "x" };
+      },
+    };
+    const fallback = createFallbackModel({
+      groupName: "legacy-grp",
+      models: [{ modelId: "legacy", providerName: "p", model: legacyOnly }],
+      retryPolicy: { maxAttemptsPerModel: 1, baseDelayMs: 0, maxDelayMs: 0 },
+    });
     expect(fallback.generateStep).toBeUndefined();
     expect(fallback.streamStep).toBeUndefined();
   });
 
-  it("a generator with a model array takes the legacy path (generateStep undefined → SDK-owned loop)", async () => {
-    // The generator routes on `model.generateStep === undefined`. A fallback
-    // group therefore drives the legacy `generate({ maxSteps })` loop; assert
-    // the candidate's `generate` (not `generateStep`) is what runs.
-    let sawMaxSteps: number | undefined;
-    const candidate: GeneratorModel = {
-      modelId: "cand",
-      async generate(options) {
-        sawMaxSteps = options.maxSteps;
-        return { text: "from-generate" };
+  it("forwarded generateStep tries candidates in order and fires onResolved", async () => {
+    const failing: GeneratorModel = {
+      modelId: "bad",
+      async generate() {
+        return { text: "unused" };
       },
       async generateStep() {
-        throw new Error("owned loop must not run for a fallback group");
+        const err = new Error("rate limited") as Error & { statusCode: number };
+        err.statusCode = 429;
+        throw err;
       },
     };
-    const ctx = createMockContext({
-      resolveModel: (() => candidate) as never,
+    const resolved: string[] = [];
+    const fallback = createFallbackModel({
+      groupName: "step-grp",
+      models: [
+        { modelId: "bad", providerName: "p", model: failing },
+        { modelId: "good", providerName: "p", model: okStepModel("good", "WIN") },
+      ],
+      retryPolicy: { maxAttemptsPerModel: 1, baseDelayMs: 0, maxDelayMs: 0 },
+      onResolved: (entry) => resolved.push(entry.modelId),
     });
 
-    const block = generator({
-      name: "fallback-array-gen",
-      model: ["primary/model", "backup/model"],
-      prompt: "p",
-    });
-
-    await expect(runForTest(block, {}, ctx)).resolves.toBe("from-generate");
-    expect(sawMaxSteps).toBe(8);
+    const step = await fallback.generateStep!({ messages: [] });
+    expect(step.text).toBe("WIN");
+    expect(resolved).toEqual(["good"]);
   });
 
   it("still falls through failing candidates via generate and fires onResolved", async () => {

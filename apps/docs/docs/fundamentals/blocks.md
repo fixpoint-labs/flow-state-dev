@@ -149,6 +149,8 @@ const agent = generator({
 
 When the LLM calls `deep-research`, the framework runs the full sequencer pipeline, collects the output, and feeds it back as the tool result — all within the generator's tool loop. Your tools can be as sophisticated as any other part of your workflow.
 
+A tool can also pause for a human before it runs: call `ctx.suspend()` inside it to gate the call for approval, and the request resumes past it. See [Generator and router suspend/resume](/docs/advanced/generator-and-router-suspend-resume).
+
 #### Showing a deterministic call as a tool: `.asTool()`
 
 Sometimes you already know what the tool inputs are. An analyst-style flow may fetch its data up front (deterministic, parallel, no LLM in the loop) and only call the LLM for synthesis. The fetches no longer go through a generator's tool loop, so they no longer produce the tool pills the LLM-driven path produces. The transcript shows nothing for the work that just happened.
@@ -465,6 +467,8 @@ const modeRouter = router({
   },
 });
 ```
+
+If the chosen branch suspends for a human, resume keeps that same branch — the selector re-runs and is validated against the recorded decision. See [Generator and router suspend/resume](/docs/advanced/generator-and-router-suspend-resume).
 
 #### `utility.keyedRouter` — dispatch by string key
 

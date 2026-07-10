@@ -274,6 +274,20 @@ export type ToolOutputItem = OutputItemBase & {
   type: "tool_output";
   blockName: string;
   output: unknown;
+  /**
+   * The model-facing tool result, computed ONCE when the tool settles during
+   * the live run via the tool's `mapModelOutput` mapper (FIX-814). Present
+   * ONLY when the tool declares a mapper — its presence means "a mapper
+   * produced this value," which lets resume reproduce the live content-envelope
+   * shape exactly (`toolResultOutputForModel(output, modelOutput)`) rather than
+   * a bare text/json result. Resume reads it back verbatim, so the mapper is
+   * never recomputed on resume (state/code could have drifted across the
+   * suspend window, which would hand the resumed model a different result than
+   * the original step saw). Absent when no mapper is declared, on the legacy
+   * (non-owned-loop) tool path, and on items persisted before this field
+   * existed; readers fall back to `output`.
+   */
+  modelOutput?: unknown;
   /** Resolved identity of the generator that invoked this tool. */
   model?: ModelIdentity;
   toolCall: {
@@ -296,10 +310,30 @@ export type ToolOutputItem = OutputItemBase & {
     alias?: string;
     arguments: string;
     generatorBlock: string;
+    /**
+     * Model step index this call belongs to within the generator's owned tool
+     * loop (FIX-814). Resume replay and canonical collapse key by generator
+     * path + `stepNumber` + `callId`, so a provider call id reused across two
+     * steps of one generator run stays distinct. Absent on items persisted
+     * before this field existed and on the legacy (non-owned-loop) `.asTool()`
+     * path (a single call, no steps); readers treat absence as "unstepped" and
+     * fall back to call-id-only keying.
+     */
+    stepNumber?: number;
   };
   /** Present when the tool execution failed (status will be "failed"). */
   error?: {
     message: string;
+    /**
+     * Failure discriminator. Set to `"SUSPENSION"` when the failed
+     * `tool_output` was produced by a tool that called `ctx.suspend()` (a
+     * winning-but-arbitrated-away or losing concurrent suspension) rather than
+     * by an ordinary thrown error (FIX-814). Resume reconstruction uses this to
+     * tell a still-pending/losing suspension apart from a genuine tool failure:
+     * a `"SUSPENSION"`-coded failure re-enters its gate on resume; any other
+     * failure stays a model-visible error. Otherwise carries the thrown error's
+     * own `code` when present.
+     */
     code?: string;
     /**
      * Open structured payload attached at failure time. Shape matches
@@ -520,6 +554,66 @@ export type StateSnapshotItem = OutputItemBase & {
   /** When true, this is the final emission for the sequencer run; durability
    *  middleware should `delete` rather than `write`. */
   terminal?: boolean;
+};
+
+/**
+ * Replay-only per-step record of a generator's owned tool loop (FIX-814).
+ *
+ * Written by the framework-owned generator loop BEFORE it dispatches a
+ * tool-calling step's tools, one per tool-calling step, keyed by the
+ * generator's logical path + `stepNumber` (accumulating — never overwritten).
+ * It is the ONLY durable record of a step's assistant turn: per the
+ * byte-identical-emissions rule the loop buffers per-step text in memory and
+ * never emits an assistant `message`/`reasoning` per step, and `tool_output`
+ * only becomes durable once a specific call starts dispatching. This artifact
+ * closes both gaps for resume:
+ *   - it carries the step's buffered pre-tool `text` so a turn that emitted
+ *     assistant text then suspended reconstructs with that text intact;
+ *   - it carries the step's full `toolCalls` array (ids/names/aliases/args) so
+ *     reconstruction can group by step (one assistant message per step) and a
+ *     crash between the model step returning and any `tool_output.item.added`
+ *     is still recoverable without re-calling the model.
+ * On step 0 it also carries the compiled initial `prelude` (the messages from
+ * `assembleMessages`) so resume reads the original prompt/context rather than
+ * re-running resolvers that may have observed different state after the
+ * human-approval wait.
+ *
+ * Visibility is `{ client: false, history: false }` (a `TRACE_TYPE`): it is
+ * purely a resume substrate and must never surface via `GET`/`useSession` or
+ * enter LLM history. `collapseToCanonicalLog` retains it (like `block_trace`)
+ * so it survives across resume cycles.
+ */
+export type GeneratorStepItem = OutputItemBase & {
+  type: "generator_step";
+  /** The generator block's logical instance id (`${requestId}:${path}:${attempt}`). */
+  blockInstanceId: string;
+  /** 0-based index of this model step within the generator's owned loop. */
+  stepNumber: number;
+  /** The step's buffered pre-tool assistant text/reasoning, when any. */
+  text?: string;
+  /** The step's full requested tool-call array, in call order. */
+  toolCalls: Array<{
+    toolCallId: string;
+    /** Framework block name of the called tool. */
+    toolName: string;
+    /** Model-facing disambiguated alias the tool was compiled under. */
+    alias: string;
+    /** Parsed call arguments as issued by the model. */
+    arguments: unknown;
+  }>;
+  /**
+   * The compiled initial messages (`assembleMessages` output). Present ONLY on
+   * the step-0 artifact; resume reads it instead of recomputing the prelude.
+   */
+  prelude?: unknown[];
+  /**
+   * The number of leading system-prefix messages in `prelude` (FIX-814).
+   * Present ONLY on the step-0 artifact. On resume the loop seeds `messages`
+   * from the persisted prelude, so `prepareStep` must slice off THIS prefix
+   * length — not a freshly-assembled one, which can differ if a dynamic
+   * prompt/context changed the prefix during the approval wait.
+   */
+  systemPrefixCount?: number;
 };
 
 /**

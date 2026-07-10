@@ -41,10 +41,12 @@ const chatAgentFlow = defineFlow({
     run: {
       block: runSequencer,
       userMessage: (input) => input.message,
-      // Concurrency demo (FIX-837): a second `run` on the same session while one
-      // is in flight is dropped with a 409 (the caller gets the in-flight
-      // requestId to tail). Models the "don't start a second turn mid-turn" case.
-      concurrency: "reject",
+      // A second `run` on the same session queues behind the first (FIFO)
+      // instead of being dropped. The first turn holds the session key until its
+      // background `.work()` tasks (memory capture, auto-title) drain — the
+      // "Tidying up…" phase — so a fast follow-up would otherwise 409 under a
+      // `reject` policy even though the user-facing answer is already done.
+      concurrency: "queue",
     },
     saveArtifact: {
       block: updateArtifact,
