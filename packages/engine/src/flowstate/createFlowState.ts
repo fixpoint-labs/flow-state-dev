@@ -282,7 +282,8 @@ class InternalFlowState<TSettings extends object>
     const runtime: FlowStateRuntime = {
       registry: this.#registry,
       stores,
-      runtimeConfig
+      runtimeConfig,
+      ...(this.#options.chat !== undefined ? { chat: this.#options.chat } : {})
     };
 
     // Execution-backend wiring: the adapter gets the SAME resolved runtime
