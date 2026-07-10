@@ -21,7 +21,7 @@ import { forceModelResolver } from "../model-override";
 import { CliError } from "../resolve-block";
 import { EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 import { createHarnessState, bindTarget } from "../chat/state";
-import { listTargets, type FlowActionTarget } from "../chat/targets";
+import { listTargets, pickTarget, type FlowActionTarget } from "../chat/targets";
 import { createBuiltinRegistry } from "../chat/registry";
 import { createPlainTextRenderer } from "../chat/render";
 import { runChatLoop, type SessionGuard } from "../chat/loop";
@@ -89,23 +89,16 @@ function resolveConfigDefaultTarget(spec: string, targets: FlowActionTarget[]): 
   const dot = spec.indexOf(".");
   const flowKind = dot === -1 ? spec : spec.slice(0, dot);
   const actionName = dot === -1 ? undefined : spec.slice(dot + 1);
-  const forKind = targets.filter((t) => t.flowKind === flowKind);
-  if (forKind.length === 0) {
-    throw new CliError(`chat.default "${spec}" names unknown flow "${flowKind}".`, EXIT_CONFIG_ERROR);
+  const picked = pickTarget(targets, flowKind, actionName);
+  if (picked.ok) return picked.target;
+  switch (picked.reason) {
+    case "unknown-flow":
+      throw new CliError(`chat.default "${spec}" names unknown flow "${flowKind}".`, EXIT_CONFIG_ERROR);
+    case "unknown-action":
+      throw new CliError(`chat.default "${spec}": flow "${flowKind}" has no action "${actionName}". Actions: ${picked.actions.join(", ")}`, EXIT_CONFIG_ERROR);
+    case "ambiguous":
+      throw new CliError(`chat.default "${spec}" is ambiguous; use <flow>.<action>. Actions: ${picked.actions.join(", ")}`, EXIT_CONFIG_ERROR);
   }
-  if (actionName !== undefined) {
-    const found = forKind.find((t) => t.actionName === actionName);
-    if (found === undefined) {
-      const actions = forKind.map((t) => t.actionName).join(", ");
-      throw new CliError(`chat.default "${spec}": flow "${flowKind}" has no action "${actionName}". Actions: ${actions}`, EXIT_CONFIG_ERROR);
-    }
-    return found;
-  }
-  if (forKind.length > 1) {
-    const actions = forKind.map((t) => t.actionName).join(", ");
-    throw new CliError(`chat.default "${spec}" is ambiguous; use <flow>.<action>. Actions: ${actions}`, EXIT_CONFIG_ERROR);
-  }
-  return forKind[0]!;
 }
 
 /** Resolve the initially bound target from positional args, config, or auto-bind. */
@@ -116,24 +109,16 @@ function resolveInitialTarget(
   configDefault: string | undefined,
 ): FlowActionTarget | undefined {
   if (flowKind !== undefined) {
-    const forKind = targets.filter((t) => t.flowKind === flowKind);
-    if (forKind.length === 0) {
-      const kinds = [...new Set(targets.map((t) => t.flowKind))].join(", ") || "(none)";
-      throw new CliError(`Flow "${flowKind}" not found. Available flows: ${kinds}`, EXIT_DISCOVERY_ERROR);
+    const picked = pickTarget(targets, flowKind, actionName);
+    if (picked.ok) return picked.target;
+    switch (picked.reason) {
+      case "unknown-flow":
+        throw new CliError(`Flow "${flowKind}" not found. Available flows: ${picked.available.join(", ") || "(none)"}`, EXIT_DISCOVERY_ERROR);
+      case "unknown-action":
+        throw new CliError(`Action "${actionName}" not found on flow "${flowKind}". Available actions: ${picked.actions.join(", ")}`, EXIT_INVALID_ARGS);
+      case "ambiguous":
+        throw new CliError(`Flow "${flowKind}" has multiple actions: ${picked.actions.join(", ")}. Specify one: fsdev chat ${flowKind} <action>`, EXIT_INVALID_ARGS);
     }
-    if (actionName !== undefined) {
-      const found = forKind.find((t) => t.actionName === actionName);
-      if (found === undefined) {
-        const actions = forKind.map((t) => t.actionName).join(", ");
-        throw new CliError(`Action "${actionName}" not found on flow "${flowKind}". Available actions: ${actions}`, EXIT_INVALID_ARGS);
-      }
-      return found;
-    }
-    if (forKind.length > 1) {
-      const actions = forKind.map((t) => t.actionName).join(", ");
-      throw new CliError(`Flow "${flowKind}" has multiple actions: ${actions}. Specify one: fsdev chat ${flowKind} <action>`, EXIT_INVALID_ARGS);
-    }
-    return forKind[0]!;
   }
   if (configDefault !== undefined) return resolveConfigDefaultTarget(configDefault, targets);
   // Exactly one flow + action → auto-bind. Otherwise start unbound.

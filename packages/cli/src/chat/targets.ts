@@ -1,10 +1,7 @@
 /**
  * Target model and dispatch resolution for `fsdev chat`. Pure — no I/O.
  *
- * A "target" is what a message routes to. Today the only kind is a
- * `(flowKind, action)` pair; the `Target` union and the exhaustive `Dispatch`
- * switch are shaped so later kinds ("skill", "workstream") slot in without a
- * redesign.
+ * A "target" is what a message routes to: a `(flowKind, action)` pair.
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { ParsedInput } from "./parse";
@@ -13,17 +10,9 @@ import type { BuiltinCommand } from "./registry";
 
 /** A flow action, addressed by flow kind + action name. */
 export interface FlowActionTarget {
-  kind: "flow-action";
   flowKind: string;
   actionName: string;
 }
-
-/**
- * The set of resolvable targets. Future kinds extend this union; `Dispatch` and
- * turn execution switch exhaustively over `Target["kind"]` so additions are
- * compile-checked.
- */
-export type Target = FlowActionTarget;
 
 /** What the loop should do with a parsed line, once resolved against state. */
 export type Dispatch =
@@ -53,10 +42,45 @@ export function listTargets(registry: {
     const instance = registry.get(flowKind);
     if (instance === undefined) continue;
     for (const actionName of Object.keys(instance.actions)) {
-      targets.push({ kind: "flow-action", flowKind, actionName });
+      targets.push({ flowKind, actionName });
     }
   }
   return targets;
+}
+
+/** Outcome of resolving a `flowKind` (+ optional action) against a target list. */
+export type PickTargetResult =
+  | { ok: true; target: FlowActionTarget }
+  | { ok: false; reason: "unknown-flow"; flowKind: string; available: string[] }
+  | { ok: false; reason: "unknown-action"; flowKind: string; actionName: string; actions: string[] }
+  | { ok: false; reason: "ambiguous"; flowKind: string; actions: string[] };
+
+/**
+ * Resolve a `flowKind` (+ optional action) against the enumerated targets. Pure:
+ * returns a structured `reason` on failure so each caller — config default,
+ * positional startup binding, `/use` — formats the error under its own taxonomy
+ * (config error vs discovery/invalid-args exit code vs a builtin `ok: false`).
+ */
+export function pickTarget(
+  targets: FlowActionTarget[],
+  flowKind: string,
+  actionName: string | undefined,
+): PickTargetResult {
+  const forKind = targets.filter((t) => t.flowKind === flowKind);
+  if (forKind.length === 0) {
+    return { ok: false, reason: "unknown-flow", flowKind, available: [...new Set(targets.map((t) => t.flowKind))] };
+  }
+  if (actionName !== undefined) {
+    const found = forKind.find((t) => t.actionName === actionName);
+    if (found === undefined) {
+      return { ok: false, reason: "unknown-action", flowKind, actionName, actions: forKind.map((t) => t.actionName) };
+    }
+    return { ok: true, target: found };
+  }
+  if (forKind.length > 1) {
+    return { ok: false, reason: "ambiguous", flowKind, actions: forKind.map((t) => t.actionName) };
+  }
+  return { ok: true, target: forKind[0]! };
 }
 
 /** Resolve a parsed line into a dispatch decision against the current state. */

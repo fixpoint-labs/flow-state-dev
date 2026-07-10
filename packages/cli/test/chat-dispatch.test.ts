@@ -19,7 +19,6 @@ function stubRegistry(flows: Array<{ kind: string; actions: string[] }>) {
 }
 
 const target = (flowKind: string, actionName: string): FlowActionTarget => ({
-  kind: "flow-action",
   flowKind,
   actionName,
 });

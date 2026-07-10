@@ -18,7 +18,7 @@ describe("decideIdleInterrupt", () => {
 
 describe("runChatLoop — per-turn session guard", () => {
   it("rotates the flow's session and fails the turn when the guard rejects mid-run", async () => {
-    const target: FlowActionTarget = { kind: "flow-action", flowKind: "chatbot", actionName: "chat" };
+    const target: FlowActionTarget = { flowKind: "chatbot", actionName: "chat" };
     const state = createHarnessState();
     const { sessionId: bound } = bindTarget(state, target);
 

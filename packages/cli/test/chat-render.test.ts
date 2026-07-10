@@ -10,7 +10,7 @@ function sink() {
   return { stream, text: () => buf };
 }
 
-const target: FlowActionTarget = { kind: "flow-action", flowKind: "hello-chat", actionName: "chat" };
+const target: FlowActionTarget = { flowKind: "hello-chat", actionName: "chat" };
 
 // Minimal event builders — only the fields the renderer reads.
 const added = (item: unknown): RequestStreamEventWithId => ({ type: "item.added", item } as any);

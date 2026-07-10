@@ -18,7 +18,7 @@ function sink() {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const chatbotTarget: FlowActionTarget = { kind: "flow-action", flowKind: "chatbot", actionName: "chat" };
+const chatbotTarget: FlowActionTarget = { flowKind: "chatbot", actionName: "chat" };
 
 /** A flow whose action hangs until its abort signal fires. */
 function slowFlow() {
@@ -87,7 +87,7 @@ describe("executeTurn", () => {
 
     const turn = executeTurn({
       flow: slowFlow(),
-      target: { kind: "flow-action", flowKind: "slow", actionName: "chat" },
+      target: { flowKind: "slow", actionName: "chat" },
       text: "hang",
       sessionId: "sess_abort",
       userId: "cli-user",
@@ -116,7 +116,7 @@ describe("executeTurn", () => {
 
     const turn = executeTurn({
       flow: slowFlow(),
-      target: { kind: "flow-action", flowKind: "slow", actionName: "chat" },
+      target: { flowKind: "slow", actionName: "chat" },
       text: "hang",
       sessionId: "sess_race",
       userId: "cli-user",
@@ -148,7 +148,7 @@ describe("executeTurn", () => {
     // Abort a slow turn first.
     const slow = executeTurn({
       flow: slowFlow(),
-      target: { kind: "flow-action", flowKind: "slow", actionName: "chat" },
+      target: { flowKind: "slow", actionName: "chat" },
       text: "hang",
       sessionId: "sess_recover_slow",
       userId: "cli-user",
@@ -200,7 +200,7 @@ describe("executeTurn", () => {
 
     const result = await executeTurn({
       flow: strictFlow,
-      target: { kind: "flow-action", flowKind: "strict", actionName: "run" },
+      target: { flowKind: "strict", actionName: "run" },
       text: "hi",
       sessionId: "sess_strict",
       userId: "cli-user",

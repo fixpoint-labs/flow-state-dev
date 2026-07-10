@@ -5,7 +5,7 @@
  * loop injects the runtime snapshot, session-guard callback, and writer, so the
  * registry never touches stores directly (tests stub those).
  */
-import type { FlowActionTarget } from "./targets";
+import { pickTarget, type FlowActionTarget } from "./targets";
 import { type HarnessState, bindTarget, newSessionId, activeSessionId } from "./state";
 
 export interface BuiltinCommand {
@@ -87,31 +87,20 @@ const use: BuiltinCommand = {
     const parts = args.trim().split(/\s+/).filter(Boolean);
     if (parts.length === 0) return { ok: false, message: "usage: /use <flow> [action]" };
 
-    const flowKind = parts[0]!;
-    const requestedAction = parts[1];
-    const forKind = ctx.targets.filter((t) => t.flowKind === flowKind);
-    if (forKind.length === 0) {
-      const kinds = [...new Set(ctx.targets.map((t) => t.flowKind))].join(", ") || "(none)";
-      return { ok: false, message: `Unknown flow "${flowKind}". Available: ${kinds}` };
-    }
-
-    let target: FlowActionTarget;
-    if (requestedAction !== undefined) {
-      const found = forKind.find((t) => t.actionName === requestedAction);
-      if (found === undefined) {
-        const actions = forKind.map((t) => t.actionName).join(", ");
-        return { ok: false, message: `Flow "${flowKind}" has no action "${requestedAction}". Actions: ${actions}` };
+    const picked = pickTarget(ctx.targets, parts[0]!, parts[1]);
+    if (!picked.ok) {
+      switch (picked.reason) {
+        case "unknown-flow":
+          return { ok: false, message: `Unknown flow "${picked.flowKind}". Available: ${picked.available.join(", ") || "(none)"}` };
+        case "unknown-action":
+          return { ok: false, message: `Flow "${picked.flowKind}" has no action "${picked.actionName}". Actions: ${picked.actions.join(", ")}` };
+        case "ambiguous":
+          return { ok: false, message: `Flow "${picked.flowKind}" has multiple actions: ${picked.actions.join(", ")}. Pick one: /use ${picked.flowKind} <action>` };
       }
-      target = found;
-    } else if (forKind.length > 1) {
-      const actions = forKind.map((t) => t.actionName).join(", ");
-      return { ok: false, message: `Flow "${flowKind}" has multiple actions: ${actions}. Pick one: /use ${flowKind} <action>` };
-    } else {
-      target = forKind[0]!;
     }
 
-    const { sessionId, fresh } = bindTarget(ctx.state, target);
-    ctx.write(`Now chatting with ${target.flowKind} · ${target.actionName} (session ${sessionId}, ${fresh ? "new" : "resumed"}).`);
+    const { sessionId, fresh } = bindTarget(ctx.state, picked.target);
+    ctx.write(`Now chatting with ${picked.target.flowKind} · ${picked.target.actionName} (session ${sessionId}, ${fresh ? "new" : "resumed"}).`);
     return { ok: true };
   },
 };
