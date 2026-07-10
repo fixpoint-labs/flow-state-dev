@@ -41,10 +41,12 @@ export function GainsTaxesSection({
   onEditProfile,
 }: GainsTaxesSectionProps): ReactElement {
   // Household totals in USD. The "current year" is the estimate's tax year when
-  // present (the year the card below describes), else the calendar year. An
-  // empty book keeps the lifetime figure a real $0 (no disposals, no gain —
-  // matching the toolbar stat), while a missing current-year entry renders "—"
-  // (`byYear.get` is `| undefined`; `RealizedStat` takes `| null`).
+  // present (the year the card below describes), else the calendar year. A year
+  // with no disposals is a real $0 (known zero — "empty set is 0", the same
+  // reason the lifetime grandTotal reads $0 for an empty book), NOT "—": a
+  // genuinely-unknowable year still produces a `byYear` entry with a null gain,
+  // which renders "—" on its own. `byYear.get` is `| undefined` (year absent =
+  // zero disposals) — coalesce that to a zero total, matching the lifetime stat.
   const { currentYear, currentYearTotal, lifetimeTotal } = useMemo(() => {
     const totals = computeRealizedGainTotals(
       buildRealizedGainsRowModel(realizedGains),
@@ -53,7 +55,7 @@ export function GainsTaxesSection({
     const currentYear = estimate?.year ?? new Date().getFullYear();
     return {
       currentYear,
-      currentYearTotal: totals.byYear.get(currentYear) ?? null,
+      currentYearTotal: totals.byYear.get(currentYear) ?? { gain: 0, excludedCount: 0 },
       lifetimeTotal: totals.grandTotal,
     };
   }, [realizedGains, estimate]);

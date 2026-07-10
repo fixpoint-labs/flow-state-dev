@@ -485,8 +485,8 @@ the same `app` Postgres schema as accounts/holdings, reached through the same
   asserted from ignorance) and a per-account Income tab that includes closed
   positions (tagged `closed`). The Portfolio view's Accounts perspective is an
   account summary-card grid (value, cash, uP/L as $ and %, position count);
-  clicking a card opens `AccountDetail` with Holdings / Transactions / Income
-  tabs — there is no flat all-accounts table layout anymore.
+  clicking a card opens `AccountDetail` with Holdings / Transactions / Income /
+  Realized Gains tabs — there is no flat all-accounts table layout anymore.
 
 - **Holding-period term is classified PER LOT
   (`components/portfolio/holding-term.ts`).** The Holdings Term column reads
