@@ -11,7 +11,6 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Command } from "commander";
-import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   createFlowApiRouter,
   createFlowRegistry,
@@ -21,19 +20,11 @@ import {
 } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import {
-  discoverFlows,
-  getSearchedDirs,
-  formatImportFailureWarning,
-  formatFailedImportSection,
-  type DiscoverFlowsOptions,
-  type FlowImportFailure,
-} from "../resolve-flow";
-import { loadFsdevConfig } from "../load-config";
+import { formatFailedImportSection } from "../resolve-flow";
+import { resolveRuntimeSource } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR, EXIT_CONFIG_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
-import { loadEnvFiles, loadExplicitEnvFiles } from "../load-env";
 
 interface DevCommandOptions {
   port?: string;
@@ -92,35 +83,36 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     throw new CliError(`Invalid port: ${options.port}`, EXIT_CONFIG_ERROR);
   }
 
-  // 0. Load .env files before importing a config so its providers see env.
-  // Explicit --dotenv entries first (they outrank the cwd .env.local walk-up).
-  const cwd = options.cwd ?? process.cwd();
-  if (options.dotenv !== undefined) loadExplicitEnvFiles(cwd, options.dotenv);
-  loadEnvFiles(cwd);
-
-  // 1. Resolve the runtime source. With an fsdev.config.*, the dev server serves
-  // the app's own router (so the DevTool observes the app's real stores/flows);
-  // otherwise it discovers flows and builds a router over local SQLite stores.
-  const useConfig = options.config !== false;
-  const configPath = typeof options.config === "string" ? options.config : undefined;
-  if (useConfig) {
-    // fsdev dev is local-only: opt into the privileged debug surface and verbose
-    // tracing so the DevTool's Resources panel and per-step snapshots work. The
-    // config's FlowState builds its router lazily, so these must be set as env
-    // defaults *before* the config loads — createFlowApiRouter reads them when
-    // the FlowState doesn't pass an explicit value.
-    process.env.FSDEV_DEBUG_ENDPOINTS ??= "1";
-    process.env.FSDEV_TRACING_LEVEL ??= "verbose";
-  }
-  const loaded = useConfig ? await loadFsdevConfig({ cwd, configPath }) : undefined;
+  // 0-1. Load .env and resolve the runtime source (shared prelude). With an
+  // fsdev.config.*, the dev server serves the app's own router (so the DevTool
+  // observes the app's real stores/flows); otherwise it discovers flows and
+  // builds a router over local SQLite stores. `fsdev dev` is local-only: before
+  // the config loads, opt into the privileged debug surface and verbose tracing
+  // so the DevTool's Resources panel and per-step snapshots work. The config's
+  // FlowState builds its router lazily, so these must be env defaults set before
+  // the config loads (createFlowApiRouter reads them when the FlowState doesn't
+  // pass an explicit value) — and after env files, so a .env override still wins.
+  const resolved = await resolveRuntimeSource({
+    cwd: options.cwd,
+    config: options.config,
+    flowDir: options.flowDir,
+    dotenv: options.dotenv,
+    beforeConfigLoad: () => {
+      if (options.config !== false) {
+        process.env.FSDEV_DEBUG_ENDPOINTS ??= "1";
+        process.env.FSDEV_TRACING_LEVEL ??= "verbose";
+      }
+    },
+  });
 
   let serveApp: FlowState | FlowApiRouter;
   let flowNames: string[];
   let dataLine: string;
   let closeStores: (() => void) | undefined;
 
-  if (loaded !== undefined) {
+  if (resolved.source === "config") {
     // --- config path: serve the app's own FlowState ---
+    // (`--flow-dir` combined with a config is rejected by the prelude.)
     if (options.model !== undefined) {
       throw new CliError(
         "--model can't be combined with fsdev.config.*; the config builds the router with its own " +
@@ -128,59 +120,40 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
         EXIT_INVALID_ARGS,
       );
     }
-    if (options.flowDir !== undefined) {
-      throw new CliError(
-        "--flow-dir bypasses fsdev.config.*; pass --no-config to use directory discovery.",
-        EXIT_INVALID_ARGS,
-      );
-    }
     // serve() resolves getRouter() (triggering store init) and disposes the
     // FlowState on close(), so the dev command owns no stores in this path.
-    serveApp = loaded.flowState;
+    serveApp = resolved.flowState;
     // Resolve the runtime now so the banner lists flow KINDS (what `fsdev run`
     // takes as its argument), not the config's map keys. getRuntime is memoized,
     // so serve() reuses this resolution rather than initializing stores twice.
     let runtime;
     try {
-      runtime = await loaded.flowState.getRuntime();
+      runtime = await resolved.flowState.getRuntime();
     } catch (err) {
       // Store init opened (or partially opened) the app's pools before it
       // rejected; dispose so connections aren't leaked until process exit.
-      await loaded.flowState.dispose().catch(() => {});
+      await resolved.flowState.dispose().catch(() => {});
       throw new CliError(
-        `Failed to initialize fsdev config ${loaded.path}: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to initialize fsdev config ${resolved.configPath}: ${err instanceof Error ? err.message : String(err)}`,
         EXIT_CONFIG_ERROR,
       );
     }
     flowNames = [...new Set(runtime.registry.list().map((f) => f.kind))];
-    dataLine = `config: ${loaded.path}`;
+    dataLine = `config: ${resolved.configPath}`;
   } else {
     // --- discovery path: scan flows, build a router over local SQLite ---
-    // Import failures are warned to stderr unconditionally — diagnostics about
-    // broken modules, same category as CliError output.
-    const failures: FlowImportFailure[] = [];
-    const discoverOptions: DiscoverFlowsOptions = {
-      cwd: options.cwd,
-      ...(options.flowDir !== undefined ? { flowDirs: options.flowDir } : {}),
-      onImportFailed: (failure) => failures.push(failure),
-    };
-    const flows = await discoverFlows(discoverOptions);
-    for (const failure of failures) {
-      process.stderr.write(formatImportFailureWarning(failure));
-    }
-
-    if (flows.length === 0) {
-      const searched = getSearchedDirs(discoverOptions).join(", ");
+    if (resolved.flows.length === 0) {
+      const searched = resolved.searchedDirs.join(", ");
       throw new CliError(
         `No flows found. Searched: ${searched}\n` +
         `Place flow definitions in src/flows/ or flows/, or use --flow-dir.` +
-        formatFailedImportSection(failures),
+        formatFailedImportSection(resolved.importFailures),
         EXIT_DISCOVERY_ERROR,
       );
     }
 
     const registry = createFlowRegistry();
-    registry.registerMany(flows as FlowInstance[]);
+    registry.registerMany(resolved.flows);
 
     // SQLite is the default (FIX-406 6A) — the filesystem store's O(N²) event
     // persistence can't hold real load. better-sqlite3 won't create parent dirs,
@@ -207,7 +180,7 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
         process.stderr.write(`[API error] ${context.method} ${context.path}: ${error.message}\n`);
       },
     });
-    flowNames = flows.map((f) => f.kind);
+    flowNames = resolved.flows.map((f) => f.kind);
     dataLine = ".fsdev/data/fsdev.db (SQLite)";
     // The router holds these stores directly (not via a FlowState), so serve()
     // can't dispose them — the dev command closes them in its teardown.
@@ -235,7 +208,7 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     // serve() failed to bind (e.g. EADDRINUSE). Ownership of the resolved
     // runtime never transferred to the handle, so release it here: dispose the
     // config's FlowState, or close the discovery path's SQLite stores.
-    if (loaded !== undefined) await loaded.flowState.dispose().catch(() => {});
+    if (resolved.source === "config") await resolved.flowState.dispose().catch(() => {});
     else closeStores?.();
     throw err;
   });
