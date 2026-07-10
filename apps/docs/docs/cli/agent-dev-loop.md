@@ -70,5 +70,6 @@ pnpm fsdev run ... 2>/dev/null | jq -r 'select(.type=="content_delta") | .delta'
 - **Pure helpers, types, or schemas** — use `pnpm test` (or `pnpm --filter <pkg> test`). Vitest is faster and asserts on values directly.
 - **Component rendering, streaming display, hydration** — open the kitchen-sink app in a browser. NDJSON tells you the data is right; only a browser tells you the render is right.
 - **Diagnosing a failure** — switch into the `debug-flow` skill. It has a failure-pattern matrix and the `fsdev block` isolation workflow for narrowing down which block broke.
+- **Holding a multi-turn conversation by hand** — use [`fsdev chat`](./interactive-chat.md). Where this loop is edit → run → read one action at a time, `fsdev chat` keeps a live session so you can prod a flow back and forth and switch which flow drives.
 
 The CLI is for verifying a change works. The skill is for figuring out why one doesn't.

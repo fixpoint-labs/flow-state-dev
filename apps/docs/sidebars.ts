@@ -206,6 +206,7 @@ const sidebars: SidebarsConfig = {
             "cli/overview",
             "cli/configuration",
             "cli/agent-dev-loop",
+            "cli/interactive-chat",
             "devtool/overview",
             "devtool/setup",
             "devtool/embedding",

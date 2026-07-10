@@ -218,6 +218,14 @@ export interface CreateFlowStateOptions<
    * the queue from boot. Mutually exclusive with `dispatcher`.
    */
   worker?: WorkerAdapter;
+
+  /**
+   * Interactive-harness defaults. `chat.default` is the target `fsdev chat`
+   * binds when started with no positional flow — `"<flowKind>"` (its sole
+   * action) or `"<flowKind>.<action>"`. Distinct from a flow's own `chat`
+   * subscription config; this is a host-level default target for the CLI.
+   */
+  chat?: { default?: string };
 }
 
 /**
@@ -233,6 +241,8 @@ export interface FlowStateRuntime {
   stores: StoreRegistry;
   /** The forwarded instance-level runtime configuration bundle. */
   runtimeConfig: RuntimeConfig;
+  /** Interactive-harness defaults forwarded from `createFlowState` options. */
+  chat?: { default?: string };
 }
 
 /**

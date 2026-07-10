@@ -14,25 +14,16 @@ import {
   type ExecutionResult,
   type RequestStreamEventWithId,
   type RuntimeConfig,
-  type RuntimeLogger,
   type RuntimeLoggerLevel,
   type StoreRegistry
 } from "@flow-state-dev/engine";
 import type { FlowInstance, ModelResolver, JsonObject } from "@flow-state-dev/core/types";
-import {
-  discoverFlows,
-  getSearchedDirs,
-  formatImportFailureWarning,
-  formatFailedImportSection,
-  type DiscoverFlowsOptions,
-  type FlowImportFailure,
-} from "../resolve-flow";
-import { loadFsdevConfig } from "../load-config";
+import { formatFailedImportSection } from "../resolve-flow";
+import { resolveRuntimeSource, assertNoFlowDirWithConfig, createCliLogger, resolveLogLevel } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
 import { parseInputArg } from "../parse-input";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
-import { loadEnvFiles, loadExplicitEnvFiles } from "../load-env";
 
 /** NDJSON event types emitted to stdout during flow execution. */
 export type FlowEvent =
@@ -156,90 +147,6 @@ export interface RunCommandOptions {
   capture?: string;
 }
 
-const LOG_LEVELS: readonly RuntimeLoggerLevel[] = ["debug", "info", "warn", "error"] as const;
-
-/**
- * Truncates context values for stderr logging. Strings over the byte budget are
- * trimmed in place; objects/arrays are kept intact when they serialize within
- * the budget (so the outer `JSON.stringify` produces real nested JSON), and
- * replaced with a truncated string preview only when they exceed it.
- */
-function summarizeContext(context: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(context)) {
-    if (value === undefined) continue;
-    if (typeof value === "string") {
-      out[key] = value.length > 240 ? `${value.slice(0, 239)}…` : value;
-      continue;
-    }
-    if (value === null || typeof value === "number" || typeof value === "boolean") {
-      out[key] = value;
-      continue;
-    }
-    try {
-      const serialized = JSON.stringify(value);
-      if (serialized === undefined) {
-        out[key] = String(value);
-      } else if (serialized.length > 240) {
-        out[key] = `${serialized.slice(0, 239)}…`;
-      } else {
-        out[key] = value;
-      }
-    } catch {
-      out[key] = String(value);
-    }
-  }
-  return out;
-}
-
-/** No-op logger used by `--quiet` to suppress server-side default console logging. */
-const SILENT_LOGGER: RuntimeLogger = {
-  debug: () => {},
-  info: () => {},
-  warn: () => {},
-  error: () => {}
-};
-
-/**
- * Builds a CLI runtime logger that writes one line per event to stderr,
- * filtered to events at or above `level`. Returns a no-op logger for "silent".
- *
- * Always returns an explicit logger (never `undefined`) so that `runAction`
- * does not fall back to `DEFAULT_RUNTIME_LOGGER`, whose `console.debug`/
- * `console.info` calls write to stdout and would corrupt the NDJSON stream.
- */
-function createCliLogger(level: RuntimeLoggerLevel | "silent"): RuntimeLogger {
-  if (level === "silent") return SILENT_LOGGER;
-  const minIdx = LOG_LEVELS.indexOf(level);
-  const emit = (lvl: RuntimeLoggerLevel) => (message: string, context: Record<string, unknown>) => {
-    if (LOG_LEVELS.indexOf(lvl) < minIdx) return;
-    const summary = summarizeContext(context);
-    process.stderr.write(`${message} ${JSON.stringify(summary)}\n`);
-  };
-  return {
-    debug: emit("debug"),
-    info: emit("info"),
-    warn: emit("warn"),
-    error: emit("error")
-  };
-}
-
-/** Resolves the effective stderr log level from command options. */
-function resolveLogLevel(options: RunCommandOptions): RuntimeLoggerLevel | "silent" {
-  if (options.quiet === true) return "silent";
-  const requested = options.logLevel;
-  if (requested !== undefined) {
-    if (!LOG_LEVELS.includes(requested)) {
-      throw new CliError(
-        `Invalid --log-level "${requested}". Expected one of: ${LOG_LEVELS.join(", ")}`,
-        EXIT_INVALID_ARGS
-      );
-    }
-    return requested;
-  }
-  return "info";
-}
-
 /** Final on-disk shape written by `--capture`. */
 interface CapturePayload {
   command: {
@@ -281,29 +188,25 @@ export async function executeRunCommand(
   actionName: string,
   options: RunCommandInternalOptions,
 ): Promise<FlowRunResult> {
-  // 0. Load .env files. Explicit --dotenv entries first (they outrank the
-  // walk-up and let a repo-root invocation reach an app's .env.local), then the
-  // cwd .env.local walk-up. Must run before importing an fsdev.config.* so the
-  // config's providers see the app's env (gateway keys).
-  const cwd = options.cwd ?? process.cwd();
-  if (options.dotenv !== undefined) loadExplicitEnvFiles(cwd, options.dotenv);
-  loadEnvFiles(cwd);
-
-  // 1. Resolve the runtime source. When the app ships an fsdev.config.*, the CLI
-  // runs the app's own wiring (registry, stores, model resolver); otherwise it
-  // falls back to directory discovery and CLI defaults. `--no-config` forces the
-  // legacy path; `--config <path>` names an explicit file.
-  const useConfig = options.config !== false;
-  const configPath = typeof options.config === "string" ? options.config : undefined;
-  const loaded = useConfig ? await loadFsdevConfig({ cwd, configPath }) : undefined;
+  // 0-1. Load .env, resolve the runtime source (app config vs directory
+  // discovery), and surface import failures — the shared prelude. When the app
+  // ships an fsdev.config.*, the CLI runs the app's own wiring (registry, stores,
+  // model resolver); otherwise it falls back to directory discovery and CLI
+  // defaults. The prelude also rejects `--flow-dir` combined with a config.
+  const resolved = await resolveRuntimeSource({
+    cwd: options.cwd,
+    config: options.config,
+    flowDir: options.flowDir,
+    dotenv: options.dotenv,
+  });
 
   // Dispose the config's FlowState once the run settles (closes the app's pools,
   // drains a started worker). Failures are warned, never masking the run result.
   const disposeConfig =
-    loaded !== undefined
+    resolved.source === "config"
       ? async () => {
           try {
-            await loaded.flowState.dispose();
+            await resolved.flowState.dispose();
           } catch (err) {
             process.stderr.write(
               `Warning: failed to dispose fsdev config: ${err instanceof Error ? err.message : String(err)}\n`,
@@ -317,20 +220,16 @@ export async function executeRunCommand(
     let stores: StoreRegistry;
     let baseRuntimeConfig: RuntimeConfig | undefined;
 
-    if (loaded !== undefined) {
+    if (resolved.source === "config") {
       // --- config path: take the app's registry/stores/runtimeConfig ---
-      if (options.flowDir !== undefined) {
-        throw new CliError(
-          "--flow-dir bypasses fsdev.config.*; pass --no-config to use directory discovery.",
-          EXIT_INVALID_ARGS,
-        );
-      }
+      // Guarded here (inside the try) so a failure disposes the loaded FlowState.
+      assertNoFlowDirWithConfig(options.flowDir);
       let runtime;
       try {
-        runtime = await loaded.flowState.getRuntime();
+        runtime = await resolved.flowState.getRuntime();
       } catch (err) {
         throw new CliError(
-          `Failed to initialize fsdev config ${loaded.path}: ${err instanceof Error ? err.message : String(err)}`,
+          `Failed to initialize fsdev config ${resolved.configPath}: ${err instanceof Error ? err.message : String(err)}`,
           EXIT_CONFIG_ERROR,
         );
       }
@@ -338,7 +237,7 @@ export async function executeRunCommand(
       if (found === undefined) {
         const kinds = [...new Set(runtime.registry.list().map((f) => f.kind))].join(", ") || "(none)";
         throw new CliError(
-          `Flow "${flowKind}" not found in fsdev config (${loaded.path}). Available flows: ${kinds}`,
+          `Flow "${flowKind}" not found in fsdev config (${resolved.configPath}). Available flows: ${kinds}`,
           EXIT_DISCOVERY_ERROR,
         );
       }
@@ -347,26 +246,13 @@ export async function executeRunCommand(
       baseRuntimeConfig = runtime.runtimeConfig;
     } else {
       // --- discovery path: scan conventional directories, CLI defaults ---
-      // Import failures are warned to stderr unconditionally (not gated by
-      // --quiet): diagnostics about broken modules, the same category as
-      // CliError output, and stderr keeps stdout NDJSON-pure.
-      const failures: FlowImportFailure[] = [];
-      const discoverOptions: DiscoverFlowsOptions = {
-        cwd: options.cwd,
-        ...(options.flowDir !== undefined ? { flowDirs: options.flowDir } : {}),
-        onImportFailed: (failure) => failures.push(failure),
-      };
-      const flows = await discoverFlows(discoverOptions);
-      for (const failure of failures) {
-        process.stderr.write(formatImportFailureWarning(failure));
-      }
-      const found = flows.find((f) => f.kind === flowKind);
+      const found = resolved.flows.find((f) => f.kind === flowKind);
       if (found === undefined) {
-        const available = flows.map((f) => f.kind).join(", ") || "(none found)";
-        const searched = getSearchedDirs(discoverOptions).join(", ");
+        const available = resolved.flows.map((f) => f.kind).join(", ") || "(none found)";
+        const searched = resolved.searchedDirs.join(", ");
         throw new CliError(
           `Flow "${flowKind}" not found. Available flows: ${available}\n` +
-          `Searched: ${searched}` + formatFailedImportSection(failures),
+          `Searched: ${searched}` + formatFailedImportSection(resolved.importFailures),
           EXIT_DISCOVERY_ERROR,
         );
       }
@@ -422,7 +308,7 @@ export async function executeRunCommand(
     // wraps a bare default resolver. No `--model` leaves the config's resolver
     // (or undefined in the discovery path).
     let modelResolver: ModelResolver | undefined;
-    if (loaded !== undefined) {
+    if (resolved.source === "config") {
       const base = baseRuntimeConfig?.modelResolver ?? createModelResolver();
       modelResolver = options.model !== undefined ? forceModelResolver(base, options.model) : base;
     } else if (options.model !== undefined) {
@@ -449,7 +335,7 @@ export async function executeRunCommand(
     });
 
     // 6b. Construct the stderr runtime logger (suppressible via --quiet, level via --log-level).
-    const logLevel = resolveLogLevel(options);
+    const logLevel = resolveLogLevel(options, "info");
     const logger = createCliLogger(logLevel);
 
     // 7. Execute the flow action. With a config, forward the app's runtimeConfig

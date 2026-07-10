@@ -1611,6 +1611,7 @@ export async function createExecutionContext<
           // reactive block parents under whichever block performed the mutation.
           getTriggerInstanceId: () => loadAttributionStorage.getStore(),
           runAttributed: (instanceId, fn) => loadAttributionStorage.run(instanceId, fn),
+          logger: options.logger,
         })
       : undefined;
 

@@ -18,6 +18,7 @@ This page is about running *your own* flows locally with `fsdev`. To dispatch a 
 - **Visual debugging** — `fsdev dev` starts the DevTool alongside your flows. Inspect sessions, stream items in real-time, dispatch actions from the browser. See [DevTool](/docs/devtool/overview) for details.
 - **Quick iteration** — `fsdev run` executes a flow action and prints results. No need to start a server or open a browser.
 - **Testing blocks in isolation** — Use `fsdev block` to execute a single block with the test harness. Good for verifying handler logic or generator output without wiring up a full flow.
+- **Holding a live conversation** — `fsdev chat` opens an interactive session over your flows: type messages that stream replies back, switch which flow is driving, and inspect the session, all from the terminal. See [Interactive Chat](./interactive-chat.md).
 - **Debugging multi-turn conversations** — Reuse sessions across invocations with `--session`. State persists between runs so you can simulate back-and-forth without a client.
 - **CI/CD scripts** — Invoke flows or blocks from pipelines. Deterministic output format, clear exit codes. Use the programmatic API (`discoverFlows`, `resolveBlock`) when you need flow discovery in Node scripts.
 
@@ -50,5 +51,6 @@ Use `-m` to swap models without code changes. Pass a model ID (e.g. `gpt-4o-mini
 ## Next steps
 
 - [Agent Dev Loop](./agent-dev-loop.md) — The recommended edit → `fsdev run` → read NDJSON loop, with worked examples and `jq` recipes. If you're iterating on a flow, start here.
+- [Interactive Chat](./interactive-chat.md) — Hold a live, multi-turn session over your flows with `fsdev chat`.
 - [CLI API Reference](/docs/api/cli) — Full command reference, NDJSON event types, programmatic API, exit codes.
 - [Development Tips](/guides/development-tips) — Workflow patterns for using the CLI in daily development.

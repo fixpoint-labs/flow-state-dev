@@ -25,7 +25,8 @@ import {
   createExecutionLogContext,
   DEFAULT_RUNTIME_LOGGER,
   logRuntimeEvent,
-  summarizeForLog
+  summarizeForLog,
+  type RuntimeLogger
 } from "./logging";
 import type { ExecutionContext } from "../context/types";
 import type { FlowError } from "../errors/flow-error";
@@ -300,6 +301,7 @@ async function runObserver(
   ctx: ExecutionContext,
   options: {
     internalSeams: InternalExecutionSeams;
+    logger?: RuntimeLogger;
   }
 ): Promise<void> {
   if (observer === undefined) {
@@ -313,7 +315,13 @@ async function runObserver(
     internalSeams: options.internalSeams,
     metadata: {
       scope: "request"
-    }
+    },
+    // Without this, executeBlock falls back to DEFAULT_RUNTIME_LOGGER, whose
+    // debug/info levels write via console.debug/console.info — straight to
+    // stdout, corrupting NDJSON (fsdev run) and the chat transcript (fsdev
+    // chat) for every request-lifecycle observer (onFinished/onCompleted/
+    // onErrored), regardless of the caller's configured log level.
+    logger: options.logger
   });
 
   if (result.error !== undefined) {
@@ -330,6 +338,7 @@ async function runObserverSafely(
   ctx: ExecutionContext,
   options: {
     internalSeams: InternalExecutionSeams;
+    logger?: RuntimeLogger;
   }
 ): Promise<void> {
   if (observer === undefined) {
@@ -1176,7 +1185,7 @@ export async function runActionInternal<
   await runObserver(options.flow.request?.onStarted, {
     requestId,
     actionName: options.actionName
-  }, ctx, { internalSeams });
+  }, ctx, { internalSeams, logger });
 
   try {
     // Re-throw deferred parse error now that we have ctx for error handling.
@@ -1381,13 +1390,13 @@ export async function runActionInternal<
       requestId,
       actionName: options.actionName,
       output: result.output
-    }, ctx, { internalSeams });
+    }, ctx, { internalSeams, logger });
 
       await runObserver(options.flow.request?.onCompleted, {
       requestId,
       actionName: options.actionName,
       output: result.output
-    }, ctx, { internalSeams });
+    }, ctx, { internalSeams, logger });
 
     // Flush and drain TTS pipeline before marking request as completed
     if (ttsHook !== undefined) {
@@ -1535,7 +1544,7 @@ export async function runActionInternal<
       actionName: options.actionName,
       status: terminalStatus,
       output: result.output
-    }, ctx, { internalSeams });
+    }, ctx, { internalSeams, logger });
     await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
     // Deregister abort controller and active registry
@@ -1597,7 +1606,7 @@ export async function runActionInternal<
           requestId,
           actionName: options.actionName,
           status: "aborted"
-        }, ctx, { internalSeams });
+        }, ctx, { internalSeams, logger });
         await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
         logRuntimeEvent(logger, "info", "[flow-state] action execution aborted", {
@@ -1627,7 +1636,7 @@ export async function runActionInternal<
           requestId,
           actionName: options.actionName,
           status: "interrupted"
-        }, ctx, { internalSeams });
+        }, ctx, { internalSeams, logger });
         await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
         logRuntimeEvent(logger, "info", "[flow-state] action execution interrupted (client disconnect)", {
@@ -1670,13 +1679,13 @@ export async function runActionInternal<
         requestId,
         actionName: options.actionName,
         error: normalized
-      }, ctx, { internalSeams });
+      }, ctx, { internalSeams, logger });
 
       await runObserverSafely(options.flow.request?.onErrored, {
         requestId,
         actionName: options.actionName,
         error: normalized
-      }, ctx, { internalSeams });
+      }, ctx, { internalSeams, logger });
       await emitActionLifecycleSeam(internalSeams, "errored", metadata);
 
       await runObserverSafely(options.flow.request?.onFinished, {
@@ -1684,7 +1693,7 @@ export async function runActionInternal<
         actionName: options.actionName,
         status: "failed",
         error: normalized
-      }, ctx, { internalSeams });
+      }, ctx, { internalSeams, logger });
       await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
       logRuntimeEvent(logger, "error", "[flow-state] action execution failed", {

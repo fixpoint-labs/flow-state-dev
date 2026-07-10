@@ -149,6 +149,34 @@ Options:
 
 Requires `@flow-state-dev/devtool` to be installed (provides the pre-built UI assets). The CLI lists it as an optional peer dependency.
 
+### `fsdev chat` — Hold an interactive session over a flow
+
+Opens a persistent terminal REPL over your flows. Type a message and it routes to the default target, streaming the reply back; a `/`-prefixed line runs a built-in command. Runtime resolution matches `fsdev run` (config wins over discovery).
+
+```bash
+# Bind a flow + action and start chatting
+fsdev chat hello-chat chat
+
+# Start unbound, then pick a target with /use
+fsdev chat
+
+# Resume a session under a specific identity
+fsdev chat hello-chat chat --user devuser --session sess_abc
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `-s, --session <id>` | Resume an engine session for the initially bound flow |
+| `-m, --model <model>` | Override model for all generator blocks |
+| `-u, --user <id>` | Engine identity for sessions and turns (default: `cli-user`) |
+| `--flow-dir <path>` | Override flow discovery root (repeatable) |
+| `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
+| `--quiet` / `--log-level <level>` | Stderr runtime-log discipline (default level `warn`) |
+
+Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/session [new|<id>]`, `/exit`. A `/name` no built-in claims is sent to the flow as chat text (how skills are invoked). Messages are sent as `{ message: "<text>" }`. Sessions are kept per flow kind and persist in the engine's stores.
+
 ### `fsdev block` — Execute a single block in isolation
 
 Runs a block outside of a flow using the testing harness. Useful for development and debugging.
@@ -247,7 +275,7 @@ See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks) for th
 
 ## Environment variables
 
-`fsdev run`, `fsdev dev`, and `fsdev benchmark` load `.env.local` before importing your config, so generator providers see your gateway and API keys.
+`fsdev run`, `fsdev dev`, `fsdev chat`, and `fsdev benchmark` load `.env.local` before importing your config, so generator providers see your gateway and API keys.
 
 Resolution, highest precedence first:
 
@@ -297,7 +325,7 @@ A module that throws during import doesn't abort discovery: the CLI prints a `Wa
 
 ## Using `fsdev.config.ts`
 
-Directory discovery covers a simple app whose providers are env-keyed. An app with intent-mapped models, a gateway, or a custom store adapter keeps that wiring in its `createFlowState` call. Put a `fsdev.config.ts` at your project root that default-exports that same FlowState handle, and `fsdev run` and `fsdev dev` use your registry, stores, and model resolver instead of CLI defaults.
+Directory discovery covers a simple app whose providers are env-keyed. An app with intent-mapped models, a gateway, or a custom store adapter keeps that wiring in its `createFlowState` call. Put a `fsdev.config.ts` at your project root that default-exports that same FlowState handle, and `fsdev run`, `fsdev dev`, and `fsdev chat` use your registry, stores, and model resolver instead of CLI defaults.
 
 The CLI searches the current directory for `fsdev.config.{ts,mts,js,mjs}` (TS first). Pass `--config <path>` to point at an explicit file, or `--no-config` to ignore any config and force directory discovery. With a config loaded, `--model` is routed through your resolver, and `--flow-dir` is rejected (use `--no-config` if you wanted directory discovery).
 
