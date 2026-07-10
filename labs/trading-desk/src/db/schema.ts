@@ -239,6 +239,36 @@ export const realizedGains = appSchema.table(
 );
 
 /**
+ * Durable last-known price per instrument (FIX-823) — one GLOBAL row per ticker,
+ * so any consumer (Portfolio UI, analysis seed, the future household view in
+ * FIX-762) can derive `value = quantity × price` from persisted state without a
+ * live fetch, and label how stale that price is.
+ *
+ * Keyed by `ticker` ALONE (not `(user_id, ticker)`): a ticker's last-known price
+ * is a global, public fact — the same for everyone — and one row per ticker is
+ * exactly FIX-762's cross-account `GROUP BY ticker` shape. This retires the
+ * ephemeral user-scoped `portfolioQuotes` FSD resource; the durable table holds
+ * LIVE prices only (the `getQuotes` write path filters fixture-mode + null-priced
+ * quotes), so demo data can never overwrite the shared row.
+ *
+ * `price` is `numeric` (exact in storage, coerced to a JS `number` at the read
+ * boundary, the FIX-772 rule) and `NOT NULL` — an unresolvable ticker gets NO
+ * row, so a failed refresh never nulls a good last-known price. `as_of` is the
+ * price's own market/quote time (nullable-honest, the staleness label); it is
+ * distinct from `fetched_at`, when we cached it (cache age). `source` records
+ * provenance (`'live'`, extensible to provider names) — never `'fixture'`.
+ */
+export const quotes = appSchema.table("quotes", {
+  ticker: text("ticker").primaryKey(),
+  price: numeric("price").notNull(),
+  asOf: timestamp("as_of", { withTimezone: true, mode: "string" }),
+  source: text("source").notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .default(sql`now()`),
+});
+
+/**
  * A household's tax profile (FIX-874) — one row per user. Drives the upper-bound
  * current-year estimate (OQ #7): the user's marginal ordinary rate and long-term
  * capital-gains rate are applied directly to each bucket. `filing_status` sets

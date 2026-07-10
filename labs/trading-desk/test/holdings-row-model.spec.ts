@@ -55,6 +55,9 @@ describe("buildHoldingRowModel", () => {
     expect(m.upl.direction).toBe("up");
     // A live quote is the honest provenance — no non-live marker in the UI.
     expect(m.priceSource).toBe("quote");
+    // The quote's own as-of is threaded onto the row for per-holding staleness
+    // labeling (FIX-823).
+    expect(m.priceAsOf).toBe("2026-05-06");
   });
 
   it("renders a loss with a down direction (never mis-colored)", () => {
@@ -126,6 +129,8 @@ describe("buildHoldingRowModel", () => {
     // The price is a carried statement mark, NOT a live quote — the UI flags it so
     // it is never read as a quote (the honesty this slice adds).
     expect(m.priceSource).toBe("statement");
+    // A bare statement mark carries no captured date in v1 (FIX-823).
+    expect(m.priceAsOf).toBeNull();
   });
 
   it("values an MMF at par $1.00 even with no quote", () => {
@@ -141,8 +146,10 @@ describe("buildHoldingRowModel", () => {
     expect(m.typeLabel).toBe("MMF");
     expect(m.price).toBe("$1.00");
     expect(m.value).toBe("$1,500.00");
-    // Valued at par — provenance is "par", not a live quote.
+    // Valued at par — provenance is "par", not a live quote; par is timeless so
+    // there is no as-of (FIX-823).
     expect(m.priceSource).toBe("par");
+    expect(m.priceAsOf).toBeNull();
   });
 
   it("shows — for an unpriced bond but still renders its type (no fabricated price)", () => {

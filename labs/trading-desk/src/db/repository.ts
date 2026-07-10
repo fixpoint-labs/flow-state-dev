@@ -46,7 +46,7 @@ import { deriveLots } from "@/src/flows/portfolio/lots";
 import type { RealizedDisposal } from "@/src/flows/portfolio/realized-gains";
 import type { TaxProfileInput } from "@/src/flows/portfolio/tax-schema";
 import type { Db } from "./client";
-import { accounts, holdings, ledgerEvents, realizedGains, taxProfiles } from "./schema";
+import { accounts, holdings, ledgerEvents, quotes, realizedGains, taxProfiles } from "./schema";
 
 /** The Drizzle transaction handle, extracted from `Db.transaction`. The ledger
  *  ingest/void paths materialize positions inside their own transaction, so the
@@ -237,6 +237,22 @@ export interface PortfolioRepository {
    * migration hook imports.
    */
   backfillRealizedGains(): Promise<void>;
+  /**
+   * Last-known prices for a set of tickers (FIX-823), for the seed snapshot and
+   * the Portfolio read route. Tickers are upper-cased before the lookup (the
+   * canonical PK); an empty input returns `[]` without a query (never a
+   * full-table scan). A ticker with no row is simply omitted — valuation then
+   * degrades to "unavailable" (the "—" real-money gate).
+   */
+  getQuotes(tickers: string[]): Promise<QuoteRow[]>;
+  /**
+   * Persist a batch of last-known prices (FIX-823), transactionally — upsert on
+   * the `ticker` PK, setting `price`/`asOf`/`source` and stamping `fetched_at =
+   * now()`. Tickers are upper-cased. Empty input is a no-op. Callers pass LIVE,
+   * non-null-priced quotes only (the `getQuotes` write path filters), so a
+   * fixture-mode result or a provider miss never overwrites the shared global row.
+   */
+  upsertQuotes(rows: QuoteInput[]): Promise<void>;
 }
 
 /** One `(account, ticker)` income aggregate — see
@@ -286,6 +302,30 @@ export type RealizedGainRow = {
 /** The read shape of `app.tax_profiles` (FIX-874) — the input plus its key and
  *  update stamp. */
 export type TaxProfileRow = TaxProfileInput & { userId: string; updatedAt: string };
+
+/** One persisted last-known price (FIX-823) — the read shape of `app.quotes`,
+ *  with `price` coerced to a JS number and the timestamps normalized to ISO-8601
+ *  (the {@link mapHolding} read-boundary precedent). `asOf` is the price's own
+ *  market time (null when the source carried none); `fetchedAt` is when we cached
+ *  it. */
+export type QuoteRow = {
+  ticker: string;
+  price: number;
+  asOf: string | null;
+  source: string;
+  fetchedAt: string;
+};
+
+/** Fields a caller supplies to persist one quote (FIX-823). `price` is non-null
+ *  by construction — the `getQuotes` write path filters null-priced quotes before
+ *  upserting, so a failed refresh never nulls a good last-known row. `fetchedAt`
+ *  is owned by the repository (set to `now()` on write). */
+export type QuoteInput = {
+  ticker: string;
+  price: number;
+  asOf: string | null;
+  source: string;
+};
 
 /** Coerce a Drizzle `numeric` (string) to a JS number; pass `null` through.
  *  Note: this narrows arbitrary-precision `numeric` to a JS double — fine for
@@ -439,6 +479,23 @@ function mapTaxProfile(row: typeof taxProfiles.$inferSelect): TaxProfileRow {
     ltcgRatePct: Number(row.ltcgRatePct),
     stateRatePct: toNumber(row.stateRatePct),
     updatedAt: new Date(row.updatedAt).toISOString(),
+  };
+}
+
+/** Map a quotes row to {@link QuoteRow} (FIX-823), coercing the `numeric` price
+ *  to a JS number (the FIX-772 read-boundary rule — downstream does `quantity ×
+ *  price` money math) and normalizing the timestamp columns to ISO-8601. The
+ *  `timestamp(..., { mode: "string" })` shape is driver-dependent (PGlite vs
+ *  node-postgres differ), so the ISO normalization keeps UI provenance text and
+ *  tests on the stable contract the rest of the repository upholds. `source`
+ *  passes through. */
+function mapQuote(row: typeof quotes.$inferSelect): QuoteRow {
+  return {
+    ticker: row.ticker,
+    price: Number(row.price),
+    asOf: row.asOf === null ? null : new Date(row.asOf).toISOString(),
+    source: row.source,
+    fetchedAt: new Date(row.fetchedAt).toISOString(),
   };
 }
 
@@ -1379,6 +1436,45 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
           await materializeRealizedGains(tx, a.id);
         });
       }
+    },
+
+    async getQuotes(tickers) {
+      const wanted = [...new Set(tickers.map((t) => t.toUpperCase()))];
+      if (wanted.length === 0) return [];
+      const rows = await db.select().from(quotes).where(inArray(quotes.ticker, wanted));
+      return rows.map(mapQuote);
+    },
+
+    async upsertQuotes(rows) {
+      if (rows.length === 0) return;
+      // In-memory dedupe by ticker first: two rows for the same ticker in one
+      // batch would trip an intra-statement ON CONFLICT ("cannot affect row a
+      // second time"). Last write wins — the same policy the PK conflict applies.
+      const byTicker = new Map<string, QuoteInput>();
+      for (const r of rows) byTicker.set(r.ticker.toUpperCase(), r);
+      const values = [...byTicker.entries()].map(([ticker, r]) => ({
+        ticker,
+        price: String(r.price),
+        asOf: r.asOf,
+        source: r.source,
+      }));
+      await db.transaction(async (tx) => {
+        await tx
+          .insert(quotes)
+          .values(values)
+          .onConflictDoUpdate({
+            target: quotes.ticker,
+            set: {
+              price: sql`excluded.price`,
+              asOf: sql`excluded.as_of`,
+              source: sql`excluded.source`,
+              // Cache-write time advances on every refresh (distinct from the
+              // quote's own `as_of`), so a re-fetch of the same price is still
+              // recorded as freshly cached.
+              fetchedAt: sql`now()`,
+            },
+          });
+      });
     },
   };
 }

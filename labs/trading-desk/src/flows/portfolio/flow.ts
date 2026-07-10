@@ -2,8 +2,8 @@
  * The `portfolio` flow definition.
  *
  * This flow holds the genuinely flow-shaped portfolio work: `getQuotes`
- * (fetches live prices and writes the cross-flow `portfolioQuotes` resource the
- * analysis flow reads at seed), `extractHoldingsFromPdf` (an LLM generator that
+ * (fetches live prices and upserts them into the durable `app.quotes` table the
+ * analysis seed + Portfolio UI read, FIX-823), `extractHoldingsFromPdf` (an LLM generator that
  * streams and writes the `pdfImport` scratch), and the per-position thesis
  * writes `saveThesis` / `deleteThesis` (FIX-760). The account / holdings /
  * ledger CRUD, by contrast, is basic relational work over the app-owned tables
@@ -20,11 +20,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import { deleteThesis, saveThesis } from "./thesis-actions";
 import { getQuotes } from "./get-quotes";
 import { extractHoldingsFromPdf } from "./extract-holdings-action";
-import {
-  pdfImportResource,
-  portfolioQuotesResource,
-  thesesCollection,
-} from "./portfolio-resources";
+import { pdfImportResource, thesesCollection } from "./portfolio-resources";
 import { sessionStateSchema } from "./state";
 
 export { sessionStateSchema, type SessionState } from "./state";
@@ -47,12 +43,10 @@ const portfolioFlow = defineFlow({
   session: { stateSchema: sessionStateSchema },
 
   resources: {
-    // User-scoped per-user last-known-quotes cache written by `getQuotes`
-    // (readable cross-flow by the report flow at seed). Accounts + holdings are
-    // not resources — they live in the app-owned tables (FIX-772).
-    portfolioQuotes: portfolioQuotesResource,
     // Transient per-session PDF-extraction channel written by
     // `extractHoldingsFromPdf`; the import dialog reads it via `useResource`.
+    // Accounts, holdings, and last-known prices are not resources — they live in
+    // the app-owned tables (FIX-772/FIX-823); `getQuotes` upserts `app.quotes`.
     pdfImport: pdfImportResource,
     // Per-position thesis records (FIX-760) — user-scoped collection
     // (`theses/{ticker}`, flowIsolation:false → cross-flow). Written by

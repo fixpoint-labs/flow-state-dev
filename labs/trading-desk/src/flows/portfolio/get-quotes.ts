@@ -25,7 +25,7 @@ import { mapLimit, sleep } from "../analysis/lib/concurrency";
 import { FIXTURE_SNAPSHOT, loadFixture } from "../analysis/tools/runtime/fixtures";
 import { fetchFinnhubCandles, hasFinnhubKey } from "../analysis/tools/providers/finnhub";
 import { fetchYahooChart } from "../analysis/tools/providers/yahoo";
-import { portfolioQuotesResource } from "./portfolio-resources";
+import { getRepository } from "@/lib/portfolio-db";
 
 /** Live quote fan-out throttle: at most this many provider requests in flight at
  *  once, so a 20+ holding portfolio doesn't trip Yahoo's rate limiter and drop a
@@ -123,17 +123,23 @@ async function resolveQuote(
  * the Portfolio view works offline. Dedupes tickers; preserves the requested
  * order in the response.
  *
- * Writes the result to the user-scoped `portfolioQuotes` resource so the UI
- * can read it via `useResource` after `session.refresh()` — `sendAction` does
- * not return handler output to the client in this runtime (see the resource's
- * doc comment). Also returns the report, which is what the unit test asserts on.
+ * Persists LIVE, non-null-priced quotes to the durable, ticker-keyed `app.quotes`
+ * table (FIX-823) via `upsertQuotes`, so any consumer (Portfolio UI, analysis
+ * seed, the future household view) can value from persisted state without a live
+ * fetch. FIXTURE-MODE writes are NOT persisted: `app.quotes` is a single GLOBAL
+ * row per ticker, so a fixture-mode result would overwrite the shared live
+ * last-known price with demo data for every user and the seed. The pane always
+ * requests `live`, so fixture mode is only a dev/test affordance with no UI
+ * valuation path. Null-priced quotes are also dropped (a provider miss keeps the
+ * prior last-known row). Also returns the report, which is what the unit test
+ * asserts on (`sendAction` does not return handler output to the client in this
+ * runtime; the UI reads via `GET /api/portfolio/quotes`).
  */
 export const getQuotes = handler({
   name: "get-quotes",
   inputSchema: getQuotesInputSchema,
   outputSchema: getQuotesOutputSchema,
-  resources: { portfolioQuotes: portfolioQuotesResource },
-  execute: async (input, ctx) => {
+  execute: async (input) => {
     const mode = input.dataSource === "live" ? "live" : "fixture";
     // Fixture-mode price lookups pin to FIXTURE_SNAPSHOT (in `resolveQuote`);
     // live mode uses today as the range anchor. A real per-ticker date is not
@@ -146,11 +152,20 @@ export const getQuotes = handler({
     const quotes = await mapLimit(unique, QUOTE_CONCURRENCY, (ticker) =>
       resolveQuote(ticker, date, mode),
     );
-    await ctx.resources.portfolioQuotes.patchState({
-      dataSource: mode,
-      fetchedAt: new Date().toISOString(),
-      quotes,
-    });
+    if (mode === "live") {
+      // Persist only live, non-null-priced quotes: a fixture-mode result would
+      // poison the shared global row, and a null price would null out a good
+      // last-known row. `source: "live"` documents provenance (never "fixture").
+      const repo = await getRepository();
+      await repo.upsertQuotes(
+        quotes
+          .filter(
+            (q): q is { ticker: string; price: number; asOf: string | null } =>
+              q.price !== null,
+          )
+          .map((q) => ({ ticker: q.ticker, price: q.price, asOf: q.asOf, source: "live" })),
+      );
+    }
     return { quotes };
   },
 });

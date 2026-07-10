@@ -126,23 +126,27 @@ src/flows/portfolio/             The `portfolio` domain (Spine B) — account/ho
   state.ts                       sessionStateSchema (minimal; this flow has no run state)
   portfolio-schema.ts            pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
   portfolio-csv.ts               pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
-  portfolio-resources.ts         BP-019 leaf: portfolioQuotesResource (user-scoped shared) + pdfImportResource
-                                   (session-scoped scratch). Accounts/holdings are NOT resources — they live in
-                                   the app-owned tables (FIX-772; see src/db/ + lib/portfolio-db.ts below).
+  portfolio-resources.ts         BP-019 leaf: pdfImportResource (session-scoped scratch) + thesesCollection
+                                   (user-scoped). Accounts/holdings AND last-known prices are NOT resources —
+                                   they live in the app-owned tables (FIX-772/FIX-823; see src/db/ +
+                                   lib/portfolio-db.ts below). The quotes cache was portfolioQuotesResource
+                                   until FIX-823 promoted it to the app.quotes table.
   portfolio-writes.ts            saveAccount / deleteAccount / importHoldingsCsv / deleteHolding /
                                    recordManualEvent / importTransactionFile — plain domain functions
                                    (input, userId, repo) behind the app/api/portfolio/* REST routes (FIX-736
                                    follow-up). NOT flow actions: CRUD gains nothing from a flow and loses the
                                    real return value + gains a session requirement. Routes own zod validation.
-  get-quotes.ts                  getQuotes read handler (last-close per ticker, fixture/live, null degrades)
+  get-quotes.ts                  getQuotes handler: last-close per ticker (fixture/live, null degrades);
+                                   upserts LIVE non-null prices into the durable app.quotes table (FIX-823)
   portfolio-pdf.ts               pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
   extract-pdf-text.server.ts     NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
   extract-holdings-generator.ts  broker-agnostic LLM transcription (statement text → strict rows)
   extract-holdings-action.ts     sequencer: decode bytes → extractPdfText → generator → commit pdfImport
 
 fixtures/<TICKER>/<DATE>/        date-addressed snapshots for fixture mode (`FIXTURE_SNAPSHOT` is the default date)
-src/db/                          App-owned relational layer (FIX-772) — accounts + holdings, NOT a resource
-  schema.ts                      Drizzle `app` Postgres schema: accounts + holdings tables
+src/db/                          App-owned relational layer (FIX-772) — accounts + holdings + prices, NOT a resource
+  schema.ts                      Drizzle `app` Postgres schema: accounts + holdings + ledger + realized-gains
+                                   + tax-profiles + quotes (last-known price, FIX-823) tables
   client.ts                      createDb (node-postgres, deploy) + createMigratedPgliteDb (embedded dev)
   repository.ts                  createPortfolioRepository + toAccountStates — the typed data-access surface
   migrations/                    drizzle-kit generated SQL + journal (run in-process on PGlite dev, via
@@ -372,14 +376,23 @@ third `SECTIONS` entry.
   The canonical CSV the CONFIRM path serializes now carries `assetType` and
   `markPrice` columns so the classification and the bond's statement mark survive
   the single import gate into `importHoldings`.
-- **Prices** come from `getQuotes` — a read handler that reuses
+- **Prices** come from `getQuotes` — a handler that reuses
   `get_price_history`'s fetch idiom directly (`loadFixture` / `getOrFetch`, NOT
   `block.run()` — BP-011-safe) and takes the last bar's `close`. A missing /
   unavailable price degrades to `null` (UI shows `—`), never a fabricated number;
-  live mode never silently substitutes fixture data. Because `sendAction` returns
-  a request envelope (NOT the handler output) in this runtime, `getQuotes` writes
-  its result to the user-scoped shared `portfolioQuotes` resource; the pane reads
-  it via `useResource` after `session.refresh()`. **The pane always requests
+  live mode never silently substitutes fixture data. **`getQuotes` persists LIVE,
+  non-null-priced quotes to the durable, ticker-keyed `app.quotes` table (FIX-823 —
+  `price`, `as_of`, `source`, `fetched_at`, one GLOBAL row per ticker), via
+  `repo.upsertQuotes`.** Fixture-mode results are NOT persisted (a single global row
+  means fixture data would poison every user + the seed) and null-priced quotes are
+  dropped (a provider miss keeps the prior last-known row). Market value stays
+  DERIVED (`quantity × price`) — never persisted onto the holding, so it can't go
+  stale on a trade when the price didn't move. The pane reads the table via
+  `GET /api/portfolio/quotes` + the `use-quotes.ts` hook and refetches once the
+  `getQuotes` action COMPLETES (the retired `portfolioQuotes` resource's live
+  `resource_change` self-correction is gone, so `sendAction` resolving at stream-
+  attach is too early — the pane waits for the request to settle before refetching).
+  **The pane always requests
   `live` prices, decoupled from the analysis fixture/live toggle** — holdings are
   real,
   and fixtures only cover the 3 demo tickers (AAPL/JPM/NVDA), so a fixture-priced
@@ -399,10 +412,11 @@ third `SECTIONS` entry.
   provenance (`quote` / `statement` / `par`) is surfaced in the HoldingsTable as a
   marker + tooltip so a statement mark is never read as a live quote.
   `build-portfolio-context.ts` NAV now includes bond and money-market mass. The
-  HoldingsTable shows a compact asset-type chip alongside each row. Bonds use the
-  carried statement mark in v1;
-  durable last-known-price persistence across sessions is FIX-823 (deferred), and
-  ETF look-through is FIX-801 (deferred).
+  HoldingsTable shows a compact asset-type chip alongside each row, plus a per-
+  holding `priceAsOf` (FIX-823) so a quote-sourced price labels its own staleness
+  (par / statement / unavailable carry no as-of). Bonds use the carried statement
+  mark in v1; durable last-known-price persistence across sessions is **FIX-823
+  (done — `app.quotes`)**, and ETF look-through is FIX-801 (deferred).
 - **Derived money math** (market value, weight %, unrealized P/L, rollups) lives
   in `components/portfolio/portfolio-format.ts` (pure) and is computed in
   `useMemo` (BP-010), never stored — it depends on a live quote and the whole-
@@ -765,7 +779,8 @@ time horizon, optional target/stop, and a link to the originating report.
 
 - **The collection — `thesesCollection` (`portfolio-resources.ts`).** Pattern
   `theses/*`, `scope: "user"`, `flowIsolation: false` (keys at bare
-  `theses/{TICKER}` under the user, cross-flow like `portfolioQuotes`).
+  `theses/{TICKER}` under the user — a per-user, cross-flow resource, not flow-
+  isolated).
   `client: { state: { read: true }, live: true }`. The mutation verbs take the
   **bare** key (`thesisKey(ticker)` = the canonical upper-case ticker); the
   framework prepends the `theses/` prefix, so the stored key / client `item.topic`
@@ -878,19 +893,20 @@ evidence to produce a convergence signal the PM uses for sizing conviction.
 - **The portfolio snapshot is built SERVER-SIDE at `seedSession`.** The analysis
   flow's `seedSession` handler reads accounts + holdings from the app-owned
   repository (`getRepository().getPortfolio(userId)`, FIX-772; `toAccountStates`
-  nests them into the inline-array shape) and the shared user-scoped
-  `portfolioQuotes` resource (still resource-backed, `flowIsolation: false` →
-  bare `{userId}`, owned by the `portfolio` flow). It calls
+  nests them into the inline-array shape) and the last-known prices from the
+  durable `app.quotes` table (`repo.getQuotes(heldTickers)`, FIX-823 — the ticker
+  set derived from the scoped holdings). It calls
   `build-portfolio-context.ts` (a pure leaf) to compute the snapshot:
-  per-holding `marketValue = quantity × live quote`, `totalNav = Σ known
+  per-holding `marketValue = quantity × last-known price`, `totalNav = Σ known
   marketValue + Σ cash`, `weightPct = marketValue / totalNav`. A ticker with no
-  live quote degrades to `marketValue: null` / `weightPct: null` — NEVER a
-  fabricated price. The snapshot carries `snapshotAsOf` (the quotes' as-of) and
+  cached price degrades to `marketValue: null` / `weightPct: null` — NEVER a
+  fabricated price. The snapshot carries `snapshotAsOf` (the OLDEST quote `as_of`
+  among the priced rows — honest "as of at least") and
   `pricedHoldings` / `totalHoldings` so the prompt + UI label staleness and
   coverage honestly. The flow freezes it onto session state and NEVER recomputes
   weights. Null → the run is portfolio-blind exactly as before. There is NO
   client-built snapshot bridge — the `analyze` action no longer takes a
-  `portfolio` dispatch input; the data comes from the shared resources at seed.
+  `portfolio` dispatch input; the data comes from the app-owned tables at seed.
 - **`portfolioContext` + `lensConvergence` capability presets.** The
   `portfolioContext` preset renders `<portfolioContext>` from frozen session
   state (no resource — like `userThesis`); returns `null` to suppress the tag

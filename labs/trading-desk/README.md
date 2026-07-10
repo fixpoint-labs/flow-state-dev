@@ -209,9 +209,9 @@ Phase 5 — portfolio manager:
 Portfolio-aware analysis + lens pack (optional):
 
 - **A supplied portfolio makes sizing concrete** — when a run carries a
-  portfolio snapshot (the user's accounts + live quotes, read server-side at
-  `seedSession` from the shared user-scoped `accounts` and `portfolioQuotes`
-  resources and frozen onto session state), the trader and PM see a
+  portfolio snapshot (the user's accounts + last-known quotes, read server-side at
+  `seedSession` from the app-owned `accounts` / `holdings` / `quotes` tables and
+  frozen onto session state), the trader and PM see a
   `<portfolioContext>` block: existing position, current weight, available
   cash, account types. The PM then emits a `portfolioFit` verdict —
   `action` (initiate / add / trim / exit / hold), a `targetWeightPct`, a
@@ -332,15 +332,19 @@ See also [Persistence overview](../../apps/docs/docs/persistence/overview.md).
 Framework state (sessions, requests, resources, items) is one concern; the
 **portfolio domain** (accounts, holdings, and the transaction ledger) is another.
 The desk owns the latter in real relational tables — `app.accounts`,
-`app.holdings`, and `app.ledger_events` in a dedicated `app` Postgres schema —
+`app.holdings`, `app.ledger_events`, and the durable last-known-price cache
+`app.quotes` in a dedicated `app` Postgres schema —
 reached through a thin typed repository
 ([`src/db/repository.ts`](src/db/repository.ts)), not through an FSD resource.
 Action handlers, the analysis seed, and the Portfolio UI read/write through that
 repository (the UI via a [`/api/portfolio/accounts`](app/api/portfolio/accounts/route.ts)
 read route). This is the showcase answer to "does FSD force my domain data
-through its state model?" — no. Keep resources for agent-facing state and caches
-(the desk still does, for the quotes cache and the PDF-import scratch), and own
-your relational entities in your own tables. Migrations live in
+through its state model?" — no. Keep resources for agent-facing state and scratch
+(the desk still does, for the PDF-import channel and the thesis records), and own
+your relational entities — including a price cache that a household view will
+`GROUP BY ticker` — in your own tables. The quotes cache started as a per-user
+`portfolioQuotes` resource and graduated to a ticker-keyed table once it needed to
+persist across sessions and join to holdings. Migrations live in
 [`src/db/migrations/`](src/db/migrations) (`pnpm db:generate`), applied in process
 on the PGlite dev backing and via `scripts/migrate.ts` on deploy. It's a pattern
 for any multi-tier FSD app, not a desk-only hack.
@@ -349,7 +353,8 @@ The whole portfolio domain — accounts, holdings, ledger — is exposed to the 
 as a plain REST surface over the repository, reads AND writes. It is a
 deliberate showcase boundary: **flows are for the agentic pipeline** (the
 `analysis` flow) and the genuinely flow-shaped portfolio work (`getQuotes`,
-which writes the cross-flow quote cache, and `extractHoldingsFromPdf`, a
+which fans out live prices and upserts the durable `app.quotes` table, and
+`extractHoldingsFromPdf`, a
 streaming LLM extraction) — **plain routes are for domain CRUD.** Forcing CRUD
 through a flow buys nothing and costs a real return value (`sendAction` returns
 a request envelope, not the handler's output — so an import report can't reach

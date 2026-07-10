@@ -35,11 +35,7 @@ import { decisionSnapshotResource } from "../decision-snapshot-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
-import {
-  portfolioQuotesResource,
-  thesesCollection,
-  thesisKey,
-} from "../../portfolio/portfolio-resources";
+import { thesesCollection, thesisKey } from "../../portfolio/portfolio-resources";
 import type { ThesisRecord } from "../../portfolio/thesis-schema";
 import { buildPortfolioContext } from "../build-portfolio-context";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
@@ -64,7 +60,6 @@ export const seedSession = handler({
   outputSchema: analyzeInputSchema,
   sessionStateSchema,
   resources: {
-    portfolioQuotes: portfolioQuotesResource,
     theses: thesesCollection,
     financialsData: financialsDataResource,
     quantData: quantDataResource,
@@ -127,19 +122,37 @@ export const seedSession = handler({
         : null;
 
     // Portfolio snapshot, computed server-side from the app-owned accounts +
-    // holdings (read via the repository, FIX-772) and the last-known quotes
-    // resource. `toAccountStates` nests holdings into the inline-array shape
-    // `buildPortfolioContext` consumes — same snapshot as the prior resource read.
-    // `requireUser: true` guarantees a user; the fallback matches the framework's
-    // key resolution and satisfies the optional type.
+    // holdings AND the durable last-known quotes table (FIX-823), both read via
+    // the repository (FIX-772). `toAccountStates` nests holdings into the inline-
+    // array shape `buildPortfolioContext` consumes. `requireUser: true` guarantees
+    // a user; the fallback matches the framework's key resolution.
     const uid = ctx.request.identity.userId ?? "unknown_user";
     const repo = await getRepository();
     const allAccounts = toAccountStates(await repo.getPortfolio(uid));
     const scoped = input.selectedAccountIds.length
       ? allAccounts.filter((a) => input.selectedAccountIds.includes(a.accountId))
       : allAccounts;
-    const q = ctx.resources.portfolioQuotes.state; // nullable single-resource read
-    const portfolio = buildPortfolioContext(scoped, q?.quotes ?? [], q?.fetchedAt ?? null);
+    // Last-known prices for the held tickers, from `app.quotes` (FIX-823) instead
+    // of the retired `portfolioQuotes` resource. The ticker set is derived server-
+    // side from the scoped holdings; an unpriced ticker is simply absent (valuation
+    // degrades to unavailable). `snapshotAsOf` is the OLDEST quote `asOf` among the
+    // priced rows — honest "as of at least" labeling, replacing the old resource-
+    // envelope `fetchedAt`. Table rows only ever hold live prices, so dropping
+    // `source`/`fetchedAt` here is safe (there is no fixture row to filter out).
+    const heldTickers = [
+      ...new Set(scoped.flatMap((a) => a.holdings.map((h) => h.ticker.toUpperCase()))),
+    ];
+    const quoteRows = await repo.getQuotes(heldTickers);
+    const snapshotAsOf = quoteRows.reduce<string | null>(
+      (oldest, r) =>
+        r.asOf === null ? oldest : oldest === null || r.asOf < oldest ? r.asOf : oldest,
+      null,
+    );
+    const portfolio = buildPortfolioContext(
+      scoped,
+      quoteRows.map((r) => ({ ticker: r.ticker, price: r.price, asOf: r.asOf })),
+      snapshotAsOf,
+    );
 
     // Resolve the effective risk-appetite mandate (FIX-752): a per-run override
     // wins; else the most-conservative default among the selected accounts (all

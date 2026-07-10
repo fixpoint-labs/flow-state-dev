@@ -15,9 +15,10 @@
  *  - Accounts (with inline holdings) come from the app-owned tables via the
  *    `/api/portfolio/accounts` read route (`usePortfolioAccounts`, FIX-772) —
  *    accounts are no longer an FSD resource. `refetch` after each write action.
- *  - Prices come from the `getQuotes` action: dispatch → `session.refresh()` →
- *    read the `portfolioQuotes` resource via `useResource`. `sendAction` does
- *    not return handler output in this runtime, so the resource is the channel.
+ *  - Prices come from the `getQuotes` action: dispatch → wait for the request to
+ *    complete → refetch the durable `app.quotes` table via `/api/portfolio/quotes`
+ *    (`useQuotes`, FIX-823). The retired `portfolioQuotes` resource's live
+ *    `useResource` read is gone (the FIX-772 accounts-migration pattern).
  *  - All derived money math (values, weights, P/L, rollups) is computed in
  *    `useMemo` (BP-010), never an effect.
  *
@@ -37,14 +38,13 @@ import {
 } from "react";
 import { RefreshCw } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
-import { useResource, useFlowContext } from "@flow-state-dev/react";
+import { useFlowContext } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import { apiMutate } from "@/lib/use-api-query";
 import type { AssetClass, Holding } from "@/src/flows/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import { deriveLots } from "@/src/flows/portfolio/lots";
 import type { TermLot } from "./holding-term";
-import type { PortfolioQuotesState } from "@/src/flows/portfolio/portfolio-resources";
 import type { ThesisInputFields } from "@/src/flows/portfolio/thesis-schema";
 import { AccountCard } from "./account-card";
 import { AccountDetail } from "./account-detail";
@@ -76,6 +76,7 @@ import {
 } from "./portfolio-section-nav";
 import { TaxProfileDialog } from "./tax-profile-dialog";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
+import { useQuotes } from "./use-quotes";
 import { useLedger } from "./use-ledger";
 import { useIncome } from "./use-income";
 import { useTax } from "./use-tax";
@@ -141,7 +142,11 @@ export function PortfolioPane({
   // Theses remain a user-scoped FSD resource (live client read), so this stays
   // session-based — unlike accounts/ledger/income which moved to REST routes.
   const { theses, loading: thesesLoading, refetch: refetchTheses } = useTheses(session);
-  const { clientData: quotesData } = useResource(session, "portfolioQuotes");
+  // Last-known prices from the durable `app.quotes` table via the REST hook
+  // (FIX-823) — the retired `portfolioQuotes` resource's `useResource` read is
+  // gone. `getQuotes` upserts the table; `refetchQuotes` runs once that action
+  // completes (see the streaming-settle effect below).
+  const { quotes, refetch: refetchQuotes } = useQuotes();
 
   const [addOpen, setAddOpen] = useState(false);
   const [taxProfileOpen, setTaxProfileOpen] = useState(false);
@@ -167,6 +172,9 @@ export function PortfolioPane({
    *  the open drill-in. */
   const [section, setSection] = useState<PortfolioSection>("accounts");
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
+  // True between dispatching `getQuotes` and its request settling — gates the
+  // post-completion quotes refetch (FIX-823; the settle effect near `fetchPrices`).
+  const [awaitingQuotes, setAwaitingQuotes] = useState(false);
   // Split backfill (FIX-874 follow-up): running state + a short result note.
   const [splitBackfill, setSplitBackfill] = useState<{ running: boolean; note: string | null }>({
     running: false,
@@ -261,11 +269,13 @@ export function PortfolioPane({
     [realizedGains],
   );
 
-  // Price map: ticker (upper) → quote. Read from the resource the action wrote.
-  const quotes = quotesData as PortfolioQuotesState | null;
+  // Price map: ticker (upper) → quote. Built from the durable table rows the
+  // `getQuotes` action upserted (FIX-823), projected to the `Quote` shape the
+  // holdings table + valuation seam consume (`{ ticker, price, asOf }`).
   const priceMap = useMemo(() => {
     const map = new Map<string, Quote>();
-    for (const q of quotes?.quotes ?? []) map.set(q.ticker.toUpperCase(), q);
+    for (const q of quotes)
+      map.set(q.ticker.toUpperCase(), { ticker: q.ticker, price: q.price, asOf: q.asOf });
     return map;
   }, [quotes]);
 
@@ -342,13 +352,14 @@ export function PortfolioPane({
     return allocationByClass(entries);
   }, [holdings, accounts, priceMap]);
 
-  // Fetch prices for the union of held tickers. Dispatch → refresh → the
-  // `portfolioQuotes` resource updates and `useResource` re-projects.
+  // Fetch prices for the union of held tickers. Dispatch `getQuotes` (which
+  // upserts `app.quotes`) → wait for that request to COMPLETE → refetch the
+  // quotes route. The completion wait is the streaming-settle effect below.
   const fetchPrices = useCallback(async () => {
     // Prices are the one portfolio feature that still needs a bound session:
-    // `getQuotes` writes the cross-flow `portfolioQuotes` resource, so it stays
-    // a flow action. Without a session (cold start, no analysis run yet) prices
-    // stay "—" and the rest of the pane (CRUD) still works.
+    // `getQuotes` is a flow action (it fans out live quotes + upserts the durable
+    // table). Without a session (cold start, no analysis run yet) prices stay "—"
+    // and the rest of the pane (CRUD) still works.
     if (!hasSession) return;
     // Only quote-valued types (equity/etf/mutual_fund/crypto) need a live quote;
     // bond/option value at their carried mark and cash/MMF at par (BP-033), so
@@ -366,14 +377,32 @@ export function PortfolioPane({
       // the analysis fixture/live toggle (fixtures only cover the 3 demo
       // tickers). getQuotes bounds the fan-out + retries, so a large portfolio
       // isn't throttled into "—".
+      //
+      // `sendAction` resolves at stream-attach — BEFORE `upsertQuotes` commits
+      // (the `useSession` in_progress-on-attach behavior the report-thesis-panel
+      // documents). Retiring the `portfolioQuotes` resource removed the
+      // `resource_change` SSE that used to self-correct a stale read, so a naive
+      // `.then(refetch)` would race ahead of the write. Flag a pending refetch
+      // instead; the settle effect below fires `refetchQuotes` once the getQuotes
+      // stream reaches a terminal status (isStreaming falling edge = committed).
       await session.sendAction("getQuotes", { tickers, dataSource: "live" });
-      await session.refresh();
+      setAwaitingQuotes(true);
     } catch (err) {
       console.error("[trading-desk] getQuotes failed", err);
-    } finally {
       setIsFetchingPrices(false);
     }
-  }, [holdings, session]);
+  }, [holdings, session, hasSession]);
+
+  // Refetch the quotes route once the in-flight `getQuotes` request settles.
+  // `sendAction` attaches the stream (isStreaming → true) synchronously, so a
+  // pending refetch always waits for the falling edge; if the stream already
+  // finished, the write is committed and refetching now is correct.
+  useEffect(() => {
+    if (!awaitingQuotes || session.isStreaming) return;
+    setAwaitingQuotes(false);
+    setIsFetchingPrices(false);
+    refetchQuotes();
+  }, [awaitingQuotes, session.isStreaming, refetchQuotes]);
 
   // Auto-fetch prices once holdings are loaded and we have none yet, and when
   // the held-ticker set changes. Genuine side effect (network + external
@@ -674,12 +703,16 @@ export function PortfolioPane({
         </div>
       </div>
 
-      {/* Provenance line (real-money gate): live source + as-of. Portfolio
-          holdings are real, so prices are always live — independent of the
-          analysis fixture/live toggle. */}
+      {/* Provenance line (real-money gate): live source + as-of, derived from the
+          durable quote rows (FIX-823). Portfolio holdings are real, so prices are
+          always live — independent of the analysis fixture/live toggle. `source`
+          is uniformly "live" in the table (fixture rows are never persisted); the
+          as-of is the first row's own market time, falling back to its cache time. */}
       <div className="border-b border-[color:var(--c-border)] px-4 py-1 text-[10px] text-[color:var(--c-fg-faint)]">
-        Prices: {quotes?.dataSource ?? "live"}
-        {quotes?.quotes?.[0]?.asOf ? ` · as of ${quotes.quotes[0].asOf}` : ""}.
+        Prices: {quotes[0]?.source ?? "live"}
+        {quotes[0]?.asOf ?? quotes[0]?.fetchedAt
+          ? ` · as of ${quotes[0]?.asOf ?? quotes[0]?.fetchedAt}`
+          : ""}.
         Money figures are display approximations, not precise accounting.
       </div>
 

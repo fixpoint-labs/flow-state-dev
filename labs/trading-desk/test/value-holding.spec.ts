@@ -34,42 +34,54 @@ describe("resolveHoldingPrice — per-type valuation rule", () => {
   it("values equity/etf/mutual_fund/crypto via the live quote", () => {
     for (const assetType of ["equity", "etf", "mutual_fund", "crypto"] as const) {
       const r = resolveHoldingPrice(holding({ assetType }), { price: 200 });
-      expect(r).toEqual({ price: 200, priceSource: "quote" });
+      // No `asOf` on the quote → `asOf: null`, but still quote-sourced.
+      expect(r).toEqual({ price: 200, priceSource: "quote", asOf: null });
     }
+  });
+
+  it("threads the quote's own as-of onto a quote-sourced price (FIX-823 per-holding staleness)", () => {
+    const r = resolveHoldingPrice(holding(), { price: 200, asOf: "2026-07-08T00:00:00.000Z" });
+    expect(r).toEqual({ price: 200, priceSource: "quote", asOf: "2026-07-08T00:00:00.000Z" });
   });
 
   it("degrades equity to unavailable when there is no quote", () => {
     expect(resolveHoldingPrice(holding(), undefined)).toEqual({
       price: null,
       priceSource: "unavailable",
+      asOf: null,
     });
     expect(resolveHoldingPrice(holding(), { price: null })).toEqual({
       price: null,
       priceSource: "unavailable",
+      asOf: null,
     });
   });
 
-  it("values a money_market at par $1.00 regardless of quote", () => {
+  it("values a money_market at par $1.00 regardless of quote (par is timeless → asOf null)", () => {
     const h = holding({
       assetType: "money_market",
       assetClass: "cash",
       attributes: { kind: "cash_equivalent" },
     });
-    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 1, priceSource: "par" });
+    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 1, priceSource: "par", asOf: null });
   });
 
   it("values any cash-class holding at par", () => {
     const h = holding({ assetType: "other", assetClass: "cash", attributes: { kind: "none" } });
-    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 1, priceSource: "par" });
+    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 1, priceSource: "par", asOf: null });
   });
 
-  it("values a bond at its carried statement mark", () => {
+  it("values a bond at its carried statement mark (bare mark → asOf null in v1)", () => {
     const h = holding({
       assetType: "bond",
       assetClass: "fixed_income",
       attributes: { kind: "bond", cusip: "X", markPrice: 98.5 },
     });
-    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 98.5, priceSource: "statement" });
+    expect(resolveHoldingPrice(h, undefined)).toEqual({
+      price: 98.5,
+      priceSource: "statement",
+      asOf: null,
+    });
   });
 
   it("degrades an unpriced bond to unavailable (no fabricated price)", () => {
@@ -78,7 +90,11 @@ describe("resolveHoldingPrice — per-type valuation rule", () => {
       assetClass: "fixed_income",
       attributes: { kind: "bond", cusip: "X", markPrice: null },
     });
-    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: null, priceSource: "unavailable" });
+    expect(resolveHoldingPrice(h, undefined)).toEqual({
+      price: null,
+      priceSource: "unavailable",
+      asOf: null,
+    });
   });
 
   it("values an option at its carried mark", () => {
@@ -87,12 +103,20 @@ describe("resolveHoldingPrice — per-type valuation rule", () => {
       assetClass: "equity",
       attributes: { kind: "option", underlying: "AAPL", strike: 190, expiry: "2026-06-21", right: "call", multiplier: 100, markPrice: 12.4 },
     });
-    expect(resolveHoldingPrice(h, undefined)).toEqual({ price: 12.4, priceSource: "statement" });
+    expect(resolveHoldingPrice(h, undefined)).toEqual({
+      price: 12.4,
+      priceSource: "statement",
+      asOf: null,
+    });
   });
 
   it("values `other` as unavailable", () => {
     const h = holding({ assetType: "other", assetClass: "alternative", attributes: { kind: "none" } });
-    expect(resolveHoldingPrice(h, { price: 50 })).toEqual({ price: null, priceSource: "unavailable" });
+    expect(resolveHoldingPrice(h, { price: 50 })).toEqual({
+      price: null,
+      priceSource: "unavailable",
+      asOf: null,
+    });
   });
 });
 

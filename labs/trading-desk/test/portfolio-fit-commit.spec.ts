@@ -2,8 +2,8 @@
  * Commit-derived portfolio-fit fields (Slice 5).
  *
  * Drives the full `analyze` action with every generator mocked and the portfolio
- * seeded as user-scoped `accounts` + `portfolioQuotes` resources (seedSession
- * computes the snapshot server-side), then reads the committed PM memo's
+ * seeded into the app-owned `accounts` + `holdings` + `quotes` tables (FIX-772/
+ * FIX-823; seedSession computes the snapshot server-side), then reads the committed PM memo's
  * `portfolioFit` from the in-memory store. Asserts the FOUR fields the writer
  * derives deterministically (NOT from the LLM):
  *   - `currentWeightPct` — summed from the snapshot's priced rows for the ticker.
@@ -21,9 +21,10 @@ import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/src/db/repository";
 
-// Accounts + holdings moved to the app-owned repository (FIX-772). Mock the
-// repo to a fresh in-memory PGlite instance per test; seedSession computes the
-// portfolio snapshot from the seeded accounts + the portfolioQuotes resource.
+// Accounts + holdings + quotes moved to the app-owned repository (FIX-772/
+// FIX-823). Mock the repo to a fresh in-memory PGlite instance per test;
+// seedSession computes the portfolio snapshot from the seeded accounts + the
+// durable `app.quotes` rows.
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
 vi.mock("@/lib/portfolio-db", () => ({
   getRepository: async () => {
@@ -385,15 +386,13 @@ async function seedPortfolio(): Promise<void> {
   });
 }
 
-/** Quotes giving NVDA price = 200 so that 10 shares → mv 2000 / nav 100000 = 2%. */
-const storedQuotes = {
-  dataSource: "fixture",
-  fetchedAt: "2026-05-06T12:00:00.000Z",
-  quotes: [{ ticker: "NVDA", price: 200, asOf: "2026-05-06" }],
-};
-
-/** Quotes still live as a user-scoped resource (unchanged by FIX-772). */
-const userResourcesWithQuotes = { portfolioQuotes: storedQuotes };
+/** Seed the durable `app.quotes` row giving NVDA price = 200, so 10 shares →
+ *  mv 2000 / nav 100000 = 2% (FIX-823 — replaces the retired resource seed). */
+async function seedNvdaQuote(): Promise<void> {
+  await repoState.repo!.upsertQuotes([
+    { ticker: "NVDA", price: 200, asOf: "2026-05-06T00:00:00.000Z", source: "live" },
+  ]);
+}
 
 type PmMemo = {
   status?: string;
@@ -414,8 +413,11 @@ async function runAndReadPmMemo(opts: {
   targetWeightPct: number;
 }): Promise<PmMemo | undefined> {
   const stores = createInMemoryStores();
-  // Seed accounts into the repository (FIX-772); quotes stay a user resource.
-  if (opts.hasPortfolio) await seedPortfolio();
+  // Seed accounts + holdings + quotes into the repository (FIX-772/FIX-823).
+  if (opts.hasPortfolio) {
+    await seedPortfolio();
+    await seedNvdaQuote();
+  }
   const result = await testFlow({
     flow: analysisFlow,
     action: "analyze",
@@ -427,12 +429,10 @@ async function runAndReadPmMemo(opts: {
       date,
       costPreset: "fast" as const,
       dataSource: "fixture" as const,
-      // Portfolio snapshot is now computed server-side from the repo + quotes.
-      // `selectedAccountIds: []` includes all accounts (both Roth + Taxable).
+      // Portfolio snapshot is now computed server-side from the repo (accounts +
+      // holdings + quotes). `selectedAccountIds: []` includes all accounts.
       selectedAccountIds: [],
     },
-    // Seed user-scoped quotes so seedSession can compute market values.
-    seed: opts.hasPortfolio ? { user: { resources: userResourcesWithQuotes } } : undefined,
     generators: {
       ...upstreamMocks(),
       "portfolio-manager-generator": mockGenerator({

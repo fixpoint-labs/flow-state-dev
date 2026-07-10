@@ -1,77 +1,28 @@
 /**
- * Portfolio resource definitions (BP-019 leaf) — the three resources the
- * `portfolio` flow owns, grouped in one module so consumers (the
- * report flow's seed snapshot, the portfolio action handlers, the UI) import
- * from a single place.
+ * Portfolio resource definitions (BP-019 leaf) — the resources the `portfolio`
+ * flow owns, grouped in one module so consumers (the report flow's seed snapshot,
+ * the portfolio action handlers, the UI) import from a single place.
  *
  * Imports only `@flow-state-dev/core` + zod + the pure `./portfolio-schema`
  * and `./portfolio-pdf` leaves — NEVER the action handlers — so the
  * capability↔resource graph stays cycle-free.
  *
- *   - `portfolioQuotesResource` — user-scoped shared last-known-quotes cache
- *     `getQuotes` writes, read cross-flow at seed.
  *   - `pdfImportResource` — session-scoped per-import scratch channel the
  *     extraction action writes and the import dialog reads.
+ *   - `thesesCollection` — user-scoped per-position thesis records (FIX-760).
  *
- * Accounts and holdings are NO LONGER resources — they live in the app-owned
- * relational tables (`app.accounts` / `app.holdings`) reached through the
- * portfolio repository (FIX-772). The action handlers, the analysis seed, and
- * the Portfolio UI read/write them via `getRepository()` / the read API route.
+ * Accounts, holdings, AND last-known prices are NOT resources — they live in the
+ * app-owned relational tables (`app.accounts` / `app.holdings` / `app.quotes`)
+ * reached through the portfolio repository (FIX-772/FIX-823). The last-known-price
+ * cache was a user-scoped `portfolioQuotes` resource until FIX-823 promoted it to
+ * the durable, ticker-keyed `app.quotes` table (queryable cross-session +
+ * joinable for the household view); the action handlers, the analysis seed, and
+ * the Portfolio UI read/write it via `getRepository()` / the read API route.
  */
 import { defineResource, defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
 import { pdfExtractionSchema } from "./portfolio-pdf";
 import { thesisRecordSchema } from "./thesis-schema";
-
-export const portfolioQuotesStateSchema = z.object({
-  /** Data source the quotes were fetched under, echoed for provenance. */
-  dataSource: z.enum(["fixture", "live"]),
-  /** When the fetch ran (ISO). Distinct from each quote's own `asOf`. */
-  fetchedAt: z.string(),
-  quotes: z.array(
-    z.object({
-      ticker: z.string(),
-      price: z.number().nullable(),
-      asOf: z.string().nullable(),
-    }),
-  ),
-});
-
-export type PortfolioQuotesState = z.infer<typeof portfolioQuotesStateSchema>;
-
-/**
- * User-scoped shared resource holding the most-recent `getQuotes` result so the
- * Portfolio UI can read fetched prices via `useResource`.
- *
- * Why a resource and not the action's return value: in this runtime
- * `session.sendAction(...)` resolves to a request-status envelope, NOT the
- * handler's output (verified against `ExecuteActionResponse` in
- * `@flow-state-dev/client`). The idiomatic way an action surfaces a value to the
- * client is to write it to a resource and have the client re-read the snapshot
- * (`session.refresh()` → `useResource`). `getQuotes` writes here; the Portfolio
- * pane refreshes after dispatch and reads it.
- *
- * Scoped to `user` with `flowIsolation: false` (keys at bare `{userId}`). This
- * makes it a per-user last-known-quotes cache readable cross-flow, so the report
- * flow can read the latest prices at seed without a separate fetch.
- *
- * `price` is nullable per quote: a missing/unavailable price stays null so the
- * UI renders "—", never a fabricated number (BP-020 spirit). `asOf` carries the
- * price's own date so the UI can label staleness.
- */
-export const portfolioQuotesResource = defineResource({
-  scope: "user",
-  flowIsolation: false,
-  ref: "portfolioQuotes",
-  stateSchema: portfolioQuotesStateSchema.nullable(),
-  default: null,
-  writable: true,
-  // A single resource only surfaces in the client snapshot when it declares a
-  // client PROJECTION (`hasClientProjection`: expose/exclude/data) — an empty
-  // `client: {}` would never reach the client (prices would stay blank).
-  // `exclude: []` = identity-expose the full state, type-safe on a nullable.
-  client: { exclude: [] },
-});
 
 export const pdfImportStateSchema = z.object({
   /** When the extraction ran (ISO). */
@@ -150,9 +101,10 @@ export function thesisKey(ticker: string): string {
  * bespoke read route or manual refetch.
  *
  * User-scoped + `flowIsolation: false` (keys at bare `theses/{ticker}` under the
- * user) — the `portfolioQuotes` precedent — so it is one record per name across
- * the household and readable cross-flow: the portfolio flow's CRUD actions and
- * the analysis flow's seed + `adoptThesis` all reach the same items. `live: true`
+ * user — a per-user, cross-flow resource, not flow-isolated) so it is one record
+ * per name across the household and readable cross-flow: the portfolio flow's CRUD
+ * actions and the analysis flow's seed + `adoptThesis` all reach the same items.
+ * `live: true`
  * streams each item's projection on mutation so the UI updates with no refetch;
  * `state: { read: true }` ships the whole `ThesisRecord` (the renderer reads
  * every field).
