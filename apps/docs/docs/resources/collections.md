@@ -8,6 +8,8 @@ Static resources have a fixed name you declare up front: `plan`, `artifacts`, `p
 
 A collection defines a shared schema and a key pattern. Instances are created and destroyed at runtime. The **property name** you assign in `sessionResources` is how you access it at runtime — not the pattern string.
 
+For a set your app already owns — rows in your own database or behind your API — see [external collections](./external-collections.md): a read-through, read-only variant that keeps the app as the source of truth instead of copying data into the framework.
+
 ```ts
 import { defineResourceCollection } from "@flow-state-dev/core";
 

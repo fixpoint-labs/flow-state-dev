@@ -56,6 +56,22 @@ export type {
 } from "./blocks/tool-cache";
 export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
 export {
+  defineExternalResourceCollection,
+  isExternalResourceCollection,
+  readExternalRecord,
+} from "./types/external-resource-collection";
+export type {
+  DefinedExternalResourceCollection,
+  ExternalRecordHit,
+  ExternalReactiveBindings,
+  ExternalResourceCollectionConfig,
+  ExternalResourceCollectionRef,
+  ExternalResourceContext,
+  ExternalResourceRef,
+  ResourceQuery,
+  ResourceSearchResult,
+} from "./types/external-resource-collection";
+export {
   normalizeReactiveBinding,
   resourceChangeSchema,
   resourceContentChangeSchema,

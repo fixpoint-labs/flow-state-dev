@@ -23,9 +23,12 @@ import {
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {
+  buildExternalResourceContextFromSession,
   findResourceConfig,
   getPersistedData,
   isCollectionConfig,
+  isExternalResourceCollection,
+  readExternalCollectionState,
   renderContent,
   type ResourceFlowLike,
 } from "../resources/internal";
@@ -137,9 +140,6 @@ export async function handleGetCollectionItemContent(
     return jsonResponse(403, { error: `Content read not permitted for "${route.ref}"` });
   }
 
-  const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId);
-  if (!data) return jsonResponse(404, { error: "Scope data not found" });
-
   // The topic arrives as either a bare key ("my-doc") or the full storage key
   // ("artifacts/my-doc"). Try the topic directly first; if it doesn't match
   // the collection pattern, resolve it as a bare key via the prefix.
@@ -150,6 +150,26 @@ export async function handleGetCollectionItemContent(
       return jsonResponse(400, { error: `Topic "${route.topic}" does not match collection pattern` });
     }
   }
+
+  // FIX-858: external collections have no stored content — the state is read
+  // through the app store and the content is template-rendered from it.
+  if (isExternalResourceCollection(config)) {
+    const extCtx = buildExternalResourceContextFromSession(session, scope, route.sessionId, _request.signal);
+    const extState = await readExternalCollectionState(
+      config,
+      extractBareTopic(config.pattern, storageKey),
+      extCtx
+    );
+    if (extState === undefined) {
+      return jsonResponse(404, { error: `Item "${route.topic}" not found in "${route.ref}"` });
+    }
+    const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, config);
+    const content = await renderContent(config, undefined, extState, templateRaw);
+    return jsonResponse(200, { ref: route.ref, topic: route.topic, content });
+  }
+
+  const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId);
+  if (!data) return jsonResponse(404, { error: "Scope data not found" });
 
   const instanceState = data.resources[storageKey];
   if (instanceState === undefined) {
@@ -189,6 +209,12 @@ export async function handleCreateCollectionItem(
   const { config, scope } = found;
   if (!isCollectionConfig(config)) {
     return jsonResponse(400, { error: `"${route.ref}" is not a collection` });
+  }
+
+  // FIX-858: external collections are read-only — no write reaches FSD storage.
+  // The definer already forbids client.content.create, so this is defense in depth.
+  if (isExternalResourceCollection(config)) {
+    return jsonResponse(403, { error: `"${route.ref}" is a read-only external collection` });
   }
 
   if (!config.client?.content?.create) {
@@ -259,6 +285,10 @@ export async function handleUpdateResourceContent(
   const { config, scope } = found;
 
   if (isCollectionConfig(config)) {
+    // FIX-858: external collections are read-only (defense in depth).
+    if (isExternalResourceCollection(config)) {
+      return jsonResponse(403, { error: `"${route.ref}" is a read-only external collection` });
+    }
     if (!config.client?.content?.update) {
       return jsonResponse(403, { error: `Update not permitted for "${route.ref}"` });
     }
@@ -348,6 +378,16 @@ export async function handleListCollectionState(
 
   if (config.client?.state?.read !== true) {
     return jsonResponse(403, { error: `State read not permitted for "${route.ref}"` });
+  }
+
+  // FIX-858: external collections don't enumerate FSD storage — listing them
+  // through this store-backed route would return a false empty page (`total: 0`),
+  // indistinguishable from "no rows". Cursor-paged listing over the app's
+  // `search` lands in a follow-up; until then, signal unsupported rather than lie.
+  if (isExternalResourceCollection(config)) {
+    return jsonResponse(501, {
+      error: `Listing external collection "${route.ref}" is not supported yet — read items by key, or use search once the pushdown route lands`,
+    });
   }
 
   const url = new URL(request.url);
@@ -462,7 +502,16 @@ export async function handleGetCollectionItemState(
   }
 
   let value: JsonObject | undefined;
-  if (scope === "session") {
+  if (isExternalResourceCollection(config)) {
+    // FIX-858: read-through to the app store, not FSD storage. The bare topic is
+    // the app's within-scope row key.
+    const extCtx = buildExternalResourceContextFromSession(session, scope, route.sessionId, _request.signal);
+    value = await readExternalCollectionState(
+      config,
+      extractBareTopic(config.pattern, storageKey),
+      extCtx
+    );
+  } else if (scope === "session") {
     value = await ctx.stores.resourceState.get("session", session.id, storageKey);
   } else {
     // User/org scope: resolve via the shared scope resolver (honors
@@ -611,6 +660,11 @@ export async function handleDeleteCollectionItem(
   const { config, scope } = found;
   if (!isCollectionConfig(config)) {
     return jsonResponse(400, { error: `"${route.ref}" is not a collection` });
+  }
+
+  // FIX-858: external collections are read-only (defense in depth).
+  if (isExternalResourceCollection(config)) {
+    return jsonResponse(403, { error: `"${route.ref}" is a read-only external collection` });
   }
 
   if (!config.client?.content?.delete) {

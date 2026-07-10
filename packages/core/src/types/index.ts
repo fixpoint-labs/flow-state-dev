@@ -188,8 +188,27 @@ export {
   normalizeResourcePath,
   matchesPattern,
   getPatternPrefix,
+  extractBareTopic,
   extractPatternParams,
 } from "./resource-collection";
+
+export type {
+  DefinedExternalResourceCollection,
+  ExternalRecordHit,
+  ExternalReactiveBindings,
+  ExternalResourceCollectionConfig,
+  ExternalResourceCollectionRef,
+  ExternalResourceContext,
+  ExternalResourceRef,
+  ResourceQuery,
+  ResourceSearchResult,
+} from "./external-resource-collection";
+
+export {
+  defineExternalResourceCollection,
+  isExternalResourceCollection,
+  readExternalRecord,
+} from "./external-resource-collection";
 
 export type {
   JournalEntry,

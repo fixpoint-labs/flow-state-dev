@@ -11,6 +11,19 @@ type CollectionEntry = {
   ref: ResourceCollectionRef<any>;
 };
 
+/**
+ * True for an external resource collection ref (FIX-858) — carries the
+ * `external: true` brand. External collections have `pattern` but no `create`,
+ * so the store-collection predicate (`"pattern" in entry && "create" in entry`)
+ * already excludes them; without this guard, though, its *complement* would
+ * misclassify them as a static single resource. They route through their own
+ * search/list tools (PR2); until then they are skipped by every store-backed
+ * tool path.
+ */
+function isExternalRef(entry: unknown): boolean {
+  return typeof entry === "object" && entry !== null && (entry as { external?: unknown }).external === true;
+}
+
 function collectCollections(ctx: BlockContext): CollectionEntry[] {
   const entries: CollectionEntry[] = [];
   const registry = ctx.resources;
@@ -36,7 +49,10 @@ function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
   if (registry === undefined) return [];
   return registry
     .list()
-    .filter((entry: any): entry is ResourceRef<any> => !("pattern" in entry && "create" in entry));
+    .filter(
+      (entry: any): entry is ResourceRef<any> =>
+        !("pattern" in entry && "create" in entry) && !isExternalRef(entry)
+    );
 }
 
 function buildCollectionDescription(collections: CollectionEntry[]): string {
@@ -182,7 +198,7 @@ export async function resolveResourceByPath(
   if (registry === undefined) return undefined;
 
   for (const entry of registry.list()) {
-    if (!("pattern" in entry && "create" in entry)) {
+    if (!("pattern" in entry && "create" in entry) && !isExternalRef(entry)) {
       const ref = entry as ResourceRef<any>;
       if (ref.path === path) return ref;
     }

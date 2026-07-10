@@ -9,6 +9,7 @@ import type { ReactiveBindings } from "./resource-change";
 
 // Re-export pattern utilities for consumers
 export {
+  extractBareTopic,
   extractPatternParams,
   getPatternPrefix,
   isDeepWildcard,

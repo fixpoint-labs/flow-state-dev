@@ -2,12 +2,22 @@
  * Shared utilities for route handlers: response builders, parsing, and validation helpers.
  */
 import type {
+  ExternalResourceCollectionConfig,
+  ExternalResourceContext,
   JsonObject,
   ResourceConfig,
   ResourceCollectionConfig,
+  ResourceScope,
   ScopeType,
 } from "@flow-state-dev/core/types";
-import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
+import { buildExternalResourceRef } from "../resources/external-ref";
+import {
+  extractBareTopic,
+  isExternalResourceCollection,
+  matchesPattern,
+  readExternalRecord,
+  resolveCollectionKey,
+} from "@flow-state-dev/core/types";
 import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { collapseToCanonicalLog } from "@flow-state-dev/core/items";
@@ -90,22 +100,10 @@ export async function loadTenantSession(
   return record;
 }
 
-/**
- * Strip the static pattern prefix from a full storage key, leaving the
- * "bare topic" — the identifying portion a collection author addresses
- * items by. Returns the full key unchanged when the prefix doesn't match
- * (defensive against caller mismatches).
- *
- * Example: extractBareTopic("memos/[topic]", "memos/abc") -> "abc".
- */
-export function extractBareTopic(pattern: string, fullKey: string): string {
-  const prefix = getPatternPrefix(pattern);
-  if (prefix.length === 0) return fullKey;
-  if (fullKey === prefix) return "";
-  const sep = prefix + "/";
-  if (fullKey.startsWith(sep)) return fullKey.slice(sep.length);
-  return fullKey;
-}
+// `extractBareTopic` now lives in core alongside `getPatternPrefix` /
+// `resolveCollectionKey` (its inverse). Re-exported here so existing route
+// importers keep resolving it from this module.
+export { extractBareTopic } from "@flow-state-dev/core/types";
 
 export function asObject(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== "object" || value === null) {
@@ -269,12 +267,86 @@ export function createScopeResources(options: {
   configs: Record<string, unknown> | undefined;
   persisted: Record<string, unknown> | undefined;
   persistedContent?: Record<string, string> | undefined;
+  /**
+   * FIX-858: trusted context for reading external collections through their
+   * `read` backing when a scope-level `client.data` function references one.
+   * Omitted when the scope has no external collections.
+   */
+  externalContext?: ExternalResourceContext;
 }): Record<string, Record<string, unknown>> {
   const handles: Record<string, Record<string, unknown>> = {};
   const contentMap = options.persistedContent ?? {};
   const storageKeys = resourceStorageKeys(options.configs);
 
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
+    if (isExternalResourceCollection(maybeConfig)) {
+      // FIX-858: read-through handle for a scope `client.data` reading an
+      // external collection. `get`/`getOptional` route through `read`; `list`
+      // does not enumerate the app source (discovery is via the list/search
+      // route), so it returns empty here.
+      const extConfig = maybeConfig as unknown as ExternalResourceCollectionConfig &
+        ResourceCollectionConfig;
+      const pattern = extConfig.pattern;
+      const readThrough = async (
+        key: string | Record<string, string>
+      ): Promise<Record<string, unknown> | undefined> => {
+        if (options.externalContext === undefined) return undefined;
+        const storageKey = resolveCollectionKey(pattern, key);
+        // Reject out-of-pattern keys before the app hook, matching the item
+        // route and the execution-context handle — a single-level `positions/*`
+        // must not resolve `positions/AAPL/history` through `read`.
+        if (!matchesPattern(pattern, storageKey)) return undefined;
+        const state = await readExternalRecord<JsonObject>(
+          extConfig,
+          extractBareTopic(pattern, storageKey),
+          options.externalContext
+        );
+        if (state === undefined) return undefined;
+        // Same read-only ref shape (and template rendering) as the execution
+        // context's handle — built by the shared helper so the two can't drift.
+        return buildExternalResourceRef({
+          scope: options.scope as ResourceScope,
+          storageKey,
+          readState: () => (isJsonObject(state) ? state : {}),
+          contentTemplate: extConfig.contentTemplate,
+          contentTemplateRef: extConfig.contentTemplateRef,
+          resolveTemplateRef: (ref) => (typeof contentMap[ref] === "string" ? contentMap[ref]! : null),
+        }) as unknown as Record<string, unknown>;
+      };
+      // `list`/`count` DON'T enumerate the app source (discovery is the cursor-
+      // paged list/search route — a follow-up). Throw rather than return a false
+      // empty `[]`/`0` — the same "never lie about cardinality" stance as the
+      // 501 list-state route and the snapshot's absent count.
+      const unsupportedEnumeration = (method: string): never => {
+        throw new Error(
+          `${method}() is not supported for external collection "${pattern}" in a client.data projection — read instances by key; listing/search pushdown is a follow-up`
+        );
+      };
+      handles[resourceName] = {
+        pattern,
+        config: extConfig,
+        external: true,
+        async list() {
+          return unsupportedEnumeration("list");
+        },
+        async count() {
+          return unsupportedEnumeration("count");
+        },
+        async get(key: string | Record<string, string>) {
+          const ref = await readThrough(key);
+          if (ref === undefined) {
+            throw new Error(
+              `Resource instance "${resolveCollectionKey(pattern, key)}" not found in external collection "${pattern}"`
+            );
+          }
+          return ref;
+        },
+        async getOptional(key: string | Record<string, string>) {
+          return readThrough(key);
+        },
+      };
+      continue;
+    }
     if (isCollectionConfig(maybeConfig)) {
       // Build a lightweight read-only collection ref for clientData computation.
       // Instances are stored as path-keyed entries in the persisted resources map.
@@ -426,6 +498,20 @@ export async function buildResourceSnapshot(options: {
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
     if (isCollectionConfig(maybeConfig)) {
       if (maybeConfig.client === undefined) continue;
+
+      // FIX-858: external collections are read-through — the snapshot does NOT
+      // enumerate the app source (it holds only instances loaded this request,
+      // typically none). Emit an empty anchor keyed on a serializable
+      // `prefetched: []` — NOT `count: undefined`, which `JSON.stringify` drops
+      // to `{}` and the client's `useResource` then misclassifies as a single
+      // resource (it discriminates a collection by a present `count`/`prefetched`
+      // key). `count` stays absent (honest unknown cardinality — never a false 0);
+      // the client discovers instances via the list/search route + per-URI reads.
+      if (isExternalResourceCollection(maybeConfig)) {
+        out[resourceName] = { prefetched: [] };
+        hasAny = true;
+        continue;
+      }
 
       const pattern = maybeConfig.pattern;
       const persisted = options.persisted ?? {};

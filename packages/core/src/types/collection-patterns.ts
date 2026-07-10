@@ -89,6 +89,24 @@ export function getPatternPrefix(pattern: string): string {
 }
 
 /**
+ * Strip the static pattern prefix from a full storage key, leaving the
+ * "bare topic" — the identifying portion a collection author addresses items
+ * by. Returns the full key unchanged when the prefix doesn't match (defensive
+ * against caller mismatches).
+ *
+ * The inverse of {@link resolveCollectionKey} for wildcard patterns:
+ * `extractBareTopic("positions/*", "positions/AAPL")` → `"AAPL"`.
+ */
+export function extractBareTopic(pattern: string, fullKey: string): string {
+  const prefix = getPatternPrefix(pattern);
+  if (prefix.length === 0) return fullKey;
+  if (fullKey === prefix) return "";
+  const sep = prefix + "/";
+  if (fullKey.startsWith(sep)) return fullKey.slice(sep.length);
+  return fullKey;
+}
+
+/**
  * Check if a storage key matches a collection pattern.
  */
 export function matchesPattern(pattern: string, storageKey: string): boolean {

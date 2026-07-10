@@ -20,6 +20,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import {
   getPatternPrefix,
+  isExternalResourceCollection,
 } from "@flow-state-dev/core/types";
 import type {
   ItemVisibility,
@@ -37,7 +38,7 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
-import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ExternalResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import { createScopePersist } from "../stores/scope-persist";
 import type { TraceStore } from "../stores/types";
@@ -1156,6 +1157,12 @@ export async function createExecutionContext<
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): void => {
     for (const config of Object.values(configs)) {
+      // External collections read through their `read` hook, never the store, so
+      // their prefix is NOT bulk-materialized. Seeding it would make a nested
+      // store-backed collection under the same prefix root (e.g. external
+      // `positions/*` + stored `positions/details/*`) read as an authoritative
+      // miss and hide real rows (FIX-858).
+      if (isExternalResourceCollection(config)) continue;
       if (!isCollectionConfig(config)) continue;
       const prefix = getPatternPrefix(config.pattern);
       loadedCollectionPrefixes[scope].add(prefix === "" ? "" : `${prefix}/`);
@@ -1280,6 +1287,12 @@ export async function createExecutionContext<
     for (const [accessor, config] of Object.entries(declared)) {
       const scope = (config as { scope?: ContentScopeType }).scope;
       if (scope !== "session" && scope !== "user" && scope !== "org") continue;
+      // External collections read through their `read` hook, never the store, so
+      // they must not run the store-load waves OR mark their prefix loaded —
+      // seeding it would shadow a nested store-backed collection under the same
+      // prefix root (FIX-858). The store-read helpers already skip them; skipping
+      // here keeps the prefix out of `loadedCollectionPrefixes`.
+      if (isExternalResourceCollection(config)) continue;
       // FIX-735: route to this resource's isolation bucket from its config.
       const scopeId = resolveConfigScopeId(scope, config);
       if (scopeId === undefined) continue; // org scope not present this request
@@ -1646,6 +1659,24 @@ export async function createExecutionContext<
   // resolve a template resource's raw content across scopes.
   const templateResolverRef: { current: ((ref: string) => string | null) | null } = { current: null };
 
+  // FIX-858: trusted context handed to an external collection's `read`/`search`
+  // backing hooks. Every field is server-derived (BP-031); `scopeId` is the
+  // resolved sessionId / userId / orgId (the raw sessionId, not the
+  // tenant-namespaced storage key). The hook uses these to scope its own query
+  // to the same owner/tenant namespace the framework uses.
+  const buildExternalResourceContext = (
+    scope: "session" | "user" | "org",
+    scopeId: string
+  ): ExternalResourceContext => ({
+    scope,
+    scopeId,
+    userId,
+    orgId: orgRef.current?.orgId ?? optionsOrgId,
+    tenantId: options.tenantId,
+    flowKind: flow.kind,
+    signal: options.signal,
+  });
+
   const userResources = createScopeResourceRegistry({
     scope: "user",
     scopeId: userId,
@@ -1658,6 +1689,7 @@ export async function createExecutionContext<
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("user", keyOrPrefix),
     templateResolverRef,
+    externalResourceContext: buildExternalResourceContext("user", userId),
   });
 
   const sessionResources = createScopeResourceRegistry({
@@ -1672,6 +1704,7 @@ export async function createExecutionContext<
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("session", keyOrPrefix),
     templateResolverRef,
+    externalResourceContext: buildExternalResourceContext("session", sessionId),
   });
 
   const orgResources =
@@ -1689,6 +1722,7 @@ export async function createExecutionContext<
           recordResourceLoad,
           resolveEagerSource: (keyOrPrefix) => resolveEagerSource("org", keyOrPrefix),
           templateResolverRef,
+          externalResourceContext: buildExternalResourceContext("org", orgRef.current!.orgId),
         });
 
   // Populate the template resolver now that all registries exist.

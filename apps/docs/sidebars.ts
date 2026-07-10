@@ -51,6 +51,7 @@ const sidebars: SidebarsConfig = {
             "resources/overview",
             "resources/storage",
             "resources/collections",
+            "resources/external-collections",
             "resources/reactive-blocks",
             "resources/edges",
             "resources/client-access",
