@@ -104,6 +104,35 @@ Three surfaces consume it:
 
 Hits arrive in the order your hook returns them (your store's ranking), and each is validated through `stateSchema` — a row that fails validation is dropped and logged, so one bad record never sinks the page.
 
+## Staying in sync
+
+An external collection is a read-through view, so every read is already current — the framework holds no copy to go stale. The real question is *when* to read again after your store changes. There's no invalidation to manage; the freshness is structural. What's left is deciding what a change should trigger.
+
+**Run work when your data changes.** Wire your app's own change event — a database trigger, a queue message, a webhook from an upstream system — to a flow action through an [inbound transport](../advanced/inbound-transports.md). The action reads the external collection the same way any block does, and because the read goes straight to your store, it sees the change.
+
+```ts
+// Your app already emits "position changed" somewhere. Point it at a flow —
+// here through a declared webhook (see the Webhooks guide for the full setup):
+const desk = defineFlow({
+  kind: "desk",
+  webhooks: {
+    portfolio: {
+      on: {
+        "position.changed": {
+          input: (e) => ({ ticker: e.payload.ticker }),
+          block: rescoreThesis, // reads ctx.resources.portfolio.get(ticker) — fresh
+        },
+      },
+    },
+  },
+  // ...actions, resources
+});
+```
+
+The session doesn't have to be open — the dispatch stands one up. This is the path for "something changed, go re-derive / re-score / notify."
+
+**Refresh a live screen.** Pushing a projected update into a session someone is watching *right now*, so the open view re-renders without a refetch, is a separate and heavier mechanism — it's a deferred follow-up. Until it lands, a live view stays current by re-reading: the client re-runs its list/search query, or an inbound event (above) dispatches a flow the open session observes.
+
 ## The trusted context
 
 Your `read` / `search` hooks receive a `ctx` the framework derives from the request — never from caller input:
@@ -134,4 +163,4 @@ The agent still changes your data — through handlers that call your store dire
 - **Patterns are wildcard-only.** `positions/*` or `positions/**`. Parameterized `[name]` patterns are rejected at build time — encode the discriminator into a wildcard segment.
 - **The snapshot doesn't enumerate.** There is no `count()`; an honest count would need to either enumerate your store (forbidden) or a hook nobody has asked for yet. Listing is cursor-paged, so the UI pages through instead of asking "how many."
 - **Search is your store's, not the framework's.** Ranking, filtering, and paging are whatever your `search` hook does. The framework passes the query down and the cursor back; it doesn't re-rank. Glob and grep skip external collections for the same reason — their deterministic contract isn't something a pushed-down search can promise.
-- **App-driven change signals** land in a follow-up slice. Today reads and searches are pull-based; a way for your app to signal a change and refresh an open screen comes next.
+- **Live-view push is a follow-up.** An idle session already reacts to your data changing — dispatch a flow through an inbound transport (see [Staying in sync](#staying-in-sync)). Pushing a projected delta into an *open* screen without a refetch is the deferred piece.
