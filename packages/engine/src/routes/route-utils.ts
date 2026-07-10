@@ -292,6 +292,10 @@ export function createScopeResources(options: {
       ): Promise<Record<string, unknown> | undefined> => {
         if (options.externalContext === undefined) return undefined;
         const storageKey = resolveCollectionKey(pattern, key);
+        // Reject out-of-pattern keys before the app hook, matching the item
+        // route and the execution-context handle — a single-level `positions/*`
+        // must not resolve `positions/AAPL/history` through `read`.
+        if (!matchesPattern(pattern, storageKey)) return undefined;
         const state = await readExternalRecord<JsonObject>(
           extConfig,
           extractBareTopic(pattern, storageKey),

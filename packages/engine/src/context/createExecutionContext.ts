@@ -1287,6 +1287,12 @@ export async function createExecutionContext<
     for (const [accessor, config] of Object.entries(declared)) {
       const scope = (config as { scope?: ContentScopeType }).scope;
       if (scope !== "session" && scope !== "user" && scope !== "org") continue;
+      // External collections read through their `read` hook, never the store, so
+      // they must not run the store-load waves OR mark their prefix loaded —
+      // seeding it would shadow a nested store-backed collection under the same
+      // prefix root (FIX-858). The store-read helpers already skip them; skipping
+      // here keeps the prefix out of `loadedCollectionPrefixes`.
+      if (isExternalResourceCollection(config)) continue;
       // FIX-735: route to this resource's isolation bucket from its config.
       const scopeId = resolveConfigScopeId(scope, config);
       if (scopeId === undefined) continue; // org scope not present this request

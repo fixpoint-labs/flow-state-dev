@@ -199,6 +199,27 @@ describe("external collection — scope clientData handle (createScopeResources)
     expect(await portfolio.getOptional("NONE")).toBeUndefined();
   });
 
+  it("rejects out-of-pattern keys before the read hook (matches item route + registry)", async () => {
+    const read = vi.fn(async () => ({ ticker: "AAPL", shares: 1 }));
+    const coll = defineExternalResourceCollection({
+      pattern: "positions/*",
+      scope: "user",
+      stateSchema: positionSchema,
+      read,
+      search: async () => ({ hits: [] }),
+    });
+    const handles = createScopeResources({
+      scope: "user",
+      configs: { portfolio: coll as unknown as Record<string, unknown> },
+      persisted: {},
+      externalContext: ctx,
+    });
+    const portfolio = handles.portfolio as unknown as { getOptional(k: string): Promise<unknown> };
+    // `positions/*` is single-level: `AAPL/history` is out of pattern.
+    expect(await portfolio.getOptional("AAPL/history")).toBeUndefined();
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it("throws on list()/count() rather than lying with []/0", async () => {
     const handles = createScopeResources({
       scope: "user",
