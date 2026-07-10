@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { resourceSearchTools } from "../src/tools/resource-search-tools";
 import type { BlockContext } from "../src/types/block";
 import { createMockContext, runForTest } from "./helpers";
@@ -422,5 +422,72 @@ describe("searchResources", () => {
       ctx,
     );
     expect(results).toHaveLength(2);
+  });
+});
+
+// FIX-858: external collections push the query down to their `search` hook
+// instead of being enumerated + scored in memory. glob/grep skip them entirely.
+describe("searchResources — external collection pushdown (FIX-858)", () => {
+  function externalCtx(opts: {
+    llmReadable?: boolean;
+    list: (q: unknown) => Promise<{ items: any[]; nextCursor?: string }>;
+  }): BlockContext {
+    const entry = {
+      pattern: "positions/*",
+      scope: "org",
+      external: true,
+      config: { llmReadable: opts.llmReadable ?? true },
+      list: opts.list,
+      get: async () => {
+        throw new Error("not found");
+      },
+      getOptional: async () => undefined,
+    };
+    return createMockContext({
+      resources: { list: () => [entry], get: () => undefined } as any,
+    });
+  }
+
+  it("pushes the query to the external search hook and returns its hits + nextCursor", async () => {
+    const list = vi.fn(async () => ({
+      items: [
+        refOf({ path: "positions/AAPL", content: "AAPL 10 shares" }),
+        refOf({ path: "positions/MSFT", content: "MSFT 4 shares" }),
+      ],
+      nextCursor: "p2",
+    }));
+    const ctx = externalCtx({ list });
+    const { results, nextCursor } = await runForTest(
+      searchResources,
+      { query: "shares", prefix: null, limit: 10, cursor: null },
+      ctx,
+    );
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ search: "shares", limit: 10 }));
+    expect(results.map((r) => r.uri)).toEqual(["org/positions/AAPL", "org/positions/MSFT"]);
+    // Rank-preserving: first hit scores highest.
+    expect(results[0]!.score).toBeGreaterThan(results[1]!.score);
+    expect(nextCursor).toBe("p2");
+  });
+
+  it("skips non-llmReadable external collections", async () => {
+    const list = vi.fn(async () => ({ items: [] }));
+    const ctx = externalCtx({ llmReadable: false, list });
+    await runForTest(searchResources, { query: "x", prefix: null, limit: 10, cursor: null }, ctx);
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("a cursor continuation forwards the cursor and advances only external results", async () => {
+    const list = vi.fn(async () => ({
+      items: [refOf({ path: "positions/GOOG", content: "GOOG" })],
+    }));
+    const ctx = externalCtx({ list });
+    const { results, nextCursor } = await runForTest(
+      searchResources,
+      { query: "goog", prefix: null, limit: 10, cursor: "p2" },
+      ctx,
+    );
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ cursor: "p2" }));
+    expect(results.map((r) => r.uri)).toEqual(["org/positions/GOOG"]);
+    expect(nextCursor).toBeUndefined();
   });
 });

@@ -25,7 +25,8 @@
 import { z } from "zod";
 import picomatch from "picomatch";
 import { handler } from "../blocks/handler";
-import { collectAllResources, collectReadableResources } from "./resource-tools";
+import { collectAllResources, collectExternalCollections, collectReadableResources } from "./resource-tools";
+import type { ExternalResourceCollectionRef } from "../types/external-resource-collection";
 
 /** Maximum snippet length returned per match, so results stay token-cheap. */
 const MAX_SNIPPET_LENGTH = 200;
@@ -186,6 +187,11 @@ export function resourceSearchTools() {
         .default(null)
         .describe("Restrict to resources at or under this within-scope path prefix (matched on a path boundary, not a bare string prefix)"),
       limit: z.number().int().positive().default(10).describe("Maximum number of results to return"),
+      cursor: z
+        .string()
+        .nullable()
+        .default(null)
+        .describe("Opaque pagination cursor from a prior page's nextCursor (external collections only). Null starts from the first page."),
     }),
     outputSchema: z.object({
       results: z.array(
@@ -195,6 +201,7 @@ export function resourceSearchTools() {
           snippet: z.string(),
         }),
       ),
+      nextCursor: z.string().optional().describe("Present when more external-collection results remain; pass it back as `cursor`."),
     }),
     execute: async (input, ctx) => {
       const terms = input.query
@@ -202,6 +209,45 @@ export function resourceSearchTools() {
         .split(/\W+/)
         .filter((term) => term.length > 0);
       if (terms.length === 0) return { results: [] };
+
+      // External collections (FIX-858): push the query DOWN to each readable
+      // external collection's `search` (the app engine ranks/filters — no
+      // in-memory scan). Hits arrive in app (hook) order; the framework derives
+      // a rank-preserving score and a snippet from rendered content.
+      const externalResults: Array<{ uri: string; score: number; snippet: string }> = [];
+      let nextCursor: string | undefined;
+      const externalCollections = collectExternalCollections(ctx).filter(
+        (ns) => ns.ref.config?.llmReadable === true
+      );
+      for (const ns of externalCollections) {
+        const extRef = ns.ref as unknown as ExternalResourceCollectionRef;
+        const page = await extRef.list({
+          search: input.query,
+          ...(input.prefix !== null ? { prefix: input.prefix } : {}),
+          limit: input.limit,
+          ...(input.cursor !== null ? { cursor: input.cursor } : {}),
+        });
+        // Rank-preserving score (app/hook order → descending); snippet rendered
+        // from the record's content template.
+        for (let i = 0; i < page.items.length; i += 1) {
+          const ref = page.items[i]!;
+          const content = await ref.readContent();
+          externalResults.push({
+            uri: ref.uri,
+            score: page.items.length - i,
+            snippet: content ? firstMatchingLine(content, terms) : "",
+          });
+        }
+        if (page.nextCursor !== undefined) nextCursor = page.nextCursor;
+      }
+
+      // A cursor continuation advances only the external pagination — the
+      // bounded store-backed set was fully returned on the first page.
+      if (input.cursor !== null) {
+        return nextCursor === undefined
+          ? { results: externalResults }
+          : { results: externalResults, nextCursor };
+      }
 
       const resources = await collectReadableResources(ctx);
       const scored: Array<{ uri: string; score: number; snippet: string }> = [];
@@ -220,7 +266,8 @@ export function resourceSearchTools() {
       }
 
       scored.sort((a, b) => b.score - a.score || a.uri.localeCompare(b.uri));
-      return { results: scored.slice(0, input.limit) };
+      const results = [...externalResults, ...scored.slice(0, input.limit)];
+      return nextCursor === undefined ? { results } : { results, nextCursor };
     },
   });
 
