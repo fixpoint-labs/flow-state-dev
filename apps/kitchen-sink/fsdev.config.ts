@@ -62,22 +62,22 @@ const flowstate = createFlowState({
     weeklyDigest: weeklyDigestFlow,
   },
   models: {
-    default: "vercel/anthropic/claude-sonnet-4.6",
+    default: "vercel/anthropic/claude-sonnet-5",
     intents: {
       utility: [
         "vercel/google/gemini-3.1-flash-lite",
         "vercel/anthropic/claude-haiku-4.5",
         "vercel/openai/gpt-5.4-nano",
       ],
-      chat: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
-      plan: ["vercel/anthropic/claude-opus-4.7", "vercel/openai/gpt-5.5"],
+      chat: ["vercel/anthropic/claude-sonnet-5", "vercel/openai/gpt-5.5"],
+      plan: ["vercel/anthropic/claude-opus-4.8", "vercel/openai/gpt-5.5"],
       synthesize: [
-        "vercel/anthropic/claude-sonnet-4.6",
+        "vercel/anthropic/claude-sonnet-5",
         "vercel/openai/gpt-5.5",
         "vercel/google/gemini-2.5-pro",
       ],
-      code: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
-      reason: ["vercel/anthropic/claude-opus-4.7", "vercel/openai/gpt-5.5"],
+      code: ["vercel/anthropic/claude-sonnet-5", "vercel/openai/gpt-5.5"],
+      reason: ["vercel/anthropic/claude-opus-4.8", "vercel/openai/gpt-5.5"],
     },
     // Bind the gateway explicitly: the resolver's dynamic require() path
     // doesn't run in bundled Next.js, so a static instance is required.
@@ -125,7 +125,7 @@ const flowstate = createFlowState({
     : undefined,
   // Schema/recovery scans on cold start can exhaust the serverless pool before
   // real requests are served.
-  detectInterruptedOnStartup: false,
+  detectInterruptedOnStartup: !databaseUrl,
   // Durable execution (FIX-140/141). Builds the checkpoint durability provider
   // from the active profile's stores, so actions marked `durable: true` (e.g.
   // chat-agent's `requestApproval` HITL gate) get ctx.suspend() and
