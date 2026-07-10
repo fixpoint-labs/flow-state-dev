@@ -71,7 +71,7 @@ export function ImportMenu({
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
-        aria-haspopup="menu"
+        aria-haspopup="true"
         aria-expanded={open}
         title={disabled ? "Add an account first" : "Import holdings or transactions"}
         className={cn(
@@ -85,13 +85,9 @@ export function ImportMenu({
         <ChevronDown className="h-3 w-3 text-[color:var(--c-fg-faint)]" aria-hidden />
       </button>
       {open ? (
-        <div
-          role="menu"
-          className="absolute left-0 z-20 mt-1 w-52 overflow-hidden rounded-md border border-[color:var(--c-border)] bg-[color:var(--c-surface)] py-1 shadow-lg"
-        >
+        <div className="absolute left-0 z-20 mt-1 w-52 overflow-hidden rounded-md border border-[color:var(--c-border)] bg-[color:var(--c-surface)] py-1 shadow-lg">
           <button
             type="button"
-            role="menuitem"
             onClick={() => choose(onImportCsv)}
             className={itemClass}
           >
@@ -99,7 +95,6 @@ export function ImportMenu({
           </button>
           <button
             type="button"
-            role="menuitem"
             disabled={!pdfEnabled}
             title={
               pdfEnabled
@@ -113,7 +108,6 @@ export function ImportMenu({
           </button>
           <button
             type="button"
-            role="menuitem"
             onClick={() => choose(onImportTransactions)}
             className={itemClass}
           >

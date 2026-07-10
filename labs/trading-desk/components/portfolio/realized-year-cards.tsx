@@ -24,6 +24,7 @@ import { Segmented } from "@/components/ui/segmented";
 import {
   buildRealizedGainsRowModel,
   type RealizedGainRowModel,
+  type RealizedGainTotal,
 } from "./realized-gains-row-model";
 import {
   buildRealizedIncomeByYear,
@@ -48,6 +49,18 @@ const TERM_LABELS: Record<RealizedGainRowModel["term"], string> = {
   long: "Long",
   unknown: "Unknown",
 };
+
+/** The `RealizedStat` total for a year's total realized income. The
+ *  basis-unknown `excludedCount` from the capital-gains leg only applies when
+ *  the total is a real figure — when it's null (currency-gated income), suppress
+ *  the "(excl. N)" note so the "—" isn't misread as a basis exclusion (the "—"
+ *  came from the gated income, a different cause). */
+function totalIncomeStat(year: YearRealizedIncome): RealizedGainTotal {
+  return {
+    gain: year.totalIncome,
+    excludedCount: year.totalIncome === null ? 0 : year.capitalGains.excludedCount,
+  };
+}
 
 type RealizedYearCardsProps = {
   /** Household-wide realized-gain rows, unfiltered (the `useTax` read). */
@@ -147,17 +160,14 @@ function YearCard({
   onToggle: () => void;
   gainRows: RealizedGainRowModel[];
 }): ReactElement {
-  // Total income reuses `RealizedStat` (the signed/colored/excl-N convention):
-  // the basis-unknown `excludedCount` from the capital-gains leg still applies,
-  // and a null total renders "—", never a fabricated figure.
+  // Total income reuses `RealizedStat` (the signed/colored/excl-N convention);
+  // a null total renders "—", never a fabricated figure. The "(excl. N)" note
+  // is suppressed when the total is null (see `totalIncomeStat`).
   const headline =
     metric === "gains" ? (
       <RealizedStat total={year.capitalGains} currency={currency} />
     ) : (
-      <RealizedStat
-        total={{ gain: year.totalIncome, excludedCount: year.capitalGains.excludedCount }}
-        currency={currency}
-      />
+      <RealizedStat total={totalIncomeStat(year)} currency={currency} />
     );
 
   return (
@@ -251,13 +261,7 @@ function IncomeDrilldown({
       </BreakdownRow>
       <div className="mt-0.5 border-t border-[color:var(--c-border)]/60 pt-1">
         <BreakdownRow label="Total realized" strong>
-          <RealizedStat
-            total={{
-              gain: year.totalIncome,
-              excludedCount: year.capitalGains.excludedCount,
-            }}
-            currency={currency}
-          />
+          <RealizedStat total={totalIncomeStat(year)} currency={currency} />
         </BreakdownRow>
       </div>
     </dl>
