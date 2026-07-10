@@ -2,8 +2,13 @@
  * The `fsdev chat` read-eval loop. Reads lines (via `node:readline`), routes each
  * through parse → resolveDispatch, and drives built-ins or turns. One turn is in
  * flight at a time (readline yields the next line only after the body settles),
- * so piped stdin is strictly sequential — the test/goal-check seam. TTY signal
- * polish (single/double Ctrl-C, raw-mode toggling) is layered on in a follow-up.
+ * so piped stdin is strictly sequential — the test/goal-check seam.
+ *
+ * Interrupt handling is state-dependent (TTY only). Idle: readline's own SIGINT —
+ * first Ctrl-C warns, a second exits. Turn in flight: readline is paused and raw
+ * mode dropped (so the terminal generates SIGINT again), and a process-level
+ * handler drives the turn's true-abort for the turn's duration. Ctrl-D ends the
+ * loop. Piped stdin exercises none of this; it just reads to EOF.
  */
 import * as readline from "node:readline";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -22,6 +27,9 @@ export type SessionGuard = (
   target: FlowActionTarget,
 ) => Promise<{ ok: true } | { ok: false; message: string }>;
 
+/** A TTY input stream whose raw mode the loop toggles around a streaming turn. */
+type LoopInput = NodeJS.ReadableStream & { isTTY?: boolean; setRawMode?: (mode: boolean) => void };
+
 export interface ChatLoopParams {
   state: HarnessState;
   /** Resolves a flow instance for a target's kind (registry-default instance). */
@@ -35,12 +43,21 @@ export interface ChatLoopParams {
   /** Plain-data runtime snapshot for `/status`. */
   runtime: { source: string; store: string };
   validateSessionForTarget: SessionGuard;
-  input: NodeJS.ReadableStream & { isTTY?: boolean };
+  input: LoopInput;
   output: NodeJS.WritableStream;
   isTTY: boolean;
 }
 
 const PROMPT = "❯ ";
+
+/**
+ * Decide what an idle Ctrl-C does: the first press warns and arms, a second
+ * (while still armed) exits. Pure so the double-press rule is unit-tested even
+ * though raw-TTY signal delivery can't be driven through a pipe.
+ */
+export function decideIdleInterrupt(armed: boolean): { action: "warn" | "exit"; armed: boolean } {
+  return armed ? { action: "exit", armed: false } : { action: "warn", armed: true };
+}
 
 /** Run the loop to completion; returns the process exit code. */
 export async function runChatLoop(params: ChatLoopParams): Promise<number> {
@@ -59,16 +76,37 @@ export async function runChatLoop(params: ChatLoopParams): Promise<number> {
 
   const rl = readline.createInterface({ input, output, terminal: isTTY });
   let failed = false;
-  // The in-flight turn, exposed so a SIGINT handler (added with signal polish)
-  // can drive its abort. Tracked here so that wiring is a local change.
   let currentTurn: RunningTurn | undefined;
+  let idleArmed = false;
 
   const promptIfTty = (): void => {
     if (isTTY) output.write(PROMPT);
   };
 
+  const setRawMode = (mode: boolean): void => {
+    if (input.isTTY && typeof input.setRawMode === "function") input.setRawMode(mode);
+  };
+
+  // Idle Ctrl-C: readline delivers SIGINT only while it is reading (raw mode on).
+  // During a turn we pause it and use a process handler instead, so the two paths
+  // never overlap.
+  if (isTTY) {
+    rl.on("SIGINT", () => {
+      const { action, armed } = decideIdleInterrupt(idleArmed);
+      idleArmed = armed;
+      if (action === "exit") {
+        output.write("\n");
+        rl.close();
+        return;
+      }
+      output.write("\n(press Ctrl-C again or /exit to quit)\n");
+      promptIfTty();
+    });
+  }
+
   /** Handle one line; returns true when the loop should stop. */
   const handleLine = async (rawLine: string): Promise<boolean> => {
+    idleArmed = false; // any typed line disarms the pending Ctrl-C
     const dispatch = resolveDispatch(parseInput(rawLine), state, builtins);
     switch (dispatch.kind) {
       case "noop":
@@ -115,9 +153,27 @@ export async function runChatLoop(params: ChatLoopParams): Promise<number> {
         currentTurn = executeTurn({
           flow, target, text: dispatch.text, sessionId, userId, stores, runtimeConfig, renderer,
         });
-        const result = await currentTurn.done;
-        currentTurn = undefined;
-        if (result.errored) failed = true;
+
+        // While the turn streams, pause readline and drop raw mode so the terminal
+        // generates SIGINT again; a process handler routes Ctrl-C to the true abort.
+        let onSigint: (() => void) | undefined;
+        if (isTTY) {
+          rl.pause();
+          setRawMode(false);
+          onSigint = () => currentTurn?.requestAbort();
+          process.on("SIGINT", onSigint);
+        }
+        try {
+          const result = await currentTurn.done;
+          if (result.errored) failed = true;
+        } finally {
+          if (onSigint !== undefined) process.off("SIGINT", onSigint);
+          if (isTTY) {
+            setRawMode(true);
+            rl.resume();
+          }
+          currentTurn = undefined;
+        }
         return false;
       }
     }
@@ -135,7 +191,7 @@ export async function runChatLoop(params: ChatLoopParams): Promise<number> {
   }
 
   // Piped mode surfaces a failing run (a turn error or a failed built-in); a TTY
-  // exits success on /exit or Ctrl-D.
+  // exits success on /exit, Ctrl-D, or the double-Ctrl-C above.
   if (!isTTY && failed) return EXIT_EXECUTION_ERROR;
   return EXIT_SUCCESS;
 }

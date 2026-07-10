@@ -214,15 +214,18 @@ export async function executeChatCommand(
     }
 
     // Resolve the model resolver (test override wins; else mirror `fsdev run`).
+    // With a config, `--model` wraps the app's resolver; without one it wraps a
+    // bare default. In the discovery path, no `--model` leaves it undefined — the
+    // engine falls back to its own default, exactly as `fsdev run` does — so we
+    // never eagerly construct a resolver that could reject on a misconfigured env.
     let modelResolver: ModelResolver | undefined;
     if (options.modelResolver !== undefined) {
       modelResolver = options.modelResolver;
     } else if (resolved.source === "config") {
       const base = baseRuntimeConfig?.modelResolver ?? createModelResolver();
       modelResolver = options.model !== undefined ? forceModelResolver(base, options.model) : base;
-    } else {
-      const base = createModelResolver();
-      modelResolver = options.model !== undefined ? forceModelResolver(base, options.model) : base;
+    } else if (options.model !== undefined) {
+      modelResolver = forceModelResolver(createModelResolver(), options.model);
     }
 
     const logger = createCliLogger(resolveLogLevel(options, "warn"));
