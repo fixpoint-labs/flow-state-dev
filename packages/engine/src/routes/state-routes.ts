@@ -25,6 +25,7 @@ import {
   sortItems
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
+import { buildExternalResourceContextFromSession } from "../resources/internal";
 
 const DEFAULT_STATE_ITEMS_LIMIT = 100;
 
@@ -171,19 +172,22 @@ export async function handleGetSessionState(
     scope: "session",
     configs: sessionConfigs,
     persisted: sessionState,
-    persistedContent: sessionContent
+    persistedContent: sessionContent,
+    externalContext: buildExternalResourceContextFromSession(session, "session", route.sessionId)
   });
   const userResources = createScopeResources({
     scope: "user",
     configs: userConfigs,
     persisted: userState,
-    persistedContent: userContent
+    persistedContent: userContent,
+    externalContext: buildExternalResourceContextFromSession(session, "user", route.sessionId)
   });
   const orgResources = createScopeResources({
     scope: "org",
     configs: orgConfigs,
     persisted: orgState,
-    persistedContent: orgContent
+    persistedContent: orgContent,
+    externalContext: buildExternalResourceContextFromSession(session, "org", route.sessionId)
   });
 
   const sessionClientData = await computeClientData({

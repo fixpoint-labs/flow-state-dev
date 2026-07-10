@@ -2,12 +2,20 @@
  * Shared utilities for route handlers: response builders, parsing, and validation helpers.
  */
 import type {
+  ExternalResourceCollectionConfig,
+  ExternalResourceContext,
   JsonObject,
   ResourceConfig,
   ResourceCollectionConfig,
   ScopeType,
 } from "@flow-state-dev/core/types";
-import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
+import {
+  getPatternPrefix,
+  isExternalResourceCollection,
+  matchesPattern,
+  readExternalRecord,
+  resolveCollectionKey,
+} from "@flow-state-dev/core/types";
 import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { collapseToCanonicalLog } from "@flow-state-dev/core/items";
@@ -269,12 +277,77 @@ export function createScopeResources(options: {
   configs: Record<string, unknown> | undefined;
   persisted: Record<string, unknown> | undefined;
   persistedContent?: Record<string, string> | undefined;
+  /**
+   * FIX-858: trusted context for reading external collections through their
+   * `read` backing when a scope-level `client.data` function references one.
+   * Omitted when the scope has no external collections.
+   */
+  externalContext?: ExternalResourceContext;
 }): Record<string, Record<string, unknown>> {
   const handles: Record<string, Record<string, unknown>> = {};
   const contentMap = options.persistedContent ?? {};
   const storageKeys = resourceStorageKeys(options.configs);
 
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
+    if (isExternalResourceCollection(maybeConfig)) {
+      // FIX-858: read-through handle for a scope `client.data` reading an
+      // external collection. `get`/`getOptional` route through `read`; `list`
+      // does not enumerate the app source (discovery is via the list/search
+      // route), so it returns empty here.
+      const extConfig = maybeConfig as unknown as ExternalResourceCollectionConfig &
+        ResourceCollectionConfig;
+      const pattern = extConfig.pattern;
+      const readThrough = async (
+        key: string | Record<string, string>
+      ): Promise<Record<string, unknown> | undefined> => {
+        if (options.externalContext === undefined) return undefined;
+        const storageKey = resolveCollectionKey(pattern, key);
+        const state = await readExternalRecord(
+          extConfig,
+          extractBareTopic(pattern, storageKey),
+          options.externalContext
+        );
+        if (state === undefined) return undefined;
+        return {
+          path: storageKey,
+          scope: options.scope,
+          uri: `${options.scope}/${storageKey}`,
+          get state() {
+            return isJsonObject(state) ? state : {};
+          },
+          async readContent() {
+            return null;
+          },
+          async readContentRaw() {
+            return null;
+          },
+        };
+      };
+      handles[resourceName] = {
+        pattern,
+        config: extConfig,
+        external: true,
+        async list() {
+          return [];
+        },
+        async count() {
+          return 0;
+        },
+        async get(key: string | Record<string, string>) {
+          const ref = await readThrough(key);
+          if (ref === undefined) {
+            throw new Error(
+              `Resource instance "${resolveCollectionKey(pattern, key)}" not found in external collection "${pattern}"`
+            );
+          }
+          return ref;
+        },
+        async getOptional(key: string | Record<string, string>) {
+          return readThrough(key);
+        },
+      };
+      continue;
+    }
     if (isCollectionConfig(maybeConfig)) {
       // Build a lightweight read-only collection ref for clientData computation.
       // Instances are stored as path-keyed entries in the persisted resources map.
@@ -426,6 +499,18 @@ export async function buildResourceSnapshot(options: {
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
     if (isCollectionConfig(maybeConfig)) {
       if (maybeConfig.client === undefined) continue;
+
+      // FIX-858: external collections are read-through — the snapshot does NOT
+      // enumerate the app source (it holds only instances loaded this request,
+      // typically none). Emit an empty anchor with `count: undefined` — an
+      // honest "unknown cardinality", never a misleading 0 — so a client-
+      // visible external collection still appears in the snapshot and a client
+      // can discover instances via the list/search route + per-URI reads.
+      if (isExternalResourceCollection(maybeConfig)) {
+        out[resourceName] = { count: undefined };
+        hasAny = true;
+        continue;
+      }
 
       const pattern = maybeConfig.pattern;
       const persisted = options.persisted ?? {};

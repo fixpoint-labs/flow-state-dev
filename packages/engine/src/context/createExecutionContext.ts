@@ -37,7 +37,7 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
-import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ExternalResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import { createScopePersist } from "../stores/scope-persist";
 import type { TraceStore } from "../stores/types";
@@ -1646,6 +1646,24 @@ export async function createExecutionContext<
   // resolve a template resource's raw content across scopes.
   const templateResolverRef: { current: ((ref: string) => string | null) | null } = { current: null };
 
+  // FIX-858: trusted context handed to an external collection's `read`/`search`
+  // backing hooks. Every field is server-derived (BP-031); `scopeId` is the
+  // resolved sessionId / userId / orgId (the raw sessionId, not the
+  // tenant-namespaced storage key). The hook uses these to scope its own query
+  // to the same owner/tenant namespace the framework uses.
+  const buildExternalResourceContext = (
+    scope: "session" | "user" | "org",
+    scopeId: string
+  ): ExternalResourceContext => ({
+    scope,
+    scopeId,
+    userId,
+    orgId: orgRef.current?.orgId ?? optionsOrgId,
+    tenantId: options.tenantId,
+    flowKind: flow.kind,
+    signal: options.signal,
+  });
+
   const userResources = createScopeResourceRegistry({
     scope: "user",
     scopeId: userId,
@@ -1658,6 +1676,7 @@ export async function createExecutionContext<
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("user", keyOrPrefix),
     templateResolverRef,
+    externalResourceContext: buildExternalResourceContext("user", userId),
   });
 
   const sessionResources = createScopeResourceRegistry({
@@ -1672,6 +1691,7 @@ export async function createExecutionContext<
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("session", keyOrPrefix),
     templateResolverRef,
+    externalResourceContext: buildExternalResourceContext("session", sessionId),
   });
 
   const orgResources =
@@ -1689,6 +1709,7 @@ export async function createExecutionContext<
           recordResourceLoad,
           resolveEagerSource: (keyOrPrefix) => resolveEagerSource("org", keyOrPrefix),
           templateResolverRef,
+          externalResourceContext: buildExternalResourceContext("org", orgRef.current!.orgId),
         });
 
   // Populate the template resolver now that all registries exist.

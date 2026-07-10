@@ -343,7 +343,10 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
 export type ResourceHandle<TState extends JsonObject = JsonObject> = ResourceRef<TState>;
 
 /** Union of handle types that can appear in a resource registry. */
-export type AnyResourceRef = ResourceRef<any> | ResourceCollectionRef<any>;
+export type AnyResourceRef =
+  | ResourceRef<any>
+  | ResourceCollectionRef<any>
+  | import("./external-resource-collection").ExternalResourceCollectionRef<any>;
 
 export type ResourceRegistry<
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>

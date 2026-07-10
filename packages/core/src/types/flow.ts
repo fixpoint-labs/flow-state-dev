@@ -13,6 +13,7 @@ import type {
   ResourceCollectionConfig,
   ResourceCollectionRef
 } from "./resource-collection";
+import type { ExternalResourceCollectionRef } from "./external-resource-collection";
 import type { SchedulesConfig } from "./schedules";
 import type { ConcurrencyConfig } from "./concurrency";
 import type { ChatConfig } from "./chat";
@@ -27,16 +28,24 @@ export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
 
 type InferResourceRefs<TResources extends Record<string, DeclaredResourceEntry>> = {
   // All collection refs expose async reads regardless of prefetchMode
-  // — FIX-700 collapsed the eager/lazy type split.
-  [K in keyof TResources]: TResources[K] extends DefinedResourceCollection<infer S>
-    ? ResourceCollectionRef<S>
-    : TResources[K] extends DefinedResource<infer S>
-      ? ResourceRef<S>
-      : ResourceRef<StateOf<TResources[K]>>;
+  // — FIX-700 collapsed the eager/lazy type split. An `external`-branded
+  // collection (FIX-858) resolves to the read-only ref — tested FIRST because
+  // it is a narrower `DefinedResourceCollection`, so the plain-collection branch
+  // would otherwise swallow it.
+  [K in keyof TResources]: TResources[K] extends DefinedResourceCollection<infer S> & { external: true }
+    ? ExternalResourceCollectionRef<S>
+    : TResources[K] extends DefinedResourceCollection<infer S>
+      ? ResourceCollectionRef<S>
+      : TResources[K] extends DefinedResource<infer S>
+        ? ResourceRef<S>
+        : ResourceRef<StateOf<TResources[K]>>;
 };
 
 /** Union of handle types that can appear in a resource registry. */
-export type AnyResourceHandle = ResourceRef<any> | ResourceCollectionRef<any>;
+export type AnyResourceHandle =
+  | ResourceRef<any>
+  | ResourceCollectionRef<any>
+  | ExternalResourceCollectionRef<any>;
 
 /**
  * Context provided to a clientData compute function.

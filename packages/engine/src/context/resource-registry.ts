@@ -12,6 +12,10 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import type {
   CollectionHookContext,
+  ExternalResourceCollectionConfig,
+  ExternalResourceCollectionRef,
+  ExternalResourceContext,
+  ExternalResourceRef,
   JsonObject,
   JsonValue,
   ResourceConfig,
@@ -25,6 +29,8 @@ import {
   resolveCollectionKey,
   matchesPattern,
   getPatternPrefix,
+  isExternalResourceCollection,
+  readExternalRecord,
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
@@ -496,6 +502,16 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     resolveEagerSource?: (keyOrPrefix: string) => ResourceLoadRecord["source"];
     /** Cross-scope template resolver, populated post-construction. */
     templateResolverRef?: { current: ((ref: string) => string | null) | null };
+    /**
+     * FIX-858: trusted, server-derived context handed to an external
+     * collection's `read` / `search` backing hooks. Built by
+     * `createExecutionContext` from the loaded session / scope identity
+     * (`userId`/`orgId`/`tenantId`/`flowKind`/`signal`), never from caller
+     * input (BP-031). Omitted for scopes with no external collections and for
+     * mock registries — a fallback context is synthesized from `scope`/`scopeId`
+     * when a read is attempted without one.
+     */
+    externalResourceContext?: ExternalResourceContext;
   }
 ): ResourceRegistry<TResources> {
   const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
@@ -748,11 +764,131 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     return ref;
   }
 
+  // FIX-858: build the read-only handle for an external resource collection.
+  // Instead of the store, `get`/`getOptional` route through the config's `read`
+  // hook, validate the result through `stateSchema`, and cache it per request
+  // (read-through memoization — no copy in FSD storage). Concurrent reads of the
+  // same key single-flight through one `read` call. The resolved instance ref is
+  // read-only: no mutators, no content-write.
+  function createExternalCollectionHandle(
+    extConfig: ExternalResourceCollectionConfig & ResourceCollectionConfig
+  ): ExternalResourceCollectionRef<JsonObject> {
+    const pattern = extConfig.pattern;
+    const refScope = options.scope as ExternalResourceContext["scope"];
+    // Per-request read-through cache + single-flight, keyed by canonical storage
+    // key. Holds only what this request read; never persisted.
+    const cache = new Map<string, JsonObject>();
+    const inflight = new Map<string, Promise<JsonObject | undefined>>();
+
+    const externalCtx = (): ExternalResourceContext =>
+      options.externalResourceContext ?? {
+        scope: refScope,
+        scopeId: options.scopeId,
+        userId: options.scopeId,
+        flowKind: "",
+      };
+
+    const readThrough = (bareKey: string, storageKey: string): Promise<JsonObject | undefined> => {
+      if (cache.has(storageKey)) return Promise.resolve(cache.get(storageKey));
+      const pending = inflight.get(storageKey);
+      if (pending !== undefined) return pending;
+      const run = (async (): Promise<JsonObject | undefined> => {
+        // Shared read+validate contract (throws on schema failure — §4.5).
+        const record = await readExternalRecord(extConfig, bareKey, externalCtx());
+        if (record === undefined) return undefined;
+        const state = isJsonObject(record) ? asJsonObject(record) : ({} as JsonObject);
+        cache.set(storageKey, state);
+        return state;
+      })().finally(() => {
+        inflight.delete(storageKey);
+      });
+      inflight.set(storageKey, run);
+      return run;
+    };
+
+    const makeRef = (storageKey: string): ExternalResourceRef<JsonObject> => {
+      const readState = (): JsonObject => {
+        const cached = cache.get(storageKey);
+        if (cached !== undefined) return cloneValue(cached);
+        const parsed = extConfig.stateSchema.safeParse({});
+        return parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
+      };
+      return {
+        path: storageKey,
+        scope: refScope,
+        uri: `${options.scope}/${storageKey}`,
+        get state() {
+          return readState();
+        },
+        async readContentRaw(): Promise<string | null> {
+          if (isResourceTemplate(extConfig.contentTemplate)) {
+            return extConfig.contentTemplate.source;
+          }
+          if (extConfig.contentTemplateRef !== undefined) {
+            const resolver = options.templateResolverRef?.current;
+            if (!resolver) return null;
+            return resolver(extConfig.contentTemplateRef);
+          }
+          // External collections have no raw content store — content is
+          // template-rendered from state only.
+          return null;
+        },
+        async readContent(): Promise<string | null> {
+          if (isResourceTemplate(extConfig.contentTemplate)) {
+            return renderResourceTemplate(extConfig.contentTemplate, readState());
+          }
+          if (extConfig.contentTemplateRef !== undefined) {
+            const resolver = options.templateResolverRef?.current;
+            if (!resolver) {
+              throw new Error(
+                `Cannot resolve contentTemplateRef "${extConfig.contentTemplateRef}" for external collection instance "${storageKey}" — template resolver not available`
+              );
+            }
+            const rawTemplate = resolver(extConfig.contentTemplateRef);
+            if (rawTemplate === null) return null;
+            return renderResourceTemplate(parseResourceTemplate(rawTemplate), readState());
+          }
+          return null;
+        },
+      };
+    };
+
+    return {
+      pattern,
+      scope: refScope,
+      external: true,
+      config: { llmReadable: extConfig.llmReadable, pattern, scope: refScope },
+      async get(key: string): Promise<ExternalResourceRef<JsonObject>> {
+        const storageKey = resolveCollectionKey(pattern, key);
+        const state = await readThrough(key, storageKey);
+        if (state === undefined) {
+          throw new Error(
+            `Resource instance "${storageKey}" not found in external collection "${pattern}"`
+          );
+        }
+        return makeRef(storageKey);
+      },
+      async getOptional(key: string): Promise<ExternalResourceRef<JsonObject> | undefined> {
+        const storageKey = resolveCollectionKey(pattern, key);
+        const state = await readThrough(key, storageKey);
+        return state === undefined ? undefined : makeRef(storageKey);
+      },
+    };
+  }
+
   // Storage key for each accessor. Dual-registered aliases collapse to a
   // single canonical key so their state lives in one slot (FIX-591).
   const storageKeys = resourceStorageKeys(configs);
 
   for (const [resourceName, config] of Object.entries(configs)) {
+    if (isExternalResourceCollection(config)) {
+      // --- Read-only external collection (FIX-858): reads route through the
+      // config's `read` hook, not the store. ---
+      handles[resourceName] = createExternalCollectionHandle(
+        config as unknown as ExternalResourceCollectionConfig & ResourceCollectionConfig
+      ) as unknown as ResourceCollectionRef<JsonObject>;
+      continue;
+    }
     if (isCollectionConfig(config)) {
       // --- Create collection ref ---
       const nsConfig = config;

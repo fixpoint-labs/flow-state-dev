@@ -7,6 +7,7 @@ import type {
 } from "./scope";
 import type { AnyResourceRef, DefinedResource, ResourceRef } from "./resource";
 import type { DefinedResourceCollection, ResourceCollectionRef } from "./resource-collection";
+import type { ExternalResourceCollectionRef } from "./external-resource-collection";
 import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
@@ -1056,12 +1057,16 @@ export type InferResourcesFromDefinitions<T> =
   T extends Record<string, DeclaredResourceEntry>
     ? {
         // All collection refs expose async reads regardless of prefetchMode
-        // — FIX-700 collapsed the eager/lazy type split.
-        [K in keyof T]: T[K] extends DefinedResourceCollection<infer S>
-          ? ResourceCollectionRef<S>
-          : T[K] extends DefinedResource<infer S>
-            ? ResourceRef<S>
-            : ResourceRef<JsonObject>;
+        // — FIX-700 collapsed the eager/lazy type split. An `external`-branded
+        // collection (FIX-858) resolves to the read-only ref, tested FIRST so
+        // the plain-collection branch doesn't swallow the narrower type.
+        [K in keyof T]: T[K] extends DefinedResourceCollection<infer S> & { external: true }
+          ? ExternalResourceCollectionRef<S>
+          : T[K] extends DefinedResourceCollection<infer S>
+            ? ResourceCollectionRef<S>
+            : T[K] extends DefinedResource<infer S>
+              ? ResourceRef<S>
+              : ResourceRef<JsonObject>;
       }
     : Record<string, ResourceRef<any>>;
 

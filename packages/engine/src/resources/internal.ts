@@ -13,10 +13,13 @@
  * public API surface.
  */
 import type {
+  ExternalResourceCollectionConfig,
+  ExternalResourceContext,
   JsonObject,
   ResourceCollectionConfig,
   ResourceConfig
 } from "@flow-state-dev/core/types";
+import { isExternalResourceCollection, readExternalRecord } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
@@ -70,6 +73,54 @@ export function isCollectionConfig(value: unknown): value is ResourceCollectionC
 
 // Re-export so older callers keep working.
 export { resourceStorageKeys } from "./storage-keys";
+export { isExternalResourceCollection } from "@flow-state-dev/core/types";
+
+/**
+ * Build the trusted {@link ExternalResourceContext} (FIX-858) for a client-route
+ * read of an external collection. Every field is derived from the loaded session
+ * record — never from caller input (BP-031): `userId`/`orgId`/`tenantId`/
+ * `flowKind` come off the session, and `scopeId` is the resolved
+ * sessionId / userId / orgId for the collection's scope (the raw sessionId, not
+ * the tenant-namespaced storage key).
+ */
+export function buildExternalResourceContextFromSession(
+  session: { userId: string; orgId?: string; tenantId?: string; flowKind: string },
+  scope: ResolvedResourceScope,
+  sessionId: string,
+  signal?: AbortSignal
+): ExternalResourceContext {
+  const scopeId =
+    scope === "session" ? sessionId : scope === "user" ? session.userId : session.orgId ?? "";
+  return {
+    scope,
+    scopeId,
+    userId: session.userId,
+    orgId: session.orgId,
+    tenantId: session.tenantId,
+    flowKind: session.flowKind,
+    signal,
+  };
+}
+
+/**
+ * Resolve one external-collection instance's state through its `read` backing
+ * for a client route, validated through `stateSchema`. Returns `undefined` when
+ * the app has no such record (route surfaces 200 + null). `key` is the within-
+ * scope row key (bare topic or full storage key — the app resolves it).
+ */
+export async function readExternalCollectionState(
+  config: ResourceCollectionConfig,
+  key: string,
+  ctx: ExternalResourceContext
+): Promise<JsonObject | undefined> {
+  if (!isExternalResourceCollection(config)) return undefined;
+  const record = await readExternalRecord(
+    config as unknown as ExternalResourceCollectionConfig,
+    key,
+    ctx
+  );
+  return record as JsonObject | undefined;
+}
 
 /**
  * Look up a resource by accessor key on a flow. Returns the config and
