@@ -384,12 +384,28 @@ counts):
 
 ## Portfolio view
 
-The Portfolio tab is the durable record of what you own. It opens on a grid of
-account summary cards — each shows the account's value, cash, unrealized P/L
-as a dollar figure and a percent of cost, total dividends earned, and position
-count. Above the grid, a household **tax-estimate card** turns your realized
-gains and dividends into a rough current-year estimate (planning, not advice).
-Click a card to open the account, which has four tabs:
+The Portfolio tab is the durable record of what you own. A sidebar (a left
+rail on desktop, a segmented strip on phones) switches the pane between two
+perspectives. The pinned toolbar keeps only the always-relevant bits — refresh
+prices and the portfolio totals; account-management actions live in the
+Accounts perspective, since they don't apply on Gains & Taxes:
+
+- **Accounts** (the default) — an action row (add account, an **Import** menu
+  for holdings CSV / statement PDF / transaction files, add transaction,
+  backfill splits) above a grid of account summary cards; each card shows the
+  account's value, cash, unrealized P/L as a dollar figure and a percent of
+  cost, total dividends earned, and position count.
+- **Gains & Taxes** — the household cut across all accounts: current-year and
+  lifetime realized totals, the **tax-estimate card** that turns your realized
+  gains and dividends into a rough current-year estimate (planning, not
+  advice), and a **year-by-year** view — one card per year you can drill into,
+  with a toggle between **Capital gains** (realized gains from disposals) and
+  **Total income** (capital gains + dividends + interest). Same-ticker
+  disposals across accounts roll up together here (the household cut);
+  per-account attribution stays in each account's Realized Gains tab.
+
+Click a card in the Accounts perspective to open the account, which has four
+tabs:
 
 - **Holdings** — the account's active positions: quantity, average cost,
   price, value, weight, unrealized P/L ($ and %), dividends earned, and a

@@ -1,8 +1,9 @@
 /**
  * TaxEstimateCard — the household-level realized-gains tax preview (FIX-874). A
- * standalone section above the account grid: a headline estimated-tax figure, a
- * federal/state + bucket breakdown, the effective rates from the saved profile,
- * the estimator's assumptions as caveats, and a prominent NOT-ADVICE disclaimer.
+ * standalone card in the Gains & Taxes section (`GainsTaxesSection`, FIX-885):
+ * a headline estimated-tax figure, a federal/state + bucket breakdown, the
+ * effective rates from the saved profile, the estimator's assumptions as
+ * caveats, and a prominent NOT-ADVICE disclaimer.
  *
  * Pure presentational. The parent (`PortfolioPane`) owns the read (`useTax`) and
  * the profile-edit dialog; this component only formats and calls

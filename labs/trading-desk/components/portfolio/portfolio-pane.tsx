@@ -1,9 +1,15 @@
 /**
- * PortfolioPane — the Portfolio view. An account summary-card grid (value,
- * cash, uP/L $ + %, position count); clicking a card opens that account's
- * detail view (`AccountDetail`) with Holdings / Transactions / Income tabs.
- * The toolbar (add account, imports, add transaction, refresh prices) and the
- * portfolio-level totals stay above both views.
+ * PortfolioPane — the Portfolio view, split into sidebar-switched perspectives
+ * (FIX-885): **Accounts** (the summary-card grid; clicking a card opens that
+ * account's detail view (`AccountDetail`) with Holdings / Transactions /
+ * Income / Realized Gains tabs) and **Gains & Taxes** (`GainsTaxesSection` —
+ * the household year-by-year realized gains + tax-estimate card). A desktop
+ * left rail / mobile strip (`portfolio-section-nav.tsx`) picks the section.
+ * The pinned toolbar holds only the always-relevant bits — refresh prices and
+ * the portfolio-level totals — plus the provenance line; account-management
+ * actions (add account, imports, add transaction, backfill splits) live in the
+ * Accounts perspective (`AccountsActionsBar`), since they don't apply on Gains &
+ * Taxes. Only the content region swaps between sections.
  *
  * Data path:
  *  - Accounts (with inline holdings) come from the app-owned tables via the
@@ -29,7 +35,7 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { Plus, Upload, FileText, RefreshCw, Receipt, FileUp, Split } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
 import { useResource, useFlowContext } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
@@ -42,6 +48,7 @@ import type { PortfolioQuotesState } from "@/src/flows/portfolio/portfolio-resou
 import type { ThesisInputFields } from "@/src/flows/portfolio/thesis-schema";
 import { AccountCard } from "./account-card";
 import { AccountDetail } from "./account-detail";
+import { AccountsActionsBar } from "./accounts-actions-bar";
 import { RealizedStat } from "./realized-stat";
 import {
   buildRealizedGainsRowModel,
@@ -61,7 +68,12 @@ import {
 } from "./add-transaction-dialog";
 import { ResolveSplitDialog } from "./resolve-split-dialog";
 import { ThesisDialog } from "./thesis-dialog";
-import { TaxEstimateCard } from "./tax-estimate-card";
+import { GainsTaxesSection } from "./gains-taxes-section";
+import {
+  PortfolioSectionRail,
+  PortfolioSectionStrip,
+  type PortfolioSection,
+} from "./portfolio-section-nav";
 import { TaxProfileDialog } from "./tax-profile-dialog";
 import { usePortfolioAccounts } from "./use-portfolio-accounts";
 import { useLedger } from "./use-ledger";
@@ -122,6 +134,7 @@ export function PortfolioPane({
   const {
     profile: taxProfile,
     realizedGains,
+    incomeByYear,
     estimate: taxEstimate,
     refetch: refetchTax,
   } = useTax();
@@ -148,6 +161,11 @@ export function PortfolioPane({
   /** The account whose detail view (holdings/transactions/income tabs) is
    *  open; null shows the summary-card grid. */
   const [openAccountId, setOpenAccountId] = useState<string | null>(null);
+  /** The sidebar-selected perspective (FIX-885). Deliberately local state (no
+   *  routing in this app) — resets when the pane unmounts, same lifetime as
+   *  `openAccountId`, which it does NOT reset: returning to Accounts restores
+   *  the open drill-in. */
+  const [section, setSection] = useState<PortfolioSection>("accounts");
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   // Split backfill (FIX-874 follow-up): running state + a short result note.
   const [splitBackfill, setSplitBackfill] = useState<{ running: boolean; note: string | null }>({
@@ -587,87 +605,9 @@ export function PortfolioPane({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Toolbar */}
+      {/* Toolbar — only the always-relevant actions (refresh prices) + totals.
+          Account-management actions live in the Accounts perspective below. */}
       <div className="flex flex-wrap items-center gap-3 border-b border-[color:var(--c-border)] px-4 py-2">
-        <button
-          type="button"
-          onClick={() => setAddOpen(true)}
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium hover:bg-[color:var(--c-surface-2)]"
-        >
-          <Plus className="h-3 w-3" aria-hidden /> Add account
-        </button>
-        <button
-          type="button"
-          onClick={() => setImportOpen(true)}
-          disabled={accounts.length === 0}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
-            accounts.length === 0
-              ? "cursor-not-allowed opacity-50"
-              : "hover:bg-[color:var(--c-surface-2)]",
-          )}
-          title={
-            accounts.length === 0 ? "Add an account first" : "Import holdings CSV"
-          }
-        >
-          <Upload className="h-3 w-3" aria-hidden /> Import CSV
-        </button>
-        <button
-          type="button"
-          onClick={() => setImportPdfOpen(true)}
-          disabled={accounts.length === 0 || !hasSession}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
-            accounts.length === 0 || !hasSession
-              ? "cursor-not-allowed opacity-50"
-              : "hover:bg-[color:var(--c-surface-2)]",
-          )}
-          title={
-            accounts.length === 0
-              ? "Add an account first"
-              : !hasSession
-                ? "PDF import uses an AI extraction pass — run an analysis first to start a session"
-                : "Import holdings from a statement PDF"
-          }
-        >
-          <FileText className="h-3 w-3" aria-hidden /> Import PDF
-        </button>
-        <button
-          type="button"
-          onClick={() => setImportTxnOpen(true)}
-          disabled={accounts.length === 0}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
-            accounts.length === 0
-              ? "cursor-not-allowed opacity-50"
-              : "hover:bg-[color:var(--c-surface-2)]",
-          )}
-          title={
-            accounts.length === 0
-              ? "Add an account first"
-              : "Import a transaction file (OFX/QFX/QBO)"
-          }
-        >
-          <FileUp className="h-3 w-3" aria-hidden /> Import transactions
-        </button>
-        <button
-          type="button"
-          onClick={() => setAddTransactionOpen(true)}
-          disabled={accounts.length === 0}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
-            accounts.length === 0
-              ? "cursor-not-allowed opacity-50"
-              : "hover:bg-[color:var(--c-surface-2)]",
-          )}
-          title={
-            accounts.length === 0
-              ? "Add an account first"
-              : "Record a manual transaction"
-          }
-        >
-          <Receipt className="h-3 w-3" aria-hidden /> Add transaction
-        </button>
         <button
           type="button"
           onClick={() => void fetchPrices()}
@@ -690,24 +630,6 @@ export function PortfolioPane({
           />
           Refresh prices
         </button>
-        <button
-          type="button"
-          onClick={() => void handleBackfillSplits()}
-          disabled={ledgerEvents.length === 0 || splitBackfill.running}
-          title="Fetch stock splits from market data so realized gains re-derive correctly (fixes split-mangled cost basis)"
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px]",
-            ledgerEvents.length === 0 || splitBackfill.running
-              ? "cursor-not-allowed opacity-50"
-              : "hover:bg-[color:var(--c-surface-2)]",
-          )}
-        >
-          <Split className={cn("h-3 w-3", splitBackfill.running && "animate-pulse")} aria-hidden />
-          {splitBackfill.running ? "Backfilling…" : "Backfill splits"}
-        </button>
-        {splitBackfill.note ? (
-          <span className="text-[10.5px] text-[color:var(--c-fg-muted)]">{splitBackfill.note}</span>
-        ) : null}
 
         <div className="ml-auto flex items-center gap-4 font-mono text-[11px] text-[color:var(--c-fg-muted)]">
           <span>
@@ -761,87 +683,114 @@ export function PortfolioPane({
         Money figures are display approximations, not precise accounting.
       </div>
 
-      {/* Accounts: a clickable summary-card grid, or one opened account's
-          detail view (Holdings / Transactions / Income tabs). `@container` so
-          the card-grid column count tracks the pane's width, not the viewport
-          (the HoldingsTable precedent). */}
-      <div className="@container flex-1 space-y-4 overflow-y-auto p-4">
-        {/* Household-level realized-gains tax preview — a standalone section
-            above the accounts. */}
-        <TaxEstimateCard
-          estimate={taxEstimate}
-          profile={taxProfile}
-          onEditProfile={() => setTaxProfileOpen(true)}
-        />
-        {accounts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-            <p className="text-sm text-[color:var(--c-fg)]">No accounts yet</p>
-            <p className="max-w-md text-xs text-[color:var(--c-fg-muted)]">
-              Add an account, then import a brokerage CSV or transaction file.
-              The same ticker in two accounts is tracked as two distinct
-              holdings.
-            </p>
-          </div>
-        ) : openAccount !== undefined ? (
-          <AccountDetail
-            account={openAccount}
-            holdings={holdingsByAccount.get(openAccount.accountId) ?? []}
-            ledgerEvents={ledgerEvents}
-            income={income}
-            realizedGains={realizedGains}
-            prices={priceMap}
-            dividends={dividendsByAccount.get(openAccount.accountId) ?? new Map()}
-            lots={lotsByAccount.get(openAccount.accountId) ?? new Map()}
-            accountValue={rollups.get(openAccount.accountId)?.value ?? null}
-            accountUpl={rollups.get(openAccount.accountId)?.upl ?? null}
-            accountUplPct={rollups.get(openAccount.accountId)?.uplPct ?? null}
-            accountDividends={dividendTotals.get(openAccount.accountId) ?? null}
-            onBack={() => setOpenAccountId(null)}
-            thesisTickers={thesisTickers}
-            // Gate the thesis editor until the household theses load (session-
-            // backed resource; no session → never ready), so a click can't open
-            // a blank editor against a partial list and overwrite an unloaded one.
-            thesisReady={hasSession && !thesesLoading}
-            onDeleteHolding={(ticker) =>
-              void handleDeleteHolding(openAccount.accountId, ticker)
-            }
-            onDeleteAccount={() => void handleDeleteAccount(openAccount.accountId)}
-            onEditThesis={(ticker) => setThesisTicker(ticker)}
-            onSetAssetClass={(ticker, assetClass) =>
-              void handleSetAssetClass(openAccount.accountId, ticker, assetClass)
-            }
-            onResolveSplit={(ticker) => setResolveSplitTicker(ticker)}
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-2 @6xl:grid-cols-3">
-            {accounts.map((account) => {
-              const rollup = rollups.get(account.accountId) ?? {
-                value: null,
-                upl: null,
-                uplPct: null,
-              };
-              return (
-                <AccountCard
-                  key={account.accountId}
-                  account={account}
-                  holdingsCount={
-                    (holdingsByAccount.get(account.accountId) ?? []).length
-                  }
-                  accountValue={rollup.value}
-                  accountUpl={rollup.upl}
-                  accountUplPct={rollup.uplPct}
-                  accountDividends={dividendTotals.get(account.accountId) ?? null}
-                  accountRealized={realizedByAccount.get(account.accountId) ?? null}
-                  onOpen={() => {
-                    setOpenAccountId(account.accountId);
-                    // The import/add dialogs default to the account in focus.
-                    setSelectedAccountId(account.accountId);
-                  }}
-                />
-              );
-            })}
-          </div>
-        )}
+      {/* Perspective nav (FIX-885): a pinned segmented strip below `lg`, a left
+          rail at `lg`+. Only the content column swaps between sections; the
+          toolbar / totals / provenance rows above stay pinned. */}
+      <PortfolioSectionStrip value={section} onChange={setSection} />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <PortfolioSectionRail value={section} onChange={setSection} />
+        {/* The section content column. `@container` lives here so the account
+            card-grid column count tracks the column's width, not the viewport
+            (the HoldingsTable precedent). */}
+        <div className="@container flex-1 space-y-4 overflow-y-auto p-4">
+          {/* Account-management actions live here (not the pinned toolbar) — only
+              on the Accounts perspective's list view, hidden in an open account's
+              detail (which has its own header). */}
+          {section === "accounts" && openAccount === undefined ? (
+            <AccountsActionsBar
+              hasAccounts={accounts.length > 0}
+              hasSession={hasSession}
+              canBackfill={ledgerEvents.length > 0}
+              backfillRunning={splitBackfill.running}
+              backfillNote={splitBackfill.note}
+              onAddAccount={() => setAddOpen(true)}
+              onImportCsv={() => setImportOpen(true)}
+              onImportPdf={() => setImportPdfOpen(true)}
+              onImportTransactions={() => setImportTxnOpen(true)}
+              onAddTransaction={() => setAddTransactionOpen(true)}
+              onBackfillSplits={() => void handleBackfillSplits()}
+            />
+          ) : null}
+          {section === "gains" ? (
+            /* Gains & Taxes: household year-by-year realized gains + the
+               tax-estimate card (relocated from above the account grid). */
+            <GainsTaxesSection
+              realizedGains={realizedGains}
+              incomeByYear={incomeByYear}
+              estimate={taxEstimate}
+              profile={taxProfile}
+              onEditProfile={() => setTaxProfileOpen(true)}
+            />
+          ) : accounts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+              <p className="text-sm text-[color:var(--c-fg)]">No accounts yet</p>
+              <p className="max-w-md text-xs text-[color:var(--c-fg-muted)]">
+                Add an account, then import a brokerage CSV or transaction file.
+                The same ticker in two accounts is tracked as two distinct
+                holdings.
+              </p>
+            </div>
+          ) : openAccount !== undefined ? (
+            <AccountDetail
+              account={openAccount}
+              holdings={holdingsByAccount.get(openAccount.accountId) ?? []}
+              ledgerEvents={ledgerEvents}
+              income={income}
+              realizedGains={realizedGains}
+              prices={priceMap}
+              dividends={dividendsByAccount.get(openAccount.accountId) ?? new Map()}
+              lots={lotsByAccount.get(openAccount.accountId) ?? new Map()}
+              accountValue={rollups.get(openAccount.accountId)?.value ?? null}
+              accountUpl={rollups.get(openAccount.accountId)?.upl ?? null}
+              accountUplPct={rollups.get(openAccount.accountId)?.uplPct ?? null}
+              accountDividends={dividendTotals.get(openAccount.accountId) ?? null}
+              onBack={() => setOpenAccountId(null)}
+              thesisTickers={thesisTickers}
+              // Gate the thesis editor until the household theses load (session-
+              // backed resource; no session → never ready), so a click can't open
+              // a blank editor against a partial list and overwrite an unloaded one.
+              thesisReady={hasSession && !thesesLoading}
+              onDeleteHolding={(ticker) =>
+                void handleDeleteHolding(openAccount.accountId, ticker)
+              }
+              onDeleteAccount={() => void handleDeleteAccount(openAccount.accountId)}
+              onEditThesis={(ticker) => setThesisTicker(ticker)}
+              onSetAssetClass={(ticker, assetClass) =>
+                void handleSetAssetClass(openAccount.accountId, ticker, assetClass)
+              }
+              onResolveSplit={(ticker) => setResolveSplitTicker(ticker)}
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-2 @6xl:grid-cols-3">
+              {accounts.map((account) => {
+                const rollup = rollups.get(account.accountId) ?? {
+                  value: null,
+                  upl: null,
+                  uplPct: null,
+                };
+                return (
+                  <AccountCard
+                    key={account.accountId}
+                    account={account}
+                    holdingsCount={
+                      (holdingsByAccount.get(account.accountId) ?? []).length
+                    }
+                    accountValue={rollup.value}
+                    accountUpl={rollup.upl}
+                    accountUplPct={rollup.uplPct}
+                    accountDividends={dividendTotals.get(account.accountId) ?? null}
+                    accountRealized={realizedByAccount.get(account.accountId) ?? null}
+                    onOpen={() => {
+                      setOpenAccountId(account.accountId);
+                      // The import/add dialogs default to the account in focus.
+                      setSelectedAccountId(account.accountId);
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       <AddAccountDialog
