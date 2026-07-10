@@ -16,7 +16,7 @@ import {
 } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import type { ModelResolver } from "@flow-state-dev/core/types";
-import { resolveRuntimeSource, createCliLogger, resolveLogLevel } from "../resolve-runtime";
+import { resolveRuntimeSource, assertNoFlowDirWithConfig, createCliLogger, resolveLogLevel } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
@@ -164,6 +164,7 @@ export async function executeChatCommand(
   let dispose: (() => Promise<void>) | undefined;
 
   if (resolved.source === "config") {
+    assertNoFlowDirWithConfig(options.flowDir);
     let runtime;
     try {
       runtime = await resolved.flowState.getRuntime();
@@ -243,6 +244,9 @@ export async function executeChatCommand(
       if (record !== undefined && record.flowKind !== target.flowKind) {
         return { ok: false, message: `Session ${sessionId} belongs to flow "${record.flowKind}", not "${target.flowKind}".` };
       }
+      // No tenantId filter: fsdev chat runs single-identity (tenantId undefined
+      // throughout), so this is over-broad rather than unsafe — it can only reject
+      // a foreign-flow request under a shared session id, never leak one.
       const priorRequests = await stores.request
         .list({ sessionId, status: "completed", limit: 50 })
         .catch((): RequestRecord[] => []);

@@ -2,11 +2,13 @@
  * Shared runtime-resolution prelude for `fsdev run`, `fsdev dev`, and `fsdev chat`.
  *
  * Absorbs only the copy-paste-identical front of those commands: load `.env`
- * files, import an `fsdev.config.*` (or fall back to directory discovery), guard
- * the `--flow-dir` + config combination, and surface flow import failures. What
- * genuinely diverges per command — store backend, `--model` handling, the
- * `getRuntime()` error attribution, and dispose ownership — stays in the command
- * (BP-024: extract a helper only for the parts whose body doesn't vary).
+ * files, import an `fsdev.config.*` (or fall back to directory discovery), and
+ * surface flow import failures. What genuinely diverges per command — store
+ * backend, `--model` handling, the `getRuntime()` error attribution, dispose
+ * ownership, and the *ordering* of the `--flow-dir`+config guard relative to
+ * other guards — stays in the command (BP-024: extract a helper only for the
+ * parts whose body doesn't vary). The guard's shared message is factored into
+ * {@link assertNoFlowDirWithConfig}, which each command calls at its own site.
  *
  * Also hoists the CLI stderr logger (`createCliLogger` + `resolveLogLevel`) that
  * `run` and `chat` share to keep stdout (NDJSON / chat transcript) uncorrupted by
@@ -77,11 +79,12 @@ export type ResolvedRuntimeSource = ConfigRuntimeSource | DiscoveryRuntimeSource
 
 /**
  * Load env, resolve the runtime source (app config vs directory discovery), and
- * surface import failures — the identical prelude of `run`/`dev`/`chat`. Throws
- * `CliError(EXIT_INVALID_ARGS)` when `--flow-dir` is combined with a config;
+ * surface import failures — the identical prelude of `run`/`dev`/`chat`.
  * `loadFsdevConfig` throws `CliError(EXIT_CONFIG_ERROR)` for a bad config. Does
- * NOT call `getRuntime()` or open discovery stores — those stay per-command so
- * init errors are attributed to the execution phase, not resolution.
+ * NOT call `getRuntime()`, open discovery stores, or reject `--flow-dir`+config
+ * (see {@link assertNoFlowDirWithConfig}) — those stay per-command so init errors
+ * are attributed to the execution phase and each command controls guard ordering
+ * and dispose scope.
  */
 export async function resolveRuntimeSource(
   params: ResolveRuntimeParams,
@@ -104,12 +107,6 @@ export async function resolveRuntimeSource(
   const loaded = useConfig ? await loadFsdevConfig({ cwd, configPath }) : undefined;
 
   if (loaded !== undefined) {
-    if (params.flowDir !== undefined) {
-      throw new CliError(
-        "--flow-dir bypasses fsdev.config.*; pass --no-config to use directory discovery.",
-        EXIT_INVALID_ARGS,
-      );
-    }
     return { source: "config", cwd, flowState: loaded.flowState, configPath: loaded.path };
   }
 
@@ -134,6 +131,20 @@ export async function resolveRuntimeSource(
     searchedDirs: getSearchedDirs(discoverOptions),
     importFailures,
   };
+}
+
+/**
+ * Reject `--flow-dir` combined with a loaded config. All three commands forbid
+ * the combination, but each calls this at its own site so guard *ordering*
+ * (e.g. `dev` reports `--model`+config first) and dispose scope stay per-command.
+ */
+export function assertNoFlowDirWithConfig(flowDir: string[] | undefined): void {
+  if (flowDir !== undefined) {
+    throw new CliError(
+      "--flow-dir bypasses fsdev.config.*; pass --no-config to use directory discovery.",
+      EXIT_INVALID_ARGS,
+    );
+  }
 }
 
 /** Runtime log levels, in ascending severity. */

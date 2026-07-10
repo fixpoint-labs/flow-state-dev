@@ -39,7 +39,7 @@ fsdev run hello-chat chat -i '{"message": "First"}' --session my-session
 fsdev run hello-chat chat -i '{"message": "Second"}' --session my-session
 ```
 
-The second run continues the conversation. State (e.g. message count) accumulates. The CLI uses the same filesystem stores as the server by default, so sessions persist across terminal sessions. Helps test multi-turn behavior without a browser.
+The second run continues the conversation. State (e.g. message count) accumulates. The CLI uses the same filesystem stores as the server by default, so sessions persist across terminal sessions. Helps test multi-turn behavior without a browser. For a live back-and-forth instead of one action per invocation, use `fsdev chat` (see [Interactive chat](/docs/cli/interactive-chat)).
 
 **Input from file:** Use `-f` or `--input-file` for larger payloads:
 

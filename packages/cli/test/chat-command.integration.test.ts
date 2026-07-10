@@ -10,6 +10,7 @@ import { EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR } from "../src/exit-codes";
 
 const chatDir = resolve(import.meta.dirname, "fixtures-chat");
 const emptyDir = resolve(import.meta.dirname, "fixtures-chat", "empty");
+const soloDir = resolve(import.meta.dirname, "fixtures-chat-solo");
 
 function mockResolver(): ModelResolver {
   const gen1 = mockGenerator({ name: "chat-generator", script: Array.from({ length: 12 }, () => ({ text: "bot reply" })) });
@@ -65,11 +66,12 @@ describe("fsdev chat — piped stdin", () => {
     expect(exitCode ?? 0).toBe(0);
   });
 
-  it("starts unbound when several targets exist and no positional is given", async () => {
+  it("starts unbound when several targets exist, hints on free text, and exits non-zero", async () => {
     const { text, exitCode } = await runChat(undefined, undefined, "hi\n/exit\n");
     expect(text).toContain("No default target bound");
     expect(text).toContain("No default target — pick one with /use");
-    expect(exitCode ?? 0).toBe(0);
+    // Free text sent nowhere is a tracked failure in piped mode (§4.6).
+    expect(exitCode).toBe(1);
   });
 
   it("is fatal when zero flows are discovered", async () => {
@@ -101,13 +103,71 @@ describe("fsdev chat — piped stdin", () => {
     expect(chatbot2Sessions[0]?.state.messageCount).toBe(1);
   });
 
-  it("threads --user through to the request and session records", async () => {
+  it("auto-binds when the project has exactly one flow and one action", async () => {
+    const { text, exitCode } = await runChat(undefined, undefined, "/exit\n", { cwd: soloDir });
+    expect(text).toContain("Chatting with solo · chat");
+    expect(exitCode ?? 0).toBe(0);
+  });
+
+  it("errors on an ambiguous positional flow with several actions", async () => {
+    const err = await executeChatCommand("multi", undefined, {
+      cwd: chatDir,
+      stores: createInMemoryStores(),
+      modelResolver: mockResolver(),
+      input: Readable.from(["/exit\n"]) as unknown as NodeJS.ReadableStream,
+      output: new Writable({ write: (_c, _e, cb) => cb() }) as unknown as NodeJS.WritableStream,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_INVALID_ARGS);
+    expect(err.message).toContain("multiple actions");
+  });
+
+  it("threads --user through to the request and session records, under a stable sess_ id", async () => {
     const stores = createInMemoryStores();
     await runChat("chatbot", "chat", "hi\n/exit\n", { stores, user: "devuser" });
     const requests = await stores.request.list();
     expect(requests[0]?.userId).toBe("devuser");
     const sessions = await stores.session.list();
     expect(sessions[0]?.userId).toBe("devuser");
+    // The turn ran under the stable id seeded at bind time — never an engine-minted
+    // ephemeral_ id (which would not persist history across turns).
+    expect(sessions[0]?.id).toMatch(/^sess_/);
+    expect(sessions.some((s) => s.id.startsWith("ephemeral_"))).toBe(false);
+    expect(requests[0]?.sessionId).toMatch(/^sess_/);
+  });
+
+  it("rejects --session whose completed request history belongs to another flow", async () => {
+    const stores = createInMemoryStores();
+    // No session record — only a completed request from a different flow under the id.
+    await stores.request.set(
+      "req_seed",
+      {
+        id: "req_seed",
+        flowKind: "chatbot2",
+        actionName: "chat",
+        userId: "cli-user",
+        sessionId: "sess_shared",
+        source: "cli",
+        status: "completed",
+        startedAtMs: Date.now(),
+        state: {},
+        version: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+      "any",
+    );
+    const err = await executeChatCommand("chatbot", "chat", {
+      cwd: chatDir,
+      stores,
+      modelResolver: mockResolver(),
+      session: "sess_shared",
+      input: Readable.from(["/exit\n"]) as unknown as NodeJS.ReadableStream,
+      output: new Writable({ write: (_c, _e, cb) => cb() }) as unknown as NodeJS.WritableStream,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_INVALID_ARGS);
+    expect(err.message).toContain("history from flow \"chatbot2\"");
   });
 
   it("exits with an execution error when a built-in fails, even with zero turns", async () => {

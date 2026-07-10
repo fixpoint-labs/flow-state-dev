@@ -21,7 +21,7 @@ import {
 import { serve } from "@flow-state-dev/node";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { formatFailedImportSection } from "../resolve-flow";
-import { resolveRuntimeSource } from "../resolve-runtime";
+import { resolveRuntimeSource, assertNoFlowDirWithConfig } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR, EXIT_CONFIG_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
@@ -112,7 +112,6 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
 
   if (resolved.source === "config") {
     // --- config path: serve the app's own FlowState ---
-    // (`--flow-dir` combined with a config is rejected by the prelude.)
     if (options.model !== undefined) {
       throw new CliError(
         "--model can't be combined with fsdev.config.*; the config builds the router with its own " +
@@ -120,6 +119,7 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
         EXIT_INVALID_ARGS,
       );
     }
+    assertNoFlowDirWithConfig(options.flowDir);
     // serve() resolves getRouter() (triggering store init) and disposes the
     // FlowState on close(), so the dev command owns no stores in this path.
     serveApp = resolved.flowState;

@@ -19,7 +19,7 @@ import {
 } from "@flow-state-dev/engine";
 import type { FlowInstance, ModelResolver, JsonObject } from "@flow-state-dev/core/types";
 import { formatFailedImportSection } from "../resolve-flow";
-import { resolveRuntimeSource, createCliLogger, resolveLogLevel } from "../resolve-runtime";
+import { resolveRuntimeSource, assertNoFlowDirWithConfig, createCliLogger, resolveLogLevel } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
 import { parseInputArg } from "../parse-input";
 import { CliError } from "../resolve-block";
@@ -222,6 +222,8 @@ export async function executeRunCommand(
 
     if (resolved.source === "config") {
       // --- config path: take the app's registry/stores/runtimeConfig ---
+      // Guarded here (inside the try) so a failure disposes the loaded FlowState.
+      assertNoFlowDirWithConfig(options.flowDir);
       let runtime;
       try {
         runtime = await resolved.flowState.getRuntime();

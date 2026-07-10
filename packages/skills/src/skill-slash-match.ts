@@ -41,7 +41,7 @@ export function createSkillSlashMatch(opts: SlashMatchOptions) {
     sequencerStateSchema: skillActivatorStateSchema,
     execute: async (input, ctx) => {
       const message = (input as { message: string }).message ?? "";
-      const match = message.match(SLASH_PATTERN);
+      const match = message.match(SLASH_COMMAND_PATTERN);
       if (!match) return { matched: false };
 
       const skillName = match[1]!;

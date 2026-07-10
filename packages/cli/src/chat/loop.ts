@@ -114,7 +114,10 @@ export async function runChatLoop(params: ChatLoopParams): Promise<number> {
         return false;
 
       case "unbound":
+        // Not silently dropped (edge case 8) — and in piped mode this counts as a
+        // failure for the exit code (§4.6), since a script sent work nowhere.
         renderer.onSystem("No default target — pick one with /use <flow> [action] (see /targets).");
+        failed = true;
         return false;
 
       case "builtin": {
