@@ -121,8 +121,9 @@ src/flows/analysis/
     rating-engine.ts setup-score.ts sector-resolution.ts   (analysis / scoring math)
 
 src/flows/portfolio/             The `portfolio` domain (Spine B) — account/holdings/ledger/price
-  flow.ts                        defineFlow — ONLY the flow-shaped actions: getQuotes + extractHoldingsFromPdf
-                                   (domain CRUD is REST routes, not actions — see portfolio-writes.ts)
+  flow.ts                        defineFlow — ONLY the flow-shaped actions: extractHoldingsFromPdf +
+                                   saveThesis/deleteThesis (domain CRUD + the quote refresh are REST
+                                   routes, not actions — see portfolio-writes.ts + get-quotes.ts)
   state.ts                       sessionStateSchema (minimal; this flow has no run state)
   portfolio-schema.ts            pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
   portfolio-csv.ts               pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
@@ -136,8 +137,10 @@ src/flows/portfolio/             The `portfolio` domain (Spine B) — account/ho
                                    (input, userId, repo) behind the app/api/portfolio/* REST routes (FIX-736
                                    follow-up). NOT flow actions: CRUD gains nothing from a flow and loses the
                                    real return value + gains a session requirement. Routes own zod validation.
-  get-quotes.ts                  getQuotes handler: last-close per ticker (fixture/live, null degrades);
-                                   upserts LIVE non-null prices into the durable app.quotes table (FIX-823)
+  get-quotes.ts                  refreshQuotes(input, repo): last-close per ticker (fixture/live, null
+                                   degrades); upserts LIVE non-null prices into the durable app.quotes
+                                   table (FIX-823). A plain route helper behind POST /api/portfolio/
+                                   quotes/refresh — NOT a flow action.
   portfolio-pdf.ts               pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
   extract-pdf-text.server.ts     NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
   extract-holdings-generator.ts  broker-agnostic LLM transcription (statement text → strict rows)
@@ -158,6 +161,7 @@ app/api/portfolio/              REST surface over the repository — reads AND w
   ledger/route.ts                 GET list · POST record manual event
   transactions/import/route.ts    POST (OFX/QFX/QBO file import)
   income/route.ts                 GET ledger-derived dividends + interest
+  quotes/route.ts                 GET last-known prices · quotes/refresh/route.ts POST (fetch live + upsert)
 
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
@@ -376,22 +380,27 @@ third `SECTIONS` entry.
   The canonical CSV the CONFIRM path serializes now carries `assetType` and
   `markPrice` columns so the classification and the bond's statement mark survive
   the single import gate into `importHoldings`.
-- **Prices** come from `getQuotes` — a handler that reuses
+- **Prices** come from `refreshQuotes` — a server helper that reuses
   `get_price_history`'s fetch idiom directly (`loadFixture` / `getOrFetch`, NOT
   `block.run()` — BP-011-safe) and takes the last bar's `close`. A missing /
   unavailable price degrades to `null` (UI shows `—`), never a fabricated number;
-  live mode never silently substitutes fixture data. **`getQuotes` persists LIVE,
+  live mode never silently substitutes fixture data. **`refreshQuotes` persists LIVE,
   non-null-priced quotes to the durable, ticker-keyed `app.quotes` table (FIX-823 —
   `price`, `as_of`, `source`, `fetched_at`, one GLOBAL row per ticker), via
   `repo.upsertQuotes`.** Fixture-mode results are NOT persisted (a single global row
   means fixture data would poison every user + the seed) and null-priced quotes are
   dropped (a provider miss keeps the prior last-known row). Market value stays
   DERIVED (`quantity × price`) — never persisted onto the holding, so it can't go
-  stale on a trade when the price didn't move. The pane reads the table via
-  `GET /api/portfolio/quotes` + the `use-quotes.ts` hook and refetches once the
-  `getQuotes` action COMPLETES (the retired `portfolioQuotes` resource's live
-  `resource_change` self-correction is gone, so `sendAction` resolving at stream-
-  attach is too early — the pane waits for the request to settle before refetching).
+  stale on a trade when the price didn't move. **The refresh is a plain REST route,
+  NOT a flow action:** the pane `POST`s `/api/portfolio/quotes/refresh` (which
+  derives + filters the held ticker set server-side, then fetches + upserts) and,
+  once that awaited write resolves, refetches `GET /api/portfolio/quotes` via the
+  `use-quotes.ts` hook — the same `await REST write → refetch` idiom the import
+  handlers use, mirroring the `backfillSplits` route. This replaced the original
+  `getQuotes` flow action, whose `sendAction` resolved at stream-attach (before the
+  upsert committed), forcing the pane to await the SSE stream's `isStreaming`
+  falling edge to know the write had landed; the route settles only after the write,
+  so there is no settle race and the refresh needs no bound session.
   **The pane always requests
   `live` prices, decoupled from the analysis fixture/live toggle** — holdings are
   real,

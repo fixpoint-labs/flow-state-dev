@@ -1,14 +1,13 @@
 /**
- * Tests for the portfolio write surface + `getQuotes`.
+ * Tests for the portfolio write surface + `refreshQuotes`.
  *
- * The account / holdings / ledger writes are plain domain functions behind REST
- * routes (FIX-736 follow-up — `src/flows/portfolio/portfolio-writes.ts`), so
- * they're tested by calling those functions directly against a PGlite
- * repository (parsing inputs through the request schemas the routes use, so the
- * defaults are exercised too). `getQuotes` is the one portfolio FLOW action that
- * remains (it upserts the durable `app.quotes` table, FIX-823), so it's still
- * driven through `testFlow` — with the live provider mocked so the write path is
- * exercised offline and deterministically.
+ * The account / holdings / ledger writes AND the quote refresh are plain domain
+ * functions behind REST routes (FIX-736/FIX-823 — `portfolio-writes.ts` and
+ * `refreshQuotes` in `get-quotes.ts`), so they're tested by calling those
+ * functions directly against a PGlite repository (parsing inputs through the
+ * request schemas the routes use, so the defaults are exercised too). The live
+ * price provider is mocked so `refreshQuotes`' write path runs offline and
+ * deterministically.
  *
  * These lock the load-bearing data-model properties: holdings are keyed
  * `(account_id, ticker)`; upsert is non-destructive and replaces only the named
@@ -16,11 +15,9 @@
  * edit preserves holdings (separate table); the SAME ticker in two accounts is
  * two independent rows; deleteHolding removes one; deleteAccount cascades; the
  * import report counts are honest; a manual event attributes to `manual` and
- * recomputes basis; and getQuotes degrades a missing fixture to a null price.
+ * recomputes basis; and `refreshQuotes` degrades a missing fixture to a null price.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
-import { testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import {
   toAccountStates,
@@ -38,8 +35,7 @@ import {
   saveAccountSchema,
 } from "@/src/flows/portfolio/portfolio-writes";
 
-// The write functions receive `repoState.repo!` explicitly; `getQuotes` reaches
-// the same repo via the mocked `getRepository` (FIX-823 upserts `app.quotes`).
+// The write functions (and `refreshQuotes`) receive `repoState.repo!` explicitly.
 // One fresh in-memory PGlite instance per test.
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
 vi.mock("@/lib/portfolio-db", () => ({
@@ -49,7 +45,7 @@ vi.mock("@/lib/portfolio-db", () => ({
   },
 }));
 
-// Mock the live price providers so `getQuotes`' live path is offline + deterministic.
+// Mock the live price providers so `refreshQuotes`' live path is offline + deterministic.
 // Finnhub is keyless (falls through to Yahoo); Yahoo returns controlled bars.
 const yahooMock = vi.hoisted(() => ({ fetchYahooChart: vi.fn() }));
 vi.mock("@/src/flows/analysis/tools/providers/finnhub", async (importActual) => ({
@@ -61,7 +57,7 @@ vi.mock("@/src/flows/analysis/tools/providers/yahoo", async (importActual) => ({
   fetchYahooChart: yahooMock.fetchYahooChart,
 }));
 
-import portfolioFlow from "../src/flows/portfolio/flow";
+import { refreshQuotes } from "../src/flows/portfolio/get-quotes";
 import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 
 const USER_ID = "devuser";
@@ -442,7 +438,7 @@ describe("recordManualEvent", () => {
   });
 });
 
-describe("getQuotes action (FIX-823 durable persistence)", () => {
+describe("refreshQuotes (FIX-823 durable persistence)", () => {
   beforeEach(() => {
     _resetCache();
     yahooMock.fetchYahooChart.mockReset();
@@ -465,16 +461,11 @@ describe("getQuotes action (FIX-823 durable persistence)", () => {
         { date: "2026-07-08", close: 210.5 },
       ]),
     );
-    const stores = createInMemoryStores();
-    const result = await testFlow({
-      flow: portfolioFlow,
-      action: "getQuotes",
-      userId: USER_ID,
-      sessionId: "quotes-live",
-      stores,
-      input: { tickers: ["AAPL"], dataSource: "live" },
-    });
-    expect(result.status).toBe("completed");
+    const result = await refreshQuotes(
+      { tickers: ["AAPL"], dataSource: "live" },
+      repoState.repo!,
+    );
+    expect(result.quotes[0]).toMatchObject({ ticker: "AAPL", price: 210.5 });
 
     const rows = await repoState.repo!.getQuotes(["AAPL"]);
     expect(rows).toHaveLength(1);
@@ -486,16 +477,7 @@ describe("getQuotes action (FIX-823 durable persistence)", () => {
   });
 
   it("does NOT persist a fixture-mode result (no global-cache pollution)", async () => {
-    const stores = createInMemoryStores();
-    const result = await testFlow({
-      flow: portfolioFlow,
-      action: "getQuotes",
-      userId: USER_ID,
-      sessionId: "quotes-fixture",
-      stores,
-      input: { tickers: ["NVDA"], dataSource: "fixture" },
-    });
-    expect(result.status).toBe("completed");
+    await refreshQuotes({ tickers: ["NVDA"], dataSource: "fixture" }, repoState.repo!);
     // The write is gated on `mode === "live"`, so fixture/demo data never
     // overwrites the shared global row — persistence is a no-op here.
     expect(await repoState.repo!.getQuotes(["NVDA"])).toEqual([]);
@@ -512,15 +494,7 @@ describe("getQuotes action (FIX-823 durable persistence)", () => {
     yahooMock.fetchYahooChart.mockImplementation(async (input: { ticker: string }) =>
       chartOf(input.ticker, []),
     );
-    const stores = createInMemoryStores();
-    await testFlow({
-      flow: portfolioFlow,
-      action: "getQuotes",
-      userId: USER_ID,
-      sessionId: "quotes-null",
-      stores,
-      input: { tickers: ["TSLA"], dataSource: "live" },
-    });
+    await refreshQuotes({ tickers: ["TSLA"], dataSource: "live" }, repoState.repo!);
     const rows = await repoState.repo!.getQuotes(["TSLA"]);
     expect(rows).toHaveLength(1);
     // The prior row survives with its original price — a failed refresh never

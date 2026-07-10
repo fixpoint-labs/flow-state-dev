@@ -1,24 +1,23 @@
 /**
  * The `portfolio` flow definition.
  *
- * This flow holds the genuinely flow-shaped portfolio work: `getQuotes`
- * (fetches live prices and upserts them into the durable `app.quotes` table the
- * analysis seed + Portfolio UI read, FIX-823), `extractHoldingsFromPdf` (an LLM generator that
- * streams and writes the `pdfImport` scratch), and the per-position thesis
- * writes `saveThesis` / `deleteThesis` (FIX-760). The account / holdings /
- * ledger CRUD, by contrast, is basic relational work over the app-owned tables
- * (FIX-772), which lives in plain REST routes (`app/api/portfolio/*`) — a flow
- * buys that CRUD nothing and costs it a request-envelope return and a
- * bound-session requirement (FIX-736 follow-up; the write logic is
- * `src/flows/portfolio/portfolio-writes.ts`). A thesis is the exception that
- * proves the boundary: it is a REACTIVE, cross-flow resource (the client reads
- * it live, the analysis flow reads + derives it), so its writes are flow
- * actions, not a route. This is the showcase boundary: flows for agentic /
- * streaming / cross-flow / reactive-resource work, routes for domain CRUD.
+ * This flow holds the genuinely flow-shaped portfolio work: `extractHoldingsFromPdf`
+ * (an LLM generator that streams and writes the `pdfImport` scratch) and the
+ * per-position thesis writes `saveThesis` / `deleteThesis` (FIX-760). The account
+ * / holdings / ledger CRUD and the quote refresh, by contrast, are basic domain
+ * work over the app-owned tables (FIX-772/FIX-823) that live in plain REST routes
+ * (`app/api/portfolio/*`) — a flow buys them nothing and costs a request-envelope
+ * return and a bound-session requirement (FIX-736 follow-up; the write logic is
+ * `src/flows/portfolio/portfolio-writes.ts`, and the quote refresh is
+ * `refreshQuotes` in `get-quotes.ts` behind `POST /api/portfolio/quotes/refresh`).
+ * A thesis is the exception that proves the boundary: it is a REACTIVE, cross-flow
+ * resource (the client reads it live, the analysis flow reads + derives it), so
+ * its writes are flow actions, not a route. This is the showcase boundary: flows
+ * for agentic / streaming / cross-flow / reactive-resource work, routes for domain
+ * CRUD.
  */
 import { defineFlow } from "@flow-state-dev/core";
 import { deleteThesis, saveThesis } from "./thesis-actions";
-import { getQuotes } from "./get-quotes";
 import { extractHoldingsFromPdf } from "./extract-holdings-action";
 import { pdfImportResource, thesesCollection } from "./portfolio-resources";
 import { sessionStateSchema } from "./state";
@@ -36,7 +35,6 @@ const portfolioFlow = defineFlow({
     // reads + derives it), which is exactly the flow-shaped side of this boundary.
     saveThesis: { block: saveThesis },
     deleteThesis: { block: deleteThesis },
-    getQuotes: { block: getQuotes },
     extractHoldingsFromPdf: { block: extractHoldingsFromPdf },
   },
 
@@ -46,7 +44,7 @@ const portfolioFlow = defineFlow({
     // Transient per-session PDF-extraction channel written by
     // `extractHoldingsFromPdf`; the import dialog reads it via `useResource`.
     // Accounts, holdings, and last-known prices are not resources — they live in
-    // the app-owned tables (FIX-772/FIX-823); `getQuotes` upserts `app.quotes`.
+    // the app-owned tables (FIX-772/FIX-823); the refresh route upserts `app.quotes`.
     pdfImport: pdfImportResource,
     // Per-position thesis records (FIX-760) — user-scoped collection
     // (`theses/{ticker}`, flowIsolation:false → cross-flow). Written by

@@ -15,10 +15,12 @@
  *  - Accounts (with inline holdings) come from the app-owned tables via the
  *    `/api/portfolio/accounts` read route (`usePortfolioAccounts`, FIX-772) —
  *    accounts are no longer an FSD resource. `refetch` after each write action.
- *  - Prices come from the `getQuotes` action: dispatch → wait for the request to
- *    complete → refetch the durable `app.quotes` table via `/api/portfolio/quotes`
- *    (`useQuotes`, FIX-823). The retired `portfolioQuotes` resource's live
- *    `useResource` read is gone (the FIX-772 accounts-migration pattern).
+ *  - Prices come from the quote-refresh route: `POST /api/portfolio/quotes/refresh`
+ *    (which fetches live prices + upserts `app.quotes`) → `refetch` the durable
+ *    table via `GET /api/portfolio/quotes` (`useQuotes`, FIX-823). A plain awaited
+ *    REST write → refetch, exactly like the CRUD writes below — no flow action, no
+ *    `isStreaming`-settle race (the retired `getQuotes` action + `portfolioQuotes`
+ *    resource are both gone; the FIX-772 accounts-migration pattern).
  *  - All derived money math (values, weights, P/L, rollups) is computed in
  *    `useMemo` (BP-010), never an effect.
  *
@@ -144,8 +146,8 @@ export function PortfolioPane({
   const { theses, loading: thesesLoading, refetch: refetchTheses } = useTheses(session);
   // Last-known prices from the durable `app.quotes` table via the REST hook
   // (FIX-823) — the retired `portfolioQuotes` resource's `useResource` read is
-  // gone. `getQuotes` upserts the table; `refetchQuotes` runs once that action
-  // completes (see the streaming-settle effect below).
+  // gone. The refresh route upserts the table; `refetchQuotes` runs once that
+  // awaited POST resolves (see `fetchPrices` below).
   const { quotes, refetch: refetchQuotes } = useQuotes();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -172,9 +174,6 @@ export function PortfolioPane({
    *  the open drill-in. */
   const [section, setSection] = useState<PortfolioSection>("accounts");
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
-  // True between dispatching `getQuotes` and its request settling — gates the
-  // post-completion quotes refetch (FIX-823; the settle effect near `fetchPrices`).
-  const [awaitingQuotes, setAwaitingQuotes] = useState(false);
   // Split backfill (FIX-874 follow-up): running state + a short result note.
   const [splitBackfill, setSplitBackfill] = useState<{ running: boolean; note: string | null }>({
     running: false,
@@ -270,7 +269,7 @@ export function PortfolioPane({
   );
 
   // Price map: ticker (upper) → quote. Built from the durable table rows the
-  // `getQuotes` action upserted (FIX-823), projected to the `Quote` shape the
+  // refresh route upserted (FIX-823), projected to the `Quote` shape the
   // holdings table + valuation seam consume (`{ ticker, price, asOf }`).
   const priceMap = useMemo(() => {
     const map = new Map<string, Quote>();
@@ -352,19 +351,17 @@ export function PortfolioPane({
     return allocationByClass(entries);
   }, [holdings, accounts, priceMap]);
 
-  // Fetch prices for the union of held tickers. Dispatch `getQuotes` (which
-  // upserts `app.quotes`) → wait for that request to COMPLETE → refetch the
-  // quotes route. The completion wait is the streaming-settle effect below.
+  // Refresh live prices for the held tickers: POST the refresh route (which
+  // fetches live quotes + upserts `app.quotes`), then refetch the durable table
+  // directly. A plain awaited REST write → refetch — the same idiom the import
+  // handlers use — with no bound session and no `isStreaming`-settle race (the
+  // `getQuotes` flow action was retired for this route, FIX-823).
   const fetchPrices = useCallback(async () => {
-    // Prices are the one portfolio feature that still needs a bound session:
-    // `getQuotes` is a flow action (it fans out live quotes + upserts the durable
-    // table). Without a session (cold start, no analysis run yet) prices stay "—"
-    // and the rest of the pane (CRUD) still works.
-    if (!hasSession) return;
     // Only quote-valued types (equity/etf/mutual_fund/crypto) need a live quote;
     // bond/option value at their carried mark and cash/MMF at par (BP-033), so
-    // fetching those would just burn retries and could surface a misleading quote
-    // (e.g. CASH = Pathward). Filter at the source.
+    // there's nothing to refresh when the portfolio holds none of them. The route
+    // re-derives + re-filters the ticker set server-side; this is just a skip
+    // guard so an all-bond portfolio doesn't fire a no-op request.
     const tickers = [
       ...new Set(
         holdings.filter((h) => usesLiveQuote(h.assetType)).map((h) => h.ticker.toUpperCase()),
@@ -374,35 +371,18 @@ export function PortfolioPane({
     setIsFetchingPrices(true);
     try {
       // Portfolio holdings are real, so prices are always LIVE — decoupled from
-      // the analysis fixture/live toggle (fixtures only cover the 3 demo
-      // tickers). getQuotes bounds the fan-out + retries, so a large portfolio
-      // isn't throttled into "—".
-      //
-      // `sendAction` resolves at stream-attach — BEFORE `upsertQuotes` commits
-      // (the `useSession` in_progress-on-attach behavior the report-thesis-panel
-      // documents). Retiring the `portfolioQuotes` resource removed the
-      // `resource_change` SSE that used to self-correct a stale read, so a naive
-      // `.then(refetch)` would race ahead of the write. Flag a pending refetch
-      // instead; the settle effect below fires `refetchQuotes` once the getQuotes
-      // stream reaches a terminal status (isStreaming falling edge = committed).
-      await session.sendAction("getQuotes", { tickers, dataSource: "live" });
-      setAwaitingQuotes(true);
+      // the analysis fixture/live toggle (fixtures only cover the 3 demo tickers).
+      // The route bounds the fan-out + retries, so a large portfolio isn't
+      // throttled into "—". The POST resolves only after the upsert commits, so
+      // refetching immediately after reads the fresh rows (no settle race).
+      await apiMutate("/api/portfolio/quotes/refresh", "POST", { userId: uid });
+      refetchQuotes();
     } catch (err) {
-      console.error("[trading-desk] getQuotes failed", err);
+      console.error("[trading-desk] refreshQuotes failed", err);
+    } finally {
       setIsFetchingPrices(false);
     }
-  }, [holdings, session, hasSession]);
-
-  // Refetch the quotes route once the in-flight `getQuotes` request settles.
-  // `sendAction` attaches the stream (isStreaming → true) synchronously, so a
-  // pending refetch always waits for the falling edge; if the stream already
-  // finished, the write is committed and refetching now is correct.
-  useEffect(() => {
-    if (!awaitingQuotes || session.isStreaming) return;
-    setAwaitingQuotes(false);
-    setIsFetchingPrices(false);
-    refetchQuotes();
-  }, [awaitingQuotes, session.isStreaming, refetchQuotes]);
+  }, [holdings, uid, refetchQuotes]);
 
   // Auto-fetch prices once holdings are loaded and we have none yet, and when
   // the held-ticker set changes. Genuine side effect (network + external
@@ -424,12 +404,11 @@ export function PortfolioPane({
     void fetchPrices();
     // fetchPrices is intentionally omitted: it closes over `holdings` which
     // changes identity every render; the ticker signature is the real trigger.
-    // `hasSession` IS a trigger: when accounts load before the auto-created
-    // session is ready, `fetchPrices` early-returns; re-run once the session
-    // arrives so imported/existing holdings get live prices without a manual
-    // refresh.
+    // The refresh route needs no session, so the held-ticker set is the only
+    // trigger — imported/existing holdings get live prices without a manual
+    // refresh or a session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tickerSignature, hasSession]);
+  }, [tickerSignature]);
 
   // Every mutation is an awaited REST call that returns its real result, then an
   // explicit refetch of the affected reads — no flow round-trip, no request
@@ -617,14 +596,13 @@ export function PortfolioPane({
     [session, refetchTheses],
   );
 
-  // No whole-pane empty state anymore: account/holdings/ledger management is
-  // plain REST and works with no bound session (FIX-736 follow-up). Only the
-  // genuinely flow-shaped features need a session — live prices (`getQuotes`,
-  // which fetchPrices no-ops without one), PDF import (a streaming generator, its
-  // button disabled below), and thesis editing (a reactive resource — the
-  // per-holding editor is disabled until the session-backed theses load). So a
-  // cold-start user can build their portfolio immediately; prices and thesis
-  // affordances fill in once an analysis has been run.
+  // No whole-pane empty state anymore: account/holdings/ledger management AND the
+  // price refresh are plain REST and work with no bound session (FIX-736/FIX-823).
+  // Only the genuinely flow-shaped features still need a session — PDF import (a
+  // streaming generator, its button disabled below) and thesis editing (a reactive
+  // resource — the per-holding editor is disabled until the session-backed theses
+  // load). So a cold-start user can build their portfolio and see live prices
+  // immediately; only the PDF-import and thesis affordances wait on a session.
   const totalUplFmt = formatSignedMoney(totalUpl, "USD");
   const totalUplPctFmt = formatSignedPercent(totalUplPct);
   const openAccount =
@@ -640,15 +618,11 @@ export function PortfolioPane({
         <button
           type="button"
           onClick={() => void fetchPrices()}
-          disabled={holdings.length === 0 || isFetchingPrices || !hasSession}
-          title={
-            !hasSession
-              ? "Live prices need a session — run an analysis first"
-              : "Refresh live prices"
-          }
+          disabled={holdings.length === 0 || isFetchingPrices}
+          title="Refresh live prices"
           className={cn(
             "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px]",
-            holdings.length === 0 || isFetchingPrices || !hasSession
+            holdings.length === 0 || isFetchingPrices
               ? "cursor-not-allowed opacity-50"
               : "hover:bg-[color:var(--c-surface-2)]",
           )}
