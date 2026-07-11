@@ -46,7 +46,15 @@ import { deriveLots } from "@/src/flows/portfolio/lots";
 import type { RealizedDisposal } from "@/src/flows/portfolio/realized-gains";
 import type { TaxProfileInput } from "@/src/flows/portfolio/tax-schema";
 import type { Db } from "./client";
-import { accounts, holdings, ledgerEvents, quotes, realizedGains, taxProfiles } from "./schema";
+import {
+  accounts,
+  holdings,
+  instrumentClassifications,
+  ledgerEvents,
+  quotes,
+  realizedGains,
+  taxProfiles,
+} from "./schema";
 
 /** The Drizzle transaction handle, extracted from `Db.transaction`. The ledger
  *  ingest/void paths materialize positions inside their own transaction, so the
@@ -253,6 +261,27 @@ export interface PortfolioRepository {
    * fixture-mode result or a provider miss never overwrites the shared global row.
    */
   upsertQuotes(rows: QuoteInput[]): Promise<void>;
+  /**
+   * Per-ticker sector classifications for a set of tickers (FIX-762), for the
+   * Health view fill route and the analysis seed. Tickers are upper-cased before
+   * the lookup (the canonical PK); an empty input returns `[]` without a query. A
+   * ticker with no row is simply omitted — the sector view then shows it as
+   * `Unclassified` until a later Health-view visit fills the cache.
+   *
+   * NOTE: unlike every *portfolio* method, this is GLOBAL reference data — no
+   * `userId` guard, because a ticker's sector is a public per-ticker fact shared
+   * across households (the `getQuotes` precedent).
+   */
+  getInstrumentClassifications(tickers: string[]): Promise<InstrumentClassificationRow[]>;
+  /**
+   * Persist a batch of sector classifications (FIX-762), transactionally — upsert
+   * on the `ticker` PK, setting `sector`/`source` and stamping `fetched_at =
+   * now()`. Tickers are upper-cased. Empty input is a no-op. Callers pass
+   * SUCCESSFUL resolutions only (`sector` non-null), so a provider miss never
+   * blanks the shared global row (the `upsertQuotes` filter precedent). Global
+   * reference data — no `userId` guard.
+   */
+  upsertInstrumentClassifications(rows: InstrumentClassificationInput[]): Promise<void>;
 }
 
 /** One `(account, ticker)` income aggregate — see
@@ -324,6 +353,27 @@ export type QuoteInput = {
   ticker: string;
   price: number;
   asOf: string | null;
+  source: string;
+};
+
+/** One persisted per-ticker sector classification (FIX-762) — the read shape of
+ *  `app.instrument_classifications`, timestamp normalized to ISO-8601. `sector`
+ *  is null only for a row that predates a resolution; the fill path never writes
+ *  a null (a miss is returned unpersisted). */
+export type InstrumentClassificationRow = {
+  ticker: string;
+  sector: string | null;
+  source: string;
+  fetchedAt: string;
+};
+
+/** Fields a caller supplies to persist one classification (FIX-762). `sector` is
+ *  non-null by construction — the fill route persists successful resolutions
+ *  only, so a provider miss never blanks a stored row. `fetchedAt` is owned by
+ *  the repository (set to `now()` on write). */
+export type InstrumentClassificationInput = {
+  ticker: string;
+  sector: string;
   source: string;
 };
 
@@ -494,6 +544,19 @@ function mapQuote(row: typeof quotes.$inferSelect): QuoteRow {
     ticker: row.ticker,
     price: Number(row.price),
     asOf: row.asOf === null ? null : new Date(row.asOf).toISOString(),
+    source: row.source,
+    fetchedAt: new Date(row.fetchedAt).toISOString(),
+  };
+}
+
+/** Map an `app.instrument_classifications` row to its read shape (FIX-762),
+ *  normalizing the timestamp to ISO-8601 (the {@link mapQuote} boundary). */
+function mapInstrumentClassification(
+  row: typeof instrumentClassifications.$inferSelect,
+): InstrumentClassificationRow {
+  return {
+    ticker: row.ticker,
+    sector: row.sector,
     source: row.source,
     fetchedAt: new Date(row.fetchedAt).toISOString(),
   };
@@ -1471,6 +1534,42 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
               // Cache-write time advances on every refresh (distinct from the
               // quote's own `as_of`), so a re-fetch of the same price is still
               // recorded as freshly cached.
+              fetchedAt: sql`now()`,
+            },
+          });
+      });
+    },
+
+    async getInstrumentClassifications(tickers) {
+      const wanted = [...new Set(tickers.map((t) => t.toUpperCase()))];
+      if (wanted.length === 0) return [];
+      const rows = await db
+        .select()
+        .from(instrumentClassifications)
+        .where(inArray(instrumentClassifications.ticker, wanted));
+      return rows.map(mapInstrumentClassification);
+    },
+
+    async upsertInstrumentClassifications(rows) {
+      if (rows.length === 0) return;
+      // In-memory dedupe by ticker first (the `upsertQuotes` precedent): two rows
+      // for the same ticker in one batch would trip an intra-statement ON CONFLICT.
+      const byTicker = new Map<string, InstrumentClassificationInput>();
+      for (const r of rows) byTicker.set(r.ticker.toUpperCase(), r);
+      const values = [...byTicker.entries()].map(([ticker, r]) => ({
+        ticker,
+        sector: r.sector,
+        source: r.source,
+      }));
+      await db.transaction(async (tx) => {
+        await tx
+          .insert(instrumentClassifications)
+          .values(values)
+          .onConflictDoUpdate({
+            target: instrumentClassifications.ticker,
+            set: {
+              sector: sql`excluded.sector`,
+              source: sql`excluded.source`,
               fetchedAt: sql`now()`,
             },
           });

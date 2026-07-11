@@ -71,6 +71,7 @@ import {
 import { ResolveSplitDialog } from "./resolve-split-dialog";
 import { ThesisDialog } from "./thesis-dialog";
 import { GainsTaxesSection } from "./gains-taxes-section";
+import { HealthSection } from "./health-section";
 import {
   PortfolioSectionRail,
   PortfolioSectionStrip,
@@ -89,6 +90,7 @@ import {
   usesLiveQuote,
 } from "@/src/flows/portfolio/value-holding";
 import {
+  ASSET_CLASS_LABELS,
   DASH,
   allocationByClass,
   formatMoney,
@@ -98,14 +100,6 @@ import {
 } from "./portfolio-format";
 
 /** Display labels for the asset-class allocation breakdown. */
-const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
-  equity: "Equity",
-  fixed_income: "Fixed income",
-  cash: "Cash",
-  crypto: "Crypto",
-  alternative: "Alt",
-};
-
 type PortfolioPaneProps = {
   /** A bound session whose snapshot the user-scoped resource reads project
    *  from. Undefined when the user has no sessions at all. */
@@ -742,6 +736,17 @@ export function PortfolioPane({
               estimate={taxEstimate}
               profile={taxProfile}
               onEditProfile={() => setTaxProfileOpen(true)}
+            />
+          ) : section === "health" ? (
+            /* Health (FIX-762): household exposure, concentration, sector splits,
+               cash + coverage — the deterministic aggregation leaf, self-contained
+               like GainsTaxesSection. */
+            <HealthSection
+              accounts={accounts}
+              priceMap={priceMap}
+              pricesAsOf={priceAsOf}
+              hasSession={hasSession}
+              onRefreshPrices={() => void fetchPrices()}
             />
           ) : accounts.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">

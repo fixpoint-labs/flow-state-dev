@@ -42,6 +42,38 @@ const portfolioAccountInput = z.object({
 });
 
 /**
+ * Compact household-health aggregate (FIX-762) injected into the trader/PM
+ * context alongside the raw holdings list — the deterministic answer to "how
+ * balanced is this book?" the desk's sizing/concentration commentary can
+ * reference. Aggregates only (no per-position list beyond what `holdings`
+ * already carries). Null when health is not computable (no priced data).
+ *
+ * `drift` is the FIX-761-gated slice (actual-vs-target against the durable
+ * mandate); it is always null until that lands — the shape is here so the
+ * follow-up only populates it (no schema churn). Domain-regime schema
+ * (nullable/defaults fine; NOT a strict generator output).
+ */
+const portfolioHealthContext = z.object({
+  cashPct: z.number().nullable(),
+  coveragePct: z.number().nullable(),
+  assetClassAllocation: z.array(z.object({ assetClass: z.string(), pct: z.number().nullable() })),
+  sectorExposure: z.array(z.object({ bucket: z.string(), pct: z.number().nullable() })), // top 6 + "Other"
+  concentration: z.object({
+    maxPosition: z.object({ ticker: z.string(), weightPct: z.number() }).nullable(),
+    top5Pct: z.number().nullable(),
+    effectivePositions: z.number().nullable(),
+    flags: z.array(z.string()), // pre-rendered, e.g. "NVDA 12.4% (warn)"
+  }),
+  drift: z
+    .object({
+      totalDriftPct: z.number(),
+      rebalanceSuggested: z.boolean(),
+      breaches: z.array(z.string()), // pre-rendered, e.g. "fixed_income 24% vs target 30 — LOW"
+    })
+    .nullable(), // null = no mandate (FIX-761-gated; always null in v1)
+});
+
+/**
  * Optional per-run portfolio context. Null/absent → the run is portfolio-blind
  * exactly as today. The pipeline (P1–P2) never sees this; only the lens pack,
  * the trader (P3), and the PM (P5) read it via the `portfolioContext` preset.
@@ -51,6 +83,7 @@ const portfolioAccountInput = z.object({
  * can label staleness (RISK-P3) — a frozen snapshot is never presented as live.
  * `pricedHoldings` / `totalHoldings` let the prompt + UI state coverage honestly
  * (e.g. "12 of 18 holdings priced") without fabricating the missing values.
+ * `health` is the compact FIX-762 household aggregate (null when not computable).
  */
 const portfolioContextInput = z.object({
   totalNav: z.number(),
@@ -59,6 +92,7 @@ const portfolioContextInput = z.object({
   totalHoldings: z.number().default(0),
   accounts: z.array(portfolioAccountInput),
   holdings: z.array(portfolioHoldingInput),
+  health: portfolioHealthContext.nullable().default(null),
 });
 
 export type PortfolioContextInput = z.infer<typeof portfolioContextInput>;

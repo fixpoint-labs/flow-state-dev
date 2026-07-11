@@ -511,7 +511,52 @@ export function formatPortfolioContext(
     lines.push(`Top positions by weight: ${top}.`);
   }
 
+  // Household-health aggregate (FIX-762) — the deterministic exposure /
+  // concentration / sector read, so the model reasons about the book, not just a
+  // position list. Rendered only when computable; drift (FIX-761) is omitted
+  // until that slice lands.
+  appendHealthLines(lines, portfolio.health);
+
   return lines.join("\n");
+}
+
+/** Percent (0..100) as "12.4%", or "—" when unknown. */
+function fmtPct(value: number | null): string {
+  return value == null ? "—" : `${value.toFixed(1)}%`;
+}
+
+/** Append the compact `<portfolioContext>` health block. No-op when health is
+ *  absent (portfolio-blind on the health axis). */
+function appendHealthLines(lines: string[], health: PortfolioContextInput["health"]): void {
+  if (health == null) return;
+  lines.push(
+    `Household health (deterministic; no ETF look-through): cash ${fmtPct(health.cashPct)} of NAV, ` +
+      `priced coverage ${fmtPct(health.coveragePct)}.`,
+  );
+  if (health.assetClassAllocation.length > 0) {
+    const alloc = health.assetClassAllocation
+      .map((a) => `${a.assetClass} ${fmtPct(a.pct)}`)
+      .join(", ");
+    lines.push(`Allocation by class: ${alloc}.`);
+  }
+  const c = health.concentration;
+  const maxName = c.maxPosition ? `${c.maxPosition.ticker} ${fmtPct(c.maxPosition.weightPct)}` : "—";
+  lines.push(
+    `Concentration (of invested NAV): largest name ${maxName}; top-5 ${fmtPct(c.top5Pct)}; ` +
+      `effective positions ${c.effectivePositions == null ? "—" : c.effectivePositions.toFixed(1)}.`,
+  );
+  if (c.flags.length > 0) lines.push(`Concentration flags: ${c.flags.join(", ")}.`);
+  if (health.sectorExposure.length > 0) {
+    const sectors = health.sectorExposure.map((s) => `${s.bucket} ${fmtPct(s.pct)}`).join(", ");
+    lines.push(`Sector exposure: ${sectors}.`);
+  }
+  if (health.drift != null) {
+    lines.push(
+      `Drift vs mandate: total ${fmtPct(health.drift.totalDriftPct)}` +
+        `${health.drift.rebalanceSuggested ? " — rebalance suggested" : ""}` +
+        `${health.drift.breaches.length > 0 ? ` (${health.drift.breaches.join("; ")})` : ""}.`,
+    );
+  }
 }
 
 /**

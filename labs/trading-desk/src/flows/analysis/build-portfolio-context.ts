@@ -29,15 +29,64 @@
  * empty portfolio with accounts-but-no-holdings still returns a snapshot (NAV =
  * cash) so the PM can reason about available cash.
  *
- * Pure leaf: imports only the portfolio schema types + the flow input type
- * (types only — no runtime). Unit-testable without a browser.
+ * FIX-762 additions: an optional `classifications` map (UPPER ticker → sector)
+ * that gives `holdings[].sector` its first producer (equities only), and a
+ * compact `health` block computed with the shared `summarizePortfolioHealth`
+ * leaf so the trader/PM context carries the SAME household aggregates
+ * (exposure, concentration, cash, coverage) the Health pane shows. Drift/
+ * compliance is the FIX-761-gated slice — `health.drift` stays null in v1.
+ *
+ * Pure leaf: imports the portfolio schema types, the flow input type, and the
+ * pure `portfolio-health` leaf (no runtime IO). Unit-testable without a browser.
  */
 import type { PortfolioContextInput } from "./flow-schema";
 import type { AccountState } from "../portfolio/portfolio-schema";
 import { holdingMarketValue } from "../portfolio/value-holding";
+import {
+  summarizePortfolioHealth,
+  type ClassificationMap,
+  type PortfolioHealth,
+  type QuoteMap,
+} from "../portfolio/portfolio-health";
 
 /** A live quote keyed by upper-case ticker. `price` null when unavailable. */
 export type QuoteLike = { ticker: string; price: number | null; asOf: string | null };
+
+/** The compact household-health block projected into `<portfolioContext>` (top 6
+ *  sector buckets + `Other`; concentration flags pre-rendered). Null when the
+ *  book has nothing priceable (health not computable). */
+function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"] {
+  if (health.totalNav === null) return null;
+  const sectors = health.sectorExposure.slice(0, 6).map((s) => ({ bucket: s.bucket, pct: s.pct }));
+  if (health.sectorExposure.length > 6) {
+    const restPct = health.sectorExposure.slice(6).reduce((sum, s) => sum + (s.pct ?? 0), 0);
+    sectors.push({ bucket: "Other", pct: restPct });
+  }
+  return {
+    cashPct: health.cash.pct,
+    coveragePct:
+      health.coverage.totalPositions > 0
+        ? (health.coverage.pricedPositions / health.coverage.totalPositions) * 100
+        : null,
+    assetClassAllocation: health.assetClassAllocation.map((a) => ({
+      assetClass: a.assetClass,
+      pct: a.pct,
+    })),
+    sectorExposure: sectors,
+    concentration: {
+      maxPosition: health.concentration.maxPosition,
+      top5Pct: health.concentration.top5Pct,
+      effectivePositions: health.concentration.effectivePositions,
+      flags: health.concentration.flags.map((f) =>
+        f.kind === "single_name"
+          ? `${f.ticker} ${f.weightPct.toFixed(1)}% (${f.level})`
+          : `${f.sector} ${f.weightPct.toFixed(1)}% (warn)`,
+      ),
+    },
+    // Drift/compliance is the FIX-761-gated slice — always null until it lands.
+    drift: null,
+  };
+}
 
 /**
  * Build the snapshot. `quotes` is the last-known quote rows for the held tickers
@@ -50,6 +99,7 @@ export function buildPortfolioContext(
   accounts: ReadonlyArray<Readonly<AccountState>>,
   quotes: QuoteLike[],
   snapshotAsOf: string | null,
+  classifications: ClassificationMap = new Map(),
 ): PortfolioContextInput | null {
   if (accounts.length === 0) return null;
 
@@ -63,6 +113,7 @@ export function buildPortfolioContext(
     account: string;
     marketValue: number | null;
     costBasis: number | null;
+    isEquity: boolean;
   };
   const rows: Row[] = [];
   let knownMarketValueTotal = 0;
@@ -95,6 +146,7 @@ export function buildPortfolioContext(
         account: acc.accountId,
         marketValue,
         costBasis: h.costBasis,
+        isEquity: h.assetType === "equity",
       });
     }
   }
@@ -109,7 +161,10 @@ export function buildPortfolioContext(
     account: r.account,
     marketValue: r.marketValue,
     costBasis: r.costBasis,
-    sector: null, // Slice 4 does not store sector; honest null, not guessed.
+    // The dead `sector` field gets its first producer (FIX-762): the classification
+    // for equities, null for every other type (funds/bonds/crypto/cash have no
+    // single-name sector). Absent classification → null, never guessed.
+    sector: r.isEquity ? (classifications.get(r.ticker.toUpperCase()) ?? null) : null,
     weightPct:
       r.marketValue != null && totalNav > 0 ? (r.marketValue / totalNav) * 100 : null,
   }));
@@ -121,6 +176,15 @@ export function buildPortfolioContext(
     cash: a.cashBalance,
   }));
 
+  // The compact household-health aggregate (FIX-762) — computed with the SAME
+  // pure leaf the Health pane uses, so the trader/PM see the exact figures the
+  // user sees. A quote map from the same rows the NAV was valued from.
+  const quoteMap: QuoteMap = new Map();
+  for (const q of quotes) quoteMap.set(q.ticker.toUpperCase(), { price: q.price, asOf: q.asOf });
+  const health = projectHealth(
+    summarizePortfolioHealth(accounts, quoteMap, classifications, snapshotAsOf),
+  );
+
   return {
     totalNav,
     snapshotAsOf,
@@ -128,5 +192,6 @@ export function buildPortfolioContext(
     totalHoldings,
     accounts: accountInputs,
     holdings,
+    health,
   };
 }

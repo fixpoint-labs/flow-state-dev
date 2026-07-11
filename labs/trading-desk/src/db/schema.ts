@@ -269,6 +269,34 @@ export const quotes = appSchema.table("quotes", {
 });
 
 /**
+ * Per-ticker sector classification (FIX-762) — one GLOBAL row per ticker, filled
+ * lazily from the existing Yahoo sector resolver (`resolveSector`). Backs the
+ * Health view's sector-exposure axis, the one household breakdown with no data
+ * source until now (asset class already rides on each holding row; the quote is
+ * an input).
+ *
+ * Keyed by `ticker` ALONE, not `(user_id, ticker)`: a ticker's sector is a
+ * global, public, near-immutable fact — the same reasoning `app.quotes` (FIX-823)
+ * applies to price, so the two sit side by side as the lab's first per-ticker
+ * reference tables (a minimal security-master seam FIX-801's ETF profiles can
+ * later join). No TTL: sector rarely changes, so rows are refreshed manually
+ * (a `source` column leaves room), never on a timer.
+ *
+ * `sector` is nullable in the column, but the fill path NEVER persists a null (a
+ * failed Yahoo resolution is returned to the caller but not written), so a
+ * transient provider outage can't permanently blank a ticker — it is retried on a
+ * later request. `industry` is deliberately not stored: no consumer (BP-038).
+ */
+export const instrumentClassifications = appSchema.table("instrument_classifications", {
+  ticker: text("ticker").primaryKey(),
+  sector: text("sector"),
+  source: text("source").notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .default(sql`now()`),
+});
+
+/**
  * A household's tax profile (FIX-874) — one row per user. Drives the upper-bound
  * current-year estimate (OQ #7): the user's marginal ordinary rate and long-term
  * capital-gains rate are applied directly to each bucket. `filing_status` sets

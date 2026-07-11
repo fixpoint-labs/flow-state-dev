@@ -293,8 +293,26 @@ three imports / add transaction / backfill splits — above the card grid →
 into, toggling between capital gains and total realized income = gains +
 dividends + interest, off the pure `realized-income-by-year.ts` model). Only
 refresh-prices + totals + provenance stay on the pinned toolbar; account actions
-live in the Accounts perspective. FIX-762's household health view lands as a
-third `SECTIONS` entry.
+live in the Accounts perspective. The third perspective is the **Health**
+perspective (FIX-762, `health-section.tsx`) — the deterministic household view:
+ticker-merged exposure, asset-class + sector breakdowns, concentration reads
+(largest name, top-N, effective positions = 1/HHI) with warn/alert flags, cash
+level, and coverage. It computes client-side from the pure aggregation leaf
+`src/flows/portfolio/portfolio-health.ts` (`summarizePortfolioHealth`, reusing
+`value-holding` + the `inconsistent_history` gate — one copy of the money math),
+self-contained like `GainsTaxesSection`. The one axis with no on-holding data —
+sector — is backed by a new global `app.instrument_classifications` table
+(ticker PK, no TTL, lazy Yahoo `resolveSector` fill via
+`app/api/portfolio/classifications/route.ts` + `use-classifications.ts`; failures
+returned but never persisted, retried later). The same leaf runs server-side at
+`seedSession` to inject a compact `health` block into the trader/PM
+`<portfolioContext>` (`build-portfolio-context.ts` → `format.ts`), and it gives
+the long-dead `holdings[].sector` field its first producer. Funds (ETF / mutual
+fund) are honestly opaque — `lookThrough: "none"`, exempt from single-name flags,
+bucketed as "Funds (no look-through)"; ETF look-through is FIX-801. Drift-vs-
+target and standing-constraint compliance (`computeAllocationDrift`) is the
+FIX-761-gated follow-up slice — the `health.drift` context field and the
+allocation view's target overlay stay empty until the durable mandate lands.
 
 - **Data model — app-owned relational tables (FIX-772).** Accounts and holdings
   are NO LONGER an FSD resource. They live in real Postgres tables in a dedicated

@@ -14,6 +14,18 @@ import type { AssetClass } from "@/src/flows/portfolio/portfolio-schema";
  *  price is missing so the table degrades gracefully (BP-020 spirit). */
 export const DASH = "—";
 
+/** Display labels for each asset class — the shared home for the pane totals'
+ *  allocation breakdown and the Health view's class bars (one copy, BP-028).
+ *  (The HoldingsTable's abbreviated `EQ`/`FI` chips are a deliberately different
+ *  map and stay local to that component.) */
+export const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
+  equity: "Equity",
+  fixed_income: "Fixed income",
+  cash: "Cash",
+  crypto: "Crypto",
+  alternative: "Alt",
+};
+
 /** Format a money amount in the account's currency. `null` → "—" (never 0). */
 export function formatMoney(value: number | null, currency = "USD"): string {
   if (value === null || !Number.isFinite(value)) return DASH;

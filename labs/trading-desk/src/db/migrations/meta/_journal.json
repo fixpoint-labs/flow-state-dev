@@ -57,6 +57,13 @@
       "when": 1783709246811,
       "tag": "0007_wide_anita_blake",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783783020320,
+      "tag": "0008_solid_argent",
+      "breakpoints": true
     }
   ]
 }

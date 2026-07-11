@@ -173,3 +173,56 @@ describe("buildPortfolioContext", () => {
     expect(out?.holdings[0]?.weightPct).toBeNull();
   });
 });
+
+describe("buildPortfolioContext — FIX-762 classifications + health block", () => {
+  const book = [
+    account({
+      cashBalance: 1000,
+      holdings: [
+        { ticker: "AAPL", quantity: 10, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }, // @100 → 1000
+        { ticker: "SPY", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null }, // @400 → 2000
+      ],
+    }),
+  ];
+  const quotes = [
+    { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+    { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+  ];
+
+  it("populates holdings[].sector for equities from the classification map (funds stay null)", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06", new Map([["AAPL", "Technology"]]));
+    const byTicker = new Map(out?.holdings.map((h) => [h.ticker, h]));
+    expect(byTicker.get("AAPL")?.sector).toBe("Technology");
+    // An ETF is not a single-name equity → sector stays null even if classified.
+    expect(byTicker.get("SPY")?.sector).toBeNull();
+  });
+
+  it("leaves sector null when no classification is provided (honest, not guessed)", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06");
+    expect(out?.holdings.every((h) => h.sector === null)).toBe(true);
+  });
+
+  it("projects the compact health block computed from the same leaf", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06", new Map([["AAPL", "Technology"]]));
+    const health = out?.health;
+    expect(health).not.toBeNull();
+    // totalNav = 1000 AAPL + 2000 SPY + 1000 cash = 4000; cash 25%.
+    expect(health?.cashPct).toBeCloseTo(25);
+    expect(health?.coveragePct).toBeCloseTo(100);
+    // Drift is the FIX-761-gated slice — always null in v1.
+    expect(health?.drift).toBeNull();
+    // AAPL is single-name-eligible; SPY (fund) is exempt from single-name flags.
+    expect(health?.concentration.maxPosition?.ticker).toBe("AAPL");
+    // Funds bucket present in the sector exposure (no look-through).
+    expect(health?.sectorExposure.some((s) => s.bucket === "Funds (no look-through)")).toBe(true);
+  });
+
+  it("nulls the health block when nothing is priceable (no priced data)", () => {
+    const out = buildPortfolioContext(
+      [account({ cashBalance: 0, holdings: [{ ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }] })],
+      [],
+      null,
+    );
+    expect(out?.health).toBeNull();
+  });
+});
