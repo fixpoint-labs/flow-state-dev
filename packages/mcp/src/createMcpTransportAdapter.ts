@@ -365,18 +365,22 @@ async function handleToolsCall(
   }
 
   // Merge any forwarded endpoint query params on top of the model's arguments —
-  // the query value is authoritative (installation-set provenance). Anything that
-  // isn't a plain object (a primitive, null, or an array — a malformed call) is
-  // passed through UNCHANGED so it reaches the zod boundary with the same error
-  // whether or not forwarding is configured; attaching a forwarded key to a call
-  // that will fail validation anyway buys nothing, would mask the real
-  // "arguments must be an object" error, and (for an array) would spread it into
-  // bogus numeric keys.
+  // the query value is authoritative (installation-set provenance). A call with
+  // NO arguments (omitted or null) is a valid empty call, so forwarded params
+  // still merge onto {} rather than being dropped. A non-plain-object `arguments`
+  // (a primitive or an array — a malformed call) is passed through UNCHANGED so
+  // it reaches the zod boundary with the same error whether or not forwarding is
+  // configured; attaching a forwarded key to a call that will fail validation
+  // anyway buys nothing, would mask the real "arguments must be an object" error,
+  // and (for an array) would spread it into bogus numeric keys.
+  const hasNoArguments = args === undefined || args === null;
   const isPlainObject = args !== null && typeof args === "object" && !Array.isArray(args);
   const input =
-    forwardedInput === undefined || !isPlainObject
+    forwardedInput === undefined
       ? args ?? {}
-      : { ...(args as Record<string, unknown>), ...forwardedInput };
+      : hasNoArguments || isPlainObject
+        ? { ...((args ?? {}) as Record<string, unknown>), ...forwardedInput }
+        : args;
 
   let handle: ReturnType<InboundTransportHost["dispatch"]>;
   try {

@@ -558,6 +558,22 @@ describe("MCP adapter — forwardQueryParams", () => {
     await callToolsCall(adapter, host, "billing", [1, 2], "?source=endpoint");
     expect(host.dispatchCalls[0]!.envelope.input).toEqual([1, 2]);
   });
+
+  it("still forwards the query param on a no-argument call (arguments omitted)", async () => {
+    // A no-arg tool call is valid, not malformed — the forwarded provenance must
+    // survive rather than being dropped with the empty {}.
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", undefined, "?source=endpoint");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ source: "endpoint" });
+  });
+
+  it("still forwards the query param when arguments is explicitly null", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", null, "?source=endpoint");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ source: "endpoint" });
+  });
 });
 
 createInboundTransportConformanceTests({
