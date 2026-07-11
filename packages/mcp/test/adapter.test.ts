@@ -485,6 +485,65 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
   });
 });
 
+describe("MCP adapter — forwardQueryParams", () => {
+  async function callToolsCall(
+    adapter: ReturnType<typeof createMcpTransportAdapter>,
+    host: ReturnType<typeof createMockTransportHost>,
+    kind: string,
+    args: unknown,
+    query = ""
+  ): Promise<void> {
+    const bindings = adapter.createBindings(host);
+    const route = bindings.routes!.find((r) => r.method === "POST")!;
+    const request = new Request(`http://localhost/api/flows/${kind}/mcp${query}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "record_payment", arguments: args }
+      })
+    });
+    await route.handler(request, { params: { kind } });
+  }
+
+  it("merges an allowlisted query param into the tools/call input", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", { amount: 5 }, "?source=claude-desktop");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ amount: 5, source: "claude-desktop" });
+  });
+
+  it("does not forward a query param that is not allowlisted", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", { amount: 5 }, "?other=x");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ amount: 5 });
+  });
+
+  it("lets the query param override a same-named tool argument (installation wins)", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", { amount: 5, source: "model-guess" }, "?source=endpoint");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ amount: 5, source: "endpoint" });
+  });
+
+  it("passes arguments through untouched when the endpoint carries no query string", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", { amount: 5 });
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ amount: 5 });
+  });
+
+  it("forwards nothing by default (no forwardQueryParams configured)", async () => {
+    const adapter = createMcpTransportAdapter();
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", { amount: 5 }, "?source=claude-desktop");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ amount: 5 });
+  });
+});
+
 createInboundTransportConformanceTests({
   name: "mcp",
   factory: () => createMcpTransportAdapter(),

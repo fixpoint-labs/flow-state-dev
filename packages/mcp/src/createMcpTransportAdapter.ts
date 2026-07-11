@@ -87,6 +87,24 @@ export interface CreateMcpTransportAdapterOptions {
    * explicit list of origin strings.
    */
   allowedOrigins?: string[] | "*";
+  /**
+   * Allowlist of endpoint query-string params to forward into the
+   * `tools/call` action input. When a request URL carries one of these params
+   * (e.g. `.../mcp?source=claude-desktop`), its value is merged into the
+   * dispatched tool input under the same key. This is the seam for
+   * **installation-level** values an operator sets once on the endpoint URL,
+   * rather than per-call arguments the model supplies.
+   *
+   * The forwarded value is **authoritative**: it overrides a same-named
+   * argument in the tool call, since the point is provenance the model should
+   * not be able to override. Listing a param name is the operator's explicit
+   * opt-in that it becomes endpoint-controlled. A forwarded param only takes
+   * effect if the target action's input schema accepts it — otherwise the
+   * existing zod boundary strips or rejects it, exactly as for any other input
+   * key. Only `tools/call` is affected; `initialize` / `tools/list` /
+   * `resources/*` and auth are untouched. Defaults to forwarding nothing.
+   */
+  forwardQueryParams?: string[];
 }
 
 interface JsonRpcRequest {
@@ -106,6 +124,7 @@ export function createMcpTransportAdapter(
 ): InboundTransportAdapter {
   const basePath = (options.basePath ?? "/api/flows").replace(/\/$/, "");
   const allowedOrigins = options.allowedOrigins;
+  const forwardQueryParams = options.forwardQueryParams;
 
   return {
     source: MCP_TRANSPORT_SOURCE,
@@ -115,7 +134,7 @@ export function createMcpTransportAdapter(
       const post: TransportRoute = {
         method: "POST",
         path,
-        handler: (req, ctx) => handlePost(host, req, ctx, allowedOrigins)
+        handler: (req, ctx) => handlePost(host, req, ctx, allowedOrigins, forwardQueryParams)
       };
       const get: TransportRoute = {
         method: "GET",
@@ -141,7 +160,8 @@ async function handlePost(
   host: InboundTransportHost,
   request: Request,
   ctx: { params: Record<string, string> },
-  allowedOrigins: CreateMcpTransportAdapterOptions["allowedOrigins"]
+  allowedOrigins: CreateMcpTransportAdapterOptions["allowedOrigins"],
+  forwardQueryParams: CreateMcpTransportAdapterOptions["forwardQueryParams"]
 ): Promise<Response> {
   const kind = ctx.params.kind;
   if (typeof kind !== "string" || kind.length === 0) {
@@ -222,7 +242,14 @@ async function handlePost(
       return jsonRpcResponse(id, undefined, { tools: listTools(flow.kind, flow.actions) });
 
     case "tools/call":
-      return await handleToolsCall(host, flow, principal, body.params, id);
+      return await handleToolsCall(
+        host,
+        flow,
+        principal,
+        body.params,
+        id,
+        extractForwardedParams(request, forwardQueryParams)
+      );
 
     case "resources/list":
       return jsonRpcResponse(id, undefined, {
@@ -320,7 +347,8 @@ async function handleToolsCall(
   flow: { kind: string; actions: Record<string, ActionConfig>; mcp?: McpConfig },
   principal: ResolvedPrincipal,
   params: unknown,
-  id: string | number | null
+  id: string | number | null,
+  forwardedInput: Record<string, string> | undefined
 ): Promise<Response> {
   if (params === null || typeof params !== "object") {
     return jsonRpcResponse(id, jsonRpcError(JSON_RPC_INVALID_PARAMS, "tools/call requires params."));
@@ -336,13 +364,22 @@ async function handleToolsCall(
     return jsonRpcResponse(id, jsonRpcError(JSON_RPC_METHOD_NOT_FOUND, `Unknown MCP tool "${name}".`));
   }
 
+  // Merge any forwarded endpoint query params on top of the model's arguments —
+  // the query value is authoritative (installation-set provenance). Without
+  // forwarded params, pass `args` through untouched so the zod boundary sees
+  // exactly what the caller sent (an unchanged, possibly non-object value).
+  const input =
+    forwardedInput === undefined
+      ? args ?? {}
+      : { ...(args !== null && typeof args === "object" ? (args as Record<string, unknown>) : {}), ...forwardedInput };
+
   let handle: ReturnType<InboundTransportHost["dispatch"]>;
   try {
     handle = host.dispatch({
       source: MCP_TRANSPORT_SOURCE,
       flowKind: flow.kind,
       action: target.actionKey,
-      input: args ?? {},
+      input,
       principal,
       // MCP v1 is stateless — every tools/call creates a fresh session.
       sessionId: undefined,
@@ -510,5 +547,30 @@ function extractToolName(params: unknown): string | undefined {
   if (params === null || typeof params !== "object") return undefined;
   const name = (params as { name?: unknown }).name;
   return typeof name === "string" ? name : undefined;
+}
+
+/**
+ * Read the allowlisted query params off the request URL into a plain object to
+ * merge into the tool input. Returns `undefined` when nothing is configured or
+ * present, so the caller can pass the model's arguments through untouched.
+ * Repeated params collapse to the first value (`searchParams.get`).
+ */
+function extractForwardedParams(
+  request: Request,
+  allow: CreateMcpTransportAdapterOptions["forwardQueryParams"]
+): Record<string, string> | undefined {
+  if (allow === undefined || allow.length === 0) return undefined;
+  let url: URL;
+  try {
+    url = new URL(request.url);
+  } catch {
+    return undefined;
+  }
+  const out: Record<string, string> = {};
+  for (const key of allow) {
+    const value = url.searchParams.get(key);
+    if (value !== null) out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
