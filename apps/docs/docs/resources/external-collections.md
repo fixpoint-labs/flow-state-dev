@@ -104,6 +104,29 @@ Three surfaces consume it:
 
 Hits arrive in the order your hook returns them (your store's ranking), and each is validated through `stateSchema` — a row that fails validation is dropped and logged, so one bad record never sinks the page.
 
+## Staying in sync
+
+An external collection reads through to your store, so there's no cross-request cache to invalidate. Reads *are* memoized within a single request (as noted above), but a new request always reads through — so a change becomes visible the next time something reads the key. Freshness is about *when the next read happens*, not about busting a cache. The question is what should trigger that read.
+
+**Run work when your data changes.** Your app owns the write, so it's the natural place to react to one. Right after the write, dispatch a flow action through the [inbound-transport](../advanced/inbound-transports.md) contract. Your backend already knows whose data changed, so pass it as the principal — the action then reads the collection under the right owner:
+
+```ts
+// Your app just wrote a position. Run a flow that re-reads and re-scores it.
+host.dispatch({
+  source: "position-sync",
+  flowKind: "desk",
+  action: "rescoreThesis", // a flow action that reads ctx.resources.portfolio
+  input: { ticker },
+  principal: { userId }, // the changed user → portfolio.get(ticker) reads their row
+});
+```
+
+`rescoreThesis` reads `ctx.resources.portfolio.get(ticker)` straight through to your store, so it sees the write. Dispatch is fire-and-forget; the session doesn't have to be open — it stands one up. This fits any change your own backend observes: a database trigger, a queue consumer, a post-write hook.
+
+For a change signalled by an *externally-signed* third party — a Stripe- or GitHub-style POST rather than your own backend — route it through the [webhook transport](../server/webhooks.md) instead. Same dispatch underneath, with signature verification in front.
+
+**Refresh a live screen.** Pushing a projected update into a session someone is watching *right now*, so the open view re-renders on its own, is a separate and heavier mechanism — a deferred follow-up. Until it lands, a live view stays current by re-reading: the client re-runs its list/state query. A flow you dispatch on the change (above) runs as its own request; an already-open screen won't observe it without that refetch.
+
 ## The trusted context
 
 Your `read` / `search` hooks receive a `ctx` the framework derives from the request — never from caller input:
@@ -134,4 +157,4 @@ The agent still changes your data — through handlers that call your store dire
 - **Patterns are wildcard-only.** `positions/*` or `positions/**`. Parameterized `[name]` patterns are rejected at build time — encode the discriminator into a wildcard segment.
 - **The snapshot doesn't enumerate.** There is no `count()`; an honest count would need to either enumerate your store (forbidden) or a hook nobody has asked for yet. Listing is cursor-paged, so the UI pages through instead of asking "how many."
 - **Search is your store's, not the framework's.** Ranking, filtering, and paging are whatever your `search` hook does. The framework passes the query down and the cursor back; it doesn't re-rank. Glob and grep skip external collections for the same reason — their deterministic contract isn't something a pushed-down search can promise.
-- **App-driven change signals** land in a follow-up slice. Today reads and searches are pull-based; a way for your app to signal a change and refresh an open screen comes next.
+- **Live-view push is a follow-up.** An idle session already reacts to your data changing — dispatch a flow through an inbound transport (see [Staying in sync](#staying-in-sync)). Pushing a projected delta into an *open* screen without a refetch is the deferred piece.
