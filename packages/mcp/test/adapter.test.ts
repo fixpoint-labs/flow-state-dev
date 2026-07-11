@@ -542,6 +542,22 @@ describe("MCP adapter — forwardQueryParams", () => {
     await callToolsCall(adapter, host, "billing", { amount: 5 }, "?source=claude-desktop");
     expect(host.dispatchCalls[0]!.envelope.input).toEqual({ amount: 5 });
   });
+
+  it("passes a non-object `arguments` through unchanged even with a matching query param (symmetry with the no-forwarding path)", async () => {
+    // A malformed call must reach the zod boundary with the SAME value whether or
+    // not forwarding is configured — no silent substitution of {} + forwarded key.
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", "not-an-object", "?source=endpoint");
+    expect(host.dispatchCalls[0]!.envelope.input).toBe("not-an-object");
+  });
+
+  it("passes an array `arguments` through unchanged rather than spreading it into numeric keys", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", [1, 2], "?source=endpoint");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual([1, 2]);
+  });
 });
 
 createInboundTransportConformanceTests({
