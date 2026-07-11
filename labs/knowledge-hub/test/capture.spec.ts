@@ -109,6 +109,23 @@ describe("logActivity", () => {
     await capture(stores, { kind: "memory", content: "Renew passport", context: "Trip planning" });
     expect(Object.keys(await storedRecords(stores))).toHaveLength(2);
   });
+
+  it("replaces a swept record with a fresh pending one on re-capture (edge case 4)", async () => {
+    // The retry guarantee is bounded to the pending window: once the sweeper has
+    // placed (swept) a record, an identical re-capture is a NEW mental event, not
+    // a dedup — a fresh pending record replaces the swept copy at the same key.
+    const input = { kind: "task", content: "Renew passport", context: "Trip planning" };
+    await capture(stores, input);
+    const [path, record] = Object.entries(await storedRecords(stores))[0];
+    await stores.resourceState.set("user", USER, path, { ...record, status: "swept" });
+
+    const retry = await capture(stores, input);
+    expect((retry.output as { deduplicated: boolean }).deduplicated).toBe(false);
+
+    const records = await storedRecords(stores);
+    expect(Object.keys(records)).toHaveLength(1); // replaced in place, not appended
+    expect(records[path].status).toBe("pending");
+  });
 });
 
 describe("listInbox (behaviour 7)", () => {

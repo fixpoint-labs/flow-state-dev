@@ -103,9 +103,15 @@ const logActivity = handler({
       };
     }
 
-    // Absent → create. Swept (already placed by the sweeper) → replace with a
-    // fresh pending record: re-capturing after a sweep is a new mental event.
-    // The retry guarantee is deliberately bounded to the pending window.
+    // Absent → create; swept (already placed by the sweeper) → replace with a
+    // fresh pending record (re-capturing after a sweep is a new mental event).
+    // Always `replace: true` on the write: two concurrent identical captures can
+    // both miss the getOptional above and reach here — replace/upsert semantics
+    // make the later write win on the same fingerprint-derived key (end state is
+    // exactly one record) rather than the loser throwing on an already-created
+    // key. Both may then report `deduplicated: false`; that inaccuracy is
+    // accepted — no locking or CAS (BP-038). The retry guarantee is deliberately
+    // bounded to the pending window.
     const capturedAt = new Date().toISOString();
     const record: InboxRecord = {
       kind: input.kind,
@@ -117,7 +123,7 @@ const logActivity = handler({
       status: "pending",
       fingerprint,
     };
-    const ref = await ctx.resources.inbox.create(key, record, { replace: existing !== undefined });
+    const ref = await ctx.resources.inbox.create(key, record, { replace: true });
     return { id: inboxIdFromPath(ref.path), capturedAt, deduplicated: false };
   },
 });
