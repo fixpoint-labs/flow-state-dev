@@ -203,6 +203,46 @@ but `extractBearerToken` and `createHs256JwtVerifier` from
 `@flow-state-dev/engine` are usable inside `resolvePrincipal` to keep
 the verification short.
 
+## Installation-level values from the URL
+
+Sometimes a value should be fixed per installation rather than supplied
+by the model on each call. The common case is a provenance tag: you want
+to know which client a capture came from — Claude Desktop, a mobile app,
+a shared web endpoint — without trusting the model to fill it in.
+
+`forwardQueryParams` takes an allowlist of query-string params. When a
+request URL carries one, its value is merged into the `tools/call`
+input under the same key:
+
+```ts
+createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+```
+
+Each installation then points at its own tagged URL:
+
+```
+https://app.example.com/api/flows/knowledge/mcp?source=claude-desktop
+```
+
+A `log_activity` tool whose input schema has a `source` field now
+receives `source: "claude-desktop"` on every call from that
+installation, regardless of what the model passed.
+
+The forwarded value is **authoritative** — it overrides a same-named
+argument in the tool call. That is the point: this is a value the model
+should not be able to override. Listing a param name is your explicit
+opt-in that it becomes endpoint-controlled. A forwarded param only lands
+if the target action's input schema accepts it; otherwise the normal
+validation boundary strips or rejects it, exactly like any other input
+key. Only `tools/call` is affected, and the default is to forward
+nothing.
+
+This is **not** an authentication mechanism. Credentials belong in the
+`Authorization` header (see [Authentication](#authentication)) — the
+adapter deliberately ignores query-string tokens. `forwardQueryParams`
+is for non-secret, installation-scoped metadata like a source tag, not
+for anything that grants access.
+
 ## Origin enforcement
 
 Browser-originated requests are rejected with 403 unless the `Origin`
