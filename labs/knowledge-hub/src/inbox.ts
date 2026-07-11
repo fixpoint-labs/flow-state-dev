@@ -27,6 +27,7 @@ export const activityKindSchema = z.enum([
   "memory", // something to remember (happened in the past)
   "goal", // an aspiration / outcome to work toward
   "decision", // something was decided
+  "topic", // a subject / area of interest to follow or come back to
 ]);
 export type ActivityKind = z.infer<typeof activityKindSchema>;
 

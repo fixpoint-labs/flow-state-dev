@@ -2,9 +2,9 @@
 // Knowledge Hub lab — the capture surface (FIX-882).
 //
 // A single `logActivity` MCP tool hands a piece of the owner's mental activity
-// (a thought, journal fragment, task, memory, goal, or decision) into the
-// user-scoped `inbox` collection, and a `listInbox` read-back inspects what's
-// pending. Capture is strictly mechanical — the deterministic mailroom stamps a
+// (a thought, journal fragment, task, memory, goal, decision, or topic of
+// interest) into the user-scoped `inbox` collection, and a `listInbox` read-back
+// inspects what's pending. Capture is strictly mechanical — the deterministic mailroom stamps a
 // wall-clock time and computes a sha256 fingerprint over the full capture tuple
 // for transport-retry idempotency. No model call runs at capture time; all
 // classification and near-duplicate judgment is the FIX-883 sweeper's job.
@@ -196,7 +196,7 @@ const knowledgeHubFlow = defineFlow({
     logActivity: {
       block: logActivity,
       description:
-        "Log a piece of the owner's mental activity — a thought, journal fragment, task, memory, goal, or decision — into the knowledge inbox. Use whenever the owner says something worth remembering or acting on. Always include the context it arose in.",
+        "Log a piece of the owner's mental activity — a thought, journal fragment, task, memory, goal, decision, or topic of interest — into the knowledge inbox. Use whenever the owner says something worth remembering or acting on. Always include the context it arose in.",
     },
     listInbox: {
       block: listInbox,

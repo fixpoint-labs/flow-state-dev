@@ -2,7 +2,7 @@
 
 The Knowledge Hub: an owner's personal knowledge system that captures whatever's on their mind, files it into long-term memory, and puts a standing workforce of specialist agents to work on it. This lab is the incubation slot for that concept (FIX-882–884).
 
-The **capture layer** is now in place (FIX-882): a single `logActivity` MCP tool hands a piece of the owner's mental activity — a thought, journal fragment, task, memory, goal, or decision — into an **inbox** (a user-scoped resource collection). A deterministic, non-LLM **mailroom** pass stamps a wall-clock capture time and computes a sha256 fingerprint over the full capture tuple so an accidental double-submit is recognized rather than filed twice. No model runs at capture time. A `listInbox` read-back inspects what's pending. The follow-on issues build on this inbox:
+The **capture layer** is now in place (FIX-882): a single `logActivity` MCP tool hands a piece of the owner's mental activity — a thought, journal fragment, task, memory, goal, decision, or topic of interest — into an **inbox** (a user-scoped resource collection). A deterministic, non-LLM **mailroom** pass stamps a wall-clock capture time and computes a sha256 fingerprint over the full capture tuple so an accidental double-submit is recognized rather than filed twice. No model runs at capture time. A `listInbox` read-back inspects what's pending. The follow-on issues build on this inbox:
 
 - **FIX-882** ✅ — `logActivity` capture into the inbox with fast, deterministic triage (this).
 - **FIX-883** — a cron sweeper + manager that batch-reviews the inbox and routes items into long-term OKF memory and workforce agent work.
