@@ -76,7 +76,8 @@ export const sessionStateSchema = z.object({
   userThesisWarning: z.string().nullable().default(null),
   citationIntegrity: citationIntegritySchema.nullable().default(null),
   // Per-run portfolio snapshot (Slice 5), computed server-side at `seedSession`
-  // from the user-scoped `accounts` + `portfolioQuotes` resources. The pipeline
+  // from the app-owned `accounts` + `holdings` + `quotes` tables (FIX-772/
+  // FIX-823). The pipeline
   // runs blind to these — only the lens pack (phase-2b), the trader (P3), and
   // the PM (P5) read them via the `portfolioContext` capability preset. Null →
   // portfolio-blind run.

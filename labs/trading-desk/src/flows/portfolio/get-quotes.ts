@@ -1,14 +1,22 @@
 /**
- * `getQuotes` — a read-only flow action that fetches a current price per held
- * ticker so the Portfolio UI can compute market value / weight / unrealized P/L
- * without a model run.
+ * `refreshQuotes` — the server helper behind `POST /api/portfolio/quotes/refresh`
+ * (FIX-823). It fetches a current price per held ticker so the Portfolio UI can
+ * compute market value / weight / unrealized P/L without a model run, and upserts
+ * the LIVE prices into the durable, ticker-keyed `app.quotes` table.
+ *
+ * It is a plain route helper, NOT a flow action. Fetching + upserting is domain
+ * work that gains nothing from a session — and as a flow action it forced the
+ * pane to await the SSE stream's falling edge to know the write had committed
+ * (`sendAction` resolves at stream-attach, before the upsert). As a route the
+ * pane `await`s the write directly, exactly like the `importHoldings` /
+ * `backfillSplits` writes (FIX-736 boundary: flows for streaming/reactive work,
+ * routes for domain CRUD).
  *
  * There is no standalone quote tool. The canonical current-price source is the
  * last bar's `close` from `get_price_history`, which exists in both fixture and
- * live modes. This handler reuses that tool's fetch idiom DIRECTLY — it calls
+ * live modes. This reuses that tool's fetch idiom DIRECTLY — it calls
  * `loadFixture` (fixture mode) / `getOrFetch` (live mode), exactly like
- * `compute-spine.ts`, NOT `get_price_history.run()`. Calling provider functions
- * from a handler is BP-011-safe; calling a block from a handler is not.
+ * `compute-spine.ts`, NOT `get_price_history.run()`.
  *
  * Real-money trust gates:
  *  - A null/unavailable price degrades to `price: null` (the UI shows "—"),
@@ -18,14 +26,13 @@
  *  - `asOf` carries the price's own date so the UI can label staleness; in
  *    fixture mode that is the pinned snapshot date, not "now".
  */
-import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { getOrFetch } from "../analysis/tools/runtime/cache";
 import { mapLimit, sleep } from "../analysis/lib/concurrency";
 import { FIXTURE_SNAPSHOT, loadFixture } from "../analysis/tools/runtime/fixtures";
 import { fetchFinnhubCandles, hasFinnhubKey } from "../analysis/tools/providers/finnhub";
 import { fetchYahooChart } from "../analysis/tools/providers/yahoo";
-import { portfolioQuotesResource } from "./portfolio-resources";
+import type { PortfolioRepository } from "@/src/db/repository";
 
 /** Live quote fan-out throttle: at most this many provider requests in flight at
  *  once, so a 20+ holding portfolio doesn't trip Yahoo's rate limiter and drop a
@@ -43,16 +50,15 @@ const quoteSchema = z.object({
   asOf: z.string().nullable(),
 });
 
-export const getQuotesInputSchema = z.object({
-  tickers: z.array(z.string()),
-  dataSource: z.enum(["fixture", "live"]).default("fixture"),
-});
-
-export const getQuotesOutputSchema = z.object({
-  quotes: z.array(quoteSchema),
-});
-
 export type Quote = z.infer<typeof quoteSchema>;
+
+/** Input for a quote refresh: the tickers to fetch + the data source. The route
+ *  derives the ticker set from the user's holdings and always passes `"live"`;
+ *  `"fixture"` stays a dev/test affordance (never persisted). */
+export type RefreshQuotesInput = {
+  tickers: string[];
+  dataSource: "fixture" | "live";
+};
 
 /** Take the last bar's close + date from a price-history payload, or null. */
 function lastClose(payload: {
@@ -119,38 +125,48 @@ async function resolveQuote(
 }
 
 /**
- * Fetch current prices for a set of tickers. Default `dataSource: "fixture"` so
- * the Portfolio view works offline. Dedupes tickers; preserves the requested
- * order in the response.
+ * Fetch current prices for a set of tickers and, in live mode, persist them.
+ * Dedupes tickers; preserves the requested order in the response.
  *
- * Writes the result to the user-scoped `portfolioQuotes` resource so the UI
- * can read it via `useResource` after `session.refresh()` — `sendAction` does
- * not return handler output to the client in this runtime (see the resource's
- * doc comment). Also returns the report, which is what the unit test asserts on.
+ * Persists LIVE, non-null-priced quotes to the durable, ticker-keyed `app.quotes`
+ * table (FIX-823) via `upsertQuotes`, so any consumer (Portfolio UI, analysis
+ * seed, the future household view) can value from persisted state without a live
+ * fetch. FIXTURE-MODE writes are NOT persisted: `app.quotes` is a single GLOBAL
+ * row per ticker, so a fixture-mode result would overwrite the shared live
+ * last-known price with demo data for every user and the seed. The route always
+ * requests `live`, so fixture mode is only a dev/test affordance with no UI
+ * valuation path. Null-priced quotes are also dropped (a provider miss keeps the
+ * prior last-known row). Returns the report; the UI reads the persisted rows back
+ * via `GET /api/portfolio/quotes`.
  */
-export const getQuotes = handler({
-  name: "get-quotes",
-  inputSchema: getQuotesInputSchema,
-  outputSchema: getQuotesOutputSchema,
-  resources: { portfolioQuotes: portfolioQuotesResource },
-  execute: async (input, ctx) => {
-    const mode = input.dataSource === "live" ? "live" : "fixture";
-    // Fixture-mode price lookups pin to FIXTURE_SNAPSHOT (in `resolveQuote`);
-    // live mode uses today as the range anchor. A real per-ticker date is not
-    // modeled.
-    const date = new Intl.DateTimeFormat("en-CA").format(new Date());
-    const unique = [...new Set(input.tickers.map((t) => t.toUpperCase()))];
-    // Bounded fan-out (not Promise.all): a 20+ ticker portfolio fired all at
-    // once trips Yahoo's throttle and drops a random subset to "—". mapLimit
-    // caps in-flight requests and preserves the requested order.
-    const quotes = await mapLimit(unique, QUOTE_CONCURRENCY, (ticker) =>
-      resolveQuote(ticker, date, mode),
+export async function refreshQuotes(
+  input: RefreshQuotesInput,
+  repo: PortfolioRepository,
+): Promise<{ quotes: Quote[] }> {
+  const mode = input.dataSource === "live" ? "live" : "fixture";
+  // Fixture-mode price lookups pin to FIXTURE_SNAPSHOT (in `resolveQuote`);
+  // live mode uses today as the range anchor. A real per-ticker date is not
+  // modeled.
+  const date = new Intl.DateTimeFormat("en-CA").format(new Date());
+  const unique = [...new Set(input.tickers.map((t) => t.toUpperCase()))];
+  // Bounded fan-out (not Promise.all): a 20+ ticker portfolio fired all at
+  // once trips Yahoo's throttle and drops a random subset to "—". mapLimit
+  // caps in-flight requests and preserves the requested order.
+  const quotes = await mapLimit(unique, QUOTE_CONCURRENCY, (ticker) =>
+    resolveQuote(ticker, date, mode),
+  );
+  if (mode === "live") {
+    // Persist only live, non-null-priced quotes: a fixture-mode result would
+    // poison the shared global row, and a null price would null out a good
+    // last-known row. `source: "live"` documents provenance (never "fixture").
+    await repo.upsertQuotes(
+      quotes
+        .filter(
+          (q): q is { ticker: string; price: number; asOf: string | null } =>
+            q.price !== null,
+        )
+        .map((q) => ({ ticker: q.ticker, price: q.price, asOf: q.asOf, source: "live" })),
     );
-    await ctx.resources.portfolioQuotes.patchState({
-      dataSource: mode,
-      fetchedAt: new Date().toISOString(),
-      quotes,
-    });
-    return { quotes };
-  },
-});
+  }
+  return { quotes };
+}

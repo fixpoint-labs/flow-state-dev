@@ -1,13 +1,12 @@
 /**
  * Tests that `seedSession` computes `state.portfolio` server-side from the
- * app-owned accounts + holdings (read via the repository, FIX-772) and the
- * user-scoped `portfolioQuotes` resource, with no `portfolio` field in the
- * dispatch input.
+ * app-owned accounts + holdings AND the durable `app.quotes` table (FIX-772/
+ * FIX-823), with no `portfolio` field in the dispatch input.
  *
- * Drives `seedSession` directly via `testBlock` (seeding the repository + the
- * quotes resource so the full analyze pipeline is not required). The repository
- * is mocked to an in-memory PGlite instance; accounts are seeded under the
- * harness's default userId (`"test-user"`).
+ * Drives `seedSession` directly via `testBlock` (seeding the repository —
+ * accounts, holdings, AND quotes — so the full analyze pipeline is not required).
+ * The repository is mocked to an in-memory PGlite instance; accounts are seeded
+ * under the harness's default userId (`"test-user"`).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
@@ -31,12 +30,13 @@ import flow from "../src/flows/analysis/flow";
 const TEST_USER = "test-user";
 const ACCOUNT_ID = "acc-taxable-01";
 
-/** `portfolioQuotes` resource state keyed at `portfolioQuotes` in user scope. */
-const storedQuotes = {
-  dataSource: "fixture",
-  fetchedAt: "2026-05-06T12:00:00.000Z",
-  quotes: [{ ticker: "NVDA", price: 131.4, asOf: "2026-05-06" }],
-};
+/** Seed the durable `app.quotes` last-known-price row the snapshot values from
+ *  (FIX-823 — replaces the retired `portfolioQuotes` resource seed). */
+async function seedNvdaQuote(): Promise<void> {
+  await repoState.repo!.upsertQuotes([
+    { ticker: "NVDA", price: 131.4, asOf: "2026-05-06T00:00:00.000Z", source: "live" },
+  ]);
+}
 
 const baseInput = {
   ticker: "NVDA",
@@ -63,11 +63,11 @@ describe("seedSession portfolio snapshot (server-side)", () => {
       cashBalance: 1000,
       holdings: [{ ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }],
     });
+    await seedNvdaQuote();
 
     const result = await testBlock(seedSession, {
       input: { ...baseInput },
       flow,
-      user: { resources: { portfolioQuotes: storedQuotes } },
     });
 
     expect(result.error).toBeNull();
@@ -105,11 +105,11 @@ describe("seedSession portfolio snapshot (server-side)", () => {
       cashBalance: 500,
       holdings: [{ ticker: "AAPL", quantity: 5, costBasis: 200, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }],
     });
+    await seedNvdaQuote();
 
     const result = await testBlock(seedSession, {
       input: { ...baseInput, selectedAccountIds: [ACCOUNT_ID] },
       flow,
-      user: { resources: { portfolioQuotes: storedQuotes } },
     });
 
     expect(result.error).toBeNull();
@@ -162,11 +162,11 @@ describe("seedSession portfolio snapshot (server-side)", () => {
   });
 
   it("sets portfolio to null when there are no accounts", async () => {
-    // Repo seeded with no accounts (fresh in beforeEach); quotes present but irrelevant.
+    // Repo seeded with no accounts (fresh in beforeEach); no held tickers → the
+    // quotes read returns [] and the snapshot is null regardless.
     const result = await testBlock(seedSession, {
       input: { ...baseInput },
       flow,
-      user: { resources: { portfolioQuotes: storedQuotes } },
     });
 
     expect(result.error).toBeNull();

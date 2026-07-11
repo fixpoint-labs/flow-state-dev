@@ -8,8 +8,8 @@
  * shape.
  *
  * `portfolio` was removed from `analyzeInputSchema` in Task 2: the snapshot is
- * now computed server-side by `seedSession` from the user-scoped `accounts` +
- * `portfolioQuotes` resources. `portfolioContextInput` is kept as an export
+ * now computed server-side by `seedSession` from the app-owned `accounts` /
+ * `holdings` / `quotes` tables (FIX-772/FIX-823). `portfolioContextInput` is kept as an export
  * because it is the type of the `state.portfolio` field and is referenced by
  * `state.ts` and `build-portfolio-context.ts`.
  */
@@ -19,7 +19,7 @@ import { riskMandateIdSchema } from "./lib/risk-mandate";
 /**
  * One holding line within the computed portfolio snapshot. `seedSession`
  * computes `marketValue` / `weightPct` server-side from the Slice-4 stored
- * `quantity` × a `portfolioQuotes` price — the flow never recomputes them
+ * `quantity` × a last-known `app.quotes` price (FIX-823) — the flow never recomputes them
  * downstream. A ticker with no live quote degrades to `marketValue: null`
  * / `weightPct: null` (NEVER a fabricated price). `sector` is best-effort (the
  * Slice-4 model does not store it, so it is null today).
@@ -78,8 +78,8 @@ export const analyzeInputSchema = z.object({
   // Which account(s) the user is considering this position for. Empty → let the
   // PM suggest. Does NOT join the session keying tuple in v1 — account selection
   // is a refinement, not a new report. The portfolio snapshot itself is computed
-  // server-side by `seedSession` from the user-scoped accounts + portfolioQuotes
-  // resources (Task 2), so no `portfolio` field is passed from the client.
+  // server-side by `seedSession` from the app-owned accounts + holdings + quotes
+  // tables (FIX-772/FIX-823), so no `portfolio` field is passed from the client.
   selectedAccountIds: z.array(z.string()).default([]),
   // Optional per-run risk-appetite mandate override (FIX-752) — one of the
   // MANDATE_PACK ids. Null → fall back to the selected accounts' default(s) at

@@ -279,3 +279,71 @@ describe("getPortfolio", () => {
     expect(holdings).toHaveLength(0);
   });
 });
+
+describe("quotes (FIX-823 durable last-known price)", () => {
+  it("upserts on the ticker PK — insert then update, price coerced to number, asOf/fetchedAt ISO", async () => {
+    await repo.upsertQuotes([
+      { ticker: "AAPL", price: 200, asOf: "2026-07-07T00:00:00.000Z", source: "live" },
+    ]);
+    let [row0] = await repo.getQuotes(["AAPL"]);
+    expect(row0).toMatchObject({ ticker: "AAPL", price: 200, source: "live" });
+    expect(typeof row0.price).toBe("number");
+    expect(row0.asOf).toBe("2026-07-07T00:00:00.000Z");
+    expect(typeof row0.fetchedAt).toBe("string");
+    // A stable ISO-8601 string on both drivers (the read-boundary contract).
+    expect(row0.fetchedAt).toBe(new Date(row0.fetchedAt).toISOString());
+    const firstFetchedAt = row0.fetchedAt;
+
+    // A second upsert UPDATES in place (PK conflict) — one row, new price/asOf,
+    // and `fetched_at` advances (or holds) — never a second row.
+    await repo.upsertQuotes([
+      { ticker: "AAPL", price: 210.5, asOf: "2026-07-08T00:00:00.000Z", source: "live" },
+    ]);
+    const updated = await repo.getQuotes(["AAPL"]);
+    expect(updated).toHaveLength(1);
+    [row0] = updated;
+    expect(row0.price).toBe(210.5);
+    expect(row0.asOf).toBe("2026-07-08T00:00:00.000Z");
+    expect(new Date(row0.fetchedAt).getTime()).toBeGreaterThanOrEqual(
+      new Date(firstFetchedAt).getTime(),
+    );
+  });
+
+  it("normalizes tickers to upper-case on write AND read", async () => {
+    await repo.upsertQuotes([{ ticker: "brk-b", price: 400, asOf: null, source: "live" }]);
+    const [row0] = await repo.getQuotes(["brk-b"]);
+    expect(row0.ticker).toBe("BRK-B");
+    expect(row0.price).toBe(400);
+    // asOf may be null (a source that carried no market time).
+    expect(row0.asOf).toBeNull();
+  });
+
+  it("returns only the requested tickers' rows; omits unlisted ones", async () => {
+    await repo.upsertQuotes([
+      { ticker: "AAPL", price: 200, asOf: null, source: "live" },
+      { ticker: "MSFT", price: 400, asOf: null, source: "live" },
+    ]);
+    const rows = await repo.getQuotes(["AAPL"]);
+    expect(rows.map((r) => r.ticker)).toEqual(["AAPL"]);
+  });
+
+  it("returns [] for an empty ticker list without a full-table scan", async () => {
+    await repo.upsertQuotes([{ ticker: "AAPL", price: 200, asOf: null, source: "live" }]);
+    expect(await repo.getQuotes([])).toEqual([]);
+  });
+
+  it("upsertQuotes([]) is a no-op", async () => {
+    await expect(repo.upsertQuotes([])).resolves.toBeUndefined();
+    expect(await repo.getQuotes(["AAPL"])).toEqual([]);
+  });
+
+  it("last-write-wins on a duplicate ticker within one batch (no intra-statement conflict)", async () => {
+    await repo.upsertQuotes([
+      { ticker: "AAPL", price: 100, asOf: null, source: "live" },
+      { ticker: "AAPL", price: 205, asOf: null, source: "live" },
+    ]);
+    const rows = await repo.getQuotes(["AAPL"]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].price).toBe(205);
+  });
+});

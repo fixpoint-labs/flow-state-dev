@@ -10,7 +10,7 @@
  * Next.js routes (see `app/api/portfolio/*`) calling these functions, exactly
  * as the read surface is (the `accounts` / `ledger` / `income` GET routes).
  * The genuinely flow-shaped work stays in the `portfolio` flow: `getQuotes`
- * (writes the cross-flow `portfolioQuotes` resource) and `extractHoldingsFromPdf`
+ * (upserts the durable `app.quotes` table, FIX-823) and `extractHoldingsFromPdf`
  * (an LLM generator that streams). This is the showcase boundary — flows for
  * the agentic/streaming/cross-flow work, routes for domain CRUD.
  *

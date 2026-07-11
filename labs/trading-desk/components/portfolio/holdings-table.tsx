@@ -99,6 +99,11 @@ export type HoldingRowModel = {
    *  mark, par, or none. Surfaced as a marker + tooltip so a stale statement mark
    *  is never shown as if it were a live quote (the honesty this module polices). */
   priceSource: PriceSource;
+  /** The quote's own market time for a quote-sourced price (FIX-823), so the row
+   *  can label per-holding staleness; null for par / a bare statement mark /
+   *  unavailable. Named `priceAsOf` (not `asOf`) to avoid conflating it with the
+   *  `asOf: Date` "now" baseline `buildHoldingRowModel` takes for term classification. */
+  priceAsOf: string | null;
   value: string;
   weight: string;
   upl: { text: string; direction: "up" | "down" | "flat" };
@@ -166,7 +171,7 @@ export function buildHoldingRowModel(
   // equity/etf/crypto → live quote), NOT `quote?.price` alone — else a bond/MMF
   // with no live quote regresses to "—". `price` is the type-resolved per-unit
   // value, so uP/L and uplPct below stay consistent with the market value.
-  const { price, priceSource } = resolveHoldingPrice(holding, quote);
+  const { price, priceSource, asOf: priceAsOf } = resolveHoldingPrice(holding, quote);
   const value = holdingMarketValue(holding, quote);
   const upl = holdingUnrealizedPL(holding, quote);
   const termLots =
@@ -187,6 +192,7 @@ export function buildHoldingRowModel(
       holding.costBasis === null ? DASH : formatMoney(holding.costBasis, currency),
     price: formatMoney(price, currency),
     priceSource,
+    priceAsOf,
     value: inconsistent ? DASH : formatMoney(value, currency),
     weight: inconsistent ? DASH : formatPercent(weight(value, accountTotal)),
     upl: inconsistent ? { text: DASH, direction: "flat" } : formatSignedMoney(upl, currency),
@@ -215,11 +221,17 @@ function directionMarker(direction: "up" | "down" | "flat"): string {
 }
 
 /** A price with a small non-live-source marker + tooltip (FIX-773 Slice C), so a
- *  carried statement mark or a par value is not read as a live quote. */
+ *  carried statement mark or a par value is not read as a live quote. For a
+ *  quote-sourced price the tooltip also labels the quote's own as-of date
+ *  (FIX-823), so per-holding staleness is honest (AAPL fresh, TSLA 3 days old). */
 function PriceText({ model }: { model: HoldingRowModel }): ReactElement {
   const mark = PRICE_SOURCE_MARK[model.priceSource];
+  const title =
+    model.priceAsOf !== null
+      ? `${PRICE_SOURCE_TITLE[model.priceSource]} · as of ${model.priceAsOf}`
+      : PRICE_SOURCE_TITLE[model.priceSource];
   return (
-    <span title={PRICE_SOURCE_TITLE[model.priceSource]}>
+    <span title={title}>
       {model.price}
       {mark !== "" && (
         <sup className="ml-0.5 text-[color:var(--c-fg-faint)]">{mark}</sup>

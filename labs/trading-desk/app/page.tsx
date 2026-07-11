@@ -362,8 +362,8 @@ function TradingDeskApp(): ReactElement {
       userThesis: ut,
       userThesisRationale: utr,
       // `selectedAccountIds` is empty in v1 (the PM suggests an account). The
-      // portfolio snapshot is now computed server-side at seed from the user-scoped
-      // accounts + portfolioQuotes resources — no `portfolio` field is dispatched.
+      // portfolio snapshot is now computed server-side at seed from the app-owned
+      // accounts + holdings + quotes tables — no `portfolio` field is dispatched.
       selectedAccountIds: [],
       // Per-run mandate override (FIX-752). Null falls back to the accounts'
       // default at seed. Not a tuple field — it refines, never re-keys the run.
@@ -407,9 +407,9 @@ function TradingDeskApp(): ReactElement {
           <main className="flex flex-col overflow-hidden">
             {/* Portfolio actions (saveAccount, getQuotes, etc.) live on the
                 portfolio flow, so the Portfolio view gets its own
-                provider + session binding that dispatches to that flow. User-scoped
-                storage (accounts, portfolioQuotes) is shared at the storage layer —
-                no data bridge between providers is needed. */}
+                provider + session binding that dispatches to that flow. The app-
+                owned tables (accounts, holdings, quotes) are shared at the storage
+                layer — no data bridge between providers is needed. */}
             <FlowProvider flowKind="portfolio" userId={USER_ID} baseUrl="">
               <PortfolioView />
             </FlowProvider>

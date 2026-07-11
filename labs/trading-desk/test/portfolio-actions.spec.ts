@@ -1,13 +1,13 @@
 /**
- * Tests for the portfolio write surface + `getQuotes`.
+ * Tests for the portfolio write surface + `refreshQuotes`.
  *
- * The account / holdings / ledger writes are plain domain functions behind REST
- * routes (FIX-736 follow-up — `src/flows/portfolio/portfolio-writes.ts`), so
- * they're tested by calling those functions directly against a PGlite
- * repository (parsing inputs through the request schemas the routes use, so the
- * defaults are exercised too). `getQuotes` is the one portfolio FLOW action that
- * remains (it writes the cross-flow `portfolioQuotes` resource), so it's still
- * driven through `testFlow`.
+ * The account / holdings / ledger writes AND the quote refresh are plain domain
+ * functions behind REST routes (FIX-736/FIX-823 — `portfolio-writes.ts` and
+ * `refreshQuotes` in `get-quotes.ts`), so they're tested by calling those
+ * functions directly against a PGlite repository (parsing inputs through the
+ * request schemas the routes use, so the defaults are exercised too). The live
+ * price provider is mocked so `refreshQuotes`' write path runs offline and
+ * deterministically.
  *
  * These lock the load-bearing data-model properties: holdings are keyed
  * `(account_id, ticker)`; upsert is non-destructive and replaces only the named
@@ -15,11 +15,9 @@
  * edit preserves holdings (separate table); the SAME ticker in two accounts is
  * two independent rows; deleteHolding removes one; deleteAccount cascades; the
  * import report counts are honest; a manual event attributes to `manual` and
- * recomputes basis; and getQuotes degrades a missing fixture to a null price.
+ * recomputes basis; and `refreshQuotes` degrades a missing fixture to a null price.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
-import { testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import {
   toAccountStates,
@@ -37,9 +35,8 @@ import {
   saveAccountSchema,
 } from "@/src/flows/portfolio/portfolio-writes";
 
-// `getQuotes` (still a flow action) doesn't touch the repository, so only the
-// mock's presence matters for it; the write functions receive `repoState.repo!`
-// explicitly. One fresh in-memory PGlite instance per test.
+// The write functions (and `refreshQuotes`) receive `repoState.repo!` explicitly.
+// One fresh in-memory PGlite instance per test.
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
 vi.mock("@/lib/portfolio-db", () => ({
   getRepository: async () => {
@@ -48,11 +45,22 @@ vi.mock("@/lib/portfolio-db", () => ({
   },
 }));
 
-import portfolioFlow from "../src/flows/portfolio/flow";
+// Mock the live price providers so `refreshQuotes`' live path is offline + deterministic.
+// Finnhub is keyless (falls through to Yahoo); Yahoo returns controlled bars.
+const yahooMock = vi.hoisted(() => ({ fetchYahooChart: vi.fn() }));
+vi.mock("@/src/flows/analysis/tools/providers/finnhub", async (importActual) => ({
+  ...(await importActual<object>()),
+  hasFinnhubKey: () => false,
+}));
+vi.mock("@/src/flows/analysis/tools/providers/yahoo", async (importActual) => ({
+  ...(await importActual<object>()),
+  fetchYahooChart: yahooMock.fetchYahooChart,
+}));
+
+import { refreshQuotes } from "../src/flows/portfolio/get-quotes";
+import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 
 const USER_ID = "devuser";
-// portfolioQuotes is user-scoped (flowIsolation: false), keyed at bare {userId}.
-const USER_KEY = USER_ID;
 
 type StoredHolding = {
   ticker: string;
@@ -430,47 +438,67 @@ describe("recordManualEvent", () => {
   });
 });
 
-describe("getQuotes action", () => {
-  it("resolves a fixture-backed ticker's last close", async () => {
-    const stores = createInMemoryStores();
-    const result = await testFlow({
-      flow: portfolioFlow,
-      action: "getQuotes",
-      userId: USER_ID,
-      sessionId: "quotes-session",
-      stores,
-      input: { tickers: ["NVDA"], dataSource: "fixture" },
-    });
-    expect(result.status).toBe("completed");
-
-    const userResources = (await stores.resourceState.getAll(
-      "user",
-      USER_KEY,
-    )) as Record<string, { quotes?: Array<{ ticker: string; price: number | null }> }>;
-    const quotes = userResources.portfolioQuotes?.quotes ?? [];
-    const nvda = quotes.find((q) => q.ticker === "NVDA");
-    expect(nvda).toBeDefined();
-    // Fixture NVDA last bar close is 131.4 (pinned snapshot).
-    expect(nvda?.price).toBe(131.4);
+describe("refreshQuotes (FIX-823 durable persistence)", () => {
+  beforeEach(() => {
+    _resetCache();
+    yahooMock.fetchYahooChart.mockReset();
   });
 
-  it("degrades a missing fixture to a null price, never a fabricated number", async () => {
-    const stores = createInMemoryStores();
-    await testFlow({
-      flow: portfolioFlow,
-      action: "getQuotes",
-      userId: USER_ID,
-      sessionId: "quotes-missing",
-      stores,
-      input: { tickers: ["ZZZZ"], dataSource: "fixture" },
-    });
-    const userResources = (await stores.resourceState.getAll(
-      "user",
-      USER_KEY,
-    )) as Record<string, { quotes?: Array<{ ticker: string; price: number | null }> }>;
-    const quotes = userResources.portfolioQuotes?.quotes ?? [];
-    const missing = quotes.find((q) => q.ticker === "ZZZZ");
-    expect(missing).toBeDefined();
-    expect(missing?.price).toBeNull();
+  /** A price-history payload with the given daily closes (last bar = current price). */
+  function chartOf(ticker: string, closes: Array<{ date: string; close: number }>) {
+    return {
+      source: "yahoo" as const,
+      ticker,
+      range: "1mo" as const,
+      bars: closes.map((c) => ({ date: c.date, open: 0, high: 0, low: 0, close: c.close, volume: 0 })),
+    };
+  }
+
+  it("persists live, non-null-priced quotes to the durable app.quotes table", async () => {
+    yahooMock.fetchYahooChart.mockImplementation(async (input: { ticker: string }) =>
+      chartOf(input.ticker, [
+        { date: "2026-07-07", close: 200 },
+        { date: "2026-07-08", close: 210.5 },
+      ]),
+    );
+    const result = await refreshQuotes(
+      { tickers: ["AAPL"], dataSource: "live" },
+      repoState.repo!,
+    );
+    expect(result.quotes[0]).toMatchObject({ ticker: "AAPL", price: 210.5 });
+
+    const rows = await repoState.repo!.getQuotes(["AAPL"]);
+    expect(rows).toHaveLength(1);
+    // price coerced to a JS number; last bar's close is the current price; source
+    // records provenance; asOf is the last bar's date normalized to ISO.
+    expect(rows[0]).toMatchObject({ ticker: "AAPL", price: 210.5, source: "live" });
+    expect(rows[0].asOf).toBe(new Date("2026-07-08").toISOString());
+    expect(typeof rows[0].fetchedAt).toBe("string");
+  });
+
+  it("does NOT persist a fixture-mode result (no global-cache pollution)", async () => {
+    await refreshQuotes({ tickers: ["NVDA"], dataSource: "fixture" }, repoState.repo!);
+    // The write is gated on `mode === "live"`, so fixture/demo data never
+    // overwrites the shared global row — persistence is a no-op here.
+    expect(await repoState.repo!.getQuotes(["NVDA"])).toEqual([]);
+    // The Yahoo provider isn't touched in fixture mode either (fixtures are read).
+    expect(yahooMock.fetchYahooChart).not.toHaveBeenCalled();
+  });
+
+  it("drops a null-priced live quote, keeping the prior last-known row", async () => {
+    // Seed a good last-known row.
+    await repoState.repo!.upsertQuotes([
+      { ticker: "TSLA", price: 250, asOf: "2026-07-01T00:00:00.000Z", source: "live" },
+    ]);
+    // A provider miss → empty bars → null price → filtered out before upsert.
+    yahooMock.fetchYahooChart.mockImplementation(async (input: { ticker: string }) =>
+      chartOf(input.ticker, []),
+    );
+    await refreshQuotes({ tickers: ["TSLA"], dataSource: "live" }, repoState.repo!);
+    const rows = await repoState.repo!.getQuotes(["TSLA"]);
+    expect(rows).toHaveLength(1);
+    // The prior row survives with its original price — a failed refresh never
+    // nulls a good last-known price.
+    expect(rows[0].price).toBe(250);
   });
 });

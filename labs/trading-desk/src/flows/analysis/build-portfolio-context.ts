@@ -1,6 +1,7 @@
 /**
  * Build the `portfolioContextInput` snapshot the `analyze` action dispatches,
- * from the Slice-4 stored accounts + the live `portfolioQuotes` resource.
+ * from the Slice-4 stored accounts + the durable last-known `app.quotes` table
+ * (FIX-823; read via the repository at seed).
  *
  * THE LOAD-BEARING INTEGRATION (BUILD_PLAN portfolio-shape alignment). Slice 4
  * stores `quantity` / `costBasis` per holding but NOT market value, weight, NAV,
@@ -39,10 +40,11 @@ import { holdingMarketValue } from "../portfolio/value-holding";
 export type QuoteLike = { ticker: string; price: number | null; asOf: string | null };
 
 /**
- * Build the snapshot. `quotes` is the `portfolioQuotes` resource's quote array
- * (may be empty/stale); `snapshotAsOf` is its fetch time. `accounts` is read-only
- * (never mutated) so callers can pass a `Readonly<AccountState>[]` straight from
- * a resource ref without copying.
+ * Build the snapshot. `quotes` is the last-known quote rows for the held tickers
+ * (`app.quotes`, FIX-823; may be empty/stale); `snapshotAsOf` is the oldest quote
+ * `asOf` among them ("as of at least"). `accounts` is read-only (never mutated)
+ * so callers can pass a `Readonly<AccountState>[]` straight from the repository
+ * projection without copying.
  */
 export function buildPortfolioContext(
   accounts: ReadonlyArray<Readonly<AccountState>>,

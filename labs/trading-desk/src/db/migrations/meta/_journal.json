@@ -50,6 +50,13 @@
       "when": 1783599000000,
       "tag": "0006_fold_legacy_split_ratio",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783709246811,
+      "tag": "0007_wide_anita_blake",
+      "breakpoints": true
     }
   ]
 }

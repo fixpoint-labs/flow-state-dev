@@ -25,10 +25,7 @@ import { quantDataResource } from "./quant-data-resource";
 import { technicalDataResource } from "./technical-data-resource";
 import { profileDataResource } from "./profile-data-resource";
 import { rewardToRiskResource } from "./reward-to-risk-resource";
-import {
-  portfolioQuotesResource,
-  thesesCollection,
-} from "../portfolio/portfolio-resources";
+import { thesesCollection } from "../portfolio/portfolio-resources";
 import {
   memosCollection,
   phase2Contributions,
@@ -117,13 +114,6 @@ const analysisFlow = defineFlow({
     // commit to gate size against the active mandate. Nullable; null when the
     // forecaster produced no usable buckets.
     rewardToRisk: rewardToRiskResource,
-    // Last-known quotes cache (Spine B), owned + written by the `portfolio`
-    // flow. Declared here READ-ONLY: `seedSession` reads the shared user-scoped
-    // `portfolioQuotes` (flowIsolation: false → bare `{userId}`) to price the
-    // per-run portfolio snapshot. Accounts + holdings are no longer resources —
-    // `seedSession` reads them from the app-owned tables via the repository
-    // (FIX-772).
-    portfolioQuotes: portfolioQuotesResource,
     // Per-position thesis records (FIX-760) — user-scoped collection owned by the
     // portfolio flow. Declared here so the seed can read the standing thesis and
     // `adoptThesis` can write it (flowIsolation:false → cross-flow shared).

@@ -49,8 +49,17 @@ export function usesLiveQuote(assetType: AssetType): boolean {
 export type PriceSource = "quote" | "par" | "statement" | "unavailable";
 
 /** The type-resolved per-unit price for a holding. `price` is null whenever no
- *  honest price exists for the type (→ "—" downstream). */
-export type ResolvedPrice = { price: number | null; priceSource: PriceSource };
+ *  honest price exists for the type (→ "—" downstream). `asOf` (FIX-823) is the
+ *  quote's own market time for a quote-sourced price, so a consumer can label
+ *  PER-HOLDING staleness (AAPL fresh, TSLA 3 days old); it is null for par
+ *  (timeless — $1.00 is always current), for a bare statement mark (no captured
+ *  statement date in v1 — provenance `"statement"` already signals "not live"),
+ *  and for `unavailable`. */
+export type ResolvedPrice = {
+  price: number | null;
+  priceSource: PriceSource;
+  asOf: string | null;
+};
 
 /** A finite number, or null. Guards against `NaN`/`Infinity` sneaking in as a
  *  "price". */
@@ -65,13 +74,13 @@ function finiteOrNull(n: number | null | undefined): number | null {
  */
 export function resolveHoldingPrice(
   holding: Pick<Holding, "assetType" | "assetClass" | "attributes">,
-  quote: { price: number | null } | undefined,
+  quote: { price: number | null; asOf?: string | null } | undefined,
 ): ResolvedPrice {
   // Cash-class (incl. money_market) values at par $1.00 — a money-market fund /
   // cash equivalent is always worth its face. Checked first so an MMF never falls
-  // through to the quote path.
+  // through to the quote path. Par is timeless, so `asOf: null` is honest.
   if (holding.assetClass === "cash" || holding.assetType === "money_market") {
-    return { price: 1, priceSource: "par" };
+    return { price: 1, priceSource: "par", asOf: null };
   }
 
   if (holding.assetType === "bond" || holding.assetType === "option") {
@@ -79,9 +88,12 @@ export function resolveHoldingPrice(
       holding.attributes.kind === "bond" || holding.attributes.kind === "option"
         ? finiteOrNull(holding.attributes.markPrice)
         : null;
+    // A bare statement mark carries no captured date in v1 (`asOf: null`); the
+    // `"statement"` provenance already signals "not a live quote". Capturing a
+    // per-holding statement date is a deferred follow-up (FIX-823 non-goal).
     return mark === null
-      ? { price: null, priceSource: "unavailable" }
-      : { price: mark, priceSource: "statement" };
+      ? { price: null, priceSource: "unavailable", asOf: null }
+      : { price: mark, priceSource: "statement", asOf: null };
   }
 
   if (
@@ -91,13 +103,15 @@ export function resolveHoldingPrice(
     holding.assetType === "crypto"
   ) {
     const price = finiteOrNull(quote?.price ?? null);
+    // Thread the quote's own market time so consumers can label per-holding
+    // staleness (FIX-823). Null when the quote is absent/unpriced.
     return price === null
-      ? { price: null, priceSource: "unavailable" }
-      : { price, priceSource: "quote" };
+      ? { price: null, priceSource: "unavailable", asOf: null }
+      : { price, priceSource: "quote", asOf: quote?.asOf ?? null };
   }
 
   // `other` (and any unhandled type) has no honest price.
-  return { price: null, priceSource: "unavailable" };
+  return { price: null, priceSource: "unavailable", asOf: null };
 }
 
 /**
