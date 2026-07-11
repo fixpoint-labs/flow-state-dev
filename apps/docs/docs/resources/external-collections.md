@@ -108,20 +108,43 @@ Hits arrive in the order your hook returns them (your store's ranking), and each
 
 An external collection reads through to your store, so there's no cross-request cache to invalidate. Reads *are* memoized within a single request (as noted above), but a new request always reads through — so a change becomes visible the next time something reads the key. Freshness is about *when the next read happens*, not about busting a cache. The question is what should trigger that read.
 
-**Run work when your data changes.** Your app owns the write, so it's the natural place to react to one. Right after the write, dispatch a flow action through the [inbound-transport](../advanced/inbound-transports.md) contract. Your backend already knows whose data changed, so pass it as the principal — the action then reads the collection under the right owner:
+**Run work when your data changes.** Your app owns the write, so it's the natural place to react to one. Route the change through the [inbound-transport](../advanced/inbound-transports.md) contract: a small custom adapter turns your backend's change signal into a dispatch. `host` — the runtime surface that carries `dispatch` — is handed to the adapter inside `createBindings(host)`; it isn't a free-standing import, so the dispatch lives in the adapter, not in a bare backend function. Your backend already knows whose data changed, so pass it as the principal — the action then reads the collection under the right owner:
 
 ```ts
-// Your app just wrote a position. Run a flow that re-reads and re-scores it.
-host.dispatch({
-  source: "position-sync",
-  flowKind: "desk",
-  action: "rescoreThesis", // a flow action that reads ctx.resources.portfolio
-  input: { ticker },
-  principal: { userId }, // the changed user → portfolio.get(ticker) reads their row
-});
+import type { InboundTransportAdapter } from "@flow-state-dev/engine";
+
+// A custom transport for your own backend's "a position changed" signal.
+function positionSyncAdapter(): InboundTransportAdapter {
+  return {
+    source: "position-sync",
+    createBindings(host) {
+      return {
+        routes: [
+          {
+            method: "POST",
+            path: "/internal/positions/changed",
+            handler: async (req) => {
+              const { ticker, userId } = await req.json();
+              // Run a flow that re-reads and re-scores the changed position.
+              host.dispatch({
+                source: "position-sync",
+                flowKind: "desk",
+                action: "rescoreThesis", // reads ctx.resources.portfolio
+                input: { ticker },
+                principal: { userId }, // changed user → portfolio.get(ticker) reads their row
+                responseEmitter: null, // fire-and-forget: no response stream to consume
+              });
+              return new Response(null, { status: 202 });
+            }
+          }
+        ]
+      };
+    }
+  };
+}
 ```
 
-`rescoreThesis` reads `ctx.resources.portfolio.get(ticker)` straight through to your store, so it sees the write. Dispatch is fire-and-forget; the session doesn't have to be open — it stands one up. This fits any change your own backend observes: a database trigger, a queue consumer, a post-write hook.
+`rescoreThesis` reads `ctx.resources.portfolio.get(ticker)` straight through to your store, so it sees the write. Dispatch is fire-and-forget (`responseEmitter: null`); the session doesn't have to be open — it stands one up. Mount the adapter alongside the default HTTP one (`createFlowApiRouter({ adapters: [positionSyncAdapter()] })`), and anything your backend observes — a database trigger, a queue consumer, a post-write hook — reaches the flow by POSTing to its route.
 
 For a change signalled by an *externally-signed* third party — a Stripe- or GitHub-style POST rather than your own backend — route it through the [webhook transport](../server/webhooks.md) instead. Same dispatch underneath, with signature verification in front.
 
