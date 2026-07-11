@@ -14,18 +14,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * flight at once. Each `refetch` claims a monotonic id; only the response whose
  * id is still the latest applies its body, so a slow earlier fetch can never
  * overwrite a fresher one.
- *
- * A `null` URL skips the fetch entirely (`data` stays null) — for a consumer
- * whose query is conditional on input it doesn't always have (e.g. the Health
- * view fetches classifications only when the book holds equities).
  */
-export function useApiQuery<T>(url: string | null): { data: T | null; refetch: () => void } {
+export function useApiQuery<T>(url: string): { data: T | null; refetch: () => void } {
   const [data, setData] = useState<T | null>(null);
   // Monotonic request counter — the last refetch to start owns the result.
   const latestRequestId = useRef(0);
 
   const refetch = useCallback(() => {
-    if (url === null) return;
     const requestId = (latestRequestId.current += 1);
     void (async () => {
       try {

@@ -100,16 +100,9 @@ export function HealthSection({
   hasSession,
   onRefreshPrices,
 }: HealthSectionProps): ReactElement {
-  // Only single-name equities use the sector axis — fetch classifications for
-  // exactly those tickers (funds/bonds/crypto/cash don't).
-  const heldEquityTickers = useMemo(
-    () =>
-      accounts.flatMap((a) =>
-        a.holdings.filter((h) => h.assetType === "equity").map((h) => h.ticker.toUpperCase()),
-      ),
-    [accounts],
-  );
-  const { classifications } = useClassifications(heldEquityTickers);
+  // The route derives the held equity tickers server-side (only single-name
+  // equities use the sector axis); the hook passes only userId.
+  const { classifications } = useClassifications();
 
   const health = useMemo(() => {
     const quotes: QuoteMap = new Map();
