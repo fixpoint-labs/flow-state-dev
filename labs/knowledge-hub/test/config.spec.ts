@@ -15,12 +15,38 @@
 // resource store, so the actual `forwardQueryParams: ["source"]` wiring — not
 // just the mechanism it delegates to — is covered: a typo'd option key or a
 // merge-precedence regression in the shared adapter would fail here.
+//
+// These cases capture through the REAL config, whose filesystem store roots at
+// `process.cwd()/.fsdev/data` (captured at config import). Each test runs in a
+// throwaway temp cwd so the suite never writes into the developer's own
+// `.fsdev/data` inbox — deleting that shared dir in cleanup would wipe real
+// local captures, so we isolate the store root instead.
 // ---------------------------------------------------------------------------
 
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const original = process.env.KH_MCP_SECRET;
+
+// Isolate the filesystem store root: chdir into a fresh temp dir before each
+// test (so the config's `process.cwd()/.fsdev/data` lands there), restore + drop
+// it after. Runs around every test in this file; the describe-level afterEach
+// (which disposes the FlowState) is inner and fires first, so store handles are
+// closed before the dir is removed.
+let cwdBefore: string;
+let storeDir: string;
+beforeEach(async () => {
+  cwdBefore = process.cwd();
+  storeDir = await mkdtemp(join(tmpdir(), "kh-config-spec-"));
+  process.chdir(storeDir);
+});
+afterEach(async () => {
+  process.chdir(cwdBefore);
+  await rm(storeDir, { recursive: true, force: true });
+});
 
 function setSecret(value: string | undefined): void {
   if (value === undefined) delete process.env.KH_MCP_SECRET;
