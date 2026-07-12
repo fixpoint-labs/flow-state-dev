@@ -112,6 +112,30 @@ actions: {
 }
 ```
 
+## Installation-level values via query params
+
+Sometimes a value should be fixed per client installation rather than supplied
+by the model on each call — a provenance tag being the common case. Pass
+`forwardQueryParams` an allowlist, and any of those params present on the
+endpoint URL are merged into the `tools/call` input:
+
+```ts
+adapters: [createMcpTransportAdapter({ forwardQueryParams: ["source"] })]
+```
+
+```
+# Each installation points at its own tagged URL:
+http://localhost:3000/api/flows/billing/mcp?source=claude-desktop
+```
+
+The forwarded value is **authoritative** — it overrides a same-named tool
+argument, since the point is a value the model should not be able to override.
+Listing a param is your explicit opt-in that it becomes endpoint-controlled. A
+forwarded param only lands if the action's input schema accepts it (otherwise
+the normal zod boundary strips or rejects it). Only `tools/call` is affected;
+`initialize` / `tools/list` / `resources/*` and auth are untouched. Defaults to
+forwarding nothing.
+
 ## Status
 
 See the spec for design rationale and explicit non-goals.
