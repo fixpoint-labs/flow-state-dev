@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------------------
-// fsdev.config.ts fail-closed adapter wiring (FIX-882, sequence step 4).
+// fsdev.config.ts adapter wiring (FIX-882 fail-closed mount; FIX-888 source
+// forwarding).
 //
 // Modeled on examples/knowledge-base/test/config.spec.ts: each case sets env,
 // resets the module registry, and dynamically imports the config fresh so the
@@ -7,9 +8,16 @@
 // `createFlowState` is lazy, so importing never opens a store. We then build the
 // router and probe the MCP endpoint — a custom adapter route gets first crack at
 // dispatch, so an unmounted MCP endpoint falls through to the catch-all's 404,
-// while a mounted one is handled by the adapter (non-404). No inbox write occurs.
+// while a mounted one is handled by the adapter (non-404).
+//
+// The FIX-888 cases drive a real authenticated `tools/call log_activity` with a
+// `?source=` query param and read the persisted record back off the runtime's
+// resource store, so the actual `forwardQueryParams: ["source"]` wiring — not
+// just the mechanism it delegates to — is covered: a typo'd option key or a
+// merge-precedence regression in the shared adapter would fail here.
 // ---------------------------------------------------------------------------
 
+import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const original = process.env.KH_MCP_SECRET;
@@ -55,6 +63,81 @@ describe("fsdev.config fail-closed MCP adapter", () => {
     setSecret("test-secret");
     const flowState = await loadConfig();
     expect(await mcpStatus(flowState)).not.toBe(404);
+    await flowState.dispose();
+  });
+});
+
+/** Drive a real authenticated `tools/call log_activity` over the MCP endpoint,
+ *  optionally with a query string, and return the handler output. */
+async function captureViaMcp(
+  flowState: Awaited<ReturnType<typeof loadConfig>>,
+  query: string,
+  args: Record<string, unknown>
+): Promise<{ id: string; deduplicated: boolean }> {
+  const router = await flowState.getRouter();
+  const req = new Request(`http://localhost/api/flows/knowledge-hub/mcp${query}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer test-secret" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "log_activity", arguments: args },
+    }),
+  });
+  const res = await router.POST(req, { params: { path: ["knowledge-hub", "mcp"] } });
+  const body = (await res.json()) as {
+    result?: { content?: { text?: string }[] };
+    error?: unknown;
+  };
+  if (body.error !== undefined) throw new Error(`MCP error: ${JSON.stringify(body.error)}`);
+  return JSON.parse(body.result!.content![0]!.text!) as { id: string; deduplicated: boolean };
+}
+
+/** Read the persisted `source` off the owner-scoped inbox record for `id`. */
+async function readSource(
+  flowState: Awaited<ReturnType<typeof loadConfig>>,
+  id: string
+): Promise<string | null> {
+  const runtime = await flowState.getRuntime();
+  const all = (await runtime.stores.resourceState.getAll("user", "owner")) as Record<
+    string,
+    { source: string | null }
+  >;
+  return all[`inbox/${id}`]?.source ?? null;
+}
+
+describe("fsdev.config forwards ?source= into the capture (FIX-888)", () => {
+  afterEach(async () => {
+    setSecret(original);
+    vi.resetModules();
+  });
+
+  it("stamps the endpoint's ?source= onto the persisted record", async () => {
+    setSecret("test-secret");
+    const flowState = await loadConfig();
+    // Unique content so a leftover .fsdev/data record from a prior local run
+    // can't dedup this capture and flip `deduplicated`.
+    const out = await captureViaMcp(flowState, "?source=claude-desktop", {
+      kind: "task",
+      content: `book dentist ${randomUUID()}`,
+      context: "config wiring test",
+    });
+    expect(out.deduplicated).toBe(false);
+    expect(await readSource(flowState, out.id)).toBe("claude-desktop");
+    await flowState.dispose();
+  });
+
+  it("overrides a model-supplied source argument (installation value wins)", async () => {
+    setSecret("test-secret");
+    const flowState = await loadConfig();
+    const out = await captureViaMcp(flowState, "?source=endpoint", {
+      kind: "task",
+      content: `renew passport ${randomUUID()}`,
+      context: "config wiring test",
+      source: "model-guess",
+    });
+    expect(await readSource(flowState, out.id)).toBe("endpoint");
     await flowState.dispose();
   });
 });
