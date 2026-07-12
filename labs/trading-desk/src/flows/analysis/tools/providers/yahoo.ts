@@ -26,6 +26,7 @@ type YahooClient = {
   quoteSummary: (
     ticker: string,
     opts: { modules: string[] },
+    moduleOpts?: { validateResult?: boolean },
   ) => Promise<Record<string, unknown | undefined>>;
 };
 
@@ -281,9 +282,22 @@ export async function fetchYahooCompanyProfile(
   // carries marketCap/currency; `quoteType` is the canonical home for the
   // company's display name and exchange — `assetProfile` does not include
   // `longName`/`shortName`, so the name has to come from `quoteType`.
-  const summary = (await yahoo.quoteSummary(input.ticker, {
-    modules: ["assetProfile", "summaryDetail", "quoteType"],
-  })) as Record<string, Record<string, unknown> | undefined>;
+  //
+  // `validateResult: false` is load-bearing, not a nicety. yahoo-finance2
+  // schema-validates the WHOLE result and THROWS when any requested module has a
+  // null/missing field the strict schema demands (a null `summaryDetail.currency`,
+  // a `quoteType` missing `exchange`/`shortName`) — discarding the good
+  // `assetProfile` sector alongside it and logging a noisy validation dump. Since
+  // every field below is read defensively (null-guarded), strict validation is
+  // pure downside here: skipping it returns the raw payload (and, per the library,
+  // forces its own `logErrors` off). The explicit no-name throw below still drives
+  // the tool's provider fallback, and the sector fill (`resolveSector`) no longer
+  // loses a real sector to an unrelated module's missing field.
+  const summary = (await yahoo.quoteSummary(
+    input.ticker,
+    { modules: ["assetProfile", "summaryDetail", "quoteType"] },
+    { validateResult: false },
+  )) as Record<string, Record<string, unknown> | undefined>;
   const profile = summary.assetProfile ?? {};
   const detail = summary.summaryDetail ?? {};
   const qt = summary.quoteType ?? {};
