@@ -46,24 +46,27 @@ async function mcpStatus(flowState: Awaited<ReturnType<typeof loadConfig>>): Pro
 }
 
 describe("fsdev.config fail-closed MCP adapter", () => {
+  // Disposed in afterEach (not inline) so a failing assertion can't leak the
+  // opened filesystem-backed runtime.
+  let flowState: Awaited<ReturnType<typeof loadConfig>> | undefined;
   afterEach(async () => {
+    await flowState?.dispose();
+    flowState = undefined;
     setSecret(original);
     vi.resetModules();
   });
 
   it("without KH_MCP_SECRET: imports without throwing and mounts no MCP adapter", async () => {
     setSecret(undefined);
-    const flowState = await loadConfig();
+    flowState = await loadConfig();
     expect(flowState).toBeDefined();
     expect(await mcpStatus(flowState)).toBe(404);
-    await flowState.dispose();
   });
 
   it("with KH_MCP_SECRET: the MCP adapter is mounted (endpoint no longer 404s)", async () => {
     setSecret("test-secret");
-    const flowState = await loadConfig();
+    flowState = await loadConfig();
     expect(await mcpStatus(flowState)).not.toBe(404);
-    await flowState.dispose();
   });
 });
 
@@ -108,14 +111,19 @@ async function readSource(
 }
 
 describe("fsdev.config forwards ?source= into the capture (FIX-888)", () => {
+  // Disposed in afterEach (not inline) so a failing assertion can't leak the
+  // opened filesystem-backed runtime and strand its `.fsdev/data` state.
+  let flowState: Awaited<ReturnType<typeof loadConfig>> | undefined;
   afterEach(async () => {
+    await flowState?.dispose();
+    flowState = undefined;
     setSecret(original);
     vi.resetModules();
   });
 
   it("stamps the endpoint's ?source= onto the persisted record", async () => {
     setSecret("test-secret");
-    const flowState = await loadConfig();
+    flowState = await loadConfig();
     // Unique content so a leftover .fsdev/data record from a prior local run
     // can't dedup this capture and flip `deduplicated`.
     const out = await captureViaMcp(flowState, "?source=claude-desktop", {
@@ -125,12 +133,11 @@ describe("fsdev.config forwards ?source= into the capture (FIX-888)", () => {
     });
     expect(out.deduplicated).toBe(false);
     expect(await readSource(flowState, out.id)).toBe("claude-desktop");
-    await flowState.dispose();
   });
 
   it("overrides a model-supplied source argument (installation value wins)", async () => {
     setSecret("test-secret");
-    const flowState = await loadConfig();
+    flowState = await loadConfig();
     const out = await captureViaMcp(flowState, "?source=endpoint", {
       kind: "task",
       content: `renew passport ${randomUUID()}`,
@@ -138,6 +145,5 @@ describe("fsdev.config forwards ?source= into the capture (FIX-888)", () => {
       source: "model-guess",
     });
     expect(await readSource(flowState, out.id)).toBe("endpoint");
-    await flowState.dispose();
   });
 });
