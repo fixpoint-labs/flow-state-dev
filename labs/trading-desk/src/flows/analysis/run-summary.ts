@@ -7,7 +7,9 @@
  * a stable JSON record an agent (or a `goals/` check) reads instead of the
  * browser. It records WHAT happened — final rating + clamps, target weight +
  * mandate gates, stop reason, per-memo status — and deliberately does NOT judge
- * whether the run was good (that is the eval-suite's job, FIX-790).
+ * whether the run was good — that is the eval suite's job (`src/eval/`; see
+ * `docs/run-quality-eval.md`). The eval suite reads the deeper `runArtifacts`
+ * bundle, not this compact summary.
  *
  * `buildRunSummary` is PURE (no IO, no clock): it maps already-read session
  * state, the decision-of-record snapshot (or null), and the memo list into the
@@ -21,6 +23,7 @@
  * `.default()` are correct here — do NOT add it to `output-schemas-strict.spec.ts`.
  */
 import { z } from "zod";
+import { ratingSchema } from "./lib/rating-engine";
 import type { DecisionSnapshotState } from "./decision-snapshot-resource";
 import { ALL_MEMO_KEYS } from "./registry";
 import type { MemoState, MemoStatus } from "./resources";
@@ -65,10 +68,7 @@ export const runSummaryStateSchema = z.object({
   ranAt: z.string(),
 
   // Decision-of-record (null on stopped / errored runs).
-  finalRating: z
-    .enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"])
-    .nullable()
-    .default(null),
+  finalRating: ratingSchema.nullable().default(null),
   decisionConfidence: z.number().nullable().default(null),
   targetWeightPct: z.number().nullable().default(null),
   direction: z.enum(["long", "short", "flat"]).nullable().default(null),
@@ -122,8 +122,9 @@ export type BuildRunSummaryInput = {
 /** A decision snapshot counts as present only when it carries a `finalRating`.
  *  An unwritten single resource can surface as `{}` rather than null (the
  *  `lib/format.ts` guard-on-a-required-field precedent), so a bare null check
- *  is not enough. */
-function hasDecision(
+ *  is not enough. Exported so `buildRunArtifacts` normalizes the snapshot the
+ *  same way (`run-artifacts.ts`). */
+export function hasDecision(
   snapshot: DecisionSnapshotState | null,
 ): snapshot is DecisionSnapshotState {
   return snapshot != null && typeof snapshot.finalRating === "string";

@@ -26,6 +26,7 @@ import { PHASE_5_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { memoCitation, thesisSection } from "../../resources";
 import { sessionStateSchema } from "../../state";
+import { ratingSchema } from "../../lib/rating-engine";
 import { loadPrompt } from "../../lib/prompt";
 import { portfolioManagerApproachGenerator } from "./approach";
 
@@ -51,7 +52,7 @@ export const portfolioDecisionOutputSchema = z.object({
     target: z.string(),
   }),
   body: z.array(thesisSection),
-  finalRating: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
+  finalRating: ratingSchema,
   decisionSummary: z.string(),
   decisionConfidence: z.number().min(0).max(1),
   acceptedAdjustments: z.object({
