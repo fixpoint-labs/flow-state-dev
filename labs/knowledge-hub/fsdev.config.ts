@@ -37,7 +37,15 @@ export default createFlowState({
   // Fail closed: mount the MCP endpoint (POST /api/flows/knowledge-hub/mcp) only
   // when the bearer secret is set — belt-and-suspenders on top of the flow's
   // throwing resolver. No secret ⇒ no MCP endpoint at all, CLI-only.
-  adapters: process.env.KH_MCP_SECRET ? [createMcpTransportAdapter()] : [],
+  //
+  // `forwardQueryParams: ["source"]` makes `source` an INSTALLATION-level value:
+  // each client points at its own tagged URL (`.../mcp?source=claude-desktop`)
+  // and every capture from it carries that provenance, authoritatively — the
+  // model can't override it. The field stays in `logActivity`'s input schema and
+  // in the mailroom fingerprint; it just fills from the URL instead of the model.
+  adapters: process.env.KH_MCP_SECRET
+    ? [createMcpTransportAdapter({ forwardQueryParams: ["source"] })]
+    : [],
   stores: {
     dev: { primary: filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") }) },
   },

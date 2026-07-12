@@ -48,6 +48,16 @@ KH_MCP_SECRET=... pnpm fsdev dev   # serve the authenticated MCP endpoint
 
 Hosted deployment and a durable shared store land with FIX-883, when a second process (the cron sweeper) actually needs them.
 
+### Tagging the source per installation
+
+`source` (the provenance of a capture) is wired as an **installation-level** value, not something the model fills in per call. The config passes `forwardQueryParams: ["source"]` to `createMcpTransportAdapter`, so each client points at its own tagged endpoint URL:
+
+```
+https://<host>/api/flows/knowledge-hub/mcp?source=claude-desktop
+```
+
+Every `logActivity` from that installation then carries `source: "claude-desktop"`, authoritatively — the model can't override it. Omit the query param and `source` stays `null`. It remains part of the mailroom fingerprint, so the same capture from two different installations is two records (different provenance). See the [MCP Server docs](../../apps/docs/docs/server/mcp.md#installation-level-values-from-the-url) for the transport mechanics.
+
 ## Predecessor
 
 The finished simple-wiki that used to hold this slot is now a frozen reference app at [`examples/knowledge-base`](../../examples/knowledge-base) — OKF import/export, concept CRUD, and a secured MCP server. The Knowledge Hub reuses that same OKF concept graph as its long-term-memory layer; the OKF code is extracted into a shared package when the first hub issue consumes it (FIX-883 — FIX-882 never touches the concept graph).
