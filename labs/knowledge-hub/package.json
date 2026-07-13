@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Incubation lab: the Knowledge Hub (FIX-882–884). Capture layer — logActivity into a user-scoped inbox with a deterministic mailroom pass; the sweeper/workforce work lands in the follow-on issues.",
   "scripts": {
+    "dev": "tsx ../../packages/cli/bin/fsdev.ts dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root . --passWithNoTests",
     "test:watch": "vitest --root . --passWithNoTests",

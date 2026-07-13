@@ -9,7 +9,7 @@
  * (the cron sweeper) actually needs them.
  *
  *   pnpm fsdev run knowledge-hub logActivity -i '{...}'   # CLI, no secret needed
- *   KH_MCP_SECRET=... pnpm fsdev dev                      # serve the MCP endpoint
+ *   KH_MCP_SECRET=... pnpm dev                            # serve the MCP endpoint
  */
 import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
