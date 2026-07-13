@@ -69,7 +69,8 @@ Dedicated mode defaults to `/mcp`, so the endpoint becomes
 `POST /mcp/billing`. You can instead pass an explicit prefix, such as
 `basePath: "/integrations/mcp"`. The ordinary HTTP action routes remain under
 `/api/flows`, and the adapter mounts only the dedicated layout rather than
-keeping the default URL as an alias.
+keeping the default URL as an alias. A root-only dedicated base is rejected so
+the adapter cannot claim unrelated single-segment routes.
 
 The hosting framework must also send `/mcp/*` requests to the Flow State
 handler. In a Next.js app, add a matching `app/mcp/[...path]/route.ts` route

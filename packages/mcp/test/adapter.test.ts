@@ -211,6 +211,15 @@ describe("toolInputJsonSchema", () => {
 });
 
 describe("MCP adapter — route layout", () => {
+  it.each(["", "/", "///", " / "])(
+    "rejects root-only dedicated base path %j",
+    (basePath) => {
+      expect(() =>
+        createMcpTransportAdapter({ basePath, dedicatedBasePath: true })
+      ).toThrow(/non-root prefix/);
+    }
+  );
+
   it.each([
     {
       name: "preserves the default shared route",

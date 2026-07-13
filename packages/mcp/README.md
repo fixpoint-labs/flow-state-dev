@@ -78,7 +78,9 @@ http://localhost:3000/mcp/billing
 
 Dedicated mode defaults `basePath` to `/mcp`. Set an explicit prefix such as
 `basePath: "/integrations/mcp"` when needed. One adapter instance mounts one
-layout, so the canonical URL is not retained as an alias after opting in.
+layout, so the canonical URL is not retained as an alias after opting in. A
+root-only dedicated base is rejected because `/:kind` could claim unrelated
+single-segment routes.
 
 Your HTTP host must forward the selected prefix to the Flow State router. Hosts
 that only mount the router beneath `/api/flows` need a corresponding `/mcp/*`

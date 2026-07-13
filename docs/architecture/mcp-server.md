@@ -37,6 +37,8 @@ DELETE /mcp/billing     ← 405 Method Not Allowed
 `<basePath>/:kind/mcp` to `<basePath>/:kind` and changes the implicit base from
 `/api/flows` to `/mcp`. An explicit `basePath` wins in either mode. Each adapter
 instance registers exactly one layout; it does not add an alias or redirect.
+Dedicated mode rejects an empty or root-only base because `/:kind` would claim
+unrelated single-segment routes before the built-in HTTP adapter.
 
 ## Per-flow opt-in
 

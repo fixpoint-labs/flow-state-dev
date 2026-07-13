@@ -85,7 +85,9 @@ export interface CreateMcpTransportAdapterOptions {
   basePath?: string;
   /**
    * Treat `basePath` as MCP-exclusive and mount at `<basePath>/:kind`
-   * instead of `<basePath>/:kind/mcp`. Defaults to `false`.
+   * instead of `<basePath>/:kind/mcp`. The dedicated base must include a
+   * non-root prefix so it cannot claim every single-segment route. Defaults to
+   * `false`.
    */
   dedicatedBasePath?: boolean;
   /**
@@ -132,9 +134,14 @@ export function createMcpTransportAdapter(
   options: CreateMcpTransportAdapterOptions = {}
 ): InboundTransportAdapter {
   const dedicatedBasePath = options.dedicatedBasePath ?? false;
-  const basePath = (
-    options.basePath ?? (dedicatedBasePath ? "/mcp" : "/api/flows")
-  ).replace(/\/$/, "");
+  const configuredBasePath =
+    options.basePath ?? (dedicatedBasePath ? "/mcp" : "/api/flows");
+  if (dedicatedBasePath && /^\/*$/.test(configuredBasePath.trim())) {
+    throw new TypeError(
+      "createMcpTransportAdapter: dedicated basePath must include a non-root prefix."
+    );
+  }
+  const basePath = configuredBasePath.replace(/\/$/, "");
   const allowedOrigins = options.allowedOrigins;
   const forwardQueryParams = options.forwardQueryParams;
 
