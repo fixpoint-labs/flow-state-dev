@@ -26,6 +26,7 @@ vi.mock("@/lib/portfolio-db", () => ({
 }));
 
 import { seedSession } from "../src/flows/analysis/orchestration/guards";
+import type { RiskMandateId } from "../src/flows/analysis/lib/risk-mandate";
 import flow from "../src/flows/analysis/flow";
 
 const TEST_USER = "test-user";
@@ -37,7 +38,7 @@ const baseInput = {
   dataSource: "fixture" as const,
   userThesis: null,
   userThesisRationale: null,
-  riskMandate: null as string | null,
+  riskMandate: null as RiskMandateId | null,
   selectedAccountIds: [] as string[],
 };
 

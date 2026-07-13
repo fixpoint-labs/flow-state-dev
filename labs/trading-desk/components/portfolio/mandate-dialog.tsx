@@ -57,11 +57,6 @@ const inputClass = cn(
   "border-[color:var(--c-border)] font-mono text-[12px] text-[color:var(--c-fg)]",
   "focus:outline-none focus:border-[color:var(--c-accent)]",
 );
-const textareaClass = cn(
-  "w-full rounded-md border bg-[color:var(--c-surface-2)] px-2 py-1.5",
-  "border-[color:var(--c-border)] text-[12px] text-[color:var(--c-fg)]",
-  "focus:outline-none focus:border-[color:var(--c-accent)]",
-);
 const labelTextClass =
   "font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]";
 
