@@ -26,6 +26,11 @@ vi.mock("@/src/flows/analysis/lib/sector-resolution", () => ({
   resolveSector: sectorMock.resolveSector,
 }));
 
+const reconcileMock = vi.hoisted(() => ({ reconcileFundClassification: vi.fn() }));
+vi.mock("@/src/flows/portfolio/reconcile-fund-classification", () => ({
+  reconcileFundClassification: reconcileMock.reconcileFundClassification,
+}));
+
 import { GET } from "../app/api/portfolio/classifications/route";
 
 const USER_ID = "devuser";
@@ -33,6 +38,9 @@ const USER_ID = "devuser";
 beforeEach(async () => {
   repoState.repo = await makeTestRepository();
   sectorMock.resolveSector.mockReset();
+  // Default: "no, this isn't a mistyped fund/crypto asset" — a plain sector
+  // miss stays a plain sector miss unless a test explicitly says otherwise.
+  reconcileMock.reconcileFundClassification.mockReset().mockResolvedValue(null);
 });
 
 function get(userId?: string): NextRequest {
@@ -110,6 +118,37 @@ describe("GET /api/portfolio/classifications", () => {
     sectorMock.resolveSector.mockClear();
     await GET(get(USER_ID));
     expect(sectorMock.resolveSector).toHaveBeenCalledTimes(1);
+  });
+
+  it("reclassifies a fund/crypto ticker mistyped assetType:equity instead of caching it unclassified (FIX-762 follow-up)", async () => {
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "VOO", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+      ],
+    });
+    sectorMock.resolveSector.mockResolvedValue({ sector: null, industry: null, sectorEtf: null });
+    reconcileMock.reconcileFundClassification.mockResolvedValue({
+      assetClass: "equity",
+      assetType: "etf",
+      attributes: { kind: "none" },
+    });
+
+    const body = (await (await GET(get(USER_ID))).json()) as Body;
+    // Not reported as a sectorless equity — it isn't one anymore.
+    expect(body.classifications).toEqual([]);
+    // Never cached as a sector miss either — it's not part of the sector axis at all.
+    expect(await repoState.repo!.getInstrumentClassifications(["VOO"])).toEqual([]);
+    // The actual correction: the holding itself is now typed etf.
+    const voo = (await repoState.repo!.getPortfolio(USER_ID)).holdings.find((h) => h.ticker === "VOO");
+    expect(voo?.assetType).toBe("etf");
+
+    // A second request no longer even considers VOO — it's not assetType
+    // "equity" anymore, so it drops out of the route's ticker set entirely.
+    sectorMock.resolveSector.mockClear();
+    await GET(get(USER_ID));
+    expect(sectorMock.resolveSector).not.toHaveBeenCalled();
   });
 
   it("400s without a userId query param", async () => {

@@ -2,12 +2,22 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getRepository } from "@/lib/portfolio-db";
 import { resolveSector } from "@/src/flows/analysis/lib/sector-resolution";
 import { mapLimit } from "@/src/flows/analysis/lib/concurrency";
+import { reconcileFundClassification } from "@/src/flows/portfolio/reconcile-fund-classification";
 
 // The per-ticker sector classification surface (FIX-762) — backs the Health
 // view's sector-exposure axis. `GET ?userId=…` returns the sector for each of the
 // user's held single-name EQUITY tickers, filling misses lazily from the existing
 // Yahoo `resolveSector` and caching successes in the global
 // `app.instrument_classifications` table.
+//
+// A sector miss is checked against `reconcileFundClassification` before being
+// cached as "unclassified" (FIX-762 follow-up): a fund/crypto ticker mistyped
+// `assetType: "equity"` at import has no GICS sector to find — that's not a
+// resolution failure, it's a data-classification bug. When Yahoo's own
+// instrument-kind field confirms it, the holding is auto-corrected
+// (`repo.reclassifyHoldingByTicker`, self-heal semantics — a manual override
+// is preserved) and drops out of the equity/sector ticker set for good, on the
+// very next request.
 //
 // The ticker set is derived SERVER-SIDE from the caller's own holdings (the
 // `quotes` route precedent), never taken from the query string: a provider
@@ -67,15 +77,32 @@ export async function GET(req: NextRequest) {
   // is intentionally not re-resolved — only an out-of-band manual null row could
   // sit here, and treating it as a miss would re-hit Yahoo on every request.
   const misses = tickers.filter((t) => !bySector.has(t));
+  const reclassified = new Set<string>();
   if (misses.length > 0) {
     const date = new Date().toISOString().slice(0, 10);
     const resolved = await mapLimit(misses, CLASSIFY_CONCURRENCY, async (ticker) => {
       const { sector } = await resolveSector(ticker, date);
-      return { ticker, sector };
+      if (sector === null) {
+        // No GICS sector — before caching this ticker as a genuinely
+        // unclassified equity, check whether it's actually a fund/crypto
+        // asset mistyped `assetType: "equity"` at import.
+        const correction = await reconcileFundClassification(ticker);
+        if (correction !== null) {
+          await repo.reclassifyHoldingByTicker(userId, ticker, correction);
+          return { ticker, sector: null, reclassified: true };
+        }
+      }
+      return { ticker, sector, reclassified: false };
     });
-    for (const r of resolved) bySector.set(r.ticker, r.sector);
+    for (const r of resolved) {
+      if (r.reclassified) reclassified.add(r.ticker);
+      else bySector.set(r.ticker, r.sector);
+    }
     // Persist SUCCESSES ONLY — a miss stays out of the table so it retries later.
-    const successes = resolved.filter((r) => r.sector !== null) as { ticker: string; sector: string }[];
+    const successes = resolved.filter((r) => !r.reclassified && r.sector !== null) as {
+      ticker: string;
+      sector: string;
+    }[];
     if (successes.length > 0) {
       await repo.upsertInstrumentClassifications(
         successes.map((r) => ({ ticker: r.ticker, sector: r.sector, source: "yahoo" })),
@@ -83,9 +110,12 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const classifications: ClassificationEntry[] = tickers.map((ticker) => ({
-    ticker,
-    sector: bySector.get(ticker) ?? null,
-  }));
+  // A reclassified ticker is no longer `assetType: "equity"` as of this
+  // request — omit it rather than reporting a misleading `{ sector: null }`
+  // for what is now a fund/crypto holding; the next holdings fetch reflects
+  // the correction and the ticker won't even reach this route's equity filter.
+  const classifications: ClassificationEntry[] = tickers
+    .filter((ticker) => !reclassified.has(ticker))
+    .map((ticker) => ({ ticker, sector: bySector.get(ticker) ?? null }));
   return NextResponse.json({ classifications });
 }

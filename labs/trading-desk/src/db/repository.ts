@@ -33,6 +33,7 @@ import {
   holdingAttributesSchema,
 } from "@/src/flows/portfolio/portfolio-schema";
 import { classifyInstrument } from "@/src/flows/portfolio/classify-instrument";
+import type { Classification } from "@/src/flows/portfolio/classify-instrument";
 import type {
   IngestReport,
   LedgerEventInput,
@@ -143,6 +144,24 @@ export interface PortfolioRepository {
     userId: string,
     ticker: string,
     assetClass: AssetClass,
+  ): Promise<void>;
+
+  /**
+   * Auto-correct a ticker's classification across every NON-manual holding row
+   * for `userId` (all accounts, not just one) — the async, Yahoo-quoteType-driven
+   * counterpart to `upsertMaterializedHolding`'s ledger-path self-heal, for
+   * CSV/PDF-snapshot-only holdings the ledger never re-materializes (FIX-762
+   * follow-up: a fund/crypto ticker mistyped `assetType: "equity"` at import has
+   * no GICS sector to resolve — Yahoo's own instrument-kind field is the signal
+   * that tells that apart from a genuinely sectorless equity). A user's manual
+   * override (`asset_class_manual`) is preserved untouched, exactly like the
+   * ledger-materialization self-heal. A no-op ticker (nothing matches, or every
+   * matching row is manual) changes nothing.
+   */
+  reclassifyHoldingByTicker(
+    userId: string,
+    ticker: string,
+    classification: Classification,
   ): Promise<void>;
 
   /**
@@ -1238,6 +1257,32 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
           .set({ assetClass, assetClassManual: true, updatedAt: sql`now()` })
           .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, ticker)));
       });
+    },
+
+    async reclassifyHoldingByTicker(userId, ticker, classification) {
+      // Household-wide (the `deleteHolding` subquery precedent, without an
+      // `accountId` filter — this ticker may appear in more than one of the
+      // user's accounts). `asset_class_manual = false` mirrors the
+      // ledger-materialization self-heal's CASE guard: an auto-correction never
+      // overwrites a user's deliberate override.
+      await db
+        .update(holdings)
+        .set({
+          assetClass: classification.assetClass,
+          assetType: classification.assetType,
+          attributes: classification.attributes,
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(
+            eq(holdings.ticker, ticker),
+            eq(holdings.assetClassManual, false),
+            inArray(
+              holdings.accountId,
+              db.select({ id: accounts.id }).from(accounts).where(eq(accounts.userId, userId)),
+            ),
+          ),
+        );
     },
 
     async ingestLedgerEvents(events, userId) {
