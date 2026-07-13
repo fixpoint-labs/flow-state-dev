@@ -51,6 +51,10 @@ export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 The MCP adapter mounts at `POST /api/flows/:kind/mcp`. `GET` and
 `DELETE` on that path return 405. Existing HTTP routes are unchanged.
 
+To serve these endpoints in production without the DevTool, `fsdev
+serve` stands up the flow API and MCP routes from a committed
+`fsdev.config.*`. See the [CLI API Reference](/docs/api/cli).
+
 ## Opting a flow into MCP
 
 A flow opts in via `mcp.enabled`. Every action you want exposed needs a

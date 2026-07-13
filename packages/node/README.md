@@ -93,6 +93,25 @@ See [Host adapters](https://flow-state.dev/docs/server/host-adapters) for guidan
 on choosing between these, and [Deploying to AWS Lambda](https://flow-state.dev/guides/deploying-to-aws-lambda)
 for a worked example.
 
+## Network-bind authentication guard
+
+`assertNetworkBindIsAuthenticated(app, { host, allowUnauthenticated? })` refuses a
+network bind when any served flow runs on the framework default (unauthenticated)
+principal resolver — exposing it on a network interface would leave it open to
+anyone who can reach the port. It throws for a non-loopback `host` unless
+`allowUnauthenticated` is `true`. Loopback hosts pass unconditionally.
+`isLoopbackHost(host)` is the loopback predicate it uses.
+
+```ts
+import { assertNetworkBindIsAuthenticated, isLoopbackHost } from "@flow-state-dev/node";
+
+assertNetworkBindIsAuthenticated(app, { host: "0.0.0.0" });
+```
+
+`fsdev serve` runs this before it binds. Call it yourself from a hand-written
+entrypoint that adds custom middleware, so a network deploy fails closed the same
+way.
+
 ## Health checks and PaaS deployment
 
 Point your platform's health check at `healthPath` (default `/healthz`). Pair

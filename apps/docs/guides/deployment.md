@@ -87,6 +87,14 @@ export const flowstate = createFlowState({
 
 What changes per platform is how you connect this runtime to incoming HTTP requests, and which store adapter backs `primary`. That connection is a [host adapter](/docs/server/host-adapters): Next.js uses a platform handler around `flowstate`; a long-lived Node process uses `serve(flowstate)` from `@flow-state-dev/node`; other serverless targets wrap the same portable app. The platform-specific guides cover each approach.
 
+If your app already default-exports a FlowState from a committed `fsdev.config.*`, you can skip the entry file. `fsdev serve` starts a long-lived server straight from that config: it binds `0.0.0.0:$PORT`, shuts down gracefully on `SIGTERM`, mounts no DevTool, and runs the loopback-bind guard that refuses a network bind when a flow has no authentication configured. The tradeoff is control. Reach for `fsdev serve` when the built-in server does what you need. Write your own `serve(flowstate)` entry file when you need custom middleware or extra routes, since the CLI command has no hook for either.
+
+```bash
+PORT=3000 fsdev serve
+```
+
+See the [CLI API Reference](/docs/api/cli) for the full flag set and guard behavior, and [Host adapters](/docs/server/host-adapters) for the `serve()` wrapper underneath.
+
 ## Serverless beyond Vercel
 
 Vercel's Next.js serverless is one path. For other Node-runtime serverless platforms — AWS Lambda, Bun, Deno — the same portable app from `@flow-state-dev/node` runs unchanged; you wrap its `fetch` handler with the platform's adapter. See [Host adapters](/docs/server/host-adapters) for the full breakdown and [Deploying to AWS Lambda](/guides/deploying-to-aws-lambda) for a worked example. Edge runtimes (Cloudflare Workers, Vercel Edge) are not supported — the engine relies on Node primitives.
