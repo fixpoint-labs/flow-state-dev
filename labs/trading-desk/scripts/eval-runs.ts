@@ -335,7 +335,12 @@ async function variance(a: Args): Promise<number> {
       console.error(`skipping ${sessionId}: ${error}`);
       continue;
     }
-    const report = await runJudges(bundle, { judgeModel: opts.judgeModel, k, timeoutMs: opts.timeoutMs });
+    const report = await runJudges(bundle, {
+      judgeModel: opts.judgeModel,
+      k,
+      timeoutMs: opts.timeoutMs,
+      maxCostUsd: opts.maxCostUsd,
+    });
     if (report === null) {
       console.error(`skipping ${sessionId}: run is ${bundle.summary.status}, judges only grade completed runs`);
       continue;

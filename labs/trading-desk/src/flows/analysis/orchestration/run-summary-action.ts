@@ -23,13 +23,9 @@ import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { decisionSnapshotResource } from "../decision-snapshot-resource";
 import type { DecisionSnapshotState } from "../decision-snapshot-resource";
-import { ALL_MEMO_KEYS } from "../registry";
-import { memosCollection, type MemoState } from "../resources";
-import {
-  buildRunSummary,
-  runSummaryStateSchema,
-  type RunSummaryMemoInput,
-} from "../run-summary";
+import { memosCollection } from "../resources";
+import { buildRunSummary, runSummaryStateSchema } from "../run-summary";
+import { readAllMemos } from "./read-memos";
 import { sessionStateSchema } from "../state";
 
 export const runSummaryAction = handler({
@@ -50,20 +46,7 @@ export const runSummaryAction = handler({
       (ctx.resources.decisionSnapshot.state as DecisionSnapshotState | null) ??
       null;
 
-    // Read every registered memo by its known key. `getOptional` returns
-    // `undefined` for a scaffold that was never created (a phase that never
-    // ran) → reported as `pending`.
-    const memos: RunSummaryMemoInput[] = await Promise.all(
-      Object.values(ALL_MEMO_KEYS).map(async (entry) => {
-        const ref = await ctx.resources.memos.getOptional(entry.collectionKey);
-        return {
-          key: entry.collectionKey,
-          agentName: entry.agentName,
-          // `ref.state` is `Readonly<MemoState>`; the projection only reads it.
-          state: (ref?.state as MemoState | undefined) ?? null,
-        };
-      }),
-    );
+    const memos = await readAllMemos(ctx.resources.memos);
 
     return buildRunSummary({
       sessionState: ctx.session.state,

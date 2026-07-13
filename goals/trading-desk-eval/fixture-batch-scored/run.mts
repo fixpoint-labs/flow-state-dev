@@ -13,7 +13,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { qualityRecordSchema } from "../../../labs/trading-desk/src/eval/types";
+import { readScoreboard } from "../../../labs/trading-desk/src/eval/scoreboard";
+import { blindBundle } from "../../../labs/trading-desk/src/eval/blinding";
+import { runArtifactsStateSchema } from "../../../labs/trading-desk/src/flows/analysis/run-artifacts";
 
 const APP = fileURLToPath(new URL("../../../labs/trading-desk", import.meta.url));
 const OUT = join(APP, ".fsdev", `eval-goal-${Date.now()}`);
@@ -49,13 +51,15 @@ evalCli(["sweep", "--manifest", MANIFEST, "--out", OUT, "--k", "3"]);
 const scoreboardPath = join(OUT, "scoreboard.jsonl");
 let sessionIds: string[] = [];
 try {
-  const lines = readFileSync(scoreboardPath, "utf8").split("\n").filter((l) => l.trim().length > 0);
-  const records = lines.map((l) => qualityRecordSchema.parse(JSON.parse(l)));
+  // Read via the suite's own torn-line-tolerant reader (not a weaker inline copy).
+  const records = readScoreboard(scoreboardPath);
 
   if (records.length !== 2) failures.push(`expected 2 scoreboard lines, got ${records.length}`);
   sessionIds = records.map((r) => r.sessionId);
 
-  const captures = new Set<string>();
+  // Anti-stub: compare the PROVENANCE-STRIPPED bundles, not raw capture bytes
+  // (which always differ by sessionId/timestamps even for a stubbed identical read).
+  const blindedBundles = new Set<string>();
   for (const rec of records) {
     if (rec.runStatus !== "completed") failures.push(`${rec.ticker}: runStatus ${rec.runStatus}`);
     if (rec.invariants.hardFailed > 0) {
@@ -77,23 +81,30 @@ try {
       if (dim.scores.some((s) => s < 0 || s > 1)) failures.push(`${rec.ticker}/${dim.dimension}: a score is outside [0,1]`);
     }
 
-    // Anti-game: read the SIDECAR — non-empty per-criterion reasoning + evidence.
+    // Anti-game: read the SIDECAR — non-empty per-criterion reasoning AND evidence.
     const detail = JSON.parse(readFileSync(rec.detailPath, "utf8")) as {
       judges?: Array<{ key: string; status: string; repeats: Array<{ findings: Array<{ assessment: string; evidence?: string }> }> }>;
     };
     for (const dim of detail.judges ?? []) {
       if (dim.status !== "scored") continue;
-      const anyReasoned = dim.repeats.some((r) =>
-        r.findings.length > 0 && r.findings.every((f) => f.assessment.trim().length > 0),
+      const anyReasoned = dim.repeats.some(
+        (r) =>
+          r.findings.length > 0 &&
+          r.findings.every(
+            (f) => f.assessment.trim().length > 0 && (f.evidence?.trim().length ?? 0) > 0,
+          ),
       );
-      if (!anyReasoned) failures.push(`${rec.ticker}/${dim.key}: empty judge reasoning in the sidecar`);
+      if (!anyReasoned) failures.push(`${rec.ticker}/${dim.key}: empty judge reasoning or evidence in the sidecar`);
     }
 
-    // The stored bundle must differ between the two runs.
-    const cap = readFileSync(join(OUT, "captures", `${rec.sessionId}.artifacts.json`), "utf8");
-    captures.add(cap);
+    // The stored bundle must differ between the two runs — compared blinded, so
+    // a stubbed identical read is caught even though sessionIds always differ.
+    const cap = JSON.parse(readFileSync(join(OUT, "captures", `${rec.sessionId}.artifacts.json`), "utf8")) as {
+      result?: { output?: unknown };
+    };
+    blindedBundles.add(JSON.stringify(blindBundle(runArtifactsStateSchema.parse(cap.result?.output))));
   }
-  if (records.length === 2 && captures.size < 2) failures.push("the two runs produced byte-identical bundles (stubbed read path?)");
+  if (records.length === 2 && blindedBundles.size < 2) failures.push("the two runs produced identical blinded bundles (stubbed read path?)");
 } catch (err) {
   failures.push(`scoreboard read/parse failed: ${(err as Error).message}`);
 }

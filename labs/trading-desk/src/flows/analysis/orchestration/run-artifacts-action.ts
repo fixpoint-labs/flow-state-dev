@@ -28,17 +28,12 @@ import { decisionSnapshotResource } from "../decision-snapshot-resource";
 import type { DecisionSnapshotState } from "../decision-snapshot-resource";
 import { lensConvergenceResource } from "../agents/lenses/lens-convergence-resource";
 import type { LensConvergenceState } from "../agents/lenses/lens-convergence-resource";
-import { ALL_MEMO_KEYS } from "../registry";
-import {
-  memosCollection,
-  phase2Contributions,
-  type MemoState,
-} from "../resources";
+import { memosCollection, phase2Contributions } from "../resources";
 import {
   buildRunArtifacts,
   runArtifactsStateSchema,
 } from "../run-artifacts";
-import type { RunSummaryMemoInput } from "../run-summary";
+import { readAllMemos } from "./read-memos";
 import { rewardToRiskResource } from "../reward-to-risk-resource";
 import type { RewardToRiskState } from "../reward-to-risk-resource";
 import { sessionStateSchema } from "../state";
@@ -80,19 +75,7 @@ export const runArtifactsAction = handler({
       (ctx.resources.p2Contributions.state as RoundRobinContributionsState | null) ??
       null;
 
-    // Read every registered memo by its known key (the run-summary precedent):
-    // `getOptional` returns `undefined` for a scaffold that was never created →
-    // reported as a null body.
-    const memos: RunSummaryMemoInput[] = await Promise.all(
-      Object.values(ALL_MEMO_KEYS).map(async (entry) => {
-        const ref = await ctx.resources.memos.getOptional(entry.collectionKey);
-        return {
-          key: entry.collectionKey,
-          agentName: entry.agentName,
-          state: (ref?.state as MemoState | undefined) ?? null,
-        };
-      }),
-    );
+    const memos = await readAllMemos(ctx.resources.memos);
 
     return buildRunArtifacts({
       sessionState: ctx.session.state,

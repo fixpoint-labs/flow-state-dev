@@ -169,12 +169,29 @@ describe("runJudges", () => {
       expect(dim.status).toBe("scored");
       expect(dim.k).toBe(2);
       expect(dim.scores).toHaveLength(2);
-      expect(dim.mean).toBeCloseTo(0.8, 5);
-      // Raw findings survive per repeat for the sidecar.
+      // Graded dims record the raw 0.8; checklist dims snap 0.8 → 1 (binary).
+      expect(dim.mean).toBeCloseTo(dim.kind === "checklist" ? 1 : 0.8, 5);
+      // Raw findings survive per repeat for the sidecar (unbinarized).
       expect(dim.repeats[0].findings.length).toBeGreaterThan(0);
       expect(dim.repeats[0].findings[0].evidence).toBe("cited evidence");
     }
     expect(report!.warnings).toHaveLength(0);
+  });
+
+  it("snaps checklist-dimension scores to 0/1 while leaving graded scores raw", async () => {
+    // 0.6 → 1 for the checklist dim (debate-engagement), stays 0.6 for graded dims.
+    const report = await runJudges(completedBundle(), {
+      judgeModel: "vercel/anthropic/claude-haiku-4-5",
+      k: 1,
+      modelResolver: scoringResolver(0.6),
+    });
+    const debate = report!.dimensions.find((d) => d.key === "debate-engagement")!;
+    const evidence = report!.dimensions.find((d) => d.key === "evidence-quality")!;
+    expect(debate.kind).toBe("checklist");
+    expect(debate.mean).toBe(1); // 0.6 snapped up
+    expect(evidence.mean).toBeCloseTo(0.6, 5); // graded stays raw
+    // The raw per-criterion score is preserved in the sidecar (unbinarized).
+    expect(debate.repeats[0].findings[0].score).toBeCloseTo(0.6, 5);
   });
 
   it("records a self-preference warning when the judge shares the executor family", async () => {

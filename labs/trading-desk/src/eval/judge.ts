@@ -120,9 +120,13 @@ function modelFamily(modelId: string): string {
   return segments.length >= 3 ? segments[1] : segments[0];
 }
 
-function meanOfFindings(findings: JudgeFinding[]): number {
+function meanOfFindings(findings: JudgeFinding[], kind: RubricDimension["kind"]): number {
   if (findings.length === 0) return 0;
-  return findings.reduce((a, f) => a + f.score, 0) / findings.length;
+  // Checklist criteria are 0-or-1 (spec §4.5): a judge that returns a fractional
+  // score is snapped to the nearest bound so the mean preserves binary semantics.
+  const scoreOf = (f: JudgeFinding): number =>
+    kind === "checklist" ? (f.score >= 0.5 ? 1 : 0) : f.score;
+  return findings.reduce((a, f) => a + scoreOf(f), 0) / findings.length;
 }
 
 /** Grade one dimension once. Never throws — a failure or timeout becomes a
@@ -158,7 +162,7 @@ async function judgeOnce(
     }
     const output = result.output as z.infer<typeof judgeOutputSchema>;
     return {
-      score: meanOfFindings(output.findings),
+      score: meanOfFindings(output.findings, dim.kind),
       findings: output.findings,
       status: "scored",
       reason: null,
@@ -244,9 +248,32 @@ export async function runJudges(
 
     const repeats: JudgeRepeat[] = [];
     for (let i = 0; i < k; i++) {
+      // Enforce the budget BETWEEN repeats too, not just between dimensions — an
+      // early repeat can cross the cap mid-dimension.
+      if (opts.maxCostUsd !== undefined && cumulativeCost >= opts.maxCostUsd) break;
       const repeat = await judgeOnce(dim, inputString, resolver, opts.judgeModel, timeoutMs);
       repeats.push(repeat);
       if (repeat.costUsd != null) cumulativeCost += repeat.costUsd;
+    }
+
+    // Budget hit before this dimension's first repeat → skipped, not a 0-repeat score.
+    if (repeats.length === 0) {
+      dimensions.push({
+        key: dim.key,
+        kind: dim.kind,
+        status: "skipped",
+        skipReason: `budget cap ($${opts.maxCostUsd}) reached before this dimension`,
+        mean: null,
+        std: null,
+        k: 0,
+        scores: [],
+        repeats: [],
+        costUsd: null,
+      });
+      continue;
+    }
+    if (repeats.length < k) {
+      warnings.push(`${dim.key}: budget cap reached — ${repeats.length}/${k} repeats ran`);
     }
 
     const scores = repeats.map((r) => r.score);
@@ -259,7 +286,8 @@ export async function runJudges(
       skipReason: null,
       mean,
       std,
-      k,
+      // Record the repeats that actually ran, not the requested k.
+      k: repeats.length,
       scores,
       repeats,
       costUsd: dimCosts.length > 0 ? dimCosts.reduce((a, b) => a + b, 0) : null,

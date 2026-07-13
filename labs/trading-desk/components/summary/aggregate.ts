@@ -21,6 +21,7 @@ import {
   type AgentName,
   type AnyMemoShortName,
 } from "@/src/flows/analysis/registry";
+import { RATING_LADDER } from "@/src/flows/analysis/lib/rating-engine";
 
 /** One analyst's TLDR line for the Summary grid. */
 export type AnalystTldr = {
@@ -162,12 +163,12 @@ const STANCE_AXIS: Record<string, number> = {
   long: 1,
   short: -1,
   flat: 0,
-  // Phase 5 PM five-tier rating.
-  Buy: 1,
-  Overweight: 0.5,
-  Hold: 0,
-  Underweight: -0.5,
-  Sell: -1,
+  // Phase 5 PM five-tier rating — DERIVED from the shared `RATING_LADDER`
+  // (low→high) so a ladder change can't silently drop a tier to null here
+  // (FIX-790 §4.1). Sell→−1, Underweight→−0.5, Hold→0, Overweight→0.5, Buy→1.
+  ...Object.fromEntries(
+    RATING_LADDER.map((rating, i) => [rating, (i - 2) / 2]),
+  ),
 };
 
 /** Map a stored stance label to the convergence axis. Null for unknown/absent. */
