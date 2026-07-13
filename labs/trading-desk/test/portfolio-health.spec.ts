@@ -139,6 +139,23 @@ describe("summarizePortfolioHealth — ticker merge + weights", () => {
     expect(funds!.marketValue).toBe(800); // SPY (etf → no look-through)
     expect(h.lookThrough).toBe("none");
   });
+
+  it("carries each sector bucket's constituent tickers, weight desc, summing to the bucket", () => {
+    const h = summarizePortfolioHealth(multiAccountBook(), MAIN_QUOTES, MAIN_CLASS, null);
+    const tech = h.sectorExposure.find((s) => s.bucket === "Technology")!;
+    // AAPL (1500, merged across two accounts) ranks above MSFT (1000).
+    expect(tech.constituents.map((c) => c.ticker)).toEqual(["AAPL", "MSFT"]);
+    expect(tech.constituents.map((c) => c.marketValue)).toEqual([1500, 1000]);
+    // Each constituent weight is of investedNav (same denom as the bucket pct),
+    // so the constituents sum to the bucket weight.
+    const sum = tech.constituents.reduce((s, c) => s + (c.weightPct ?? 0), 0);
+    expect(sum).toBeCloseTo(tech.pct!);
+    // Funds bucket drills to the ETF that drives it — the FIX-762 answer to
+    // "which funds make up my 'no look-through' slice?".
+    const funds = h.sectorExposure.find((s) => s.bucket === FUNDS_BUCKET)!;
+    expect(funds.constituents.map((c) => c.ticker)).toEqual(["SPY"]);
+    expect(funds.constituents[0]!.assetType).toBe("etf");
+  });
 });
 
 describe("summarizePortfolioHealth — inconsistent_history reconciliation", () => {

@@ -24,6 +24,7 @@ import {
   summarizePortfolioHealth,
   FUNDS_BUCKET,
   type HealthPosition,
+  type PortfolioHealth,
   type QuoteMap,
 } from "@/src/flows/portfolio/portfolio-health";
 import { useClassifications } from "./use-classifications";
@@ -238,21 +239,12 @@ export function HealthSection({
           </div>
           )}
 
-          {/* 3. Sector exposure (of invested NAV) — invested mass only. */}
+          {/* 3. Sector exposure (of invested NAV) — invested mass only; each
+              bucket expands to its constituent tickers. */}
           {hasInvested && (
           <div>
             <SectionTitle>Sector exposure — % of invested NAV</SectionTitle>
-            <div className="space-y-1.5">
-              {health.sectorExposure.map((s) => (
-                <Bar
-                  key={s.bucket}
-                  label={s.bucket}
-                  pctValue={s.pct}
-                  valueText={pct(s.pct)}
-                  tone={s.bucket === FUNDS_BUCKET ? "muted" : "accent"}
-                />
-              ))}
-            </div>
+            <SectorExposure buckets={health.sectorExposure} />
           </div>
           )}
 
@@ -269,6 +261,70 @@ export function HealthSection({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** Sector-exposure bars, each expandable to its constituent tickers (weight desc).
+ *  Mirrors the `TopPositions` single-open disclosure idiom. Expanding "Funds (no
+ *  look-through)" is how a fund-heavy book sees WHICH funds drive that bucket
+ *  (until FIX-801 lands real look-through); expanding "Unclassified" shows which
+ *  equities have no resolved sector. A bucket with no constituents (never, in
+ *  practice — a bar exists only because a position landed in it) is inert. */
+function SectorExposure({ buckets }: { buckets: PortfolioHealth["sectorExposure"] }): ReactElement {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  return (
+    <div className="space-y-1.5">
+      {buckets.map((s) => {
+        const isOpen = expanded === s.bucket;
+        const canExpand = s.constituents.length > 0;
+        const width = s.pct === null ? 0 : Math.min(100, Math.max(0, Math.abs(s.pct)));
+        return (
+          <div key={s.bucket}>
+            <button
+              type="button"
+              onClick={canExpand ? () => setExpanded(isOpen ? null : s.bucket) : undefined}
+              disabled={!canExpand}
+              className={cn(
+                "flex w-full items-center gap-2 text-left text-[11px]",
+                canExpand && "cursor-pointer",
+              )}
+            >
+              <div className="flex w-28 shrink-0 items-center gap-1 text-[color:var(--c-fg-muted)]" title={s.bucket}>
+                <span className="w-2 shrink-0 text-[color:var(--c-fg-faint)]">
+                  {canExpand ? (isOpen ? "▾" : "▸") : ""}
+                </span>
+                <span className="truncate">{s.bucket}</span>
+              </div>
+              <div className="relative h-3 flex-1 overflow-hidden rounded-sm bg-[color:var(--c-surface-2)]">
+                <div
+                  className="absolute inset-y-0 left-0 rounded-sm"
+                  style={{
+                    width: `${width}%`,
+                    background: s.bucket === FUNDS_BUCKET ? "var(--c-fg-faint)" : "var(--c-accent)",
+                  }}
+                />
+              </div>
+              <div className="w-14 shrink-0 text-right font-mono text-[color:var(--c-fg)]">{pct(s.pct)}</div>
+            </button>
+            {isOpen && (
+              <div className="mb-1 ml-4 mt-1 space-y-0.5 border-l border-[color:var(--c-border)] pb-1 pl-3">
+                {s.constituents.map((c) => (
+                  <div key={c.ticker} className="flex items-center gap-3 text-[10.5px]">
+                    <span className="flex-1 truncate font-mono text-[color:var(--c-fg)]">{c.ticker}</span>
+                    <span className="w-12 shrink-0 text-right font-mono text-[color:var(--c-fg-muted)]">
+                      {pct(c.weightPct)}
+                    </span>
+                    <span className="w-20 shrink-0 text-right font-mono text-[color:var(--c-fg-muted)]">
+                      {formatMoney(c.marketValue, "USD")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

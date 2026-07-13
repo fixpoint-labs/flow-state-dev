@@ -76,6 +76,16 @@ export type HealthPosition = {
   excludedRows: number;
 };
 
+/** One ticker inside a sector-exposure bucket (the drill-down under each bar).
+ *  `weightPct` is of investedNav — the SAME denominator as the bucket's own
+ *  `pct` — so a bucket's constituents' weights sum to the bucket weight. */
+export type SectorConstituent = {
+  ticker: string;
+  assetType: AssetType;
+  marketValue: number;
+  weightPct: number | null;
+};
+
 /** A concentration finding to surface as a chip. */
 export type HealthFlag =
   | { kind: "single_name"; level: "warn" | "alert"; ticker: string; weightPct: number }
@@ -106,8 +116,14 @@ export type PortfolioHealth = {
   positions: HealthPosition[];
   /** Of totalNav (cash is a class; sums to ~100 at full coverage). */
   assetClassAllocation: Array<{ assetClass: AssetClass; marketValue: number; pct: number | null }>;
-  /** Of investedNav (funds and unclassified as their own buckets). */
-  sectorExposure: Array<{ bucket: string; marketValue: number; pct: number | null }>;
+  /** Of investedNav (funds and unclassified as their own buckets). Each bucket
+   *  carries its constituent tickers (weight desc) for the drill-down. */
+  sectorExposure: Array<{
+    bucket: string;
+    marketValue: number;
+    pct: number | null;
+    constituents: SectorConstituent[];
+  }>;
   concentration: {
     /** Single-name-eligible (equity/crypto) only; null when none priced. */
     maxPosition: { ticker: string; weightPct: number } | null;
@@ -306,13 +322,29 @@ export function summarizePortfolioHealth(
 
   // --- Sector exposure (of investedNav); priced non-cash positions only. ---
   const sectorMass = new Map<string, number>();
+  const sectorConstituents = new Map<string, SectorConstituent[]>();
   for (const m of merged.values()) {
     if (m.marketValue === null || isCashPosition(m.assetClass, m.assetType)) continue;
     const bucket = sectorBucket(m.assetType, classifications.get(m.ticker) ?? null);
     sectorMass.set(bucket, (sectorMass.get(bucket) ?? 0) + m.marketValue);
+    const list = sectorConstituents.get(bucket) ?? [];
+    list.push({
+      ticker: m.ticker,
+      assetType: m.assetType,
+      marketValue: m.marketValue,
+      weightPct: pctOf(m.marketValue, investedNav),
+    });
+    sectorConstituents.set(bucket, list);
   }
   const sectorExposure = [...sectorMass.entries()]
-    .map(([bucket, marketValue]) => ({ bucket, marketValue, pct: pctOf(marketValue, investedNav) }))
+    .map(([bucket, marketValue]) => ({
+      bucket,
+      marketValue,
+      pct: pctOf(marketValue, investedNav),
+      constituents: (sectorConstituents.get(bucket) ?? []).sort(
+        (a, b) => b.marketValue - a.marketValue,
+      ),
+    }))
     .sort((a, b) => b.marketValue - a.marketValue);
 
   // --- Concentration (of investedNav). ---
