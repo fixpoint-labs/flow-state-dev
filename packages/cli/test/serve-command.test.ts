@@ -53,6 +53,20 @@ describe("fsdev serve", () => {
     }
   });
 
+  it("treats an empty $HOST as unset (falls back to 0.0.0.0)", async () => {
+    const saved = process.env.HOST;
+    process.env.HOST = "";
+    try {
+      const err = await executeServeCommand({ cwd: unauthDir }).catch((e) => e);
+      expect(err).toBeInstanceOf(CliError);
+      // Without the empty-guard the message would read "Refusing to bind " (blank).
+      expect(err.message).toContain("Refusing to bind 0.0.0.0");
+    } finally {
+      if (saved === undefined) delete process.env.HOST;
+      else process.env.HOST = saved;
+    }
+  });
+
   it("--host wins over $HOST", async () => {
     const saved = process.env.HOST;
     process.env.HOST = "192.168.5.9";

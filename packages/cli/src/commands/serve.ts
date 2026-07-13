@@ -87,10 +87,12 @@ export async function executeServeCommand(options: ServeCommandOptions): Promise
     throw new CliError("fsdev serve requires a committed fsdev config.", EXIT_CONFIG_ERROR);
   }
 
-  // $HOST fallback is symmetric with serve()'s $PORT handling and preserves the
-  // documented `HOST=127.0.0.1` local-only recipe for apps migrating off a
-  // hand-written entrypoint.
-  const host = options.host ?? process.env.HOST ?? "0.0.0.0";
+  // $HOST fallback mirrors serve()'s $PORT handling (an empty env value counts as
+  // unset) and preserves the documented `HOST=127.0.0.1` local-only recipe for
+  // apps migrating off a hand-written entrypoint.
+  const envHost = process.env.HOST;
+  const host =
+    options.host ?? (envHost !== undefined && envHost.length > 0 ? envHost : undefined) ?? "0.0.0.0";
 
   // Loopback-bind safety rail. Refuses a network host when a served flow would
   // run on the framework's default (unauthenticated) principal resolver.
