@@ -1,0 +1,1 @@
+# Intentionally has no fsdev.config.* — exercises `fsdev serve`'s "requires committed config" error.

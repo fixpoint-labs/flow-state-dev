@@ -1,0 +1,68 @@
+import { describe, expect, it } from "vitest";
+import { resolve } from "node:path";
+import { executeServeCommand } from "../src/commands/serve";
+import { CliError } from "../src/resolve-block";
+import { EXIT_CONFIG_ERROR } from "../src/exit-codes";
+
+const unauthDir = resolve(import.meta.dirname, "fixtures-config", "serve-unauth");
+const noConfigDir = resolve(import.meta.dirname, "fixtures-config", "serve-no-config");
+
+// Every case here errors before `serve()` binds a port. The "guard passes"
+// behavior (loopback / authenticated flow) would start a long-lived server whose
+// shutdown calls process.exit and would kill the runner, so it is covered by the
+// bind-guard unit tests in @flow-state-dev/node instead.
+
+describe("fsdev serve", () => {
+  it("rejects an invalid --port before loading any config", async () => {
+    const err = await executeServeCommand({ cwd: unauthDir, port: "notaport" }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
+  });
+
+  it("requires a committed config — no directory discovery fallback", async () => {
+    const err = await executeServeCommand({ cwd: noConfigDir }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
+    expect(err.message).toContain("requires a committed fsdev.config");
+  });
+
+  it("refuses a non-loopback bind for an unauthenticated flow and disposes the FlowState", async () => {
+    const g = globalThis as unknown as { __fsdevServeDisposeCalls: number };
+    g.__fsdevServeDisposeCalls = 0;
+    const err = await executeServeCommand({ cwd: unauthDir, host: "0.0.0.0" }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
+    expect(err.message).toContain("Refusing to bind 0.0.0.0");
+    expect(err.message).toContain('"open"');
+    // The guard-failure path released the store adapter rather than leaking it.
+    expect(g.__fsdevServeDisposeCalls).toBeGreaterThan(0);
+  });
+
+  it("reads $HOST when --host is omitted", async () => {
+    // A distinctive non-loopback $HOST proves the env var flows into host
+    // resolution: the guard's message names it (the default would say 0.0.0.0).
+    const saved = process.env.HOST;
+    process.env.HOST = "192.168.5.9";
+    try {
+      const err = await executeServeCommand({ cwd: unauthDir }).catch((e) => e);
+      expect(err).toBeInstanceOf(CliError);
+      expect(err.message).toContain("Refusing to bind 192.168.5.9");
+    } finally {
+      if (saved === undefined) delete process.env.HOST;
+      else process.env.HOST = saved;
+    }
+  });
+
+  it("--host wins over $HOST", async () => {
+    const saved = process.env.HOST;
+    process.env.HOST = "192.168.5.9";
+    try {
+      const err = await executeServeCommand({ cwd: unauthDir, host: "10.0.0.7" }).catch((e) => e);
+      expect(err).toBeInstanceOf(CliError);
+      expect(err.message).toContain("Refusing to bind 10.0.0.7");
+    } finally {
+      if (saved === undefined) delete process.env.HOST;
+      else process.env.HOST = saved;
+    }
+  });
+});
