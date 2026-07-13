@@ -1,7 +1,8 @@
 /**
  * MCP transport adapter — exposes every flow with `mcp.enabled: true`
- * as its own MCP server over Streamable HTTP at
- * `POST /api/flows/:kind/mcp` (per FIX-22).
+ * as its own MCP server over Streamable HTTP. The canonical endpoint is
+ * `POST /api/flows/:kind/mcp` (per FIX-22); callers may opt into a dedicated
+ * `POST /mcp/:kind` layout.
  *
  * v1 design choices (see FIX-22 spec § 1):
  *   - Stateless only. No `Mcp-Session-Id` is issued; every `tools/call`
@@ -77,8 +78,18 @@ const MCP_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 const MCP_FALLBACK_PROTOCOL_VERSION = "2025-03-26";
 
 export interface CreateMcpTransportAdapterOptions {
-  /** Endpoint base path. Defaults to `/api/flows`. */
+  /**
+   * Endpoint base path. Defaults to `/api/flows`, or `/mcp` when
+   * `dedicatedBasePath` is enabled.
+   */
   basePath?: string;
+  /**
+   * Treat `basePath` as MCP-exclusive and mount at `<basePath>/:kind`
+   * instead of `<basePath>/:kind/mcp`. The dedicated base must include a
+   * non-root prefix so it cannot claim every single-segment route. Defaults to
+   * `false`.
+   */
+  dedicatedBasePath?: boolean;
   /**
    * Origin allowlist for cross-origin clients. Defaults to "same-origin
    * only" — the adapter responds 403 to any request carrying an
@@ -122,14 +133,24 @@ interface JsonRpcRequest {
 export function createMcpTransportAdapter(
   options: CreateMcpTransportAdapterOptions = {}
 ): InboundTransportAdapter {
-  const basePath = (options.basePath ?? "/api/flows").replace(/\/$/, "");
+  const dedicatedBasePath = options.dedicatedBasePath ?? false;
+  const configuredBasePath =
+    options.basePath ?? (dedicatedBasePath ? "/mcp" : "/api/flows");
+  if (dedicatedBasePath && /^\/*$/.test(configuredBasePath.trim())) {
+    throw new TypeError(
+      "createMcpTransportAdapter: dedicated basePath must include a non-root prefix."
+    );
+  }
+  const basePath = configuredBasePath.replace(/\/$/, "");
   const allowedOrigins = options.allowedOrigins;
   const forwardQueryParams = options.forwardQueryParams;
 
   return {
     source: MCP_TRANSPORT_SOURCE,
     createBindings(host: InboundTransportHost): TransportBindings {
-      const path = `${basePath}/:kind/mcp`;
+      const path = dedicatedBasePath
+        ? `${basePath}/:kind`
+        : `${basePath}/:kind/mcp`;
 
       const post: TransportRoute = {
         method: "POST",
@@ -582,4 +603,3 @@ function extractForwardedParams(
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
-

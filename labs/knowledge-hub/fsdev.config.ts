@@ -9,7 +9,7 @@
  * (the cron sweeper) actually needs them.
  *
  *   pnpm fsdev run knowledge-hub logActivity -i '{...}'   # CLI, no secret needed
- *   KH_MCP_SECRET=... pnpm fsdev dev                      # serve the MCP endpoint
+ * HTTP hosts must forward `/mcp/*` to this FlowState router.
  */
 import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
@@ -34,17 +34,23 @@ const modelResolver = Object.assign(neverResolvesAModel, {
 export default createFlowState({
   flows: { "knowledge-hub": knowledgeHubFlow },
   modelResolver,
-  // Fail closed: mount the MCP endpoint (POST /api/flows/knowledge-hub/mcp) only
+  // Fail closed: mount the MCP endpoint (POST /mcp/knowledge-hub) only
   // when the bearer secret is set — belt-and-suspenders on top of the flow's
   // throwing resolver. No secret ⇒ no MCP endpoint at all, CLI-only.
   //
   // `forwardQueryParams: ["source"]` makes `source` an INSTALLATION-level value:
-  // each client points at its own tagged URL (`.../mcp?source=claude-desktop`)
+  // each client points at its own tagged URL
+  // (`.../mcp/knowledge-hub?source=claude-desktop`)
   // and every capture from it carries that provenance, authoritatively — the
   // model can't override it. The field stays in `logActivity`'s input schema and
   // in the mailroom fingerprint; it just fills from the URL instead of the model.
   adapters: process.env.KH_MCP_SECRET
-    ? [createMcpTransportAdapter({ forwardQueryParams: ["source"] })]
+    ? [
+        createMcpTransportAdapter({
+          dedicatedBasePath: true,
+          forwardQueryParams: ["source"],
+        }),
+      ]
     : [],
   stores: {
     dev: { primary: filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") }) },

@@ -22,6 +22,11 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 - `@flow-state-dev/client` required; `@flow-state-dev/react` wraps client (no transport logic)
 - Inbound transport contract: `InboundTransportAdapter`, `InboundRequestEnvelope`, `RequestRecord.source`
   → [Inbound Transports](../architecture/inbound-transports.md)
+- MCP transport routes: shared mode (default) uses `/api/flows/:kind/mcp`;
+  `dedicatedBasePath: true` uses `<basePath>/:kind` with `/mcp` as its implicit
+  base. An adapter registers one layout, and outer hosts must forward that
+  prefix to the Flow State router.
+  → [MCP Server Adapter](../architecture/mcp-server.md)
 - Action forms: every action shares `ActionCore` (handler `block` + execution policy). Caller-addressed = `ActionConfig` in `flow.actions`; event-addressed (webhook/chat/scheduled) carries the core inline on its transport map and has no HTTP/MCP caller surface (no `internal` flag — the structural fact is the boundary). Resolution seam `resolveActionCore(flow, actionName, source, metadata)` reads a namespaced coordinate (`metadata.webhook` / `metadata.chat.eventKey` / `metadata.schedule.scheduleId`) gated on `source` (set only by adapters), else falls back to `flow.actions[name]`. Dynamic schedules carry the core on `InboundRequestEnvelope.resolvedActionCore` (transient — not persisted, so durable dynamic schedules don't recover).
   → [Action Forms](../architecture/action-forms.md)
 - Scheduled actions: `schedules` config on `defineFlow` (`static` map + dynamic `resolve` hook). `ScheduleConfig = ActionCore & { cron; input?; principal?; ... }` — carries `block` inline (no `action: string`); `defineScheduleBinding` helper. Dynamic resolver via `createResourceCollectionScheduleResolver({ collection, blocks })` maps a persisted `kind` discriminator → block (`defineScheduleCollection` schema field renamed `action` → `kind`). Dispatch route `POST /api/flows/:kind/schedules/:scheduleId/dispatch`.

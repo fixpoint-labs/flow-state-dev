@@ -62,12 +62,12 @@ async function loadConfig() {
  *  mounted (no adapter); anything else ⇒ the adapter handled it. */
 async function mcpStatus(flowState: Awaited<ReturnType<typeof loadConfig>>): Promise<number> {
   const router = await flowState.getRouter();
-  const req = new Request("http://localhost/api/flows/knowledge-hub/mcp", {
+  const req = new Request("http://localhost/mcp/knowledge-hub", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
   });
-  const res = await router.POST(req, { params: { path: ["knowledge-hub", "mcp"] } });
+  const res = await router.POST(req, { params: { path: ["mcp", "knowledge-hub"] } });
   return res.status;
 }
 
@@ -104,7 +104,7 @@ async function captureViaMcp(
   args: Record<string, unknown>
 ): Promise<{ id: string; deduplicated: boolean }> {
   const router = await flowState.getRouter();
-  const req = new Request(`http://localhost/api/flows/knowledge-hub/mcp${query}`, {
+  const req = new Request(`http://localhost/mcp/knowledge-hub${query}`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: "Bearer test-secret" },
     body: JSON.stringify({
@@ -114,7 +114,7 @@ async function captureViaMcp(
       params: { name: "log_activity", arguments: args },
     }),
   });
-  const res = await router.POST(req, { params: { path: ["knowledge-hub", "mcp"] } });
+  const res = await router.POST(req, { params: { path: ["mcp", "knowledge-hub"] } });
   const body = (await res.json()) as {
     result?: { content?: { text?: string }[] };
     error?: unknown;
