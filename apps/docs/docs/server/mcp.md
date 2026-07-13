@@ -51,6 +51,32 @@ export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 The MCP adapter mounts at `POST /api/flows/:kind/mcp`. `GET` and
 `DELETE` on that path return 405. Existing HTTP routes are unchanged.
 
+### Dedicated MCP prefix
+
+Use a dedicated prefix when the shared `/api/flows/:kind/mcp` URL exposes more
+of your application's internal route structure than you want MCP operators to
+configure:
+
+```ts title="lib/flowstate.ts"
+export const flowstate = createFlowState({
+  flows: { billing: billingFlow },
+  stores: { default: { primary: inMemoryStores() } },
+  adapters: [createMcpTransportAdapter({ dedicatedBasePath: true })],
+});
+```
+
+Dedicated mode defaults to `/mcp`, so the endpoint becomes
+`POST /mcp/billing`. You can instead pass an explicit prefix, such as
+`basePath: "/integrations/mcp"`. The ordinary HTTP action routes remain under
+`/api/flows`, and the adapter mounts only the dedicated layout rather than
+keeping the default URL as an alias.
+
+The hosting framework must also send `/mcp/*` requests to the Flow State
+handler. In a Next.js app, add a matching `app/mcp/[...path]/route.ts` route
+that exports the same platform handlers; a handler mounted only at
+`app/api/flows/[...path]/route.ts` never receives `/mcp/*`. Node hosts likewise
+need the dedicated prefix mounted or rewritten to the Flow State handler.
+
 ## Opting a flow into MCP
 
 A flow opts in via `mcp.enabled`. Every action you want exposed needs a

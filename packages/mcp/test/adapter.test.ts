@@ -210,6 +210,46 @@ describe("toolInputJsonSchema", () => {
   });
 });
 
+describe("MCP adapter — route layout", () => {
+  it.each([
+    {
+      name: "preserves the default shared route",
+      options: undefined,
+      expectedPath: "/api/flows/:kind/mcp"
+    },
+    {
+      name: "preserves a custom shared base path",
+      options: { basePath: "/custom" },
+      expectedPath: "/custom/:kind/mcp"
+    },
+    {
+      name: "normalizes a trailing slash on a dedicated base path",
+      options: { basePath: "/mcp/", dedicatedBasePath: true },
+      expectedPath: "/mcp/:kind"
+    }
+  ] as const)("$name", ({ options, expectedPath }) => {
+    const adapter = createMcpTransportAdapter(options);
+    const bindings = adapter.createBindings(createMockTransportHost());
+
+    expect(bindings.routes?.map(({ path }) => path)).toEqual([
+      expectedPath,
+      expectedPath,
+      expectedPath
+    ]);
+  });
+
+  it("mounts each method at /mcp/:kind when the base path is dedicated", () => {
+    const adapter = createMcpTransportAdapter({ dedicatedBasePath: true });
+    const bindings = adapter.createBindings(createMockTransportHost());
+
+    expect(bindings.routes?.map(({ method, path }) => ({ method, path }))).toEqual([
+      { method: "POST", path: "/mcp/:kind" },
+      { method: "GET", path: "/mcp/:kind" },
+      { method: "DELETE", path: "/mcp/:kind" }
+    ]);
+  });
+});
+
 describe("MCP adapter — JSON-RPC dispatch", () => {
   it("source identifier is 'mcp'", () => {
     const adapter = createMcpTransportAdapter();

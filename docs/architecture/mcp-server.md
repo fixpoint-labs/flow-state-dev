@@ -25,6 +25,19 @@ DELETE /api/flows/billing/mcp     ← 405 Method Not Allowed
 This matches how MCP clients are configured in the wild — one server per
 integration. Cross-flow tool sets are not collapsed into a single endpoint.
 
+The adapter also supports an opt-in dedicated layout:
+
+```
+POST   /mcp/billing     ← all JSON-RPC traffic
+GET    /mcp/billing     ← 405 Method Not Allowed
+DELETE /mcp/billing     ← 405 Method Not Allowed
+```
+
+`dedicatedBasePath: true` changes the route formula from
+`<basePath>/:kind/mcp` to `<basePath>/:kind` and changes the implicit base from
+`/api/flows` to `/mcp`. An explicit `basePath` wins in either mode. Each adapter
+instance registers exactly one layout; it does not add an alias or redirect.
+
 ## Per-flow opt-in
 
 A flow opts in via the `mcp` config block:
@@ -80,6 +93,23 @@ const router = createFlowApiRouter({
 That's it. The MCP routes register alongside the HTTP catch-all; the
 router's dispatcher gives non-HTTP adapter routes first-match priority,
 so the MCP path never collides with the HTTP action route.
+
+For a dedicated MCP prefix:
+
+```ts
+adapters: [createMcpTransportAdapter({ dedicatedBasePath: true })]
+```
+
+POST, GET, and DELETE share the single resolved route pattern and the existing
+handlers. The built-in HTTP adapter remains under `/api/flows`. Exact custom
+adapter collisions retain the router's existing construction-time error.
+
+This route registration occurs inside `createFlowApiRouter`; the outer HTTP
+host must also dispatch `/mcp/*` to that router. A host mounted only at
+`/api/flows/*` will reject a dedicated request before the adapter matcher runs.
+File-based hosts therefore need a matching route entry, while Node hosts need
+an additional mount or rewrite. Host mount discovery is outside this adapter's
+contract.
 
 ## Action → tool conversion
 
