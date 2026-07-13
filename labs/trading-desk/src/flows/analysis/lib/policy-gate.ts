@@ -33,8 +33,16 @@
  */
 import type { PortfolioMandate } from "../../portfolio/portfolio-mandate-schema";
 
-/** The single-name policy outcome for the analyzed ticker. */
-export type PolicyVerdict = "within-policy" | "capped" | "excluded" | "no-mandate";
+/** The single-name policy outcome for the analyzed ticker. `unenforced` means a
+ *  hard constraint (a position cap) applied but could NOT be evaluated because
+ *  the held name's household weight was unknown (unpriced) — so the run makes NO
+ *  claim of compliance (never a false "within-policy"). */
+export type PolicyVerdict =
+  | "within-policy"
+  | "capped"
+  | "excluded"
+  | "unenforced"
+  | "no-mandate";
 
 export type PolicyGateInput = {
   /** The frozen, validated household mandate, or null on a mandate-blind run. */
@@ -90,13 +98,22 @@ export function computePolicyGate(input: PolicyGateInput): PolicyGateResult {
   const cap = mandate.constraints.maxPositionWeightPct; // a HOUSEHOLD cap
 
   // Held-but-unpriced → the household weight is UNKNOWN: clamp nothing (never
-  // fabricate a weight), flag it, and let the verdict still reflect the exclusion.
+  // fabricate a weight), flag it. The verdict still reflects the exclusion (a
+  // no-add is a stance, not a number). But an unevaluated CAP must NOT read as
+  // "within-policy" — that would advertise compliance the run never checked. Use
+  // "unenforced" so the memo / run summary are honest; "within-policy" is
+  // reserved for the no-hard-constraint case.
   if (householdWeightPct == null) {
+    const policyVerdict: PolicyVerdict = excluded
+      ? "excluded"
+      : cap != null
+        ? "unenforced"
+        : "within-policy";
     return {
       targetWeightPct: input.targetWeightPct,
       excluded,
       positionCapClamped: false,
-      policyVerdict: excluded ? "excluded" : "within-policy",
+      policyVerdict,
       householdWeightKnown: false,
     };
   }

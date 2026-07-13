@@ -24,12 +24,15 @@ const VERDICT_LABEL: Record<PolicyDecision["policyVerdict"], string> = {
   "within-policy": "within policy",
   capped: "capped to policy",
   excluded: "excluded (no-add)",
+  unenforced: "cap not enforced",
   "no-mandate": "no mandate",
 };
 
 function verdictColor(verdict: PolicyDecision["policyVerdict"]): string {
   if (verdict === "excluded") return "var(--c-warn)";
   if (verdict === "capped") return "var(--c-warn)";
+  // "unenforced" is not a compliance claim — read it as cautionary, not green.
+  if (verdict === "unenforced") return "var(--c-warn)";
   return "var(--c-live)";
 }
 

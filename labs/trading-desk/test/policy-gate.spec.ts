@@ -150,6 +150,29 @@ describe("computePolicyGate", () => {
     expect(r.policyVerdict).toBe("excluded");
   });
 
+  it("held-but-unpriced with a cap (not excluded) → 'unenforced', never a false within-policy", () => {
+    const r = computePolicyGate({
+      mandate: mandate({ maxPositionWeightPct: 5 }),
+      ticker: "NVDA",
+      targetWeightPct: 8, // above the cap, but the cap can't be evaluated
+      householdWeightPct: null, // held but unpriced
+    });
+    expect(r.targetWeightPct).toBe(8); // unchanged — clamp skipped
+    expect(r.positionCapClamped).toBe(false);
+    expect(r.householdWeightKnown).toBe(false);
+    expect(r.policyVerdict).toBe("unenforced"); // NOT "within-policy"
+  });
+
+  it("held-but-unpriced with NO hard constraint → within-policy (nothing to enforce)", () => {
+    const r = computePolicyGate({
+      mandate: mandate({ minCashPct: 10 }), // advisory only
+      ticker: "NVDA",
+      targetWeightPct: 8,
+      householdWeightPct: null,
+    });
+    expect(r.policyVerdict).toBe("within-policy");
+  });
+
   it("reports householdWeightKnown true when a clamp was actually evaluated", () => {
     const r = computePolicyGate({
       mandate: mandate({ maxPositionWeightPct: 5 }),

@@ -106,8 +106,9 @@ export type MandateDecision = z.infer<typeof mandateDecisionSchema>;
 export const policyDecisionSchema = z.object({
   /** True when a durable mandate reached the decision tier. */
   mandatePresent: z.boolean(),
-  /** The single-name policy verdict, derived at commit. */
-  policyVerdict: z.enum(["within-policy", "capped", "excluded", "no-mandate"]),
+  /** The single-name policy verdict, derived at commit. `unenforced` = a cap
+   *  applied but the held name was unpriced, so it could not be evaluated. */
+  policyVerdict: z.enum(["within-policy", "capped", "excluded", "unenforced", "no-mandate"]),
   /** The commit clamped `targetWeightPct` down to the `maxPositionWeight` cap. */
   positionCapClamped: z.boolean(),
   /** The analyzed name is on the mandate's exclusion list (hard no-add). */

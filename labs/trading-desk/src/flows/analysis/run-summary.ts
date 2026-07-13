@@ -96,7 +96,7 @@ export const runSummaryStateSchema = z.object({
   // check's read path. Null on a mandate-blind / stopped run.
   mandatePresent: z.boolean().nullable().default(null),
   policyVerdict: z
-    .enum(["within-policy", "capped", "excluded", "no-mandate"])
+    .enum(["within-policy", "capped", "excluded", "unenforced", "no-mandate"])
     .nullable()
     .default(null),
   positionCapClamped: z.boolean().nullable().default(null),

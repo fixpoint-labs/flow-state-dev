@@ -24,10 +24,20 @@ import type { MandateSavePayload } from "./mandate-form";
  */
 export function usePortfolioMandate(session: SessionView): {
   mandate: PortfolioMandate | null;
+  /** False until the session snapshot (and thus the mandate projection) has
+   *  loaded. `clientData: null` means "no mandate" only once ready — before that
+   *  it is indistinguishable from a not-yet-loaded read, so the editor must stay
+   *  non-destructive (else an existing IPS could be overwritten by a blank save
+   *  during the cold-start window). */
+  ready: boolean;
   saveMandate: (payload: MandateSavePayload) => Promise<void>;
   clearMandate: () => Promise<void>;
 } {
   const { clientData } = useResource<PortfolioMandate | null>(session, "portfolioMandate");
+  // The snapshot arrives as one payload; its presence means the user-scope
+  // resource projection (this mandate) has loaded. Until then, treat the read as
+  // not-ready rather than "absent".
+  const ready = session.snapshot != null;
   const mandate =
     clientData != null && typeof (clientData as PortfolioMandate).createdAt === "string"
       ? (clientData as PortfolioMandate)
@@ -52,5 +62,5 @@ export function usePortfolioMandate(session: SessionView): {
     }
   }, [session]);
 
-  return { mandate, saveMandate, clearMandate };
+  return { mandate, ready, saveMandate, clearMandate };
 }

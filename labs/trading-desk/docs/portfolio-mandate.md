@@ -118,9 +118,11 @@ full exit or a forced trim); the PM narrates that the cap couldn't be enforced
 without a price.
 
 The commit records a derived `policyVerdict`
-(`within-policy` / `capped` / `excluded` / `no-mandate`) plus the clamp flags on
-the decision snapshot and the headless RunSummary — the read path the
-`policy-steers-sizing` goal check uses.
+(`within-policy` / `capped` / `excluded` / `unenforced` / `no-mandate`) plus the
+clamp flags on the decision snapshot and the headless RunSummary — the read path
+the `policy-steers-sizing` goal check uses. `unenforced` is the honest verdict
+when a cap applied but the held name was unpriced, so it could not be evaluated —
+the run never claims `within-policy` for a check it did not perform.
 
 ## Editing
 

@@ -80,15 +80,29 @@ export function emptyMandateForm(): MandateFormState {
   };
 }
 
+/** The set of appetite ids the dropdown can represent (the `""` derive-option
+ *  aside). A persisted mandate may carry a STALE/unknown id (the seed tolerates
+ *  it — old constraints still apply), but the editor can only show an id it
+ *  offers; pre-filling an unknown id would silently resubmit it on save and the
+ *  action would reject it after the dialog closed. So `mandateRecordToForm`
+ *  normalizes an unknown id back to `""` (derive from tolerance), letting the
+ *  user repair the record instead of hitting a silent failed save. */
+const KNOWN_APPETITE_IDS = new Set<string>(
+  APPETITE_OPTIONS.map((o) => o.value).filter((v) => v !== ""),
+);
+
 /** Pre-fill the draft from an existing mandate record (the edit path). */
 export function mandateRecordToForm(record: PortfolioMandate): MandateFormState {
   const num = (n: number | null): string => (n === null ? "" : String(n));
+  const appetite = record.riskAppetite ?? "";
   return {
     label: record.label,
     riskTolerance: record.objectives.riskTolerance,
     returnTargetPct: num(record.objectives.returnTargetPct),
     returnBasis: record.objectives.returnBasis ?? "",
-    riskAppetite: record.riskAppetite ?? "",
+    // Drop a stale/unknown appetite id back to "" so the editor doesn't resubmit
+    // an id the save action will reject (the dropdown only offers known ids).
+    riskAppetite: KNOWN_APPETITE_IDS.has(appetite) ? appetite : "",
     horizonYears: num(record.timeHorizon.years),
     maxPositionWeightPct: num(record.constraints.maxPositionWeightPct),
     minCashPct: num(record.constraints.minCashPct),

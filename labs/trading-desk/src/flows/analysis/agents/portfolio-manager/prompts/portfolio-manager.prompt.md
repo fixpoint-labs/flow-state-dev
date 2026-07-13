@@ -203,11 +203,17 @@ Decision discipline:
         adding to it — set `portfolioFit.action` to "hold"/"trim"/"exit" and
         keep the size at or below the current household weight, and say so. If
         a `maxPositionWeightPct` cap applies, keep `portfolioFit.targetWeightPct`
-        at or below it. The writer enforces both deterministically at commit
-        (a no-add for an excluded name, a cap clamp otherwise) and never
-        increases the size — so make your output agree with the size it
-        enforces. The mandate moves SIZE and a derived verdict, NEVER the
-        rating.
+        at or below it — EXCEPT when the name is ALREADY held above the cap at
+        the household level (an at-purchase cap): do NOT propose trimming it to
+        the cap. The single-ticker desk never forces a rebalance/trim, so
+        `portfolioFit.targetWeightPct` must stay at or above the current
+        household weight — hold the current position (action "hold") and cap only
+        further ADDS beyond it. Concretely, the ceiling for an add is
+        `max(cap, current household weight)`. The writer enforces both
+        deterministically at commit (a no-add for an excluded name, a cap clamp
+        floored at the current weight otherwise) and only ever REDUCES the size
+        — so make your output agree with the size it enforces. The mandate moves
+        SIZE and a derived verdict, NEVER the rating.
     If no `<portfolioMandate>` block is present, set both `policyFit` fields to
     empty strings and size on the evidence alone.
 

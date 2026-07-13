@@ -149,7 +149,7 @@ export function PortfolioPane({
   // Durable household portfolio mandate (FIX-761) — live-read + write via the
   // user-scoped resource; the summary chip + editor update on save/clear with no
   // manual refetch.
-  const { mandate, saveMandate, clearMandate } = usePortfolioMandate(session);
+  const { mandate, ready: mandateReady, saveMandate, clearMandate } = usePortfolioMandate(session);
   // Last-known prices from the durable `app.quotes` table via the REST hook
   // (FIX-823) — the retired `portfolioQuotes` resource's `useResource` read is
   // gone. The refresh route upserts the table; `refetchQuotes` runs once that
@@ -663,15 +663,19 @@ export function PortfolioPane({
         <button
           type="button"
           onClick={() => setMandateOpen(true)}
-          disabled={!hasSession}
+          disabled={!hasSession || !mandateReady}
           title={
-            hasSession
-              ? "Edit the household portfolio mandate"
-              : "Run an analysis first to bind a session"
+            !hasSession
+              ? "Run an analysis first to bind a session"
+              : !mandateReady
+                ? "Loading the portfolio mandate…"
+                : "Edit the household portfolio mandate"
           }
           className={cn(
             "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px]",
-            !hasSession ? "cursor-not-allowed opacity-50" : "hover:bg-[color:var(--c-surface-2)]",
+            !hasSession || !mandateReady
+              ? "cursor-not-allowed opacity-50"
+              : "hover:bg-[color:var(--c-surface-2)]",
           )}
         >
           {mandate !== null ? "Edit mandate" : "Set mandate"}

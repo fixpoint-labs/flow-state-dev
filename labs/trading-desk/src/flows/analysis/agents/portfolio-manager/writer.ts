@@ -319,6 +319,24 @@ export const commitPortfolioManagerMemo = handler({
           };
 
     const weightDeltaPct = targetWeightPct - currentWeightPct;
+
+    // Keep the hero's `metrics.size` chip in sync with the clamped size. Any
+    // downward clamp (FIX-752 worth-it/capacity, or the FIX-761 cap/exclusion)
+    // lowers `targetWeightPct` below the LLM's proposal, but `metrics.size` is the
+    // model's pre-gate display string — so a capped run could advertise "8%" in
+    // the header while the portfolio-fit / policy panels show "2%". When a clamp
+    // reduced the size, overwrite the size chip with the enforced figure so the
+    // user-facing recommendation is internally consistent (the enforced number is
+    // the one the desk stands behind). Untouched when no clamp fired (preserve the
+    // model's own precision/format).
+    const sizeWasClamped = targetWeightPct < decision.portfolioFit.targetWeightPct;
+    const displayMetrics = sizeWasClamped
+      ? {
+          ...decision.metrics,
+          size: `${Number.isInteger(targetWeightPct) ? targetWeightPct : targetWeightPct.toFixed(1)}%`,
+        }
+      : decision.metrics;
+
     // Validate the LLM's suggested account LABEL against the real account list.
     // A hallucinated / absent label (or no portfolio) resolves to "" — never
     // invent an account the user does not have (real-money gate §1.8).
@@ -349,7 +367,7 @@ export const commitPortfolioManagerMemo = handler({
         headline: decision.headline,
         rating: decision.rating,
         body: decision.body,
-        metrics: decision.metrics,
+        metrics: displayMetrics,
         decisionSummary: decision.decisionSummary,
         finalRating,
         decisionConfidence: decision.decisionConfidence,

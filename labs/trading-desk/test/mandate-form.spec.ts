@@ -80,6 +80,22 @@ describe("mandateRecordToForm round-trip", () => {
     expect(rebuilt.targetAllocation?.[0]).toMatchObject({ assetClass: "equity", targetPct: 70 });
     expect(rebuilt.riskAppetite).toBe("aggressive-growth");
   });
+
+  it("drops a stale/unknown appetite id to '' so the editor can't resubmit it", () => {
+    // The seed tolerates a stale appetite id (old constraints still apply), but
+    // the dropdown only offers known ids — pre-filling the stale id would silently
+    // resubmit it and the save would be rejected after the dialog closed.
+    const record = portfolioMandateSchema.parse({
+      objectives: { riskTolerance: "moderate" },
+      constraints: {},
+      rebalancing: {},
+      timeHorizon: {},
+      riskAppetite: "totally-made-up",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(mandateRecordToForm(record).riskAppetite).toBe("");
+  });
 });
 
 describe("mandateFormError", () => {
