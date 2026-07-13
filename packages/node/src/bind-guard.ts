@@ -57,6 +57,13 @@ export interface NetworkBindGuardOptions {
  * same `app` reuses it rather than re-initializing stores) and inspects each
  * registered flow's `authentication.resolvePrincipal`.
  *
+ * Because the caller awaits this before binding, store initialization happens
+ * before the port is listening on a non-loopback host — this forgoes `serve()`'s
+ * bind-immediately-then-`/healthz`-503 cold start for that window, in exchange for
+ * failing fast when the app can't start (a deliberate trade for a production
+ * command). The precise, init-free alternative is to surface the unauthenticated
+ * flow set on `FlowState.meta` framework-side; see `docs/specs/FIX-893.md` §8.
+ *
  * @throws Error naming the unauthenticated flow kinds when `host` is non-loopback,
  *   `allowUnauthenticated` is not set, and at least one served flow is on the
  *   default resolver.

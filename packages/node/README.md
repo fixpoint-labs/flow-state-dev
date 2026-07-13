@@ -103,14 +103,22 @@ anyone who can reach the port. It throws for a non-loopback `host` unless
 `isLoopbackHost(host)` is the loopback predicate it uses.
 
 ```ts
-import { assertNetworkBindIsAuthenticated, isLoopbackHost } from "@flow-state-dev/node";
+import { serve, assertNetworkBindIsAuthenticated } from "@flow-state-dev/node";
+import flowstate from "./fsdev.config";
 
-assertNetworkBindIsAuthenticated(app, { host: "0.0.0.0" });
+const host = process.env.HOST ?? "0.0.0.0";
+
+// Await the guard before serving — it rejects for a network host with an
+// unauthenticated flow, so serving must not proceed until it resolves.
+await assertNetworkBindIsAuthenticated(flowstate, { host });
+await serve(flowstate, { host });
 ```
 
 `fsdev serve` runs this before it binds. Call it yourself from a hand-written
 entrypoint that adds custom middleware, so a network deploy fails closed the same
-way.
+way. It resolves the runtime (`getRuntime()`) to inspect each flow's
+authentication, so on a non-loopback host store initialization happens before the
+port binds — a deliberate fail-fast if the app is misconfigured at boot.
 
 ## Health checks and PaaS deployment
 
