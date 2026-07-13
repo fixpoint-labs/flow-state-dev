@@ -140,11 +140,14 @@ export function buildPortfolioContext(
  *
  * Three honest outcomes:
  *   - `0` — the name is NOT held (initiating a position). A real zero, not unknown.
- *   - a positive number — the name is held and at least one holding is priced;
- *     the sum of the priced rows' weights for the ticker.
- *   - `null` — the name IS held but NONE of its holdings can be priced (or the
- *     snapshot is null). UNKNOWN — the policy gate must skip the clamp rather than
- *     coerce to 0 (a `?? 0` would fabricate a full exit / forced trim, BP-020).
+ *   - a positive number — the name is held and EVERY holding for it is priced;
+ *     the sum of the rows' weights for the ticker.
+ *   - `null` — the name IS held but AT LEAST ONE of its holdings can't be priced.
+ *     UNKNOWN — a partial sum would UNDERSTATE the true
+ *     household weight, so the cap floor (`max(cap, weight)`) could sit too low and
+ *     force a trim of an actually-larger position. The policy gate must skip the
+ *     clamp rather than act on an incomplete weight (a `?? 0` / partial sum would
+ *     fabricate a forced trim / no-add violation, BP-020).
  */
 export function householdTickerWeight(
   snapshot: PortfolioContextInput | null,
@@ -155,7 +158,8 @@ export function householdTickerWeight(
     (h) => h.ticker.toUpperCase() === tickerUpper,
   );
   if (rows.length === 0) return 0; // not held → initiating
-  const priced = rows.filter((h) => h.weightPct != null);
-  if (priced.length === 0) return null; // held but entirely unpriced → unknown
-  return priced.reduce((s, h) => s + (h.weightPct ?? 0), 0);
+  // ANY unpriced lot → the household weight is unknowable: a partial sum would
+  // understate it and the gate could clamp/force-trim an actually-larger position.
+  if (rows.some((h) => h.weightPct == null)) return null;
+  return rows.reduce((s, h) => s + (h.weightPct ?? 0), 0);
 }

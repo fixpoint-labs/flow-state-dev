@@ -142,3 +142,11 @@ A summary chip on the Portfolio toolbar shows the active mandate at a glance.
   `assetClass` enum only.
 - Target allocation is a **household** target (asset location); per-account
   appetite exceptions are retained via `account.riskMandate`.
+- **Scoped-run cap precision.** The `maxPositionWeightPct` cap and the analyzed
+  ticker's household weight are both household-NAV percentages. On a *scoped* run
+  (`selectedAccountIds` set), the PM sizes against the scoped snapshot, so its
+  `targetWeightPct` is a percentage of the scoped NAV. Clamping a scoped-NAV
+  target to a household-NAV cap therefore only ever **over-restricts** on scoped
+  runs (the safe direction — a position can never exceed the household cap; it may
+  be held stricter). Converting the cap into the scoped denominator is a deferred
+  refinement; the common run (no account selection) has one NAV and no mismatch.

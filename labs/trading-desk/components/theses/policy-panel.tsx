@@ -54,8 +54,11 @@ export function PolicyPanel({ decision }: PolicyPanelProps): ReactElement {
         </span>
       </div>
 
-      {/* Clamp badges — only shown when a hard constraint fired. */}
-      {decision.positionCapClamped || decision.excluded ? (
+      {/* Clamp badges — a HARD constraint that actually fired (an enforced
+          no-add/cap requires a known household weight). When the weight is
+          unknown (held-but-unpriced) the clamp was SKIPPED, so we show a
+          skipped-enforcement note below rather than an "enforced" badge. */}
+      {decision.householdWeightKnown && (decision.positionCapClamped || decision.excluded) ? (
         <div className="flex flex-wrap items-center gap-2 text-[10.5px]">
           {decision.excluded ? (
             <span className="rounded-sm border border-[color:var(--c-warn)]/40 bg-[color:var(--c-warn)]/10 px-1.5 py-0.5 text-[color:var(--c-warn)]">
@@ -70,12 +73,14 @@ export function PolicyPanel({ decision }: PolicyPanelProps): ReactElement {
         </div>
       ) : null}
 
-      {/* Held-but-unpriced honesty: the clamp was skipped, not satisfied. */}
+      {/* Held-but-unpriced honesty: the clamp was skipped, NOT satisfied — never
+          present it as an enforced no-add. The action verb is still forced away
+          from add for an excluded name (writer), so this is only a size caveat. */}
       {!decision.householdWeightKnown ? (
         <p className="text-[10.5px] text-[color:var(--c-fg-faint)]">
-          The held position could not be priced, so the cap/exclusion could not be
-          enforced without a market price — treat the size as unconstrained by the
-          mandate for this run.
+          {decision.excluded
+            ? "This name is on the exclusion list, but the held position could not be priced, so the no-add size floor could not be computed for this run — the size is not mandate-constrained here (the decision is still not an add)."
+            : "The held position could not be priced, so the cap could not be enforced without a market price — treat the size as unconstrained by the mandate for this run."}
         </p>
       ) : null}
 

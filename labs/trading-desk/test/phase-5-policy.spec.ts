@@ -122,7 +122,7 @@ function decision(targetWeightPct: number, finalRating: "Hold" | "Buy" = "Buy") 
 
 type PmDelta = {
   finalRating: string;
-  portfolioFit: { targetWeightPct: number };
+  portfolioFit: { targetWeightPct: number; action: string };
   policyDecision: null | {
     mandatePresent: boolean;
     policyVerdict: "within-policy" | "capped" | "excluded" | "no-mandate";
@@ -173,7 +173,7 @@ describe("Phase 5 durable-mandate policy gate", () => {
     expect(d.policyDecision?.mandatePresent).toBe(true);
   });
 
-  it("no-adds an excluded name and records an 'excluded' verdict", async () => {
+  it("no-adds an excluded name, records 'excluded', and downgrades the action from add", async () => {
     const d = await commit({
       portfolioMandate: mandate({ exclusions: ["NVDA"] }),
       householdTickerWeightPct: 3, // held at 3%
@@ -182,6 +182,32 @@ describe("Phase 5 durable-mandate policy gate", () => {
     expect(d.portfolioFit.targetWeightPct).toBe(3); // no-add to current
     expect(d.policyDecision?.excluded).toBe(true);
     expect(d.policyDecision?.policyVerdict).toBe("excluded");
+    // An excluded name can never be published as an add (the card must not render
+    // a hard no-add as a green add).
+    expect(d.portfolioFit.action).toBe("hold");
+  });
+
+  it("downgrades the action for an excluded name even when unpriced (clamp skipped)", async () => {
+    const d = await commit({
+      portfolioMandate: mandate({ exclusions: ["NVDA"] }),
+      householdTickerWeightPct: null, // held but unpriced → no numeric clamp
+      targetWeightPct: 8,
+    });
+    // The size is left unchanged (never fabricate an exit), but the ACTION still
+    // must not assert an add for an excluded name.
+    expect(d.portfolioFit.targetWeightPct).toBe(8);
+    expect(d.policyDecision?.householdWeightKnown).toBe(false);
+    expect(d.portfolioFit.action).toBe("hold");
+  });
+
+  it("keeps the add action for a merely capped (still-adding) name", async () => {
+    const d = await commit({
+      portfolioMandate: mandate({ maxPositionWeightPct: 5 }),
+      householdTickerWeightPct: 2, // held at 2%, capped buy up to 5% is still an add
+      targetWeightPct: 8,
+    });
+    expect(d.portfolioFit.targetWeightPct).toBe(5);
+    expect(d.portfolioFit.action).toBe("add"); // a capped buy is a legitimate add
   });
 
   it("leaves size untouched under an advisory-only mandate (within-policy)", async () => {

@@ -276,6 +276,13 @@ export const commitPortfolioManagerMemo = handler({
     // and every effect is downward-only. `preGatePolicyTargetPct` is the size
     // entering the gate (post-FIX-752), so a clamp is attributable to the policy
     // cap vs the FIX-752 gate.
+    // NOTE (scoped-run cap precision): `householdWeightPct` and the mandate cap are
+    // household-NAV percentages; on a scoped run the PM's `targetWeightPct` is a
+    // percentage of the scoped snapshot's NAV. Clamping the scoped target to the
+    // household cap only ever OVER-restricts on a scoped run (the safe direction —
+    // a name can never exceed the household cap), and the common no-selection run
+    // has one NAV so there is no mismatch. Converting units is a deferred
+    // refinement (see docs/portfolio-mandate.md).
     const preGatePolicyTargetPct = targetWeightPct;
     const gate = computePolicyGate({
       mandate: ctx.session.state.portfolioMandate,
@@ -284,6 +291,19 @@ export const commitPortfolioManagerMemo = handler({
       householdWeightPct: ctx.session.state.householdTickerWeightPct,
     });
     targetWeightPct = gate.targetWeightPct;
+    // An EXCLUDED name can NEVER be published as an add/initiate — the mandate
+    // says the name is never added to. This holds even on the unpriced-held branch
+    // (where we could not numerically clamp the size): the exclusion is known, so
+    // the ACTION must not assert an increase (the PmHero card colors/labels off
+    // `action`, so a hard no-add must not render as a green add). Downgrade to
+    // "hold"; a trim/exit/hold the PM already chose is left intact (reducing or
+    // holding an excluded name is fine). The `maxPositionWeight` cap is NOT
+    // overridden here — a capped buy is still a legitimate (smaller) add.
+    const gatedAction =
+      gate.excluded &&
+      (decision.portfolioFit.action === "add" || decision.portfolioFit.action === "initiate")
+        ? "hold"
+        : decision.portfolioFit.action;
     const policyDecision: PolicyDecision | null =
       gate.policyVerdict === "no-mandate"
         ? null
@@ -354,7 +374,9 @@ export const commitPortfolioManagerMemo = handler({
         // after the worth-it/capacity clamps, so the published size, the delta,
         // and the decision snapshot all agree.
         portfolioFit: {
-          action: decision.portfolioFit.action,
+          // The policy-gated action: an excluded name never publishes add/initiate
+          // (FIX-761), so the card can't render a hard no-add as a green add.
+          action: gatedAction,
           targetWeightPct,
           sizingRationale: decision.portfolioFit.sizingRationale,
           concentrationRisk: decision.portfolioFit.concentrationRisk,
