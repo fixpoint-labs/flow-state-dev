@@ -136,6 +136,18 @@ export const portfolioDecisionOutputSchema = z.object({
     // mandate-blind run. Never lifts the hard capacity veto.
     mandateOverrideReason: z.string(),
   }),
+  // FIX-761 — the PM's NARRATIVE reading of the buy against the durable household
+  // mandate (IPS). NARRATIVE ONLY (BP-016 strict: two required strings). The
+  // deterministic policy verdict + the hard size clamp (max-position cap +
+  // exclusion no-add) are DERIVED at commit from the frozen mandate + the
+  // household snapshot (the agreesWithTrader precedent), so the model cannot
+  // assert its way past a standing constraint. Both "" on a mandate-blind run.
+  policyFit: z.object({
+    // The read of the buy against target allocation / drift (advisory).
+    allocationRead: z.string(),
+    // How the standing constraints (cap, min-cash, exclusions) shaped the size.
+    constraintRead: z.string(),
+  }),
   // FIX-676 — URLs the PM actually fetched while corroborating a final claim via
   // the `corroborate` preset. Null when nothing was fetched and always null on
   // `fast`. Rendered as a "Sources" footer.
@@ -171,6 +183,10 @@ export const portfolioManagerGenerator = generator({
       // durable "why" + invalidation conditions) when deciding and sizing the
       // portfolio-fit verdict. Thesis-blind when none is recorded.
       standingThesis: true,
+      // FIX-761 — the durable household mandate (IPS): the PM sizes with the
+      // target allocation + standing constraints in view and narrates `policyFit`.
+      // The hard cap/exclusion clamp is derived at commit. Mandate-blind when none.
+      portfolioMandate: true,
       // FIX-676 — final corroboration: cost-gated web search+fetch to verify a
       // specific claim before signing the decision. `corroborate` also carries
       // the references ledger.

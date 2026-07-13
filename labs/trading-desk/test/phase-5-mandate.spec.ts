@@ -121,6 +121,10 @@ function decision(opts: {
       sizeStance: "stance",
       mandateOverrideReason: opts.overrideReason ?? "",
     },
+    policyFit: {
+      allocationRead: "",
+      constraintRead: "",
+    },
     citations: null,
   };
 }

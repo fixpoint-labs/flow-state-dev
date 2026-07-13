@@ -61,6 +61,20 @@ export const decisionSnapshotStateSchema = z.object({
   // deterministic signal the goal check reads to prove the standing thesis was
   // injected. Null on a stopped/in-progress run that never reached the PM.
   hasStandingThesis: z.boolean().nullable().default(null),
+  // Durable portfolio-mandate decision (FIX-761). The machine-scoreable record of
+  // how the household mandate's standing constraints shaped the size — the goal
+  // check's read path (`policy-steers-sizing`). Derived in the PM commit, never
+  // LLM-emitted. Null on a mandate-blind / stopped run.
+  mandatePresent: z.boolean().nullable().default(null),
+  policyVerdict: z
+    .enum(["within-policy", "capped", "excluded", "no-mandate"])
+    .nullable()
+    .default(null),
+  positionCapClamped: z.boolean().nullable().default(null),
+  excluded: z.boolean().nullable().default(null),
+  // The target entering the policy gate (post-FIX-752, pre-cap/exclusion clamp) —
+  // so a clamp is attributable to the policy cap vs the FIX-752 gate.
+  preGatePolicyTargetPct: z.number().nullable().default(null),
   // Provenance.
   decidedAt: z.string(), // ISO commit time
   // Outcome-tracking fields — NULL on write; a FUTURE feature fills these.
@@ -106,6 +120,11 @@ export const decisionSnapshotResource = defineResource({
       "worstCaseReturnPct",
       "capacityVetoed",
       "hasStandingThesis",
+      "mandatePresent",
+      "policyVerdict",
+      "positionCapClamped",
+      "excluded",
+      "preGatePolicyTargetPct",
       "decidedAt",
       "outcomeRealizedPrice",
       "outcomeAsOf",

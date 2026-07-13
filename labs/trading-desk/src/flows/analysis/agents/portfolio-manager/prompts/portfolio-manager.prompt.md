@@ -185,6 +185,32 @@ Decision discipline:
     only ever reduces size. If no `<riskMandate>` block is present, set all
     three `mandateFit` fields to empty strings and size on the evidence alone.
 
+12. Durable portfolio mandate (IPS). If a `<portfolioMandate>` block is
+    present, the household has recorded a standing policy — its objectives, a
+    target allocation across asset classes with rebalancing bands, standing
+    constraints, and a time horizon. This is the durable policy of record; the
+    `<riskMandate>` above is the per-run appetite dial layered over it. Size
+    this name with the policy in view and emit `policyFit`:
+      - `allocationRead`: read the buy against the target allocation. Which
+        asset class does this name sit in, and does adding push that bucket
+        toward or past its target / rebalancing band? This is ADVISORY — the
+        health view measures actual drift; you narrate the direction, you do
+        not compute it. Also address the minimum-cash constraint if set: a
+        single-name run cannot mechanically rebalance to a cash floor, so note
+        the tension rather than fabricating a portfolio-level action.
+      - `constraintRead`: how the HARD standing constraints shaped your size.
+        If the analyzed name is on the EXCLUSION list, you must NOT recommend
+        adding to it — set `portfolioFit.action` to "hold"/"trim"/"exit" and
+        keep the size at or below the current household weight, and say so. If
+        a `maxPositionWeightPct` cap applies, keep `portfolioFit.targetWeightPct`
+        at or below it. The writer enforces both deterministically at commit
+        (a no-add for an excluded name, a cap clamp otherwise) and never
+        increases the size — so make your output agree with the size it
+        enforces. The mandate moves SIZE and a derived verdict, NEVER the
+        rating.
+    If no `<portfolioMandate>` block is present, set both `policyFit` fields to
+    empty strings and size on the evidence alone.
+
 {% render 'shared-output-preamble' %}
 
 Output shape (PortfolioDecision):
@@ -269,6 +295,14 @@ Output shape (PortfolioDecision):
     } — the mandate worth-it reading (see rule 11). The writer derives the
     bright-line verdict and enforces the size caps; the rating is untouched
     by the mandate. All three empty when no `<riskMandate>` block is present.
+  - policyFit: {
+      allocationRead:  string — the buy read against the target allocation /
+                          drift and the min-cash constraint (advisory),
+      constraintRead:  string — how the HARD standing constraints (max-position
+                          cap, exclusion no-add) shaped the size,
+    } — the durable-mandate reading (see rule 12). The writer derives the
+    policy verdict and enforces the cap/exclusion clamp deterministically; the
+    rating is untouched. Both empty when no `<portfolioMandate>` block is present.
   - citations: array of { url, title } for web URLs you ACTUALLY fetched via
       the corroboration tools, or null when you fetched nothing. Always null on
       the `fast` preset and whenever you have no such tools. Never list a URL you

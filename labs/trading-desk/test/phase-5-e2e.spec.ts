@@ -366,6 +366,7 @@ function portfolioManagerStructuredOutput(
         sizeStance: "",
         mandateOverrideReason: "",
       },
+      policyFit: { allocationRead: "", constraintRead: "" },
       citations: null,
     },
   };

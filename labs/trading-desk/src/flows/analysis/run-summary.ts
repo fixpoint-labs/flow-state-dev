@@ -92,6 +92,17 @@ export const runSummaryStateSchema = z.object({
   // Null on a stopped / errored run that never reached the PM.
   hasStandingThesis: z.boolean().nullable().default(null),
 
+  // Durable portfolio-mandate echo (FIX-761) — the `policy-steers-sizing` goal
+  // check's read path. Null on a mandate-blind / stopped run.
+  mandatePresent: z.boolean().nullable().default(null),
+  policyVerdict: z
+    .enum(["within-policy", "capped", "excluded", "no-mandate"])
+    .nullable()
+    .default(null),
+  positionCapClamped: z.boolean().nullable().default(null),
+  excluded: z.boolean().nullable().default(null),
+  preGatePolicyTargetPct: z.number().nullable().default(null),
+
   // Per-memo status + an error rollup.
   memos: z.array(runSummaryMemoSchema),
   memoErrors: z.number(),
@@ -191,6 +202,12 @@ export function buildRunSummary(input: BuildRunSummaryInput): RunSummary {
     rewardToRiskLossAdjustedGlr: decision?.rewardToRiskLossAdjustedGlr ?? null,
     worstCaseReturnPct: decision?.worstCaseReturnPct ?? null,
     hasStandingThesis: decision?.hasStandingThesis ?? null,
+
+    mandatePresent: decision?.mandatePresent ?? null,
+    policyVerdict: decision?.policyVerdict ?? null,
+    positionCapClamped: decision?.positionCapClamped ?? null,
+    excluded: decision?.excluded ?? null,
+    preGatePolicyTargetPct: decision?.preGatePolicyTargetPct ?? null,
 
     memos: memoLines,
     memoErrors,

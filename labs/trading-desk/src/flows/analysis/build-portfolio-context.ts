@@ -130,3 +130,32 @@ export function buildPortfolioContext(
     holdings,
   };
 }
+
+/**
+ * The analyzed ticker's HOUSEHOLD weight (% of the full-book NAV) from a computed
+ * snapshot — the reference the FIX-761 household `maxPositionWeightPct` cap and
+ * exclusion no-add are measured against. Built at seed from the pre-scoping
+ * `allAccounts` snapshot so a scoped run still measures a household cap against
+ * the household, not one account.
+ *
+ * Three honest outcomes:
+ *   - `0` — the name is NOT held (initiating a position). A real zero, not unknown.
+ *   - a positive number — the name is held and at least one holding is priced;
+ *     the sum of the priced rows' weights for the ticker.
+ *   - `null` — the name IS held but NONE of its holdings can be priced (or the
+ *     snapshot is null). UNKNOWN — the policy gate must skip the clamp rather than
+ *     coerce to 0 (a `?? 0` would fabricate a full exit / forced trim, BP-020).
+ */
+export function householdTickerWeight(
+  snapshot: PortfolioContextInput | null,
+  ticker: string,
+): number | null {
+  const tickerUpper = ticker.toUpperCase();
+  const rows = (snapshot?.holdings ?? []).filter(
+    (h) => h.ticker.toUpperCase() === tickerUpper,
+  );
+  if (rows.length === 0) return 0; // not held → initiating
+  const priced = rows.filter((h) => h.weightPct != null);
+  if (priced.length === 0) return null; // held but entirely unpriced → unknown
+  return priced.reduce((s, h) => s + (h.weightPct ?? 0), 0);
+}

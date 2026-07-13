@@ -98,6 +98,34 @@ export const mandateDecisionSchema = z.object({
 
 export type MandateDecision = z.infer<typeof mandateDecisionSchema>;
 
+/** Phase 5 durable portfolio-mandate decision mirror (FIX-761). Only the
+ *  portfolioManager memo populates this; null on a mandate-blind run (the panel
+ *  is omitted). The verdict + gate flags are DERIVED at commit (never the LLM),
+ *  from the frozen household mandate + the household snapshot; the two narrative
+ *  strings mirror the PM's `policyFit`. */
+export const policyDecisionSchema = z.object({
+  /** True when a durable mandate reached the decision tier. */
+  mandatePresent: z.boolean(),
+  /** The single-name policy verdict, derived at commit. */
+  policyVerdict: z.enum(["within-policy", "capped", "excluded", "no-mandate"]),
+  /** The commit clamped `targetWeightPct` down to the `maxPositionWeight` cap. */
+  positionCapClamped: z.boolean(),
+  /** The analyzed name is on the mandate's exclusion list (hard no-add). */
+  excluded: z.boolean(),
+  /** False when a held analyzed name couldn't be priced, so the cap/exclusion
+   *  clamp was SKIPPED (not satisfied) rather than fabricated. */
+  householdWeightKnown: z.boolean(),
+  /** The target entering the policy gate — after the FIX-752 clamp, BEFORE the
+   *  cap/exclusion clamp — so a clamp is attributable to the policy cap vs the
+   *  FIX-752 gate (the goal check's `preGatePolicyTargetPct` read). */
+  preGatePolicyTargetPct: z.number(),
+  // The PM's interpretive narrative (mirrored from `policyFit`).
+  allocationRead: z.string(),
+  constraintRead: z.string(),
+});
+
+export type PolicyDecision = z.infer<typeof policyDecisionSchema>;
+
 /** Structured memo body the renderer dispatches on. Mirrors the Claude Design
  *  handoff's `Thesis` shape so the same component renders fixture and live
  *  outputs identically. Fields are nullable while the memo is `pending` or
@@ -378,6 +406,12 @@ export const memoStateSchema = z.object({
   // so the PmHero panel reads the verdict + figure + narrative from one place.
   // Null on a mandate-blind run.
   mandateDecision: mandateDecisionSchema.nullable().default(null),
+  // Durable portfolio-mandate decision mirror (FIX-761), projected onto the PM
+  // memo at commit so the PmHero policy-fit block reads the verdict + clamps +
+  // narrative from one place. Null on a mandate-blind run. An unmodeled patch
+  // would be stripped by `safeParse` (the `mandateDecision` precedent), so it is
+  // modeled here.
+  policyDecision: policyDecisionSchema.nullable().default(null),
 });
 
 export type MemoState = z.infer<typeof memoStateSchema>;

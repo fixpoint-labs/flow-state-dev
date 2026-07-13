@@ -35,9 +35,18 @@ import { decisionSnapshotResource } from "../decision-snapshot-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
-import { thesesCollection, thesisKey } from "../../portfolio/portfolio-resources";
+import {
+  portfolioMandateResource,
+  thesesCollection,
+  thesisKey,
+} from "../../portfolio/portfolio-resources";
 import type { ThesisRecord } from "../../portfolio/thesis-schema";
-import { buildPortfolioContext } from "../build-portfolio-context";
+import {
+  toleranceToAppetite,
+  validatePortfolioMandate,
+  type PortfolioMandate,
+} from "../../portfolio/portfolio-mandate-schema";
+import { buildPortfolioContext, householdTickerWeight } from "../build-portfolio-context";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 import { getRepository } from "@/lib/portfolio-db";
 import { toAccountStates } from "@/src/db/repository";
@@ -61,6 +70,10 @@ export const seedSession = handler({
   sessionStateSchema,
   resources: {
     theses: thesesCollection,
+    // FIX-761 — the durable household mandate. Declared here (the `theses`
+    // cross-flow precedent) so the runtime loads it; without the declaration the
+    // seed read would never see it.
+    portfolioMandate: portfolioMandateResource,
     financialsData: financialsDataResource,
     quantData: quantDataResource,
     technicalData: technicalDataResource,
@@ -154,16 +167,62 @@ export const seedSession = handler({
       snapshotAsOf,
     );
 
-    // Resolve the effective risk-appetite mandate (FIX-752): a per-run override
-    // wins; else the most-conservative default among the selected accounts (all
-    // accounts when none are selected, mirroring the snapshot scoping above);
-    // else null (mandate-blind). Frozen as the full dial object so the
-    // reward-to-risk tap and the PM commit read it without re-resolving — the
-    // `portfolio`-snapshot precedent. An unknown / stale stored id resolves to
-    // null, never throws.
+    // Durable household portfolio mandate (FIX-761), read from the user-scoped
+    // `portfolioMandate` resource and frozen for the run. Presence is a REQUIRED
+    // field (`createdAt`), NOT `!= null`: the engine normalizes an absent/cleared
+    // single resource to `{}`. Seed RE-RUNS `validatePortfolioMandate` on the
+    // frozen record and degrades to mandate-blind if it reports any issue (§4.5) —
+    // a cheap pure call that catches a schema-valid-but-business-invalid record (a
+    // hand-authored fixture, a manual seed, a record written before a rule was
+    // added). A stale/unknown `riskAppetite` id is NOT a validation issue (it is a
+    // save-only guard), so such a record keeps its constraints and only the
+    // appetite degrades to null below. Never throws.
+    const rawMandate = ctx.resources.portfolioMandate.state as
+      | PortfolioMandate
+      | null
+      | undefined;
+    const mandatePresent =
+      rawMandate != null && typeof rawMandate.createdAt === "string";
+    const portfolioMandate =
+      mandatePresent && validatePortfolioMandate(rawMandate as PortfolioMandate).length === 0
+        ? (rawMandate as PortfolioMandate)
+        : null;
+
+    // Household weight of the analyzed ticker (FIX-761) — the reference the
+    // household `maxPositionWeightPct` cap + exclusion no-add measure against.
+    // Computed from the pre-scoping `allAccounts` snapshot, so a scoped run still
+    // measures a HOUSEHOLD cap against the whole book. When nothing is scoped the
+    // `portfolio` snapshot already IS the household; only a scoped run needs the
+    // pre-scoping recompute (an extra quote read for the full held set).
+    let householdSnapshot = portfolio;
+    if (input.selectedAccountIds.length && allAccounts.length) {
+      const householdTickers = [
+        ...new Set(allAccounts.flatMap((a) => a.holdings.map((h) => h.ticker.toUpperCase()))),
+      ];
+      const householdQuoteRows = await repo.getQuotes(householdTickers);
+      householdSnapshot = buildPortfolioContext(
+        allAccounts,
+        householdQuoteRows.map((r) => ({ ticker: r.ticker, price: r.price, asOf: r.asOf })),
+        null,
+      );
+    }
+    const householdTickerWeightPct = householdTickerWeight(householdSnapshot, input.ticker);
+
+    // Resolve the effective risk-appetite mandate: a per-run override wins; else
+    // the most-conservative default among the selected accounts (all accounts when
+    // none are selected); else the IPS household appetite — the explicit
+    // `riskAppetite`, or DERIVED 1:1 from `objectives.riskTolerance` so a normal
+    // IPS that sets only a tolerance still steers the FIX-752 gate (a set tolerance
+    // never resolves to a null appetite); else null (mandate-blind). Frozen as the
+    // full dial object so the reward-to-risk tap and PM commit read it without
+    // re-resolving. An unknown / stale stored id resolves to null, never throws.
     const riskMandate =
       resolveMandate(input.riskMandate) ??
-      mostConservativeMandate(scoped.map((a) => a.riskMandate));
+      mostConservativeMandate(scoped.map((a) => a.riskMandate)) ??
+      resolveMandate(
+        portfolioMandate?.riskAppetite ??
+          toleranceToAppetite(portfolioMandate?.objectives?.riskTolerance),
+      );
 
     // Standing per-position thesis for this name (FIX-760), read from the
     // user-scoped `theses` collection (household × ticker, flowIsolation:false →
@@ -199,6 +258,12 @@ export const seedSession = handler({
       // Standing per-position thesis (FIX-760), frozen for the run. Null →
       // thesis-blind.
       standingThesis,
+      // Durable household portfolio mandate (FIX-761), frozen for the run. Null →
+      // mandate-blind (absent, cleared, or business-invalid).
+      portfolioMandate,
+      // Household weight of the analyzed ticker, frozen so the PM commit's policy
+      // gate measures the household cap/exclusion against the full book.
+      householdTickerWeightPct,
     });
     return input;
   },

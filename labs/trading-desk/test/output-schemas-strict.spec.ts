@@ -63,12 +63,12 @@ describe("Generator output schemas are OpenAI strict-mode compatible", () => {
     });
   }
 
-  // The nested `portfolioFit` (Slice 5) and `mandateFit` (FIX-752) objects are
-  // auto-covered by the portfolioDecisionOutputSchema case above, but assert the
-  // whole schema explicitly so a future change that loosens a nested field (e.g.
-  // `.optional()` on `suggestedAccount`, or `z.record` on a mandate field) fails
-  // with a clear, named signal.
-  it("Phase 5 portfolioDecisionOutputSchema (incl. nested portfolioFit + mandateFit) is strict-compatible", () => {
+  // The nested `portfolioFit` (Slice 5), `mandateFit` (FIX-752), and `policyFit`
+  // (FIX-761) objects are auto-covered by the portfolioDecisionOutputSchema case
+  // above, but assert the whole schema explicitly so a future change that loosens
+  // a nested field (e.g. `.optional()` on `suggestedAccount`, or `z.record` on a
+  // mandate/policy field) fails with a clear, named signal.
+  it("Phase 5 portfolioDecisionOutputSchema (incl. nested portfolioFit + mandateFit + policyFit) is strict-compatible", () => {
     expect(() => assertStrictCompatible(portfolioDecisionOutputSchema)).not.toThrow();
   });
 });
