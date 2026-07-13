@@ -22,11 +22,14 @@ type YahooClient = {
   chart: (
     ticker: string,
     opts: { period1: Date; period2: Date; interval: string },
+    moduleOptions?: { validateResult?: boolean },
   ) => Promise<{ quotes?: Array<Record<string, unknown>> }>;
   quoteSummary: (
     ticker: string,
     opts: { modules: string[] },
-    moduleOpts?: { validateResult?: boolean },
+    // yahoo-finance2's third arg: `validateResult: false` returns the raw result
+    // instead of throwing on a strict-schema miss (and silences the log).
+    moduleOptions?: { validateResult?: boolean },
   ) => Promise<Record<string, unknown | undefined>>;
 };
 
@@ -68,11 +71,18 @@ export async function fetchYahooChart(
   const period2 = new Date(input.date);
   const period1 = new Date(period2);
   period1.setUTCDate(period1.getUTCDate() - rangeToLookbackDays(input.range));
-  const result = await yahoo.chart(input.ticker, {
-    period1,
-    period2,
-    interval: "1d",
-  });
+  // `validateResult: false`: yahoo-finance2 throws on a strict-schema miss, and
+  // Yahoo intermittently returns incomplete `meta` (null `currency`, absent
+  // `regularMarketPrice`) — `meta` fields this function never reads. Without the
+  // flag that throw discards the OHLCV bars (built by the module transform, which
+  // runs before validation) over metadata we don't use. The bars are read
+  // defensively below, so we take what Yahoo returned. Same posture as the
+  // company-profile fetch; see that call for the full rationale.
+  const result = await yahoo.chart(
+    input.ticker,
+    { period1, period2, interval: "1d" },
+    { validateResult: false },
+  );
   const bars = (result.quotes ?? [])
     .filter((q) => q.open != null && q.close != null)
     .map((q) => ({
@@ -278,23 +288,29 @@ export async function fetchYahooCompanyProfile(
   input: ToolInput<"get_company_profile">,
 ): Promise<ToolOutput<"get_company_profile">> {
   const yahoo = await getYahoo();
+  // Yahoo spells class shares with a hyphen, not a dot (BRK.B → BRK-B); leaving
+  // the dot fails the lookup outright (the `fetchYahooSplits` precedent). This
+  // fetch has no fallback provider (Yahoo is the only sector source), so a
+  // dotted ticker silently never resolves — unlike price refresh, which falls
+  // through to Finnhub and never surfaces the gap.
+  const symbol = input.ticker.replace(/[./]/g, "-");
   // `assetProfile` carries sector/industry/business-description; `summaryDetail`
   // carries marketCap/currency; `quoteType` is the canonical home for the
   // company's display name and exchange — `assetProfile` does not include
   // `longName`/`shortName`, so the name has to come from `quoteType`.
   //
-  // `validateResult: false` is load-bearing, not a nicety. yahoo-finance2
-  // schema-validates the WHOLE result and THROWS when any requested module has a
-  // null/missing field the strict schema demands (a null `summaryDetail.currency`,
-  // a `quoteType` missing `exchange`/`shortName`) — discarding the good
-  // `assetProfile` sector alongside it and logging a noisy validation dump. Since
-  // every field below is read defensively (null-guarded), strict validation is
-  // pure downside here: skipping it returns the raw payload (and, per the library,
-  // forces its own `logErrors` off). The explicit no-name throw below still drives
-  // the tool's provider fallback, and the sector fill (`resolveSector`) no longer
-  // loses a real sector to an unrelated module's missing field.
+  // `validateResult: false`: yahoo-finance2 validates the WHOLE result against a
+  // strict schema and throws on any miss — a null `summaryDetail.currency` or a
+  // `quoteType` missing its exchange/timezone metadata (both common for real
+  // held tickers) would discard an otherwise-usable `assetProfile.sector`. This
+  // is a best-effort identity/sector lookup and every field below is read
+  // defensively (`stringFrom`/`numberFrom` tolerate missing values), so we take
+  // what Yahoo returned and still throw our own honest signal on a truly empty
+  // profile (below). NOT applied to the fundamentals/short-interest calls, where
+  // strict validation + provider-chain fallback is the correct honest-over-wrong
+  // behavior for numeric data feeding analyst reasoning.
   const summary = (await yahoo.quoteSummary(
-    input.ticker,
+    symbol,
     { modules: ["assetProfile", "summaryDetail", "quoteType"] },
     { validateResult: false },
   )) as Record<string, Record<string, unknown> | undefined>;
@@ -325,6 +341,32 @@ export async function fetchYahooCompanyProfile(
     websiteMetaDescription: null,
     searchSnippets: null,
   };
+}
+
+/**
+ * Yahoo's own instrument-kind discriminator (`"EQUITY"` / `"ETF"` /
+ * `"MUTUALFUND"` / `"CRYPTOCURRENCY"` / `"INDEX"` / ... — the `quoteType`
+ * field ON the `quoteType` module, not the module name). A minimal, separate
+ * fetch (one small module) from `fetchYahooCompanyProfile` — kept apart so
+ * this portfolio-only need can't reshape that function's `get_company_profile`
+ * tool contract, which the analysis pipeline also depends on. Used to tell a
+ * genuinely sectorless equity apart from a fund/crypto asset mistyped
+ * `assetType: "equity"` at import (FIX-762 follow-up). Returns null on any
+ * failure — the caller treats that as "can't tell, leave as-is".
+ */
+export async function fetchYahooQuoteKind(ticker: string): Promise<string | null> {
+  const yahoo = await getYahoo();
+  const symbol = ticker.replace(/[./]/g, "-");
+  try {
+    const summary = (await yahoo.quoteSummary(
+      symbol,
+      { modules: ["quoteType"] },
+      { validateResult: false },
+    )) as Record<string, Record<string, unknown> | undefined>;
+    return stringFrom(summary.quoteType?.quoteType);
+  } catch {
+    return null;
+  }
 }
 
 function stringFrom(raw: unknown): string | null {
