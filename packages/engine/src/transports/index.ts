@@ -38,7 +38,10 @@ export {
   TransportRouteCollisionError
 } from "./errors";
 
-export { defaultBodyUserIdPrincipalResolver } from "./auth/defaultBodyUserIdPrincipalResolver";
+export {
+  defaultBodyUserIdPrincipalResolver,
+  isDefaultBodyUserIdPrincipalResolver,
+} from "./auth/defaultBodyUserIdPrincipalResolver";
 
 export {
   createBearerSecretPrincipalResolver,

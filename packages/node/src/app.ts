@@ -14,6 +14,7 @@
  */
 import { Hono, type Context } from "hono";
 import {
+  dispatchDedicatedRoute,
   disposeFlowApiRouter,
   isFlowState,
   type FlowApiRouter,
@@ -38,6 +39,21 @@ export interface ServerApp {
    * (`@hono/node-server`, `hono/aws-lambda`, Bun, Deno).
    */
   readonly app: Hono;
+  /**
+   * Match `req` against ONLY a transport adapter's dedicated routes (those
+   * registered OUTSIDE `basePath`, e.g. the MCP adapter's `/mcp/:kind` under
+   * `dedicatedBasePath`). Returns the matched `Response`, or `null` when none
+   * match — it never touches the canonical flow-API handler. The app already
+   * uses this in its not-found fallback; a host that registers its own broad
+   * catch-all AFTER the app (e.g. `serve()`'s SPA `get("*")` for a `staticDir`)
+   * must call it first so a dedicated route isn't shadowed by that fallback.
+   * Blocks on init like the canonical handler, so a dedicated route (including a
+   * GET one — OAuth/webhook callbacks) is served once ready rather than falling
+   * through to the fallback during a store cold start. Returns null if init
+   * failed. The SPA host should call it only AFTER its static-file fast path, so
+   * real assets are still served without waiting on init.
+   */
+  tryDedicatedRoute(req: Request): Promise<Response | null>;
   /**
    * Dispose the resolved router and, when built from a `FlowState`, its stores.
    * Idempotent and safe to call before initialization settles.
@@ -151,11 +167,48 @@ export function createServerApp(
   // uncaught — the engine's canonical `handle` catches internally.
   hono.onError((_err, c) => c.json({ error: "Internal server error" }, 500));
 
-  // Match the prior `serve()` 404 shape (JSON, not Hono's default plain text).
-  hono.notFound((c) => c.json({ error: "Not found" }, 404));
+  // Dedicated-route match for a host that mounts its own broad catch-all AFTER
+  // the app — `serve()`'s SPA `get("*")` for a `staticDir`. It BLOCKS on init
+  // (awaits `routerPromise`) so a dedicated route — including a GET one, e.g. an
+  // OAuth/webhook callback — is served once ready instead of falling through to
+  // the SPA HTML during a store cold start. Returns null if init failed. The SPA
+  // host calls this only AFTER its static-file fast path, so real assets are
+  // still served from disk without waiting on init.
+  const tryDedicatedRoute = async (req: Request): Promise<Response | null> => {
+    let resolved: FlowApiRouter;
+    try {
+      resolved = await routerPromise;
+    } catch {
+      return null;
+    }
+    return dispatchDedicatedRoute(resolved, req, basePath);
+  };
+
+  // The last-resort fallback: anything Hono didn't otherwise route (in
+  // production, every miss; in `fsdev dev`, only the non-GET misses — the SPA
+  // `get("*")` catches GET). It serves ONLY dedicated out-of-`basePath` adapter
+  // routes, never the canonical flow-API handler, so the flow API (list-flows,
+  // actions, sessions) stays reachable ONLY under `basePath`: an out-of-prefix
+  // path like `/my-flow/run` (or a bare `GET /`) is a plain 404, not a leak.
+  //
+  // Unlike the SPA fallback it BLOCKS on init (awaits `routerPromise`) like the
+  // canonical handler: a dedicated route (e.g. `POST /mcp/:kind`) that arrives
+  // during a store cold start is served once ready instead of a spurious 404,
+  // and it has no static assets to stall. A permanent init failure 500s.
+  hono.notFound(async (c) => {
+    let resolved: FlowApiRouter;
+    try {
+      resolved = await routerPromise;
+    } catch {
+      return c.json({ error: "Server failed to initialize" }, 500);
+    }
+    const res = await dispatchDedicatedRoute(resolved, c.req.raw, basePath);
+    return res ?? c.json({ error: "Not found" }, 404);
+  });
 
   return {
     app: hono,
+    tryDedicatedRoute,
     async dispose() {
       try {
         await routerPromise;

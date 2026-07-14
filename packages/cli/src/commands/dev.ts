@@ -24,6 +24,7 @@ import { formatFailedImportSection } from "../resolve-flow";
 import { resolveRuntimeSource, assertNoFlowDirWithConfig } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
 import { CliError } from "../resolve-block";
+import { collectValues } from "../cli-options";
 import { EXIT_SUCCESS, EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR, EXIT_CONFIG_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 
 interface DevCommandOptions {
@@ -40,11 +41,6 @@ interface DevCommandOptions {
   config?: string | boolean;
   /** Override the working directory (defaults to process.cwd()). For tests. */
   cwd?: string;
-}
-
-/** Commander accumulator for repeatable options. */
-function collectValues(value: string, previous: string[] | undefined): string[] {
-  return (previous ?? []).concat(value);
 }
 
 /** Registers the `dev` subcommand on the given commander program. */

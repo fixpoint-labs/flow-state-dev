@@ -42,9 +42,14 @@ The filesystem store persists across local runs (under `.fsdev/data`); remove it
 
 The flow **fails closed**. `logActivity` / `listInbox` are reachable over the CLI (`fsdev run`, which supplies its built-in `cli-user` principal in-process) with no secret. Every HTTP transport is closed until `KH_MCP_SECRET` is set: the per-flow principal resolver throws without it, and the MCP adapter (`POST /mcp/knowledge-hub`) is not even mounted. With the secret set, the MCP endpoint authenticates via a bearer token.
 
-The HTTP host must forward `/mcp/*` to the Flow State router. The current
-`fsdev dev` host mounts only `/api/flows/*`, so it does not serve this dedicated
-route; standalone host support is tracked separately in FIX-893.
+```bash
+KH_MCP_SECRET=... pnpm serve       # fsdev serve: authenticated MCP endpoint (POST /mcp/knowledge-hub), no DevTool UI
+KH_MCP_SECRET=... pnpm fsdev dev   # same endpoint plus the DevTool UI, for local inspection
+```
+
+Both hosts serve the dedicated `/mcp/*` route: `serve()` from `@flow-state-dev/node`
+(which `fsdev serve` and `fsdev dev` both wrap) mounts dedicated adapter paths
+automatically, so no extra host wiring is needed.
 
 Hosted deployment and a durable shared store land with FIX-883, when a second process (the cron sweeper) actually needs them.
 

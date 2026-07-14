@@ -25,7 +25,7 @@ import {
 } from "./resolve-flow";
 import { loadFsdevConfig } from "./load-config";
 import { CliError } from "./resolve-block";
-import { EXIT_INVALID_ARGS } from "./exit-codes";
+import { EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR } from "./exit-codes";
 import { loadEnvFiles, loadExplicitEnvFiles } from "./load-env";
 
 /** Inputs shared by every command's runtime-resolution prelude. */
@@ -49,6 +49,16 @@ export interface ResolveRuntimeParams {
    * exactly as before this prelude was extracted.
    */
   beforeConfigLoad?: () => void;
+  /**
+   * Require a committed `fsdev.config.*` — never fall back to directory
+   * discovery. When set and no config is located, throws
+   * `CliError(EXIT_CONFIG_ERROR)` *before* `discoverFlows` runs, so a repo with
+   * conventional flow modules doesn't import/execute them (side effects,
+   * warnings) on the way to the error. `fsdev serve` uses this so production
+   * runs from a reviewable config, not ad-hoc scanning. A successful return is
+   * always `source: "config"`.
+   */
+  requireConfig?: boolean;
 }
 
 /** Config path: an `fsdev.config.*` was found and loaded. */
@@ -108,6 +118,18 @@ export async function resolveRuntimeSource(
 
   if (loaded !== undefined) {
     return { source: "config", cwd, flowState: loaded.flowState, configPath: loaded.path };
+  }
+
+  // Config-only mode: fail before discovery so no conventional flow modules are
+  // imported/executed on the way to the error (production runs from a committed
+  // config, not directory scanning).
+  if (params.requireConfig === true) {
+    throw new CliError(
+      `fsdev serve requires a committed fsdev.config.{ts,mts,js,mjs} in ${cwd}. ` +
+        `Production servers must run from a committed config, not directory discovery. ` +
+        `Create one, or pass --config <path>.`,
+      EXIT_CONFIG_ERROR,
+    );
   }
 
   // Discovery path: scan conventional directories. Import failures are warned to

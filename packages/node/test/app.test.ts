@@ -3,6 +3,7 @@ import {
   createFlowState,
   inMemoryStores,
   type FlowApiRouter,
+  type InboundTransportAdapter,
   type StoreAdapter,
 } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -127,11 +128,166 @@ describe("createServerApp — translation", () => {
     expect(res.status).toBe(405);
   });
 
-  it("replies 404 with a JSON body for an unmatched route", async () => {
-    const { app } = createServerApp(echoRouter);
+  it("normalizes a router 404 for an unmatched route to the canonical Not-Found body", async () => {
+    // Unmatched paths are delegated to the router (so dedicated adapter routes
+    // outside basePath are served); a router 404 normalizes back to this shape.
+    const notFoundRouter: FlowApiRouter = {
+      GET: async () =>
+        new Response(JSON.stringify({ error: "flow_not_found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      POST: async () => new Response(null, { status: 404 }),
+      PATCH: async () => new Response(null, { status: 404 }),
+      DELETE: async () => new Response(null, { status: 404 }),
+    };
+    const { app } = createServerApp(notFoundRouter);
     const res = await app.fetch(new Request(url("/nope")));
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "Not found" });
+  });
+
+  it("serves a transport adapter's dedicated path outside basePath", async () => {
+    // The MCP adapter under `dedicatedBasePath` registers `/mcp/:kind`, outside
+    // `/api/flows`. createFlowApiRouter matches custom routes by full URL; the
+    // app must hand such a request to the router rather than 404 it.
+    const adapter: InboundTransportAdapter = {
+      source: "test-dedicated",
+      createBindings: () => ({
+        routes: [
+          {
+            method: "POST",
+            path: "/custom/:id",
+            handler: (_req, ctx) =>
+              Promise.resolve(
+                new Response(JSON.stringify({ served: ctx.params.id }), {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                }),
+              ),
+          },
+        ],
+      }),
+    };
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: inMemoryStores() } },
+      adapters: [adapter],
+    });
+    const { app, dispose } = createServerApp(fs);
+    await fs.ready();
+    const served = await app.fetch(new Request(url("/custom/abc"), { method: "POST" }));
+    expect(served.status).toBe(200);
+    expect(await served.json()).toEqual({ served: "abc" });
+    // A path no adapter route matches still 404s with the canonical shape.
+    const miss = await app.fetch(new Request(url("/nothing")));
+    expect(miss.status).toBe(404);
+    expect(await miss.json()).toEqual({ error: "Not found" });
+    await dispose();
+  });
+
+  it("never exposes the canonical flow API outside basePath", async () => {
+    // Regression: the not-found fallback must serve ONLY dedicated adapter
+    // routes, never the canonical flow-API handler. An out-of-prefix action
+    // path must not execute, and a bare GET must not leak the flow list —
+    // both are reachable ONLY under `/api/flows`.
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: inMemoryStores() } },
+    });
+    const { app, dispose } = createServerApp(fs);
+    await fs.ready();
+
+    // Under basePath the action is reachable (202 Accepted), proving it exists.
+    // The URL segment is the flow's `kind` ("noop-flow"), not the map key.
+    const inPrefix = await app.fetch(
+      new Request(url("/api/flows/noop-flow/actions/ping"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: "u", input: {} }),
+      }),
+    );
+    expect(inPrefix.status).toBe(202);
+
+    // The same action OUTSIDE basePath falls to the not-found handler and 404s
+    // — it must NOT execute (codex P1).
+    const outOfPrefix = await app.fetch(
+      new Request(url("/noop-flow/actions/ping"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: "u", input: {} }),
+      }),
+    );
+    expect(outOfPrefix.status).toBe(404);
+    expect(await outOfPrefix.json()).toEqual({ error: "Not found" });
+
+    // A bare GET must not leak the canonical list-flows response.
+    const listLeak = await app.fetch(new Request(url("/")));
+    expect(listLeak.status).toBe(404);
+    expect(await listLeak.json()).toEqual({ error: "Not found" });
+
+    await dispose();
+  });
+
+  it("does not leak canonical-namespace adapter routes when basePath is custom", async () => {
+    // With a custom `basePath`, the dedicated fallback must serve ONLY routes
+    // outside both basePath and the framework's `/api/flows` namespace. A
+    // non-dedicated adapter route under `/api/flows` must NOT be served at its
+    // raw path when canonical was mounted elsewhere.
+    const adapter: InboundTransportAdapter = {
+      source: "test-mixed",
+      createBindings: () => ({
+        routes: [
+          {
+            method: "POST",
+            path: "/mcp/:id",
+            handler: (_req, ctx) =>
+              Promise.resolve(
+                new Response(JSON.stringify({ dedicated: ctx.params.id }), {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                }),
+              ),
+          },
+          {
+            method: "POST",
+            path: "/api/flows/:kind/hook",
+            handler: () => Promise.resolve(new Response("leaked", { status: 200 })),
+          },
+          {
+            // No leading slash — allowed by TransportRoute.path; the filter must
+            // normalize it before the prefix check or it leaks.
+            method: "POST",
+            path: "api/flows/:kind/hook2",
+            handler: () => Promise.resolve(new Response("leaked2", { status: 200 })),
+          },
+        ],
+      }),
+    };
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: inMemoryStores() } },
+      adapters: [adapter],
+    });
+    const { app, dispose } = createServerApp(fs, { basePath: "/flows" });
+    await fs.ready();
+
+    // The genuinely-dedicated route (outside /flows and /api/flows) is served.
+    const dedicated = await app.fetch(new Request(url("/mcp/abc"), { method: "POST" }));
+    expect(dedicated.status).toBe(200);
+    expect(await dedicated.json()).toEqual({ dedicated: "abc" });
+
+    // The /api/flows-namespaced adapter routes are NOT exposed via the fallback,
+    // whether or not the declared path had a leading slash.
+    const leak = await app.fetch(new Request(url("/api/flows/foo/hook"), { method: "POST" }));
+    expect(leak.status).toBe(404);
+    const leak2 = await app.fetch(new Request(url("/api/flows/foo/hook2"), { method: "POST" }));
+    expect(leak2.status).toBe(404);
+
+    await dispose();
   });
 
   it("replies 500 when the router throws before headers are sent", async () => {
@@ -146,6 +302,45 @@ describe("createServerApp — translation", () => {
     // Hono's onError surfaces the throw as a uniformly-JSON 500.
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "Internal server error" });
+  });
+
+  it("waits for init, then serves a dedicated route that arrives during cold start", async () => {
+    // The not-found fallback blocks on init like the canonical handler, so a
+    // dedicated adapter route arriving during a slow store cold start is served
+    // once ready — not spuriously 404'd. The store gate is released only after
+    // the request is in flight, proving the fallback waited rather than 404'd.
+    const store = gatedAdapter();
+    const adapter: InboundTransportAdapter = {
+      source: "test-dedicated",
+      createBindings: () => ({
+        routes: [
+          {
+            method: "POST",
+            path: "/custom/:id",
+            handler: (_req, ctx) =>
+              Promise.resolve(
+                new Response(JSON.stringify({ served: ctx.params.id }), {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                }),
+              ),
+          },
+        ],
+      }),
+    };
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: store } },
+      adapters: [adapter],
+    });
+    const { app, dispose } = createServerApp(fs);
+    const pending = app.fetch(new Request(url("/custom/abc"), { method: "POST" }));
+    store.release();
+    const res = await pending;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ served: "abc" });
+    await dispose();
   });
 });
 

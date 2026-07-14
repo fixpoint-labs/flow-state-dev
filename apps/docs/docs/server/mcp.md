@@ -51,6 +51,10 @@ export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 The MCP adapter mounts at `POST /api/flows/:kind/mcp`. `GET` and
 `DELETE` on that path return 405. Existing HTTP routes are unchanged.
 
+To serve these endpoints in production without the DevTool, `fsdev serve` stands
+up the flow API and MCP routes from a committed `fsdev.config.*`. See the
+[CLI API Reference](/docs/api/cli).
+
 ### Dedicated MCP prefix
 
 Use a dedicated prefix when the shared `/api/flows/:kind/mcp` URL exposes more
@@ -73,10 +77,12 @@ keeping the default URL as an alias. A root-only dedicated base is rejected so
 the adapter cannot claim unrelated single-segment routes.
 
 The hosting framework must also send `/mcp/*` requests to the Flow State
-handler. In a Next.js app, add a matching `app/mcp/[...path]/route.ts` route
-that exports the same platform handlers; a handler mounted only at
-`app/api/flows/[...path]/route.ts` never receives `/mcp/*`. Node hosts likewise
-need the dedicated prefix mounted or rewritten to the Flow State handler.
+handler. `serve()` from `@flow-state-dev/node` (and `fsdev serve`, which wraps
+it) mount dedicated adapter paths automatically, so a self-hosted Node process
+needs no extra wiring. In a Next.js app, add a matching
+`app/mcp/[...path]/route.ts` route that exports the same platform handlers; a
+handler mounted only at `app/api/flows/[...path]/route.ts` never receives
+`/mcp/*`.
 
 ## Opting a flow into MCP
 
