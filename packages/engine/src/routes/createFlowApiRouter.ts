@@ -477,9 +477,14 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     const url = new URL(req.url);
     for (const { route, matcher } of customRoutes) {
       if (route.method.toUpperCase() !== req.method.toUpperCase()) continue;
+      // Normalize the leading slash exactly as `compileTransportPattern` does,
+      // so a route declared without one (`api/flows/:kind/hook`, allowed by
+      // `TransportRoute.path`) is still recognized as canonical-namespaced and
+      // excluded — otherwise it would leak through this fallback.
+      const routePath = route.path.startsWith("/") ? route.path : `/${route.path}`;
       if (
-        isUnderPrefix(route.path, hostBasePath) ||
-        isUnderPrefix(route.path, CANONICAL_ROUTE_NAMESPACE)
+        isUnderPrefix(routePath, hostBasePath) ||
+        isUnderPrefix(routePath, CANONICAL_ROUTE_NAMESPACE)
       ) {
         continue;
       }

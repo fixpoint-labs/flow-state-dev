@@ -256,6 +256,13 @@ describe("createServerApp — translation", () => {
             path: "/api/flows/:kind/hook",
             handler: () => Promise.resolve(new Response("leaked", { status: 200 })),
           },
+          {
+            // No leading slash — allowed by TransportRoute.path; the filter must
+            // normalize it before the prefix check or it leaks.
+            method: "POST",
+            path: "api/flows/:kind/hook2",
+            handler: () => Promise.resolve(new Response("leaked2", { status: 200 })),
+          },
         ],
       }),
     };
@@ -273,9 +280,12 @@ describe("createServerApp — translation", () => {
     expect(dedicated.status).toBe(200);
     expect(await dedicated.json()).toEqual({ dedicated: "abc" });
 
-    // The /api/flows-namespaced adapter route is NOT exposed via the fallback.
+    // The /api/flows-namespaced adapter routes are NOT exposed via the fallback,
+    // whether or not the declared path had a leading slash.
     const leak = await app.fetch(new Request(url("/api/flows/foo/hook"), { method: "POST" }));
     expect(leak.status).toBe(404);
+    const leak2 = await app.fetch(new Request(url("/api/flows/foo/hook2"), { method: "POST" }));
+    expect(leak2.status).toBe(404);
 
     await dispose();
   });

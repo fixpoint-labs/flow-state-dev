@@ -47,8 +47,11 @@ export interface ServerApp {
    * uses this in its not-found fallback; a host that registers its own broad
    * catch-all AFTER the app (e.g. `serve()`'s SPA `get("*")` for a `staticDir`)
    * must call it first so a dedicated route isn't shadowed by that fallback.
-   * Non-blocking: returns null while a `FlowState` is still initializing, so a
-   * slow cold start never stalls the caller's static/SPA fallback.
+   * Blocks on init like the canonical handler, so a dedicated route (including a
+   * GET one — OAuth/webhook callbacks) is served once ready rather than falling
+   * through to the fallback during a store cold start. Returns null if init
+   * failed. The SPA host should call it only AFTER its static-file fast path, so
+   * real assets are still served without waiting on init.
    */
   tryDedicatedRoute(req: Request): Promise<Response | null>;
   /**
@@ -164,19 +167,21 @@ export function createServerApp(
   // uncaught — the engine's canonical `handle` catches internally.
   hono.onError((_err, c) => c.json({ error: "Internal server error" }, 500));
 
-  // NON-BLOCKING dedicated-route match, for a host that mounts its own broad
-  // catch-all AFTER the app — `serve()`'s SPA `get("*")` for a `staticDir`. It
-  // reads the synchronously-tracked `router` and returns null while a FlowState
-  // is still initializing (or if init failed), rather than awaiting
-  // `routerPromise`, so a slow store cold start never stalls a static asset or a
-  // bare `/`. During that window a dedicated GET route may fall through to the
-  // static fallback; that's acceptable because dedicated adapters are POST-based
-  // (the MCP adapter answers GET with 405), and those non-GET requests reach the
-  // not-found fallback below, which DOES wait for init. Once ready this serves
-  // the dedicated route so it isn't shadowed by the SPA HTML in `fsdev dev`.
+  // Dedicated-route match for a host that mounts its own broad catch-all AFTER
+  // the app — `serve()`'s SPA `get("*")` for a `staticDir`. It BLOCKS on init
+  // (awaits `routerPromise`) so a dedicated route — including a GET one, e.g. an
+  // OAuth/webhook callback — is served once ready instead of falling through to
+  // the SPA HTML during a store cold start. Returns null if init failed. The SPA
+  // host calls this only AFTER its static-file fast path, so real assets are
+  // still served from disk without waiting on init.
   const tryDedicatedRoute = async (req: Request): Promise<Response | null> => {
-    if (router === undefined) return null;
-    return dispatchDedicatedRoute(router, req, basePath);
+    let resolved: FlowApiRouter;
+    try {
+      resolved = await routerPromise;
+    } catch {
+      return null;
+    }
+    return dispatchDedicatedRoute(resolved, req, basePath);
   };
 
   // The last-resort fallback: anything Hono didn't otherwise route (in

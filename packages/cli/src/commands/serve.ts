@@ -62,14 +62,19 @@ export function registerServeCommand(program: Command): void {
 
 /** Core execution logic for `fsdev serve`, separated for testability. */
 export async function executeServeCommand(options: ServeCommandOptions): Promise<void> {
-  // Validate --port up front. Omitted → undefined, so serve() applies $PORT ?? 3000.
-  // Require an all-digits string: `parseInt` would silently truncate `3000abc`
-  // to 3000 or `1e3` to 1 and bind the wrong port on a typo.
+  // Resolve and validate the port. `--port` wins; else `$PORT` (which serve()
+  // would otherwise read and truncate); else undefined, so serve() applies its
+  // 3000 default. Both explicit sources require an all-digits string in range —
+  // `parseInt` would silently truncate `3000abc` to 3000 or `1e3` to 1 and bind
+  // the wrong port on a typo, and the docs classify an invalid port as exit 3.
+  const envPort = process.env.PORT;
+  const portInput =
+    options.port ?? (envPort !== undefined && envPort.length > 0 ? envPort : undefined);
   let port: number | undefined;
-  if (options.port !== undefined) {
-    port = /^\d+$/.test(options.port) ? Number(options.port) : NaN;
+  if (portInput !== undefined) {
+    port = /^\d+$/.test(portInput) ? Number(portInput) : NaN;
     if (!Number.isInteger(port) || port < 0 || port > 65535) {
-      throw new CliError(`Invalid port: ${options.port}`, EXIT_CONFIG_ERROR);
+      throw new CliError(`Invalid port: ${portInput}`, EXIT_CONFIG_ERROR);
     }
   }
 

@@ -118,14 +118,23 @@ export function serve(
 
   // Static assets + SPA fallback for the DevTool UI, GET-only (Hono also answers
   // HEAD). Registered after the portable app's health/API routes, so it only
-  // catches what they don't. This `get("*")` matches BEFORE the app's not-found
-  // fallback, so it must first offer the request to a transport adapter's
-  // dedicated routes — otherwise a dedicated GET route outside `basePath` (e.g.
-  // an MCP adapter's) would be shadowed by the SPA HTML in `fsdev dev`.
+  // catches what they don't, and it matches BEFORE the app's not-found fallback.
+  //
+  // Order matters on three axes:
+  //   1. A real static file is served from disk first, with no wait on init — a
+  //      slow store cold start must not stall DevTool assets.
+  //   2. A non-file path is then offered to the dedicated-route dispatch, which
+  //      BLOCKS on init. That serves a dedicated GET route outside `basePath`
+  //      (e.g. an OAuth/webhook callback) instead of shadowing it with SPA HTML,
+  //      including one that arrives during cold start.
+  //   3. Anything still unmatched falls back to `index.html` (SPA routing).
   if (staticDir !== undefined) {
     honoApp.get("*", async (c) => {
+      const file = await serveStaticFile(c.req.path, staticDir);
+      if (file !== null) return file;
       const dedicated = await tryDedicatedRoute(c.req.raw);
-      return dedicated ?? serveStaticResponse(c.req.path, staticDir);
+      if (dedicated !== null) return dedicated;
+      return serveSpaIndex(staticDir);
     });
   }
 
@@ -197,14 +206,16 @@ export function serve(
 }
 
 /**
- * Serve a static file from `staticDir` as a Web `Response`, falling back to
- * `index.html` for unmatched routes (SPA routing). Guards against directory
- * traversal.
+ * Serve a real file (or directory `index.html`) from `staticDir` as a Web
+ * `Response`. Returns `null` when the path resolves to no file — the caller then
+ * decides between a dedicated route and the SPA `index.html` fallback. A
+ * directory-traversal attempt returns a 403 `Response` rather than `null`, so it
+ * never leaks into the fallback path. Guards against directory traversal.
  */
-async function serveStaticResponse(
+async function serveStaticFile(
   pathname: string,
   staticDir: string,
-): Promise<Response> {
+): Promise<Response | null> {
   let filePath: string;
   if (pathname === "/" || pathname === "") {
     filePath = join(staticDir, "index.html");
@@ -229,15 +240,19 @@ async function serveStaticResponse(
 
     return new Response(content, { status: 200, headers: { "content-type": mimeType } });
   } catch {
-    // SPA fallback: serve index.html for unmatched routes.
-    try {
-      const content = await readFile(join(staticDir, "index.html"));
-      return new Response(content, {
-        status: 200,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
-    } catch {
-      return new Response("Not found", { status: 404 });
-    }
+    return null;
+  }
+}
+
+/** SPA routing fallback: serve `index.html` for an unmatched client route, or 404. */
+async function serveSpaIndex(staticDir: string): Promise<Response> {
+  try {
+    const content = await readFile(join(staticDir, "index.html"));
+    return new Response(content, {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  } catch {
+    return new Response("Not found", { status: 404 });
   }
 }

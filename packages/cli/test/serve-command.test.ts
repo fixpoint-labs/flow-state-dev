@@ -38,6 +38,38 @@ describe("fsdev serve", () => {
     expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
   });
 
+  it("validates $PORT too (not just --port) so a malformed env fails fast", async () => {
+    // serve()'s resolvePort would otherwise truncate PORT=abc→3000 / 1e3→1000.
+    const saved = process.env.PORT;
+    process.env.PORT = "1e3";
+    try {
+      const err = await executeServeCommand({ cwd: unauthDir }).catch((e) => e);
+      expect(err).toBeInstanceOf(CliError);
+      expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
+      expect(err.message).toContain("Invalid port: 1e3");
+    } finally {
+      if (saved === undefined) delete process.env.PORT;
+      else process.env.PORT = saved;
+    }
+  });
+
+  it("--port overrides a malformed $PORT", async () => {
+    // An explicit valid --port wins; the guard rejects on host (unauth), proving
+    // resolution got past port validation with the good value.
+    const saved = process.env.PORT;
+    process.env.PORT = "abc";
+    try {
+      const err = await executeServeCommand({ cwd: unauthDir, port: "8080", host: "0.0.0.0" }).catch(
+        (e) => e,
+      );
+      expect(err).toBeInstanceOf(CliError);
+      expect(err.message).toContain("Refusing to bind 0.0.0.0");
+    } finally {
+      if (saved === undefined) delete process.env.PORT;
+      else process.env.PORT = saved;
+    }
+  });
+
   it("requires a committed config — no directory discovery fallback", async () => {
     const err = await executeServeCommand({ cwd: noConfigDir }).catch((e) => e);
     expect(err).toBeInstanceOf(CliError);
