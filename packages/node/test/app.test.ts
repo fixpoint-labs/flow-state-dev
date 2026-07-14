@@ -187,6 +187,50 @@ describe("createServerApp — translation", () => {
     await dispose();
   });
 
+  it("never exposes the canonical flow API outside basePath", async () => {
+    // Regression: the not-found fallback must serve ONLY dedicated adapter
+    // routes, never the canonical flow-API handler. An out-of-prefix action
+    // path must not execute, and a bare GET must not leak the flow list —
+    // both are reachable ONLY under `/api/flows`.
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: inMemoryStores() } },
+    });
+    const { app, dispose } = createServerApp(fs);
+    await fs.ready();
+
+    // Under basePath the action is reachable (202 Accepted), proving it exists.
+    // The URL segment is the flow's `kind` ("noop-flow"), not the map key.
+    const inPrefix = await app.fetch(
+      new Request(url("/api/flows/noop-flow/actions/ping"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: "u", input: {} }),
+      }),
+    );
+    expect(inPrefix.status).toBe(202);
+
+    // The same action OUTSIDE basePath falls to the not-found handler and 404s
+    // — it must NOT execute (codex P1).
+    const outOfPrefix = await app.fetch(
+      new Request(url("/noop-flow/actions/ping"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: "u", input: {} }),
+      }),
+    );
+    expect(outOfPrefix.status).toBe(404);
+    expect(await outOfPrefix.json()).toEqual({ error: "Not found" });
+
+    // A bare GET must not leak the canonical list-flows response.
+    const listLeak = await app.fetch(new Request(url("/")));
+    expect(listLeak.status).toBe(404);
+    expect(await listLeak.json()).toEqual({ error: "Not found" });
+
+    await dispose();
+  });
+
   it("replies 500 when the router throws before headers are sent", async () => {
     const throwing: FlowApiRouter = {
       ...echoRouter,

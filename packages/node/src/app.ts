@@ -14,6 +14,7 @@
  */
 import { Hono, type Context } from "hono";
 import {
+  dispatchDedicatedRoute,
   disposeFlowApiRouter,
   isFlowState,
   type FlowApiRouter,
@@ -151,19 +152,24 @@ export function createServerApp(
   // uncaught — the engine's canonical `handle` catches internally.
   hono.onError((_err, c) => c.json({ error: "Internal server error" }, 500));
 
-  // Anything Hono didn't otherwise route is handed to the engine router. This is
-  // what serves a transport adapter's DEDICATED path — one that lives OUTSIDE
-  // `basePath`, e.g. the MCP adapter's `/mcp/:kind` under `dedicatedBasePath`.
-  // `createFlowApiRouter` matches custom transport routes against the full
-  // request URL, so such a path resolves there. This runs after any statically-
-  // mounted routes (e.g. the DevTool `get("*")` that `serve()` adds for a
-  // `staticDir`), so it only catches what they don't. When the router also has
-  // no route for the path it returns a 404; normalize that to the app's
-  // canonical Not-Found shape so an unrelated path keeps its prior response
-  // (a matched dedicated route — MCP replies 200/401/403/405 — passes through).
+  // Anything Hono didn't otherwise route is offered to the engine's DEDICATED
+  // route dispatcher, which serves ONLY a transport adapter's routes that live
+  // OUTSIDE `basePath` — e.g. the MCP adapter's `/mcp/:kind` under
+  // `dedicatedBasePath` — and never the canonical flow-API handler. That keeps
+  // the flow API (list-flows, actions, sessions) reachable ONLY under
+  // `basePath`: an out-of-prefix path like `/my-flow/run` (or a bare `GET /`)
+  // is a plain 404, not a leaked endpoint. This runs after any statically-
+  // mounted routes (the DevTool `get("*")` that `serve()` adds for a
+  // `staticDir`), so it only catches what they don't.
   hono.notFound(async (c) => {
-    const res = await dispatch(c);
-    return res.status === 404 ? c.json({ error: "Not found" }, 404) : res;
+    let resolved: FlowApiRouter;
+    try {
+      resolved = await routerPromise;
+    } catch {
+      return c.json({ error: "Server failed to initialize" }, 500);
+    }
+    const res = await dispatchDedicatedRoute(resolved, c.req.raw);
+    return res ?? c.json({ error: "Not found" }, 404);
   });
 
   return {

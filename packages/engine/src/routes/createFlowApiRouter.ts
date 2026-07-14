@@ -240,6 +240,18 @@ export type FlowApiRouter = {
 const routerDisposers = new WeakMap<FlowApiRouter, () => Promise<void>>();
 
 /**
+ * Per-router dedicated-route dispatcher. Populated by `createFlowApiRouter`,
+ * consumed by `dispatchDedicatedRoute`. Matches ONLY custom transport-adapter
+ * routes (e.g. the MCP adapter's `/mcp/:kind` under `dedicatedBasePath`) and
+ * never falls through to the canonical flow-API handler. WeakMap so it stays
+ * off the method-indexed router shape.
+ */
+const dedicatedRouteDispatchers = new WeakMap<
+  FlowApiRouter,
+  (req: Request) => Promise<Response | null>
+>();
+
+/**
  * Tear down a router by invoking each adapter's `bindings.stop()` in
  * reverse order. Best-effort — failures are logged but don't abort the
  * sweep. Idempotent: a second call after dispose is a no-op.
@@ -253,6 +265,28 @@ export async function disposeFlowApiRouter(router: FlowApiRouter): Promise<void>
   if (dispose === undefined) return;
   routerDisposers.delete(router);
   await dispose();
+}
+
+/**
+ * Dispatch `req` against ONLY the router's dedicated custom-adapter routes —
+ * the ones a transport adapter registers OUTSIDE the canonical `basePath`
+ * (e.g. the MCP adapter's `/mcp/:kind` under `dedicatedBasePath: true`).
+ * Returns the route's `Response` on a match, or `null` when no dedicated route
+ * matches. It never touches the canonical flow-API handler, so a host can serve
+ * dedicated endpoints without exposing the flow API (list-flows, actions,
+ * sessions) outside its mount prefix.
+ *
+ * Long-lived hosts (`@flow-state-dev/node`'s `createServerApp`) call this from
+ * their not-found fallback so dedicated routes work with no per-adapter wiring;
+ * catch-all hosts that mount the router under `basePath` don't need it.
+ */
+export async function dispatchDedicatedRoute(
+  router: FlowApiRouter,
+  req: Request
+): Promise<Response | null> {
+  const dispatch = dedicatedRouteDispatchers.get(router);
+  if (dispatch === undefined) return null;
+  return dispatch(req);
 }
 
 const DEFAULT_STALE_SWEEP_INTERVAL_MS = 30_000;
@@ -372,6 +406,23 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     }
   }
 
+  // Match ONLY custom-adapter routes (never the canonical handler). Returns
+  // null when none match. Shared by the canonical dispatcher (custom routes get
+  // first crack) and by `dispatchDedicatedRoute` (a host serving dedicated
+  // out-of-prefix routes with no canonical fallthrough).
+  const matchDedicated = async (req: Request): Promise<Response | null> => {
+    if (customRoutes.length === 0) return null;
+    const url = new URL(req.url);
+    for (const { route, matcher } of customRoutes) {
+      if (route.method.toUpperCase() !== req.method.toUpperCase()) continue;
+      const matched = matchTransportRoute(matcher, url.pathname);
+      if (matched !== null) {
+        return route.handler(req, { params: matched });
+      }
+    }
+    return null;
+  };
+
   const dispatch = async (
     req: Request,
     ctx: NextRouteContext
@@ -380,16 +431,8 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     // match, fall through to the canonical handler. This preserves the
     // existing behavior for the default configuration (no custom adapters)
     // and gives custom transports an unambiguous path.
-    if (customRoutes.length > 0) {
-      const url = new URL(req.url);
-      for (const { route, matcher } of customRoutes) {
-        if (route.method.toUpperCase() !== req.method.toUpperCase()) continue;
-        const matched = matchTransportRoute(matcher, url.pathname);
-        if (matched !== null) {
-          return route.handler(req, { params: matched });
-        }
-      }
-    }
+    const dedicated = await matchDedicated(req);
+    if (dedicated !== null) return dedicated;
     return handlers.handle(req, { path: ctx.params.path });
   };
 
@@ -423,6 +466,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     DELETE: dispatch
   };
   routerDisposers.set(router, dispose);
+  dedicatedRouteDispatchers.set(router, matchDedicated);
   return router;
 }
 
