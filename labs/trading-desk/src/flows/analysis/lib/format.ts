@@ -18,6 +18,10 @@ import type { LensConvergenceState } from "../agents/lenses/lens-convergence-res
 import type { RewardToRiskState } from "../reward-to-risk-resource";
 import type { RiskMandate } from "./risk-mandate";
 import type { ThesisRecord } from "../../portfolio/thesis-schema";
+import {
+  timeHorizonCategoryFor,
+  type PortfolioMandate,
+} from "../../portfolio/portfolio-mandate-schema";
 
 /** Render a memo state as a compact prompt block. Permissive `any` —
  *  body shape is enforced by `memoStateSchema` at write time, so reads
@@ -756,5 +760,103 @@ export function formatStandingThesis(
       lines.push(`- [${t.kind}] ${t.note}${detail}`);
     }
   }
+  return lines.join("\n");
+}
+
+/**
+ * Render the durable household portfolio mandate (IPS, FIX-761) as the inner
+ * content of the `<portfolioMandate>` prompt block the PM (P5) reasons with —
+ * objectives, target allocation + rebalancing bands, standing constraints, and
+ * time horizon. States which constraints are HARD (the `maxPositionWeight` cap +
+ * the analyzed-name exclusion, enforced deterministically at commit) versus
+ * ADVISORY (min-cash + allocation drift, which the single-ticker PM narrates but
+ * cannot mechanically enforce), and calls out whether the analyzed name is
+ * excluded or capped so the PM's narration is legible.
+ *
+ * Guards on the required `createdAt` (BP-018, the `formatStandingThesis`
+ * precedent): a partial/empty read (a nullable single resource that surfaced as
+ * `{}`) suppresses the tag rather than throwing. Returns the inner content; the
+ * capability's object-form context key auto-wraps it as `<portfolioMandate>`.
+ */
+export function formatPortfolioMandate(
+  mandate: PortfolioMandate | null | undefined,
+  ticker: string,
+): string | null {
+  if (
+    mandate == null ||
+    typeof mandate !== "object" ||
+    typeof (mandate as Partial<PortfolioMandate>).createdAt !== "string"
+  ) {
+    return null;
+  }
+  const tickerUpper = ticker.toUpperCase();
+  const lines: string[] = [];
+  lines.push(
+    `The household's durable portfolio mandate (Investment Policy Statement) — "${mandate.label}", a documented, user-set standing policy (NOT financial advice). Size this name with these standing rules in view.`,
+  );
+
+  const obj = mandate.objectives;
+  const ret =
+    obj.returnTargetPct != null
+      ? `; target return ~${obj.returnTargetPct}%${obj.returnBasis != null ? ` (${obj.returnBasis})` : ""}`
+      : "";
+  lines.push(`Objective: ${obj.riskTolerance} risk tolerance${ret}.`);
+
+  if (mandate.timeHorizon.years != null) {
+    const cat = timeHorizonCategoryFor(mandate.timeHorizon.years);
+    lines.push(
+      `Time horizon: ~${mandate.timeHorizon.years} years${cat != null ? ` (${cat}-term)` : ""}.`,
+    );
+  }
+
+  if (mandate.targetAllocation.length > 0) {
+    lines.push(
+      "Target allocation over asset classes (ADVISORY — drift is the health view's measure, not enforced here):",
+    );
+    for (const a of mandate.targetAllocation) {
+      const corridor =
+        a.minPct != null || a.maxPct != null
+          ? ` [${a.minPct ?? "—"}–${a.maxPct ?? "—"}%]`
+          : "";
+      lines.push(`- ${a.assetClass}: ${a.targetPct}%${corridor}`);
+    }
+    const band = mandate.rebalancing;
+    lines.push(
+      band.bandType === "relative"
+        ? `Rebalancing band: ±${(band.bandWidthPct * 100).toFixed(0)}% of each target (relative).`
+        : `Rebalancing band: ±${band.bandWidthPct}pp from each target (absolute).`,
+    );
+  }
+
+  const c = mandate.constraints;
+  lines.push("Standing constraints:");
+  if (c.maxPositionWeightPct != null) {
+    lines.push(
+      `- Max single-position weight ${c.maxPositionWeightPct}% of NAV (HARD, at purchase — the commit clamps size to it).`,
+    );
+  }
+  if (c.minCashPct != null) {
+    lines.push(
+      `- Minimum cash ${c.minCashPct}% of NAV (ADVISORY — a single-name run can't enforce a portfolio cash floor; note it, do not fabricate a portfolio-level action).`,
+    );
+  }
+  if (c.exclusions.length > 0) {
+    lines.push(`- Exclusions (never add): ${c.exclusions.join(", ")}.`);
+  }
+  if (c.maxPositionWeightPct == null && c.minCashPct == null && c.exclusions.length === 0) {
+    lines.push("- (none)");
+  }
+
+  const excluded = c.exclusions.some((e) => e.trim().toUpperCase() === tickerUpper);
+  if (excluded) {
+    lines.push(
+      `NOTE: ${tickerUpper} is on the exclusion list — this run must NOT recommend adding to it (a no-add is enforced at commit).`,
+    );
+  } else if (c.maxPositionWeightPct != null) {
+    lines.push(
+      `NOTE: ${tickerUpper} is subject to the ${c.maxPositionWeightPct}% max-position cap — size at or below it (enforced at commit).`,
+    );
+  }
+
   return lines.join("\n");
 }

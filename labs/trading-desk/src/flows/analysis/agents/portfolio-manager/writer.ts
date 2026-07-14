@@ -41,9 +41,14 @@ import {
   type DecisionSnapshotState,
 } from "../../decision-snapshot-resource";
 import { clampRatingToBand } from "../../lib/rating-engine";
+import { computePolicyGate } from "../../lib/policy-gate";
 import { publishMemo } from "../_recipe/memo-writer";
 import type { ReportDecisionMeta } from "../../report-index";
-import { memoResources, type MandateDecision } from "../../resources";
+import {
+  memoResources,
+  type MandateDecision,
+  type PolicyDecision,
+} from "../../resources";
 import { sessionStateSchema } from "../../state";
 import { valuationSpineResource, type ValuationSpineState } from "../../valuation-spine-resource";
 import {
@@ -259,7 +264,79 @@ export const commitPortfolioManagerMemo = handler({
       };
     }
 
+    // ── Durable portfolio-mandate policy gate (FIX-761) ────────────────
+    // Runs AFTER the FIX-752 clamp. The household mandate's HARD single-name
+    // constraints — a max-position-weight cap (at-purchase, floored at the
+    // household weight so an already-over-cap hold is never force-trimmed) and an
+    // exclusion no-add — clamp `targetWeightPct` down deterministically. Min-cash
+    // + allocation drift are ADVISORY (surfaced in `<portfolioMandate>`, the PM
+    // narrates). Derived here, never trusted from the LLM (the agreesWithTrader
+    // precedent); the PM's `policyFit` supplies only the two narrative strings.
+    // The mandate NEVER touches `finalRating` (the FIX-715/FIX-752 orthogonality),
+    // and every effect is downward-only. `preGatePolicyTargetPct` is the size
+    // entering the gate (post-FIX-752), so a clamp is attributable to the policy
+    // cap vs the FIX-752 gate.
+    // NOTE (scoped-run cap precision): `householdWeightPct` and the mandate cap are
+    // household-NAV percentages; on a scoped run the PM's `targetWeightPct` is a
+    // percentage of the scoped snapshot's NAV. Clamping the scoped target to the
+    // household cap only ever OVER-restricts on a scoped run (the safe direction —
+    // a name can never exceed the household cap), and the common no-selection run
+    // has one NAV so there is no mismatch. Converting units is a deferred
+    // refinement (see docs/portfolio-mandate.md).
+    const preGatePolicyTargetPct = targetWeightPct;
+    const gate = computePolicyGate({
+      mandate: ctx.session.state.portfolioMandate,
+      ticker: ctx.session.state.ticker,
+      targetWeightPct,
+      householdWeightPct: ctx.session.state.householdTickerWeightPct,
+    });
+    targetWeightPct = gate.targetWeightPct;
+    // An EXCLUDED name can NEVER be published as an add/initiate — the mandate
+    // says the name is never added to. This holds even on the unpriced-held branch
+    // (where we could not numerically clamp the size): the exclusion is known, so
+    // the ACTION must not assert an increase (the PmHero card colors/labels off
+    // `action`, so a hard no-add must not render as a green add). Downgrade to
+    // "hold"; a trim/exit/hold the PM already chose is left intact (reducing or
+    // holding an excluded name is fine). The `maxPositionWeight` cap is NOT
+    // overridden here — a capped buy is still a legitimate (smaller) add.
+    const gatedAction =
+      gate.excluded &&
+      (decision.portfolioFit.action === "add" || decision.portfolioFit.action === "initiate")
+        ? "hold"
+        : decision.portfolioFit.action;
+    const policyDecision: PolicyDecision | null =
+      gate.policyVerdict === "no-mandate"
+        ? null
+        : {
+            mandatePresent: true,
+            policyVerdict: gate.policyVerdict,
+            positionCapClamped: gate.positionCapClamped,
+            excluded: gate.excluded,
+            householdWeightKnown: gate.householdWeightKnown,
+            preGatePolicyTargetPct,
+            allocationRead: decision.policyFit.allocationRead,
+            constraintRead: decision.policyFit.constraintRead,
+          };
+
     const weightDeltaPct = targetWeightPct - currentWeightPct;
+
+    // Keep the hero's `metrics.size` chip in sync with the clamped size. Any
+    // downward clamp (FIX-752 worth-it/capacity, or the FIX-761 cap/exclusion)
+    // lowers `targetWeightPct` below the LLM's proposal, but `metrics.size` is the
+    // model's pre-gate display string — so a capped run could advertise "8%" in
+    // the header while the portfolio-fit / policy panels show "2%". When a clamp
+    // reduced the size, overwrite the size chip with the enforced figure so the
+    // user-facing recommendation is internally consistent (the enforced number is
+    // the one the desk stands behind). Untouched when no clamp fired (preserve the
+    // model's own precision/format).
+    const sizeWasClamped = targetWeightPct < decision.portfolioFit.targetWeightPct;
+    const displayMetrics = sizeWasClamped
+      ? {
+          ...decision.metrics,
+          size: `${Number.isInteger(targetWeightPct) ? targetWeightPct : targetWeightPct.toFixed(1)}%`,
+        }
+      : decision.metrics;
+
     // Validate the LLM's suggested account LABEL against the real account list.
     // A hallucinated / absent label (or no portfolio) resolves to "" — never
     // invent an account the user does not have (real-money gate §1.8).
@@ -290,7 +367,7 @@ export const commitPortfolioManagerMemo = handler({
         headline: decision.headline,
         rating: decision.rating,
         body: decision.body,
-        metrics: decision.metrics,
+        metrics: displayMetrics,
         decisionSummary: decision.decisionSummary,
         finalRating,
         decisionConfidence: decision.decisionConfidence,
@@ -315,7 +392,9 @@ export const commitPortfolioManagerMemo = handler({
         // after the worth-it/capacity clamps, so the published size, the delta,
         // and the decision snapshot all agree.
         portfolioFit: {
-          action: decision.portfolioFit.action,
+          // The policy-gated action: an excluded name never publishes add/initiate
+          // (FIX-761), so the card can't render a hard no-add as a green add.
+          action: gatedAction,
           targetWeightPct,
           sizingRationale: decision.portfolioFit.sizingRationale,
           concentrationRisk: decision.portfolioFit.concentrationRisk,
@@ -332,6 +411,9 @@ export const commitPortfolioManagerMemo = handler({
         // FIX-752 — the mandate decision mirror for the PmHero panel. Null on a
         // mandate-blind run.
         mandateDecision,
+        // FIX-761 — the durable-mandate policy decision mirror (verdict + clamps +
+        // narrative) for the PmHero policy-fit block. Null on a mandate-blind run.
+        policyDecision,
         // FIX-676 — pass through any URLs the PM fetched (null when none).
         citations: decision.citations,
       },
@@ -375,6 +457,13 @@ export const commitPortfolioManagerMemo = handler({
       // and reached the decision tier. Derived from frozen state, the
       // `hasPortfolioContext` precedent (never trusted from the LLM).
       hasStandingThesis: ctx.session.state.standingThesis != null,
+      // Durable portfolio-mandate echo (FIX-761) — the machine-scoreable record of
+      // how the standing policy shaped the size. Null on a mandate-blind run.
+      mandatePresent: policyDecision != null,
+      policyVerdict: policyDecision?.policyVerdict ?? null,
+      positionCapClamped: policyDecision?.positionCapClamped ?? null,
+      excluded: policyDecision?.excluded ?? null,
+      preGatePolicyTargetPct: policyDecision?.preGatePolicyTargetPct ?? null,
       decidedAt,
       outcomeRealizedPrice: null,
       outcomeAsOf: null,

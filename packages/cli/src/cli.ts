@@ -7,6 +7,7 @@ import { registerBlockCommand } from "./commands/block";
 import { registerChatCommand } from "./commands/chat";
 import { registerDevCommand } from "./commands/dev";
 import { registerRunCommand } from "./commands/run";
+import { registerServeCommand } from "./commands/serve";
 import { registerUiCommand } from "./commands/ui";
 
 export const program = new Command();
@@ -20,5 +21,6 @@ registerBlockCommand(program);
 registerChatCommand(program);
 registerDevCommand(program);
 registerRunCommand(program);
+registerServeCommand(program);
 registerUiCommand(program);
 registerBenchmarkCommand(program);

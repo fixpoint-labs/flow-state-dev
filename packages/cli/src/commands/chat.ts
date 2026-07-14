@@ -25,11 +25,7 @@ import { listTargets, pickTarget, type FlowActionTarget } from "../chat/targets"
 import { createBuiltinRegistry } from "../chat/registry";
 import { createPlainTextRenderer } from "../chat/render";
 import { runChatLoop, type SessionGuard } from "../chat/loop";
-
-/** Commander accumulator for repeatable options. */
-function collectValues(value: string, previous: string[] | undefined): string[] {
-  return (previous ?? []).concat(value);
-}
+import { collectValues } from "../cli-options";
 
 /** Registers the `chat` subcommand on the given commander program. */
 export function registerChatCommand(program: Command): void {

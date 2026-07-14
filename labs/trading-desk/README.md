@@ -451,6 +451,34 @@ cost on the Holdings tab is informational; the Realized Gains tab derives the
 actual per-lot cost basis (FIFO) from your trade history, and the tax estimate
 is a labeled planning approximation — still not filing-grade tax advice.
 
+## Portfolio mandate
+
+The Portfolio toolbar has a **Set mandate** entry (a summary chip once one
+exists). A portfolio mandate is your household's standing policy — an Investment
+Policy Statement: your target mix across asset classes, standing rules (a maximum
+weight for any one name, a minimum cash level, a list of names never to add), a
+time horizon, and how far you let things drift before rebalancing. You write it
+down once and it sticks across sessions.
+
+The analysis then reads it. The recommended position size respects your standing
+rules: a hard cap on any single name's weight, and an excluded name is never
+recommended as an add. The target allocation and minimum-cash level are surfaced
+to the desk as advisory context (the desk sizes one name at a time, so it can't
+mechanically rebalance the whole book). Change the mandate and the sizing changes
+in a legible way.
+
+**How it relates to the per-run risk-appetite mandate.** The risk-appetite
+mandate (below) is the appetite dial you can pick fresh each run; the portfolio
+mandate is the durable policy of record. They are one concept, not two — the
+appetite can now *inherit* from the mandate (or be derived from its stated risk
+tolerance), so there is a single place your standing intent lives. A per-run pick
+still overrides it, and a per-account default still applies above the household
+default.
+
+This is a documented, user-set policy — not financial advice, and not a
+production IPS governance framework. See
+[`docs/portfolio-mandate.md`](docs/portfolio-mandate.md).
+
 ## Custom instructions
 
 The status bar carries a gear icon that opens a settings dialog where you can
@@ -667,9 +695,13 @@ methodology rather than advice:
   (`conservative-income`, `balanced`, `aggressive-growth`); the mandate is
   a per-run choice, or a default stored on the account, with the
   most-conservative selected-account default binding when no per-run choice
-  is made. Run the same name under two mandates and the size and the
-  verdict move while the rating holds. See `mandateFit` on
-  `PortfolioDecision` and the pack in `lib/risk-mandate.ts`.
+  is made. The per-run appetite can also **inherit from the durable
+  portfolio mandate** (the IPS, above) — its explicit `riskAppetite`, or a
+  default derived from its stated risk tolerance — so the standing policy
+  and the per-run dial are one concept, not two. Run the same name under
+  two mandates and the size and the verdict move while the rating holds.
+  See `mandateFit` on `PortfolioDecision` and the pack in
+  `lib/risk-mandate.ts`.
 
 ## What this is not
 
@@ -683,7 +715,9 @@ methodology rather than advice:
   with no portfolio supplied `sizePct` is still a suggested percentage of a
   notional NAV in the 0.5–2.5 range for a normal-conviction trade. The
   risk-appetite mandate is the same: a pedagogical demonstration of
-  parameterized risk gating, not production risk governance.
+  parameterized risk gating, not production risk governance. The durable
+  portfolio mandate is a documented user-set policy the desk sizes with in
+  view, not a production IPS governance framework and not advice.
 - **Not a backtest.** There is no historical evaluation, no calibration
   against outcomes, no measure of decision quality. The Portfolio
   Manager's `decisionConfidence` is self-reported uncertainty, not a
@@ -703,6 +737,7 @@ methodology rather than advice:
 
 ## Further reading
 
+- [Portfolio mandate (IPS)](docs/portfolio-mandate.md) — the durable household policy: schema, validation, the FIX-752 reconciliation, and what the desk enforces vs treats as advisory.
 - [Architecture deep-dive](../../docs/internal/design/trading-desk.md) — in-repo design doc covering pipeline shape, identity, resource flow, pattern choices, and the work the framework absorbs.
 - [Public guide](../../apps/docs/guides/trading-desk-walkthrough.md) — published Docusaurus walkthrough of the app phase by phase.
 

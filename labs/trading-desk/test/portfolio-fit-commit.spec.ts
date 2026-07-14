@@ -313,6 +313,7 @@ function pmOutput(suggestedAccountLabel: string, targetWeightPct: number) {
         sizeStance: "",
         mandateOverrideReason: "",
       },
+      policyFit: { allocationRead: "", constraintRead: "" },
       citations: null,
     },
   };

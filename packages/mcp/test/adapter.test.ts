@@ -210,6 +210,55 @@ describe("toolInputJsonSchema", () => {
   });
 });
 
+describe("MCP adapter — route layout", () => {
+  it.each(["", "/", "///", " / "])(
+    "rejects root-only dedicated base path %j",
+    (basePath) => {
+      expect(() =>
+        createMcpTransportAdapter({ basePath, dedicatedBasePath: true })
+      ).toThrow(/non-root prefix/);
+    }
+  );
+
+  it.each([
+    {
+      name: "preserves the default shared route",
+      options: undefined,
+      expectedPath: "/api/flows/:kind/mcp"
+    },
+    {
+      name: "preserves a custom shared base path",
+      options: { basePath: "/custom" },
+      expectedPath: "/custom/:kind/mcp"
+    },
+    {
+      name: "normalizes a trailing slash on a dedicated base path",
+      options: { basePath: "/mcp/", dedicatedBasePath: true },
+      expectedPath: "/mcp/:kind"
+    }
+  ] as const)("$name", ({ options, expectedPath }) => {
+    const adapter = createMcpTransportAdapter(options);
+    const bindings = adapter.createBindings(createMockTransportHost());
+
+    expect(bindings.routes?.map(({ path }) => path)).toEqual([
+      expectedPath,
+      expectedPath,
+      expectedPath
+    ]);
+  });
+
+  it("mounts each method at /mcp/:kind when the base path is dedicated", () => {
+    const adapter = createMcpTransportAdapter({ dedicatedBasePath: true });
+    const bindings = adapter.createBindings(createMockTransportHost());
+
+    expect(bindings.routes?.map(({ method, path }) => ({ method, path }))).toEqual([
+      { method: "POST", path: "/mcp/:kind" },
+      { method: "GET", path: "/mcp/:kind" },
+      { method: "DELETE", path: "/mcp/:kind" }
+    ]);
+  });
+});
+
 describe("MCP adapter — JSON-RPC dispatch", () => {
   it("source identifier is 'mcp'", () => {
     const adapter = createMcpTransportAdapter();
@@ -482,6 +531,97 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
     });
     const json = (await response.json()) as { error: { code: number } };
     expect(json.error.code).toBe(-32601);
+  });
+});
+
+describe("MCP adapter — forwardQueryParams", () => {
+  async function callToolsCall(
+    adapter: ReturnType<typeof createMcpTransportAdapter>,
+    host: ReturnType<typeof createMockTransportHost>,
+    kind: string,
+    args: unknown,
+    query = ""
+  ): Promise<void> {
+    const bindings = adapter.createBindings(host);
+    const route = bindings.routes!.find((r) => r.method === "POST")!;
+    const request = new Request(`http://localhost/api/flows/${kind}/mcp${query}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "record_payment", arguments: args }
+      })
+    });
+    await route.handler(request, { params: { kind } });
+  }
+
+  it("merges an allowlisted query param into the tools/call input", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", { amount: 5 }, "?source=claude-desktop");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ amount: 5, source: "claude-desktop" });
+  });
+
+  it("does not forward a query param that is not allowlisted", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", { amount: 5 }, "?other=x");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ amount: 5 });
+  });
+
+  it("lets the query param override a same-named tool argument (installation wins)", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", { amount: 5, source: "model-guess" }, "?source=endpoint");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ amount: 5, source: "endpoint" });
+  });
+
+  it("passes arguments through untouched when the endpoint carries no query string", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", { amount: 5 });
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ amount: 5 });
+  });
+
+  it("forwards nothing by default (no forwardQueryParams configured)", async () => {
+    const adapter = createMcpTransportAdapter();
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", { amount: 5 }, "?source=claude-desktop");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ amount: 5 });
+  });
+
+  it("passes a non-object `arguments` through unchanged even with a matching query param (symmetry with the no-forwarding path)", async () => {
+    // A malformed call must reach the zod boundary with the SAME value whether or
+    // not forwarding is configured — no silent substitution of {} + forwarded key.
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", "not-an-object", "?source=endpoint");
+    expect(host.dispatchCalls[0]!.envelope.input).toBe("not-an-object");
+  });
+
+  it("passes an array `arguments` through unchanged rather than spreading it into numeric keys", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", [1, 2], "?source=endpoint");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual([1, 2]);
+  });
+
+  it("still forwards the query param on a no-argument call (arguments omitted)", async () => {
+    // A no-arg tool call is valid, not malformed — the forwarded provenance must
+    // survive rather than being dropped with the empty {}.
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", undefined, "?source=endpoint");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ source: "endpoint" });
+  });
+
+  it("still forwards the query param when arguments is explicitly null", async () => {
+    const adapter = createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    await callToolsCall(adapter, host, "billing", null, "?source=endpoint");
+    expect(host.dispatchCalls[0]!.envelope.input).toEqual({ source: "endpoint" });
   });
 });
 

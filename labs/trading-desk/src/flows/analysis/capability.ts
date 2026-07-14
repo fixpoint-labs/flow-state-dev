@@ -61,6 +61,7 @@ import {
   formatMemoBlock,
   formatPersonaCritique,
   formatPortfolioContext,
+  formatPortfolioMandate,
   formatReferencesConsulted,
   formatRewardToRisk,
   formatRiskAssessmentExtensions,
@@ -700,6 +701,24 @@ export const tradingDesk = defineCapability({
       },
     },
 
+    /** Durable household portfolio mandate (IPS, FIX-761) — the standing policy
+     *  the PM sizes with in view: objectives, target allocation + bands, standing
+     *  constraints, horizon. Reads the frozen session-state mandate (no resource —
+     *  the `standingThesis` / `riskMandate` pattern; frozen + re-validated at
+     *  seed). Object-form context, so the key auto-wraps to `<portfolioMandate>`;
+     *  returns null to suppress the tag on a mandate-blind run. Opted into by the
+     *  PM (P5, the sole portfolio-fit arbiter) — the analysts + earlier phases
+     *  stay blind. */
+    portfolioMandate: {
+      context: {
+        portfolioMandate: (_input, ctx) =>
+          formatPortfolioMandate(
+            ctx.session.state.portfolioMandate,
+            ctx.session.state.ticker,
+          ),
+      },
+    },
+
     // ────────────────────────────────────────────────────────────────────
     // Cost-preset-gated variants.
     //
@@ -784,6 +803,7 @@ export {
   formatMemoBlock,
   formatPersonaCritique,
   formatPortfolioContext,
+  formatPortfolioMandate,
   formatReferencesConsulted,
   formatRewardToRisk,
   formatRiskAssessmentExtensions,

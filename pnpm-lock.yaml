@@ -424,9 +424,6 @@ importers:
       '@flow-state-dev/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
-      '@flow-state-dev/node':
-        specifier: workspace:*
-        version: link:../../packages/node
       '@flow-state-dev/store-postgres':
         specifier: workspace:*
         version: link:../../packages/store-postgres

@@ -19,7 +19,7 @@ import {
 } from "@flow-state-dev/engine";
 import { createMcpTransportAdapter } from "../src";
 
-function buildRouter() {
+function buildRouter(adapter = createMcpTransportAdapter()) {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
   registry.register(
@@ -47,7 +47,7 @@ function buildRouter() {
   const router = createFlowApiRouter({
     registry,
     stores,
-    adapters: [createMcpTransportAdapter()]
+    adapters: [adapter]
   });
 
   return { router, stores, registry };
@@ -135,4 +135,55 @@ describe("MCP transport adapter — end-to-end", () => {
       await disposeFlowApiRouter(router);
     }
   });
+
+  it("POST /mcp/:kind reaches MCP when the adapter uses a dedicated base path", async () => {
+    const { router } = buildRouter(
+      createMcpTransportAdapter({ dedicatedBasePath: true })
+    );
+    try {
+      const request = new Request("http://localhost/mcp/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 4,
+          method: "initialize",
+          params: { protocolVersion: "2025-06-18" }
+        })
+      });
+      const response = await router.POST(request, {
+        params: { path: ["mcp", "billing"] }
+      });
+
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as {
+        result: { serverInfo: { name: string } };
+      };
+      expect(json.result.serverInfo.name).toBe("billing");
+    } finally {
+      await disposeFlowApiRouter(router);
+    }
+  });
+
+  it.each(["GET", "DELETE"] as const)(
+    "%s /mcp/:kind returns 405 when the adapter uses a dedicated base path",
+    async (method) => {
+      const { router } = buildRouter(
+        createMcpTransportAdapter({ dedicatedBasePath: true })
+      );
+      try {
+        const request = new Request("http://localhost/mcp/billing", { method });
+        const context = { params: { path: ["mcp", "billing"] } };
+        const response =
+          method === "GET"
+            ? await router.GET(request, context)
+            : await router.DELETE(request, context);
+
+        expect(response.status).toBe(405);
+        expect(response.headers.get("allow")).toBe("POST");
+      } finally {
+        await disposeFlowApiRouter(router);
+      }
+    }
+  );
 });

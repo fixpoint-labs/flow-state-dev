@@ -4,6 +4,7 @@
 export {
   createFlowApiRouter,
   disposeFlowApiRouter,
+  dispatchDedicatedRoute,
   type CreateFlowApiRouterOptions,
   type FlowApiRouter
 } from "./createFlowApiRouter";

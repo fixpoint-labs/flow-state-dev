@@ -1073,6 +1073,71 @@ precedent that orthogonal axes adjust size and emit a verdict, never overwrite
   being right. The size caps are absolute % constants in the pack — the v1
   simplification over a dynamic "don't add beyond current weight" rule.
 
+## Portfolio mandate (IPS) — FIX-761
+
+The durable, household-level statement of intent — the reference point that makes
+"balanced," "drift," and "rebalancing" mean something. Where the FIX-752 mandate
+above is the per-run appetite DIAL, the portfolio mandate is the standing POLICY:
+objectives, a target allocation over the existing `assetClass` buckets, standing
+constraints, a time horizon, and rebalancing bands. Full detail in
+[`docs/portfolio-mandate.md`](docs/portfolio-mandate.md).
+
+- **A resource, not a table.** The mandate is a flat household document (no FK /
+  join / aggregation) and agent-facing state read at seed — the FIX-760 thesis
+  reasoning exactly. So it is a user-scoped FSD resource
+  (`portfolioMandateResource`, `portfolio-resources.ts`, `flowIsolation: false`),
+  written by `savePortfolioMandate` / `clearPortfolioMandate`
+  (`portfolio-mandate-actions.ts`), NOT an `app.*` table. Being a resource buys
+  the live client read + `resource_change` streaming for free. Presence is a
+  REQUIRED field (`state?.createdAt`), never `state != null` — the engine
+  normalizes a cleared single resource to `{}`.
+
+- **Reconciliation with FIX-752 (load-bearing).** ONE policy object, not two. The
+  FIX-752 appetite folds in as the mandate's `riskAppetite` facet. Precedence at
+  seed: `run override → account default → IPS household → null`, purely additive.
+  When the IPS sets only `riskTolerance`, the seed DERIVES the appetite 1:1 via
+  `toleranceToAppetite` (so a normal IPS still steers the gate);
+  `account.riskMandate` is kept as a per-account exception above the household
+  default (asset location). All effects downward-only.
+
+- **Injection + freeze.** `seedSession` reads the resource, RE-VALIDATES it
+  (`validatePortfolioMandate` — a business-invalid persisted record degrades to
+  mandate-blind, never throws), freezes it onto `state.portfolioMandate`, and
+  freezes the analyzed ticker's HOUSEHOLD weight
+  (`state.householdTickerWeightPct`, from the pre-scoping account read so a scoped
+  run measures a household cap against the whole book). The PM reads it via the
+  `portfolioMandate` capability preset (`<portfolioMandate>`, frozen-state read,
+  suppress-to-null when absent — the `standingThesis` / `riskMandate` precedent);
+  the trader also opts in for size awareness.
+
+- **PM gating (`lib/policy-gate.ts`, pure).** At commit, `computePolicyGate`
+  clamps size deterministically: HARD `maxPositionWeight` cap (at-purchase,
+  floored at the household weight so an over-cap hold is never force-trimmed) +
+  HARD exclusion no-add (`min(target, householdWeight)`); min-cash + allocation
+  drift are ADVISORY (the PM narrates). Derived from frozen state, never the LLM
+  (the `agreesWithTrader` precedent); the PM's `policyFit` supplies only the two
+  narrative strings. A held-but-unpriced name skips the clamp
+  (`householdWeightKnown: false`) rather than coercing the weight to 0 (which
+  would fabricate an exit / forced trim — BP-020). The mandate NEVER touches
+  `finalRating` (the FIX-715 / FIX-752 orthogonality). The derived `policyVerdict`
+  + clamp flags echo onto the memo (`policyDecision`), the decision snapshot, and
+  the RunSummary (the goal-check read path).
+
+- **NOT a generator output.** `portfolioMandateSchema` is a resource-state /
+  input shape — `.default()` / `.nullable()` are fine; do NOT add it to
+  `output-schemas-strict.spec.ts`. The PM's `policyFit` (two narrative strings) IS
+  a generator output and is in the strict walker.
+
+- **UI + limitations.** Editor + summary chip live in the Portfolio view
+  (`components/portfolio/mandate-dialog.tsx` / `mandate-form.ts` /
+  `use-portfolio-mandate.ts`); the PmHero policy block reads the memo's
+  `policyDecision`. v1 is a flat household mandate (sleeves are FIX-771), targets
+  the existing `assetClass` enum (custom buckets deferred), and measures no drift
+  (the health view is FIX-762). See the sibling household resource,
+  [Per-position thesis records (FIX-760)](#per-position-thesis-records-fix-760),
+  and the per-run appetite dial,
+  [Risk-appetite mandate (FIX-752)](#risk-appetite-mandate-decision-tier--fix-752).
+
 ## Adding a new generator
 
 **Structured-output agents in the trader / risk / forecaster / PM /

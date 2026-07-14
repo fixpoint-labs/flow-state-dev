@@ -342,6 +342,7 @@ function portfolioDecision(
       sizeStance: "",
       mandateOverrideReason: "",
     },
+    policyFit: { allocationRead: "", constraintRead: "" },
     citations: null,
   };
 }
