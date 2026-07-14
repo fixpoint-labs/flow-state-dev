@@ -6,6 +6,7 @@ import {
   createFlowState,
   inMemoryStores,
   type FlowApiRouter,
+  type InboundTransportAdapter,
   type StoreAdapter,
 } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -230,6 +231,50 @@ describe("serve — static assets", () => {
     expect(await root.text()).toContain("<title>app</title>");
 
     // unmatched client route falls back to index.html
+    const spa = await fetch(`http://127.0.0.1:${handle.port}/some/client/route`);
+    expect(spa.status).toBe(200);
+    expect(await spa.text()).toContain("<title>app</title>");
+  });
+
+  it("serves a dedicated adapter GET route before the SPA fallback", async () => {
+    // In `fsdev dev` the SPA `get("*")` matches GET before the not-found
+    // fallback; a dedicated adapter GET route outside basePath must still win.
+    const dir = await mkdtemp(join(tmpdir(), "fsd-node-static-"));
+    await writeFile(join(dir, "index.html"), "<!doctype html><title>app</title>");
+
+    const adapter: InboundTransportAdapter = {
+      source: "test-dedicated",
+      createBindings: () => ({
+        routes: [
+          {
+            method: "GET",
+            path: "/custom/:id",
+            handler: (_req, ctx) =>
+              Promise.resolve(
+                new Response(JSON.stringify({ served: ctx.params.id }), {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                }),
+              ),
+          },
+        ],
+      }),
+    };
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: inMemoryStores() } },
+      adapters: [adapter],
+    });
+    const handle = await start(fs, { port: 0, staticDir: dir });
+    await fs.ready();
+
+    // The dedicated GET route is served, not the SPA HTML.
+    const dedicated = await fetch(`http://127.0.0.1:${handle.port}/custom/abc`);
+    expect(dedicated.status).toBe(200);
+    expect(await dedicated.json()).toEqual({ served: "abc" });
+
+    // A genuinely-unmatched client route still falls back to the SPA.
     const spa = await fetch(`http://127.0.0.1:${handle.port}/some/client/route`);
     expect(spa.status).toBe(200);
     expect(await spa.text()).toContain("<title>app</title>");

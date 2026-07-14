@@ -111,16 +111,22 @@ export function serve(
   const handleSignals = options.handleSignals ?? true;
 
   // `basePath`/`healthPath` defaults live in `createServerApp`; pass through.
-  const { app: honoApp, dispose } = createServerApp(app, {
+  const { app: honoApp, tryDedicatedRoute, dispose } = createServerApp(app, {
     basePath: options.basePath,
     healthPath: options.healthPath,
   });
 
   // Static assets + SPA fallback for the DevTool UI, GET-only (Hono also answers
   // HEAD). Registered after the portable app's health/API routes, so it only
-  // catches what they don't.
+  // catches what they don't. This `get("*")` matches BEFORE the app's not-found
+  // fallback, so it must first offer the request to a transport adapter's
+  // dedicated routes — otherwise a dedicated GET route outside `basePath` (e.g.
+  // an MCP adapter's) would be shadowed by the SPA HTML in `fsdev dev`.
   if (staticDir !== undefined) {
-    honoApp.get("*", (c) => serveStaticResponse(c.req.path, staticDir));
+    honoApp.get("*", async (c) => {
+      const dedicated = await tryDedicatedRoute(c.req.raw);
+      return dedicated ?? serveStaticResponse(c.req.path, staticDir);
+    });
   }
 
   let server: Server;

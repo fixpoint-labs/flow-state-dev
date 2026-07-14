@@ -40,6 +40,16 @@ export interface ServerApp {
    */
   readonly app: Hono;
   /**
+   * Match `req` against ONLY a transport adapter's dedicated routes (those
+   * registered OUTSIDE `basePath`, e.g. the MCP adapter's `/mcp/:kind` under
+   * `dedicatedBasePath`). Returns the matched `Response`, or `null` when none
+   * match — it never touches the canonical flow-API handler. The app already
+   * uses this in its not-found fallback; a host that registers its own broad
+   * catch-all AFTER the app (e.g. `serve()`'s SPA `get("*")` for a `staticDir`)
+   * must call it first so a dedicated route isn't shadowed by that fallback.
+   */
+  tryDedicatedRoute(req: Request): Promise<Response | null>;
+  /**
    * Dispose the resolved router and, when built from a `FlowState`, its stores.
    * Idempotent and safe to call before initialization settles.
    */
@@ -152,28 +162,36 @@ export function createServerApp(
   // uncaught — the engine's canonical `handle` catches internally.
   hono.onError((_err, c) => c.json({ error: "Internal server error" }, 500));
 
-  // Anything Hono didn't otherwise route is offered to the engine's DEDICATED
-  // route dispatcher, which serves ONLY a transport adapter's routes that live
-  // OUTSIDE `basePath` — e.g. the MCP adapter's `/mcp/:kind` under
-  // `dedicatedBasePath` — and never the canonical flow-API handler. That keeps
-  // the flow API (list-flows, actions, sessions) reachable ONLY under
-  // `basePath`: an out-of-prefix path like `/my-flow/run` (or a bare `GET /`)
-  // is a plain 404, not a leaked endpoint. This runs after any statically-
-  // mounted routes (the DevTool `get("*")` that `serve()` adds for a
-  // `staticDir`), so it only catches what they don't.
-  hono.notFound(async (c) => {
+  // Match ONLY a transport adapter's dedicated routes (those OUTSIDE `basePath`,
+  // e.g. the MCP adapter's `/mcp/:kind` under `dedicatedBasePath`) — never the
+  // canonical flow-API handler. Returns null when nothing matches. Shared by the
+  // not-found fallback and by `serve()`'s SPA `get("*")` (so a dedicated route
+  // isn't shadowed by that fallback in `fsdev dev`). Returns null while the
+  // router is still initializing or if init failed — a dedicated route can't
+  // have matched yet, so the caller's own fallback (404 / static asset) applies.
+  const tryDedicatedRoute = async (req: Request): Promise<Response | null> => {
     let resolved: FlowApiRouter;
     try {
       resolved = await routerPromise;
     } catch {
-      return c.json({ error: "Server failed to initialize" }, 500);
+      return null;
     }
-    const res = await dispatchDedicatedRoute(resolved, c.req.raw);
+    return dispatchDedicatedRoute(resolved, req);
+  };
+
+  // Anything Hono didn't otherwise route is offered to the dedicated-route
+  // dispatcher above, which serves ONLY out-of-`basePath` adapter routes. That
+  // keeps the flow API (list-flows, actions, sessions) reachable ONLY under
+  // `basePath`: an out-of-prefix path like `/my-flow/run` (or a bare `GET /`)
+  // is a plain 404, not a leaked endpoint.
+  hono.notFound(async (c) => {
+    const res = await tryDedicatedRoute(c.req.raw);
     return res ?? c.json({ error: "Not found" }, 404);
   });
 
   return {
     app: hono,
+    tryDedicatedRoute,
     async dispose() {
       try {
         await routerPromise;
