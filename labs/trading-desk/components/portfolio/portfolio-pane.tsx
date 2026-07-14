@@ -792,6 +792,7 @@ export function PortfolioPane({
               pricesAsOf={priceAsOf}
               hasSession={hasSession}
               onRefreshPrices={() => void fetchPrices()}
+              onAccountsCorrected={refetchAccounts}
             />
           ) : accounts.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">

@@ -156,13 +156,14 @@ export interface PortfolioRepository {
    * that tells that apart from a genuinely sectorless equity). A user's manual
    * override (`asset_class_manual`) is preserved untouched, exactly like the
    * ledger-materialization self-heal. A no-op ticker (nothing matches, or every
-   * matching row is manual) changes nothing.
+   * matching row is manual) changes nothing and returns `{ updated: 0 }` so
+   * callers can tell a real correction apart from a skip.
    */
   reclassifyHoldingByTicker(
     userId: string,
     ticker: string,
     classification: Classification,
-  ): Promise<void>;
+  ): Promise<{ updated: number }>;
 
   /**
    * Append events to the ledger, idempotently. The shared ingestion contract
@@ -1264,8 +1265,11 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
       // `accountId` filter — this ticker may appear in more than one of the
       // user's accounts). `asset_class_manual = false` mirrors the
       // ledger-materialization self-heal's CASE guard: an auto-correction never
-      // overwrites a user's deliberate override.
-      await db
+      // overwrites a user's deliberate override. Return the touched-row count so
+      // callers can tell a real correction apart from a no-op (all rows manual,
+      // or ticker not held) — the classifications route must not suppress a
+      // still-equity ticker that nothing actually changed.
+      const updated = await db
         .update(holdings)
         .set({
           assetClass: classification.assetClass,
@@ -1282,7 +1286,9 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
               db.select({ id: accounts.id }).from(accounts).where(eq(accounts.userId, userId)),
             ),
           ),
-        );
+        )
+        .returning({ ticker: holdings.ticker });
+      return { updated: updated.length };
     },
 
     async ingestLedgerEvents(events, userId) {

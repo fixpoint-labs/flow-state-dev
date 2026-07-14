@@ -155,7 +155,8 @@ describe("reclassifyHoldingByTicker — Yahoo-quoteType-driven auto-correction (
     await repo.upsertHoldings("acc-1", "devuser", [equityRow("VOO")], "upsert");
     await repo.upsertHoldings("acc-2", "devuser", [equityRow("VOO")], "upsert");
 
-    await repo.reclassifyHoldingByTicker("devuser", "VOO", etfClassification);
+    const result = await repo.reclassifyHoldingByTicker("devuser", "VOO", etfClassification);
+    expect(result.updated).toBe(2);
 
     const holdings = (await repo.getPortfolio("devuser")).holdings.filter((h) => h.ticker === "VOO");
     expect(holdings).toHaveLength(2);
@@ -166,7 +167,8 @@ describe("reclassifyHoldingByTicker — Yahoo-quoteType-driven auto-correction (
     await repo.upsertHoldings("acc-1", "devuser", [equityRow("VOO")], "upsert");
     await repo.setHoldingAssetClass("acc-1", "devuser", "VOO", "alternative");
 
-    await repo.reclassifyHoldingByTicker("devuser", "VOO", etfClassification);
+    const result = await repo.reclassifyHoldingByTicker("devuser", "VOO", etfClassification);
+    expect(result.updated).toBe(0);
 
     const voo = (await repo.getPortfolio("devuser")).holdings.find((h) => h.ticker === "VOO");
     // The manual override holds — an auto-correction never overwrites it.
@@ -187,8 +189,8 @@ describe("reclassifyHoldingByTicker — Yahoo-quoteType-driven auto-correction (
 
   it("is a no-op when the user holds no such ticker", async () => {
     await repo.upsertHoldings("acc-1", "devuser", [equityRow("AAPL")], "upsert");
-    await expect(
-      repo.reclassifyHoldingByTicker("devuser", "VOO", etfClassification),
-    ).resolves.not.toThrow();
+    await expect(repo.reclassifyHoldingByTicker("devuser", "VOO", etfClassification)).resolves.toEqual({
+      updated: 0,
+    });
   });
 });

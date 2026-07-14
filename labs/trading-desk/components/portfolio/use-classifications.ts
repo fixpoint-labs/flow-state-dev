@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useFlowContext } from "@flow-state-dev/react";
 import { useApiQuery } from "@/lib/use-api-query";
-import type { ClassificationEntry } from "@/app/api/portfolio/classifications/route";
+import type { ClassificationsResponse } from "@/app/api/portfolio/classifications/route";
 import type { ClassificationMap } from "@/src/flows/portfolio/portfolio-health";
 
 /**
@@ -14,13 +14,21 @@ import type { ClassificationMap } from "@/src/flows/portfolio/portfolio-health";
  * `userId`, never a client-computed ticker list. A no-equity book resolves to an
  * empty map server-side (no Yahoo fan-out).
  *
+ * When the route self-heals a mistyped fund/crypto holding, `reclassifiedTickers`
+ * lists the tickers it actually corrected so the Health section can refetch
+ * accounts (the route mutates holdings; the prop-fed `accounts` would otherwise
+ * stay stale until a later reload).
+ *
  * Mounted by the Health section ONLY, so opening Accounts / Gains never triggers
  * a classification fetch.
  */
-export function useClassifications(): { classifications: ClassificationMap } {
+export function useClassifications(): {
+  classifications: ClassificationMap;
+  reclassifiedTickers: string[];
+} {
   const { userId } = useFlowContext();
   const uid = userId ?? "devuser";
-  const { data } = useApiQuery<{ classifications: ClassificationEntry[] }>(
+  const { data } = useApiQuery<ClassificationsResponse>(
     `/api/portfolio/classifications?userId=${encodeURIComponent(uid)}`,
   );
 
@@ -30,5 +38,10 @@ export function useClassifications(): { classifications: ClassificationMap } {
     return map;
   }, [data]);
 
-  return { classifications };
+  const reclassifiedTickers = useMemo(
+    () => data?.reclassifiedTickers ?? [],
+    [data],
+  );
+
+  return { classifications, reclassifiedTickers };
 }

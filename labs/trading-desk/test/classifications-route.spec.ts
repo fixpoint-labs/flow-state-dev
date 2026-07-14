@@ -64,7 +64,10 @@ async function seedMixedBook(): Promise<void> {
   });
 }
 
-type Body = { classifications: Array<{ ticker: string; sector: string | null }> };
+type Body = {
+  classifications: Array<{ ticker: string; sector: string | null }>;
+  reclassifiedTickers: string[];
+};
 
 describe("GET /api/portfolio/classifications", () => {
   it("resolves ONLY the held equity tickers (server-derived), caching successes", async () => {
@@ -77,6 +80,7 @@ describe("GET /api/portfolio/classifications", () => {
     // Only the equity (AAPL) — the ETF and bond don't use the sector axis and
     // are never resolved.
     expect(body.classifications.map((c) => c.ticker)).toEqual(["AAPL"]);
+    expect(body.reclassifiedTickers).toEqual([]);
     expect(sectorMock.resolveSector).toHaveBeenCalledTimes(1);
     expect(sectorMock.resolveSector).toHaveBeenCalledWith("AAPL", expect.any(String));
 
@@ -97,7 +101,7 @@ describe("GET /api/portfolio/classifications", () => {
     });
     const res = await GET(get(USER_ID));
     expect(res.status).toBe(200);
-    expect((await res.json()) as Body).toEqual({ classifications: [] });
+    expect((await res.json()) as Body).toEqual({ classifications: [], reclassifiedTickers: [] });
     expect(sectorMock.resolveSector).not.toHaveBeenCalled();
   });
 
@@ -113,6 +117,7 @@ describe("GET /api/portfolio/classifications", () => {
 
     const body = (await (await GET(get(USER_ID))).json()) as Body;
     expect(body.classifications).toEqual([{ ticker: "ZZZZ", sector: null }]);
+    expect(body.reclassifiedTickers).toEqual([]);
     // A miss is never persisted — the table stays empty so a later request retries.
     expect(await repoState.repo!.getInstrumentClassifications(["ZZZZ"])).toEqual([]);
     sectorMock.resolveSector.mockClear();
@@ -138,6 +143,9 @@ describe("GET /api/portfolio/classifications", () => {
     const body = (await (await GET(get(USER_ID))).json()) as Body;
     // Not reported as a sectorless equity — it isn't one anymore.
     expect(body.classifications).toEqual([]);
+    // Signal the client to refetch accounts so the Health view stops treating
+    // the still-cached equity row as Unclassified.
+    expect(body.reclassifiedTickers).toEqual(["VOO"]);
     // Never cached as a sector miss either — it's not part of the sector axis at all.
     expect(await repoState.repo!.getInstrumentClassifications(["VOO"])).toEqual([]);
     // The actual correction: the holding itself is now typed etf.
@@ -151,6 +159,33 @@ describe("GET /api/portfolio/classifications", () => {
     expect(sectorMock.resolveSector).not.toHaveBeenCalled();
   });
 
+  it("does not suppress a manual-override equity when Yahoo suggests a fund reclassify", async () => {
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "VOO", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+      ],
+    });
+    // Lock the row as a manual override — auto-correction must leave it alone.
+    await repoState.repo!.setHoldingAssetClass("acc-1", USER_ID, "VOO", "alternative");
+    sectorMock.resolveSector.mockResolvedValue({ sector: null, industry: null, sectorEtf: null });
+    reconcileMock.reconcileFundClassification.mockResolvedValue({
+      assetClass: "equity",
+      assetType: "etf",
+      attributes: { kind: "none" },
+    });
+
+    const body = (await (await GET(get(USER_ID))).json()) as Body;
+    // Still on the equity/sector axis (assetType unchanged) — report the miss,
+    // do not pretends the heal landed.
+    expect(body.classifications).toEqual([{ ticker: "VOO", sector: null }]);
+    expect(body.reclassifiedTickers).toEqual([]);
+    const voo = (await repoState.repo!.getPortfolio(USER_ID)).holdings.find((h) => h.ticker === "VOO");
+    expect(voo?.assetClass).toBe("alternative");
+    expect(voo?.assetType).toBe("equity");
+  });
+
   it("400s without a userId query param", async () => {
     expect((await GET(get(undefined))).status).toBe(400);
     expect(sectorMock.resolveSector).not.toHaveBeenCalled();
@@ -159,6 +194,6 @@ describe("GET /api/portfolio/classifications", () => {
   it("returns an empty list when the user has no holdings", async () => {
     const res = await GET(get(USER_ID));
     expect(res.status).toBe(200);
-    expect((await res.json()) as Body).toEqual({ classifications: [] });
+    expect((await res.json()) as Body).toEqual({ classifications: [], reclassifiedTickers: [] });
   });
 });

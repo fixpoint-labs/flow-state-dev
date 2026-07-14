@@ -33,6 +33,26 @@ type YahooClient = {
   ) => Promise<Record<string, unknown | undefined>>;
 };
 
+/**
+ * Map a stored ticker to Yahoo's wire spelling.
+ *
+ * US class shares are stored dotted/slashed (`BRK.B` / `BRK/B`) but Yahoo
+ * resolves them only with a hyphen (`BRK-B`). International symbols keep a
+ * dotted *exchange* suffix (`ASML.AS`, `7203.T`) — rewriting those to hyphens
+ * makes `quoteSummary` miss while the price path still works with the original
+ * dotted form. Heuristic:
+ *   - trailing `/X` → always a class-share spelling → hyphenate
+ *   - trailing `.X` after an alphabetic base → class share → hyphenate
+ *   - everything else (multi-letter exchange, numeric+exchange) → leave alone
+ */
+export function toYahooSymbol(ticker: string): string {
+  if (/\/[A-Za-z]$/.test(ticker)) return ticker.replace(/\/([A-Za-z])$/i, "-$1");
+  if (/^[A-Za-z][A-Za-z0-9]*\.[A-Za-z]$/.test(ticker)) {
+    return ticker.replace(/\./, "-");
+  }
+  return ticker;
+}
+
 // Two layers of caching:
 //   - `cachedClient` holds the fully-constructed instance for subsequent calls.
 //   - `clientPromise` holds the in-flight construction so concurrent first
@@ -209,9 +229,7 @@ export async function fetchYahooSplits(
 ): Promise<ProviderSplit[]> {
   const p1 = Math.floor(new Date(from).getTime() / 1000);
   const p2 = Math.floor(new Date(to).getTime() / 1000);
-  // Yahoo spells class shares with a hyphen, not a dot (BRK.B → BRK-B); leaving
-  // the dot 404s. `/` (preferred/warrant suffixes) gets the same treatment.
-  const symbol = ticker.replace(/[./]/g, "-");
+  const symbol = toYahooSymbol(ticker);
   const url = new URL(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,
   );
@@ -288,12 +306,11 @@ export async function fetchYahooCompanyProfile(
   input: ToolInput<"get_company_profile">,
 ): Promise<ToolOutput<"get_company_profile">> {
   const yahoo = await getYahoo();
-  // Yahoo spells class shares with a hyphen, not a dot (BRK.B → BRK-B); leaving
-  // the dot fails the lookup outright (the `fetchYahooSplits` precedent). This
-  // fetch has no fallback provider (Yahoo is the only sector source), so a
-  // dotted ticker silently never resolves — unlike price refresh, which falls
-  // through to Finnhub and never surfaces the gap.
-  const symbol = input.ticker.replace(/[./]/g, "-");
+  // Class-share hyphenation only — exchange-suffixed internationals keep their
+  // dots (see `toYahooSymbol`). This fetch has no fallback provider (Yahoo is
+  // the only sector source), so a wrong spelling silently never resolves —
+  // unlike price refresh, which falls through to Finnhub.
+  const symbol = toYahooSymbol(input.ticker);
   // `assetProfile` carries sector/industry/business-description; `summaryDetail`
   // carries marketCap/currency; `quoteType` is the canonical home for the
   // company's display name and exchange — `assetProfile` does not include
@@ -356,7 +373,7 @@ export async function fetchYahooCompanyProfile(
  */
 export async function fetchYahooQuoteKind(ticker: string): Promise<string | null> {
   const yahoo = await getYahoo();
-  const symbol = ticker.replace(/[./]/g, "-");
+  const symbol = toYahooSymbol(ticker);
   try {
     const summary = (await yahoo.quoteSummary(
       symbol,

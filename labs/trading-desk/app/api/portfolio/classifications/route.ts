@@ -26,19 +26,26 @@ import { reconcileFundClassification } from "@/src/flows/portfolio/reconcile-fun
 // user actually holds can ever trigger a Yahoo call. Funds/bonds/crypto/cash have
 // no single-name sector, so only equities are resolved.
 //
-// This GET deliberately WRITES (an idempotent cache fill of global reference
-// data — the same spirit as the tool runtime's `getOrFetch`, not user-scoped
-// state). Only successful resolutions are persisted; a transient Yahoo miss
-// returns `{ sector: null }` for that ticker and is NOT written, so an outage
-// never permanently blanks a ticker — it is retried on a later request
-// (in-process de-duped by `resolveSector`'s cache meanwhile).
+// This GET deliberately WRITES two things:
+//   1. An idempotent cache fill of global `instrument_classifications` reference
+//      data (the same spirit as the tool runtime's `getOrFetch`, not user-scoped
+//      state). Only successful resolutions are persisted; a transient Yahoo miss
+//      returns `{ sector: null }` for that ticker and is NOT written, so an outage
+//      never permanently blanks a ticker — it is retried on a later request
+//      (in-process de-duped by `resolveSector`'s cache meanwhile).
+//   2. A bounded self-heal of mistyped held equities (`reclassifyHoldingByTicker`)
+//      when Yahoo's own instrument-kind confirms the ticker is a fund/crypto —
+//      the same correction the offline `backfill-fund-classification` script
+//      applies. Manual overrides are preserved. The response surfaces
+//      `reclassifiedTickers` so the Health client can refetch accounts; a no-op
+//      (manual row / no match) does NOT suppress the ticker.
 //
 // AUTH POSTURE (dev-only): `userId` is a client-asserted query param, exactly as
 // the accounts / quotes / ledger read routes are; a real multi-user deployment
 // resolves caller identity server-side before trusting it (BP-031, deferred
-// lab-wide until real server auth lands). The table rows themselves are global,
-// public per-ticker facts (Key Decision 2) — the `userId` here scopes only which
-// tickers to fetch, not who may read a sector.
+// lab-wide until real server auth lands). The classification rows themselves are
+// global, public per-ticker facts (Key Decision 2) — the `userId` here scopes
+// which tickers to fetch AND which household's holdings the self-heal may touch.
 export const dynamic = "force-dynamic";
 
 /** Bounded fan-out to Yahoo (the `getQuotes` idiom); `resolveSector`'s own
@@ -47,6 +54,12 @@ const CLASSIFY_CONCURRENCY = 4;
 
 /** One classification the route returns (null sector = unresolved this request). */
 export type ClassificationEntry = { ticker: string; sector: string | null };
+
+/** Response body — `reclassifiedTickers` lists holdings this request actually corrected. */
+export type ClassificationsResponse = {
+  classifications: ClassificationEntry[];
+  reclassifiedTickers: string[];
+};
 
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get("userId");
@@ -66,7 +79,10 @@ export async function GET(req: NextRequest) {
     ),
   ];
   if (tickers.length === 0) {
-    return NextResponse.json({ classifications: [] as ClassificationEntry[] });
+    return NextResponse.json({
+      classifications: [] as ClassificationEntry[],
+      reclassifiedTickers: [] as string[],
+    } satisfies ClassificationsResponse);
   }
 
   const cached = await repo.getInstrumentClassifications(tickers);
@@ -88,8 +104,11 @@ export async function GET(req: NextRequest) {
         // asset mistyped `assetType: "equity"` at import.
         const correction = await reconcileFundClassification(ticker);
         if (correction !== null) {
-          await repo.reclassifyHoldingByTicker(userId, ticker, correction);
-          return { ticker, sector: null, reclassified: true };
+          const { updated } = await repo.reclassifyHoldingByTicker(userId, ticker, correction);
+          // Only treat as reclassified when a row actually changed — a manual
+          // override updates zero rows and must stay on the equity/sector axis
+          // (and keep retrying), not be suppressed as if the heal landed.
+          return { ticker, sector: null, reclassified: updated > 0 };
         }
       }
       return { ticker, sector, reclassified: false };
@@ -117,5 +136,8 @@ export async function GET(req: NextRequest) {
   const classifications: ClassificationEntry[] = tickers
     .filter((ticker) => !reclassified.has(ticker))
     .map((ticker) => ({ ticker, sector: bySector.get(ticker) ?? null }));
-  return NextResponse.json({ classifications });
+  return NextResponse.json({
+    classifications,
+    reclassifiedTickers: [...reclassified],
+  } satisfies ClassificationsResponse);
 }

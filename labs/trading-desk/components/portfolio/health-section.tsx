@@ -17,7 +17,7 @@
  */
 "use client";
 
-import { useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import type { AccountState } from "@/src/flows/portfolio/portfolio-schema";
 import {
@@ -42,6 +42,12 @@ type HealthSectionProps = {
   hasSession: boolean;
   /** Trigger the pinned toolbar's live price refresh (the no-quotes empty state). */
   onRefreshPrices: () => void;
+  /**
+   * Refetch accounts after the classifications route self-heals a mistyped
+   * fund/crypto holding — without this, the prop-fed book stays stale and the
+   * corrected ticker keeps rendering as an unclassified equity until reload.
+   */
+  onAccountsCorrected: () => void;
 };
 
 /** Percent as "12.4%" (leaf pcts are 0..100, unlike `formatPercent`'s 0..1). */
@@ -100,10 +106,19 @@ export function HealthSection({
   pricesAsOf,
   hasSession,
   onRefreshPrices,
+  onAccountsCorrected,
 }: HealthSectionProps): ReactElement {
   // The route derives the held equity tickers server-side (only single-name
   // equities use the sector axis); the hook passes only userId.
-  const { classifications } = useClassifications();
+  const { classifications, reclassifiedTickers } = useClassifications();
+
+  // Genuine external sync: the classifications GET may have just corrected a
+  // mistyped holding server-side; pull a fresh accounts snapshot so Health
+  // renders the post-heal book (BP-010 — an effect is correct for a refetch).
+  useEffect(() => {
+    if (reclassifiedTickers.length === 0) return;
+    onAccountsCorrected();
+  }, [reclassifiedTickers, onAccountsCorrected]);
 
   const health = useMemo(() => {
     const quotes: QuoteMap = new Map();

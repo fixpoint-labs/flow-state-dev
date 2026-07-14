@@ -34,6 +34,7 @@ import {
   fetchYahooChart,
   fetchYahooCompanyProfile,
   fetchYahooQuoteKind,
+  toYahooSymbol,
 } from "../src/flows/analysis/tools/providers/yahoo";
 
 /**
@@ -131,6 +132,43 @@ describe("fetchYahooCompanyProfile — strict-schema resilience (FIX-762)", () =
     expect(out.sector).toBe("Financial Services");
     // The RETURNED ticker still echoes our canonical (dotted) storage key.
     expect(out.ticker).toBe("BRK.B");
+  });
+
+  it("preserves a Yahoo exchange-suffix ticker (ASML.AS) instead of hyphenating it", async () => {
+    quoteSummaryMock.mockImplementation((symbol: string) =>
+      symbol === "ASML.AS"
+        ? Promise.resolve({
+            assetProfile: { sector: "Technology" },
+            summaryDetail: {},
+            quoteType: { longName: "ASML Holding N.V." },
+          })
+        : Promise.reject(new Error(`no data found for symbol ${symbol}`)),
+    );
+
+    const out = await fetchYahooCompanyProfile({ ticker: "ASML.AS", date: "2026-05-06" });
+
+    expect(quoteSummaryMock).toHaveBeenCalledWith(
+      "ASML.AS",
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(out.sector).toBe("Technology");
+    expect(out.ticker).toBe("ASML.AS");
+  });
+});
+
+describe("toYahooSymbol — class-share vs exchange-suffix", () => {
+  it("hyphenates US class-share spellings only", () => {
+    expect(toYahooSymbol("BRK.B")).toBe("BRK-B");
+    expect(toYahooSymbol("BRK/B")).toBe("BRK-B");
+    expect(toYahooSymbol("BF.A")).toBe("BF-A");
+  });
+
+  it("leaves exchange-suffixed internationals and bare tickers alone", () => {
+    expect(toYahooSymbol("ASML.AS")).toBe("ASML.AS");
+    expect(toYahooSymbol("7203.T")).toBe("7203.T");
+    expect(toYahooSymbol("AAPL")).toBe("AAPL");
+    expect(toYahooSymbol("BRK-B")).toBe("BRK-B");
   });
 });
 
