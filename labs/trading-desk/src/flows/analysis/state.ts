@@ -35,8 +35,8 @@ import { z } from "zod";
 import { citationIntegritySchema } from "./resources";
 import { portfolioContextInput } from "./flow-schema";
 import { riskMandateSchema } from "./lib/risk-mandate";
-import { thesisRecordSchema } from "../portfolio/thesis-schema";
-import { portfolioMandateSchema } from "../portfolio/portfolio-mandate-schema";
+import { thesisRecordSchema } from "@/src/domain/portfolio/schema/thesis-schema";
+import { portfolioMandateSchema } from "@/src/domain/portfolio/schema/portfolio-mandate-schema";
 
 export const sessionStateSchema = z.object({
   ticker: z.string().default("NVDA"),

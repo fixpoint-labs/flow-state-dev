@@ -15,7 +15,7 @@
  * same-year income reversal can't erase a differently-charactered gain, and the
  * taxable-account / USD-row filter (applied upstream by the route before summing).
  */
-import type { TaxProfileInput } from "./tax-schema";
+import type { TaxProfileInput } from "../schema/tax-schema";
 
 /** The reference year the estimate defaults to (the desk's "current" year). */
 export const TAX_YEAR = 2026;

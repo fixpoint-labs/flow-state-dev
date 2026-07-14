@@ -19,8 +19,8 @@ import type {
   AssetClass,
   AssetType,
   HoldingAttributes,
-} from "./portfolio-schema";
-import { assetTypeSchema } from "./portfolio-schema";
+} from "../schema/portfolio-schema";
+import { assetTypeSchema } from "../schema/portfolio-schema";
 
 /** The classifier result — the three taxonomy fields a `CanonicalRow` carries. */
 export type Classification = {
@@ -50,7 +50,7 @@ const KNOWN_BOND_ETFS = new Set([
   "SCHO", "SCHR", "SPTL", "SPTI", "SPTS", "GBIL", "SGOV", "BILS", "TBIL",
   "TLH", "EDV", "ZROZ", "TBT",
   // TIPS / inflation
-  "TIP", "VTIP", "SCHP", "STIP", "TIPX", "SPIP", "LTPZ",
+  "TIP", "TIPS", "VTIP", "SCHP", "STIP", "TIPX", "SPIP", "LTPZ",
   // Corporate — investment grade
   "LQD", "VCIT", "VCSH", "VCLT", "IGSB", "IGIB", "IGLB", "USIG", "SPIB", "SPLB",
   "SPSB", "SLQD", "QLTA",

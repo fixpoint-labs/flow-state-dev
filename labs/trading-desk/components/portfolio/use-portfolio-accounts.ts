@@ -2,7 +2,7 @@
 
 import { useFlowContext } from "@flow-state-dev/react";
 import { useApiQuery } from "@/lib/use-api-query";
-import type { AccountState } from "@/src/flows/portfolio/portfolio-schema";
+import type { AccountState } from "@/src/domain/portfolio/schema/portfolio-schema";
 
 /**
  * Read the user's portfolio (accounts with inline holdings) from the app-owned

@@ -15,7 +15,7 @@ import {
   createPortfolioRepository,
   type PortfolioRepository,
 } from "@/src/db/repository";
-import { recordManualEvent, type RecordEventInput } from "@/src/flows/portfolio/portfolio-writes";
+import { recordManualEvent, type RecordEventInput } from "@/src/domain/portfolio/services/portfolio-writes";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
 

@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getRepository } from "@/lib/portfolio-db";
 import { resolveSector } from "@/src/flows/analysis/lib/sector-resolution";
 import { mapLimit } from "@/src/flows/analysis/lib/concurrency";
-import { reconcileFundClassification } from "@/src/flows/portfolio/reconcile-fund-classification";
+import { reconcileFundClassification } from "@/src/domain/portfolio/services/reconcile-fund-classification";
 
 // The per-ticker sector classification surface (FIX-762) — backs the Health
 // view's sector-exposure axis. `GET ?userId=…` returns the sector for each of the

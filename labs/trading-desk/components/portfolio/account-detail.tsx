@@ -20,9 +20,9 @@
 import { useMemo, useState, type ReactElement } from "react";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AccountState, AssetClass, Holding } from "@/src/flows/portfolio/portfolio-schema";
-import type { LedgerRow } from "@/src/flows/portfolio/ledger-schema";
-import type { Quote } from "@/src/flows/portfolio/get-quotes";
+import type { AccountState, AssetClass, Holding } from "@/src/domain/portfolio/schema/portfolio-schema";
+import type { LedgerRow } from "@/src/domain/portfolio/schema/ledger-schema";
+import type { Quote } from "@/src/domain/portfolio/services/get-quotes";
 import type { IncomeSummaryRow, RealizedGainRow } from "@/src/db/repository";
 import { HoldingsTable } from "./holdings-table";
 import { LedgerTable } from "./ledger-table";

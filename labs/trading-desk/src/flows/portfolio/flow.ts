@@ -8,7 +8,7 @@
  * work over the app-owned tables (FIX-772/FIX-823) that live in plain REST routes
  * (`app/api/portfolio/*`) — a flow buys them nothing and costs a request-envelope
  * return and a bound-session requirement (FIX-736 follow-up; the write logic is
- * `src/flows/portfolio/portfolio-writes.ts`, and the quote refresh is
+ * `src/domain/portfolio/services/portfolio-writes.ts`, and the quote refresh is
  * `refreshQuotes` in `get-quotes.ts` behind `POST /api/portfolio/quotes/refresh`).
  * A thesis is the exception that proves the boundary: it is a REACTIVE, cross-flow
  * resource (the client reads it live, the analysis flow reads + derives it), so

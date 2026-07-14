@@ -33,12 +33,12 @@
  * CURRENT mark, not what the user paid). The UI must say so.
  */
 import { z } from "zod";
-import type { CanonicalRow } from "./portfolio-schema";
+import type { CanonicalRow } from "../schema/portfolio-schema";
 import {
   classifyInstrument,
   isImportableSymbol,
   validMarkPrice,
-} from "./classify-instrument";
+} from "../math/classify-instrument";
 
 /**
  * One holding row as transcribed by the extraction generator from the statement

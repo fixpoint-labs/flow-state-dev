@@ -31,7 +31,7 @@
  *
  * Pure leaf (BP-019): imports only the mandate schema TYPE, no runtime.
  */
-import type { PortfolioMandate } from "../../portfolio/portfolio-mandate-schema";
+import type { PortfolioMandate } from "@/src/domain/portfolio/schema/portfolio-mandate-schema";
 
 /** The single-name policy outcome for the analyzed ticker. `unenforced` means a
  *  hard constraint (a position cap) applied but could NOT be evaluated because

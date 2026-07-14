@@ -3,9 +3,9 @@
  * flow owns, grouped in one module so consumers (the report flow's seed snapshot,
  * the portfolio action handlers, the UI) import from a single place.
  *
- * Imports only `@flow-state-dev/core` + zod + the pure `./portfolio-schema`
- * and `./portfolio-pdf` leaves — NEVER the action handlers — so the
- * capability↔resource graph stays cycle-free.
+ * Imports only `@flow-state-dev/core` + zod + the pure domain schema /
+ * parser leaves — NEVER the action handlers — so the capability↔resource
+ * graph stays cycle-free.
  *
  *   - `pdfImportResource` — session-scoped per-import scratch channel the
  *     extraction action writes and the import dialog reads.
@@ -21,9 +21,9 @@
  */
 import { defineResource, defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
-import { pdfExtractionSchema } from "./portfolio-pdf";
-import { thesisRecordSchema } from "./thesis-schema";
-import { portfolioMandateSchema } from "./portfolio-mandate-schema";
+import { pdfExtractionSchema } from "@/src/domain/portfolio/parsers/portfolio-pdf";
+import { thesisRecordSchema } from "@/src/domain/portfolio/schema/thesis-schema";
+import { portfolioMandateSchema } from "@/src/domain/portfolio/schema/portfolio-mandate-schema";
 
 export const pdfImportStateSchema = z.object({
   /** When the extraction ran (ISO). */

@@ -18,15 +18,15 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import type { Quote } from "@/src/flows/portfolio/get-quotes";
-import type { AccountState } from "@/src/flows/portfolio/portfolio-schema";
+import type { Quote } from "@/src/domain/portfolio/services/get-quotes";
+import type { AccountState } from "@/src/domain/portfolio/schema/portfolio-schema";
 import {
   summarizePortfolioHealth,
   FUNDS_BUCKET,
   type HealthPosition,
   type PortfolioHealth,
   type QuoteMap,
-} from "@/src/flows/portfolio/portfolio-health";
+} from "@/src/domain/portfolio/math/portfolio-health";
 import { useClassifications } from "./use-classifications";
 import { ASSET_CLASS_LABELS, DASH, formatMoney } from "./portfolio-format";
 import { cn } from "@/lib/utils";

@@ -10,7 +10,7 @@ import { computePolicyGate } from "../src/flows/analysis/lib/policy-gate";
 import {
   portfolioMandateSchema,
   type PortfolioMandate,
-} from "../src/flows/portfolio/portfolio-mandate-schema";
+} from "../src/domain/portfolio/schema/portfolio-mandate-schema";
 
 function mandate(constraints: Record<string, unknown>): PortfolioMandate {
   return portfolioMandateSchema.parse({

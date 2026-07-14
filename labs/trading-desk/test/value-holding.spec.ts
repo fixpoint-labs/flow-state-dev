@@ -13,8 +13,8 @@ import {
   resolveHoldingPrice,
   holdingMarketValue,
   holdingUnrealizedPL,
-} from "../src/flows/portfolio/value-holding";
-import type { Holding } from "../src/flows/portfolio/portfolio-schema";
+} from "../src/domain/portfolio/math/value-holding";
+import type { Holding } from "../src/domain/portfolio/schema/portfolio-schema";
 
 function holding(over: Partial<Holding> = {}): Holding {
   return {

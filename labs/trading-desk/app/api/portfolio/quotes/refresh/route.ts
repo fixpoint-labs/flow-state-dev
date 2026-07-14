@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepository } from "@/lib/portfolio-db";
-import { refreshQuotes } from "@/src/flows/portfolio/get-quotes";
-import { usesLiveQuote } from "@/src/flows/portfolio/value-holding";
+import { refreshQuotes } from "@/src/domain/portfolio/services/get-quotes";
+import { usesLiveQuote } from "@/src/domain/portfolio/math/value-holding";
 
 // Refresh the household's last-known prices (FIX-823): fetch a live quote per
 // held, quote-valued ticker and upsert the durable `app.quotes` table, then the

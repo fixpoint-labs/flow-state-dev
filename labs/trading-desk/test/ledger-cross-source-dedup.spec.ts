@@ -22,8 +22,8 @@ import {
   createPortfolioRepository,
   type PortfolioRepository,
 } from "@/src/db/repository";
-import { parseOfxTransactions } from "@/src/flows/portfolio/portfolio-ofx";
-import type { LedgerEventInput } from "@/src/flows/portfolio/ledger-schema";
+import { parseOfxTransactions } from "@/src/domain/portfolio/parsers/portfolio-ofx";
+import type { LedgerEventInput } from "@/src/domain/portfolio/schema/ledger-schema";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
 

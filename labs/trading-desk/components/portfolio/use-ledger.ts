@@ -2,7 +2,7 @@
 
 import { useFlowContext } from "@flow-state-dev/react";
 import { useApiQuery } from "@/lib/use-api-query";
-import type { LedgerRow } from "@/src/flows/portfolio/ledger-schema";
+import type { LedgerRow } from "@/src/domain/portfolio/schema/ledger-schema";
 
 /**
  * Read the user's transaction ledger (FIX-774) from the app-owned table via the

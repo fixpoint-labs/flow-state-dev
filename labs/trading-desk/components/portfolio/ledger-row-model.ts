@@ -16,7 +16,7 @@
 import type {
   LedgerRow,
   LedgerSource,
-} from "@/src/flows/portfolio/ledger-schema";
+} from "@/src/domain/portfolio/schema/ledger-schema";
 import { DASH, formatSignedMoney } from "./portfolio-format";
 
 /** Human label for each event kind. */

@@ -6,13 +6,13 @@ import {
   deleteAccount,
   saveAccount,
   saveAccountSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
+} from "@/src/domain/portfolio/services/portfolio-writes";
 
 // The accounts REST surface over the app-owned portfolio tables (FIX-772). Read
 // (GET) and the account mutations (POST save, DELETE) all live here as plain
 // routes calling the repository / the domain-write functions — accounts are
 // basic relational CRUD, not flow-shaped work, so they don't go through a flow
-// action (FIX-736 follow-up; see `src/flows/portfolio/portfolio-writes.ts`).
+// action (FIX-736 follow-up; see `src/domain/portfolio/services/portfolio-writes.ts`).
 //
 // AUTH POSTURE (dev-only): `userId` is client-asserted (query param on GET/
 // DELETE, body field on POST), exactly as the lab's other routes are. A real

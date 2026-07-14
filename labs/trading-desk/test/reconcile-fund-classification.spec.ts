@@ -15,7 +15,7 @@ vi.mock("../src/flows/analysis/tools/providers/yahoo", () => ({
   fetchYahooQuoteKind: fetchYahooQuoteKindMock,
 }));
 
-import { reconcileFundClassification } from "../src/flows/portfolio/reconcile-fund-classification";
+import { reconcileFundClassification } from "../src/domain/portfolio/services/reconcile-fund-classification";
 import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 
 // The reconciliation result is cache-deduped (getOrFetch, process-wide) —

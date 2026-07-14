@@ -44,12 +44,12 @@ import {
   canonicalRowsToCsv,
   reconcile,
   toCanonicalRows,
-} from "@/src/flows/portfolio/portfolio-pdf";
+} from "@/src/domain/portfolio/parsers/portfolio-pdf";
 import type { PdfImportState } from "@/src/flows/portfolio/portfolio-resources";
 import type {
   AccountState,
   ImportMode,
-} from "@/src/flows/portfolio/portfolio-schema";
+} from "@/src/domain/portfolio/schema/portfolio-schema";
 import type { ImportSubmit } from "./import-csv-dialog";
 
 /** Reject obviously-too-large uploads before encoding/sending. A text brokerage

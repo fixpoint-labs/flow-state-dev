@@ -27,11 +27,11 @@
  *    fixture mode that is the pinned snapshot date, not "now".
  */
 import { z } from "zod";
-import { getOrFetch } from "../analysis/tools/runtime/cache";
-import { mapLimit, sleep } from "../analysis/lib/concurrency";
-import { FIXTURE_SNAPSHOT, loadFixture } from "../analysis/tools/runtime/fixtures";
-import { fetchFinnhubCandles, hasFinnhubKey } from "../analysis/tools/providers/finnhub";
-import { fetchYahooChart } from "../analysis/tools/providers/yahoo";
+import { getOrFetch } from "@/src/flows/analysis/tools/runtime/cache";
+import { mapLimit, sleep } from "@/src/flows/analysis/lib/concurrency";
+import { FIXTURE_SNAPSHOT, loadFixture } from "@/src/flows/analysis/tools/runtime/fixtures";
+import { fetchFinnhubCandles, hasFinnhubKey } from "@/src/flows/analysis/tools/providers/finnhub";
+import { fetchYahooChart } from "@/src/flows/analysis/tools/providers/yahoo";
 import type { PortfolioRepository } from "@/src/db/repository";
 
 /** Live quote fan-out throttle: at most this many provider requests in flight at

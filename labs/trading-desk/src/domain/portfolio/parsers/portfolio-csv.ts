@@ -15,14 +15,14 @@
  *  - Conservative on cost: a bare `price` column (often a CURRENT price, not
  *    cost) maps to costBasis only as a last resort, and emits a warning.
  */
-import type { AssetType, CanonicalRow } from "./portfolio-schema";
-import { assetTypeSchema } from "./portfolio-schema";
+import type { AssetType, CanonicalRow } from "../schema/portfolio-schema";
+import { assetTypeSchema } from "../schema/portfolio-schema";
 import {
   canonicalTickerKey,
   classifyInstrument,
   isImportableSymbol,
   validMarkPrice,
-} from "./classify-instrument";
+} from "../math/classify-instrument";
 
 /** The CSV-mappable canonical columns. The taxonomy fields `assetClass` /
  *  `attributes` are NOT parsed from CSV (they are re-derived by the classifier);

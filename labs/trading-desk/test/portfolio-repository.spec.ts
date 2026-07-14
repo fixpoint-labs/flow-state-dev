@@ -31,7 +31,7 @@ import {
   type PortfolioRepository,
 } from "@/src/db/repository";
 import type { AccountInput } from "@/src/db/repository";
-import type { CanonicalRow } from "@/src/flows/portfolio/portfolio-schema";
+import type { CanonicalRow } from "@/src/domain/portfolio/schema/portfolio-schema";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
 

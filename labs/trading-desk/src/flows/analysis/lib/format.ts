@@ -17,11 +17,11 @@ import type { PortfolioContextInput } from "../flow-schema";
 import type { LensConvergenceState } from "../agents/lenses/lens-convergence-resource";
 import type { RewardToRiskState } from "../reward-to-risk-resource";
 import type { RiskMandate } from "./risk-mandate";
-import type { ThesisRecord } from "../../portfolio/thesis-schema";
+import type { ThesisRecord } from "@/src/domain/portfolio/schema/thesis-schema";
 import {
   timeHorizonCategoryFor,
   type PortfolioMandate,
-} from "../../portfolio/portfolio-mandate-schema";
+} from "@/src/domain/portfolio/schema/portfolio-mandate-schema";
 
 /** Render a memo state as a compact prompt block. Permissive `any` —
  *  body shape is enforced by `memoStateSchema` at write time, so reads

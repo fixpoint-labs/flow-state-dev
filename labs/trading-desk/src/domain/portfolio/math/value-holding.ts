@@ -28,7 +28,7 @@
  * percent-of-par bond and a per-contract-vs-per-share option from valuing 100×
  * off.
  */
-import type { AssetType, Holding } from "./portfolio-schema";
+import type { AssetType, Holding } from "../schema/portfolio-schema";
 
 /** Asset types valued from a LIVE quote (as opposed to a carried statement mark
  *  or par). The Portfolio pane fetches quotes only for these — a bond / option /

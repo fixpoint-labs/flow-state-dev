@@ -17,7 +17,7 @@
  *   7. FITID becomes the `externalId` (the dedup key).
  */
 import { describe, expect, it } from "vitest";
-import { parseOfxTransactions } from "@/src/flows/portfolio/portfolio-ofx";
+import { parseOfxTransactions } from "@/src/domain/portfolio/parsers/portfolio-ofx";
 
 /** A QFX (Quicken) export: 1.x SGML (unclosed leaf tags) + Intuit header, a buy
  *  with a commission, a dividend, and a SECLIST that resolves the ticker. */

@@ -7,10 +7,10 @@
  * already came back null (the classifications route's miss path); a ticker
  * with a real sector is never second-guessed here.
  */
-import { getOrFetch } from "../analysis/tools/runtime/cache";
-import { fetchYahooQuoteKind } from "../analysis/tools/providers/yahoo";
-import { classifyInstrument, type Classification } from "./classify-instrument";
-import type { AssetType } from "./portfolio-schema";
+import { getOrFetch } from "@/src/flows/analysis/tools/runtime/cache";
+import { fetchYahooQuoteKind } from "@/src/flows/analysis/tools/providers/yahoo";
+import { classifyInstrument, type Classification } from "../math/classify-instrument";
+import type { AssetType } from "../schema/portfolio-schema";
 
 /** Yahoo's instrument-kind discriminator → our `assetTypeHint`. Only
  *  fund/crypto/cash kinds are corrected — `EQUITY` (and anything else:

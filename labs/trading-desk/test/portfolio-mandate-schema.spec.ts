@@ -16,7 +16,7 @@ import {
   toleranceToAppetite,
   validatePortfolioMandate,
   type PortfolioMandate,
-} from "../src/flows/portfolio/portfolio-mandate-schema";
+} from "../src/domain/portfolio/schema/portfolio-mandate-schema";
 
 /** Build a schema-valid mandate (defaults filled via parse) so the tests target
  *  BUSINESS validation, not schema parsing. Overrides shallow-merge onto the base. */

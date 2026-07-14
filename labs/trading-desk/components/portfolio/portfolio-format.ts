@@ -8,7 +8,7 @@
  * APPROXIMATIONS (JS floats), not precise accounting — the UI labels them so.
  */
 
-import type { AssetClass } from "@/src/flows/portfolio/portfolio-schema";
+import type { AssetClass } from "@/src/domain/portfolio/schema/portfolio-schema";
 
 /** The sentinel for an unknown / unavailable value. Used everywhere a current
  *  price is missing so the table degrades gracefully (BP-020 spirit). */

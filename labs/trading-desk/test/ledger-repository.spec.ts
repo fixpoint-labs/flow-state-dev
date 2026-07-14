@@ -26,10 +26,10 @@ import {
   createPortfolioRepository,
   type PortfolioRepository,
 } from "@/src/db/repository";
-import type { LedgerEventInput } from "@/src/flows/portfolio/ledger-schema";
-import { backfillSplits } from "@/src/flows/portfolio/portfolio-writes";
-import type { CanonicalRow } from "@/src/flows/portfolio/portfolio-schema";
-import { estimateTaxLiability, summarizeForTaxEstimate } from "@/src/flows/portfolio/tax-estimate";
+import type { LedgerEventInput } from "@/src/domain/portfolio/schema/ledger-schema";
+import { backfillSplits } from "@/src/domain/portfolio/services/portfolio-writes";
+import type { CanonicalRow } from "@/src/domain/portfolio/schema/portfolio-schema";
+import { estimateTaxLiability, summarizeForTaxEstimate } from "@/src/domain/portfolio/math/tax-estimate";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
 

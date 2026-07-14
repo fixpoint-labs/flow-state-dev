@@ -3,8 +3,9 @@
 The trading-desk is a multi-agent app (package `@flow-state-dev/trading-desk`)
 that produces a structured trade recommendation for a given ticker. It's a real
 app — live market data, durable re-openable reports, a real imported portfolio —
-built on **two purpose-named flows**: `analysis` (the research pipeline) and
-`portfolio` (the account / holdings / price system of record). The package and
+built on **two purpose-named flows** (`analysis` for the research pipeline,
+`portfolio` for PDF extract / theses / mandate) plus **`src/domain/portfolio/`**
+for shared money math, parsers, and write services behind REST. The package and
 app stay "trading-desk"; only the flows are renamed to reflect what they do.
 It lives in `labs/`, not `examples/`: past a teaching snippet, still research
 software.
@@ -25,10 +26,10 @@ haven't:
 
 ## Layout
 
-The app has **two flows** under `src/flows/`:
+The app has **two flows** under `src/flows/`, plus a **`src/domain/portfolio/`** package for shared portfolio logic (schemas, parsers, math, write services). Routes and the analysis seed import from domain; the portfolio flow keeps only flow-shaped work.
 
 - **`analysis/`** — the research pipeline (the five-phase analyst→researcher→trader→risk→PM sequence). Previously named `trading-desk`.
-- **`portfolio/`** — the account / holdings / price system of record (Spine B). A separate flow owning its own actions and resources.
+- **`portfolio/`** — flow-shaped portfolio work only: PDF extract, theses, mandate. Account/holdings/ledger CRUD and quote refresh live in REST + domain services.
 
 The analysis flow's tree is grouped by **identity** (`agents/`), **catalog** (`tools/`), and **composition** (`orchestration/`). The flow contract stays at the root.
 
@@ -120,29 +121,24 @@ src/flows/analysis/
     valuation.ts valuation-spine.ts fair-value.ts expected-return.ts
     rating-engine.ts setup-score.ts sector-resolution.ts   (analysis / scoring math)
 
-src/flows/portfolio/             The `portfolio` domain (Spine B) — account/holdings/ledger/price
-  flow.ts                        defineFlow — ONLY the flow-shaped actions: extractHoldingsFromPdf +
-                                   saveThesis/deleteThesis (domain CRUD + the quote refresh are REST
-                                   routes, not actions — see portfolio-writes.ts + get-quotes.ts)
+src/domain/portfolio/            Shared portfolio domain (Spine B) — imported by REST, UI, analysis seed
+  schema/                        Browser-safe zod leaves: portfolio, ledger, tax, thesis, mandate,
+                                   transaction-import
+  parsers/                       CSV / OFX / PDF reconcile + transaction-file dispatcher
+  math/                          Pure leaves: lots, value-holding, health, tax-estimate, holding-period,
+                                   realized-gains, classify-instrument
+  services/                      portfolio-writes + get-quotes + reconcile-fund-classification
+                                   (plain functions; routes are thin HTTP adapters)
+
+src/flows/portfolio/             Flow-shaped portfolio work only (not domain CRUD)
+  flow.ts                        defineFlow — extractHoldingsFromPdf + saveThesis/deleteThesis +
+                                   save/clearPortfolioMandate (CRUD + quote refresh are REST)
   state.ts                       sessionStateSchema (minimal; this flow has no run state)
-  portfolio-schema.ts            pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
-  portfolio-csv.ts               pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
-  portfolio-resources.ts         BP-019 leaf: pdfImportResource (session-scoped scratch) + thesesCollection
-                                   (user-scoped). Accounts/holdings AND last-known prices are NOT resources —
-                                   they live in the app-owned tables (FIX-772/FIX-823; see src/db/ +
-                                   lib/portfolio-db.ts below). The quotes cache was portfolioQuotesResource
-                                   until FIX-823 promoted it to the app.quotes table.
-  portfolio-writes.ts            saveAccount / deleteAccount / importHoldingsCsv / deleteHolding /
-                                   recordManualEvent / importTransactionFile — plain domain functions
-                                   (input, userId, repo) behind the app/api/portfolio/* REST routes (FIX-736
-                                   follow-up). NOT flow actions: CRUD gains nothing from a flow and loses the
-                                   real return value + gains a session requirement. Routes own zod validation.
-  get-quotes.ts                  refreshQuotes(input, repo): last-close per ticker (fixture/live, null
-                                   degrades); upserts LIVE non-null prices into the durable app.quotes
-                                   table (FIX-823). A plain route helper behind POST /api/portfolio/
-                                   quotes/refresh — NOT a flow action.
-  portfolio-pdf.ts               pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
-  extract-pdf-text.server.ts     NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
+  portfolio-resources.ts         BP-019 leaf: pdfImportResource + thesesCollection + portfolioMandate
+                                   Accounts/holdings/prices live in app.* tables (see src/db/)
+  thesis-actions.ts              saveThesis / deleteThesis (reactive cross-flow resource writes)
+  portfolio-mandate-actions.ts   savePortfolioMandate / clearPortfolioMandate
+  extract-pdf-text.server.ts     NODE-ONLY: unpdf — PDF bytes → statement text
   extract-holdings-generator.ts  broker-agnostic LLM transcription (statement text → strict rows)
   extract-holdings-action.ts     sequencer: decode bytes → extractPdfText → generator → commit pdfImport
 
@@ -155,7 +151,7 @@ src/db/                          App-owned relational layer (FIX-772) — accoun
   migrations/                    drizzle-kit generated SQL + journal (run in-process on PGlite dev, via
                                  scripts/migrate.ts on deploy)
 lib/portfolio-db.ts              getBacking() (PGlite dev / shared pg.Pool deploy) + getRepository() singleton
-app/api/portfolio/              REST surface over the repository — reads AND writes (FIX-736 follow-up):
+app/api/portfolio/              REST surface over domain services + repository — reads AND writes:
   accounts/route.ts               GET list · POST save · DELETE
   holdings/route.ts               DELETE one holding · holdings/import/route.ts POST (CSV import)
   ledger/route.ts                 GET list · POST record manual event
@@ -198,6 +194,11 @@ fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
   recipe** — formatters, the ticker resolver, concurrency, and the valuation /
   scoring math. Identity lives in `registry.ts`; contract lives in
   `resources.ts` / `state.ts` / `flow-schema.ts`.
+- **Portfolio domain vs portfolio flow.** Money math, parsers, schemas used by
+  routes/UI/analysis, and write/quote services live under `src/domain/portfolio/`.
+  `src/flows/portfolio/` keeps only `defineFlow`, resources, thesis/mandate
+  actions, and the PDF extract pipeline. If a module has no `ctx.resources` /
+  generator / `defineFlow` dependency, it belongs in domain.
 
 ## Past Reports
 
@@ -298,7 +299,7 @@ perspective (FIX-762, `health-section.tsx`) — the deterministic household view
 ticker-merged exposure, asset-class + sector breakdowns, concentration reads
 (largest name, top-N, effective positions = 1/HHI) with warn/alert flags, cash
 level, and coverage. It computes client-side from the pure aggregation leaf
-`src/flows/portfolio/portfolio-health.ts` (`summarizePortfolioHealth`, reusing
+`src/domain/portfolio/math/portfolio-health.ts` (`summarizePortfolioHealth`, reusing
 `value-holding` + the `inconsistent_history` gate — one copy of the money math),
 self-contained like `GainsTaxesSection`. The one axis with no on-holding data —
 sector — is backed by a new global `app.instrument_classifications` table
@@ -341,7 +342,7 @@ allocation view's target overlay stay empty until the durable mandate lands.
   per BP-038; JSONB means adding them later (with a real producer) is free.
   Classification is denormalized per holding row; a security-master table is a
   deferred option, not built. The classifier lives in
-  `src/flows/portfolio/classify-instrument.ts`.
+  `src/domain/portfolio/math/classify-instrument.ts`.
 - **Domain types vs persistence.** `accountStateSchema` / `holdingSchema`
   (`portfolio-schema.ts`) are now DOMAIN types — input/CSV validation and the
   inline-holdings `AccountState` shape the repository projects (`toAccountStates`)
@@ -427,7 +428,7 @@ allocation view's target overlay stay empty until the durable mandate lands.
   shared `lib/concurrency.ts` `mapLimit` (cap `QUOTE_CONCURRENCY`, per-ticker
   `QUOTE_RETRIES` with backoff) so a 20+ holding portfolio doesn't trip Yahoo's
   rate limiter and drop a random subset to `—`. **FIX-773 introduced per-type
-  valuation** via `src/flows/portfolio/value-holding.ts` (`resolveHoldingPrice` /
+  valuation** via `src/domain/portfolio/math/value-holding.ts` (`resolveHoldingPrice` /
   `holdingMarketValue`): equity / ETF / mutual-fund / crypto holdings use the live
   quote (`usesLiveQuote` gates the pane's quote fan-out to exactly these types);
   money market and cash-equivalent holdings value at par ($1.00/share); bond and
@@ -816,7 +817,7 @@ time horizon, optional target/stop, and a link to the originating report.
   outlive an exited position (post-mortem) and exist before a buy settles
   (adopt-then-buy).
 
-- **The schema leaf — `src/flows/portfolio/thesis-schema.ts`.** Browser-safe
+- **The schema leaf — `src/domain/portfolio/schema/thesis-schema.ts`.** Browser-safe
   (imports only `zod`): `thesisInputSchema` (the user-suppliable fields the editor
   validates and the action re-validates), `thesisRecordSchema` (the collection's
   state shape, adds `createdAt`/`updatedAt`), `tripwireSchema`. NOT generator

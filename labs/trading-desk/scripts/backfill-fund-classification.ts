@@ -30,7 +30,7 @@
  */
 import { getRepository } from "../lib/portfolio-db";
 import { resolveSector } from "../src/flows/analysis/lib/sector-resolution";
-import { reconcileFundClassification } from "../src/flows/portfolio/reconcile-fund-classification";
+import { reconcileFundClassification } from "../src/domain/portfolio/services/reconcile-fund-classification";
 
 const USER_ID = process.env.BACKFILL_USER ?? "devuser";
 

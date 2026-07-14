@@ -20,7 +20,7 @@ import type {
   RealizedGainRow,
   TaxProfileRow,
 } from "@/src/db/repository";
-import type { TaxEstimate } from "@/src/flows/portfolio/tax-estimate";
+import type { TaxEstimate } from "@/src/domain/portfolio/math/tax-estimate";
 import {
   buildRealizedGainsRowModel,
   computeRealizedGainTotals,

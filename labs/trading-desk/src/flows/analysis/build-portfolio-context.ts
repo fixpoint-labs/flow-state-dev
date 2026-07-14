@@ -40,14 +40,14 @@
  * pure `portfolio-health` leaf (no runtime IO). Unit-testable without a browser.
  */
 import type { PortfolioContextInput } from "./flow-schema";
-import type { AccountState } from "../portfolio/portfolio-schema";
-import { holdingMarketValue } from "../portfolio/value-holding";
+import type { AccountState } from "@/src/domain/portfolio/schema/portfolio-schema";
+import { holdingMarketValue } from "@/src/domain/portfolio/math/value-holding";
 import {
   summarizePortfolioHealth,
   type ClassificationMap,
   type PortfolioHealth,
   type QuoteMap,
-} from "../portfolio/portfolio-health";
+} from "@/src/domain/portfolio/math/portfolio-health";
 
 /** A live quote keyed by upper-case ticker. `price` null when unavailable. */
 export type QuoteLike = { ticker: string; price: number | null; asOf: string | null };

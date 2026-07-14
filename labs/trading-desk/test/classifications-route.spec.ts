@@ -27,7 +27,7 @@ vi.mock("@/src/flows/analysis/lib/sector-resolution", () => ({
 }));
 
 const reconcileMock = vi.hoisted(() => ({ reconcileFundClassification: vi.fn() }));
-vi.mock("@/src/flows/portfolio/reconcile-fund-classification", () => ({
+vi.mock("@/src/domain/portfolio/services/reconcile-fund-classification", () => ({
   reconcileFundClassification: reconcileMock.reconcileFundClassification,
 }));
 

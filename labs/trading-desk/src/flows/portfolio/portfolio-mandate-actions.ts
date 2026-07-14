@@ -31,7 +31,7 @@ import {
   portfolioMandateSchema,
   validatePortfolioMandate,
   type PortfolioMandate,
-} from "./portfolio-mandate-schema";
+} from "@/src/domain/portfolio/schema/portfolio-mandate-schema";
 import { resolveMandate } from "../analysis/lib/risk-mandate";
 
 /** The user-suppliable mandate fields — the action owns the timestamps. */

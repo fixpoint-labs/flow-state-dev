@@ -12,8 +12,8 @@
  *   5. A fully-closed position is omitted (no current holding).
  */
 import { describe, expect, it } from "vitest";
-import { deriveLots, inferSplit, previewSplitResult } from "@/src/flows/portfolio/lots";
-import type { LedgerRow } from "@/src/flows/portfolio/ledger-schema";
+import { deriveLots, inferSplit, previewSplitResult } from "@/src/domain/portfolio/math/lots";
+import type { LedgerRow } from "@/src/domain/portfolio/schema/ledger-schema";
 
 let seq = 0;
 function row(overrides: Partial<LedgerRow>): LedgerRow {

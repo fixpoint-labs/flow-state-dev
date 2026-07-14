@@ -14,8 +14,8 @@ import {
   canonicalTickerKey,
   classifyInstrument,
   isOccOptionSymbol,
-} from "../src/flows/portfolio/classify-instrument";
-import { holdingAttributesSchema } from "../src/flows/portfolio/portfolio-schema";
+} from "../src/domain/portfolio/math/classify-instrument";
+import { holdingAttributesSchema } from "../src/domain/portfolio/schema/portfolio-schema";
 
 describe("classifyInstrument — symbol-shape inference (one case per rule)", () => {
   it("classifies a plain equity ticker", () => {

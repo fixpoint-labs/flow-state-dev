@@ -11,7 +11,7 @@ import {
   buildPortfolioContext,
   householdTickerWeight,
 } from "../src/flows/analysis/build-portfolio-context";
-import type { AccountState } from "../src/flows/portfolio/portfolio-schema";
+import type { AccountState } from "../src/domain/portfolio/schema/portfolio-schema";
 
 function account(over: Partial<AccountState> = {}): AccountState {
   return {

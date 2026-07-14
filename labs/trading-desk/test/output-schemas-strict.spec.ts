@@ -33,7 +33,7 @@ import {
 import { scenarioForecastOutputSchema } from "../src/flows/analysis/agents/scenario-forecaster/scenario-forecaster";
 import { portfolioDecisionOutputSchema } from "../src/flows/analysis/agents/portfolio-manager/portfolio-manager";
 import { thesisAlignmentOutputSchema } from "../src/flows/analysis/agents/thesis-validator/thesis-validator";
-import { pdfExtractionSchema } from "../src/flows/portfolio/portfolio-pdf";
+import { pdfExtractionSchema } from "../src/domain/portfolio/parsers/portfolio-pdf";
 import { lensVerdictOutputSchema } from "../src/flows/analysis/agents/lenses/lens-verdict-schema";
 
 const cases: Array<[string, ZodTypeAny]> = [

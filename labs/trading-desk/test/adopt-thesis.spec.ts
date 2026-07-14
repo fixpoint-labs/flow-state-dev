@@ -14,7 +14,7 @@ import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import analysisFlow from "../src/flows/analysis/flow";
 import type { DecisionSnapshotState } from "../src/flows/analysis/decision-snapshot-resource";
-import type { ThesisRecord } from "../src/flows/portfolio/thesis-schema";
+import type { ThesisRecord } from "../src/domain/portfolio/schema/thesis-schema";
 
 const USER_ID = "devuser";
 

@@ -33,7 +33,7 @@ import {
   recordManualEvent,
   saveAccount,
   saveAccountSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
+} from "@/src/domain/portfolio/services/portfolio-writes";
 
 // The write functions (and `refreshQuotes`) receive `repoState.repo!` explicitly.
 // One fresh in-memory PGlite instance per test.
@@ -57,7 +57,7 @@ vi.mock("@/src/flows/analysis/tools/providers/yahoo", async (importActual) => ({
   fetchYahooChart: yahooMock.fetchYahooChart,
 }));
 
-import { refreshQuotes } from "../src/flows/portfolio/get-quotes";
+import { refreshQuotes } from "../src/domain/portfolio/services/get-quotes";
 import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 
 const USER_ID = "devuser";

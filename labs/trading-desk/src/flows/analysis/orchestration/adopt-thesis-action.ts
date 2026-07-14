@@ -19,7 +19,7 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { thesesCollection, thesisKey } from "../../portfolio/portfolio-resources";
-import type { Tripwire } from "../../portfolio/thesis-schema";
+import type { Tripwire } from "@/src/domain/portfolio/schema/thesis-schema";
 import { decisionSnapshotResource } from "../decision-snapshot-resource";
 import type { DecisionSnapshotState } from "../decision-snapshot-resource";
 import { PHASE_3_MEMO_KEYS } from "../registry";

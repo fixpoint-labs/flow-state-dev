@@ -43,11 +43,11 @@ import type { SessionView } from "@flow-state-dev/react";
 import { useFlowContext } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import { apiMutate } from "@/lib/use-api-query";
-import type { AssetClass, Holding } from "@/src/flows/portfolio/portfolio-schema";
-import type { Quote } from "@/src/flows/portfolio/get-quotes";
-import { deriveLots } from "@/src/flows/portfolio/lots";
+import type { AssetClass, Holding } from "@/src/domain/portfolio/schema/portfolio-schema";
+import type { Quote } from "@/src/domain/portfolio/services/get-quotes";
+import { deriveLots } from "@/src/domain/portfolio/math/lots";
 import type { TermLot } from "./holding-term";
-import type { ThesisInputFields } from "@/src/flows/portfolio/thesis-schema";
+import type { ThesisInputFields } from "@/src/domain/portfolio/schema/thesis-schema";
 import { AccountCard } from "./account-card";
 import { AccountDetail } from "./account-detail";
 import { AccountsActionsBar } from "./accounts-actions-bar";
@@ -90,7 +90,7 @@ import {
   holdingMarketValue,
   holdingUnrealizedPL,
   usesLiveQuote,
-} from "@/src/flows/portfolio/value-holding";
+} from "@/src/domain/portfolio/math/value-holding";
 import {
   ASSET_CLASS_LABELS,
   DASH,

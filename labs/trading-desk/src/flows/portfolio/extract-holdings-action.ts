@@ -35,7 +35,7 @@ import { handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { extractHoldingsGenerator } from "./extract-holdings-generator";
 import { extractPdfText } from "./extract-pdf-text.server";
-import { pdfExtractionSchema } from "./portfolio-pdf";
+import { pdfExtractionSchema } from "@/src/domain/portfolio/parsers/portfolio-pdf";
 import { pdfImportResource } from "./portfolio-resources";
 
 /** Action input: the base64-encoded PDF bytes the dialog uploaded. */

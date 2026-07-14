@@ -31,8 +31,8 @@
  * the FIX-761-gated follow-up slice; it is intentionally NOT in this module yet.
  * The analysis-context `drift` block stays `null` until it lands.
  */
-import type { AssetClass, AssetType, AccountState } from "./portfolio-schema";
-import { holdingMarketValue } from "./value-holding";
+import type { AssetClass, AssetType, AccountState } from "../schema/portfolio-schema";
+import { holdingMarketValue } from "@/src/domain/portfolio/math/value-holding";
 
 /** Quote map as the pane and seed already hold it: UPPER ticker → { price, asOf }. */
 export type QuoteMap = Map<string, { price: number | null; asOf: string | null }>;

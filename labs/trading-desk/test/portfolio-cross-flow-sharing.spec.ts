@@ -46,7 +46,7 @@ vi.mock("@/lib/portfolio-db", () => ({
 import {
   saveAccount,
   saveAccountSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
+} from "@/src/domain/portfolio/services/portfolio-writes";
 import reportFlow from "../src/flows/analysis/flow";
 
 const USER_ID = "shared-user";

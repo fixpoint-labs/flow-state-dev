@@ -25,7 +25,7 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { thesesCollection, thesisKey } from "./portfolio-resources";
-import { thesisInputSchema } from "./thesis-schema";
+import { thesisInputSchema } from "@/src/domain/portfolio/schema/thesis-schema";
 
 /**
  * Create or update the thesis for a held name. Overwrites in place on

@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import portfolioFlow from "../src/flows/portfolio/flow";
-import type { PortfolioMandate } from "../src/flows/portfolio/portfolio-mandate-schema";
+import type { PortfolioMandate } from "../src/domain/portfolio/schema/portfolio-mandate-schema";
 
 const USER_ID = "devuser";
 

@@ -14,7 +14,7 @@
  * supplies `asOf`, so tests pin dates and the UI passes `new Date()`.
  */
 
-import { longBoundary } from "@/src/flows/portfolio/holding-period";
+import { longBoundary } from "@/src/domain/portfolio/math/holding-period";
 import { DASH, formatQuantity } from "./portfolio-format";
 
 /** One dated parcel of shares for term math. `acquiredDate` is ISO

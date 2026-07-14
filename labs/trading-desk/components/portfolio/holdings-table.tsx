@@ -18,15 +18,15 @@
 import type { ReactElement, ReactNode } from "react";
 import { Trash2, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AssetClass, AssetType, Holding } from "@/src/flows/portfolio/portfolio-schema";
-import type { Quote } from "@/src/flows/portfolio/get-quotes";
+import type { AssetClass, AssetType, Holding } from "@/src/domain/portfolio/schema/portfolio-schema";
+import type { Quote } from "@/src/domain/portfolio/services/get-quotes";
 import { computeHoldingTerm, formatTerm, type TermLot } from "./holding-term";
 import {
   resolveHoldingPrice,
   holdingMarketValue,
   holdingUnrealizedPL,
   type PriceSource,
-} from "@/src/flows/portfolio/value-holding";
+} from "@/src/domain/portfolio/math/value-holding";
 import {
   DASH,
   formatMoney,

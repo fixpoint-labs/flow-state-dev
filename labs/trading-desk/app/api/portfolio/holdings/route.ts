@@ -4,7 +4,7 @@ import {
   deleteHolding,
   setHoldingAssetClass,
   setHoldingAssetClassSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
+} from "@/src/domain/portfolio/services/portfolio-writes";
 
 // Delete one holding by (account, ticker) — the app-owned holdings table
 // (FIX-772). A holding is basic relational CRUD, so it's a plain route, not a

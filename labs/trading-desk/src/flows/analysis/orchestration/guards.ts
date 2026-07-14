@@ -40,18 +40,18 @@ import {
   thesesCollection,
   thesisKey,
 } from "../../portfolio/portfolio-resources";
-import type { ThesisRecord } from "../../portfolio/thesis-schema";
+import type { ThesisRecord } from "@/src/domain/portfolio/schema/thesis-schema";
 import {
   toleranceToAppetite,
   validatePortfolioMandate,
   type PortfolioMandate,
-} from "../../portfolio/portfolio-mandate-schema";
+} from "@/src/domain/portfolio/schema/portfolio-mandate-schema";
 import { buildPortfolioContext, householdTickerWeight } from "../build-portfolio-context";
-import type { ClassificationMap } from "@/src/flows/portfolio/portfolio-health";
+import type { ClassificationMap } from "@/src/domain/portfolio/math/portfolio-health";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 import { getRepository } from "@/lib/portfolio-db";
 import { toAccountStates } from "@/src/db/repository";
-import { classifyInstrument } from "../../portfolio/classify-instrument";
+import { classifyInstrument } from "@/src/domain/portfolio/math/classify-instrument";
 
 /**
  * Patches session state from action input and clears any memos a prior run

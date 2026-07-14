@@ -13,7 +13,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
 import { formatStandingThesis } from "../src/flows/analysis/lib/format";
-import type { ThesisRecord } from "../src/flows/portfolio/thesis-schema";
+import type { ThesisRecord } from "../src/domain/portfolio/schema/thesis-schema";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/src/db/repository";
 

@@ -26,14 +26,14 @@ import type {
   Holding,
   HoldingAttributes,
   ImportMode,
-} from "@/src/flows/portfolio/portfolio-schema";
+} from "@/src/domain/portfolio/schema/portfolio-schema";
 import {
   assetClassSchema,
   assetTypeSchema,
   holdingAttributesSchema,
-} from "@/src/flows/portfolio/portfolio-schema";
-import { classifyInstrument } from "@/src/flows/portfolio/classify-instrument";
-import type { Classification } from "@/src/flows/portfolio/classify-instrument";
+} from "@/src/domain/portfolio/schema/portfolio-schema";
+import { classifyInstrument } from "@/src/domain/portfolio/math/classify-instrument";
+import type { Classification } from "@/src/domain/portfolio/math/classify-instrument";
 import type {
   IngestReport,
   LedgerEventInput,
@@ -41,11 +41,11 @@ import type {
   LedgerRow,
   LedgerSource,
   SplitAttributes,
-} from "@/src/flows/portfolio/ledger-schema";
-import { splitAttributesSchema } from "@/src/flows/portfolio/ledger-schema";
-import { deriveLots } from "@/src/flows/portfolio/lots";
-import type { RealizedDisposal } from "@/src/flows/portfolio/realized-gains";
-import type { TaxProfileInput } from "@/src/flows/portfolio/tax-schema";
+} from "@/src/domain/portfolio/schema/ledger-schema";
+import { splitAttributesSchema } from "@/src/domain/portfolio/schema/ledger-schema";
+import { deriveLots } from "@/src/domain/portfolio/math/lots";
+import type { RealizedDisposal } from "@/src/domain/portfolio/math/realized-gains";
+import type { TaxProfileInput } from "@/src/domain/portfolio/schema/tax-schema";
 import type { Db } from "./client";
 import {
   accounts,

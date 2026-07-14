@@ -16,7 +16,7 @@ import {
   type FileLedgerEvent,
   type SkippedAggregate,
   type UnresolvedSecurity,
-} from "./portfolio-ofx";
+} from "@/src/domain/portfolio/parsers/portfolio-ofx";
 
 /** The non-count diagnostics a parse produces, merged into the import report
  *  beside the ledger ingest counts. `line` is populated when the source format

@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildStandingThesisModel } from "../components/theses/standing-thesis";
-import type { ThesisRecord } from "../src/flows/portfolio/thesis-schema";
+import type { ThesisRecord } from "../src/domain/portfolio/schema/thesis-schema";
 
 function record(overrides: Partial<ThesisRecord> = {}): ThesisRecord {
   return {

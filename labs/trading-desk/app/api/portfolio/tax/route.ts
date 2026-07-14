@@ -3,7 +3,7 @@ import { getRepository } from "@/lib/portfolio-db";
 import {
   estimateTaxLiability,
   summarizeForTaxEstimate,
-} from "@/src/flows/portfolio/tax-estimate";
+} from "@/src/domain/portfolio/math/tax-estimate";
 
 // The composite tax read (FIX-874) — profile + all-year realized gains +
 // all-year income-by-year + the current-year estimate, in ONE request so the

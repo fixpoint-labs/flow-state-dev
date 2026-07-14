@@ -4,7 +4,7 @@ import { getRepository } from "@/lib/portfolio-db";
 import {
   importTransactionFile,
   importTransactionsSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
+} from "@/src/domain/portfolio/services/portfolio-writes";
 
 // Import a brokerage transaction-history file (OFX / QFX / QBO) into an
 // account's ledger (FIX-775), returning the file-import report directly. Writes

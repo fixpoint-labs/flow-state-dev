@@ -37,7 +37,7 @@
 import { generator } from "@flow-state-dev/core";
 import { z } from "zod";
 import { AGENTS } from "../analysis/registry";
-import { pdfExtractionSchema } from "./portfolio-pdf";
+import { pdfExtractionSchema } from "@/src/domain/portfolio/parsers/portfolio-pdf";
 
 /** The statement text, supplied by the action from the client extraction. */
 export const extractHoldingsInputSchema = z.object({

@@ -20,7 +20,7 @@ import {
   createPortfolioRepository,
   type PortfolioRepository,
 } from "@/src/db/repository";
-import type { LedgerEventInput } from "@/src/flows/portfolio/ledger-schema";
+import type { LedgerEventInput } from "@/src/domain/portfolio/schema/ledger-schema";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
 

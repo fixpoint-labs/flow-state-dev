@@ -24,17 +24,17 @@
  */
 import { z } from "zod";
 import type { PortfolioRepository } from "@/src/db/repository";
-import type { FileImportReport } from "./transaction-import-schema";
-import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
-import { accountTypeSchema, assetClassSchema, type AssetClass } from "./portfolio-schema";
+import type { FileImportReport } from "../schema/transaction-import-schema";
+import { parsePortfolioCsv, type RowError } from "../parsers/portfolio-csv";
+import { accountTypeSchema, assetClassSchema, type AssetClass } from "../schema/portfolio-schema";
 import {
   ledgerEventInputObject,
   refineLedgerEvent,
   type IngestReport,
   type LedgerEventInput,
-} from "./ledger-schema";
-import { taxProfileInputSchema, type TaxProfileInput } from "./tax-schema";
-import { detectAndParseTransactionFile } from "./transaction-file";
+} from "../schema/ledger-schema";
+import { taxProfileInputSchema, type TaxProfileInput } from "../schema/tax-schema";
+import { detectAndParseTransactionFile } from "../parsers/transaction-file";
 import type { TaxProfileRow } from "@/src/db/repository";
 
 /** CSV import feedback (a plain handler-style result, not a generator output).

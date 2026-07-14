@@ -15,7 +15,7 @@ import type { PortfolioRepository } from "@/src/db/repository";
 import {
   portfolioMandateSchema,
   type PortfolioMandate,
-} from "../src/flows/portfolio/portfolio-mandate-schema";
+} from "../src/domain/portfolio/schema/portfolio-mandate-schema";
 
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
 vi.mock("@/lib/portfolio-db", () => ({

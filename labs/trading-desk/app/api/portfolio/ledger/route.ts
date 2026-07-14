@@ -4,7 +4,7 @@ import { getRepository } from "@/lib/portfolio-db";
 import {
   recordManualEvent,
   recordEventSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
+} from "@/src/domain/portfolio/services/portfolio-writes";
 
 // The transaction ledger REST surface (FIX-774) — an app-owned table, not a
 // resource. GET reads it (the Portfolio transactions view); POST records one

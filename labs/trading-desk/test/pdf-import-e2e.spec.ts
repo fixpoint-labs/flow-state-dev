@@ -66,12 +66,12 @@ import {
   importHoldingsSchema,
   saveAccount,
   saveAccountSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
+} from "@/src/domain/portfolio/services/portfolio-writes";
 import {
   canonicalRowsToCsv,
   toCanonicalRows,
   type PdfExtraction,
-} from "../src/flows/portfolio/portfolio-pdf";
+} from "../src/domain/portfolio/parsers/portfolio-pdf";
 
 beforeEach(async () => {
   repoState.repo = await makeTestRepository();

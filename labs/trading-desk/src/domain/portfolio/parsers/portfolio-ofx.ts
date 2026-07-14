@@ -35,11 +35,11 @@
  * fixes `source: "manual"`).
  */
 import { parse as parseOfx } from "ofx-js";
-import type { LedgerEventInput } from "./ledger-schema";
+import type { LedgerEventInput } from "../schema/ledger-schema";
 import type {
   SkippedAggregate,
   UnresolvedSecurity,
-} from "./transaction-import-schema";
+} from "../schema/transaction-import-schema";
 
 /** A parsed ledger event minus the two fields only the action can set:
  *  `accountId` (the user's target account) and `source` (always `"file"`). */

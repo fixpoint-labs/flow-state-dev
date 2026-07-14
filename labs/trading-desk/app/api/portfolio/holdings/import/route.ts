@@ -4,7 +4,7 @@ import { getRepository } from "@/lib/portfolio-db";
 import {
   importHoldingsCsv,
   importHoldingsSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
+} from "@/src/domain/portfolio/services/portfolio-writes";
 
 // Import a holdings CSV into an account (FIX-772). Returns the authoritative
 // import report directly — the whole reason CRUD is a route and not a flow

@@ -26,7 +26,7 @@ import { PHASE_5_MEMO_KEYS } from "../src/flows/analysis/registry";
 import {
   portfolioMandateSchema,
   type PortfolioMandate,
-} from "../src/flows/portfolio/portfolio-mandate-schema";
+} from "../src/domain/portfolio/schema/portfolio-mandate-schema";
 import { latestMemoDelta } from "./_helpers/memo-status";
 
 const fixtureFlow = defineFlow({

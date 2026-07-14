@@ -352,14 +352,13 @@ for any multi-tier FSD app, not a desk-only hack.
 The whole portfolio domain — accounts, holdings, ledger — is exposed to the UI
 as a plain REST surface over the repository, reads AND writes. It is a
 deliberate showcase boundary: **flows are for the agentic pipeline** (the
-`analysis` flow) and the genuinely flow-shaped portfolio work (`getQuotes`,
-which fans out live prices and upserts the durable `app.quotes` table, and
-`extractHoldingsFromPdf`, a
-streaming LLM extraction) — **plain routes are for domain CRUD.** Forcing CRUD
-through a flow buys nothing and costs a real return value (`sendAction` returns
-a request envelope, not the handler's output — so an import report can't reach
+`analysis` flow) and the genuinely flow-shaped portfolio work
+(`extractHoldingsFromPdf`, theses, mandate) — **plain routes +
+`src/domain/portfolio/` are for domain CRUD and quotes.** Forcing CRUD through
+a flow buys nothing and costs a real return value (`sendAction` returns a
+request envelope, not the handler's output — so an import report can't reach
 the UI) plus a bound-session requirement. The write logic is plain functions in
-[`portfolio-writes.ts`](src/flows/portfolio/portfolio-writes.ts); the routes are
+[`portfolio-writes.ts`](src/domain/portfolio/services/portfolio-writes.ts); the routes are
 thin HTTP adapters that own zod validation. All routes take `userId` (query
 param on GET/DELETE, body field on POST) — dev-posture client-asserted, so a
 real deployment must resolve the caller identity server-side.
