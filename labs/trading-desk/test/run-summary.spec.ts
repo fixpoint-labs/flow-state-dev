@@ -36,6 +36,8 @@ function sessionState(overrides: Partial<SessionState> = {}): SessionState {
     selectedAccountIds: [],
     riskMandate: null,
     standingThesis: null,
+    portfolioMandate: null,
+    householdTickerWeightPct: null,
     ...overrides,
   };
 }
@@ -61,6 +63,11 @@ function decisionSnapshot(
     worstCaseReturnPct: -12.4,
     capacityVetoed: false,
     hasStandingThesis: null,
+    mandatePresent: null,
+    policyVerdict: null,
+    positionCapClamped: null,
+    excluded: null,
+    preGatePolicyTargetPct: null,
     decidedAt: "2026-06-25T00:00:00.000Z",
     outcomeRealizedPrice: null,
     outcomeAsOf: null,

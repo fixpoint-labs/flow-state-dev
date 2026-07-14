@@ -78,6 +78,11 @@ export const traderGenerator = generator({
       // (their durable "why"), so its sizing weighs standing intent, not just
       // position size. Thesis-blind when none is recorded.
       standingThesis: true,
+      // FIX-761 — the trader sizes with awareness of the household's durable
+      // mandate (its standing constraints + target allocation), frozen at seed.
+      // The hard cap/exclusion gate lives on the PM commit; the trader sees the
+      // policy so its `sizePct` proposal already respects the standing rules.
+      portfolioMandate: true,
       // FIX-676 — cost-gated web search+fetch to corroborate a specific claim
       // (a peer comp, a recent event) before sizing. `corroborate` also carries
       // the shared references-consulted ledger so it reuses what the desk already

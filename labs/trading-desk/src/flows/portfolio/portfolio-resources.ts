@@ -23,6 +23,7 @@ import { defineResource, defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
 import { pdfExtractionSchema } from "./portfolio-pdf";
 import { thesisRecordSchema } from "./thesis-schema";
+import { portfolioMandateSchema } from "./portfolio-mandate-schema";
 
 export const pdfImportStateSchema = z.object({
   /** When the extraction ran (ISO). */
@@ -115,4 +116,38 @@ export const thesesCollection = defineResourceCollection({
   flowIsolation: false,
   stateSchema: thesisRecordSchema,
   client: { state: { read: true }, live: true },
+});
+
+/**
+ * The durable household Investment Policy Statement (FIX-761) — objectives,
+ * target allocation over `assetClass` buckets, standing constraints, time
+ * horizon, and rebalancing bands.
+ *
+ * ONE document per household — a single user-scoped resource (the `portfolioQuotes`
+ * cardinality), NOT a collection and NOT an app table (the FIX-760 thesis
+ * reasoning: a flat household document, agent-facing, read at analysis seed).
+ * `flowIsolation: false` → bare `{userId}` key, readable cross-flow (the portfolio
+ * flow's CRUD action and the analysis flow's seed reach the same record).
+ * `exclude: []` identity-exposes the state to the client editor; `live: true`
+ * streams `resource_change` so the editor + summary chip update on save/clear
+ * without a manual `session.refresh()` (a NON-live single resource is skipped for
+ * change emission — verified in the engine).
+ *
+ * NULL-BOUNDARY (BP-030): the engine normalizes an absent/cleared single-resource
+ * state to `{}` (not null) when the parsed value isn't a JSON object. So a
+ * "present" mandate is detected by a REQUIRED field (`state?.createdAt != null`),
+ * NEVER `state != null`; `clearPortfolioMandate` writing null reads back as absent
+ * under that gate. Every reader (seed, `formatPortfolioMandate` BP-018, the UI,
+ * the `mandatePresent` echo) uses the required-field gate. This is the
+ * `portfolioQuotes` `q?.quotes ?? []` discipline made explicit for a resource
+ * that derives a present/absent boolean.
+ */
+export const portfolioMandateResource = defineResource({
+  scope: "user",
+  flowIsolation: false,
+  ref: "portfolioMandate",
+  stateSchema: portfolioMandateSchema.nullable(),
+  default: null,
+  writable: true,
+  client: { exclude: [], live: true },
 });

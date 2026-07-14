@@ -7,7 +7,10 @@
  * (portfolio-blind).
  */
 import { describe, expect, it } from "vitest";
-import { buildPortfolioContext } from "../src/flows/analysis/build-portfolio-context";
+import {
+  buildPortfolioContext,
+  householdTickerWeight,
+} from "../src/flows/analysis/build-portfolio-context";
 import type { AccountState } from "../src/flows/portfolio/portfolio-schema";
 
 function account(over: Partial<AccountState> = {}): AccountState {
@@ -171,5 +174,63 @@ describe("buildPortfolioContext", () => {
     const out = buildPortfolioContext(accounts, [], "2026-05-06");
     expect(out?.totalNav).toBe(0);
     expect(out?.holdings[0]?.weightPct).toBeNull();
+  });
+});
+
+describe("householdTickerWeight (FIX-761)", () => {
+  const holding = (ticker: string) => ({
+    ticker,
+    quantity: 10,
+    costBasis: 100,
+    acquiredDate: null,
+    assetClass: "equity" as const,
+    assetType: "equity" as const,
+    attributes: { kind: "none" as const },
+    dataQuality: null,
+  });
+
+  it("is 0 for a not-held name (initiating)", () => {
+    const snap = buildPortfolioContext(
+      [account({ cashBalance: 1000, holdings: [holding("AAPL")] })],
+      [{ ticker: "AAPL", price: 100, asOf: "2026-05-06" }],
+      "2026-05-06",
+    );
+    expect(householdTickerWeight(snap, "NVDA")).toBe(0);
+  });
+
+  it("sums the weights when every lot of the name is priced", () => {
+    const snap = buildPortfolioContext(
+      [
+        account({ accountId: "a", cashBalance: 0, holdings: [holding("NVDA")] }),
+        account({ accountId: "b", cashBalance: 0, holdings: [holding("NVDA")] }),
+      ],
+      [{ ticker: "NVDA", price: 100, asOf: "2026-05-06" }],
+      "2026-05-06",
+    );
+    // Both lots priced, NAV = 2000, each 50% → 100% household weight.
+    expect(householdTickerWeight(snap, "NVDA")).toBeCloseTo(100);
+  });
+
+  it("returns null when ANY lot of the name is unpriced (partial → unknown)", () => {
+    // One priced NVDA lot + one inconsistent (unpriced) NVDA lot. A partial sum
+    // would understate the true household weight and could force-trim the position,
+    // so the weight is reported UNKNOWN.
+    const partial = buildPortfolioContext(
+      [
+        account({ accountId: "a", cashBalance: 0, holdings: [holding("NVDA")] }),
+        account({
+          accountId: "b",
+          cashBalance: 0,
+          holdings: [{ ...holding("NVDA"), quantity: 0, dataQuality: "inconsistent_history" }],
+        }),
+      ],
+      [{ ticker: "NVDA", price: 100, asOf: "2026-05-06" }],
+      "2026-05-06",
+    );
+    expect(householdTickerWeight(partial, "NVDA")).toBeNull();
+  });
+
+  it("treats a null snapshot as not-held (0 — a portfolio-blind run initiates)", () => {
+    expect(householdTickerWeight(null, "NVDA")).toBe(0);
   });
 });

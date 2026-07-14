@@ -18,8 +18,13 @@
  */
 import { defineFlow } from "@flow-state-dev/core";
 import { deleteThesis, saveThesis } from "./thesis-actions";
+import { clearPortfolioMandate, savePortfolioMandate } from "./portfolio-mandate-actions";
 import { extractHoldingsFromPdf } from "./extract-holdings-action";
-import { pdfImportResource, thesesCollection } from "./portfolio-resources";
+import {
+  pdfImportResource,
+  portfolioMandateResource,
+  thesesCollection,
+} from "./portfolio-resources";
 import { sessionStateSchema } from "./state";
 
 export { sessionStateSchema, type SessionState } from "./state";
@@ -35,6 +40,11 @@ const portfolioFlow = defineFlow({
     // reads + derives it), which is exactly the flow-shaped side of this boundary.
     saveThesis: { block: saveThesis },
     deleteThesis: { block: deleteThesis },
+    // Durable portfolio mandate (FIX-761) — the household IPS. Like a thesis, the
+    // mandate is a REACTIVE, cross-flow resource (the client reads it live, the
+    // analysis flow reads it at seed), so its writes are flow actions, not routes.
+    savePortfolioMandate: { block: savePortfolioMandate },
+    clearPortfolioMandate: { block: clearPortfolioMandate },
     extractHoldingsFromPdf: { block: extractHoldingsFromPdf },
   },
 
@@ -51,6 +61,10 @@ const portfolioFlow = defineFlow({
     // saveThesis/deleteThesis here and adoptThesis in the analysis flow; read by
     // the analysis seed and the Portfolio/report UI.
     theses: thesesCollection,
+    // Durable household portfolio mandate (FIX-761) — user-scoped single resource
+    // (`flowIsolation: false` → cross-flow). Written by save/clearPortfolioMandate
+    // here; read by the analysis seed and the Portfolio UI editor.
+    portfolioMandate: portfolioMandateResource,
   },
 });
 

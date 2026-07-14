@@ -70,6 +70,8 @@ import {
 } from "./add-transaction-dialog";
 import { ResolveSplitDialog } from "./resolve-split-dialog";
 import { ThesisDialog } from "./thesis-dialog";
+import { MandateDialog } from "./mandate-dialog";
+import { usePortfolioMandate } from "./use-portfolio-mandate";
 import { GainsTaxesSection } from "./gains-taxes-section";
 import {
   PortfolioSectionRail,
@@ -144,6 +146,10 @@ export function PortfolioPane({
   // Theses remain a user-scoped FSD resource (live client read), so this stays
   // session-based — unlike accounts/ledger/income which moved to REST routes.
   const { theses, loading: thesesLoading, refetch: refetchTheses } = useTheses(session);
+  // Durable household portfolio mandate (FIX-761) — live-read + write via the
+  // user-scoped resource; the summary chip + editor update on save/clear with no
+  // manual refetch.
+  const { mandate, ready: mandateReady, saveMandate, clearMandate } = usePortfolioMandate(session);
   // Last-known prices from the durable `app.quotes` table via the REST hook
   // (FIX-823) — the retired `portfolioQuotes` resource's `useResource` read is
   // gone. The refresh route upserts the table; `refetchQuotes` runs once that
@@ -175,6 +181,7 @@ export function PortfolioPane({
   // The ticker whose thesis editor is open (null = closed). The dialog pre-fills
   // from the existing thesis for this ticker, if any.
   const [thesisTicker, setThesisTicker] = useState<string | null>(null);
+  const [mandateOpen, setMandateOpen] = useState<boolean>(false);
   // The ticker whose "resolve split" dialog is open (null = closed), for a
   // flagged inconsistent-history holding (FIX-876).
   const [resolveSplitTicker, setResolveSplitTicker] = useState<string | null>(null);
@@ -650,6 +657,44 @@ export function PortfolioPane({
           Refresh prices
         </button>
 
+        {/* Durable portfolio mandate (FIX-761) — edit entry + a summary chip. The
+            write is a flow action (a reactive user-scoped resource), so it needs a
+            bound session; gate the affordance on `hasSession`. */}
+        <button
+          type="button"
+          onClick={() => setMandateOpen(true)}
+          disabled={!hasSession || !mandateReady}
+          title={
+            !hasSession
+              ? "Run an analysis first to bind a session"
+              : !mandateReady
+                ? "Loading the portfolio mandate…"
+                : "Edit the household portfolio mandate"
+          }
+          className={cn(
+            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px]",
+            !hasSession || !mandateReady
+              ? "cursor-not-allowed opacity-50"
+              : "hover:bg-[color:var(--c-surface-2)]",
+          )}
+        >
+          {mandate !== null ? "Edit mandate" : "Set mandate"}
+        </button>
+        {mandate !== null ? (
+          <span
+            className="rounded-sm border border-[color:var(--c-border)] bg-[color:var(--c-surface-2)] px-1.5 py-0.5 font-mono text-[10.5px] text-[color:var(--c-fg-muted)]"
+            title="Active portfolio mandate"
+          >
+            {mandate.label}
+            {mandate.constraints.maxPositionWeightPct != null
+              ? ` · max ${mandate.constraints.maxPositionWeightPct}%`
+              : ""}
+            {mandate.constraints.exclusions.length > 0
+              ? ` · ${mandate.constraints.exclusions.length} excluded`
+              : ""}
+          </span>
+        ) : null}
+
         <div className="ml-auto flex items-center gap-4 font-mono text-[11px] text-[color:var(--c-fg-muted)]">
           <span>
             total value{" "}
@@ -888,6 +933,13 @@ export function PortfolioPane({
         existing={editingThesis}
         onSave={(payload) => void handleSaveThesis(payload)}
         onDelete={(ticker) => void handleDeleteThesis(ticker)}
+      />
+      <MandateDialog
+        open={mandateOpen}
+        onClose={() => setMandateOpen(false)}
+        existing={mandate}
+        onSave={(payload) => void saveMandate(payload)}
+        onClear={() => void clearMandate()}
       />
     </div>
   );

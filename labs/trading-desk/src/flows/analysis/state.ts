@@ -36,6 +36,7 @@ import { citationIntegritySchema } from "./resources";
 import { portfolioContextInput } from "./flow-schema";
 import { riskMandateSchema } from "./lib/risk-mandate";
 import { thesisRecordSchema } from "../portfolio/thesis-schema";
+import { portfolioMandateSchema } from "../portfolio/portfolio-mandate-schema";
 
 export const sessionStateSchema = z.object({
   ticker: z.string().default("NVDA"),
@@ -100,6 +101,20 @@ export const sessionStateSchema = z.object({
   // per-run `userThesis` (the Phase 6 hypothesis-under-audit) — this is durable
   // standing intent, never merged with it. Null → thesis-blind run.
   standingThesis: thesisRecordSchema.nullable().default(null),
+  // Durable household portfolio mandate (IPS, FIX-761), read from the user-scoped
+  // `portfolioMandate` resource at `seedSession`, re-validated, and frozen here as
+  // the full object. The pipeline (P1–P4) runs blind to it — only the PM (P5)
+  // reads it via the `portfolioMandate` capability preset, and the PM commit gates
+  // SIZE against its standing constraints deterministically. Null → mandate-blind
+  // run (a business-invalid persisted record degrades to null at seed, §4.5).
+  portfolioMandate: portfolioMandateSchema.nullable().default(null),
+  // The analyzed ticker's HOUSEHOLD weight (% of the full book), computed at seed
+  // from the pre-scoping `allAccounts` read so a scoped run still measures a
+  // household `maxPositionWeightPct` cap against the household, not one account.
+  // Null when the name IS held but can't be priced (the policy gate then skips the
+  // clamp rather than fabricating a full exit — never coerce to 0); 0 when the name
+  // is not held (initiating). Frozen for the PM commit's policy gate (FIX-761).
+  householdTickerWeightPct: z.number().nullable().default(null),
 });
 
 export type SessionState = z.infer<typeof sessionStateSchema>;

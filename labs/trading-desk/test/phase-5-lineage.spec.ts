@@ -125,6 +125,10 @@ function decision(opts: {
       sizeStance: "",
       mandateOverrideReason: "",
     },
+      policyFit: {
+        allocationRead: "",
+        constraintRead: "",
+      },
     citations: null,
   };
 }
