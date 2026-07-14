@@ -239,17 +239,25 @@ export type FlowApiRouter = {
  */
 const routerDisposers = new WeakMap<FlowApiRouter, () => Promise<void>>();
 
+/** A router's dedicated-route dispatcher: matches ONLY custom transport-adapter
+ * routes, never the canonical handler. Returns null when none match. */
+type DedicatedRouteDispatcher = (req: Request) => Promise<Response | null>;
+
 /**
- * Per-router dedicated-route dispatcher. Populated by `createFlowApiRouter`,
- * consumed by `dispatchDedicatedRoute`. Matches ONLY custom transport-adapter
- * routes (e.g. the MCP adapter's `/mcp/:kind` under `dedicatedBasePath`) and
- * never falls through to the canonical flow-API handler. WeakMap so it stays
- * off the method-indexed router shape.
+ * Property key under which `createFlowApiRouter` stashes the router's
+ * {@link DedicatedRouteDispatcher}, read back by `dispatchDedicatedRoute`.
+ *
+ * `Symbol.for` (the global registry) rather than a module-scoped `WeakMap` so
+ * the lookup is package-instance-stable: `loadFsdevConfig` may build a
+ * FlowState with a different `@flow-state-dev/engine` copy than the host
+ * (`@flow-state-dev/node`) imports, and a WeakMap in one copy is invisible to
+ * the other — the host would then 404 every dedicated route. A globally-keyed
+ * symbol resolves to the same key across copies. It's a symbol (not a string
+ * key) so it stays off the method-indexed `keyof FlowApiRouter` shape.
  */
-const dedicatedRouteDispatchers = new WeakMap<
-  FlowApiRouter,
-  (req: Request) => Promise<Response | null>
->();
+const DEDICATED_ROUTE_DISPATCHER = Symbol.for(
+  "@flow-state-dev/engine/dedicatedRouteDispatcher"
+);
 
 /**
  * Tear down a router by invoking each adapter's `bindings.stop()` in
@@ -284,7 +292,9 @@ export async function dispatchDedicatedRoute(
   router: FlowApiRouter,
   req: Request
 ): Promise<Response | null> {
-  const dispatch = dedicatedRouteDispatchers.get(router);
+  const dispatch = (router as Record<symbol, unknown>)[
+    DEDICATED_ROUTE_DISPATCHER
+  ] as DedicatedRouteDispatcher | undefined;
   if (dispatch === undefined) return null;
   return dispatch(req);
 }
@@ -466,7 +476,14 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     DELETE: dispatch
   };
   routerDisposers.set(router, dispose);
-  dedicatedRouteDispatchers.set(router, matchDedicated);
+  // Stash on the router itself (globally-keyed symbol) so `dispatchDedicatedRoute`
+  // resolves it even from a different `@flow-state-dev/engine` copy than the one
+  // that built this router. Non-enumerable so a `{ ...router }` spread (or JSON)
+  // doesn't carry a stale dispatcher onto an unrelated object.
+  Object.defineProperty(router, DEDICATED_ROUTE_DISPATCHER, {
+    value: matchDedicated,
+    enumerable: false
+  });
   return router;
 }
 

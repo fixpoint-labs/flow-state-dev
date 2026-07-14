@@ -245,21 +245,42 @@ describe("createServerApp — translation", () => {
     expect(await res.json()).toEqual({ error: "Internal server error" });
   });
 
-  it("does not block the not-found fallback while the FlowState is initializing", async () => {
-    // The dedicated-route dispatch is non-blocking: a miss during a slow store
-    // cold start 404s at once instead of awaiting init. `gatedAdapter` never
-    // releases here, so a blocking impl would hang and time this test out.
-    const adapter = gatedAdapter();
+  it("waits for init, then serves a dedicated route that arrives during cold start", async () => {
+    // The not-found fallback blocks on init like the canonical handler, so a
+    // dedicated adapter route arriving during a slow store cold start is served
+    // once ready — not spuriously 404'd. The store gate is released only after
+    // the request is in flight, proving the fallback waited rather than 404'd.
+    const store = gatedAdapter();
+    const adapter: InboundTransportAdapter = {
+      source: "test-dedicated",
+      createBindings: () => ({
+        routes: [
+          {
+            method: "POST",
+            path: "/custom/:id",
+            handler: (_req, ctx) =>
+              Promise.resolve(
+                new Response(JSON.stringify({ served: ctx.params.id }), {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                }),
+              ),
+          },
+        ],
+      }),
+    };
     const fs = createFlowState({
       flows: { noop: noopFlow },
       modelResolver: createMockModelResolver({}),
-      stores: { default: { primary: adapter } },
+      stores: { default: { primary: store } },
+      adapters: [adapter],
     });
     const { app, dispose } = createServerApp(fs);
-    const res = await app.fetch(new Request(url("/nope")));
-    expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ error: "Not found" });
-    adapter.release();
+    const pending = app.fetch(new Request(url("/custom/abc"), { method: "POST" }));
+    store.release();
+    const res = await pending;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ served: "abc" });
     await dispose();
   });
 });

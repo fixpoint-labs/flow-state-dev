@@ -20,6 +20,24 @@ describe("fsdev serve", () => {
     expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
   });
 
+  it.each(["3000abc", "1e3", "80.5", " 80", "0x50"])(
+    "rejects a non-decimal --port (%s) instead of truncating it",
+    async (port) => {
+      // parseInt would silently accept these (3000abc→3000, 1e3→1); the command
+      // must reject the whole string so a typo can't bind an unintended port.
+      const err = await executeServeCommand({ cwd: unauthDir, port }).catch((e) => e);
+      expect(err).toBeInstanceOf(CliError);
+      expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
+      expect(err.message).toContain(`Invalid port: ${port}`);
+    },
+  );
+
+  it("rejects an out-of-range --port", async () => {
+    const err = await executeServeCommand({ cwd: unauthDir, port: "70000" }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
+  });
+
   it("requires a committed config — no directory discovery fallback", async () => {
     const err = await executeServeCommand({ cwd: noConfigDir }).catch((e) => e);
     expect(err).toBeInstanceOf(CliError);

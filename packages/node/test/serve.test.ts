@@ -279,4 +279,25 @@ describe("serve — static assets", () => {
     expect(spa.status).toBe(200);
     expect(await spa.text()).toContain("<title>app</title>");
   });
+
+  it("serves static assets without blocking while the FlowState initializes", async () => {
+    // The SPA fallback is non-blocking: a static miss during a slow store cold
+    // start returns index.html at once instead of awaiting init. The gate is
+    // released only after the request resolves, so a blocking impl would hang.
+    const dir = await mkdtemp(join(tmpdir(), "fsd-node-static-"));
+    await writeFile(join(dir, "index.html"), "<!doctype html><title>app</title>");
+    const adapter = gatedAdapter();
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: adapter } },
+    });
+    const handle = await start(fs, { port: 0, staticDir: dir });
+
+    const spa = await fetch(`http://127.0.0.1:${handle.port}/some/client/route`);
+    expect(spa.status).toBe(200);
+    expect(await spa.text()).toContain("<title>app</title>");
+
+    adapter.release();
+  });
 });

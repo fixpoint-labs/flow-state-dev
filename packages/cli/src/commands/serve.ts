@@ -63,10 +63,12 @@ export function registerServeCommand(program: Command): void {
 /** Core execution logic for `fsdev serve`, separated for testability. */
 export async function executeServeCommand(options: ServeCommandOptions): Promise<void> {
   // Validate --port up front. Omitted → undefined, so serve() applies $PORT ?? 3000.
+  // Require an all-digits string: `parseInt` would silently truncate `3000abc`
+  // to 3000 or `1e3` to 1 and bind the wrong port on a typo.
   let port: number | undefined;
   if (options.port !== undefined) {
-    port = parseInt(options.port, 10);
-    if (isNaN(port) || port < 0 || port > 65535) {
+    port = /^\d+$/.test(options.port) ? Number(options.port) : NaN;
+    if (!Number.isInteger(port) || port < 0 || port > 65535) {
       throw new CliError(`Invalid port: ${options.port}`, EXIT_CONFIG_ERROR);
     }
   }
