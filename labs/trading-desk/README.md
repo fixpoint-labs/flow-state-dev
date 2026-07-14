@@ -390,10 +390,10 @@ counts):
 ## Portfolio view
 
 The Portfolio tab is the durable record of what you own. A sidebar (a left
-rail on desktop, a segmented strip on phones) switches the pane between two
+rail on desktop, a segmented strip on phones) switches the pane between three
 perspectives. The pinned toolbar keeps only the always-relevant bits — refresh
 prices and the portfolio totals; account-management actions live in the
-Accounts perspective, since they don't apply on Gains & Taxes:
+Accounts perspective, since they don't apply on the other views:
 
 - **Accounts** (the default) — an action row (add account, an **Import** menu
   for holdings CSV / statement PDF / transaction files, add transaction,
@@ -408,6 +408,14 @@ Accounts perspective, since they don't apply on Gains & Taxes:
   **Total income** (capital gains + dividends + interest). Same-ticker
   disposals across accounts roll up together here (the household cut);
   per-account attribution stays in each account's Realized Gains tab.
+- **Health** — the household view across all accounts: the same name held in
+  three accounts shown as one exposure, how the book splits by asset class and
+  sector (funds appear as their own bucket — no ETF look-through in this
+  version), concentration reads (largest single name, top-5 / top-10 weight, and
+  an "effective number of positions" figure) with plain warn/alert flags, your
+  cash level, and a coverage line for anything that can't be priced. Every figure
+  is plain arithmetic over stored quantities and sourced prices — no model calls.
+  Drift versus a target allocation lands once a portfolio mandate exists.
 
 Click a card in the Accounts perspective to open the account, which has four
 tabs:

@@ -127,3 +127,70 @@ describe("setHoldingAssetClass — manual override", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("reclassifyHoldingByTicker — Yahoo-quoteType-driven auto-correction (FIX-762 follow-up)", () => {
+  const etfClassification = {
+    assetClass: "equity" as const,
+    assetType: "etf" as const,
+    attributes: { kind: "none" as const },
+  };
+
+  it("corrects a CSV/PDF-snapshot-only holding the ledger never re-materializes", async () => {
+    // upsertHoldings (a snapshot import) is the path materializePositions'
+    // self-heal doesn't cover — this method is specifically for that gap.
+    await repo.upsertHoldings("acc-1", "devuser", [equityRow("VOO")], "upsert");
+    expect(
+      (await repo.getPortfolio("devuser")).holdings.find((h) => h.ticker === "VOO")?.assetType,
+    ).toBe("equity");
+
+    await repo.reclassifyHoldingByTicker("devuser", "VOO", etfClassification);
+
+    const voo = (await repo.getPortfolio("devuser")).holdings.find((h) => h.ticker === "VOO");
+    expect(voo?.assetClass).toBe("equity");
+    expect(voo?.assetType).toBe("etf");
+  });
+
+  it("updates every one of the user's accounts holding the ticker, not just one", async () => {
+    await repo.upsertAccount({ id: "acc-2", userId: "devuser", name: "Roth", type: "Roth" });
+    await repo.upsertHoldings("acc-1", "devuser", [equityRow("VOO")], "upsert");
+    await repo.upsertHoldings("acc-2", "devuser", [equityRow("VOO")], "upsert");
+
+    const result = await repo.reclassifyHoldingByTicker("devuser", "VOO", etfClassification);
+    expect(result.updated).toBe(2);
+
+    const holdings = (await repo.getPortfolio("devuser")).holdings.filter((h) => h.ticker === "VOO");
+    expect(holdings).toHaveLength(2);
+    expect(holdings.every((h) => h.assetType === "etf")).toBe(true);
+  });
+
+  it("preserves a manual override (asset_class_manual) instead of overwriting it", async () => {
+    await repo.upsertHoldings("acc-1", "devuser", [equityRow("VOO")], "upsert");
+    await repo.setHoldingAssetClass("acc-1", "devuser", "VOO", "alternative");
+
+    const result = await repo.reclassifyHoldingByTicker("devuser", "VOO", etfClassification);
+    expect(result.updated).toBe(0);
+
+    const voo = (await repo.getPortfolio("devuser")).holdings.find((h) => h.ticker === "VOO");
+    // The manual override holds — an auto-correction never overwrites it.
+    expect(voo?.assetClass).toBe("alternative");
+    expect(voo?.assetType).toBe("equity");
+  });
+
+  it("does not touch another household's same-ticker holding", async () => {
+    await repo.upsertAccount({ id: "acc-2", userId: "intruder", name: "Other", type: "taxable" });
+    await repo.upsertHoldings("acc-1", "devuser", [equityRow("VOO")], "upsert");
+    await repo.upsertHoldings("acc-2", "intruder", [equityRow("VOO")], "upsert");
+
+    await repo.reclassifyHoldingByTicker("devuser", "VOO", etfClassification);
+
+    const intruderVoo = (await repo.getPortfolio("intruder")).holdings.find((h) => h.ticker === "VOO");
+    expect(intruderVoo?.assetType).toBe("equity");
+  });
+
+  it("is a no-op when the user holds no such ticker", async () => {
+    await repo.upsertHoldings("acc-1", "devuser", [equityRow("AAPL")], "upsert");
+    await expect(repo.reclassifyHoldingByTicker("devuser", "VOO", etfClassification)).resolves.toEqual({
+      updated: 0,
+    });
+  });
+});

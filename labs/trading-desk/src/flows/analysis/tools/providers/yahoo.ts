@@ -22,12 +22,36 @@ type YahooClient = {
   chart: (
     ticker: string,
     opts: { period1: Date; period2: Date; interval: string },
+    moduleOptions?: { validateResult?: boolean },
   ) => Promise<{ quotes?: Array<Record<string, unknown>> }>;
   quoteSummary: (
     ticker: string,
     opts: { modules: string[] },
+    // yahoo-finance2's third arg: `validateResult: false` returns the raw result
+    // instead of throwing on a strict-schema miss (and silences the log).
+    moduleOptions?: { validateResult?: boolean },
   ) => Promise<Record<string, unknown | undefined>>;
 };
+
+/**
+ * Map a stored ticker to Yahoo's wire spelling.
+ *
+ * US class shares are stored dotted/slashed (`BRK.B` / `BRK/B`) but Yahoo
+ * resolves them only with a hyphen (`BRK-B`). International symbols keep a
+ * dotted *exchange* suffix (`ASML.AS`, `7203.T`) — rewriting those to hyphens
+ * makes `quoteSummary` miss while the price path still works with the original
+ * dotted form. Heuristic:
+ *   - trailing `/X` → always a class-share spelling → hyphenate
+ *   - trailing `.X` after an alphabetic base → class share → hyphenate
+ *   - everything else (multi-letter exchange, numeric+exchange) → leave alone
+ */
+export function toYahooSymbol(ticker: string): string {
+  if (/\/[A-Za-z]$/.test(ticker)) return ticker.replace(/\/([A-Za-z])$/i, "-$1");
+  if (/^[A-Za-z][A-Za-z0-9]*\.[A-Za-z]$/.test(ticker)) {
+    return ticker.replace(/\./, "-");
+  }
+  return ticker;
+}
 
 // Two layers of caching:
 //   - `cachedClient` holds the fully-constructed instance for subsequent calls.
@@ -67,11 +91,18 @@ export async function fetchYahooChart(
   const period2 = new Date(input.date);
   const period1 = new Date(period2);
   period1.setUTCDate(period1.getUTCDate() - rangeToLookbackDays(input.range));
-  const result = await yahoo.chart(input.ticker, {
-    period1,
-    period2,
-    interval: "1d",
-  });
+  // `validateResult: false`: yahoo-finance2 throws on a strict-schema miss, and
+  // Yahoo intermittently returns incomplete `meta` (null `currency`, absent
+  // `regularMarketPrice`) — `meta` fields this function never reads. Without the
+  // flag that throw discards the OHLCV bars (built by the module transform, which
+  // runs before validation) over metadata we don't use. The bars are read
+  // defensively below, so we take what Yahoo returned. Same posture as the
+  // company-profile fetch; see that call for the full rationale.
+  const result = await yahoo.chart(
+    input.ticker,
+    { period1, period2, interval: "1d" },
+    { validateResult: false },
+  );
   const bars = (result.quotes ?? [])
     .filter((q) => q.open != null && q.close != null)
     .map((q) => ({
@@ -198,9 +229,7 @@ export async function fetchYahooSplits(
 ): Promise<ProviderSplit[]> {
   const p1 = Math.floor(new Date(from).getTime() / 1000);
   const p2 = Math.floor(new Date(to).getTime() / 1000);
-  // Yahoo spells class shares with a hyphen, not a dot (BRK.B → BRK-B); leaving
-  // the dot 404s. `/` (preferred/warrant suffixes) gets the same treatment.
-  const symbol = ticker.replace(/[./]/g, "-");
+  const symbol = toYahooSymbol(ticker);
   const url = new URL(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,
   );
@@ -277,13 +306,31 @@ export async function fetchYahooCompanyProfile(
   input: ToolInput<"get_company_profile">,
 ): Promise<ToolOutput<"get_company_profile">> {
   const yahoo = await getYahoo();
+  // Class-share hyphenation only — exchange-suffixed internationals keep their
+  // dots (see `toYahooSymbol`). This fetch has no fallback provider (Yahoo is
+  // the only sector source), so a wrong spelling silently never resolves —
+  // unlike price refresh, which falls through to Finnhub.
+  const symbol = toYahooSymbol(input.ticker);
   // `assetProfile` carries sector/industry/business-description; `summaryDetail`
   // carries marketCap/currency; `quoteType` is the canonical home for the
   // company's display name and exchange — `assetProfile` does not include
   // `longName`/`shortName`, so the name has to come from `quoteType`.
-  const summary = (await yahoo.quoteSummary(input.ticker, {
-    modules: ["assetProfile", "summaryDetail", "quoteType"],
-  })) as Record<string, Record<string, unknown> | undefined>;
+  //
+  // `validateResult: false`: yahoo-finance2 validates the WHOLE result against a
+  // strict schema and throws on any miss — a null `summaryDetail.currency` or a
+  // `quoteType` missing its exchange/timezone metadata (both common for real
+  // held tickers) would discard an otherwise-usable `assetProfile.sector`. This
+  // is a best-effort identity/sector lookup and every field below is read
+  // defensively (`stringFrom`/`numberFrom` tolerate missing values), so we take
+  // what Yahoo returned and still throw our own honest signal on a truly empty
+  // profile (below). NOT applied to the fundamentals/short-interest calls, where
+  // strict validation + provider-chain fallback is the correct honest-over-wrong
+  // behavior for numeric data feeding analyst reasoning.
+  const summary = (await yahoo.quoteSummary(
+    symbol,
+    { modules: ["assetProfile", "summaryDetail", "quoteType"] },
+    { validateResult: false },
+  )) as Record<string, Record<string, unknown> | undefined>;
   const profile = summary.assetProfile ?? {};
   const detail = summary.summaryDetail ?? {};
   const qt = summary.quoteType ?? {};
@@ -311,6 +358,32 @@ export async function fetchYahooCompanyProfile(
     websiteMetaDescription: null,
     searchSnippets: null,
   };
+}
+
+/**
+ * Yahoo's own instrument-kind discriminator (`"EQUITY"` / `"ETF"` /
+ * `"MUTUALFUND"` / `"CRYPTOCURRENCY"` / `"INDEX"` / ... — the `quoteType`
+ * field ON the `quoteType` module, not the module name). A minimal, separate
+ * fetch (one small module) from `fetchYahooCompanyProfile` — kept apart so
+ * this portfolio-only need can't reshape that function's `get_company_profile`
+ * tool contract, which the analysis pipeline also depends on. Used to tell a
+ * genuinely sectorless equity apart from a fund/crypto asset mistyped
+ * `assetType: "equity"` at import (FIX-762 follow-up). Returns null on any
+ * failure — the caller treats that as "can't tell, leave as-is".
+ */
+export async function fetchYahooQuoteKind(ticker: string): Promise<string | null> {
+  const yahoo = await getYahoo();
+  const symbol = toYahooSymbol(ticker);
+  try {
+    const summary = (await yahoo.quoteSummary(
+      symbol,
+      { modules: ["quoteType"] },
+      { validateResult: false },
+    )) as Record<string, Record<string, unknown> | undefined>;
+    return stringFrom(summary.quoteType?.quoteType);
+  } catch {
+    return null;
+  }
 }
 
 function stringFrom(raw: unknown): string | null {

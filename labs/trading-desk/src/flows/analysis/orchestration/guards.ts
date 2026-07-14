@@ -47,6 +47,7 @@ import {
   type PortfolioMandate,
 } from "../../portfolio/portfolio-mandate-schema";
 import { buildPortfolioContext, householdTickerWeight } from "../build-portfolio-context";
+import type { ClassificationMap } from "@/src/flows/portfolio/portfolio-health";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 import { getRepository } from "@/lib/portfolio-db";
 import { toAccountStates } from "@/src/db/repository";
@@ -161,10 +162,31 @@ export const seedSession = handler({
         r.asOf === null ? oldest : oldest === null || r.asOf < oldest ? r.asOf : oldest,
       null,
     );
+    // Per-ticker sectors for the compact health block (FIX-762), read-only from
+    // the durable `app.instrument_classifications` cache — the seed NEVER triggers
+    // Yahoo fetches (a Health-view visit fills the cache; unclassified tickers ride
+    // as `Unclassified` here). A read failure must not fail the run — degrade to an
+    // empty map and the health block still computes without sectors.
+    const heldEquityTickers = [
+      ...new Set(
+        scoped.flatMap((a) =>
+          a.holdings.filter((h) => h.assetType === "equity").map((h) => h.ticker.toUpperCase()),
+        ),
+      ),
+    ];
+    const classifications: ClassificationMap = new Map();
+    try {
+      for (const c of await repo.getInstrumentClassifications(heldEquityTickers)) {
+        classifications.set(c.ticker, c.sector);
+      }
+    } catch (err) {
+      console.warn(`[trading-desk] seed: instrument classifications read failed`, err);
+    }
     const portfolio = buildPortfolioContext(
       scoped,
       quoteRows.map((r) => ({ ticker: r.ticker, price: r.price, asOf: r.asOf })),
       snapshotAsOf,
+      classifications,
     );
 
     // Durable household portfolio mandate (FIX-761), read from the user-scoped

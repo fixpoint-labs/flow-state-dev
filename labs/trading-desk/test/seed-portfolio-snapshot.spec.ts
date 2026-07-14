@@ -87,6 +87,38 @@ describe("seedSession portfolio snapshot (server-side)", () => {
     expect(sessionState.portfolio?.totalNav).toBeCloseTo(2314);
   });
 
+  it("injects the household-health block + holdings sector from the classification cache (FIX-762)", async () => {
+    await seedAccount(repoState.repo!, {
+      accountId: ACCOUNT_ID,
+      userId: TEST_USER,
+      name: "Taxable",
+      type: "taxable",
+      cashBalance: 1000,
+      holdings: [{ ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } }],
+    });
+    await seedNvdaQuote();
+    // The seed reads sectors read-only from the durable cache (never fetches Yahoo).
+    await repoState.repo!.upsertInstrumentClassifications([
+      { ticker: "NVDA", sector: "Technology", source: "yahoo" },
+    ]);
+
+    const result = await testBlock(seedSession, { input: { ...baseInput }, flow });
+    expect(result.error).toBeNull();
+
+    const sessionState = result.state.session as {
+      portfolio?: {
+        holdings: Array<{ ticker: string; sector: string | null }>;
+        health: { cashPct: number | null; concentration: { maxPosition: { ticker: string } | null } } | null;
+      } | null;
+    };
+    // The dead holdings[].sector field now carries the cached sector.
+    expect(sessionState.portfolio?.holdings.find((h) => h.ticker === "NVDA")?.sector).toBe("Technology");
+    // The compact health block is populated (NAV 2314; cash 1000 → ~43.2%).
+    expect(sessionState.portfolio?.health).not.toBeNull();
+    expect(sessionState.portfolio?.health?.cashPct).toBeCloseTo((1000 / 2314) * 100);
+    expect(sessionState.portfolio?.health?.concentration.maxPosition?.ticker).toBe("NVDA");
+  });
+
   it("computes state.portfolio scoped to selectedAccountIds when provided", async () => {
     const ACCOUNT_ID_2 = "acc-roth-02";
     await seedAccount(repoState.repo!, {
