@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getRepository } from "@/lib/portfolio-db";
+import { getRepository } from "@/db/portfolio-db";
 import {
   estimateTaxLiability,
   summarizeForTaxEstimate,
-} from "@/src/domain/portfolio/math/tax-estimate";
+} from "@/domain/portfolio/math/tax-estimate";
 
 // The composite tax read (FIX-874) — profile + all-year realized gains +
 // all-year income-by-year + the current-year estimate, in ONE request so the

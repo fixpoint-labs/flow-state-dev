@@ -11,10 +11,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
+import type { PortfolioRepository } from "@/db/repository";
 
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
+vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
@@ -22,12 +22,12 @@ vi.mock("@/lib/portfolio-db", () => ({
 }));
 
 const sectorMock = vi.hoisted(() => ({ resolveSector: vi.fn() }));
-vi.mock("@/src/flows/analysis/lib/sector-resolution", () => ({
+vi.mock("@/flows/analysis/lib/sector-resolution", () => ({
   resolveSector: sectorMock.resolveSector,
 }));
 
 const reconcileMock = vi.hoisted(() => ({ reconcileFundClassification: vi.fn() }));
-vi.mock("@/src/domain/portfolio/services/reconcile-fund-classification", () => ({
+vi.mock("@/domain/portfolio/services/reconcile-fund-classification", () => ({
   reconcileFundClassification: reconcileMock.reconcileFundClassification,
 }));
 

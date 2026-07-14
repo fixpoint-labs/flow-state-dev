@@ -11,23 +11,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
+import type { PortfolioRepository } from "@/db/repository";
 import {
   portfolioMandateSchema,
   type PortfolioMandate,
-} from "../src/domain/portfolio/schema/portfolio-mandate-schema";
+} from "../domain/portfolio/schema/portfolio-mandate-schema";
 
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
+vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
   },
 }));
 
-import { seedSession } from "../src/flows/analysis/orchestration/guards";
-import type { RiskMandateId } from "../src/flows/analysis/lib/risk-mandate";
-import flow from "../src/flows/analysis/flow";
+import { seedSession } from "../flows/analysis/orchestration/guards";
+import type { RiskMandateId } from "../flows/analysis/lib/risk-mandate";
+import flow from "../flows/analysis/flow";
 
 const TEST_USER = "test-user";
 

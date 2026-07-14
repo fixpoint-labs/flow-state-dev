@@ -12,7 +12,7 @@
  * (the `—`-for-missing gate), never a fabricated value. "Recorded as of" is the
  * record's `updatedAt`, surfaced so a stale thesis reads as such.
  */
-import type { ThesisRecord, Tripwire } from "@/src/domain/portfolio/schema/thesis-schema";
+import type { ThesisRecord, Tripwire } from "@/domain/portfolio/schema/thesis-schema";
 
 /** Render-ready standing-thesis view model, or `null` when the household has no
  *  thesis for the ticker (the card omits cleanly). */

@@ -11,20 +11,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
+import type { PortfolioRepository } from "@/db/repository";
 
 const repoState = vi.hoisted(() => ({
   repo: null as PortfolioRepository | null,
 }));
-vi.mock("@/lib/portfolio-db", () => ({
+vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
   },
 }));
 
-import { seedSession } from "../src/flows/analysis/orchestration/guards";
-import flow from "../src/flows/analysis/flow";
+import { seedSession } from "../flows/analysis/orchestration/guards";
+import flow from "../flows/analysis/flow";
 
 /** testBlock's default request userId — the household key `seedSession` resolves. */
 const TEST_USER = "test-user";

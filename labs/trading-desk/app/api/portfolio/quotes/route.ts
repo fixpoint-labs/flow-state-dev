@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getRepository } from "@/lib/portfolio-db";
+import { getRepository } from "@/db/portfolio-db";
 
 // The quotes REST surface over the durable `app.quotes` table (FIX-823). The
 // Portfolio pane reads last-known prices here instead of the retired

@@ -13,14 +13,14 @@ import { AgentBadge } from "@/components/agent-badge";
 import {
   AGENTS,
   type AgentName,
-} from "@/src/flows/analysis/registry";
+} from "@/flows/analysis/registry";
 import { ThesisBody } from "./thesis-body";
 import { MandatePanel } from "./mandate-panel";
 import { PolicyPanel } from "./policy-panel";
 import type {
   MemoState,
   ThesisSection,
-} from "@/src/flows/analysis/resources";
+} from "@/flows/analysis/resources";
 import { cn } from "@/lib/utils";
 
 const TIERS = ["Sell", "Underweight", "Hold", "Overweight", "Buy"] as const;

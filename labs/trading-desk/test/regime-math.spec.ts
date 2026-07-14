@@ -6,7 +6,7 @@ import {
   olsBeta,
   rollingCorrelation,
   correlationRegime,
-} from "../src/flows/analysis/tools/data/regime-math";
+} from "../flows/analysis/tools/data/regime-math";
 
 describe("regime-math", () => {
   describe("logReturns", () => {

@@ -12,9 +12,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
-import analysisFlow from "../src/flows/analysis/flow";
-import type { DecisionSnapshotState } from "../src/flows/analysis/decision-snapshot-resource";
-import type { ThesisRecord } from "../src/domain/portfolio/schema/thesis-schema";
+import analysisFlow from "../flows/analysis/flow";
+import type { DecisionSnapshotState } from "../flows/analysis/decision-snapshot-resource";
+import type { ThesisRecord } from "../domain/portfolio/schema/thesis-schema";
 
 const USER_ID = "devuser";
 

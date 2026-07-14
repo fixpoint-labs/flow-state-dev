@@ -13,11 +13,11 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import type {
   AccountType,
-} from "@/src/domain/portfolio/schema/portfolio-schema";
+} from "@/domain/portfolio/schema/portfolio-schema";
 import {
   MANDATE_PACK,
   type RiskMandateId,
-} from "@/src/flows/analysis/lib/risk-mandate";
+} from "@/flows/analysis/lib/risk-mandate";
 
 type NewAccountDraft = {
   name: string;

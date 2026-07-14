@@ -13,10 +13,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
+import type { PortfolioRepository } from "@/db/repository";
 
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
+vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
@@ -27,18 +27,18 @@ vi.mock("@/lib/portfolio-db", () => ({
 // deterministic. Finnhub is keyless (falls through to Yahoo); Yahoo returns
 // controlled bars (last bar's close = the current price).
 const yahooMock = vi.hoisted(() => ({ fetchYahooChart: vi.fn() }));
-vi.mock("@/src/providers/finnhub", async (importActual) => ({
+vi.mock("@/lib/providers/finnhub", async (importActual) => ({
   ...(await importActual<object>()),
   hasFinnhubKey: () => false,
 }));
-vi.mock("@/src/providers/yahoo", async (importActual) => ({
+vi.mock("@/lib/providers/yahoo", async (importActual) => ({
   ...(await importActual<object>()),
   fetchYahooChart: yahooMock.fetchYahooChart,
 }));
 
 import { GET } from "../app/api/portfolio/quotes/route";
 import { POST } from "../app/api/portfolio/quotes/refresh/route";
-import { _resetCache } from "../src/lib/cache";
+import { _resetCache } from "../lib/cache";
 
 const USER_ID = "devuser";
 

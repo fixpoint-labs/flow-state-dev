@@ -15,8 +15,8 @@
  *      sale is a real loss.
  */
 import { describe, expect, it } from "vitest";
-import { deriveLots } from "@/src/domain/portfolio/math/lots";
-import type { LedgerRow } from "@/src/domain/portfolio/schema/ledger-schema";
+import { deriveLots } from "@/domain/portfolio/math/lots";
+import type { LedgerRow } from "@/domain/portfolio/schema/ledger-schema";
 
 let seq = 0;
 function row(overrides: Partial<LedgerRow>): LedgerRow {

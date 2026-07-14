@@ -8,7 +8,7 @@ import or sync.
 
 This doc is the methodology reference. The user-facing surface is the per-account
 **Realized Gains** tab and the household **tax-estimate card**; the code lives in
-`src/domain/portfolio/math/` (pure leaves) + `src/db/repository.ts` (persistence) +
+`domain/portfolio/math/` (pure leaves) + `db/repository.ts` (persistence) +
 `app/api/portfolio/tax*` (REST).
 
 ## Realized gains

@@ -6,7 +6,7 @@
  * P/E values map to `null`, not a backward-looking substitute.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchFinnhubFundamentals } from "../src/providers/finnhub";
+import { fetchFinnhubFundamentals } from "../lib/providers/finnhub";
 
 /** `fetchFinnhubFundamentals` calls /stock/profile2 and /stock/metric. A single
  *  payload carrying both `marketCapitalization` (read by the profile call) and

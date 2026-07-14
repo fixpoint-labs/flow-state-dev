@@ -4,7 +4,7 @@
  * The load-bearing claim of the store swap: the framework store
  * (`@flow-state-dev/store-postgres`, the `public.*` tables) and the app-owned
  * portfolio repository (the `app.*` tables) run on ONE backing. This test
- * reconstructs the dev (PGlite) wiring `lib/portfolio-db.ts` builds — one PGlite
+ * reconstructs the dev (PGlite) wiring `db/portfolio-db.ts` builds — one PGlite
  * instance, the app migrations applied, a `QueryExecutor` handed to
  * `createPostgresStores` — and asserts both schemas coexist and are writable on
  * the same database.
@@ -16,10 +16,10 @@ import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { createPostgresStores, type QueryExecutor } from "@flow-state-dev/store-postgres";
 import { describe, expect, it } from "vitest";
-import { createMigratedPgliteDb } from "@/src/db/client";
-import { createPortfolioRepository } from "@/src/db/repository";
+import { createMigratedPgliteDb } from "@/db/client";
+import { createPortfolioRepository } from "@/db/repository";
 
-const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
+const MIGRATIONS_DIR = fileURLToPath(new URL("../db/migrations", import.meta.url));
 
 describe("shared portfolio backing", () => {
   it("runs the framework store and the app repository on one PGlite backing", async () => {

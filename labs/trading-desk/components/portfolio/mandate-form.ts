@@ -21,7 +21,7 @@ import {
   type MandateAssetClass,
   type PortfolioMandate,
   type RiskTolerance,
-} from "@/src/domain/portfolio/schema/portfolio-mandate-schema";
+} from "@/domain/portfolio/schema/portfolio-mandate-schema";
 
 /** The MANDATE_PACK appetite ids the dropdown offers (kept here so the UI form
  *  doesn't import the analysis-flow risk-mandate module). "" means "derive from

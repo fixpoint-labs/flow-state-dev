@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getRepository } from "@/lib/portfolio-db";
+import { getRepository } from "@/db/portfolio-db";
 import {
   deleteHolding,
   setHoldingAssetClass,
   setHoldingAssetClassSchema,
-} from "@/src/domain/portfolio/services/portfolio-writes";
+} from "@/domain/portfolio/services/portfolio-writes";
 
 // Delete one holding by (account, ticker) — the app-owned holdings table
 // (FIX-772). A holding is basic relational CRUD, so it's a plain route, not a

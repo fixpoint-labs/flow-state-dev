@@ -9,9 +9,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { get_futures_curve } from "../src/flows/analysis/tools/data/get_futures_curve";
-import { _resetCache } from "../src/lib/cache";
-import { sessionStateSchema } from "../src/flows/analysis/state";
+import { get_futures_curve } from "../flows/analysis/tools/data/get_futures_curve";
+import { _resetCache } from "../lib/cache";
+import { sessionStateSchema } from "../flows/analysis/state";
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-futures-curve-test",

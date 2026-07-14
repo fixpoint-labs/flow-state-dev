@@ -28,10 +28,10 @@
  * Override the household with `BACKFILL_USER` (defaults to devuser, the
  * `nvda-split` precedent).
  */
-import { getRepository } from "../lib/portfolio-db";
-import { resolveSector } from "../src/flows/analysis/lib/sector-resolution";
-import { reconcileFundClassification } from "../src/domain/portfolio/services/reconcile-fund-classification";
-import { resolvePortfolioQuoteKind } from "../src/lib/portfolio-market-data";
+import { getRepository } from "../db/portfolio-db";
+import { resolveSector } from "../flows/analysis/lib/sector-resolution";
+import { reconcileFundClassification } from "../domain/portfolio/services/reconcile-fund-classification";
+import { resolvePortfolioQuoteKind } from "../lib/portfolio-market-data";
 
 const USER_ID = process.env.BACKFILL_USER ?? "devuser";
 

@@ -16,8 +16,8 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import { apiMutate } from "@/lib/use-api-query";
-import type { TaxProfileRow } from "@/src/db/repository";
-import type { FilingStatus } from "@/src/domain/portfolio/schema/tax-schema";
+import type { TaxProfileRow } from "@/db/repository";
+import type { FilingStatus } from "@/domain/portfolio/schema/tax-schema";
 
 type TaxProfileDialogProps = {
   open: boolean;

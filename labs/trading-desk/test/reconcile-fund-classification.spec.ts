@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { reconcileFundClassification } from "../src/domain/portfolio/services/reconcile-fund-classification";
+import { reconcileFundClassification } from "../domain/portfolio/services/reconcile-fund-classification";
 const resolveQuoteKind = vi.fn();
 
 afterEach(() => {

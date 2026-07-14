@@ -6,7 +6,7 @@
  * honest edge cases (no downside, all loss, empty, thin evidence).
  */
 import { describe, expect, it } from "vitest";
-import { computeRewardToRisk } from "../src/flows/analysis/lib/reward-to-risk";
+import { computeRewardToRisk } from "../flows/analysis/lib/reward-to-risk";
 
 describe("computeRewardToRisk", () => {
   it("computes EV / gain / loss / GLR over a mixed distribution", () => {

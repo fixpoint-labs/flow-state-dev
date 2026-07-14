@@ -3,7 +3,7 @@
  * Pure module — no IO, no mocks needed.
  */
 import { describe, expect, it } from "vitest";
-import { classifyItems } from "../src/providers/eight-k-items";
+import { classifyItems } from "../lib/providers/eight-k-items";
 
 describe("classifyItems", () => {
   it("maps a known high-signal code to the correct label/title/signal", () => {

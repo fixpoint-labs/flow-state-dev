@@ -19,7 +19,7 @@ The trading-desk's `tradingDesk` capability hit the threshold easily: nine
 generators across four phases share model selection and ticker/date context,
 plus the heavy memo/contribution context bundles are reusable across
 multiple consolidation steps. See
-[`labs/trading-desk/src/flows/analysis/capability.ts`](../../labs/trading-desk/src/flows/analysis/capability.ts).
+[`labs/trading-desk/flows/analysis/capability.ts`](../../labs/trading-desk/flows/analysis/capability.ts).
 
 ## When per-tool files beat a dispatch abstraction
 
@@ -39,14 +39,14 @@ fallback story sits in one file.
 
 ## Backend utility and provider convention
 
-Keep generic backend helpers under `src/lib/` and stateless upstream clients
-under `src/providers/`:
+Keep generic backend helpers under `lib/` and stateless upstream clients
+under `lib/providers/`:
 
-- **`src/lib/cache.ts`** — process-wide TTL cache
+- **`lib/cache.ts`** — process-wide TTL cache
   (`getOrFetch(namespace, args, fetcher)`). No `ctx`, resources, or framework
   coupling.
-- **`src/lib/concurrency.ts`** — bounded fan-out and retry timing helpers.
-- **`src/providers/<provider>.ts`** — one flat-function module per upstream API
+- **`lib/concurrency.ts`** — bounded fan-out and retry timing helpers.
+- **`lib/providers/<provider>.ts`** — one flat-function module per upstream API
   (`finnhub.ts`, `yahoo.ts`, `fred.ts`). Read keys from env and throw on failure
   so callers can apply an explicit fallback policy.
 
@@ -69,7 +69,7 @@ designed for this.
 The trading-desk's first cut used a session-scoped resource for market-data
 deduplication. That was over-architecting — every NVDA fundamentals fetch
 ran once per session. Switching to a process-wide 120s TTL cache (see
-[`labs/trading-desk/src/lib/cache.ts`](../../labs/trading-desk/src/lib/cache.ts))
+[`labs/trading-desk/lib/cache.ts`](../../labs/trading-desk/lib/cache.ts))
 let multiple sessions share warm fetches, dropped the cache plumbing
 (`ctx.resources.marketdata`, the `marketDataCollection` definition, the flow
 registration), and made the call sites cleaner.
@@ -148,7 +148,7 @@ unbundled runtime from any cwd; the cwd candidate carries Turbopack.
 // Robust across fsdev run / vitest / tsx / Next.js dev and build
 const APP_ROOT = resolveBaseDir(
   [moduleDir(import.meta.url, "../../../.."), process.cwd()],
-  { expect: "src/flows/analysis" },
+  { expect: "flows/analysis" },
 );
 const FIXTURE_ROOT = path.join(APP_ROOT, "fixtures");
 

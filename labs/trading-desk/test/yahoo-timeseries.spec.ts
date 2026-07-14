@@ -15,7 +15,7 @@ import {
   isEmptyTimeseries,
   YAHOO_TIMESERIES_TYPES,
   type YahooTimeseriesResponse,
-} from "../src/providers/yahoo-timeseries";
+} from "../lib/providers/yahoo-timeseries";
 
 import rawAapl from "./__fixtures__/yahoo-timeseries-aapl.json";
 

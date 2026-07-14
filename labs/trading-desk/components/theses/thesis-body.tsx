@@ -6,7 +6,7 @@
  * list when non-empty.
  */
 import type { ReactElement } from "react";
-import type { MemoCitation, ThesisSection } from "@/src/flows/analysis/resources";
+import type { MemoCitation, ThesisSection } from "@/flows/analysis/resources";
 import { cn } from "@/lib/utils";
 
 export type ThesisBodyProps = {

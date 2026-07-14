@@ -22,7 +22,7 @@ import {
   thesisFormError,
   thesisRecordToForm,
 } from "../components/portfolio/thesis-form";
-import type { ThesisRecord } from "../src/domain/portfolio/schema/thesis-schema";
+import type { ThesisRecord } from "../domain/portfolio/schema/thesis-schema";
 
 function record(overrides: Partial<ThesisRecord> = {}): ThesisRecord {
   return {

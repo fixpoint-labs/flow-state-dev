@@ -322,7 +322,7 @@ first:
 pnpm --filter @flow-state-dev/trading-desk migrate   # framework + app schema
 ```
 
-The wiring lives in [`lib/portfolio-db.ts`](lib/portfolio-db.ts) (the shared
+The wiring lives in [`db/portfolio-db.ts`](db/portfolio-db.ts) (the shared
 backing — PGlite in dev, a host-owned `pg.Pool` in deploy, shared with the
 framework store) and [`lib/server.ts`](lib/server.ts) (the lazy async router).
 See also [Persistence overview](../../apps/docs/docs/persistence/overview.md).
@@ -335,7 +335,7 @@ The desk owns the latter in real relational tables — `app.accounts`,
 `app.holdings`, `app.ledger_events`, and the durable last-known-price cache
 `app.quotes` in a dedicated `app` Postgres schema —
 reached through a thin typed repository
-([`src/db/repository.ts`](src/db/repository.ts)), not through an FSD resource.
+([`db/repository.ts`](db/repository.ts)), not through an FSD resource.
 Action handlers, the analysis seed, and the Portfolio UI read/write through that
 repository (the UI via a [`/api/portfolio/accounts`](app/api/portfolio/accounts/route.ts)
 read route). This is the showcase answer to "does FSD force my domain data
@@ -345,7 +345,7 @@ your relational entities — including a price cache that a household view will
 `GROUP BY ticker` — in your own tables. The quotes cache started as a per-user
 `portfolioQuotes` resource and graduated to a ticker-keyed table once it needed to
 persist across sessions and join to holdings. Migrations live in
-[`src/db/migrations/`](src/db/migrations) (`pnpm db:generate`), applied in process
+[`db/migrations/`](db/migrations) (`pnpm db:generate`), applied in process
 on the PGlite dev backing and via `scripts/migrate.ts` on deploy. It's a pattern
 for any multi-tier FSD app, not a desk-only hack.
 
@@ -354,11 +354,11 @@ as a plain REST surface over the repository, reads AND writes. It is a
 deliberate showcase boundary: **flows are for the agentic pipeline** (the
 `analysis` flow) and the genuinely flow-shaped portfolio work
 (`extractHoldingsFromPdf`, theses, mandate) — **plain routes +
-`src/domain/portfolio/` are for domain CRUD and quotes.** Forcing CRUD through
+`domain/portfolio/` are for domain CRUD and quotes.** Forcing CRUD through
 a flow buys nothing and costs a real return value (`sendAction` returns a
 request envelope, not the handler's output — so an import report can't reach
 the UI) plus a bound-session requirement. The write logic is plain functions in
-[`portfolio-writes.ts`](src/domain/portfolio/services/portfolio-writes.ts); the routes are
+[`portfolio-writes.ts`](domain/portfolio/services/portfolio-writes.ts); the routes are
 thin HTTP adapters that own zod validation. All routes take `userId` (query
 param on GET/DELETE, body field on POST) — dev-posture client-asserted, so a
 real deployment must resolve the caller identity server-side.
@@ -593,7 +593,7 @@ analyze
 
 All eight Phase 3–6 approach preamble generators are built via the
 `createApproachGenerator` factory in
-[`agents/_recipe/approach-generator.ts`](src/flows/analysis/agents/_recipe/approach-generator.ts).
+[`agents/_recipe/approach-generator.ts`](flows/analysis/agents/_recipe/approach-generator.ts).
 The factory locks the shared policy (`itemVisibility: { client: true, history: false }`,
 `model: "intent/utility"`, the user-instruction template) and exposes
 only the per-agent knobs.

@@ -23,7 +23,7 @@ import {
   toAccountStates,
   type AccountRow,
   type PortfolioRepository,
-} from "@/src/db/repository";
+} from "@/db/repository";
 import {
   deleteAccount,
   deleteHolding,
@@ -33,19 +33,19 @@ import {
   recordManualEvent,
   saveAccount,
   saveAccountSchema,
-} from "@/src/domain/portfolio/services/portfolio-writes";
+} from "@/domain/portfolio/services/portfolio-writes";
 
 // The write functions (and `refreshQuotes`) receive `repoState.repo!` explicitly.
 // One fresh in-memory PGlite instance per test.
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
+vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
   },
 }));
 
-import { refreshQuotes } from "../src/domain/portfolio/services/get-quotes";
+import { refreshQuotes } from "../domain/portfolio/services/get-quotes";
 
 const quoteSource = vi.fn();
 

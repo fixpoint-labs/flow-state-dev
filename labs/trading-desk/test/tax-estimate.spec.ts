@@ -11,8 +11,8 @@
  *   5. A null profile returns zeros, never throws.
  */
 import { describe, expect, it } from "vitest";
-import { estimateTaxLiability } from "@/src/domain/portfolio/math/tax-estimate";
-import type { TaxProfileInput } from "@/src/domain/portfolio/schema/tax-schema";
+import { estimateTaxLiability } from "@/domain/portfolio/math/tax-estimate";
+import type { TaxProfileInput } from "@/domain/portfolio/schema/tax-schema";
 
 const profile: TaxProfileInput = {
   filingStatus: "single",

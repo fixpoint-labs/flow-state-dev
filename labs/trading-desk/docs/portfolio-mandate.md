@@ -16,7 +16,7 @@ production IPS governance framework.
 
 ## Schema
 
-The mandate leaf lives in `src/domain/portfolio/schema/portfolio-mandate-schema.ts`
+The mandate leaf lives in `domain/portfolio/schema/portfolio-mandate-schema.ts`
 (browser-safe: zod only). One record per household, stored in the user-scoped
 `portfolioMandateResource`.
 

@@ -10,7 +10,7 @@
  * percent-of-float as a fraction; the schema/memo use a percentage).
  */
 import { describe, expect, it } from "vitest";
-import { mapYahooShortInterest } from "../src/providers/yahoo-keystats";
+import { mapYahooShortInterest } from "../lib/providers/yahoo-keystats";
 
 describe("mapYahooShortInterest", () => {
   it("maps short interest from defaultKeyStatistics (plain numbers + {raw} wrappers)", () => {

@@ -13,7 +13,7 @@
  * rather than routing through a full flow.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { tradingDesk } from "../src/flows/analysis/capability";
+import { tradingDesk } from "../flows/analysis/capability";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyCap = any;

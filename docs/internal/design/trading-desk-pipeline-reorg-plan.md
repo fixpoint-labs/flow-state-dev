@@ -10,9 +10,9 @@
 
 > **Historical path note:** This plan records the original move into
 > `tools/providers/`. Provider clients now live at app-level
-> `labs/trading-desk/src/providers/`; current code and `labs/trading-desk/CLAUDE.md`
+> `labs/trading-desk/lib/providers/`; current code and `labs/trading-desk/CLAUDE.md`
 > are authoritative for new imports. Cache and concurrency helpers were also
-> later extracted to `labs/trading-desk/src/lib/`; the paths below preserve the
+> later extracted to `labs/trading-desk/lib/`; the paths below preserve the
 > original execution plan.
 
 ---

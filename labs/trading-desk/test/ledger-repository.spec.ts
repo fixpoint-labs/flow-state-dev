@@ -21,17 +21,17 @@
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createMigratedPgliteDb } from "@/src/db/client";
+import { createMigratedPgliteDb } from "@/db/client";
 import {
   createPortfolioRepository,
   type PortfolioRepository,
-} from "@/src/db/repository";
-import type { LedgerEventInput } from "@/src/domain/portfolio/schema/ledger-schema";
-import { backfillSplits } from "@/src/domain/portfolio/services/portfolio-writes";
-import type { CanonicalRow } from "@/src/domain/portfolio/schema/portfolio-schema";
-import { estimateTaxLiability, summarizeForTaxEstimate } from "@/src/domain/portfolio/math/tax-estimate";
+} from "@/db/repository";
+import type { LedgerEventInput } from "@/domain/portfolio/schema/ledger-schema";
+import { backfillSplits } from "@/domain/portfolio/services/portfolio-writes";
+import type { CanonicalRow } from "@/domain/portfolio/schema/portfolio-schema";
+import { estimateTaxLiability, summarizeForTaxEstimate } from "@/domain/portfolio/math/tax-estimate";
 
-const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
+const MIGRATIONS_DIR = fileURLToPath(new URL("../db/migrations", import.meta.url));
 
 async function freshRepo(): Promise<PortfolioRepository> {
   return createPortfolioRepository(await createMigratedPgliteDb(new PGlite(), MIGRATIONS_DIR));
@@ -660,7 +660,7 @@ describe("realized gains materialization (FIX-874) — real-path goal check", ()
     await pglite.query("DELETE FROM app.realized_gains");
     expect(await repo2.getRealizedGains("devuser")).toHaveLength(0);
 
-    // The backfill (wired into dev startup in lib/portfolio-db.ts) re-derives it.
+    // The backfill (wired into dev startup in db/portfolio-db.ts) re-derives it.
     await repo2.backfillRealizedGains();
     const gains = await repo2.getRealizedGains("devuser");
     expect(gains).toHaveLength(1);

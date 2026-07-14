@@ -8,12 +8,12 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitThesisAlignmentMemo } from "../src/flows/analysis/agents/thesis-validator/writer";
-import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
-import { thesisAlignmentOutputSchema } from "../src/flows/analysis/agents/thesis-validator/thesis-validator";
-import { memosCollection } from "../src/flows/analysis/resources";
-import { sessionStateSchema } from "../src/flows/analysis/state";
-import { PHASE_6_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { commitThesisAlignmentMemo } from "../flows/analysis/agents/thesis-validator/writer";
+import { markError, markWriting } from "../flows/analysis/agents/_recipe/memo-writer";
+import { thesisAlignmentOutputSchema } from "../flows/analysis/agents/thesis-validator/thesis-validator";
+import { memosCollection } from "../flows/analysis/resources";
+import { sessionStateSchema } from "../flows/analysis/state";
+import { PHASE_6_MEMO_KEYS } from "../flows/analysis/registry";
 import { latestMemoStatus } from "./_helpers/memo-status";
 
 const writeTv = markWriting("thesisAlignment");

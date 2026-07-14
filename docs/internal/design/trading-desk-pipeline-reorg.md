@@ -8,11 +8,11 @@
 agreed in brainstorming.
 
 > **Follow-up boundary:** Provider clients were later extracted from the analysis
-> tool catalog to app-level `labs/trading-desk/src/providers/`, so portfolio and
+> tool catalog to app-level `labs/trading-desk/lib/providers/`, so portfolio and
 > other domains can consume them without importing through a flow. References to
 > `tools/providers/` below describe this reorg's historical move target. Generic
 > cache and concurrency helpers were likewise extracted later to
-> `labs/trading-desk/src/lib/`; their paths below are historical.
+> `labs/trading-desk/lib/`; their paths below are historical.
 
 ---
 
@@ -175,7 +175,7 @@ The implementation plan enumerates the per-file moves; this is the module-level 
 | `phase-6/{thesis-validator,approach,writer,setup}.ts` + `prompts/` | `agents/thesis-validator/` | |
 | `phase-1/tools/*` (the 24 get_* + schemas + empty-payloads + indicators-math + index) | `tools/data/` + `tools/{schemas,empty-payloads,indicators-math}.ts` | the catalog |
 | `lib/{cache,fixtures,discover}.ts` | `tools/runtime/` | tool runtime under the catalog |
-| `providers/*` | `src/providers/` | Final shared home; initially moved through `tools/providers/` during this reorg. |
+| `providers/*` | `lib/providers/` | Final shared home; initially moved through `tools/providers/` during this reorg. |
 | every `phase-*/index.ts` | `orchestration/stages.ts` | stage assembly + setup taps |
 | `flow.ts` `analyzePipeline` + inline guards (`seedSession`, `checkTickerResolvable`, `checkHasData`, `checkHasPrimaryAnalysts`, `setInstructions`) | `orchestration/analyze.ts` + `orchestration/guards.ts` | `flow.ts` keeps only `defineFlow` |
 | `compute-spine.ts`, `store-price-history.ts` | **stay at root** | resource-writer taps; orchestration imports them |

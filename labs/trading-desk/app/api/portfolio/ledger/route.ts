@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getRepository } from "@/lib/portfolio-db";
+import { getRepository } from "@/db/portfolio-db";
 import {
   recordManualEvent,
   recordEventSchema,
-} from "@/src/domain/portfolio/services/portfolio-writes";
+} from "@/domain/portfolio/services/portfolio-writes";
 
 // The transaction ledger REST surface (FIX-774) — an app-owned table, not a
 // resource. GET reads it (the Portfolio transactions view); POST records one

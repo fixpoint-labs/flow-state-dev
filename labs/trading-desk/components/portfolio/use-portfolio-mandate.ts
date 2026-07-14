@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { useResource, type SessionView } from "@flow-state-dev/react";
-import type { PortfolioMandate } from "@/src/domain/portfolio/schema/portfolio-mandate-schema";
+import type { PortfolioMandate } from "@/domain/portfolio/schema/portfolio-mandate-schema";
 import type { MandateSavePayload } from "./mandate-form";
 
 /**

@@ -11,8 +11,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
-import portfolioFlow from "../src/flows/portfolio/flow";
-import type { ThesisRecord } from "../src/domain/portfolio/schema/thesis-schema";
+import portfolioFlow from "../flows/portfolio/flow";
+import type { ThesisRecord } from "../domain/portfolio/schema/thesis-schema";
 
 const USER_ID = "devuser";
 

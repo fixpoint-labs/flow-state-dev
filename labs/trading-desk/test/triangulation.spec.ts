@@ -6,11 +6,11 @@
  * synthetic convergent case under the divergence threshold.
  */
 import { describe, expect, it } from "vitest";
-import { computeTriangulation, DIVERGENCE_THRESHOLD } from "../src/flows/analysis/lib/triangulation";
-import { computeDcfValue, type DcfValue } from "../src/flows/analysis/lib/dcf";
-import { computeFairValue, type FairValue } from "../src/flows/analysis/lib/fair-value";
-import { computeExpectedReturn } from "../src/flows/analysis/lib/expected-return";
-import { computeValuation } from "../src/flows/analysis/lib/valuation";
+import { computeTriangulation, DIVERGENCE_THRESHOLD } from "../flows/analysis/lib/triangulation";
+import { computeDcfValue, type DcfValue } from "../flows/analysis/lib/dcf";
+import { computeFairValue, type FairValue } from "../flows/analysis/lib/fair-value";
+import { computeExpectedReturn } from "../flows/analysis/lib/expected-return";
+import { computeValuation } from "../flows/analysis/lib/valuation";
 
 import nvdaFundamentals from "../fixtures/NVDA/2026-05-06/fundamentals.json";
 import nvdaBalanceSheet from "../fixtures/NVDA/2026-05-06/balance-sheet.json";

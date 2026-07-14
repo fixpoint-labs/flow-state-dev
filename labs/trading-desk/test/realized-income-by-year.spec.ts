@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildRealizedIncomeByYear } from "../components/portfolio/realized-income-by-year";
-import type { IncomeSummaryByYearRow, RealizedGainRow } from "../src/db/repository";
+import type { IncomeSummaryByYearRow, RealizedGainRow } from "../db/repository";
 
 function gain(overrides: Partial<RealizedGainRow> = {}): RealizedGainRow {
   return {

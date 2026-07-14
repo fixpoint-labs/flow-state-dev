@@ -15,8 +15,8 @@
 
 import type { ReactElement } from "react";
 import { Pencil } from "lucide-react";
-import type { TaxProfileRow } from "@/src/db/repository";
-import type { TaxEstimate } from "@/src/domain/portfolio/math/tax-estimate";
+import type { TaxProfileRow } from "@/db/repository";
+import type { TaxEstimate } from "@/domain/portfolio/math/tax-estimate";
 import { formatMoney, formatPercent } from "./portfolio-format";
 
 type TaxEstimateCardProps = {

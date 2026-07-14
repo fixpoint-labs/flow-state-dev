@@ -10,8 +10,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildPortfolioContext,
   householdTickerWeight,
-} from "../src/flows/analysis/build-portfolio-context";
-import type { AccountState } from "../src/domain/portfolio/schema/portfolio-schema";
+} from "../flows/analysis/build-portfolio-context";
+import type { AccountState } from "../domain/portfolio/schema/portfolio-schema";
 
 function account(over: Partial<AccountState> = {}): AccountState {
   return {

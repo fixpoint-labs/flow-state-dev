@@ -11,12 +11,12 @@
  * feature is for).
  */
 import { describe, expect, it } from "vitest";
-import { formatReferencesConsulted } from "../src/flows/analysis/lib/format";
+import { formatReferencesConsulted } from "../flows/analysis/lib/format";
 import {
   PHASE_1_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
-} from "../src/flows/analysis/registry";
+} from "../flows/analysis/registry";
 
 /** A mock memos collection: resolves a memo state by collection key, or
  *  `undefined` for an unknown/pending key (matching `getOptional`). */

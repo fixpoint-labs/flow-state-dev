@@ -15,11 +15,11 @@
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
-import type { AccountState } from "@/src/domain/portfolio/schema/portfolio-schema";
+import type { AccountState } from "@/domain/portfolio/schema/portfolio-schema";
 import type {
   LedgerEventType,
   SplitAttributes,
-} from "@/src/domain/portfolio/schema/ledger-schema";
+} from "@/domain/portfolio/schema/ledger-schema";
 
 /** The action input the parent dispatches — the canonical event WITHOUT
  *  `source`/`externalId` (the handler fixes `source: "manual"`). */

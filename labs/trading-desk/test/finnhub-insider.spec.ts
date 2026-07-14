@@ -5,7 +5,7 @@
  * the tool handler fall through to `emptyPayload`.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchFinnhubInsiderTransactions } from "../src/providers/finnhub";
+import { fetchFinnhubInsiderTransactions } from "../lib/providers/finnhub";
 
 function mockFetch(payload: unknown, status = 200) {
   return vi.spyOn(globalThis, "fetch").mockResolvedValue(

@@ -66,9 +66,9 @@ tagging, or tax tracking — those are separately-scoped, higher-cost tiers.
 
 `classifyInstrument()` derives asset class from symbol shape. `BND` and `AAPL`
 are indistinguishable as strings, so both land as `assetClass: "equity"`
-([classify-instrument.ts:234](../../src/domain/portfolio/math/classify-instrument.ts#L234)).
+([classify-instrument.ts:234](../../domain/portfolio/math/classify-instrument.ts#L234)).
 Even an explicit `assetType: etf` import hint hardcodes `assetClass: "equity"`
-([classify-instrument.ts:205-209](../../src/domain/portfolio/math/classify-instrument.ts#L205-L209)) —
+([classify-instrument.ts:205-209](../../domain/portfolio/math/classify-instrument.ts#L205-L209)) —
 the code comment already flags this as a known v1 gap.
 
 Separately, `assetClass` is persisted and validated but has **no visible
@@ -102,7 +102,7 @@ and would not surface the split the user actually wants.
 
 ### Piece 1 — Data correctness (the classifier)
 
-File: [`src/domain/portfolio/math/classify-instrument.ts`](../../src/domain/portfolio/math/classify-instrument.ts)
+File: [`domain/portfolio/math/classify-instrument.ts`](../../domain/portfolio/math/classify-instrument.ts)
 
 1. **`KNOWN_BOND_ETFS`** — a curated `Set<string>` of well-known US bond-ETF
    tickers (normalized upper-case). Core lineup, explicitly incomplete by design:
@@ -136,7 +136,7 @@ File: [`src/domain/portfolio/math/classify-instrument.ts`](../../src/domain/port
 
 **Key invariant:** `assetType` stays `etf`, not `bond`. A bond ETF has a live
 quote; keeping it `etf` means `usesLiveQuote` still prices it from the market
-([value-holding.ts:38](../../src/domain/portfolio/math/value-holding.ts#L38)). Only the
+([value-holding.ts:38](../../domain/portfolio/math/value-holding.ts#L38)). Only the
 *class* changes. (Classifying it as `bond` would wrongly route it to the carried
 statement mark and show `—`.)
 

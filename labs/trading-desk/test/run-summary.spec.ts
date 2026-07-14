@@ -5,14 +5,14 @@
  * error) are derived correctly from session state + the decision snapshot.
  */
 import { describe, expect, it } from "vitest";
-import type { DecisionSnapshotState } from "../src/flows/analysis/decision-snapshot-resource";
-import { ALL_MEMO_KEYS } from "../src/flows/analysis/registry";
-import type { MemoState } from "../src/flows/analysis/resources";
+import type { DecisionSnapshotState } from "../flows/analysis/decision-snapshot-resource";
+import { ALL_MEMO_KEYS } from "../flows/analysis/registry";
+import type { MemoState } from "../flows/analysis/resources";
 import {
   buildRunSummary,
   type RunSummaryMemoInput,
-} from "../src/flows/analysis/run-summary";
-import type { SessionState } from "../src/flows/analysis/state";
+} from "../flows/analysis/run-summary";
+import type { SessionState } from "../flows/analysis/state";
 
 const RAN_AT = "2026-06-25T00:00:00.000Z";
 const SESSION_ID = "run_NVDA_2026-05-06_abc";

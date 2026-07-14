@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useFlowContext } from "@flow-state-dev/react";
 import { useApiQuery } from "@/lib/use-api-query";
 import type { ClassificationsResponse } from "@/app/api/portfolio/classifications/route";
-import type { ClassificationMap } from "@/src/domain/portfolio/math/portfolio-health";
+import type { ClassificationMap } from "@/domain/portfolio/math/portfolio-health";
 
 /**
  * Read (and lazily fill) per-ticker sector classifications (FIX-762) for the

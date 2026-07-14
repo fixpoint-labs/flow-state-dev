@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getRepository } from "@/lib/portfolio-db";
-import { backfillSplits } from "@/src/domain/portfolio/services/portfolio-writes";
-import { fetchYahooSplits } from "@/src/providers/yahoo";
+import { getRepository } from "@/db/portfolio-db";
+import { backfillSplits } from "@/domain/portfolio/services/portfolio-writes";
+import { fetchYahooSplits } from "@/lib/providers/yahoo";
 
 // Backfill stock-split events for the household from Yahoo (keyless) so realized
 // gains re-derive correctly for tickers whose splits the original import missed

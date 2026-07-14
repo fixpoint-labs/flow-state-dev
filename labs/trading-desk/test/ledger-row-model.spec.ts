@@ -18,7 +18,7 @@
 import { describe, expect, it } from "vitest";
 import { buildLedgerRowModel } from "../components/portfolio/ledger-row-model";
 import { DASH } from "../components/portfolio/portfolio-format";
-import type { LedgerRow } from "../src/domain/portfolio/schema/ledger-schema";
+import type { LedgerRow } from "../domain/portfolio/schema/ledger-schema";
 
 function row(overrides: Partial<LedgerRow> = {}): LedgerRow {
   return {

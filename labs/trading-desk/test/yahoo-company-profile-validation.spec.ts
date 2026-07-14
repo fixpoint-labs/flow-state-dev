@@ -35,7 +35,7 @@ import {
   fetchYahooCompanyProfile,
   fetchYahooQuoteKind,
   toYahooSymbol,
-} from "../src/providers/yahoo";
+} from "../lib/providers/yahoo";
 
 /**
  * Faithfully reproduce yahoo-finance2 v3's `moduleExec` contract for both

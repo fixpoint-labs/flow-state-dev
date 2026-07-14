@@ -19,8 +19,8 @@ import type {
   IncomeSummaryByYearRow,
   RealizedGainRow,
   TaxProfileRow,
-} from "@/src/db/repository";
-import type { TaxEstimate } from "@/src/domain/portfolio/math/tax-estimate";
+} from "@/db/repository";
+import type { TaxEstimate } from "@/domain/portfolio/math/tax-estimate";
 import {
   buildRealizedGainsRowModel,
   computeRealizedGainTotals,

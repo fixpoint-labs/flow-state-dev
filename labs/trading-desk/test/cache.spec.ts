@@ -11,7 +11,7 @@ import {
   _resetCache,
   cacheKey,
   getOrFetch,
-} from "../src/lib/cache";
+} from "../lib/cache";
 
 afterEach(() => {
   _resetCache();

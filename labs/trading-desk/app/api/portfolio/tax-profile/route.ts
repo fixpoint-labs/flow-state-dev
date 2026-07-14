@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getRepository } from "@/lib/portfolio-db";
-import { saveTaxProfile, saveTaxProfileSchema } from "@/src/domain/portfolio/services/portfolio-writes";
+import { getRepository } from "@/db/portfolio-db";
+import { saveTaxProfile, saveTaxProfileSchema } from "@/domain/portfolio/services/portfolio-writes";
 
 // The tax-profile write (FIX-874) — its own PUT (the composite `GET /tax` read
 // handles the reads). Keyed on the household, so a save overwrites in place.

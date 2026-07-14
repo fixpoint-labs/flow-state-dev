@@ -8,13 +8,13 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitPortfolioManagerMemo } from "../src/flows/analysis/agents/portfolio-manager/writer";
-import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
-import { portfolioDecisionOutputSchema } from "../src/flows/analysis/agents/portfolio-manager/portfolio-manager";
-import { memosCollection } from "../src/flows/analysis/resources";
-import { sessionStateSchema } from "../src/flows/analysis/state";
-import { valuationSpineResource } from "../src/flows/analysis/valuation-spine-resource";
-import { PHASE_5_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { commitPortfolioManagerMemo } from "../flows/analysis/agents/portfolio-manager/writer";
+import { markError, markWriting } from "../flows/analysis/agents/_recipe/memo-writer";
+import { portfolioDecisionOutputSchema } from "../flows/analysis/agents/portfolio-manager/portfolio-manager";
+import { memosCollection } from "../flows/analysis/resources";
+import { sessionStateSchema } from "../flows/analysis/state";
+import { valuationSpineResource } from "../flows/analysis/valuation-spine-resource";
+import { PHASE_5_MEMO_KEYS } from "../flows/analysis/registry";
 import { latestMemoStatus } from "./_helpers/memo-status";
 
 const writePm = markWriting("portfolioManager");

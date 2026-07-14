@@ -10,14 +10,14 @@
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createMigratedPgliteDb } from "@/src/db/client";
+import { createMigratedPgliteDb } from "@/db/client";
 import {
   createPortfolioRepository,
   type PortfolioRepository,
-} from "@/src/db/repository";
-import { recordManualEvent, type RecordEventInput } from "@/src/domain/portfolio/services/portfolio-writes";
+} from "@/db/repository";
+import { recordManualEvent, type RecordEventInput } from "@/domain/portfolio/services/portfolio-writes";
 
-const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
+const MIGRATIONS_DIR = fileURLToPath(new URL("../db/migrations", import.meta.url));
 
 function manual(over: Partial<RecordEventInput> = {}): RecordEventInput {
   return {
