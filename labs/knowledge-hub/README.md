@@ -40,12 +40,16 @@ The filesystem store persists across local runs (under `.fsdev/data`); remove it
 
 ### Auth: HTTP access requires `KH_MCP_SECRET`
 
-The flow **fails closed**. `logActivity` / `listInbox` are reachable over the CLI (`fsdev run`, which supplies its built-in `cli-user` principal in-process) with no secret. Every HTTP transport — the MCP endpoint *and* the generic action routes, including under `fsdev dev` — is closed until `KH_MCP_SECRET` is set: the per-flow principal resolver throws without it, and the MCP adapter (`POST /api/flows/knowledge-hub/mcp`) is not even mounted. With the secret set, the MCP endpoint authenticates via a bearer token.
+The flow **fails closed**. `logActivity` / `listInbox` are reachable over the CLI (`fsdev run`, which supplies its built-in `cli-user` principal in-process) with no secret. Every HTTP transport is closed until `KH_MCP_SECRET` is set: the per-flow principal resolver throws without it, and the MCP adapter (`POST /mcp/knowledge-hub`) is not even mounted. With the secret set, the MCP endpoint authenticates via a bearer token.
 
 ```bash
-KH_MCP_SECRET=... pnpm serve       # fsdev serve: authenticated MCP endpoint, no DevTool UI
+KH_MCP_SECRET=... pnpm serve       # fsdev serve: authenticated MCP endpoint (POST /mcp/knowledge-hub), no DevTool UI
 KH_MCP_SECRET=... pnpm fsdev dev   # same endpoint plus the DevTool UI, for local inspection
 ```
+
+Both hosts serve the dedicated `/mcp/*` route: `serve()` from `@flow-state-dev/node`
+(which `fsdev serve` and `fsdev dev` both wrap) mounts dedicated adapter paths
+automatically, so no extra host wiring is needed.
 
 Hosted deployment and a durable shared store land with FIX-883, when a second process (the cron sweeper) actually needs them.
 
@@ -54,7 +58,7 @@ Hosted deployment and a durable shared store land with FIX-883, when a second pr
 `source` (the provenance of a capture) is wired as an **installation-level** value, not something the model fills in per call. The config passes `forwardQueryParams: ["source"]` to `createMcpTransportAdapter`, so each client points at its own tagged endpoint URL:
 
 ```
-https://<host>/api/flows/knowledge-hub/mcp?source=claude-desktop
+https://<host>/mcp/knowledge-hub?source=claude-desktop
 ```
 
 Every `logActivity` from that installation then carries `source: "claude-desktop"`, authoritatively — the model can't override it. Omit the query param and `source` stays `null`. It remains part of the mailroom fingerprint, so the same capture from two different installations is two records (different provenance). See the [MCP Server docs](../../apps/docs/docs/server/mcp.md#installation-level-values-from-the-url) for the transport mechanics.
