@@ -9,6 +9,7 @@
     "test": "vitest run --root . --passWithNoTests",
     "test:watch": "vitest --root . --passWithNoTests",
     "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
+    "dev": "pnpm fsdev dev",
     "serve": "pnpm fsdev serve"
   },
   "dependencies": {
