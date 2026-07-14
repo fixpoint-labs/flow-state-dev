@@ -14,7 +14,6 @@
  * `yahoo.ts`. A series that is absent (or carries no usable period) maps to
  * `null`, never 0, preserving the honest-unobserved discipline.
  */
-import type { ToolOutput } from "../schemas";
 import type { FinancialPeriod } from "./financials-history";
 
 /** One annual data point in a Yahoo timeseries series. */
@@ -129,11 +128,7 @@ export function mapYahooTimeseries(
   resp: YahooTimeseriesResponse,
   ticker: string,
   date: string,
-): {
-  balanceSheet: ToolOutput<"get_balance_sheet">;
-  incomeStatement: ToolOutput<"get_income_statement">;
-  cashflow: ToolOutput<"get_cashflow">;
-} {
+) {
   const s = indexByType(resp);
 
   // YoY revenue growth needs two periods; with fewer it is unobserved (null),
@@ -159,7 +154,7 @@ export function mapYahooTimeseries(
 
   return {
     incomeStatement: {
-      source: "yahoo",
+      source: "yahoo" as const,
       ticker,
       asOf: incomeAsOf,
       revenue: latestB(s, "annualTotalRevenue"),
@@ -170,7 +165,7 @@ export function mapYahooTimeseries(
       unit: "USD billions",
     },
     balanceSheet: {
-      source: "yahoo",
+      source: "yahoo" as const,
       ticker,
       asOf: balanceAsOf,
       totalAssets: latestB(s, "annualTotalAssets"),
@@ -181,7 +176,7 @@ export function mapYahooTimeseries(
       unit: "USD billions",
     },
     cashflow: {
-      source: "yahoo",
+      source: "yahoo" as const,
       ticker,
       asOf: cashflowAsOf,
       operating: latestB(s, "annualOperatingCashFlow"),

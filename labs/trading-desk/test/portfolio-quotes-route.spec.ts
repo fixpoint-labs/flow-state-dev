@@ -27,18 +27,18 @@ vi.mock("@/lib/portfolio-db", () => ({
 // deterministic. Finnhub is keyless (falls through to Yahoo); Yahoo returns
 // controlled bars (last bar's close = the current price).
 const yahooMock = vi.hoisted(() => ({ fetchYahooChart: vi.fn() }));
-vi.mock("@/src/flows/analysis/tools/providers/finnhub", async (importActual) => ({
+vi.mock("@/src/providers/finnhub", async (importActual) => ({
   ...(await importActual<object>()),
   hasFinnhubKey: () => false,
 }));
-vi.mock("@/src/flows/analysis/tools/providers/yahoo", async (importActual) => ({
+vi.mock("@/src/providers/yahoo", async (importActual) => ({
   ...(await importActual<object>()),
   fetchYahooChart: yahooMock.fetchYahooChart,
 }));
 
 import { GET } from "../app/api/portfolio/quotes/route";
 import { POST } from "../app/api/portfolio/quotes/refresh/route";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
+import { _resetCache } from "../src/lib/cache";
 
 const USER_ID = "devuser";
 

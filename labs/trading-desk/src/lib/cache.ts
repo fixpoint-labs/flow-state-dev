@@ -1,7 +1,7 @@
 /**
- * Process-wide TTL cache for tool fetches.
+ * Process-wide TTL cache for backend fetches.
  *
- * One Map keyed by `tool:JSON(args)`. Entries live for `TTL_MS` after they're
+ * One Map keyed by `namespace:JSON(args)`. Entries live for `TTL_MS` after they're
  * stored, after which the next read re-fetches. Process-scoped intentionally —
  * if another session in this server asks for the same ticker within the TTL
  * window, it should reuse the warm fetch rather than burn another API call.
@@ -23,16 +23,16 @@ type Entry = { value: unknown; expiresAt: number };
 const cache = new Map<string, Entry>();
 const inflight = new Map<string, Promise<unknown>>();
 
-export function cacheKey(tool: string, args: unknown): string {
-  return `${tool}:${JSON.stringify(args)}`;
+export function cacheKey(namespace: string, args: unknown): string {
+  return `${namespace}:${JSON.stringify(args)}`;
 }
 
 export async function getOrFetch<T>(
-  tool: string,
+  namespace: string,
   args: unknown,
   fetcher: () => Promise<T>,
 ): Promise<T> {
-  const key = cacheKey(tool, args);
+  const key = cacheKey(namespace, args);
 
   const hit = cache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.value as T;

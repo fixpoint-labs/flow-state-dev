@@ -12,18 +12,9 @@
  * and a zero signal are different things for analyst reasoning (BP-020).
  */
 
-/** One normalized option contract. Greeks / IV / OI are nullable because the
- *  provider does not always populate them (illiquid strikes, stale snapshots). */
-export interface OptionContract {
-  type: "call" | "put";
-  strike: number;
-  /** Expiration date, ISO `YYYY-MM-DD` (lexically sortable). */
-  expiry: string;
-  iv: number | null;
-  delta: number | null;
-  openInterest: number | null;
-  volume: number | null;
-}
+import type { OptionContract } from "@/src/providers/types";
+
+export type { OptionContract } from "@/src/providers/types";
 
 /** Distinct expirations present in the chain, ascending. Empty when none. */
 export function distinctExpiries(contracts: readonly OptionContract[]): string[] {

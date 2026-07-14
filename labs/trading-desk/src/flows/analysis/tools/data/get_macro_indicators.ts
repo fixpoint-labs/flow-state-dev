@@ -15,9 +15,9 @@
  * payload; `unavailable` is reported only when every series fails.
  */
 import { handler } from "@flow-state-dev/core";
-import { mapLimit } from "../../lib/concurrency";
+import { mapLimit } from "@/src/lib/concurrency";
 import { resolveToolPayload } from "../runtime/resolve";
-import { fetchFredSeries } from "../providers/fred";
+import { fetchFredSeries } from "@/src/providers/fred";
 import { emptyPayload } from "../empty-payloads";
 import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 

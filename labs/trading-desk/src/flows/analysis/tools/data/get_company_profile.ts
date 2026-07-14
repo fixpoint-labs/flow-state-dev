@@ -15,10 +15,10 @@
  * thrown error. Fixture mode: curated per-ticker JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { fetchFinnhubCompanyProfile, hasFinnhubKey } from "../providers/finnhub";
+import { fetchFinnhubCompanyProfile, hasFinnhubKey } from "@/src/providers/finnhub";
 import { loadFixture } from "../runtime/fixtures";
-import { fetchWebsiteMetaDescription, searchCompanyWeb } from "../providers/web";
-import { fetchYahooCompanyProfile } from "../providers/yahoo";
+import { fetchWebsiteMetaDescription, searchCompanyWeb } from "@/src/providers/web";
+import { fetchYahooCompanyProfile } from "@/src/providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import type { ToolInput, ToolOutput } from "../schemas";

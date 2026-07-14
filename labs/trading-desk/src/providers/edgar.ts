@@ -18,7 +18,7 @@
  * Tools using these helpers: get_balance_sheet, get_income_statement,
  * get_cashflow, get_quant_composites.
  */
-import type { ToolInput, ToolOutput } from "../schemas";
+import type { TickerDatedProviderInput } from "./types";
 import {
   mapEdgarCompanyFacts,
   mapEdgarFinancialsHistory,
@@ -82,22 +82,22 @@ async function fetchCompanyFacts(ticker: string): Promise<EdgarCompanyFacts> {
 }
 
 export async function fetchEdgarBalanceSheet(
-  input: ToolInput<"get_balance_sheet">,
-): Promise<ToolOutput<"get_balance_sheet">> {
+  input: TickerDatedProviderInput,
+) {
   const facts = await fetchCompanyFacts(input.ticker);
   return mapEdgarCompanyFacts(facts, input.ticker, input.date).balanceSheet;
 }
 
 export async function fetchEdgarIncomeStatement(
-  input: ToolInput<"get_income_statement">,
-): Promise<ToolOutput<"get_income_statement">> {
+  input: TickerDatedProviderInput,
+) {
   const facts = await fetchCompanyFacts(input.ticker);
   return mapEdgarCompanyFacts(facts, input.ticker, input.date).incomeStatement;
 }
 
 export async function fetchEdgarCashflow(
-  input: ToolInput<"get_cashflow">,
-): Promise<ToolOutput<"get_cashflow">> {
+  input: TickerDatedProviderInput,
+) {
   const facts = await fetchCompanyFacts(input.ticker);
   return mapEdgarCompanyFacts(facts, input.ticker, input.date).cashflow;
 }

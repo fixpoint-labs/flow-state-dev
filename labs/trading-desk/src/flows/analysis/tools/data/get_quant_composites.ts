@@ -7,11 +7,11 @@
  * period for the change-based Piotroski criteria.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { getOrFetch } from "@/src/lib/cache";
 import { loadFixture } from "../runtime/fixtures";
-import { fetchEdgarFinancialsHistory } from "../providers/edgar";
-import { fetchYahooFinancialsHistory } from "../providers/yahoo";
-import type { FinancialPeriod } from "../providers/financials-history";
+import { fetchEdgarFinancialsHistory } from "@/src/providers/edgar";
+import { fetchYahooFinancialsHistory } from "@/src/providers/yahoo";
+import type { FinancialPeriod } from "@/src/providers/financials-history";
 import { emptyPayload } from "../empty-payloads";
 import { altmanZDoublePrime, piotroskiFScore, type StatementPeriod } from "./composite-math";
 import { pickMode, toolInputSchemas, toolOutputSchemas, type ToolInput, type ToolOutput } from "../schemas";

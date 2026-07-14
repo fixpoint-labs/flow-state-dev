@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { get_sector_peers } from "../src/flows/analysis/tools/data/get_sector_peers";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
+import { _resetCache } from "../src/lib/cache";
 import { emptyPayload } from "../src/flows/analysis/tools/empty-payloads";
 import { sectorPeersSchema } from "../src/flows/analysis/tools/schemas";
 import { sessionStateSchema } from "../src/flows/analysis/state";

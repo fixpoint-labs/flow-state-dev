@@ -24,7 +24,6 @@
  *    positive outflow, so FCF = operating − capex.
  *  - A tag the filer never reported is absent → `null`, never 0.
  */
-import type { ToolOutput } from "../schemas";
 import type { FinancialPeriod } from "./financials-history";
 
 /** One reported fact entry under a us-gaap tag's USD unit. EDGAR emits
@@ -141,11 +140,7 @@ export function mapEdgarCompanyFacts(
   resp: EdgarCompanyFacts,
   ticker: string,
   date: string,
-): {
-  balanceSheet: ToolOutput<"get_balance_sheet">;
-  incomeStatement: ToolOutput<"get_income_statement">;
-  cashflow: ToolOutput<"get_cashflow">;
-} {
+) {
   const g = resp.facts?.["us-gaap"] ?? {};
 
   // Total debt: prefer summing current + noncurrent long-term debt; fall back
@@ -167,7 +162,7 @@ export function mapEdgarCompanyFacts(
 
   return {
     incomeStatement: {
-      source: "edgar",
+      source: "edgar" as const,
       ticker,
       asOf: latestEndDate(g, REVENUE_TAGS, date),
       revenue: latestDurationAcrossB(g, REVENUE_TAGS),
@@ -181,7 +176,7 @@ export function mapEdgarCompanyFacts(
       unit: "USD billions",
     },
     balanceSheet: {
-      source: "edgar",
+      source: "edgar" as const,
       ticker,
       asOf: latestEndDate(g, ["Assets"], date),
       totalAssets: latestInstantB(g, "Assets"),
@@ -192,7 +187,7 @@ export function mapEdgarCompanyFacts(
       unit: "USD billions",
     },
     cashflow: {
-      source: "edgar",
+      source: "edgar" as const,
       ticker,
       asOf: latestEndDate(g, ["NetCashProvidedByUsedInOperatingActivities"], date),
       operating,

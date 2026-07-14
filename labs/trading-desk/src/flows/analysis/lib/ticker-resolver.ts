@@ -19,9 +19,9 @@
  */
 import { access } from "node:fs/promises";
 import path from "node:path";
-import { fetchFinnhubFundamentals, hasFinnhubKey } from "../tools/providers/finnhub";
+import { fetchFinnhubFundamentals, hasFinnhubKey } from "@/src/providers/finnhub";
 import { assertFixtureDate, FIXTURE_ROOT } from "../tools/runtime/fixtures";
-import { fetchYahooFundamentals } from "../tools/providers/yahoo";
+import { fetchYahooFundamentals } from "@/src/providers/yahoo";
 
 const FIXTURE_PROBE_FILE = "fundamentals.json";
 

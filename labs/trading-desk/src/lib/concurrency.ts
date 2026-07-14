@@ -1,12 +1,12 @@
 /**
- * Bounded-concurrency + backoff primitives shared by the live-data fetchers.
+ * Bounded-concurrency + backoff primitives shared by backend fetchers.
  *
  * Live providers (FRED, Yahoo, Finnhub) throttle a large simultaneous burst, so
  * a fan-out over many tickers/series must cap how many requests are in flight at
  * once and back off + retry the transient failures. `mapLimit` caps the burst
  * (preserving input order); `sleep` is the backoff timer the per-item retry
  * loops use. Both live here, not inlined per-caller, so there is one copy across
- * the macro tool and the portfolio quote fan-out (no duplicate helpers).
+ * backend callers (no duplicate helpers).
  *
  * Leaf module: no imports, no IO of its own.
  */

@@ -219,7 +219,7 @@ describe("classifyInstrument — known bond ETFs (fixed_income, not equity)", ()
   // Real portfolio coverage: these are the bond ETFs a QFX-imported bond sleeve
   // held that the first cut of the list missed (high-yield, floating-rate,
   // ultra-short treasury). Regression guard against under-coverage.
-  it.each(["USHY", "FLRN", "GBIL", "SHYG", "SJNK", "HYLB", "FLTR"])(
+  it.each(["USHY", "FLRN", "GBIL", "SHYG", "SJNK", "HYLB", "FLTR", "TIPS"])(
     "classifies %s (previously-missed bond ETF) as fixed_income",
     (ticker) => {
       expect(classifyInstrument(ticker).assetClass).toBe("fixed_income");

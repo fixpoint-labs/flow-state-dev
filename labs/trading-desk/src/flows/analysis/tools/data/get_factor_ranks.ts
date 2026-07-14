@@ -4,10 +4,10 @@
  * exposures, and returns the target's percentile rank within the cross-section.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { getOrFetch } from "@/src/lib/cache";
 import { loadFixture } from "../runtime/fixtures";
-import { fetchFinnhubPeers } from "../providers/finnhub";
-import { fetchYahooChart, fetchYahooFundamentals } from "../providers/yahoo";
+import { fetchFinnhubPeers } from "@/src/providers/finnhub";
+import { fetchYahooChart, fetchYahooFundamentals } from "@/src/providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import {
   momentum12m1,

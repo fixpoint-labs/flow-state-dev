@@ -42,7 +42,7 @@ export class FixtureMissingError extends Error {
  *                       measured feed.
  *   - `"massive"`     — live mode, Massive.com (rebranded Polygon.io) answered.
  *                       The desk's only futures + options-chain source; paid
- *                       per-product tiers. See `providers/massive.ts`.
+ *                       per-product tiers. See `src/providers/massive.ts`.
  *   - `"unavailable"` — live mode, no provider could answer; payload is an
  *                       empty/zeroed schema-valid skeleton. Never silently
  *                       substitutes fixture data — false data is worse than

@@ -6,7 +6,7 @@
  * the consumer-visible payload back into the corpus. Tool files keep only
  * their provider-chain closures; mode logic lives here.
  */
-import { getOrFetch } from "./cache";
+import { getOrFetch } from "@/src/lib/cache";
 import { loadFixture } from "./fixtures";
 import { recordFixture } from "./recorder";
 import { pickMode, type ToolInput, type ToolName, type ToolOutput } from "../schemas";

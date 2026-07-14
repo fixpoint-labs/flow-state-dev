@@ -15,7 +15,7 @@
  * per BP-020).
  *
  * Reference implementation for the same call pattern lives at
- * `providers/web.ts:searchCompanyWeb` (used by the Company Profile
+ * `src/providers/web.ts:searchCompanyWeb` (used by the Company Profile
  * analyst's web-enrichment backstop).
  */
 import { resolveProvider } from "@flow-state-dev/tools/search";

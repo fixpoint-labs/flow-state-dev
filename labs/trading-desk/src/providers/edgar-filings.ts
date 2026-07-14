@@ -233,7 +233,7 @@ export async function fetchEdgarFilings(
     probeRedFlags(cik),
   ]);
   return {
-    source: "edgar",
+    source: "edgar" as const,
     ticker,
     asOf: date,
     recentFilings,

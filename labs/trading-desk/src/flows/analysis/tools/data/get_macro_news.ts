@@ -10,7 +10,7 @@
  * convention as `get_macro_indicators` and `get_market_news`.
  */
 import { handler } from "@flow-state-dev/core";
-import { fetchFinnhubMacroNews, hasFinnhubKey } from "../providers/finnhub";
+import { fetchFinnhubMacroNews, hasFinnhubKey } from "@/src/providers/finnhub";
 import { resolveToolPayload } from "../runtime/resolve";
 import { emptyPayload } from "../empty-payloads";
 import { toolInputSchemas, toolOutputSchemas } from "../schemas";

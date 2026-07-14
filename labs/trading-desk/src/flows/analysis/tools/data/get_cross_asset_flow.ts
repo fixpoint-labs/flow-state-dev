@@ -16,11 +16,11 @@
  * `get_price_history` cache key, so a warm bar series is not re-fetched.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
-import { mapLimit } from "../../lib/concurrency";
+import { getOrFetch } from "@/src/lib/cache";
+import { mapLimit } from "@/src/lib/concurrency";
 import { resolveToolPayload } from "../runtime/resolve";
-import { fetchFredSeries, hasFredKey } from "../providers/fred";
-import { fetchYahooChart } from "../providers/yahoo";
+import { fetchFredSeries, hasFredKey } from "@/src/providers/fred";
+import { fetchYahooChart } from "@/src/providers/yahoo";
 import {
   classifyLeaning,
   riskAppetite,

@@ -28,7 +28,7 @@ import { recordFixture } from "../runtime/recorder";
 import {
   XAI_SENTIMENT_MODEL,
   hasXaiKey,
-} from "../providers/xai";
+} from "@/src/providers/xai";
 import { emptyPayload } from "../empty-payloads";
 import {
   pickMode,

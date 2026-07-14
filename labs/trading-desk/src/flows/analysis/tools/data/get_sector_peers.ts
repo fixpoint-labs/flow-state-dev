@@ -6,8 +6,8 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { resolveToolPayload } from "../runtime/resolve";
-import { fetchFinnhubPeers } from "../providers/finnhub";
-import { fetchYahooChart } from "../providers/yahoo";
+import { fetchFinnhubPeers } from "@/src/providers/finnhub";
+import { fetchYahooChart } from "@/src/providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { trailingReturn } from "../indicators-math";
 import {

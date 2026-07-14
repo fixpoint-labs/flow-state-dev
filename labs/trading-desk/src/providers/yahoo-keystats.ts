@@ -10,8 +10,6 @@
  * `quoteSummary` fetch lives in `yahoo.ts`. A field a filer/module doesn't
  * report maps to `null` (honest unobserved), never 0.
  */
-import type { ToolOutput } from "../schemas";
-
 /** Unwrap Yahoo's `{ raw }` or plain-number shapes; `null` when absent. */
 function num(raw: unknown): number | null {
   if (raw == null) return null;
@@ -47,12 +45,12 @@ export function mapYahooShortInterest(
   stats: Record<string, unknown>,
   ticker: string,
   date: string,
-): ToolOutput<"get_short_interest"> {
+) {
   const shortInterest = num(stats.sharesShort);
   const ratio = num(stats.shortRatio);
   const pctFraction = num(stats.shortPercentOfFloat);
   return {
-    source: "yahoo",
+    source: "yahoo" as const,
     ticker,
     asOf: date,
     shortInterest,

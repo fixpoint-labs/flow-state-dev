@@ -7,10 +7,11 @@
  * already came back null (the classifications route's miss path); a ticker
  * with a real sector is never second-guessed here.
  */
-import { getOrFetch } from "@/src/flows/analysis/tools/runtime/cache";
-import { fetchYahooQuoteKind } from "@/src/flows/analysis/tools/providers/yahoo";
 import { classifyInstrument, type Classification } from "../math/classify-instrument";
 import type { AssetType } from "../schema/portfolio-schema";
+
+/** Infrastructure seam for resolving a provider's instrument-kind discriminator. */
+export type QuoteKindResolver = (ticker: string) => Promise<string | null>;
 
 /** Yahoo's instrument-kind discriminator → our `assetTypeHint`. Only
  *  fund/crypto/cash kinds are corrected — `EQUITY` (and anything else:
@@ -42,16 +43,14 @@ function assetTypeHintFromYahooQuoteKind(quoteKind: string | null): AssetType | 
  * uncorrected — the ticker is retried on a later request, same as the sector
  * lookup it follows).
  *
- * Cache-deduped (`resolveSector`'s own idiom) — this runs alongside a sector
- * lookup for every miss, so caching halves the added Yahoo request volume a
- * bounded multi-ticker fill puts on Yahoo's free, unauthenticated endpoint.
+ * The injected resolver owns provider access and cache deduping, keeping this
+ * domain classifier independent of provider and flow runtime details.
  */
 export async function reconcileFundClassification(
   ticker: string,
+  resolveQuoteKind: QuoteKindResolver,
 ): Promise<Classification | null> {
-  const quoteKind = await getOrFetch("yahoo-quote-kind", { ticker }, () =>
-    fetchYahooQuoteKind(ticker),
-  );
+  const quoteKind = await resolveQuoteKind(ticker);
   const hint = assetTypeHintFromYahooQuoteKind(quoteKind);
   if (hint === null) return null;
   return classifyInstrument(ticker, { assetTypeHint: hint });

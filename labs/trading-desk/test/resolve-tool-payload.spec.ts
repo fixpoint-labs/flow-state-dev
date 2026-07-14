@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveToolPayload } from "../src/flows/analysis/tools/runtime/resolve";
 import { loadFixture } from "../src/flows/analysis/tools/runtime/fixtures";
 import { recordFixture } from "../src/flows/analysis/tools/runtime/recorder";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
+import { _resetCache } from "../src/lib/cache";
 import type { ToolOutput } from "../src/flows/analysis/tools/schemas";
 
 vi.mock("../src/flows/analysis/tools/runtime/fixtures", () => ({

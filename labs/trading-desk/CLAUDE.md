@@ -34,6 +34,25 @@ The app has **two flows** under `src/flows/`, plus a **`src/domain/portfolio/`**
 The analysis flow's tree is grouped by **identity** (`agents/`), **catalog** (`tools/`), and **composition** (`orchestration/`). The flow contract stays at the root.
 
 ```
+src/lib/                        Shared backend utilities and application services
+  cache.ts                      process-wide TTL + in-flight request deduping
+  concurrency.ts                mapLimit + sleep for bounded provider fan-out
+  portfolio-market-data.ts      live portfolio quote/kind policy over providers
+
+src/providers/                  Shared external API clients — stateless, throw on failure
+  types.ts                      Provider-owned request + normalized data contracts
+  finnhub.ts                    Finnhub fetch helpers (incl. institutional ownership)
+  fred.ts                       FRED per-series fetch + retry (macro indicators + NFCI)
+  yahoo.ts                      Yahoo Finance fetch helpers (quoteSummary + fundamentals-timeseries)
+  yahoo-timeseries.ts           pure mapper: fundamentals-timeseries → 3 statements
+  edgar.ts                      SEC EDGAR client (ticker→CIK lookup + companyfacts fetch)
+  edgar-filings.ts              EDGAR filings: submissions list, section extraction, red-flag probes
+  edgar-companyfacts.ts         pure mapper: us-gaap companyfacts → 3 statements
+  eight-k-items.ts              pure mapper: 8-K item codes → typed material events with signal tier
+  web.ts                        homepage meta + web-search fallback
+  xai.ts                        Grok (xAI) credentials + model id
+  massive.ts                    Massive.com client — options-chain snapshot + futures front/next
+
 src/flows/analysis/
   flow.ts                        flow definition — defineFlow only (actions, resources, session state)
   state.ts                       sessionStateSchema (ticker, date, costPreset, dataSource, ...)
@@ -81,31 +100,17 @@ src/flows/analysis/
     portfolio-manager/           portfolio-manager.ts approach.ts writer.ts setup.ts prompts/ (was phase-5/; owns its output schema)
     thesis-validator/            thesis-validator.ts approach.ts writer.ts setup.ts prompts/ (was phase-6/)
 
-  tools/                         THE catalog — self-contained, liftable
+  tools/                         analysis handlers + schemas + runtime
     data/                        one file per data tool — get_*.ts + discover_*_context.ts (mode branch + provider chain)
     schemas.ts                   shared zod schemas + ToolName / ToolInput / ToolOutput
     empty-payloads.ts            schema-valid zeros for "unavailable" results
     indicators-math.ts           pure RSI/MACD/ATR/SMA functions
     index.ts                     barrel re-export
     runtime/                     tool runtime (was lib/)
-      cache.ts                   process-wide TTL cache (getOrFetch)
       fixtures.ts                loadFixture(tool, args)
       recorder.ts                recordFixture — stable-serialize + write to corpus
       resolve.ts                 resolveToolPayload — single dispatch for fixture/live/record
       discover.ts                web-search → DiscoveryPayload shape
-    providers/                   external API clients — stateless, throw on failure (was ../providers/)
-      finnhub.ts                 Finnhub fetch helpers (incl. institutional ownership)
-      fred.ts                    FRED per-series fetch + retry (macro indicators + NFCI)
-      yahoo.ts                   Yahoo Finance fetch helpers (quoteSummary + fundamentals-timeseries)
-      yahoo-timeseries.ts        pure mapper: fundamentals-timeseries → 3 statements
-      edgar.ts                   SEC EDGAR client (ticker→CIK lookup + companyfacts fetch)
-      edgar-filings.ts           EDGAR filings: submissions list, section extraction, red-flag probes
-      edgar-companyfacts.ts      pure mapper: us-gaap companyfacts → 3 statements
-      eight-k-items.ts           pure mapper: 8-K item codes → typed material events with signal tier
-      web.ts                     homepage meta + web-search fallback
-      xai.ts                     Grok (xAI) credentials + model id
-      massive.ts                 Massive.com (Polygon) client — options-chain snapshot + futures front/next (the desk's only futures + options source)
-
   orchestration/                 composition only — the ONLY code that knows execution order
     analyze.ts                   the analyze sequence + guard wiring (was flow.ts's analyzePipeline body)
     stages.ts                    per-group setup taps + fan-out / round-robin / chain assembly (was every phase-*/index.ts)
@@ -117,7 +122,6 @@ src/flows/analysis/
     app-root.ts                  APP_ROOT — package root resolved once (module-relative, cwd fallback)
     prompt.ts                    loadPrompt(path) — resolves *.prompt.md relative to the flow root
     ticker-resolver.ts           pre-flight ticker probe
-    concurrency.ts               mapLimit — bounded + retried fan-out
     valuation.ts valuation-spine.ts fair-value.ts expected-return.ts
     rating-engine.ts setup-score.ts sector-resolution.ts   (analysis / scoring math)
 
@@ -128,8 +132,7 @@ src/domain/portfolio/            Shared portfolio domain (Spine B) — imported 
   math/                          Pure leaves: lots, value-holding, health, tax-estimate, holding-period,
                                    realized-gains, classify-instrument
   services/                      portfolio-writes + get-quotes + reconcile-fund-classification
-                                   (plain functions; routes are thin HTTP adapters)
-
+                                   (plain functions; market-data dependencies are injected)
 src/flows/portfolio/             Flow-shaped portfolio work only (not domain CRUD)
   flow.ts                        defineFlow — extractHoldingsFromPdf + saveThesis/deleteThesis +
                                    save/clearPortfolioMandate (CRUD + quote refresh are REST)
@@ -178,11 +181,11 @@ fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
   consumer schemas (the analysts' `thesisOutputSchema`, risk's persona +
   risk-assessment schemas) stay in a `thesis-schema.ts` / `schemas.ts` file in
   the group.
-- **`tools/` is the self-contained catalog.** `tools/data/` is one file per
-  data tool, `tools/providers/` is external API clients (stateless,
-  throw-on-failure, no caching — callers wrap with `getOrFetch` from
-  `tools/runtime/cache.ts`), `tools/runtime/` is the cache + fixtures +
-  discovery runtime. A flow-coupled tool (one that imports flow internals, like
+- **`tools/` owns the analysis tool catalog and runtime.** `tools/data/` is one
+  file per data tool and `tools/runtime/` is the fixture, recording, and
+  discovery runtime. Shared external API clients live at `src/providers/` (stateless,
+  throw-on-failure, no caching — callers apply their own policy). A flow-coupled
+  tool (one that imports flow internals, like
   `find_counter_evidence`) stays with its consumer under `agents/`, NOT in the
   catalog.
 - **`orchestration/` is the only code that knows execution order.** `stages.ts`
@@ -191,14 +194,21 @@ fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
   one-way: orchestration imports agents; agents never import orchestration
   (BP-019 — acyclic).
 - **`lib/` is for pure IO-free utilities that are neither tool-runtime nor a
-  recipe** — formatters, the ticker resolver, concurrency, and the valuation /
+  recipe** — formatters, the ticker resolver, and the valuation /
   scoring math. Identity lives in `registry.ts`; contract lives in
   `resources.ts` / `state.ts` / `flow-schema.ts`.
+- **`src/lib/` is the shared backend layer.** Generic cache/concurrency helpers
+  and provider-composition services live here so REST routes, scripts, domains,
+  and flows can reuse them without importing through a flow.
 - **Portfolio domain vs portfolio flow.** Money math, parsers, schemas used by
   routes/UI/analysis, and write/quote services live under `src/domain/portfolio/`.
   `src/flows/portfolio/` keeps only `defineFlow`, resources, thesis/mandate
   actions, and the PDF extract pipeline. If a module has no `ctx.resources` /
-  generator / `defineFlow` dependency, it belongs in domain.
+  generator / `defineFlow` dependency, it belongs in domain. Shared vendor
+  clients live under `src/providers/`; portfolio-specific live quote, cache,
+  retry, and fallback policy lives in `src/lib/portfolio-market-data.ts` and is
+  injected into the domain services. Analysis fixtures remain flow-owned and
+  never enter the portfolio quote-refresh path.
 
 ## Past Reports
 
@@ -403,12 +413,11 @@ allocation view's target overlay stay empty until the durable mandate lands.
   `get_price_history`'s fetch idiom directly (`loadFixture` / `getOrFetch`, NOT
   `block.run()` — BP-011-safe) and takes the last bar's `close`. A missing /
   unavailable price degrades to `null` (UI shows `—`), never a fabricated number;
-  live mode never silently substitutes fixture data. **`refreshQuotes` persists LIVE,
+  the refresh path never reads analysis fixtures. **`refreshQuotes` persists live,
   non-null-priced quotes to the durable, ticker-keyed `app.quotes` table (FIX-823 —
   `price`, `as_of`, `source`, `fetched_at`, one GLOBAL row per ticker), via
-  `repo.upsertQuotes`.** Fixture-mode results are NOT persisted (a single global row
-  means fixture data would poison every user + the seed) and null-priced quotes are
-  dropped (a provider miss keeps the prior last-known row). Market value stays
+  `repo.upsertQuotes`.** Null-priced quotes are dropped (a provider miss keeps the
+  prior last-known row). Market value stays
   DERIVED (`quantity × price`) — never persisted onto the holding, so it can't go
   stale on a trade when the price didn't move. **The refresh is a plain REST route,
   NOT a flow action:** the pane `POST`s `/api/portfolio/quotes/refresh` (which
@@ -420,12 +429,9 @@ allocation view's target overlay stay empty until the durable mandate lands.
   upsert committed), forcing the pane to await the SSE stream's `isStreaming`
   falling edge to know the write had landed; the route settles only after the write,
   so there is no settle race and the refresh needs no bound session.
-  **The pane always requests
-  `live` prices, decoupled from the analysis fixture/live toggle** — holdings are
-  real,
-  and fixtures only cover the 3 demo tickers (AAPL/JPM/NVDA), so a fixture-priced
-  real portfolio is mostly `—`. The live fan-out is **bounded + retried** via the
-  shared `lib/concurrency.ts` `mapLimit` (cap `QUOTE_CONCURRENCY`, per-ticker
+  **The pane always requests live prices, completely separate from the analysis
+  fixture/live toggle.** The live fan-out is **bounded + retried** via the shared
+  `src/lib/concurrency.ts` `mapLimit` (cap `QUOTE_CONCURRENCY`, per-ticker
   `QUOTE_RETRIES` with backoff) so a 20+ holding portfolio doesn't trip Yahoo's
   rate limiter and drop a random subset to `—`. **FIX-773 introduced per-type
   valuation** via `src/domain/portfolio/math/value-holding.ts` (`resolveHoldingPrice` /
@@ -1386,7 +1392,7 @@ through `resolveToolPayload`.
 // tools/data/get_my_tool.ts
 import { handler } from "@flow-state-dev/core";
 import { resolveToolPayload } from "../runtime/resolve";
-import { fetchFromProviderA } from "../providers/providerA";
+import { fetchFromProviderA } from "@/src/providers/providerA";
 import { emptyPayload } from "../empty-payloads";
 import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
@@ -1418,7 +1424,7 @@ Then:
    `fixtures/README.md` for edge cases.
 
 If the tool needs a new external API, add its fetch helper to a new
-`tools/providers/<provider>.ts` file (one per provider). Keep it stateless — read
+`src/providers/<provider>.ts` file (one per provider). Keep it stateless — read
 keys from env, throw on any failure, no caching (the tool handler wraps the
 call with `getOrFetch`). A tool that imports flow internals (memo keys, a
 flow resource) is **flow-coupled** — it stays with its consumer under

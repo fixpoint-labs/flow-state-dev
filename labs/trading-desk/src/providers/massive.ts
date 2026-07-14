@@ -21,7 +21,7 @@
  * defensive (optional chaining + finite-number guards) so a shape drift degrades
  * a field to null rather than throwing the whole payload away.
  */
-import type { OptionContract } from "../data/options-math";
+import type { OptionContract } from "./types";
 
 const MASSIVE_BASE = "https://api.massive.com";
 

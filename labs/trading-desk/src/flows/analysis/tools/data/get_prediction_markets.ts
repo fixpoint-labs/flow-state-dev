@@ -27,7 +27,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { resolveToolPayload } from "../runtime/resolve";
-import { fetchYahooCompanyProfile } from "../providers/yahoo";
+import { fetchYahooCompanyProfile } from "@/src/providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import {
   toolInputSchemas,

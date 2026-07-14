@@ -6,8 +6,8 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { loadFixture } from "../runtime/fixtures";
-import { fetchEdgarIncomeStatement } from "../providers/edgar";
-import { fetchYahooIncomeStatement } from "../providers/yahoo";
+import { fetchEdgarIncomeStatement } from "@/src/providers/edgar";
+import { fetchYahooIncomeStatement } from "@/src/providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { financialsDataResource } from "../../financials-data-resource";

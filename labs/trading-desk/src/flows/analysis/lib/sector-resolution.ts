@@ -4,8 +4,8 @@
  * Extracted from `get_sector_context.ts` for reuse by the Quant Analyst's
  * risk-regime tool (needs the sector ETF for sector-relative beta/correlation).
  */
-import { getOrFetch } from "../tools/runtime/cache";
-import { fetchYahooCompanyProfile } from "../tools/providers/yahoo";
+import { getOrFetch } from "@/src/lib/cache";
+import { fetchYahooCompanyProfile } from "@/src/providers/yahoo";
 
 /** GICS sector → Select Sector SPDR ETF. Covers the 11 standard GICS
  *  sectors. Returns null for unmapped/unknown sectors. */

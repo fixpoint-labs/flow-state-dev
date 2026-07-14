@@ -7,7 +7,10 @@
  * Tools using these helpers: get_fundamentals, get_price_history,
  * get_balance_sheet, get_income_statement, get_cashflow.
  */
-import type { ToolInput, ToolOutput } from "../schemas";
+import type {
+  PriceHistoryProviderInput,
+  TickerDatedProviderInput,
+} from "./types";
 import {
   isEmptyTimeseries,
   mapYahooTimeseries,
@@ -85,8 +88,8 @@ function rangeToLookbackDays(range: string | undefined): number {
 }
 
 export async function fetchYahooChart(
-  input: ToolInput<"get_price_history">,
-): Promise<ToolOutput<"get_price_history">> {
+  input: PriceHistoryProviderInput,
+) {
   const yahoo = await getYahoo();
   const period2 = new Date(input.date);
   const period1 = new Date(period2);
@@ -116,7 +119,7 @@ export async function fetchYahooChart(
       volume: Number(q.volume ?? 0),
     }));
   return {
-    source: "yahoo",
+    source: "yahoo" as const,
     ticker: input.ticker,
     range: input.range ?? "1mo",
     bars,
@@ -124,8 +127,8 @@ export async function fetchYahooChart(
 }
 
 export async function fetchYahooFundamentals(
-  input: ToolInput<"get_fundamentals">,
-): Promise<ToolOutput<"get_fundamentals">> {
+  input: TickerDatedProviderInput,
+) {
   const yahoo = await getYahoo();
   const summary = (await yahoo.quoteSummary(input.ticker, {
     modules: ["summaryDetail", "financialData", "defaultKeyStatistics"],
@@ -134,7 +137,7 @@ export async function fetchYahooFundamentals(
   const fin = summary.financialData ?? {};
   const stats = summary.defaultKeyStatistics ?? {};
   return {
-    source: "yahoo",
+    source: "yahoo" as const,
     ticker: input.ticker,
     asOf: input.date,
     // Yahoo returns absolute USD; normalize to $B to match statements and fixtures.
@@ -157,8 +160,8 @@ export async function fetchYahooFundamentals(
  * with a single `try { ... } catch {}`, matching the provider convention.
  */
 export async function fetchYahooShortInterest(
-  input: ToolInput<"get_short_interest">,
-): Promise<ToolOutput<"get_short_interest">> {
+  input: TickerDatedProviderInput,
+) {
   const yahoo = await getYahoo();
   const summary = (await yahoo.quoteSummary(input.ticker, {
     modules: ["defaultKeyStatistics"],
@@ -275,22 +278,22 @@ export async function fetchYahooSplits(
 }
 
 export async function fetchYahooBalanceSheet(
-  input: ToolInput<"get_balance_sheet">,
-): Promise<ToolOutput<"get_balance_sheet">> {
+  input: TickerDatedProviderInput,
+) {
   const resp = await fetchYahooTimeseries(input.ticker);
   return mapYahooTimeseries(resp, input.ticker, input.date).balanceSheet;
 }
 
 export async function fetchYahooIncomeStatement(
-  input: ToolInput<"get_income_statement">,
-): Promise<ToolOutput<"get_income_statement">> {
+  input: TickerDatedProviderInput,
+) {
   const resp = await fetchYahooTimeseries(input.ticker);
   return mapYahooTimeseries(resp, input.ticker, input.date).incomeStatement;
 }
 
 export async function fetchYahooCashflow(
-  input: ToolInput<"get_cashflow">,
-): Promise<ToolOutput<"get_cashflow">> {
+  input: TickerDatedProviderInput,
+) {
   const resp = await fetchYahooTimeseries(input.ticker);
   return mapYahooTimeseries(resp, input.ticker, input.date).cashflow;
 }
@@ -303,8 +306,8 @@ export async function fetchYahooCashflow(
  * to `emptyPayload`.
  */
 export async function fetchYahooCompanyProfile(
-  input: ToolInput<"get_company_profile">,
-): Promise<ToolOutput<"get_company_profile">> {
+  input: TickerDatedProviderInput,
+) {
   const yahoo = await getYahoo();
   // Class-share hyphenation only — exchange-suffixed internationals keep their
   // dots (see `toYahooSymbol`). This fetch has no fallback provider (Yahoo is
@@ -341,7 +344,7 @@ export async function fetchYahooCompanyProfile(
   const marketCap = numberFrom(detail.marketCap);
   const employees = numberFrom(profile.fullTimeEmployees);
   return {
-    source: "yahoo",
+    source: "yahoo" as const,
     ticker: input.ticker,
     asOf: input.date,
     name,

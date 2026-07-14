@@ -6,8 +6,8 @@
  * `refreshQuotes` in `get-quotes.ts`), so they're tested by calling those
  * functions directly against a PGlite repository (parsing inputs through the
  * request schemas the routes use, so the defaults are exercised too). The live
- * price provider is mocked so `refreshQuotes`' write path runs offline and
- * deterministically.
+ * quote source is injected so `refreshQuotes`' write path runs offline and
+ * deterministically without depending on provider or analysis-fixture wiring.
  *
  * These lock the load-bearing data-model properties: holdings are keyed
  * `(account_id, ticker)`; upsert is non-destructive and replaces only the named
@@ -15,7 +15,7 @@
  * edit preserves holdings (separate table); the SAME ticker in two accounts is
  * two independent rows; deleteHolding removes one; deleteAccount cascades; the
  * import report counts are honest; a manual event attributes to `manual` and
- * recomputes basis; and `refreshQuotes` degrades a missing fixture to a null price.
+ * recomputes basis; and `refreshQuotes` preserves a good prior row on a provider miss.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
@@ -45,20 +45,9 @@ vi.mock("@/lib/portfolio-db", () => ({
   },
 }));
 
-// Mock the live price providers so `refreshQuotes`' live path is offline + deterministic.
-// Finnhub is keyless (falls through to Yahoo); Yahoo returns controlled bars.
-const yahooMock = vi.hoisted(() => ({ fetchYahooChart: vi.fn() }));
-vi.mock("@/src/flows/analysis/tools/providers/finnhub", async (importActual) => ({
-  ...(await importActual<object>()),
-  hasFinnhubKey: () => false,
-}));
-vi.mock("@/src/flows/analysis/tools/providers/yahoo", async (importActual) => ({
-  ...(await importActual<object>()),
-  fetchYahooChart: yahooMock.fetchYahooChart,
-}));
-
 import { refreshQuotes } from "../src/domain/portfolio/services/get-quotes";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
+
+const quoteSource = vi.fn();
 
 const USER_ID = "devuser";
 
@@ -440,32 +429,20 @@ describe("recordManualEvent", () => {
 
 describe("refreshQuotes (FIX-823 durable persistence)", () => {
   beforeEach(() => {
-    _resetCache();
-    yahooMock.fetchYahooChart.mockReset();
+    quoteSource.mockReset();
   });
 
-  /** A price-history payload with the given daily closes (last bar = current price). */
-  function chartOf(ticker: string, closes: Array<{ date: string; close: number }>) {
-    return {
-      source: "yahoo" as const,
-      ticker,
-      range: "1mo" as const,
-      bars: closes.map((c) => ({ date: c.date, open: 0, high: 0, low: 0, close: c.close, volume: 0 })),
-    };
-  }
-
   it("persists live, non-null-priced quotes to the durable app.quotes table", async () => {
-    yahooMock.fetchYahooChart.mockImplementation(async (input: { ticker: string }) =>
-      chartOf(input.ticker, [
-        { date: "2026-07-07", close: 200 },
-        { date: "2026-07-08", close: 210.5 },
-      ]),
-    );
+    quoteSource.mockResolvedValue([
+      { ticker: "AAPL", price: 210.5, asOf: "2026-07-08" },
+    ]);
     const result = await refreshQuotes(
-      { tickers: ["AAPL"], dataSource: "live" },
+      { tickers: ["aapl", "AAPL"] },
       repoState.repo!,
+      quoteSource,
     );
     expect(result.quotes[0]).toMatchObject({ ticker: "AAPL", price: 210.5 });
+    expect(quoteSource).toHaveBeenCalledWith({ tickers: ["AAPL"] });
 
     const rows = await repoState.repo!.getQuotes(["AAPL"]);
     expect(rows).toHaveLength(1);
@@ -476,25 +453,20 @@ describe("refreshQuotes (FIX-823 durable persistence)", () => {
     expect(typeof rows[0].fetchedAt).toBe("string");
   });
 
-  it("does NOT persist a fixture-mode result (no global-cache pollution)", async () => {
-    await refreshQuotes({ tickers: ["NVDA"], dataSource: "fixture" }, repoState.repo!);
-    // The write is gated on `mode === "live"`, so fixture/demo data never
-    // overwrites the shared global row — persistence is a no-op here.
-    expect(await repoState.repo!.getQuotes(["NVDA"])).toEqual([]);
-    // The Yahoo provider isn't touched in fixture mode either (fixtures are read).
-    expect(yahooMock.fetchYahooChart).not.toHaveBeenCalled();
-  });
-
   it("drops a null-priced live quote, keeping the prior last-known row", async () => {
     // Seed a good last-known row.
     await repoState.repo!.upsertQuotes([
       { ticker: "TSLA", price: 250, asOf: "2026-07-01T00:00:00.000Z", source: "live" },
     ]);
-    // A provider miss → empty bars → null price → filtered out before upsert.
-    yahooMock.fetchYahooChart.mockImplementation(async (input: { ticker: string }) =>
-      chartOf(input.ticker, []),
+    // A provider miss → null price → filtered out before upsert.
+    quoteSource.mockResolvedValue([
+      { ticker: "TSLA", price: null, asOf: null },
+    ]);
+    await refreshQuotes(
+      { tickers: ["TSLA"] },
+      repoState.repo!,
+      quoteSource,
     );
-    await refreshQuotes({ tickers: ["TSLA"], dataSource: "live" }, repoState.repo!);
     const rows = await repoState.repo!.getQuotes(["TSLA"]);
     expect(rows).toHaveLength(1);
     // The prior row survives with its original price — a failed refresh never

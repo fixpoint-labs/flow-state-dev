@@ -15,7 +15,7 @@ import { createModelResolver } from "@flow-state-dev/core/models";
 import { createFlowState } from "@flow-state-dev/engine";
 import analysisFlow from "./src/flows/analysis/flow";
 import portfolioFlow from "./src/flows/portfolio/flow";
-import { hasXaiKey } from "./src/flows/analysis/tools/providers/xai";
+import { hasXaiKey } from "./src/providers/xai";
 import { portfolioStoreAdapter } from "./lib/portfolio-db";
 
 // Pass the OpenAI provider instance explicitly: the resolver's dynamic

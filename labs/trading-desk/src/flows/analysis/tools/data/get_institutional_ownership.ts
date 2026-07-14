@@ -11,7 +11,7 @@ import { resolveToolPayload } from "../runtime/resolve";
 import {
   fetchFinnhubInstitutionalOwnership,
   hasFinnhubKey,
-} from "../providers/finnhub";
+} from "@/src/providers/finnhub";
 import { emptyPayload } from "../empty-payloads";
 import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 

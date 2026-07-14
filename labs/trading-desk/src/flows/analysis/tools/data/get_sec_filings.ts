@@ -5,7 +5,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { resolveToolPayload } from "../runtime/resolve";
-import { fetchEdgarFilings } from "../providers/edgar-filings";
+import { fetchEdgarFilings } from "@/src/providers/edgar-filings";
 import { emptyPayload } from "../empty-payloads";
 import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 

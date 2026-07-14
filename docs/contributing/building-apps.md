@@ -37,18 +37,23 @@ tool-not-implemented combination) and an abstract dispatcher. The
 per-tool-file rewrite was ~250 LOC smaller and each tool's
 fallback story sits in one file.
 
-## Service-layer convention
+## Backend utility and provider convention
 
-For HTTP backends and process-wide utilities, use a `services/` directory of
-flat function modules:
+Keep generic backend helpers under `src/lib/` and stateless upstream clients
+under `src/providers/`:
 
-- **`services/cache.ts`** — process-wide TTL cache (`getOrFetch(tool, args, fetcher)`). No `ctx`, no resources, no framework coupling.
-- **`services/fixtures.ts`** — fixture loader (`loadFixture(tool, args)`).
-- **`services/<provider>.ts`** — one file per upstream API (`finnhub.ts`, `yahoo.ts`, `fred.ts`). Each exports flat fetch functions; reads its API key from env; throws on any failure so tool handlers can `try { } catch { }` past it.
+- **`src/lib/cache.ts`** — process-wide TTL cache
+  (`getOrFetch(namespace, args, fetcher)`). No `ctx`, resources, or framework
+  coupling.
+- **`src/lib/concurrency.ts`** — bounded fan-out and retry timing helpers.
+- **`src/providers/<provider>.ts`** — one flat-function module per upstream API
+  (`finnhub.ts`, `yahoo.ts`, `fred.ts`). Read keys from env and throw on failure
+  so callers can apply an explicit fallback policy.
 
-Services don't know about modes (fixture vs. live), don't know about caching,
-don't know about the framework. Tool handlers and capabilities call services;
-services are leaves in the import graph.
+Provider clients don't know about modes, caching, domains, or flows. A fixture
+loader belongs with the runtime contract it replays; for example, the
+trading-desk analysis fixture loader stays under its tool runtime because it is
+typed by analysis `ToolName` / `ToolOutput` schemas and corpus paths.
 
 ## Process-wide TTL cache vs. session-scoped resource
 
@@ -64,7 +69,7 @@ designed for this.
 The trading-desk's first cut used a session-scoped resource for market-data
 deduplication. That was over-architecting — every NVDA fundamentals fetch
 ran once per session. Switching to a process-wide 120s TTL cache (see
-[`labs/trading-desk/src/flows/analysis/tools/runtime/cache.ts`](../../labs/trading-desk/src/flows/analysis/tools/runtime/cache.ts))
+[`labs/trading-desk/src/lib/cache.ts`](../../labs/trading-desk/src/lib/cache.ts))
 let multiple sessions share warm fetches, dropped the cache plumbing
 (`ctx.resources.marketdata`, the `marketDataCollection` definition, the flow
 registration), and made the call sites cleaner.

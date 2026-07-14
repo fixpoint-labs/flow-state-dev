@@ -21,7 +21,7 @@
  * `input.ticker === sessionTicker`; the price tool also requires the canonical
  * summary range, since `priceBars` can hold only one series.
  */
-import { getOrFetch } from "./cache";
+import { getOrFetch } from "@/src/lib/cache";
 import type { ToolName } from "../schemas";
 
 /** The slice of a resource ref this helper needs — a single named-field writer. */

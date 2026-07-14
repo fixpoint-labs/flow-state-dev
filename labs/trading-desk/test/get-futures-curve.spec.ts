@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { get_futures_curve } from "../src/flows/analysis/tools/data/get_futures_curve";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
+import { _resetCache } from "../src/lib/cache";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const fixtureFlow = defineFlow({

@@ -8,10 +8,10 @@
  * pattern `get_prediction_markets` uses), cache-deduped by `getOrFetch`.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { getOrFetch } from "@/src/lib/cache";
 import { resolveToolPayload } from "../runtime/resolve";
 import { GICS_TO_ETF } from "../../lib/sector-resolution";
-import { fetchYahooChart, fetchYahooCompanyProfile } from "../providers/yahoo";
+import { fetchYahooChart, fetchYahooCompanyProfile } from "@/src/providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import { trailingReturn } from "../indicators-math";
 import {

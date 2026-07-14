@@ -1,8 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getRepository } from "@/lib/portfolio-db";
 import { resolveSector } from "@/src/flows/analysis/lib/sector-resolution";
-import { mapLimit } from "@/src/flows/analysis/lib/concurrency";
+import { mapLimit } from "@/src/lib/concurrency";
 import { reconcileFundClassification } from "@/src/domain/portfolio/services/reconcile-fund-classification";
+import { resolvePortfolioQuoteKind } from "@/src/lib/portfolio-market-data";
 
 // The per-ticker sector classification surface (FIX-762) — backs the Health
 // view's sector-exposure axis. `GET ?userId=…` returns the sector for each of the
@@ -102,7 +103,10 @@ export async function GET(req: NextRequest) {
         // No GICS sector — before caching this ticker as a genuinely
         // unclassified equity, check whether it's actually a fund/crypto
         // asset mistyped `assetType: "equity"` at import.
-        const correction = await reconcileFundClassification(ticker);
+        const correction = await reconcileFundClassification(
+          ticker,
+          resolvePortfolioQuoteKind,
+        );
         if (correction !== null) {
           const { updated } = await repo.reclassifyHoldingByTicker(userId, ticker, correction);
           // Only treat as reclassified when a row actually changed — a manual

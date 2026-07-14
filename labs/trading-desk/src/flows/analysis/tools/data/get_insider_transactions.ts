@@ -8,7 +8,7 @@
  * `unavailable` as missing signal, not bearish.
  */
 import { handler } from "@flow-state-dev/core";
-import { fetchFinnhubInsiderTransactions, hasFinnhubKey } from "../providers/finnhub";
+import { fetchFinnhubInsiderTransactions, hasFinnhubKey } from "@/src/providers/finnhub";
 import { resolveToolPayload } from "../runtime/resolve";
 import { emptyPayload } from "../empty-payloads";
 import { toolInputSchemas, toolOutputSchemas } from "../schemas";

@@ -6,14 +6,14 @@
  * other multi-provider tools.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../runtime/cache";
+import { getOrFetch } from "@/src/lib/cache";
 import { resolveToolPayload } from "../runtime/resolve";
-import { fetchFinnhubShortInterest, hasFinnhubKey } from "../providers/finnhub";
+import { fetchFinnhubShortInterest, hasFinnhubKey } from "@/src/providers/finnhub";
 import {
   fetchYahooChart,
   fetchYahooFundamentals,
   fetchYahooShortInterest,
-} from "../providers/yahoo";
+} from "@/src/providers/yahoo";
 import { emptyPayload } from "../empty-payloads";
 import {
   toolInputSchemas,

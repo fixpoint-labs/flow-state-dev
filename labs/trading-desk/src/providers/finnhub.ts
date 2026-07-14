@@ -8,7 +8,11 @@
  * Tools using these helpers: get_fundamentals, get_price_history, search_news,
  * get_market_news, get_insider_transactions.
  */
-import type { ToolInput, ToolOutput } from "../schemas";
+import type {
+  DatedProviderInput,
+  PriceHistoryProviderInput,
+  TickerDatedProviderInput,
+} from "./types";
 
 const FINNHUB_BASE = "https://finnhub.io/api/v1";
 
@@ -74,8 +78,8 @@ async function fetchJson<T>(
 }
 
 export async function fetchFinnhubCandles(
-  input: ToolInput<"get_price_history">,
-): Promise<ToolOutput<"get_price_history">> {
+  input: PriceHistoryProviderInput,
+) {
   const to = Math.floor(new Date(input.date).getTime() / 1000);
   const from = to - rangeToLookbackDays(input.range) * 24 * 60 * 60;
   type Candle = {
@@ -105,7 +109,7 @@ export async function fetchFinnhubCandles(
     volume: data.v?.[i] ?? 0,
   }));
   return {
-    source: "finnhub",
+    source: "finnhub" as const,
     ticker: input.ticker,
     range: input.range ?? "1mo",
     bars,
@@ -113,8 +117,8 @@ export async function fetchFinnhubCandles(
 }
 
 export async function fetchFinnhubFundamentals(
-  input: ToolInput<"get_fundamentals">,
-): Promise<ToolOutput<"get_fundamentals">> {
+  input: TickerDatedProviderInput,
+) {
   type Profile = { marketCapitalization?: number };
   type Metric = {
     metric?: {
@@ -146,7 +150,7 @@ export async function fetchFinnhubFundamentals(
   const nullablePct = (v: number | undefined): number | null =>
     typeof v === "number" && Number.isFinite(v) && v !== 0 ? v / 100 : null;
   return {
-    source: "finnhub",
+    source: "finnhub" as const,
     ticker: input.ticker,
     asOf: input.date,
     // Profile gives market cap in $M; normalize to $B to match statements and fixtures.
@@ -169,8 +173,8 @@ export async function fetchFinnhubFundamentals(
  * tool handler can fall through to Yahoo.
  */
 export async function fetchFinnhubCompanyProfile(
-  input: ToolInput<"get_company_profile">,
-): Promise<ToolOutput<"get_company_profile">> {
+  input: TickerDatedProviderInput,
+) {
   type Profile = {
     name?: string;
     country?: string;
@@ -192,7 +196,7 @@ export async function fetchFinnhubCompanyProfile(
     typeof v === "number" && Number.isFinite(v) ? v : null;
   const marketCapMillions = num(data.marketCapitalization);
   return {
-    source: "finnhub",
+    source: "finnhub" as const,
     ticker: input.ticker,
     asOf: input.date,
     name: data.name,
@@ -212,8 +216,8 @@ export async function fetchFinnhubCompanyProfile(
 }
 
 export async function fetchFinnhubCompanyNews(
-  input: ToolInput<"search_news">,
-): Promise<ToolOutput<"search_news">> {
+  input: TickerDatedProviderInput,
+) {
   const to = input.date;
   const fromDate = new Date(input.date);
   fromDate.setUTCDate(fromDate.getUTCDate() - 14);
@@ -240,7 +244,7 @@ export async function fetchFinnhubCompanyNews(
     summary: n.summary ?? null,
   }));
   return {
-    source: "finnhub",
+    source: "finnhub" as const,
     ticker: input.ticker,
     asOf: input.date,
     items,
@@ -254,8 +258,8 @@ export async function fetchFinnhubCompanyNews(
  * can fall through to `emptyPayload`.
  */
 export async function fetchFinnhubMarketNews(
-  input: ToolInput<"get_market_news">,
-): Promise<ToolOutput<"get_market_news">> {
+  input: DatedProviderInput,
+) {
   type Item = {
     datetime: number;
     headline: string;
@@ -274,7 +278,7 @@ export async function fetchFinnhubMarketNews(
     summary: n.summary ?? null,
   }));
   return {
-    source: "finnhub",
+    source: "finnhub" as const,
     asOf: input.date,
     items,
   };
@@ -293,8 +297,8 @@ export async function fetchFinnhubMarketNews(
  * the Macro Analyst's regime read.
  */
 export async function fetchFinnhubMacroNews(
-  input: ToolInput<"get_macro_news">,
-): Promise<ToolOutput<"get_macro_news">> {
+  input: DatedProviderInput,
+) {
   type Item = {
     datetime: number;
     headline: string;
@@ -329,7 +333,7 @@ export async function fetchFinnhubMacroNews(
       summary: n.summary ?? null,
     }));
   return {
-    source: "finnhub",
+    source: "finnhub" as const,
     asOf: input.date,
     items,
   };
@@ -370,8 +374,8 @@ function isoDateDaysBefore(date: string, days: number): string {
  * `emptyPayload`.
  */
 export async function fetchFinnhubInsiderTransactions(
-  input: ToolInput<"get_insider_transactions">,
-): Promise<ToolOutput<"get_insider_transactions">> {
+  input: TickerDatedProviderInput,
+) {
   const to = input.date;
   const from = isoDateDaysBefore(input.date, INSIDER_WINDOW_DAYS);
   type Row = {
@@ -403,7 +407,7 @@ export async function fetchFinnhubInsiderTransactions(
     isDerivative: Boolean(r.isDerivative),
   }));
   return {
-    source: "finnhub",
+    source: "finnhub" as const,
     ticker: input.ticker,
     asOf: input.date,
     transactions,
@@ -451,8 +455,8 @@ export async function fetchFinnhubShortInterest(
  * to `emptyPayload`.
  */
 export async function fetchFinnhubInstitutionalOwnership(
-  input: ToolInput<"get_institutional_ownership">,
-): Promise<ToolOutput<"get_institutional_ownership">> {
+  input: TickerDatedProviderInput,
+) {
   type Row = {
     name?: string;
     share?: number;
@@ -496,7 +500,7 @@ export async function fetchFinnhubInstitutionalOwnership(
     }));
 
   return {
-    source: "finnhub",
+    source: "finnhub" as const,
     ticker: input.ticker,
     asOf: input.date,
     reportDate,

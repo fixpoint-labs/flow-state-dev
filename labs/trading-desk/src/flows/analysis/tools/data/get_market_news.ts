@@ -9,7 +9,7 @@
  * tool — narrows it to sector/theme-relevant signal.
  */
 import { handler } from "@flow-state-dev/core";
-import { fetchFinnhubMarketNews, hasFinnhubKey } from "../providers/finnhub";
+import { fetchFinnhubMarketNews, hasFinnhubKey } from "@/src/providers/finnhub";
 import { resolveToolPayload } from "../runtime/resolve";
 import { emptyPayload } from "../empty-payloads";
 import { toolInputSchemas, toolOutputSchemas } from "../schemas";
