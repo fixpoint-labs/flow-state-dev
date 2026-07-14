@@ -231,6 +231,55 @@ describe("createServerApp — translation", () => {
     await dispose();
   });
 
+  it("does not leak canonical-namespace adapter routes when basePath is custom", async () => {
+    // With a custom `basePath`, the dedicated fallback must serve ONLY routes
+    // outside both basePath and the framework's `/api/flows` namespace. A
+    // non-dedicated adapter route under `/api/flows` must NOT be served at its
+    // raw path when canonical was mounted elsewhere.
+    const adapter: InboundTransportAdapter = {
+      source: "test-mixed",
+      createBindings: () => ({
+        routes: [
+          {
+            method: "POST",
+            path: "/mcp/:id",
+            handler: (_req, ctx) =>
+              Promise.resolve(
+                new Response(JSON.stringify({ dedicated: ctx.params.id }), {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                }),
+              ),
+          },
+          {
+            method: "POST",
+            path: "/api/flows/:kind/hook",
+            handler: () => Promise.resolve(new Response("leaked", { status: 200 })),
+          },
+        ],
+      }),
+    };
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: inMemoryStores() } },
+      adapters: [adapter],
+    });
+    const { app, dispose } = createServerApp(fs, { basePath: "/flows" });
+    await fs.ready();
+
+    // The genuinely-dedicated route (outside /flows and /api/flows) is served.
+    const dedicated = await app.fetch(new Request(url("/mcp/abc"), { method: "POST" }));
+    expect(dedicated.status).toBe(200);
+    expect(await dedicated.json()).toEqual({ dedicated: "abc" });
+
+    // The /api/flows-namespaced adapter route is NOT exposed via the fallback.
+    const leak = await app.fetch(new Request(url("/api/flows/foo/hook"), { method: "POST" }));
+    expect(leak.status).toBe(404);
+
+    await dispose();
+  });
+
   it("replies 500 when the router throws before headers are sent", async () => {
     const throwing: FlowApiRouter = {
       ...echoRouter,

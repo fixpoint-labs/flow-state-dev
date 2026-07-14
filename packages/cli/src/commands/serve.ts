@@ -131,32 +131,11 @@ export async function executeServeCommand(options: ServeCommandOptions): Promise
     );
   });
 
-  // Router construction (store init + adapter route validation, e.g. duplicate
-  // MCP bindings) runs async inside createServerApp and, on failure, surfaces
-  // only as /healthz 500 — serve() itself resolves once the socket binds. Await
-  // it here so a post-bind init failure fails `fsdev serve` with EXIT_CONFIG_ERROR
-  // (what the deployment docs and process supervisors expect) instead of leaving
-  // a bound process that 500s every request. ready() observes the same memoized
-  // init createServerApp already kicked off — no double initialization.
-  try {
-    await resolved.flowState.ready();
-  } catch (err) {
-    await handle.close().catch(() => {});
-    throw new CliError(
-      `Server failed to initialize: ${err instanceof Error ? err.message : String(err)}`,
-      EXIT_CONFIG_ERROR,
-    );
-  }
-
-  process.stderr.write("\n");
-  process.stderr.write(`  Server running at http://${host}:${handle.port}\n`);
-  process.stderr.write(`  API:    http://${host}:${handle.port}/api/flows\n`);
-  process.stderr.write(`  Config: ${resolved.configPath}\n`);
-  process.stderr.write("\n");
-
-  // Keep the process alive and drive a single graceful-shutdown path.
-  // handle.close() disposes the FlowState (via createServerApp), so we don't
-  // dispose separately here.
+  // Install the graceful-shutdown path BEFORE awaiting readiness. serve() was
+  // called with handleSignals: false, so until these are registered a SIGTERM
+  // during a slow store cold start would hit Node's default (immediate exit) —
+  // skipping request drain and store/worker disposal. handle.close() disposes
+  // the FlowState (via createServerApp), so we don't dispose separately here.
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;
@@ -165,6 +144,34 @@ export async function executeServeCommand(options: ServeCommandOptions): Promise
     await handle.close();
     process.exit(EXIT_SUCCESS);
   };
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
+  const onSignal = () => void shutdown();
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+
+  // Router construction (store init + adapter route validation, e.g. duplicate
+  // MCP bindings) runs async inside createServerApp and, on failure, surfaces
+  // only as /healthz 500 — serve() itself resolves once the socket binds. Await
+  // it here so a post-bind init failure fails `fsdev serve` with EXIT_CONFIG_ERROR
+  // (what the deployment docs and process supervisors expect) instead of leaving
+  // a bound process that 500s every request. ready() observes the same memoized
+  // init createServerApp already kicked off — no double initialization. If a
+  // signal already began shutdown while we waited, don't announce success.
+  try {
+    await resolved.flowState.ready();
+  } catch (err) {
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+    if (!shuttingDown) await handle.close().catch(() => {});
+    throw new CliError(
+      `Server failed to initialize: ${err instanceof Error ? err.message : String(err)}`,
+      EXIT_CONFIG_ERROR,
+    );
+  }
+  if (shuttingDown) return;
+
+  process.stderr.write("\n");
+  process.stderr.write(`  Server running at http://${host}:${handle.port}\n`);
+  process.stderr.write(`  API:    http://${host}:${handle.port}/api/flows\n`);
+  process.stderr.write(`  Config: ${resolved.configPath}\n`);
+  process.stderr.write("\n");
 }

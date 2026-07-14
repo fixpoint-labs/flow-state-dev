@@ -176,7 +176,7 @@ export function createServerApp(
   // the dedicated route so it isn't shadowed by the SPA HTML in `fsdev dev`.
   const tryDedicatedRoute = async (req: Request): Promise<Response | null> => {
     if (router === undefined) return null;
-    return dispatchDedicatedRoute(router, req);
+    return dispatchDedicatedRoute(router, req, basePath);
   };
 
   // The last-resort fallback: anything Hono didn't otherwise route (in
@@ -197,7 +197,7 @@ export function createServerApp(
     } catch {
       return c.json({ error: "Server failed to initialize" }, 500);
     }
-    const res = await dispatchDedicatedRoute(resolved, c.req.raw);
+    const res = await dispatchDedicatedRoute(resolved, c.req.raw, basePath);
     return res ?? c.json({ error: "Not found" }, 404);
   });
 
