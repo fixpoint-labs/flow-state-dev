@@ -125,7 +125,17 @@ describe("serve — raw FlowApiRouter", () => {
   });
 
   it("returns 404 for non-API routes when no staticDir is set", async () => {
-    const handle = await start(fakeRouter, { port: 0 });
+    // Non-API routes are delegated to the router (so dedicated adapter paths are
+    // served); with no matching route and no staticDir, that surfaces as a 404.
+    const router404: FlowApiRouter = {
+      ...fakeRouter,
+      GET: async () =>
+        new Response(JSON.stringify({ error: "flow_not_found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+    };
+    const handle = await start(router404, { port: 0 });
     const res = await fetch(`http://127.0.0.1:${handle.port}/anything`);
     expect(res.status).toBe(404);
   });

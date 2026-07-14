@@ -151,8 +151,20 @@ export function createServerApp(
   // uncaught — the engine's canonical `handle` catches internally.
   hono.onError((_err, c) => c.json({ error: "Internal server error" }, 500));
 
-  // Match the prior `serve()` 404 shape (JSON, not Hono's default plain text).
-  hono.notFound((c) => c.json({ error: "Not found" }, 404));
+  // Anything Hono didn't otherwise route is handed to the engine router. This is
+  // what serves a transport adapter's DEDICATED path — one that lives OUTSIDE
+  // `basePath`, e.g. the MCP adapter's `/mcp/:kind` under `dedicatedBasePath`.
+  // `createFlowApiRouter` matches custom transport routes against the full
+  // request URL, so such a path resolves there. This runs after any statically-
+  // mounted routes (e.g. the DevTool `get("*")` that `serve()` adds for a
+  // `staticDir`), so it only catches what they don't. When the router also has
+  // no route for the path it returns a 404; normalize that to the app's
+  // canonical Not-Found shape so an unrelated path keeps its prior response
+  // (a matched dedicated route — MCP replies 200/401/403/405 — passes through).
+  hono.notFound(async (c) => {
+    const res = await dispatch(c);
+    return res.status === 404 ? c.json({ error: "Not found" }, 404) : res;
+  });
 
   return {
     app: hono,

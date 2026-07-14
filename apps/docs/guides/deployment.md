@@ -95,6 +95,31 @@ PORT=3000 fsdev serve
 
 See the [CLI API Reference](/docs/api/cli) for the full flag set and guard behavior, and [Host adapters](/docs/server/host-adapters) for the `serve()` wrapper underneath.
 
+## Keeping the process alive (pm2 / systemd)
+
+A long-lived server doesn't restart itself. `fsdev serve` (and a hand-written `serve()` entry) exposes the contract a process supervisor needs to do that job: it runs in the foreground, shuts down gracefully on `SIGTERM`/`SIGINT` (drains in-flight requests, disposes stores, exits `0`), and exits non-zero on a fatal startup error (bad or missing config, port in use, permission denied → exit `3`). That non-zero exit is what a supervisor watches to restart the process.
+
+Under pm2, point it at the CLI binary rather than through `pnpm`, so signals and exit codes propagate cleanly:
+
+```js title="ecosystem.config.cjs"
+module.exports = {
+  apps: [{
+    name: "my-flow-app",
+    script: "./node_modules/.bin/fsdev",
+    args: "serve",
+    env: { HOST: "0.0.0.0", PORT: "3000" },
+    autorestart: true,
+    max_restarts: 10,
+    exp_backoff_restart_delay: 200,
+    kill_timeout: 12000, // exceed serve's ~10s drain, or pm2 SIGKILLs mid-shutdown
+  }],
+};
+```
+
+Two things bite in production. `kill_timeout` must be larger than the graceful-drain window (10s by default) so shutdown finishes before pm2 force-kills. And a TypeScript `fsdev.config.ts` needs a TS-capable runtime (Node 22.18+, or compile the config to `.js`) — pm2 runs whatever `fsdev` resolves to. A config error exits `3` and will restart-loop until fixed, which is what `max_restarts` and the backoff delay are for.
+
+systemd is the same shape: a foreground unit with `Restart=on-failure`, `RestartSec=2`, `KillSignal=SIGTERM`, and `TimeoutStopSec=12`.
+
 ## Serverless beyond Vercel
 
 Vercel's Next.js serverless is one path. For other Node-runtime serverless platforms — AWS Lambda, Bun, Deno — the same portable app from `@flow-state-dev/node` runs unchanged; you wrap its `fetch` handler with the platform's adapter. See [Host adapters](/docs/server/host-adapters) for the full breakdown and [Deploying to AWS Lambda](/guides/deploying-to-aws-lambda) for a worked example. Edge runtimes (Cloudflare Workers, Vercel Edge) are not supported — the engine relies on Node primitives.

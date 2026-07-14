@@ -3,6 +3,7 @@ import {
   createFlowState,
   inMemoryStores,
   type FlowApiRouter,
+  type InboundTransportAdapter,
   type StoreAdapter,
 } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -127,11 +128,63 @@ describe("createServerApp — translation", () => {
     expect(res.status).toBe(405);
   });
 
-  it("replies 404 with a JSON body for an unmatched route", async () => {
-    const { app } = createServerApp(echoRouter);
+  it("normalizes a router 404 for an unmatched route to the canonical Not-Found body", async () => {
+    // Unmatched paths are delegated to the router (so dedicated adapter routes
+    // outside basePath are served); a router 404 normalizes back to this shape.
+    const notFoundRouter: FlowApiRouter = {
+      GET: async () =>
+        new Response(JSON.stringify({ error: "flow_not_found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      POST: async () => new Response(null, { status: 404 }),
+      PATCH: async () => new Response(null, { status: 404 }),
+      DELETE: async () => new Response(null, { status: 404 }),
+    };
+    const { app } = createServerApp(notFoundRouter);
     const res = await app.fetch(new Request(url("/nope")));
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "Not found" });
+  });
+
+  it("serves a transport adapter's dedicated path outside basePath", async () => {
+    // The MCP adapter under `dedicatedBasePath` registers `/mcp/:kind`, outside
+    // `/api/flows`. createFlowApiRouter matches custom routes by full URL; the
+    // app must hand such a request to the router rather than 404 it.
+    const adapter: InboundTransportAdapter = {
+      source: "test-dedicated",
+      createBindings: () => ({
+        routes: [
+          {
+            method: "POST",
+            path: "/custom/:id",
+            handler: (_req, ctx) =>
+              Promise.resolve(
+                new Response(JSON.stringify({ served: ctx.params.id }), {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                }),
+              ),
+          },
+        ],
+      }),
+    };
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: inMemoryStores() } },
+      adapters: [adapter],
+    });
+    const { app, dispose } = createServerApp(fs);
+    await fs.ready();
+    const served = await app.fetch(new Request(url("/custom/abc"), { method: "POST" }));
+    expect(served.status).toBe(200);
+    expect(await served.json()).toEqual({ served: "abc" });
+    // A path no adapter route matches still 404s with the canonical shape.
+    const miss = await app.fetch(new Request(url("/nothing")));
+    expect(miss.status).toBe(404);
+    expect(await miss.json()).toEqual({ error: "Not found" });
+    await dispose();
   });
 
   it("replies 500 when the router throws before headers are sent", async () => {
