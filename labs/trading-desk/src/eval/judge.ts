@@ -96,6 +96,12 @@ const JUDGE_PRICE: Array<{ key: string; inPer1M: number; outPer1M: number }> = [
   { key: "gemini-3.5-flash", inPer1M: 0.3, outPer1M: 2.5 },
 ];
 
+/** Whether the judge model is in the (approximate) price table. When it isn't,
+ *  its spend estimates to $0, so a `--max-cost-usd` cap can't be enforced. */
+function isJudgePriced(modelId: string): boolean {
+  return JUDGE_PRICE.some((p) => modelId.includes(p.key));
+}
+
 function estimateJudgeCost(items: readonly unknown[]): number {
   let total = 0;
   for (const item of items) {
@@ -200,6 +206,14 @@ export async function runJudges(
     warnings.push(
       `Judge model "${opts.judgeModel}" shares a provider family with the desk's generators: ` +
         `self-preference bias is possible. Scores are recorded with this caveat.`,
+    );
+  }
+  // A budget cap on an unpriced judge model estimates every call to $0, so the cap
+  // would never trip — warn rather than silently ignore it (the benchmark precedent).
+  if (opts.maxCostUsd !== undefined && !isJudgePriced(opts.judgeModel)) {
+    warnings.push(
+      `--max-cost-usd is set but judge model "${opts.judgeModel}" is not in the price table, ` +
+        `so its spend estimates to $0 and the budget cap will not be enforced.`,
     );
   }
 

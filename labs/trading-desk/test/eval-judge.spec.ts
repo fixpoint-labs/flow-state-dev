@@ -194,6 +194,16 @@ describe("runJudges", () => {
     expect(debate.repeats[0].findings[0].score).toBeCloseTo(0.6, 5);
   });
 
+  it("warns that an unpriced judge model can't enforce the budget cap", async () => {
+    const report = await runJudges(completedBundle(), {
+      judgeModel: "vercel/anthropic/claude-opus-4-8", // not in the price table
+      k: 1,
+      maxCostUsd: 5,
+      modelResolver: scoringResolver(0.8),
+    });
+    expect(report!.warnings.some((w) => w.includes("not in the price table"))).toBe(true);
+  });
+
   it("records a self-preference warning when the judge shares the executor family", async () => {
     const report = await runJudges(completedBundle(), {
       judgeModel: "vercel/openai/gpt-5.4-mini",

@@ -20,10 +20,9 @@
  * non-zero when any run errored or any HARD invariant failed (soft flags and judge
  * scores never gate — thresholds are a consumer decision).
  */
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
-import { promisify } from "node:util";
 import { checkRun } from "../src/eval/invariants";
 import { runJudges, type JudgeReport } from "../src/eval/judge";
 import {
@@ -41,7 +40,6 @@ import {
 } from "../src/flows/analysis/run-artifacts";
 import type { QualityRecord } from "../src/eval/types";
 
-const execFileP = promisify(execFile);
 const APP = process.cwd();
 const DEFAULT_JUDGE_MODEL = "vercel/openai/gpt-5.4-mini";
 
@@ -99,14 +97,20 @@ function evalOptions(a: Args): EvalOptions {
 }
 
 // ── fsdev shelling ─────────────────────────────────────────────────────────
-async function runFsdev(args: string[], env: NodeJS.ProcessEnv): Promise<number> {
-  try {
-    await execFileP("pnpm", ["fsdev", "run", "analysis", ...args], { cwd: APP, env, maxBuffer: 64 * 1024 * 1024 });
-    return 0;
-  } catch (err) {
-    const status = (err as { code?: number }).code;
-    return typeof status === "number" ? status : 1;
-  }
+// `spawn` with stdio ignored (not `execFile`): `--quiet` silences stderr logs but
+// `fsdev run` still emits NDJSON on stdout, and a verbose full run would overflow
+// execFile's buffer and be mis-recorded as a non-zero exit. We read the `--capture`
+// FILE, never the child's stdout, so discarding both streams is correct.
+function runFsdev(args: string[], env: NodeJS.ProcessEnv): Promise<number> {
+  return new Promise((resolve) => {
+    const child = spawn("pnpm", ["fsdev", "run", "analysis", ...args], { cwd: APP, env, stdio: "ignore" });
+    // This repo's @types/node doesn't surface ChildProcess's event methods (the
+    // same gap as packages/tools/moat.ts); the runtime methods exist. Wire
+    // completion through a minimal EventEmitter view.
+    const emitter = child as unknown as NodeJS.EventEmitter;
+    emitter.once("error", () => resolve(1));
+    emitter.once("close", (code) => resolve(typeof code === "number" ? code : 1));
+  });
 }
 
 /** The env a session's read runs under. When a sweep at `outDir` isolated the
