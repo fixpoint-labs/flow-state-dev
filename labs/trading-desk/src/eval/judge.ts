@@ -96,8 +96,14 @@ const JUDGE_PRICE: Array<{ key: string; inPer1M: number; outPer1M: number }> = [
   { key: "gemini-3.5-flash", inPer1M: 0.3, outPer1M: 2.5 },
 ];
 
+/** Conservative rate for a model NOT in the table — the most expensive entry, so
+ *  an unpriced judge OVER-estimates and a `--max-cost-usd` cap still trips
+ *  (fail-safe: stop early rather than overspend on an unknown model). */
+const FALLBACK_RATE = JUDGE_PRICE.reduce((a, b) => (b.outPer1M > a.outPer1M ? b : a));
+
 /** Whether the judge model is in the (approximate) price table. When it isn't,
- *  its spend estimates to $0, so a `--max-cost-usd` cap can't be enforced. */
+ *  its spend is estimated conservatively (FALLBACK_RATE), so a `--max-cost-usd`
+ *  cap may stop earlier than the true spend. */
 function isJudgePriced(modelId: string): boolean {
   return JUDGE_PRICE.some((p) => modelId.includes(p.key));
 }
@@ -111,8 +117,8 @@ function estimateJudgeCost(items: readonly unknown[]): number {
     };
     if (trace.type !== "block_trace" || trace.modelUsage === undefined) continue;
     const usage = trace.modelUsage;
-    const price = JUDGE_PRICE.find((p) => usage.model.includes(p.key));
-    if (price === undefined) continue;
+    // Unpriced model → conservative fallback, so the budget cap still enforces.
+    const price = JUDGE_PRICE.find((p) => usage.model.includes(p.key)) ?? FALLBACK_RATE;
     total +=
       (usage.promptTokens / 1_000_000) * price.inPer1M +
       (usage.completionTokens / 1_000_000) * price.outPer1M;
@@ -126,13 +132,21 @@ function modelFamily(modelId: string): string {
   return segments.length >= 3 ? segments[1] : segments[0];
 }
 
-function meanOfFindings(findings: JudgeFinding[], kind: RubricDimension["kind"]): number {
-  if (findings.length === 0) return 0;
+function meanOfFindings(
+  findings: JudgeFinding[],
+  kind: RubricDimension["kind"],
+  expectedCount: number,
+): number {
   // Checklist criteria are 0-or-1 (spec §4.5): a judge that returns a fractional
   // score is snapped to the nearest bound so the mean preserves binary semantics.
   const scoreOf = (f: JudgeFinding): number =>
     kind === "checklist" ? (f.score >= 0.5 ? 1 : 0) : f.score;
-  return findings.reduce((a, f) => a + scoreOf(f), 0) / findings.length;
+  // Average over the EXPECTED criterion count, not just the returned findings —
+  // a judge that omits criteria must not score 1.0 off one high finding; the
+  // missing criteria count as 0.
+  const denom = Math.max(findings.length, expectedCount);
+  if (denom === 0) return 0;
+  return findings.reduce((a, f) => a + scoreOf(f), 0) / denom;
 }
 
 /** Grade one dimension once. Never throws — a failure or timeout becomes a
@@ -168,7 +182,7 @@ async function judgeOnce(
     }
     const output = result.output as z.infer<typeof judgeOutputSchema>;
     return {
-      score: meanOfFindings(output.findings, dim.kind),
+      score: meanOfFindings(output.findings, dim.kind, dim.criteria.length),
       findings: output.findings,
       status: "scored",
       reason: null,
@@ -208,12 +222,13 @@ export async function runJudges(
         `self-preference bias is possible. Scores are recorded with this caveat.`,
     );
   }
-  // A budget cap on an unpriced judge model estimates every call to $0, so the cap
-  // would never trip — warn rather than silently ignore it (the benchmark precedent).
+  // An unpriced judge model is costed at the conservative FALLBACK_RATE so the cap
+  // still enforces (fail-safe), but the estimate is a rough upper bound — warn so
+  // the caller knows the cap may stop earlier than the true spend.
   if (opts.maxCostUsd !== undefined && !isJudgePriced(opts.judgeModel)) {
     warnings.push(
-      `--max-cost-usd is set but judge model "${opts.judgeModel}" is not in the price table, ` +
-        `so its spend estimates to $0 and the budget cap will not be enforced.`,
+      `judge model "${opts.judgeModel}" is not in the price table, so --max-cost-usd is ` +
+        `enforced against a conservative (upper-bound) cost estimate and may stop earlier than the true spend.`,
     );
   }
 

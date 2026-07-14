@@ -204,6 +204,7 @@ type ManifestTuple = {
   riskMandate?: string;
   userThesis?: string;
   userThesisRationale?: string;
+  selectedAccountIds?: string[];
 };
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T, i: number) => Promise<R>): Promise<R[]> {
@@ -246,6 +247,7 @@ async function sweep(a: Args): Promise<number> {
     if (tuple.riskMandate) input.riskMandate = tuple.riskMandate;
     if (tuple.userThesis) input.userThesis = tuple.userThesis;
     if (tuple.userThesisRationale) input.userThesisRationale = tuple.userThesisRationale;
+    if (tuple.selectedAccountIds) input.selectedAccountIds = tuple.selectedAccountIds;
 
     const analyzeCapture = join(opts.outDir, "captures", `${sessionId}.analyze.json`);
     mkdirSync(dirname(analyzeCapture), { recursive: true });

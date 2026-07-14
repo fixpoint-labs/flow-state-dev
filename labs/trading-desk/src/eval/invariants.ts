@@ -165,15 +165,28 @@ function checkMemoCompleteness(bundle: RunArtifactsBundle, c: Checks, memos: Mem
 function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): void {
   const snapshot = bundle.decisionSnapshot;
   const pm = published(memos.get(PM_KEY));
-  if (snapshot == null || pm == null || pm.ratingBand == null) {
+  const spine = bundle.valuationSpine;
+  // The band to check against: the PM memo's mirror, or the spine envelope as a
+  // fallback. Genuinely absent only when there is no decision and neither source.
+  const spineBand = spine != null ? { floor: spine.envelope.floor, ceiling: spine.envelope.ceiling } : null;
+  const band = pm?.ratingBand ?? spineBand;
+  if (snapshot == null || pm == null || band == null) {
     c.skip(
       "rating-envelope/final-within-band",
       "hard",
-      "no decision snapshot / PM rating band (mandate the envelope needs is absent)",
+      "no decision snapshot / no rating band or valuation spine to check against",
     );
     return;
   }
-  const band = pm.ratingBand;
+  // A run WITH a valuation spine must mirror its rating band onto the PM memo —
+  // a dropped mirror is a regression, not missing substrate (we fall back to the
+  // spine envelope so the envelope checks still run).
+  if (pm.ratingBand == null && spine != null) {
+    c.hardFail(
+      "rating-envelope/pm-band-present",
+      "PM memo dropped its rating band mirror on a run with a valuation spine",
+    );
+  }
   const finalRating = snapshot.finalRating as FinalRating;
   const floorIdx = ratingIndex(band.floor);
   const ceilingIdx = ratingIndex(band.ceiling);
@@ -220,7 +233,6 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
   }
 
   // Band recomputation from the spine's implied rating + evidence thinness.
-  const spine = bundle.valuationSpine;
   if (spine == null) {
     c.skip(
       "rating-envelope/band-recompute",
@@ -428,9 +440,19 @@ function checkMandate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): vo
   const decision = pm?.mandateDecision ?? null;
   const mandate = bundle.riskMandate;
   const rr = bundle.rewardToRisk;
-  // Mandate-blind run — the whole group is n/a.
-  if (snapshot == null || snapshot.mandateVerdict == null || decision == null || mandate == null || rr == null) {
-    c.skip("mandate/verdict", "hard", "mandate-blind run (no mandate decision to recompute)");
+  // Truly mandate-blind — no frozen dials or no reward-to-risk figure → the whole
+  // group is n/a (the PM legitimately decides mandate-blind).
+  if (mandate == null || rr == null) {
+    c.skip("mandate/verdict", "hard", "mandate-blind run (no mandate / reward-to-risk substrate)");
+    return;
+  }
+  // The run WAS mandate-aware (both dials and figure present), so the mandate
+  // decision MUST be mirrored — a dropped mirror is a regression, not blindness.
+  if (snapshot == null || decision == null || snapshot.mandateVerdict == null) {
+    c.hardFail(
+      "mandate/mirror-present",
+      "run was mandate-aware (mandate + reward-to-risk present) but the mandate decision mirror is missing from the snapshot / PM memo",
+    );
     return;
   }
 

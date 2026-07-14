@@ -234,6 +234,16 @@ describe("checkRun — rating-envelope", () => {
     const report = checkRun(b);
     expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("skipped");
   });
+
+  it("fails when a run with a spine drops its PM rating-band mirror (not skipped)", () => {
+    const b = healthyBundle();
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    (b.memos.find((m) => m.key === pmKey)!.state as MemoState).ratingBand = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/pm-band-present")?.status).toBe("fail");
+    // The envelope checks still run off the spine fallback, not skipped.
+    expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("pass");
+  });
 });
 
 describe("checkRun — scenario", () => {
@@ -294,6 +304,14 @@ describe("checkRun — mandate", () => {
     b.decisionSnapshot!.mandateVerdict = null;
     const report = checkRun(b);
     expect(byId(report.checks, "mandate/verdict")?.status).toBe("skipped");
+  });
+
+  it("fails when a mandate-aware run drops its mandate mirror (not skipped)", () => {
+    const b = healthyBundle();
+    // mandate + reward-to-risk present, but the snapshot mirror is gone.
+    b.decisionSnapshot!.mandateVerdict = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/mirror-present")?.status).toBe("fail");
   });
 });
 
