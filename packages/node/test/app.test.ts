@@ -244,6 +244,24 @@ describe("createServerApp — translation", () => {
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "Internal server error" });
   });
+
+  it("does not block the not-found fallback while the FlowState is initializing", async () => {
+    // The dedicated-route dispatch is non-blocking: a miss during a slow store
+    // cold start 404s at once instead of awaiting init. `gatedAdapter` never
+    // releases here, so a blocking impl would hang and time this test out.
+    const adapter = gatedAdapter();
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: adapter } },
+    });
+    const { app, dispose } = createServerApp(fs);
+    const res = await app.fetch(new Request(url("/nope")));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+    adapter.release();
+    await dispose();
+  });
 });
 
 describe("createServerApp — SSE streaming", () => {

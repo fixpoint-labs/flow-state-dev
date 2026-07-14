@@ -176,6 +176,16 @@ unambiguous at runtime. Every request carries a `source` field on its
 `RequestRecord` for provenance — `http` for the default adapter, set by
 each custom transport for its own.
 
+An adapter can register a **dedicated** route that lives outside the canonical
+`basePath` — for example the MCP adapter's `/mcp/:kind` under
+`dedicatedBasePath: true`. A long-lived host that mounts the flow API under a
+prefix uses `dispatchDedicatedRoute(router, req)` to serve those: it matches
+ONLY the custom adapter routes and returns the matched `Response`, or `null`
+when none match — it never falls through to the canonical flow-API handler, so
+the flow API (list-flows, actions, sessions) stays reachable only under
+`basePath`. `@flow-state-dev/node`'s `serve()` calls it in its not-found
+fallback; catch-all hosts that mount the router at `basePath` don't need it.
+
 `createWebhookTransportAdapter({ providers })` mounts
 `POST /api/flows/:kind/webhooks/:provider` and routes verified inbound
 webhooks (Stripe, GitHub, Slack Events, any signed POST) to the handler a flow
@@ -250,6 +260,15 @@ and GitHub-style signatures), `createHs256JwtVerifier`,
 for scheduled and webhook callers), and `extractBearerToken` cover the
 most common verification patterns; hosts plug in their own for anything
 else.
+
+When no resolver is configured, a flow runs on the framework default that
+trusts a caller-supplied `body.userId` — unauthenticated. `isDefaultBodyUserIdPrincipalResolver(resolver)`
+reports whether a resolver is that default, via a globally-registered brand
+rather than function identity (so it holds across duplicate package instances,
+e.g. a config that resolves its own copy of the engine). Tooling uses it to
+detect an unauthenticated flow before exposing it — `@flow-state-dev/node`'s
+loopback-bind guard refuses a network bind when a served flow resolves to this
+default.
 
 See the [authentication reference](https://flow-state.dev/docs/server/authentication)
 for the full contract, resolution order, and `requireUser: false`

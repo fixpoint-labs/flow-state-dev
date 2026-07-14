@@ -129,6 +129,23 @@ export async function executeServeCommand(options: ServeCommandOptions): Promise
     );
   });
 
+  // Router construction (store init + adapter route validation, e.g. duplicate
+  // MCP bindings) runs async inside createServerApp and, on failure, surfaces
+  // only as /healthz 500 — serve() itself resolves once the socket binds. Await
+  // it here so a post-bind init failure fails `fsdev serve` with EXIT_CONFIG_ERROR
+  // (what the deployment docs and process supervisors expect) instead of leaving
+  // a bound process that 500s every request. ready() observes the same memoized
+  // init createServerApp already kicked off — no double initialization.
+  try {
+    await resolved.flowState.ready();
+  } catch (err) {
+    await handle.close().catch(() => {});
+    throw new CliError(
+      `Server failed to initialize: ${err instanceof Error ? err.message : String(err)}`,
+      EXIT_CONFIG_ERROR,
+    );
+  }
+
   process.stderr.write("\n");
   process.stderr.write(`  Server running at http://${host}:${handle.port}\n`);
   process.stderr.write(`  API:    http://${host}:${handle.port}/api/flows\n`);

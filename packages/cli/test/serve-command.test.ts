@@ -6,6 +6,7 @@ import { EXIT_CONFIG_ERROR } from "../src/exit-codes";
 
 const unauthDir = resolve(import.meta.dirname, "fixtures-config", "serve-unauth");
 const noConfigDir = resolve(import.meta.dirname, "fixtures-config", "serve-no-config");
+const initFailDir = resolve(import.meta.dirname, "fixtures-config", "serve-init-fail");
 
 // Every case here errors before `serve()` binds a port. The "guard passes"
 // behavior (loopback / authenticated flow) would start a long-lived server whose
@@ -65,6 +66,19 @@ describe("fsdev serve", () => {
       if (saved === undefined) delete process.env.HOST;
       else process.env.HOST = saved;
     }
+  });
+
+  it("fails with EXIT_CONFIG_ERROR when router init fails after the socket binds", async () => {
+    // Loopback host passes the bind guard, so serve() binds; store init then
+    // rejects. The command must map that to a config error and close the handle,
+    // not announce "Server running" and keep a zombie process alive.
+    const err = await executeServeCommand({ cwd: initFailDir, host: "127.0.0.1", port: "0" }).catch(
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
+    expect(err.message).toContain("Server failed to initialize");
+    expect(err.message).toContain("store boom");
   });
 
   it("--host wins over $HOST", async () => {

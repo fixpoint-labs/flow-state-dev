@@ -47,6 +47,8 @@ export interface ServerApp {
    * uses this in its not-found fallback; a host that registers its own broad
    * catch-all AFTER the app (e.g. `serve()`'s SPA `get("*")` for a `staticDir`)
    * must call it first so a dedicated route isn't shadowed by that fallback.
+   * Non-blocking: returns null while a `FlowState` is still initializing, so a
+   * slow cold start never stalls the caller's static/SPA fallback.
    */
   tryDedicatedRoute(req: Request): Promise<Response | null>;
   /**
@@ -166,17 +168,17 @@ export function createServerApp(
   // e.g. the MCP adapter's `/mcp/:kind` under `dedicatedBasePath`) — never the
   // canonical flow-API handler. Returns null when nothing matches. Shared by the
   // not-found fallback and by `serve()`'s SPA `get("*")` (so a dedicated route
-  // isn't shadowed by that fallback in `fsdev dev`). Returns null while the
-  // router is still initializing or if init failed — a dedicated route can't
-  // have matched yet, so the caller's own fallback (404 / static asset) applies.
+  // isn't shadowed by that fallback in `fsdev dev`).
+  //
+  // NON-BLOCKING: it reads the synchronously-tracked `router`, returning null
+  // while a FlowState is still initializing (or if init failed) rather than
+  // awaiting `routerPromise`. A dedicated route can't match before its adapter
+  // route table exists anyway, and awaiting would stall the caller's fallback —
+  // the SPA/static `get("*")` and a bare `/` — during a slow store cold start,
+  // when the host is meant to bind immediately and report only `/healthz` 503.
   const tryDedicatedRoute = async (req: Request): Promise<Response | null> => {
-    let resolved: FlowApiRouter;
-    try {
-      resolved = await routerPromise;
-    } catch {
-      return null;
-    }
-    return dispatchDedicatedRoute(resolved, req);
+    if (router === undefined) return null;
+    return dispatchDedicatedRoute(router, req);
   };
 
   // Anything Hono didn't otherwise route is offered to the dedicated-route
