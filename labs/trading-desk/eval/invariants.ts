@@ -324,7 +324,12 @@ function checkScenarios(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): 
   // equality with the recomputed sum.
   const rawSum = memo.probabilitySum;
   if (rawSum == null) {
-    c.skip("scenario/raw-sum", "hard", "no recorded probabilitySum");
+    c.hardFail(
+      "scenario/raw-sum",
+      "published scenario memo has scenarios but no recorded probabilitySum",
+      "number in [0.8, 1.2]",
+      rawSum,
+    );
   } else if (rawSum >= 0.8 && rawSum <= 1.2) {
     c.hardPass("scenario/raw-sum", `recorded probabilitySum ${rawSum} (∈ [0.8, 1.2])`);
   } else {
@@ -599,7 +604,12 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
   // Echo: weightDeltaPct = targetWeightPct − currentWeightPct (±0.01).
   const fit = pm.portfolioFit;
   if (fit == null) {
-    c.skip("decision-consistency/weight-delta", "hard", "no portfolio-fit block on the PM memo");
+    c.hardFail(
+      "decision-consistency/weight-delta",
+      "completed run has a decision snapshot and published PM memo but no portfolio-fit block",
+      "portfolioFit",
+      fit,
+    );
   } else {
     const expectedDelta = fit.targetWeightPct - fit.currentWeightPct;
     if (approx(fit.weightDeltaPct, expectedDelta, 0.01)) {

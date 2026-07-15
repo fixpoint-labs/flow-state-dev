@@ -71,6 +71,19 @@ export type JudgeReport = {
   totalCostUsd: number | null;
 };
 
+/** One invocation-wide judge budget shared by every session evaluated by the
+ * command. `remainingUsd` reaches zero when known spend exhausts the cap or a
+ * failed call makes the remaining headroom unknowable. */
+export type JudgeBudget = {
+  limitUsd: number;
+  remainingUsd: number;
+  blockedReason: string | null;
+};
+
+export function createJudgeBudget(limitUsd: number): JudgeBudget {
+  return { limitUsd, remainingUsd: limitUsd, blockedReason: null };
+}
+
 export type RunJudgesOptions = {
   judgeModel: string;
   /** Repeats per dimension (default 3). */
@@ -79,6 +92,9 @@ export type RunJudgesOptions = {
   timeoutMs?: number;
   /** Stop launching judge calls once cumulative cost exceeds this. */
   maxCostUsd?: number;
+  /** Shared command budget. When present, it supersedes `maxCostUsd` and is
+   * debited after this session so later sessions see the remaining headroom. */
+  budget?: JudgeBudget;
   /** Injectable resolver (tests inject a mock; production uses the default). */
   modelResolver?: ModelResolver;
 };
@@ -225,6 +241,8 @@ export async function runJudges(
   const k = opts.k ?? 3;
   const timeoutMs = opts.timeoutMs ?? 120_000;
   const resolver = opts.modelResolver ?? createModelResolver();
+  const maxCostUsd = opts.budget?.remainingUsd ?? opts.maxCostUsd;
+  const budgetLabelUsd = opts.budget?.limitUsd ?? opts.maxCostUsd;
 
   const warnings: string[] = [];
   if (EXECUTOR_FAMILIES.includes(modelFamily(opts.judgeModel))) {
@@ -236,7 +254,7 @@ export async function runJudges(
   // An unpriced judge model is costed at the conservative FALLBACK_RATE so the cap
   // still enforces (fail-safe), but the estimate is a rough upper bound — warn so
   // the caller knows the cap may stop earlier than the true spend.
-  if (opts.maxCostUsd !== undefined && !isJudgePriced(opts.judgeModel)) {
+  if (maxCostUsd !== undefined && !isJudgePriced(opts.judgeModel)) {
     warnings.push(
       `judge model "${opts.judgeModel}" is not in the price table, so --max-cost-usd is ` +
         `enforced against a conservative (upper-bound) cost estimate and may stop earlier than the true spend.`,
@@ -247,7 +265,7 @@ export async function runJudges(
   const dimensions: JudgeDimensionResult[] = [];
   let cumulativeCost = 0;
   let hasUnknownCost = false;
-  let budgetBlockedReason: string | null = null;
+  let budgetBlockedReason: string | null = opts.budget?.blockedReason ?? null;
 
   for (const dim of RUBRICS) {
     if (!dim.needs(bundle)) {
@@ -267,7 +285,7 @@ export async function runJudges(
     }
     if (
       budgetBlockedReason !== null ||
-      (opts.maxCostUsd !== undefined && cumulativeCost >= opts.maxCostUsd)
+      (maxCostUsd !== undefined && cumulativeCost >= maxCostUsd)
     ) {
       dimensions.push({
         key: dim.key,
@@ -275,7 +293,7 @@ export async function runJudges(
         status: "skipped",
         skipReason:
           budgetBlockedReason ??
-          `budget cap ($${opts.maxCostUsd}) reached before this dimension`,
+          `command budget cap ($${budgetLabelUsd}) reached before this dimension`,
         mean: null,
         std: null,
         k: 0,
@@ -297,7 +315,7 @@ export async function runJudges(
     for (let i = 0; i < k; i++) {
       // Enforce the budget BETWEEN repeats too, not just between dimensions — an
       // early repeat can cross the cap mid-dimension.
-      if (opts.maxCostUsd !== undefined && cumulativeCost >= opts.maxCostUsd) break;
+      if (maxCostUsd !== undefined && cumulativeCost >= maxCostUsd) break;
       const repeat = await judgeOnce(dim, inputString, resolver, opts.judgeModel, timeoutMs);
       repeats.push(repeat);
       if (repeat.costUsd != null) {
@@ -307,10 +325,10 @@ export async function runJudges(
         // A thrown/timed-out provider call may already have consumed tokens but
         // exposes no usage trace. With a budget configured, fail CLOSED: stop
         // launching calls because the remaining headroom is unknowable.
-        if (opts.maxCostUsd !== undefined) {
+        if (maxCostUsd !== undefined) {
           budgetBlockedReason =
             `judge spend became unknown after ${dim.key} repeat ${i + 1}; ` +
-            `stopped further calls to preserve the $${opts.maxCostUsd} budget cap`;
+            `stopped further calls to preserve the $${budgetLabelUsd} command budget cap`;
           break;
         }
       }
@@ -322,7 +340,7 @@ export async function runJudges(
         key: dim.key,
         kind: dim.kind,
         status: "skipped",
-        skipReason: `budget cap ($${opts.maxCostUsd}) reached before this dimension`,
+        skipReason: `command budget cap ($${budgetLabelUsd}) reached before this dimension`,
         mean: null,
         std: null,
         k: 0,
@@ -358,6 +376,14 @@ export async function runJudges(
   }
 
   const allCosts = dimensions.flatMap((d) => (d.costUsd != null ? [d.costUsd] : []));
+  if (opts.budget !== undefined) {
+    if (hasUnknownCost) {
+      opts.budget.remainingUsd = 0;
+      opts.budget.blockedReason = budgetBlockedReason;
+    } else {
+      opts.budget.remainingUsd = Math.max(0, opts.budget.remainingUsd - cumulativeCost);
+    }
+  }
   return {
     dimensions,
     judgeModel: opts.judgeModel,

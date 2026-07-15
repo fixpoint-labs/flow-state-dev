@@ -32,8 +32,9 @@ pure; the action just feeds it the resource reads.
 
 ## Deterministic invariants
 
-`checkRun(bundle)` is pure, total, and never throws — missing substrate degrades a
-check to `skipped` (never a false `fail`). It asserts only on the computed/derived
+`checkRun(bundle)` is pure, total, and never throws — genuinely missing substrate
+degrades a check to `skipped`, while a required mirror missing from an otherwise
+completed artifact is a hard failure. It asserts only on the computed/derived
 records; all LLM-emitted prose routes to the judge layer, because a fixture replay
 still calls real generators, so memo text is nondeterministic run-to-run.
 Recomputation checks reuse the desk's OWN pure libs (`ratingBandFor`,
@@ -99,7 +100,9 @@ recorded). A hung provider is bounded by a local `--judge-timeout-ms` race; a fa
 or timed-out repeat records score 0 + a reason (a failed judge is a failed score,
 never a crashed sweep). When a budget cap is set and a failed call exposes no
 usage trace, the suite stops launching judges because the remaining spend is
-unknowable; it never treats a known-cost subtotal as the total. If the judge family matches the desk's generators
+unknowable; it never treats a known-cost subtotal as the total. The
+`--max-cost-usd` cap belongs to the whole command, so known spend is debited
+across every session in `sweep`, `eval`, and `variance`. If the judge family matches the desk's generators
 (OpenAI/Google/xAI), a **self-preference warning** is recorded on the run — never a
 block.
 
@@ -124,6 +127,8 @@ FIX-792 cost accounting consume and extend it).
 ```
 
 Readers skip torn lines (a killed process's partial write never breaks the corpus).
+Writers insert a line delimiter before the next record when the existing file ends
+in an unterminated fragment, so the first valid record after a torn write survives.
 
 ## Judge variance
 

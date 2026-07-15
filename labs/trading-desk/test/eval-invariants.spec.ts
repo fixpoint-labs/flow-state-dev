@@ -270,6 +270,15 @@ describe("checkRun — scenario", () => {
     expect(byId(report.checks, "scenario/probability-sum")?.status).toBe("fail");
   });
 
+  it("fails when a published scenario memo omits its raw probability sum", () => {
+    const b = healthyBundle();
+    const scenarioKey = ALL_MEMO_KEYS.scenarioForecast.collectionKey;
+    const memo = b.memos.find((m) => m.key === scenarioKey)!;
+    (memo.state as MemoState).probabilitySum = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "scenario/raw-sum")?.status).toBe("fail");
+  });
+
   it("skips scenario checks when there is no forecaster memo", () => {
     const b = healthyBundle();
     const scenarioKey = ALL_MEMO_KEYS.scenarioForecast.collectionKey;
@@ -358,6 +367,15 @@ describe("checkRun — decision-consistency", () => {
     const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
     const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
     pm.portfolioFit = { ...pm.portfolioFit!, weightDeltaPct: 99 };
+    const report = checkRun(b);
+    expect(byId(report.checks, "decision-consistency/weight-delta")?.status).toBe("fail");
+  });
+
+  it("fails when a completed run's published PM memo omits portfolio fit", () => {
+    const b = healthyBundle();
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.portfolioFit = null;
     const report = checkRun(b);
     expect(byId(report.checks, "decision-consistency/weight-delta")?.status).toBe("fail");
   });

@@ -151,7 +151,7 @@ describe("append + read", () => {
     const dir = tmp();
     const path = join(dir, "scoreboard.jsonl");
     appendScoreboardLine(path, record("run_a"));
-    appendFileSync(path, '{"evalVersion":1,"sessionId":"tor\n', "utf8"); // torn write
+    appendFileSync(path, '{"evalVersion":1,"sessionId":"tor', "utf8"); // torn write, no newline
     appendScoreboardLine(path, record("run_b"));
 
     const records = readScoreboard(path);

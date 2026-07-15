@@ -15,9 +15,13 @@
  */
 import {
   appendFileSync,
+  closeSync,
   existsSync,
+  fstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -148,10 +152,23 @@ export function buildDetail(args: {
 }
 
 /** Append one record as a single JSON line (`O_APPEND`, so concurrent appenders
- *  never interleave). */
+ *  never interleave). If a killed writer left an unterminated fragment, prefix
+ *  a newline so that fragment cannot consume this otherwise-valid record. */
 export function appendScoreboardLine(scoreboardPath: string, record: QualityRecord): void {
   mkdirSync(dirname(scoreboardPath), { recursive: true });
-  appendFileSync(scoreboardPath, `${JSON.stringify(record)}\n`, { encoding: "utf8", flag: "a" });
+  const fd = openSync(scoreboardPath, "a+");
+  try {
+    const { size } = fstatSync(fd);
+    let separator = "";
+    if (size > 0) {
+      const lastByte = Buffer.allocUnsafe(1);
+      readSync(fd, lastByte, 0, 1, size - 1);
+      if (lastByte[0] !== 0x0a) separator = "\n";
+    }
+    appendFileSync(fd, `${separator}${JSON.stringify(record)}\n`, "utf8");
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Write a run's detail sidecar. */

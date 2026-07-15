@@ -1655,7 +1655,9 @@ default) for the batch, with session IDs isolating concurrent runs. `eval` and
 `variance` default to the shared app store; pass `--data-dir <sweep-out>/data` to
 read a sweep. Each command uses one backing. `eval` evaluates already-stored
 sessions; `variance` characterizes the judge's own noise so a score delta can be
-told from randomness.
+told from randomness. `--max-cost-usd` is one command-wide judge budget shared
+across all requested sessions; an unknown-cost failure exhausts the remaining
+headroom rather than resetting the cap for the next session.
 Every evaluated run appends one separable `QualityRecord` line to
 `<out>/scoreboard.jsonl` (deterministic tally + per-dimension judged `{mean, std, k}`,
 never a composite) with a full detail sidecar alongside. **Exit code is non-zero

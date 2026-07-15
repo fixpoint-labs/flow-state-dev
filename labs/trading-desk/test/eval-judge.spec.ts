@@ -16,7 +16,7 @@ import type { MemoState } from "../flows/analysis/resources";
 import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
 import type { RunSummary } from "../flows/analysis/run-summary";
 import { blindBundle } from "../eval/blinding";
-import { runJudges } from "../eval/judge";
+import { createJudgeBudget, runJudges } from "../eval/judge";
 import { RUBRICS } from "../eval/rubrics";
 
 const SECRET_SESSION = "run_SECRET_SESSION_id";
@@ -330,6 +330,50 @@ describe("runJudges", () => {
     expect(report!.dimensions.slice(1).every((d) => d.status === "skipped")).toBe(true);
     expect(report!.warnings.some((w) => w.includes("spend became unknown"))).toBe(true);
     expect(report!.totalCostUsd).toBeNull();
+  });
+
+  it("carries one judge budget across multiple sessions", async () => {
+    let calls = 0;
+    const resolver = ((modelId: string) => ({
+      modelId,
+      async generate() {
+        calls++;
+        return {
+          structuredOutput: { findings: [], overallAssessment: "no findings" },
+          finishReason: "stop",
+          usage: {
+            promptTokens: 1_000_000,
+            completionTokens: 0,
+            totalTokens: 1_000_000,
+          },
+        };
+      },
+      // eslint-disable-next-line require-yield
+      async *stream() {
+        throw new Error("stream should not be called");
+      },
+    })) as unknown as ModelResolver;
+    const budget = createJudgeBudget(1);
+
+    const first = await runJudges(completedBundle(), {
+      judgeModel: "vercel/anthropic/claude-haiku-4-5",
+      k: 1,
+      budget,
+      modelResolver: resolver,
+    });
+    expect(first).not.toBeNull();
+    expect(calls).toBeGreaterThan(0);
+    expect(budget.remainingUsd).toBe(0);
+
+    const callsAfterFirstSession = calls;
+    const second = await runJudges(completedBundle(), {
+      judgeModel: "vercel/anthropic/claude-haiku-4-5",
+      k: 1,
+      budget,
+      modelResolver: resolver,
+    });
+    expect(second!.dimensions.every((dimension) => dimension.status === "skipped")).toBe(true);
+    expect(calls).toBe(callsAfterFirstSession);
   });
 
   it("skips the whole judge layer on a non-completed run", async () => {

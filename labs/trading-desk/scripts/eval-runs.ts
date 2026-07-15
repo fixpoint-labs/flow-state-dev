@@ -24,7 +24,12 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { checkRun } from "../eval/invariants";
-import { runJudges, type JudgeReport } from "../eval/judge";
+import {
+  createJudgeBudget,
+  runJudges,
+  type JudgeBudget,
+  type JudgeReport,
+} from "../eval/judge";
 import {
   EvalUsageError,
   parsePositiveNumberFlag,
@@ -135,6 +140,7 @@ async function evaluate(
   bundle: RunArtifactsBundle,
   ranAt: string | null,
   opts: EvalOptions,
+  budget: JudgeBudget | undefined,
 ): Promise<QualityRecord> {
   const evaluatedAt = new Date().toISOString();
   const invariants = checkRun(bundle);
@@ -144,7 +150,7 @@ async function evaluate(
       judgeModel: opts.judgeModel,
       k: opts.k,
       timeoutMs: opts.timeoutMs,
-      maxCostUsd: opts.maxCostUsd,
+      budget,
     });
   }
   const detailPath = detailSidecarPath(opts.outDir, bundle.summary.sessionId, evaluatedAt);
@@ -187,6 +193,8 @@ type ManifestTuple = {
 
 async function sweep(a: Args): Promise<number> {
   const opts = evalOptions(a);
+  const budget =
+    opts.maxCostUsd === undefined ? undefined : createJudgeBudget(opts.maxCostUsd);
   const manifestPath = one(a, "manifest");
   if (!manifestPath) {
     console.error("sweep requires --manifest <file.json>");
@@ -250,7 +258,7 @@ async function sweep(a: Args): Promise<number> {
         anyFailed = true;
         continue;
       }
-      const record = await evaluate(p.bundle, p.ranAt, opts);
+      const record = await evaluate(p.bundle, p.ranAt, opts, budget);
       logRecord(record);
       if (recordFailed(record)) anyFailed = true;
     }
@@ -262,6 +270,8 @@ async function sweep(a: Args): Promise<number> {
 
 async function evalMode(a: Args): Promise<number> {
   const opts = evalOptions(a);
+  const budget =
+    opts.maxCostUsd === undefined ? undefined : createJudgeBudget(opts.maxCostUsd);
   const sessions = many(a, "session");
   if (sessions.length === 0) {
     console.error("eval requires at least one --session <id>");
@@ -289,7 +299,7 @@ async function evalMode(a: Args): Promise<number> {
         continue;
       }
       const ranAt = bundle.decisionSnapshot?.decidedAt ?? null;
-      const record = await evaluate(bundle, ranAt, opts);
+      const record = await evaluate(bundle, ranAt, opts, budget);
       logRecord(record);
       if (recordFailed(record)) anyFailed = true;
     }
@@ -301,6 +311,8 @@ async function evalMode(a: Args): Promise<number> {
 
 async function variance(a: Args): Promise<number> {
   const opts = evalOptions(a);
+  const budget =
+    opts.maxCostUsd === undefined ? undefined : createJudgeBudget(opts.maxCostUsd);
   const sessions = many(a, "session");
   if (sessions.length === 0) {
     console.error("variance requires at least one --session <id>");
@@ -327,7 +339,7 @@ async function variance(a: Args): Promise<number> {
         judgeModel: opts.judgeModel,
         k,
         timeoutMs: opts.timeoutMs,
-        maxCostUsd: opts.maxCostUsd,
+        budget,
       });
       if (report === null) {
         console.error(`skipping ${sessionId}: run is ${bundle.summary.status}, judges only grade completed runs`);
