@@ -13,10 +13,10 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitThesisAlignmentMemo } from "../src/flows/analysis/agents/thesis-validator/writer";
-import type { ThesisAlignmentOutput } from "../src/flows/analysis/agents/thesis-validator/thesis-validator";
-import { memosCollection } from "../src/flows/analysis/resources";
-import { sessionStateSchema } from "../src/flows/analysis/state";
+import { commitThesisAlignmentMemo } from "../flows/analysis/agents/thesis-validator/writer";
+import type { ThesisAlignmentOutput } from "../flows/analysis/agents/thesis-validator/thesis-validator";
+import { memosCollection } from "../flows/analysis/resources";
+import { sessionStateSchema } from "../flows/analysis/state";
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p6-enforcement-test",

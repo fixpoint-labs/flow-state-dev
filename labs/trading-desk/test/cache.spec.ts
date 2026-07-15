@@ -11,7 +11,7 @@ import {
   _resetCache,
   cacheKey,
   getOrFetch,
-} from "../src/flows/analysis/tools/runtime/cache";
+} from "../lib/cache";
 
 afterEach(() => {
   _resetCache();
@@ -73,7 +73,7 @@ describe("getOrFetch", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it("builds a deterministic cache key from tool + args", () => {
+  it("builds a deterministic cache key from namespace + args", () => {
     expect(cacheKey("get_fundamentals", { ticker: "NVDA", date: "2026-05-06" })).toBe(
       'get_fundamentals:{"ticker":"NVDA","date":"2026-05-06"}',
     );

@@ -10,7 +10,7 @@ import {
   frontNextSpreadPct,
   riskTone,
   type RiskToneLeg,
-} from "../src/flows/analysis/tools/data/futures-math";
+} from "../flows/analysis/tools/data/futures-math";
 
 describe("changePct", () => {
   it("computes the fractional session change", () => {

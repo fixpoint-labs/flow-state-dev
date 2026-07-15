@@ -2,7 +2,7 @@
 
 import { useFlowContext } from "@flow-state-dev/react";
 import { useApiQuery } from "@/lib/use-api-query";
-import type { IncomeSummaryRow } from "@/src/db/repository";
+import type { IncomeSummaryRow } from "@/db/repository";
 
 /**
  * Read the user's ledger-derived income summary (dividends + interest per

@@ -19,8 +19,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildAnalyzeInput,
   type AnalyzeTuple,
-} from "../src/flows/analysis/analyze-input";
-import { analyzeInputSchema } from "../src/flows/analysis/flow-schema";
+} from "../flows/analysis/analyze-input";
+import { analyzeInputSchema } from "../flows/analysis/flow-schema";
 import { validateAnalyzeDraft } from "../components/new-analysis-dialog";
 
 const tuple: AnalyzeTuple = {

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getRepository } from "@/lib/portfolio-db";
+import { getRepository } from "@/db/portfolio-db";
 
 // Server-only read of ledger-derived income (dividends + interest) per
 // (account, ticker) — the `ledger` route precedent. Aggregated from the ledger

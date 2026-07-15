@@ -12,7 +12,7 @@ import {
   skew25Delta,
   sumField,
   type OptionContract,
-} from "../src/flows/analysis/tools/data/options-math";
+} from "../flows/analysis/tools/data/options-math";
 
 const c = (over: Partial<OptionContract>): OptionContract => ({
   type: "call",

@@ -25,9 +25,9 @@ import {
   UNCLASSIFIED_BUCKET,
   type QuoteMap,
   type ClassificationMap,
-} from "@/src/flows/portfolio/portfolio-health";
-import { holdingMarketValue } from "@/src/flows/portfolio/value-holding";
-import type { AccountState, Holding } from "@/src/flows/portfolio/portfolio-schema";
+} from "@/domain/portfolio/math/portfolio-health";
+import { holdingMarketValue } from "@/domain/portfolio/math/value-holding";
+import type { AccountState, Holding } from "@/domain/portfolio/schema/portfolio-schema";
 
 function holding(overrides: Partial<Holding> & Pick<Holding, "ticker" | "quantity">): Holding {
   return {

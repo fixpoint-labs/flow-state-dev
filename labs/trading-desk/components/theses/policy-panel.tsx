@@ -13,7 +13,7 @@
  * the copy frames the mandate as a documented, user-set policy, not advice.
  */
 import type { ReactElement } from "react";
-import type { PolicyDecision } from "@/src/flows/analysis/resources";
+import type { PolicyDecision } from "@/flows/analysis/resources";
 import { cn } from "@/lib/utils";
 
 export type PolicyPanelProps = {

@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import {
   relativeTime,
   type ReportRow as ReportRowData,
-} from "@/src/flows/analysis/report-index";
+} from "@/flows/analysis/report-index";
 
 /** Map a 5-tier rating to a token-backed color. Buy/Overweight lean to the
  *  live (green) token, Sell/Underweight to warn, Hold stays neutral — the same

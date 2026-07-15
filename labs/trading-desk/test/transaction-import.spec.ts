@@ -15,9 +15,9 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
-import type { FileImportReport } from "@/src/flows/portfolio/transaction-import-schema";
-import { importTransactionFile } from "@/src/flows/portfolio/portfolio-writes";
+import type { PortfolioRepository } from "@/db/repository";
+import type { FileImportReport } from "@/domain/portfolio/schema/transaction-import-schema";
+import { importTransactionFile } from "@/domain/portfolio/services/portfolio-writes";
 
 let repo: PortfolioRepository;
 

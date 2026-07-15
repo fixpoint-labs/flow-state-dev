@@ -10,8 +10,8 @@
  *   3. The tag is still suppressed (null) on a portfolio-blind snapshot.
  */
 import { describe, expect, it } from "vitest";
-import { formatPortfolioContext } from "../src/flows/analysis/lib/format";
-import type { PortfolioContextInput } from "../src/flows/analysis/flow-schema";
+import { formatPortfolioContext } from "../flows/analysis/lib/format";
+import type { PortfolioContextInput } from "../flows/analysis/flow-schema";
 
 function snapshot(over: Partial<PortfolioContextInput> = {}): PortfolioContextInput {
   return {

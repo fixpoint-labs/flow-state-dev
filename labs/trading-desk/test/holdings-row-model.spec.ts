@@ -19,8 +19,8 @@
 import { describe, expect, it } from "vitest";
 import { buildHoldingRowModel } from "../components/portfolio/holdings-table";
 import { DASH } from "../components/portfolio/portfolio-format";
-import type { Holding } from "../src/flows/portfolio/portfolio-schema";
-import type { Quote } from "../src/flows/portfolio/get-quotes";
+import type { Holding } from "../domain/portfolio/schema/portfolio-schema";
+import type { Quote } from "../domain/portfolio/services/get-quotes";
 
 function holding(overrides: Partial<Holding> = {}): Holding {
   return {

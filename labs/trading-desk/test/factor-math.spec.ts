@@ -12,7 +12,7 @@ import {
   crossSectionalRank,
   gatedZScore,
   MIN_Z_CROSS_SECTION,
-} from "../src/flows/analysis/tools/data/factor-math";
+} from "../flows/analysis/tools/data/factor-math";
 
 describe("factor-math — small-sample reframe (ordinal rank + gated z)", () => {
   describe("crossSectionalRank", () => {

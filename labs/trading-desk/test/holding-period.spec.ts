@@ -7,7 +7,7 @@
  * never guessed into a term.
  */
 import { describe, expect, it } from "vitest";
-import { classifyTerm } from "@/src/flows/portfolio/holding-period";
+import { classifyTerm } from "@/domain/portfolio/math/holding-period";
 
 describe("classifyTerm", () => {
   it("is short on the one-year anniversary day itself (boundary exclusive)", () => {

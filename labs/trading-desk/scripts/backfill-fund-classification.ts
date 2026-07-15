@@ -28,9 +28,10 @@
  * Override the household with `BACKFILL_USER` (defaults to devuser, the
  * `nvda-split` precedent).
  */
-import { getRepository } from "../lib/portfolio-db";
-import { resolveSector } from "../src/flows/analysis/lib/sector-resolution";
-import { reconcileFundClassification } from "../src/flows/portfolio/reconcile-fund-classification";
+import { getRepository } from "../db/portfolio-db";
+import { resolveSector } from "../flows/analysis/lib/sector-resolution";
+import { reconcileFundClassification } from "../domain/portfolio/services/reconcile-fund-classification";
+import { resolvePortfolioQuoteKind } from "../lib/portfolio-market-data";
 
 const USER_ID = process.env.BACKFILL_USER ?? "devuser";
 
@@ -57,7 +58,10 @@ for (const ticker of misses) {
     console.log(`[backfill]   ${ticker}: sector=${sector}`);
     continue;
   }
-  const correction = await reconcileFundClassification(ticker);
+  const correction = await reconcileFundClassification(
+    ticker,
+    resolvePortfolioQuoteKind,
+  );
   if (correction === null) {
     console.log(`[backfill]   ${ticker}: no sector, no correction (unresolved — retried on a later request)`);
     continue;

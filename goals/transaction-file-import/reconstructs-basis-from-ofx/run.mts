@@ -16,12 +16,12 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { parseOfxTransactions } from "../../../labs/trading-desk/src/flows/portfolio/portfolio-ofx.ts";
-import { deriveLots } from "../../../labs/trading-desk/src/flows/portfolio/lots.ts";
+import { deriveLots } from "../../../labs/trading-desk/domain/portfolio/math/lots.ts";
+import { parseOfxTransactions } from "../../../labs/trading-desk/domain/portfolio/parsers/portfolio-ofx.ts";
 import {
   ledgerEventInputSchema,
   type LedgerRow,
-} from "../../../labs/trading-desk/src/flows/portfolio/ledger-schema.ts";
+} from "../../../labs/trading-desk/domain/portfolio/schema/ledger-schema.ts";
 
 const FIXTURES = fileURLToPath(new URL("./fixtures", import.meta.url));
 

@@ -13,7 +13,7 @@ import {
   mandateRecordToForm,
   type MandateFormState,
 } from "../components/portfolio/mandate-form";
-import { portfolioMandateSchema } from "../src/flows/portfolio/portfolio-mandate-schema";
+import { portfolioMandateSchema } from "../domain/portfolio/schema/portfolio-mandate-schema";
 
 function form(overrides: Partial<MandateFormState> = {}): MandateFormState {
   return { ...emptyMandateForm(), ...overrides };

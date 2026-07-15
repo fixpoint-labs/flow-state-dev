@@ -11,7 +11,7 @@ import {
   classifyLeaning,
   riskAppetite,
   trend3,
-} from "../src/flows/analysis/tools/data/cross-asset-math";
+} from "../flows/analysis/tools/data/cross-asset-math";
 
 describe("classifyLeaning", () => {
   it("reads a spread above the deadband as risk-on", () => {

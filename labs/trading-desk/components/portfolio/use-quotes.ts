@@ -2,7 +2,7 @@
 
 import { useFlowContext } from "@flow-state-dev/react";
 import { useApiQuery } from "@/lib/use-api-query";
-import type { QuoteRow } from "@/src/db/repository";
+import type { QuoteRow } from "@/db/repository";
 
 /**
  * Read the user's last-known prices (FIX-823) from the durable `app.quotes` table

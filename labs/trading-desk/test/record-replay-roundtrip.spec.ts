@@ -23,11 +23,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import path from "node:path";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { recordFixture } from "../src/flows/analysis/tools/runtime/recorder";
-import { loadFixture } from "../src/flows/analysis/tools/runtime/fixtures";
-import { emptyPayload } from "../src/flows/analysis/tools/empty-payloads";
-import { resolveTicker } from "../src/flows/analysis/lib/ticker-resolver";
-import { fixtureFileName, type ToolOutput } from "../src/flows/analysis/tools/schemas";
+import { recordFixture } from "../flows/analysis/tools/runtime/recorder";
+import { loadFixture } from "../flows/analysis/tools/runtime/fixtures";
+import { emptyPayload } from "../flows/analysis/tools/empty-payloads";
+import { resolveTicker } from "../flows/analysis/lib/ticker-resolver";
+import { fixtureFileName, type ToolOutput } from "../flows/analysis/tools/schemas";
 
 const DATE = "2026-06-12";
 

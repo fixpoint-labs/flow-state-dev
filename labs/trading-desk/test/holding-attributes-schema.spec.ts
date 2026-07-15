@@ -8,7 +8,7 @@
  * when `mapHolding` parses a backfilled row whose JSONB default was mis-set.
  */
 import { describe, expect, it } from "vitest";
-import { holdingAttributesSchema } from "@/src/flows/portfolio/portfolio-schema";
+import { holdingAttributesSchema } from "@/domain/portfolio/schema/portfolio-schema";
 
 describe("holdingAttributesSchema", () => {
   it("accepts a valid bond, option, cash_equivalent, and none shape", () => {

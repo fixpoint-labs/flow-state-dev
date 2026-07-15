@@ -14,10 +14,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _routesForTest,
   get_social_sentiment,
-} from "../src/flows/analysis/tools/data/get_social_sentiment";
-import { recordFixture } from "../src/flows/analysis/tools/runtime/recorder";
+} from "../flows/analysis/tools/data/get_social_sentiment";
+import { recordFixture } from "../flows/analysis/tools/runtime/recorder";
 
-vi.mock("../src/flows/analysis/tools/runtime/recorder", () => ({
+vi.mock("../flows/analysis/tools/runtime/recorder", () => ({
   recordFixture: vi.fn(async () => undefined),
 }));
 

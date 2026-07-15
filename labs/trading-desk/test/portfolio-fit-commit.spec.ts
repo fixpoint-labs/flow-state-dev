@@ -19,21 +19,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
+import type { PortfolioRepository } from "@/db/repository";
 
 // Accounts + holdings + quotes moved to the app-owned repository (FIX-772/
 // FIX-823). Mock the repo to a fresh in-memory PGlite instance per test;
 // seedSession computes the portfolio snapshot from the seeded accounts + the
 // durable `app.quotes` rows.
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
+vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
   },
 }));
 
-import analysisFlow from "../src/flows/analysis/flow";
+import analysisFlow from "../flows/analysis/flow";
 
 beforeEach(async () => {
   repoState.repo = await makeTestRepository();

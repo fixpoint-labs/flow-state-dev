@@ -6,11 +6,11 @@
  * fabricate a weight).
  */
 import { describe, expect, it } from "vitest";
-import { computePolicyGate } from "../src/flows/analysis/lib/policy-gate";
+import { computePolicyGate } from "../flows/analysis/lib/policy-gate";
 import {
   portfolioMandateSchema,
   type PortfolioMandate,
-} from "../src/flows/portfolio/portfolio-mandate-schema";
+} from "../domain/portfolio/schema/portfolio-mandate-schema";
 
 function mandate(constraints: Record<string, unknown>): PortfolioMandate {
   return portfolioMandateSchema.parse({

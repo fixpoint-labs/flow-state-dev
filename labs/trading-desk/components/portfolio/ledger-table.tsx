@@ -13,7 +13,7 @@
 
 import { useMemo, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
-import type { LedgerRow } from "@/src/flows/portfolio/ledger-schema";
+import type { LedgerRow } from "@/domain/portfolio/schema/ledger-schema";
 import { buildLedgerRowModel, type LedgerRowModel } from "./ledger-row-model";
 
 type LedgerTableProps = {

@@ -8,12 +8,12 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitScenarioForecastMemo } from "../src/flows/analysis/agents/scenario-forecaster/writer";
-import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
-import { scenarioForecastOutputSchema } from "../src/flows/analysis/agents/scenario-forecaster/scenario-forecaster";
-import { memosCollection } from "../src/flows/analysis/resources";
-import { sessionStateSchema } from "../src/flows/analysis/state";
-import { PHASE_5_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { commitScenarioForecastMemo } from "../flows/analysis/agents/scenario-forecaster/writer";
+import { markError, markWriting } from "../flows/analysis/agents/_recipe/memo-writer";
+import { scenarioForecastOutputSchema } from "../flows/analysis/agents/scenario-forecaster/scenario-forecaster";
+import { memosCollection } from "../flows/analysis/resources";
+import { sessionStateSchema } from "../flows/analysis/state";
+import { PHASE_5_MEMO_KEYS } from "../flows/analysis/registry";
 import { latestMemoStatus } from "./_helpers/memo-status";
 
 const writeSf = markWriting("scenarioForecast");

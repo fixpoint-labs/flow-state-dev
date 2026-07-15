@@ -21,7 +21,7 @@ import { z } from "zod";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
+import type { PortfolioRepository } from "@/db/repository";
 
 // `seedSession` reads accounts/holdings from the app-owned repository (FIX-772).
 // Mock it to a fresh in-memory PGlite per test so the `seed` action doesn't open
@@ -29,7 +29,7 @@ import type { PortfolioRepository } from "@/src/db/repository";
 // spec doesn't seed accounts — an empty repo makes the run portfolio-blind,
 // which is irrelevant to the financials-reset behavior under test.
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
+vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
@@ -38,25 +38,25 @@ vi.mock("@/lib/portfolio-db", () => ({
 beforeEach(async () => {
   repoState.repo = await makeTestRepository();
 });
-import { get_fundamentals } from "../src/flows/analysis/tools/data/get_fundamentals";
-import { get_balance_sheet } from "../src/flows/analysis/tools/data/get_balance_sheet";
-import { get_income_statement } from "../src/flows/analysis/tools/data/get_income_statement";
-import { get_cashflow } from "../src/flows/analysis/tools/data/get_cashflow";
-import { get_quant_composites } from "../src/flows/analysis/tools/data/get_quant_composites";
-import { get_factor_ranks } from "../src/flows/analysis/tools/data/get_factor_ranks";
-import { compute_indicators } from "../src/flows/analysis/tools/data/compute_indicators";
-import { get_company_profile } from "../src/flows/analysis/tools/data/get_company_profile";
-import { get_price_history } from "../src/flows/analysis/tools/data/get_price_history";
-import { computeAndStoreSpine } from "../src/flows/analysis/compute-spine";
-import { storePriceHistory } from "../src/flows/analysis/store-price-history";
-import { seedSession } from "../src/flows/analysis/orchestration/guards";
-import { financialsDataResource } from "../src/flows/analysis/financials-data-resource";
-import { quantDataResource } from "../src/flows/analysis/quant-data-resource";
-import { technicalDataResource } from "../src/flows/analysis/technical-data-resource";
-import { profileDataResource } from "../src/flows/analysis/profile-data-resource";
-import { valuationSpineResource } from "../src/flows/analysis/valuation-spine-resource";
-import { priceHistoryResource } from "../src/flows/analysis/price-history-resource";
-import { sessionStateSchema } from "../src/flows/analysis/state";
+import { get_fundamentals } from "../flows/analysis/tools/data/get_fundamentals";
+import { get_balance_sheet } from "../flows/analysis/tools/data/get_balance_sheet";
+import { get_income_statement } from "../flows/analysis/tools/data/get_income_statement";
+import { get_cashflow } from "../flows/analysis/tools/data/get_cashflow";
+import { get_quant_composites } from "../flows/analysis/tools/data/get_quant_composites";
+import { get_factor_ranks } from "../flows/analysis/tools/data/get_factor_ranks";
+import { compute_indicators } from "../flows/analysis/tools/data/compute_indicators";
+import { get_company_profile } from "../flows/analysis/tools/data/get_company_profile";
+import { get_price_history } from "../flows/analysis/tools/data/get_price_history";
+import { computeAndStoreSpine } from "../flows/analysis/compute-spine";
+import { storePriceHistory } from "../flows/analysis/store-price-history";
+import { seedSession } from "../flows/analysis/orchestration/guards";
+import { financialsDataResource } from "../flows/analysis/financials-data-resource";
+import { quantDataResource } from "../flows/analysis/quant-data-resource";
+import { technicalDataResource } from "../flows/analysis/technical-data-resource";
+import { profileDataResource } from "../flows/analysis/profile-data-resource";
+import { valuationSpineResource } from "../flows/analysis/valuation-spine-resource";
+import { priceHistoryResource } from "../flows/analysis/price-history-resource";
+import { sessionStateSchema } from "../flows/analysis/state";
 
 // Fetch all eight Phase-1 valuation inputs into their per-domain spines, then
 // compute the valuation off them. The tools run in `.parallel` — exactly how

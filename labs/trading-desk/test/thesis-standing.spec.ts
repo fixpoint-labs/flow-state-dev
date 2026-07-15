@@ -12,21 +12,21 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
-import { formatStandingThesis } from "../src/flows/analysis/lib/format";
-import type { ThesisRecord } from "../src/flows/portfolio/thesis-schema";
+import { formatStandingThesis } from "../flows/analysis/lib/format";
+import type { ThesisRecord } from "../domain/portfolio/schema/thesis-schema";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
+import type { PortfolioRepository } from "@/db/repository";
 
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
+vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
   },
 }));
 
-import { seedSession } from "../src/flows/analysis/orchestration/guards";
-import flow from "../src/flows/analysis/flow";
+import { seedSession } from "../flows/analysis/orchestration/guards";
+import flow from "../flows/analysis/flow";
 
 function record(overrides: Partial<ThesisRecord> = {}): ThesisRecord {
   return {

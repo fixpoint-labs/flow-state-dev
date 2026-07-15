@@ -21,7 +21,7 @@ import type {
   MandateAssetClass,
   PortfolioMandate,
   RiskTolerance,
-} from "@/src/flows/portfolio/portfolio-mandate-schema";
+} from "@/domain/portfolio/schema/portfolio-mandate-schema";
 import {
   APPETITE_OPTIONS,
   ASSET_CLASS_OPTIONS,
