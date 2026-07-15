@@ -9,8 +9,10 @@ deterministic invariant layer (pure code, zero model spend) that catches interna
 contradictions — a rating outside its band, incoherent scenario probabilities, a
 committed size that ignores the mandate gates, snapshot/memo mirror drift,
 dishonest valuation abstention, malformed citations — and a blinded LLM-judge layer
-(four rubric dimensions via the shipped `analyzerScorer` path, judge model pinned
-distinct from the desk's generators, k repeats with mean±std). A `pnpm eval` harness
+(four rubric dimensions run directly through `utility.analyzer` + `testBlock` — the
+same internal path as `analyzerScorer`, preserving raw findings — with a judge model
+pinned distinct from the desk's generators and k repeats with mean±std).
+The `pnpm eval` harness
 (`sweep` / `eval` / `variance`) batches runs and appends one separable
 `QualityRecord` line per run to a JSONL scoreboard with a detail sidecar; a variance
 mode characterizes judge noise (Krippendorff's alpha across ≥2 sessions, 2·SE

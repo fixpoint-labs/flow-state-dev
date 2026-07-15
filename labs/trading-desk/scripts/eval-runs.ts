@@ -40,6 +40,7 @@ import {
   type RunArtifactsBundle,
 } from "../flows/analysis/run-artifacts";
 import type { QualityRecord } from "../eval/types";
+import { mapLimit } from "../lib/concurrency";
 
 const APP = process.cwd();
 const DEFAULT_JUDGE_MODEL = "vercel/openai/gpt-5.4-mini";
@@ -210,19 +211,6 @@ type ManifestTuple = {
   selectedAccountIds?: string[];
 };
 
-async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T, i: number) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  async function worker(): Promise<void> {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i], i);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
-  return results;
-}
-
 async function sweep(a: Args): Promise<number> {
   const opts = evalOptions(a);
   const manifestPath = one(a, "manifest");
@@ -238,8 +226,9 @@ async function sweep(a: Args): Promise<number> {
   // Phase A: run each tuple's analyze + read (bounded concurrency; each run gets
   // an isolated TRADING_DESK_DATA_DIR so PGlite stays single-process-safe).
   type Prepared = { tuple: ManifestTuple; sessionId: string; ranAt: string; bundle: RunArtifactsBundle | null; error?: string };
-  const prepared = await mapLimit(manifest, concurrency, async (tuple, i) => {
-    const sessionId = `sweep_${tuple.ticker}_${i}_${stamp}`;
+  const indexedManifest = manifest.map((tuple, index) => ({ tuple, index }));
+  const prepared = await mapLimit(indexedManifest, concurrency, async ({ tuple, index }) => {
+    const sessionId = `sweep_${tuple.ticker}_${index}_${stamp}`;
     const dataDir = join(opts.outDir, "data", sessionId);
     const env = { ...process.env, TRADING_DESK_DATA_DIR: dataDir };
     const input: Record<string, unknown> = {
