@@ -24,6 +24,7 @@ import type { MemoState } from "../flows/analysis/resources";
 import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
 import { computeMandateGates } from "../flows/analysis/lib/mandate-gates";
 import { computeRewardToRisk } from "../flows/analysis/lib/reward-to-risk";
+import { DIVERGENCE_THRESHOLD } from "../flows/analysis/lib/triangulation";
 import {
   ratingBandFor,
   ratingIndex,
@@ -509,18 +510,25 @@ function checkMandate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): vo
     if (capOk) c.hardPass("mandate/size-cap", capDetail);
     else c.hardFail("mandate/size-cap", capDetail);
 
-    // `sizeClamped` ⇒ the committed size equals the applicable cap (directional —
-    // the raw pre-clamp target is never persisted).
+    // `sizeClamped` describes the FIX-752 mandate gate, which runs BEFORE the
+    // household policy gate. A later policy cap/exclusion may reduce the final
+    // portfolioFit target again, so validate the persisted pre-policy target when
+    // present (legacy/no-policy runs fall back to the final target).
     if (decision.sizeClamped) {
+      const mandateGatedTargetPct =
+        pm?.policyDecision?.preGatePolicyTargetPct ?? targetWeightPct;
       const onCap =
-        approx(targetWeightPct, mandate.capacityVetoCapPct) ||
-        approx(targetWeightPct, mandate.unclearedCapPct);
+        approx(mandateGatedTargetPct, mandate.capacityVetoCapPct) ||
+        approx(mandateGatedTargetPct, mandate.unclearedCapPct);
       if (onCap) {
-        c.hardPass("mandate/clamp-on-cap", `clamped size ${targetWeightPct} equals an applicable cap`);
+        c.hardPass(
+          "mandate/clamp-on-cap",
+          `pre-policy mandate-clamped size ${mandateGatedTargetPct} equals an applicable cap`,
+        );
       } else {
         c.hardFail(
           "mandate/clamp-on-cap",
-          `sizeClamped is true but committed size ${targetWeightPct} equals neither cap (${mandate.capacityVetoCapPct} / ${mandate.unclearedCapPct})`,
+          `sizeClamped is true but pre-policy size ${mandateGatedTargetPct} equals neither cap (${mandate.capacityVetoCapPct} / ${mandate.unclearedCapPct})`,
         );
       }
     }
@@ -637,10 +645,35 @@ function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
     c.skip("valuation/dcf-abstention", "hard", "no DCF leg (pre-FIX-807 session or non-applicable)");
   } else {
     if (dcf.available === false) {
-      if (dcf.unavailableReason != null) {
-        c.hardPass("valuation/dcf-abstention", `DCF unavailable with a reason (${dcf.unavailableReason})`);
+      const nonNullFields = [
+        "intrinsicValue",
+        "marginOfSafety",
+        "discountRate",
+        "stage1Growth",
+        "terminalValueShare",
+        "impliedGrowth",
+        "expectationsGap",
+        "reliability",
+      ].filter((field) => dcf[field as keyof typeof dcf] != null);
+      const contradictions: string[] = [];
+      if (dcf.unavailableReason == null) contradictions.push("unavailableReason is null");
+      if (dcf.method !== "none") contradictions.push(`method is ${dcf.method}`);
+      if (dcf.reverseDcfStatus !== "unavailable") {
+        contradictions.push(`reverseDcfStatus is ${dcf.reverseDcfStatus}`);
+      }
+      if (nonNullFields.length > 0) {
+        contradictions.push(`non-null valuation fields: ${nonNullFields.join(", ")}`);
+      }
+      if (contradictions.length === 0) {
+        c.hardPass(
+          "valuation/dcf-abstention",
+          `DCF unavailable with canonical abstention shape (${dcf.unavailableReason})`,
+        );
       } else {
-        c.hardFail("valuation/dcf-abstention", "dcf.available is false but unavailableReason is null");
+        c.hardFail(
+          "valuation/dcf-abstention",
+          `dcf.available is false but the abstention shape is contradictory: ${contradictions.join("; ")}`,
+        );
       }
     } else {
       c.hardPass("valuation/dcf-abstention", "DCF available");
@@ -677,24 +710,58 @@ function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
   if (tri == null) {
     c.skip("valuation/triangulation", "hard", "no triangulation leg");
   } else {
-    const n = tri.methodsUsed.length;
-    let ok = true;
-    let detail = `triangulation ${tri.divergence} consistent with ${n} method(s)`;
-    if (tri.divergence === "unavailable" && n !== 0) {
-      ok = false;
-      detail = `divergence "unavailable" but ${n} methods used`;
-    } else if (tri.divergence === "single-method" && n !== 1) {
-      ok = false;
-      detail = `divergence "single-method" but ${n} methods used`;
-    } else if ((tri.divergence === "convergent" || tri.divergence === "divergent") && n !== 2) {
-      ok = false;
-      detail = `divergence "${tri.divergence}" expects 2 methods but ${n} used`;
-    } else if ((tri.divergence === "convergent" || tri.divergence === "divergent") && tri.spread == null) {
-      ok = false;
-      detail = `divergence "${tri.divergence}" with two methods but spread is null`;
+    const readings: Array<{ method: "justified-pe" | "dcf"; marginOfSafety: number }> = [];
+    if (spine.fairValue.available && spine.fairValue.marginOfSafety != null) {
+      readings.push({ method: "justified-pe", marginOfSafety: spine.fairValue.marginOfSafety });
     }
-    if (ok) c.hardPass("valuation/triangulation", detail);
-    else c.hardFail("valuation/triangulation", detail);
+    if (dcf?.available && dcf.marginOfSafety != null) {
+      readings.push({ method: "dcf", marginOfSafety: dcf.marginOfSafety });
+    }
+    const expectedMethods = readings.map((reading) => reading.method);
+    const expectedSpread =
+      readings.length === 2
+        ? Math.abs(readings[0].marginOfSafety - readings[1].marginOfSafety)
+        : null;
+    const expectedMargin =
+      readings.length === 0
+        ? null
+        : readings.reduce((sum, reading) => sum + reading.marginOfSafety, 0) /
+          readings.length;
+    const expectedDivergence =
+      readings.length === 0
+        ? "unavailable"
+        : readings.length === 1
+          ? "single-method"
+          : expectedSpread! <= DIVERGENCE_THRESHOLD
+            ? "convergent"
+            : "divergent";
+    const methodsMatch =
+      tri.methodsUsed.length === expectedMethods.length &&
+      tri.methodsUsed.every((method, index) => method === expectedMethods[index]);
+    const spreadMatches =
+      (tri.spread == null && expectedSpread == null) ||
+      (tri.spread != null && expectedSpread != null && approx(tri.spread, expectedSpread));
+    const marginMatches =
+      (tri.marginOfSafety == null && expectedMargin == null) ||
+      (tri.marginOfSafety != null &&
+        expectedMargin != null &&
+        approx(tri.marginOfSafety, expectedMargin));
+    if (
+      methodsMatch &&
+      tri.divergence === expectedDivergence &&
+      spreadMatches &&
+      marginMatches
+    ) {
+      c.hardPass(
+        "valuation/triangulation",
+        `triangulation matches ${expectedMethods.length} available valuation method(s)`,
+      );
+    } else {
+      c.hardFail(
+        "valuation/triangulation",
+        `triangulation drift: expected methods [${expectedMethods.join(", ")}], ${expectedDivergence}, margin ${expectedMargin}, spread ${expectedSpread}; stored methods [${tri.methodsUsed.join(", ")}], ${tri.divergence}, margin ${tri.marginOfSafety}, spread ${tri.spread}`,
+      );
+    }
   }
 }
 

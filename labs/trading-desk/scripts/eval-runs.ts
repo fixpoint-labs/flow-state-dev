@@ -25,6 +25,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { checkRun } from "../eval/invariants";
 import { runJudges, type JudgeReport } from "../eval/judge";
+import { EvalUsageError, parsePositiveNumberFlag } from "../eval/options";
 import {
   appendScoreboardLine,
   assembleQualityRecord,
@@ -90,9 +91,11 @@ function evalOptions(a: Args): EvalOptions {
     outDir: isAbsolute(outRaw) ? outRaw : join(APP, outRaw),
     judgeModel: one(a, "judge-model") ?? DEFAULT_JUDGE_MODEL,
     noJudges: has(a, "no-judges"),
-    k: one(a, "k") !== undefined ? Number(one(a, "k")) : undefined,
-    timeoutMs: one(a, "judge-timeout-ms") !== undefined ? Number(one(a, "judge-timeout-ms")) : undefined,
-    maxCostUsd: one(a, "max-cost-usd") !== undefined ? Number(one(a, "max-cost-usd")) : undefined,
+    k: parsePositiveNumberFlag(one(a, "k"), "k", { integer: true }),
+    timeoutMs: parsePositiveNumberFlag(one(a, "judge-timeout-ms"), "judge-timeout-ms", {
+      integer: true,
+    }),
+    maxCostUsd: parsePositiveNumberFlag(one(a, "max-cost-usd"), "max-cost-usd"),
   };
 }
 
@@ -228,7 +231,8 @@ async function sweep(a: Args): Promise<number> {
     return 2;
   }
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as ManifestTuple[];
-  const concurrency = Number(one(a, "concurrency") ?? "2");
+  const concurrency =
+    parsePositiveNumberFlag(one(a, "concurrency"), "concurrency", { integer: true }) ?? 2;
   const stamp = Date.now();
 
   // Phase A: run each tuple's analyze + read (bounded concurrency; each run gets
@@ -297,7 +301,10 @@ async function evalMode(a: Args): Promise<number> {
     console.error("eval requires at least one --session <id>");
     return 2;
   }
-  if (one(a, "concurrency") !== undefined && Number(one(a, "concurrency")) > 1) {
+  const concurrency = parsePositiveNumberFlag(one(a, "concurrency"), "concurrency", {
+    integer: true,
+  });
+  if (concurrency !== undefined && concurrency > 1) {
     console.warn("eval mode reads the shared store — --concurrency is ignored (reads run sequentially).");
   }
 
@@ -399,19 +406,25 @@ async function variance(a: Args): Promise<number> {
 async function main(): Promise<void> {
   const a = parseArgs(process.argv.slice(2));
   let code = 0;
-  switch (a.mode) {
-    case "sweep":
-      code = await sweep(a);
-      break;
-    case "eval":
-      code = await evalMode(a);
-      break;
-    case "variance":
-      code = await variance(a);
-      break;
-    default:
-      console.error("usage: pnpm eval <sweep|eval|variance> [flags] (see scripts/eval-runs.ts header)");
-      code = 2;
+  try {
+    switch (a.mode) {
+      case "sweep":
+        code = await sweep(a);
+        break;
+      case "eval":
+        code = await evalMode(a);
+        break;
+      case "variance":
+        code = await variance(a);
+        break;
+      default:
+        console.error("usage: pnpm eval <sweep|eval|variance> [flags] (see scripts/eval-runs.ts header)");
+        code = 2;
+    }
+  } catch (err) {
+    if (!(err instanceof EvalUsageError)) throw err;
+    console.error(`usage error: ${err.message}`);
+    code = 2;
   }
   process.exit(code);
 }

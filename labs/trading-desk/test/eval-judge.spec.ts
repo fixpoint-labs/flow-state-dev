@@ -114,9 +114,9 @@ function completedBundle(): RunArtifactsBundle {
 
 /** A judge mock that always returns findings scoring `score` for each criterion.
  *  Provides enough script steps for k repeats. */
-function judgeMock(name: string, score: number, criteriaCount: number) {
-  const findings = Array.from({ length: criteriaCount }, (_, i) => ({
-    criterion: `criterion ${i}`,
+function judgeMock(name: string, score: number, criteria: string[]) {
+  const findings = criteria.map((criterion) => ({
+    criterion,
     score,
     assessment: "assessed",
     evidence: "cited evidence",
@@ -128,7 +128,7 @@ function judgeMock(name: string, score: number, criteriaCount: number) {
 function scoringResolver(score: number): ModelResolver {
   const generators: Record<string, ReturnType<typeof mockGenerator>> = {};
   for (const dim of RUBRICS) {
-    generators[`eval-judge-${dim.key}`] = judgeMock(`eval-judge-${dim.key}`, score, dim.criteria.length);
+    generators[`eval-judge-${dim.key}`] = judgeMock(`eval-judge-${dim.key}`, score, dim.criteria);
   }
   return createMockModelResolver({ generators, policy: "error" });
 }
@@ -158,6 +158,19 @@ describe("blindBundle", () => {
     // Role labels the rubrics need survive.
     expect(serialized).toContain("bullResearcher");
     expect(serialized).toContain("portfolioManager");
+  });
+
+  it("strips reserved outcome fields so process-quality judges never see results", () => {
+    const bundle = completedBundle();
+    bundle.decisionSnapshot = {
+      outcomeRealizedPrice: 999_999,
+      outcomeAsOf: "SECRET_OUTCOME_DATE",
+      outcomeVerdict: "correct",
+    } as NonNullable<RunArtifactsBundle["decisionSnapshot"]>;
+    const serialized = JSON.stringify(blindBundle(bundle));
+    expect(serialized).not.toContain("999999");
+    expect(serialized).not.toContain("SECRET_OUTCOME_DATE");
+    expect(serialized).not.toContain("outcomeVerdict");
   });
 });
 
@@ -197,6 +210,46 @@ describe("runJudges", () => {
     expect(evidence.mean).toBeCloseTo(0.6, 5); // graded stays raw
     // The raw per-criterion score is preserved in the sidecar (unbinarized).
     expect(debate.repeats[0].findings[0].score).toBeCloseTo(0.6, 5);
+  });
+
+  it("counts duplicate, unknown, and omitted findings against the declared criteria", async () => {
+    const generators: Record<string, ReturnType<typeof mockGenerator>> = {};
+    for (const dim of RUBRICS) {
+      const findings =
+        dim.key === "evidence-quality"
+          ? [
+              { criterion: dim.criteria[0], score: 1, assessment: "first", evidence: "e1" },
+              {
+                criterion: dim.criteria[0],
+                score: 1,
+                assessment: "duplicate",
+                evidence: "e2",
+              },
+              {
+                criterion: "invented criterion",
+                score: 1,
+                assessment: "unknown",
+                evidence: "e3",
+              },
+            ]
+          : dim.criteria.map((criterion) => ({
+              criterion,
+              score: 1,
+              assessment: "assessed",
+              evidence: "cited evidence",
+            }));
+      generators[`eval-judge-${dim.key}`] = mockGenerator({
+        name: `eval-judge-${dim.key}`,
+        script: [{ structuredOutput: { findings, overallAssessment: "ok" } }],
+      });
+    }
+    const report = await runJudges(completedBundle(), {
+      judgeModel: "vercel/anthropic/claude-haiku-4-5",
+      k: 1,
+      modelResolver: createMockModelResolver({ generators, policy: "error" }),
+    });
+    const evidence = report!.dimensions.find((d) => d.key === "evidence-quality")!;
+    expect(evidence.mean).toBeCloseTo(1 / 3, 5);
   });
 
   it("warns that an unpriced judge model can't enforce the budget cap", async () => {
@@ -254,6 +307,29 @@ describe("runJudges", () => {
     expect(dim.repeats[0].status).toBe("timeout");
     expect(dim.repeats[0].score).toBe(0);
     expect(dim.repeats[0].reason).toBe("judge timeout");
+  });
+
+  it("stops further calls when a timeout makes spend unknowable under a budget cap", async () => {
+    const hangingResolver = ((modelId: string) => ({
+      modelId,
+      generate: () => new Promise(() => {}),
+      // eslint-disable-next-line require-yield
+      async *stream() {
+        await new Promise(() => {});
+      },
+    })) as unknown as ModelResolver;
+
+    const report = await runJudges(completedBundle(), {
+      judgeModel: "vercel/anthropic/claude-haiku-4-5",
+      k: 2,
+      timeoutMs: 20,
+      maxCostUsd: 5,
+      modelResolver: hangingResolver,
+    });
+    expect(report!.dimensions[0].k).toBe(1);
+    expect(report!.dimensions.slice(1).every((d) => d.status === "skipped")).toBe(true);
+    expect(report!.warnings.some((w) => w.includes("spend became unknown"))).toBe(true);
+    expect(report!.totalCostUsd).toBeNull();
   });
 
   it("skips the whole judge layer on a non-completed run", async () => {

@@ -323,6 +323,26 @@ describe("checkRun — mandate", () => {
     const report = checkRun(b);
     expect(byId(report.checks, "mandate/mirror-present")?.status).toBe("fail");
   });
+
+  it("checks a mandate clamp against the pre-policy target when both gates fire", () => {
+    const b = healthyBundle();
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.mandateDecision = { ...pm.mandateDecision!, sizeClamped: true };
+    pm.portfolioFit = { ...pm.portfolioFit!, targetWeightPct: 1 };
+    pm.policyDecision = {
+      mandatePresent: true,
+      policyVerdict: "capped",
+      positionCapClamped: true,
+      excluded: false,
+      householdWeightKnown: true,
+      preGatePolicyTargetPct: MANDATE.unclearedCapPct,
+      allocationRead: "within allocation",
+      constraintRead: "capped after the risk-mandate gate",
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/clamp-on-cap")?.status).toBe("pass");
+  });
 });
 
 describe("checkRun — decision-consistency", () => {
@@ -383,6 +403,52 @@ describe("checkRun — valuation", () => {
     };
     const report = checkRun(b);
     expect(byId(report.checks, "valuation/dcf-abstention")?.status).toBe("fail");
+  });
+
+  it("fails when an unavailable DCF retains available-only fields", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.dcf = {
+      intrinsicValue: 100,
+      marginOfSafety: 0.2,
+      discountRate: 0.09,
+      stage1Growth: 0.1,
+      terminalValueShare: 0.7,
+      impliedGrowth: 0.12,
+      expectationsGap: 0.02,
+      reliability: "ok",
+      reverseDcfStatus: "solved",
+      unavailableReason: "non-positive-fcf",
+      method: "dcf",
+      available: false,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/dcf-abstention")?.status).toBe("fail");
+  });
+
+  it("fails when triangulation names a valuation leg that was unavailable", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.dcf = {
+      intrinsicValue: null,
+      marginOfSafety: null,
+      discountRate: null,
+      stage1Growth: null,
+      terminalValueShare: null,
+      impliedGrowth: null,
+      expectationsGap: null,
+      reliability: null,
+      reverseDcfStatus: "unavailable",
+      unavailableReason: "non-positive-fcf",
+      method: "none",
+      available: false,
+    };
+    b.valuationSpine!.triangulation = {
+      marginOfSafety: 0.3,
+      methodsUsed: ["dcf"],
+      divergence: "single-method",
+      spread: null,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/triangulation")?.status).toBe("fail");
   });
 });
 

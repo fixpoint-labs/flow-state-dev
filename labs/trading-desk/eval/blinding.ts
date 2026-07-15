@@ -11,7 +11,9 @@
  * every memo body / typed field, the computed valuation + reward-to-risk +
  * mandate records, and the subject ticker/date the judge needs to weigh
  * evidence. What goes: `sessionId`, all ISO timestamps, capture paths, snapshot
- * as-of. Length-neutrality is instructed in the rubric preamble, not here.
+ * as-of, and reserved outcome fields. Outcomes are ground truth and must never
+ * leak into this process-quality-only judge. Length-neutrality is instructed in
+ * the rubric preamble, not here.
  */
 import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
 
@@ -26,6 +28,9 @@ const STRIP_KEYS = new Set<string>([
   "startedAt",
   "completedAt",
   "snapshotAsOf",
+  "outcomeRealizedPrice",
+  "outcomeAsOf",
+  "outcomeVerdict",
 ]);
 
 /** A JSON-safe value with the strip keys removed at every depth. */

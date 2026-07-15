@@ -93,11 +93,13 @@ scoreboard never mixes scales.
 (the same internal path `analyzerScorer` takes, run directly so the RAW findings —
 per-criterion score/assessment/evidence — survive for the sidecar). The judge model
 is pinned via the block `model` against an injected `createModelResolver()`, reading
-a **blinded** bundle (`blinding.ts` strips `sessionId`, timestamps, and capture
-paths; persona role labels stay). **k = 3** repeats per dimension (mean + std
+a **blinded** bundle (`blinding.ts` strips `sessionId`, timestamps, capture paths,
+and reserved outcome fields; persona role labels stay). **k = 3** repeats per dimension (mean + std
 recorded). A hung provider is bounded by a local `--judge-timeout-ms` race; a failed
 or timed-out repeat records score 0 + a reason (a failed judge is a failed score,
-never a crashed sweep). If the judge family matches the desk's generators
+never a crashed sweep). When a budget cap is set and a failed call exposes no
+usage trace, the suite stops launching judges because the remaining spend is
+unknowable; it never treats a known-cost subtotal as the total. If the judge family matches the desk's generators
 (OpenAI/Google/xAI), a **self-preference warning** is recorded on the run — never a
 block.
 
@@ -152,11 +154,12 @@ pnpm eval eval     --session <id> [--session <id> ...] [same flags]
 pnpm eval variance --session <id> [--session <id> ...] [--k 5] [--judge-model <id>]
 ```
 
-Manifest tuples: `[{ ticker, date?, costPreset?, dataSource?, riskMandate?, userThesis? }]`
+Manifest tuples: `[{ ticker, date?, costPreset?, dataSource?, riskMandate?, userThesis?, selectedAccountIds? }]`
 — field names match `analyzeInputSchema` exactly (the per-run override is
 `riskMandate`, a pack id). Default `--out` is the gitignored `.fsdev/eval/`; the
-default judge model is `vercel/openai/gpt-5.4-mini`. Exit code is non-zero when any
-run errored or any **hard** invariant failed.
+default judge model is `vercel/openai/gpt-5.4-mini`. Numeric flags must be positive
+finite values; `--k`, `--judge-timeout-ms`, and `--concurrency` must also be
+integers. Exit code is non-zero when any run errored or any **hard** invariant failed.
 
 **PGlite is single-process.** `sweep` gives each run an isolated
 `TRADING_DESK_DATA_DIR` under `--out` (so `--concurrency > 1` is safe and sweep

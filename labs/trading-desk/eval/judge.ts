@@ -134,19 +134,30 @@ function modelFamily(modelId: string): string {
 
 function meanOfFindings(
   findings: JudgeFinding[],
-  kind: RubricDimension["kind"],
-  expectedCount: number,
+  dim: RubricDimension,
 ): number {
   // Checklist criteria are 0-or-1 (spec §4.5): a judge that returns a fractional
   // score is snapped to the nearest bound so the mean preserves binary semantics.
   const scoreOf = (f: JudgeFinding): number =>
-    kind === "checklist" ? (f.score >= 0.5 ? 1 : 0) : f.score;
-  // Average over the EXPECTED criterion count, not just the returned findings —
-  // a judge that omits criteria must not score 1.0 off one high finding; the
-  // missing criteria count as 0.
-  const denom = Math.max(findings.length, expectedCount);
-  if (denom === 0) return 0;
-  return findings.reduce((a, f) => a + scoreOf(f), 0) / denom;
+    dim.kind === "checklist" ? (f.score >= 0.5 ? 1 : 0) : f.score;
+
+  // Aggregate against the DECLARED rubric, not the number of rows the model
+  // happened to return. Only the first exact match for each criterion counts;
+  // duplicate and unknown rows are ignored, while omitted criteria contribute 0.
+  // This prevents a judge from replacing three distinct checks with three copies
+  // of one high-scoring finding and still earning a perfect dimension score.
+  if (dim.criteria.length === 0) return 0;
+  const expected = new Set(dim.criteria);
+  const scores = new Map<string, number>();
+  for (const finding of findings) {
+    if (expected.has(finding.criterion) && !scores.has(finding.criterion)) {
+      scores.set(finding.criterion, scoreOf(finding));
+    }
+  }
+  return (
+    dim.criteria.reduce((sum, criterion) => sum + (scores.get(criterion) ?? 0), 0) /
+    dim.criteria.length
+  );
 }
 
 /** Grade one dimension once. Never throws — a failure or timeout becomes a
@@ -182,7 +193,7 @@ async function judgeOnce(
     }
     const output = result.output as z.infer<typeof judgeOutputSchema>;
     return {
-      score: meanOfFindings(output.findings, dim.kind, dim.criteria.length),
+      score: meanOfFindings(output.findings, dim),
       findings: output.findings,
       status: "scored",
       reason: null,
@@ -235,6 +246,8 @@ export async function runJudges(
   const blinded = blindBundle(bundle);
   const dimensions: JudgeDimensionResult[] = [];
   let cumulativeCost = 0;
+  let hasUnknownCost = false;
+  let budgetBlockedReason: string | null = null;
 
   for (const dim of RUBRICS) {
     if (!dim.needs(bundle)) {
@@ -252,12 +265,17 @@ export async function runJudges(
       });
       continue;
     }
-    if (opts.maxCostUsd !== undefined && cumulativeCost >= opts.maxCostUsd) {
+    if (
+      budgetBlockedReason !== null ||
+      (opts.maxCostUsd !== undefined && cumulativeCost >= opts.maxCostUsd)
+    ) {
       dimensions.push({
         key: dim.key,
         kind: dim.kind,
         status: "skipped",
-        skipReason: `budget cap ($${opts.maxCostUsd}) reached before this dimension`,
+        skipReason:
+          budgetBlockedReason ??
+          `budget cap ($${opts.maxCostUsd}) reached before this dimension`,
         mean: null,
         std: null,
         k: 0,
@@ -282,7 +300,20 @@ export async function runJudges(
       if (opts.maxCostUsd !== undefined && cumulativeCost >= opts.maxCostUsd) break;
       const repeat = await judgeOnce(dim, inputString, resolver, opts.judgeModel, timeoutMs);
       repeats.push(repeat);
-      if (repeat.costUsd != null) cumulativeCost += repeat.costUsd;
+      if (repeat.costUsd != null) {
+        cumulativeCost += repeat.costUsd;
+      } else {
+        hasUnknownCost = true;
+        // A thrown/timed-out provider call may already have consumed tokens but
+        // exposes no usage trace. With a budget configured, fail CLOSED: stop
+        // launching calls because the remaining headroom is unknowable.
+        if (opts.maxCostUsd !== undefined) {
+          budgetBlockedReason =
+            `judge spend became unknown after ${dim.key} repeat ${i + 1}; ` +
+            `stopped further calls to preserve the $${opts.maxCostUsd} budget cap`;
+          break;
+        }
+      }
     }
 
     // Budget hit before this dimension's first repeat → skipped, not a 0-repeat score.
@@ -302,7 +333,10 @@ export async function runJudges(
       continue;
     }
     if (repeats.length < k) {
-      warnings.push(`${dim.key}: budget cap reached — ${repeats.length}/${k} repeats ran`);
+      warnings.push(
+        budgetBlockedReason ??
+          `${dim.key}: budget cap reached — ${repeats.length}/${k} repeats ran`,
+      );
     }
 
     const scores = repeats.map((r) => r.score);
@@ -328,6 +362,11 @@ export async function runJudges(
     dimensions,
     judgeModel: opts.judgeModel,
     warnings,
-    totalCostUsd: allCosts.length > 0 ? allCosts.reduce((a, b) => a + b, 0) : null,
+    // Any timeout/throw without a usage trace makes the true total unknowable;
+    // never report a known-cost subtotal as though it were the total.
+    totalCostUsd:
+      hasUnknownCost || allCosts.length === 0
+        ? null
+        : allCosts.reduce((a, b) => a + b, 0),
   };
 }
