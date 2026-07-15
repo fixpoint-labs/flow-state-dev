@@ -9,9 +9,9 @@
  * sanity anchor.
  */
 import { describe, expect, it } from "vitest";
-import { computeDcfValue } from "../src/flows/analysis/lib/dcf";
-import { computeExpectedReturn } from "../src/flows/analysis/lib/expected-return";
-import { computeValuation } from "../src/flows/analysis/lib/valuation";
+import { computeDcfValue } from "../flows/analysis/lib/dcf";
+import { computeExpectedReturn } from "../flows/analysis/lib/expected-return";
+import { computeValuation } from "../flows/analysis/lib/valuation";
 
 import nvdaFundamentals from "../fixtures/NVDA/2026-05-06/fundamentals.json";
 import nvdaBalanceSheet from "../fixtures/NVDA/2026-05-06/balance-sheet.json";

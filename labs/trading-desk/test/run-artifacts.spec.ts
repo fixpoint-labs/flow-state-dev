@@ -9,18 +9,18 @@
  * `run-summary.spec.ts` (assert each field traces to a named stored input).
  */
 import { describe, expect, it } from "vitest";
-import type { LensConvergenceState } from "../src/flows/analysis/agents/lenses/lens-convergence-resource";
-import type { DecisionSnapshotState } from "../src/flows/analysis/decision-snapshot-resource";
-import { ALL_MEMO_KEYS } from "../src/flows/analysis/registry";
-import type { MemoState } from "../src/flows/analysis/resources";
+import type { LensConvergenceState } from "../flows/analysis/agents/lenses/lens-convergence-resource";
+import type { DecisionSnapshotState } from "../flows/analysis/decision-snapshot-resource";
+import { ALL_MEMO_KEYS } from "../flows/analysis/registry";
+import type { MemoState } from "../flows/analysis/resources";
 import {
   buildRunArtifacts,
   runArtifactsStateSchema,
-} from "../src/flows/analysis/run-artifacts";
-import type { RunSummaryMemoInput } from "../src/flows/analysis/run-summary";
-import type { RewardToRiskState } from "../src/flows/analysis/reward-to-risk-resource";
-import type { SessionState } from "../src/flows/analysis/state";
-import type { ValuationSpineState } from "../src/flows/analysis/valuation-spine-resource";
+} from "../flows/analysis/run-artifacts";
+import type { RunSummaryMemoInput } from "../flows/analysis/run-summary";
+import type { RewardToRiskState } from "../flows/analysis/reward-to-risk-resource";
+import type { SessionState } from "../flows/analysis/state";
+import type { ValuationSpineState } from "../flows/analysis/valuation-spine-resource";
 
 const RAN_AT = "2026-06-25T00:00:00.000Z";
 const SESSION_ID = "run_NVDA_2026-05-06_abc";
@@ -43,6 +43,8 @@ function sessionState(overrides: Partial<SessionState> = {}): SessionState {
     portfolio: null,
     selectedAccountIds: [],
     riskMandate: null,
+    portfolioMandate: null,
+    householdTickerWeightPct: null,
     standingThesis: null,
     ...overrides,
   };
@@ -69,6 +71,11 @@ function decisionSnapshot(
     worstCaseReturnPct: -12.4,
     capacityVetoed: false,
     hasStandingThesis: null,
+    mandatePresent: null,
+    policyVerdict: null,
+    positionCapClamped: null,
+    excluded: null,
+    preGatePolicyTargetPct: null,
     decidedAt: "2026-06-25T00:00:00.000Z",
     outcomeRealizedPrice: null,
     outcomeAsOf: null,

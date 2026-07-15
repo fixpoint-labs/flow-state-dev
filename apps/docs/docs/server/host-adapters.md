@@ -16,7 +16,7 @@ The router itself is portable. It speaks Web standard `Request` and `Response`, 
 
 | Adapter | Import | Runtime | Reach for it when |
 | --- | --- | --- | --- |
-| `serve()` | `@flow-state-dev/node` | Long-lived Node process | Self-hosting on Railway, Render, Fly, a VPS, or Docker. Also what `fsdev dev` uses. |
+| `serve()` | `@flow-state-dev/node` | Long-lived Node process | Self-hosting on Railway, Render, Fly, a VPS, or Docker. Also what `fsdev dev` and `fsdev serve` use. |
 | `createServerApp()` | `@flow-state-dev/node/app` | Any (Web Fetch) | You want the portable app to wrap for a serverless target yourself. |
 | `createLambdaHandler()` | `@flow-state-dev/node/aws-lambda` | AWS Lambda | Deploying to Lambda with response streaming. |
 | `createVercelHandler()` | `@flow-state-dev/vercel` | Vercel + Next.js | Your app is on Next.js and you deploy to Vercel. |
@@ -81,3 +81,4 @@ For Bun and Deno that is the whole adapter. For platforms with an event-shaped e
 - [Deployment overview](/guides/deployment) — SSE and persistence per platform
 - [Deploying to AWS Lambda](/guides/deploying-to-aws-lambda) — a worked Lambda example
 - [Server setup](/docs/server/setup) — configuring the router
+- [CLI API Reference](/docs/api/cli) — `fsdev serve` wraps `serve()` to run a config from the terminal

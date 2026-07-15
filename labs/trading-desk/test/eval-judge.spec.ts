@@ -1,5 +1,5 @@
 /**
- * Tests for the LLM-judge layer (`src/eval/judge.ts` + `blinding.ts` + `rubrics.ts`,
+ * Tests for the LLM-judge layer (`eval/judge.ts` + `blinding.ts` + `rubrics.ts`,
  * FIX-790), driven with MOCKED models (no real spend).
  *
  * Intent encoded: the judge grades each rubric dimension over a BLINDED bundle,
@@ -11,13 +11,13 @@
 import { describe, expect, it } from "vitest";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import type { ModelResolver } from "@flow-state-dev/core";
-import { ALL_MEMO_KEYS } from "../src/flows/analysis/registry";
-import type { MemoState } from "../src/flows/analysis/resources";
-import type { RunArtifactsBundle } from "../src/flows/analysis/run-artifacts";
-import type { RunSummary } from "../src/flows/analysis/run-summary";
-import { blindBundle } from "../src/eval/blinding";
-import { runJudges } from "../src/eval/judge";
-import { RUBRICS } from "../src/eval/rubrics";
+import { ALL_MEMO_KEYS } from "../flows/analysis/registry";
+import type { MemoState } from "../flows/analysis/resources";
+import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
+import type { RunSummary } from "../flows/analysis/run-summary";
+import { blindBundle } from "../eval/blinding";
+import { runJudges } from "../eval/judge";
+import { RUBRICS } from "../eval/rubrics";
 
 const SECRET_SESSION = "run_SECRET_SESSION_id";
 const SECRET_TS = "2020-01-02T03:04:05.000Z";
@@ -89,6 +89,11 @@ function completedBundle(): RunArtifactsBundle {
     rewardToRiskLossAdjustedGlr: 2,
     worstCaseReturnPct: -15,
     hasStandingThesis: null,
+    mandatePresent: null,
+    policyVerdict: null,
+    positionCapClamped: null,
+    excluded: null,
+    preGatePolicyTargetPct: null,
     memos: [],
     memoErrors: 0,
   };

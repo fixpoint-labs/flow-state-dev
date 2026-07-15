@@ -16,9 +16,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { get_macro_indicators } from "../src/flows/analysis/tools/data/get_macro_indicators";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
-import { sessionStateSchema } from "../src/flows/analysis/state";
+import { get_macro_indicators } from "../flows/analysis/tools/data/get_macro_indicators";
+import { _resetCache } from "../lib/cache";
+import { sessionStateSchema } from "../flows/analysis/state";
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-macro-indicators-test",

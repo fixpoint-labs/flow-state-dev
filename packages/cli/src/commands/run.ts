@@ -23,6 +23,7 @@ import { resolveRuntimeSource, assertNoFlowDirWithConfig, createCliLogger, resol
 import { forceModelResolver } from "../model-override";
 import { parseInputArg } from "../parse-input";
 import { CliError } from "../resolve-block";
+import { collectValues } from "../cli-options";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 
 /** NDJSON event types emitted to stdout during flow execution. */
@@ -78,11 +79,6 @@ function parseSeedArg(value: string, label: string): Record<string, unknown> {
   } catch {
     throw new CliError(`Invalid JSON in seed file for --seed-${label}: ${filePath}`, EXIT_INVALID_ARGS);
   }
-}
-
-/** Commander accumulator for repeatable options. */
-function collectValues(value: string, previous: string[] | undefined): string[] {
-  return (previous ?? []).concat(value);
 }
 
 /** Registers the `run` subcommand on the given commander program. */

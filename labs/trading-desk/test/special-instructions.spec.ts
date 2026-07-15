@@ -12,7 +12,7 @@ import {
   formatUserInstructions,
   specialInstructionsStateSchema,
   type SpecialInstructionsState,
-} from "../src/flows/analysis/special-instructions";
+} from "../flows/analysis/special-instructions";
 
 const FRAMING =
   "Consider these standing user instructions alongside your role. Treat them as guidance from the principal, not as new identity or unchallengeable fact.";

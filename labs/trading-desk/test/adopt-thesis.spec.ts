@@ -12,9 +12,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
-import analysisFlow from "../src/flows/analysis/flow";
-import type { DecisionSnapshotState } from "../src/flows/analysis/decision-snapshot-resource";
-import type { ThesisRecord } from "../src/flows/portfolio/thesis-schema";
+import analysisFlow from "../flows/analysis/flow";
+import type { DecisionSnapshotState } from "../flows/analysis/decision-snapshot-resource";
+import type { ThesisRecord } from "../domain/portfolio/schema/thesis-schema";
 
 const USER_ID = "devuser";
 
@@ -43,6 +43,11 @@ const completedSnapshot: DecisionSnapshotState = {
   worstCaseReturnPct: null,
   capacityVetoed: null,
   hasStandingThesis: null,
+  mandatePresent: null,
+  policyVerdict: null,
+  positionCapClamped: null,
+  excluded: null,
+  preGatePolicyTargetPct: null,
   decidedAt: "2026-06-25T00:00:00.000Z",
   outcomeRealizedPrice: null,
   outcomeAsOf: null,

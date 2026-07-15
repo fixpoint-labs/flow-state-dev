@@ -8,15 +8,15 @@
  * the provider chain.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveTicker } from "../src/flows/analysis/lib/ticker-resolver";
-import { hasFinnhubKey } from "../src/flows/analysis/tools/providers/finnhub";
-import { fetchYahooFundamentals } from "../src/flows/analysis/tools/providers/yahoo";
+import { resolveTicker } from "../flows/analysis/lib/ticker-resolver";
+import { hasFinnhubKey } from "../lib/providers/finnhub";
+import { fetchYahooFundamentals } from "../lib/providers/yahoo";
 
-vi.mock("../src/flows/analysis/tools/providers/finnhub", () => ({
+vi.mock("../lib/providers/finnhub", () => ({
   hasFinnhubKey: vi.fn(() => false),
   fetchFinnhubFundamentals: vi.fn(),
 }));
-vi.mock("../src/flows/analysis/tools/providers/yahoo", () => ({
+vi.mock("../lib/providers/yahoo", () => ({
   fetchYahooFundamentals: vi.fn(),
 }));
 

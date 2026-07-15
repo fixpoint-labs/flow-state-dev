@@ -18,7 +18,7 @@ const nextConfig = {
   // generally bundles fine, but turbopack has mangled pdfjs worker loading twice
   // (the client web worker URL, then the server "fake worker" chunk), so
   // externalizing it is the belt-and-suspenders that avoids the class entirely.
-  // See src/flows/portfolio/extract-pdf-text.server.ts.
+  // See flows/portfolio/extract-pdf-text.server.ts.
   //
   // `pg` (dynamic/native optional requires) and `@electric-sql/pglite` (a WASM
   // build with its own fs/worker loading) are the portfolio backing's drivers

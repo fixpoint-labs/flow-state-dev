@@ -15,8 +15,8 @@ It has two layers over the same stored run, plus a variance mode:
   on a blinded bundle, with a judge model pinned distinct from the desk's
   generators.
 
-The code lives in `src/eval/`; the read seam is the zero-model `runArtifacts`
-action (`src/flows/analysis/orchestration/run-artifacts-action.ts`), the deeper
+The code lives in `eval/`; the read seam is the zero-model `runArtifacts`
+action (`flows/analysis/orchestration/run-artifacts-action.ts`), the deeper
 sibling of `runSummary`. The CLI is `scripts/eval-runs.ts` (`pnpm eval`).
 
 ## The read seam: `runArtifacts`
@@ -183,7 +183,7 @@ UI-created sessions (a different owner) are a named limitation.
 ## See also
 
 - [`CLAUDE.md` → Evaluating run quality](../CLAUDE.md) — the terse agent-guide entry
-- [`src/flows/analysis/run-summary.ts`](../src/flows/analysis/run-summary.ts) — the
+- [`flows/analysis/run-summary.ts`](../flows/analysis/run-summary.ts) — the
   compact projection the harness reads; this suite reads the deeper `runArtifacts` bundle
 - [`goals/trading-desk-eval/fixture-batch-scored`](../../../goals/trading-desk-eval/fixture-batch-scored/goal.md) — the goal check
 - `@flow-state-dev/testing` `analyzerScorer` — the judge primitive this layer builds on

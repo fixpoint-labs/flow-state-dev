@@ -1,5 +1,5 @@
 /**
- * Tests for the deterministic invariant layer (`src/eval/invariants.ts`, FIX-790).
+ * Tests for the deterministic invariant layer (`eval/invariants.ts`, FIX-790).
  *
  * Follows the `composite-math.spec.ts` model: a coherent stored-run bundle in,
  * a result object out, with per check-group cases — a passing fixture, a
@@ -11,17 +11,17 @@
  * consistency, not a stubbed comparison.
  */
 import { describe, expect, it } from "vitest";
-import { ALL_MEMO_KEYS } from "../src/flows/analysis/registry";
-import type { MemoState } from "../src/flows/analysis/resources";
-import type { RunArtifactsBundle } from "../src/flows/analysis/run-artifacts";
-import type { RunSummary } from "../src/flows/analysis/run-summary";
-import { computeMandateGates, clampTargetWeight } from "../src/flows/analysis/lib/mandate-gates";
-import { computeRewardToRisk } from "../src/flows/analysis/lib/reward-to-risk";
-import { ratingBandFor } from "../src/flows/analysis/lib/rating-engine";
-import { resolveMandate } from "../src/flows/analysis/lib/risk-mandate";
-import type { ValuationSpineState } from "../src/flows/analysis/valuation-spine-resource";
-import { checkRun } from "../src/eval/invariants";
-import type { CheckResult } from "../src/eval/types";
+import { ALL_MEMO_KEYS } from "../flows/analysis/registry";
+import type { MemoState } from "../flows/analysis/resources";
+import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
+import type { RunSummary } from "../flows/analysis/run-summary";
+import { computeMandateGates, clampTargetWeight } from "../flows/analysis/lib/mandate-gates";
+import { computeRewardToRisk } from "../flows/analysis/lib/reward-to-risk";
+import { ratingBandFor } from "../flows/analysis/lib/rating-engine";
+import { resolveMandate } from "../flows/analysis/lib/risk-mandate";
+import type { ValuationSpineState } from "../flows/analysis/valuation-spine-resource";
+import { checkRun } from "../eval/invariants";
+import type { CheckResult } from "../eval/types";
 
 const MANDATE = resolveMandate("balanced")!;
 const SCENARIOS = [
@@ -94,6 +94,11 @@ function summary(overrides: Partial<RunSummary> = {}): RunSummary {
     rewardToRiskLossAdjustedGlr: RR.lossAdjustedGlr,
     worstCaseReturnPct: RR.worstCaseReturnPct,
     hasStandingThesis: null,
+    mandatePresent: null,
+    policyVerdict: null,
+    positionCapClamped: null,
+    excluded: null,
+    preGatePolicyTargetPct: null,
     memos: [],
     memoErrors: 0,
     ...overrides,
@@ -186,6 +191,11 @@ function healthyBundle(): RunArtifactsBundle {
       worstCaseReturnPct: RR.worstCaseReturnPct,
       capacityVetoed: !GATES.capacityCleared,
       hasStandingThesis: null,
+      mandatePresent: null,
+      policyVerdict: null,
+      positionCapClamped: null,
+      excluded: null,
+      preGatePolicyTargetPct: null,
       decidedAt: "2026-06-25T00:00:00.000Z",
       outcomeRealizedPrice: null,
       outcomeAsOf: null,

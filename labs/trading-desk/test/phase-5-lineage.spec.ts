@@ -17,10 +17,10 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitPortfolioManagerMemo } from "../src/flows/analysis/agents/portfolio-manager/writer";
-import { memosCollection } from "../src/flows/analysis/resources";
-import { sessionStateSchema } from "../src/flows/analysis/state";
-import { valuationSpineResource } from "../src/flows/analysis/valuation-spine-resource";
+import { commitPortfolioManagerMemo } from "../flows/analysis/agents/portfolio-manager/writer";
+import { memosCollection } from "../flows/analysis/resources";
+import { sessionStateSchema } from "../flows/analysis/state";
+import { valuationSpineResource } from "../flows/analysis/valuation-spine-resource";
 
 type Disposition = {
   index: number;
@@ -125,6 +125,10 @@ function decision(opts: {
       sizeStance: "",
       mandateOverrideReason: "",
     },
+      policyFit: {
+        allocationRead: "",
+        constraintRead: "",
+      },
     citations: null,
   };
 }

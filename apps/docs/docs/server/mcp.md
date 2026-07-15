@@ -51,6 +51,39 @@ export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 The MCP adapter mounts at `POST /api/flows/:kind/mcp`. `GET` and
 `DELETE` on that path return 405. Existing HTTP routes are unchanged.
 
+To serve these endpoints in production without the DevTool, `fsdev serve` stands
+up the flow API and MCP routes from a committed `fsdev.config.*`. See the
+[CLI API Reference](/docs/api/cli).
+
+### Dedicated MCP prefix
+
+Use a dedicated prefix when the shared `/api/flows/:kind/mcp` URL exposes more
+of your application's internal route structure than you want MCP operators to
+configure:
+
+```ts title="lib/flowstate.ts"
+export const flowstate = createFlowState({
+  flows: { billing: billingFlow },
+  stores: { default: { primary: inMemoryStores() } },
+  adapters: [createMcpTransportAdapter({ dedicatedBasePath: true })],
+});
+```
+
+Dedicated mode defaults to `/mcp`, so the endpoint becomes
+`POST /mcp/billing`. You can instead pass an explicit prefix, such as
+`basePath: "/integrations/mcp"`. The ordinary HTTP action routes remain under
+`/api/flows`, and the adapter mounts only the dedicated layout rather than
+keeping the default URL as an alias. A root-only dedicated base is rejected so
+the adapter cannot claim unrelated single-segment routes.
+
+The hosting framework must also send `/mcp/*` requests to the Flow State
+handler. `serve()` from `@flow-state-dev/node` (and `fsdev serve`, which wraps
+it) mount dedicated adapter paths automatically, so a self-hosted Node process
+needs no extra wiring. In a Next.js app, add a matching
+`app/mcp/[...path]/route.ts` route that exports the same platform handlers; a
+handler mounted only at `app/api/flows/[...path]/route.ts` never receives
+`/mcp/*`.
+
 ## Opting a flow into MCP
 
 A flow opts in via `mcp.enabled`. Every action you want exposed needs a
@@ -202,6 +235,46 @@ framework does not run this for you — that table is in your database —
 but `extractBearerToken` and `createHs256JwtVerifier` from
 `@flow-state-dev/engine` are usable inside `resolvePrincipal` to keep
 the verification short.
+
+## Installation-level values from the URL
+
+Sometimes a value should be fixed per installation rather than supplied
+by the model on each call. The common case is a provenance tag: you want
+to know which client a capture came from — Claude Desktop, a mobile app,
+a shared web endpoint — without trusting the model to fill it in.
+
+`forwardQueryParams` takes an allowlist of query-string params. When a
+request URL carries one, its value is merged into the `tools/call`
+input under the same key:
+
+```ts
+createMcpTransportAdapter({ forwardQueryParams: ["source"] });
+```
+
+Each installation then points at its own tagged URL:
+
+```
+https://app.example.com/api/flows/knowledge/mcp?source=claude-desktop
+```
+
+A `log_activity` tool whose input schema has a `source` field now
+receives `source: "claude-desktop"` on every call from that
+installation, regardless of what the model passed.
+
+The forwarded value is **authoritative** — it overrides a same-named
+argument in the tool call. That is the point: this is a value the model
+should not be able to override. Listing a param name is your explicit
+opt-in that it becomes endpoint-controlled. A forwarded param only lands
+if the target action's input schema accepts it; otherwise the normal
+validation boundary strips or rejects it, exactly like any other input
+key. Only `tools/call` is affected, and the default is to forward
+nothing.
+
+This is **not** an authentication mechanism. Credentials belong in the
+`Authorization` header (see [Authentication](#authentication)) — the
+adapter deliberately ignores query-string tokens. `forwardQueryParams`
+is for non-secret, installation-scoped metadata like a source tag, not
+for anything that grants access.
 
 ## Origin enforcement
 

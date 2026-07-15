@@ -12,29 +12,29 @@
 import { describe, expect, it } from "vitest";
 import { assertStrictCompatible } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
-import { thesisOutputSchema } from "../src/flows/analysis/agents/analysts/thesis-schema";
-import { grokOutputSchema } from "../src/flows/analysis/tools/data/get_social_sentiment";
+import { thesisOutputSchema } from "../flows/analysis/agents/analysts/thesis-schema";
+import { grokOutputSchema } from "../flows/analysis/tools/data/get_social_sentiment";
 import {
   secFilingsSchema,
   analystEstimatesSchema,
   earningsTranscriptSchema,
   discoveryPayloadSchema,
-} from "../src/flows/analysis/tools/schemas";
+} from "../flows/analysis/tools/schemas";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,
   investmentThesisOutputSchema,
-} from "../src/flows/analysis/agents/research/generators";
-import { tradeProposalOutputSchema } from "../src/flows/analysis/agents/trader/trader";
+} from "../flows/analysis/agents/research/generators";
+import { tradeProposalOutputSchema } from "../flows/analysis/agents/trader/trader";
 import {
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
-} from "../src/flows/analysis/agents/risk/schemas";
-import { scenarioForecastOutputSchema } from "../src/flows/analysis/agents/scenario-forecaster/scenario-forecaster";
-import { portfolioDecisionOutputSchema } from "../src/flows/analysis/agents/portfolio-manager/portfolio-manager";
-import { thesisAlignmentOutputSchema } from "../src/flows/analysis/agents/thesis-validator/thesis-validator";
-import { pdfExtractionSchema } from "../src/flows/portfolio/portfolio-pdf";
-import { lensVerdictOutputSchema } from "../src/flows/analysis/agents/lenses/lens-verdict-schema";
+} from "../flows/analysis/agents/risk/schemas";
+import { scenarioForecastOutputSchema } from "../flows/analysis/agents/scenario-forecaster/scenario-forecaster";
+import { portfolioDecisionOutputSchema } from "../flows/analysis/agents/portfolio-manager/portfolio-manager";
+import { thesisAlignmentOutputSchema } from "../flows/analysis/agents/thesis-validator/thesis-validator";
+import { pdfExtractionSchema } from "../domain/portfolio/parsers/portfolio-pdf";
+import { lensVerdictOutputSchema } from "../flows/analysis/agents/lenses/lens-verdict-schema";
 
 const cases: Array<[string, ZodTypeAny]> = [
   ["Phase 1 thesisOutputSchema", thesisOutputSchema],
@@ -63,12 +63,12 @@ describe("Generator output schemas are OpenAI strict-mode compatible", () => {
     });
   }
 
-  // The nested `portfolioFit` (Slice 5) and `mandateFit` (FIX-752) objects are
-  // auto-covered by the portfolioDecisionOutputSchema case above, but assert the
-  // whole schema explicitly so a future change that loosens a nested field (e.g.
-  // `.optional()` on `suggestedAccount`, or `z.record` on a mandate field) fails
-  // with a clear, named signal.
-  it("Phase 5 portfolioDecisionOutputSchema (incl. nested portfolioFit + mandateFit) is strict-compatible", () => {
+  // The nested `portfolioFit` (Slice 5), `mandateFit` (FIX-752), and `policyFit`
+  // (FIX-761) objects are auto-covered by the portfolioDecisionOutputSchema case
+  // above, but assert the whole schema explicitly so a future change that loosens
+  // a nested field (e.g. `.optional()` on `suggestedAccount`, or `z.record` on a
+  // mandate/policy field) fails with a clear, named signal.
+  it("Phase 5 portfolioDecisionOutputSchema (incl. nested portfolioFit + mandateFit + policyFit) is strict-compatible", () => {
     expect(() => assertStrictCompatible(portfolioDecisionOutputSchema)).not.toThrow();
   });
 });

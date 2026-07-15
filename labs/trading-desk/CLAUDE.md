@@ -3,8 +3,9 @@
 The trading-desk is a multi-agent app (package `@flow-state-dev/trading-desk`)
 that produces a structured trade recommendation for a given ticker. It's a real
 app — live market data, durable re-openable reports, a real imported portfolio —
-built on **two purpose-named flows**: `analysis` (the research pipeline) and
-`portfolio` (the account / holdings / price system of record). The package and
+built on **two purpose-named flows** (`analysis` for the research pipeline,
+`portfolio` for PDF extract / theses / mandate) plus **`domain/portfolio/`**
+for shared money math, parsers, and write services behind REST. The package and
 app stay "trading-desk"; only the flows are renamed to reflect what they do.
 It lives in `labs/`, not `examples/`: past a teaching snippet, still research
 software.
@@ -25,15 +26,33 @@ haven't:
 
 ## Layout
 
-The app has **two flows** under `src/flows/`:
+The app has **two flows** under `flows/`, plus a **`domain/portfolio/`** package for shared portfolio logic (schemas, parsers, math, write services). Routes and the analysis seed import from domain; the portfolio flow keeps only flow-shaped work.
 
 - **`analysis/`** — the research pipeline (the five-phase analyst→researcher→trader→risk→PM sequence). Previously named `trading-desk`.
-- **`portfolio/`** — the account / holdings / price system of record (Spine B). A separate flow owning its own actions and resources.
+- **`portfolio/`** — flow-shaped portfolio work only: PDF extract, theses, mandate. Account/holdings/ledger CRUD and quote refresh live in REST + domain services.
 
 The analysis flow's tree is grouped by **identity** (`agents/`), **catalog** (`tools/`), and **composition** (`orchestration/`). The flow contract stays at the root.
 
 ```
-src/flows/analysis/
+lib/                           Shared backend utilities and application services
+  cache.ts                      process-wide TTL + in-flight request deduping
+  concurrency.ts                mapLimit + sleep for bounded provider fan-out
+  portfolio-market-data.ts      live portfolio quote/kind policy over providers
+  providers/                    Shared external API clients — stateless, throw on failure
+    types.ts                    Provider-owned request + normalized data contracts
+    finnhub.ts                  Finnhub fetch helpers (incl. institutional ownership)
+    fred.ts                     FRED per-series fetch + retry (macro indicators + NFCI)
+    yahoo.ts                    Yahoo Finance fetch helpers (quoteSummary + fundamentals-timeseries)
+    yahoo-timeseries.ts         pure mapper: fundamentals-timeseries → 3 statements
+    edgar.ts                    SEC EDGAR client (ticker→CIK lookup + companyfacts fetch)
+    edgar-filings.ts            EDGAR filings: submissions list, section extraction, red-flag probes
+    edgar-companyfacts.ts       pure mapper: us-gaap companyfacts → 3 statements
+    eight-k-items.ts            pure mapper: 8-K item codes → typed material events with signal tier
+    web.ts                      homepage meta + web-search fallback
+    xai.ts                      Grok (xAI) credentials + model id
+    massive.ts                  Massive.com client — options-chain snapshot + futures front/next
+
+flows/analysis/
   flow.ts                        flow definition — defineFlow only (actions, resources, session state)
   state.ts                       sessionStateSchema (ticker, date, costPreset, dataSource, ...)
   flow-schema.ts                 analyzeInputSchema (the required caller input)
@@ -80,31 +99,17 @@ src/flows/analysis/
     portfolio-manager/           portfolio-manager.ts approach.ts writer.ts setup.ts prompts/ (was phase-5/; owns its output schema)
     thesis-validator/            thesis-validator.ts approach.ts writer.ts setup.ts prompts/ (was phase-6/)
 
-  tools/                         THE catalog — self-contained, liftable
+  tools/                         analysis handlers + schemas + runtime
     data/                        one file per data tool — get_*.ts + discover_*_context.ts (mode branch + provider chain)
     schemas.ts                   shared zod schemas + ToolName / ToolInput / ToolOutput
     empty-payloads.ts            schema-valid zeros for "unavailable" results
     indicators-math.ts           pure RSI/MACD/ATR/SMA functions
     index.ts                     barrel re-export
     runtime/                     tool runtime (was lib/)
-      cache.ts                   process-wide TTL cache (getOrFetch)
       fixtures.ts                loadFixture(tool, args)
       recorder.ts                recordFixture — stable-serialize + write to corpus
       resolve.ts                 resolveToolPayload — single dispatch for fixture/live/record
       discover.ts                web-search → DiscoveryPayload shape
-    providers/                   external API clients — stateless, throw on failure (was ../providers/)
-      finnhub.ts                 Finnhub fetch helpers (incl. institutional ownership)
-      fred.ts                    FRED per-series fetch + retry (macro indicators + NFCI)
-      yahoo.ts                   Yahoo Finance fetch helpers (quoteSummary + fundamentals-timeseries)
-      yahoo-timeseries.ts        pure mapper: fundamentals-timeseries → 3 statements
-      edgar.ts                   SEC EDGAR client (ticker→CIK lookup + companyfacts fetch)
-      edgar-filings.ts           EDGAR filings: submissions list, section extraction, red-flag probes
-      edgar-companyfacts.ts      pure mapper: us-gaap companyfacts → 3 statements
-      eight-k-items.ts           pure mapper: 8-K item codes → typed material events with signal tier
-      web.ts                     homepage meta + web-search fallback
-      xai.ts                     Grok (xAI) credentials + model id
-      massive.ts                 Massive.com (Polygon) client — options-chain snapshot + futures front/next (the desk's only futures + options source)
-
   orchestration/                 composition only — the ONLY code that knows execution order
     analyze.ts                   the analyze sequence + guard wiring (was flow.ts's analyzePipeline body)
     stages.ts                    per-group setup taps + fan-out / round-robin / chain assembly (was every phase-*/index.ts)
@@ -116,46 +121,39 @@ src/flows/analysis/
     app-root.ts                  APP_ROOT — package root resolved once (module-relative, cwd fallback)
     prompt.ts                    loadPrompt(path) — resolves *.prompt.md relative to the flow root
     ticker-resolver.ts           pre-flight ticker probe
-    concurrency.ts               mapLimit — bounded + retried fan-out
     valuation.ts valuation-spine.ts fair-value.ts expected-return.ts
     rating-engine.ts setup-score.ts sector-resolution.ts   (analysis / scoring math)
 
-src/flows/portfolio/             The `portfolio` domain (Spine B) — account/holdings/ledger/price
-  flow.ts                        defineFlow — ONLY the flow-shaped actions: extractHoldingsFromPdf +
-                                   saveThesis/deleteThesis (domain CRUD + the quote refresh are REST
-                                   routes, not actions — see portfolio-writes.ts + get-quotes.ts)
+domain/portfolio/               Shared portfolio domain (Spine B) — imported by REST, UI, analysis seed
+  schema/                        Browser-safe zod leaves: portfolio, ledger, tax, thesis, mandate,
+                                   transaction-import
+  parsers/                       CSV / OFX / PDF reconcile + transaction-file dispatcher
+  math/                          Pure leaves: lots, value-holding, health, tax-estimate, holding-period,
+                                   realized-gains, classify-instrument
+  services/                      portfolio-writes + get-quotes + reconcile-fund-classification
+                                   (plain functions; market-data dependencies are injected)
+flows/portfolio/                Flow-shaped portfolio work only (not domain CRUD)
+  flow.ts                        defineFlow — extractHoldingsFromPdf + saveThesis/deleteThesis +
+                                   save/clearPortfolioMandate (CRUD + quote refresh are REST)
   state.ts                       sessionStateSchema (minimal; this flow has no run state)
-  portfolio-schema.ts            pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
-  portfolio-csv.ts               pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
-  portfolio-resources.ts         BP-019 leaf: pdfImportResource (session-scoped scratch) + thesesCollection
-                                   (user-scoped). Accounts/holdings AND last-known prices are NOT resources —
-                                   they live in the app-owned tables (FIX-772/FIX-823; see src/db/ +
-                                   lib/portfolio-db.ts below). The quotes cache was portfolioQuotesResource
-                                   until FIX-823 promoted it to the app.quotes table.
-  portfolio-writes.ts            saveAccount / deleteAccount / importHoldingsCsv / deleteHolding /
-                                   recordManualEvent / importTransactionFile — plain domain functions
-                                   (input, userId, repo) behind the app/api/portfolio/* REST routes (FIX-736
-                                   follow-up). NOT flow actions: CRUD gains nothing from a flow and loses the
-                                   real return value + gains a session requirement. Routes own zod validation.
-  get-quotes.ts                  refreshQuotes(input, repo): last-close per ticker (fixture/live, null
-                                   degrades); upserts LIVE non-null prices into the durable app.quotes
-                                   table (FIX-823). A plain route helper behind POST /api/portfolio/
-                                   quotes/refresh — NOT a flow action.
-  portfolio-pdf.ts               pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
-  extract-pdf-text.server.ts     NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
+  portfolio-resources.ts         BP-019 leaf: pdfImportResource + thesesCollection + portfolioMandate
+                                   Accounts/holdings/prices live in app.* tables (see db/)
+  thesis-actions.ts              saveThesis / deleteThesis (reactive cross-flow resource writes)
+  portfolio-mandate-actions.ts   savePortfolioMandate / clearPortfolioMandate
+  extract-pdf-text.server.ts     NODE-ONLY: unpdf — PDF bytes → statement text
   extract-holdings-generator.ts  broker-agnostic LLM transcription (statement text → strict rows)
   extract-holdings-action.ts     sequencer: decode bytes → extractPdfText → generator → commit pdfImport
 
 fixtures/<TICKER>/<DATE>/        date-addressed snapshots for fixture mode (`FIXTURE_SNAPSHOT` is the default date)
-src/db/                          App-owned relational layer (FIX-772) — accounts + holdings + prices, NOT a resource
+db/                             App-owned relational layer (FIX-772) — accounts + holdings + prices, NOT a resource
   schema.ts                      Drizzle `app` Postgres schema: accounts + holdings + ledger + realized-gains
                                    + tax-profiles + quotes (last-known price, FIX-823) tables
   client.ts                      createDb (node-postgres, deploy) + createMigratedPgliteDb (embedded dev)
   repository.ts                  createPortfolioRepository + toAccountStates — the typed data-access surface
+  portfolio-db.ts                getBacking() (PGlite dev / shared pg.Pool deploy) + getRepository() singleton
   migrations/                    drizzle-kit generated SQL + journal (run in-process on PGlite dev, via
                                  scripts/migrate.ts on deploy)
-lib/portfolio-db.ts              getBacking() (PGlite dev / shared pg.Pool deploy) + getRepository() singleton
-app/api/portfolio/              REST surface over the repository — reads AND writes (FIX-736 follow-up):
+app/api/portfolio/              REST surface over domain services + repository — reads AND writes:
   accounts/route.ts               GET list · POST save · DELETE
   holdings/route.ts               DELETE one holding · holdings/import/route.ts POST (CSV import)
   ledger/route.ts                 GET list · POST record manual event
@@ -182,11 +180,11 @@ fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
   consumer schemas (the analysts' `thesisOutputSchema`, risk's persona +
   risk-assessment schemas) stay in a `thesis-schema.ts` / `schemas.ts` file in
   the group.
-- **`tools/` is the self-contained catalog.** `tools/data/` is one file per
-  data tool, `tools/providers/` is external API clients (stateless,
-  throw-on-failure, no caching — callers wrap with `getOrFetch` from
-  `tools/runtime/cache.ts`), `tools/runtime/` is the cache + fixtures +
-  discovery runtime. A flow-coupled tool (one that imports flow internals, like
+- **`tools/` owns the analysis tool catalog and runtime.** `tools/data/` is one
+  file per data tool and `tools/runtime/` is the fixture, recording, and
+  discovery runtime. Shared external API clients live at `lib/providers/` (stateless,
+  throw-on-failure, no caching — callers apply their own policy). A flow-coupled
+  tool (one that imports flow internals, like
   `find_counter_evidence`) stays with its consumer under `agents/`, NOT in the
   catalog.
 - **`orchestration/` is the only code that knows execution order.** `stages.ts`
@@ -195,9 +193,21 @@ fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
   one-way: orchestration imports agents; agents never import orchestration
   (BP-019 — acyclic).
 - **`lib/` is for pure IO-free utilities that are neither tool-runtime nor a
-  recipe** — formatters, the ticker resolver, concurrency, and the valuation /
+  recipe** — formatters, the ticker resolver, and the valuation /
   scoring math. Identity lives in `registry.ts`; contract lives in
   `resources.ts` / `state.ts` / `flow-schema.ts`.
+- **`lib/` is the shared backend layer.** Generic cache/concurrency helpers
+  and provider-composition services live here so REST routes, scripts, domains,
+  and flows can reuse them without importing through a flow.
+- **Portfolio domain vs portfolio flow.** Money math, parsers, schemas used by
+  routes/UI/analysis, and write/quote services live under `domain/portfolio/`.
+  `flows/portfolio/` keeps only `defineFlow`, resources, thesis/mandate
+  actions, and the PDF extract pipeline. If a module has no `ctx.resources` /
+  generator / `defineFlow` dependency, it belongs in domain. Shared vendor
+  clients live under `lib/providers/`; portfolio-specific live quote, cache,
+  retry, and fallback policy lives in `lib/portfolio-market-data.ts` and is
+  injected into the domain services. Analysis fixtures remain flow-owned and
+  never enter the portfolio quote-refresh path.
 
 ## Past Reports
 
@@ -229,7 +239,7 @@ back to the opened session and never re-dispatches or mis-keys the run. The
 stored report rehydrates through the existing `useSession` + `ThesesPane` read
 path. Persistence is Postgres-shaped (FIX-772): embedded PGlite in dev (persisted
 under `.fsdev/pglite`, survives restarts) and real Postgres via `DATABASE_URL` in
-deployment. The store backing is wired in `lib/portfolio-db.ts` / `lib/server.ts`.
+deployment. The store backing is wired in `db/portfolio-db.ts` / `lib/server.ts`.
 
 ## Summary view
 
@@ -282,7 +292,7 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
 ## Portfolio view
 
 The app has a **Portfolio** view (TopBar nav → `components/portfolio/`) backed by
-the `portfolio` flow (`src/flows/portfolio/`). It is the durable record of what
+the `portfolio` flow (`flows/portfolio/`). It is the durable record of what
 the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
 The pane is section-switched (FIX-885): a sidebar (`portfolio-section-nav.tsx` —
 desktop left rail / mobile segmented strip) picks between the **Accounts**
@@ -293,8 +303,26 @@ three imports / add transaction / backfill splits — above the card grid →
 into, toggling between capital gains and total realized income = gains +
 dividends + interest, off the pure `realized-income-by-year.ts` model). Only
 refresh-prices + totals + provenance stay on the pinned toolbar; account actions
-live in the Accounts perspective. FIX-762's household health view lands as a
-third `SECTIONS` entry.
+live in the Accounts perspective. The third perspective is the **Health**
+perspective (FIX-762, `health-section.tsx`) — the deterministic household view:
+ticker-merged exposure, asset-class + sector breakdowns, concentration reads
+(largest name, top-N, effective positions = 1/HHI) with warn/alert flags, cash
+level, and coverage. It computes client-side from the pure aggregation leaf
+`domain/portfolio/math/portfolio-health.ts` (`summarizePortfolioHealth`, reusing
+`value-holding` + the `inconsistent_history` gate — one copy of the money math),
+self-contained like `GainsTaxesSection`. The one axis with no on-holding data —
+sector — is backed by a new global `app.instrument_classifications` table
+(ticker PK, no TTL, lazy Yahoo `resolveSector` fill via
+`app/api/portfolio/classifications/route.ts` + `use-classifications.ts`; failures
+returned but never persisted, retried later). The same leaf runs server-side at
+`seedSession` to inject a compact `health` block into the trader/PM
+`<portfolioContext>` (`build-portfolio-context.ts` → `format.ts`), and it gives
+the long-dead `holdings[].sector` field its first producer. Funds (ETF / mutual
+fund) are honestly opaque — `lookThrough: "none"`, exempt from single-name flags,
+bucketed as "Funds (no look-through)"; ETF look-through is FIX-801. Drift-vs-
+target and standing-constraint compliance (`computeAllocationDrift`) is the
+FIX-761-gated follow-up slice — the `health.drift` context field and the
+allocation view's target overlay stay empty until the durable mandate lands.
 
 - **Data model — app-owned relational tables (FIX-772).** Accounts and holdings
   are NO LONGER an FSD resource. They live in real Postgres tables in a dedicated
@@ -302,13 +330,13 @@ third `SECTIONS` entry.
   household key) and `app.holdings` (one row per `(account_id, ticker)`, FK to
   accounts with `ON DELETE CASCADE`, `holdings_ticker_idx` for the cross-account
   rollup). They are reached through the typed **portfolio repository**
-  (`src/db/repository.ts`, `getRepository()` from `lib/portfolio-db.ts`). The same
+  (`db/repository.ts`, `getRepository()` from `db/portfolio-db.ts`). The same
   ticker in two accounts is two rows — exactly the cross-account query shape the
   household / sleeves / review-loop work needs. The store backing is Postgres in
   both dev (embedded PGlite at `.fsdev/pglite`, no Docker) and deployment (real
   Postgres via `DATABASE_URL`), shared with the framework store on one pool/
-  instance; `lib/portfolio-db.ts` owns that backing. See the FIX-772 spec and the
-  `src/db/` layer (`schema.ts`, `client.ts`, `repository.ts`, `migrations/`).
+  instance; `db/portfolio-db.ts` owns that backing. See the FIX-772 spec and the
+  `db/` layer (`schema.ts`, `client.ts`, `repository.ts`, `migrations/`).
   **FIX-773 extended each holding row** with a two-level asset taxonomy:
   `asset_class` (one of `equity / fixed_income / cash / crypto / alternative`)
   and `asset_type` (one of `equity / etf / mutual_fund / bond / money_market /
@@ -323,11 +351,11 @@ third `SECTIONS` entry.
   per BP-038; JSONB means adding them later (with a real producer) is free.
   Classification is denormalized per holding row; a security-master table is a
   deferred option, not built. The classifier lives in
-  `src/flows/portfolio/classify-instrument.ts`.
+  `domain/portfolio/math/classify-instrument.ts`.
 - **Domain types vs persistence.** `accountStateSchema` / `holdingSchema`
   (`portfolio-schema.ts`) are now DOMAIN types — input/CSV validation and the
   inline-holdings `AccountState` shape the repository projects (`toAccountStates`)
-  for the seed + UI. The Drizzle tables (`src/db/schema.ts`) are the persistence.
+  for the seed + UI. The Drizzle tables (`db/schema.ts`) are the persistence.
   These zod schemas are NOT generator outputs, so `.default()` / `.nullable()`
   are fine (BP-016 only constrains generator outputs) — do NOT add them to
   `output-schemas-strict.spec.ts`. Cost basis is **average cost (informational)**
@@ -384,12 +412,11 @@ third `SECTIONS` entry.
   `get_price_history`'s fetch idiom directly (`loadFixture` / `getOrFetch`, NOT
   `block.run()` — BP-011-safe) and takes the last bar's `close`. A missing /
   unavailable price degrades to `null` (UI shows `—`), never a fabricated number;
-  live mode never silently substitutes fixture data. **`refreshQuotes` persists LIVE,
+  the refresh path never reads analysis fixtures. **`refreshQuotes` persists live,
   non-null-priced quotes to the durable, ticker-keyed `app.quotes` table (FIX-823 —
   `price`, `as_of`, `source`, `fetched_at`, one GLOBAL row per ticker), via
-  `repo.upsertQuotes`.** Fixture-mode results are NOT persisted (a single global row
-  means fixture data would poison every user + the seed) and null-priced quotes are
-  dropped (a provider miss keeps the prior last-known row). Market value stays
+  `repo.upsertQuotes`.** Null-priced quotes are dropped (a provider miss keeps the
+  prior last-known row). Market value stays
   DERIVED (`quantity × price`) — never persisted onto the holding, so it can't go
   stale on a trade when the price didn't move. **The refresh is a plain REST route,
   NOT a flow action:** the pane `POST`s `/api/portfolio/quotes/refresh` (which
@@ -401,15 +428,12 @@ third `SECTIONS` entry.
   upsert committed), forcing the pane to await the SSE stream's `isStreaming`
   falling edge to know the write had landed; the route settles only after the write,
   so there is no settle race and the refresh needs no bound session.
-  **The pane always requests
-  `live` prices, decoupled from the analysis fixture/live toggle** — holdings are
-  real,
-  and fixtures only cover the 3 demo tickers (AAPL/JPM/NVDA), so a fixture-priced
-  real portfolio is mostly `—`. The live fan-out is **bounded + retried** via the
-  shared `lib/concurrency.ts` `mapLimit` (cap `QUOTE_CONCURRENCY`, per-ticker
+  **The pane always requests live prices, completely separate from the analysis
+  fixture/live toggle.** The live fan-out is **bounded + retried** via the shared
+  `lib/concurrency.ts` `mapLimit` (cap `QUOTE_CONCURRENCY`, per-ticker
   `QUOTE_RETRIES` with backoff) so a 20+ holding portfolio doesn't trip Yahoo's
   rate limiter and drop a random subset to `—`. **FIX-773 introduced per-type
-  valuation** via `src/flows/portfolio/value-holding.ts` (`resolveHoldingPrice` /
+  valuation** via `domain/portfolio/math/value-holding.ts` (`resolveHoldingPrice` /
   `holdingMarketValue`): equity / ETF / mutual-fund / crypto holdings use the live
   quote (`usesLiveQuote` gates the pane's quote fan-out to exactly these types);
   money market and cash-equivalent holdings value at par ($1.00/share); bond and
@@ -456,7 +480,7 @@ or fee). It is an app-owned table on the FIX-772 model layer, NOT a resource —
 the same `app` Postgres schema as accounts/holdings, reached through the same
 `getRepository()`.
 
-- **The table — `app.ledger_events` (`src/db/schema.ts`).** Event-id PK,
+- **The table — `app.ledger_events` (`db/schema.ts`).** Event-id PK,
   `account_id` FK with `ON DELETE CASCADE`, denormalized `user_id` for the
   household ownership guard and rollups. Money/quantity are `numeric` (exact in
   storage; the repository coerces to JS number at the read boundary, RISK-P5).
@@ -696,7 +720,7 @@ filing-grade. Full methodology in [`docs/tax-estimate.md`](docs/tax-estimate.md)
   with `(disposal_event_id, lot_index)` unique as defense-in-depth. Exported
   `backfillRealizedGains()` is the rollout surface (loop every account under the
   lock; idempotent) — run from BOTH the deploy migrator (`scripts/migrate.ts`)
-  AND dev startup (`lib/portfolio-db.ts`, the PGlite branch), so sells imported
+  AND dev startup (`db/portfolio-db.ts`, the PGlite branch), so sells imported
   before the migration materialize without waiting for a later ingest/void in
   either environment.
 - **Honest basis, two axes (never zero-filled).** Term follows the
@@ -798,7 +822,7 @@ time horizon, optional target/stop, and a link to the originating report.
   outlive an exited position (post-mortem) and exist before a buy settles
   (adopt-then-buy).
 
-- **The schema leaf — `src/flows/portfolio/thesis-schema.ts`.** Browser-safe
+- **The schema leaf — `domain/portfolio/schema/thesis-schema.ts`.** Browser-safe
   (imports only `zod`): `thesisInputSchema` (the user-suppliable fields the editor
   validates and the action re-validates), `thesisRecordSchema` (the collection's
   state shape, adds `createdAt`/`updatedAt`), `tripwireSchema`. NOT generator
@@ -806,7 +830,7 @@ time horizon, optional target/stop, and a link to the originating report.
   `output-schemas-strict.spec.ts` (the `accountStateSchema` precedent).
 
 - **Two write paths, one collection.** The portfolio flow owns the hand-edit
-  path — `saveThesis` / `deleteThesis` (`src/flows/portfolio/thesis-actions.ts`),
+  path — `saveThesis` / `deleteThesis` (`flows/portfolio/thesis-actions.ts`),
   ticker canonicalized to upper-case. The analysis flow owns the derive-from-report
   path — `adoptThesis` (`orchestration/adopt-thesis-action.ts`), which reads the
   session's decision snapshot + trader memo SERVER-SIDE (v1 is derive-only; the
@@ -1055,6 +1079,71 @@ precedent that orthogonal axes adjust size and emit a verdict, never overwrite
   being right. The size caps are absolute % constants in the pack — the v1
   simplification over a dynamic "don't add beyond current weight" rule.
 
+## Portfolio mandate (IPS) — FIX-761
+
+The durable, household-level statement of intent — the reference point that makes
+"balanced," "drift," and "rebalancing" mean something. Where the FIX-752 mandate
+above is the per-run appetite DIAL, the portfolio mandate is the standing POLICY:
+objectives, a target allocation over the existing `assetClass` buckets, standing
+constraints, a time horizon, and rebalancing bands. Full detail in
+[`docs/portfolio-mandate.md`](docs/portfolio-mandate.md).
+
+- **A resource, not a table.** The mandate is a flat household document (no FK /
+  join / aggregation) and agent-facing state read at seed — the FIX-760 thesis
+  reasoning exactly. So it is a user-scoped FSD resource
+  (`portfolioMandateResource`, `portfolio-resources.ts`, `flowIsolation: false`),
+  written by `savePortfolioMandate` / `clearPortfolioMandate`
+  (`portfolio-mandate-actions.ts`), NOT an `app.*` table. Being a resource buys
+  the live client read + `resource_change` streaming for free. Presence is a
+  REQUIRED field (`state?.createdAt`), never `state != null` — the engine
+  normalizes a cleared single resource to `{}`.
+
+- **Reconciliation with FIX-752 (load-bearing).** ONE policy object, not two. The
+  FIX-752 appetite folds in as the mandate's `riskAppetite` facet. Precedence at
+  seed: `run override → account default → IPS household → null`, purely additive.
+  When the IPS sets only `riskTolerance`, the seed DERIVES the appetite 1:1 via
+  `toleranceToAppetite` (so a normal IPS still steers the gate);
+  `account.riskMandate` is kept as a per-account exception above the household
+  default (asset location). All effects downward-only.
+
+- **Injection + freeze.** `seedSession` reads the resource, RE-VALIDATES it
+  (`validatePortfolioMandate` — a business-invalid persisted record degrades to
+  mandate-blind, never throws), freezes it onto `state.portfolioMandate`, and
+  freezes the analyzed ticker's HOUSEHOLD weight
+  (`state.householdTickerWeightPct`, from the pre-scoping account read so a scoped
+  run measures a household cap against the whole book). The PM reads it via the
+  `portfolioMandate` capability preset (`<portfolioMandate>`, frozen-state read,
+  suppress-to-null when absent — the `standingThesis` / `riskMandate` precedent);
+  the trader also opts in for size awareness.
+
+- **PM gating (`lib/policy-gate.ts`, pure).** At commit, `computePolicyGate`
+  clamps size deterministically: HARD `maxPositionWeight` cap (at-purchase,
+  floored at the household weight so an over-cap hold is never force-trimmed) +
+  HARD exclusion no-add (`min(target, householdWeight)`); min-cash + allocation
+  drift are ADVISORY (the PM narrates). Derived from frozen state, never the LLM
+  (the `agreesWithTrader` precedent); the PM's `policyFit` supplies only the two
+  narrative strings. A held-but-unpriced name skips the clamp
+  (`householdWeightKnown: false`) rather than coercing the weight to 0 (which
+  would fabricate an exit / forced trim — BP-020). The mandate NEVER touches
+  `finalRating` (the FIX-715 / FIX-752 orthogonality). The derived `policyVerdict`
+  + clamp flags echo onto the memo (`policyDecision`), the decision snapshot, and
+  the RunSummary (the goal-check read path).
+
+- **NOT a generator output.** `portfolioMandateSchema` is a resource-state /
+  input shape — `.default()` / `.nullable()` are fine; do NOT add it to
+  `output-schemas-strict.spec.ts`. The PM's `policyFit` (two narrative strings) IS
+  a generator output and is in the strict walker.
+
+- **UI + limitations.** Editor + summary chip live in the Portfolio view
+  (`components/portfolio/mandate-dialog.tsx` / `mandate-form.ts` /
+  `use-portfolio-mandate.ts`); the PmHero policy block reads the memo's
+  `policyDecision`. v1 is a flat household mandate (sleeves are FIX-771), targets
+  the existing `assetClass` enum (custom buckets deferred), and measures no drift
+  (the health view is FIX-762). See the sibling household resource,
+  [Per-position thesis records (FIX-760)](#per-position-thesis-records-fix-760),
+  and the per-run appetite dial,
+  [Risk-appetite mandate (FIX-752)](#risk-appetite-mandate-decision-tier--fix-752).
+
 ## Adding a new generator
 
 **Structured-output agents in the trader / risk / forecaster / PM /
@@ -1094,7 +1183,7 @@ uses: [tradingDesk.presets({
 ```
 
 See the capability's available presets in
-[`capability.ts`](src/flows/analysis/capability.ts).
+[`capability.ts`](flows/analysis/capability.ts).
 
 ### The memo lifecycle: one `defineMemoStep` convention
 
@@ -1104,7 +1193,7 @@ thesis-validator, and the three research consolidations — wears the **same**
 memo lifecycle: pre-mark the memo `writing`, run the participant's body,
 commit the result, and on failure rescue to `error`. There is exactly **one**
 apparatus that expresses it, in
-[`agents/_recipe/memo-writer.ts`](src/flows/analysis/agents/_recipe/memo-writer.ts):
+[`agents/_recipe/memo-writer.ts`](flows/analysis/agents/_recipe/memo-writer.ts):
 
 ```ts
 defineMemoStep(body, { key, commit })
@@ -1152,7 +1241,7 @@ The factory composes the analyst-specific body — `.map(tickerDate) →
 .parallel(attributedTools) → generator` — and hands it to `defineMemoStep`,
 which owns the `markWriting → body → commit → rescue(markError)` lifecycle.
 The call site supplies only what varies — the role's tools and its
-synthesis generator. See [`agents/analysts/analysts.ts`](src/flows/analysis/agents/analysts/analysts.ts)
+synthesis generator. See [`agents/analysts/analysts.ts`](flows/analysis/agents/analysts/analysts.ts)
 for the nine existing analysts.
 
 To add another:
@@ -1302,7 +1391,7 @@ through `resolveToolPayload`.
 // tools/data/get_my_tool.ts
 import { handler } from "@flow-state-dev/core";
 import { resolveToolPayload } from "../runtime/resolve";
-import { fetchFromProviderA } from "../providers/providerA";
+import { fetchFromProviderA } from "@/lib/providers/providerA";
 import { emptyPayload } from "../empty-payloads";
 import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
@@ -1334,7 +1423,7 @@ Then:
    `fixtures/README.md` for edge cases.
 
 If the tool needs a new external API, add its fetch helper to a new
-`tools/providers/<provider>.ts` file (one per provider). Keep it stateless — read
+`lib/providers/<provider>.ts` file (one per provider). Keep it stateless — read
 keys from env, throw on any failure, no caching (the tool handler wraps the
 call with `getOrFetch`). A tool that imports flow internals (memo keys, a
 flow resource) is **flow-coupled** — it stays with its consumer under
@@ -1473,7 +1562,7 @@ live-Grok path is a generator with the `xSearch` provider tool installed.
 The dispatch primitive is a `router` (block kinds differ across routes —
 the rest of the Phase 1 tools use `if` inside a handler because every
 branch is the same kind). See
-[`tools/data/get_social_sentiment.ts`](src/flows/analysis/tools/data/get_social_sentiment.ts)
+[`tools/data/get_social_sentiment.ts`](flows/analysis/tools/data/get_social_sentiment.ts)
 as the canonical example of a router-with-LLM-route pattern.
 
 If a live provider fails for a given tool, the tool returns an empty payload
@@ -1523,9 +1612,9 @@ record items and events, not resource VALUES: the desk's decision lives in a
 PGlite-backed resource, and this zero-model action is the read-path back out. Its
 output is the `RunSummary` (final rating + clamps, target weight + mandate gates,
 stop reason, per-memo status, session id) — the shape is in
-[`src/flows/analysis/run-summary.ts`](src/flows/analysis/run-summary.ts). It
+[`flows/analysis/run-summary.ts`](flows/analysis/run-summary.ts). It
 records what happened; it does NOT judge whether the run was good — that is the
-job of the run-quality eval suite (`src/eval/`, see
+job of the run-quality eval suite (`eval/`, see
 [Evaluating run quality](#evaluating-run-quality) below).
 
 A single run uses the shared `.fsdev/pglite`, so it appears in Past Reports like a
@@ -1543,7 +1632,7 @@ real models, so it exercises the real generator path.
 ## Evaluating run quality
 
 The headless harness above records *what happened*; the **run-quality eval suite**
-(`src/eval/`) judges *whether it was good*. It has two layers over the same stored
+(`eval/`) judges *whether it was good*. It has two layers over the same stored
 run, read through a zero-model `runArtifacts` action (the deeper sibling of
 `runSummary`): a **deterministic invariant layer** (pure code, zero model spend)
 that catches internal contradictions — a rating outside its band, scenario

@@ -8,7 +8,7 @@ import { AgentBadge } from "@/components/agent-badge";
 import {
   AGENTS,
   type AgentName,
-} from "@/src/flows/analysis/registry";
+} from "@/flows/analysis/registry";
 import { cn } from "@/lib/utils";
 
 export type WritingSkeletonProps = {

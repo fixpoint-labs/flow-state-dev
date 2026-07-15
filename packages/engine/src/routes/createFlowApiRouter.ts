@@ -237,7 +237,51 @@ export type FlowApiRouter = {
  * consumed by `disposeFlowApiRouter`. WeakMap so the router (and its
  * bindings closure) get GC'd normally when no one holds a reference.
  */
-const routerDisposers = new WeakMap<FlowApiRouter, () => Promise<void>>();
+/**
+ * A router's dedicated-route dispatcher: matches ONLY custom transport-adapter
+ * routes registered OUTSIDE `hostBasePath` (and outside the canonical
+ * `/api/flows` namespace), never the canonical handler. Returns null when none
+ * match. `hostBasePath` is where the host mounted the canonical flow API, so a
+ * route under it (served by that mount) or under the framework's canonical
+ * namespace is excluded — only genuinely dedicated paths (e.g. `/mcp/:kind`)
+ * are served here.
+ */
+type DedicatedRouteDispatcher = (
+  req: Request,
+  hostBasePath: string
+) => Promise<Response | null>;
+
+/**
+ * The framework's canonical mount namespace. Non-dedicated adapter routes
+ * (e.g. the MCP adapter without `dedicatedBasePath`, or webhooks) register
+ * under it; a `dispatchDedicatedRoute` fallback must not serve those even when
+ * the host mounted the canonical API at a different `basePath`.
+ */
+const CANONICAL_ROUTE_NAMESPACE = "/api/flows";
+
+/** True when `path` is `prefix` itself or a segment beneath it. */
+function isUnderPrefix(path: string, prefix: string): boolean {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+/**
+ * Property keys under which `createFlowApiRouter` stashes the router's
+ * {@link DedicatedRouteDispatcher} and its teardown fn, read back by
+ * `dispatchDedicatedRoute` / `disposeFlowApiRouter`.
+ *
+ * `Symbol.for` (the global registry) rather than module-scoped `WeakMap`s so
+ * the lookups are package-instance-stable: `loadFsdevConfig` may build a
+ * FlowState with a different `@flow-state-dev/engine` copy than the host
+ * (`@flow-state-dev/node`) imports, and a WeakMap in one copy is invisible to
+ * the other — the host would then 404 every dedicated route and skip adapter
+ * `stop()` hooks on shutdown. A globally-keyed symbol resolves to the same key
+ * across copies. Symbols (not string keys) so they stay off the method-indexed
+ * `keyof FlowApiRouter` shape.
+ */
+const DEDICATED_ROUTE_DISPATCHER = Symbol.for(
+  "@flow-state-dev/engine/dedicatedRouteDispatcher"
+);
+const ROUTER_DISPOSER = Symbol.for("@flow-state-dev/engine/routerDisposer");
 
 /**
  * Tear down a router by invoking each adapter's `bindings.stop()` in
@@ -249,10 +293,43 @@ const routerDisposers = new WeakMap<FlowApiRouter, () => Promise<void>>();
  * servers (custom Node HTTP, Deno, Bun) and tests.
  */
 export async function disposeFlowApiRouter(router: FlowApiRouter): Promise<void> {
-  const dispose = routerDisposers.get(router);
+  const holder = router as Record<symbol, unknown>;
+  const dispose = holder[ROUTER_DISPOSER] as (() => Promise<void>) | undefined;
   if (dispose === undefined) return;
-  routerDisposers.delete(router);
+  // Clear before awaiting so a concurrent second call is a no-op.
+  delete holder[ROUTER_DISPOSER];
   await dispose();
+}
+
+/**
+ * Dispatch `req` against ONLY the router's dedicated custom-adapter routes —
+ * the ones a transport adapter registers OUTSIDE the canonical mount (e.g. the
+ * MCP adapter's `/mcp/:kind` under `dedicatedBasePath: true`). Returns the
+ * route's `Response` on a match, or `null` when no dedicated route matches. It
+ * never touches the canonical flow-API handler, so a host can serve dedicated
+ * endpoints without exposing the flow API (list-flows, actions, sessions)
+ * outside its mount prefix.
+ *
+ * `hostBasePath` is where the host mounted the canonical flow API (default
+ * `/api/flows`). A custom adapter route under it — or under the framework's
+ * `/api/flows` namespace, where non-dedicated adapter routes live — is NOT
+ * served here: the former is reachable via the canonical mount, and the latter
+ * must not be exposed at its raw path when the host mounted canonical elsewhere.
+ *
+ * Long-lived hosts (`@flow-state-dev/node`'s `createServerApp`) call this from
+ * their not-found fallback so dedicated routes work with no per-adapter wiring;
+ * catch-all hosts that mount the router under `basePath` don't need it.
+ */
+export async function dispatchDedicatedRoute(
+  router: FlowApiRouter,
+  req: Request,
+  hostBasePath: string = CANONICAL_ROUTE_NAMESPACE
+): Promise<Response | null> {
+  const dispatch = (router as Record<symbol, unknown>)[
+    DEDICATED_ROUTE_DISPATCHER
+  ] as DedicatedRouteDispatcher | undefined;
+  if (dispatch === undefined) return null;
+  return dispatch(req, hostBasePath);
 }
 
 const DEFAULT_STALE_SWEEP_INTERVAL_MS = 30_000;
@@ -372,6 +449,53 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     }
   }
 
+  // Match ONLY custom-adapter routes (never the canonical handler). Returns
+  // null when none match. Used by the canonical dispatcher, where custom routes
+  // get first crack at a request already under the host's mount prefix.
+  const matchDedicated = async (req: Request): Promise<Response | null> => {
+    if (customRoutes.length === 0) return null;
+    const url = new URL(req.url);
+    for (const { route, matcher } of customRoutes) {
+      if (route.method.toUpperCase() !== req.method.toUpperCase()) continue;
+      const matched = matchTransportRoute(matcher, url.pathname);
+      if (matched !== null) {
+        return route.handler(req, { params: matched });
+      }
+    }
+    return null;
+  };
+
+  // Like `matchDedicated`, but for `dispatchDedicatedRoute`'s out-of-prefix
+  // fallback: serve ONLY genuinely dedicated routes — those registered outside
+  // both the host's `basePath` (reachable via the canonical mount) and the
+  // framework's `/api/flows` namespace (where non-dedicated adapter routes
+  // live, which must not be exposed at their raw path when the host mounted
+  // canonical elsewhere). Without this filter, a host with a non-default
+  // `basePath` would leak `/api/flows/...` adapter routes through the fallback.
+  const matchDedicatedOnly: DedicatedRouteDispatcher = async (req, hostBasePath) => {
+    if (customRoutes.length === 0) return null;
+    const url = new URL(req.url);
+    for (const { route, matcher } of customRoutes) {
+      if (route.method.toUpperCase() !== req.method.toUpperCase()) continue;
+      // Normalize the leading slash exactly as `compileTransportPattern` does,
+      // so a route declared without one (`api/flows/:kind/hook`, allowed by
+      // `TransportRoute.path`) is still recognized as canonical-namespaced and
+      // excluded — otherwise it would leak through this fallback.
+      const routePath = route.path.startsWith("/") ? route.path : `/${route.path}`;
+      if (
+        isUnderPrefix(routePath, hostBasePath) ||
+        isUnderPrefix(routePath, CANONICAL_ROUTE_NAMESPACE)
+      ) {
+        continue;
+      }
+      const matched = matchTransportRoute(matcher, url.pathname);
+      if (matched !== null) {
+        return route.handler(req, { params: matched });
+      }
+    }
+    return null;
+  };
+
   const dispatch = async (
     req: Request,
     ctx: NextRouteContext
@@ -380,16 +504,8 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     // match, fall through to the canonical handler. This preserves the
     // existing behavior for the default configuration (no custom adapters)
     // and gives custom transports an unambiguous path.
-    if (customRoutes.length > 0) {
-      const url = new URL(req.url);
-      for (const { route, matcher } of customRoutes) {
-        if (route.method.toUpperCase() !== req.method.toUpperCase()) continue;
-        const matched = matchTransportRoute(matcher, url.pathname);
-        if (matched !== null) {
-          return route.handler(req, { params: matched });
-        }
-      }
-    }
+    const dedicated = await matchDedicated(req);
+    if (dedicated !== null) return dedicated;
     return handlers.handle(req, { path: ctx.params.path });
   };
 
@@ -422,7 +538,22 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     PATCH: dispatch,
     DELETE: dispatch
   };
-  routerDisposers.set(router, dispose);
+  // Stash the disposer and the dedicated-route dispatcher on the router itself
+  // (globally-keyed symbols) so `disposeFlowApiRouter` / `dispatchDedicatedRoute`
+  // resolve them even from a different `@flow-state-dev/engine` copy than the one
+  // that built this router. Non-enumerable + configurable so a `{ ...router }`
+  // spread (or JSON) doesn't carry them onto an unrelated object, and dispose can
+  // `delete` its key for idempotency.
+  Object.defineProperty(router, ROUTER_DISPOSER, {
+    value: dispose,
+    enumerable: false,
+    configurable: true
+  });
+  Object.defineProperty(router, DEDICATED_ROUTE_DISPATCHER, {
+    value: matchDedicatedOnly,
+    enumerable: false,
+    configurable: true
+  });
   return router;
 }
 

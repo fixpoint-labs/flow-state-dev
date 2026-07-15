@@ -12,7 +12,7 @@
 
 import type { ReactElement } from "react";
 import { ChevronRight } from "lucide-react";
-import type { AccountState } from "@/src/flows/portfolio/portfolio-schema";
+import type { AccountState } from "@/domain/portfolio/schema/portfolio-schema";
 import type { RealizedGainTotal } from "./realized-gains-row-model";
 import { RealizedStat } from "./realized-stat";
 import {

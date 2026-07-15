@@ -79,7 +79,7 @@ const logActivity = handler({
       .max(500)
       .nullable()
       .default(null)
-      .describe("Where this was captured from (client or conversation hint). Short label, not a transcript."),
+      .describe("Where this was captured from (client or conversation hint). Short label, not a transcript. If the endpoint tags an installation, that value is authoritative and any value you set here is overridden — so you can omit it."),
   }),
   outputSchema: z.object({
     id: z.string(),

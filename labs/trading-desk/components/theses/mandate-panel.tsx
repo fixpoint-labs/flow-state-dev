@@ -19,7 +19,7 @@
  * methodology — not financial advice.
  */
 import type { ReactElement } from "react";
-import type { MemoState } from "@/src/flows/analysis/resources";
+import type { MemoState } from "@/flows/analysis/resources";
 import { pctOrDash, verdictColor } from "./mandate-helpers";
 import { cn } from "@/lib/utils";
 

@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import path from "node:path";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { loadFixture } from "../src/flows/analysis/tools/runtime/fixtures";
-import { FixtureMissingError } from "../src/flows/analysis/tools/schemas";
+import { loadFixture } from "../flows/analysis/tools/runtime/fixtures";
+import { FixtureMissingError } from "../flows/analysis/tools/schemas";
 
 const FIXTURE_ROOT = path.resolve(__dirname, "..", "fixtures");
 

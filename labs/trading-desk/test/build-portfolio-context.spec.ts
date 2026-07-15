@@ -7,8 +7,11 @@
  * (portfolio-blind).
  */
 import { describe, expect, it } from "vitest";
-import { buildPortfolioContext } from "../src/flows/analysis/build-portfolio-context";
-import type { AccountState } from "../src/flows/portfolio/portfolio-schema";
+import {
+  buildPortfolioContext,
+  householdTickerWeight,
+} from "../flows/analysis/build-portfolio-context";
+import type { AccountState } from "../domain/portfolio/schema/portfolio-schema";
 
 function account(over: Partial<AccountState> = {}): AccountState {
   return {
@@ -171,5 +174,116 @@ describe("buildPortfolioContext", () => {
     const out = buildPortfolioContext(accounts, [], "2026-05-06");
     expect(out?.totalNav).toBe(0);
     expect(out?.holdings[0]?.weightPct).toBeNull();
+  });
+});
+
+describe("buildPortfolioContext — FIX-762 classifications + health block", () => {
+  const book = [
+    account({
+      cashBalance: 1000,
+      holdings: [
+        { ticker: "AAPL", quantity: 10, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }, // @100 → 1000
+        { ticker: "SPY", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null }, // @400 → 2000
+      ],
+    }),
+  ];
+  const quotes = [
+    { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+    { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+  ];
+
+  it("populates holdings[].sector for equities from the classification map (funds stay null)", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06", new Map([["AAPL", "Technology"]]));
+    const byTicker = new Map(out?.holdings.map((h) => [h.ticker, h]));
+    expect(byTicker.get("AAPL")?.sector).toBe("Technology");
+    // An ETF is not a single-name equity → sector stays null even if classified.
+    expect(byTicker.get("SPY")?.sector).toBeNull();
+  });
+
+  it("leaves sector null when no classification is provided (honest, not guessed)", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06");
+    expect(out?.holdings.every((h) => h.sector === null)).toBe(true);
+  });
+
+  it("projects the compact health block computed from the same leaf", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06", new Map([["AAPL", "Technology"]]));
+    const health = out?.health;
+    expect(health).not.toBeNull();
+    // totalNav = 1000 AAPL + 2000 SPY + 1000 cash = 4000; cash 25%.
+    expect(health?.cashPct).toBeCloseTo(25);
+    expect(health?.coveragePct).toBeCloseTo(100);
+    // Drift is the FIX-761-gated slice — always null in v1.
+    expect(health?.drift).toBeNull();
+    // AAPL is single-name-eligible; SPY (fund) is exempt from single-name flags.
+    expect(health?.concentration.maxPosition?.ticker).toBe("AAPL");
+    // Funds bucket present in the sector exposure (no look-through).
+    expect(health?.sectorExposure.some((s) => s.bucket === "Funds (no look-through)")).toBe(true);
+  });
+
+  it("nulls the health block when nothing is priceable (no priced data)", () => {
+    const out = buildPortfolioContext(
+      [account({ cashBalance: 0, holdings: [{ ticker: "ZZZZ", quantity: 5, costBasis: 10, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }] })],
+      [],
+      null,
+    );
+    expect(out?.health).toBeNull();
+  });
+});
+
+describe("householdTickerWeight (FIX-761)", () => {
+  const holding = (ticker: string) => ({
+    ticker,
+    quantity: 10,
+    costBasis: 100,
+    acquiredDate: null,
+    assetClass: "equity" as const,
+    assetType: "equity" as const,
+    attributes: { kind: "none" as const },
+    dataQuality: null,
+  });
+
+  it("is 0 for a not-held name (initiating)", () => {
+    const snap = buildPortfolioContext(
+      [account({ cashBalance: 1000, holdings: [holding("AAPL")] })],
+      [{ ticker: "AAPL", price: 100, asOf: "2026-05-06" }],
+      "2026-05-06",
+    );
+    expect(householdTickerWeight(snap, "NVDA")).toBe(0);
+  });
+
+  it("sums the weights when every lot of the name is priced", () => {
+    const snap = buildPortfolioContext(
+      [
+        account({ accountId: "a", cashBalance: 0, holdings: [holding("NVDA")] }),
+        account({ accountId: "b", cashBalance: 0, holdings: [holding("NVDA")] }),
+      ],
+      [{ ticker: "NVDA", price: 100, asOf: "2026-05-06" }],
+      "2026-05-06",
+    );
+    // Both lots priced, NAV = 2000, each 50% → 100% household weight.
+    expect(householdTickerWeight(snap, "NVDA")).toBeCloseTo(100);
+  });
+
+  it("returns null when ANY lot of the name is unpriced (partial → unknown)", () => {
+    // One priced NVDA lot + one inconsistent (unpriced) NVDA lot. A partial sum
+    // would understate the true household weight and could force-trim the position,
+    // so the weight is reported UNKNOWN.
+    const partial = buildPortfolioContext(
+      [
+        account({ accountId: "a", cashBalance: 0, holdings: [holding("NVDA")] }),
+        account({
+          accountId: "b",
+          cashBalance: 0,
+          holdings: [{ ...holding("NVDA"), quantity: 0, dataQuality: "inconsistent_history" }],
+        }),
+      ],
+      [{ ticker: "NVDA", price: 100, asOf: "2026-05-06" }],
+      "2026-05-06",
+    );
+    expect(householdTickerWeight(partial, "NVDA")).toBeNull();
+  });
+
+  it("treats a null snapshot as not-held (0 — a portfolio-blind run initiates)", () => {
+    expect(householdTickerWeight(null, "NVDA")).toBe(0);
   });
 });

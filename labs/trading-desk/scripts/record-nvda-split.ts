@@ -20,7 +20,7 @@
  *
  * Override the household / account with `NVDA_SPLIT_USER` / `NVDA_SPLIT_ACCOUNT`.
  */
-import { getRepository } from "../lib/portfolio-db";
+import { getRepository } from "../db/portfolio-db";
 
 const USER_ID = process.env.NVDA_SPLIT_USER ?? "devuser";
 const ACCOUNT_NAME = process.env.NVDA_SPLIT_ACCOUNT ?? "WF: Investing Accounts";

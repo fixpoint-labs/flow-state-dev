@@ -21,22 +21,22 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
+import type { PortfolioRepository } from "@/db/repository";
 
 // Collateral: this spec drives the analyze pipeline but does not test the
 // portfolio. The repository (FIX-772) is mocked to an empty in-memory instance
 // so `seedSession` runs portfolio-blind (no accounts → portfolio: null), the
 // prior default. One repo for the file (beforeAll) — fast, never mutated.
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
+vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
   },
 }));
 
-import analysisFlow from "../src/flows/analysis/flow";
-import { ALL_MEMO_KEYS } from "../src/flows/analysis/registry";
+import analysisFlow from "../flows/analysis/flow";
+import { ALL_MEMO_KEYS } from "../flows/analysis/registry";
 import { latestMemoStatus } from "./_helpers/memo-status";
 
 beforeAll(async () => {

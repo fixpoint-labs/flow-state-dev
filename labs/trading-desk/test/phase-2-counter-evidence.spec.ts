@@ -9,10 +9,10 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { find_counter_evidence } from "../src/flows/analysis/agents/research/tools/find_counter_evidence";
-import { PHASE_1_MEMO_KEYS } from "../src/flows/analysis/registry";
-import { memosCollection, phase2Contributions } from "../src/flows/analysis/resources";
-import { sessionStateSchema } from "../src/flows/analysis/state";
+import { find_counter_evidence } from "../flows/analysis/agents/research/tools/find_counter_evidence";
+import { PHASE_1_MEMO_KEYS } from "../flows/analysis/registry";
+import { memosCollection, phase2Contributions } from "../flows/analysis/resources";
+import { sessionStateSchema } from "../flows/analysis/state";
 
 const flow = defineFlow({
   kind: "p2-counter-evidence-test",

@@ -4,7 +4,7 @@
 Trading Desk: add a run-quality evaluation suite to the private
 `@flow-state-dev/trading-desk` example. A zero-model `runArtifacts` flow action
 projects a stored `analyze` run into a full scored-artifact bundle (the deeper
-sibling of `runSummary`). Over it, a `src/eval/` stack scores the run two ways: a
+sibling of `runSummary`). Over it, a `eval/` stack scores the run two ways: a
 deterministic invariant layer (pure code, zero model spend) that catches internal
 contradictions — a rating outside its band, incoherent scenario probabilities, a
 committed size that ignores the mandate gates, snapshot/memo mirror drift,

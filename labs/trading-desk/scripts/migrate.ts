@@ -8,7 +8,7 @@
  *      migrations.
  *
  * Local dev does NOT use this — it runs on embedded PGlite and applies the
- * `app.*` migrations in process (see `lib/portfolio-db.ts`). So with no DB URL
+ * `app.*` migrations in process (see `db/portfolio-db.ts`). So with no DB URL
  * set, this exits cleanly (the `apps/kitchen-sink/scripts/migrate.ts` posture).
  *
  * Wire it as the deploy/release step (e.g. a Railway pre-deploy command):
@@ -19,8 +19,8 @@ import { createPostgresStores } from "@flow-state-dev/store-postgres";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
-import { createDb } from "@/src/db/client";
-import { createPortfolioRepository } from "@/src/db/repository";
+import { createDb } from "@/db/client";
+import { createPortfolioRepository } from "@/db/repository";
 
 const url = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 if (!url) {
@@ -40,7 +40,7 @@ try {
   // The journal stays out of `app` because migration 0000 runs
   // `CREATE SCHEMA "app"` and must not collide with a pre-created schema.
   await migrate(drizzle(pool), {
-    migrationsFolder: path.join(process.cwd(), "src", "db", "migrations"),
+    migrationsFolder: path.join(process.cwd(), "db", "migrations"),
   });
   // One-time realized-gains rollout (FIX-874): materialize every existing
   // account's realized gains, so history isn't empty until an unrelated mutation

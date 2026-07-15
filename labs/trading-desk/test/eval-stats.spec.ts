@@ -1,10 +1,10 @@
 /**
- * Tests for the eval statistics (`src/eval/stats.ts`, FIX-790): mean/std, the
+ * Tests for the eval statistics (`eval/stats.ts`, FIX-790): mean/std, the
  * standard error of a difference, and ordinal-input Krippendorff's alpha —
  * including the single-item degeneracy that omits alpha (spec §4.7).
  */
 import { describe, expect, it } from "vitest";
-import { krippendorffAlpha, meanStd, standardError } from "../src/eval/stats";
+import { krippendorffAlpha, meanStd, standardError } from "../eval/stats";
 
 describe("meanStd", () => {
   it("is zero-std for a constant sample", () => {

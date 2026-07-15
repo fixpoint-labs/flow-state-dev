@@ -12,16 +12,16 @@
  * which keeps the real-money trust gate honest: there is exactly one mapping
  * from stored stance labels to the convergence axis, and it is unit-tested.
  */
-import type { MemoState } from "@/src/flows/analysis/resources";
-import type { ValuationSpineState } from "@/src/flows/analysis/valuation-spine-resource";
+import type { MemoState } from "@/flows/analysis/resources";
+import type { ValuationSpineState } from "@/flows/analysis/valuation-spine-resource";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
   PHASE_1_MEMO_KEYS,
   type AgentName,
   type AnyMemoShortName,
-} from "@/src/flows/analysis/registry";
-import { RATING_LADDER } from "@/src/flows/analysis/lib/rating-engine";
+} from "@/flows/analysis/registry";
+import { RATING_LADDER } from "@/flows/analysis/lib/rating-engine";
 
 /** One analyst's TLDR line for the Summary grid. */
 export type AnalystTldr = {

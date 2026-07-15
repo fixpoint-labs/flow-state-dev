@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import {
   recordFixture,
   stableSerialize,
-} from "../src/flows/analysis/tools/runtime/recorder";
+} from "../flows/analysis/tools/runtime/recorder";
 
 describe("stableSerialize", () => {
   it("produces identical bytes for identical logical objects with different key insertion orders", () => {

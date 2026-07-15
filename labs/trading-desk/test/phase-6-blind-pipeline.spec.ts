@@ -14,7 +14,7 @@
  * flow.
  */
 import { describe, expect, it } from "vitest";
-import { tradingDesk } from "../src/flows/analysis/capability";
+import { tradingDesk } from "../flows/analysis/capability";
 
 const THESIS_SENTINEL = "SENTINEL_THESIS_MUST_NOT_LEAK_42";
 const RATIONALE_SENTINEL = "SENTINEL_RATIONALE_MUST_NOT_LEAK_99";

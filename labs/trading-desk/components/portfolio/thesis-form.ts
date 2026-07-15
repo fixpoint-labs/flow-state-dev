@@ -16,7 +16,7 @@ import {
   type TimeHorizon,
   type Tripwire,
   type TripwireKind,
-} from "@/src/flows/portfolio/thesis-schema";
+} from "@/domain/portfolio/schema/thesis-schema";
 
 /** A tripwire row as the editor holds it: every field is a raw string so an
  *  in-progress, not-yet-numeric row never throws. */

@@ -23,7 +23,7 @@ import {
   computeRealizedGainTotals,
   realizedTotalsByAccount,
 } from "../components/portfolio/realized-gains-row-model";
-import type { RealizedGainRow } from "../src/db/repository";
+import type { RealizedGainRow } from "../db/repository";
 
 function gain(overrides: Partial<RealizedGainRow> = {}): RealizedGainRow {
   return {

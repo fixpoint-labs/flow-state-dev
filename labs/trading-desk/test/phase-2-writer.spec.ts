@@ -11,11 +11,11 @@ import {
   commitBearMemo,
   commitBullMemo,
   commitResearchManagerMemo,
-} from "../src/flows/analysis/agents/research/writer";
-import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
-import { memosCollection } from "../src/flows/analysis/resources";
-import { sessionStateSchema } from "../src/flows/analysis/state";
-import { PHASE_2_MEMO_KEYS } from "../src/flows/analysis/registry";
+} from "../flows/analysis/agents/research/writer";
+import { markError, markWriting } from "../flows/analysis/agents/_recipe/memo-writer";
+import { memosCollection } from "../flows/analysis/resources";
+import { sessionStateSchema } from "../flows/analysis/state";
+import { PHASE_2_MEMO_KEYS } from "../flows/analysis/registry";
 import { latestMemoStatus } from "./_helpers/memo-status";
 
 const writeBull = markWriting("bull");

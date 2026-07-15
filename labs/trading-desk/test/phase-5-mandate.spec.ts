@@ -13,15 +13,15 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitPortfolioManagerMemo } from "../src/flows/analysis/agents/portfolio-manager/writer";
-import { resolveMandate } from "../src/flows/analysis/lib/risk-mandate";
-import { memosCollection } from "../src/flows/analysis/resources";
-import { sessionStateSchema } from "../src/flows/analysis/state";
-import { valuationSpineResource } from "../src/flows/analysis/valuation-spine-resource";
-import { decisionSnapshotResource } from "../src/flows/analysis/decision-snapshot-resource";
-import { lensConvergenceResource } from "../src/flows/analysis/agents/lenses/lens-convergence-resource";
-import { rewardToRiskResource } from "../src/flows/analysis/reward-to-risk-resource";
-import { PHASE_5_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { commitPortfolioManagerMemo } from "../flows/analysis/agents/portfolio-manager/writer";
+import { resolveMandate } from "../flows/analysis/lib/risk-mandate";
+import { memosCollection } from "../flows/analysis/resources";
+import { sessionStateSchema } from "../flows/analysis/state";
+import { valuationSpineResource } from "../flows/analysis/valuation-spine-resource";
+import { decisionSnapshotResource } from "../flows/analysis/decision-snapshot-resource";
+import { lensConvergenceResource } from "../flows/analysis/agents/lenses/lens-convergence-resource";
+import { rewardToRiskResource } from "../flows/analysis/reward-to-risk-resource";
+import { PHASE_5_MEMO_KEYS } from "../flows/analysis/registry";
 import { latestMemoDelta } from "./_helpers/memo-status";
 
 const fixtureFlow = defineFlow({
@@ -120,6 +120,10 @@ function decision(opts: {
       rewardToRiskRead: "read",
       sizeStance: "stance",
       mandateOverrideReason: opts.overrideReason ?? "",
+    },
+    policyFit: {
+      allocationRead: "",
+      constraintRead: "",
     },
     citations: null,
   };

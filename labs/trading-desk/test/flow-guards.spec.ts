@@ -19,11 +19,11 @@ import {
   checkAssetTypeSupported,
   checkPhase1HasData,
   checkPhase1HasFundamentalsAndProfile,
-} from "../src/flows/analysis/orchestration/guards";
-import { analyzeInputSchema } from "../src/flows/analysis/flow-schema";
-import { PHASE_1_MEMO_KEYS } from "../src/flows/analysis/registry";
-import { memosCollection } from "../src/flows/analysis/resources";
-import { sessionStateSchema } from "../src/flows/analysis/state";
+} from "../flows/analysis/orchestration/guards";
+import { analyzeInputSchema } from "../flows/analysis/flow-schema";
+import { PHASE_1_MEMO_KEYS } from "../flows/analysis/registry";
+import { memosCollection } from "../flows/analysis/resources";
+import { sessionStateSchema } from "../flows/analysis/state";
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-flow-guards-test",

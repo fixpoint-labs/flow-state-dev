@@ -22,9 +22,9 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
-import type { LedgerRow } from "@/src/flows/portfolio/ledger-schema";
-import type { Quote } from "@/src/flows/portfolio/get-quotes";
-import { inferSplit, previewSplitResult } from "@/src/flows/portfolio/lots";
+import type { LedgerRow } from "@/domain/portfolio/schema/ledger-schema";
+import type { Quote } from "@/domain/portfolio/services/get-quotes";
+import { inferSplit, previewSplitResult } from "@/domain/portfolio/math/lots";
 import type { NewLedgerEvent } from "./add-transaction-dialog";
 import { DASH, formatMoney, formatQuantity } from "./portfolio-format";
 

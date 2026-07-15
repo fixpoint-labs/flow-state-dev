@@ -18,7 +18,7 @@ import {
   trendLabel,
   vwma,
   type Bar,
-} from "../src/flows/analysis/tools/indicators-math";
+} from "../flows/analysis/tools/indicators-math";
 
 function bar(date: string, close: number, range = 1, volume = 1000): Bar {
   return {

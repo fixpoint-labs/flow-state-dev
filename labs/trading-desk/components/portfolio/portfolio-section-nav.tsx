@@ -7,8 +7,7 @@
  * a bottom nav, and a second hidden nav layer would bury the perspectives).
  *
  * Page-level section nav, so `<nav>` + `aria-current`, not `role="tablist"`.
- * FIX-762's household health view lands by appending one `SECTIONS` entry and
- * one union member.
+ * FIX-762 added the household Health perspective as a third `SECTIONS` entry.
  */
 "use client";
 
@@ -16,11 +15,12 @@ import type { ReactElement } from "react";
 import { cn } from "@/lib/utils";
 
 /** The portfolio pane's perspectives (the `TradingDeskView` precedent). */
-export type PortfolioSection = "accounts" | "gains";
+export type PortfolioSection = "accounts" | "gains" | "health";
 
 const SECTIONS: ReadonlyArray<{ value: PortfolioSection; label: string }> = [
   { value: "accounts", label: "Accounts" },
   { value: "gains", label: "Gains & Taxes" },
+  { value: "health", label: "Health" },
 ];
 
 type SectionNavProps = {

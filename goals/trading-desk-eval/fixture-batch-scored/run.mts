@@ -13,9 +13,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readScoreboard } from "../../../labs/trading-desk/src/eval/scoreboard";
-import { blindBundle } from "../../../labs/trading-desk/src/eval/blinding";
-import { runArtifactsStateSchema } from "../../../labs/trading-desk/src/flows/analysis/run-artifacts";
+import { readScoreboard } from "../../../labs/trading-desk/eval/scoreboard";
+import { blindBundle } from "../../../labs/trading-desk/eval/blinding";
+import { runArtifactsStateSchema } from "../../../labs/trading-desk/flows/analysis/run-artifacts";
 
 const APP = fileURLToPath(new URL("../../../labs/trading-desk", import.meta.url));
 const OUT = join(APP, ".fsdev", `eval-goal-${Date.now()}`);

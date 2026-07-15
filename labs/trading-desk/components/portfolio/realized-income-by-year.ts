@@ -14,7 +14,7 @@
  * `computeRealizedGainTotals`, so its own null / basis-unknown gates carry
  * through unchanged.
  */
-import type { IncomeSummaryByYearRow, RealizedGainRow } from "@/src/db/repository";
+import type { IncomeSummaryByYearRow, RealizedGainRow } from "@/db/repository";
 import {
   buildRealizedGainsRowModel,
   computeRealizedGainTotals,

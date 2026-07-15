@@ -22,6 +22,7 @@ export {
 export type { BlockExecResult } from "./commands/block";
 export { registerDevCommand, executeDevCommand } from "./commands/dev";
 export type { FlowRunResult, FlowEvent } from "./commands/run";
+export { registerServeCommand, executeServeCommand } from "./commands/serve";
 export { registerChatCommand, executeChatCommand } from "./commands/chat";
 export type { ChatCommandOptions } from "./commands/chat";
 export type { ParsedInput } from "./chat/parse";

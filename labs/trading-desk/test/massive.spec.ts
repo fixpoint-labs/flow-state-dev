@@ -9,7 +9,7 @@ import {
   fetchFuturesFrontNext,
   fetchOptionChainSnapshot,
   hasMassiveKey,
-} from "../src/flows/analysis/tools/providers/massive";
+} from "../lib/providers/massive";
 
 /** Route a mocked `fetch` by URL substring → JSON payload (status 200). */
 function mockFetchByUrl(routes: Array<{ match: string; payload: unknown }>, status = 200) {

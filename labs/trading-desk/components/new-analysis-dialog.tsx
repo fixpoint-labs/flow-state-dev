@@ -30,7 +30,7 @@ import type { CostPreset, DataSourceMode } from "@/components/topbar";
 import {
   MANDATE_PACK,
   type RiskMandateId,
-} from "@/src/flows/analysis/lib/risk-mandate";
+} from "@/flows/analysis/lib/risk-mandate";
 import { cn } from "@/lib/utils";
 
 /** Cost-preset toggle options. Lives here because the dialog is now the only

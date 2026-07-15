@@ -20,7 +20,7 @@ import {
   EMPTY_INSTRUCTIONS,
   FIELD_CHAR_LIMIT,
   type SpecialInstructionsState,
-} from "@/src/flows/analysis/special-instructions";
+} from "@/flows/analysis/special-instructions";
 import { cn } from "@/lib/utils";
 
 type SettingsDialogProps = {

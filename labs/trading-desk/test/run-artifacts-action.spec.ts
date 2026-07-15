@@ -13,9 +13,9 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
-import analysisFlow from "../src/flows/analysis/flow";
-import type { DecisionSnapshotState } from "../src/flows/analysis/decision-snapshot-resource";
-import type { RunArtifactsBundle } from "../src/flows/analysis/run-artifacts";
+import analysisFlow from "../flows/analysis/flow";
+import type { DecisionSnapshotState } from "../flows/analysis/decision-snapshot-resource";
+import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
 
 const snapshot: DecisionSnapshotState = {
   ticker: "NVDA",
@@ -35,6 +35,11 @@ const snapshot: DecisionSnapshotState = {
   worstCaseReturnPct: -10,
   capacityVetoed: false,
   hasStandingThesis: null,
+  mandatePresent: null,
+  policyVerdict: null,
+  positionCapClamped: null,
+  excluded: null,
+  preGatePolicyTargetPct: null,
   decidedAt: "2026-06-25T00:00:00.000Z",
   outcomeRealizedPrice: null,
   outcomeAsOf: null,

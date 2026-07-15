@@ -23,8 +23,8 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
-import { checkRun } from "../src/eval/invariants";
-import { runJudges, type JudgeReport } from "../src/eval/judge";
+import { checkRun } from "../eval/invariants";
+import { runJudges, type JudgeReport } from "../eval/judge";
 import {
   appendScoreboardLine,
   assembleQualityRecord,
@@ -32,13 +32,13 @@ import {
   buildErrorRecord,
   detailSidecarPath,
   writeDetailSidecar,
-} from "../src/eval/scoreboard";
-import { krippendorffAlpha, meanStd, standardError } from "../src/eval/stats";
+} from "../eval/scoreboard";
+import { krippendorffAlpha, meanStd, standardError } from "../eval/stats";
 import {
   runArtifactsStateSchema,
   type RunArtifactsBundle,
-} from "../src/flows/analysis/run-artifacts";
-import type { QualityRecord } from "../src/eval/types";
+} from "../flows/analysis/run-artifacts";
+import type { QualityRecord } from "../eval/types";
 
 const APP = process.cwd();
 const DEFAULT_JUDGE_MODEL = "vercel/openai/gpt-5.4-mini";

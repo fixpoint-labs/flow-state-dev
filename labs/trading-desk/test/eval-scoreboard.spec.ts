@@ -1,5 +1,5 @@
 /**
- * Tests for the JSONL quality scoreboard (`src/eval/scoreboard.ts`, FIX-790).
+ * Tests for the JSONL quality scoreboard (`eval/scoreboard.ts`, FIX-790).
  *
  * Intent encoded: a record round-trips through `qualityRecordSchema`; appends
  * are one self-contained line each; and a reader skips a TORN line (a killed
@@ -15,9 +15,9 @@ import {
   buildErrorRecord,
   detailSidecarPath,
   readScoreboard,
-} from "../src/eval/scoreboard";
-import { qualityRecordSchema, type InvariantReport } from "../src/eval/types";
-import type { RunArtifactsBundle } from "../src/flows/analysis/run-artifacts";
+} from "../eval/scoreboard";
+import { qualityRecordSchema, type InvariantReport } from "../eval/types";
+import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
 
 function tmp(): string {
   return mkdtempSync(join(tmpdir(), "eval-scoreboard-"));
@@ -65,6 +65,11 @@ function bundle(sessionId: string): RunArtifactsBundle {
       rewardToRiskLossAdjustedGlr: 2,
       worstCaseReturnPct: -10,
       hasStandingThesis: null,
+      mandatePresent: null,
+      policyVerdict: null,
+      positionCapClamped: null,
+      excluded: null,
+      preGatePolicyTargetPct: null,
       memos: [],
       memoErrors: 0,
     },

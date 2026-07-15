@@ -11,7 +11,7 @@ import {
   computeCoverageQuality,
   fetchPolymarketTop,
   themesForSector,
-} from "../src/flows/analysis/tools/data/get_prediction_markets";
+} from "../flows/analysis/tools/data/get_prediction_markets";
 
 /** Mock `fetch` so each Polymarket query (`?q=`) gets its own payload. Queries
  *  not in the map fall back to an empty event list. */
