@@ -23,6 +23,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
+import { mapLimit } from "../lib/concurrency";
 import { checkRun } from "../eval/invariants";
 import { runJudges, type JudgeReport } from "../eval/judge";
 import { EvalUsageError, parsePositiveNumberFlag } from "../eval/options";
@@ -209,19 +210,6 @@ type ManifestTuple = {
   userThesisRationale?: string;
   selectedAccountIds?: string[];
 };
-
-async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T, i: number) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  async function worker(): Promise<void> {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i], i);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
-  return results;
-}
 
 async function sweep(a: Args): Promise<number> {
   const opts = evalOptions(a);

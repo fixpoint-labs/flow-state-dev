@@ -133,7 +133,7 @@ dimension) `{mean, std, scores}` plus the `2·SE` noise band. **Krippendorff's a
 is computed only when ≥2 sessions are supplied** (items = sessions, raters =
 repeats); with a single item the expected-disagreement denominator is degenerate.
 Any dimension with `α < 0.8` is flagged as an unreliable rubric. `stats.ts`
-implements `meanStd`, `seDiff`, and `krippendorffAlpha` locally.
+implements `meanStd`, `standardError`, and `krippendorffAlpha` locally.
 
 **Measured noise bands.** _(To be filled from a live-model `variance` run; the goal
 check runs k=3 on the NVDA + AAPL fixture sessions and records std + alpha per
