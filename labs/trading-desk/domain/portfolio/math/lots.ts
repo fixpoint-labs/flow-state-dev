@@ -26,9 +26,9 @@
  * with no price) carries `costPerShare: null` and is flagged — NEVER zero-filled
  * (zero-fill would massively overstate realized gains).
  */
-import { classifyTerm } from "@/domain/portfolio/math/holding-period";
+import { classifyTerm } from "./holding-period";
 import { splitRatio, type LedgerRow } from "../schema/ledger-schema";
-import type { RealizedDisposal } from "@/domain/portfolio/math/realized-gains";
+import type { RealizedDisposal } from "./realized-gains";
 
 /** Floating-point tolerance for treating a residual share quantity as closed. */
 const QTY_EPSILON = 1e-9;
