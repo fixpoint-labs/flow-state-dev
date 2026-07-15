@@ -2,30 +2,35 @@
  * eval-runs — the run-quality evaluation harness (FIX-790).
  *
  *   pnpm eval sweep    --manifest <file.json> [--concurrency 2] [--out .fsdev/eval]
+ *                      [--data-dir <path>]
  *                      [--judge-model <id>] [--no-judges] [--max-cost-usd <n>]
  *                      [--judge-timeout-ms <n>] [--k <n>]
  *   pnpm eval eval     --session <id> [--session <id> ...] [same flags]
- *   pnpm eval variance --session <id> [--session <id> ...] [--k 5] [--judge-model <id>] [--out ...]
+ *   pnpm eval variance --session <id> [--session <id> ...] [--k 5]
+ *                      [--judge-model <id>] [--out ...] [--data-dir <path>]
  *
- * Shells `fsdev run` exactly the way `goals/trading-desk-headless/fixture-run-clean/run.mts`
- * does (cwd = this package, `--capture <file> --quiet`, read `capture.result.output`).
- * `sweep` generates a session per manifest tuple, runs `analyze` then evaluates;
- * `eval` evaluates already-stored sessions; `variance` characterizes judge noise
- * (k repeats, no scoreboard append). Deterministic invariants run for free; the
- * LLM judges read the blinded stored bundle, never re-running the pipeline.
+ * Uses the framework's off-transport runtime directly: one `FlowState.getRuntime()`
+ * per command, then `runAction()` for `analyze` and the zero-model `runArtifacts`
+ * read. `sweep` generates a session per manifest tuple, runs `analyze` then
+ * evaluates; `eval` evaluates already-stored sessions; `variance` characterizes
+ * judge noise (k repeats, no scoreboard append). Deterministic invariants run for
+ * free; the LLM judges read the blinded stored bundle, never re-running the pipeline.
  *
- * PGlite is single-process: sweep gives each run an isolated `TRADING_DESK_DATA_DIR`
- * (safe under `--concurrency > 1`); eval reads the SHARED store, so its reads run
- * strictly sequentially (`--concurrency` is ignored with a warning). Exit code is
- * non-zero when any run errored or any HARD invariant failed (soft flags and judge
- * scores never gate — thresholds are a consumer decision).
+ * One command uses one database backing. `sweep` defaults to `<out>/data`, while
+ * `eval` and `variance` default to the shared app store; pass `--data-dir
+ * <sweep-out>/data` to read an isolated sweep. Exit code is non-zero when any run
+ * errored or any HARD invariant failed (soft flags and judge scores never gate).
  */
-import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { checkRun } from "../eval/invariants";
 import { runJudges, type JudgeReport } from "../eval/judge";
-import { EvalUsageError, parsePositiveNumberFlag } from "../eval/options";
+import {
+  EvalUsageError,
+  parsePositiveNumberFlag,
+  resolveEvalDataDir,
+} from "../eval/options";
+import { withEvalRuntime, type EvalRuntime } from "../eval/runtime";
 import {
   appendScoreboardLine,
   assembleQualityRecord,
@@ -100,60 +105,29 @@ function evalOptions(a: Args): EvalOptions {
   };
 }
 
-// ── fsdev shelling ─────────────────────────────────────────────────────────
-// `spawn` with stdio ignored (not `execFile`): `--quiet` silences stderr logs but
-// `fsdev run` still emits NDJSON on stdout, and a verbose full run would overflow
-// execFile's buffer and be mis-recorded as a non-zero exit. We read the `--capture`
-// FILE, never the child's stdout, so discarding both streams is correct.
-function runFsdev(args: string[], env: NodeJS.ProcessEnv): Promise<number> {
-  return new Promise((resolve) => {
-    const child = spawn("pnpm", ["fsdev", "run", "analysis", ...args], { cwd: APP, env, stdio: "ignore" });
-    // This repo's @types/node doesn't surface ChildProcess's event methods (the
-    // same gap as packages/tools/moat.ts); the runtime methods exist. Wire
-    // completion through a minimal EventEmitter view.
-    const emitter = child as unknown as NodeJS.EventEmitter;
-    emitter.once("error", () => resolve(1));
-    emitter.once("close", (code) => resolve(typeof code === "number" ? code : 1));
-  });
+// ── framework runtime ──────────────────────────────────────────────────────
+function writeBundleSnapshot(outDir: string, bundle: RunArtifactsBundle): void {
+  const path = join(outDir, "artifacts", `${bundle.summary.sessionId}.json`);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(bundle, null, 2), "utf8");
 }
 
-/** The env a session's read runs under. When a sweep at `outDir` isolated the
- *  session into `<outDir>/data/<sessionId>`, point the read at that dir; else use
- *  the shared store (process.env). Lets `eval`/`variance` reach sweep-isolated
- *  sessions given the same `--out`, and fall back for shared-store sessions. */
-function sessionEnv(sessionId: string, outDir: string): NodeJS.ProcessEnv {
-  const dir = join(outDir, "data", sessionId);
-  return existsSync(dir) ? { ...process.env, TRADING_DESK_DATA_DIR: dir } : process.env;
-}
-
-function readBundle(capturePath: string): RunArtifactsBundle | null {
-  try {
-    const capture = JSON.parse(readFileSync(capturePath, "utf8")) as {
-      result?: { output?: unknown };
-    };
-    const output = capture.result?.output;
-    if (output == null) return null;
-    return runArtifactsStateSchema.parse(output);
-  } catch {
-    return null;
-  }
-}
-
-/** Run the zero-model `runArtifacts` read for a session and parse the bundle. */
+/** Run the zero-model `runArtifacts` action in the current runtime and parse the bundle. */
 async function fetchBundle(
   sessionId: string,
-  env: NodeJS.ProcessEnv,
+  runtime: EvalRuntime,
   outDir: string,
 ): Promise<{ bundle: RunArtifactsBundle | null; error?: string }> {
-  const cap = join(outDir, "captures", `${sessionId}.artifacts.json`);
-  mkdirSync(dirname(cap), { recursive: true });
-  const exit = await runFsdev(
-    ["runArtifacts", "-i", "{}", "--session", sessionId, "--capture", cap, "--quiet"],
-    env,
-  );
-  if (exit !== 0) return { bundle: null, error: `runArtifacts exited ${exit}` };
-  const bundle = readBundle(cap);
-  return bundle ? { bundle } : { bundle: null, error: "unreadable runArtifacts capture" };
+  const result = await runtime.run("runArtifacts", {}, sessionId);
+  if (result.error !== null) return { bundle: null, error: result.error };
+  try {
+    const bundle = runArtifactsStateSchema.parse(result.output);
+    writeBundleSnapshot(outDir, bundle);
+    return { bundle };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { bundle: null, error: `invalid runArtifacts output: ${message}` };
+  }
 }
 
 // ── evaluation core ────────────────────────────────────────────────────────
@@ -222,65 +196,68 @@ async function sweep(a: Args): Promise<number> {
   const concurrency =
     parsePositiveNumberFlag(one(a, "concurrency"), "concurrency", { integer: true }) ?? 2;
   const stamp = Date.now();
-
-  // Phase A: run each tuple's analyze + read (bounded concurrency; each run gets
-  // an isolated TRADING_DESK_DATA_DIR so PGlite stays single-process-safe).
-  type Prepared = { tuple: ManifestTuple; sessionId: string; ranAt: string; bundle: RunArtifactsBundle | null; error?: string };
-  const indexedManifest = manifest.map((tuple, index) => ({ tuple, index }));
-  const prepared = await mapLimit(indexedManifest, concurrency, async ({ tuple, index }) => {
-    const sessionId = `sweep_${tuple.ticker}_${index}_${stamp}`;
-    const dataDir = join(opts.outDir, "data", sessionId);
-    const env = { ...process.env, TRADING_DESK_DATA_DIR: dataDir };
-    const input: Record<string, unknown> = {
-      ticker: tuple.ticker,
-      dataSource: tuple.dataSource ?? "fixture",
-      costPreset: tuple.costPreset ?? "fast",
-    };
-    if (tuple.date) input.date = tuple.date;
-    if (tuple.riskMandate) input.riskMandate = tuple.riskMandate;
-    if (tuple.userThesis) input.userThesis = tuple.userThesis;
-    if (tuple.userThesisRationale) input.userThesisRationale = tuple.userThesisRationale;
-    if (tuple.selectedAccountIds) input.selectedAccountIds = tuple.selectedAccountIds;
-
-    const analyzeCapture = join(opts.outDir, "captures", `${sessionId}.analyze.json`);
-    mkdirSync(dirname(analyzeCapture), { recursive: true });
-    const ranAt = new Date().toISOString();
-    const exit = await runFsdev(
-      ["analyze", "-i", JSON.stringify(input), "--session", sessionId, "--capture", analyzeCapture, "--quiet"],
-      env,
-    );
-    if (exit !== 0) return { tuple, sessionId, ranAt, bundle: null, error: `analyze exited ${exit}` } as Prepared;
-    const { bundle, error } = await fetchBundle(sessionId, env, opts.outDir);
-    return { tuple, sessionId, ranAt, bundle, error } as Prepared;
+  const dataDir = resolveEvalDataDir({
+    mode: "sweep",
+    appDir: APP,
+    outDir: opts.outDir,
+    dataDir: one(a, "data-dir"),
   });
 
-  // Phase B: evaluate + append SEQUENTIALLY so scoreboard lines never interleave.
-  let anyFailed = false;
-  for (const p of prepared) {
-    if (p.bundle === null) {
-      const evaluatedAt = new Date().toISOString();
-      const detailPath = detailSidecarPath(opts.outDir, p.sessionId, evaluatedAt);
-      const rec = buildErrorRecord({
-        sessionId: p.sessionId,
-        evaluatedAt,
-        detail: p.error ?? "run produced no bundle",
-        detailPath,
-        ticker: p.tuple.ticker,
-        date: p.tuple.date ?? null,
-      });
-      writeDetailSidecar(detailPath, { sessionId: p.sessionId, evaluatedAt, error: p.error });
-      appendScoreboardLine(join(opts.outDir, "scoreboard.jsonl"), rec);
-      logRecord(rec);
-      anyFailed = true;
-      continue;
-    }
-    const record = await evaluate(p.bundle, p.ranAt, opts);
-    logRecord(record);
-    if (recordFailed(record)) anyFailed = true;
-  }
+  return withEvalRuntime({ dataDir }, async (runtime) => {
+    // Phase A: run each tuple's analyze + read with bounded concurrency. One
+    // framework runtime owns the backing; session IDs isolate each run's state.
+    type Prepared = { tuple: ManifestTuple; sessionId: string; ranAt: string; bundle: RunArtifactsBundle | null; error?: string };
+    const indexedManifest = manifest.map((tuple, index) => ({ tuple, index }));
+    const prepared = await mapLimit(indexedManifest, concurrency, async ({ tuple, index }) => {
+      const sessionId = `sweep_${tuple.ticker}_${index}_${stamp}`;
+      const input: Record<string, unknown> = {
+        ticker: tuple.ticker,
+        dataSource: tuple.dataSource ?? "fixture",
+        costPreset: tuple.costPreset ?? "fast",
+      };
+      if (tuple.date) input.date = tuple.date;
+      if (tuple.riskMandate) input.riskMandate = tuple.riskMandate;
+      if (tuple.userThesis) input.userThesis = tuple.userThesis;
+      if (tuple.userThesisRationale) input.userThesisRationale = tuple.userThesisRationale;
+      if (tuple.selectedAccountIds) input.selectedAccountIds = tuple.selectedAccountIds;
 
-  console.log(`\nScoreboard: ${join(opts.outDir, "scoreboard.jsonl")}`);
-  return anyFailed ? 1 : 0;
+      const ranAt = new Date().toISOString();
+      const analyze = await runtime.run("analyze", input, sessionId);
+      if (analyze.error !== null) {
+        return { tuple, sessionId, ranAt, bundle: null, error: analyze.error } as Prepared;
+      }
+      const { bundle, error } = await fetchBundle(sessionId, runtime, opts.outDir);
+      return { tuple, sessionId, ranAt, bundle, error } as Prepared;
+    });
+
+    // Phase B: evaluate + append sequentially so scoreboard lines never interleave.
+    let anyFailed = false;
+    for (const p of prepared) {
+      if (p.bundle === null) {
+        const evaluatedAt = new Date().toISOString();
+        const detailPath = detailSidecarPath(opts.outDir, p.sessionId, evaluatedAt);
+        const rec = buildErrorRecord({
+          sessionId: p.sessionId,
+          evaluatedAt,
+          detail: p.error ?? "run produced no bundle",
+          detailPath,
+          ticker: p.tuple.ticker,
+          date: p.tuple.date ?? null,
+        });
+        writeDetailSidecar(detailPath, { sessionId: p.sessionId, evaluatedAt, error: p.error });
+        appendScoreboardLine(join(opts.outDir, "scoreboard.jsonl"), rec);
+        logRecord(rec);
+        anyFailed = true;
+        continue;
+      }
+      const record = await evaluate(p.bundle, p.ranAt, opts);
+      logRecord(record);
+      if (recordFailed(record)) anyFailed = true;
+    }
+
+    console.log(`\nScoreboard: ${join(opts.outDir, "scoreboard.jsonl")}`);
+    return anyFailed ? 1 : 0;
+  });
 }
 
 async function evalMode(a: Args): Promise<number> {
@@ -290,34 +267,36 @@ async function evalMode(a: Args): Promise<number> {
     console.error("eval requires at least one --session <id>");
     return 2;
   }
-  const concurrency = parsePositiveNumberFlag(one(a, "concurrency"), "concurrency", {
-    integer: true,
+  const dataDir = resolveEvalDataDir({
+    mode: "eval",
+    appDir: APP,
+    outDir: opts.outDir,
+    dataDir: one(a, "data-dir"),
   });
-  if (concurrency !== undefined && concurrency > 1) {
-    console.warn("eval mode reads the shared store — --concurrency is ignored (reads run sequentially).");
-  }
 
-  let anyFailed = false;
-  for (const sessionId of sessions) {
-    const { bundle, error } = await fetchBundle(sessionId, sessionEnv(sessionId, opts.outDir), opts.outDir);
-    if (bundle === null) {
-      const evaluatedAt = new Date().toISOString();
-      const detailPath = detailSidecarPath(opts.outDir, sessionId, evaluatedAt);
-      const rec = buildErrorRecord({ sessionId, evaluatedAt, detail: error ?? "no bundle", detailPath });
-      writeDetailSidecar(detailPath, { sessionId, evaluatedAt, error });
-      appendScoreboardLine(join(opts.outDir, "scoreboard.jsonl"), rec);
-      logRecord(rec);
-      anyFailed = true;
-      continue;
+  return withEvalRuntime({ dataDir }, async (runtime) => {
+    let anyFailed = false;
+    for (const sessionId of sessions) {
+      const { bundle, error } = await fetchBundle(sessionId, runtime, opts.outDir);
+      if (bundle === null) {
+        const evaluatedAt = new Date().toISOString();
+        const detailPath = detailSidecarPath(opts.outDir, sessionId, evaluatedAt);
+        const rec = buildErrorRecord({ sessionId, evaluatedAt, detail: error ?? "no bundle", detailPath });
+        writeDetailSidecar(detailPath, { sessionId, evaluatedAt, error });
+        appendScoreboardLine(join(opts.outDir, "scoreboard.jsonl"), rec);
+        logRecord(rec);
+        anyFailed = true;
+        continue;
+      }
+      const ranAt = bundle.decisionSnapshot?.decidedAt ?? null;
+      const record = await evaluate(bundle, ranAt, opts);
+      logRecord(record);
+      if (recordFailed(record)) anyFailed = true;
     }
-    const ranAt = bundle.decisionSnapshot?.decidedAt ?? null;
-    const record = await evaluate(bundle, ranAt, opts);
-    logRecord(record);
-    if (recordFailed(record)) anyFailed = true;
-  }
 
-  console.log(`\nScoreboard: ${join(opts.outDir, "scoreboard.jsonl")}`);
-  return anyFailed ? 1 : 0;
+    console.log(`\nScoreboard: ${join(opts.outDir, "scoreboard.jsonl")}`);
+    return anyFailed ? 1 : 0;
+  });
 }
 
 async function variance(a: Args): Promise<number> {
@@ -328,68 +307,76 @@ async function variance(a: Args): Promise<number> {
     return 2;
   }
   const k = opts.k ?? 5;
+  const dataDir = resolveEvalDataDir({
+    mode: "variance",
+    appDir: APP,
+    outDir: opts.outDir,
+    dataDir: one(a, "data-dir"),
+  });
 
-  type PerSession = { sessionId: string; dimensions: Record<string, number[]> };
-  const perSession: PerSession[] = [];
-  for (const sessionId of sessions) {
-    const { bundle, error } = await fetchBundle(sessionId, sessionEnv(sessionId, opts.outDir), opts.outDir);
-    if (bundle === null) {
-      console.error(`skipping ${sessionId}: ${error}`);
-      continue;
+  return withEvalRuntime({ dataDir }, async (runtime) => {
+    type PerSession = { sessionId: string; dimensions: Record<string, number[]> };
+    const perSession: PerSession[] = [];
+    for (const sessionId of sessions) {
+      const { bundle, error } = await fetchBundle(sessionId, runtime, opts.outDir);
+      if (bundle === null) {
+        console.error(`skipping ${sessionId}: ${error}`);
+        continue;
+      }
+      const report = await runJudges(bundle, {
+        judgeModel: opts.judgeModel,
+        k,
+        timeoutMs: opts.timeoutMs,
+        maxCostUsd: opts.maxCostUsd,
+      });
+      if (report === null) {
+        console.error(`skipping ${sessionId}: run is ${bundle.summary.status}, judges only grade completed runs`);
+        continue;
+      }
+      const dims: Record<string, number[]> = {};
+      for (const d of report.dimensions) if (d.status === "scored") dims[d.key] = d.scores;
+      perSession.push({ sessionId, dimensions: dims });
     }
-    const report = await runJudges(bundle, {
+
+    if (perSession.length === 0) {
+      console.error("no usable sessions for variance");
+      return 1;
+    }
+
+    const dimensionKeys = Array.from(new Set(perSession.flatMap((p) => Object.keys(p.dimensions))));
+    const report = {
+      generatedAt: new Date().toISOString(),
       judgeModel: opts.judgeModel,
       k,
-      timeoutMs: opts.timeoutMs,
-      maxCostUsd: opts.maxCostUsd,
-    });
-    if (report === null) {
-      console.error(`skipping ${sessionId}: run is ${bundle.summary.status}, judges only grade completed runs`);
-      continue;
+      sessions: perSession.map((p) => p.sessionId),
+      dimensions: dimensionKeys.map((dim) => {
+        const bySession = perSession
+          .filter((p) => p.dimensions[dim] !== undefined)
+          .map((p) => {
+            const scores = p.dimensions[dim];
+            const { mean, std } = meanStd(scores);
+            return { sessionId: p.sessionId, mean, std, noiseBand2SE: 2 * standardError(scores), scores };
+          });
+        // Alpha only with ≥2 sessions (items); a single item is degenerate (§4.7).
+        const matrix = perSession.map((p) => p.dimensions[dim]).filter((s): s is number[] => s !== undefined);
+        const alpha = matrix.length >= 2 ? krippendorffAlpha(matrix) : null;
+        return { dimension: dim, alpha, unreliable: alpha != null && alpha < 0.8, bySession };
+      }),
+    };
+
+    const outPath = join(opts.outDir, `variance.${report.generatedAt.replace(/[:.]/g, "-")}.json`);
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, JSON.stringify(report, null, 2), "utf8");
+
+    console.log(`Variance over ${perSession.length} session(s), k=${k}, judge ${opts.judgeModel}:`);
+    for (const d of report.dimensions) {
+      const alphaStr = d.alpha == null ? "alpha n/a (<2 sessions)" : `alpha=${d.alpha.toFixed(3)}${d.unreliable ? " ⚠ UNRELIABLE" : ""}`;
+      const bands = d.bySession.map((s) => `${s.mean.toFixed(2)}±${(s.noiseBand2SE).toFixed(2)}`).join(" ");
+      console.log(`  ${d.dimension}: ${alphaStr}  [${bands}]`);
     }
-    const dims: Record<string, number[]> = {};
-    for (const d of report.dimensions) if (d.status === "scored") dims[d.key] = d.scores;
-    perSession.push({ sessionId, dimensions: dims });
-  }
-
-  if (perSession.length === 0) {
-    console.error("no usable sessions for variance");
-    return 1;
-  }
-
-  const dimensionKeys = Array.from(new Set(perSession.flatMap((p) => Object.keys(p.dimensions))));
-  const report = {
-    generatedAt: new Date().toISOString(),
-    judgeModel: opts.judgeModel,
-    k,
-    sessions: perSession.map((p) => p.sessionId),
-    dimensions: dimensionKeys.map((dim) => {
-      const bySession = perSession
-        .filter((p) => p.dimensions[dim] !== undefined)
-        .map((p) => {
-          const scores = p.dimensions[dim];
-          const { mean, std } = meanStd(scores);
-          return { sessionId: p.sessionId, mean, std, noiseBand2SE: 2 * standardError(scores), scores };
-        });
-      // Alpha only with ≥2 sessions (items); a single item is degenerate (§4.7).
-      const matrix = perSession.map((p) => p.dimensions[dim]).filter((s): s is number[] => s !== undefined);
-      const alpha = matrix.length >= 2 ? krippendorffAlpha(matrix) : null;
-      return { dimension: dim, alpha, unreliable: alpha != null && alpha < 0.8, bySession };
-    }),
-  };
-
-  const outPath = join(opts.outDir, `variance.${report.generatedAt.replace(/[:.]/g, "-")}.json`);
-  mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, JSON.stringify(report, null, 2), "utf8");
-
-  console.log(`Variance over ${perSession.length} session(s), k=${k}, judge ${opts.judgeModel}:`);
-  for (const d of report.dimensions) {
-    const alphaStr = d.alpha == null ? "alpha n/a (<2 sessions)" : `alpha=${d.alpha.toFixed(3)}${d.unreliable ? " ⚠ UNRELIABLE" : ""}`;
-    const bands = d.bySession.map((s) => `${s.mean.toFixed(2)}±${(s.noiseBand2SE).toFixed(2)}`).join(" ");
-    console.log(`  ${d.dimension}: ${alphaStr}  [${bands}]`);
-  }
-  console.log(`\nVariance report: ${outPath}`);
-  return 0;
+    console.log(`\nVariance report: ${outPath}`);
+    return 0;
+  });
 }
 
 async function main(): Promise<void> {
@@ -415,7 +402,7 @@ async function main(): Promise<void> {
     console.error(`usage error: ${err.message}`);
     code = 2;
   }
-  process.exit(code);
+  process.exitCode = code;
 }
 
 void main();

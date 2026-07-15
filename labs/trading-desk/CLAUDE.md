@@ -1645,14 +1645,17 @@ model distinct from the desk's generators.
 Three commands (from this directory):
 
 ```bash
-pnpm eval sweep    --manifest <file.json> [--concurrency 2] [--out .fsdev/eval] [--judge-model <id>] [--no-judges] [--max-cost-usd <n>]
-pnpm eval eval     --session <id> [--session <id> ...] [same flags]
-pnpm eval variance --session <id> [--session <id> ...] [--k 5]
+pnpm eval sweep    --manifest <file.json> [--concurrency 2] [--out .fsdev/eval] [--data-dir <path>] [--judge-model <id>] [--no-judges] [--max-cost-usd <n>]
+pnpm eval eval     --session <id> [--session <id> ...] [--data-dir <path>] [same flags]
+pnpm eval variance --session <id> [--session <id> ...] [--data-dir <path>] [--k 5]
 ```
 
-`sweep` runs a batch of `analyze` runs (each in an isolated `TRADING_DESK_DATA_DIR`)
-then evaluates each; `eval` evaluates already-stored sessions; `variance`
-characterizes the judge's own noise so a score delta can be told from randomness.
+`sweep` uses one framework runtime and one isolated PGlite backing (`<out>/data` by
+default) for the batch, with session IDs isolating concurrent runs. `eval` and
+`variance` default to the shared app store; pass `--data-dir <sweep-out>/data` to
+read a sweep. Each command uses one backing. `eval` evaluates already-stored
+sessions; `variance` characterizes the judge's own noise so a score delta can be
+told from randomness.
 Every evaluated run appends one separable `QualityRecord` line to
 `<out>/scoreboard.jsonl` (deterministic tally + per-dimension judged `{mean, std, k}`,
 never a composite) with a full detail sidecar alongside. **Exit code is non-zero

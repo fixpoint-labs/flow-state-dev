@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   EvalUsageError,
   parsePositiveNumberFlag,
+  resolveEvalDataDir,
 } from "../eval/options";
 
 describe("parsePositiveNumberFlag", () => {
@@ -22,5 +23,45 @@ describe("parsePositiveNumberFlag", () => {
     expect(() => parsePositiveNumberFlag("1.5", "k", { integer: true })).toThrow(
       "--k must be a positive integer",
     );
+  });
+});
+
+describe("resolveEvalDataDir", () => {
+  const appDir = "/repo/labs/trading-desk";
+  const outDir = "/tmp/eval-output";
+
+  it("defaults sweeps to one isolated backing under the output directory", () => {
+    expect(resolveEvalDataDir({ mode: "sweep", appDir, outDir })).toBe(
+      "/tmp/eval-output/data",
+    );
+  });
+
+  it.each(["eval", "variance"] as const)(
+    "uses the shared application store for %s mode by default",
+    (mode) => {
+      expect(resolveEvalDataDir({ mode, appDir, outDir })).toBeUndefined();
+    },
+  );
+
+  it("resolves an explicit relative data dir from the trading-desk directory", () => {
+    expect(
+      resolveEvalDataDir({
+        mode: "variance",
+        appDir,
+        outDir,
+        dataDir: ".fsdev/eval/data",
+      }),
+    ).toBe("/repo/labs/trading-desk/.fsdev/eval/data");
+  });
+
+  it("preserves an explicit absolute data dir", () => {
+    expect(
+      resolveEvalDataDir({
+        mode: "eval",
+        appDir,
+        outDir,
+        dataDir: "/tmp/existing-sweep",
+      }),
+    ).toBe("/tmp/existing-sweep");
   });
 });

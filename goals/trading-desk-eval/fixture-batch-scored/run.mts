@@ -57,7 +57,7 @@ try {
   if (records.length !== 2) failures.push(`expected 2 scoreboard lines, got ${records.length}`);
   sessionIds = records.map((r) => r.sessionId);
 
-  // Anti-stub: compare the PROVENANCE-STRIPPED bundles, not raw capture bytes
+  // Anti-stub: compare the PROVENANCE-STRIPPED bundles, not raw snapshot bytes
   // (which always differ by sessionId/timestamps even for a stubbed identical read).
   const blindedBundles = new Set<string>();
   for (const rec of records) {
@@ -99,10 +99,12 @@ try {
 
     // The stored bundle must differ between the two runs — compared blinded, so
     // a stubbed identical read is caught even though sessionIds always differ.
-    const cap = JSON.parse(readFileSync(join(OUT, "captures", `${rec.sessionId}.artifacts.json`), "utf8")) as {
-      result?: { output?: unknown };
-    };
-    blindedBundles.add(JSON.stringify(blindBundle(runArtifactsStateSchema.parse(cap.result?.output))));
+    const snapshot = JSON.parse(
+      readFileSync(join(OUT, "artifacts", `${rec.sessionId}.json`), "utf8"),
+    );
+    blindedBundles.add(
+      JSON.stringify(blindBundle(runArtifactsStateSchema.parse(snapshot))),
+    );
   }
   if (records.length === 2 && blindedBundles.size < 2) failures.push("the two runs produced identical blinded bundles (stubbed read path?)");
 } catch (err) {
@@ -111,7 +113,19 @@ try {
 
 // 2. Variance across both sessions (k=3). Alpha requires ≥2 sessions.
 if (sessionIds.length === 2 && failures.length === 0) {
-  evalCli(["variance", "--session", sessionIds[0], "--session", sessionIds[1], "--out", OUT, "--k", "3"]);
+  evalCli([
+    "variance",
+    "--session",
+    sessionIds[0],
+    "--session",
+    sessionIds[1],
+    "--out",
+    OUT,
+    "--data-dir",
+    join(OUT, "data"),
+    "--k",
+    "3",
+  ]);
   try {
     const varianceFile = readdirSync(OUT).filter((f) => f.startsWith("variance.")).sort().pop();
     if (!varianceFile) throw new Error("no variance report written");

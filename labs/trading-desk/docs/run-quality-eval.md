@@ -149,9 +149,9 @@ dimension. Populate this table from a `--k 5` run once a gateway key is availabl
 ## Running the suite
 
 ```bash
-pnpm eval sweep    --manifest <file.json> [--concurrency 2] [--out .fsdev/eval] [--judge-model <id>] [--no-judges] [--max-cost-usd <n>] [--judge-timeout-ms <n>] [--k <n>]
-pnpm eval eval     --session <id> [--session <id> ...] [same flags]
-pnpm eval variance --session <id> [--session <id> ...] [--k 5] [--judge-model <id>]
+pnpm eval sweep    --manifest <file.json> [--concurrency 2] [--out .fsdev/eval] [--data-dir <path>] [--judge-model <id>] [--no-judges] [--max-cost-usd <n>] [--judge-timeout-ms <n>] [--k <n>]
+pnpm eval eval     --session <id> [--session <id> ...] [--data-dir <path>] [same flags]
+pnpm eval variance --session <id> [--session <id> ...] [--data-dir <path>] [--k 5] [--judge-model <id>]
 ```
 
 Manifest tuples: `[{ ticker, date?, costPreset?, dataSource?, riskMandate?, userThesis?, selectedAccountIds? }]`
@@ -161,13 +161,17 @@ default judge model is `vercel/openai/gpt-5.4-mini`. Numeric flags must be posit
 finite values; `--k`, `--judge-timeout-ms`, and `--concurrency` must also be
 integers. Exit code is non-zero when any run errored or any **hard** invariant failed.
 
-**PGlite is single-process.** `sweep` gives each run an isolated
-`TRADING_DESK_DATA_DIR` under `--out` (so `--concurrency > 1` is safe and sweep
-runs stay out of Past Reports); `eval`/`variance` reach those isolated sessions when
-given the same `--out`. Against a real Postgres backing (`DATABASE_URL`) there is no
-such constraint. **Session ownership:** `fsdev run` executes as the CLI user and
-sessions are bound to their creator, so v1 evaluates harness-created sessions;
-UI-created sessions (a different owner) are a named limitation.
+**One runtime, one backing.** The CLI uses the framework's sanctioned
+off-transport path (`FlowState.getRuntime()` + `runAction()`), not child `fsdev`
+processes. `sweep` defaults to one isolated PGlite backing at `<out>/data`; its
+session IDs isolate concurrent runs while the single runtime owns the database.
+`eval` and `variance` default to the shared application store. Pass `--data-dir
+<sweep-out>/data` to re-evaluate an isolated sweep; relative paths resolve from the
+trading-desk directory. One command never mixes sessions from different backings.
+The CLI writes each parsed raw bundle to `<out>/artifacts/<sessionId>.json` for
+inspection. **Session ownership:** actions execute as `cli-user` and sessions are
+bound to their creator, so v1 evaluates harness-created sessions; UI-created
+sessions (a different owner) are a named limitation.
 
 ## Limitations (v1)
 
@@ -177,8 +181,8 @@ UI-created sessions (a different owner) are a named limitation.
   share count; the EV-band and terminal-value-share soft flags cover the intent.
 - **No outcome/ground-truth scoring** — process quality only; "was the call right"
   is a separate issue on the historical corpus.
-- **CLI-created sessions only** — evaluating UI-created sessions needs a user-id
-  seam in `fsdev run` that doesn't exist yet.
+- **CLI-created sessions only** — evaluating UI-created sessions needs a
+  configurable user-id seam in the eval runtime that doesn't exist yet.
 - **Judge field order** — the shipped finding schema emits `score` before
   `assessment`/`evidence`, so reasoning-before-score is instructed in the preamble,
   not enforced by the schema.

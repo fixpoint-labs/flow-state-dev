@@ -8,15 +8,16 @@ proof is a small batch: two different tickers, evaluated end-to-end, landing two
 separable records on the JSONL scoreboard, plus a variance pass that characterizes
 the judge's own noise.
 
-**Real path.** The check shells `pnpm eval sweep` over a two-tuple manifest
-(NVDA + AAPL, `fast`, `fixture`) from `labs/trading-desk`. Each run gets an
-isolated `TRADING_DESK_DATA_DIR`, so `--concurrency` is PGlite-safe and the runs
-stay out of Past Reports. `analyze` runs real generators through the desk's intent
-ladder + Vercel AI Gateway (fixture mode stubs the DATA tools only); the zero-model
-`runArtifacts` action reads each stored bundle back; the deterministic invariants
-run for free; and the LLM judges grade the four rubric dimensions on a BLINDED
-bundle, with a pinned judge model. Then `pnpm eval variance` re-scores both
-sessions (k=3, to bound cost) and records the per-dimension noise band + alpha.
+**Real path.** The check runs `pnpm eval sweep` over a two-tuple manifest
+(NVDA + AAPL, `fast`, `fixture`) from `labs/trading-desk`. One framework runtime
+executes both sessions against an isolated PGlite backing under `<out>/data`, so
+`--concurrency` is safe and the runs stay out of Past Reports. `analyze` runs real
+generators through the desk's intent ladder + Vercel AI Gateway (fixture mode stubs
+the DATA tools only); the zero-model `runArtifacts` action reads each stored bundle
+back through the same runtime; the deterministic invariants run for free; and the
+LLM judges grade the four rubric dimensions on a BLINDED bundle, with a pinned judge
+model. Then `pnpm eval variance --data-dir <out>/data` re-scores both sessions
+(k=3, to bound cost) and records the per-dimension noise band + alpha.
 
 **Pass criterion.**
 
