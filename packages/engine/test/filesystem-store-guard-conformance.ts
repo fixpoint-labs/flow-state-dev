@@ -219,6 +219,18 @@ export function createFilesystemStoreGuardConformanceTests<V>(
       await expect(store.set("session", "s1", "b", makeValue(2))).rejects.toThrow(/unexpected version/);
     });
 
+    it("re-scans for legacy data on the publishing set even after a cached fresh read", async () => {
+      rootDir = await mkdtemp(path.join(tmpdir(), `fsd-${subdir}-rescan-`));
+      const store = createStore(rootDir);
+      expect(await store.get("session", "s1", "missing")).toBeUndefined(); // caches "fresh"
+      // Another process writes flat legacy files after the cached read; the next
+      // set must re-scan before stamping a marker, not trust the stale cache.
+      await seedLegacyFile("s1", "notes");
+      await expect(store.set("session", "s1", "new", makeValue(1))).rejects.toThrow(
+        /predates the nested-layout/
+      );
+    });
+
     it("delete refuses a marker swapped to an incompatible version", async () => {
       rootDir = await mkdtemp(path.join(tmpdir(), `fsd-${subdir}-delete-swap-`));
       const store = createStore(rootDir);

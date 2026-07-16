@@ -11,7 +11,7 @@
  * (BP-030), collision surfacing, and the one-shot ENOENT-retry atomic write
  * both stores share. The two public stores are thin config over this.
  */
-import { lstat, mkdir, readdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { link, lstat, mkdir, readdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ContentScopeType } from "../types";
 import {
@@ -245,7 +245,8 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
         continue;
       }
       if (!entry.isFile()) continue;
-      if (entry.name === LAYOUT_MARKER_NAME) continue;
+      // Skip the marker AND its in-flight publish temps (`<marker>.tmp-…`).
+      if (entry.name.startsWith(LAYOUT_MARKER_NAME)) continue;
       if (METADATA_FILE_DENYLIST.has(entry.name)) continue;
       return true; // a real data file
     }
@@ -264,21 +265,38 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
     // a marker another process swapped to an incompatible layout blocks the
     // write instead of letting v1 data land under it.
     if (await this.markerValidOrAbsent()) return;
-    // Absent: publish atomically via a temp file + rename, so a crash mid-write
-    // can't leave a torn/empty marker that every later read would treat as
-    // corrupt. The temp lives in the parent dir so the legacy scan (which walks
-    // `this.root`) never counts it as data; rename within the same filesystem is
-    // atomic. Concurrent first-sets publish identical bytes, so the race is safe.
+    // Marker absent, but re-scan for legacy data BEFORE publishing: the cached
+    // `ensureLayout` result may be a stale "fresh" from a cold read while
+    // another process wrote flat files since — stamping a marker over them would
+    // silently hide them (defeating the clean-break guard).
+    if (await this.subtreeHasDataFile(this.root)) {
+      throw new Error(
+        `Filesystem store subtree at ${this.root} predates the nested-layout change; ` +
+          `will not read its flat files — move it aside or delete it.`
+      );
+    }
+    // Publish atomically AND exclusively: write a temp INSIDE the owned subtree
+    // (so a read-only or separately-mounted parent can't break it, and the
+    // rename/link stays on the destination filesystem), then hard-`link` it into
+    // place. `link` is atomic (no torn marker) and fails `EEXIST` if another
+    // process published first — re-validate theirs rather than clobbering a
+    // marker another version may own. The temp is `<marker>.tmp-…`, which the
+    // legacy scan and enumeration both skip.
     const tmp = path.join(
-      path.dirname(this.root),
+      this.root,
       `${LAYOUT_MARKER_NAME}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
     );
     try {
       await writeFile(tmp, JSON.stringify({ layout: LAYOUT_VERSION }), "utf8");
-      await rename(tmp, this.markerPath);
-    } catch (error) {
+      try {
+        await link(tmp, this.markerPath);
+      } catch (error) {
+        if (errno(error) !== "EEXIST") throw error;
+        // Concurrently published — trust/validate the existing marker instead.
+        await this.markerValidOrAbsent();
+      }
+    } finally {
       await rm(tmp, { force: true }).catch(() => {});
-      throw error;
     }
   }
 
