@@ -52,7 +52,7 @@ export function encodeSegment(segment: string): string {
  * "%2A"→"*", etc. Throws `URIError` on a malformed %-sequence (e.g. "100%") —
  * callers wrap this so a non-canonical on-disk name is caught, not fatal.
  */
-export function decodeSegment(segment: string): string {
+function decodeSegment(segment: string): string {
   return decodeURIComponent(segment);
 }
 
@@ -113,28 +113,6 @@ export type ResourceRecord = {
 };
 
 /**
- * Narrow the walk start directory using the prefix's COMPLETE leading segments
- * (BP-033: filter at source). Splits `keyPrefix` on "/"; the all-but-last
- * segments are complete and select a subdirectory, the trailing piece is a
- * partial match handled by the caller's `startsWith`. Returns `undefined` when a
- * complete leading segment is unrepresentable (empty or Windows-reserved) — such
- * a prefix can never match a stored key, so the caller returns [].
- */
-function narrowStartDir(scopeDir: string, keyPrefix: string | undefined): string | undefined {
-  if (!keyPrefix) return scopeDir;
-  const segments = keyPrefix.split("/");
-  const completeLeading = segments.slice(0, -1);
-  let dir = scopeDir;
-  for (const segment of completeLeading) {
-    if (segment === "" || isWindowsReservedName(segment)) {
-      return undefined;
-    }
-    dir = path.join(dir, encodeSegment(segment));
-  }
-  return dir;
-}
-
-/**
  * Recursively walk `scopeDir`, yielding a record for every file whose name ends
  * in `ext`. The vault is user-editable, so reconstruction is defensive:
  *
@@ -146,32 +124,47 @@ function narrowStartDir(scopeDir: string, keyPrefix: string | undefined): string
  *    round-trip (`keyToRelativePath(relativePathToKey(rel)) !== rel`, or whose
  *    decode throws) is non-canonical (e.g. `a%2Fb.md` aliases `a/b.md`,
  *    `100%.md` throws) and is skipped with a `console.warn`, never yielded.
- *  - Symlink-safe: the start dir and every subdirectory are `lstat`ed; a
- *    symlinked directory (or file) is skipped, never followed/yielded.
- *  - `keyPrefix` narrows the start dir (see {@link narrowStartDir}); the caller
- *    still applies the exact `startsWith` on reconstructed keys.
+ *  - Symlink-safe: `scopeDir`, every prefix-narrowed intermediate directory,
+ *    AND every subdirectory descended during the walk are `lstat`ed; a
+ *    symlinked directory (or file) is skipped, never followed/yielded — so a
+ *    symlink anywhere on the path can't redirect enumeration outside the scope.
+ *  - `keyPrefix` narrows the start dir (BP-033: filter at source): its COMPLETE
+ *    leading segments (all but the last, partial, piece) select the start
+ *    subdirectory; the trailing piece is matched by the caller's `startsWith`.
+ *    A complete segment that is unrepresentable (empty or Windows-reserved) can
+ *    never match a stored key, so enumeration returns [] rather than throwing.
  */
 export async function collectRecords(
   scopeDir: string,
   ext: string,
   keyPrefix?: string
 ): Promise<ResourceRecord[]> {
-  const startDir = narrowStartDir(scopeDir, keyPrefix);
-  if (startDir === undefined) return [];
-
   const records: ResourceRecord[] = [];
 
-  // lstat the start dir: missing -> nothing; symlink -> skip (never follow).
-  let startStat;
-  try {
-    startStat = await lstat(startDir);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return records;
-    throw error;
+  // Descend to the prefix-narrowed start dir, lstat-ing scopeDir AND every
+  // intermediate segment so a symlinked segment can't redirect the walk out of
+  // the scope. (Checking only the final start dir would let a symlinked
+  // intermediate — `scopeDir/a` for prefix `a/b/x` — resolve through.)
+  const completeLeading = keyPrefix ? keyPrefix.split("/").slice(0, -1) : [];
+  let dir = scopeDir;
+  for (let i = 0; i <= completeLeading.length; i += 1) {
+    if (i > 0) {
+      const segment = completeLeading[i - 1];
+      if (segment === "" || isWindowsReservedName(segment)) return records;
+      dir = path.join(dir, encodeSegment(segment));
+    }
+    let stat;
+    try {
+      stat = await lstat(dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return records;
+      throw error;
+    }
+    // Missing handled above; a symlink (or non-directory) is never followed.
+    if (stat.isSymbolicLink() || !stat.isDirectory()) return records;
   }
-  if (startStat.isSymbolicLink() || !startStat.isDirectory()) return records;
 
-  await walk(startDir, scopeDir, ext, records);
+  await walk(dir, scopeDir, ext, records);
   return records;
 }
 

@@ -4,7 +4,7 @@
  * Validates CRUD operations, batch operations, scope isolation, and
  * key encoding for both InMemoryContentStore and FilesystemContentStore.
  */
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
@@ -375,5 +375,82 @@ describe("FilesystemContentStore legacy clean-break guard", () => {
     await expect(stores.resourceState.getAll("session", "s1")).rejects.toThrow(
       /predates the nested-layout/
     );
+  });
+
+  it("throws on a corrupt (non-JSON) marker atop data", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-corrupt-"));
+    const contentDir = path.join(rootDir, "content");
+    const scopeDir = path.join(contentDir, "session", "s1");
+    await mkdir(scopeDir, { recursive: true });
+    await writeFile(path.join(contentDir, MARKER), "not json {{{", "utf8");
+    await writeFile(path.join(scopeDir, encodeURIComponent("notes")), "body", "utf8");
+    const store = createFilesystemContentStore(rootDir);
+    await expect(store.get("session", "s1", "notes")).rejects.toThrow(/corrupt/i);
+  });
+});
+
+describe("FilesystemContentStore symlink safety", () => {
+  let rootDir: string;
+
+  afterEach(async () => {
+    if (rootDir) await rm(rootDir, { recursive: true, force: true });
+  });
+
+  async function freshStore(): Promise<ContentStore> {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-symlink-"));
+    return createFilesystemContentStore(rootDir);
+  }
+
+  it("rejects a symlinked resource leaf on get and delete", async () => {
+    const store = await freshStore();
+    await store.set("session", "s1", "real", "body"); // stamps marker, creates scope dir
+    const outside = path.join(rootDir, "outside.md");
+    await writeFile(outside, "secret", "utf8");
+    const scopeDir = path.join(rootDir, "content", "session", "s1");
+    await symlink(outside, path.join(scopeDir, "secret.md"));
+
+    await expect(store.get("session", "s1", "secret")).rejects.toThrow(/symlink/i);
+    await expect(store.delete("session", "s1", "secret")).rejects.toThrow(/symlink/i);
+    expect(await pathExists(outside)).toBe(true); // target untouched
+  });
+
+  it("rejects a symlinked ancestor directory on get and set", async () => {
+    const store = await freshStore();
+    const outsideDir = path.join(rootDir, "outside");
+    await mkdir(outsideDir, { recursive: true });
+    await mkdir(path.join(rootDir, "content"), { recursive: true });
+    await symlink(outsideDir, path.join(rootDir, "content", "session"));
+
+    await expect(store.get("session", "s1", "k")).rejects.toThrow(/symlink/i);
+    await expect(store.set("session", "s1", "k", "body")).rejects.toThrow(/symlink/i);
+  });
+
+  it("deleteAll unlinks a symlinked scope dir instead of deleting through it", async () => {
+    const store = await freshStore();
+    const outsideDir = path.join(rootDir, "outside");
+    await mkdir(outsideDir, { recursive: true });
+    const keep = path.join(outsideDir, "keep.md");
+    await writeFile(keep, "important", "utf8");
+    const sessionDir = path.join(rootDir, "content", "session");
+    await mkdir(sessionDir, { recursive: true });
+    const scopeLink = path.join(sessionDir, "s1");
+    await symlink(outsideDir, scopeLink);
+
+    await store.deleteAll("session", "s1");
+    expect(await pathExists(scopeLink)).toBe(false); // symlink removed
+    expect(await pathExists(keep)).toBe(true); // target dir + contents survive
+  });
+
+  it("getByPrefix does not follow a symlinked intermediate directory", async () => {
+    const store = await freshStore();
+    await store.set("session", "s1", "real", "body"); // stamps marker, creates scope dir
+    const scopeDir = path.join(rootDir, "content", "session", "s1");
+    const outsideDir = path.join(rootDir, "outside");
+    await mkdir(path.join(outsideDir, "b"), { recursive: true });
+    await writeFile(path.join(outsideDir, "b", "leak.md"), "leaked", "utf8");
+    await symlink(outsideDir, path.join(scopeDir, "a"));
+
+    // A deep prefix whose intermediate segment `a` is a symlink must not leak.
+    expect(await store.getByPrefix("session", "s1", "a/b/x")).toEqual({});
   });
 });
