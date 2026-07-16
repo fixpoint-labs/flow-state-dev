@@ -2,6 +2,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import {
   createFlowState,
   inMemoryStores,
+  runAction,
   type FlowState,
 } from "@flow-state-dev/engine";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -93,6 +94,34 @@ describe("withEvalRuntime", () => {
         expect(following.error).toBeNull();
       },
     );
+  });
+
+  it("reuses the persisted owner when evaluating a UI-created session", async () => {
+    const flowState = buildFlowState();
+    const resolved = await flowState.getRuntime();
+    const flow = resolved.registry.get("analysis");
+    if (flow === undefined) throw new Error("synthetic analysis flow missing");
+    const seeded = await runAction({
+      flow,
+      actionName: "analyze",
+      input: { value: "created-by-ui" },
+      userId: "devuser",
+      sessionId: "ui-session",
+      stores: resolved.stores,
+      runtimeConfig: resolved.runtimeConfig,
+    });
+    expect(seeded.error).toBeUndefined();
+
+    const output = await withEvalRuntime(
+      { loadFlowState: async () => flowState },
+      async (runtime) => {
+        const read = await runtime.run("runArtifacts", {}, "ui-session");
+        expect(read.error).toBeNull();
+        return read.output;
+      },
+    );
+
+    expect(output).toEqual({ value: "created-by-ui" });
   });
 
   it("sets the data dir before loading config and disposes after success", async () => {

@@ -12,7 +12,7 @@
  * routes to the judge layer (a fixture replay still calls real generators, so
  * memo text is nondeterministic run-to-run — asserting on it would be
  * permanently red, spec §Key-Decisions-2). Recomputation checks reuse the desk's
- * OWN pure libs (`ratingBandFor`, `computeMandateGates`, `computeRewardToRisk`) —
+ * OWN pure libs (`modelImpliedRating`, `computeMandateGates`, `computeRewardToRisk`) —
  * they catch stored-record DRIFT and partial writes, not formula bugs.
  *
  * Total & never-throwing: missing substrate degrades a check to `skipped` with a
@@ -26,7 +26,7 @@ import { computeMandateGates } from "../flows/analysis/lib/mandate-gates";
 import { computeRewardToRisk } from "../flows/analysis/lib/reward-to-risk";
 import { DIVERGENCE_THRESHOLD } from "../flows/analysis/lib/triangulation";
 import {
-  ratingBandFor,
+  modelImpliedRating,
   ratingIndex,
   type FinalRating,
 } from "../flows/analysis/lib/rating-engine";
@@ -233,7 +233,9 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
     }
   }
 
-  // Band recomputation from the spine's implied rating + evidence thinness.
+  // Recompute the complete envelope from the valuation inputs. Trusting the
+  // stored implied rating here would let the implied rating and its band drift
+  // together without the invariant noticing.
   if (spine == null) {
     c.skip(
       "rating-envelope/band-recompute",
@@ -242,23 +244,33 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
     );
     return;
   }
-  const thin =
-    spine.setupScore.evidenceBasis === "thin" || spine.expectedReturn.lowConfidence;
-  const recomputed = ratingBandFor(spine.envelope.implied, thin);
-  if (
-    recomputed.floor === spine.envelope.floor &&
-    recomputed.ceiling === spine.envelope.ceiling
-  ) {
+  const recomputed = modelImpliedRating({
+    expectedReturn: spine.expectedReturn,
+    fairValue: spine.fairValue,
+    setupScore: spine.setupScore,
+    triangulation: spine.triangulation ?? undefined,
+  });
+  const envelopeFields = [
+    "absoluteRating",
+    "relativeRating",
+    "implied",
+    "floor",
+    "ceiling",
+  ] as const;
+  const drift = envelopeFields.filter(
+    (field) => recomputed[field] !== spine.envelope[field],
+  );
+  if (drift.length === 0) {
     c.hardPass(
       "rating-envelope/band-recompute",
-      `band [${spine.envelope.floor}, ${spine.envelope.ceiling}] matches recomputation from implied ${spine.envelope.implied}`,
+      "stored rating envelope matches recomputation from the valuation inputs",
     );
   } else {
     c.hardFail(
       "rating-envelope/band-recompute",
-      `stored band disagrees with recomputation from implied ${spine.envelope.implied} (thin=${thin})`,
-      `[${recomputed.floor}, ${recomputed.ceiling}]`,
-      `[${spine.envelope.floor}, ${spine.envelope.ceiling}]`,
+      `stored rating envelope drifted in: ${drift.join(", ")}`,
+      Object.fromEntries(envelopeFields.map((field) => [field, recomputed[field]])),
+      Object.fromEntries(envelopeFields.map((field) => [field, spine.envelope[field]])),
     );
   }
 }
@@ -479,12 +491,24 @@ function checkMandate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): vo
       `mandate verdict drift: recomputed ${gates.verdict}, memo ${decision.verdict}, snapshot ${snapshot.mandateVerdict}`,
     );
   }
-  if (decision.capacityVetoed === !gates.capacityCleared) {
-    c.hardPass("mandate/capacity", `capacityVetoed ${decision.capacityVetoed} matches recomputation`);
+  const expectedCapacityVeto = !gates.capacityCleared;
+  if (
+    decision.capacityVetoed === expectedCapacityVeto &&
+    snapshot.capacityVetoed === expectedCapacityVeto
+  ) {
+    c.hardPass("mandate/capacity", `capacityVetoed ${expectedCapacityVeto} matches recomputation (snapshot + memo)`);
   } else {
     c.hardFail(
       "mandate/capacity",
-      `capacityVetoed ${decision.capacityVetoed} disagrees with recomputed capacity (cleared=${gates.capacityCleared})`,
+      `capacity veto drift: recomputed ${expectedCapacityVeto}, memo ${decision.capacityVetoed}, snapshot ${snapshot.capacityVetoed}`,
+    );
+  }
+  if (decision.cleared === gates.cleared) {
+    c.hardPass("mandate/soft-gates", `cleared ${decision.cleared} matches recomputation`);
+  } else {
+    c.hardFail(
+      "mandate/soft-gates",
+      `cleared ${decision.cleared} disagrees with recomputed soft gates (${gates.cleared})`,
     );
   }
 
@@ -522,18 +546,22 @@ function checkMandate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): vo
     if (decision.sizeClamped) {
       const mandateGatedTargetPct =
         pm?.policyDecision?.preGatePolicyTargetPct ?? targetWeightPct;
-      const onCap =
-        approx(mandateGatedTargetPct, mandate.capacityVetoCapPct) ||
-        approx(mandateGatedTargetPct, mandate.unclearedCapPct);
-      if (onCap) {
+      const applicableCap = !gates.capacityCleared
+        ? mandate.capacityVetoCapPct
+        : !gates.cleared && !override
+          ? mandate.unclearedCapPct
+          : null;
+      if (applicableCap != null && approx(mandateGatedTargetPct, applicableCap)) {
         c.hardPass(
           "mandate/clamp-on-cap",
-          `pre-policy mandate-clamped size ${mandateGatedTargetPct} equals an applicable cap`,
+          `pre-policy mandate-clamped size ${mandateGatedTargetPct} equals the applicable cap ${applicableCap}`,
         );
       } else {
         c.hardFail(
           "mandate/clamp-on-cap",
-          `sizeClamped is true but pre-policy size ${mandateGatedTargetPct} equals neither cap (${mandate.capacityVetoCapPct} / ${mandate.unclearedCapPct})`,
+          applicableCap == null
+            ? `sizeClamped is true but recomputed gates require no mandate clamp`
+            : `sizeClamped is true but pre-policy size ${mandateGatedTargetPct} does not equal the applicable cap ${applicableCap}`,
         );
       }
     }
@@ -544,8 +572,17 @@ function checkMandate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): vo
 function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): void {
   const snapshot = bundle.decisionSnapshot;
   const pm = published(memos.get(PM_KEY));
-  if (snapshot == null || pm == null) {
-    c.skip("decision-consistency/snapshot-pm", "hard", "no decision snapshot / PM memo to cross-check");
+  if (snapshot == null) {
+    c.skip("decision-consistency/snapshot-pm", "hard", "no decision snapshot to cross-check");
+    return;
+  }
+  if (pm == null) {
+    c.hardFail(
+      "decision-consistency/snapshot-pm",
+      "decision snapshot exists but the PM memo is absent or not published",
+      "published PM memo",
+      memos.get(PM_KEY)?.status ?? "absent",
+    );
     return;
   }
 
@@ -566,6 +603,28 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
   const memoVerdict = pm.mandateDecision?.verdict ?? null;
   if (snapshot.mandateVerdict !== memoVerdict) {
     mismatches.push(`mandateVerdict snapshot ${snapshot.mandateVerdict} vs memo ${memoVerdict}`);
+  }
+  const policy = pm.policyDecision;
+  const policyPairs: Array<[string, unknown, unknown]> = [
+    ["mandatePresent", snapshot.mandatePresent, policy?.mandatePresent ?? null],
+    ["policyVerdict", snapshot.policyVerdict, policy?.policyVerdict ?? null],
+    ["positionCapClamped", snapshot.positionCapClamped, policy?.positionCapClamped ?? null],
+    ["excluded", snapshot.excluded, policy?.excluded ?? null],
+  ];
+  for (const [field, snapshotValue, memoValue] of policyPairs) {
+    if (snapshotValue !== memoValue) {
+      mismatches.push(`${field} snapshot ${snapshotValue} vs memo ${memoValue}`);
+    }
+  }
+  const snapshotPreGate = snapshot.preGatePolicyTargetPct;
+  const memoPreGate = policy?.preGatePolicyTargetPct ?? null;
+  const preGateMatches =
+    (snapshotPreGate == null && memoPreGate == null) ||
+    (typeof snapshotPreGate === "number" &&
+      typeof memoPreGate === "number" &&
+      approx(snapshotPreGate, memoPreGate));
+  if (!preGateMatches) {
+    mismatches.push(`preGatePolicyTargetPct snapshot ${snapshotPreGate} vs memo ${memoPreGate}`);
   }
   if (mismatches.length === 0) {
     c.hardPass("decision-consistency/snapshot-pm", "snapshot ↔ PM memo decision mirrors agree");
@@ -633,20 +692,30 @@ function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
     return;
   }
 
-  // Fair-value abstention honesty.
-  if (spine.fairValue.method === "none") {
-    if (spine.fairValue.available === false) {
-      c.hardPass("valuation/fair-value-abstention", 'fairValue.method "none" ⇒ available false (honest abstention)');
-    } else {
-      c.hardFail(
-        "valuation/fair-value-abstention",
-        'fairValue.method is "none" but available is not false',
-        false,
-        spine.fairValue.available,
-      );
+  // Fair-value availability and abstention honesty.
+  const fair = spine.fairValue;
+  const fairContradictions: string[] = [];
+  if (fair.method === "none") {
+    if (fair.available !== false) fairContradictions.push("available is not false");
+    for (const field of ["justifiedPE", "fairValue", "marginOfSafety"] as const) {
+      if (fair[field] != null) fairContradictions.push(`${field} is non-null`);
     }
+  } else if (fair.available === true) {
+    if (fair.method !== "justified-pe") fairContradictions.push(`method is ${fair.method}`);
+    for (const field of ["justifiedPE", "fairValue", "marginOfSafety"] as const) {
+      if (fair[field] == null) fairContradictions.push(`${field} is null`);
+    }
+  }
+  if (fairContradictions.length === 0) {
+    c.hardPass(
+      "valuation/fair-value-abstention",
+      fair.available ? "available fair value has its canonical populated shape" : "fair-value abstention shape is coherent",
+    );
   } else {
-    c.hardPass("valuation/fair-value-abstention", `fairValue.method ${spine.fairValue.method} (not abstaining)`);
+    c.hardFail(
+      "valuation/fair-value-abstention",
+      `fair-value shape is contradictory: ${fairContradictions.join("; ")}`,
+    );
   }
 
   // DCF abstention + terminal-value honesty (only when the DCF leg exists).
@@ -686,7 +755,33 @@ function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
         );
       }
     } else {
-      c.hardPass("valuation/dcf-abstention", "DCF available");
+      const requiredAvailableFields = [
+        "intrinsicValue",
+        "marginOfSafety",
+        "discountRate",
+        "stage1Growth",
+        "terminalValueShare",
+        "reliability",
+      ] as const;
+      const contradictions: string[] = [];
+      if (dcf.method !== "dcf") contradictions.push(`method is ${dcf.method}`);
+      if (dcf.reverseDcfStatus === "unavailable") {
+        contradictions.push("reverseDcfStatus is unavailable");
+      }
+      if (dcf.unavailableReason != null) {
+        contradictions.push(`unavailableReason is ${dcf.unavailableReason}`);
+      }
+      for (const field of requiredAvailableFields) {
+        if (dcf[field] == null) contradictions.push(`${field} is null`);
+      }
+      if (contradictions.length === 0) {
+        c.hardPass("valuation/dcf-abstention", "available DCF has its canonical populated shape");
+      } else {
+        c.hardFail(
+          "valuation/dcf-abstention",
+          `dcf.available is true but the available shape is contradictory: ${contradictions.join("; ")}`,
+        );
+      }
     }
 
     // terminalValueShare > 0.85 ⇒ reliability "tv-dominated".

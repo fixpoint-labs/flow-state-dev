@@ -9,7 +9,9 @@
  * under the harness's default userId (`"test-user"`).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { testBlock } from "@flow-state-dev/testing";
+import { defineFlow } from "@flow-state-dev/core";
+import { createInMemoryStores } from "@flow-state-dev/engine";
+import { testBlock, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
 
@@ -25,6 +27,15 @@ vi.mock("@/db/portfolio-db", () => ({
 
 import { seedSession } from "../flows/analysis/orchestration/guards";
 import flow from "../flows/analysis/flow";
+import { sessionStateSchema } from "../flows/analysis/state";
+
+const seedResetFlow = defineFlow({
+  kind: "seed-reset-test",
+  requireUser: true,
+  actions: { seed: { block: seedSession } },
+  session: { stateSchema: sessionStateSchema },
+  resources: flow.resources,
+})();
 
 /** testBlock's default request userId — the household key `seedSession` resolves. */
 const TEST_USER = "test-user";
@@ -191,6 +202,44 @@ describe("seedSession portfolio snapshot (server-side)", () => {
         (item as { changeType?: string }).changeType === "deleted",
     );
     expect(clearedFundamentals).toBe(true);
+  });
+
+  it("clears reward-to-risk from a prior run before a stopped re-run", async () => {
+    const stores = createInMemoryStores();
+    const sessionId = "stale-reward-to-risk";
+    const result = await testFlow({
+      flow: seedResetFlow,
+      action: "seed",
+      input: { ...baseInput },
+      userId: TEST_USER,
+      sessionId,
+      stores,
+      seed: {
+        session: {
+          resources: {
+            rewardToRisk: {
+              expectedValuePct: 4,
+              expectedGainPct: 8,
+              expectedLossPct: -2,
+              glr: 4,
+              lossAdjustedGlr: 2,
+              worstCaseReturnPct: -10,
+              noDownside: false,
+              evidenceBasis: "sufficient",
+              lossAversion: 2,
+              mandateId: "balanced",
+            },
+          },
+        },
+      },
+    });
+
+    expect(result.error).toBeUndefined();
+    // Nullable single resources persist their reset value as an empty object;
+    // the schema hydrates that representation back to null for consumers.
+    expect(
+      await stores.resourceState.get("session", sessionId, "rewardToRisk"),
+    ).toEqual({});
   });
 
   it("sets portfolio to null when there are no accounts", async () => {

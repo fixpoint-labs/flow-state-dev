@@ -14,9 +14,12 @@ export class EvalUsageError extends Error {
 export function parsePositiveNumberFlag(
   raw: string | undefined,
   flag: string,
-  options: { integer?: boolean } = {},
+  options: { integer?: boolean; bare?: boolean } = {},
 ): number | undefined {
-  if (raw === undefined) return undefined;
+  if (raw === undefined) {
+    if (options.bare) throw new EvalUsageError(`--${flag} requires a value`);
+    return undefined;
+  }
   const value = Number(raw);
   const valid =
     Number.isFinite(value) &&

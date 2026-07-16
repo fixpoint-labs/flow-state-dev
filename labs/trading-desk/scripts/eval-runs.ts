@@ -102,11 +102,14 @@ function evalOptions(a: Args): EvalOptions {
     outDir: isAbsolute(outRaw) ? outRaw : join(APP, outRaw),
     judgeModel: one(a, "judge-model") ?? DEFAULT_JUDGE_MODEL,
     noJudges: has(a, "no-judges"),
-    k: parsePositiveNumberFlag(one(a, "k"), "k", { integer: true }),
+    k: parsePositiveNumberFlag(one(a, "k"), "k", { integer: true, bare: has(a, "k") }),
     timeoutMs: parsePositiveNumberFlag(one(a, "judge-timeout-ms"), "judge-timeout-ms", {
       integer: true,
+      bare: has(a, "judge-timeout-ms"),
     }),
-    maxCostUsd: parsePositiveNumberFlag(one(a, "max-cost-usd"), "max-cost-usd"),
+    maxCostUsd: parsePositiveNumberFlag(one(a, "max-cost-usd"), "max-cost-usd", {
+      bare: has(a, "max-cost-usd"),
+    }),
   };
 }
 
@@ -202,7 +205,10 @@ async function sweep(a: Args): Promise<number> {
   }
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as ManifestTuple[];
   const concurrency =
-    parsePositiveNumberFlag(one(a, "concurrency"), "concurrency", { integer: true }) ?? 2;
+    parsePositiveNumberFlag(one(a, "concurrency"), "concurrency", {
+      integer: true,
+      bare: has(a, "concurrency"),
+    }) ?? 2;
   const stamp = Date.now();
   const dataDir = resolveEvalDataDir({
     mode: "sweep",

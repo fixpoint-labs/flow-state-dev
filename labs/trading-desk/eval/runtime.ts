@@ -60,11 +60,17 @@ export async function withEvalRuntime<T>(
     const runtime: EvalRuntime = {
       async run(actionName, input, sessionId) {
         try {
+          // Existing sessions may have been created by the UI (devuser) rather
+          // than this CLI. Reuse the persisted owner so the framework's session
+          // identity binding remains intact; new sweep sessions default to the
+          // established CLI identity.
+          const storedSession = await resolved.stores.session.get(sessionId);
+          const userId = storedSession?.userId ?? "cli-user";
           const result = await runAction({
             flow,
             actionName,
             input,
-            userId: "cli-user",
+            userId,
             sessionId,
             stores: resolved.stores,
             // The old `fsdev run --quiet` path suppressed engine traces. Preserve

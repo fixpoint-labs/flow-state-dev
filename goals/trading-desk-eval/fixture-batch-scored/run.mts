@@ -87,14 +87,14 @@ try {
     };
     for (const dim of detail.judges ?? []) {
       if (dim.status !== "scored") continue;
-      const anyReasoned = dim.repeats.some(
+      const allReasoned = dim.repeats.length > 0 && dim.repeats.every(
         (r) =>
           r.findings.length > 0 &&
           r.findings.every(
             (f) => f.assessment.trim().length > 0 && (f.evidence?.trim().length ?? 0) > 0,
           ),
       );
-      if (!anyReasoned) failures.push(`${rec.ticker}/${dim.key}: empty judge reasoning or evidence in the sidecar`);
+      if (!allReasoned) failures.push(`${rec.ticker}/${dim.key}: empty judge reasoning or evidence in the sidecar`);
     }
 
     // The stored bundle must differ between the two runs — compared blinded, so

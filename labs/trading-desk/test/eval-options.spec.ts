@@ -24,6 +24,12 @@ describe("parsePositiveNumberFlag", () => {
       "--k must be a positive integer",
     );
   });
+
+  it("rejects a present numeric flag with no value", () => {
+    expect(() =>
+      parsePositiveNumberFlag(undefined, "max-cost-usd", { bare: true }),
+    ).toThrow("--max-cost-usd requires a value");
+  });
 });
 
 describe("resolveEvalDataDir", () => {

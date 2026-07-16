@@ -32,6 +32,7 @@ import { profileDataResource } from "../profile-data-resource";
 import { priceHistoryResource } from "../price-history-resource";
 import { valuationSpineResource } from "../valuation-spine-resource";
 import { decisionSnapshotResource } from "../decision-snapshot-resource";
+import { rewardToRiskResource } from "../reward-to-risk-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
@@ -82,6 +83,7 @@ export const seedSession = handler({
     priceHistory: priceHistoryResource,
     valuationSpine: valuationSpineResource,
     decisionSnapshot: decisionSnapshotResource,
+    rewardToRisk: rewardToRiskResource,
     ...memoResources,
   },
   execute: async (input, ctx) => {
@@ -115,6 +117,7 @@ export const seedSession = handler({
     // exactly as for an unwritten resource.)
     await ctx.resources.priceHistory.setState(null);
     await ctx.resources.valuationSpine.setState(null);
+    await ctx.resources.rewardToRisk.setState(null);
     // Reset the decision-of-record too, so a re-run that stops before the PM
     // commits (or is mid-flight) can't leave the PRIOR run's decision readable —
     // which `adoptThesis` would otherwise save as the current thesis (it only

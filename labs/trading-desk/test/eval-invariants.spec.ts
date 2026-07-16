@@ -45,8 +45,8 @@ const SPINE: ValuationSpineState = {
   fairValue: { justifiedPE: 30, fairValue: 150, marginOfSafety: 0.3, method: "justified-pe", available: true },
   dcf: null,
   triangulation: null,
-  setupScore: { score: 0.7, value: 0.6, quality: 0.7, factor: 0.7, momentum: 0.7, evidenceBasis: "sufficient" },
-  envelope: { absoluteRating: "Buy", relativeRating: "Overweight", implied: "Overweight", floor: BAND.floor, ceiling: BAND.ceiling, rationale: "x" },
+  setupScore: { score: 70, value: 60, quality: 70, factor: 70, momentum: 70, evidenceBasis: "sufficient" },
+  envelope: { absoluteRating: "Hold", relativeRating: "Overweight", implied: "Overweight", floor: BAND.floor, ceiling: BAND.ceiling, rationale: "x" },
   valuationMethod: "ev-multiples",
   evidenceBasis: "sufficient",
 };
@@ -231,9 +231,16 @@ describe("checkRun — rating-envelope", () => {
     expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("fail");
   });
 
-  it("fails when the stored band disagrees with the recomputed band", () => {
+  it("fails when a self-consistent stored implied rating and band drift from the inputs", () => {
     const b = healthyBundle();
-    b.valuationSpine!.envelope.floor = "Sell"; // recompute says Hold
+    const buyBand = ratingBandFor("Buy", false);
+    b.valuationSpine!.envelope = {
+      ...b.valuationSpine!.envelope,
+      absoluteRating: "Buy",
+      relativeRating: "Overweight",
+      implied: "Buy",
+      ...buyBand,
+    };
     const report = checkRun(b);
     expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("fail");
   });
@@ -333,11 +340,40 @@ describe("checkRun — mandate", () => {
     expect(byId(report.checks, "mandate/mirror-present")?.status).toBe("fail");
   });
 
-  it("checks a mandate clamp against the pre-policy target when both gates fire", () => {
+  it("fails when the snapshot capacity-veto mirror disagrees with recomputation", () => {
+    const b = healthyBundle();
+    b.decisionSnapshot!.capacityVetoed = !b.decisionSnapshot!.capacityVetoed;
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/capacity")?.status).toBe("fail");
+  });
+
+  it("fails when the memo cleared mirror disagrees with the recomputed soft gates", () => {
     const b = healthyBundle();
     const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
     const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
-    pm.mandateDecision = { ...pm.mandateDecision!, sizeClamped: true };
+    pm.mandateDecision = {
+      ...pm.mandateDecision!,
+      cleared: !pm.mandateDecision!.cleared,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/soft-gates")?.status).toBe("fail");
+  });
+
+  it("checks a soft-gate clamp against the applicable pre-policy cap", () => {
+    const b = healthyBundle();
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.decisionConfidence = 0.1;
+    b.decisionSnapshot!.decisionConfidence = 0.1;
+    pm.mandateDecision = {
+      ...pm.mandateDecision!,
+      verdict: "fails",
+      cleared: false,
+      capacityVetoed: false,
+      sizeClamped: true,
+    };
+    b.decisionSnapshot!.mandateVerdict = "fails";
+    b.decisionSnapshot!.capacityVetoed = false;
     pm.portfolioFit = { ...pm.portfolioFit!, targetWeightPct: 1 };
     pm.policyDecision = {
       mandatePresent: true,
@@ -352,12 +388,74 @@ describe("checkRun — mandate", () => {
     const report = checkRun(b);
     expect(byId(report.checks, "mandate/clamp-on-cap")?.status).toBe("pass");
   });
+
+  it("rejects the tighter capacity cap when only the soft gate applies", () => {
+    const b = healthyBundle();
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.decisionConfidence = 0.1;
+    b.decisionSnapshot!.decisionConfidence = 0.1;
+    pm.mandateDecision = {
+      ...pm.mandateDecision!,
+      verdict: "fails",
+      cleared: false,
+      capacityVetoed: false,
+      sizeClamped: true,
+    };
+    b.decisionSnapshot!.mandateVerdict = "fails";
+    b.decisionSnapshot!.capacityVetoed = false;
+    pm.policyDecision = {
+      mandatePresent: true,
+      policyVerdict: "within-policy",
+      positionCapClamped: false,
+      excluded: false,
+      householdWeightKnown: true,
+      preGatePolicyTargetPct: MANDATE.capacityVetoCapPct,
+      allocationRead: "within allocation",
+      constraintRead: "within constraints",
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/clamp-on-cap")?.status).toBe("fail");
+  });
 });
 
 describe("checkRun — decision-consistency", () => {
   it("fails when the snapshot and PM memo final ratings disagree", () => {
     const b = healthyBundle();
     b.decisionSnapshot!.finalRating = "Buy"; // memo still Overweight, still within band
+    const report = checkRun(b);
+    expect(byId(report.checks, "decision-consistency/snapshot-pm")?.status).toBe("fail");
+  });
+
+  it("fails when a decision snapshot exists but the PM memo errored", () => {
+    const b = healthyBundle();
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.status = "error";
+    pm.errorMessage = "synthetic PM failure";
+    const report = checkRun(b);
+    expect(byId(report.checks, "decision-consistency/snapshot-pm")?.status).toBe("fail");
+  });
+
+  it("fails when a snapshot policy mirror disagrees with the PM memo", () => {
+    const b = healthyBundle();
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.policyDecision = {
+      mandatePresent: true,
+      policyVerdict: "within-policy",
+      positionCapClamped: false,
+      excluded: false,
+      householdWeightKnown: true,
+      preGatePolicyTargetPct: 1.4,
+      allocationRead: "within allocation",
+      constraintRead: "within constraints",
+    };
+    b.decisionSnapshot!.mandatePresent = true;
+    b.decisionSnapshot!.policyVerdict = "within-policy";
+    b.decisionSnapshot!.positionCapClamped = false;
+    b.decisionSnapshot!.excluded = true;
+    b.decisionSnapshot!.preGatePolicyTargetPct = 1.4;
     const report = checkRun(b);
     expect(byId(report.checks, "decision-consistency/snapshot-pm")?.status).toBe("fail");
   });
@@ -382,6 +480,32 @@ describe("checkRun — decision-consistency", () => {
 });
 
 describe("checkRun — valuation", () => {
+  it("fails when method none retains populated fair-value fields", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = {
+      justifiedPE: 30,
+      fairValue: 150,
+      marginOfSafety: 0.3,
+      method: "none",
+      available: false,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/fair-value-abstention")?.status).toBe("fail");
+  });
+
+  it("fails when an available fair value omits required numeric fields", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = {
+      justifiedPE: 30,
+      fairValue: null,
+      marginOfSafety: null,
+      method: "justified-pe",
+      available: true,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/fair-value-abstention")?.status).toBe("fail");
+  });
+
   it("flags a terminal-value-dominated DCF as a soft signal", () => {
     const b = healthyBundle();
     b.valuationSpine!.dcf = {
@@ -438,6 +562,26 @@ describe("checkRun — valuation", () => {
       unavailableReason: "non-positive-fcf",
       method: "dcf",
       available: false,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/dcf-abstention")?.status).toBe("fail");
+  });
+
+  it("fails when an available DCF has a contradictory shape", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.dcf = {
+      intrinsicValue: null,
+      marginOfSafety: 0.2,
+      discountRate: 0.09,
+      stage1Growth: 0.1,
+      terminalValueShare: 0.7,
+      impliedGrowth: null,
+      expectationsGap: null,
+      reliability: "ok",
+      reverseDcfStatus: "unavailable",
+      unavailableReason: "non-positive-fcf",
+      method: "none",
+      available: true,
     };
     const report = checkRun(b);
     expect(byId(report.checks, "valuation/dcf-abstention")?.status).toBe("fail");

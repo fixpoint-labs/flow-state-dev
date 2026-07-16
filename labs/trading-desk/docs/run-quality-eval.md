@@ -37,7 +37,7 @@ degrades a check to `skipped`, while a required mirror missing from an otherwise
 completed artifact is a hard failure. It asserts only on the computed/derived
 records; all LLM-emitted prose routes to the judge layer, because a fixture replay
 still calls real generators, so memo text is nondeterministic run-to-run.
-Recomputation checks reuse the desk's OWN pure libs (`ratingBandFor`,
+Recomputation checks reuse the desk's OWN pure libs (`modelImpliedRating`,
 `computeMandateGates`, `computeRewardToRisk`), so they catch stored-record drift and
 partial writes, not formula bugs.
 
@@ -48,12 +48,12 @@ code); `soft` = a flagged signal (never gates).
 | Group | Reads | What it asserts |
 | -- | -- | -- |
 | `memo-completeness/*` | the memo set | every expected memo (per `costPreset`, thesis presence) is `published` or honestly `error`; none left `pending`/`writing` on a completed run |
-| `rating-envelope/*` | decision snapshot, PM memo, spine | `finalRating` within `[floor, ceiling]` (or an override reason is recorded); a clamp lands on a band edge; the band recomputes from `envelope.implied` + evidence thinness |
+| `rating-envelope/*` | decision snapshot, PM memo, spine | `finalRating` within `[floor, ceiling]` (or an override reason is recorded); a clamp lands on a band edge; the complete stored envelope recomputes from the valuation inputs |
 | `scenario/*` | scenario-forecaster memo | 3–5 scenarios; each probability ∈ [0,1]; recomputed sum ∈ [0.98, 1.02]; recorded `probabilitySum` ∈ [0.8, 1.2]; `expectedReturnPct` number-or-null |
 | `reward-risk/*` | scenario memo, mandate, reward-to-risk resource | stored figure recomputes from the scenarios + mandate λ; snapshot mirrors match (gated on a mandate decision) |
-| `mandate/*` | mandate, reward-to-risk, PM memo | recomputed verdict + capacity match; committed size within the applicable cap; a clamp lands on a cap; dial sanity `capacityVetoCapPct ≤ unclearedCapPct` |
-| `decision-consistency/*` | snapshot, PM memo, trader memo | snapshot ↔ PM mirrors (rating, confidence, verdict) and snapshot ↔ trader mirrors (direction, size, stops) agree; `weightDeltaPct = target − current` |
-| `valuation/*` | valuation spine | abstention honesty (`available: false` ⇒ a reason); `terminalValueShare > 0.85` ⇒ `tv-dominated`; triangulation consistent with its method count. Soft flags: tv-dominated, a wide expectations gap |
+| `mandate/*` | mandate, reward-to-risk, PM memo, snapshot | recomputed verdict, soft-gate clearance, and capacity match; committed size stays within the applicable cap; a clamp lands on the specific cap selected by the recomputed gates; dial sanity `capacityVetoCapPct ≤ unclearedCapPct` |
+| `decision-consistency/*` | snapshot, PM memo, trader memo | snapshot ↔ PM mirrors (rating, confidence, mandate, and policy fields) and snapshot ↔ trader mirrors (direction, size, stops) agree; `weightDeltaPct = target − current` |
+| `valuation/*` | valuation spine | available and unavailable fair-value/DCF records use canonical populated or abstention shapes; `terminalValueShare > 0.85` ⇒ `tv-dominated`; triangulation is consistent with its available methods. Soft flags: tv-dominated, a wide expectations gap |
 | `citations/*` | analyst memos, citation integrity | published analyst memos carry a `dataQuality`; every non-null citation has a title + a parseable URL. Soft flag: invalid Phase-2 citation tags |
 | `null-honesty/*` | memo metrics | no `"NaN"`/`"undefined"`/`"null"` strings in metric values |
 
@@ -174,9 +174,10 @@ session IDs isolate concurrent runs while the single runtime owns the database.
 <sweep-out>/data` to re-evaluate an isolated sweep; relative paths resolve from the
 trading-desk directory. One command never mixes sessions from different backings.
 The CLI writes each parsed raw bundle to `<out>/artifacts/<sessionId>.json` for
-inspection. **Session ownership:** actions execute as `cli-user` and sessions are
-bound to their creator, so v1 evaluates harness-created sessions; UI-created
-sessions (a different owner) are a named limitation.
+inspection. **Session ownership:** new sweep sessions use `cli-user`; for an
+existing session, the runtime reads and reuses its persisted owner before calling
+`runAction()`. That preserves the framework identity binding for both harness- and
+UI-created sessions.
 
 ## Limitations (v1)
 
@@ -186,8 +187,6 @@ sessions (a different owner) are a named limitation.
   share count; the EV-band and terminal-value-share soft flags cover the intent.
 - **No outcome/ground-truth scoring** — process quality only; "was the call right"
   is a separate issue on the historical corpus.
-- **CLI-created sessions only** — evaluating UI-created sessions needs a
-  configurable user-id seam in the eval runtime that doesn't exist yet.
 - **Judge field order** — the shipped finding schema emits `score` before
   `assessment`/`evidence`, so reasoning-before-score is instructed in the preamble,
   not enforced by the schema.
