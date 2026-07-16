@@ -165,6 +165,23 @@ describe("rubrics", () => {
       expect(["graded", "checklist"]).toContain(dim.kind);
     }
   });
+
+  it("gives the debate-engagement judge the Phase-1 analyst memos its fabrication criterion needs", () => {
+    const blinded = blindBundle(completedBundle());
+    const debate = RUBRICS.find((r) => r.key === "debate-engagement")!;
+    const input = debate.input(blinded) as { analystMemos: Array<{ key: string }> };
+    // The "neither side fabricates numbers absent from the analyst data memos"
+    // criterion is unobservable without the p1 memos in the graded slice.
+    expect(input.analystMemos.length).toBeGreaterThan(0);
+    expect(input.analystMemos.every((m) => m.key.startsWith("p1/"))).toBe(true);
+  });
+
+  it("gives the pm-coherence judge the research-manager thesis its first criterion checks against", () => {
+    const blinded = blindBundle(completedBundle());
+    const pm = RUBRICS.find((r) => r.key === "pm-coherence")!;
+    const input = pm.input(blinded) as { researchManager: unknown };
+    expect(input.researchManager).not.toBeNull();
+  });
 });
 
 describe("blindBundle", () => {

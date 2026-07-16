@@ -103,6 +103,9 @@ export const RUBRICS: RubricDimension[] = [
       bull: blindedMemo(blinded, BULL_KEY),
       bear: blindedMemo(blinded, BEAR_KEY),
       researchManager: blindedMemo(blinded, RM_KEY),
+      // The "neither side fabricates numbers absent from the analyst data memos"
+      // criterion is only observable with the Phase-1 analyst memos in hand.
+      analystMemos: blindedMemosByPrefix(blinded, "p1/"),
     }),
   },
   {
@@ -120,6 +123,9 @@ export const RUBRICS: RubricDimension[] = [
     needs: (b) => b.memos.some((m) => m.key === PM_KEY && m.state?.status === "published"),
     input: (blinded) => ({
       portfolioManager: blindedMemo(blinded, PM_KEY),
+      // The canonical investment thesis lives on the research-manager memo; the
+      // first criterion checks the decision against it, so the judge needs it.
+      researchManager: blindedMemo(blinded, RM_KEY),
       trader: blindedMemo(blinded, TRADER_KEY),
       riskAssessment: blindedMemo(blinded, RISK_ASSESS_KEY),
     }),

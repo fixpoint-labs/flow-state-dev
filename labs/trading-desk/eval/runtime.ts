@@ -44,8 +44,19 @@ export async function withEvalRuntime<T>(
   task: (runtime: EvalRuntime) => Promise<T>,
 ): Promise<T> {
   const previousDataDir = process.env.TRADING_DESK_DATA_DIR;
+  // When an explicit eval data dir is requested, mask the deploy database URLs
+  // too. `db/portfolio-db.ts` checks `FSD_DB_URL`/`DATABASE_URL` FIRST and takes
+  // the shared Postgres branch when either is set — so without masking, a sweep
+  // would write fixture sessions into the application/production database and an
+  // `--data-dir` read would hit the wrong backing. Deleting them forces the
+  // isolated PGlite backing at `TRADING_DESK_DATA_DIR`. Restored in the finally.
+  const maskedDbUrls: Array<["FSD_DB_URL" | "DATABASE_URL", string | undefined]> = [];
   if (options.dataDir !== undefined) {
     process.env.TRADING_DESK_DATA_DIR = options.dataDir;
+    for (const key of ["FSD_DB_URL", "DATABASE_URL"] as const) {
+      maskedDbUrls.push([key, process.env[key]]);
+      delete process.env[key];
+    }
   }
 
   let flowState: FlowState | undefined;
@@ -113,6 +124,10 @@ export async function withEvalRuntime<T>(
       if (options.dataDir !== undefined) {
         if (previousDataDir === undefined) delete process.env.TRADING_DESK_DATA_DIR;
         else process.env.TRADING_DESK_DATA_DIR = previousDataDir;
+        for (const [key, value] of maskedDbUrls) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
       }
     }
   }

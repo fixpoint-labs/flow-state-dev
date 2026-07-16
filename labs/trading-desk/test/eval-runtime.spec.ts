@@ -160,6 +160,48 @@ describe("withEvalRuntime", () => {
     expect(process.env.TRADING_DESK_DATA_DIR).toBe("/tmp/original-data-dir");
   });
 
+  it("masks deploy database URLs while an explicit data dir is active", async () => {
+    const flowState = buildFlowState();
+    vi.stubEnv("DATABASE_URL", "postgres://prod/db");
+    vi.stubEnv("FSD_DB_URL", "postgres://prod/fsd");
+
+    await withEvalRuntime(
+      {
+        dataDir: "/tmp/eval-runtime-isolated",
+        loadFlowState: async () => {
+          // The isolated PGlite backing must win: both URLs are unset while the
+          // eval data dir is selected, so a sweep can't write into the prod DB.
+          expect(process.env.DATABASE_URL).toBeUndefined();
+          expect(process.env.FSD_DB_URL).toBeUndefined();
+          expect(process.env.TRADING_DESK_DATA_DIR).toBe("/tmp/eval-runtime-isolated");
+          return flowState;
+        },
+      },
+      async () => "done",
+    );
+
+    // Restored after the command.
+    expect(process.env.DATABASE_URL).toBe("postgres://prod/db");
+    expect(process.env.FSD_DB_URL).toBe("postgres://prod/fsd");
+  });
+
+  it("leaves database URLs untouched when no data dir is requested", async () => {
+    const flowState = buildFlowState();
+    vi.stubEnv("DATABASE_URL", "postgres://prod/db");
+
+    await withEvalRuntime(
+      {
+        loadFlowState: async () => {
+          expect(process.env.DATABASE_URL).toBe("postgres://prod/db");
+          return flowState;
+        },
+      },
+      async () => "done",
+    );
+
+    expect(process.env.DATABASE_URL).toBe("postgres://prod/db");
+  });
+
   it("disposes when the runtime task throws", async () => {
     const flowState = buildFlowState();
     const dispose = vi.spyOn(flowState, "dispose");
