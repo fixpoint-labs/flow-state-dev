@@ -46,6 +46,26 @@ function evalCli(args: string[]): number {
   }
 }
 
+/** Deep-strip run-identity keys (ticker/date) so the anti-stub comparison keys
+ *  on SUBSTANTIVE artifact content only. `blindBundle` deliberately keeps the
+ *  ticker/date (the judge needs them), but the manifest's two tuples already
+ *  differ on ticker — so a stub that hardcodes identical memos while echoing the
+ *  session ticker would still produce two distinct blinded bundles. Removing the
+ *  identity keys everywhere they appear closes that loophole: two REAL runs still
+ *  differ on memo bodies/numbers, a content-echoing stub collapses to one. */
+function stripRunIdentity(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripRunIdentity);
+  if (value != null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (k === "ticker" || k === "date" || k === "asOfDate") continue;
+      out[k] = stripRunIdentity(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 const failures: string[] = [];
 
 // 1. Sweep the two-tuple manifest (k=3 to bound cost). A non-zero exit means a
@@ -137,16 +157,19 @@ try {
       }
     }
 
-    // The stored bundle must differ between the two runs — compared blinded, so
-    // a stubbed identical read is caught even though sessionIds always differ.
+    // The stored bundle must differ between the two runs — compared blinded AND
+    // with run identity (ticker/date) stripped, so a stub that hardcodes identical
+    // artifacts while merely echoing the session ticker is still caught (the
+    // sessionId always differs, and blindBundle keeps ticker/date, so neither can
+    // carry the comparison on its own).
     const snapshot = JSON.parse(
       readFileSync(artifactSnapshotPath(OUT, rec.sessionId), "utf8"),
     );
     blindedBundles.add(
-      JSON.stringify(blindBundle(runArtifactsStateSchema.parse(snapshot))),
+      JSON.stringify(stripRunIdentity(blindBundle(runArtifactsStateSchema.parse(snapshot)))),
     );
   }
-  if (records.length === 2 && blindedBundles.size < 2) failures.push("the two runs produced identical blinded bundles (stubbed read path?)");
+  if (records.length === 2 && blindedBundles.size < 2) failures.push("the two runs produced identical content bundles (stubbed read path?)");
 } catch (err) {
   failures.push(`scoreboard read/parse failed: ${(err as Error).message}`);
 }

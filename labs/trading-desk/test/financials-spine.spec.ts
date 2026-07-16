@@ -16,7 +16,7 @@
  * price-history and past-reports specs use.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defineFlow, sequencer } from "@flow-state-dev/core";
+import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
@@ -56,6 +56,8 @@ import { technicalDataResource } from "../flows/analysis/technical-data-resource
 import { profileDataResource } from "../flows/analysis/profile-data-resource";
 import { valuationSpineResource } from "../flows/analysis/valuation-spine-resource";
 import { priceHistoryResource } from "../flows/analysis/price-history-resource";
+import { lensConvergenceResource } from "../flows/analysis/agents/lenses/lens-convergence-resource";
+import { phase2Contributions } from "../flows/analysis/resources";
 import { sessionStateSchema } from "../flows/analysis/state";
 
 // Fetch all eight Phase-1 valuation inputs into their per-domain spines, then
@@ -86,12 +88,38 @@ const fillInputs = sequencer({
   // derived surfaces (valuationSpine + priceHistory) populated to clear.
   .step(storePriceHistory);
 
+// Writes the Phase-2 / 2b substrate through the RESOURCE API (proper version
+// records), so a subsequent seedSession reset transitions from a real prior-run
+// state — the way a live run populates these, not a raw store seed.
+const stashDebateSubstrate = handler({
+  name: "stash-debate-substrate",
+  inputSchema: z.unknown(),
+  outputSchema: z.void(),
+  sessionStateSchema,
+  resources: { lensConvergence: lensConvergenceResource, p2Contributions: phase2Contributions },
+  execute: async (_input, ctx) => {
+    await ctx.resources.p2Contributions.setState({
+      entries: [{ round: 1, agentName: "bullResearcher", text: "STALE prior-run turn." }],
+    });
+    await ctx.resources.lensConvergence.setState({
+      classification: "convergent",
+      netLean: 0.5,
+      agreementScore: 0.9,
+      dissenters: [],
+    });
+    await ctx.session.patchState({
+      citationIntegrity: { tagsChecked: 3, tagsValid: 2, invalidTags: [] },
+    });
+  },
+});
+
 const spineFlow = defineFlow({
   kind: "trading-desk-financials-spine-test",
   actions: {
     fillAndCompute: { block: fillInputs },
     seed: { block: seedSession },
     fetchFundamentals: { block: get_fundamentals },
+    stashDebateSubstrate: { block: stashDebateSubstrate },
   },
   session: { stateSchema: sessionStateSchema },
   resources: {
@@ -101,6 +129,8 @@ const spineFlow = defineFlow({
     profileData: profileDataResource,
     valuationSpine: valuationSpineResource,
     priceHistory: priceHistoryResource,
+    lensConvergence: lensConvergenceResource,
+    p2Contributions: phase2Contributions,
   },
 })({ id: "test" });
 
@@ -216,6 +246,48 @@ describe("financials data spine", () => {
     // reads guard on a required field, so {} degrades exactly like null.)
     expect(afterSeed["valuationSpine"]).toEqual({});
     expect(afterSeed["priceHistory"]).toEqual({});
+  });
+
+  it("seedSession clears the Phase-2 debate transcript, lens convergence, and citation integrity so an early-stopped re-run is not projected with the prior run's substrate", async () => {
+    const stores = createInMemoryStores();
+    const sessionId = "debate-lens-rerun";
+
+    // A completed prior run's Phase-2 / 2b substrate, written through the resource
+    // API so seedSession's reset transitions from a real prior state.
+    const stashed = await testFlow({
+      flow: spineFlow,
+      action: "stashDebateSubstrate",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: {},
+      seed: { session: { state: baseState } },
+    });
+    expect(stashed.error).toBeUndefined();
+
+    // A re-run that stops early (e.g. the asset-type guard) seeds first and never
+    // reaches Phase 2 / 2b, so the reset must happen in seedSession itself.
+    const seeded = await testFlow({
+      flow: spineFlow,
+      action: "seed",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: seedInput,
+    });
+    expect(seeded.error).toBeUndefined();
+
+    const afterSeed = await stores.resourceState.getAll("session", sessionId);
+    // The transcript is reset to the round-robin's own init shape — no prior turn.
+    expect(afterSeed["p2Contributions"]).toEqual({ entries: [] });
+    // Lens convergence is cleared: whatever the stored representation (absent /
+    // {} / null after a nullable-single reset), it no longer carries the prior
+    // run's classification, so `buildRunArtifacts` projects it as absent.
+    const lens = afterSeed["lensConvergence"] as { classification?: unknown } | undefined;
+    expect(lens?.classification).toBeUndefined();
+    // Citation integrity is cleared from session state.
+    const session = await stores.session.get(sessionId);
+    expect((session?.state as { citationIntegrity?: unknown }).citationIntegrity).toBeNull();
   });
 
   it("a non-subject ticker fetches directly and never overwrites the subject's spine payload", async () => {

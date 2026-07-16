@@ -359,9 +359,12 @@ async function variance(a: Args): Promise<number> {
         // judgment. Including those zeros fabricates agreement — two all-failed
         // sessions would read as identical zeros and krippendorffAlpha would report
         // perfect reliability. Characterize noise only from repeats that actually
-        // produced a judgment; a dimension with none is omitted for this session.
+        // produced a judgment; require at least TWO — a single sample gives a
+        // degenerate std=0 / zero-width band that reads as "noiseless" when noise
+        // simply couldn't be estimated. A dimension below two scored repeats is
+        // omitted for this session.
         const valid = d.repeats.filter((r) => r.status === "scored").map((r) => r.score);
-        if (valid.length > 0) dims[d.key] = valid;
+        if (valid.length >= 2) dims[d.key] = valid;
       }
       perSession.push({ sessionId, dimensions: dims });
     }
@@ -372,6 +375,16 @@ async function variance(a: Args): Promise<number> {
     }
 
     const dimensionKeys = Array.from(new Set(perSession.flatMap((p) => Object.keys(p.dimensions))));
+    // Every session's judges failed (or produced fewer than two scored repeats per
+    // dimension), so there is nothing to characterize. Writing an empty report and
+    // exiting 0 would falsely advertise a clean noise measurement — fail instead.
+    if (dimensionKeys.length === 0) {
+      console.error(
+        `no dimension had ≥2 scored judge repeats across ${perSession.length} session(s) — ` +
+          "cannot characterize judge noise (judges may be failing or timing out)",
+      );
+      return 1;
+    }
     const report = {
       generatedAt: new Date().toISOString(),
       judgeModel: opts.judgeModel,
