@@ -307,6 +307,8 @@ const guardedRouter = createFlowApiRouter({
 
 `createFilesystemStores` wires a filesystem-backed trace store under `{rootDir}/traces/` so trace events survive process restarts. Retention is controlled by `traceStore.maxRequests`, which defaults to 1000 when `NODE_ENV=development` and 50 otherwise — explicit values always win. See the [trace channel reference](https://flow-state.dev/docs/streaming/trace-channel) for the full backend list and file layout.
 
+Resource **content** and **state** use a nested on-disk layout: each `/` in a resource key becomes a directory, and the leaf file carries `.md` (content) or `.json` (state). Pre-existing flat filesystem stores from earlier builds are not read; the adapter refuses with a clear error until the old `content/` or `state/` subtree is moved aside. Keys with empty segments or Windows reserved device names in any segment are rejected on the filesystem backend.
+
 ```ts
 const stores = createFilesystemStores({
   rootDir: ".fsdev/data",

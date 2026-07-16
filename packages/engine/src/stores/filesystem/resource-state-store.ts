@@ -1,88 +1,106 @@
 /**
  * Filesystem-backed resource state store.
  *
- * Stores each resource's state as an individual JSON file under a directory
- * structure organized by scope type and scope ID:
+ * Persists each resource state as a nested JSON file under:
  *
- *   rootDir/state/{scopeType}/{scopeId}/{encodedResourceKey}
+ *   rootDir/state/{scopeType}/{scopeId}/…/{leaf}.json
  *
- * The state-layer twin of the filesystem ContentStore. Resource keys are
- * URI-encoded for filesystem safety; writes are atomic via temp-file-then-
- * rename to prevent partial-write corruption.
+ * The state-layer twin of the filesystem ContentStore. Writes are atomic via
+ * temp-file-then-rename, with a one-shot ENOENT retry for concurrent scope churn.
  */
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { ContentScopeType, ResourceStateStore } from "../types";
+import { FilesystemLayoutGuard } from "./layout-guard";
+import {
+  assertPathUnderRoot,
+  collectRecords,
+  encodeScopeId,
+  keyToRelativePath
+} from "./resource-path";
+import {
+  assertNoSymlinkOnPath,
+  atomicWriteUtf8,
+  mkdirParents,
+  readUtf8File,
+  removeScopeDirectory,
+  wrapFilesystemCollision
+} from "./resource-path-safety";
 
-function encodePath(value: string): string {
-  return encodeURIComponent(value);
-}
-
-function decodePath(value: string): string {
-  return decodeURIComponent(value);
-}
+const LEAF_EXT = ".json";
 
 export class FilesystemResourceStateStore implements ResourceStateStore {
   private readonly rootDir: string;
+  private readonly layoutGuard: FilesystemLayoutGuard;
 
   constructor(rootDir: string) {
     this.rootDir = path.join(rootDir, "state");
+    this.layoutGuard = new FilesystemLayoutGuard(this.rootDir);
   }
 
   private scopeDir(scopeType: ContentScopeType, scopeId: string): string {
-    return path.join(this.rootDir, scopeType, encodePath(scopeId));
+    const encoded = encodeScopeId(scopeId);
+    const dir = path.join(this.rootDir, scopeType, encoded);
+    assertPathUnderRoot(dir, this.rootDir);
+    return dir;
   }
 
   private filePath(scopeType: ContentScopeType, scopeId: string, resourceKey: string): string {
-    return path.join(this.scopeDir(scopeType, scopeId), encodePath(resourceKey));
+    const scope = this.scopeDir(scopeType, scopeId);
+    const rel = keyToRelativePath(resourceKey, LEAF_EXT);
+    const target = path.join(scope, rel);
+    assertPathUnderRoot(target, scope);
+    return target;
+  }
+
+  private scopeLabel(scopeType: ContentScopeType, scopeId: string): string {
+    return `${scopeType}/${scopeId}`;
   }
 
   async get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<JsonObject | undefined> {
-    try {
-      const raw = await readFile(this.filePath(scopeType, scopeId, resourceKey), "utf8");
-      return JSON.parse(raw) as JsonObject;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return undefined;
-      }
-      throw error;
+    await this.layoutGuard.ensureReadable();
+    const scope = this.scopeDir(scopeType, scopeId);
+    const target = this.filePath(scopeType, scopeId, resourceKey);
+    await assertNoSymlinkOnPath(scope, target);
+    const raw = await readUtf8File(target);
+    if (raw === undefined) {
+      return undefined;
     }
+    return JSON.parse(raw) as JsonObject;
   }
 
   async set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, state: JsonObject): Promise<void> {
-    const dir = this.scopeDir(scopeType, scopeId);
+    await this.layoutGuard.ensureReadable();
+    await this.layoutGuard.ensureWritable();
+    const scope = this.scopeDir(scopeType, scopeId);
     const target = this.filePath(scopeType, scopeId, resourceKey);
+    const label = this.scopeLabel(scopeType, scopeId);
     const serialized = JSON.stringify(state);
 
-    // The scope dir is created here, but it can be transiently absent at write
-    // time: concurrent writers racing to create a fresh scope tree (node's
-    // recursive `mkdir`), or a sibling request tearing the scope down, can leave
-    // the `writeFile`/`rename` to ENOENT on the just-ensured directory. That
-    // surfaced as a hard import failure ("nothing happened") with a stray
-    // `…/holdings%2F…__VRSK.tmp-…` path. Re-create the dir and retry once; a
-    // second ENOENT (or any other error) is real and propagates.
     for (let attempt = 0; ; attempt += 1) {
-      await mkdir(dir, { recursive: true });
-      const tempPath = `${target}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      await assertNoSymlinkOnPath(scope, target);
       try {
-        await writeFile(tempPath, serialized, "utf8");
-        await rename(tempPath, target);
+        await mkdirParents(target);
+        await atomicWriteUtf8(target, serialized);
         return;
       } catch (error) {
-        // Best-effort cleanup of the orphaned temp file (it may not exist).
-        await rm(tempPath, { force: true }).catch(() => {});
-        if ((error as NodeJS.ErrnoException).code === "ENOENT" && attempt === 0) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT" && attempt === 0) {
           continue;
         }
-        throw error;
+        wrapFilesystemCollision(error, label, resourceKey, target);
       }
     }
   }
 
   async delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void> {
+    await this.layoutGuard.ensureReadable();
+    const scope = this.scopeDir(scopeType, scopeId);
+    const target = this.filePath(scopeType, scopeId, resourceKey);
+    await assertNoSymlinkOnPath(scope, target);
     try {
-      await rm(this.filePath(scopeType, scopeId, resourceKey));
+      await rm(target);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
@@ -99,38 +117,23 @@ export class FilesystemResourceStateStore implements ResourceStateStore {
     scopeId: string,
     keyPrefix: string
   ): Promise<Record<string, JsonObject>> {
-    const dir = this.scopeDir(scopeType, scopeId);
+    await this.layoutGuard.ensureReadable();
+    const scope = this.scopeDir(scopeType, scopeId);
+    const records = await collectRecords(scope, LEAF_EXT, keyPrefix);
     const result: Record<string, JsonObject> = {};
-
-    let entries: import("node:fs").Dirent[];
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return result;
+    for (const { resourceKey, absolutePath } of records) {
+      const raw = await readUtf8File(absolutePath);
+      if (raw !== undefined) {
+        result[resourceKey] = JSON.parse(raw) as JsonObject;
       }
-      throw error;
     }
-
-    for (const entry of entries) {
-      if (!entry.isFile() || entry.name.startsWith(".")) {
-        continue;
-      }
-      const resourceKey = decodePath(entry.name);
-      if (!resourceKey.startsWith(keyPrefix)) {
-        continue;
-      }
-      const filePath = path.join(dir, entry.name);
-      const raw = await readFile(filePath, "utf8");
-      result[resourceKey] = JSON.parse(raw) as JsonObject;
-    }
-
     return result;
   }
 
   async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
-    // `force: true` already treats a missing path as success, so no ENOENT guard.
-    await rm(this.scopeDir(scopeType, scopeId), { recursive: true, force: true });
+    this.layoutGuard.clearCache();
+    const scope = this.scopeDir(scopeType, scopeId);
+    await removeScopeDirectory(this.rootDir, scope);
   }
 }
 

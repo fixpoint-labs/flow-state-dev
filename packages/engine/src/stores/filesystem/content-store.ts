@@ -1,67 +1,92 @@
 /**
  * Filesystem-backed content store.
  *
- * Stores each resource's content as an individual file under a directory
- * structure organized by scope type and scope ID:
+ * Persists each resource as a nested file under:
  *
- *   rootDir/content/{scopeType}/{scopeId}/{encodedResourceKey}
+ *   rootDir/content/{scopeType}/{scopeId}/…/{leaf}.md
  *
- * Resource keys are URI-encoded for filesystem safety (consistent with
- * the existing scope record ID encoding pattern). Uses atomic writes
- * via temp-file-then-rename to prevent partial-write corruption.
+ * Resource keys map to real directories; scope ids use URI encoding (legacy parity).
+ * Writes are atomic via temp-file-then-rename.
  */
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ContentScopeType, ContentStore } from "../types";
+import { FilesystemLayoutGuard } from "./layout-guard";
+import {
+  assertPathUnderRoot,
+  collectRecords,
+  encodeScopeId,
+  keyToRelativePath
+} from "./resource-path";
+import {
+  assertNoSymlinkOnPath,
+  atomicWriteUtf8,
+  mkdirParents,
+  readUtf8File,
+  removeScopeDirectory,
+  wrapFilesystemCollision
+} from "./resource-path-safety";
+import { rm } from "node:fs/promises";
 
-function encodePath(value: string): string {
-  return encodeURIComponent(value);
-}
-
-function decodePath(value: string): string {
-  return decodeURIComponent(value);
-}
+const LEAF_EXT = ".md";
 
 export class FilesystemContentStore implements ContentStore {
   private readonly rootDir: string;
+  private readonly layoutGuard: FilesystemLayoutGuard;
 
   constructor(rootDir: string) {
     this.rootDir = path.join(rootDir, "content");
+    this.layoutGuard = new FilesystemLayoutGuard(this.rootDir);
   }
 
   private scopeDir(scopeType: ContentScopeType, scopeId: string): string {
-    return path.join(this.rootDir, scopeType, encodePath(scopeId));
+    const encoded = encodeScopeId(scopeId);
+    const dir = path.join(this.rootDir, scopeType, encoded);
+    assertPathUnderRoot(dir, this.rootDir);
+    return dir;
   }
 
   private filePath(scopeType: ContentScopeType, scopeId: string, resourceKey: string): string {
-    return path.join(this.scopeDir(scopeType, scopeId), encodePath(resourceKey));
+    const scope = this.scopeDir(scopeType, scopeId);
+    const rel = keyToRelativePath(resourceKey, LEAF_EXT);
+    const target = path.join(scope, rel);
+    assertPathUnderRoot(target, scope);
+    return target;
+  }
+
+  private scopeLabel(scopeType: ContentScopeType, scopeId: string): string {
+    return `${scopeType}/${scopeId}`;
   }
 
   async get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<string | undefined> {
-    try {
-      return await readFile(this.filePath(scopeType, scopeId, resourceKey), "utf8");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return undefined;
-      }
-      throw error;
-    }
+    await this.layoutGuard.ensureReadable();
+    const target = this.filePath(scopeType, scopeId, resourceKey);
+    const scope = this.scopeDir(scopeType, scopeId);
+    await assertNoSymlinkOnPath(scope, target);
+    return readUtf8File(target);
   }
 
   async set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, content: string): Promise<void> {
-    const dir = this.scopeDir(scopeType, scopeId);
-    await mkdir(dir, { recursive: true });
-
+    await this.layoutGuard.ensureReadable();
+    await this.layoutGuard.ensureWritable();
+    const scope = this.scopeDir(scopeType, scopeId);
     const target = this.filePath(scopeType, scopeId, resourceKey);
-    const tempPath = `${target}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-    await writeFile(tempPath, content, "utf8");
-    await rename(tempPath, target);
+    const label = this.scopeLabel(scopeType, scopeId);
+    await assertNoSymlinkOnPath(scope, target);
+    try {
+      await mkdirParents(target);
+      await atomicWriteUtf8(target, content);
+    } catch (error) {
+      wrapFilesystemCollision(error, label, resourceKey, target);
+    }
   }
 
   async delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void> {
+    await this.layoutGuard.ensureReadable();
+    const scope = this.scopeDir(scopeType, scopeId);
+    const target = this.filePath(scopeType, scopeId, resourceKey);
+    await assertNoSymlinkOnPath(scope, target);
     try {
-      await rm(this.filePath(scopeType, scopeId, resourceKey));
+      await rm(target);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
@@ -78,44 +103,23 @@ export class FilesystemContentStore implements ContentStore {
     scopeId: string,
     keyPrefix: string
   ): Promise<Record<string, string>> {
-    const dir = this.scopeDir(scopeType, scopeId);
+    await this.layoutGuard.ensureReadable();
+    const scope = this.scopeDir(scopeType, scopeId);
+    const records = await collectRecords(scope, LEAF_EXT, keyPrefix);
     const result: Record<string, string> = {};
-
-    let entries: import("node:fs").Dirent[];
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return result;
+    for (const { resourceKey, absolutePath } of records) {
+      const content = await readUtf8File(absolutePath);
+      if (content !== undefined) {
+        result[resourceKey] = content;
       }
-      throw error;
     }
-
-    for (const entry of entries) {
-      if (!entry.isFile() || entry.name.startsWith(".")) {
-        continue;
-      }
-      const resourceKey = decodePath(entry.name);
-      if (!resourceKey.startsWith(keyPrefix)) {
-        continue;
-      }
-      const filePath = path.join(dir, entry.name);
-      const content = await readFile(filePath, "utf8");
-      result[resourceKey] = content;
-    }
-
     return result;
   }
 
   async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
-    const dir = this.scopeDir(scopeType, scopeId);
-    try {
-      await rm(dir, { recursive: true, force: true });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        throw error;
-      }
-    }
+    this.layoutGuard.clearCache();
+    const scope = this.scopeDir(scopeType, scopeId);
+    await removeScopeDirectory(this.rootDir, scope);
   }
 }
 

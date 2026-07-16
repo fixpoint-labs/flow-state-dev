@@ -124,6 +124,17 @@ function runKeyedResourceStoreConformance<V>(options: ConformanceOptions<V>): vo
       });
     });
 
+    it("round-trips a nested key whose leaf looks like a file extension", async () => {
+      await withStore(async (store) => {
+        const key = "files/src/utils.ts";
+        const value = makeValue(9);
+        await store.set("session", "s1", key, value);
+        expect(await store.get("session", "s1", key)).toEqual(value);
+        const prefixed = await store.getByPrefix("session", "s1", "files/");
+        expect(prefixed[key]).toEqual(value);
+      });
+    });
+
     it("isolates keys across scope types and scope ids", async () => {
       await withStore(async (store) => {
         await store.set("session", "s1", "k", makeValue(1));

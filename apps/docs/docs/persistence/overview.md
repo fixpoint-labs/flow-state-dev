@@ -13,7 +13,7 @@ You declare stores on `createFlowState` as a map of named profiles. A profile ma
 | Adapter | Persistence | When to use |
 |---------|------------|-------------|
 | **In-memory** (default) | None — data is lost on restart | Development, testing, demos |
-| **File** | JSON files on disk | Local development with persistence, single-server deployments |
+| **File** | Nested files on disk (`.md` / `.json` resource leaves) | Local development with persistence, single-server deployments |
 | **SQLite** | Embedded SQLite database | Single-server deployments wanting concurrency-safe writes |
 | **Postgres** | PostgreSQL with `LISTEN/NOTIFY` for cross-process live tail | Production, multi-instance fleets, serverless with shared Postgres |
 
@@ -32,7 +32,7 @@ const flowstate = createFlowState({
 
 ### Filesystem store
 
-Writes state, resources, and items to JSON files in a directory. Each scope gets its own file. Good for local development when you want data to survive server restarts.
+Writes scope records, traces, and checkpoints as JSON files, and writes **resource content and resource state** as a nested file tree under `content/` and `state/`. A resource key like `concepts/flow-state-dev/overview` becomes real directories with a markdown leaf (`…/overview.md`) or JSON leaf (`…/overview.json`), so the store root opens in Obsidian or VS Code and diffs cleanly in git. Scope records still use one encoded JSON file per scope id.
 
 ```ts
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
@@ -43,7 +43,7 @@ const flowstate = createFlowState({
 });
 ```
 
-The directory structure mirrors the scope hierarchy: each scope (session, user, org) gets its own subdirectory. The org scope is stored under `projects/` — the directory name predates the scope rename and is preserved for compatibility.
+The directory structure mirrors the scope hierarchy: each scope (session, user, org) gets its own subdirectory under `content/` and `state/`. The org scope is stored under `projects/` — the directory name predates the scope rename and is preserved for compatibility.
 
 ### Postgres
 
