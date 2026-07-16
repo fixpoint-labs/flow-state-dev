@@ -25,7 +25,8 @@ Evals read a run through the same resource API the app uses, not the store table
 `runArtifacts` (`-i '{}' --session <id>`) projects one session into a
 `RunArtifactsBundle`: the compact `RunSummary`, the decision snapshot, every memo
 body, the valuation spine, the reward-to-risk figure, lens convergence, the frozen
-risk mandate, and the Phase-2 debate transcript. A never-written resource is
+risk mandate, the frozen durable portfolio mandate + household ticker weight, and
+the Phase-2 debate transcript. A never-written resource is
 normalized to `null` (never a partial `{}` or an empty `{entries: []}` transcript),
 so a completeness check can tell *absent* from *malformed*. `buildRunArtifacts` is
 pure; the action just feeds it the resource reads.
@@ -38,8 +39,8 @@ completed artifact is a hard failure. It asserts only on the computed/derived
 records; all LLM-emitted prose routes to the judge layer, because a fixture replay
 still calls real generators, so memo text is nondeterministic run-to-run.
 Recomputation checks reuse the desk's OWN pure libs (`modelImpliedRating`,
-`computeMandateGates`, `computeRewardToRisk`), so they catch stored-record drift and
-partial writes, not formula bugs.
+`computeMandateGates`, `computePolicyGate`, `computeRewardToRisk`), so they catch
+stored-record drift and partial writes, not formula bugs.
 
 Each check reports `{id, severity, status, expected?, actual?, detail}` — never a
 pre-aggregated number. `hard` = an internal contradiction (gates the CLI exit
@@ -51,8 +52,8 @@ code); `soft` = a flagged signal (never gates).
 | `rating-envelope/*` | decision snapshot, PM memo, spine | `finalRating` within `[floor, ceiling]` (or an override reason is recorded); a clamp lands on a band edge; the complete stored envelope recomputes from the valuation inputs |
 | `scenario/*` | scenario-forecaster memo | 3–5 scenarios; each probability ∈ [0,1]; recomputed sum ∈ [0.98, 1.02]; recorded `probabilitySum` ∈ [0.8, 1.2]; `expectedReturnPct` number-or-null |
 | `reward-risk/*` | scenario memo, mandate, reward-to-risk resource | stored figure recomputes from the scenarios + mandate λ; snapshot mirrors match (gated on a mandate decision) |
-| `mandate/*` | mandate, reward-to-risk, PM memo, snapshot | recomputed verdict, soft-gate clearance, and capacity match; committed size stays within the applicable cap; a clamp lands on the specific cap selected by the recomputed gates; dial sanity `capacityVetoCapPct ≤ unclearedCapPct` |
-| `decision-consistency/*` | snapshot, PM memo, trader memo | snapshot ↔ PM mirrors (rating, confidence, mandate, and policy fields) and snapshot ↔ trader mirrors (direction, size, stops) agree; `weightDeltaPct = target − current` |
+| `mandate/*` | mandate, reward-to-risk, PM memo, snapshot | recomputed verdict, soft-gate clearance, and capacity match; reward-to-risk mirrors agree; mandate-blind mirrors stay null; committed size stays within the applicable cap; a clamp lands on the specific cap selected by the recomputed gates; dial sanity `capacityVetoCapPct ≤ unclearedCapPct` |
+| `decision-consistency/*` | snapshot, PM memo, trader memo, durable policy inputs | snapshot ↔ PM mirrors (rating, confidence, mandate ID/verdict, and policy fields) and snapshot ↔ trader mirrors (direction, size, stops) agree; the policy gate recomputes from its frozen mandate + household weight; `weightDeltaPct = target − current` |
 | `valuation/*` | valuation spine | available and unavailable fair-value/DCF records use canonical populated or abstention shapes; `terminalValueShare > 0.85` ⇒ `tv-dominated`; triangulation is consistent with its available methods. Soft flags: tv-dominated, a wide expectations gap |
 | `citations/*` | analyst memos, citation integrity | published analyst memos carry a `dataQuality`; every non-null citation has a title + a parseable URL. Soft flag: invalid Phase-2 citation tags |
 | `null-honesty/*` | memo metrics | no `"NaN"`/`"undefined"`/`"null"` strings in metric values |

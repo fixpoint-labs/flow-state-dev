@@ -11,6 +11,7 @@
  * consistency, not a stubbed comparison.
  */
 import { describe, expect, it } from "vitest";
+import { portfolioMandateSchema } from "../domain/portfolio/schema/portfolio-mandate-schema";
 import { ALL_MEMO_KEYS } from "../flows/analysis/registry";
 import type { MemoState } from "../flows/analysis/resources";
 import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
@@ -37,6 +38,14 @@ const DECISION_CONFIDENCE = 0.72;
 const GATES = computeMandateGates({ mandate: MANDATE, rr: RR, decisionConfidence: DECISION_CONFIDENCE, override: false });
 const CLAMP = clampTargetWeight({ targetWeightPct: 1.4, mandate: MANDATE, gates: GATES, override: false });
 const BAND = ratingBandFor("Overweight", false); // { floor: "Hold", ceiling: "Buy" }
+const POLICY_MANDATE = portfolioMandateSchema.parse({
+  objectives: { riskTolerance: "moderate" },
+  constraints: { maxPositionWeightPct: 1 },
+  rebalancing: {},
+  timeHorizon: {},
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+});
 
 const SPINE: ValuationSpineState = {
   ticker: "NVDA",
@@ -202,6 +211,8 @@ function healthyBundle(): RunArtifactsBundle {
       outcomeVerdict: null,
     },
     riskMandate: MANDATE,
+    portfolioMandate: null,
+    householdTickerWeightPct: null,
     citationIntegrity: null,
     hasUserThesis: false,
     p2Contributions: { entries: [{ round: 1, agentName: "bullResearcher", text: "Bull opens." }] },
@@ -260,6 +271,17 @@ describe("checkRun — rating-envelope", () => {
     expect(byId(report.checks, "rating-envelope/pm-band-present")?.status).toBe("fail");
     // The envelope checks still run off the spine fallback, not skipped.
     expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("pass");
+  });
+
+  it("uses the spine band when a drifted PM mirror would admit the final rating", () => {
+    const b = healthyBundle();
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.ratingBand = { floor: "Sell", ceiling: "Buy" };
+    pm.finalRating = "Sell";
+    b.decisionSnapshot!.finalRating = "Sell";
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("fail");
   });
 });
 
@@ -347,9 +369,24 @@ describe("checkRun — mandate", () => {
   it("skips the mandate group on a mandate-blind run", () => {
     const b = healthyBundle();
     b.riskMandate = null;
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.mandateDecision = null;
+    b.decisionSnapshot!.mandateId = null;
     b.decisionSnapshot!.mandateVerdict = null;
+    b.decisionSnapshot!.rewardToRiskLossAdjustedGlr = null;
+    b.decisionSnapshot!.worstCaseReturnPct = null;
+    b.decisionSnapshot!.capacityVetoed = null;
     const report = checkRun(b);
+    expect(byId(report.checks, "mandate/blind-mirrors")?.status).toBe("pass");
     expect(byId(report.checks, "mandate/verdict")?.status).toBe("skipped");
+  });
+
+  it("fails populated mandate mirrors on a mandate-blind run", () => {
+    const b = healthyBundle();
+    b.riskMandate = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/blind-mirrors")?.status).toBe("fail");
   });
 
   it("fails when a mandate-aware run drops its mandate mirror (not skipped)", () => {
@@ -377,6 +414,18 @@ describe("checkRun — mandate", () => {
     };
     const report = checkRun(b);
     expect(byId(report.checks, "mandate/soft-gates")?.status).toBe("fail");
+  });
+
+  it("fails when PM mandate figure mirrors drift from the reward-to-risk resource", () => {
+    const b = healthyBundle();
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.mandateDecision = {
+      ...pm.mandateDecision!,
+      expectedValuePct: (RR.expectedValuePct ?? 0) + 1,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/reward-mirrors")?.status).toBe("fail");
   });
 
   it("checks a soft-gate clamp against the applicable pre-policy cap", () => {
@@ -483,6 +532,77 @@ describe("checkRun — decision-consistency", () => {
     b.decisionSnapshot!.preGatePolicyTargetPct = 1.4;
     const report = checkRun(b);
     expect(byId(report.checks, "decision-consistency/snapshot-pm")?.status).toBe("fail");
+  });
+
+  it("fails when the snapshot and PM mandate IDs disagree", () => {
+    const b = healthyBundle();
+    b.decisionSnapshot!.mandateId = "different-mandate";
+    const report = checkRun(b);
+    expect(byId(report.checks, "decision-consistency/snapshot-pm")?.status).toBe("fail");
+  });
+
+  it("passes a durable policy gate that matches recomputation", () => {
+    const b = healthyBundle();
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    b.portfolioMandate = POLICY_MANDATE;
+    b.householdTickerWeightPct = 0;
+    pm.policyDecision = {
+      mandatePresent: true,
+      policyVerdict: "capped",
+      positionCapClamped: true,
+      excluded: false,
+      householdWeightKnown: true,
+      preGatePolicyTargetPct: CLAMP.targetWeightPct,
+      allocationRead: "within allocation",
+      constraintRead: "capped",
+    };
+    pm.portfolioFit = {
+      ...pm.portfolioFit!,
+      targetWeightPct: 1,
+      weightDeltaPct: 1 - pm.portfolioFit!.currentWeightPct,
+    };
+    b.summary.targetWeightPct = 1;
+    b.decisionSnapshot!.mandatePresent = true;
+    b.decisionSnapshot!.policyVerdict = "capped";
+    b.decisionSnapshot!.positionCapClamped = true;
+    b.decisionSnapshot!.excluded = false;
+    b.decisionSnapshot!.preGatePolicyTargetPct = CLAMP.targetWeightPct;
+    const report = checkRun(b);
+    expect(byId(report.checks, "decision-consistency/snapshot-pm")?.status).toBe("pass");
+    expect(byId(report.checks, "decision-consistency/policy-recompute")?.status).toBe("pass");
+  });
+
+  it("recomputes the durable policy gate when memo and snapshot mirrors drift together", () => {
+    const b = healthyBundle();
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    b.portfolioMandate = POLICY_MANDATE;
+    b.householdTickerWeightPct = 0;
+    pm.policyDecision = {
+      mandatePresent: true,
+      policyVerdict: "within-policy",
+      positionCapClamped: false,
+      excluded: false,
+      householdWeightKnown: true,
+      preGatePolicyTargetPct: CLAMP.targetWeightPct,
+      allocationRead: "within allocation",
+      constraintRead: "within constraints",
+    };
+    pm.portfolioFit = {
+      ...pm.portfolioFit!,
+      targetWeightPct: CLAMP.targetWeightPct,
+      weightDeltaPct: CLAMP.targetWeightPct - pm.portfolioFit!.currentWeightPct,
+    };
+    b.summary.targetWeightPct = CLAMP.targetWeightPct;
+    b.decisionSnapshot!.mandatePresent = true;
+    b.decisionSnapshot!.policyVerdict = "within-policy";
+    b.decisionSnapshot!.positionCapClamped = false;
+    b.decisionSnapshot!.excluded = false;
+    b.decisionSnapshot!.preGatePolicyTargetPct = CLAMP.targetWeightPct;
+    const report = checkRun(b);
+    expect(byId(report.checks, "decision-consistency/snapshot-pm")?.status).toBe("pass");
+    expect(byId(report.checks, "decision-consistency/policy-recompute")?.status).toBe("fail");
   });
 
   it("fails when the weight delta does not equal target − current", () => {

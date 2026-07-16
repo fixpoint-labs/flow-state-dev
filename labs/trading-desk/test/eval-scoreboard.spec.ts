@@ -79,6 +79,8 @@ function bundle(sessionId: string): RunArtifactsBundle {
     lensConvergence: null,
     decisionSnapshot: null,
     riskMandate: null,
+    portfolioMandate: null,
+    householdTickerWeightPct: null,
     citationIntegrity: null,
     hasUserThesis: false,
     p2Contributions: null,

@@ -23,6 +23,7 @@ import { ALL_MEMO_KEYS } from "../flows/analysis/registry";
 import type { MemoState } from "../flows/analysis/resources";
 import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
 import { computeMandateGates } from "../flows/analysis/lib/mandate-gates";
+import { computePolicyGate } from "../flows/analysis/lib/policy-gate";
 import { computeRewardToRisk } from "../flows/analysis/lib/reward-to-risk";
 import { DIVERGENCE_THRESHOLD } from "../flows/analysis/lib/triangulation";
 import {
@@ -167,10 +168,10 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
   const snapshot = bundle.decisionSnapshot;
   const pm = published(memos.get(PM_KEY));
   const spine = bundle.valuationSpine;
-  // The band to check against: the PM memo's mirror, or the spine envelope as a
-  // fallback. Genuinely absent only when there is no decision and neither source.
+  // The valuation spine is authoritative; the PM band is only a fallback for a
+  // legacy run without a spine. A drifted PM mirror must never widen the band.
   const spineBand = spine != null ? { floor: spine.envelope.floor, ceiling: spine.envelope.ceiling } : null;
-  const band = pm?.ratingBand ?? spineBand;
+  const band = spineBand ?? pm?.ratingBand ?? null;
   if (snapshot == null || pm == null || band == null) {
     c.skip(
       "rating-envelope/final-within-band",
@@ -486,9 +487,32 @@ function checkMandate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): vo
   const decision = pm?.mandateDecision ?? null;
   const mandate = bundle.riskMandate;
   const rr = bundle.rewardToRisk;
-  // Truly mandate-blind — no frozen dials or no reward-to-risk figure → the whole
-  // group is n/a (the PM legitimately decides mandate-blind).
+  // Truly mandate-blind — no frozen dials or no reward-to-risk figure. The gate
+  // itself is n/a, but its memo/snapshot mirrors must also be null; populated
+  // mirrors would advertise a decision that the writer could not compute.
   if (mandate == null || rr == null) {
+    const blindMirrors = {
+      memoDecision: decision,
+      snapshotMandateId: snapshot?.mandateId ?? null,
+      snapshotMandateVerdict: snapshot?.mandateVerdict ?? null,
+      snapshotRewardToRiskLossAdjustedGlr:
+        snapshot?.rewardToRiskLossAdjustedGlr ?? null,
+      snapshotWorstCaseReturnPct: snapshot?.worstCaseReturnPct ?? null,
+      snapshotCapacityVetoed: snapshot?.capacityVetoed ?? null,
+    };
+    if (Object.values(blindMirrors).every((value) => value == null)) {
+      c.hardPass(
+        "mandate/blind-mirrors",
+        "mandate-blind run leaves PM and snapshot mandate mirrors null",
+      );
+    } else {
+      c.hardFail(
+        "mandate/blind-mirrors",
+        "mandate-blind run has populated PM or snapshot mandate mirrors",
+        "all mandate mirrors null",
+        blindMirrors,
+      );
+    }
     c.skip("mandate/verdict", "hard", "mandate-blind run (no mandate / reward-to-risk substrate)");
     return;
   }
@@ -537,6 +561,48 @@ function checkMandate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): vo
     c.hardFail(
       "mandate/soft-gates",
       `cleared ${decision.cleared} disagrees with recomputed soft gates (${gates.cleared})`,
+    );
+  }
+
+  const figureMismatches: string[] = [];
+  const figurePairs: Array<[
+    string,
+    number | null,
+    number | null,
+  ]> = [
+    ["lossAdjustedGlr", decision.lossAdjustedGlr, rr.lossAdjustedGlr],
+    ["expectedValuePct", decision.expectedValuePct, rr.expectedValuePct],
+    ["worstCaseReturnPct", decision.worstCaseReturnPct, rr.worstCaseReturnPct],
+  ];
+  for (const [field, memoValue, resourceValue] of figurePairs) {
+    const matches =
+      (memoValue == null && resourceValue == null) ||
+      (typeof memoValue === "number" &&
+        typeof resourceValue === "number" &&
+        approx(memoValue, resourceValue));
+    if (!matches) {
+      figureMismatches.push(`${field} memo ${memoValue} vs resource ${resourceValue}`);
+    }
+  }
+  if (decision.noDownside !== rr.noDownside) {
+    figureMismatches.push(
+      `noDownside memo ${decision.noDownside} vs resource ${rr.noDownside}`,
+    );
+  }
+  if (decision.evidenceBasis !== rr.evidenceBasis) {
+    figureMismatches.push(
+      `evidenceBasis memo ${decision.evidenceBasis} vs resource ${rr.evidenceBasis}`,
+    );
+  }
+  if (figureMismatches.length === 0) {
+    c.hardPass(
+      "mandate/reward-mirrors",
+      "PM mandate decision reward-to-risk mirrors match the stored resource",
+    );
+  } else {
+    c.hardFail(
+      "mandate/reward-mirrors",
+      `PM mandate reward-to-risk mirror drift: ${figureMismatches.join("; ")}`,
     );
   }
 
@@ -632,6 +698,10 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
   if (snapshot.mandateVerdict !== memoVerdict) {
     mismatches.push(`mandateVerdict snapshot ${snapshot.mandateVerdict} vs memo ${memoVerdict}`);
   }
+  const memoMandateId = pm.mandateDecision?.mandateId ?? null;
+  if (snapshot.mandateId !== memoMandateId) {
+    mismatches.push(`mandateId snapshot ${snapshot.mandateId} vs memo ${memoMandateId}`);
+  }
   const policy = pm.policyDecision;
   const policyPairs: Array<[string, unknown, unknown]> = [
     ["mandatePresent", snapshot.mandatePresent, policy?.mandatePresent ?? false],
@@ -658,6 +728,78 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
     c.hardPass("decision-consistency/snapshot-pm", "snapshot ↔ PM memo decision mirrors agree");
   } else {
     c.hardFail("decision-consistency/snapshot-pm", `snapshot/PM mirror drift: ${mismatches.join("; ")}`);
+  }
+
+  const frozenPolicy = bundle.portfolioMandate;
+  const policyClaimed =
+    policy != null ||
+    snapshot.mandatePresent === true ||
+    snapshot.policyVerdict != null ||
+    snapshot.positionCapClamped != null ||
+    snapshot.excluded != null ||
+    snapshot.preGatePolicyTargetPct != null;
+  if (frozenPolicy == null) {
+    if (policyClaimed) {
+      c.hardFail(
+        "decision-consistency/policy-recompute",
+        "policy decision mirrors exist without the frozen portfolio mandate needed to compute them",
+      );
+    } else {
+      c.skip(
+        "decision-consistency/policy-recompute",
+        "hard",
+        "no frozen portfolio mandate — policy gate not applicable",
+      );
+    }
+  } else if (policy == null || pm.portfolioFit == null) {
+    c.hardFail(
+      "decision-consistency/policy-recompute",
+      "frozen portfolio mandate exists but the PM policy decision or portfolio fit is missing",
+    );
+  } else {
+    const recomputedPolicy = computePolicyGate({
+      mandate: frozenPolicy,
+      ticker: snapshot.ticker,
+      targetWeightPct: policy.preGatePolicyTargetPct,
+      householdWeightPct: bundle.householdTickerWeightPct,
+    });
+    const policyMismatches: string[] = [];
+    const exactPolicyPairs: Array<[string, unknown, unknown]> = [
+      ["memo.mandatePresent", policy.mandatePresent, true],
+      ["memo.policyVerdict", policy.policyVerdict, recomputedPolicy.policyVerdict],
+      ["memo.positionCapClamped", policy.positionCapClamped, recomputedPolicy.positionCapClamped],
+      ["memo.excluded", policy.excluded, recomputedPolicy.excluded],
+      ["memo.householdWeightKnown", policy.householdWeightKnown, recomputedPolicy.householdWeightKnown],
+      ["snapshot.mandatePresent", snapshot.mandatePresent, true],
+      ["snapshot.policyVerdict", snapshot.policyVerdict, recomputedPolicy.policyVerdict],
+      ["snapshot.positionCapClamped", snapshot.positionCapClamped, recomputedPolicy.positionCapClamped],
+      ["snapshot.excluded", snapshot.excluded, recomputedPolicy.excluded],
+    ];
+    for (const [field, storedValue, recomputedValue] of exactPolicyPairs) {
+      if (storedValue !== recomputedValue) {
+        policyMismatches.push(`${field} ${storedValue} vs recomputed ${recomputedValue}`);
+      }
+    }
+    const targetPairs: Array<[string, number | null, number]> = [
+      ["memo.targetWeightPct", pm.portfolioFit.targetWeightPct, recomputedPolicy.targetWeightPct],
+      ["summary.targetWeightPct", bundle.summary.targetWeightPct, recomputedPolicy.targetWeightPct],
+    ];
+    for (const [field, storedValue, recomputedValue] of targetPairs) {
+      if (storedValue == null || !approx(storedValue, recomputedValue)) {
+        policyMismatches.push(`${field} ${storedValue} vs recomputed ${recomputedValue}`);
+      }
+    }
+    if (policyMismatches.length === 0) {
+      c.hardPass(
+        "decision-consistency/policy-recompute",
+        "policy mirrors and committed target match recomputation from frozen inputs",
+      );
+    } else {
+      c.hardFail(
+        "decision-consistency/policy-recompute",
+        `policy gate drift: ${policyMismatches.join("; ")}`,
+      );
+    }
   }
 
   // Snapshot trade fields ↔ trader memo mirrors.

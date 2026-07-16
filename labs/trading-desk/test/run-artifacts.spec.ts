@@ -9,6 +9,7 @@
  * `run-summary.spec.ts` (assert each field traces to a named stored input).
  */
 import { describe, expect, it } from "vitest";
+import { portfolioMandateSchema } from "../domain/portfolio/schema/portfolio-mandate-schema";
 import type { LensConvergenceState } from "../flows/analysis/agents/lenses/lens-convergence-resource";
 import type { DecisionSnapshotState } from "../flows/analysis/decision-snapshot-resource";
 import { ALL_MEMO_KEYS } from "../flows/analysis/registry";
@@ -24,6 +25,14 @@ import type { ValuationSpineState } from "../flows/analysis/valuation-spine-reso
 
 const RAN_AT = "2026-06-25T00:00:00.000Z";
 const SESSION_ID = "run_NVDA_2026-05-06_abc";
+const PORTFOLIO_MANDATE = portfolioMandateSchema.parse({
+  objectives: { riskTolerance: "moderate" },
+  constraints: { maxPositionWeightPct: 5 },
+  rebalancing: {},
+  timeHorizon: {},
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+});
 
 function sessionState(overrides: Partial<SessionState> = {}): SessionState {
   return {
@@ -182,7 +191,11 @@ function allMemos(): RunSummaryMemoInput[] {
 describe("buildRunArtifacts", () => {
   it("projects every resource and every ALL_MEMO_KEYS entry; validates against the schema", () => {
     const bundle = buildRunArtifacts({
-      sessionState: sessionState({ userThesis: "AI capex is durable." }),
+      sessionState: sessionState({
+        userThesis: "AI capex is durable.",
+        portfolioMandate: PORTFOLIO_MANDATE,
+        householdTickerWeightPct: 2.5,
+      }),
       decisionSnapshot: decisionSnapshot(),
       memos: allMemos(),
       valuationSpine: spine,
@@ -208,6 +221,8 @@ describe("buildRunArtifacts", () => {
     expect(bundle.rewardToRisk?.lossAdjustedGlr).toBe(2.1);
     expect(bundle.lensConvergence?.classification).toBe("mixed");
     expect(bundle.decisionSnapshot?.finalRating).toBe("Overweight");
+    expect(bundle.portfolioMandate?.constraints.maxPositionWeightPct).toBe(5);
+    expect(bundle.householdTickerWeightPct).toBe(2.5);
     expect(bundle.hasUserThesis).toBe(true);
     expect(bundle.p2Contributions?.entries).toHaveLength(1);
 
@@ -244,6 +259,8 @@ describe("buildRunArtifacts", () => {
     expect(bundle.lensConvergence).toBeNull();
     expect(bundle.decisionSnapshot).toBeNull();
     expect(bundle.riskMandate).toBeNull();
+    expect(bundle.portfolioMandate).toBeNull();
+    expect(bundle.householdTickerWeightPct).toBeNull();
     expect(bundle.hasUserThesis).toBe(false);
     expect(bundle.p2Contributions).toBeNull();
     // Every memo body is null (scaffold never created), but the entry is present.

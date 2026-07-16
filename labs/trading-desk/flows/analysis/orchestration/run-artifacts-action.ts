@@ -6,9 +6,10 @@
  * returns the compact decision projection, this returns the whole scored-artifact
  * bundle the eval suite (FIX-790) reads — the decision snapshot, the memo bodies,
  * the valuation spine, the reward-to-risk figure, lens convergence, the frozen
- * risk mandate, the Phase-2 debate transcript, and the session-state fields the
- * completeness checks need. `runAction()` callers receive the bundle directly at
- * `result.output`; `fsdev run analysis runArtifacts -i '{}' --session <id>
+ * risk mandate, frozen durable-policy inputs, the Phase-2 debate transcript,
+ * and the session-state fields the completeness checks need. `runAction()`
+ * callers receive the bundle directly at `result.output`; `fsdev run analysis
+ * runArtifacts -i '{}' --session <id>
  * --capture <file>` exposes the same output through the CLI.
  *
  * Why a separate read action (rather than scraping the analyze capture): the CLI

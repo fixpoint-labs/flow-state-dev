@@ -105,6 +105,8 @@ function completedBundle(): RunArtifactsBundle {
     lensConvergence: null,
     decisionSnapshot: null,
     riskMandate: null,
+    portfolioMandate: null,
+    householdTickerWeightPct: null,
     citationIntegrity: null,
     hasUserThesis: false,
     p2Contributions: { entries: [{ round: 1, agentName: "bullResearcher", text: "Bull opens with a specific claim." }] },
@@ -332,6 +334,23 @@ describe("runJudges", () => {
       modelResolver: hangingResolver,
     });
     expect(report!.dimensions[0].k).toBe(1);
+    expect(report!.dimensions.slice(1).every((d) => d.status === "skipped")).toBe(true);
+    expect(report!.warnings.some((w) => w.includes("spend became unknown"))).toBe(true);
+    expect(report!.totalCostUsd).toBeNull();
+  });
+
+  it("stops further calls when a failed judge has no usage trace under a budget cap", async () => {
+    const resolver = createMockModelResolver({ generators: {}, policy: "error" });
+
+    const report = await runJudges(completedBundle(), {
+      judgeModel: "vercel/anthropic/claude-haiku-4-5",
+      k: 2,
+      maxCostUsd: 5,
+      modelResolver: resolver,
+    });
+    expect(report!.dimensions[0].k).toBe(1);
+    expect(report!.dimensions[0].repeats[0].status).toBe("failed");
+    expect(report!.dimensions[0].repeats[0].costUsd).toBeNull();
     expect(report!.dimensions.slice(1).every((d) => d.status === "skipped")).toBe(true);
     expect(report!.warnings.some((w) => w.includes("spend became unknown"))).toBe(true);
     expect(report!.totalCostUsd).toBeNull();

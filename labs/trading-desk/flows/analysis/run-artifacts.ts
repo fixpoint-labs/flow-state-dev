@@ -8,8 +8,9 @@
  * deterministic invariant layer recomputes against and everything the LLM-judge
  * layer reads — the valuation spine, the reward-to-risk figure, lens
  * convergence, the decision snapshot, the frozen risk mandate, the Phase-2
- * debate transcript, and every memo body. `buildRunArtifacts` is PURE (no IO,
- * no clock) exactly like `buildRunSummary`; the `runArtifacts` action
+ * debate transcript, the frozen durable-policy inputs, and every memo body.
+ * `buildRunArtifacts` is PURE (no IO, no clock) exactly like `buildRunSummary`;
+ * the `runArtifacts` action
  * (`orchestration/run-artifacts-action.ts`) reads the resources and calls this.
  *
  * Kept a leaf (schema + type + pure builder, no `@flow-state-dev/core` handler
@@ -23,6 +24,10 @@
 import { roundRobinContributionsStateSchema } from "@flow-state-dev/patterns/round-robin";
 import type { RoundRobinContributionsState } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
+import {
+  portfolioMandateSchema,
+  type PortfolioMandate,
+} from "../../domain/portfolio/schema/portfolio-mandate-schema";
 import {
   decisionSnapshotStateSchema,
   type DecisionSnapshotState,
@@ -81,6 +86,10 @@ export const runArtifactsStateSchema = z.object({
   decisionSnapshot: decisionSnapshotStateSchema.nullable().default(null),
   // The frozen mandate dials from session state (null on a mandate-blind run).
   riskMandate: riskMandateSchema.nullable().default(null),
+  // The frozen durable household policy and analyzed ticker's household weight
+  // used by the PM policy gate. Together they let evals recompute that gate.
+  portfolioMandate: portfolioMandateSchema.nullable().default(null),
+  householdTickerWeightPct: z.number().nullable().default(null),
   // Phase-2 citation-integrity report (null when no tagged contributions).
   citationIntegrity: citationIntegritySchema.nullable().default(null),
   // `state.userThesis !== null` — makes the p6 completeness check deterministic
@@ -188,6 +197,9 @@ export function buildRunArtifacts(
     decisionSnapshot: hasDecision(decisionSnapshot) ? decisionSnapshot : null,
     // Session-state-sourced fields (frozen dials + the thesis presence flag).
     riskMandate: (sessionState.riskMandate as RiskMandate | null) ?? null,
+    portfolioMandate:
+      (sessionState.portfolioMandate as PortfolioMandate | null) ?? null,
+    householdTickerWeightPct: sessionState.householdTickerWeightPct ?? null,
     citationIntegrity:
       (sessionState.citationIntegrity as CitationIntegrity | null) ?? null,
     // `!= null` (not `!== null`) so an absent field on a partial / legacy

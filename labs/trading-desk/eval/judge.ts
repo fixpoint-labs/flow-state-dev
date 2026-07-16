@@ -125,14 +125,16 @@ function isJudgePriced(modelId: string): boolean {
   return JUDGE_PRICE.some((p) => modelId.includes(p.key));
 }
 
-function estimateJudgeCost(items: readonly unknown[]): number {
+function estimateJudgeCost(items: readonly unknown[]): number | null {
   let total = 0;
+  let sawUsage = false;
   for (const item of items) {
     const trace = item as {
       type?: string;
       modelUsage?: { model: string; promptTokens: number; completionTokens: number };
     };
     if (trace.type !== "block_trace" || trace.modelUsage === undefined) continue;
+    sawUsage = true;
     const usage = trace.modelUsage;
     // Unpriced model → conservative fallback, so the budget cap still enforces.
     const price = JUDGE_PRICE.find((p) => usage.model.includes(p.key)) ?? FALLBACK_RATE;
@@ -140,7 +142,7 @@ function estimateJudgeCost(items: readonly unknown[]): number {
       (usage.promptTokens / 1_000_000) * price.inPer1M +
       (usage.completionTokens / 1_000_000) * price.outPer1M;
   }
-  return total;
+  return sawUsage ? total : null;
 }
 
 /** The judge model's provider family, for the self-preference check. */
@@ -243,7 +245,6 @@ async function judgeOnce(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const isTimeout = message === "judge timeout";
-    // The abandoned testBlock call (on timeout) is intentionally not awaited.
     return { score: 0, findings: [], status: isTimeout ? "timeout" : "failed", reason: message, costUsd: null };
   } finally {
     if (timer !== undefined) clearTimeout(timer);

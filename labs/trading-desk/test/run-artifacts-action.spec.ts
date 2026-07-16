@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
+import { portfolioMandateSchema } from "../domain/portfolio/schema/portfolio-mandate-schema";
 import analysisFlow from "../flows/analysis/flow";
 import type { DecisionSnapshotState } from "../flows/analysis/decision-snapshot-resource";
 import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
@@ -46,6 +47,15 @@ const snapshot: DecisionSnapshotState = {
   outcomeVerdict: null,
 };
 
+const portfolioMandate = portfolioMandateSchema.parse({
+  objectives: { riskTolerance: "moderate" },
+  constraints: { maxPositionWeightPct: 5 },
+  rebalancing: {},
+  timeHorizon: {},
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+});
+
 describe("runArtifacts action", () => {
   it("projects the full scored-artifact bundle from stored resources", async () => {
     const stores = createInMemoryStores();
@@ -67,6 +77,8 @@ describe("runArtifacts action", () => {
             dataSource: "fixture",
             runComplete: true,
             userThesis: "AI capex is durable.",
+            portfolioMandate,
+            householdTickerWeightPct: 2.5,
           },
           resources: {
             // Single resources — keyed by their `ref`.
@@ -149,6 +161,8 @@ describe("runArtifacts action", () => {
     expect(bundle.decisionSnapshot?.finalRating).toBe("Buy");
     expect(bundle.valuationSpine?.ticker).toBe("NVDA");
     expect(bundle.rewardToRisk?.lossAdjustedGlr).toBe(2.4);
+    expect(bundle.portfolioMandate?.constraints.maxPositionWeightPct).toBe(5);
+    expect(bundle.householdTickerWeightPct).toBe(2.5);
     // Unwritten resources normalize to null (never a partial `{}`).
     expect(bundle.lensConvergence).toBeNull();
     expect(bundle.p2Contributions).toBeNull();
