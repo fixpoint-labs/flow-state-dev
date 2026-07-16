@@ -171,13 +171,20 @@ export function DevToolProvider({
 
   // Sync external `initialConfig`/`baseUrl` changes into state. The reducer's
   // initializer only runs on mount, so without this the standalone shell's
-  // focus-driven re-read of localStorage (or a host swapping the userId
-  // prop) would be silently ignored. Skipped when nothing changed to avoid
-  // rebuilding the clients on every render.
+  // focus-driven re-read (or a host swapping the userId/bearerToken prop)
+  // would be silently ignored. Compare the WHOLE config — guarding on `userId`
+  // alone would drop a bearer-token-only change (BP-010: derive from the
+  // complete input set). Skipped when nothing changed to avoid rebuilding the
+  // clients on every render.
   useEffect(() => {
-    if (state.config.userId === initialConfig.userId) return;
+    if (
+      state.config.userId === initialConfig.userId &&
+      state.config.bearerToken === initialConfig.bearerToken
+    ) {
+      return;
+    }
     dispatch({ type: "SET_CONFIG", config: initialConfig, baseUrl });
-  }, [initialConfig, baseUrl, state.config.userId]);
+  }, [initialConfig, baseUrl, state.config.userId, state.config.bearerToken]);
 
   // Sweep interrupted requests for the current user once on devtool mount.
   // Off by default for embedded panels — the host app may not want a panel

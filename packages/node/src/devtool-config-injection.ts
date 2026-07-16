@@ -20,11 +20,14 @@ export function injectDevtoolConfig(
   html: string,
   config: DevToolConnectionConfig
 ): string {
+  // Only inject values the DevTool reader will actually use — it ignores
+  // whitespace-only values (trims before use), so a blank config field must not
+  // land in the page global where it would silently shadow the default.
   const clean: DevToolConnectionConfig = {};
-  if (typeof config.userId === "string" && config.userId.length > 0) {
+  if (typeof config.userId === "string" && config.userId.trim().length > 0) {
     clean.userId = config.userId;
   }
-  if (typeof config.bearerToken === "string" && config.bearerToken.length > 0) {
+  if (typeof config.bearerToken === "string" && config.bearerToken.trim().length > 0) {
     clean.bearerToken = config.bearerToken;
   }
   if (Object.keys(clean).length === 0) return html;

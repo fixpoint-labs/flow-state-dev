@@ -143,8 +143,13 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     dataLine = `config: ${resolved.configPath}`;
     // `meta` is a sync getter — no extra store init. Injected into the DevTool
     // page by serve() so a secured flow is debuggable without hand-editing
-    // DevTool settings.
-    devtoolConfig = resolved.flowState.meta.devtool;
+    // DevTool settings. Normalize an empty/blank-only `devtool` block to
+    // undefined so serve() leaves the static path byte-identical to production.
+    const declared = resolved.flowState.meta.devtool;
+    const hasField =
+      (declared?.userId?.trim().length ?? 0) > 0 ||
+      (declared?.bearerToken?.trim().length ?? 0) > 0;
+    devtoolConfig = hasField ? declared : undefined;
   } else {
     // --- discovery path: scan flows, build a router over local SQLite ---
     if (resolved.flows.length === 0) {

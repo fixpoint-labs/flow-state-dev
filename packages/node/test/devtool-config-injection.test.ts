@@ -19,6 +19,9 @@ describe("injectDevtoolConfig", () => {
   it("returns the HTML unchanged when no usable fields are present", () => {
     expect(injectDevtoolConfig(HTML, {})).toBe(HTML);
     expect(injectDevtoolConfig(HTML, { userId: "", bearerToken: "" })).toBe(HTML);
+    // Whitespace-only values are ignored by the reader, so they must not be
+    // injected (they would silently shadow the default otherwise).
+    expect(injectDevtoolConfig(HTML, { userId: "   ", bearerToken: "  " })).toBe(HTML);
   });
 
   it("escapes < so a token containing </script> cannot break out of the tag", () => {
