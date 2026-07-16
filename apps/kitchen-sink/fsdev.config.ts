@@ -68,7 +68,7 @@ const flowstate = createFlowState({
       utility: [
         "vercel/google/gemini-3.1-flash-lite",
         "vercel/anthropic/claude-haiku-4.5",
-        "vercel/openai/gpt-5.6-luna",
+        "vercel/openai/gpt-5.4-nano",
       ],
       chat: ["vercel/anthropic/claude-sonnet-5", "vercel/openai/gpt-5.6-terra"],
       plan: ["vercel/anthropic/claude-opus-4.8", "vercel/openai/gpt-5.6-sol"],
