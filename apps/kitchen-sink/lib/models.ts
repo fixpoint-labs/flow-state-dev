@@ -15,12 +15,11 @@ export const KITCHEN_SINK_MODELS = [
   "vercel/anthropic/claude-opus-4.8",
   "vercel/openai/gpt-5.4-nano",
   "vercel/openai/gpt-5.4-mini",
-  "vercel/openai/gpt-5.6-sol",
-  "vercel/openai/gpt-5.6-luna",
   "vercel/openai/gpt-5.6-terra",
+  "vercel/openai/gpt-5.6-luna",
+  "vercel/openai/gpt-5.6-sol",
   "vercel/google/gemini-2.5-pro",
   "vercel/zai/glm-5.2",
-  "vercel/hy/hy3",
   "vercel/xiaomi/mimo-v2.5",
 ] as const;
 
@@ -56,16 +55,16 @@ export const MODEL_LABELS: Record<
     label: "GPT-5.4 Mini",
     description: "Mid-tier",
   },
-  "vercel/openai/gpt-5.6-sol": {
-    label: "GPT-5.6 Sol",
+  "vercel/openai/gpt-5.6-terra": {
+    label: "GPT-5.6 Terra",
     description: "Fast, low cost",
   },
   "vercel/openai/gpt-5.6-luna": {
     label: "GPT-5.6 Luna",
     description: "Balanced",
   },
-  "vercel/openai/gpt-5.6-terra": {
-    label: "GPT-5.6 Terra",
+  "vercel/openai/gpt-5.6-sol": {
+    label: "GPT-5.6 Sol",
     description: "Highest capability",
   },
   "vercel/google/gemini-2.5-pro": {
@@ -75,10 +74,6 @@ export const MODEL_LABELS: Record<
   "vercel/zai/glm-5.2": {
     label: "GLM 5.2",
     description: "Open-weight, strong coding",
-  },
-  "vercel/hy/hy3": {
-    label: "Hy3",
-    description: "Open-weight, multilingual",
   },
   "vercel/xiaomi/mimo-v2.5": {
     label: "MiMo V2.5",
