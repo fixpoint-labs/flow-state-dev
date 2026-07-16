@@ -541,6 +541,19 @@ describe("checkRun — decision-consistency", () => {
     expect(byId(report.checks, "decision-consistency/snapshot-pm")?.status).toBe("fail");
   });
 
+  it("fails when the snapshot identity drifts from the run identity", () => {
+    // A decision for one name mislabeled as another: the decision-field mirrors
+    // still agree, but the snapshot's own ticker/asOfDate no longer match the run
+    // the scoreboard labels it by.
+    const b = healthyBundle();
+    b.decisionSnapshot!.ticker = "AAPL"; // run is NVDA
+    expect(byId(checkRun(b).checks, "decision-consistency/snapshot-pm")?.status).toBe("fail");
+
+    const b2 = healthyBundle();
+    b2.decisionSnapshot!.asOfDate = "2020-01-01"; // run is 2026-05-06
+    expect(byId(checkRun(b2).checks, "decision-consistency/snapshot-pm")?.status).toBe("fail");
+  });
+
   it("passes a durable policy gate that matches recomputation", () => {
     const b = healthyBundle();
     const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;

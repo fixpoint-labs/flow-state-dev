@@ -172,6 +172,17 @@ if (sessionIds.length === 2 && failures.length === 0) {
     const report = JSON.parse(readFileSync(join(OUT, varianceFile), "utf8")) as {
       dimensions: Array<{ dimension: string; alpha: number | null; bySession: Array<{ std: number }> }>;
     };
+    // Every DECLARED rubric must carry a noise measurement (goal.md). Looping the
+    // report's own dimensions would pass vacuously if aggregation dropped one —
+    // cross-check the report's keys against RUBRICS, as the scoreboard check above does.
+    const varianceKeys = report.dimensions.map((dim) => dim.dimension);
+    if (
+      varianceKeys.length !== RUBRICS.length ||
+      new Set(varianceKeys).size !== RUBRICS.length ||
+      RUBRICS.some((rubric) => !varianceKeys.includes(rubric.key))
+    ) {
+      failures.push("variance report dimensions do not match the declared rubrics");
+    }
     for (const dim of report.dimensions) {
       if (dim.bySession.length === 0) failures.push(`variance/${dim.dimension}: no per-session std recorded`);
       if (dim.alpha === null) failures.push(`variance/${dim.dimension}: alpha not computed across 2 sessions`);

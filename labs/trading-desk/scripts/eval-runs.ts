@@ -353,7 +353,16 @@ async function variance(a: Args): Promise<number> {
         continue;
       }
       const dims: Record<string, number[]> = {};
-      for (const d of report.dimensions) if (d.status === "scored") dims[d.key] = d.scores;
+      for (const d of report.dimensions) {
+        if (d.status !== "scored") continue;
+        // A failed / timed-out repeat records a score of 0 (judge.ts), not a real
+        // judgment. Including those zeros fabricates agreement — two all-failed
+        // sessions would read as identical zeros and krippendorffAlpha would report
+        // perfect reliability. Characterize noise only from repeats that actually
+        // produced a judgment; a dimension with none is omitted for this session.
+        const valid = d.repeats.filter((r) => r.status === "scored").map((r) => r.score);
+        if (valid.length > 0) dims[d.key] = valid;
+      }
       perSession.push({ sessionId, dimensions: dims });
     }
 

@@ -681,6 +681,17 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
   }
 
   const mismatches: string[] = [];
+  // The snapshot's own identity must match the run it belongs to. Without this,
+  // a drifted `ticker` / `asOfDate` passes (the decision-field mirrors still
+  // agree), yet the scoreboard labels the record by `summary.ticker` while the
+  // policy recompute keys off `snapshot.ticker` — so a decision for one name
+  // could be scored and reported as another.
+  if (snapshot.ticker !== bundle.summary.ticker) {
+    mismatches.push(`ticker snapshot ${snapshot.ticker} vs run ${bundle.summary.ticker}`);
+  }
+  if (snapshot.asOfDate !== bundle.summary.date) {
+    mismatches.push(`asOfDate snapshot ${snapshot.asOfDate} vs run ${bundle.summary.date}`);
+  }
   if (snapshot.finalRating !== pm.finalRating) {
     mismatches.push(`finalRating snapshot ${snapshot.finalRating} vs memo ${pm.finalRating}`);
   }
