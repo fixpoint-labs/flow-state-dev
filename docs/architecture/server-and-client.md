@@ -10,7 +10,7 @@ Server-side runtime. Handles:
 - Flow registration and discovery
 - Action execution orchestration
 - SSE streaming with resume support
-- State persistence (filesystem + in-memory adapters)
+- State persistence (in-memory, filesystem, SQLite, and Postgres adapters)
 - Retry/rescue/work execution semantics
 
 ### `@flow-state-dev/client`
@@ -102,7 +102,9 @@ const router = createFlowApiRouter({
 ```ts
 import { createFlowApiRouter, createFilesystemStores, createInMemoryStores } from "@flow-state-dev/engine";
 
-// Production: filesystem (default)
+// Default when no `stores` is passed: in-memory (dev/test only).
+// For production use SQLite (single server) or Postgres (multi-instance);
+// the filesystem store is for local development, not production load.
 const router = createFlowApiRouter({ registry });
 
 // Testing: in-memory

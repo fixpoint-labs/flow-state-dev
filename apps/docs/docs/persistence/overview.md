@@ -148,7 +148,14 @@ The trading-desk example uses this pattern end-to-end — see the [walkthrough](
 
 ## Choosing a store
 
-- **Developing locally?** Start with in-memory (default). Switch to the filesystem store when you want persistence across restarts.
-- **Deploying a single server?** Filesystem or SQLite works. Both are simple and reliable for low-concurrency scenarios.
-- **Production with multiple servers?** Use Postgres. You need a shared data store with proper concurrency semantics.
-- **Special requirements?** Implement a custom store adapter against the `StoreAdapter` interface.
+Pick by where you run — there's no single "recommended stack":
+
+- **Local dev** — in-memory (default), or the filesystem store when you want data to survive restarts. Zero setup.
+- **Single server** (Railway, Fly, a VPS) — SQLite or Postgres, for durable concurrency-safe writes. The filesystem store is fine for very low concurrency, but its per-request event log doesn't hold up under real load — reach for SQLite instead.
+- **Multiple servers / cloud** — Postgres. You need a shared store with real concurrency semantics and cross-instance live tail (Postgres uses `LISTEN/NOTIFY`). `LISTEN/NOTIFY` is a wake-up signal with a real fan-out ceiling; at high event volume, put streaming on Redis or NATS behind the same `subscribeToEvents` interface.
+- **Serverless / edge** — Postgres over an HTTP driver (e.g. a Neon/Supabase pooler). `LISTEN/NOTIFY` doesn't survive transaction poolers, so use an HTTP-based service (e.g. Upstash) for live updates.
+- **Special requirements** — implement a custom store against the `StoreAdapter` interface.
+
+### Resource vs. app-owned tables
+
+Resources are the right home for agent-facing, streaming, and per-scope state. For a real relational **system of record** — a ledger, normalized domain entities, cross-row integrity — don't force it into resources: give the app its own typed tables and migrations, sharing the same database and pool as the store. The trading-desk example does exactly this.

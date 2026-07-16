@@ -143,7 +143,7 @@ For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.p
 
 - **Action execution** — Validates input, resolves sessions, runs block pipelines, emits items
 - **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume. Resources declaring `client: { live: true }` emit their projected delta inline on each mutation so clients merge it without a refetch
-- **State persistence** — In-memory and filesystem store adapters with CAS-guarded atomic writes
+- **State persistence** — in-memory, filesystem, SQLite, and Postgres store adapters with CAS-guarded atomic writes
 - **Flow registry** — Register multiple flows, routes are derived automatically
 - **Error normalization** — All errors become typed `FlowError` instances with codes, retry signals, and scope context
 - **Structured logging** — Every action execution logs flow/action/block IDs, attempt numbers, timing, and summarized payloads
@@ -271,7 +271,7 @@ Read the value in a block via `ctx.session.identity.tenantId`. See the
 ```ts
 import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/engine";
 
-// Default: filesystem persistence
+// Default when no `stores` is passed: in-memory (dev/test only)
 const router = createFlowApiRouter({ registry });
 
 // Testing: in-memory (fast, no cleanup)
@@ -362,7 +362,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 
 **Stores:**
 - `createInMemoryStores` — Fast, ephemeral stores for testing
-- `createFilesystemStores` — Persistent stores for development and production
+- `createFilesystemStores` — Persistent stores for local development (not for production load; use SQLite or Postgres in production)
 - `createInMemoryContentStore` / `createFilesystemContentStore` — Content store adapters
 - `createInMemoryResourceStateStore` / `createFilesystemResourceStateStore` — Resource state store adapters
 - Scope store factories and CAS/state ops
