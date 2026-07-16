@@ -55,6 +55,12 @@ const MAIN_MIN_WIDTH = 560;
 export type DevToolPanelProps = {
   /** Identity used for all DevTool client traffic. The host owns it. */
   userId: string;
+  /**
+   * Bearer token sent as `Authorization: Bearer` on flow requests, for
+   * debugging bearer-gated flows. Under `fsdev dev` this comes from the app's
+   * `fsdev.config.ts` `devtool.bearerToken`; embedded hosts usually omit it.
+   */
+  bearerToken?: string;
   /** Optional API base URL; defaults to same-origin. */
   baseUrl?: string;
   /**
@@ -74,12 +80,13 @@ export type DevToolPanelProps = {
 
 export function DevToolPanel({
   userId,
+  bearerToken,
   baseUrl = "",
   autoRecoverInterrupted = false,
   userIdControl = "internal",
   className,
 }: DevToolPanelProps) {
-  const initialConfig = useMemo(() => ({ userId }), [userId]);
+  const initialConfig = useMemo(() => ({ userId, bearerToken }), [userId, bearerToken]);
 
   return (
     <DevToolProvider

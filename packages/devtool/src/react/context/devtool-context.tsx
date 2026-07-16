@@ -53,8 +53,8 @@ type Action =
 function buildClients(config: DevToolConfig, baseUrl: string | undefined) {
   return {
     client: createDevToolClient(config, baseUrl),
-    sessionClient: createDevToolSessionClient(baseUrl),
-    recoveryClient: createDevToolRecoveryClient(baseUrl),
+    sessionClient: createDevToolSessionClient(baseUrl, config.bearerToken),
+    recoveryClient: createDevToolRecoveryClient(baseUrl, config.bearerToken),
   };
 }
 

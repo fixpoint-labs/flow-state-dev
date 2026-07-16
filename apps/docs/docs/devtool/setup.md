@@ -88,6 +88,28 @@ During development you might want a faster or cheaper model. Use `--model` to ov
 fsdev dev --model gpt-4o-mini
 ```
 
+## Connecting to a secured flow
+
+Some flows authenticate every request with a bearer secret. Their principal resolver rejects anything that arrives without a valid token. DevTool has no token to send by default, so those flows look inert: you dispatch an action and nothing happens.
+
+Declare a `devtool` block in your `fsdev.config.ts`:
+
+```ts
+export default createFlowState({
+  // ...flows, stores...
+  devtool: {
+    userId: "owner",
+    bearerToken: process.env.MY_FLOW_SECRET,
+  },
+});
+```
+
+`fsdev dev` reads it and wires DevTool from it. `userId` becomes the session identity DevTool creates sessions and dispatches as. `bearerToken` is sent as `Authorization: Bearer` on every flow request. Use the identity the flow's resolver expects: a bearer flow that resolves to a fixed `owner` needs `userId: "owner"`, so the session and the action agree on who is acting.
+
+The wiring is local-only. The token is injected into the loopback page `fsdev dev` serves and nowhere else. `fsdev serve` and deploy paths ignore the `devtool` block.
+
+For a one-off you can skip the config and set a bearer token ad hoc in the Settings sheet (the gear icon). Precedence is straightforward: a `userId` from the config wins over a previously-saved Settings value on load.
+
 ## Environment variables
 
 The CLI loads `.env.local` files automatically, walking up from your working directory. Put API keys and configuration there:

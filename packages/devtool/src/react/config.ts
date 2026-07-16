@@ -12,10 +12,36 @@ const TRACE_ITEMS_VISIBLE_KEY = "fsd.devtool.traceItemsVisible";
 
 const hasWindow = (): boolean => typeof window !== "undefined";
 
+/**
+ * Connection config `fsdev dev` injects into the page (`window.__FSD_DEVTOOL_CONFIG__`)
+ * from the app's `fsdev.config.ts` `devtool` block. Present only under the
+ * standalone `fsdev dev` shell; absent for embedded hosts and SSR.
+ */
+type InjectedConfig = { userId?: string; bearerToken?: string };
+
+function readInjectedConfig(): InjectedConfig {
+  if (!hasWindow()) return {};
+  const injected = (window as unknown as { __FSD_DEVTOOL_CONFIG__?: unknown })
+    .__FSD_DEVTOOL_CONFIG__;
+  return injected !== null && typeof injected === "object"
+    ? (injected as InjectedConfig)
+    : {};
+}
+
 export function readUserId(): string {
+  // The app-declared userId wins on boot (it's the identity a secured flow
+  // expects); otherwise fall back to the operator's persisted choice.
+  const injected = readInjectedConfig().userId;
+  if (typeof injected === "string" && injected.trim()) return injected;
   if (!hasWindow()) return DEFAULT_USER_ID;
   const stored = window.localStorage.getItem(USER_ID_KEY);
   return stored?.trim() ? stored : DEFAULT_USER_ID;
+}
+
+/** Bearer token injected from `fsdev.config.ts`, if any. Never persisted. */
+export function readBearerToken(): string | undefined {
+  const injected = readInjectedConfig().bearerToken;
+  return typeof injected === "string" && injected.trim() ? injected : undefined;
 }
 
 export function writeUserId(userId: string): void {

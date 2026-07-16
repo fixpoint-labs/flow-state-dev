@@ -47,6 +47,10 @@ export default createFlowState({
 });
 ```
 
+## The devtool option
+
+`createFlowState` accepts an optional `devtool: { userId?, bearerToken? }` block. Only `fsdev dev` reads it, to configure the embedded DevTool: `userId` sets the session identity DevTool acts as, and `bearerToken` is sent as `Authorization: Bearer` so a secured flow accepts the request. It is a dev-only convenience. `fsdev serve` and production deploys ignore it. See [Connecting to a secured flow](/docs/devtool/setup#connecting-to-a-secured-flow) for the full walkthrough.
+
 ## Environment files
 
 Before the CLI imports your config, it loads `.env.local` into the environment. That ordering matters: your config constructs its model providers as it loads, and those providers read gateway and API keys at that moment. Load the env too late and the keys are already missing.

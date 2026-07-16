@@ -21,8 +21,9 @@ import type { Server } from "node:http";
 import { serve as honoServe } from "@hono/node-server";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
-import type { FlowApiRouter, FlowState } from "@flow-state-dev/engine";
+import type { FlowApiRouter, FlowState, DevToolConnectionConfig } from "@flow-state-dev/engine";
 import { createServerApp } from "./app";
+import { injectDevtoolConfig } from "./devtool-config-injection";
 
 /** Options for {@link serve}. All have sensible defaults for PaaS hosting. */
 export interface ServeOptions {
@@ -36,6 +37,13 @@ export interface ServeOptions {
   healthPath?: string;
   /** Static asset dir served for non-API routes, with `index.html` SPA fallback. */
   staticDir?: string;
+  /**
+   * DevTool connection config to inject into the served `index.html` as
+   * `window.__FSD_DEVTOOL_CONFIG__` (userId / bearer token). Set only by
+   * `fsdev dev` from the app's `fsdev.config.ts`; the token is exposed only to
+   * the loopback page this dev server serves. Omit for production serving.
+   */
+  devtoolConfig?: DevToolConnectionConfig;
   /** SIGTERM/SIGINT grace window (ms) before connections are force-closed. Default 10000. */
   shutdownGraceMs?: number;
   /**
@@ -129,12 +137,20 @@ export function serve(
   //      including one that arrives during cold start.
   //   3. Anything still unmatched falls back to `index.html` (SPA routing).
   if (staticDir !== undefined) {
+    // Inject the DevTool connection config into every HTML response (both the
+    // real index.html and the SPA fallback) so the loopback DevTool page picks
+    // up userId/bearer on boot. Undefined for production serving.
+    const devtoolConfig = options.devtoolConfig;
+    const htmlTransform =
+      devtoolConfig !== undefined
+        ? (html: string) => injectDevtoolConfig(html, devtoolConfig)
+        : undefined;
     honoApp.get("*", async (c) => {
-      const file = await serveStaticFile(c.req.path, staticDir);
+      const file = await serveStaticFile(c.req.path, staticDir, htmlTransform);
       if (file !== null) return file;
       const dedicated = await tryDedicatedRoute(c.req.raw);
       if (dedicated !== null) return dedicated;
-      return serveSpaIndex(staticDir);
+      return serveSpaIndex(staticDir, htmlTransform);
     });
   }
 
@@ -215,6 +231,7 @@ export function serve(
 async function serveStaticFile(
   pathname: string,
   staticDir: string,
+  htmlTransform?: (html: string) => string,
 ): Promise<Response | null> {
   let filePath: string;
   if (pathname === "/" || pathname === "") {
@@ -238,17 +255,26 @@ async function serveStaticFile(
     const ext = extname(filePath);
     const mimeType = MIME_TYPES[ext] ?? "application/octet-stream";
 
-    return new Response(content, { status: 200, headers: { "content-type": mimeType } });
+    const body =
+      ext === ".html" && htmlTransform !== undefined
+        ? htmlTransform(content.toString("utf8"))
+        : content;
+    return new Response(body, { status: 200, headers: { "content-type": mimeType } });
   } catch {
     return null;
   }
 }
 
 /** SPA routing fallback: serve `index.html` for an unmatched client route, or 404. */
-async function serveSpaIndex(staticDir: string): Promise<Response> {
+async function serveSpaIndex(
+  staticDir: string,
+  htmlTransform?: (html: string) => string,
+): Promise<Response> {
   try {
     const content = await readFile(join(staticDir, "index.html"));
-    return new Response(content, {
+    const body =
+      htmlTransform !== undefined ? htmlTransform(content.toString("utf8")) : content;
+    return new Response(body, {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },
     });
