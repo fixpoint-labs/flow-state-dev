@@ -94,23 +94,27 @@ const COLUMN_SYNONYMS: Record<CsvColumn, string[]> = {
 };
 
 /** Normalize a header cell for synonym matching: lower-case, strip everything
- *  that isn't a letter or digit (so "Avg Cost" and "avg_cost" both match). */
-function normalizeHeader(header: string): string {
+ *  that isn't a letter or digit (so "Avg Cost" and "avg_cost" both match).
+ *  Exported so the sibling tax-lot CSV parser (FIX-895) reuses the exact same
+ *  header normalization rather than duplicating it (BP-029). */
+export function normalizeHeader(header: string): string {
   return header.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 /** Strip currency symbols, thousands separators, and surrounding whitespace,
  *  then parse a finite number. Returns null on any non-finite result so the
- *  caller can decide whether the field is required. */
-function parseLooseNumber(raw: string): number | null {
+ *  caller can decide whether the field is required. Exported for reuse by the
+ *  tax-lot CSV parser (FIX-895, BP-029). */
+export function parseLooseNumber(raw: string): number | null {
   const cleaned = raw.replace(/[$,\s]/g, "");
   if (cleaned.length === 0) return null;
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
 }
 
-/** Validate an ISO `YYYY-MM-DD` date. Returns the normalized string or null. */
-function parseIsoDate(raw: string): string | null {
+/** Validate an ISO `YYYY-MM-DD` date. Returns the normalized string or null.
+ *  Exported for reuse by the tax-lot CSV parser (FIX-895, BP-029). */
+export function parseIsoDate(raw: string): string | null {
   const trimmed = raw.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
   // Reject impossible calendar dates (e.g. 2024-13-40) — `Date` would coerce.
@@ -123,8 +127,9 @@ function parseIsoDate(raw: string): string | null {
 /** Split one CSV line into trimmed fields. Handles simple double-quoted fields
  *  (a quoted field may contain commas); does NOT implement full RFC 4180
  *  escaping (`""` inside quotes) — brokerage holdings exports don't need it and
- *  the format doc declares the limitation. */
-function splitCsvLine(line: string): string[] {
+ *  the format doc declares the limitation. Exported for reuse by the tax-lot CSV
+ *  parser (FIX-895, BP-029). */
+export function splitCsvLine(line: string): string[] {
   const fields: string[] = [];
   let current = "";
   let inQuotes = false;
