@@ -94,7 +94,7 @@ function summary(overrides: Partial<RunSummary> = {}): RunSummary {
     rewardToRiskLossAdjustedGlr: RR.lossAdjustedGlr,
     worstCaseReturnPct: RR.worstCaseReturnPct,
     hasStandingThesis: null,
-    mandatePresent: null,
+    mandatePresent: false,
     policyVerdict: null,
     positionCapClamped: null,
     excluded: null,
@@ -191,7 +191,7 @@ function healthyBundle(): RunArtifactsBundle {
       worstCaseReturnPct: RR.worstCaseReturnPct,
       capacityVetoed: !GATES.capacityCleared,
       hasStandingThesis: null,
-      mandatePresent: null,
+      mandatePresent: false,
       policyVerdict: null,
       positionCapClamped: null,
       excluded: null,
@@ -420,6 +420,11 @@ describe("checkRun — mandate", () => {
 });
 
 describe("checkRun — decision-consistency", () => {
+  it("accepts a false snapshot mandate marker when the PM policy mirror is absent", () => {
+    const report = checkRun(healthyBundle());
+    expect(byId(report.checks, "decision-consistency/snapshot-pm")?.status).toBe("pass");
+  });
+
   it("fails when the snapshot and PM memo final ratings disagree", () => {
     const b = healthyBundle();
     b.decisionSnapshot!.finalRating = "Buy"; // memo still Overweight, still within band
@@ -504,6 +509,32 @@ describe("checkRun — valuation", () => {
     };
     const report = checkRun(b);
     expect(byId(report.checks, "valuation/fair-value-abstention")?.status).toBe("fail");
+  });
+
+  it("fails when an unavailable equity-multiples leg retains valuation numbers", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = {
+      justifiedPE: 12,
+      fairValue: 100,
+      marginOfSafety: 0.2,
+      method: "equity-multiples",
+      available: false,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/fair-value-abstention")?.status).toBe("fail");
+  });
+
+  it("allows an unavailable justified-PE leg to retain only its computed multiple", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = {
+      justifiedPE: 12,
+      fairValue: null,
+      marginOfSafety: null,
+      method: "justified-pe",
+      available: false,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/fair-value-abstention")?.status).toBe("pass");
   });
 
   it("flags a terminal-value-dominated DCF as a soft signal", () => {

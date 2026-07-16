@@ -90,10 +90,26 @@ describe("withEvalRuntime", () => {
         const failed = await runtime.run("fail", {}, "session-1");
         expect(failed.error).toContain("synthetic action failure");
 
-        const following = await runtime.run("runArtifacts", {}, "session-2");
+        const following = await runtime.run("runArtifacts", {}, "session-1");
         expect(following.error).toBeNull();
       },
     );
+  });
+
+  it("rejects a missing session before a read action can create it", async () => {
+    const flowState = buildFlowState();
+    const resolved = await flowState.getRuntime();
+
+    await withEvalRuntime(
+      { loadFlowState: async () => flowState },
+      async (runtime) => {
+        const read = await runtime.run("runArtifacts", {}, "missing-session");
+        expect(read.error).toBe('Session "missing-session" not found');
+        expect(read.output).toBeUndefined();
+      },
+    );
+
+    expect(await resolved.stores.session.get("missing-session")).toBeUndefined();
   });
 
   it("reuses the persisted owner when evaluating a UI-created session", async () => {

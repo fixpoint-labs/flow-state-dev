@@ -133,6 +133,22 @@ function scoringResolver(score: number): ModelResolver {
   return createMockModelResolver({ generators, policy: "error" });
 }
 
+function abortAwareHangingResolver(onAbort?: () => void): ModelResolver {
+  return ((modelId: string) => ({
+    modelId,
+    generate(options: { signal?: AbortSignal }) {
+      return new Promise((_resolve, reject) => {
+        const abort = () => {
+          onAbort?.();
+          reject(options.signal?.reason ?? new Error("aborted"));
+        };
+        if (options.signal?.aborted) abort();
+        else options.signal?.addEventListener("abort", abort, { once: true });
+      });
+    },
+  })) as unknown as ModelResolver;
+}
+
 describe("rubrics", () => {
   it("declares four dimensions, each with criteria assembled", () => {
     expect(RUBRICS).toHaveLength(4);
@@ -287,15 +303,10 @@ describe("runJudges", () => {
   });
 
   it("times out a hung judge into a score-0 timeout repeat", async () => {
-    // A resolver whose model never resolves.
-    const hangingResolver = ((modelId: string) => ({
-      modelId,
-      generate: () => new Promise(() => {}),
-      // eslint-disable-next-line require-yield
-      async *stream() {
-        await new Promise(() => {});
-      },
-    })) as unknown as ModelResolver;
+    let providerAborted = false;
+    const hangingResolver = abortAwareHangingResolver(() => {
+      providerAborted = true;
+    });
 
     const report = await runJudges(completedBundle(), {
       judgeModel: "vercel/anthropic/claude-haiku-4-5",
@@ -307,17 +318,11 @@ describe("runJudges", () => {
     expect(dim.repeats[0].status).toBe("timeout");
     expect(dim.repeats[0].score).toBe(0);
     expect(dim.repeats[0].reason).toBe("judge timeout");
+    expect(providerAborted).toBe(true);
   });
 
   it("stops further calls when a timeout makes spend unknowable under a budget cap", async () => {
-    const hangingResolver = ((modelId: string) => ({
-      modelId,
-      generate: () => new Promise(() => {}),
-      // eslint-disable-next-line require-yield
-      async *stream() {
-        await new Promise(() => {});
-      },
-    })) as unknown as ModelResolver;
+    const hangingResolver = abortAwareHangingResolver();
 
     const report = await runJudges(completedBundle(), {
       judgeModel: "vercel/anthropic/claude-haiku-4-5",

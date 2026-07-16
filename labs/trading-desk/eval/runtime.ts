@@ -65,6 +65,13 @@ export async function withEvalRuntime<T>(
           // identity binding remains intact; new sweep sessions default to the
           // established CLI identity.
           const storedSession = await resolved.stores.session.get(sessionId);
+          if (actionName === "runArtifacts" && storedSession === undefined) {
+            return {
+              output: undefined,
+              items: [],
+              error: `Session "${sessionId}" not found`,
+            };
+          }
           const userId = storedSession?.userId ?? "cli-user";
           const result = await runAction({
             flow,

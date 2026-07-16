@@ -606,7 +606,7 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
   }
   const policy = pm.policyDecision;
   const policyPairs: Array<[string, unknown, unknown]> = [
-    ["mandatePresent", snapshot.mandatePresent, policy?.mandatePresent ?? null],
+    ["mandatePresent", snapshot.mandatePresent, policy?.mandatePresent ?? false],
     ["policyVerdict", snapshot.policyVerdict, policy?.policyVerdict ?? null],
     ["positionCapClamped", snapshot.positionCapClamped, policy?.positionCapClamped ?? null],
     ["excluded", snapshot.excluded, policy?.excluded ?? null],
@@ -695,12 +695,16 @@ function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
   // Fair-value availability and abstention honesty.
   const fair = spine.fairValue;
   const fairContradictions: string[] = [];
-  if (fair.method === "none") {
-    if (fair.available !== false) fairContradictions.push("available is not false");
-    for (const field of ["justifiedPE", "fairValue", "marginOfSafety"] as const) {
-      if (fair[field] != null) fairContradictions.push(`${field} is non-null`);
+  if (fair.available === false) {
+    // Every unavailable path keeps the actual fair value and margin null. A
+    // selected justified-PE method may retain the computed multiple when the
+    // trailing-earnings leg is missing; the other methods may not.
+    if (fair.fairValue != null) fairContradictions.push("fairValue is non-null");
+    if (fair.marginOfSafety != null) fairContradictions.push("marginOfSafety is non-null");
+    if (fair.method !== "justified-pe" && fair.justifiedPE != null) {
+      fairContradictions.push("justifiedPE is non-null");
     }
-  } else if (fair.available === true) {
+  } else {
     if (fair.method !== "justified-pe") fairContradictions.push(`method is ${fair.method}`);
     for (const field of ["justifiedPE", "fairValue", "marginOfSafety"] as const) {
       if (fair[field] == null) fairContradictions.push(`${field} is null`);

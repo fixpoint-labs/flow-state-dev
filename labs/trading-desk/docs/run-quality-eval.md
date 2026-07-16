@@ -90,13 +90,14 @@ checklist criteria are 0-or-1. Every recorded score, mean, and std is 0–1 — 
 scoreboard never mixes scales.
 
 **Mechanics.** Each dimension is graded by running the framework's
-`utility.analyzer` block directly through `testBlock` with the eval finding schema
-(the same internal path `analyzerScorer` takes, run directly so the RAW findings —
-per-criterion score/assessment/evidence — survive for the sidecar). The judge model
+`utility.analyzer` block directly through `runAction` with the eval finding schema
+(the same framework execution path `analyzerScorer` builds on, run directly so the
+RAW findings — per-criterion score/assessment/evidence — survive for the sidecar). The judge model
 is pinned via the block `model` against an injected `createModelResolver()`, reading
 a **blinded** bundle (`blinding.ts` strips `sessionId`, timestamps, capture paths,
 and reserved outcome fields; persona role labels stay). **k = 3** repeats per dimension (mean + std
-recorded). A hung provider is bounded by a local `--judge-timeout-ms` race; a failed
+recorded). A hung provider is bounded by an abort-backed
+`--judge-timeout-ms` race; a failed
 or timed-out repeat records score 0 + a reason (a failed judge is a failed score,
 never a crashed sweep). When a budget cap is set and a failed call exposes no
 usage trace, the suite stops launching judges because the remaining spend is

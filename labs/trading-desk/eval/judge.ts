@@ -2,10 +2,11 @@
  * LLM-judge layer (FIX-790) — scores the qualitative dimensions code can't check.
  *
  * Each rubric dimension (`rubrics.ts`) is graded by running the framework's
- * `utility.analyzer` block directly through `testBlock` with the eval finding
- * schema — the same internal path `analyzerScorer` takes, but run directly so we
- * keep the RAW findings array (per-criterion score/assessment/evidence) for the
- * sidecar (the public `ScoreResult` collapses findings into a `reason` string).
+ * `utility.analyzer` block directly through `runAction` with the eval finding
+ * schema — the same framework execution path `analyzerScorer` builds on, but
+ * run directly so we keep the RAW findings array (per-criterion
+ * score/assessment/evidence) for the sidecar (the public `ScoreResult`
+ * collapses findings into a `reason` string).
  * The judge model is PINNED via `model` on the block config against an injected
  * `createModelResolver()`, distinct from the desk's generators (self-preference
  * warning when the family collides). It reads a BLINDED bundle, never re-running
@@ -16,9 +17,9 @@
  * (a failed judge is a failed score, never a crashed sweep). k repeats per
  * dimension → mean + std recorded; a budget cap stops launching further calls.
  */
-import { utility, createModelResolver } from "@flow-state-dev/core";
+import { defineFlow, utility, createModelResolver } from "@flow-state-dev/core";
 import type { ModelResolver } from "@flow-state-dev/core";
-import { testBlock } from "@flow-state-dev/testing";
+import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
 import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
 import { blindBundle } from "./blinding";
@@ -191,21 +192,45 @@ async function judgeOnce(
     criteria: dim.criteria,
     outputSchema: judgeOutputSchema,
   });
+  const flow = defineFlow({
+    kind: `eval-judge-${dim.key}`,
+    actions: { judge: { block } },
+  })();
 
+  const abortController = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("judge timeout")), timeoutMs);
+    timer = setTimeout(() => {
+      const error = new Error("judge timeout");
+      abortController.abort(error);
+      reject(error);
+    }, timeoutMs);
   });
 
-  const blockPromise = testBlock(block, { input: inputString, modelResolver: resolver });
-  // If we abandon this call on a timeout, a late rejection must not surface as an
-  // unhandledRejection and noise up (or abort) a long sweep.
-  blockPromise.catch(() => {});
+  const actionPromise = runAction({
+    flow,
+    actionName: "judge",
+    input: inputString,
+    userId: "eval-judge",
+    stores: createInMemoryStores(),
+    signal: abortController.signal,
+    runtimeConfig: { modelResolver: resolver },
+  });
+  // The timeout aborts the framework action and its provider request. Keep a
+  // terminal handler because the timeout promise may win the race first.
+  actionPromise.catch(() => {});
 
   try {
-    const result = await Promise.race([blockPromise, timeout]);
+    const result = await Promise.race([actionPromise, timeout]);
     if (result.error) {
-      return { score: 0, findings: [], status: "failed", reason: result.error.message, costUsd: estimateJudgeCost(result.items) };
+      const isTimeout = abortController.signal.aborted;
+      return {
+        score: 0,
+        findings: [],
+        status: isTimeout ? "timeout" : "failed",
+        reason: isTimeout ? "judge timeout" : result.error.message,
+        costUsd: isTimeout ? null : estimateJudgeCost(result.items),
+      };
     }
     const output = result.output as z.infer<typeof judgeOutputSchema>;
     return {
