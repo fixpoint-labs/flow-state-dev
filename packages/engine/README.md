@@ -123,6 +123,20 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 
 `createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
 
+### DevTool connection (dev-only)
+
+`devtool?: { userId?, bearerToken? }` declares how `fsdev dev` should connect the DevTool UI to this app. `userId` is the session identity DevTool acts as; `bearerToken` is sent as `Authorization: Bearer` on every flow request, so a **bearer-gated flow** (one whose `resolvePrincipal` validates a shared secret) is debuggable through DevTool using its **real** authentication — no bypass.
+
+```ts
+createFlowState({
+  flows: { myFlow },
+  stores: { default: { primary: inMemoryStores() } },
+  devtool: { userId: "owner", bearerToken: process.env.MY_FLOW_SECRET },
+});
+```
+
+`fsdev dev` reads this off the sync `meta.devtool` getter (no store init) and injects it into the loopback DevTool page. It is **dev-only**: the token is exposed only to the loopback page `fsdev dev` serves, and production `serve`/deploy paths ignore it. The config type is exported as `DevToolConnectionConfig`. See the [DevTool setup guide](https://flow-state.dev/docs/devtool/setup).
+
 ## Lower-level: registry and router
 
 `createFlowApiRouter` and `createFlowRegistry` still exist for custom transports and advanced wiring. Most users want `createFlowState`. The sections below document the lower-level surface.
