@@ -62,7 +62,7 @@ export function createClaimTask(options: ClaimTaskOptions) {
       // Per-task status — surface what the agent is actually working
       // on. Latest-wins, so multi-worker boards cycle through their
       // active task goals naturally.
-      ctx.emitStatus(`Working...`);
+      ctx.emit.status(`Working...`);
       return { claimed: true, task };
     },
   });

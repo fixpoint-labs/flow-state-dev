@@ -23,7 +23,7 @@ export function emitLinkCardTool(
     description: DESCRIPTION,
     inputSchema: LinkCardSchema,
     execute: (input, ctx) => {
-      ctx.emitComponent("link-card", input, { key: keyFrom(input) });
+      ctx.emit.component("link-card", input, { key: keyFrom(input) });
       return { rendered: true, kind: "link-card", url: input.url };
     },
   });

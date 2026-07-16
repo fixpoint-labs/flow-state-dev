@@ -4,7 +4,7 @@
  * One-call helper that builds a `TaskCollectionRef` against any of three
  * backings (sequencer-state, request-state, resource-collection) and
  * adapts the substrate's `onChange` callback to the framework's
- * component-item stream via `ctx.emitComponent`.
+ * component-item stream via `ctx.emit.component`.
  *
  * Each lifecycle transition emits a `task-change` component item keyed by
  * `${collectionId}/${taskId}`. The `key` ensures latest-wins replacement
@@ -120,7 +120,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   };
 
   const onChange = (event: TaskChangeEvent): void => {
-    options.ctx.emitComponent(
+    options.ctx.emit.component(
       TASK_CHANGE_COMPONENT_TYPE,
       {
         collectionId: event.collectionId,

@@ -13,7 +13,7 @@ If you're new to the framework, read this first. It explains what the pieces are
 
 Everything executable in flow-state-dev is a block. There are exactly four kinds:
 
-- **Handler** — Pure logic. Validates input, transforms data, mutates state. No LLM. Think of it as a function that can read and write scope state. Handlers are silent by default: they don't emit messages or components unless you call `ctx.emitMessage()` or similar.
+- **Handler** — Pure logic. Validates input, transforms data, mutates state. No LLM. Think of it as a function that can read and write scope state. Handlers are silent by default: they don't emit messages or components unless you call `ctx.emit.message()` or similar.
 - **Generator** — LLM calls. The framework handles prompt assembly, tool loops, streaming, and output parsing. This is where AI happens. Generators automatically emit messages, reasoning traces, and tool call items as the model produces them.
 - **Sequencer** — Composes blocks into pipelines. Chains steps, runs them in parallel, adds error recovery. The composition primitive. A sequencer is itself a block, so you can nest sequencers inside other sequencers or pass them to routers.
 - **Router** — Selects one block at runtime based on input or state. Mode switching, intent routing, conditional flows. The router's `execute` function returns the block to run. The framework then executes that block with the router's input.

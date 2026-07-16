@@ -243,13 +243,13 @@ const analyzeData = handler({
   inputSchema: z.object({ datasetId: z.string() }),
   outputSchema: z.object({ summary: z.string(), rowCount: z.number() }),
   execute: async (input, ctx) => {
-    await ctx.emitStatus("Loading dataset...");
+    await ctx.emit.status("Loading dataset...");
     const data = await loadDataset(input.datasetId);
 
-    await ctx.emitStatus("Running analysis...");
+    await ctx.emit.status("Running analysis...");
     const result = analyzeRows(data);
 
-    ctx.emitComponent("analysis-card", {
+    ctx.emit.component("analysis-card", {
       summary: result.summary,
       charts: result.charts,
     });

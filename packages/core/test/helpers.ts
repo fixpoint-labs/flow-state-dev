@@ -66,7 +66,6 @@ export function createMockContext(overrides?: Partial<BlockContext>): BlockConte
       status: () => undefined,
       trace: {} as any,
     } as any,
-    emitStatus: () => undefined,
     _peekStatus: () => "",
     signal: new AbortController().signal,
     resolveModel,

@@ -1621,7 +1621,7 @@ describe("generator — observable model identity (FIX-518)", () => {
   });
 
   it("handler-emitted items do not carry `model`", async () => {
-    // Handlers emit messages via ctx.emitMessage. The framework only stamps
+    // Handlers emit messages via ctx.emit.message. The framework only stamps
     // `model` on generator-emitted items; handler-emitted messages leave the
     // field absent. Validate the type-level expectation by constructing a
     // handler-emitted MessageItem shape and asserting no `model` field.
@@ -1631,7 +1631,7 @@ describe("generator — observable model identity (FIX-518)", () => {
     });
     expect(block.kind).toBe("handler");
     // The shape contract is enforced by `OutputItemBase` — handlers go through
-    // ctx.emitMessage which constructs items without `model`. We assert the
+    // ctx.emit.message which constructs items without `model`. We assert the
     // type contract rather than running the full server runtime here.
     const item: import("../src/items/types").MessageItem = {
       id: "m1",

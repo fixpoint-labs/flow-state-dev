@@ -854,7 +854,7 @@ function runSequencerOperations(
         if (!hasRequestPool && runtime.workTasks.length > 0) {
           const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
           let remaining = pending.length;
-          ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
+          ctx.emit.status(undefined, { blocked: false, backgroundTasks: remaining });
 
           await Promise.all(pending.map((t) =>
             t.promise.then(async (result) => {
@@ -862,7 +862,7 @@ function runSequencerOperations(
               if (result.status === "rejected") {
                 console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
               }
-              ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
+              ctx.emit.status(undefined, { blocked: false, backgroundTasks: remaining });
             })
           ));
         }

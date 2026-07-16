@@ -24,7 +24,7 @@ export function emitInfoCardTool(
     description: DESCRIPTION,
     inputSchema: InfoCardSchema,
     execute: (input, ctx) => {
-      ctx.emitComponent("info-card", input, { key: keyFrom(input) });
+      ctx.emit.component("info-card", input, { key: keyFrom(input) });
       return { rendered: true, kind: "info-card", id: input.id };
     },
   });

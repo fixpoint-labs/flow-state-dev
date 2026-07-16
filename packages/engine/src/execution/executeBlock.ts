@@ -63,7 +63,7 @@ async function executeByKind(
   ctx: ExecuteBlockContext,
   options: ExecuteDispatcherOptions
 ): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta; modelIdentity?: ModelIdentity }> {
-  // Declarative activeStatusMessage → emitStatus. Fires before the block
+  // Declarative activeStatusMessage → emit.status. Fires before the block
   // actually runs so the in-flight indicator updates as soon as each block
   // enters execution. Nested sequencer/router children trigger their own
   // resolution via the core sequencer/router code paths.

@@ -79,9 +79,7 @@ function buildCtx(opts: { sessionStateOverrides?: Record<string, unknown> } = {}
       getBlockOutput: () => undefined,
       getBlockResult: () => ({ status: "not_started" as const }),
       targets: {},
-      emitMessage: () => {},
-      emitComponent: () => {},
-      emitStatus: () => {},
+      emit: { message: () => {}, component: () => {}, status: () => {} },
     } as never,
     skillsCollection,
   };

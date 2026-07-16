@@ -125,14 +125,14 @@ Thought-fabric-core background blocks (memory, metacognition) default to `itemVi
 
 ## Handler emits
 
-Handlers (non-generator blocks) can emit items via `ctx.emitMessage`, `ctx.emitComponent`, etc. Those helpers accept optional `itemVisibility` / `agentName` in their options. Without them, conversational items fall back to default visibility (`{ client: true, history: true }`), preserving ergonomic handler emits.
+Handlers (non-generator blocks) can emit items via `ctx.emit.message`, `ctx.emit.component`, etc. Those helpers accept optional `itemVisibility` / `agentName` in their options. Without them, conversational items fall back to default visibility (`{ client: true, history: true }`), preserving ergonomic handler emits.
 
 ```ts
 // From a handler — default visibility (client + history):
-ctx.emitMessage("Hello, user.");
+ctx.emit.message("Hello, user.");
 
 // Explicit visibility, e.g. for a handler that spawns work under a named agent:
-ctx.emitMessage("Background audit complete.", {
+ctx.emit.message("Background audit complete.", {
   itemVisibility: { client: false, history: false },
   agentName: "auditor",
 });

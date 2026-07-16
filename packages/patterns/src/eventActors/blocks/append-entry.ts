@@ -53,7 +53,7 @@ export function createAppendEntry(
       const seqState = seq?.state as { emissionCount?: number } | undefined;
       const emissionCount = seqState?.emissionCount ?? state.entries.length;
 
-      ctx.emitComponent(
+      ctx.emit.component(
         "rb-entry",
         {
           type: entryType,

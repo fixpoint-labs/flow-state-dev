@@ -1960,7 +1960,7 @@ describe("execution runtime", () => {
       inputSchema: z.number(),
       outputSchema: z.number(),
       execute: (value, stepCtx) => {
-        stepCtx.emitMessage(`value:${value}`);
+        stepCtx.emit.message(`value:${value}`);
         return value + 1;
       }
     });
@@ -2102,8 +2102,8 @@ describe("execution runtime", () => {
       inputSchema: z.number(),
       outputSchema: z.number(),
       execute: (value, stepCtx) => {
-        stepCtx.emitMessage(`value:${value}`);
-        stepCtx.emitStatus("working");
+        stepCtx.emit.message(`value:${value}`);
+        stepCtx.emit.status("working");
         return value + 1;
       }
     });
@@ -2141,7 +2141,7 @@ describe("execution runtime", () => {
       inputSchema: z.number(),
       outputSchema: z.number(),
       execute: (value, stepCtx) => {
-        stepCtx.emitMessage(`inner:${value}`);
+        stepCtx.emit.message(`inner:${value}`);
         return value + 1;
       }
     });
@@ -2192,7 +2192,7 @@ describe("execution runtime", () => {
       inputSchema: z.number(),
       outputSchema: z.number(),
       execute: (value, stepCtx) => {
-        stepCtx.emitMessage(`plain:${value}`);
+        stepCtx.emit.message(`plain:${value}`);
         return value + 1;
       }
     });
@@ -2587,7 +2587,7 @@ describe("transient block output", () => {
     expect(storedBlockOutputNames).toContain("mixed-sequencer");
   });
 
-  it("transient block: emitMessage produces persisted message; block_trace is canonical retained", async () => {
+  it("transient block: emit.message produces persisted message; block_trace is canonical retained", async () => {
     // FIX-478: explicit emit calls are user-facing content. They no longer
     // inherit the producing block's `transient` flag.
     // FIX-573 §3.8: block_trace is always retained, regardless of the
@@ -2604,7 +2604,7 @@ describe("transient block output", () => {
             inputSchema: z.object({ prompt: z.string() }),
             outputSchema: z.string(),
             execute: async ({ prompt }, ctx) => {
-              ctx.emitMessage(`Response: ${prompt}`);
+              ctx.emit.message(`Response: ${prompt}`);
               return `done:${prompt}`;
             }
           })
@@ -2624,7 +2624,7 @@ describe("transient block output", () => {
 
     expect(result.error).toBeUndefined();
 
-    // In-flight: message item present and non-transient (emitMessage no longer
+    // In-flight: message item present and non-transient (emit.message no longer
     // inherits blockTransient).
     const messageItems = result.items.filter(
       (item) => item.type === "message" && item.role === "assistant"
@@ -2641,7 +2641,7 @@ describe("transient block output", () => {
 
     // FIX-586: block_trace inherits the originating block's `transient`
     // flag, so the trace for `transient-gen` is filtered from the persisted
-    // items log. The user-facing message above survives because emitMessage
+    // items log. The user-facing message above survives because emit.message
     // defaults to non-transient (FIX-478).
     const storedBlockOutputs = (requestRecord?.items ?? []).filter(
       (item) => item.type === "block_trace"
@@ -2653,7 +2653,7 @@ describe("transient block output", () => {
   });
 
   describe("emit* default semantics (FIX-478)", () => {
-    it("transient block + emitComponent → non-transient by default; persists", async () => {
+    it("transient block + emit.component → non-transient by default; persists", async () => {
       const stores = createInMemoryStores();
       const flow = defineFlow({
         kind: "fix478-comp-default",
@@ -2666,7 +2666,7 @@ describe("transient block output", () => {
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.string(),
               execute: async ({ value }, ctx) => {
-                ctx.emitComponent("widget", { v: 1 });
+                ctx.emit.component("widget", { v: 1 });
                 return value;
               }
             })
@@ -2694,7 +2694,7 @@ describe("transient block output", () => {
       expect(stored.length).toBe(1);
     });
 
-    it("transient block + emitComponent({ transient: true }) → transient; stripped", async () => {
+    it("transient block + emit.component({ transient: true }) → transient; stripped", async () => {
       const stores = createInMemoryStores();
       const flow = defineFlow({
         kind: "fix478-comp-opt-in",
@@ -2707,7 +2707,7 @@ describe("transient block output", () => {
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.string(),
               execute: async ({ value }, ctx) => {
-                ctx.emitComponent("widget", { v: 1 }, { transient: true });
+                ctx.emit.component("widget", { v: 1 }, { transient: true });
                 return value;
               }
             })
@@ -2735,7 +2735,7 @@ describe("transient block output", () => {
       expect(stored.length).toBe(0);
     });
 
-    it("non-transient block + emitComponent({ transient: true }) → transient", async () => {
+    it("non-transient block + emit.component({ transient: true }) → transient", async () => {
       const stores = createInMemoryStores();
       const flow = defineFlow({
         kind: "fix478-comp-nontransient-block",
@@ -2747,7 +2747,7 @@ describe("transient block output", () => {
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.string(),
               execute: async ({ value }, ctx) => {
-                ctx.emitComponent("widget", { v: 1 }, { transient: true });
+                ctx.emit.component("widget", { v: 1 }, { transient: true });
                 return value;
               }
             })
@@ -2775,7 +2775,7 @@ describe("transient block output", () => {
       expect(stored.length).toBe(0);
     });
 
-    it("transient block + emitMessage({ transient: true }) → transient; stripped", async () => {
+    it("transient block + emit.message({ transient: true }) → transient; stripped", async () => {
       const stores = createInMemoryStores();
       const flow = defineFlow({
         kind: "fix478-message-opt-in",
@@ -2788,7 +2788,7 @@ describe("transient block output", () => {
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.string(),
               execute: async ({ value }, ctx) => {
-                ctx.emitMessage("hi", { transient: true });
+                ctx.emit.message("hi", { transient: true });
                 return value;
               }
             })
@@ -2820,7 +2820,7 @@ describe("transient block output", () => {
       expect(stored.length).toBe(0);
     });
 
-    it("transient block + emitStatus → transient by default", async () => {
+    it("transient block + emit.status → transient by default", async () => {
       const stores = createInMemoryStores();
       const flow = defineFlow({
         kind: "fix478-status-default",
@@ -2833,7 +2833,7 @@ describe("transient block output", () => {
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.string(),
               execute: async ({ value }, ctx) => {
-                ctx.emitStatus("working");
+                ctx.emit.status("working");
                 return value;
               }
             })
@@ -2861,7 +2861,7 @@ describe("transient block output", () => {
       expect(stored.length).toBe(0);
     });
 
-    it("non-transient block + emitStatus({ transient: false }) → persisted", async () => {
+    it("non-transient block + emit.status({ transient: false }) → persisted", async () => {
       const stores = createInMemoryStores();
       const flow = defineFlow({
         kind: "fix478-status-opt-out",
@@ -2873,7 +2873,7 @@ describe("transient block output", () => {
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.string(),
               execute: async ({ value }, ctx) => {
-                ctx.emitStatus("working", { transient: false });
+                ctx.emit.status("working", { transient: false });
                 return value;
               }
             })
@@ -2914,7 +2914,7 @@ describe("transient block output", () => {
             inputSchema: z.object({ text: z.string() }),
             outputSchema: z.string(),
             execute: async ({ text }, ctx) => {
-              ctx.emitStatus("processing...");
+              ctx.emit.status("processing...");
               return text;
             }
           })
@@ -2958,8 +2958,8 @@ describe("keyed component upsert (FIX-491)", () => {
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
             execute: async ({ value }, ctx) => {
-              ctx.emitComponent("widget", { a: 1, b: 2 }, { key: "k" });
-              ctx.emitComponent("widget", { a: 99 }, { key: "k" });
+              ctx.emit.component("widget", { a: 1, b: 2 }, { key: "k" });
+              ctx.emit.component("widget", { a: 99 }, { key: "k" });
               return value;
             }
           })
@@ -3015,8 +3015,8 @@ describe("keyed component upsert (FIX-491)", () => {
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
             execute: async ({ value }, ctx) => {
-              ctx.emitComponent("widget", { v: 1 });
-              ctx.emitComponent("widget", { v: 2 });
+              ctx.emit.component("widget", { v: 1 });
+              ctx.emit.component("widget", { v: 2 });
               return value;
             }
           })
@@ -3062,9 +3062,9 @@ describe("keyed component upsert (FIX-491)", () => {
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
             execute: async ({ value }, ctx) => {
-              ctx.emitComponent("widget", { v: 1 }, { key: "a" });
-              ctx.emitComponent("widget", { v: 2 }, { key: "b" });
-              ctx.emitComponent("widget", { v: 3 }, { key: "a" });
+              ctx.emit.component("widget", { v: 1 }, { key: "a" });
+              ctx.emit.component("widget", { v: 2 }, { key: "b" });
+              ctx.emit.component("widget", { v: 3 }, { key: "a" });
               return value;
             }
           })
@@ -3108,9 +3108,9 @@ describe("keyed component upsert (FIX-491)", () => {
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
             execute: async ({ value }, ctx) => {
-              ctx.emitComponent("widget", { v: 1 }, { key: "k" });
-              ctx.emitComponent("widget", { v: 2 }, { key: "k" });
-              ctx.emitComponent("widget", { v: 3 }, { key: "k" });
+              ctx.emit.component("widget", { v: 1 }, { key: "k" });
+              ctx.emit.component("widget", { v: 2 }, { key: "k" });
+              ctx.emit.component("widget", { v: 3 }, { key: "k" });
               return value;
             }
           })
@@ -3264,7 +3264,7 @@ describe("rescue boundary in nested sequencer", () => {
   });
 });
 
-describe("emitStatus single-slot semantics (FIX-387)", () => {
+describe("emit.status single-slot semantics (FIX-387)", () => {
   it("dedupes repeat messages — identical consecutive emits produce only the first item", async () => {
     const { ctx } = await createRuntimeContext("req_status_dedupe");
     const block = handler({
@@ -3272,9 +3272,9 @@ describe("emitStatus single-slot semantics (FIX-387)", () => {
       inputSchema: z.number(),
       outputSchema: z.number(),
       execute: (value, stepCtx) => {
-        stepCtx.emitStatus("working");
-        stepCtx.emitStatus("working");
-        stepCtx.emitStatus("working");
+        stepCtx.emit.status("working");
+        stepCtx.emit.status("working");
+        stepCtx.emit.status("working");
         return value;
       }
     });
@@ -3294,9 +3294,9 @@ describe("emitStatus single-slot semantics (FIX-387)", () => {
       inputSchema: z.number(),
       outputSchema: z.number(),
       execute: (value, stepCtx) => {
-        stepCtx.emitStatus("uploading files");
-        stepCtx.emitStatus(undefined, { blocked: false, backgroundTasks: 3 });
-        stepCtx.emitStatus(undefined, { blocked: false, backgroundTasks: 0 });
+        stepCtx.emit.status("uploading files");
+        stepCtx.emit.status(undefined, { blocked: false, backgroundTasks: 3 });
+        stepCtx.emit.status(undefined, { blocked: false, backgroundTasks: 0 });
         return value;
       }
     });
@@ -3321,10 +3321,10 @@ describe("emitStatus single-slot semantics (FIX-387)", () => {
       inputSchema: z.number(),
       outputSchema: z.number(),
       execute: (value, stepCtx) => {
-        stepCtx.emitStatus("analyzing");
-        stepCtx.emitStatus("");
+        stepCtx.emit.status("analyzing");
+        stepCtx.emit.status("");
         // After clearing, the next undefined-signal emit carries "".
-        stepCtx.emitStatus(undefined, { blocked: true });
+        stepCtx.emit.status(undefined, { blocked: true });
         return value;
       }
     });

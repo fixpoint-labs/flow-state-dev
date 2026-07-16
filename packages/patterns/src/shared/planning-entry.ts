@@ -342,7 +342,7 @@ export function createPlanningEntry<
     name: `${name}-meta-planning`,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
-      ctx.emitComponent(
+      ctx.emit.component(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "planning" },
         { key: collectionId },

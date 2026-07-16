@@ -286,7 +286,7 @@ describe("claudeCodeAgent", () => {
   it("persists approval decisions durably and without dedupe-colliding on repeats", async () => {
     // The SDK calls canUseTool(toolName, input, extra). Approving the SAME tool
     // twice must yield TWO durable (non-transient) decision items — the audit
-    // trail must replay, and emitStatus's same-string dedupe must not swallow
+    // trail must replay, and emit.status's same-string dedupe must not swallow
     // the second identical approval.
     const resolveClaudeAgent: ResolveClaudeAgent = () => ({
       query: async function* (args) {

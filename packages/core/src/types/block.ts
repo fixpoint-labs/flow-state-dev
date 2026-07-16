@@ -282,85 +282,71 @@ export interface BlockContext<
   cap: TCapabilities;
 
   /**
-   * @deprecated Use `ctx.emit.message(...)` instead. Removed in next major.
-   *
-   * Emit a chat message item.
-   *
-   * Defaults to `transient: false` (persisted) regardless of the producing
-   * block's `transient` flag. Pass `{ transient: true }` to opt in to a
-   * stream-only message.
-   *
-   * See `apps/docs/docs/streaming/emitting-items.md` for the
-   * transient × key matrix.
-   */
-  emitMessage(
-    text: string,
-    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
-  ): void;
-  /** @deprecated Use `ctx.emit.message(...)` instead. Removed in next major. */
-  emitMessage(
-    content: Content[],
-    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
-  ): void;
-  /**
-   * @deprecated Use `ctx.emit.component(...)` instead. Removed in next major.
-   *
-   * Emit a component item rendered by a registered UI component.
-   *
-   * Defaults to `transient: false` (persisted) regardless of the producing
-   * block's `transient` flag. Pass `{ transient: true }` to opt in to a
-   * stream-only component (e.g. live-only progress with dedup).
-   *
-   * Combined with a stable `key`, this expresses the "keyed snapshot"
-   * pattern: one logical entity whose latest state replays on reload.
-   * See `apps/docs/docs/streaming/emitting-items.md` for the
-   * transient × key matrix.
-   */
-  emitComponent(
-    component: string,
-    data: Record<string, unknown>,
-    options?: {
-      /** Stable identity for the keyed-snapshot pattern. See {@link ComponentItem.key}. */
-      key?: string;
-      itemVisibility?: ItemVisibility;
-      agentName?: string;
-      transient?: boolean;
-    }
-  ): void;
-  /**
-   * @deprecated Use `ctx.emit.status(...)` instead. Removed in next major.
-   *
-   * Update the request-scoped status slot. Rendered by clients as a single
-   * in-flight indicator ("what is happening right now").
-   *
-   * - `message` as a string (including `""`) sets the slot; dedupe suppresses
-   *   re-emission when the value is unchanged.
-   * - `message` as `undefined` preserves the slot value — useful when updating
-   *   only `blocked` / `backgroundTasks` signals.
-   *
-   * Defaults to `transient: true` (live-only) — statuses are naturally
-   * ephemeral. Pass `{ transient: false }` to persist a status item.
-   */
-  emitStatus(
-    message: string | undefined,
-    options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }
-  ): void;
-
-  /**
-   * Namespaced emission API. Prefer `ctx.emit.message`/`ctx.emit.component`/
-   * `ctx.emit.status` over the flat `ctx.emitMessage`/`ctx.emitComponent`/
-   * `ctx.emitStatus` aliases (which are deprecated).
+   * Namespaced emission API for client-visible items.
    *
    * `ctx.emit.trace.*` is reserved for framework auto-emitters of the four
    * trace item types and rarely called by user code.
    */
   emit: {
-    /** See {@link BlockContext.emitMessage}. */
-    message: BlockContext["emitMessage"];
-    /** See {@link BlockContext.emitComponent}. */
-    component: BlockContext["emitComponent"];
-    /** See {@link BlockContext.emitStatus}. */
-    status: BlockContext["emitStatus"];
+    /**
+     * Emit a chat message item.
+     *
+     * Defaults to `transient: false` (persisted) regardless of the producing
+     * block's `transient` flag. Pass `{ transient: true }` to opt in to a
+     * stream-only message.
+     *
+     * See `apps/docs/docs/streaming/emitting-items.md` for the
+     * transient × key matrix.
+     */
+    message: {
+      (
+        text: string,
+        options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+      ): void;
+      (
+        content: Content[],
+        options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+      ): void;
+    };
+    /**
+     * Emit a component item rendered by a registered UI component.
+     *
+     * Defaults to `transient: false` (persisted) regardless of the producing
+     * block's `transient` flag. Pass `{ transient: true }` to opt in to a
+     * stream-only component (e.g. live-only progress with dedup).
+     *
+     * Combined with a stable `key`, this expresses the "keyed snapshot"
+     * pattern: one logical entity whose latest state replays on reload.
+     * See `apps/docs/docs/streaming/emitting-items.md` for the
+     * transient × key matrix.
+     */
+    component: (
+      component: string,
+      data: Record<string, unknown>,
+      options?: {
+        /** Stable identity for the keyed-snapshot pattern. See {@link ComponentItem.key}. */
+        key?: string;
+        itemVisibility?: ItemVisibility;
+        agentName?: string;
+        transient?: boolean;
+      }
+    ) => void;
+    /**
+     * Update the request-scoped status slot. Rendered by clients as a single
+     * in-flight indicator ("what is happening right now").
+     *
+     * - `message` as a string (including `""`) sets the slot; dedupe suppresses
+     *   re-emission when the value is unchanged.
+     * - `message` as `undefined` preserves the slot value — useful when updating
+     *   only `blocked` / `backgroundTasks` signals.
+     *
+     * Defaults to `transient: true` (live-only) — statuses are naturally
+     * ephemeral. Pass `{ transient: false }` to persist a status item.
+     */
+    status: (
+      message: string | undefined,
+      options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }
+    ) => void;
     /** @internal — used by framework auto-emitters; user code rarely calls these. */
     trace: {
       blockTrace: (item: BlockTraceItem) => void;
@@ -748,9 +734,9 @@ export interface BlockConfig<
   connectInput?: ConnectorFn<unknown, TInput>;
   /**
    * Active status message for this block — declarative sugar for
-   * `ctx.emitStatus()` at block start. A static string is emitted once when
+   * `ctx.emit.status()` at block start. A static string is emitted once when
    * the block enters execution; a function receives `(input, ctx)` and its
-   * return value is emitted. Use direct `ctx.emitStatus()` only when a block
+   * return value is emitted. Use direct `ctx.emit.status()` only when a block
    * needs to update status mid-execution (e.g. per-file progress).
    */
   activeStatusMessage?: string | ((input: TInput, ctx: BlockContext) => string);

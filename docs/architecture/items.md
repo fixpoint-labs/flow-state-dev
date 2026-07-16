@@ -51,7 +51,7 @@ Structural items ignore `itemVisibility` for visibility resolution. `itemVisibil
 
 ### External items — what the user sees
 
-**`message`** is the primary content item. Generators emit these automatically; any block can call `ctx.emitMessage()`. Messages enter LLM history so future model calls know what was said. This is the item type you'll work with most.
+**`message`** is the primary content item. Generators emit these automatically; any block can call `ctx.emit.message()`. Messages enter LLM history so future model calls know what was said. This is the item type you'll work with most.
 
 **`reasoning`** holds chain-of-thought output when a model produces thinking. Rendered as a collapsible block in the UI. Goes into LLM history.
 
@@ -63,7 +63,7 @@ Structural items ignore `itemVisibility` for visibility resolution. `itemVisibil
 
 **`source`** holds a URL reference from a provider-native tool like web search. Rendered alongside the message that produced it.
 
-**`status`** is a transient progress update — "Searching the web...", "Running analysis...". Streams to the client but is never persisted. Backed by a request-scoped single slot: the latest `emitStatus` value wins, and the UI renders it as a single in-flight indicator (falling back to "Thinking..." when the slot is empty). Emit declaratively via `activeStatusMessage` on any block config, or imperatively via `ctx.emitStatus()` — see [Status slot semantics](#status-slot-semantics).
+**`status`** is a transient progress update — "Searching the web...", "Running analysis...". Streams to the client but is never persisted. Backed by a request-scoped single slot: the latest `emit.status` value wins, and the UI renders it as a single in-flight indicator (falling back to "Thinking..." when the slot is empty). Emit declaratively via `activeStatusMessage` on any block config, or imperatively via `ctx.emit.status()` — see [Status slot semantics](#status-slot-semantics).
 
 **`state_change`** records that a state mutation happened. In production it's transient; the client uses it to know something changed so it can update its view. In development it's persisted to support the devtool state timeline. The framework suppresses emission when the proposed write is structurally equal to the current state (no-op guard) and when the mutation only touches keys marked `transientSlot()` on a sequencer's `stateSchema`.
 
@@ -115,13 +115,13 @@ Consumers reading historical items should use `resolveBlockValue(item.output, lo
 
 Items fall into three buckets:
 
-**Persistent** — stored in the request record. Survive page refreshes. Form the session's durable history. Most items are persistent. Keyed `component` items (`emitComponent(..., { key })`) are a special case: persisted with **upsert** semantics — one entry per `(requestId, key)`, latest snapshot wins, `data` replaced not merged. See the matrix below and [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots).
+**Persistent** — stored in the request record. Survive page refreshes. Form the session's durable history. Most items are persistent. Keyed `component` items (`emit.component(..., { key })`) are a special case: persisted with **upsert** semantics — one entry per `(requestId, key)`, latest snapshot wins, `data` replaced not merged. See the matrix below and [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots).
 
 **Transient** — stream-only. The client sees them during execution via SSE, but they're stripped before the request record is written. When someone reconnects or opens a past session, these items don't appear. `status` is always transient. `resource_change` and `state_snapshot` are transient by default.
 
 **Conditionally persistent** — `state_change` items are transient in production and persistent in development. Use `persistStateChanges: true` on the flow config to force persistence in production (needed for the devtool state timeline).
 
-When a block is marked `transient: true`, the framework's auto-emitted bookkeeping for that block (`block_trace` traces) is suppressed. Items the block emits explicitly (via `emitMessage`, `emitComponent`, `emitStatus`) are **not** affected by the block flag — their persistence is controlled by their own `transient` field, with sensible per-emitter defaults: `false` for `emitMessage` and `emitComponent` (persisted), `true` for `emitStatus` (live-only). Each emitter accepts a per-call `transient?: boolean` override.
+When a block is marked `transient: true`, the framework's auto-emitted bookkeeping for that block (`block_trace` traces) is suppressed. Items the block emits explicitly (via `emit.message`, `emit.component`, `emit.status`) are **not** affected by the block flag — their persistence is controlled by their own `transient` field, with sensible per-emitter defaults: `false` for `emit.message` and `emit.component` (persisted), `true` for `emit.status` (live-only). Each emitter accepts a per-call `transient?: boolean` override.
 
 ### Transient × keyed item matrix
 
@@ -171,13 +171,13 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 
 | Type | Emitted by | Client | History | Visibility category | Persistence |
 |------|------------|:------:|:-------:|:-------------------:|-------------|
-| `message` | Generator (auto), `ctx.emitMessage()` | itemVisibility | itemVisibility | Conversational | Persistent |
+| `message` | Generator (auto), `ctx.emit.message()` | itemVisibility | itemVisibility | Conversational | Persistent |
 | `reasoning` | Generator (auto, CoT models) | itemVisibility | itemVisibility | Conversational | Persistent |
 | `tool_output` | Generator (per tool invocation) | itemVisibility | itemVisibility | Conversational | Persistent |
-| `component` | `ctx.emitComponent()` | ✓ | — | Structural | Persistent (keyed: upsert in place — one entry per `(requestId, key)`) |
+| `component` | `ctx.emit.component()` | ✓ | — | Structural | Persistent (keyed: upsert in place — one entry per `(requestId, key)`) |
 | `container` | Sequencer/Router with `container` config | ✓ | — | Structural | Persistent |
 | `source` | Generator (provider-native tools) | ✓ | — | Structural | Persistent |
-| `status` | `ctx.emitStatus()` | ✓ | — | Structural | **Always transient** |
+| `status` | `ctx.emit.status()` | ✓ | — | Structural | **Always transient** |
 | `state_change` | Auto on state mutations | ✓ | — | Structural | Transient in prod / persistent in dev |
 | `resource_change` | Auto on resource mutations | ✓ | — | Structural | Transient by default |
 | `error` | Runtime (terminal failure) | ✓ | — | Structural | Persistent |
@@ -203,11 +203,11 @@ See [Suspensions and approvals](/docs/client/react#suspensions-and-approvals) fo
 
 ## Status slot semantics
 
-Status is a request-scoped single slot. The latest `emitStatus` value wins; the UI renders one line — whichever message was most recently emitted. When the request terminates, the slot clears and the indicator disappears.
+Status is a request-scoped single slot. The latest `emit.status` value wins; the UI renders one line — whichever message was most recently emitted. When the request terminates, the slot clears and the indicator disappears.
 
 ### Declarative: `activeStatusMessage`
 
-Every block config (handler, generator, sequencer, router) accepts an `activeStatusMessage` field. It's resolved at block start and fed into `emitStatus` automatically.
+Every block config (handler, generator, sequencer, router) accepts an `activeStatusMessage` field. It's resolved at block start and fed into `emit.status` automatically.
 
 ```ts
 handler({
@@ -228,12 +228,12 @@ There's no corresponding "on complete clear." The next block that sets a status 
 
 **Generator/tool exception.** A generator's tool-call dispatch is the one place that does scope status to the inner block's lifetime. When the generator's AI-SDK loop invokes a tool, the slot is snapshotted on the first tool entry of a round and restored when the last tool exits. Tools compete on the slot while they run — the latest emit wins as elsewhere — but a finished tool's `activeStatusMessage` cannot linger past its own execution as a stale "still running" indicator. If the generator itself had set `activeStatusMessage`, that value is what gets restored; otherwise the slot clears and the indicator falls back to "Working...".
 
-Prefer `activeStatusMessage` when a block has one meaningful status for its whole execution. Reserve `ctx.emitStatus()` for blocks that genuinely need to update status mid-execution (e.g. per-file upload progress). Don't wrap multi-phase logic in a single handler with multiple `emitStatus` calls — that's a symptom of a handler that should be a sequencer of distinct blocks (BP-011).
+Prefer `activeStatusMessage` when a block has one meaningful status for its whole execution. Reserve `ctx.emit.status()` for blocks that genuinely need to update status mid-execution (e.g. per-file upload progress). Don't wrap multi-phase logic in a single handler with multiple `emit.status` calls — that's a symptom of a handler that should be a sequencer of distinct blocks (BP-011).
 
-### Imperative: `ctx.emitStatus(message, options?)`
+### Imperative: `ctx.emit.status(message, options?)`
 
 ```ts
-ctx.emitStatus(
+ctx.emit.status(
   message: string | undefined,
   options?: { blocked?: boolean; backgroundTasks?: number }
 ): void
@@ -245,7 +245,7 @@ ctx.emitStatus(
 - `undefined` does not touch the message. Use this when updating only `blocked` / `backgroundTasks` signals.
 - If `message` equals the current slot value, the emit is skipped (no item, no SSE event).
 
-`blocked` and `backgroundTasks` are flow-control signals — orthogonal to the human-readable message. `emitStatus(undefined, { blocked: false, backgroundTasks: 0 })` is the canonical way to update signals without changing the visible text.
+`blocked` and `backgroundTasks` are flow-control signals — orthogonal to the human-readable message. `emit.status(undefined, { blocked: false, backgroundTasks: 0 })` is the canonical way to update signals without changing the visible text.
 
 ## Component items
 
@@ -255,21 +255,21 @@ Component items are more complex than other types because they support streaming
 
 ```ts
 // Emit initial state
-ctx.emitComponent("plan-view", { steps: [], status: "working" }, { key: "plan" });
+ctx.emit.component("plan-view", { steps: [], status: "working" }, { key: "plan" });
 
 // Update by emitting with the same key — replaces the previous version:
-ctx.emitComponent("plan-view", { steps: ["Step 1 done"], status: "working" }, { key: "plan" });
-ctx.emitComponent("plan-view", { steps: ["Step 1 done", "Step 2 done"], status: "complete" }, { key: "plan" });
+ctx.emit.component("plan-view", { steps: ["Step 1 done"], status: "working" }, { key: "plan" });
+ctx.emit.component("plan-view", { steps: ["Step 1 done", "Step 2 done"], status: "complete" }, { key: "plan" });
 ```
 
-Each `emitComponent()` call with the same `key` replaces the previous version in the client UI. Live clients see every update via SSE events. All versions are persisted, but the client renders only the latest for each key.
+Each `emit.component()` call with the same `key` replaces the previous version in the client UI. Live clients see every update via SSE events. All versions are persisted, but the client renders only the latest for each key.
 
 If you need each step to be a distinct persisted item (e.g. a plan where each step is independently addressable), emit them as separate items with different `key` values.
 
 ### Stable key for deduplication
 
 ```ts
-ctx.emitComponent("search-results", { results }, { key: "search" });
+ctx.emit.component("search-results", { results }, { key: "search" });
 ```
 
 When `key` is set, `ItemsRenderer` shows only the latest item with that key per request. Use this when the component represents a stateful view you want to replace in-place — for example, incrementally updating search results rather than appending a new card for each update.

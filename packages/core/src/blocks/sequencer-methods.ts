@@ -409,7 +409,7 @@ export type SequencerConfig<
   uses?: readonly UsesEntry[];
   /**
    * Active status message for this sequencer — declarative sugar for
-   * `ctx.emitStatus()` at sequencer start. A static string is emitted once
+   * `ctx.emit.status()` at sequencer start. A static string is emitted once
    * when the sequencer enters execution; a function receives `(input, ctx)`
    * and its return value is emitted.
    */

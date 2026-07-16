@@ -407,11 +407,11 @@ sequencer.waitForCondition(whenBoardClaimable(collection), {
 ## `task-change` component items
 
 Every lifecycle mutation emits a `task-change` component item on the active
-stream via `ctx.emitComponent`. The substrate stays out of core's `OutputItem`
+stream via `ctx.emit.component`. The substrate stays out of core's `OutputItem`
 union — it rides the framework's existing component-item plumbing instead:
 
 ```ts
-// Shape of the emitted item (built by ctx.emitComponent):
+// Shape of the emitted item (built by ctx.emit.component):
 {
   type: "component",
   component: "task-change",
@@ -438,7 +438,7 @@ clients render only the latest update per task.
 The substrate exposes a programmatic `onChange` hook on each backing
 constructor for tests and advanced consumers that want a typed callback
 without going through item emission. `getOrCreateTaskCollection` wires
-`onChange` to `ctx.emitComponent` automatically.
+`onChange` to `ctx.emit.component` automatically.
 
 `kind: "resumed"` covers two paths to the same lifecycle outcome — the task
 is back to `pending`. It fires both for `resumeFromReview` (human review →

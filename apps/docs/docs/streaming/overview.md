@@ -24,9 +24,9 @@ Most of the time you'll work with three emit methods. Generators call these auto
 
 | Method | What it creates | LLM History | Transient |
 |--------|----------------|:-----------:|:---------:|
-| `ctx.emitMessage(text)` | A chat message visible to the user | ✓ | — |
-| `ctx.emitComponent(name, data)` | A custom UI component with structured data | — | — |
-| `ctx.emitStatus(message)` | A progress indicator | — | Always |
+| `ctx.emit.message(text)` | A chat message visible to the user | ✓ | — |
+| `ctx.emit.component(name, data)` | A custom UI component with structured data | — | — |
+| `ctx.emit.status(message)` | A progress indicator | — | Always |
 
 These are covered in depth in [Emitting Items](/docs/streaming/emitting-items).
 
@@ -82,10 +82,10 @@ See [Generator identity](../streaming/items#generator-identity) for the full mod
 Handlers don't declare `itemVisibility` — but their emit helpers accept optional visibility:
 
 ```ts
-ctx.emitMessage("Analysis complete.");
+ctx.emit.message("Analysis complete.");
 // Implicit agent-equivalent visibility: on the client, enters history.
 
-ctx.emitMessage("Debug observation", { itemVisibility: { client: false, history: false } });
+ctx.emit.message("Debug observation", { itemVisibility: { client: false, history: false } });
 // Observability-only: devtool sees it, users and the LLM don't.
 ```
 

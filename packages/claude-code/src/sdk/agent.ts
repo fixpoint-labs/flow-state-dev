@@ -285,7 +285,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
  * where `extra = { signal, suggestions }`; the `extra.signal` is forwarded to
  * the approval request so a host UI can cancel a pending prompt. Each decision
  * is recorded as a DURABLE, non-colliding status item (auditable: it replays on
- * history reload, and a per-decision sequence number defeats `emitStatus`'s
+ * history reload, and a per-decision sequence number defeats `ctx.emit.status`'s
  * same-string dedupe so repeated approvals of one tool aren't swallowed). A deny
  * continues the run (the SDK surfaces the denial to the model).
  */
