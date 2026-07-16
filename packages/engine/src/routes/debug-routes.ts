@@ -18,6 +18,8 @@ import type {
 import { TERMINAL_SUSPENSION_STATUSES } from "@flow-state-dev/core/types";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { jsonResponse } from "./route-utils";
+import { resolveEnvFlag } from "../utils/resolve-env-flag";
+import { pickOrigin, isLoopbackOrigin } from "../utils/loopback-origin";
 import {
   buildDebugCollectionItems,
   buildDebugResourceTree,
@@ -58,11 +60,7 @@ export function resolveDebugConfig(opts: {
   debugAllowAnonymousLocal?: boolean;
   debugCountLimit?: number;
 }): ResolvedDebugConfig {
-  const explicit = opts.debugEndpointsEnabled;
-  const enabled =
-    explicit === undefined
-      ? process.env.FSDEV_DEBUG_ENDPOINTS === "1"
-      : explicit;
+  const enabled = resolveEnvFlag(opts.debugEndpointsEnabled, "FSDEV_DEBUG_ENDPOINTS");
   return {
     enabled,
     allowedOrigins: opts.debugAllowedOrigins ?? [],
@@ -98,32 +96,6 @@ export function assertDebugAllowed(
     error: "debug_endpoints_origin_rejected",
     origin
   });
-}
-
-/**
- * Read the `Origin` header. Browsers enforce it on cross-origin fetches and
- * clients can't lie about it from a real page; we therefore trust it.
- *
- * We deliberately do NOT fall back to the `Referer` header — `Referer` is
- * trivially spoofable from any non-browser client and would let a remote
- * caller bypass the origin gate by sending `Referer: http://localhost/`.
- * Headerless requests (e.g. curl) hit the `allowAnonymousLocal` knob below.
- */
-function pickOrigin(request: Request): string | null {
-  const o = request.headers.get("origin");
-  if (o !== null && o.length > 0 && o !== "null") return o;
-  return null;
-}
-
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
-
-function isLoopbackOrigin(origin: string): boolean {
-  try {
-    const host = new URL(origin).hostname.toLowerCase();
-    return LOOPBACK_HOSTS.has(host);
-  } catch {
-    return false;
-  }
 }
 
 function matchesAllowlist(origin: string, allowlist: string[]): boolean {

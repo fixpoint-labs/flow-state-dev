@@ -101,6 +101,20 @@ describe("fsdev dev --dev-auth", () => {
     expect(process.env.FSDEV_DEV_AUTH).toBeUndefined();
   });
 
+  it("the explicit flag wins over a stale FSDEV_DEV_AUTH=0 in the environment", async () => {
+    // Assign (not ??=): otherwise the CLI would warn dev-auth is on while the
+    // engine (which honors only "1") leaves it off.
+    process.env.FSDEV_DEV_AUTH = "0";
+    const err = await executeDevCommand({
+      cwd: appConfigDir,
+      devAuth: true,
+      model: "x",
+      open: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(process.env.FSDEV_DEV_AUTH).toBe("1");
+  });
+
   it("hard-refuses when DATABASE_URL is set (possible production backend)", async () => {
     process.env.DATABASE_URL = "postgres://user@remote-host:5432/prod";
     const err = await executeDevCommand({

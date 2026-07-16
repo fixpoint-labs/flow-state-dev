@@ -41,8 +41,18 @@ function hostFor(devAuth: boolean | undefined) {
   return host;
 }
 
+// A loopback-served HTTP request — the dev-auth guard requires the request URL
+// host to be loopback (and a non-cross-origin caller). We fake the surface the
+// resolver reads (`url` + `origin` header) since a real Request forbids `Host`.
+const loopbackReq = (): Request =>
+  ({
+    url: "http://localhost:4200/api/flows/kh/actions/run",
+    headers: { get: () => null }
+  }) as unknown as Request;
+
 const httpCtx = (body: Record<string, unknown>) => ({
   source: "http",
+  request: loopbackReq(),
   envelope: { flowKind: "kh", action: "run", input: body, metadata: { body } }
 });
 

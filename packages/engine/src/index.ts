@@ -144,6 +144,7 @@ export {
 } from "./errors/store-subscription-error";
 export { BoundedQueue } from "./utils/bounded-queue";
 export type { BoundedQueuePushResult } from "./utils/bounded-queue";
+export { resolveEnvFlag } from "./utils/resolve-env-flag";
 export {
   isTerminalRequestStreamEvent,
   endsRequestStream,

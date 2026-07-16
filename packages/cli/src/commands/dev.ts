@@ -15,6 +15,7 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createModelResolver,
+  resolveEnvFlag,
   type FlowApiRouter,
   type FlowState,
 } from "@flow-state-dev/engine";
@@ -43,7 +44,7 @@ interface DevCommandOptions {
    * Development transport auth. When true, HTTP action requests are trusted as
    * their body `userId` so bearer-gated flows are debuggable in DevTool with no
    * token. Local-only, opt-in, off by default. Refuses to run when a database
-   * URL is set (possible production backend). (FIX-894)
+   * URL is set (possible production backend).
    */
   devAuth?: boolean;
   /** Override the working directory (defaults to process.cwd()). For tests. */
@@ -107,10 +108,12 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
         process.env.FSDEV_TRACING_LEVEL ??= "verbose";
         // A config-based FlowState builds its own router and can't take a
         // devAuth option, so opt in via the env fallback createFlowApiRouter
-        // reads (mirrors FSDEV_DEBUG_ENDPOINTS). Discovery path passes it
-        // explicitly instead. Only when --dev-auth is requested.
+        // reads. Discovery path passes it explicitly instead. Assign (not
+        // `??=`) so the explicit flag wins over a stale `.env` FSDEV_DEV_AUTH=0
+        // — otherwise the CLI would warn dev-auth is on while the router leaves
+        // it off (the engine honors only "1").
         if (options.devAuth) {
-          process.env.FSDEV_DEV_AUTH ??= "1";
+          process.env.FSDEV_DEV_AUTH = "1";
         }
       }
     },
@@ -121,7 +124,7 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
   // flag). The safeguards below — the loud warning and the production-backend
   // refusal — key off this effective state, not just the flag, so a preset env
   // can't activate dev-auth while slipping past both guards.
-  const devAuthActive = options.devAuth === true || process.env.FSDEV_DEV_AUTH === "1";
+  const devAuthActive = resolveEnvFlag(options.devAuth, "FSDEV_DEV_AUTH");
 
   let serveApp: FlowState | FlowApiRouter;
   let flowNames: string[];

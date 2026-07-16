@@ -12,6 +12,7 @@ import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
 import { detectInterruptedRequests } from "../execution/request-recovery";
 import { normalizeRouteError } from "../utils/normalize-route-error";
+import { resolveEnvFlag } from "../utils/resolve-env-flag";
 import {
   parseFlowRoute,
   type ParsedFlowRoute
@@ -241,13 +242,10 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     defaultSseHeartbeatMs
   };
 
-  // Explicit `devAuth` wins; `undefined` falls back to the env flag so a
+  // Explicit `devAuth` wins; `undefined` falls back to `FSDEV_DEV_AUTH=1` so a
   // config-based `fsdev dev --dev-auth` (which serves a pre-built FlowState it
-  // cannot pass options into) still enables it. Mirrors `FSDEV_DEBUG_ENDPOINTS`.
-  const devAuth =
-    options.devAuth === undefined
-      ? process.env.FSDEV_DEV_AUTH === "1"
-      : options.devAuth;
+  // cannot pass options into) still enables it. Same rule as `debugEndpointsEnabled`.
+  const devAuth = resolveEnvFlag(options.devAuth, "FSDEV_DEV_AUTH");
 
   const host: InboundTransportHost = createInboundTransportHost({
     registry: options.registry,

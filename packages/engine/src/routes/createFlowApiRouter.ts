@@ -125,7 +125,7 @@ export type CreateFlowApiRouterOptions = {
    * per-flow `authentication.resolvePrincipal` (MCP/scheduled/webhook sources
    * are unaffected). Explicit `true`/`false` wins; when `undefined`, falls back
    * to `process.env.FSDEV_DEV_AUTH === "1"`. Set ONLY by `fsdev dev --dev-auth`;
-   * never wire this from a production entry point. (FIX-894)
+   * never wire this from a production entry point.
    */
   devAuth?: boolean;
 

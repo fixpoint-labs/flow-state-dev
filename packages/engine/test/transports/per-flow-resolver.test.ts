@@ -56,12 +56,31 @@ function buildHost(flows: ReturnType<typeof buildFlow>[]) {
   return { host, registry, stores };
 }
 
+/**
+ * A minimal stand-in for the inbound `Request`. The dev-auth guard only reads
+ * `request.url` (loopback-host check) and the `origin` header (cross-origin
+ * check); a real `Request` forbids setting the `Host` header, so we fake the
+ * surface the resolver actually touches.
+ */
+const fakeReq = (url: string, origin?: string): Request =>
+  ({
+    url,
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === "origin" ? (origin ?? null) : null
+    }
+  }) as unknown as Request;
+
+const LOOPBACK_URL = "http://localhost:4200/api/flows/x/actions/run";
+
 const mkContext = (
   flowKind: string,
   body: Record<string, unknown>,
-  source = "http"
+  source = "http",
+  request?: Request
 ) => ({
   source,
+  request,
   envelope: {
     flowKind,
     action: "run",
@@ -211,15 +230,30 @@ describe("InboundTransportHost — per-flow authentication", () => {
 });
 
 describe("InboundTransportHost — dev auth", () => {
-  it("overrides a per-flow bearer resolver with the body userId for HTTP actions", async () => {
+  // Loopback-served, same-origin/originless request — the intended DevTool path.
+  const devReq = (origin?: string) => fakeReq(LOOPBACK_URL, origin);
+
+  it("overrides a per-flow bearer resolver with the body userId for loopback HTTP actions", async () => {
     const bearer = vi.fn(() => ({ userId: "owner" }));
     const flow = buildFlow("kh", { resolvePrincipal: bearer });
     const { host } = buildDevAuthHost([flow]);
 
     const principal = await host.resolvePrincipal(
-      mkContext("kh", { userId: "devuser" })
+      mkContext("kh", { userId: "devuser" }, "http", devReq())
     );
     // Body identity wins; the bearer resolver is never consulted for HTTP.
+    expect(principal).toEqual({ userId: "devuser" });
+    expect(bearer).not.toHaveBeenCalled();
+  });
+
+  it("applies for a same-origin (loopback) browser request", async () => {
+    const bearer = vi.fn(() => ({ userId: "owner" }));
+    const flow = buildFlow("kh", { resolvePrincipal: bearer });
+    const { host } = buildDevAuthHost([flow]);
+
+    const principal = await host.resolvePrincipal(
+      mkContext("kh", { userId: "devuser" }, "http", devReq("http://localhost:4200"))
+    );
     expect(principal).toEqual({ userId: "devuser" });
     expect(bearer).not.toHaveBeenCalled();
   });
@@ -232,9 +266,51 @@ describe("InboundTransportHost — dev auth", () => {
     const { host } = buildDevAuthHost([flow]);
 
     const principal = await host.resolvePrincipal(
-      mkContext("kh-org", { userId: "devuser", orgId: "acme" })
+      mkContext("kh-org", { userId: "devuser", orgId: "acme" }, "http", devReq())
     );
     expect(principal).toEqual({ userId: "devuser", orgId: "acme" });
+  });
+
+  it("does NOT apply on a non-loopback host — a leaked FSDEV_DEV_AUTH can't bypass prod auth", async () => {
+    const bearer = vi.fn(() => ({ userId: "owner" }));
+    const flow = buildFlow("kh", { resolvePrincipal: bearer });
+    const { host } = buildDevAuthHost([flow]);
+
+    // Same origin as the (network) host, so it's not a cross-origin case — the
+    // loopback-host guard alone must keep dev-auth off for a network deployment.
+    const principal = await host.resolvePrincipal(
+      mkContext(
+        "kh",
+        { userId: "devuser" },
+        "http",
+        fakeReq("https://api.example.com/api/flows/x/actions/run", "https://api.example.com")
+      )
+    );
+    expect(principal).toEqual({ userId: "owner" });
+    expect(bearer).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT apply to a cross-origin browser request (CSRF from a malicious page)", async () => {
+    const bearer = vi.fn(() => ({ userId: "owner" }));
+    const flow = buildFlow("kh", { resolvePrincipal: bearer });
+    const { host } = buildDevAuthHost([flow]);
+
+    const principal = await host.resolvePrincipal(
+      mkContext("kh", { userId: "attacker" }, "http", devReq("https://evil.example.com"))
+    );
+    // Cross-origin → falls through to the bearer resolver.
+    expect(principal).toEqual({ userId: "owner" });
+    expect(bearer).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT apply when the context carries no request", async () => {
+    const bearer = vi.fn(() => ({ userId: "owner" }));
+    const flow = buildFlow("kh", { resolvePrincipal: bearer });
+    const { host } = buildDevAuthHost([flow]);
+
+    const principal = await host.resolvePrincipal(mkContext("kh", { userId: "devuser" }));
+    expect(principal).toEqual({ userId: "owner" });
+    expect(bearer).toHaveBeenCalledTimes(1);
   });
 
   it("does NOT apply to MCP-sourced requests — the flow resolver still runs", async () => {
@@ -243,7 +319,7 @@ describe("InboundTransportHost — dev auth", () => {
     const { host } = buildDevAuthHost([flow]);
 
     const principal = await host.resolvePrincipal(
-      mkContext("kh", { userId: "devuser" }, "mcp")
+      mkContext("kh", { userId: "devuser" }, "mcp", devReq())
     );
     // Non-HTTP source keeps the real per-flow resolver.
     expect(principal).toEqual({ userId: "owner" });
@@ -256,7 +332,7 @@ describe("InboundTransportHost — dev auth", () => {
     const { host } = buildDevAuthHost([flow]);
 
     const principal = await host.resolvePrincipal(
-      mkContext("kh", { userId: "devuser" }, "scheduled")
+      mkContext("kh", { userId: "devuser" }, "scheduled", devReq())
     );
     expect(principal).toEqual({ userId: "owner" });
     expect(bearer).toHaveBeenCalledTimes(1);
@@ -266,7 +342,7 @@ describe("InboundTransportHost — dev auth", () => {
     const flow = buildBearerFlow("kh");
     const { host } = buildDevAuthHost([flow]);
     await expect(
-      host.resolvePrincipal(mkContext("kh", {}))
+      host.resolvePrincipal(mkContext("kh", {}, "http", devReq()))
     ).rejects.toMatchObject({ name: "PrincipalResolutionError", status: 401 });
   });
 
@@ -279,7 +355,9 @@ describe("InboundTransportHost — dev auth", () => {
       defaultUserId: "system"
     });
     const { host } = buildDevAuthHost([flow]);
-    const principal = await host.resolvePrincipal(mkContext("kh-default", {}));
+    const principal = await host.resolvePrincipal(
+      mkContext("kh-default", {}, "http", devReq())
+    );
     expect(principal).toEqual({ userId: "system" });
   });
 
@@ -288,7 +366,7 @@ describe("InboundTransportHost — dev auth", () => {
     const flow = buildFlow("kh", { resolvePrincipal: bearer });
     const { host } = buildHost([flow]);
     const principal = await host.resolvePrincipal(
-      mkContext("kh", { userId: "devuser" })
+      mkContext("kh", { userId: "devuser" }, "http", devReq())
     );
     expect(principal).toEqual({ userId: "owner" });
     expect(bearer).toHaveBeenCalledTimes(1);

@@ -42,6 +42,7 @@ import type {
 } from "../types";
 import { defaultBodyUserIdPrincipalResolver } from "../auth/defaultBodyUserIdPrincipalResolver";
 import { HTTP_TRANSPORT_SOURCE } from "../http/createHttpTransportAdapter";
+import { pickOrigin, isLoopbackOrigin } from "../../utils/loopback-origin";
 
 export type CreateInboundTransportHostOptions = {
   registry: FlowRegistry;
@@ -448,8 +449,29 @@ export function createInboundTransportHost(
     // HTTP-action traffic DevTool sends, so a bearer-gated flow is debuggable
     // locally without a token. Scoped to the HTTP source so MCP / scheduled /
     // webhook transports (which carry no body userId) keep their real resolver.
+    //
+    // The bypass turns the action route into an open, body-trusted endpoint, so
+    // two request-level guards keep it from reaching beyond a local operator
+    // (mirroring how the debug routes gate every request, not just the bind):
+    //   1. Loopback host — the request URL's host must be loopback. This keeps a
+    //      leaked `FSDEV_DEV_AUTH=1` on a network-facing deployment inert: a
+    //      client hitting `api.example.com` carries a non-loopback host, so
+    //      per-flow auth still runs even for originless (non-browser) callers.
+    //   2. Same-origin/originless — a cross-origin browser Origin is rejected, so
+    //      a malicious page can't drive the loopback server via a text/plain POST
+    //      (a CORS "simple request" that needs no preflight).
+    // A request failing either falls through to the flow's real resolver — a
+    // bearer flow then rejects it; an open flow was already body-trusted.
+    const req = context.request;
+    const hostLoopback = req !== undefined && isLoopbackOrigin(req.url);
+    const requestOrigin = req !== undefined ? pickOrigin(req) : null;
+    const crossOriginBrowser =
+      requestOrigin !== null && !isLoopbackOrigin(requestOrigin);
     const devAuthActive =
-      devAuth === true && context.source === HTTP_TRANSPORT_SOURCE;
+      devAuth === true &&
+      context.source === HTTP_TRANSPORT_SOURCE &&
+      hostLoopback &&
+      !crossOriginBrowser;
     const resolver = devAuthActive
       ? defaultBodyUserIdPrincipalResolver
       : (flowAuth?.resolvePrincipal ?? resolvePrincipal);
