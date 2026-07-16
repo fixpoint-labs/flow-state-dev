@@ -38,6 +38,7 @@ import {
 import { withEvalRuntime, type EvalRuntime } from "../eval/runtime";
 import {
   appendScoreboardLine,
+  artifactSnapshotPath,
   assembleQualityRecord,
   buildDetail,
   buildErrorRecord,
@@ -115,7 +116,7 @@ function evalOptions(a: Args): EvalOptions {
 
 // ── framework runtime ──────────────────────────────────────────────────────
 function writeBundleSnapshot(outDir: string, bundle: RunArtifactsBundle): void {
-  const path = join(outDir, "artifacts", `${bundle.summary.sessionId}.json`);
+  const path = artifactSnapshotPath(outDir, bundle.summary.sessionId);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(bundle, null, 2), "utf8");
 }

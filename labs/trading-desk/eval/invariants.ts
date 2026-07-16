@@ -279,8 +279,17 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
 function checkScenarios(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): void {
   const memo = published(memos.get(SCENARIO_KEY));
   const scenarios = memo?.scenarios ?? null;
-  if (memo == null || scenarios == null) {
+  if (memo == null) {
     c.skip("scenario/count", "hard", "no scenario-forecaster memo (Phase 5a absent)");
+    return;
+  }
+  if (scenarios == null) {
+    c.hardFail(
+      "scenario/count",
+      "published scenario-forecaster memo has no scenario buckets",
+      "3–5 scenarios",
+      scenarios,
+    );
     return;
   }
 
@@ -427,7 +436,26 @@ function checkRewardToRisk(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap
   // Snapshot mirrors — gated on a mandate decision (they source from it, and stay
   // null on mandate-blind runs even though the resource is populated).
   const snapshot = bundle.decisionSnapshot;
-  if (snapshot == null || snapshot.mandateVerdict == null) {
+  if (snapshot == null) {
+    c.skip("reward-risk/snapshot-mirror", "hard", "no decision snapshot to compare");
+    return;
+  }
+  if (snapshot.mandateVerdict == null) {
+    if (
+      snapshot.rewardToRiskLossAdjustedGlr != null ||
+      snapshot.worstCaseReturnPct != null
+    ) {
+      c.hardFail(
+        "reward-risk/snapshot-mirror",
+        "mandate-blind decision snapshot has populated reward-to-risk mirrors",
+        { rewardToRiskLossAdjustedGlr: null, worstCaseReturnPct: null },
+        {
+          rewardToRiskLossAdjustedGlr: snapshot.rewardToRiskLossAdjustedGlr,
+          worstCaseReturnPct: snapshot.worstCaseReturnPct,
+        },
+      );
+      return;
+    }
     c.skip("reward-risk/snapshot-mirror", "hard", "mandate-blind run — snapshot reward-to-risk mirrors stay null");
     return;
   }

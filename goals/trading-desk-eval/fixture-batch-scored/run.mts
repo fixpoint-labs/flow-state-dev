@@ -13,13 +13,18 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readScoreboard } from "../../../labs/trading-desk/eval/scoreboard";
+import {
+  artifactSnapshotPath,
+  readScoreboard,
+} from "../../../labs/trading-desk/eval/scoreboard";
 import { blindBundle } from "../../../labs/trading-desk/eval/blinding";
+import { RUBRICS } from "../../../labs/trading-desk/eval/rubrics";
 import { runArtifactsStateSchema } from "../../../labs/trading-desk/flows/analysis/run-artifacts";
 
 const APP = fileURLToPath(new URL("../../../labs/trading-desk", import.meta.url));
 const OUT = join(APP, ".fsdev", `eval-goal-${Date.now()}`);
 const MANIFEST = join(OUT, "manifest.json");
+const REQUESTED_K = 3;
 
 mkdirSync(OUT, { recursive: true });
 writeFileSync(
@@ -46,7 +51,7 @@ const failures: string[] = [];
 // 1. Sweep the two-tuple manifest (k=3 to bound cost). A non-zero exit means a
 //    run errored or a hard invariant failed — the scoreboard still records, and
 //    the assertions below re-derive the verdict, so don't bail on the code alone.
-evalCli(["sweep", "--manifest", MANIFEST, "--out", OUT, "--k", "3"]);
+evalCli(["sweep", "--manifest", MANIFEST, "--out", OUT, "--k", String(REQUESTED_K)]);
 
 const scoreboardPath = join(OUT, "scoreboard.jsonl");
 let sessionIds: string[] = [];
@@ -72,35 +77,70 @@ try {
       failures.push(`${rec.ticker}: judge layer was skipped entirely`);
       continue;
     }
+    const judgeKeys = rec.judges.map((dim) => dim.dimension);
+    if (
+      judgeKeys.length !== RUBRICS.length ||
+      new Set(judgeKeys).size !== RUBRICS.length ||
+      RUBRICS.some((rubric) => !judgeKeys.includes(rubric.key))
+    ) {
+      failures.push(`${rec.ticker}: scoreboard judge dimensions do not match the declared rubrics`);
+    }
     for (const dim of rec.judges) {
       if (dim.status !== "scored") {
         failures.push(`${rec.ticker}/${dim.dimension}: ${dim.status} (${dim.skipReason ?? ""})`);
         continue;
       }
-      if (dim.scores.length !== dim.k) failures.push(`${rec.ticker}/${dim.dimension}: ${dim.scores.length} scores for k=${dim.k}`);
+      if (dim.k !== REQUESTED_K || dim.scores.length !== REQUESTED_K) {
+        failures.push(
+          `${rec.ticker}/${dim.dimension}: expected k=${REQUESTED_K} and ${REQUESTED_K} scores, got k=${dim.k} and ${dim.scores.length} scores`,
+        );
+      }
       if (dim.scores.some((s) => s < 0 || s > 1)) failures.push(`${rec.ticker}/${dim.dimension}: a score is outside [0,1]`);
     }
 
     // Anti-game: read the SIDECAR — non-empty per-criterion reasoning AND evidence.
     const detail = JSON.parse(readFileSync(rec.detailPath, "utf8")) as {
-      judges?: Array<{ key: string; status: string; repeats: Array<{ findings: Array<{ assessment: string; evidence?: string }> }> }>;
+      judges?: Array<{
+        key: string;
+        status: string;
+        repeats: Array<{
+          findings: Array<{ criterion: string; assessment: string; evidence?: string }>;
+        }>;
+      }>;
     };
-    for (const dim of detail.judges ?? []) {
-      if (dim.status !== "scored") continue;
-      const allReasoned = dim.repeats.length > 0 && dim.repeats.every(
-        (r) =>
-          r.findings.length > 0 &&
-          r.findings.every(
-            (f) => f.assessment.trim().length > 0 && (f.evidence?.trim().length ?? 0) > 0,
-          ),
-      );
-      if (!allReasoned) failures.push(`${rec.ticker}/${dim.key}: empty judge reasoning or evidence in the sidecar`);
+    for (const rubric of RUBRICS) {
+      const dim = detail.judges?.find((candidate) => candidate.key === rubric.key);
+      if (dim == null || dim.status !== "scored") {
+        failures.push(`${rec.ticker}/${rubric.key}: missing scored judge detail`);
+        continue;
+      }
+      if (dim.repeats.length !== REQUESTED_K) {
+        failures.push(`${rec.ticker}/${dim.key}: expected ${REQUESTED_K} sidecar repeats, got ${dim.repeats.length}`);
+      }
+      for (const [repeatIndex, repeat] of dim.repeats.entries()) {
+        const criteria = repeat.findings.map((finding) => finding.criterion);
+        const exactCriteria =
+          criteria.length === rubric.criteria.length &&
+          new Set(criteria).size === rubric.criteria.length &&
+          rubric.criteria.every((criterion) => criteria.includes(criterion));
+        if (!exactCriteria) {
+          failures.push(`${rec.ticker}/${dim.key}/repeat-${repeatIndex + 1}: findings do not match the declared criteria exactly once`);
+        }
+        const allReasoned = repeat.findings.every(
+          (finding) =>
+            finding.assessment.trim().length > 0 &&
+            (finding.evidence?.trim().length ?? 0) > 0,
+        );
+        if (!allReasoned) {
+          failures.push(`${rec.ticker}/${dim.key}/repeat-${repeatIndex + 1}: empty judge reasoning or evidence in the sidecar`);
+        }
+      }
     }
 
     // The stored bundle must differ between the two runs — compared blinded, so
     // a stubbed identical read is caught even though sessionIds always differ.
     const snapshot = JSON.parse(
-      readFileSync(join(OUT, "artifacts", `${rec.sessionId}.json`), "utf8"),
+      readFileSync(artifactSnapshotPath(OUT, rec.sessionId), "utf8"),
     );
     blindedBundles.add(
       JSON.stringify(blindBundle(runArtifactsStateSchema.parse(snapshot))),
@@ -124,7 +164,7 @@ if (sessionIds.length === 2 && failures.length === 0) {
     "--data-dir",
     join(OUT, "data"),
     "--k",
-    "3",
+    String(REQUESTED_K),
   ]);
   try {
     const varianceFile = readdirSync(OUT).filter((f) => f.startsWith("variance.")).sort().pop();

@@ -23,8 +23,10 @@ model. Then `pnpm eval variance --data-dir <out>/data` re-scores both sessions
 
 - The scoreboard (`<out>/scoreboard.jsonl`) parses as two `QualityRecord` lines,
   both `runStatus: "completed"` with **zero hard invariant failures**.
-- Every judge dimension on both runs is `scored`, with `k` scores each in `[0, 1]`
-  and NON-EMPTY per-criterion reasoning + evidence in the detail sidecar.
+- Every declared judge dimension on both runs is `scored`, with exactly the
+  requested `k=3` scores in `[0, 1]`, and every repeat has exactly one finding
+  per declared rubric criterion with NON-EMPTY reasoning + evidence in the detail
+  sidecar.
 - The two runs' stored bundles differ (a stubbed read path would emit identical
   bytes).
 - The variance report records a `std` per dimension for each session and, because

@@ -33,7 +33,21 @@ import {
   type QualityRecord,
 } from "./types";
 
-/** The per-run detail sidecar path: `<outDir>/details/<sessionId>.<evaluatedAt>.json`.
+/** A collision-safe filename component for a session id. Readable ids already
+ *  limited to ASCII filename characters are preserved; every other id is
+ *  base64url-encoded behind a prefix that readable ids cannot use. */
+export function sessionFileStem(sessionId: string): string {
+  if (/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sessionId)) return sessionId;
+  return `~${Buffer.from(sessionId, "utf8").toString("base64url")}`;
+}
+
+/** The per-run artifact snapshot path: `<outDir>/artifacts/<safeSessionId>.json`. */
+export function artifactSnapshotPath(outDir: string, sessionId: string): string {
+  return join(outDir, "artifacts", `${sessionFileStem(sessionId)}.json`);
+}
+
+/** The per-run detail sidecar path:
+ *  `<outDir>/details/<safeSessionId>.<evaluatedAt>.json`.
  *  The timestamp is filesystem-sanitized (`:`/`.` → `-`). */
 export function detailSidecarPath(
   outDir: string,
@@ -41,7 +55,7 @@ export function detailSidecarPath(
   evaluatedAt: string,
 ): string {
   const safeTs = evaluatedAt.replace(/[:.]/g, "-");
-  return join(outDir, "details", `${sessionId}.${safeTs}.json`);
+  return join(outDir, "details", `${sessionFileStem(sessionId)}.${safeTs}.json`);
 }
 
 /** Build one scoreboard line from the evaluated pieces. Pure. */

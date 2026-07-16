@@ -113,7 +113,8 @@ One JSONL line per evaluated run on `<out>/scoreboard.jsonl` (`scoreboard.ts`;
 append-only, single-line `O_APPEND` writes). Deterministic and judged results stay
 SEPARABLE — no composite. The bulky detail (full `CheckResult[]` + every judge
 repeat's raw findings/evidence) lands in a per-run sidecar
-(`details/<sessionId>.<evaluatedAt>.json`, the timestamp in the filename so
+(`details/<safeSessionId>.<evaluatedAt>.json`, with unsafe session IDs encoded and
+the timestamp in the filename so
 re-evaluating never overwrites a sidecar an earlier line points to). The line is
 keyed by `evalVersion` for additive-only evolution (FIX-791 golden diffing and
 FIX-792 cost accounting consume and extend it).
@@ -174,7 +175,8 @@ session IDs isolate concurrent runs while the single runtime owns the database.
 `eval` and `variance` default to the shared application store. Pass `--data-dir
 <sweep-out>/data` to re-evaluate an isolated sweep; relative paths resolve from the
 trading-desk directory. One command never mixes sessions from different backings.
-The CLI writes each parsed raw bundle to `<out>/artifacts/<sessionId>.json` for
+The CLI writes each parsed raw bundle to `<out>/artifacts/<safeSessionId>.json`
+(unsafe session IDs are collision-safely encoded) for
 inspection. **Session ownership:** new sweep sessions use `cli-user`; for an
 existing session, the runtime reads and reuses its persisted owner before calling
 `runAction()`. That preserves the framework identity binding for both harness- and

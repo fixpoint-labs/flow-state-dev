@@ -7,10 +7,11 @@
  */
 import { appendFileSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   appendScoreboardLine,
+  artifactSnapshotPath,
   assembleQualityRecord,
   buildErrorRecord,
   detailSidecarPath,
@@ -130,6 +131,19 @@ describe("assembleQualityRecord", () => {
     expect(rec.runStatus).toBe("error");
     expect(rec.ticker).toBeNull();
     expect(rec.warnings).toContain("unreadable capture");
+  });
+});
+
+describe("session file paths", () => {
+  it("keeps sidecars and artifacts inside their output directories for unsafe session ids", () => {
+    const sessionId = "x/../../../outside";
+    const detailPath = detailSidecarPath("/out", sessionId, "2026-07-12T10:00:00.000Z");
+    const artifactPath = artifactSnapshotPath("/out", sessionId);
+
+    expect(dirname(detailPath)).toBe(join("/out", "details"));
+    expect(dirname(artifactPath)).toBe(join("/out", "artifacts"));
+    expect(detailPath).not.toContain(sessionId);
+    expect(artifactPath).not.toContain(sessionId);
   });
 });
 

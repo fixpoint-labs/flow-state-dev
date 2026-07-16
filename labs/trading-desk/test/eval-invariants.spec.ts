@@ -286,6 +286,15 @@ describe("checkRun — scenario", () => {
     expect(byId(report.checks, "scenario/raw-sum")?.status).toBe("fail");
   });
 
+  it("fails when a published scenario memo omits its scenario buckets", () => {
+    const b = healthyBundle();
+    const scenarioKey = ALL_MEMO_KEYS.scenarioForecast.collectionKey;
+    const memo = b.memos.find((m) => m.key === scenarioKey)!;
+    (memo.state as MemoState).scenarios = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "scenario/count")?.status).toBe("fail");
+  });
+
   it("skips scenario checks when there is no forecaster memo", () => {
     const b = healthyBundle();
     const scenarioKey = ALL_MEMO_KEYS.scenarioForecast.collectionKey;
@@ -306,8 +315,19 @@ describe("checkRun — reward-risk", () => {
   it("skips the snapshot-mirror check on a mandate-blind run", () => {
     const b = healthyBundle();
     b.decisionSnapshot!.mandateVerdict = null; // mandate-blind
+    b.decisionSnapshot!.rewardToRiskLossAdjustedGlr = null;
+    b.decisionSnapshot!.worstCaseReturnPct = null;
     const report = checkRun(b);
     expect(byId(report.checks, "reward-risk/snapshot-mirror")?.status).toBe("skipped");
+  });
+
+  it("fails populated snapshot reward mirrors on a mandate-blind run", () => {
+    const b = healthyBundle();
+    b.decisionSnapshot!.mandateVerdict = null;
+    b.decisionSnapshot!.rewardToRiskLossAdjustedGlr = 2;
+    b.decisionSnapshot!.worstCaseReturnPct = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "reward-risk/snapshot-mirror")?.status).toBe("fail");
   });
 });
 
