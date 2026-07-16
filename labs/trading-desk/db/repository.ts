@@ -968,6 +968,108 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
 }
 
 /**
+ * The one-source-per-ticker seam was violated (FIX-895): within an account, a
+ * ticker's share-moving events must be all tax-lot **keyed** or all feed
+ * **unkeyed**, never mixed (see {@link assertOneSourcePerTicker}). Thrown from
+ * inside the ingest transaction so the whole batch rolls back; caught by
+ * `importTransactionFile` (→ a rendered refusal report) and surfaced by
+ * `recordManualEvent` as a visible error. Carries the offending ticker(s) so the
+ * caller can name them and point at the fresh-account fix.
+ */
+export class OneSourceConflictError extends Error {
+  readonly tickers: string[];
+  constructor(tickers: string[]) {
+    super(
+      `One-source-per-ticker conflict for ${tickers.join(", ")}: a ticker's share ` +
+        `history must be all tax-lot-keyed or all feed-unkeyed, never mixed.`,
+    );
+    this.name = "OneSourceConflictError";
+    this.tickers = tickers;
+  }
+}
+
+/**
+ * Enforce the symmetric one-source-per-ticker seam invariant (FIX-895) on the
+ * shared ingest boundary — every writer (import, manual, future Plaid) funnels
+ * here. Within an `(account, ticker)`, share-moving events (`quantity != null` —
+ * buy/sell/transfer; `deriveLots` is sign-driven) must be all **keyed** (a tax-lot
+ * lot identity) or all **unkeyed** (a FIFO feed). **Keyedness is `lotKey ??
+ * closesLotKey != null`** — a realized sell carries only `closesLotKey` (its
+ * `lotKey` is null), so a bare `lotKey`-null test would misclassify every disposal
+ * as unkeyed and refuse the unrealized half of the very same paired import.
+ *
+ * Rejects (throws {@link OneSourceConflictError}, rolling back the batch) when
+ * either (1) the incoming batch itself mixes keyed + unkeyed share events for one
+ * ticker, or (2) an incoming share event's keyedness conflicts with that ticker's
+ * existing **non-voided** history. The history predicate is `voided_at IS NULL`: a
+ * voided tombstone keeps its linkage fields but is excluded from `deriveLots`, so
+ * counting it would permanently block a legitimate void-then-reimport of the other
+ * source. Same-kind (keyed onto keyed — e.g. realized-after-unrealized — or
+ * unkeyed onto unkeyed) is never a conflict. The caller acquires the per-account
+ * advisory lock BEFORE calling this, so two concurrent imports of the same empty
+ * ticker can't both pass the history read and land a keyed + an unkeyed batch.
+ */
+async function assertOneSourcePerTicker(tx: Tx, events: LedgerEventInput[]): Promise<void> {
+  const SEP = " ";
+  type Group = { keyed: boolean; unkeyed: boolean; accountId: string; ticker: string };
+  const incoming = new Map<string, Group>();
+  for (const e of events) {
+    // Share-moving only. `assertShareEventInvariant` already ran on every event,
+    // so a quantity-bearing row is guaranteed a non-null ticker here.
+    if (e.quantity === null || e.ticker === null) continue;
+    const gk = `${e.accountId}${SEP}${e.ticker}`;
+    const g = incoming.get(gk) ?? { keyed: false, unkeyed: false, accountId: e.accountId, ticker: e.ticker };
+    if ((e.lotKey ?? e.closesLotKey) != null) g.keyed = true;
+    else g.unkeyed = true;
+    incoming.set(gk, g);
+  }
+  if (incoming.size === 0) return;
+
+  const conflicts = new Set<string>();
+  // (1) In-batch: a single (account, ticker) group mixing keyed + unkeyed — caught
+  // even with no existing history (the empty-ticker case).
+  for (const g of incoming.values()) {
+    if (g.keyed && g.unkeyed) conflicts.add(g.ticker);
+  }
+
+  // (2) Vs the ticker's existing NON-VOIDED share history.
+  const accountIds = [...new Set([...incoming.values()].map((g) => g.accountId))];
+  const tickers = [...new Set([...incoming.values()].map((g) => g.ticker))];
+  const historyRows = await tx
+    .select({
+      accountId: ledgerEvents.accountId,
+      ticker: ledgerEvents.ticker,
+      lotKey: ledgerEvents.lotKey,
+      closesLotKey: ledgerEvents.closesLotKey,
+    })
+    .from(ledgerEvents)
+    .where(
+      and(
+        inArray(ledgerEvents.accountId, accountIds),
+        inArray(ledgerEvents.ticker, tickers),
+        isNotNull(ledgerEvents.quantity),
+        isNull(ledgerEvents.voidedAt),
+      ),
+    );
+  const history = new Map<string, { keyed: boolean; unkeyed: boolean }>();
+  for (const r of historyRows) {
+    if (r.ticker === null) continue;
+    const gk = `${r.accountId}${SEP}${r.ticker}`;
+    const h = history.get(gk) ?? { keyed: false, unkeyed: false };
+    if ((r.lotKey ?? r.closesLotKey) != null) h.keyed = true;
+    else h.unkeyed = true;
+    history.set(gk, h);
+  }
+  for (const [gk, g] of incoming) {
+    const h = history.get(gk);
+    if (h === undefined) continue;
+    if ((g.keyed && h.unkeyed) || (g.unkeyed && h.keyed)) conflicts.add(g.ticker);
+  }
+
+  if (conflicts.size > 0) throw new OneSourceConflictError([...conflicts].sort());
+}
+
+/**
  * Ingest a batch of events inside the caller's transaction: ownership-guard every
  * referenced account against `userId`, dedup in memory then via `ON CONFLICT DO
  * NOTHING`, chunk-insert, and re-materialize positions on every touched account.
@@ -1050,6 +1152,18 @@ async function ingestEventsInTx(
     });
   }
 
+  // Serialize same-account recomputes AND the one-source seam check: acquire ALL
+  // per-account locks in sorted order first (deadlock-free). The lock is taken
+  // BEFORE the seam's history read (FIX-895) — not just before the materialize
+  // recompute as it used to be — so two concurrent imports of the same empty
+  // ticker can't both pass the keyedness check and land a keyed + an unkeyed batch.
+  for (const id of accountIds) await acquireRealizedLock(tx, id);
+
+  // One-source-per-ticker seam (FIX-895): reject-and-roll-back a batch that would
+  // mix keyed + unkeyed share events for one ticker (in-batch OR vs non-voided
+  // history). Runs before the insert so a conflict never persists a partial batch.
+  await assertOneSourcePerTicker(tx, events);
+
   // Chunked: one multi-row INSERT tops out at 32,767 bound params on PGlite and
   // 65,535 on node-pg; 1,000 rows/chunk clears both. The chunks share this
   // transaction, so the batch stays atomic.
@@ -1064,10 +1178,8 @@ async function ingestEventsInTx(
     inserted += insertedRows.length;
   }
 
-  // Serialize same-account recomputes: acquire ALL per-account locks in sorted
-  // order first (deadlock-free), then materialize positions AND realized gains
-  // for each touched account in the same transaction (FIX-874).
-  for (const id of accountIds) await acquireRealizedLock(tx, id);
+  // Materialize positions AND realized gains for each touched account in the same
+  // transaction (FIX-874); the per-account locks above already serialize this.
   for (const id of accountIds) {
     await materializePositions(tx, id);
     await materializeRealizedGains(tx, id);

@@ -23,7 +23,7 @@
  * The parser is deterministic TS, so no generator output schemas / BP-016 here.
  */
 import { z } from "zod";
-import type { PortfolioRepository } from "@/db/repository";
+import { OneSourceConflictError, type PortfolioRepository } from "@/db/repository";
 import type { FileImportReport } from "../schema/transaction-import-schema";
 import { parsePortfolioCsv, type RowError } from "../parsers/portfolio-csv";
 import { accountTypeSchema, assetClassSchema, type AssetClass } from "../schema/portfolio-schema";
@@ -356,7 +356,8 @@ export async function importTransactionFile(
   // getPortfolio only returns the caller's own accounts, so a foreign id
   // simply isn't found.
   const { accounts } = await repo.getPortfolio(userId);
-  if (!accounts.some((a) => a.accountId === input.accountId)) {
+  const account = accounts.find((a) => a.accountId === input.accountId);
+  if (account === undefined) {
     return report({
       inserted: 0,
       deduplicated: 0,
@@ -367,26 +368,78 @@ export async function importTransactionFile(
     });
   }
 
-  const events = parsed.events.map((e) => ({
-    ...e,
-    accountId: input.accountId,
-    source: "file" as const,
-  }));
-  // "replace" mode (FIX-876): atomically wipe the account's ledger (manual
-  // entries included) and repopulate from this file, so the file is the single
-  // source of truth — the clean escape from a cross-source split double-apply.
-  // "append" (default) is the non-destructive dedup-merge. Both materialize
-  // positions inside the same transaction.
-  const ingest =
-    input.mode === "replace"
-      ? await repo.replaceLedgerFromFile(input.accountId, userId, events)
-      : await repo.ingestLedgerEvents(events, userId);
+  // Currency injection + D3 reject (§0 D3), BEFORE ingest — the dispatcher has no
+  // account context, so it parses tax-lot rows leaving `currency` unset when the
+  // file carries no currency column. Holdings derivation is currency-blind, so:
+  //  - a row with NO file currency inherits the target account's currency (never
+  //    the ledger's silent `"USD"` default, which would mislabel a foreign lot as
+  //    taxable USD);
+  //  - a row whose file currency DIFFERS from the account is skipped with a per-row
+  //    parse error (single-currency accounts in v1) — a mismatched lot cannot be
+  //    honestly stored. Both synthesized legs of a tax-lot row carry the same
+  //    currency, so a mismatch drops the pair together (keyed on the shared lot key).
+  const accountCurrency = account.currency; // already normalized upper-case
+  const currencyErrors: { line: number | null; reason: string }[] = [];
+  const seenMismatch = new Set<string>();
+  const events: LedgerEventInput[] = [];
+  for (const e of parsed.events) {
+    const fileCurrency = (e as { currency?: string | null }).currency ?? null;
+    if (fileCurrency !== null && fileCurrency.toUpperCase() !== accountCurrency) {
+      const rowKey = e.lotKey ?? e.closesLotKey ?? e.ticker ?? String(currencyErrors.length);
+      if (!seenMismatch.has(rowKey)) {
+        seenMismatch.add(rowKey);
+        currencyErrors.push({
+          line: null,
+          reason: `${e.ticker ?? "row"}: currency ${fileCurrency.toUpperCase()} does not match the account currency ${accountCurrency} — row skipped (single-currency accounts in v1).`,
+        });
+      }
+      continue;
+    }
+    events.push({
+      ...e,
+      accountId: input.accountId,
+      source: "file" as const,
+      currency: fileCurrency ?? accountCurrency,
+    });
+  }
 
-  return report({
-    inserted: ingest.inserted,
-    deduplicated: ingest.deduplicated,
-    extraParseErrors: ingest.errors.map((e) => ({ line: null, reason: e.reason })),
-  });
+  // Ingest through the shared append path. A one-source-per-ticker conflict throws
+  // `OneSourceConflictError` inside the ingest transaction (rolling it back); catch
+  // it and render a clean refusal report (0 inserts + a conflict warning naming the
+  // ticker(s) + fresh-account guidance), never a thrown 500 — this feature is
+  // append-only (§0 D1). "replace" mode (FIX-876, OFX reset-account) stays for the
+  // pre-existing destructive wipe; both materialize positions in one transaction.
+  try {
+    const ingest =
+      input.mode === "replace"
+        ? await repo.replaceLedgerFromFile(input.accountId, userId, events)
+        : await repo.ingestLedgerEvents(events, userId);
+    return report({
+      inserted: ingest.inserted,
+      deduplicated: ingest.deduplicated,
+      extraParseErrors: [
+        ...currencyErrors,
+        ...ingest.errors.map((e) => ({ line: null, reason: e.reason })),
+      ],
+    });
+  } catch (err) {
+    if (err instanceof OneSourceConflictError) {
+      const names = err.tickers.join(", ");
+      return report({
+        inserted: 0,
+        deduplicated: 0,
+        warnings: [
+          ...diag.warnings,
+          `Import refused — ${names} already ${err.tickers.length > 1 ? "have" : "has"} ` +
+            `transaction history in this account from a different source. A ticker's lots must come ` +
+            `from one source (tax-lot files vs. a transaction feed), so import tax-lot CSVs into a ` +
+            `fresh, dedicated account.`,
+        ],
+        extraParseErrors: currencyErrors,
+      });
+    }
+    throw err;
+  }
 }
 
 /** A market-data split lookup for one ticker over `[from, to]` (ISO dates),
@@ -440,6 +493,13 @@ export async function backfillSplits(
   // before we ever held the ticker can't touch a lot, so it's not worth writing.
   const earliestByAcctTicker = new Map<string, string>();
   const tickers = new Set<string>();
+  // (account, ticker) → whether its NON-VOIDED share history is entirely tax-lot
+  // keyed (Key Decision #7). A broker tax-lot file is already split-adjusted as of
+  // export, so a provider split would double-adjust a synthetic keyed lot — skip
+  // such pairs. Account-local (a household-wide ticker skip would suppress a split
+  // another account's unkeyed OFX history still needs); voided rows excluded so a
+  // tombstone can't misclassify the pair.
+  const keyedness = new Map<string, { any: boolean; allKeyed: boolean }>();
   let globalEarliest: string | null = null;
   for (const e of events) {
     if (e.ticker === null || !SHARE_TYPES.has(e.type)) continue;
@@ -449,6 +509,12 @@ export async function backfillSplits(
     const cur = earliestByAcctTicker.get(key);
     if (cur === undefined || e.tradeDate < cur) earliestByAcctTicker.set(key, e.tradeDate);
     if (globalEarliest === null || e.tradeDate < globalEarliest) globalEarliest = e.tradeDate;
+    if (e.voidedAt === null) {
+      const k = keyedness.get(key) ?? { any: false, allKeyed: true };
+      k.any = true;
+      if ((e.lotKey ?? e.closesLotKey) === null) k.allKeyed = false;
+      keyedness.set(key, k);
+    }
   }
   if (globalEarliest === null) {
     return { tickersScanned: 0, splitsFound: 0, inserted: 0, deduplicated: 0, errors: [] };
@@ -470,6 +536,11 @@ export async function backfillSplits(
 
   const toIngest: LedgerEventInput[] = [];
   for (const [key, earliest] of earliestByAcctTicker) {
+    // Skip a pair whose non-voided share history is entirely tax-lot keyed — the
+    // broker file is already split-adjusted, so a provider split would double-adjust
+    // its synthetic lots (and the one-source seam would refuse the unkeyed split).
+    const k = keyedness.get(key);
+    if (k !== undefined && k.any && k.allKeyed) continue;
     const sep = key.indexOf(" ");
     const accountId = key.slice(0, sep);
     const ticker = key.slice(sep + 1);

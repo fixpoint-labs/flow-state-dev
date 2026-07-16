@@ -794,6 +794,48 @@ describe("backfillSplits (FIX-874 follow-up) — provider split backfill", () =>
     expect(second.deduplicated).toBe(1);
   });
 
+  it("skips a fully-keyed (account, ticker) pair but still backfills another account's unkeyed history in the same ticker (FIX-895)", async () => {
+    // A tax-lot file is already split-adjusted as of export, so a provider split
+    // would double-adjust its synthetic keyed lots — skip such pairs. The skip is
+    // account-local: a second account holding the SAME ticker via unkeyed (OFX/manual)
+    // history still needs its split backfilled.
+    await repo.upsertAccount({ id: "acc-keyed", userId: "devuser", name: "TaxLot", type: "taxable" });
+    await repo.upsertAccount({ id: "acc-ofx", userId: "devuser", name: "OFX", type: "taxable" });
+    // acc-keyed: entirely tax-lot keyed AAPL history.
+    await repo.ingestLedgerEvents(
+      [
+        ev({
+          accountId: "acc-keyed",
+          ticker: "AAPL",
+          tradeDate: "2024-01-02",
+          quantity: 10,
+          unitPrice: 120,
+          amount: -1200,
+          source: "file",
+          lotKey: "taxlot:u:AAPL:2024-01-02:1",
+          externalId: "taxlot:u:AAPL:2024-01-02:1",
+        }),
+      ],
+      "devuser",
+    );
+    // acc-ofx: unkeyed AAPL history.
+    await repo.ingestLedgerEvents(
+      [ev({ accountId: "acc-ofx", ticker: "AAPL", tradeDate: "2024-01-02", quantity: 10, unitPrice: 120, amount: -1200, source: "file", externalId: "ofx-AAPL" })],
+      "devuser",
+    );
+
+    const stub = async (ticker: string) =>
+      ticker === "AAPL" ? [{ date: "2024-06-10", numerator: 10, denominator: 1 }] : [];
+    const report = await backfillSplits("devuser", repo, stub, "2024-12-31");
+
+    // Exactly one split written — for the unkeyed account only.
+    expect(report.inserted).toBe(1);
+    const keyedSplits = (await repo.getLedger("devuser", { accountId: "acc-keyed" })).filter((r) => r.type === "split");
+    const ofxSplits = (await repo.getLedger("devuser", { accountId: "acc-ofx" })).filter((r) => r.type === "split");
+    expect(keyedSplits).toHaveLength(0); // fully-keyed pair skipped
+    expect(ofxSplits).toHaveLength(1); // unkeyed pair still backfilled
+  });
+
   it("collects a per-ticker provider failure without aborting the rest", async () => {
     await repo.ingestLedgerEvents(
       [
