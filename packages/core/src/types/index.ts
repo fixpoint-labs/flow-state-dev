@@ -45,6 +45,7 @@ export type {
   InferFlowStateMap,
   InferScopeStateFromConfig,
   McpConfig,
+  McpResolveSessionIdContext,
   OrgConfig,
   RequestConfig,
   RetentionPolicy,

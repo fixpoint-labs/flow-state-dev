@@ -62,10 +62,12 @@ export const inboxRecordSchema = z.object({
    */
   status: z.enum(["pending", "swept"]).default("pending"),
   /**
-   * sha256 over the normalized capture tuple (kind, content, context,
+   * sha256 over the normalized capture tuple (contextId, kind, content, context,
    * occurredAt, source) — transport-retry identity; also the key suffix.
    */
   fingerprint: z.string(),
+  /** Conversation context id grouping this capture (FIX-897). */
+  contextId: z.string(),
 });
 export type InboxRecord = z.infer<typeof inboxRecordSchema>;
 

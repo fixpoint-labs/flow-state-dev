@@ -1,5 +1,5 @@
 import type { ZodTypeAny } from "zod";
-import type { AuthenticationConfig } from "./auth";
+import type { AuthenticationConfig, ResolvedPrincipal } from "./auth";
 import type { BlockContext, BlockDefinition, DeclaredResourceEntry, RetryPolicy } from "./block";
 import type { Middleware } from "./middleware";
 import type {
@@ -246,6 +246,18 @@ export type ActionConfig<
  * runtime under `host.dispatch` is identical between MCP and HTTP
  * requests.
  */
+/** Context passed to {@link McpConfig.resolveSessionId} after tools/call input is merged. */
+export interface McpResolveSessionIdContext {
+  readonly flowKind: string;
+  /** Internal action key (camelCase), not the MCP tool name. */
+  readonly actionKey: string;
+  readonly toolName: string;
+  /** Parsed + merged tool arguments (plain object). */
+  readonly input: Record<string, unknown>;
+  readonly principal: ResolvedPrincipal;
+  readonly tenantId?: string;
+}
+
 export interface McpConfig {
   /** Master enable. Default: false. */
   enabled?: boolean;
@@ -255,6 +267,13 @@ export interface McpConfig {
    * `client.content.read` permission. If false, no resources are exposed.
    */
   exposeResources?: boolean;
+  /**
+   * Optional MCP-only hook: derive the framework session id for this tools/call.
+   * Return `undefined` to keep stateless behavior (fresh ephemeral session).
+   * The returned id is passed to `host.dispatch` as `sessionId` — not read from
+   * the request body on the HTTP action path (BP-031).
+   */
+  resolveSessionId?: (ctx: McpResolveSessionIdContext) => string | undefined;
 }
 
 /**

@@ -24,7 +24,7 @@ function capture(stores: Stores, userId: string, sessionId: string, content: str
     userId,
     sessionId,
     stores,
-    input: { kind: "task", content, context: "isolation test" },
+    input: { contextId: sessionId, kind: "task", content, context: "isolation test" },
   });
 }
 

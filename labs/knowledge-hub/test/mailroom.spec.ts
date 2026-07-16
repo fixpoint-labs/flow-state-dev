@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { computeFingerprint, normalizeForFingerprint } from "../src/mailroom";
 
 const base = {
+  contextId: "kctx_1",
   kind: "task",
   content: "Book dentist appointment",
   context: "Planning the week in a Claude conversation",
@@ -34,6 +35,10 @@ describe("computeFingerprint", () => {
   it("ignores whitespace/case differences the normalizer collapses", () => {
     expect(computeFingerprint({ ...base, content: "  book   DENTIST appointment " }))
       .toBe(computeFingerprint({ ...base, content: "Book Dentist Appointment" }));
+  });
+
+  it("changes when contextId differs", () => {
+    expect(computeFingerprint({ ...base, contextId: "kctx_2" })).not.toBe(computeFingerprint(base));
   });
 
   it("changes when the kind differs", () => {

@@ -419,6 +419,64 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
     expect(envelope.input).toEqual({ amount: 100 });
   });
 
+  it("tools/call passes resolveSessionId result as sessionId on dispatch", async () => {
+    const flow = defineFlow({
+      kind: "billing",
+      mcp: {
+        enabled: true,
+        resolveSessionId: ({ input }) =>
+          typeof input.sessionKey === "string" ? input.sessionKey : undefined
+      },
+      actions: {
+        recordPayment: {
+          inputSchema: z.object({ amount: z.number(), sessionKey: z.string().optional() }),
+          block: noopBlock,
+          description: "Record a payment for an invoice."
+        }
+      }
+    });
+    const adapter = createMcpTransportAdapter();
+    const host = withFlow(createMockTransportHost(), flow);
+    await callAdapter(adapter, host, "POST", "billing", {
+      jsonrpc: "2.0",
+      id: 99,
+      method: "tools/call",
+      params: { name: "record_payment", arguments: { amount: 1, sessionKey: "sess_abc" } }
+    });
+    expect(host.dispatchCalls[0]!.envelope.sessionId).toBe("sess_abc");
+  });
+
+  it("tools/call maps resolveSessionId throws to JSON-RPC -32603", async () => {
+    const flow = defineFlow({
+      kind: "billing",
+      mcp: {
+        enabled: true,
+        resolveSessionId: () => {
+          throw new Error("bad session hook");
+        }
+      },
+      actions: {
+        recordPayment: {
+          inputSchema: z.object({ amount: z.number() }),
+          block: noopBlock,
+          description: "Record a payment for an invoice."
+        }
+      }
+    });
+    const adapter = createMcpTransportAdapter();
+    const host = withFlow(createMockTransportHost(), flow);
+    const response = await callAdapter(adapter, host, "POST", "billing", {
+      jsonrpc: "2.0",
+      id: 100,
+      method: "tools/call",
+      params: { name: "record_payment", arguments: { amount: 1 } }
+    });
+    const json = (await response.json()) as { error: { code: number; message: string } };
+    expect(json.error.code).toBe(-32603);
+    expect(json.error.message).toContain("bad session hook");
+    expect(host.dispatchCalls).toHaveLength(0);
+  });
+
   it("tools/call for an unknown tool returns -32601", async () => {
     const adapter = createMcpTransportAdapter();
     const host = withFlow(createMockTransportHost(), buildFlow());

@@ -16,7 +16,8 @@ The **capture layer** is now in place (FIX-882): a single `logActivity` MCP tool
 | -- | -- | -- |
 | Inbox collection (`inbox/**`, user-scoped) + record schema + key helpers | `src/inbox.ts` | FIX-882 |
 | Mailroom pure helpers (normalize, fingerprint) | `src/mailroom.ts` | FIX-882 |
-| `logActivity` capture action | `src/flow.ts` | FIX-882 |
+| `createContext` action + `contexts/**` collection | `src/contexts.ts`, `src/flow.ts` | FIX-897 |
+| `logActivity` capture action (requires `contextId`) | `src/flow.ts` | FIX-882, FIX-897 |
 | `listInbox` inspection action | `src/flow.ts` | FIX-882 |
 | Config (filesystem stores; MCP adapter mounted only when `KH_MCP_SECRET` is set) | `fsdev.config.ts` | FIX-882 |
 
@@ -25,9 +26,14 @@ The **capture layer** is now in place (FIX-882): a single `logActivity` MCP tool
 Capture is CLI-only by default — see the auth note below.
 
 ```bash
-# Capture a piece of mental activity into the inbox.
+# Capture a piece of mental activity into the inbox (reuse one context id per conversation).
+pnpm fsdev run knowledge-hub createContext \
+  -i '{"description":"Planning the week in Claude"}'
+
+# Then log activities under that context id (CLI: pass --session <contextId> to align framework session grouping).
 pnpm fsdev run knowledge-hub logActivity \
-  -i '{"kind":"task","content":"Book dentist appointment","context":"Mentioned while planning the week in a Claude conversation"}'
+  --session kctx_... \
+  -i '{"contextId":"kctx_...","kind":"task","content":"Book dentist appointment","context":"Mentioned while planning the week in a Claude conversation"}'
 
 # Inspect the pending inbox (items, counts, oldest age).
 pnpm fsdev run knowledge-hub listInbox -i '{}'

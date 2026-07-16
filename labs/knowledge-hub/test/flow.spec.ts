@@ -16,7 +16,7 @@ describe("knowledge-hub flow", () => {
       flow: knowledgeHubFlow,
       action: "logActivity",
       userId: "cli-user",
-      input: { kind: "thought", content: "hello hub", context: "smoke test" },
+      input: { kind: "thought", content: "hello hub", context: "smoke test", contextId: "kctx_smoke" },
       stores,
     });
     expect(capture.status).toBe("completed");

@@ -403,6 +403,26 @@ async function handleToolsCall(
         ? { ...((args ?? {}) as Record<string, unknown>), ...forwardedInput }
         : args;
 
+  let sessionId: string | undefined;
+  const resolveSessionId = flow.mcp?.resolveSessionId;
+  if (resolveSessionId !== undefined) {
+    try {
+      const resolved = resolveSessionId({
+        flowKind: flow.kind,
+        actionKey: target.actionKey,
+        toolName: name,
+        input: (typeof input === "object" && input !== null && !Array.isArray(input)
+          ? input
+          : {}) as Record<string, unknown>,
+        principal
+      });
+      sessionId = resolved;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return jsonRpcResponse(id, jsonRpcError(-32603, message));
+    }
+  }
+
   let handle: ReturnType<InboundTransportHost["dispatch"]>;
   try {
     handle = host.dispatch({
@@ -411,8 +431,7 @@ async function handleToolsCall(
       action: target.actionKey,
       input,
       principal,
-      // MCP v1 is stateless — every tools/call creates a fresh session.
-      sessionId: undefined,
+      sessionId,
       // No SSE response stream in v1; the runtime can still emit items
       // for observability without a live stream consumer.
       responseEmitter: null,

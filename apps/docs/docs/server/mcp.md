@@ -218,6 +218,30 @@ authentication: {
 Per the MCP spec, tokens must be in the `Authorization` header — the
 adapter does not honor query-string credentials.
 
+### Caller-derived session id (POC)
+
+Transport-level MCP remains stateless: the adapter does not issue
+`Mcp-Session-Id`. When a flow needs related `tools/call` invocations to
+share framework session state (request history, DevTool grouping), set an
+optional hook on the flow:
+
+```ts
+mcp: {
+  enabled: true,
+  resolveSessionId({ actionKey, input }) {
+    if (actionKey !== "logActivity") return undefined;
+    const contextId = input.contextId;
+    return typeof contextId === "string" && contextId.length > 0 ? contextId : undefined;
+  },
+},
+```
+
+The hook runs after tool arguments are merged (including any
+`forwardQueryParams` from the adapter config) and before `host.dispatch`.
+Return `undefined` to keep the default fresh ephemeral session. The
+returned string becomes `sessionId` on the dispatch envelope — it is not
+read from the HTTP action body (BP-031).
+
 If `resolvePrincipal` returns `null` and the flow requires a user, the
 adapter responds with HTTP 401 and `WWW-Authenticate: Bearer realm="MCP"`,
 plus a JSON-RPC error with code `-32001`. Throwing
@@ -296,10 +320,11 @@ affected.
 The current release covers the critical path for production use, with a
 few intentional cuts:
 
-- **Stateless only.** Every `tools/call` runs in a fresh flow session.
-  No `Mcp-Session-Id` is issued, no per-session continuity across
-  calls. This is the right default for serverless deployments and most
-  agentic use cases. Stateful sessions land later.
+- **Stateless by default.** Every `tools/call` runs in a fresh flow session
+  unless the flow configures `mcp.resolveSessionId` to map tool arguments to a
+  stable framework `sessionId` (a narrow POC for caller-supplied grouping; not
+  transport `Mcp-Session-Id`). This is the right default for serverless
+  deployments and most agentic use cases. Full transport statefulness lands later.
 - **Single text tool result.** Tool calls return one text content
   block — either the action's terminal output (JSON-stringified if
   non-string) or the most recent message item from the action's

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Knowledge Hub lab — the capture surface (FIX-882).
+// Knowledge Hub lab — the capture surface (FIX-882, FIX-897).
 //
 // A single `logActivity` MCP tool hands a piece of the owner's mental activity
 // (a thought, journal fragment, task, memory, goal, decision, or topic of
@@ -8,6 +8,10 @@
 // wall-clock time and computes a sha256 fingerprint over the full capture tuple
 // for transport-retry idempotency. No model call runs at capture time; all
 // classification and near-duplicate judgment is the FIX-883 sweeper's job.
+//
+// FIX-897 adds `createContext` (open a conversation topic) and requires
+// `contextId` on capture. MCP `log_activity` maps `contextId` to framework
+// `sessionId` via `mcp.resolveSessionId` so related captures group in storage.
 //
 // Handlers declare `resources: { inbox }` directly for a typed `ctx`
 // (the labs/trading-desk form), no capability layer. Auth is a bearer secret
@@ -20,8 +24,13 @@
 // ---------------------------------------------------------------------------
 
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { z } from "zod";
 import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
+import { z } from "zod";
+import {
+  contextKey,
+  contextsCollection,
+  type ContextRecord,
+} from "./contexts";
 import {
   activityKindSchema,
   inboxCollection,
@@ -35,6 +44,10 @@ import { computeFingerprint } from "./mailroom";
  *  stay verbatim (`.trim().min(1)` would mutate, breaking the verbatim contract). */
 const nonBlank = (s: string) => s.trim().length > 0;
 
+function newContextId(): string {
+  return `kctx_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 /** The per-item shape `listInbox` returns — the fields an inspector needs, not
  *  the full record (the fingerprint and swept lifecycle stay internal). */
 const inboxItemSummarySchema = z.object({
@@ -42,13 +55,47 @@ const inboxItemSummarySchema = z.object({
   kind: activityKindSchema,
   content: z.string(),
   context: z.string(),
+  contextId: z.string(),
   capturedAt: z.string(),
   status: z.enum(["pending", "swept"]),
+});
+
+const createContext = handler({
+  name: "createContext",
+  inputSchema: z.object({
+    description: z
+      .string()
+      .min(1)
+      .max(500)
+      .refine(nonBlank, "description must not be blank")
+      .describe("Short label for what this conversation or topic is about."),
+  }),
+  outputSchema: z.object({
+    contextId: z.string(),
+    openedAt: z.string(),
+  }),
+  resources: { contexts: contextsCollection },
+  execute: async (input, ctx) => {
+    const contextId = newContextId();
+    const openedAt = new Date().toISOString();
+    const record: ContextRecord = {
+      description: input.description,
+      openedAt,
+      lazyOpened: false,
+    };
+    await ctx.resources.contexts.create(contextKey(contextId), record);
+    return { contextId, openedAt };
+  },
 });
 
 const logActivity = handler({
   name: "logActivity",
   inputSchema: z.object({
+    contextId: z
+      .string()
+      .min(1)
+      .max(128)
+      .describe("Context id from `create_context` for this conversation."),
     kind: activityKindSchema.describe(
       "What sort of mental activity this is. Best guess — a later review pass re-classifies."
     ),
@@ -86,8 +133,20 @@ const logActivity = handler({
     capturedAt: z.string(),
     deduplicated: z.boolean(),
   }),
-  resources: { inbox: inboxCollection },
+  resources: { inbox: inboxCollection, contexts: contextsCollection },
   execute: async (input, ctx) => {
+    const capturedAt = new Date().toISOString();
+    const keyForContext = contextKey(input.contextId);
+    const existingContext = await ctx.resources.contexts.getOptional(keyForContext);
+    if (!existingContext) {
+      const lazyRecord: ContextRecord = {
+        description: null,
+        openedAt: capturedAt,
+        lazyOpened: true,
+      };
+      await ctx.resources.contexts.create(keyForContext, lazyRecord, { replace: true });
+    }
+
     const fingerprint = computeFingerprint(input);
     const key = inboxKey(input.kind, fingerprint);
 
@@ -112,11 +171,11 @@ const logActivity = handler({
     // key. Both may then report `deduplicated: false`; that inaccuracy is
     // accepted — no locking or CAS (BP-038). The retry guarantee is deliberately
     // bounded to the pending window.
-    const capturedAt = new Date().toISOString();
     const record: InboxRecord = {
       kind: input.kind,
       content: input.content,
       context: input.context,
+      contextId: input.contextId,
       capturedAt,
       occurredAt: input.occurredAt,
       source: input.source,
@@ -159,6 +218,7 @@ const listInbox = handler({
       kind: r.state.kind,
       content: r.state.content,
       context: r.state.context,
+      contextId: r.state.contextId,
       capturedAt: r.state.capturedAt,
       status: r.state.status,
     }));
@@ -191,12 +251,24 @@ const knowledgeHubFlow = defineFlow({
           throw new Error("knowledgeHub: HTTP access requires KH_MCP_SECRET");
         },
   },
-  mcp: { enabled: true },
+  mcp: {
+    enabled: true,
+    resolveSessionId({ actionKey, input }) {
+      if (actionKey !== "logActivity") return undefined;
+      const contextId = input.contextId;
+      return typeof contextId === "string" && contextId.length > 0 ? contextId : undefined;
+    },
+  },
   actions: {
+    createContext: {
+      block: createContext,
+      description:
+        "Open a conversation context for grouping related captures. Call once per conversation with a short topic description; reuse the returned context id on every `log_activity` in that conversation.",
+    },
     logActivity: {
       block: logActivity,
       description:
-        "Log a piece of the owner's mental activity — a thought, journal fragment, task, memory, goal, decision, or topic of interest — into the knowledge inbox. Use whenever the owner says something worth remembering or acting on. Always include the context it arose in.",
+        "Log a piece of the owner's mental activity — a thought, journal fragment, task, memory, goal, decision, or topic of interest — into the knowledge inbox. Use whenever the owner says something worth remembering or acting on. Always include the context it arose in and the context id from `create_context`.",
     },
     listInbox: {
       block: listInbox,
@@ -204,7 +276,7 @@ const knowledgeHubFlow = defineFlow({
         "Inspect the knowledge inbox: pending captured items, counts, and how long the oldest has been waiting.",
     },
   },
-  resources: { inbox: inboxCollection },
+  resources: { inbox: inboxCollection, contexts: contextsCollection },
 });
 
 export default knowledgeHubFlow({ id: "default" });

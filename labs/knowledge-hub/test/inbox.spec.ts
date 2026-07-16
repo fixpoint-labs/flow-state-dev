@@ -16,6 +16,7 @@ describe("inboxRecordSchema", () => {
     context: "Planning the week",
     capturedAt: "2026-07-10T00:00:00.000Z",
     fingerprint: "abc123",
+    contextId: "kctx_test",
   };
 
   it("parses a minimal record and defaults the nullable/lifecycle fields", () => {

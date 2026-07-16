@@ -226,6 +226,7 @@ export type {
   FlowInstanceOptions,
   FlowType,
   McpConfig,
+  McpResolveSessionIdContext,
   ModelUsageEntry,
   TokenLedger,
   ToolLifecycleEvent,

@@ -10,11 +10,20 @@ import knowledgeHubFlow from "../src/flow";
 import type { InboxRecord } from "../src/inbox";
 
 const USER = "owner";
+const CONTEXT = "kctx_conversation_1";
 
 type Stores = ReturnType<typeof createInMemoryStores>;
 
 function capture(stores: Stores, input: Record<string, unknown>) {
-  return testFlow({ flow: knowledgeHubFlow, action: "logActivity", userId: USER, stores, input });
+  const payload =
+    input.contextId !== undefined ? input : { contextId: CONTEXT, ...input };
+  return testFlow({
+    flow: knowledgeHubFlow,
+    action: "logActivity",
+    userId: USER,
+    stores,
+    input: payload,
+  });
 }
 
 function list(stores: Stores, input: Record<string, unknown> = {}) {
@@ -22,8 +31,9 @@ function list(stores: Stores, input: Record<string, unknown> = {}) {
 }
 
 /** All stored inbox records for the owner, keyed by storage path. */
-async function storedRecords(stores: Stores): Promise<Record<string, InboxRecord>> {
-  return (await stores.resourceState.getAll("user", USER)) as Record<string, InboxRecord>;
+async function inboxRecords(stores: Stores): Promise<Record<string, InboxRecord>> {
+  const all = (await stores.resourceState.getAll("user", USER)) as Record<string, InboxRecord>;
+  return Object.fromEntries(Object.entries(all).filter(([path]) => path.startsWith("inbox/")));
 }
 
 let stores: Stores;
@@ -45,7 +55,7 @@ describe("logActivity", () => {
     expect(typeof output.id).toBe("string");
     expect(typeof output.capturedAt).toBe("string");
 
-    const records = Object.values(await storedRecords(stores));
+    const records = Object.values(await inboxRecords(stores));
     expect(records).toHaveLength(1);
     const record = records[0];
     expect(record.kind).toBe("task");
@@ -56,13 +66,27 @@ describe("logActivity", () => {
     expect(record.fingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(record.occurredAt).toBeNull();
     expect(record.source).toBeNull();
+    expect(record.contextId).toBe(CONTEXT);
+  });
+
+  it("rejects a missing contextId and the error names the field (FIX-897)", async () => {
+    const result = await testFlow({
+      flow: knowledgeHubFlow,
+      action: "logActivity",
+      userId: USER,
+      stores,
+      input: { kind: "thought", content: "A stray idea", context: "c" },
+    });
+    expect(result.status).not.toBe("completed");
+    expect(result.error?.message).toMatch(/contextId/i);
+    expect(Object.keys(await inboxRecords(stores))).toHaveLength(0);
   });
 
   it("rejects a missing context and the error names the field (behaviour 2)", async () => {
     const result = await capture(stores, { kind: "thought", content: "A stray idea" });
     expect(result.status).not.toBe("completed");
     expect(result.error?.message).toMatch(/context/);
-    expect(Object.keys(await storedRecords(stores))).toHaveLength(0);
+    expect(Object.keys(await inboxRecords(stores))).toHaveLength(0);
   });
 
   it("rejects whitespace-only content or context (behaviour 3)", async () => {
@@ -70,12 +94,12 @@ describe("logActivity", () => {
     expect(blankContent.status).not.toBe("completed");
     const blankContext = await capture(stores, { kind: "thought", content: "c", context: "  \t " });
     expect(blankContext.status).not.toBe("completed");
-    expect(Object.keys(await storedRecords(stores))).toHaveLength(0);
+    expect(Object.keys(await inboxRecords(stores))).toHaveLength(0);
   });
 
   it("stores leading/trailing whitespace verbatim when the value is non-blank (behaviour 3)", async () => {
     await capture(stores, { kind: "thought", content: "  padded thought  ", context: "  padded ctx  " });
-    const record = Object.values(await storedRecords(stores))[0];
+    const record = Object.values(await inboxRecords(stores))[0];
     expect(record.content).toBe("  padded thought  ");
     expect(record.context).toBe("  padded ctx  ");
   });
@@ -95,19 +119,35 @@ describe("logActivity", () => {
     expect(retryOut.deduplicated).toBe(true);
     expect(retryOut.id).toBe(firstOut.id);
     expect(retryOut.capturedAt).toBe(firstOut.capturedAt);
-    expect(Object.keys(await storedRecords(stores))).toHaveLength(1);
+    expect(Object.keys(await inboxRecords(stores))).toHaveLength(1);
   });
 
-  it("keeps same content under a different context as two records (behaviour 5)", async () => {
+  it("keeps same content under a different contextId as two records (FIX-897)", async () => {
+    await capture(stores, {
+      contextId: "kctx_a",
+      kind: "task",
+      content: "Follow up with Sam",
+      context: "Standup",
+    });
+    await capture(stores, {
+      contextId: "kctx_b",
+      kind: "task",
+      content: "Follow up with Sam",
+      context: "Standup",
+    });
+    expect(Object.keys(await inboxRecords(stores))).toHaveLength(2);
+  });
+
+  it("keeps same content under a different context string as two records (behaviour 5)", async () => {
     await capture(stores, { kind: "task", content: "Follow up with Sam", context: "Standup" });
     await capture(stores, { kind: "task", content: "Follow up with Sam", context: "1:1 with Sam" });
-    expect(Object.keys(await storedRecords(stores))).toHaveLength(2);
+    expect(Object.keys(await inboxRecords(stores))).toHaveLength(2);
   });
 
   it("keeps same content + context under a different kind as two records (behaviour 6)", async () => {
     await capture(stores, { kind: "task", content: "Renew passport", context: "Trip planning" });
     await capture(stores, { kind: "memory", content: "Renew passport", context: "Trip planning" });
-    expect(Object.keys(await storedRecords(stores))).toHaveLength(2);
+    expect(Object.keys(await inboxRecords(stores))).toHaveLength(2);
   });
 
   it("replaces a swept record with a fresh pending one on re-capture (edge case 4)", async () => {
@@ -116,13 +156,13 @@ describe("logActivity", () => {
     // a dedup — a fresh pending record replaces the swept copy at the same key.
     const input = { kind: "task", content: "Renew passport", context: "Trip planning" };
     await capture(stores, input);
-    const [path, record] = Object.entries(await storedRecords(stores))[0];
+    const [path, record] = Object.entries(await inboxRecords(stores))[0];
     await stores.resourceState.set("user", USER, path, { ...record, status: "swept" });
 
     const retry = await capture(stores, input);
     expect((retry.output as { deduplicated: boolean }).deduplicated).toBe(false);
 
-    const records = await storedRecords(stores);
+    const records = await inboxRecords(stores);
     expect(Object.keys(records)).toHaveLength(1); // replaced in place, not appended
     expect(records[path].status).toBe("pending");
   });
@@ -152,11 +192,12 @@ describe("listInbox (behaviour 7)", () => {
 
     const result = await list(stores);
     const output = result.output as {
-      items: { content: string }[];
+      items: { content: string; contextId: string }[];
       totalPending: number;
       oldestPendingCapturedAt: string | null;
     };
     expect(output.items.map((i) => i.content)).toEqual(["newest", "middle", "oldest"]);
+    expect(output.items.every((i) => i.contextId === CONTEXT)).toBe(true);
     expect(output.totalPending).toBe(3);
     expect(output.oldestPendingCapturedAt).toBe("2026-07-10T09:00:00.000Z");
   });
@@ -184,7 +225,7 @@ describe("listInbox (behaviour 7)", () => {
   it("excludes swept records from items and totalPending", async () => {
     await capture(stores, { kind: "task", content: "to be swept", context: "c" });
     // Simulate the FIX-883 sweeper marking the record swept, in place.
-    const [path, record] = Object.entries(await storedRecords(stores))[0];
+    const [path, record] = Object.entries(await inboxRecords(stores))[0];
     await stores.resourceState.set("user", USER, path, { ...record, status: "swept" });
 
     const result = await list(stores);

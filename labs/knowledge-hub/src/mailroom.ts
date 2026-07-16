@@ -26,7 +26,7 @@ export function normalizeForFingerprint(text: string): string {
 
 /**
  * sha256 hex over the full normalized capture tuple, in a fixed field order:
- * `${kind}\n${norm(content)}\n${norm(context)}\n${occurredAt ?? ""}\n${source ?? ""}`.
+ * `${contextId}\n${kind}\n${norm(content)}\n${norm(context)}\n${occurredAt ?? ""}\n${source ?? ""}`.
  *
  * Covering the whole tuple makes this strictly a transport-retry identity: the
  * same sentence captured with different context (a different conversation) is a
@@ -35,6 +35,7 @@ export function normalizeForFingerprint(text: string): string {
  * `computeFingerprint`: normalized load-bearing fields in a fixed order.
  */
 export function computeFingerprint(input: {
+  contextId: string;
   kind: string;
   content: string;
   context: string;
@@ -42,6 +43,7 @@ export function computeFingerprint(input: {
   source: string | null;
 }): string {
   const tuple = [
+    input.contextId,
     input.kind,
     normalizeForFingerprint(input.content),
     normalizeForFingerprint(input.context),

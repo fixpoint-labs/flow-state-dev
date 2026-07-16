@@ -153,6 +153,7 @@ describe("fsdev.config forwards ?source= into the capture (FIX-888)", () => {
     // Unique content so a leftover .fsdev/data record from a prior local run
     // can't dedup this capture and flip `deduplicated`.
     const out = await captureViaMcp(flowState, "?source=claude-desktop", {
+      contextId: "kctx_config_1",
       kind: "task",
       content: `book dentist ${randomUUID()}`,
       context: "config wiring test",
@@ -165,6 +166,7 @@ describe("fsdev.config forwards ?source= into the capture (FIX-888)", () => {
     setSecret("test-secret");
     flowState = await loadConfig();
     const out = await captureViaMcp(flowState, "?source=endpoint", {
+      contextId: "kctx_config_2",
       kind: "task",
       content: `renew passport ${randomUUID()}`,
       context: "config wiring test",

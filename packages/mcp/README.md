@@ -88,9 +88,11 @@ mount (or an equivalent rewrite) before the dedicated URL is reachable.
 
 ## v1 Limitations
 
-- **Stateless only.** No `Mcp-Session-Id` is issued; every `tools/call` runs
-  in a fresh flow session. Stateful mode is deferred until a real consumer
-  asks for it.
+- **Stateless by default.** No transport `Mcp-Session-Id` is issued; every
+  `tools/call` runs in a fresh flow session unless the flow sets
+  `mcp.resolveSessionId` to derive a stable `sessionId` from the tool input
+  (caller-supplied session POC — see docs). Stateful transport mode is still
+  deferred until a real consumer asks for it.
 - **Single JSON tool result.** No `notifications/progress` streaming, no
   `outputSchema` / `structuredContent`. Tool results are text content only.
 - **`GET` and `DELETE`** on the endpoint return `405 Method Not Allowed`.

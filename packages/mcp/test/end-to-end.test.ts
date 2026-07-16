@@ -19,7 +19,7 @@ import {
 } from "@flow-state-dev/engine";
 import { createMcpTransportAdapter } from "../src";
 
-function buildRouter(adapter = createMcpTransportAdapter()) {
+function buildRouter(adapter = createMcpTransportAdapter(), mcp?: { resolveSessionId?: (ctx: { input: Record<string, unknown> }) => string | undefined }) {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
   registry.register(
@@ -30,10 +30,10 @@ function buildRouter(adapter = createMcpTransportAdapter()) {
         requireUser: false,
         resolvePrincipal: () => ({ userId: "mcp-test" })
       },
-      mcp: { enabled: true },
+      mcp: { enabled: true, ...mcp },
       actions: {
         recordPayment: {
-          inputSchema: z.object({ amount: z.number() }),
+          inputSchema: z.object({ amount: z.number(), sessionKey: z.string().optional() }),
           block: handler<{ amount: number }, { ok: true; amount: number }>({
             name: "record-payment",
             execute: (input) => ({ ok: true, amount: input.amount })
@@ -100,6 +100,35 @@ describe("MCP transport adapter — end-to-end", () => {
       const records = await stores.request.list({ limit: 10 });
       expect(records.length).toBe(1);
       expect(records[0]?.source).toBe("mcp");
+    } finally {
+      await disposeFlowApiRouter(router);
+    }
+  });
+
+  it("resolveSessionId groups consecutive tools/call under one sessionId", async () => {
+    const sessionKey = "sess_group_1";
+    const { router, stores } = buildRouter(createMcpTransportAdapter(), {
+      resolveSessionId: ({ input }) =>
+        typeof input.sessionKey === "string" ? input.sessionKey : undefined
+    });
+    try {
+      for (const id of [10, 11]) {
+        const response = await postMcp(router, "billing", {
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: {
+            name: "record_payment",
+            arguments: { amount: id, sessionKey }
+          }
+        });
+        expect(response.status).toBe(200);
+      }
+
+      const records = await stores.request.list({ limit: 10 });
+      expect(records.length).toBe(2);
+      expect(records[0]?.sessionId).toBe(sessionKey);
+      expect(records[1]?.sessionId).toBe(sessionKey);
     } finally {
       await disposeFlowApiRouter(router);
     }
