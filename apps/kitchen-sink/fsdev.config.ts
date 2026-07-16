@@ -68,16 +68,16 @@ const flowstate = createFlowState({
       utility: [
         "vercel/google/gemini-3.1-flash-lite",
         "vercel/anthropic/claude-haiku-4.5",
-        "vercel/openai/gpt-5.6-terra",
+        "vercel/openai/gpt-5.6-luna",
       ],
-      chat: ["vercel/anthropic/claude-sonnet-5", "vercel/openai/gpt-5.6-luna"],
+      chat: ["vercel/anthropic/claude-sonnet-5", "vercel/openai/gpt-5.6-terra"],
       plan: ["vercel/anthropic/claude-opus-4.8", "vercel/openai/gpt-5.6-sol"],
       synthesize: [
         "vercel/anthropic/claude-sonnet-5",
-        "vercel/openai/gpt-5.6-luna",
+        "vercel/openai/gpt-5.6-terra",
         "vercel/google/gemini-2.5-pro",
       ],
-      code: ["vercel/anthropic/claude-sonnet-5", "vercel/openai/gpt-5.6-luna"],
+      code: ["vercel/anthropic/claude-sonnet-5", "vercel/openai/gpt-5.6-terra"],
       reason: ["vercel/anthropic/claude-opus-4.8", "vercel/openai/gpt-5.6-sol"],
     },
     // Bind the gateway explicitly: the resolver's dynamic require() path

@@ -15,8 +15,8 @@ export const KITCHEN_SINK_MODELS = [
   "vercel/anthropic/claude-opus-4.8",
   "vercel/openai/gpt-5.4-nano",
   "vercel/openai/gpt-5.4-mini",
-  "vercel/openai/gpt-5.6-terra",
   "vercel/openai/gpt-5.6-luna",
+  "vercel/openai/gpt-5.6-terra",
   "vercel/openai/gpt-5.6-sol",
   "vercel/google/gemini-2.5-pro",
   "vercel/zai/glm-5.2",
@@ -55,12 +55,12 @@ export const MODEL_LABELS: Record<
     label: "GPT-5.4 Mini",
     description: "Mid-tier",
   },
-  "vercel/openai/gpt-5.6-terra": {
-    label: "GPT-5.6 Terra",
-    description: "Fast, low cost",
-  },
   "vercel/openai/gpt-5.6-luna": {
     label: "GPT-5.6 Luna",
+    description: "Fast, low cost",
+  },
+  "vercel/openai/gpt-5.6-terra": {
+    label: "GPT-5.6 Terra",
     description: "Balanced",
   },
   "vercel/openai/gpt-5.6-sol": {
