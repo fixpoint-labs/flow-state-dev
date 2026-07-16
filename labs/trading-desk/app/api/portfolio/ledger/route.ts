@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepository } from "@/db/portfolio-db";
+import { OneSourceConflictError } from "@/db/repository";
 import {
   recordManualEvent,
   recordEventSchema,
@@ -44,6 +45,16 @@ export async function POST(req: NextRequest) {
   }
   const { userId, ...input } = parsed.data;
   const repo = await getRepository();
-  const report = await recordManualEvent(input, userId, repo);
-  return NextResponse.json(report);
+  // A manual share event onto a ticker whose history is tax-lot-keyed (or vice
+  // versa) trips the one-source seam (FIX-895) — surface its message as a clean
+  // 409 so the add-transaction dialog can render it, not a generic 500.
+  try {
+    const report = await recordManualEvent(input, userId, repo);
+    return NextResponse.json(report);
+  } catch (err) {
+    if (err instanceof OneSourceConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    throw err;
+  }
 }
