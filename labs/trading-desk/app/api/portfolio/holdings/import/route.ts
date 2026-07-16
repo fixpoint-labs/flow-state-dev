@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getRepository } from "@/lib/portfolio-db";
+import { getRepository } from "@/db/portfolio-db";
 import {
   importHoldingsCsv,
   importHoldingsSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
+} from "@/domain/portfolio/services/portfolio-writes";
 
 // Import a holdings CSV into an account (FIX-772). Returns the authoritative
 // import report directly — the whole reason CRUD is a route and not a flow

@@ -89,6 +89,45 @@ fsdev dev
 
 Without a config, the server discovers flows, registers them in an in-memory flow registry, creates filesystem stores at `.fsdev/data/`, and starts listening. With an `fsdev.config.ts` present, it serves the app's own router (`await flowState.getRouter()`) using the config's registry, resolver, and stores. Because the config builds the router with its own resolver, `--model` together with a config is an error. API routes are served at `/api/flows/*`. The DevTool UI is served for all other paths. See [DevTool Setup](/docs/devtool/setup) and [App Configuration](/docs/cli/configuration) for full details.
 
+### `fsdev serve`
+
+Start a production HTTP server for the flow API and MCP endpoints, with no DevTool UI. This is the production counterpart to `fsdev dev`.
+
+```bash
+fsdev serve
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-p, --port <port>` | Port to listen on (default: `$PORT`, then `3000`) |
+| `--host <host>` | Host to bind (default: `$HOST`, then `0.0.0.0`) |
+| `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
+| `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
+| `--allow-unauthenticated` | Skip the loopback-bind guard and allow a network bind even when a flow has no authentication configured |
+
+`fsdev serve` requires a committed `fsdev.config.*` that default-exports a FlowState. It does not do directory discovery; without a config it errors. There is no `--flow-dir` and no `--no-config`.
+
+The two server commands differ in what they mount and where they bind. `fsdev dev` serves the flow API plus the DevTool UI, opens a browser, and binds a fixed port `4200` on a loopback host for local work. `fsdev serve` serves the flow API and MCP endpoints only, binds `$PORT` (then `3000`) on `$HOST` (then `0.0.0.0`) for a PaaS, and never mounts the DevTool SPA. Under the hood it wraps `serve()` from `@flow-state-dev/node` with no `staticDir`, so a non-API GET like `/index.html` returns 404. Bind defaults are the inverse of `dev`: `serve` reaches for a network host and an env-provided port, `dev` stays on loopback and `4200`.
+
+**Loopback-bind guard.** Before binding a non-loopback host, `fsdev serve` checks that every served flow has authentication configured. A flow whose `authentication.resolvePrincipal` is unset or left at the framework default runs on an unauthenticated principal, and exposing it on a network interface would open it to anyone who can reach the port. The guard refuses that bind. Resolve it one of three ways: configure `authentication.resolvePrincipal` on the flow, bind a loopback host (`--host 127.0.0.1`), or pass `--allow-unauthenticated` to opt out deliberately. Loopback binds skip the guard. See [Authentication](/docs/server/authentication).
+
+Exit code `3` covers an invalid port, a missing committed config, a guard refusal, and a bind or listen failure such as `EADDRINUSE` or `EACCES`. The server shuts down gracefully on `SIGTERM` and `SIGINT`.
+
+```bash
+# Bind $HOST (then 0.0.0.0) on $PORT (then 3000)
+fsdev serve
+
+# Override the port from the environment
+PORT=8080 fsdev serve
+
+# Point at an explicit config file
+fsdev serve --config ./fsdev.config.ts
+```
+
+See [App Configuration](/docs/cli/configuration) for the config contract, [Host adapters](/docs/server/host-adapters) for the `serve()` wrapper this command uses, [MCP Server](/docs/server/mcp) for the MCP endpoints it stands up, and the [Deployment overview](/guides/deployment) for platform guidance.
+
 ### `fsdev chat [flow] [action]`
 
 Start an interactive session (a REPL) over a flow. Type messages that route to a default target and stream replies back; use slash commands to switch the target and inspect the session.

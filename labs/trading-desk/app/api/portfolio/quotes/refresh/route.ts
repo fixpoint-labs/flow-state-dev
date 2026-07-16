@@ -1,8 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getRepository } from "@/lib/portfolio-db";
-import { refreshQuotes } from "@/src/flows/portfolio/get-quotes";
-import { usesLiveQuote } from "@/src/flows/portfolio/value-holding";
+import { getRepository } from "@/db/portfolio-db";
+import { refreshQuotes } from "@/domain/portfolio/services/get-quotes";
+import { usesLiveQuote } from "@/domain/portfolio/math/value-holding";
+import { fetchPortfolioQuotes } from "@/lib/portfolio-market-data";
 
 // Refresh the household's last-known prices (FIX-823): fetch a live quote per
 // held, quote-valued ticker and upsert the durable `app.quotes` table, then the
@@ -41,6 +42,10 @@ export async function POST(req: NextRequest) {
         .map((h) => h.ticker.toUpperCase()),
     ),
   ];
-  const report = await refreshQuotes({ tickers, dataSource: "live" }, repo);
+  const report = await refreshQuotes(
+    { tickers },
+    repo,
+    fetchPortfolioQuotes,
+  );
   return NextResponse.json(report);
 }

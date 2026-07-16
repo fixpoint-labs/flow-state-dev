@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root . --passWithNoTests",
     "test:watch": "vitest --root . --passWithNoTests",
-    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts"
+    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
+    "serve": "pnpm fsdev serve"
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",

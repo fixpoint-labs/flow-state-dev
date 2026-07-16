@@ -19,11 +19,11 @@ import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
-import { storePriceHistory } from "../src/flows/analysis/store-price-history";
-import { get_price_history } from "../src/flows/analysis/tools/data/get_price_history";
-import { priceHistoryResource } from "../src/flows/analysis/price-history-resource";
-import { technicalDataResource } from "../src/flows/analysis/technical-data-resource";
-import { sessionStateSchema } from "../src/flows/analysis/state";
+import { storePriceHistory } from "../flows/analysis/store-price-history";
+import { get_price_history } from "../flows/analysis/tools/data/get_price_history";
+import { priceHistoryResource } from "../flows/analysis/price-history-resource";
+import { technicalDataResource } from "../flows/analysis/technical-data-resource";
+import { sessionStateSchema } from "../flows/analysis/state";
 
 const priceFlow = defineFlow({
   kind: "trading-desk-price-history-test",

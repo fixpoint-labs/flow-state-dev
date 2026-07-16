@@ -33,10 +33,10 @@ import {
 import {
   COLLECTION_KEY_TO_SHORT,
   type AnyMemoShortName,
-} from "@/src/flows/analysis/registry";
-import type { MemoState } from "@/src/flows/analysis/resources";
-import type { ValuationSpineState } from "@/src/flows/analysis/valuation-spine-resource";
-import type { PriceHistorySlice } from "@/src/flows/analysis/price-history-resource";
+} from "@/flows/analysis/registry";
+import type { MemoState } from "@/flows/analysis/resources";
+import type { ValuationSpineState } from "@/flows/analysis/valuation-spine-resource";
+import type { PriceHistorySlice } from "@/flows/analysis/price-history-resource";
 import { buildReportSummary } from "./aggregate";
 import { DecisionHeader } from "./decision-header";
 import { ConvictionStrip } from "./conviction-strip";

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import { type SessionView, useResourceCollectionList } from "@flow-state-dev/react";
-import type { ThesisRecord } from "@/src/flows/portfolio/thesis-schema";
+import type { ThesisRecord } from "@/domain/portfolio/schema/thesis-schema";
 
 /**
  * Read the household's per-position theses (FIX-760) from the user-scoped

@@ -11,10 +11,10 @@
  * e2e, not here — here we lock the arithmetic.
  */
 import { describe, expect, it } from "vitest";
-import { computeConvergence } from "../src/flows/analysis/agents/lenses/convergence-math";
-import { LENS_PACK } from "../src/flows/analysis/agents/lenses/lenses";
-import { LENS_IDS } from "../src/flows/analysis/registry";
-import type { LensVerdictRecord } from "../src/flows/analysis/agents/lenses/lens-convergence-resource";
+import { computeConvergence } from "../flows/analysis/agents/lenses/convergence-math";
+import { LENS_PACK } from "../flows/analysis/agents/lenses/lenses";
+import { LENS_IDS } from "../flows/analysis/registry";
+import type { LensVerdictRecord } from "../flows/analysis/agents/lenses/lens-convergence-resource";
 
 /** Minimal verdict record builder — only the fields the math reads matter. */
 function verdict(

@@ -15,3 +15,5 @@ export { serve } from "./serve";
 export type { ServeOptions, ServeHandle } from "./serve";
 export { createServerApp } from "./app";
 export type { ServerApp, ServerAppOptions } from "./app";
+export { isLoopbackHost, assertNetworkBindIsAuthenticated } from "./bind-guard";
+export type { NetworkBindGuardOptions } from "./bind-guard";

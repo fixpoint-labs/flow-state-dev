@@ -43,11 +43,11 @@ import type { SessionView } from "@flow-state-dev/react";
 import { useFlowContext } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import { apiMutate } from "@/lib/use-api-query";
-import type { AssetClass, Holding } from "@/src/flows/portfolio/portfolio-schema";
-import type { Quote } from "@/src/flows/portfolio/get-quotes";
-import { deriveLots } from "@/src/flows/portfolio/lots";
+import type { AssetClass, Holding } from "@/domain/portfolio/schema/portfolio-schema";
+import type { Quote } from "@/domain/portfolio/services/get-quotes";
+import { deriveLots } from "@/domain/portfolio/math/lots";
 import type { TermLot } from "./holding-term";
-import type { ThesisInputFields } from "@/src/flows/portfolio/thesis-schema";
+import type { ThesisInputFields } from "@/domain/portfolio/schema/thesis-schema";
 import { AccountCard } from "./account-card";
 import { AccountDetail } from "./account-detail";
 import { AccountsActionsBar } from "./accounts-actions-bar";
@@ -70,7 +70,10 @@ import {
 } from "./add-transaction-dialog";
 import { ResolveSplitDialog } from "./resolve-split-dialog";
 import { ThesisDialog } from "./thesis-dialog";
+import { MandateDialog } from "./mandate-dialog";
+import { usePortfolioMandate } from "./use-portfolio-mandate";
 import { GainsTaxesSection } from "./gains-taxes-section";
+import { HealthSection } from "./health-section";
 import {
   PortfolioSectionRail,
   PortfolioSectionStrip,
@@ -87,8 +90,9 @@ import {
   holdingMarketValue,
   holdingUnrealizedPL,
   usesLiveQuote,
-} from "@/src/flows/portfolio/value-holding";
+} from "@/domain/portfolio/math/value-holding";
 import {
+  ASSET_CLASS_LABELS,
   DASH,
   allocationByClass,
   formatMoney,
@@ -98,14 +102,6 @@ import {
 } from "./portfolio-format";
 
 /** Display labels for the asset-class allocation breakdown. */
-const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
-  equity: "Equity",
-  fixed_income: "Fixed income",
-  cash: "Cash",
-  crypto: "Crypto",
-  alternative: "Alt",
-};
-
 type PortfolioPaneProps = {
   /** A bound session whose snapshot the user-scoped resource reads project
    *  from. Undefined when the user has no sessions at all. */
@@ -144,6 +140,10 @@ export function PortfolioPane({
   // Theses remain a user-scoped FSD resource (live client read), so this stays
   // session-based — unlike accounts/ledger/income which moved to REST routes.
   const { theses, loading: thesesLoading, refetch: refetchTheses } = useTheses(session);
+  // Durable household portfolio mandate (FIX-761) — live-read + write via the
+  // user-scoped resource; the summary chip + editor update on save/clear with no
+  // manual refetch.
+  const { mandate, ready: mandateReady, saveMandate, clearMandate } = usePortfolioMandate(session);
   // Last-known prices from the durable `app.quotes` table via the REST hook
   // (FIX-823) — the retired `portfolioQuotes` resource's `useResource` read is
   // gone. The refresh route upserts the table; `refetchQuotes` runs once that
@@ -175,6 +175,7 @@ export function PortfolioPane({
   // The ticker whose thesis editor is open (null = closed). The dialog pre-fills
   // from the existing thesis for this ticker, if any.
   const [thesisTicker, setThesisTicker] = useState<string | null>(null);
+  const [mandateOpen, setMandateOpen] = useState<boolean>(false);
   // The ticker whose "resolve split" dialog is open (null = closed), for a
   // flagged inconsistent-history holding (FIX-876).
   const [resolveSplitTicker, setResolveSplitTicker] = useState<string | null>(null);
@@ -650,6 +651,44 @@ export function PortfolioPane({
           Refresh prices
         </button>
 
+        {/* Durable portfolio mandate (FIX-761) — edit entry + a summary chip. The
+            write is a flow action (a reactive user-scoped resource), so it needs a
+            bound session; gate the affordance on `hasSession`. */}
+        <button
+          type="button"
+          onClick={() => setMandateOpen(true)}
+          disabled={!hasSession || !mandateReady}
+          title={
+            !hasSession
+              ? "Run an analysis first to bind a session"
+              : !mandateReady
+                ? "Loading the portfolio mandate…"
+                : "Edit the household portfolio mandate"
+          }
+          className={cn(
+            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px]",
+            !hasSession || !mandateReady
+              ? "cursor-not-allowed opacity-50"
+              : "hover:bg-[color:var(--c-surface-2)]",
+          )}
+        >
+          {mandate !== null ? "Edit mandate" : "Set mandate"}
+        </button>
+        {mandate !== null ? (
+          <span
+            className="rounded-sm border border-[color:var(--c-border)] bg-[color:var(--c-surface-2)] px-1.5 py-0.5 font-mono text-[10.5px] text-[color:var(--c-fg-muted)]"
+            title="Active portfolio mandate"
+          >
+            {mandate.label}
+            {mandate.constraints.maxPositionWeightPct != null
+              ? ` · max ${mandate.constraints.maxPositionWeightPct}%`
+              : ""}
+            {mandate.constraints.exclusions.length > 0
+              ? ` · ${mandate.constraints.exclusions.length} excluded`
+              : ""}
+          </span>
+        ) : null}
+
         <div className="ml-auto flex items-center gap-4 font-mono text-[11px] text-[color:var(--c-fg-muted)]">
           <span>
             total value{" "}
@@ -742,6 +781,18 @@ export function PortfolioPane({
               estimate={taxEstimate}
               profile={taxProfile}
               onEditProfile={() => setTaxProfileOpen(true)}
+            />
+          ) : section === "health" ? (
+            /* Health (FIX-762): household exposure, concentration, sector splits,
+               cash + coverage — the deterministic aggregation leaf, self-contained
+               like GainsTaxesSection. */
+            <HealthSection
+              accounts={accounts}
+              priceMap={priceMap}
+              pricesAsOf={priceAsOf}
+              hasSession={hasSession}
+              onRefreshPrices={() => void fetchPrices()}
+              onAccountsCorrected={refetchAccounts}
             />
           ) : accounts.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
@@ -888,6 +939,13 @@ export function PortfolioPane({
         existing={editingThesis}
         onSave={(payload) => void handleSaveThesis(payload)}
         onDelete={(ticker) => void handleDeleteThesis(ticker)}
+      />
+      <MandateDialog
+        open={mandateOpen}
+        onClose={() => setMandateOpen(false)}
+        existing={mandate}
+        onSave={(payload) => void saveMandate(payload)}
+        onClear={() => void clearMandate()}
       />
     </div>
   );

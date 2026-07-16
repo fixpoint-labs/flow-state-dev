@@ -13,7 +13,7 @@
 
 import type { ReactElement } from "react";
 import { cn } from "@/lib/utils";
-import type { IncomeSummaryRow } from "@/src/db/repository";
+import type { IncomeSummaryRow } from "@/db/repository";
 import { formatMoney } from "./portfolio-format";
 
 type IncomeTableProps = {

@@ -62,9 +62,9 @@ import {
   shortNameForAgent,
   type AgentName,
   type AnyMemoShortName,
-} from "@/src/flows/analysis/registry";
-import type { MemoStatus } from "@/src/flows/analysis/resources";
-import { memosCollection } from "@/src/flows/analysis/resources";
+} from "@/flows/analysis/registry";
+import type { MemoStatus } from "@/flows/analysis/resources";
+import { memosCollection } from "@/flows/analysis/resources";
 import type { ClientDataOf } from "@flow-state-dev/core";
 import { cn } from "@/lib/utils";
 
@@ -506,6 +506,7 @@ function PmHeroWithScenarios({
       lensConvergence={data?.lensConvergence ?? null}
       snapshotAsOf={data?.portfolioFit?.snapshotAsOf ?? null}
       mandateDecision={data?.mandateDecision ?? null}
+      policyDecision={data?.policyDecision ?? null}
       />
     </div>
   );

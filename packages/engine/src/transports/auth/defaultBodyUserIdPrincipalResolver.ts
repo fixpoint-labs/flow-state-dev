@@ -39,6 +39,38 @@ export const defaultBodyUserIdPrincipalResolver: PrincipalResolver = (
   return orgId === undefined ? { userId } : { userId, orgId };
 };
 
+/**
+ * Brand marking the framework default resolver. Keyed via the global symbol
+ * registry (`Symbol.for`) so it survives across duplicate `@flow-state-dev/engine`
+ * module instances — a consumer whose `fsdev.config.*` resolves the framework
+ * through a different copy still carries the same brand, so identity comparison
+ * against one instance's sentinel is not required.
+ */
+const DEFAULT_PRINCIPAL_RESOLVER_BRAND = Symbol.for(
+  "@flow-state-dev/engine/defaultBodyUserIdPrincipalResolver",
+);
+(defaultBodyUserIdPrincipalResolver as unknown as Record<symbol, boolean>)[
+  DEFAULT_PRINCIPAL_RESOLVER_BRAND
+] = true;
+
+/**
+ * Whether `resolver` is the framework default body-userId resolver — i.e. it
+ * trusts a caller-supplied `body.userId` with no real authentication. Checks the
+ * package-instance-stable brand (not function identity), so it holds even when
+ * the resolver came from a different `@flow-state-dev/engine` instance. Callers
+ * that treat "no resolver configured" as unauthenticated must handle `undefined`
+ * separately — this predicate is about an actual default-resolver value.
+ *
+ * A hand-written resolver that merely delegates to the default is NOT detected
+ * (it is a distinct, unbranded function); that is out of scope for this check.
+ */
+export function isDefaultBodyUserIdPrincipalResolver(resolver: unknown): boolean {
+  return (
+    typeof resolver === "function" &&
+    (resolver as unknown as Record<symbol, unknown>)[DEFAULT_PRINCIPAL_RESOLVER_BRAND] === true
+  );
+}
+
 function pickBody(
   context: PrincipalResolutionContext
 ): Record<string, unknown> | undefined {

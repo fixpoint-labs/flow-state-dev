@@ -24,7 +24,7 @@ import type {
   ThesisRecord,
   TimeHorizon,
   TripwireKind,
-} from "@/src/flows/portfolio/thesis-schema";
+} from "@/domain/portfolio/schema/thesis-schema";
 import {
   buildSaveThesisPayload,
   canSaveThesis,

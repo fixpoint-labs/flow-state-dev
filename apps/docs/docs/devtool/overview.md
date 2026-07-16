@@ -33,6 +33,8 @@ The command does three things:
 
 Flow data persists to `.fsdev/data/` on disk, so sessions survive restarts.
 
+For production, `fsdev serve` runs the same flow API and MCP endpoints with no DevTool UI and binds `0.0.0.0:$PORT`. See the [CLI API Reference](/docs/api/cli) for its options and the loopback-bind guard.
+
 ### Options
 
 | Flag | Default | Description |

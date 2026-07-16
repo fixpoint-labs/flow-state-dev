@@ -16,7 +16,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { createPostgresStores, type QueryExecutor } from "@flow-state-dev/store-postgres";
-import { createMigratedPgliteDb } from "../src/db/client";
+import { createMigratedPgliteDb } from "../db/client";
 
 if (process.env.FSD_DB_URL ?? process.env.DATABASE_URL) {
   console.error(
@@ -25,17 +25,17 @@ if (process.env.FSD_DB_URL ?? process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-// Keep in sync with PGLITE_DATA_DIR in lib/portfolio-db.ts.
+// Keep in sync with PGLITE_DATA_DIR in db/portfolio-db.ts.
 const dataDir = path.join(process.cwd(), ".fsdev", "pglite");
 
 rmSync(dataDir, { recursive: true, force: true });
 console.log(`[db:clean] Wiped ${path.relative(process.cwd(), dataDir)}.`);
 
 // PGlite's NodeFS mkdirs only the leaf data dir (non-recursive), so ensure the
-// `.fsdev/` parent exists — same guard as lib/portfolio-db.ts.
+// `.fsdev/` parent exists — same guard as db/portfolio-db.ts.
 mkdirSync(dataDir, { recursive: true });
 const pglite = new PGlite(dataDir);
-await createMigratedPgliteDb(pglite, path.join(process.cwd(), "src", "db", "migrations"));
+await createMigratedPgliteDb(pglite, path.join(process.cwd(), "db", "migrations"));
 const executor: QueryExecutor = {
   async query(text, values) {
     const result = await pglite.query(text, values as unknown[]);

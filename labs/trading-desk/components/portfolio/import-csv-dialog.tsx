@@ -24,11 +24,11 @@ import {
 } from "react";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/utils";
-import { parsePortfolioCsv } from "@/src/flows/portfolio/portfolio-csv";
+import { parsePortfolioCsv } from "@/domain/portfolio/parsers/portfolio-csv";
 import type {
   AccountState,
   ImportMode,
-} from "@/src/flows/portfolio/portfolio-schema";
+} from "@/domain/portfolio/schema/portfolio-schema";
 
 type ImportSubmit = {
   accountId: string;

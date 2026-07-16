@@ -26,14 +26,14 @@ import { TranscriptPane } from "@/components/transcript/transcript-pane";
 import { ThesesPane } from "@/components/theses/theses-pane";
 import { PastReportsPane } from "@/components/reports/past-reports-pane";
 import { PortfolioPane } from "@/components/portfolio/portfolio-pane";
-import { parseReportRow, reportRowTuple } from "@/src/flows/analysis/report-index";
-import { buildAnalyzeInput } from "@/src/flows/analysis/analyze-input";
-import type { RiskMandateId } from "@/src/flows/analysis/lib/risk-mandate";
-import type { MemoStatus } from "@/src/flows/analysis/resources";
+import { parseReportRow, reportRowTuple } from "@/flows/analysis/report-index";
+import { buildAnalyzeInput } from "@/flows/analysis/analyze-input";
+import type { RiskMandateId } from "@/flows/analysis/lib/risk-mandate";
+import type { MemoStatus } from "@/flows/analysis/resources";
 import {
   EMPTY_INSTRUCTIONS,
   type SpecialInstructionsState,
-} from "@/src/flows/analysis/special-instructions";
+} from "@/flows/analysis/special-instructions";
 
 const DEFAULT_TICKER = "NVDA";
 const FLOW_KIND = "analysis";

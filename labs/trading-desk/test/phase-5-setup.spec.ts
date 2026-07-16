@@ -6,10 +6,10 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { setupPhase5Memos } from "../src/flows/analysis/agents/portfolio-manager/setup";
-import { memosCollection } from "../src/flows/analysis/resources";
-import { sessionStateSchema } from "../src/flows/analysis/state";
-import { PHASE_5_MEMO_KEYS } from "../src/flows/analysis/registry";
+import { setupPhase5Memos } from "../flows/analysis/agents/portfolio-manager/setup";
+import { memosCollection } from "../flows/analysis/resources";
+import { sessionStateSchema } from "../flows/analysis/state";
+import { PHASE_5_MEMO_KEYS } from "../flows/analysis/registry";
 import { latestMemoStatus } from "./_helpers/memo-status";
 
 const fixtureFlow = defineFlow({

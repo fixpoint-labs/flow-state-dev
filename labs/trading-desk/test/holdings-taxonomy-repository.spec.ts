@@ -18,14 +18,14 @@
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createMigratedPgliteDb } from "@/src/db/client";
+import { createMigratedPgliteDb } from "@/db/client";
 import {
   createPortfolioRepository,
   type PortfolioRepository,
-} from "@/src/db/repository";
-import type { CanonicalRow } from "@/src/flows/portfolio/portfolio-schema";
+} from "@/db/repository";
+import type { CanonicalRow } from "@/domain/portfolio/schema/portfolio-schema";
 
-const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
+const MIGRATIONS_DIR = fileURLToPath(new URL("../db/migrations", import.meta.url));
 
 async function freshRepo(): Promise<PortfolioRepository> {
   return createPortfolioRepository(await createMigratedPgliteDb(new PGlite(), MIGRATIONS_DIR));

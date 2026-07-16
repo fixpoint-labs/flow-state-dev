@@ -12,16 +12,16 @@
  * args so the module-level cache never crosses test cases.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveToolPayload } from "../src/flows/analysis/tools/runtime/resolve";
-import { loadFixture } from "../src/flows/analysis/tools/runtime/fixtures";
-import { recordFixture } from "../src/flows/analysis/tools/runtime/recorder";
-import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
-import type { ToolOutput } from "../src/flows/analysis/tools/schemas";
+import { resolveToolPayload } from "../flows/analysis/tools/runtime/resolve";
+import { loadFixture } from "../flows/analysis/tools/runtime/fixtures";
+import { recordFixture } from "../flows/analysis/tools/runtime/recorder";
+import { _resetCache } from "../lib/cache";
+import type { ToolOutput } from "../flows/analysis/tools/schemas";
 
-vi.mock("../src/flows/analysis/tools/runtime/fixtures", () => ({
+vi.mock("../flows/analysis/tools/runtime/fixtures", () => ({
   loadFixture: vi.fn(),
 }));
-vi.mock("../src/flows/analysis/tools/runtime/recorder", () => ({
+vi.mock("../flows/analysis/tools/runtime/recorder", () => ({
   recordFixture: vi.fn(async () => undefined),
 }));
 

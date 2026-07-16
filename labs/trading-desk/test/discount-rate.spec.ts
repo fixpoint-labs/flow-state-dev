@@ -12,9 +12,9 @@ import {
   SECTOR_DISCOUNT_RATES,
   DISCOUNT_RATE_FLOOR,
   DISCOUNT_RATE_CEILING,
-} from "../src/flows/analysis/lib/discount-rate";
-import { GICS_TO_ETF } from "../src/flows/analysis/lib/sector-resolution";
-import { HURDLE_RATE } from "../src/flows/analysis/lib/expected-return";
+} from "../flows/analysis/lib/discount-rate";
+import { GICS_TO_ETF } from "../flows/analysis/lib/sector-resolution";
+import { HURDLE_RATE } from "../flows/analysis/lib/expected-return";
 
 describe("resolveDiscountRate", () => {
   it("exact GICS 'Technology' hits the table (10%), basis sector", () => {

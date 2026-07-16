@@ -14,7 +14,7 @@ This is **not a published package** (`private: true`). OKF v0.1 is a proof-of-co
 | Concept collection (OKF frontmatter → state, links → edges; `scope: "user"`) | `src/concepts.ts` | Collection |
 | `createKnowledgeBaseCapability()` — nav tools + CRUD `fns` (`listConcepts` / `readConcept` / `createConcept` / `updateConcept` / `deleteConcept` / `relate` / `importBundle` / `exportBundle`) | `src/capability.ts` | Capability |
 | MCP server flow (`knowledge`) — 8 CRUD/search tools over MCP, bearer-secret auth, CLI-only import/export | `src/flow.ts` | MCP server |
-| Standalone server entry (`serve()`, no app wrapper) | `src/server.ts` | MCP server |
+| Server entry (`pnpm serve` → `fsdev serve`, no hand-written entry) | `package.json` / `fsdev.config.ts` | MCP server |
 | Sample OKF bundle | `sample-bundle/` | Fixture |
 
 ## Run it
@@ -62,7 +62,7 @@ curl -X POST http://localhost:3000/api/flows/knowledge/mcp \
 
 ## Stand it up
 
-The standalone entry (`src/server.ts`) calls `serve()` from `@flow-state-dev/node` — no Next.js, no `app/`, no React. Deploy it to a long-lived host (Railway, Render, Fly, a container, a VPS):
+The app is served by `pnpm serve`, which runs `fsdev serve` — no hand-written entry, no Next.js, no `app/`, no React. `fsdev serve` starts the flow API and MCP endpoints from the committed `fsdev.config.ts` and binds `0.0.0.0:$PORT`. Deploy it to a long-lived host (Railway, Render, Fly, a container, a VPS):
 
 ```bash
 KB_MCP_SECRET=<a-strong-secret> DATABASE_URL=<postgres-url> pnpm serve

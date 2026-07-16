@@ -158,6 +158,8 @@ What the mandate moves is the position size and an explicit worth-it verdict, no
 
 Three presets ship. This is a demonstration of gating a sizing decision on an explicit, documented standard. It is not production risk governance, and not advice.
 
+The per-run mandate can also inherit from a durable, user-set portfolio policy. That policy is an Investment Policy Statement, a plain record of what the book is aiming for: a target mix across asset classes, standing rules like a maximum weight for any one name or a list of names never to add, and a time horizon. You write it once in the Portfolio view and it sticks. When a run starts, the desk reads it, so the appetite dial can come from the standing policy instead of being picked fresh each time. The standing constraints shape the size too: the recommended weight respects the single-name cap, and an excluded name is never recommended as an add. It is policy-gated sizing for a demo, not a production IPS governance framework, and not advice.
+
 ## Custom instructions and steerability
 
 The status bar carries a settings gear that opens a free-text dialog: one global block applied to every phase, and one block per phase for narrower guidance. Edits persist for the user across every run and survive server restarts. It's the example's first user-scoped resource, which makes it a useful walkthrough of three things: how to declare scope and isolation on a resource, where to inject prompt context once and have it reach every agent, and how to read user-scope state from the client without writing a new endpoint.

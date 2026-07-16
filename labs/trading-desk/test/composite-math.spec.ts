@@ -3,7 +3,7 @@ import {
   altmanZDoublePrime,
   piotroskiFScore,
   type StatementPeriod,
-} from "../src/flows/analysis/tools/data/composite-math";
+} from "../flows/analysis/tools/data/composite-math";
 
 const fullPeriod: StatementPeriod = {
   totalAssets: 1000,

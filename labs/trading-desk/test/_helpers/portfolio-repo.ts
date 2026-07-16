@@ -2,12 +2,12 @@
  * Test helper for the app-owned portfolio repository (FIX-772).
  *
  * The flow seed (`seedSession`) and the portfolio action handlers now read/write
- * accounts + holdings through `getRepository()` from `@/lib/portfolio-db` instead
+ * accounts + holdings through `getRepository()` from `@/db/portfolio-db` instead
  * of an FSD resource. In tests that singleton would try to open the persisted
  * `.fsdev/pglite` dir, so each affected spec mocks the module:
  *
  *   const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
- *   vi.mock("@/lib/portfolio-db", () => ({
+ *   vi.mock("@/db/portfolio-db", () => ({
  *     getRepository: async () => repoState.repo!,
  *   }));
  *   beforeEach(async () => { repoState.repo = await makeTestRepository(); });
@@ -19,14 +19,14 @@
  */
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
-import { createMigratedPgliteDb } from "@/src/db/client";
+import { createMigratedPgliteDb } from "@/db/client";
 import {
   createPortfolioRepository,
   type PortfolioRepository,
-} from "@/src/db/repository";
-import type { AccountType, CanonicalRow } from "@/src/flows/portfolio/portfolio-schema";
+} from "@/db/repository";
+import type { AccountType, CanonicalRow } from "@/domain/portfolio/schema/portfolio-schema";
 
-const MIGRATIONS_DIR = fileURLToPath(new URL("../../src/db/migrations", import.meta.url));
+const MIGRATIONS_DIR = fileURLToPath(new URL("../../db/migrations", import.meta.url));
 
 /** A fresh, isolated in-memory portfolio repository (migrated `app.*` schema). */
 export async function makeTestRepository(): Promise<PortfolioRepository> {

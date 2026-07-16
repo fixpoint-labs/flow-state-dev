@@ -8,6 +8,13 @@
 
 **Tech Stack:** TypeScript, `@flow-state-dev/core` block API, pnpm workspace, vitest, `git mv`.
 
+> **Historical path note:** This plan records the original move into
+> `tools/providers/`. Provider clients now live at app-level
+> `labs/trading-desk/lib/providers/`; current code and `labs/trading-desk/CLAUDE.md`
+> are authoritative for new imports. Cache and concurrency helpers were also
+> later extracted to `labs/trading-desk/lib/`; the paths below preserve the
+> original execution plan.
+
 ---
 
 ## How to execute this plan (READ FIRST — it is a refactor, not a feature)

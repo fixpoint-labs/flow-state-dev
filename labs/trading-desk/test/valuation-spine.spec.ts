@@ -7,21 +7,21 @@
  * (loss-makers, negative FCF, r ≤ g, financials).
  */
 import { describe, expect, it } from "vitest";
-import { computeExpectedReturn, HURDLE_RATE } from "../src/flows/analysis/lib/expected-return";
-import { computeFairValue, isFinancialSector } from "../src/flows/analysis/lib/fair-value";
-import { computeSetupScore } from "../src/flows/analysis/lib/setup-score";
+import { computeExpectedReturn, HURDLE_RATE } from "../flows/analysis/lib/expected-return";
+import { computeFairValue, isFinancialSector } from "../flows/analysis/lib/fair-value";
+import { computeSetupScore } from "../flows/analysis/lib/setup-score";
 import {
   modelImpliedRating,
   clampRatingToBand,
   type FinalRating,
-} from "../src/flows/analysis/lib/rating-engine";
+} from "../flows/analysis/lib/rating-engine";
 import {
   buildValuationSpine,
   formatValuationSpine,
   formatRatingEnvelope,
-} from "../src/flows/analysis/lib/valuation-spine";
-import { computeValuation } from "../src/flows/analysis/lib/valuation";
-import { valuationSpineStateSchema } from "../src/flows/analysis/valuation-spine-resource";
+} from "../flows/analysis/lib/valuation-spine";
+import { computeValuation } from "../flows/analysis/lib/valuation";
+import { valuationSpineStateSchema } from "../flows/analysis/valuation-spine-resource";
 
 import nvdaFundamentals from "../fixtures/NVDA/2026-05-06/fundamentals.json";
 import nvdaBalanceSheet from "../fixtures/NVDA/2026-05-06/balance-sheet.json";

@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getRepository } from "@/lib/portfolio-db";
+import { getRepository } from "@/db/portfolio-db";
 import {
   importTransactionFile,
   importTransactionsSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
+} from "@/domain/portfolio/services/portfolio-writes";
 
 // Import a brokerage transaction-history file (OFX / QFX / QBO) into an
 // account's ledger (FIX-775), returning the file-import report directly. Writes

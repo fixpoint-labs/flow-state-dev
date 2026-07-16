@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
-import analysisFlow from "../src/flows/analysis/flow";
+import analysisFlow from "../flows/analysis/flow";
 
 const USER_ID = "devuser";
 // specialInstructions is now user-scoped with flowIsolation: false, so state

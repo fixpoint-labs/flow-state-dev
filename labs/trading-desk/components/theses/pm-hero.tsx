@@ -13,13 +13,14 @@ import { AgentBadge } from "@/components/agent-badge";
 import {
   AGENTS,
   type AgentName,
-} from "@/src/flows/analysis/registry";
+} from "@/flows/analysis/registry";
 import { ThesisBody } from "./thesis-body";
 import { MandatePanel } from "./mandate-panel";
+import { PolicyPanel } from "./policy-panel";
 import type {
   MemoState,
   ThesisSection,
-} from "@/src/flows/analysis/resources";
+} from "@/flows/analysis/resources";
 import { cn } from "@/lib/utils";
 
 const TIERS = ["Sell", "Underweight", "Hold", "Overweight", "Buy"] as const;
@@ -42,6 +43,7 @@ type AcceptedAdjustment = NonNullable<
 type PortfolioFit = NonNullable<MemoState["portfolioFit"]>;
 type LensConvergence = NonNullable<MemoState["lensConvergence"]>;
 type MandateDecision = NonNullable<MemoState["mandateDecision"]>;
+type PolicyDecision = NonNullable<MemoState["policyDecision"]>;
 
 type ScenarioSummary = {
   name: string;
@@ -89,6 +91,8 @@ export type PmHeroProps = {
   // FIX-752 — risk-appetite mandate verdict. Null on a mandate-blind run (the
   // panel is omitted entirely, like portfolioFit / lensConvergence above).
   mandateDecision: MandateDecision | null;
+  // FIX-761 — durable portfolio-mandate policy fit. Null on a mandate-blind run.
+  policyDecision: PolicyDecision | null;
 };
 
 const METRIC_ORDER = ["rating", "ticker", "window", "size", "stop", "target"] as const;
@@ -112,6 +116,7 @@ export function PmHero({
   lensConvergence,
   snapshotAsOf,
   mandateDecision,
+  policyDecision,
 }: PmHeroProps): ReactElement {
   const meta = AGENTS[agent];
   const idx = tierIndex(finalRating);
@@ -250,6 +255,8 @@ export function PmHero({
       {mandateDecision !== null ? (
         <MandatePanel decision={mandateDecision} />
       ) : null}
+
+      {policyDecision !== null ? <PolicyPanel decision={policyDecision} /> : null}
 
       {decisionConfidence !== null || agreesWithTrader !== null ? (
         <div className="flex flex-wrap items-center gap-4 text-[11px] text-[color:var(--c-fg-muted)]">

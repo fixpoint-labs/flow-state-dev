@@ -10,13 +10,12 @@
     "test:watch": "vitest --root . --passWithNoTests",
     "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
     "okf:smoke": "tsx scripts/visualize-smoke.ts",
-    "serve": "tsx src/server.ts"
+    "serve": "pnpm fsdev serve"
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/mcp": "workspace:*",
-    "@flow-state-dev/node": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "gray-matter": "^4.0.3",
     "yaml": "^2.9.0",

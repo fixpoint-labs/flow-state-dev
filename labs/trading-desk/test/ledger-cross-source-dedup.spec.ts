@@ -17,15 +17,15 @@
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createMigratedPgliteDb } from "@/src/db/client";
+import { createMigratedPgliteDb } from "@/db/client";
 import {
   createPortfolioRepository,
   type PortfolioRepository,
-} from "@/src/db/repository";
-import { parseOfxTransactions } from "@/src/flows/portfolio/portfolio-ofx";
-import type { LedgerEventInput } from "@/src/flows/portfolio/ledger-schema";
+} from "@/db/repository";
+import { parseOfxTransactions } from "@/domain/portfolio/parsers/portfolio-ofx";
+import type { LedgerEventInput } from "@/domain/portfolio/schema/ledger-schema";
 
-const MIGRATIONS_DIR = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
+const MIGRATIONS_DIR = fileURLToPath(new URL("../db/migrations", import.meta.url));
 
 let repo: PortfolioRepository;
 beforeEach(async () => {

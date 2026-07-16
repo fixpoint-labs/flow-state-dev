@@ -27,7 +27,7 @@ import { TxStruct } from "./tx-struct";
 import {
   AGENTS,
   type AgentName,
-} from "@/src/flows/analysis/registry";
+} from "@/flows/analysis/registry";
 import { cn } from "@/lib/utils";
 
 type Props = {

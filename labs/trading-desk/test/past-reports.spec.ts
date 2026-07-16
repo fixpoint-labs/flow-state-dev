@@ -23,22 +23,22 @@ import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
-import { checkTickerResolvable } from "../src/flows/analysis/orchestration/guards";
-import { commitPortfolioManagerMemo } from "../src/flows/analysis/agents/portfolio-manager/writer";
-import { decisionSnapshotResource } from "../src/flows/analysis/decision-snapshot-resource";
-import { memosCollection } from "../src/flows/analysis/resources";
+import { checkTickerResolvable } from "../flows/analysis/orchestration/guards";
+import { commitPortfolioManagerMemo } from "../flows/analysis/agents/portfolio-manager/writer";
+import { decisionSnapshotResource } from "../flows/analysis/decision-snapshot-resource";
+import { memosCollection } from "../flows/analysis/resources";
 import {
   parseReportRow,
   relativeTime,
   reportRowTuple,
   type ReportRow,
   type ReportSessionSummary,
-} from "../src/flows/analysis/report-index";
-import { sessionStateSchema } from "../src/flows/analysis/state";
+} from "../flows/analysis/report-index";
+import { sessionStateSchema } from "../flows/analysis/state";
 import {
   valuationSpineResource,
   type ValuationSpineState,
-} from "../src/flows/analysis/valuation-spine-resource";
+} from "../flows/analysis/valuation-spine-resource";
 
 // ── 1. parseReportRow ────────────────────────────────────────────────
 
@@ -342,6 +342,7 @@ function portfolioDecision(
       sizeStance: "",
       mandateOverrideReason: "",
     },
+    policyFit: { allocationRead: "", constraintRead: "" },
     citations: null,
   };
 }

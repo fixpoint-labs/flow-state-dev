@@ -30,13 +30,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
-import type { PortfolioRepository } from "@/src/db/repository";
+import type { PortfolioRepository } from "@/db/repository";
 
 // Both flows resolve getRepository() to this one in-memory repo, reset fresh
 // per test (FIX-772) — the cross-flow share is now a shared repository, not a
 // shared resource key.
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
+vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
@@ -46,8 +46,8 @@ vi.mock("@/lib/portfolio-db", () => ({
 import {
   saveAccount,
   saveAccountSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
-import reportFlow from "../src/flows/analysis/flow";
+} from "@/domain/portfolio/services/portfolio-writes";
+import reportFlow from "../flows/analysis/flow";
 
 const USER_ID = "shared-user";
 const SESSION_ID = "cross-flow-session";

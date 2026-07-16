@@ -1,9 +1,9 @@
 {
-  "_note": "AAPL: bought 10@150 then 5@200, sold 4 (FIFO consumes the 150 lot) → 11 open. 456789012 is CUSIP-only (no SECLIST ticker) → unresolved, keyed by CUSIP. The SPLIT is skipped.",
+  "_note": "AAPL: bought 10@150 then 5@200, sold 4 (FIFO consumes the 150 lot), then a 4:1 split rebases 11 open shares to 44. 456789012 is CUSIP-only (no SECLIST ticker) → unresolved, keyed by CUSIP.",
   "positions": [
-    { "ticker": "AAPL", "quantity": 11, "basisUnknown": false },
+    { "ticker": "AAPL", "quantity": 44, "basisUnknown": false },
     { "ticker": "456789012", "quantity": 3, "basisUnknown": false }
   ],
   "unresolvedCusips": ["456789012"],
-  "skipped": 1
+  "skipped": 0
 }

@@ -11,7 +11,7 @@ import {
   mostConservativeMandate,
   resolveMandate,
   riskMandateIdSchema,
-} from "../src/flows/analysis/lib/risk-mandate";
+} from "../flows/analysis/lib/risk-mandate";
 
 describe("MANDATE_PACK", () => {
   it("ships exactly the three ids in ascending risk order", () => {

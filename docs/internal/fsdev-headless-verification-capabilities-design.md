@@ -67,7 +67,7 @@ as inspectable JSON at `.fsdev/data/state/session/<id>/<key>`.
 
 **Caveats (verified this session).**
 - **Partial for the desk.** The desk reads its portfolio repository **directly**
-  via `getRepository()` ([portfolio-db.ts:105](../../labs/trading-desk/lib/portfolio-db.ts#L105)),
+  via `getRepository()` ([portfolio-db.ts:105](../../labs/trading-desk/db/portfolio-db.ts#L105)),
   not through the store registry. `seedSession` calls it, so PGlite still spins up
   regardless of `--store`. The override would relocate the *framework-store*
   resources (memos, decision snapshot) to files but leave the portfolio repo on

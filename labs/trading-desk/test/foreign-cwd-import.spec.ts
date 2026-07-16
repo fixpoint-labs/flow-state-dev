@@ -26,7 +26,7 @@ afterAll(() => {
 
 describe("importing the analysis flow from a foreign cwd", () => {
   it("loads a phase prompt through loadPrompt", async () => {
-    const { loadPrompt } = await import("../src/flows/analysis/lib/prompt");
+    const { loadPrompt } = await import("../flows/analysis/lib/prompt");
     const pf = loadPrompt("agents/analysts/prompts/fundamentals.prompt.md");
     // A parsed PromptFile with its frontmatter intact proves the load + parse
     // succeeded; don't pin the prompt's copy, which changes independently.
@@ -35,7 +35,7 @@ describe("importing the analysis flow from a foreign cwd", () => {
 
   it("loads a fixture without a rootDir override", async () => {
     const { loadFixture } = await import(
-      "../src/flows/analysis/tools/runtime/fixtures"
+      "../flows/analysis/tools/runtime/fixtures"
     );
     const result = await loadFixture("get_balance_sheet", {
       ticker: "NVDA",
@@ -46,7 +46,7 @@ describe("importing the analysis flow from a foreign cwd", () => {
   });
 
   it("imports the full flow module", async () => {
-    const mod = await import("../src/flows/analysis/flow");
+    const mod = await import("../flows/analysis/flow");
     // Duck-type the FlowInstance shape (isFlowInstance lives in the CLI
     // package, which trading-desk doesn't depend on).
     const flow = mod.default as { kind?: unknown; actions?: unknown };

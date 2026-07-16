@@ -322,7 +322,7 @@ first:
 pnpm --filter @flow-state-dev/trading-desk migrate   # framework + app schema
 ```
 
-The wiring lives in [`lib/portfolio-db.ts`](lib/portfolio-db.ts) (the shared
+The wiring lives in [`db/portfolio-db.ts`](db/portfolio-db.ts) (the shared
 backing — PGlite in dev, a host-owned `pg.Pool` in deploy, shared with the
 framework store) and [`lib/server.ts`](lib/server.ts) (the lazy async router).
 See also [Persistence overview](../../apps/docs/docs/persistence/overview.md).
@@ -335,7 +335,7 @@ The desk owns the latter in real relational tables — `app.accounts`,
 `app.holdings`, `app.ledger_events`, and the durable last-known-price cache
 `app.quotes` in a dedicated `app` Postgres schema —
 reached through a thin typed repository
-([`src/db/repository.ts`](src/db/repository.ts)), not through an FSD resource.
+([`db/repository.ts`](db/repository.ts)), not through an FSD resource.
 Action handlers, the analysis seed, and the Portfolio UI read/write through that
 repository (the UI via a [`/api/portfolio/accounts`](app/api/portfolio/accounts/route.ts)
 read route). This is the showcase answer to "does FSD force my domain data
@@ -345,21 +345,20 @@ your relational entities — including a price cache that a household view will
 `GROUP BY ticker` — in your own tables. The quotes cache started as a per-user
 `portfolioQuotes` resource and graduated to a ticker-keyed table once it needed to
 persist across sessions and join to holdings. Migrations live in
-[`src/db/migrations/`](src/db/migrations) (`pnpm db:generate`), applied in process
+[`db/migrations/`](db/migrations) (`pnpm db:generate`), applied in process
 on the PGlite dev backing and via `scripts/migrate.ts` on deploy. It's a pattern
 for any multi-tier FSD app, not a desk-only hack.
 
 The whole portfolio domain — accounts, holdings, ledger — is exposed to the UI
 as a plain REST surface over the repository, reads AND writes. It is a
 deliberate showcase boundary: **flows are for the agentic pipeline** (the
-`analysis` flow) and the genuinely flow-shaped portfolio work (`getQuotes`,
-which fans out live prices and upserts the durable `app.quotes` table, and
-`extractHoldingsFromPdf`, a
-streaming LLM extraction) — **plain routes are for domain CRUD.** Forcing CRUD
-through a flow buys nothing and costs a real return value (`sendAction` returns
-a request envelope, not the handler's output — so an import report can't reach
+`analysis` flow) and the genuinely flow-shaped portfolio work
+(`extractHoldingsFromPdf`, theses, mandate) — **plain routes +
+`domain/portfolio/` are for domain CRUD and quotes.** Forcing CRUD through
+a flow buys nothing and costs a real return value (`sendAction` returns a
+request envelope, not the handler's output — so an import report can't reach
 the UI) plus a bound-session requirement. The write logic is plain functions in
-[`portfolio-writes.ts`](src/flows/portfolio/portfolio-writes.ts); the routes are
+[`portfolio-writes.ts`](domain/portfolio/services/portfolio-writes.ts); the routes are
 thin HTTP adapters that own zod validation. All routes take `userId` (query
 param on GET/DELETE, body field on POST) — dev-posture client-asserted, so a
 real deployment must resolve the caller identity server-side.
@@ -390,10 +389,10 @@ counts):
 ## Portfolio view
 
 The Portfolio tab is the durable record of what you own. A sidebar (a left
-rail on desktop, a segmented strip on phones) switches the pane between two
+rail on desktop, a segmented strip on phones) switches the pane between three
 perspectives. The pinned toolbar keeps only the always-relevant bits — refresh
 prices and the portfolio totals; account-management actions live in the
-Accounts perspective, since they don't apply on Gains & Taxes:
+Accounts perspective, since they don't apply on the other views:
 
 - **Accounts** (the default) — an action row (add account, an **Import** menu
   for holdings CSV / statement PDF / transaction files, add transaction,
@@ -408,6 +407,14 @@ Accounts perspective, since they don't apply on Gains & Taxes:
   **Total income** (capital gains + dividends + interest). Same-ticker
   disposals across accounts roll up together here (the household cut);
   per-account attribution stays in each account's Realized Gains tab.
+- **Health** — the household view across all accounts: the same name held in
+  three accounts shown as one exposure, how the book splits by asset class and
+  sector (funds appear as their own bucket — no ETF look-through in this
+  version), concentration reads (largest single name, top-5 / top-10 weight, and
+  an "effective number of positions" figure) with plain warn/alert flags, your
+  cash level, and a coverage line for anything that can't be priced. Every figure
+  is plain arithmetic over stored quantities and sourced prices — no model calls.
+  Drift versus a target allocation lands once a portfolio mandate exists.
 
 Click a card in the Accounts perspective to open the account, which has four
 tabs:
@@ -442,6 +449,34 @@ or an asserted `$0`; money figures are labeled display approximations. Average
 cost on the Holdings tab is informational; the Realized Gains tab derives the
 actual per-lot cost basis (FIFO) from your trade history, and the tax estimate
 is a labeled planning approximation — still not filing-grade tax advice.
+
+## Portfolio mandate
+
+The Portfolio toolbar has a **Set mandate** entry (a summary chip once one
+exists). A portfolio mandate is your household's standing policy — an Investment
+Policy Statement: your target mix across asset classes, standing rules (a maximum
+weight for any one name, a minimum cash level, a list of names never to add), a
+time horizon, and how far you let things drift before rebalancing. You write it
+down once and it sticks across sessions.
+
+The analysis then reads it. The recommended position size respects your standing
+rules: a hard cap on any single name's weight, and an excluded name is never
+recommended as an add. The target allocation and minimum-cash level are surfaced
+to the desk as advisory context (the desk sizes one name at a time, so it can't
+mechanically rebalance the whole book). Change the mandate and the sizing changes
+in a legible way.
+
+**How it relates to the per-run risk-appetite mandate.** The risk-appetite
+mandate (below) is the appetite dial you can pick fresh each run; the portfolio
+mandate is the durable policy of record. They are one concept, not two — the
+appetite can now *inherit* from the mandate (or be derived from its stated risk
+tolerance), so there is a single place your standing intent lives. A per-run pick
+still overrides it, and a per-account default still applies above the household
+default.
+
+This is a documented, user-set policy — not financial advice, and not a
+production IPS governance framework. See
+[`docs/portfolio-mandate.md`](docs/portfolio-mandate.md).
 
 ## Custom instructions
 
@@ -558,7 +593,7 @@ analyze
 
 All eight Phase 3–6 approach preamble generators are built via the
 `createApproachGenerator` factory in
-[`agents/_recipe/approach-generator.ts`](src/flows/analysis/agents/_recipe/approach-generator.ts).
+[`agents/_recipe/approach-generator.ts`](flows/analysis/agents/_recipe/approach-generator.ts).
 The factory locks the shared policy (`itemVisibility: { client: true, history: false }`,
 `model: "intent/utility"`, the user-instruction template) and exposes
 only the per-agent knobs.
@@ -659,9 +694,13 @@ methodology rather than advice:
   (`conservative-income`, `balanced`, `aggressive-growth`); the mandate is
   a per-run choice, or a default stored on the account, with the
   most-conservative selected-account default binding when no per-run choice
-  is made. Run the same name under two mandates and the size and the
-  verdict move while the rating holds. See `mandateFit` on
-  `PortfolioDecision` and the pack in `lib/risk-mandate.ts`.
+  is made. The per-run appetite can also **inherit from the durable
+  portfolio mandate** (the IPS, above) — its explicit `riskAppetite`, or a
+  default derived from its stated risk tolerance — so the standing policy
+  and the per-run dial are one concept, not two. Run the same name under
+  two mandates and the size and the verdict move while the rating holds.
+  See `mandateFit` on `PortfolioDecision` and the pack in
+  `lib/risk-mandate.ts`.
 
 ## What this is not
 
@@ -675,7 +714,9 @@ methodology rather than advice:
   with no portfolio supplied `sizePct` is still a suggested percentage of a
   notional NAV in the 0.5–2.5 range for a normal-conviction trade. The
   risk-appetite mandate is the same: a pedagogical demonstration of
-  parameterized risk gating, not production risk governance.
+  parameterized risk gating, not production risk governance. The durable
+  portfolio mandate is a documented user-set policy the desk sizes with in
+  view, not a production IPS governance framework and not advice.
 - **Not a backtest.** There is no historical evaluation, no calibration
   against outcomes, no measure of decision quality. The Portfolio
   Manager's `decisionConfidence` is self-reported uncertainty, not a
@@ -695,6 +736,7 @@ methodology rather than advice:
 
 ## Further reading
 
+- [Portfolio mandate (IPS)](docs/portfolio-mandate.md) — the durable household policy: schema, validation, the FIX-752 reconciliation, and what the desk enforces vs treats as advisory.
 - [Architecture deep-dive](../../docs/internal/design/trading-desk.md) — in-repo design doc covering pipeline shape, identity, resource flow, pattern choices, and the work the framework absorbs.
 - [Public guide](../../apps/docs/guides/trading-desk-walkthrough.md) — published Docusaurus walkthrough of the app phase by phase.
 

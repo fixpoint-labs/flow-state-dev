@@ -6,6 +6,7 @@ import {
   createFlowState,
   inMemoryStores,
   type FlowApiRouter,
+  type InboundTransportAdapter,
   type StoreAdapter,
 } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -125,7 +126,17 @@ describe("serve — raw FlowApiRouter", () => {
   });
 
   it("returns 404 for non-API routes when no staticDir is set", async () => {
-    const handle = await start(fakeRouter, { port: 0 });
+    // Non-API routes are delegated to the router (so dedicated adapter paths are
+    // served); with no matching route and no staticDir, that surfaces as a 404.
+    const router404: FlowApiRouter = {
+      ...fakeRouter,
+      GET: async () =>
+        new Response(JSON.stringify({ error: "flow_not_found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+    };
+    const handle = await start(router404, { port: 0 });
     const res = await fetch(`http://127.0.0.1:${handle.port}/anything`);
     expect(res.status).toBe(404);
   });
@@ -223,5 +234,111 @@ describe("serve — static assets", () => {
     const spa = await fetch(`http://127.0.0.1:${handle.port}/some/client/route`);
     expect(spa.status).toBe(200);
     expect(await spa.text()).toContain("<title>app</title>");
+  });
+
+  it("serves a dedicated adapter GET route before the SPA fallback", async () => {
+    // In `fsdev dev` the SPA `get("*")` matches GET before the not-found
+    // fallback; a dedicated adapter GET route outside basePath must still win.
+    const dir = await mkdtemp(join(tmpdir(), "fsd-node-static-"));
+    await writeFile(join(dir, "index.html"), "<!doctype html><title>app</title>");
+
+    const adapter: InboundTransportAdapter = {
+      source: "test-dedicated",
+      createBindings: () => ({
+        routes: [
+          {
+            method: "GET",
+            path: "/custom/:id",
+            handler: (_req, ctx) =>
+              Promise.resolve(
+                new Response(JSON.stringify({ served: ctx.params.id }), {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                }),
+              ),
+          },
+        ],
+      }),
+    };
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: inMemoryStores() } },
+      adapters: [adapter],
+    });
+    const handle = await start(fs, { port: 0, staticDir: dir });
+    await fs.ready();
+
+    // The dedicated GET route is served, not the SPA HTML.
+    const dedicated = await fetch(`http://127.0.0.1:${handle.port}/custom/abc`);
+    expect(dedicated.status).toBe(200);
+    expect(await dedicated.json()).toEqual({ served: "abc" });
+
+    // A genuinely-unmatched client route still falls back to the SPA.
+    const spa = await fetch(`http://127.0.0.1:${handle.port}/some/client/route`);
+    expect(spa.status).toBe(200);
+    expect(await spa.text()).toContain("<title>app</title>");
+  });
+
+  it("serves real static files without blocking while the FlowState initializes", async () => {
+    // A real file is served from disk during a slow store cold start without
+    // awaiting init — the gate is never released here, so a blocking impl would
+    // hang and time this test out.
+    const dir = await mkdtemp(join(tmpdir(), "fsd-node-static-"));
+    await writeFile(join(dir, "index.html"), "<!doctype html><title>app</title>");
+    await writeFile(join(dir, "app.js"), "console.log('hi')");
+    const adapter = gatedAdapter();
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: adapter } },
+    });
+    const handle = await start(fs, { port: 0, staticDir: dir });
+
+    const asset = await fetch(`http://127.0.0.1:${handle.port}/app.js`);
+    expect(asset.status).toBe(200);
+    expect(await asset.text()).toContain("console.log");
+
+    adapter.release();
+  });
+
+  it("serves a dedicated GET route that arrives during cold start, not SPA HTML", async () => {
+    // A non-file path is offered to the dedicated dispatch, which blocks on init:
+    // a dedicated GET route (e.g. an OAuth callback) fired while the store is
+    // still initializing is served once ready, not shadowed by the SPA index.
+    const dir = await mkdtemp(join(tmpdir(), "fsd-node-static-"));
+    await writeFile(join(dir, "index.html"), "<!doctype html><title>app</title>");
+    const store = gatedAdapter();
+    const adapter: InboundTransportAdapter = {
+      source: "test-oauth",
+      createBindings: () => ({
+        routes: [
+          {
+            method: "GET",
+            path: "/oauth/callback",
+            handler: () =>
+              Promise.resolve(
+                new Response(JSON.stringify({ ok: true }), {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                }),
+              ),
+          },
+        ],
+      }),
+    };
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: store } },
+      adapters: [adapter],
+    });
+    const handle = await start(fs, { port: 0, staticDir: dir });
+
+    const pending = fetch(`http://127.0.0.1:${handle.port}/oauth/callback`);
+    store.release();
+    const res = await pending;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
   });
 });

@@ -7,7 +7,7 @@
  * agents an explicit skip signal. Memos with real data carry no such banner.
  */
 import { describe, expect, it } from "vitest";
-import { formatMemoBlock } from "../src/flows/analysis/lib/format";
+import { formatMemoBlock } from "../flows/analysis/lib/format";
 
 const UNAVAILABLE_PREFIX = "(unavailable — do not synthesize from this)";
 

@@ -12,7 +12,7 @@
  * routing through a full flow — those resolvers are the contract.
  */
 import { describe, expect, it } from "vitest";
-import { tradingDesk } from "../src/flows/analysis/capability";
+import { tradingDesk } from "../flows/analysis/capability";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyCap = any;

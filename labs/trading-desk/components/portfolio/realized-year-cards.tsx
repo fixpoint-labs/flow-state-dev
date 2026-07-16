@@ -19,7 +19,7 @@
 import { useMemo, useState, type ReactElement } from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { IncomeSummaryByYearRow, RealizedGainRow } from "@/src/db/repository";
+import type { IncomeSummaryByYearRow, RealizedGainRow } from "@/db/repository";
 import { Segmented } from "@/components/ui/segmented";
 import {
   buildRealizedGainsRowModel,

@@ -149,6 +149,33 @@ Options:
 
 Requires `@flow-state-dev/devtool` to be installed (provides the pre-built UI assets). The CLI lists it as an optional peer dependency.
 
+### `fsdev serve` — Start a production server
+
+Starts an HTTP server for the flow API and MCP endpoints, with no DevTool UI. The production counterpart to `fsdev dev`. It requires a committed `fsdev.config.*` that default-exports a FlowState; without one it errors (no directory discovery, no `--flow-dir`, no `--no-config`).
+
+```bash
+# Bind $HOST (then 0.0.0.0) on $PORT (then 3000)
+fsdev serve
+
+# Override the port from the environment
+PORT=8080 fsdev serve
+
+# Explicit config file
+fsdev serve --config ./fsdev.config.ts
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `-p, --port <port>` | Port to listen on (default: `$PORT`, then `3000`) |
+| `--host <host>` | Host to bind (default: `$HOST`, then `0.0.0.0`) |
+| `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
+| `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
+| `--allow-unauthenticated` | Skip the loopback-bind guard on a network bind |
+
+Before binding a non-loopback host, `fsdev serve` refuses to start when a served flow has no authentication configured (its `authentication.resolvePrincipal` is unset or the framework default). Fix it by configuring `resolvePrincipal`, binding a loopback host (`--host 127.0.0.1`), or passing `--allow-unauthenticated`. Unlike `fsdev dev`, this command does **not** require `@flow-state-dev/devtool` — it never mounts the UI. It shuts down gracefully on `SIGTERM`/`SIGINT`.
+
 ### `fsdev chat` — Hold an interactive session over a flow
 
 Opens a persistent terminal REPL over your flows. Type a message and it routes to the default target, streaming the reply back; a `/`-prefixed line runs a built-in command. Runtime resolution matches `fsdev run` (config wins over discovery).
@@ -275,7 +302,7 @@ See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks) for th
 
 ## Environment variables
 
-`fsdev run`, `fsdev dev`, `fsdev chat`, and `fsdev benchmark` load `.env.local` before importing your config, so generator providers see your gateway and API keys.
+`fsdev run`, `fsdev dev`, `fsdev serve`, `fsdev chat`, and `fsdev benchmark` load `.env.local` before importing your config, so generator providers see your gateway and API keys. `fsdev serve` also reads `$HOST` and `$PORT` for its bind defaults.
 
 Resolution, highest precedence first:
 
@@ -368,7 +395,7 @@ import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/
 - `@flow-state-dev/engine` — execution engine, stores, streaming
 - `@flow-state-dev/testing` — isolated block execution context
 - `commander` — CLI framework
-- `@flow-state-dev/devtool` (optional peer) — pre-built DevTool UI assets for `fsdev dev`
+- `@flow-state-dev/devtool` (optional peer) — pre-built DevTool UI assets for `fsdev dev` only; `fsdev serve` does not need it
 
 ## Scripts
 

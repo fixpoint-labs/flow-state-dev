@@ -12,7 +12,7 @@ import { AgentBadge } from "@/components/agent-badge";
 import {
   AGENTS,
   type AgentName,
-} from "@/src/flows/analysis/registry";
+} from "@/flows/analysis/registry";
 import { ThesisMetrics } from "./thesis-metrics";
 import { cn } from "@/lib/utils";
 

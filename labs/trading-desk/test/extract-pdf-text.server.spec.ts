@@ -29,7 +29,7 @@ vi.mock("unpdf", () => ({
 
 // Imported AFTER the mock is registered (vitest hoists vi.mock above this).
 import { getDocumentProxy } from "unpdf";
-import { extractPdfText } from "../src/flows/portfolio/extract-pdf-text.server";
+import { extractPdfText } from "../flows/portfolio/extract-pdf-text.server";
 
 describe("extractPdfText linearization", () => {
   it("space-joins fragments on a line and breaks the line on hasEOL", async () => {

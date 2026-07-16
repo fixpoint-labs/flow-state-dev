@@ -22,7 +22,7 @@
  *    multi-currency mix, or a single foreign currency, both render "—" rather
  *    than a mislabeled cross-currency sum.
  */
-import type { RealizedGainRow } from "@/src/db/repository";
+import type { RealizedGainRow } from "@/db/repository";
 
 /** One rolled-up realized-gains row: all disposals of one ticker in one year,
  *  of one term, in one currency. Money fields are null when any contributing

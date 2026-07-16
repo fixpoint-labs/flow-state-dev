@@ -23,8 +23,8 @@ import { cn } from "@/lib/utils";
 import {
   detectAndParseTransactionFile,
   type TransactionFileParse,
-} from "@/src/flows/portfolio/transaction-file";
-import type { AccountState } from "@/src/flows/portfolio/portfolio-schema";
+} from "@/domain/portfolio/parsers/transaction-file";
+import type { AccountState } from "@/domain/portfolio/schema/portfolio-schema";
 
 /** What the parent needs to dispatch `importTransactions`. `mode: "replace"`
  *  (FIX-876) wipes the account's ledger before repopulating; `"append"` is the

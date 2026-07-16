@@ -33,7 +33,7 @@ import { describe, expect, it, vi } from "vitest";
 // PDF. The action passes the decoded bytes to this fn; we ignore them and return
 // canned statement text. Hoisted by vitest above the flow import.
 vi.mock(
-  "../src/flows/portfolio/extract-pdf-text.server",
+  "../flows/portfolio/extract-pdf-text.server",
   () => ({
     extractPdfText: vi.fn(
       async () => "AAPL ... MSFT ... TIMXX ... Total Holdings $3,926.84",
@@ -45,13 +45,13 @@ import { beforeEach } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
-import { toAccountStates, type PortfolioRepository } from "@/src/db/repository";
+import { toAccountStates, type PortfolioRepository } from "@/db/repository";
 
 // Accounts + holdings moved to the app-owned repository (FIX-772). Mock the
 // repo to a fresh in-memory PGlite instance per test; the dispatched actions
 // (saveAccount, importHoldings) and the holdings assertions below share it.
 const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
-vi.mock("@/lib/portfolio-db", () => ({
+vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
@@ -60,18 +60,18 @@ vi.mock("@/lib/portfolio-db", () => ({
 
 // `extractHoldingsFromPdf` stays a flow action (streaming generator); the CSV
 // import is a plain domain function now (FIX-736 follow-up).
-import portfolioFlow from "../src/flows/portfolio/flow";
+import portfolioFlow from "../flows/portfolio/flow";
 import {
   importHoldingsCsv,
   importHoldingsSchema,
   saveAccount,
   saveAccountSchema,
-} from "@/src/flows/portfolio/portfolio-writes";
+} from "@/domain/portfolio/services/portfolio-writes";
 import {
   canonicalRowsToCsv,
   toCanonicalRows,
   type PdfExtraction,
-} from "../src/flows/portfolio/portfolio-pdf";
+} from "../domain/portfolio/parsers/portfolio-pdf";
 
 beforeEach(async () => {
   repoState.repo = await makeTestRepository();

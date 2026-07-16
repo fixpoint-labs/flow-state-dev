@@ -9,13 +9,14 @@ title: "CLI"
 
 ## What it is
 
-The CLI executes flows and blocks in-process. No HTTP server, no SSE, no network. It uses the same runtime and stores as the server package, but invoked directly from your shell. Output streams as NDJSON to stdout.
+The CLI executes flows and blocks in-process. No HTTP server, no SSE, no network. It uses the same runtime and stores as the server package, but invoked directly from your shell. Output streams as NDJSON to stdout. That in-process model covers `fsdev run` and `fsdev block`; `fsdev dev` and `fsdev serve` start HTTP servers. See the [CLI API Reference](/docs/api/cli) and the [Deployment overview](/guides/deployment).
 
 This page is about running *your own* flows locally with `fsdev`. To dispatch a coding task to a Claude Code *cloud* session from inside a flow, see [Claude Code remote dispatch](/docs/tools/claude-code-cli).
 
 ## When to use it
 
 - **Visual debugging** — `fsdev dev` starts the DevTool alongside your flows. Inspect sessions, stream items in real-time, dispatch actions from the browser. See [DevTool](/docs/devtool/overview) for details.
+- **Serving in production** — `fsdev serve` runs the flow API and MCP endpoints with no DevTool UI, binding `0.0.0.0:$PORT` for a PaaS. It is the production counterpart to `fsdev dev`. See [Deployment overview](/guides/deployment).
 - **Quick iteration** — `fsdev run` executes a flow action and prints results. No need to start a server or open a browser.
 - **Testing blocks in isolation** — Use `fsdev block` to execute a single block with the test harness. Good for verifying handler logic or generator output without wiring up a full flow.
 - **Holding a live conversation** — `fsdev chat` opens an interactive session over your flows: type messages that stream replies back, switch which flow is driving, and inspect the session, all from the terminal. See [Interactive Chat](./interactive-chat.md).
