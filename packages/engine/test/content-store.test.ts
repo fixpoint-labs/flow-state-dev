@@ -402,6 +402,21 @@ describe("FilesystemContentStore legacy clean-break guard", () => {
     // A marker-absent (legacy/fresh) scope still deletes — covered by
     // "recovers after deleteAll clears the legacy scope".
   });
+
+  it("rejects a symlinked layout marker instead of trusting it", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-symmarker-"));
+    const contentDir = path.join(rootDir, "content");
+    await mkdir(contentDir, { recursive: true });
+    // An external valid marker the symlink points at — trusting it would skip
+    // the legacy scan and silently drop the flat `notes` file below.
+    const external = path.join(rootDir, "external-marker.json");
+    await writeFile(external, JSON.stringify({ layout: "nested-v1" }), "utf8");
+    await symlink(external, path.join(contentDir, MARKER));
+    await seedLegacyFile("s1", "notes", "old flat body");
+
+    const store = createFilesystemContentStore(rootDir);
+    await expect(store.get("session", "s1", "notes")).rejects.toThrow(/symlink/i);
+  });
 });
 
 describe("FilesystemContentStore symlink safety", () => {

@@ -171,6 +171,21 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
    * can't trust must block, never be treated as absent.
    */
   private async markerValidOrAbsent(): Promise<boolean> {
+    // `lstat` first and reject a symlinked marker: a path-based read would
+    // follow it and trust a `nested-v1` marker outside the subtree, bypassing
+    // the legacy-data scan (existing flat resources then read as missing).
+    let linkStat;
+    try {
+      linkStat = await lstat(this.markerPath);
+    } catch (error) {
+      if (errno(error) === "ENOENT") return false;
+      throw error;
+    }
+    if (linkStat.isSymbolicLink()) {
+      throw new Error(
+        `Filesystem store layout marker at ${this.markerPath} is a symlink; refusing to trust it`
+      );
+    }
     let raw: string;
     try {
       raw = await readFile(this.markerPath, "utf8");
@@ -240,6 +255,20 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
    */
   private async ensureMarker(): Promise<void> {
     await mkdir(this.root, { recursive: true });
+    // Reject a pre-planted symlink marker before writing: `wx` would `EEXIST`
+    // on it (which we ignore), leaving an untrusted symlink standing in for the
+    // marker.
+    let linkStat;
+    try {
+      linkStat = await lstat(this.markerPath);
+    } catch (error) {
+      if (errno(error) !== "ENOENT") throw error;
+    }
+    if (linkStat?.isSymbolicLink()) {
+      throw new Error(
+        `Filesystem store layout marker at ${this.markerPath} is a symlink; refusing to write`
+      );
+    }
     try {
       await writeFile(this.markerPath, JSON.stringify({ layout: LAYOUT_VERSION }), {
         flag: "wx"
