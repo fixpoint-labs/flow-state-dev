@@ -3,9 +3,11 @@
  *
  * Validates CRUD operations, batch operations, scope isolation, JSON
  * round-tripping, and key encoding for both InMemoryResourceStateStore and
- * FilesystemResourceStateStore.
+ * FilesystemResourceStateStore. The filesystem-specific legacy-guard,
+ * symlink-safety, and on-disk-layout cases live in the shared
+ * `createFilesystemStoreGuardConformanceTests` suite (run against both stores).
  */
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
@@ -16,16 +18,7 @@ import {
   createFilesystemResourceStateStore
 } from "../src";
 import { createResourceStateStoreConformanceTests } from "../src/testing";
-
-/** True if a filesystem path exists. */
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await stat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { createFilesystemStoreGuardConformanceTests } from "./filesystem-store-guard-conformance";
 
 function runResourceStateStoreTests(
   name: string,
@@ -243,89 +236,13 @@ afterEach(async () => {
   );
 });
 
-const MARKER = ".fsdev-store-layout";
-
-describe("FilesystemResourceStateStore nested on-disk layout", () => {
-  let rootDir: string;
-
-  afterEach(async () => {
-    if (rootDir) await rm(rootDir, { recursive: true, force: true });
-  });
-
-  async function freshStore(): Promise<ResourceStateStore> {
-    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-state-layout-"));
-    return createFilesystemResourceStateStore(rootDir);
-  }
-
-  it("writes a nested .json file tree with the leaf extension", async () => {
-    const store = await freshStore();
-    await store.set("session", "s1", "concepts/flow-state-dev/overview", { ok: true });
-    const expected = path.join(
-      rootDir,
-      "state",
-      "session",
-      "s1",
-      "concepts",
-      "flow-state-dev",
-      "overview.json"
-    );
-    expect(await pathExists(expected)).toBe(true);
-    expect(JSON.parse(await readFile(expected, "utf8"))).toEqual({ ok: true });
-  });
-
-  it("lets a leaf and a branch of the same name coexist", async () => {
-    const store = await freshStore();
-    await store.set("session", "s1", "x", { kind: "leaf" });
-    await store.set("session", "s1", "x/y", { kind: "branch" });
-
-    expect(await store.get("session", "s1", "x")).toEqual({ kind: "leaf" });
-    expect(await store.get("session", "s1", "x/y")).toEqual({ kind: "branch" });
-
-    const scopeDir = path.join(rootDir, "state", "session", "s1");
-    expect((await stat(path.join(scopeDir, "x.json"))).isFile()).toBe(true);
-    expect((await stat(path.join(scopeDir, "x"))).isDirectory()).toBe(true);
-  });
-});
-
-describe("FilesystemResourceStateStore legacy clean-break guard", () => {
-  let rootDir: string;
-
-  afterEach(async () => {
-    if (rootDir) await rm(rootDir, { recursive: true, force: true });
-  });
-
-  async function seedLegacyFile(scopeId: string, resourceKey: string, state: JsonObject): Promise<void> {
-    const scopeDir = path.join(rootDir, "state", "session", encodeURIComponent(scopeId));
-    await mkdir(scopeDir, { recursive: true });
-    await writeFile(path.join(scopeDir, encodeURIComponent(resourceKey)), JSON.stringify(state), "utf8");
-  }
-
-  it("throws on a populated no-marker subtree but not at construction; recovers after deleteAll", async () => {
-    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-state-legacy-"));
-    await seedLegacyFile("s1", "todos/a", { done: false });
-    const store = createFilesystemResourceStateStore(rootDir);
-    await expect(store.getAll("session", "s1")).rejects.toThrow(/predates the nested-layout/);
-    await store.deleteAll("session", "s1");
-    expect(await store.getAll("session", "s1")).toEqual({});
-    await store.set("session", "s1", "fresh", { v: 1 });
-    expect(await store.get("session", "s1", "fresh")).toEqual({ v: 1 });
-  });
-
-  it("a fresh store get writes no marker; the first set stamps it", async () => {
-    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-state-marker-"));
-    const store = createFilesystemResourceStateStore(rootDir);
-    expect(await store.get("session", "s1", "missing")).toBeUndefined();
-    const markerPath = path.join(rootDir, "state", MARKER);
-    expect(await pathExists(markerPath)).toBe(false);
-    await store.set("session", "s1", "notes", { v: 1 });
-    expect(JSON.parse(await readFile(markerPath, "utf8"))).toEqual({ layout: "nested-v1" });
-  });
-
-  it("rejects unsafe scope ids", async () => {
-    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-state-scopeid-"));
-    const store = createFilesystemResourceStateStore(rootDir);
-    for (const bad of ["..", ".", "", "CON"]) {
-      await expect(store.get("session", bad, "k")).rejects.toThrow();
-    }
-  });
+// Shared filesystem guard + symlink-safety + on-disk-layout suite — same suite
+// the content store runs, so both `.md` and `.json` stores get identical
+// coverage of the factory's guards.
+createFilesystemStoreGuardConformanceTests<JsonObject>({
+  name: "FilesystemResourceStateStore",
+  subdir: "state",
+  ext: ".json",
+  createStore: (rootDir) => createFilesystemResourceStateStore(rootDir),
+  makeValue: (i) => ({ n: i, label: `state-${i}` })
 });

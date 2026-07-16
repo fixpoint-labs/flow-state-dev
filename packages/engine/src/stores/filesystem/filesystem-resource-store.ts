@@ -259,32 +259,26 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
    */
   private async ensureMarker(): Promise<void> {
     await mkdir(this.root, { recursive: true });
-    // Reject a pre-planted symlink marker before writing: `wx` would `EEXIST`
-    // on it (which we ignore), leaving an untrusted symlink standing in for the
-    // marker.
-    let linkStat;
+    // Validate any existing marker (rejects a symlink or incompatible version)
+    // and stop if it's already a valid v1 marker. Re-checking on every set means
+    // a marker another process swapped to an incompatible layout blocks the
+    // write instead of letting v1 data land under it.
+    if (await this.markerValidOrAbsent()) return;
+    // Absent: publish atomically via a temp file + rename, so a crash mid-write
+    // can't leave a torn/empty marker that every later read would treat as
+    // corrupt. The temp lives in the parent dir so the legacy scan (which walks
+    // `this.root`) never counts it as data; rename within the same filesystem is
+    // atomic. Concurrent first-sets publish identical bytes, so the race is safe.
+    const tmp = path.join(
+      path.dirname(this.root),
+      `${LAYOUT_MARKER_NAME}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    );
     try {
-      linkStat = await lstat(this.markerPath);
+      await writeFile(tmp, JSON.stringify({ layout: LAYOUT_VERSION }), "utf8");
+      await rename(tmp, this.markerPath);
     } catch (error) {
-      if (errno(error) !== "ENOENT") throw error;
-    }
-    if (linkStat?.isSymbolicLink()) {
-      throw new Error(
-        `Filesystem store layout marker at ${this.markerPath} is a symlink; refusing to write`
-      );
-    }
-    try {
-      await writeFile(this.markerPath, JSON.stringify({ layout: LAYOUT_VERSION }), {
-        flag: "wx"
-      });
-    } catch (error) {
-      if (errno(error) !== "EEXIST") throw error;
-      // A marker already exists. Another process/migration may have swapped it
-      // to an incompatible layout since this instance cached its layout check —
-      // validate before writing v1 data under it (throws on wrong-version /
-      // corrupt / symlink), so the mixed-version protection on reads and
-      // deleteAll holds here too.
-      await this.markerValidOrAbsent();
+      await rm(tmp, { force: true }).catch(() => {});
+      throw error;
     }
   }
 
@@ -374,6 +368,11 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
     resourceKey: string
   ): Promise<void> {
     await this.ensureLayout();
+    // Re-validate the marker before a destructive op: the cached layout check
+    // can be stale if another process swapped the marker to an incompatible
+    // layout since — delete must never mutate a subtree this build can't
+    // interpret (matches deleteAll / set).
+    await this.markerValidOrAbsent();
     const target = this.filePath(scopeType, scopeId, resourceKey);
     await this.assertAncestorsSafe(target);
     let stat;
