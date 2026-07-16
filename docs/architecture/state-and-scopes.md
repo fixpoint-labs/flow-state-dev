@@ -265,11 +265,12 @@ Internally it is a sequencer with two steps: a generator that produces the title
 
 ## Persistence Adapters
 
-Three adapters ship today:
+Adapters that ship today:
 
 - **In-memory** (zero-config default): Fast, isolated, no persistence. Used when `createFlowApiRouter` is called without a `stores` option, and for tests.
-- **SQLite** (recommended for persistence and production): Durable across restart for every store — scope records, request items and events, resource state, and resource content alike — single-file, indexed. `createSQLiteStores` lives in `@flow-state-dev/store-sqlite`. This is the default store for `fsdev dev`.
 - **Filesystem** (local development only): Durable and human-inspectable, but its event persistence is O(N²) per request and collapses under real load. Constructing it without `developmentOnly: true` logs a one-time warning steering you to SQLite (FIX-406).
+- **SQLite** (recommended for a single server): Durable across restart for every store — scope records, request items and events, resource state, and resource content alike — single-file, indexed. `createSQLiteStores` lives in `@flow-state-dev/store-sqlite`. This is the default store for `fsdev dev`.
+- **Postgres** (recommended for production / multi-instance): Shared, concurrency-safe store with cross-process live tail via `LISTEN/NOTIFY`. `postgresStores` lives in `@flow-state-dev/store-postgres`; `vercelPostgresStores` (`@flow-state-dev/vercel/store`) bakes in serverless pool tuning.
 
 ```ts
 import { createInMemoryStores } from "@flow-state-dev/engine";

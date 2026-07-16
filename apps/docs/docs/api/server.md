@@ -138,12 +138,12 @@ Execute a block directly with a given context.
 
 ### `createFilesystemStores(options?)`
 
-Filesystem-backed persistence (default).
+Filesystem-backed persistence for local development. Durable across restarts, but its per-request event log doesn't scale under production load — use SQLite (single server) or Postgres (multi-instance) in production.
 
 ```ts
 import { createFilesystemStores } from "@flow-state-dev/engine";
 
-const stores = createFilesystemStores({ basePath: ".flow-state" });
+const stores = createFilesystemStores({ rootDir: ".fsdev/data" });
 ```
 
 ### `createInMemoryStores()`
