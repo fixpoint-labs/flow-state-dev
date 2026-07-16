@@ -66,11 +66,13 @@ export const saveAccountSchema = z.object({
 export type SaveAccountInput = z.infer<typeof saveAccountSchema>;
 
 /** Request body for a manual ledger entry — the canonical event minus the
- *  feed-owned `source` / `externalId` (fixed to `manual` / null here). Carries
- *  the same cross-field refine as the full input schema, so a manual `split`
- *  entry is validated identically (FIX-876). */
+ *  feed-owned `source` / `externalId` (fixed to `manual` / null here) and the
+ *  feed-owned lot-linkage fields `lotKey` / `closesLotKey` (FIX-895 — a manual
+ *  caller can't assign or close keyed lots; forced null in {@link recordManualEvent}).
+ *  Carries the same cross-field refine as the full input schema, so a manual
+ *  `split` entry is validated identically (FIX-876). */
 export const recordEventSchema = ledgerEventInputObject
-  .omit({ source: true, externalId: true })
+  .omit({ source: true, externalId: true, lotKey: true, closesLotKey: true })
   .superRefine(refineLedgerEvent);
 export type RecordEventInput = z.infer<typeof recordEventSchema>;
 
@@ -200,9 +202,23 @@ export async function recordManualEvent(
   const quantity = input.quantity === 0 ? null : input.quantity;
   // `proceedsUnknown` is import-only (a feed normalizer's signal that a file
   // couldn't supply proceeds). Force it null on the manual path so a caller can't
-  // null out a real sale's proceeds by hand.
+  // null out a real sale's proceeds by hand. Same for the lot-linkage fields
+  // (FIX-895) — a manual API caller cannot assign or close keyed lots; the tax-lot
+  // importer is the only writer that sets them.
   return repo.ingestLedgerEvents(
-    [{ ...input, amount, quantity, ticker, source: "manual", externalId: null, proceedsUnknown: null }],
+    [
+      {
+        ...input,
+        amount,
+        quantity,
+        ticker,
+        source: "manual",
+        externalId: null,
+        proceedsUnknown: null,
+        lotKey: null,
+        closesLotKey: null,
+      },
+    ],
     userId,
   );
 }
@@ -475,6 +491,8 @@ export async function backfillSplits(
         description: `Split ${ticker} on ${s.date}`,
         basisUnknown: null,
         proceedsUnknown: null,
+        lotKey: null,
+        closesLotKey: null,
         attributes: { numerator: s.numerator, denominator: s.denominator },
       });
     }

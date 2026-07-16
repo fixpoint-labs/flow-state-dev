@@ -161,6 +161,17 @@ export const ledgerEvents = appSchema.table(
     // derivation nulls proceeds/gain and excludes such a row rather than
     // fabricating a loss off a placeholder `amount:0`; null for a genuine sale.
     proceedsUnknown: text("proceeds_unknown"),
+    // Lot identity (FIX-895), additive + nullable. `lot_key` is the stable key of
+    // the lot a share-ADDING tax-lot event opens; `closes_lot_key` names the lot a
+    // share-REMOVING tax-lot disposal closes (null ⇒ FIFO). Both null for every
+    // existing feed (OFX / Plaid / manual), so those rows behave bit-for-bit as
+    // before. The linkage fields join `computeFingerprint` UNCONDITIONALLY (a
+    // sell's `lot_key` is null but its `closes_lot_key` distinguishes it), safe on
+    // a cleared ledger under the fresh-start wipe. The boundary rule (each field
+    // valid only on its matching share direction) is enforced at the zod refine
+    // AND the shared `assertShareEventInvariant`.
+    lotKey: text("lot_key"),
+    closesLotKey: text("closes_lot_key"),
     // Corporate-action payload (FIX-876) — the `{ numerator, denominator }` split
     // ratio for a `split` event, null for every other kind (enforced at the zod
     // boundary in `ledger-schema.ts`). A nullable jsonb column (the

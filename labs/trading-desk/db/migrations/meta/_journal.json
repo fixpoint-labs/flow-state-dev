@@ -64,6 +64,13 @@
       "when": 1783783020320,
       "tag": "0008_solid_argent",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784233227346,
+      "tag": "0009_silent_maestro",
+      "breakpoints": true
     }
   ]
 }

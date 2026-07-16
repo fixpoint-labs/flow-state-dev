@@ -396,6 +396,8 @@ function syntheticSplitRow(ticker: string, s: InferredSplit): LedgerRow {
     description: null,
     basisUnknown: null,
     proceedsUnknown: null,
+    lotKey: null,
+    closesLotKey: null,
     attributes: { numerator: s.numerator, denominator: s.denominator },
     voidedAt: null,
     createdAt: s.tradeDate,

@@ -66,6 +66,8 @@ function ev(overrides: Partial<LedgerEventInput> = {}): LedgerEventInput {
     description: null,
     basisUnknown: null,
     proceedsUnknown: null,
+    lotKey: null,
+    closesLotKey: null,
     ...overrides,
   };
 }

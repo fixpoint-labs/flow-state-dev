@@ -498,6 +498,8 @@ function mapLedgerRow(row: typeof ledgerEvents.$inferSelect): LedgerRow {
     description: row.description,
     basisUnknown: row.basisUnknown,
     proceedsUnknown: row.proceedsUnknown,
+    lotKey: row.lotKey,
+    closesLotKey: row.closesLotKey,
     attributes: parseSplitAttributes(row),
     voidedAt: row.voidedAt === null ? null : new Date(row.voidedAt).toISOString(),
     createdAt: new Date(row.createdAt).toISOString(),
@@ -605,7 +607,15 @@ function computeFingerprint(e: LedgerEventInput): string {
   // both blank-FITID). A genuine row (marker null) keeps the exact pre-FIX-874
   // hash — no fingerprint-recompute migration, back-compat by construction.
   const withMarker = e.proceedsUnknown !== null ? `${norm}|pu:${e.proceedsUnknown}` : norm;
-  return createHash("sha256").update(withMarker).digest("hex");
+  // Lot identity (FIX-895) joins the recipe UNCONDITIONALLY — both fields, because
+  // a sell's `lotKey` is null but its `closesLotKey` is what distinguishes it (two
+  // same-date/qty/proceeds sells of DIFFERENT lots must not dedup-collide under
+  // the unconditional `(account_id, fingerprint)` index). Unkeyed rows (both empty)
+  // hash with a fixed `|lk:|ck:` suffix; that differs from the pre-FIX-895 recipe,
+  // which is safe ONLY on a cleared ledger — the one-time fresh-start wipe is the
+  // rollout gate (spec §0 D6), NOT a branch here.
+  const withLinkage = `${withMarker}|lk:${e.lotKey ?? ""}|ck:${e.closesLotKey ?? ""}`;
+  return createHash("sha256").update(withLinkage).digest("hex");
 }
 
 /** Canonicalize a currency to an uppercase ISO-4217-shaped code, so the tax
@@ -635,8 +645,22 @@ function normalizeCurrency(raw: string): string {
  *   forms no lot, so a later sale becomes an unmatched disposal).
  * - `buy` is `+qty`, `sell` is `−qty`; `transfer` may be either sign (an OFX
  *   transfer-in is `+`, an out is `−`).
+ * - Lot identity (FIX-895) travels only in its matching share direction: `lotKey`
+ *   (opens a lot) only on a share-adding event (`quantity > 0`); `closesLotKey`
+ *   (closes a lot) only on a share-removing event (`quantity < 0`); both null on
+ *   cash events and splits. This mirrors the zod refine's rule so the file path
+ *   (which bypasses zod) can't persist a malformed lot pairing.
  */
 function assertShareEventInvariant(e: LedgerEventInput): void {
+  // Lot-linkage boundary (FIX-895) — checked first so it's independent of the
+  // quantity-null cash/transfer branches below. `!= null` catches a null quantity
+  // too (a cash event or split carrying a lot key), rejecting it.
+  if (e.lotKey != null && !(e.quantity != null && e.quantity > 0)) {
+    throw new Error("lotKey is only valid on a share-adding event (positive quantity).");
+  }
+  if (e.closesLotKey != null && !(e.quantity != null && e.quantity < 0)) {
+    throw new Error("closesLotKey is only valid on a share-removing event (negative quantity).");
+  }
   if (e.quantity === null) {
     // A `buy`/`sell` with no quantity would persist as a phantom cash event —
     // `deriveLots` forms no lot, so positions AND realized gains silently omit
@@ -1011,6 +1035,10 @@ async function ingestEventsInTx(
       // Reason a sell's proceeds are unknown (FIX-874 import placeholder); nulls
       // proceeds/gain in derivation rather than fabricating a loss off `amount:0`.
       proceedsUnknown: e.proceedsUnknown,
+      // Lot identity (FIX-895) — the lot a tax-lot buy opens / a disposal closes;
+      // null for every FIFO feed. Part of the content fingerprint unconditionally.
+      lotKey: e.lotKey,
+      closesLotKey: e.closesLotKey,
       // Corporate-action payload — the split ratio for a `split`, null otherwise
       // (the zod boundary guarantees this). Excluded from the fingerprint above,
       // so a same-date re-import dedups to one row.

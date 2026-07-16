@@ -115,6 +115,18 @@ export const ledgerEventInputObject = z.object({
    *  — the manual route forces it null so a caller can't blank a real sale's
    *  proceeds. */
   proceedsUnknown: z.string().nullable().default(null),
+  /** Lot identity this event OPENS (FIX-895) — the stable key of the lot a
+   *  share-ADDING event (buy / transfer-in, `quantity > 0`) creates. Null for
+   *  every feed that carries no lot identity (OFX / Plaid / manual). The
+   *  cross-field {@link refineLedgerEvent} enforces it appears only on a
+   *  share-adding event. */
+  lotKey: z.string().nullable().default(null),
+  /** Lot identity this event CLOSES (FIX-895) — the `lotKey` of the lot a
+   *  share-REMOVING event (sell / transfer-out, `quantity < 0`) disposes. Null ⇒
+   *  FIFO (the default for feeds carrying no lot identity). The cross-field
+   *  {@link refineLedgerEvent} enforces it appears only on a share-removing
+   *  event. */
+  closesLotKey: z.string().nullable().default(null),
   /** Corporate-action payload (FIX-876). Non-null ONLY for a `split`, where it
    *  parses as {@link splitAttributesSchema}; null for every other kind. The
    *  cross-field {@link refineLedgerEvent} enforces that boundary. `unknown` so
@@ -135,6 +147,11 @@ type LedgerEventRefinable = {
   // key reads the same as an explicit `null` below (both fail the split parse
   // and pass the non-split "must be null" branch).
   attributes?: unknown;
+  // Optional because the manual-entry omit (`recordEventSchema`) drops these two
+  // keys entirely (FIX-895); a missing key reads the same as `null` (`!= null`
+  // below), so a manual event trivially passes the lot-linkage boundary.
+  lotKey?: string | null;
+  closesLotKey?: string | null;
 };
 
 /**
@@ -169,6 +186,29 @@ export function refineLedgerEvent(data: LedgerEventRefinable, ctx: z.RefinementC
       code: z.ZodIssueCode.custom,
       path: ["attributes"],
       message: "attributes is only valid on a split event",
+    });
+  }
+  // Lot-linkage boundary (FIX-895), mirroring the split-attributes discipline
+  // above: lot identity travels ONLY on a share MOVE, and only in the matching
+  // direction. `lotKey` OPENS a lot, so it is valid only on a share-adding event
+  // (a positive quantity — buy / transfer-in); `closesLotKey` CLOSES a lot, so it
+  // is valid only on a share-removing event (a negative quantity — sell /
+  // transfer-out). Both must be null on cash events and splits (no lot to open or
+  // close) — their null quantity fails the sign checks below, so no extra branch
+  // is needed. This same rule is enforced at the repository's
+  // `assertShareEventInvariant` because the file importer bypasses zod.
+  if (data.lotKey != null && !(data.quantity != null && data.quantity > 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["lotKey"],
+      message: "lotKey is only valid on a share-adding event (positive quantity)",
+    });
+  }
+  if (data.closesLotKey != null && !(data.quantity != null && data.quantity < 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["closesLotKey"],
+      message: "closesLotKey is only valid on a share-removing event (negative quantity)",
     });
   }
 }
@@ -217,6 +257,12 @@ export type LedgerRow = {
   /** Reason a `sell`'s proceeds are unknown (import placeholder); null otherwise.
    *  Drives FIX-874's realized-gains exclusion. */
   proceedsUnknown: string | null;
+  /** Lot identity this event opened (FIX-895) — set on a share-adding tax-lot
+   *  buy, null for every FIFO feed. */
+  lotKey: string | null;
+  /** Lot identity this event closes (FIX-895) — set on a share-removing tax-lot
+   *  disposal, null ⇒ FIFO. */
+  closesLotKey: string | null;
   /** Corporate-action payload (FIX-876) — the split ratio for a `split` row,
    *  null for every other kind. Typed here (not `unknown`) so `deriveLots` reads
    *  `numerator`/`denominator` with types. */
