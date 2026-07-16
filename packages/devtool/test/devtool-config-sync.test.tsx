@@ -53,4 +53,24 @@ describe("DevToolProvider — config sync", () => {
 
     expect(result.current.config.bearerToken).toBe("t2");
   });
+
+  it("keeps an ad-hoc Settings token when a focus re-read changes only userId", () => {
+    // The reachable focus-drop: a non-injected shell never carries a bearer prop
+    // (readBearerToken → undefined), but userId IS persisted, so a Settings
+    // userId change surfaces as a prop change on alt-tab. That external sync must
+    // not wipe the operator's ad-hoc token, which lives only in provider state.
+    let current: Cfg = { userId: "devuser", bearerToken: undefined };
+    const { result, rerender } = renderWithConfig(() => current);
+
+    act(() => result.current.setConfig({ userId: "alice", bearerToken: "op-token" }));
+    expect(result.current.config.bearerToken).toBe("op-token");
+
+    // Focus re-read: userId now resolves to the persisted "alice", token prop
+    // stays undefined (never injected).
+    current = { userId: "alice", bearerToken: undefined };
+    act(() => rerender());
+
+    expect(result.current.config.userId).toBe("alice");
+    expect(result.current.config.bearerToken).toBe("op-token");
+  });
 });
