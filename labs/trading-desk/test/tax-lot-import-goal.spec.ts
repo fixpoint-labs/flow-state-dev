@@ -24,18 +24,24 @@ const MIGRATIONS_DIR = fileURLToPath(new URL("../db/migrations", import.meta.url
 const USER = "u1";
 const ACCT = "taxlot-acct";
 
-// Two still-open AAPL lots (different acquisition dates + basis).
+// Two still-open AAPL lots. The FIRST is deliberately OLDER (2023) than the
+// closed lot below, so the realized disposal is NOT the FIFO-oldest lot — this is
+// what makes the test discriminate specific-lot derivation from FIFO.
 const UNREALIZED_CSV = [
   "symbol,quantity,costBasis,unitCost,openDate",
-  "AAPL,10,1000,100,2025-01-15",
+  "AAPL,10,1000,100,2023-01-15",
   "AAPL,5,900,180,2025-06-20",
 ].join("\n");
 
-// One CLOSED AAPL lot: bought 2024-03-01 (basis 500), sold 2025-08-01
-// (proceeds 800) — a long-term gain of 300. A separate lot from the open ones.
+// One CLOSED AAPL lot: bought 2024-03-01 (basis 2000 = 500/sh), sold 2025-08-01
+// (proceeds 800) → a LONG-term LOSS of 1200. Under specific-lot matching the sell
+// closes THIS lot (basis 2000). A pure-FIFO derivation would instead consume the
+// older 2023 open lot (basis 100/sh → 400) and report a +400 GAIN, leaving a
+// different set of lots open — so basis 2000 / gain -1200 / the open weighted
+// basis all distinguish specific-lot from FIFO.
 const REALIZED_CSV = [
   "symbol,quantity,costBasis,unitCost,openDate,closeDate,proceeds",
-  "AAPL,4,500,125,2024-03-01,2025-08-01,800",
+  "AAPL,4,2000,500,2024-03-01,2025-08-01,800",
 ].join("\n");
 
 let repo: PortfolioRepository;
@@ -64,23 +70,26 @@ describe("FIX-895 goal — paired tax-lot import reconstructs positions + realiz
 
     // 2. Open holdings match the unrealized file: 15 shares (the closed lot is
     //    fully disposed, so it is NOT an open position), weighted-average basis of
-    //    the two open lots = (1000 + 900) / 15.
+    //    the two OPEN lots = (1000 + 900) / 15 ≈ 126.67. A FIFO derivation would
+    //    instead leave 6@2023 + 4@2024 + 5@2025 open → a different weighted basis
+    //    (≈ 233.33), so this basis alone distinguishes specific-lot from FIFO.
     const { holdings } = await repo.getPortfolio(USER);
     const aapl = holdings.find((h) => h.ticker === "AAPL");
     expect(aapl?.quantity).toBe(15);
-    expect(aapl?.costBasis).toBeCloseTo((1000 + 900) / 15); // ≈ 126.67 per share
+    expect(aapl?.costBasis).toBeCloseTo((1000 + 900) / 15); // ≈ 126.67, NOT FIFO's 233.33
 
     // 3. Realized gains match the realized file's OWN specific-lot figures — a
-    //    single long-term disposal with basis 500, proceeds 800, gain 300. FIFO
-    //    over the open lots would have reported a different (wrong) basis/term.
+    //    single long-term disposal with basis 2000, proceeds 800, gain −1200. FIFO
+    //    would have consumed the older 2023 open lot (basis 400) and reported a
+    //    +400 gain, so basis 2000 / gain −1200 prove the specific lot was closed.
     const gains = await repo.getRealizedGains(USER);
     expect(gains).toHaveLength(1);
     const g = gains[0];
     expect(g.ticker).toBe("AAPL");
     expect(g.quantity).toBe(4);
-    expect(g.costBasis).toBe(500);
+    expect(g.costBasis).toBe(2000);
     expect(g.proceeds).toBe(800);
-    expect(g.gain).toBe(300);
+    expect(g.gain).toBe(-1200);
     expect(g.term).toBe("long"); // 2024-03-01 → 2025-08-01 is > 1 year
 
     // 4. A second identical import of BOTH files dedups to zero — idempotent.
