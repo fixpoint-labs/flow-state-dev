@@ -240,6 +240,28 @@ export function createFilesystemStoreGuardConformanceTests<V>(
       await expect(store.delete("session", "s1", "a")).rejects.toThrow(/unexpected version/);
     });
 
+    it("delete re-scans for legacy data after a cached fresh read", async () => {
+      rootDir = await mkdtemp(path.join(tmpdir(), `fsd-${subdir}-delete-rescan-`));
+      const store = createStore(rootDir);
+      expect(await store.get("session", "s1", "missing")).toBeUndefined(); // caches "fresh"
+      await seedLegacyFile("s1", "notes");
+      // delete must re-scan and refuse rather than rm a flat legacy file.
+      await expect(store.delete("session", "s1", "notes")).rejects.toThrow(
+        /predates the nested-layout/
+      );
+    });
+
+    it("counts a legacy resource whose key resembles the marker name as data", async () => {
+      rootDir = await mkdtemp(path.join(tmpdir(), `fsd-${subdir}-marker-lookalike-`));
+      // A legacy key `.fsdev-store-layout-notes` shares the marker prefix but is
+      // NOT a marker temp — it must still trip the guard, not be skipped.
+      await seedLegacyFile("s1", ".fsdev-store-layout-notes");
+      const store = createStore(rootDir);
+      await expect(store.get("session", "s1", "missing")).rejects.toThrow(
+        /predates the nested-layout/
+      );
+    });
+
     it("rejects a symlinked layout marker instead of trusting it", async () => {
       rootDir = await mkdtemp(path.join(tmpdir(), `fsd-${subdir}-symmarker-`));
       await mkdir(path.join(rootDir, subdir), { recursive: true });

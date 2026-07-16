@@ -245,8 +245,12 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
         continue;
       }
       if (!entry.isFile()) continue;
-      // Skip the marker AND its in-flight publish temps (`<marker>.tmp-…`).
-      if (entry.name.startsWith(LAYOUT_MARKER_NAME)) continue;
+      // Skip the marker and its in-flight publish temps (`<marker>.tmp-…`) ONLY —
+      // not every file sharing the prefix (a legacy key `.fsdev-store-layout-x`
+      // is real data that must still trip the guard).
+      if (entry.name === LAYOUT_MARKER_NAME || entry.name.startsWith(`${LAYOUT_MARKER_NAME}.tmp-`)) {
+        continue;
+      }
       if (METADATA_FILE_DENYLIST.has(entry.name)) continue;
       return true; // a real data file
     }
@@ -254,27 +258,31 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
   }
 
   /**
-   * Ensure the layout marker exists before the first data file of a `set`
-   * lands. Create-exclusive (`wx`) + EEXIST-tolerant so it stamps once and
-   * closes the read-then-set gap where a cold read cached "fresh, unmarked".
+   * Guard a destructive or marker-publishing op: reject an incompatible marker,
+   * and — if the marker is absent — re-scan for legacy data the memoized
+   * `ensureLayout` result may have missed (a cold read can cache "fresh" before
+   * another process writes flat files). Returns `true` if a valid marker is
+   * already present.
    */
-  private async ensureMarker(): Promise<void> {
-    await mkdir(this.root, { recursive: true });
-    // Validate any existing marker (rejects a symlink or incompatible version)
-    // and stop if it's already a valid v1 marker. Re-checking on every set means
-    // a marker another process swapped to an incompatible layout blocks the
-    // write instead of letting v1 data land under it.
-    if (await this.markerValidOrAbsent()) return;
-    // Marker absent, but re-scan for legacy data BEFORE publishing: the cached
-    // `ensureLayout` result may be a stale "fresh" from a cold read while
-    // another process wrote flat files since — stamping a marker over them would
-    // silently hide them (defeating the clean-break guard).
+  private async assertNoUnmarkedLegacyData(): Promise<boolean> {
+    if (await this.markerValidOrAbsent()) return true;
     if (await this.subtreeHasDataFile(this.root)) {
       throw new Error(
         `Filesystem store subtree at ${this.root} predates the nested-layout change; ` +
           `will not read its flat files — move it aside or delete it.`
       );
     }
+    return false;
+  }
+
+  /**
+   * Stamp the layout marker before the first data file of a `set` lands. No-ops
+   * if a valid marker is already present; refuses an incompatible marker or
+   * unmarked legacy data (via {@link assertNoUnmarkedLegacyData}).
+   */
+  private async ensureMarker(): Promise<void> {
+    await mkdir(this.root, { recursive: true });
+    if (await this.assertNoUnmarkedLegacyData()) return; // valid marker already present
     // Publish atomically AND exclusively: write a temp INSIDE the owned subtree
     // (so a read-only or separately-mounted parent can't break it, and the
     // rename/link stays on the destination filesystem), then hard-`link` it into
@@ -386,11 +394,11 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
     resourceKey: string
   ): Promise<void> {
     await this.ensureLayout();
-    // Re-validate the marker before a destructive op: the cached layout check
-    // can be stale if another process swapped the marker to an incompatible
-    // layout since — delete must never mutate a subtree this build can't
-    // interpret (matches deleteAll / set).
-    await this.markerValidOrAbsent();
+    // Re-validate before a destructive op: reject an incompatible marker AND
+    // (if the marker is absent) re-scan for legacy data the cached layout check
+    // may have missed — delete must never mutate a subtree this build can't
+    // interpret or remove a flat legacy file (matches set's publish path).
+    await this.assertNoUnmarkedLegacyData();
     const target = this.filePath(scopeType, scopeId, resourceKey);
     await this.assertAncestorsSafe(target);
     let stat;
