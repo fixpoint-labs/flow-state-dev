@@ -403,6 +403,35 @@ describe("FilesystemContentStore legacy clean-break guard", () => {
     // "recovers after deleteAll clears the legacy scope".
   });
 
+  it("treats a legacy symlinked resource file as data and refuses", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-legacy-symlink-"));
+    const scopeDir = path.join(rootDir, "content", "session", "s1");
+    await mkdir(scopeDir, { recursive: true });
+    const external = path.join(rootDir, "external.txt");
+    await writeFile(external, "legacy via symlink", "utf8");
+    // An old flat store whose resource file is a symlink must not be silently
+    // classified fresh (which would drop it + stamp a new-layout marker).
+    await symlink(external, path.join(scopeDir, encodeURIComponent("notes")));
+    const store = createFilesystemContentStore(rootDir);
+    await expect(store.get("session", "s1", "missing")).rejects.toThrow(
+      /predates the nested-layout/
+    );
+  });
+
+  it("refuses to write v1 data under a marker swapped to an incompatible version", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-marker-swap-"));
+    const store = createFilesystemContentStore(rootDir);
+    await store.set("session", "s1", "a", "one"); // caches layout, stamps v1 marker
+    // Another process swaps the marker to a future version this build can't write.
+    await writeFile(
+      path.join(rootDir, "content", MARKER),
+      JSON.stringify({ layout: "nested-v2" }),
+      "utf8"
+    );
+    // The cached instance's next set must re-validate on EEXIST and refuse.
+    await expect(store.set("session", "s1", "b", "two")).rejects.toThrow(/unexpected version/);
+  });
+
   it("rejects a symlinked layout marker instead of trusting it", async () => {
     rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-symmarker-"));
     const contentDir = path.join(rootDir, "content");
@@ -449,6 +478,13 @@ describe("FilesystemContentStore symlink safety", () => {
     const outsideDir = path.join(rootDir, "outside");
     await mkdir(outsideDir, { recursive: true });
     await mkdir(path.join(rootDir, "content"), { recursive: true });
+    // Seed a valid marker so the legacy scan is skipped — this isolates the
+    // ancestor-symlink guard (the scan itself now counts a symlink as data).
+    await writeFile(
+      path.join(rootDir, "content", MARKER),
+      JSON.stringify({ layout: "nested-v1" }),
+      "utf8"
+    );
     await symlink(outsideDir, path.join(rootDir, "content", "session"));
 
     await expect(store.get("session", "s1", "k")).rejects.toThrow(/symlink/i);

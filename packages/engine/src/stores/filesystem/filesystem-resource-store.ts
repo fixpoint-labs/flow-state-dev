@@ -233,7 +233,11 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
       throw error;
     }
     for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue; // never follow a symlinked dir/file
+      // A symlink COUNTS as legacy data (something is here) but is never
+      // followed: an old flat store could have used a symlink as a resource
+      // file, and skipping it would misclassify the subtree as fresh and
+      // silently drop that data. Refuse loudly instead.
+      if (entry.isSymbolicLink()) return true;
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         if (METADATA_DIRS.has(entry.name)) continue;
@@ -275,6 +279,12 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
       });
     } catch (error) {
       if (errno(error) !== "EEXIST") throw error;
+      // A marker already exists. Another process/migration may have swapped it
+      // to an incompatible layout since this instance cached its layout check —
+      // validate before writing v1 data under it (throws on wrong-version /
+      // corrupt / symlink), so the mixed-version protection on reads and
+      // deleteAll holds here too.
+      await this.markerValidOrAbsent();
     }
   }
 
