@@ -74,6 +74,22 @@ export async function assertNetworkBindIsAuthenticated(
 ): Promise<void> {
   if (opts.allowUnauthenticated === true || isLoopbackHost(opts.host)) return;
 
+  // Development auth (`FSDEV_DEV_AUTH=1` / `fsdev dev --dev-auth`) makes every
+  // HTTP action resolve from the caller-supplied body `userId`, overriding each
+  // flow's `authentication.resolvePrincipal` at request time. The static per-flow
+  // check below can't see that, so a bearer-configured flow would read as
+  // authenticated while actually running open. Refuse the network bind outright —
+  // dev-auth is loopback-only by construction.
+  if (process.env.FSDEV_DEV_AUTH === "1") {
+    throw new Error(
+      `Refusing to bind ${opts.host}: development auth (FSDEV_DEV_AUTH=1) trusts the ` +
+        `caller-supplied body userId for every HTTP action, so a network-exposed server ` +
+        `would accept any identity with no authentication. Bind a loopback host ` +
+        `(--host 127.0.0.1) for local-only use, unset FSDEV_DEV_AUTH, or pass ` +
+        `--allow-unauthenticated to override.`,
+    );
+  }
+
   const runtime = await app.getRuntime();
   // registry.list() yields one entry per (kind, id); de-dupe kinds for the message.
   // A flow is unauthenticated when it configures no resolver (falls through to the

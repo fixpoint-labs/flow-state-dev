@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createFlowState,
   inMemoryStores,
@@ -98,6 +98,44 @@ describe("assertNetworkBindIsAuthenticated", () => {
       assertNetworkBindIsAuthenticated(fs, { host: "0.0.0.0", allowUnauthenticated: true }),
     ).resolves.toBeUndefined();
     await fs.dispose();
+  });
+
+  describe("with development auth (FSDEV_DEV_AUTH=1)", () => {
+    let savedDevAuth: string | undefined;
+    beforeEach(() => {
+      savedDevAuth = process.env.FSDEV_DEV_AUTH;
+      process.env.FSDEV_DEV_AUTH = "1";
+    });
+    afterEach(() => {
+      if (savedDevAuth === undefined) delete process.env.FSDEV_DEV_AUTH;
+      else process.env.FSDEV_DEV_AUTH = savedDevAuth;
+    });
+
+    it("refuses a network host even when every flow has a real resolver", async () => {
+      // Dev-auth overrides per-flow auth at request time, so the static check
+      // would wrongly pass this bearer flow. The dev-auth guard catches it.
+      const fs = flowState({ secure: pingFlow("secure", true) });
+      await expect(
+        assertNetworkBindIsAuthenticated(fs, { host: "0.0.0.0" }),
+      ).rejects.toThrow(/FSDEV_DEV_AUTH/);
+      await fs.dispose();
+    });
+
+    it("still allows a loopback bind under dev-auth", async () => {
+      const fs = flowState({ secure: pingFlow("secure", true) });
+      await expect(
+        assertNetworkBindIsAuthenticated(fs, { host: "127.0.0.1" }),
+      ).resolves.toBeUndefined();
+      await fs.dispose();
+    });
+
+    it("allowUnauthenticated overrides the dev-auth network refusal", async () => {
+      const fs = flowState({ secure: pingFlow("secure", true) });
+      await expect(
+        assertNetworkBindIsAuthenticated(fs, { host: "0.0.0.0", allowUnauthenticated: true }),
+      ).resolves.toBeUndefined();
+      await fs.dispose();
+    });
   });
 
   it("treats an explicit default resolver the same as an unset one", async () => {

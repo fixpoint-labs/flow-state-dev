@@ -105,7 +105,7 @@ The scope is deliberately narrow:
 - The dev server binds `127.0.0.1` and prints a warning at startup naming the store it will use.
 - It refuses to start when `FSD_DB_URL` or `DATABASE_URL` is set. A config-based `fsdev dev` can point at a real backend, so dev-auth stays disabled until you unset the database URL.
 
-Production is never touched. No deploy path reads the flag.
+Under the hood the flag sets `FSDEV_DEV_AUTH=1`, which the server honors directly (this is how a config-based `fsdev dev` opts in). Never set that variable on a deployed server: it trusts the caller's `userId` with no authentication. As a backstop, `fsdev serve` refuses to bind a non-loopback host while `FSDEV_DEV_AUTH=1` is set, so a misconfigured production server fails fast instead of running open.
 
 ## Environment variables
 

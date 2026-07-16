@@ -116,6 +116,13 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     },
   });
 
+  // Effective dev-auth for this server: the --dev-auth flag OR a preset
+  // FSDEV_DEV_AUTH=1 (which the engine's env fallback honors even without the
+  // flag). The safeguards below — the loud warning and the production-backend
+  // refusal — key off this effective state, not just the flag, so a preset env
+  // can't activate dev-auth while slipping past both guards.
+  const devAuthActive = options.devAuth === true || process.env.FSDEV_DEV_AUTH === "1";
+
   let serveApp: FlowState | FlowApiRouter;
   let flowNames: string[];
   let dataLine: string;
@@ -126,17 +133,20 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     // A config-based server can select a production backend (e.g. `prod` when
     // FSD_DB_URL/DATABASE_URL is set). Dev-auth trusts the body `userId` with no
     // real authentication, so refuse to point it at a possible production store.
-    // This is checked before getRuntime() opens any connection pool.
-    if (options.devAuth) {
-      const remoteDbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
-      if (remoteDbUrl !== undefined && remoteDbUrl.length > 0) {
+    // Each var is tested independently — `??` would let an empty FSD_DB_URL mask a
+    // set DATABASE_URL. Checked before getRuntime() opens any connection pool.
+    if (devAuthActive) {
+      const remoteDbSet = [process.env.FSD_DB_URL, process.env.DATABASE_URL].some(
+        (v) => v !== undefined && v.length > 0,
+      );
+      if (remoteDbSet) {
         await resolved.flowState.dispose().catch(() => {});
         throw new CliError(
-          "--dev-auth refuses to run against a remote/production backend. A database URL " +
-            "is set (FSD_DB_URL or DATABASE_URL), so this fsdev config may be serving " +
+          "Development auth refuses to run against a remote/production backend. A database " +
+            "URL is set (FSD_DB_URL or DATABASE_URL), so this fsdev config may be serving " +
             "production-backed stores. Dev-auth bypasses per-flow transport auth and trusts " +
             "the request-body userId — never point it at production data. Unset the database " +
-            "URL to debug locally, or drop --dev-auth.",
+            "URL to debug locally, or drop --dev-auth / FSDEV_DEV_AUTH.",
           EXIT_INVALID_ARGS,
         );
       }
@@ -253,9 +263,9 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
   process.stderr.write(`  Data:   ${dataLine}\n`);
   process.stderr.write("\n");
 
-  // Never bypass auth silently. When dev-auth is on, name the store target so an
-  // accidental --dev-auth against the wrong profile is loud, not silent.
-  if (options.devAuth) {
+  // Never bypass auth silently. When dev-auth is on — via the flag OR a preset
+  // FSDEV_DEV_AUTH=1 — name the store target so an accidental bypass is loud.
+  if (devAuthActive) {
     process.stderr.write(
       "  ⚠  DEVELOPMENT AUTH ENABLED (--dev-auth)\n" +
       "     HTTP action requests are trusted as their body `userId`; per-flow\n" +

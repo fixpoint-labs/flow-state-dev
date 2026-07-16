@@ -110,11 +110,36 @@ describe("fsdev dev --dev-auth", () => {
     }).catch((e) => e);
     expect(err).toBeInstanceOf(CliError);
     expect(err.exitCode).toBe(EXIT_INVALID_ARGS);
-    expect(err.message).toContain("--dev-auth refuses to run against a remote/production backend");
+    expect(err.message).toContain("Development auth refuses to run against a remote/production backend");
   });
 
   it("hard-refuses when FSD_DB_URL is set", async () => {
     process.env.FSD_DB_URL = "postgres://user@remote-host:5432/prod";
+    const err = await executeDevCommand({
+      cwd: appConfigDir,
+      devAuth: true,
+      open: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_INVALID_ARGS);
+  });
+
+  it("hard-refuses when a preset FSDEV_DEV_AUTH=1 activates dev-auth without the flag", async () => {
+    // The engine's env fallback activates dev-auth from FSDEV_DEV_AUTH=1 even with
+    // no --dev-auth flag; the refuse must key off that effective state, not the flag.
+    process.env.FSDEV_DEV_AUTH = "1";
+    process.env.DATABASE_URL = "postgres://user@remote-host:5432/prod";
+    const err = await executeDevCommand({
+      cwd: appConfigDir,
+      open: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_INVALID_ARGS);
+  });
+
+  it("an empty FSD_DB_URL does not mask a set DATABASE_URL", async () => {
+    process.env.FSD_DB_URL = "";
+    process.env.DATABASE_URL = "postgres://user@remote-host:5432/prod";
     const err = await executeDevCommand({
       cwd: appConfigDir,
       devAuth: true,
