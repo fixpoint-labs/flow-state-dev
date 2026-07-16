@@ -69,7 +69,7 @@ const testFlow = defineFlow({
   user: {
     stateSchema: z.object({
       displayName: z.string().default("Developer"),
-      selectedModel: z.string().default("vercel/anthropic/claude-sonnet-4.6"),
+      selectedModel: z.string().default("vercel/anthropic/claude-sonnet-5"),
       thinkingEnabled: z.boolean().default(false),
     }),
   },
@@ -192,7 +192,7 @@ describe("chat-agent flow", () => {
       user: {
         state: {
           displayName: "TestUser",
-          selectedModel: "vercel/openai/gpt-5.5",
+          selectedModel: "vercel/openai/gpt-5.6-luna",
           thinkingEnabled: false,
         }
       },
