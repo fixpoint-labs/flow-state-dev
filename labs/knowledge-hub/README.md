@@ -51,6 +51,22 @@ Both hosts serve the dedicated `/mcp/*` route: `serve()` from `@flow-state-dev/n
 (which `fsdev serve` and `fsdev dev` both wrap) mounts dedicated adapter paths
 automatically, so no extra host wiring is needed.
 
+To debug from DevTool without minting a token, use dev-auth instead of the
+bearer handshake — it bypasses the per-flow resolver for local HTTP-action
+traffic only:
+
+```bash
+# Debug knowledge-hub in DevTool with no token (dev-auth bypasses the bearer resolver locally):
+pnpm fsdev dev --dev-auth
+# Create a session, send logActivity / listInbox as any userId.
+
+# Or exercise the real bearer handshake (default, no flag):
+KH_MCP_SECRET=test pnpm fsdev dev
+```
+
+The flow's own auth is unchanged and stays fail-closed; dev-auth just skips the
+resolver locally.
+
 Hosted deployment and a durable shared store land with FIX-883, when a second process (the cron sweeper) actually needs them.
 
 ### Tagging the source per installation

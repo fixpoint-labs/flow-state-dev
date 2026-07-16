@@ -39,6 +39,13 @@ interface DevCommandOptions {
    * is `--no-config`; `true`/absent means search for `fsdev.config.*` in cwd.
    */
   config?: string | boolean;
+  /**
+   * Development transport auth. When true, HTTP action requests are trusted as
+   * their body `userId` so bearer-gated flows are debuggable in DevTool with no
+   * token. Local-only, opt-in, off by default. Refuses to run when a database
+   * URL is set (possible production backend). (FIX-894)
+   */
+  devAuth?: boolean;
   /** Override the working directory (defaults to process.cwd()). For tests. */
   cwd?: string;
 }
@@ -54,6 +61,7 @@ export function registerDevCommand(program: Command): void {
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
     .option("--no-config", "Ignore fsdev.config.* and use directory discovery")
     .option("-m, --model <model>", "Override model for all generator blocks")
+    .option("--dev-auth", "Trust request-body userId for HTTP actions so bearer-gated flows are debuggable without a token (local dev only; refuses to run against a database URL)")
     .option("--no-open", "Don't open the browser automatically")
     .action(async (options: DevCommandOptions) => {
       try {
@@ -97,6 +105,13 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
       if (options.config !== false) {
         process.env.FSDEV_DEBUG_ENDPOINTS ??= "1";
         process.env.FSDEV_TRACING_LEVEL ??= "verbose";
+        // A config-based FlowState builds its own router and can't take a
+        // devAuth option, so opt in via the env fallback createFlowApiRouter
+        // reads (mirrors FSDEV_DEBUG_ENDPOINTS). Discovery path passes it
+        // explicitly instead. Only when --dev-auth is requested.
+        if (options.devAuth) {
+          process.env.FSDEV_DEV_AUTH ??= "1";
+        }
       }
     },
   });
@@ -108,6 +123,24 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
 
   if (resolved.source === "config") {
     // --- config path: serve the app's own FlowState ---
+    // A config-based server can select a production backend (e.g. `prod` when
+    // FSD_DB_URL/DATABASE_URL is set). Dev-auth trusts the body `userId` with no
+    // real authentication, so refuse to point it at a possible production store.
+    // This is checked before getRuntime() opens any connection pool.
+    if (options.devAuth) {
+      const remoteDbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
+      if (remoteDbUrl !== undefined && remoteDbUrl.length > 0) {
+        await resolved.flowState.dispose().catch(() => {});
+        throw new CliError(
+          "--dev-auth refuses to run against a remote/production backend. A database URL " +
+            "is set (FSD_DB_URL or DATABASE_URL), so this fsdev config may be serving " +
+            "production-backed stores. Dev-auth bypasses per-flow transport auth and trusts " +
+            "the request-body userId — never point it at production data. Unset the database " +
+            "URL to debug locally, or drop --dev-auth.",
+          EXIT_INVALID_ARGS,
+        );
+      }
+    }
     if (options.model !== undefined) {
       throw new CliError(
         "--model can't be combined with fsdev.config.*; the config builds the router with its own " +
@@ -169,6 +202,9 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
       // fsdev dev is local-only by definition; opt in to the privileged debug
       // surface so the DevTool's Resources panel can read full server state.
       debugEndpointsEnabled: true,
+      // Discovery always serves local SQLite, so --dev-auth is safe here; pass
+      // it explicitly rather than relying on the env fallback.
+      devAuth: options.devAuth,
       // The DevTool observes per-step state snapshots, so the dev server runs at
       // the most verbose tracing level (FIX-406 6H).
       tracingLevel: "verbose",
@@ -216,6 +252,17 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
   process.stderr.write(`  API:    http://localhost:${port}/api/flows\n`);
   process.stderr.write(`  Data:   ${dataLine}\n`);
   process.stderr.write("\n");
+
+  // Never bypass auth silently. When dev-auth is on, name the store target so an
+  // accidental --dev-auth against the wrong profile is loud, not silent.
+  if (options.devAuth) {
+    process.stderr.write(
+      "  ⚠  DEVELOPMENT AUTH ENABLED (--dev-auth)\n" +
+      "     HTTP action requests are trusted as their body `userId`; per-flow\n" +
+      "     transport auth is bypassed for DevTool traffic (MCP/scheduled untouched).\n" +
+      `     Store target: ${dataLine}. Never use against production data.\n\n`,
+    );
+  }
 
   if (options.open !== false) {
     openBrowser(`http://localhost:${port}`);

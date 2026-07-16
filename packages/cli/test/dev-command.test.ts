@@ -11,21 +11,27 @@ const getRuntimeThrowsDir = resolve(import.meta.dirname, "fixtures-config", "get
 // config-vs-discovery wiring decision without starting a long-lived server
 // (whose shutdown path calls process.exit and would kill the test runner).
 
-let savedDebug: string | undefined;
-let savedTracing: string | undefined;
+const ENV_KEYS = [
+  "FSDEV_DEBUG_ENDPOINTS",
+  "FSDEV_TRACING_LEVEL",
+  "FSDEV_DEV_AUTH",
+  "FSD_DB_URL",
+  "DATABASE_URL",
+] as const;
+const saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {
-  savedDebug = process.env.FSDEV_DEBUG_ENDPOINTS;
-  savedTracing = process.env.FSDEV_TRACING_LEVEL;
-  delete process.env.FSDEV_DEBUG_ENDPOINTS;
-  delete process.env.FSDEV_TRACING_LEVEL;
+  for (const key of ENV_KEYS) {
+    saved[key] = process.env[key];
+    delete process.env[key];
+  }
 });
 
 afterEach(() => {
-  if (savedDebug === undefined) delete process.env.FSDEV_DEBUG_ENDPOINTS;
-  else process.env.FSDEV_DEBUG_ENDPOINTS = savedDebug;
-  if (savedTracing === undefined) delete process.env.FSDEV_TRACING_LEVEL;
-  else process.env.FSDEV_TRACING_LEVEL = savedTracing;
+  for (const key of ENV_KEYS) {
+    if (saved[key] === undefined) delete process.env[key];
+    else process.env[key] = saved[key];
+  }
 });
 
 describe("fsdev dev with fsdev.config.ts", () => {
@@ -68,5 +74,53 @@ describe("fsdev dev with fsdev.config.ts", () => {
     expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
     // The init-failure path released the store adapter rather than leaking it.
     expect(g.__fsdevDisposeCalls).toBeGreaterThan(0);
+  });
+});
+
+describe("fsdev dev --dev-auth", () => {
+  it("sets the FSDEV_DEV_AUTH env default so the config's router opts in", async () => {
+    // --model forces an early error after beforeConfigLoad, so we can observe
+    // the env default without starting a long-lived server.
+    const err = await executeDevCommand({
+      cwd: appConfigDir,
+      devAuth: true,
+      model: "x",
+      open: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(process.env.FSDEV_DEV_AUTH).toBe("1");
+  });
+
+  it("leaves FSDEV_DEV_AUTH unset without the flag", async () => {
+    const err = await executeDevCommand({
+      cwd: appConfigDir,
+      model: "x",
+      open: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(process.env.FSDEV_DEV_AUTH).toBeUndefined();
+  });
+
+  it("hard-refuses when DATABASE_URL is set (possible production backend)", async () => {
+    process.env.DATABASE_URL = "postgres://user@remote-host:5432/prod";
+    const err = await executeDevCommand({
+      cwd: appConfigDir,
+      devAuth: true,
+      open: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_INVALID_ARGS);
+    expect(err.message).toContain("--dev-auth refuses to run against a remote/production backend");
+  });
+
+  it("hard-refuses when FSD_DB_URL is set", async () => {
+    process.env.FSD_DB_URL = "postgres://user@remote-host:5432/prod";
+    const err = await executeDevCommand({
+      cwd: appConfigDir,
+      devAuth: true,
+      open: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect(err.exitCode).toBe(EXIT_INVALID_ARGS);
   });
 });

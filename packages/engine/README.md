@@ -270,6 +270,17 @@ detect an unauthenticated flow before exposing it — `@flow-state-dev/node`'s
 loopback-bind guard refuses a network bind when a served flow resolves to this
 default.
 
+`createFlowApiRouter` accepts a `devAuth` option for local development. When
+enabled, HTTP-action requests (transport `source === "http"` — the traffic
+DevTool sends) resolve from `body.userId` via
+`defaultBodyUserIdPrincipalResolver`, overriding any per-flow
+`authentication.resolvePrincipal`, so a bearer-gated flow is debuggable in
+DevTool without a token. Every other transport source (MCP, scheduled,
+webhook, custom) keeps its real per-flow resolver. Like `debugEndpointsEnabled`,
+it is off by default; an explicit value wins, otherwise it falls back to
+`FSDEV_DEV_AUTH=1` in the environment. Nothing but `fsdev dev --dev-auth` turns
+it on — no production or deploy path enables it.
+
 See the [authentication reference](https://flow-state.dev/docs/server/authentication)
 for the full contract, resolution order, and `requireUser: false`
 semantics.

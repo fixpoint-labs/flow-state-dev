@@ -120,6 +120,16 @@ export type CreateFlowApiRouterOptions = {
   resolvePrincipal?: PrincipalResolver;
 
   /**
+   * Development-only transport auth bypass. When `true`, HTTP-action requests
+   * resolve their principal from the request body `userId`, overriding any
+   * per-flow `authentication.resolvePrincipal` (MCP/scheduled/webhook sources
+   * are unaffected). Explicit `true`/`false` wins; when `undefined`, falls back
+   * to `process.env.FSDEV_DEV_AUTH === "1"`. Set ONLY by `fsdev dev --dev-auth`;
+   * never wire this from a production entry point. (FIX-894)
+   */
+  devAuth?: boolean;
+
+  /**
    * Default SSE wire heartbeat interval in milliseconds. Applied to every
    * live and GET-attach SSE response when the per-flow
    * `request.sseHeartbeatMs` is unset. The heartbeat keeps NAT/proxy idle

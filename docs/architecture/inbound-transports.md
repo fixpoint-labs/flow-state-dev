@@ -161,6 +161,16 @@ rather than implementing auth themselves; the host applies per-flow
 routing, `defaultUserId` fallback, and `requireUser` enforcement
 transparently. See `authentication.md`.
 
+One local-development exception qualifies this (FIX-894): when the host is
+built with `devAuth: true` — set only by `fsdev dev --dev-auth`, directly or
+via the `FSDEV_DEV_AUTH=1` env fallback — the host resolves
+HTTP-action-sourced requests through `defaultBodyUserIdPrincipalResolver`
+instead of the per-flow resolver. The override keys off the transport
+`source` constant `"http"`, so it reaches only the built-in HTTP adapter's
+traffic (what DevTool sends); MCP, scheduled, webhook, and custom adapters
+keep their per-flow resolver untouched. It is off by default and never set
+by a production entry point. See `authentication.md`.
+
 ## The HTTP adapter as reference
 
 ```ts

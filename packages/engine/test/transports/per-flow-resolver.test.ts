@@ -56,8 +56,12 @@ function buildHost(flows: ReturnType<typeof buildFlow>[]) {
   return { host, registry, stores };
 }
 
-const mkContext = (flowKind: string, body: Record<string, unknown>) => ({
-  source: "http",
+const mkContext = (
+  flowKind: string,
+  body: Record<string, unknown>,
+  source = "http"
+) => ({
+  source,
   envelope: {
     flowKind,
     action: "run",
@@ -65,6 +69,29 @@ const mkContext = (flowKind: string, body: Record<string, unknown>) => ({
     metadata: { body }
   }
 });
+
+/** A bearer-gated flow: fixed principal on the wire, throws otherwise. */
+function buildBearerFlow(kind: string) {
+  return buildFlow(kind, {
+    resolvePrincipal: () => ({ userId: "owner" })
+  });
+}
+
+function buildDevAuthHost(flows: ReturnType<typeof buildFlow>[]) {
+  const registry = createFlowRegistry();
+  for (const flow of flows) {
+    registry.register(flow);
+  }
+  const stores = createInMemoryStores();
+  const host = createInboundTransportHost({
+    registry,
+    stores,
+    resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+    runtimeConfig: {},
+    devAuth: true
+  });
+  return { host, registry, stores };
+}
 
 describe("InboundTransportHost — per-flow authentication", () => {
   it("uses the flow's resolvePrincipal over the host fallback", async () => {
@@ -180,5 +207,90 @@ describe("InboundTransportHost — per-flow authentication", () => {
     const { host } = buildHost([flow]);
     const principal = await host.resolvePrincipal(mkContext("async-resolver", {}));
     expect(principal).toEqual({ userId: "async_user" });
+  });
+});
+
+describe("InboundTransportHost — dev auth", () => {
+  it("overrides a per-flow bearer resolver with the body userId for HTTP actions", async () => {
+    const bearer = vi.fn(() => ({ userId: "owner" }));
+    const flow = buildFlow("kh", { resolvePrincipal: bearer });
+    const { host } = buildDevAuthHost([flow]);
+
+    const principal = await host.resolvePrincipal(
+      mkContext("kh", { userId: "devuser" })
+    );
+    // Body identity wins; the bearer resolver is never consulted for HTTP.
+    expect(principal).toEqual({ userId: "devuser" });
+    expect(bearer).not.toHaveBeenCalled();
+  });
+
+  it("trusts the body orgId under dev auth (single local identity source)", async () => {
+    // Documented behavior: dev-auth trusts the whole body-supplied identity,
+    // so an org-scoped flow is satisfied by a body orgId locally. There is no
+    // entitlement check — acceptable only under the local-only, opt-in model.
+    const flow = buildBearerFlow("kh-org");
+    const { host } = buildDevAuthHost([flow]);
+
+    const principal = await host.resolvePrincipal(
+      mkContext("kh-org", { userId: "devuser", orgId: "acme" })
+    );
+    expect(principal).toEqual({ userId: "devuser", orgId: "acme" });
+  });
+
+  it("does NOT apply to MCP-sourced requests — the flow resolver still runs", async () => {
+    const bearer = vi.fn(() => ({ userId: "owner" }));
+    const flow = buildFlow("kh", { resolvePrincipal: bearer });
+    const { host } = buildDevAuthHost([flow]);
+
+    const principal = await host.resolvePrincipal(
+      mkContext("kh", { userId: "devuser" }, "mcp")
+    );
+    // Non-HTTP source keeps the real per-flow resolver.
+    expect(principal).toEqual({ userId: "owner" });
+    expect(bearer).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT apply to scheduled-sourced requests", async () => {
+    const bearer = vi.fn(() => ({ userId: "owner" }));
+    const flow = buildFlow("kh", { resolvePrincipal: bearer });
+    const { host } = buildDevAuthHost([flow]);
+
+    const principal = await host.resolvePrincipal(
+      mkContext("kh", { userId: "devuser" }, "scheduled")
+    );
+    expect(principal).toEqual({ userId: "owner" });
+    expect(bearer).toHaveBeenCalledTimes(1);
+  });
+
+  it("still enforces requireUser — a body with no userId rejects (401)", async () => {
+    const flow = buildBearerFlow("kh");
+    const { host } = buildDevAuthHost([flow]);
+    await expect(
+      host.resolvePrincipal(mkContext("kh", {}))
+    ).rejects.toMatchObject({ name: "PrincipalResolutionError", status: 401 });
+  });
+
+  it("still honors a flow's defaultUserId when the body omits userId", async () => {
+    // Post-resolution checks are unchanged: dev-auth swaps the resolver, not
+    // the defaultUserId fallback. A flow that configures defaultUserId still
+    // gets it even under dev-auth (documented, not a rejection).
+    const flow = buildFlow("kh-default", {
+      resolvePrincipal: () => ({ userId: "owner" }),
+      defaultUserId: "system"
+    });
+    const { host } = buildDevAuthHost([flow]);
+    const principal = await host.resolvePrincipal(mkContext("kh-default", {}));
+    expect(principal).toEqual({ userId: "system" });
+  });
+
+  it("when devAuth is unset, the per-flow bearer resolver wins as usual", async () => {
+    const bearer = vi.fn(() => ({ userId: "owner" }));
+    const flow = buildFlow("kh", { resolvePrincipal: bearer });
+    const { host } = buildHost([flow]);
+    const principal = await host.resolvePrincipal(
+      mkContext("kh", { userId: "devuser" })
+    );
+    expect(principal).toEqual({ userId: "owner" });
+    expect(bearer).toHaveBeenCalledTimes(1);
   });
 });

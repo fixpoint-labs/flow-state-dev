@@ -167,6 +167,13 @@ export type CreateFlowRouteHandlersOptions = {
   debugCountLimit?: number;
   /** Pluggable flow dispatcher. Default: in-process via runAction. */
   dispatcher?: FlowDispatcher;
+  /**
+   * Development-only transport auth bypass forwarded to the host. Explicit
+   * `true`/`false` wins; when `undefined`, falls back to
+   * `process.env.FSDEV_DEV_AUTH === "1"` (mirroring `debugEndpointsEnabled`).
+   * Only `fsdev dev --dev-auth` sets it. See {@link CreateInboundTransportHostOptions.devAuth}.
+   */
+  devAuth?: boolean;
 };
 
 const DEFAULT_SSE_HEARTBEAT_MS = 15_000;
@@ -234,12 +241,21 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     defaultSseHeartbeatMs
   };
 
+  // Explicit `devAuth` wins; `undefined` falls back to the env flag so a
+  // config-based `fsdev dev --dev-auth` (which serves a pre-built FlowState it
+  // cannot pass options into) still enables it. Mirrors `FSDEV_DEBUG_ENDPOINTS`.
+  const devAuth =
+    options.devAuth === undefined
+      ? process.env.FSDEV_DEV_AUTH === "1"
+      : options.devAuth;
+
   const host: InboundTransportHost = createInboundTransportHost({
     registry: options.registry,
     stores,
     resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
     runtimeConfig,
-    dispatcher: options.dispatcher
+    dispatcher: options.dispatcher,
+    devAuth
   });
 
   // Detect interrupted requests from previous runs on startup

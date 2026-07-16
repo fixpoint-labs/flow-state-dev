@@ -210,6 +210,37 @@ The default fallback is `defaultBodyUserIdPrincipalResolver`, which reads
 `body.userId` from the parsed HTTP body — useful for early development and
 for the framework's existing tests.
 
+## Dev-auth override (local development only)
+
+There is exactly one exception to "per-flow `resolvePrincipal` always
+wins" (FIX-894). When the host is constructed with `devAuth: true`,
+HTTP-action-sourced requests — those whose
+`PrincipalResolutionContext.source === "http"`, the traffic DevTool sends —
+resolve their principal from `defaultBodyUserIdPrincipalResolver` (the
+`body.userId` stub), **overriding** any per-flow
+`authentication.resolvePrincipal`. This lets a developer drive a
+bearer-gated flow through DevTool without minting a token.
+
+The override is scoped to that one transport source. Every other source —
+`mcp`, `scheduled`, `webhook`, and any custom transport — keeps its real
+per-flow resolver, so dev-auth never weakens auth on a non-HTTP path.
+
+`devAuth` is a named option on `createFlowApiRouter` (and the transport
+host), not a `RuntimeConfig` field. An explicit `true`/`false` wins; when
+unset it falls back to the env flag `FSDEV_DEV_AUTH=1` (mirroring how
+`debugEndpointsEnabled` falls back to `FSDEV_DEBUG_ENDPOINTS=1`). It is off
+by default and no production or deploy entry point sets it — the only thing
+that turns it on is `fsdev dev --dev-auth` (directly, or via the env
+fallback).
+
+Post-resolution checks are unchanged. `requireUser` still rejects a request
+that yields no `userId` (unless the flow sets
+`authentication.defaultUserId`). Because dev-auth trusts the body-supplied
+identity verbatim, a body `orgId` satisfies an org-scoped flow with no
+entitlement check — acceptable only under the local-only, single-operator
+model the `--dev-auth` flag enforces (loopback bind; refusal to run against
+`FSD_DB_URL`/`DATABASE_URL`).
+
 ## What the framework does not own
 
 - **Credential storage** — the host owns user tables, OAuth tokens, webhook

@@ -146,6 +146,7 @@ Options:
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `-m, --model <model>` | Override model for all generator blocks |
 | `--no-open` | Don't open the browser automatically |
+| `--dev-auth` | Trust request-body userId for HTTP actions so bearer-gated flows are debuggable in DevTool without a token (local dev only; refuses to run when FSD_DB_URL/DATABASE_URL is set) |
 
 Requires `@flow-state-dev/devtool` to be installed (provides the pre-built UI assets). The CLI lists it as an optional peer dependency.
 

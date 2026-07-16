@@ -40,6 +40,8 @@ import type {
   PrincipalResolver,
   ResolvedPrincipal
 } from "../types";
+import { defaultBodyUserIdPrincipalResolver } from "../auth/defaultBodyUserIdPrincipalResolver";
+import { HTTP_TRANSPORT_SOURCE } from "../http/createHttpTransportAdapter";
 
 export type CreateInboundTransportHostOptions = {
   registry: FlowRegistry;
@@ -59,6 +61,17 @@ export type CreateInboundTransportHostOptions = {
    * external worker (e.g., BullMQ WorkerDispatcher).
    */
   dispatcher?: FlowDispatcher;
+  /**
+   * Development-only transport auth bypass. When true, HTTP-action requests
+   * (`context.source === "http"`) resolve their principal from the request
+   * body `userId` via `defaultBodyUserIdPrincipalResolver`, overriding any
+   * per-flow `authentication.resolvePrincipal`. Every other transport source
+   * (MCP, scheduled, webhook, custom) keeps its real resolver. Set ONLY by
+   * `fsdev dev --dev-auth` (directly or via the `FSDEV_DEV_AUTH` env fallback);
+   * never by a production entry point. Post-resolution checks
+   * (`defaultUserId`, `requireUser`, org presence) are unchanged.
+   */
+  devAuth?: boolean;
 };
 
 /**
@@ -98,7 +111,7 @@ async function terminateUnenqueuedRequest(
 export function createInboundTransportHost(
   options: CreateInboundTransportHostOptions
 ): InboundTransportHost {
-  const { registry, stores, resolvePrincipal, runtimeConfig } = options;
+  const { registry, stores, resolvePrincipal, runtimeConfig, devAuth } = options;
   const { onBackgroundWork, maxResponseBufferSize, defaultSseHeartbeatMs } =
     runtimeConfig;
 
@@ -431,7 +444,15 @@ export function createInboundTransportHost(
     // routes per-flow overrides transparently.
     const flow = registry.get(context.envelope.flowKind);
     const flowAuth = flow?.authentication;
-    const resolver = flowAuth?.resolvePrincipal ?? resolvePrincipal;
+    // Dev-auth (fsdev dev --dev-auth) trusts the request-body identity for the
+    // HTTP-action traffic DevTool sends, so a bearer-gated flow is debuggable
+    // locally without a token. Scoped to the HTTP source so MCP / scheduled /
+    // webhook transports (which carry no body userId) keep their real resolver.
+    const devAuthActive =
+      devAuth === true && context.source === HTTP_TRANSPORT_SOURCE;
+    const resolver = devAuthActive
+      ? defaultBodyUserIdPrincipalResolver
+      : (flowAuth?.resolvePrincipal ?? resolvePrincipal);
     const requireUser = flow?.requireUser ?? true;
     const defaultUserId = flowAuth?.defaultUserId;
 

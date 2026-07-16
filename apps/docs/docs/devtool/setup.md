@@ -88,6 +88,25 @@ During development you might want a faster or cheaper model. Use `--model` to ov
 fsdev dev --model gpt-4o-mini
 ```
 
+## Development auth
+
+Some flows gate every request behind a bearer token. The flow's principal resolver rejects anything without a valid secret, which is what you want in production. It also means you can't drive that flow from DevTool, because DevTool has no token to send.
+
+`fsdev dev --dev-auth` relaxes that locally. It trusts the `userId` in the request body for HTTP actions and skips the flow's own resolver. Create a session, send actions as any `userId`, and the bearer check never runs.
+
+```bash
+fsdev dev --dev-auth
+```
+
+The scope is deliberately narrow:
+
+- Opt-in and off by default. Plain `fsdev dev` enforces real transport auth, the same as production.
+- Only HTTP-action traffic is affected, the requests DevTool sends. MCP, webhook, and scheduled transports keep their real auth.
+- The dev server binds `127.0.0.1` and prints a warning at startup naming the store it will use.
+- It refuses to start when `FSD_DB_URL` or `DATABASE_URL` is set. A config-based `fsdev dev` can point at a real backend, so dev-auth stays disabled until you unset the database URL.
+
+Production is never touched. No deploy path reads the flag.
+
 ## Environment variables
 
 The CLI loads `.env.local` files automatically, walking up from your working directory. Put API keys and configuration there:

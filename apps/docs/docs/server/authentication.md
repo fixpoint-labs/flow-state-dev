@@ -260,6 +260,16 @@ export const flowstate = createFlowState({
 
 Per-flow `defineFlow({ authentication })` always wins over this fallback.
 
+## Local development auth
+
+Production auth is unchanged by anything on this page. The one local escape
+hatch is `fsdev dev --dev-auth`, which trusts the body `userId` for
+HTTP-action traffic so you can drive a bearer-gated flow from DevTool
+without a token. It touches only local `fsdev dev` HTTP requests, never MCP
+or webhook transports, and never a deployed server. See
+[Development auth](/docs/devtool/setup#development-auth) for the full scope
+and safety rules.
+
 ## Session consistency check
 
 A session's `userId` and `orgId` are immutable for the session's lifetime.
