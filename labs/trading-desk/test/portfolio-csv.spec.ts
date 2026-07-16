@@ -144,6 +144,21 @@ describe("parsePortfolioCsv", () => {
     expect(result.warnings.length).toBeGreaterThan(0);
   });
 
+  it("soft-warns when a tax-lot CSV is mis-uploaded here, pointing at Import transactions (FIX-895)", () => {
+    // A tax-lot unrealized export (per-lot total costBasis + unitCost + openDate)
+    // would have its lot total misread as a per-share holding cost. The parser
+    // must warn and redirect, never silently reinterpret it.
+    const csv = ["symbol,quantity,costBasis,unitCost,openDate", "AAPL,10,1500,150,2026-01-10"].join(
+      "\n",
+    );
+    const result = parsePortfolioCsv(csv);
+    expect(
+      result.warnings.some(
+        (w) => /tax-lot/i.test(w) && /import transactions/i.test(w),
+      ),
+    ).toBe(true);
+  });
+
   it("classifies imported rows by symbol shape (bond CUSIP + crypto pair)", () => {
     // A bond CUSIP and a crypto pair both pass the ticker regex, so they import —
     // and now arrive TYPED, not silently flattened to equity (FIX-773 Slice B).

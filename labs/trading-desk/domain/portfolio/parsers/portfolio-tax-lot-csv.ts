@@ -34,7 +34,7 @@ import {
   parseIsoDate,
   parseLooseNumber,
   splitCsvLine,
-} from "./portfolio-csv";
+} from "./csv-utils";
 import {
   canonicalTickerKey,
   isImportableSymbol,
