@@ -428,7 +428,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 
 ## ContentStore
 
-`StoreRegistry` includes a required `content: ContentStore` field that separates resource content persistence from scope record persistence. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ContentStore`.
+`StoreRegistry` includes a required `content: ContentStore` field that separates resource content persistence from scope record persistence. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ContentStore`. The filesystem `ContentStore` writes each resource as a nested `.md` file (a key `concepts/overview` becomes `concepts/overview.md`), so the store root is a browsable file tree; a directory written in the older flat layout is refused with a clear error rather than silently misread.
 
 ```ts
 interface ContentStore {
@@ -472,7 +472,7 @@ Database adapters can implement `ContentStore` to route content to blob storage,
 
 ## ResourceStateStore
 
-`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence — the state-layer twin of `ContentStore`. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`.
+`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence — the state-layer twin of `ContentStore`. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`. The filesystem `ResourceStateStore` writes each resource's state as a nested `.json` file mirroring the content store's layout (same nested-tree upgrade and legacy-layout guard).
 
 ```ts
 interface ResourceStateStore {

@@ -13,7 +13,7 @@ You declare stores on `createFlowState` as a map of named profiles. A profile ma
 | Adapter | Persistence | When to use |
 |---------|------------|-------------|
 | **In-memory** (default) | None — data is lost on restart | Development, testing, demos |
-| **File** | JSON files on disk | Local development with persistence, single-server deployments |
+| **File** | Nested file tree (`.md`/`.json`) on disk | Local development with persistence, single-server deployments |
 | **SQLite** | Embedded SQLite database | Single-server deployments wanting concurrency-safe writes |
 | **Postgres** | PostgreSQL with `LISTEN/NOTIFY` for cross-process live tail | Production, multi-instance fleets, serverless with shared Postgres |
 
@@ -32,7 +32,7 @@ const flowstate = createFlowState({
 
 ### Filesystem store
 
-Writes state, resources, and items to JSON files in a directory. Each scope gets its own file. Good for local development when you want data to survive server restarts.
+Writes each scope's data into a directory on disk, surviving restarts. Resource content and resource state persist as a real nested file tree — a resource key like `notes/meeting` becomes `notes/meeting.md` (content) or `notes/meeting.json` (state), so the store directory is browsable in an editor and diffable in git. Good for local development.
 
 ```ts
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";

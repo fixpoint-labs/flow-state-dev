@@ -3,7 +3,9 @@
  *
  * Validates CRUD operations, batch operations, scope isolation, JSON
  * round-tripping, and key encoding for both InMemoryResourceStateStore and
- * FilesystemResourceStateStore.
+ * FilesystemResourceStateStore. The filesystem-specific legacy-guard,
+ * symlink-safety, and on-disk-layout cases live in the shared
+ * `createFilesystemStoreGuardConformanceTests` suite (run against both stores).
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -15,6 +17,8 @@ import {
   createInMemoryResourceStateStore,
   createFilesystemResourceStateStore
 } from "../src";
+import { createResourceStateStoreConformanceTests } from "../src/testing";
+import { createFilesystemStoreGuardConformanceTests } from "./filesystem-store-guard-conformance";
 
 function runResourceStateStoreTests(
   name: string,
@@ -214,4 +218,31 @@ runResourceStateStoreTests("FilesystemResourceStateStore", async () => {
       await rm(rootDir, { recursive: true, force: true });
     }
   };
+});
+
+// Run the shared cross-adapter conformance suite against the filesystem adapter.
+const conformanceDirs: string[] = [];
+createResourceStateStoreConformanceTests({
+  name: "FilesystemResourceStateStore",
+  createStore: async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "fsd-state-conformance-"));
+    conformanceDirs.push(rootDir);
+    return createFilesystemResourceStateStore(rootDir);
+  }
+});
+afterEach(async () => {
+  await Promise.all(
+    conformanceDirs.splice(0).map((d) => rm(d, { recursive: true, force: true }))
+  );
+});
+
+// Shared filesystem guard + symlink-safety + on-disk-layout suite — same suite
+// the content store runs, so both `.md` and `.json` stores get identical
+// coverage of the factory's guards.
+createFilesystemStoreGuardConformanceTests<JsonObject>({
+  name: "FilesystemResourceStateStore",
+  subdir: "state",
+  ext: ".json",
+  createStore: (rootDir) => createFilesystemResourceStateStore(rootDir),
+  makeValue: (i) => ({ n: i, label: `state-${i}` })
 });

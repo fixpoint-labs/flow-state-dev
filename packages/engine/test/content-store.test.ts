@@ -3,16 +3,22 @@
  *
  * Validates CRUD operations, batch operations, scope isolation, and
  * key encoding for both InMemoryContentStore and FilesystemContentStore.
+ * The filesystem-specific legacy-guard, symlink-safety, and on-disk-layout
+ * cases live in the shared `createFilesystemStoreGuardConformanceTests` suite
+ * (run against both the content and state stores).
  */
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
 import type { ContentStore } from "../src/stores/types";
 import {
   createInMemoryContentStore,
-  createFilesystemContentStore
+  createFilesystemContentStore,
+  createFilesystemStores
 } from "../src";
+import { createContentStoreConformanceTests } from "../src/testing";
+import { createFilesystemStoreGuardConformanceTests } from "./filesystem-store-guard-conformance";
 
 function runContentStoreTests(
   name: string,
@@ -203,4 +209,54 @@ runContentStoreTests("FilesystemContentStore", async () => {
       await rm(rootDir, { recursive: true, force: true });
     }
   };
+});
+
+// Run the shared cross-adapter conformance suite against the filesystem adapter.
+const conformanceDirs: string[] = [];
+createContentStoreConformanceTests({
+  name: "FilesystemContentStore",
+  createStore: async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-conformance-"));
+    conformanceDirs.push(rootDir);
+    return createFilesystemContentStore(rootDir);
+  }
+});
+afterEach(async () => {
+  await Promise.all(
+    conformanceDirs.splice(0).map((d) => rm(d, { recursive: true, force: true }))
+  );
+});
+
+// Shared filesystem guard + symlink-safety + on-disk-layout suite (run against
+// both the content and state stores — same factory, so coverage is symmetric).
+createFilesystemStoreGuardConformanceTests({
+  name: "FilesystemContentStore",
+  subdir: "content",
+  ext: ".md",
+  createStore: (rootDir) => createFilesystemContentStore(rootDir),
+  makeValue: (i) => `content-${i}`
+});
+
+describe("Filesystem stores per-subtree guard isolation", () => {
+  let rootDir: string;
+
+  afterEach(async () => {
+    if (rootDir) await rm(rootDir, { recursive: true, force: true });
+  });
+
+  it("empty content proceeds while a legacy state subtree throws", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-guard-isolation-"));
+    // Seed a flat legacy file in the STATE subtree only.
+    const stateScope = path.join(rootDir, "state", "session", "s1");
+    await mkdir(stateScope, { recursive: true });
+    await writeFile(path.join(stateScope, encodeURIComponent("k")), JSON.stringify({ v: 1 }), "utf8");
+
+    const stores = createFilesystemStores({ rootDir, developmentOnly: true });
+    // Content subtree is empty -> fresh -> proceeds.
+    expect(await stores.content.getAll("session", "s1")).toEqual({});
+    // State subtree has legacy data -> throws (per-subtree marker isolation).
+    await expect(stores.resourceState.getAll("session", "s1")).rejects.toThrow(
+      /predates the nested-layout/
+    );
+  });
 });

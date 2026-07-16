@@ -279,7 +279,7 @@ The standard store adapters all implement the durability tables:
 | Adapter | Package | Notes |
 |---|---|---|
 | In-memory | `@flow-state-dev/engine` (`inMemoryStores()`) | Default. State is lost on process restart — suitable for development and testing |
-| Filesystem | `@flow-state-dev/engine` (`filesystemStores({ rootDir })`) | Persists to JSON files. Survives restarts, not suitable for multi-instance deployments |
+| Filesystem | `@flow-state-dev/engine` (`filesystemStores({ rootDir })`) | Persists to a nested file tree (`.md` content, `.json` state). Survives restarts, not suitable for multi-instance deployments |
 | SQLite | `@flow-state-dev/store-sqlite` | Single-file database. Good for single-server deployments |
 | Postgres | `@flow-state-dev/store-postgres` | Full persistence with concurrent read/write support |
 
