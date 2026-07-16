@@ -220,20 +220,10 @@ describe("parseTaxLotCsv — skips + warnings", () => {
 });
 
 describe("parseTaxLotCsv — currency (§0 D3)", () => {
-  it("rejects a row whose file currency differs from the account currency", () => {
-    const csv = [
-      `${UNREALIZED_HEADER},currency`,
-      "AAPL,10,1500,150,2024-03-15,EUR",
-      "MSFT,5,500,100,2024-01-02,USD",
-    ].join("\n");
-    const result = parseTaxLotCsv(csv, { expectedCurrency: "USD" });
-    expect(result.events).toHaveLength(1);
-    expect(result.events[0].ticker).toBe("MSFT");
-    expect(result.events[0].currency).toBe("USD");
-    expect(result.parseErrors[0].reason).toMatch(/EUR.*USD/);
-  });
-
-  it("carries the file currency through on a preview parse (no expectedCurrency)", () => {
+  // The parser has no account context, so it never rejects on currency — it carries
+  // the file column through and the server (`importTransactionFile`) enforces the D3
+  // single-currency reject (tested in tax-lot-import-seam.spec.ts).
+  it("carries the file currency through (server enforces the D3 reject)", () => {
     const csv = [
       `${UNREALIZED_HEADER},currency`,
       "AAPL,10,1500,150,2024-03-15,EUR",

@@ -73,12 +73,6 @@ export type TaxLotParseResult = {
   warnings: string[];
 };
 
-/** Options for {@link parseTaxLotCsv}. `expectedCurrency` is the target account's
- *  currency; when passed, a row whose file currency differs is rejected (§0 D3).
- *  Omitted for a pure preview parse (no rejection — carry the file currency
- *  through). */
-export type TaxLotParseOptions = { expectedCurrency?: string };
-
 /** The header→canonical-column map. Every tax-lot column keys on this subset. */
 type TaxLotColumn =
   | "symbol"
@@ -255,13 +249,9 @@ function resolveTicker(
  * `proceedsUnknown`) preserve rows with missing money rather than dropping them;
  * only a missing symbol/qty/own-date makes a row unrepresentable.
  */
-export function parseTaxLotCsv(
-  csvText: string,
-  options: TaxLotParseOptions = {},
-): TaxLotParseResult {
+export function parseTaxLotCsv(csvText: string): TaxLotParseResult {
   const warnings: string[] = [];
   const parseErrors: TaxLotParseError[] = [];
-  const expectedCurrency = options.expectedCurrency?.trim().toUpperCase();
 
   const detection = detectTaxLotCsv(csvText);
   if (detection.kind === "not-tax-lot") {
@@ -347,22 +337,11 @@ export function parseTaxLotCsv(
       }
     }
 
-    // Currency: read the file column when present; reject on a mismatch with the
-    // target account (§0 D3), never the silent USD default. No column ⇒ unset
-    // (server injects the account currency).
-    let currency: string | undefined;
+    // Currency: read the file column through when present, else leave unset (the
+    // server injects the target account's currency and enforces the §0 D3
+    // single-currency reject — this pure parser has no account context).
     const rawCurrency = cell(cells, cols.currency);
-    if (rawCurrency.length > 0) {
-      const fileCurrency = rawCurrency.toUpperCase();
-      if (expectedCurrency !== undefined && fileCurrency !== expectedCurrency) {
-        parseErrors.push({
-          line,
-          reason: `currency ${fileCurrency} does not match the account currency ${expectedCurrency} — row skipped (single-currency accounts in v1)`,
-        });
-        continue;
-      }
-      currency = fileCurrency;
-    }
+    const currency = rawCurrency.length > 0 ? rawCurrency.toUpperCase() : undefined;
 
     // Money fields are represented-not-dropped: a blank costBasis / proceeds is a
     // real lot with an honestly-unknown amount, kept via the marker machinery.

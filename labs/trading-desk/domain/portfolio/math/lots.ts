@@ -209,8 +209,18 @@ export function deriveLots(events: LedgerRow[]): {
           const lot = lots[idx];
           const consumed = Math.min(lot.quantity, totalSellQty);
           if (isSell) disposals.push(makeDisposal(e, lot, consumed, totalSellQty, 0));
-          if (lot.quantity <= totalSellQty + QTY_EPSILON) lots.splice(idx, 1);
-          else lot.quantity -= totalSellQty;
+          if (lot.quantity <= totalSellQty + QTY_EPSILON) {
+            lots.splice(idx, 1);
+            // The keyed lot didn't cover the whole sale — surface the remainder as
+            // an unmatched disposal (real proceeds, unknown basis/term) rather than
+            // silently dropping those proceeds, mirroring the FIFO over-sell branch.
+            const remainder = totalSellQty - lot.quantity;
+            if (isSell && remainder > QTY_EPSILON) {
+              disposals.push(makeUnmatchedDisposal(e, remainder, totalSellQty, 1, "lot-not-found"));
+            }
+          } else {
+            lot.quantity -= totalSellQty;
+          }
         }
         open.set(ticker, lots);
         continue;

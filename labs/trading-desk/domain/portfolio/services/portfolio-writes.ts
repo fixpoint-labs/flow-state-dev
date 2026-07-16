@@ -374,17 +374,22 @@ export async function importTransactionFile(
   //  - a row with NO file currency inherits the target account's currency (never
   //    the ledger's silent `"USD"` default, which would mislabel a foreign lot as
   //    taxable USD);
-  //  - a row whose file currency DIFFERS from the account is skipped with a per-row
-  //    parse error (single-currency accounts in v1) — a mismatched lot cannot be
-  //    honestly stored. Both synthesized legs of a tax-lot row carry the same
-  //    currency, so a mismatch drops the pair together (keyed on the shared lot key).
+  //  - a TAX-LOT row whose file currency DIFFERS from the account is skipped with a
+  //    per-row parse error (single-currency accounts in v1) — a mismatched lot
+  //    cannot be honestly stored. Both synthesized legs of a tax-lot row carry the
+  //    same currency, so a mismatch drops the pair together (shared lot key).
+  // The D3 reject is scoped to the tax-lot formats (its spec home). OFX events keep
+  // their pre-FIX-895 behavior — imported with the file's own currency, merely
+  // excluded from the USD-only tax estimate downstream — so this doesn't silently
+  // change what an OFX import does.
+  const isTaxLot = parsed.format === "tax-lot-unrealized" || parsed.format === "tax-lot-realized";
   const accountCurrency = account.currency; // already normalized upper-case
   const currencyErrors: { line: number | null; reason: string }[] = [];
   const seenMismatch = new Set<string>();
   const events: LedgerEventInput[] = [];
   for (const e of parsed.events) {
     const fileCurrency = (e as { currency?: string | null }).currency ?? null;
-    if (fileCurrency !== null && fileCurrency.toUpperCase() !== accountCurrency) {
+    if (isTaxLot && fileCurrency !== null && fileCurrency.toUpperCase() !== accountCurrency) {
       const rowKey = e.lotKey ?? e.closesLotKey ?? e.ticker ?? String(currencyErrors.length);
       if (!seenMismatch.has(rowKey)) {
         seenMismatch.add(rowKey);
@@ -537,8 +542,11 @@ export async function backfillSplits(
   const toIngest: LedgerEventInput[] = [];
   for (const [key, earliest] of earliestByAcctTicker) {
     // Skip a pair whose non-voided share history is entirely tax-lot keyed — the
-    // broker file is already split-adjusted, so a provider split would double-adjust
-    // its synthetic lots (and the one-source seam would refuse the unkeyed split).
+    // broker file is already split-adjusted, so a provider split on those lots
+    // would be redundant. (`deriveLots` also skips keyed lots in its split branch,
+    // so an ingested split would be a no-op on the derived quantity; this skip just
+    // avoids writing a cosmetic split row into a tax-lot-dedicated account. A split
+    // carries `quantity: null`, so the one-source seam never inspects it.)
     const k = keyedness.get(key);
     if (k !== undefined && k.any && k.allKeyed) continue;
     const sep = key.indexOf(" ");

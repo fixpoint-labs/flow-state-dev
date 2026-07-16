@@ -238,6 +238,35 @@ describe("deriveLots — specific-lot consumption (FIX-895)", () => {
     // The unrelated lot is untouched — the whole position stays open.
     expect(positions.find((p) => p.ticker === "AAPL")?.quantity).toBe(10);
   });
+
+  it("a keyed sell larger than its lot surfaces the remainder, not a silent drop", () => {
+    // The referenced lot (4 shares) can't cover the 10-share sell. The matched
+    // portion reports the lot's basis; the 6-share remainder must surface as an
+    // unmatched disposal (real proceeds, unknown basis) — mirroring the FIFO
+    // over-sell branch — so proceeds are never silently lost.
+    const { positions, disposals } = deriveLots([
+      row({ id: "b1", tradeDate: "2024-01-01", quantity: 4, unitPrice: 100, lotKey: "lot-a" }),
+      row({
+        id: "s1",
+        type: "sell",
+        tradeDate: "2026-03-01",
+        quantity: -10,
+        amount: 3000,
+        closesLotKey: "lot-a",
+      }),
+    ]);
+    // The lot is fully consumed — no open position remains.
+    expect(positions.find((p) => p.ticker === "AAPL")).toBeUndefined();
+    expect(disposals).toHaveLength(2);
+    const matched = disposals.find((d) => d.costBasis !== null);
+    const unmatched = disposals.find((d) => d.basisUnknown === "lot-not-found");
+    expect(matched?.quantity).toBe(4);
+    expect(matched?.costBasis).toBe(400); // 4 × 100
+    expect(matched?.proceeds).toBeCloseTo((4 / 10) * 3000); // 1200 — proportional
+    expect(unmatched?.quantity).toBe(6);
+    expect(unmatched?.costBasis).toBeNull();
+    expect(unmatched?.proceeds).toBeCloseTo((6 / 10) * 3000); // 1800 — not dropped
+  });
 });
 
 describe("deriveLots — D5 aggregate basis (FIX-895)", () => {
