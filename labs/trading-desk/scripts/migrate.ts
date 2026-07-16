@@ -21,6 +21,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { createDb } from "@/db/client";
 import { createPortfolioRepository } from "@/db/repository";
+import { FRESH_START_MARKER } from "@/db/schema";
 
 const url = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 if (!url) {
@@ -42,6 +43,32 @@ try {
   await migrate(drizzle(pool), {
     migrationsFolder: path.join(process.cwd(), "db", "migrations"),
   });
+  // Fresh-start rollout gate (FIX-895): the lot-identity fingerprint recipe
+  // (`|lk|ck|`, now unconditional) is only safe on a cleared ledger. Refuse to
+  // bring it up against legacy rows that predate the wipe — the operator must run
+  // `pnpm --filter @flow-state-dev/trading-desk ledger-reset` first, which
+  // truncates the ledger-derived tables and stamps the marker checked here. A
+  // genuinely fresh deploy (empty ledger) passes; a post-wipe ledger (marker
+  // present) passes. Runs before the backfill so it fails fast.
+  const legacyCount = Number(
+    (await pool.query('SELECT count(*)::text AS count FROM "app"."ledger_events"')).rows[0].count,
+  );
+  if (legacyCount > 0) {
+    const marked =
+      (
+        await pool.query('SELECT 1 FROM "app"."rollout_markers" WHERE "marker" = $1', [
+          FRESH_START_MARKER,
+        ])
+      ).rowCount ?? 0;
+    if (marked === 0) {
+      throw new Error(
+        `Refusing to activate the FIX-895 lot-identity fingerprint against an un-wiped ledger ` +
+          `(${legacyCount} legacy ledger_events rows, no fresh-start marker). Run ` +
+          `\`pnpm --filter @flow-state-dev/trading-desk ledger-reset\` to clear the ledger-derived ` +
+          `tables first, then re-deploy.`,
+      );
+    }
+  }
   // One-time realized-gains rollout (FIX-874): materialize every existing
   // account's realized gains, so history isn't empty until an unrelated mutation
   // touches each account. Idempotent (delete-then-reinsert under a per-account

@@ -325,3 +325,23 @@ export const taxProfiles = appSchema.table("tax_profiles", {
     .notNull()
     .default(sql`now()`),
 });
+
+/**
+ * One-time rollout markers (FIX-895) — a tiny audit table recording that a
+ * destructive, operator-run rollout step has been performed. Its only marker in
+ * v1 is the fresh-start ledger wipe (`ledger-reset` script): the lot-identity
+ * fingerprint recipe (`|lk|ck|`) is only safe on a cleared ledger, so the deploy
+ * migrator refuses to proceed when `ledger_events` still holds legacy rows and
+ * this marker is absent. Not a domain table — never read by the repository.
+ */
+export const rolloutMarkers = appSchema.table("rollout_markers", {
+  marker: text("marker").primaryKey(),
+  appliedAt: timestamp("applied_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .default(sql`now()`),
+});
+
+/** The `rollout_markers` row the fresh-start ledger wipe (`ledger-reset` script)
+ *  stamps and the deploy migrator checks for (FIX-895). Lives here — a
+ *  side-effect-free module — so both scripts share the one string. */
+export const FRESH_START_MARKER = "fresh-start-lotkey-fingerprint";

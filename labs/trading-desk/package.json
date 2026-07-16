@@ -16,7 +16,8 @@
     "db:clean": "tsx scripts/db-clean.ts",
     "migrate": "tsx scripts/migrate.ts",
     "nvda-split": "tsx scripts/record-nvda-split.ts",
-    "backfill-fund-classification": "tsx scripts/backfill-fund-classification.ts"
+    "backfill-fund-classification": "tsx scripts/backfill-fund-classification.ts",
+    "ledger-reset": "tsx scripts/ledger-reset.ts"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^4.0.12",
