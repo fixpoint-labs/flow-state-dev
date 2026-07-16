@@ -369,6 +369,42 @@ describe("ingestLedgerEvents — position materialization (ledger wins)", () => 
     expect(nvda?.acquiredDate).toBe("2026-01-05"); // hold period anchor
   });
 
+  it("nulls the aggregate cost basis when an imported (keyed) lot lacks basis — not a partial average (D5, FIX-895)", async () => {
+    // A tax-lot import of two keyed lots: one priced, one with blank basis. The
+    // materialized holding basis must be honestly null, not the priced lot's
+    // partial average presented as the whole position's cost.
+    await repo.ingestLedgerEvents(
+      [
+        ev({
+          ticker: "AAPL",
+          tradeDate: "2026-01-01",
+          quantity: 10,
+          unitPrice: 100,
+          amount: -1000,
+          source: "file",
+          externalId: "taxlot:u:AAPL:2026-01-01:1",
+          lotKey: "taxlot:u:AAPL:2026-01-01:1",
+        }),
+        ev({
+          ticker: "AAPL",
+          tradeDate: "2026-02-01",
+          quantity: 5,
+          unitPrice: null,
+          amount: 0,
+          basisUnknown: "import-missing-basis",
+          source: "file",
+          externalId: "taxlot:u:AAPL:2026-02-01:1",
+          lotKey: "taxlot:u:AAPL:2026-02-01:1",
+        }),
+      ],
+      "devuser",
+    );
+    const { holdings } = await repo.getPortfolio("devuser");
+    const aapl = holdings.find((h) => h.ticker === "AAPL");
+    expect(aapl?.quantity).toBe(15); // both lots held
+    expect(aapl?.costBasis).toBeNull(); // honestly unknown, NOT the partial 100 average
+  });
+
   it("overwrites a disagreeing snapshot quantity with the ledger-derived position", async () => {
     // A CSV declared 100 shares, but the actual trade history says 25 — the
     // transaction record is ground truth, so the snapshot loses.

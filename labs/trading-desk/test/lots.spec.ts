@@ -182,6 +182,103 @@ describe("deriveLots — same-day ordering", () => {
 });
 
 /** A `split` event: no share delta / cash — carries a numerator:denominator ratio. */
+describe("deriveLots — specific-lot consumption (FIX-895)", () => {
+  it("splices the NAMED lot out, leaving the older unnamed-by-the-sell lot open", () => {
+    // Two open keyed lots. The sell closes the NEWER lot by key; the OLDER lot
+    // must remain open at its own cost. FIFO (oldest-first) would instead consume
+    // the older lot — the corruption specific-lot identity prevents.
+    const { positions } = deriveLots([
+      row({ id: "b1", tradeDate: "2024-01-01", quantity: 10, unitPrice: 100, lotKey: "lot-old" }),
+      row({ id: "b2", tradeDate: "2026-02-01", quantity: 10, unitPrice: 200, lotKey: "lot-new" }),
+      row({
+        id: "s1",
+        type: "sell",
+        tradeDate: "2026-03-01",
+        quantity: -10,
+        amount: 2500,
+        closesLotKey: "lot-new",
+      }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    expect(aapl?.quantity).toBe(10); // only the older lot remains
+    expect(aapl?.avgCost).toBe(100); // the OLDER lot's cost, not a FIFO residual
+    expect(aapl?.acquiredDate).toBe("2024-01-01");
+  });
+
+  it("partially closes the named lot, keeping the residual at its cost", () => {
+    const { positions } = deriveLots([
+      row({ id: "b1", tradeDate: "2024-01-01", quantity: 10, unitPrice: 100, lotKey: "lot-old" }),
+      row({ id: "b2", tradeDate: "2026-02-01", quantity: 10, unitPrice: 200, lotKey: "lot-new" }),
+      row({
+        id: "s1",
+        type: "sell",
+        tradeDate: "2026-03-01",
+        quantity: -4,
+        amount: 1000,
+        closesLotKey: "lot-new",
+      }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    expect(aapl?.quantity).toBe(16); // 10 old + 6 residual of the newer lot
+    expect(aapl?.avgCost).toBe((10 * 100 + 6 * 200) / 16); // 137.5
+  });
+
+  it("a keyed disposal for a missing lot consumes NOTHING (no FIFO fallback)", () => {
+    const { positions } = deriveLots([
+      row({ id: "b1", tradeDate: "2024-01-01", quantity: 10, unitPrice: 100, lotKey: "lot-a" }),
+      row({
+        id: "s1",
+        type: "sell",
+        tradeDate: "2026-03-01",
+        quantity: -10,
+        amount: 2500,
+        closesLotKey: "lot-missing",
+      }),
+    ]);
+    // The unrelated lot is untouched — the whole position stays open.
+    expect(positions.find((p) => p.ticker === "AAPL")?.quantity).toBe(10);
+  });
+});
+
+describe("deriveLots — D5 aggregate basis (FIX-895)", () => {
+  it("flags hasUnknownKeyedBasis when a KEYED open lot lacks basis", () => {
+    const { positions } = deriveLots([
+      row({ id: "b1", tradeDate: "2026-01-01", quantity: 10, unitPrice: 100, lotKey: "lot-known" }),
+      row({
+        id: "b2",
+        tradeDate: "2026-02-01",
+        quantity: 5,
+        unitPrice: null,
+        amount: 0,
+        basisUnknown: "import-missing-basis",
+        lotKey: "lot-nobasis",
+      }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    expect(aapl?.hasUnknownBasis).toBe(true);
+    expect(aapl?.hasUnknownKeyedBasis).toBe(true); // materializePositions nulls basis
+    expect(aapl?.avgCost).toBe(100); // deriveLots itself still reports the known portion
+  });
+
+  it("does NOT flag hasUnknownKeyedBasis for an UNKEYED unknown-basis lot (FIFO feeds unchanged, BP-030)", () => {
+    const { positions } = deriveLots([
+      row({ id: "b1", tradeDate: "2026-01-01", quantity: 10, unitPrice: 100 }),
+      row({
+        id: "t1",
+        type: "transfer",
+        tradeDate: "2026-02-01",
+        quantity: 5,
+        unitPrice: null,
+        amount: 0,
+        basisUnknown: "no record",
+      }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    expect(aapl?.hasUnknownBasis).toBe(true);
+    expect(aapl?.hasUnknownKeyedBasis).toBe(false); // keeps its partial-average holding basis
+  });
+});
+
 function split(numerator: number, denominator: number, over: Partial<LedgerRow> = {}): LedgerRow {
   return row({
     type: "split",
@@ -264,6 +361,21 @@ describe("deriveLots — stock splits (FIX-876)", () => {
   it("a split with no open lots for the ticker is a harmless no-op", () => {
     const { positions } = deriveLots([split(10, 1, { tradeDate: "2024-06-10" })]);
     expect(positions.find((p) => p.ticker === "AAPL")).toBeUndefined();
+  });
+
+  it("does NOT rebase a KEYED lot spanning the split date (broker file already split-adjusted, FIX-895)", () => {
+    // A tax-lot import's quantities/basis are already split-adjusted as of export,
+    // so a split event must not double-adjust a keyed lot. An unkeyed lot on the
+    // same ticker still rebases — the skip is per-lot, not per-ticker.
+    const { positions } = deriveLots([
+      row({ tradeDate: "2024-01-01", quantity: 100, unitPrice: 90, lotKey: "lot-keyed" }),
+      row({ tradeDate: "2024-01-02", quantity: 10, unitPrice: 900 }), // unkeyed
+      split(10, 1, { tradeDate: "2024-06-10" }),
+    ]);
+    const aapl = positions.find((p) => p.ticker === "AAPL");
+    // Keyed lot stays 100 @ 90; unkeyed lot rebases 10×10=100 @ 90. Total 200.
+    expect(aapl?.quantity).toBe(200);
+    expect(aapl?.avgCost).toBe(90);
   });
 
   it("infers a forward split from the price cliff when a near-split trade exists", () => {

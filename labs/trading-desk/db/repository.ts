@@ -932,7 +932,11 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
     // earlier oversell self-heals the row).
     await upsertMaterializedHolding(tx, accountId, ticker, {
       quantity: String(p.quantity),
-      costBasis: p.avgCost === null ? null : String(p.avgCost),
+      // D5 (FIX-895): when any open IMPORTED (keyed) lot lacks basis, persist a
+      // null aggregate basis rather than a partial average of only the known lots
+      // — an imported tax-lot position with one basis-unknown lot is honestly
+      // unknown, not partly-priced. Unkeyed FIFO feeds keep their partial average.
+      costBasis: p.avgCost === null || p.hasUnknownKeyedBasis ? null : String(p.avgCost),
       acquiredDate: p.acquiredDate,
       dataQuality: null,
     });

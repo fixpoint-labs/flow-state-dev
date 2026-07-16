@@ -65,6 +65,12 @@ export type DerivedPosition = {
   acquiredDate: string | null;
   /** True when any open lot has an unknown basis (the gap is surfaced, not hidden). */
   hasUnknownBasis: boolean;
+  /** True when any open lot that carries a `lotKey` (an imported tax-lot lot,
+   *  FIX-895) has an unknown basis. `materializePositions` reads this for D5: the
+   *  aggregate holding basis is nulled — not shown as a partial average — when an
+   *  imported lot lacks basis. Gated on keyed lots so unkeyed FIFO feeds keep their
+   *  established honest-over-known partial average (BP-030). */
+  hasUnknownKeyedBasis: boolean;
 };
 
 /** A mutable open lot used while reducing the event stream. Beyond the fields
@@ -80,6 +86,10 @@ type OpenLot = {
   acquisitionDateKnown: boolean;
   currency: string;
   basisUnknownReason: string | null;
+  /** Lot identity (FIX-895) carried from the acquiring buy's `lotKey`. Null for
+   *  every feed with no lot identity (OFX / Plaid / manual). A keyed disposal
+   *  consumes the lot whose key matches; the split branch skips keyed lots. */
+  lotKey: string | null;
 };
 
 /**
@@ -144,6 +154,10 @@ export function deriveLots(events: LedgerRow[]): {
       if (attrs === null || lots === undefined) continue;
       const r = splitRatio(attrs);
       for (const lot of lots) {
+        // A keyed lot (FIX-895) comes from a broker tax-lot export whose quantity
+        // and basis are ALREADY split-adjusted as of the export, so rebasing it
+        // would double-adjust (phantom remainder / spurious over-sell). Skip it.
+        if (lot.lotKey !== null) continue;
         lot.quantity *= r;
         if (lot.costPerShare !== null) lot.costPerShare /= r;
       }
@@ -167,6 +181,7 @@ export function deriveLots(events: LedgerRow[]): {
         acquisitionDateKnown: e.type === "buy",
         currency: e.currency,
         basisUnknownReason: e.basisUnknown,
+        lotKey: e.lotKey,
       });
       open.set(ticker, lots);
     } else {
@@ -175,9 +190,34 @@ export function deriveLots(events: LedgerRow[]): {
       // lots but produces no gain. Consumption stays sign-driven for both.
       const isSell = e.type === "sell";
       const totalSellQty = -qty;
+      const lots = open.get(ticker) ?? [];
+
+      if (e.closesLotKey !== null) {
+        // Specific-lot disposal (FIX-895): the broker told us WHICH lot closed, so
+        // consume THAT lot (splice by key), never oldest-first FIFO. A keyed
+        // disposal NEVER falls back to FIFO: if the referenced lot is not open
+        // (evolved/partial file, or already consumed) the sell emits an unmatched
+        // disposal (real proceeds, unknown acquisition/basis/term, `lot-not-found`)
+        // and consumes NOTHING — silently consuming an unrelated lot would
+        // fabricate a wrong basis/term, the exact corruption lot identity prevents.
+        const idx = lots.findIndex((l) => l.lotKey === e.closesLotKey);
+        if (idx === -1) {
+          if (isSell) {
+            disposals.push(makeUnmatchedDisposal(e, totalSellQty, totalSellQty, 0, "lot-not-found"));
+          }
+        } else {
+          const lot = lots[idx];
+          const consumed = Math.min(lot.quantity, totalSellQty);
+          if (isSell) disposals.push(makeDisposal(e, lot, consumed, totalSellQty, 0));
+          if (lot.quantity <= totalSellQty + QTY_EPSILON) lots.splice(idx, 1);
+          else lot.quantity -= totalSellQty;
+        }
+        open.set(ticker, lots);
+        continue;
+      }
+
       let remaining = totalSellQty;
       let lotIndex = 0;
-      const lots = open.get(ticker) ?? [];
       // Buffer THIS sale's matched disposals: whether the sale over-sold isn't
       // known until the loop finishes, and an over-sell retroactively taints
       // every lot it consumed (mismatched units), not just the remainder.
@@ -231,10 +271,12 @@ export function deriveLots(events: LedgerRow[]): {
     let knownCost = 0;
     let acquiredDate: string | null = null;
     let hasUnknownBasis = false;
+    let hasUnknownKeyedBasis = false;
     for (const lot of openLots) {
       totalQty += lot.quantity;
       if (lot.costPerShare === null) {
         hasUnknownBasis = true;
+        if (lot.lotKey !== null) hasUnknownKeyedBasis = true; // FIX-895 D5
       } else {
         knownQty += lot.quantity;
         knownCost += lot.quantity * lot.costPerShare;
@@ -255,6 +297,7 @@ export function deriveLots(events: LedgerRow[]): {
       avgCost: knownQty > QTY_EPSILON ? knownCost / knownQty : null,
       acquiredDate,
       hasUnknownBasis,
+      hasUnknownKeyedBasis,
     });
   }
 
@@ -321,13 +364,17 @@ function makeDisposal(
   };
 }
 
-/** The unmatched remainder of an over-sell — real proceeds, no acquisition lot,
- *  so acquisition/term/basis are all unknown but the sale stays visible. */
+/** The unmatched remainder of an over-sell, OR a keyed disposal whose referenced
+ *  lot is not open (FIX-895, `reason: "lot-not-found"`) — real proceeds, no
+ *  acquisition lot, so acquisition/term/basis are all unknown but the sale stays
+ *  visible. `reason` names the basis-unknown cause (default: the over-sell's
+ *  `"no-acquisition-lot"`); a set `proceedsUnknown` marker still wins. */
 function makeUnmatchedDisposal(
   e: LedgerRow,
   remaining: number,
   totalSellQty: number,
   lotIndex: number,
+  reason = "no-acquisition-lot",
 ): RealizedDisposal {
   // `abs` for the same reason as makeDisposal — a legacy negative sell amount
   // must not surface as negative proceeds on the unmatched remainder.
@@ -343,7 +390,7 @@ function makeUnmatchedDisposal(
     gain: null,
     term: "unknown",
     currency: e.currency,
-    basisUnknown: e.proceedsUnknown ?? "no-acquisition-lot",
+    basisUnknown: e.proceedsUnknown ?? reason,
     disposalEventId: e.id,
     lotIndex,
   };
