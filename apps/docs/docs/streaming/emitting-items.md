@@ -6,6 +6,10 @@ sidebar_position: 2
 
 Generators emit messages automatically as they stream. But blocks can also emit items explicitly using the context methods. This is how you send progress updates, render custom UI components, and build multi-block interfaces.
 
+:::note Renamed from the flat emitters
+The emitters live under the `ctx.emit` namespace: `ctx.emit.message`, `ctx.emit.component`, `ctx.emit.status`. The old flat forms (`ctx.emitMessage`, `ctx.emitComponent`, `ctx.emitStatus`) still work but log a one-time deprecation warning, and will be removed in the next major. Update old snippets by moving the suffix into the namespace: `ctx.emitMessage(...)` becomes `ctx.emit.message(...)`.
+:::
+
 ## Messages
 
 `ctx.emit.message()` sends a chat message to the user. The message also enters LLM conversation history, so future model calls can see it.
