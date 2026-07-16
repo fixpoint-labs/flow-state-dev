@@ -17,7 +17,8 @@
  *     process.
  *
  * Memoized: the pool / PGlite instance, the store backing, and the repository
- * are created exactly once per process.
+ * are created once per host lifecycle. One-shot hosts can explicitly dispose
+ * the app-owned backing after all framework and repository work is complete.
  */
 import { mkdirSync } from "node:fs";
 import path from "node:path";
@@ -37,6 +38,8 @@ type Backing = {
   storesOptions: PostgresStoreOptions;
   /** The portfolio repository over the same backing. */
   repository: PortfolioRepository;
+  /** App-owned cleanup not covered by the framework store registry. */
+  close?: () => Promise<void>;
 };
 
 /** Where the embedded PGlite dev database lives. Under `.fsdev/` so the root
@@ -107,7 +110,11 @@ async function buildBacking(): Promise<Backing> {
   } catch (err) {
     console.error("[portfolio-db] realized-gains backfill failed:", err);
   }
-  return { storesOptions: { executor }, repository };
+  return {
+    storesOptions: { executor },
+    repository,
+    close: () => pglite.close(),
+  };
 }
 
 // Anchored on `globalThis`, not a module-level `let`: Next.js dev compiles
@@ -130,6 +137,19 @@ export function getBacking(): Promise<Backing> {
   const g = globalThis as GlobalWithBacking;
   g[BACKING_KEY] ??= buildBacking();
   return g[BACKING_KEY];
+}
+
+/** Release the app-owned backing for a one-shot host such as the eval CLI.
+ * Ordinary Next.js module graphs share this backing and must not call this while
+ * another graph is active; their framework adapter therefore closes only its
+ * own resolved store registry. */
+export async function disposePortfolioBacking(): Promise<void> {
+  const g = globalThis as GlobalWithBacking;
+  const backingPromise = g[BACKING_KEY];
+  delete g[BACKING_KEY];
+  if (backingPromise === undefined) return;
+  const backing = await backingPromise;
+  await backing.close?.();
 }
 
 /** The portfolio repository — the single source of truth for accounts and

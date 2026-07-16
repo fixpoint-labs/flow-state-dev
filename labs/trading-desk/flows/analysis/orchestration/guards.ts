@@ -24,7 +24,7 @@ import { z } from "zod";
 import { ALL_MEMO_KEYS, PHASE_1_MEMO_KEYS } from "../registry";
 import { analyzeInputSchema } from "../flow-schema";
 import { resolveTicker } from "../lib/ticker-resolver";
-import { memoResources } from "../resources";
+import { memoResources, phase2Contributions } from "../resources";
 import { financialsDataResource } from "../financials-data-resource";
 import { quantDataResource } from "../quant-data-resource";
 import { technicalDataResource } from "../technical-data-resource";
@@ -32,6 +32,8 @@ import { profileDataResource } from "../profile-data-resource";
 import { priceHistoryResource } from "../price-history-resource";
 import { valuationSpineResource } from "../valuation-spine-resource";
 import { decisionSnapshotResource } from "../decision-snapshot-resource";
+import { rewardToRiskResource } from "../reward-to-risk-resource";
+import { lensConvergenceResource } from "../agents/lenses/lens-convergence-resource";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
@@ -82,6 +84,9 @@ export const seedSession = handler({
     priceHistory: priceHistoryResource,
     valuationSpine: valuationSpineResource,
     decisionSnapshot: decisionSnapshotResource,
+    rewardToRisk: rewardToRiskResource,
+    lensConvergence: lensConvergenceResource,
+    p2Contributions: phase2Contributions,
     ...memoResources,
   },
   execute: async (input, ctx) => {
@@ -115,6 +120,18 @@ export const seedSession = handler({
     // exactly as for an unwritten resource.)
     await ctx.resources.priceHistory.setState(null);
     await ctx.resources.valuationSpine.setState(null);
+    await ctx.resources.rewardToRisk.setState(null);
+    // Reset the Phase-2 debate transcript and the lens-convergence resource for
+    // the same reason. On a full re-run each is refreshed downstream (the
+    // round-robin's init tap resets `p2Contributions` to `{ entries: [] }`; the
+    // convergence tap re-`patchState`s), but a re-run that STOPS EARLY (an asset /
+    // ticker / Phase-1 guard trips before Phase 2 / 2b) never reaches those, so
+    // the prior run's transcript and convergence would otherwise be projected onto
+    // the new stopped run's artifacts. Reset here so a stopped re-run is honestly
+    // debate-blind / lens-blind. `{ entries: [] }` matches the round-robin's own
+    // init shape.
+    await ctx.resources.p2Contributions.setState({ entries: [] });
+    await ctx.resources.lensConvergence.setState(null);
     // Reset the decision-of-record too, so a re-run that stops before the PM
     // commits (or is mid-flight) can't leave the PRIOR run's decision readable —
     // which `adoptThesis` would otherwise save as the current thesis (it only
@@ -268,6 +285,10 @@ export const seedSession = handler({
       // so the navigator doesn't render a stale "stopped" banner.
       stoppedReason: null,
       stoppedMessage: null,
+      // Reset the Phase-2 citation-integrity report (written by the post-debate
+      // tap). A re-run that stops before Phase 2 would otherwise carry the prior
+      // run's report; the tap re-writes it on a full run.
+      citationIntegrity: null,
       userThesis,
       userThesisRationale: userThesis === null ? null : input.userThesisRationale,
       userThesisWarning,

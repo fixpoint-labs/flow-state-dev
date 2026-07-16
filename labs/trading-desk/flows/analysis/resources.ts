@@ -11,6 +11,7 @@ import { defineResourceCollection } from "@flow-state-dev/core";
 import { createRoundRobinContributions } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
 import { lensConvergenceStateSchema } from "./agents/lenses/lens-convergence-resource";
+import { ratingSchema } from "./lib/rating-engine";
 
 /** Memo lifecycle states. The Phase 1 sub-sequencer pre-creates each memo
  *  in `pending`, transitions to `writing` when the analyst generator starts,
@@ -302,10 +303,7 @@ export const memoStateSchema = z.object({
   // `agreesWithTrader` is computed at commit time from `finalRating` direction
   // vs `trader.direction` — it's a derived field, not part of the LLM output.
   decisionSummary: z.string().nullable().default(null),
-  finalRating: z
-    .enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"])
-    .nullable()
-    .default(null),
+  finalRating: ratingSchema.nullable().default(null),
   decisionConfidence: z.number().min(0).max(1).nullable().default(null),
   acceptedAdjustments: z
     .object({
@@ -333,14 +331,11 @@ export const memoStateSchema = z.object({
   // memo populates these; all other memos leave them `null`. The writer
   // computes these from the spine resource at commit time — the LLM never
   // emits them.
-  modelImpliedRating: z
-    .enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"])
-    .nullable()
-    .default(null),
+  modelImpliedRating: ratingSchema.nullable().default(null),
   ratingBand: z
     .object({
-      floor: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
-      ceiling: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
+      floor: ratingSchema,
+      ceiling: ratingSchema,
     })
     .nullable()
     .default(null),

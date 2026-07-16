@@ -41,6 +41,7 @@ import {
   type DecisionSnapshotState,
 } from "../../decision-snapshot-resource";
 import { clampRatingToBand } from "../../lib/rating-engine";
+import { clampTargetWeight, computeMandateGates } from "../../lib/mandate-gates";
 import { computePolicyGate } from "../../lib/policy-gate";
 import { publishMemo } from "../_recipe/memo-writer";
 import type { ReportDecisionMeta } from "../../report-index";
@@ -211,48 +212,31 @@ export const commitPortfolioManagerMemo = handler({
     let mandateDecision: MandateDecision | null = null;
 
     if (mandate != null && rr != null && rr.evidenceBasis != null) {
-      // Soft gates (appetite/tolerance). A no-downside distribution treats the
-      // reward-to-risk floor as cleared (the GLR is undefined there).
-      const rrCleared =
-        rr.noDownside ||
-        (rr.lossAdjustedGlr != null && rr.lossAdjustedGlr >= mandate.rewardToRiskFloor);
-      const hurdleCleared =
-        rr.expectedValuePct != null && rr.expectedValuePct >= mandate.hurdleReturnPct;
-      const confidenceCleared = decision.decisionConfidence >= mandate.confidenceFloor;
-      const cleared = rrCleared && hurdleCleared && confidenceCleared;
-      // Hard capacity line: the worst-case bucket must be within tolerance. A
-      // null worst case fails CLOSED — today it only arises when no figure was
-      // computed (the gate is then skipped above), but a hard safety gate must
-      // never silently pass an unknown worst case.
-      const capacityCleared =
-        rr.worstCaseReturnPct != null &&
-        rr.worstCaseReturnPct >= -mandate.maxTolerableLossPct;
       const override = decision.mandateFit.mandateOverrideReason.trim().length > 0;
-
-      let sizeClamped = false;
-      // Capacity veto first — non-overridable, the strongest line (capacity
-      // vetoes appetite). capacityVetoCapPct ≤ unclearedCapPct, so this also
-      // subsumes the soft cap on a capacity breach.
-      if (!capacityCleared && targetWeightPct > mandate.capacityVetoCapPct) {
-        targetWeightPct = mandate.capacityVetoCapPct;
-        sizeClamped = true;
-      }
-      // Soft worth-it cap — lifted only by a stated override reason.
-      if (!cleared && !override && targetWeightPct > mandate.unclearedCapPct) {
-        targetWeightPct = mandate.unclearedCapPct;
-        sizeClamped = true;
-      }
-
-      const verdict: "clears" | "fails" =
-        capacityCleared && (cleared || override) ? "clears" : "fails";
+      // Recompute the soft appetite gates + hard capacity line + verdict, then
+      // apply the downward-only size clamp — the same `lib/mandate-gates.ts`
+      // formula the eval invariant layer recomputes against (FIX-790).
+      const gates = computeMandateGates({
+        mandate,
+        rr,
+        decisionConfidence: decision.decisionConfidence,
+        override,
+      });
+      const clamped = clampTargetWeight({
+        targetWeightPct,
+        mandate,
+        gates,
+        override,
+      });
+      targetWeightPct = clamped.targetWeightPct;
 
       mandateDecision = {
         mandateId: mandate.id,
         mandateLabel: mandate.label,
-        verdict,
-        cleared,
-        capacityVetoed: !capacityCleared,
-        sizeClamped,
+        verdict: gates.verdict,
+        cleared: gates.cleared,
+        capacityVetoed: !gates.capacityCleared,
+        sizeClamped: clamped.sizeClamped,
         lossAdjustedGlr: rr.lossAdjustedGlr,
         expectedValuePct: rr.expectedValuePct,
         worstCaseReturnPct: rr.worstCaseReturnPct,

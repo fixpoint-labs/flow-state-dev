@@ -14,6 +14,7 @@
  * sibling `decision-snapshot-resource.ts` and is never imported from here.
  */
 import { z } from "zod";
+import { ratingSchema } from "./lib/rating-engine";
 
 /**
  * The decision summary merged into session metadata at PM-commit so the Past
@@ -22,7 +23,7 @@ import { z } from "zod";
  * written at session-create time are untouched by the merge.
  */
 export const reportDecisionMetaSchema = z.object({
-  finalRating: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
+  finalRating: ratingSchema,
   decisionConfidence: z.number().min(0).max(1),
   /** One-line PM TLDR for the list subtitle. Truncated to a sane length at
    *  write time (see the PM commit handler). */

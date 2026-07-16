@@ -717,9 +717,13 @@ methodology rather than advice:
   parameterized risk gating, not production risk governance. The durable
   portfolio mandate is a documented user-set policy the desk sizes with in
   view, not a production IPS governance framework and not advice.
-- **Not a backtest.** There is no historical evaluation, no calibration
-  against outcomes, no measure of decision quality. The Portfolio
-  Manager's `decisionConfidence` is self-reported uncertainty, not a
+- **Not a backtest.** There is no historical evaluation or calibration against
+  outcomes. There *is* a run-quality eval suite (see
+  [`docs/run-quality-eval.md`](docs/run-quality-eval.md)) that scores the
+  *process* quality of a stored run — deterministic internal-consistency checks
+  plus blinded LLM-judge rubrics — but that measures whether a run was
+  self-consistent and well-reasoned, not whether the call was *right*. The
+  Portfolio Manager's `decisionConfidence` is self-reported uncertainty, not a
   prediction of accuracy.
 - **Not a recommendation system.** The five-tier rating is informative
   scale, not actionable signal. Two distinct ticker × date inputs may

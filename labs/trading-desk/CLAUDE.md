@@ -1614,7 +1614,8 @@ output is the `RunSummary` (final rating + clamps, target weight + mandate gates
 stop reason, per-memo status, session id) — the shape is in
 [`flows/analysis/run-summary.ts`](flows/analysis/run-summary.ts). It
 records what happened; it does NOT judge whether the run was good — that is the
-eval-suite's job (FIX-790).
+job of the run-quality eval suite (`eval/`, see
+[Evaluating run quality](#evaluating-run-quality) below).
 
 A single run uses the shared `.fsdev/pglite`, so it appears in Past Reports like a
 UI run; set `TRADING_DESK_DATA_DIR` to a temp dir for a throwaway run that
@@ -1627,3 +1628,42 @@ the
 [`goals/trading-desk-headless/fixture-run-clean`](../../goals/trading-desk-headless/fixture-run-clean/goal.md)
 goal check (the same two-step). Fixture mode stubs the data tools but still calls
 real models, so it exercises the real generator path.
+
+## Evaluating run quality
+
+The headless harness above records *what happened*; the **run-quality eval suite**
+(`eval/`) judges *whether it was good*. It has two layers over the same stored
+run, read through a zero-model `runArtifacts` action (the deeper sibling of
+`runSummary`): a **deterministic invariant layer** (pure code, zero model spend)
+that catches internal contradictions — a rating outside its band, scenario
+probabilities that don't cohere, a committed size that ignores the mandate gates,
+snapshot/memo mirrors that disagree — and an **LLM-judge layer** that scores the
+four qualitative dimensions code can't check (evidence quality, debate engagement,
+PM coherence, confidence calibration) on a blinded bundle, with a pinned judge
+model distinct from the desk's generators.
+
+Three commands (from this directory):
+
+```bash
+pnpm eval sweep    --manifest <file.json> [--concurrency 2] [--out .fsdev/eval] [--data-dir <path>] [--judge-model <id>] [--no-judges] [--max-cost-usd <n>]
+pnpm eval eval     --session <id> [--session <id> ...] [--data-dir <path>] [same flags]
+pnpm eval variance --session <id> [--session <id> ...] [--data-dir <path>] [--k 5]
+```
+
+`sweep` uses one framework runtime and one isolated PGlite backing (`<out>/data` by
+default) for the batch, with session IDs isolating concurrent runs. `eval` and
+`variance` default to the shared app store; pass `--data-dir <sweep-out>/data` to
+read a sweep. Each command uses one backing. `eval` evaluates already-stored
+sessions; `variance` characterizes the judge's own noise so a score delta can be
+told from randomness. `--max-cost-usd` is one command-wide judge budget shared
+across all requested sessions; an unknown-cost failure exhausts the remaining
+headroom rather than resetting the cap for the next session.
+Every evaluated run appends one separable `QualityRecord` line to
+`<out>/scoreboard.jsonl` (deterministic tally + per-dimension judged `{mean, std, k}`,
+never a composite) with a full detail sidecar alongside. **Exit code is non-zero
+when any run errored or any HARD invariant failed** — soft flags and judge scores
+never gate. The goal check is
+[`goals/trading-desk-eval/fixture-batch-scored`](../../goals/trading-desk-eval/fixture-batch-scored/goal.md).
+Full methodology (check groups, rubric anchors, the record shape, the measured
+noise bands, and the v1 limitations) is in
+[`docs/run-quality-eval.md`](docs/run-quality-eval.md).

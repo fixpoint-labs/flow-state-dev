@@ -14,6 +14,7 @@
  * Band: the combined rating ±1 tier. PM picks within the band freely;
  * stepping outside requires a non-empty ratingOverrideReason.
  */
+import { z } from "zod";
 import type { ExpectedReturn } from "./expected-return";
 import type { FairValue } from "./fair-value";
 import type { SetupScore } from "./setup-score";
@@ -21,11 +22,21 @@ import type { Triangulation } from "./triangulation";
 
 export type AbsoluteRating = "Buy" | "Hold" | "Sell";
 export type RelativeRating = "Overweight" | "Equal Weight" | "Underweight";
-export type FinalRating = "Sell" | "Underweight" | "Hold" | "Overweight" | "Buy";
 
-const FINAL_RATING_LADDER: FinalRating[] = [
+/** The five-tier final rating, low→high in tier order. Exported as a zod enum so
+ *  every desk site that persists, mirrors, or maps the rating shares ONE
+ *  definition — a future ladder change is a single edit here (adopted at each
+ *  five-tier-enum site per the FIX-790 spec §4.1). A bare `z.enum` stays
+ *  OpenAI strict-compatible (BP-016), so the PM generator output schema uses it
+ *  directly. */
+export const ratingSchema = z.enum([
   "Sell", "Underweight", "Hold", "Overweight", "Buy",
-];
+]);
+export type FinalRating = z.infer<typeof ratingSchema>;
+
+/** The rating ladder in tier order (low→high). Derived from `ratingSchema` so the
+ *  order and the enum can never drift. */
+export const RATING_LADDER: readonly FinalRating[] = ratingSchema.options;
 
 export interface RatingEnvelope {
   absoluteRating: AbsoluteRating;
@@ -134,11 +145,32 @@ function combinedRating(abs: AbsoluteRating, rel: RelativeRating): FinalRating {
   // Map: -3..-2 → Sell(0), -1 → Underweight(1), 0 → Hold(2),
   //       1 → Overweight(3), 2..3 → Buy(4)
   const idx = Math.max(0, Math.min(4, score + 2));
-  return FINAL_RATING_LADDER[idx];
+  return RATING_LADDER[idx];
 }
 
-function ratingIndex(r: FinalRating): number {
-  return FINAL_RATING_LADDER.indexOf(r);
+/** Tier position of a rating on the ladder (0 = Sell … 4 = Buy). Exported so the
+ *  eval invariant layer can order-compare a stored rating against its band. */
+export function ratingIndex(r: FinalRating): number {
+  return RATING_LADDER.indexOf(r);
+}
+
+/** The rating band around a model-implied rating: floor = implied − 1 tier;
+ *  ceiling = implied + 1, widened to +2 when the evidence is thin (missing
+ *  valuation anchor / low-confidence return). Thin evidence grants extra room to
+ *  be MORE bullish, never a free path below the implied rating (the downward
+ *  spread is always 1). Extracted so the eval invariant layer (FIX-790)
+ *  recomputes the band with the same formula `modelImpliedRating` writes it,
+ *  not a duplicate. */
+export function ratingBandFor(
+  implied: FinalRating,
+  thinEvidence: boolean,
+): { floor: FinalRating; ceiling: FinalRating } {
+  const idx = ratingIndex(implied);
+  const upSpread = thinEvidence ? 2 : 1;
+  return {
+    floor: RATING_LADDER[Math.max(0, idx - 1)],
+    ceiling: RATING_LADDER[Math.min(4, idx + upSpread)],
+  };
 }
 
 export interface ValuationSpineInput {
@@ -161,19 +193,14 @@ export function modelImpliedRating(input: ValuationSpineInput): RatingEnvelope {
   const abs = computeAbsoluteRating(er, fv);
   const rel = computeRelativeRating(ss);
   const implied = combinedRating(abs.rating, rel.rating);
-  const idx = ratingIndex(implied);
 
-  // Band: ±1 tier. Thin evidence (missing valuation / low-confidence return)
-  // widens the band UPWARD only. It grants extra room to be more bullish when
-  // the deterministic value anchor is absent, but must NOT open a free path
-  // *below* the model-implied rating: missing data is absorbed by a lower
-  // decisionConfidence, never by a lower rating. So the downward spread is
-  // always 1; only the upward spread reacts to thin evidence.
+  // Band: ±1 tier, widened UPWARD only on thin evidence (missing valuation /
+  // low-confidence return) — extra room to be more bullish when the value anchor
+  // is absent, never a free path *below* the implied rating (missing data is
+  // absorbed by a lower decisionConfidence, not a lower rating). See
+  // `ratingBandFor`, the single formula the eval invariant recomputes against.
   const thin = ss.evidenceBasis === "thin" || er.lowConfidence;
-  const downSpread = 1;
-  const upSpread = thin ? 2 : 1;
-  const floor = FINAL_RATING_LADDER[Math.max(0, idx - downSpread)];
-  const ceiling = FINAL_RATING_LADDER[Math.min(4, idx + upSpread)];
+  const { floor, ceiling } = ratingBandFor(implied, thin);
 
   // Surface the consensus margin of safety so the prompt shows the triangulated
   // number; it does NOT enter the gate conditions above.
@@ -213,5 +240,5 @@ export function clampRatingToBand(
 
   // Clamp to nearest band edge
   const clampedIdx = llmIdx < floorIdx ? floorIdx : ceilingIdx;
-  return { final: FINAL_RATING_LADDER[clampedIdx], clamped: true };
+  return { final: RATING_LADDER[clampedIdx], clamped: true };
 }

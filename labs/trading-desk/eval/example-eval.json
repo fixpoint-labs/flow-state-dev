@@ -1,0 +1,12 @@
+[
+    {
+      "ticker": "NVDA",
+      "dataSource": "fixture",
+      "costPreset": "fast"
+    },
+    {
+      "ticker": "AAPL",
+      "dataSource": "fixture",
+      "costPreset": "fast"
+    }
+  ]

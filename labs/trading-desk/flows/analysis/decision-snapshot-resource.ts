@@ -21,6 +21,7 @@
  */
 import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
+import { ratingSchema } from "./lib/rating-engine";
 
 /** Durable state shape of one report's decision-of-record. The `outcome*`
  *  fields are reserved (null on write) so a future outcome-tracking feature can
@@ -30,7 +31,7 @@ export const decisionSnapshotStateSchema = z.object({
   ticker: z.string(),
   asOfDate: z.string(),
   // The decision.
-  finalRating: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
+  finalRating: ratingSchema,
   decisionConfidence: z.number().min(0).max(1),
   decisionSummary: z.string(),
   // Entry context (from the trader memo's typed numeric mirrors). Nullable

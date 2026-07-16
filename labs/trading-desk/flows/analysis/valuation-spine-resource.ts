@@ -8,6 +8,7 @@
  */
 import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
+import { ratingSchema } from "./lib/rating-engine";
 
 const expectedReturnSchema = z.object({
   shareholderYield: z.number().nullable(),
@@ -69,9 +70,9 @@ const setupScoreSchema = z.object({
 const ratingEnvelopeSchema = z.object({
   absoluteRating: z.enum(["Buy", "Hold", "Sell"]),
   relativeRating: z.enum(["Overweight", "Equal Weight", "Underweight"]),
-  implied: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
-  floor: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
-  ceiling: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
+  implied: ratingSchema,
+  floor: ratingSchema,
+  ceiling: ratingSchema,
   rationale: z.string(),
 });
 
