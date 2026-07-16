@@ -16,6 +16,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   type ReactNode,
 } from "react";
 import type { Client, FlowListEntry, RecoveryClient, SessionClient } from "@flow-state-dev/client";
@@ -169,22 +170,26 @@ export function DevToolProvider({
     void refreshFlows();
   }, [refreshFlows]);
 
-  // Sync external `initialConfig`/`baseUrl` changes into state. The reducer's
-  // initializer only runs on mount, so without this the standalone shell's
-  // focus-driven re-read (or a host swapping the userId/bearerToken prop)
-  // would be silently ignored. Compare the WHOLE config — guarding on `userId`
-  // alone would drop a bearer-token-only change (BP-010: derive from the
-  // complete input set). Skipped when nothing changed to avoid rebuilding the
-  // clients on every render.
+  // Propagate EXTERNAL config changes (a new `initialConfig`/`baseUrl` prop from
+  // the standalone shell's focus re-read or a host swapping identity/token) into
+  // state. `initialConfig` is memoized by the parent on `[userId, bearerToken]`,
+  // so its identity changes only on a real prop change — dispatch on that. We
+  // deliberately do NOT key off `state.config`: an in-panel Settings edit mutates
+  // `state.config` via `setConfig`, not the prop, so keying off it would revert
+  // the operator's edit back to the prop on the next run. The ref skips the
+  // redundant mount run (the reducer already seeded from `initialConfig`) and
+  // keeps this comparing values, not firing on identity alone (BP-010).
+  const lastApplied = useRef({ config: initialConfig, baseUrl });
   useEffect(() => {
     if (
-      state.config.userId === initialConfig.userId &&
-      state.config.bearerToken === initialConfig.bearerToken
+      lastApplied.current.config === initialConfig &&
+      lastApplied.current.baseUrl === baseUrl
     ) {
       return;
     }
+    lastApplied.current = { config: initialConfig, baseUrl };
     dispatch({ type: "SET_CONFIG", config: initialConfig, baseUrl });
-  }, [initialConfig, baseUrl, state.config.userId, state.config.bearerToken]);
+  }, [initialConfig, baseUrl]);
 
   // Sweep interrupted requests for the current user once on devtool mount.
   // Off by default for embedded panels — the host app may not want a panel

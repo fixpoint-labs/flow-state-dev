@@ -140,6 +140,7 @@ durable background work). See the deployment guides for the full topology:
 | `basePath` | `"/api/flows"` | API mount prefix (matches `createFlowApiRouter`). |
 | `healthPath` | `"/healthz"` | Health endpoint. `200` once ready, `503` before. |
 | `staticDir` | — | Directory served for non-API routes, with `index.html` SPA fallback. |
+| `devtoolConfig` | — | DevTool connection config (`{ userId?, bearerToken? }`) injected into the served `index.html` as `window.__FSD_DEVTOOL_CONFIG__`. **Dev-only, loopback-only:** it can carry a bearer token, so `serve()` ignores it (with a warning) on a non-loopback `host`, and the injected document is served `Cache-Control: no-store`. Set by `fsdev dev`; omit for production. |
 | `shutdownGraceMs` | `10000` | Grace window before lingering connections are force-closed. |
 
 ### `ServeHandle`
