@@ -124,6 +124,19 @@ function runKeyedResourceStoreConformance<V>(options: ConformanceOptions<V>): vo
       });
     });
 
+    it("round-trips a dotted-extension nested key through get and getAll", async () => {
+      await withStore(async (store) => {
+        // A key whose leaf carries its own dot (`utils.ts`) exercises the leaf
+        // extension escaping — the stored `.ts` must not be confused with the
+        // structural store extension.
+        const value = makeValue(7);
+        await store.set("session", "s1", "files/src/utils.ts", value);
+        expect(await store.get("session", "s1", "files/src/utils.ts")).toEqual(value);
+        const all = await store.getAll("session", "s1");
+        expect(all["files/src/utils.ts"]).toEqual(value);
+      });
+    });
+
     it("isolates keys across scope types and scope ids", async () => {
       await withStore(async (store) => {
         await store.set("session", "s1", "k", makeValue(1));

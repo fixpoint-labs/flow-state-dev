@@ -4,15 +4,27 @@
  * Validates CRUD operations, batch operations, scope isolation, and
  * key encoding for both InMemoryContentStore and FilesystemContentStore.
  */
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
 import type { ContentStore } from "../src/stores/types";
 import {
   createInMemoryContentStore,
-  createFilesystemContentStore
+  createFilesystemContentStore,
+  createFilesystemStores
 } from "../src";
+import { createContentStoreConformanceTests } from "../src/testing";
+
+/** True if a filesystem path exists. */
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function runContentStoreTests(
   name: string,
@@ -203,4 +215,165 @@ runContentStoreTests("FilesystemContentStore", async () => {
       await rm(rootDir, { recursive: true, force: true });
     }
   };
+});
+
+// Run the shared cross-adapter conformance suite against the filesystem adapter.
+const conformanceDirs: string[] = [];
+createContentStoreConformanceTests({
+  name: "FilesystemContentStore",
+  createStore: async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-conformance-"));
+    conformanceDirs.push(rootDir);
+    return createFilesystemContentStore(rootDir);
+  }
+});
+afterEach(async () => {
+  await Promise.all(
+    conformanceDirs.splice(0).map((d) => rm(d, { recursive: true, force: true }))
+  );
+});
+
+const MARKER = ".fsdev-store-layout";
+
+describe("FilesystemContentStore nested on-disk layout", () => {
+  let rootDir: string;
+
+  afterEach(async () => {
+    if (rootDir) await rm(rootDir, { recursive: true, force: true });
+  });
+
+  async function freshStore(): Promise<ContentStore> {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-layout-"));
+    return createFilesystemContentStore(rootDir);
+  }
+
+  it("writes a nested file tree with the leaf extension", async () => {
+    const store = await freshStore();
+    await store.set("session", "s1", "concepts/flow-state-dev/overview", "body");
+    const expected = path.join(
+      rootDir,
+      "content",
+      "session",
+      "s1",
+      "concepts",
+      "flow-state-dev",
+      "overview.md"
+    );
+    expect(await pathExists(expected)).toBe(true);
+    expect(await readFile(expected, "utf8")).toBe("body");
+  });
+
+  it("lets a leaf and a branch of the same name coexist", async () => {
+    const store = await freshStore();
+    await store.set("session", "s1", "x", "leaf");
+    await store.set("session", "s1", "x/y", "branch");
+
+    expect(await store.get("session", "s1", "x")).toBe("leaf");
+    expect(await store.get("session", "s1", "x/y")).toBe("branch");
+
+    const scopeDir = path.join(rootDir, "content", "session", "s1");
+    expect((await stat(path.join(scopeDir, "x.md"))).isFile()).toBe(true);
+    expect((await stat(path.join(scopeDir, "x"))).isDirectory()).toBe(true);
+  });
+});
+
+describe("FilesystemContentStore legacy clean-break guard", () => {
+  let rootDir: string;
+
+  afterEach(async () => {
+    if (rootDir) await rm(rootDir, { recursive: true, force: true });
+  });
+
+  /** Seed a flat legacy file (pre-nested-layout) directly on disk. */
+  async function seedLegacyFile(scopeId: string, resourceKey: string, body: string): Promise<void> {
+    const scopeDir = path.join(rootDir, "content", "session", encodeURIComponent(scopeId));
+    await mkdir(scopeDir, { recursive: true });
+    await writeFile(path.join(scopeDir, encodeURIComponent(resourceKey)), body, "utf8");
+  }
+
+  it("throws on a populated no-marker subtree but does not throw at construction", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-legacy-"));
+    await seedLegacyFile("s1", "notes", "old flat body");
+    // Construction must not throw even with legacy data present.
+    const store = createFilesystemContentStore(rootDir);
+    await expect(store.get("session", "s1", "notes")).rejects.toThrow(/predates the nested-layout/);
+    await expect(store.getAll("session", "s1")).rejects.toThrow(/predates the nested-layout/);
+  });
+
+  it("treats a dotted legacy file as real data", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-legacy-dot-"));
+    await seedLegacyFile("s1", ".env", "SECRET=1");
+    const store = createFilesystemContentStore(rootDir);
+    await expect(store.get("session", "s1", ".env")).rejects.toThrow(/predates the nested-layout/);
+  });
+
+  it("recovers after deleteAll clears the legacy scope", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-recover-"));
+    await seedLegacyFile("s1", "notes", "old flat body");
+    const store = createFilesystemContentStore(rootDir);
+    await expect(store.get("session", "s1", "notes")).rejects.toThrow();
+    // deleteAll skips the guard and clears the offending files; empty
+    // scaffolding left behind must not keep the guard tripping.
+    await store.deleteAll("session", "s1");
+    expect(await store.get("session", "s1", "notes")).toBeUndefined();
+    await store.set("session", "s1", "fresh", "new body");
+    expect(await store.get("session", "s1", "fresh")).toBe("new body");
+  });
+
+  it("a fresh store get returns undefined and writes no marker", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-fresh-"));
+    const store = createFilesystemContentStore(rootDir);
+    expect(await store.get("session", "s1", "missing")).toBeUndefined();
+    expect(await pathExists(path.join(rootDir, "content", MARKER))).toBe(false);
+  });
+
+  it("the first set stamps the layout marker", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-marker-"));
+    const store = createFilesystemContentStore(rootDir);
+    await store.set("session", "s1", "notes", "body");
+    const markerPath = path.join(rootDir, "content", MARKER);
+    expect(await pathExists(markerPath)).toBe(true);
+    expect(JSON.parse(await readFile(markerPath, "utf8"))).toEqual({ layout: "nested-v1" });
+  });
+
+  it("throws on a wrong-version marker sitting atop data", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-badmarker-"));
+    await mkdir(path.join(rootDir, "content"), { recursive: true });
+    await writeFile(path.join(rootDir, "content", MARKER), JSON.stringify({ layout: "flat-v0" }), "utf8");
+    await seedLegacyFile("s1", "notes", "body");
+    const store = createFilesystemContentStore(rootDir);
+    await expect(store.get("session", "s1", "notes")).rejects.toThrow(/unexpected version/);
+  });
+
+  it("does not throw on a .DS_Store-only fresh vault", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-dsstore-"));
+    await mkdir(path.join(rootDir, "content", "session", "s1"), { recursive: true });
+    await writeFile(path.join(rootDir, "content", "session", "s1", ".DS_Store"), "", "utf8");
+    const store = createFilesystemContentStore(rootDir);
+    expect(await store.get("session", "s1", "missing")).toBeUndefined();
+  });
+
+  it("rejects unsafe scope ids", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-scopeid-"));
+    const store = createFilesystemContentStore(rootDir);
+    for (const bad of ["..", ".", "", "CON"]) {
+      await expect(store.get("session", bad, "k")).rejects.toThrow();
+    }
+  });
+
+  it("isolates the guard per subtree — empty content proceeds while legacy state throws", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-isolation-"));
+    // Seed a flat legacy file in the STATE subtree only.
+    const stateScope = path.join(rootDir, "state", "session", "s1");
+    await mkdir(stateScope, { recursive: true });
+    await writeFile(path.join(stateScope, encodeURIComponent("k")), JSON.stringify({ v: 1 }), "utf8");
+
+    const stores = createFilesystemStores({ rootDir, developmentOnly: true });
+    // Content subtree is empty -> fresh -> proceeds.
+    expect(await stores.content.getAll("session", "s1")).toEqual({});
+    // State subtree has legacy data -> throws.
+    await expect(stores.resourceState.getAll("session", "s1")).rejects.toThrow(
+      /predates the nested-layout/
+    );
+  });
 });
