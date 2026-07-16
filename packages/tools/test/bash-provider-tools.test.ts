@@ -43,7 +43,6 @@ function minimalContext(): BlockContext {
       subscribeToItems: () => () => undefined,
     },
     emit: { status: () => undefined },
-    emitStatus: () => undefined,
     _peekStatus: () => "",
     signal: new AbortController().signal,
   } as unknown as BlockContext;

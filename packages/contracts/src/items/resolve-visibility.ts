@@ -15,7 +15,7 @@
  * - Conversational types (`message`, `reasoning`, `tool_output`)
  *   inherit visibility from `item.itemVisibility`. Absent
  *   `itemVisibility` falls back to `{ client: true, history: true }` —
- *   keeps handler emits like `ctx.emitMessage("hi")` ergonomic.
+ *   keeps handler emits like `ctx.emit.message("hi")` ergonomic.
  * - All other (structural) types resolve to `{ client: true, history: false }`.
  */
 import type { ItemVisibility, OutputItem } from "./types";

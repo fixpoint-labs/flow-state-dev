@@ -322,7 +322,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
             await workspaceRef.patchState({
               entries: [...wsState.entries, entry],
             });
-            ctx.emitComponent(
+            ctx.emit.component(
               "rb-entry",
               { type: entryType, topic: entryTopic, body: entry.body },
               { key: `entry-${wsState.entries.length}` }

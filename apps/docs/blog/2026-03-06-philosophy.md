@@ -254,7 +254,7 @@ The React hooks abstract over all of this. You can write a streaming chat UI wit
 ```ts
 // Any block can emit a component item to the stream mid-execution
 .tap((report, ctx) => {
-  ctx.emitComponent("report-card", {
+  ctx.emit.component("report-card", {
     title: report.title,
     findings: report.findings,
     confidence: report.score,

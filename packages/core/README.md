@@ -453,9 +453,9 @@ Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.defa
 
 **Partial state schemas.** Each block declares only the state fields it touches. A counter block doesn't need to know about a preferences block's state. This keeps blocks reusable and self-documenting about their dependencies.
 
-**Silent by default.** Blocks emit nothing to the client unless they explicitly call `ctx.emitMessage()`, `ctx.emitComponent()`, or `ctx.emitStatus()` — or declare `activeStatusMessage` on the block config, which fires `emitStatus` automatically at block start. Generators are the exception — they auto-emit messages and reasoning. This gives you precise control over what the user sees.
+**Silent by default.** Blocks emit nothing to the client unless they explicitly call `ctx.emit.message()`, `ctx.emit.component()`, or `ctx.emit.status()` — or declare `activeStatusMessage` on the block config, which fires `emit.status` automatically at block start. Generators are the exception — they auto-emit messages and reasoning. This gives you precise control over what the user sees.
 
-**Request-scoped status slot.** `emitStatus` writes to a single request-scoped slot — the latest message wins. Clients render one in-flight indicator line, falling back to "Working..." when the slot is empty. See `docs/architecture/items.md` for the full semantics.
+**Request-scoped status slot.** `emit.status` writes to a single request-scoped slot — the latest message wins. Clients render one in-flight indicator line, falling back to "Working..." when the slot is empty. See `docs/architecture/items.md` for the full semantics.
 
 **Automatic resource collection.** Blocks declare their resource dependencies via `sessionResources`/`userResources`/`orgResources` using `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's scope configs automatically — blocks bring their own resource requirements, just like partial state schemas. Flow-level declarations take priority.
 

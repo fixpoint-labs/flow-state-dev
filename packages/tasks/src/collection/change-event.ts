@@ -4,7 +4,7 @@
  *
  * The substrate is transport-agnostic: it emits `TaskChangeEvent`s, and the
  * factory in `get-or-create.ts` adapts them to the framework's component-item
- * stream via `ctx.emitComponent("task-change", …)`. Earlier revisions emitted
+ * stream via `ctx.emit.component("task-change", …)`. Earlier revisions emitted
  * a custom `task_change` `OutputItem` directly; that bypassed `items.md`'s
  * documented type-registration process and required the substrate to build
  * provenance frames itself. Component items keep the substrate clean and

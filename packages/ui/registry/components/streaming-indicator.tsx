@@ -4,7 +4,7 @@ import { Shimmer } from "./shimmer";
 
 /**
  * Single-line in-flight status indicator. Renders the latest value from the
- * request-scoped status slot (via `ctx.emitStatus()` / `activeStatusMessage`)
+ * request-scoped status slot (via `ctx.emit.status()` / `activeStatusMessage`)
  * with a "Working..." fallback when the slot is empty.
  *
  * When `isFinishing` is true (the main response has completed and only

@@ -30,7 +30,7 @@ const counter = handler({
 
 `counter` only mutates state — it has no transformation to feed downstream. So it declares no `outputSchema` and returns nothing, and it gets chained with `.tap()` rather than `.step()`. A handler that exists purely for its side effect should never echo its input back as output. See [Composing Blocks](/docs/sequencers/composing-blocks).
 
-Handlers are **silent by default** — they don't emit anything to the client unless you explicitly call `ctx.emitMessage()` or `ctx.emitComponent()`. This gives you precise control over what the user sees.
+Handlers are **silent by default** — they don't emit anything to the client unless you explicitly call `ctx.emit.message()` or `ctx.emit.component()`. This gives you precise control over what the user sees.
 
 ### Generator — the AI block
 
@@ -510,8 +510,8 @@ execute: async (input, ctx) => {
   await ctx.session.resources.plan.patchState({ status: "active" });
 
   // Emit items to the client
-  await ctx.emitMessage("Processing your request...");
-  await ctx.emitComponent("progress-bar", { percent: 50 });
+  await ctx.emit.message("Processing your request...");
+  await ctx.emit.component("progress-bar", { percent: 50 });
 
   // Resolve AI models
   const model = ctx.resolveModel("preset/fast");

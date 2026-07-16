@@ -31,7 +31,7 @@ import { generativeTools } from "@flow-state-dev/ui/generative/tools";
 import { generativeRenderers } from "@flow-state-dev/ui/generative/renderers";
 ```
 
-When the LLM calls the tool, the handler runs `ctx.emitComponent(name, data, { key })`. The emitted `component` item flows through the stream and lands in `FlowProvider`'s renderer registry, which dispatches it to the matching renderer by name. The shared `name` is what links the two surfaces.
+When the LLM calls the tool, the handler runs `ctx.emit.component(name, data, { key })`. The emitted `component` item flows through the stream and lands in `FlowProvider`'s renderer registry, which dispatches it to the matching renderer by name. The shared `name` is what links the two surfaces.
 
 > **Migration.** This replaces the earlier single import `@flow-state-dev/ui/generative`, which exported one `generativeUI` object. `generativeUI.tools()` becomes `generativeTools()` (from `.../generative/tools`); `generativeUI.renderers()` becomes `generativeRenderers()` (from `.../generative/renderers`).
 
@@ -142,6 +142,6 @@ The runtime renderers are good defaults; the registry-distributed renderers are 
 A few notes for when you build your own bundles or extend the pack.
 
 - **Single-source the schema.** The Zod object that backs the renderer's `data` contract is the same object passed to `inputSchema`. Don't split them, and don't transform the data on the way out of the handler — the renderer should accept exactly what the LLM produced.
-- **Choose a stable `key`.** `ctx.emitComponent` accepts a `key`; clients show only the latest item with a given key. Pick a key that reflects the *identity* of the thing being rendered — `id` for an info card, `url` for a link card. This is how `.work()` sidechain re-emission works without leaving stale cards behind.
+- **Choose a stable `key`.** `ctx.emit.component` accepts a `key`; clients show only the latest item with a given key. Pick a key that reflects the *identity* of the thing being rendered — `id` for an info card, `url` for a link card. This is how `.work()` sidechain re-emission works without leaving stale cards behind.
 - **Short, distinct tool descriptions.** The description is the LLM's design-system documentation. Use the `USE FOR / DO NOT USE FOR` template and redirect to neighboring shapes by name. Test descriptions empirically — small wording changes meaningfully shift selection accuracy.
 - **Schema descriptions land in the prompt.** Zod `.describe()` strings flow into the LLM-facing tool schema. Audit them for accidental instruction-style language that could be hijacked by a malicious user input.

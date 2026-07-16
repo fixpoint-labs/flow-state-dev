@@ -374,7 +374,7 @@ export type MessageItem = OutputItemBase & {
   /**
    * Resolved identity of the generator model that produced this message.
    * Stamped only when emitted by a generator block; handler-emitted
-   * messages (via `ctx.emitMessage`) leave this field absent.
+   * messages (via `ctx.emit.message`) leave this field absent.
    */
   model?: ModelIdentity;
   /**
@@ -455,7 +455,7 @@ export type StatusItem = OutputItemBase & {
 
 /**
  * @deprecated The `context` item type has been removed. Use generator
- * `context` slot configuration or `emitMessage` with `history: true,
+ * `context` slot configuration or `ctx.emit.message` with `history: true,
  * client: false` instead.
  */
 export type ContextItem = OutputItemBase & {

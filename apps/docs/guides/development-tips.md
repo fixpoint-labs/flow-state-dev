@@ -149,7 +149,7 @@ Verify the partial state schema includes the field. A handler's `sessionStateSch
 
 ### Items not streaming?
 
-Check that the generator has `emit` configured correctly. By default, generators emit messages, reasoning, and tool calls. If you disabled something with `emit: { messages: false }`, that explains missing output. Handlers are silent by default; use `ctx.emitMessage()` or `ctx.emitComponent()` if you want client-visible output from a handler.
+Check that the generator has `emit` configured correctly. By default, generators emit messages, reasoning, and tool calls. If you disabled something with `emit: { messages: false }`, that explains missing output. Handlers are silent by default; use `ctx.emit.message()` or `ctx.emit.component()` if you want client-visible output from a handler.
 
 ### Stream connects but no items?
 

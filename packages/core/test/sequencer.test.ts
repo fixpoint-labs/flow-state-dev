@@ -190,9 +190,14 @@ describe("sequencer builder", () => {
       .work(fastWork);
 
     const ctx = createMockContext({
-      emitStatus: (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number }) => {
-        statusCalls.push({ message, options });
-      }
+      emit: {
+        message: () => undefined,
+        component: () => undefined,
+        status: (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number }) => {
+          statusCalls.push({ message, options });
+        },
+        trace: {} as any,
+      } as any
     });
 
     await runForTest(seq, 1, ctx);

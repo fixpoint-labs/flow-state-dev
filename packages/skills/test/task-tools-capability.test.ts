@@ -82,9 +82,7 @@ function buildPatternCtx(opts: { skillName?: string; preTasks?: Record<string, u
     getBlockOutput: () => undefined,
     getBlockResult: () => ({ status: "not_started" as const }),
     targets: {},
-    emitMessage: () => {},
-    emitComponent: () => {},
-    emitStatus: () => {},
+    emit: { message: () => {}, component: () => {}, status: () => {} },
   } as never;
 }
 
@@ -107,9 +105,7 @@ function buildNoPatternCtx() {
     getBlockOutput: () => undefined,
     getBlockResult: () => ({ status: "not_started" as const }),
     targets: {},
-    emitMessage: () => {},
-    emitComponent: () => {},
-    emitStatus: () => {},
+    emit: { message: () => {}, component: () => {}, status: () => {} },
   } as never;
 }
 

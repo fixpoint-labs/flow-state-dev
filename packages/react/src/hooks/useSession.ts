@@ -122,7 +122,7 @@ export type SessionView = {
   readonly canSendAction: boolean;
   /**
    * Request-scoped status slot — the most recent value passed to
-   * `ctx.emitStatus()` during the in-flight request. Empty string when no
+   * `ctx.emit.status()` during the in-flight request. Empty string when no
    * block has emitted a status yet (or when a block explicitly cleared it).
    * Resets to `""` when the request terminates.
    */

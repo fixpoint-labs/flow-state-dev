@@ -24,7 +24,7 @@
  *
  * Both emitting blocks are state-mutation-only sentinels — they
  * produce no novel output, just side-effect a component item via
- * `ctx.emitComponent`. Wired with `.tap()` per BP-012.
+ * `ctx.emit.component`. Wired with `.tap()` per BP-012.
  *
  * The emitted item is keyed by `collectionId`, so the latest state
  * replaces the previous one in the client UI — `active` then
@@ -59,7 +59,7 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
     transient: true,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
-      ctx.emitComponent(
+      ctx.emit.component(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "active" },
         { key: collectionId }
@@ -108,7 +108,7 @@ export function createBoardMetaCompleted(options: BoardMetaOptions) {
       };
       const terminationReason: "all-completed" | "blocked-by-failures" =
         counts.completed === counts.total ? "all-completed" : "blocked-by-failures";
-      ctx.emitComponent(
+      ctx.emit.component(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "completed", terminationReason, counts },
         { key: collectionId }

@@ -65,7 +65,7 @@ export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutp
 /**
  * Runtime ref onto a TaskCollection. All mutations are CAS-safe and emit a
  * `task-change` component item via the configured `onChange` callback (the
- * `getOrCreateTaskCollection` factory wires this to `ctx.emitComponent`).
+ * `getOrCreateTaskCollection` factory wires this to `ctx.emit.component`).
  *
  * Queries (`get`, `list`, `count`) are synchronous reads of the latest
  * committed view. For the resource backing — whose underlying

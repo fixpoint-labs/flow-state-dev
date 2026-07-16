@@ -4,7 +4,7 @@ import { runForTest } from "../helpers";
 function makeCtx() {
   const emitComponent = vi.fn();
   return {
-    ctx: { emitComponent } as any,
+    ctx: { emit: { component: emitComponent } } as any,
     emitComponent,
   };
 }

@@ -1,10 +1,10 @@
 /**
- * Declarative `activeStatusMessage` → `emitStatus` bridge.
+ * Declarative `activeStatusMessage` → `emit.status` bridge.
  *
  * Invoked at block start by the server's `executeByKind`, the core sequencer's
  * nested `executeBlock`, and the core router's `runSelected`. Reads the
  * block's config, resolves a static string or `(input, ctx) => string`
- * function, and calls `ctx.emitStatus` with the result. The slot's dedupe
+ * function, and calls `ctx.emit.status` with the result. The slot's dedupe
  * logic handles repeat emissions safely.
  */
 import type { BlockContext, BlockDefinition } from "../../types/block";

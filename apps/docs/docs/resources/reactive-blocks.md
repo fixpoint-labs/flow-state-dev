@@ -37,7 +37,7 @@ const memoSchema = z.object({
 const announceMemo = handler({
   name: "announce-memo",
   execute: async (change, ctx) => {
-    ctx.emitMessage(`New memo: ${change.state.title}`);
+    ctx.emit.message(`New memo: ${change.state.title}`);
   },
 });
 
@@ -79,7 +79,7 @@ const announceMemo = handler({
   inputSchema: resourceChangeSchema(memoSchema),
   execute: async (change, ctx) => {
     // change.state is typed as the memo state (nullable)
-    ctx.emitMessage(`New memo: ${change.state?.title}`);
+    ctx.emit.message(`New memo: ${change.state?.title}`);
   },
 });
 ```

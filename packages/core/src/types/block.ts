@@ -748,9 +748,9 @@ export interface BlockConfig<
   connectInput?: ConnectorFn<unknown, TInput>;
   /**
    * Active status message for this block — declarative sugar for
-   * `ctx.emitStatus()` at block start. A static string is emitted once when
+   * `ctx.emit.status()` at block start. A static string is emitted once when
    * the block enters execution; a function receives `(input, ctx)` and its
-   * return value is emitted. Use direct `ctx.emitStatus()` only when a block
+   * return value is emitted. Use direct `ctx.emit.status()` only when a block
    * needs to update status mid-execution (e.g. per-file progress).
    */
   activeStatusMessage?: string | ((input: TInput, ctx: BlockContext) => string);

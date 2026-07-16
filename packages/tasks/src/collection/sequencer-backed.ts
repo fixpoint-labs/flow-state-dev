@@ -40,7 +40,7 @@ export interface SequencerBackedOptions {
   stateKey?: string;
   /**
    * Optional callback fired after every successful task mutation. The
-   * `getOrCreateTaskCollection` factory wires this to `ctx.emitComponent`
+   * `getOrCreateTaskCollection` factory wires this to `ctx.emit.component`
    * to publish lifecycle changes onto the framework item stream.
    */
   onChange?: (event: TaskChangeEvent) => void;

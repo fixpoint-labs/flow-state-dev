@@ -51,9 +51,11 @@ interface BlockContext {
     | { status: "failed"; error: Error };
 
   // Item emission
-  emitMessage(text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string }): void;
-  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; itemVisibility?: ItemVisibility; agentName?: string }): void;
-  emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number }): void;
+  emit: {
+    message(text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string }): void;
+    component(component: string, data: Record<string, unknown>, options?: { key?: string; itemVisibility?: ItemVisibility; agentName?: string }): void;
+    status(message: string, options?: { blocked?: boolean; backgroundTasks?: number }): void;
+  };
 }
 ```
 
@@ -172,7 +174,7 @@ Key properties:
 - `validateChunk` (optional) validates input chunks before execution
 - `retry` (optional) configures retry policy
 - Handlers emit `block_trace` automatically (internal/devtools only)
-- Use `ctx.emitMessage()` or `ctx.emitComponent()` for client-visible output
+- Use `ctx.emit.message()` or `ctx.emit.component()` for client-visible output
 
 ## Generator
 
@@ -442,23 +444,23 @@ Stable name stamped on every emitted item. Defaults to the block's `name`. Gener
 
 ### Emission helpers
 
-- `ctx.emitMessage(text | content[], options?)` — the primary way to emit assistant-visible content. Accepts optional `{ key?, itemVisibility?, agentName? }`. Without an explicit `itemVisibility`, a handler-emitted message defaults to `{ client: true, history: true }`.
-- `ctx.emitComponent(component, data, options?)` — UI components. Accepts optional `{ key?, itemVisibility?, agentName? }`.
-- `ctx.emitStatus(message, options?)` — transient progress indicators. Structural; `itemVisibility` does not affect visibility.
+- `ctx.emit.message(text | content[], options?)` — the primary way to emit assistant-visible content. Accepts optional `{ key?, itemVisibility?, agentName? }`. Without an explicit `itemVisibility`, a handler-emitted message defaults to `{ client: true, history: true }`.
+- `ctx.emit.component(component, data, options?)` — UI components. Accepts optional `{ key?, itemVisibility?, agentName? }`.
+- `ctx.emit.status(message, options?)` — transient progress indicators. Structural; `itemVisibility` does not affect visibility.
 
 Examples:
 
 ```ts
-ctx.emitMessage("Analysis complete.");
+ctx.emit.message("Analysis complete.");
 // Default visibility (client + history).
 
-ctx.emitMessage("Debug: classifier chose route A", {
+ctx.emit.message("Debug: classifier chose route A", {
   itemVisibility: { client: false, history: false },
   agentName: "classifier",
 });
 // Devtool-only observation — hidden from user and LLM.
 
-ctx.emitMessage("Background audit complete.", {
+ctx.emit.message("Background audit complete.", {
   itemVisibility: { client: true, history: false },
   agentName: "auditor",
 });

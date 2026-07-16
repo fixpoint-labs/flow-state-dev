@@ -8,30 +8,30 @@ Generators emit messages automatically as they stream. But blocks can also emit 
 
 ## Messages
 
-`ctx.emitMessage()` sends a chat message to the user. The message also enters LLM conversation history, so future model calls can see it.
+`ctx.emit.message()` sends a chat message to the user. The message also enters LLM conversation history, so future model calls can see it.
 
 ```ts
 const notify = handler({
   name: "notify",
   execute: async (_input, ctx) => {
-    ctx.emitMessage("Your file has been saved.");
+    ctx.emit.message("Your file has been saved.");
   },
 });
 ```
 
-Most of the time you won't call `emitMessage()` directly — generators handle message emission as the model streams. Use it in handlers when you need to inject a visible message into the conversation outside of a generator.
+Most of the time you won't call `emit.message()` directly — generators handle message emission as the model streams. Use it in handlers when you need to inject a visible message into the conversation outside of a generator.
 
 ### Stamping identity on handler emits
 
 Handler-emitted messages default to full visibility (on the client, in conversation history). To mark a message as observability-only (devtool visible, hidden from user and LLM) or tie it to a sub-agent identity, pass `itemVisibility` / `agentName`:
 
 ```ts
-ctx.emitMessage("Debug: classifier chose route A", {
+ctx.emit.message("Debug: classifier chose route A", {
   itemVisibility: { client: false, history: false },
   agentName: "classifier",
 });
 
-ctx.emitMessage("Background audit complete.", {
+ctx.emit.message("Background audit complete.", {
   itemVisibility: { client: true, history: false },
   agentName: "auditor",
 });
@@ -43,16 +43,16 @@ Handler-emitted messages do not carry the `model` field. The framework only stam
 
 ## Status messages
 
-`ctx.emitStatus()` sends a transient progress indicator. It appears briefly in the UI during execution but is never persisted and doesn't enter LLM history. Use it to tell the user what's happening during long operations.
+`ctx.emit.status()` sends a transient progress indicator. It appears briefly in the UI during execution but is never persisted and doesn't enter LLM history. Use it to tell the user what's happening during long operations.
 
 ```ts
 const pipeline = sequencer({ name: "pipeline" })
   .step(handler({
     name: "fetch-data",
     execute: async (input, ctx) => {
-      ctx.emitStatus("Fetching data from external API...");
+      ctx.emit.status("Fetching data from external API...");
       const data = await fetchExternalData();
-      ctx.emitStatus("Processing results...");
+      ctx.emit.status("Processing results...");
       return processData(data);
     },
   }))
@@ -65,13 +65,13 @@ Good status messages are specific: "Searching 3 databases..." is better than "Wo
 
 ## Components
 
-`ctx.emitComponent()` sends structured data to a registered UI component. Unlike messages, component items don't enter LLM history — they're purely for rendering custom UI.
+`ctx.emit.component()` sends structured data to a registered UI component. Unlike messages, component items don't enter LLM history — they're purely for rendering custom UI.
 
 ### Basic usage
 
 ```ts
 execute: async (input, ctx) => {
-  ctx.emitComponent("search-results", {
+  ctx.emit.component("search-results", {
     query: input.query,
     results: searchResults,
     totalCount: 42,
@@ -91,25 +91,25 @@ When you emit a component with the same `key`, the client replaces the previous 
 
 ```ts
 // Create initial view
-ctx.emitComponent("task-status", { id: "task-1", status: "pending" }, { key: "task-1" });
+ctx.emit.component("task-status", { id: "task-1", status: "pending" }, { key: "task-1" });
 
 // Update it as work progresses
 await step1();
-ctx.emitComponent("task-status", { id: "task-1", status: "running", progress: 50 }, { key: "task-1" });
+ctx.emit.component("task-status", { id: "task-1", status: "running", progress: 50 }, { key: "task-1" });
 
 await step2();
-ctx.emitComponent("task-status", { id: "task-1", status: "complete", result: "..." }, { key: "task-1" });
+ctx.emit.component("task-status", { id: "task-1", status: "complete", result: "..." }, { key: "task-1" });
 ```
 
-Each `emitComponent` call with the same key replaces the previous one. Live clients see each intermediate state via SSE. The persisted record collapses to one entry per key — only the latest snapshot is stored, intermediate ones are not retained.
+Each `emit.component` call with the same key replaces the previous one. Live clients see each intermediate state via SSE. The persisted record collapses to one entry per key — only the latest snapshot is stored, intermediate ones are not retained.
 
 This pattern is central to how the framework's built-in patterns work. The plan-and-execute pattern, for example, emits keyed components for each task so they update independently:
 
 ```ts
 // Each task gets its own key
-ctx.emitComponent("plan-task", { id: task.id, status: "running" }, { key: `plan-task:${task.id}` });
+ctx.emit.component("plan-task", { id: task.id, status: "running" }, { key: `plan-task:${task.id}` });
 // Later, same key replaces it
-ctx.emitComponent("plan-task", { id: task.id, status: "complete" }, { key: `plan-task:${task.id}` });
+ctx.emit.component("plan-task", { id: task.id, status: "complete" }, { key: `plan-task:${task.id}` });
 ```
 
 ### Updating across blocks
@@ -118,15 +118,15 @@ Keyed components work across multiple blocks in a sequencer. Different blocks ca
 
 ```ts
 // First block creates the initial view
-ctx.emitComponent("task-status", { id: "task-1", status: "pending" }, { key: "task-1" });
+ctx.emit.component("task-status", { id: "task-1", status: "pending" }, { key: "task-1" });
 
 // Later block updates the same view
-ctx.emitComponent("task-status", { id: "task-1", status: "complete", result: "..." }, { key: "task-1" });
+ctx.emit.component("task-status", { id: "task-1", status: "complete", result: "..." }, { key: "task-1" });
 ```
 
 ### Multiple calls without a key
 
-If you call `emitComponent()` multiple times with the same component name but no `key`, each call creates a separate persisted item. They all render independently in the UI. This is the right approach when each emission represents a distinct piece of output — search result cards, log entries, individual items in a list.
+If you call `emit.component()` multiple times with the same component name but no `key`, each call creates a separate persisted item. They all render independently in the UI. This is the right approach when each emission represents a distinct piece of output — search result cards, log entries, individual items in a list.
 
 ## Keyed snapshots
 
@@ -136,7 +136,7 @@ When you emit a component item with a stable `key`, the renderer collapses to th
 
 Keyed component emissions **upsert** on the persisted request record. The framework derives a deterministic item ID from the key, so subsequent emissions overwrite the prior entry. The persisted `items[]` array contains exactly one entry per `(requestId, key)` — not one per emission.
 
-The SSE event log is unchanged: each `emitComponent` call still appends an `item.added` + `item.done` event. Live clients see every update; mid-stream resume replays each event. The client renderer reconciles by item ID and overwrites in place, so duplicate IDs in the event stream resolve correctly.
+The SSE event log is unchanged: each `emit.component` call still appends an `item.added` + `item.done` event. Live clients see every update; mid-stream resume replays each event. The client renderer reconciles by item ID and overwrites in place, so duplicate IDs in the event stream resolve correctly.
 
 If your client is something other than the bundled React hooks, make sure it overwrites items by ID rather than appending. Third-party SSE clients that naively append every `item.added` will end up with duplicates.
 
@@ -145,8 +145,8 @@ If your client is something other than the bundled React hooks, make sure it ove
 Each emission with the same `key` **fully replaces** the `data` payload. Fields absent from the new payload are removed.
 
 ```ts
-ctx.emitComponent("widget", { a: 1, b: 2 }, { key: "k" });
-ctx.emitComponent("widget", { a: 99 }, { key: "k" });
+ctx.emit.component("widget", { a: 1, b: 2 }, { key: "k" });
+ctx.emit.component("widget", { a: 99 }, { key: "k" });
 // Final data: { a: 99 }   — `b` is gone, not preserved.
 ```
 
@@ -177,13 +177,13 @@ The substrate's task-board uses keyed snapshots for both per-task lifecycle and 
 
 ```ts
 // task-change: per-task lifecycle snapshot
-ctx.emitComponent("task-change", { ... }, { key: `${collectionId}/${taskId}` });
+ctx.emit.component("task-change", { ... }, { key: `${collectionId}/${taskId}` });
 
 // task-board-meta: per-board status snapshot
-ctx.emitComponent("task-board-meta", { ... }, { key: collectionId });
+ctx.emit.component("task-board-meta", { ... }, { key: collectionId });
 
 // rb-entry: append-only blackboard entry (counter-keyed for replace-on-update)
-ctx.emitComponent("rb-entry", { ... }, { key: `entry-${count}` });
+ctx.emit.component("rb-entry", { ... }, { key: `entry-${count}` });
 ```
 
 The same idea shows up across the industry. Vercel AI SDK calls them "data parts" with id-based reconciliation. Phoenix LiveView calls them "keyed streams". Hotwire Turbo Streams splits them into `append`/`prepend` (events) and `replace`/`update` (snapshots). Event sourcing calls them snapshots; CDC calls them upserts.
@@ -192,24 +192,24 @@ The same idea shows up across the industry. Vercel AI SDK calls them "data parts
 
 A block declared with `transient: true` suppresses the framework's auto-emitted bookkeeping for that block — its `block_trace` traces stream live to active SSE consumers (DevTool, in-flight clients) but don't enter the persisted items log and don't replay on history reload. It does **not** affect items the block emits explicitly. This is the right knob for polling or actor-style substrate blocks (Task Board's `claim-task` / `check-board`, eventActors wrappers) that fire repeatedly and would otherwise flood the items log with bookkeeping rows.
 
-That separation is intentional. When you call `ctx.emitComponent()` or `ctx.emitMessage()` from inside any block — including a transient one — that's an explicit choice to surface user-facing content. The producing block being infrastructure says nothing about the content's status.
+That separation is intentional. When you call `ctx.emit.component()` or `ctx.emit.message()` from inside any block — including a transient one — that's an explicit choice to surface user-facing content. The producing block being infrastructure says nothing about the content's status.
 
 Defaults per emitter:
 
 | Method | Default `transient` | Rationale |
 |--------|:-------------------:|-----------|
-| `emitMessage()` | `false` | Messages are conversational content. |
-| `emitComponent()` | `false` | Components are user-facing UI. |
-| `emitStatus()` | `true` | Statuses are naturally ephemeral; the slot is latest-wins. |
+| `emit.message()` | `false` | Messages are conversational content. |
+| `emit.component()` | `false` | Components are user-facing UI. |
+| `emit.status()` | `true` | Statuses are naturally ephemeral; the slot is latest-wins. |
 
 Each method accepts a per-call `{ transient }` option to opt in or out:
 
 ```ts
 // Persist a status (rare — usually you want the live-only default)
-ctx.emitStatus("Completed final step", { transient: false });
+ctx.emit.status("Completed final step", { transient: false });
 
 // Live-only component for an in-flight indicator with dedup
-ctx.emitComponent("typing-indicator", { user: "alice" }, { key: "typing", transient: true });
+ctx.emit.component("typing-indicator", { user: "alice" }, { key: "typing", transient: true });
 ```
 
 ## Container components
@@ -270,10 +270,10 @@ Prefer this over re-emitting `item.added` + `item.done` for the same id when onl
 
 | Scenario | What to use |
 |----------|-------------|
-| Show text to the user and LLM | `emitMessage()` |
-| Show progress during a long operation | `emitStatus()` |
-| Render custom UI from a single block | `emitComponent()` |
-| Update a component as work progresses | Keyed components: same `key`, multiple `emitComponent()` calls |
+| Show text to the user and LLM | `emit.message()` |
+| Show progress during a long operation | `emit.status()` |
+| Render custom UI from a single block | `emit.component()` |
+| Update a component as work progresses | Keyed components: same `key`, multiple `emit.component()` calls |
 | Build a composite UI from multiple child blocks | Container component on the sequencer |
-| Append multiple independent items (log entries, cards) | `emitComponent()` without a key, one call per item |
+| Append multiple independent items (log entries, cards) | `emit.component()` without a key, one call per item |
 | Show a deterministic block call as a tool pill | Wrap the block with [`.asTool()`](../fundamentals/blocks.md#showing-a-deterministic-call-as-a-tool-astool) in the sequencer step |

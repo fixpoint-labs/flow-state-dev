@@ -407,11 +407,11 @@ export function routedSpecialists<
       });
 
       if (input.done) {
-        ctx.emitStatus(
+        ctx.emit.status(
           `[routedSpecialists:${name}] converged after ${state.iteration} iterations`
         );
       } else if (input.specialist) {
-        ctx.emitStatus(
+        ctx.emit.status(
           `[routedSpecialists:${name}] invoking specialist: ${input.specialist}`
         );
       }
@@ -428,7 +428,7 @@ export function routedSpecialists<
     execute: async (error, ctx) => {
       const state = ctx.sequencer!.state;
       const message = (error as Error).message;
-      ctx.emitStatus(
+      ctx.emit.status(
         `[routedSpecialists:${name}] specialist failed: ${message}`
       );
       if (state.currentTaskId) {
@@ -473,7 +473,7 @@ export function routedSpecialists<
     execute: async (_input, ctx) => {
       const workspaceState = ctx.resources.workspace.state;
       const controlState = ctx.sequencer!.state;
-      ctx.emitComponent(
+      ctx.emit.component(
         "routedSpecialists",
         {
           state: workspaceState,

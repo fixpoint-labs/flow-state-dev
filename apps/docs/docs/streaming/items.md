@@ -391,7 +391,7 @@ type ModelIdentity = {
 
 ### On items
 
-Generator-emitted items carry `model`: `message`, `reasoning`, `source`, `tool_output`, and the transient `tool_call_progress`. Handler-emitted items (via `ctx.emitMessage`) do not carry `model` — the framework only stamps identity on generator-produced items.
+Generator-emitted items carry `model`: `message`, `reasoning`, `source`, `tool_output`, and the transient `tool_call_progress`. Handler-emitted items (via `ctx.emit.message`) do not carry `model` — the framework only stamps identity on generator-produced items.
 
 `tool_call_progress` is emitted by both streaming and non-streaming generator paths. When the resolved model implements only `generate()`, the framework synthesises these items from `generation.toolCalls` and `generation.steps[].toolResults`, so observability does not depend on transport capability.
 

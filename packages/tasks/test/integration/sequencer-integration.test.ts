@@ -3,7 +3,7 @@
  * full BlockContext path via `testBlock`. Verifies:
  *   - `getOrCreateTaskCollection` works with a real `ctx.sequencer`.
  *   - Lifecycle mutations emit `task-change` component items via
- *     `ctx.emitComponent`, keyed by `${collectionId}/${taskId}` for
+ *     `ctx.emit.component`, keyed by `${collectionId}/${taskId}` for
  *     latest-wins replacement per task.
  *   - State-snapshot items at step boundaries carry the tasks map
  *     (FIX-401 keyed-update + checkpoint write contract).

@@ -119,7 +119,7 @@ for (const { name, build } of factories) {
       await collection.addTask({ id: "t1", goal: "g" });
 
       // Synthesize the substrate's task-change events directly into the log.
-      // Real lifecycle events are emitted via ctx.emitComponent, and worker
+      // Real lifecycle events are emitted via ctx.emit.component, and worker
       // items carry the emit-time `taskId` stamp; here we mock the log to
       // assert attribution. An item with no `taskId` was emitted outside any
       // task scope and is excluded.
@@ -216,7 +216,7 @@ describe("getOrCreateTaskCollection items() — undefined ctx.response", () => {
     const sequencerState = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
     const ctx = {
       response: undefined,
-      emitComponent: () => undefined,
+      emit: { component: () => undefined },
       request: { state: { plan: {} } },
     } as unknown as BlockContext;
 

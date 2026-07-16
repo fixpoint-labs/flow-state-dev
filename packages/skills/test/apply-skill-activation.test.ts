@@ -38,9 +38,7 @@ function buildCtx(opts: {
     getBlockOutput: () => undefined,
     getBlockResult: () => ({ status: "not_started" as const }),
     targets: {},
-    emitMessage: () => {},
-    emitComponent: () => {},
-    emitStatus: () => {},
+    emit: { message: () => {}, component: () => {}, status: () => {} },
   } as never;
 }
 

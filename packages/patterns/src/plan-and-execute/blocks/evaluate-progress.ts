@@ -275,7 +275,7 @@ export function createEvaluateProgress(
     execute: async (verdict, ctx) => {
       if (verdict.decision !== "replan") return;
       await ctx.sequencer!.patchState({ status: "replanning" });
-      ctx.emitComponent(
+      ctx.emit.component(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "replanning" },
         { key: collectionId },

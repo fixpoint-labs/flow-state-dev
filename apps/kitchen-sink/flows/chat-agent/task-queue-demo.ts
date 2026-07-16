@@ -55,7 +55,7 @@ const handleSearch = handler({
       input: { data: found },
     });
 
-    ctx.emitStatus(`Searched for: ${query}`);
+    ctx.emit.status(`Searched for: ${query}`);
     return { found };
   },
 });
@@ -78,7 +78,7 @@ const handleAnalyze = handler({
       });
     }
 
-    ctx.emitStatus(`Analyzed data (${hasStructuredData ? "structured" : "unstructured"})`);
+    ctx.emit.status(`Analyzed data (${hasStructuredData ? "structured" : "unstructured"})`);
     return { analysis };
   },
 });
@@ -93,7 +93,7 @@ const handleExtract = handler({
     for (const field of fields) {
       extracted[field] = `<${field} from source>`;
     }
-    ctx.emitStatus(`Extracted ${fields.length} fields`);
+    ctx.emit.status(`Extracted ${fields.length} fields`);
     return { extracted };
   },
 });

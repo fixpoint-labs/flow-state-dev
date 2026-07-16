@@ -192,7 +192,7 @@ export function buildReviewedWorker(
         });
         goal = collection.get(taskId)?.goal;
       }
-      ctx.emitStatus(
+      ctx.emit.status(
         goal !== undefined ? `Reviewing: ${goal}` : "Reviewing the result",
       );
     },
