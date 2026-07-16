@@ -164,33 +164,38 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
     }));
   }
 
-  private async resolveLayout(): Promise<void> {
-    let markerRaw: string | undefined;
+  /**
+   * Read + validate the layout marker. Returns `true` if a valid marker is
+   * present, `false` if absent. THROWS if the marker is present but
+   * unreadable / corrupt / a version this build can't interpret — a marker we
+   * can't trust must block, never be treated as absent.
+   */
+  private async markerValidOrAbsent(): Promise<boolean> {
+    let raw: string;
     try {
-      markerRaw = await readFile(this.markerPath, "utf8");
+      raw = await readFile(this.markerPath, "utf8");
     } catch (error) {
-      if (errno(error) !== "ENOENT") {
-        // Marker present but unreadable — refuse to trust the subtree.
-        throw new Error(
-          `Filesystem store layout marker at ${this.markerPath} is unreadable: ${String(error)}`
-        );
-      }
+      if (errno(error) === "ENOENT") return false;
+      throw new Error(
+        `Filesystem store layout marker at ${this.markerPath} is unreadable: ${String(error)}`
+      );
     }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error(`Filesystem store layout marker at ${this.markerPath} is corrupt`);
+    }
+    if ((parsed as { layout?: unknown } | null)?.layout !== LAYOUT_VERSION) {
+      throw new Error(
+        `Filesystem store layout marker at ${this.markerPath} has an unexpected version; expected "${LAYOUT_VERSION}"`
+      );
+    }
+    return true;
+  }
 
-    if (markerRaw !== undefined) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(markerRaw);
-      } catch {
-        throw new Error(`Filesystem store layout marker at ${this.markerPath} is corrupt`);
-      }
-      if ((parsed as { layout?: unknown } | null)?.layout !== LAYOUT_VERSION) {
-        throw new Error(
-          `Filesystem store layout marker at ${this.markerPath} has an unexpected version; expected "${LAYOUT_VERSION}"`
-        );
-      }
-      return;
-    }
+  private async resolveLayout(): Promise<void> {
+    if (await this.markerValidOrAbsent()) return; // valid marker -> new layout, proceed
 
     if (await this.subtreeHasDataFile(this.root)) {
       throw new Error(
@@ -291,11 +296,14 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
     value: T
   ): Promise<void> {
     await this.ensureLayout();
-    await this.ensureMarker();
     const target = this.filePath(scopeType, scopeId, resourceKey);
     const parentDir = path.dirname(target);
     const serialized = this.serialize(value);
+    // Validate ancestors (incl. the subtree root) BEFORE stamping the marker,
+    // so a symlinked `<root>/content` can't have `.fsdev-store-layout` written
+    // through it by a set() that assertAncestorsSafe is about to reject.
     await this.assertAncestorsSafe(target);
+    await this.ensureMarker();
 
     // The parent dir can be transiently absent at write time — concurrent
     // writers racing the recursive mkdir on a fresh scope, or a sibling request
@@ -369,8 +377,12 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
   }
 
   async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
-    // Skips the legacy guard: an upgraded install with legacy data must be able
-    // to tear a scope down without a read first.
+    // Skips the has-data legacy SCAN — an absent marker (legacy or fresh) must
+    // stay deletable so an upgraded install can tear old scopes down without a
+    // read first. But still refuse a PRESENT-but-incompatible marker: never
+    // `rm -rf` data owned by a layout this build can't interpret (e.g. after a
+    // version rollback), which the full-bypass would have destroyed.
+    await this.markerValidOrAbsent();
     const dir = this.scopeDir(scopeType, scopeId);
     await this.assertAncestorsSafe(dir);
     let stat;

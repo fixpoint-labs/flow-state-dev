@@ -387,6 +387,21 @@ describe("FilesystemContentStore legacy clean-break guard", () => {
     const store = createFilesystemContentStore(rootDir);
     await expect(store.get("session", "s1", "notes")).rejects.toThrow(/corrupt/i);
   });
+
+  it("deleteAll refuses a present-but-incompatible layout marker", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-deleteall-marker-"));
+    const contentDir = path.join(rootDir, "content");
+    const scopeDir = path.join(contentDir, "session", "s1");
+    await mkdir(scopeDir, { recursive: true });
+    // A future/unknown layout this build can't interpret — deleteAll must not
+    // rm -rf data it doesn't understand (a version-rollback scenario).
+    await writeFile(path.join(contentDir, MARKER), JSON.stringify({ layout: "nested-v2" }), "utf8");
+    await writeFile(path.join(scopeDir, "notes.md"), "future data", "utf8");
+    const store = createFilesystemContentStore(rootDir);
+    await expect(store.deleteAll("session", "s1")).rejects.toThrow(/unexpected version/);
+    // A marker-absent (legacy/fresh) scope still deletes — covered by
+    // "recovers after deleteAll clears the legacy scope".
+  });
 });
 
 describe("FilesystemContentStore symlink safety", () => {
@@ -452,5 +467,18 @@ describe("FilesystemContentStore symlink safety", () => {
 
     // A deep prefix whose intermediate segment `a` is a symlink must not leak.
     expect(await store.getByPrefix("session", "s1", "a/b/x")).toEqual({});
+  });
+
+  it("does not stamp the layout marker through a symlinked subtree root", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-symroot-"));
+    const outsideDir = path.join(rootDir, "outside");
+    await mkdir(outsideDir, { recursive: true });
+    await symlink(outsideDir, path.join(rootDir, "content"));
+    const store = createFilesystemContentStore(rootDir);
+
+    await expect(store.set("session", "s1", "k", "body")).rejects.toThrow(/symlink/i);
+    // The ancestor check must run before ensureMarker, so no marker is written
+    // through the symlink into the outside directory.
+    expect(await pathExists(path.join(outsideDir, MARKER))).toBe(false);
   });
 });
