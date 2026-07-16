@@ -81,7 +81,6 @@ function makeCtx(collection: ResourceCollectionRef<NoteState>): BlockContext {
       deleteStateRecord: async () => undefined,
       atomicState: async () => undefined,
       setMetadata: async () => undefined,
-      emitComponent: () => ({ done: () => undefined }),
     },
     resources: {
       notes: collection,

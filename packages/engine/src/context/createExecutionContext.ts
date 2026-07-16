@@ -308,38 +308,6 @@ function createEmitStatus(
 }
 
 /**
- * Module-level set of deprecated alias names already warned for, debouncing
- * `console.warn` to once per process per name. The flat `ctx.emitMessage`
- * etc. methods route through this so the noise stays bounded across long
- * sessions while still nudging users toward `ctx.emit.*`.
- */
-const DEPRECATED_ALIAS_WARNED = new Set<string>();
-
-/**
- * Wraps an emission function so the first invocation per process logs a
- * single deprecation warning. The wrapper preserves the underlying
- * function's call signature exactly.
- */
-function createDeprecatedAlias<TFn extends (...args: any[]) => any>(
-  name: string,
-  fn: TFn
-): TFn {
-  return function deprecatedAlias(...args: Parameters<TFn>): ReturnType<TFn> {
-    if (!DEPRECATED_ALIAS_WARNED.has(name)) {
-      DEPRECATED_ALIAS_WARNED.add(name);
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[flow-state-dev] ctx.${name}(...) is deprecated. Use ctx.emit.${
-          name.replace(/^emit/, "").charAt(0).toLowerCase() +
-          name.replace(/^emit/, "").slice(1)
-        }(...) instead. Removed in next major.`
-      );
-    }
-    return fn(...args);
-  } as TFn;
-}
-
-/**
  * Build the three `ctx.emit.trace.*` impls. Each:
  *   - emits item.added then item.done via the response emitter,
  *   - fire-and-forgets a TraceStore append for both events.
@@ -2644,12 +2612,8 @@ export async function createExecutionContext<
         return false;
       },
       // Populated immediately after this object literal closes so the
-      // deprecated aliases share the underlying impls with `ctx.emit.*`
-      // and the trace.blockDebug emitter can read this context's
-      // `_blockIdentity` (set later by `_withExecutionScope`).
-      emitMessage: undefined as unknown as BlockContext["emitMessage"],
-      emitComponent: undefined as unknown as BlockContext["emitComponent"],
-      emitStatus: undefined as unknown as BlockContext["emitStatus"],
+      // `ctx.emit.trace.*` emitters can read this context's `_blockIdentity`
+      // (set later by `_withExecutionScope`).
       emit: undefined as unknown as BlockContext["emit"],
       _peekStatus: undefined as unknown as BlockContext["_peekStatus"],
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
@@ -3177,11 +3141,8 @@ export async function createExecutionContext<
       }
     };
 
-    // Wire emission methods. The flat `emitMessage`/`emitComponent`/
-    // `emitStatus` are deprecated aliases that warn once per process;
-    // both the aliases and `ctx.emit.{message,component,status}` share
-    // the same underlying impls. `ctx.emit.trace.*` uses the active
-    // emission context plus this context's `_blockIdentity` (set by
+    // Wire emission methods. `ctx.emit.trace.*` uses the active emission
+    // context plus this context's `_blockIdentity` (set by
     // `_withExecutionScope` on child scopes) so trace items carry the
     // firing block's identity.
     const emitMessageImpl = createEmitMessage(activeEmCtx);
@@ -3198,9 +3159,6 @@ export async function createExecutionContext<
         phase?: "main" | "work";
       } })._blockIdentity
     );
-    context.emitMessage = createDeprecatedAlias("emitMessage", emitMessageImpl) as BlockContext["emitMessage"];
-    context.emitComponent = createDeprecatedAlias("emitComponent", emitComponentImpl) as BlockContext["emitComponent"];
-    context.emitStatus = createDeprecatedAlias("emitStatus", emitStatusImpl) as BlockContext["emitStatus"];
     context.emit = {
       message: emitMessageImpl,
       component: emitComponentImpl,
