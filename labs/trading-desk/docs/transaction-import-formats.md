@@ -146,6 +146,103 @@ A transaction import runs in one of two modes:
   a recorded split); if the file lacks a split the position re-breaks, but now
   *visibly* as an `inconsistent_history` flagged row, not silently.
 
+## Tax-lot CSV (unrealized / realized) — FIX-895
+
+Brokerages also export **tax-lot CSVs**: an *unrealized* file (every currently-open
+lot) and a *realized* file (every closed lot, with the exact acquisition it was
+matched against). These are NOT holdings snapshots and NOT OFX — they carry
+per-lot cost basis and open/close dates. The dispatcher sniffs them after OFX
+fails; both feed the same `ingestLedgerEvents` contract.
+
+### Headers
+
+Detection (after OFX misses): `symbol` + `quantity` + `costBasis` + `openDate` +
+`unitCost` (all required). Presence of both `closeDate` AND `proceeds` selects
+**realized** mode. A `closeDate` without `proceeds` (or vice versa) **rejects the
+file** — it's an intended realized export with an unrecognized column, never
+parsed as unrealized. Synonyms are matched case- and separator-insensitively:
+
+| Canonical | Synonyms |
+| --- | --- |
+| `symbol` | `symbol`, `ticker`, `sym` |
+| `quantity` | `quantity`, `qty`, `shares`, `units` |
+| `costBasis` | `costbasis`, `cost`, `totalcost`, `basis` (the lot **total**) |
+| `unitCost` | `unitcost`, `costpershare`, `priceperunit`, `unitprice` |
+| `openDate` | `opendate`, `acquireddate`, `dateacquired`, `purchasedate` |
+| `closeDate` (realized) | `closedate`, `datesold`, `dateclosed`, `saledate` |
+| `proceeds` (realized) | `proceeds`, `totalproceeds`, `salesproceeds` |
+
+`costBasis` is the lot **total** (unlike the Holdings CSV, where it's per-share);
+`unitCost` is per-share. A holdings snapshot that reads `costBasis ≈ unitCost` on
+its multi-share rows is **refused** with a pointer to the Holdings CSV import —
+misreading a per-share basis as a lot total is exactly the corruption this format
+avoids.
+
+### Event synthesis
+
+- **Unrealized row → one `buy`**: `quantity = +|qty|`, `amount = −|costBasis|`
+  (the lot total is authoritative), `unitPrice = |costBasis| / qty`,
+  `tradeDate = openDate`, and a stable `lotKey`.
+- **Realized row → a linked `buy` + `sell`**: the buy on `openDate` as above; the
+  sell on `closeDate` with `quantity = −|qty|`, `amount = +|proceeds|`, and a
+  `closesLotKey` pointing at the buy's `lotKey`.
+
+Missing money is **represented, not dropped**: a blank `costBasis` lands the buy
+with `basisUnknown` (position kept, basis honestly unknown); a blank `proceeds`
+records the sell with `proceedsUnknown` (disposal + basis + term kept, gain
+nulled). Only a missing `symbol` / `qty` / the row's own date, a `qty <= 0`
+(shorts out of scope), an OCC option symbol (a Non-Goal), or a currency ≠ the
+target account's currency skips the row with a per-row parse error.
+
+### Lot identity and specific-lot disposal
+
+Open positions and realized gains still **derive** from the ledger, but derivation
+now honors the lot identity the file carries. A `lotKey` on each buy and a
+`closesLotKey` on each realized sell let `deriveLots` consume the *specific* lot
+the broker matched — not the FIFO-oldest — so a specific-ID / average-cost / LIFO
+file reproduces the broker's exact basis, holding period, and gain. Feeds that
+carry no lot identity (OFX, Plaid, manual) still use FIFO, unchanged. A keyed
+disposal whose referenced lot isn't open surfaces as an unmatched disposal (real
+proceeds, unknown basis/term) — it never silently FIFO-falls-back onto an
+unrelated lot. A split never rebases a keyed lot (broker files are already
+split-adjusted as of export).
+
+### One source per ticker — use a dedicated account
+
+Within an account, a ticker's share-moving events must all come from **one**
+source: all tax-lot-keyed, or all feed-unkeyed, never mixed. The ingest seam
+**refuses** a batch that would mix them, in either order (a tax-lot CSV onto
+unkeyed OFX history AND an OFX/manual share event onto keyed history both refuse),
+with guidance to use a fresh account. So **import tax-lot CSVs into a fresh
+account dedicated to them.** A refusal is a normal import report (0 inserts + a
+conflicting-ticker warning), rendered in the import dialog. Re-importing the same
+file, or importing the paired realized file after the unrealized one, is
+same-kind (keyed) and never conflicts — it dedups/coexists. A disjoint realized
+file for a *new* tax year appends safely; overlapping / re-cut exports are
+re-imported into a fresh account, not appended.
+
+### Fresh-start wipe (one-time rollout prerequisite)
+
+This work made `computeFingerprint` include the lot-identity fields
+unconditionally, which is only safe on a **cleared** ledger. Before running the
+new code against existing data, wipe the ledger-derived tables once:
+
+- **Dev (embedded PGlite):** `pnpm --filter @flow-state-dev/trading-desk db:clean`
+  (deletes `.fsdev/pglite` and regenerates a fresh, migrated database).
+- **Deploy (real Postgres):** `pnpm --filter @flow-state-dev/trading-desk
+  ledger-reset` — truncates `ledger_events` / `holdings` / `realized_gains` and
+  stamps a rollout marker. The deploy migrator **refuses to start** against a
+  non-empty legacy ledger without that marker. Snapshot-only holdings (CSV/PDF)
+  are re-imported afterward.
+
+### Sample workflow
+
+1. Wipe once (above), or create a **fresh account** for the tax-lot import.
+2. Import the **unrealized** file (append) → open positions with per-lot basis.
+3. Import each **realized** file (append) → realized disposals whose basis, term,
+   and gain match the broker's specific-lot figures. Import *every* tax-year slice.
+4. Re-importing any file is a safe no-op (dedup).
+
 ## Minimal example
 
 A `BUYSTOCK` and its `SECLIST` entry:
@@ -173,11 +270,13 @@ parses to:
 }
 ```
 
-## Broker transaction CSV (follow-up)
+## Other broker transaction CSVs (follow-up)
 
-Per-broker transaction CSVs (Fidelity, Schwab, Vanguard, …) have no common
-layout. The planned shape is a registry of per-broker adapters keyed off a
-header signature — `{ match, columns, vocab, signRule }` — each emitting the same
-`LedgerEventInput`, wired into the `else` branch of `transaction-file.ts`. Until
-then a non-OFX file reports a clear "only OFX-family files are supported" parse
-error.
+The **tax-lot CSV** family above (FIX-895) is the first CSV adapter on this path.
+Other per-broker *transaction-history* CSVs (Fidelity/Schwab/Vanguard activity
+exports, which list trades rather than lots) still have no common layout. The
+planned shape is a registry of per-broker adapters keyed off a header signature —
+`{ match, columns, vocab, signRule }` — each emitting the same `LedgerEventInput`,
+wired alongside the tax-lot branch in `transaction-file.ts`. Until then a
+non-OFX, non-tax-lot file reports a clear "only OFX-family files (.ofx / .qfx /
+.qbo) and tax-lot CSVs are supported" parse error.

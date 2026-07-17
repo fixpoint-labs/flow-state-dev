@@ -62,6 +62,8 @@ function plaidBuy(ticker: string): LedgerEventInput {
     description: "Plaid: bought AAPL",
     basisUnknown: null,
     proceedsUnknown: null,
+    lotKey: null,
+    closesLotKey: null,
   };
 }
 

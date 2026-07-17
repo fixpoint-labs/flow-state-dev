@@ -39,6 +39,8 @@ function row(overrides: Partial<LedgerRow>): LedgerRow {
     description: null,
     basisUnknown: null,
     proceedsUnknown: null,
+    lotKey: null,
+    closesLotKey: null,
     attributes: null,
     voidedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -243,5 +245,82 @@ describe("deriveLots — realized disposals", () => {
       gain: null,
       basisUnknown: "import-no-proceeds",
     });
+  });
+});
+
+/**
+ * Specific-lot disposals (FIX-895). A realized tax-lot row names the EXACT lot the
+ * broker closed, carried on the sell as `closesLotKey`. The disposal must consume
+ * THAT lot — reporting its basis and holding period — not the oldest lot FIFO
+ * would pick. A keyed disposal never falls back to FIFO: a missing referenced lot
+ * surfaces as an honest unmatched disposal, never a silently-wrong basis.
+ */
+describe("deriveLots — specific-lot disposals (FIX-895)", () => {
+  it("closes the NAMED lot and reports ITS basis/term — not the oldest (FIFO would fail)", () => {
+    // Two open lots: an older long lot and a newer short one. The realized row
+    // closes the NEWER lot by key. FIFO would consume the older long lot and
+    // mis-report basis + term; specific-lot consumption reports the newer lot's.
+    const { disposals } = deriveLots([
+      row({ id: "b1", tradeDate: "2024-01-01", quantity: 10, unitPrice: 100, lotKey: "lot-old" }),
+      row({ id: "b2", tradeDate: "2026-02-01", quantity: 10, unitPrice: 200, lotKey: "lot-new" }),
+      row({
+        id: "s1",
+        type: "sell",
+        tradeDate: "2026-03-01",
+        quantity: -10,
+        amount: 2500,
+        closesLotKey: "lot-new",
+      }),
+    ]);
+    expect(disposals).toHaveLength(1);
+    expect(disposals[0]).toMatchObject({
+      acquiredDate: "2026-02-01", // the NEWER lot
+      quantity: 10,
+      proceeds: 2500,
+      costBasis: 2000, // 10 × 200 (newer lot), NOT 1000 (oldest FIFO lot)
+      gain: 500,
+      term: "short", // held < 1yr — the newer lot's term, not the older's "long"
+      lotIndex: 0,
+    });
+  });
+
+  it("emits an unmatched `lot-not-found` disposal when the referenced lot is not open — never FIFO", () => {
+    // The sell names a lot that isn't open (evolved/partial file). It must NOT
+    // consume the unrelated open lot via FIFO (which would fabricate a plausible
+    // basis/term) — it surfaces real proceeds with an honest unknown acquisition.
+    const { disposals } = deriveLots([
+      row({ id: "b1", tradeDate: "2024-01-01", quantity: 10, unitPrice: 100, lotKey: "lot-a" }),
+      row({
+        id: "s1",
+        type: "sell",
+        tradeDate: "2026-03-01",
+        quantity: -10,
+        amount: 2500,
+        closesLotKey: "lot-missing",
+      }),
+    ]);
+    expect(disposals).toHaveLength(1);
+    expect(disposals[0]).toMatchObject({
+      acquiredDate: null,
+      quantity: 10,
+      proceeds: 2500,
+      costBasis: null,
+      gain: null,
+      term: "unknown",
+      basisUnknown: "lot-not-found",
+    });
+    // The unrelated lot stays untouched: it derives to a normal open position.
+    const { positions } = deriveLots([
+      row({ id: "b1", tradeDate: "2024-01-01", quantity: 10, unitPrice: 100, lotKey: "lot-a" }),
+      row({
+        id: "s1",
+        type: "sell",
+        tradeDate: "2026-03-01",
+        quantity: -10,
+        amount: 2500,
+        closesLotKey: "lot-missing",
+      }),
+    ]);
+    expect(positions.find((p) => p.ticker === "AAPL")?.quantity).toBe(10);
   });
 });
