@@ -8,8 +8,8 @@
 // description and returns the session id; contextId lands on the record and in
 // the fingerprint; auto-vivify; validation). The directive → sessionId routing
 // (the grouping mechanism) is proven at the MCP adapter layer
-// (`packages/mcp/test/adapter.test.ts`) and end-to-end by the real-path goal
-// check over the MCP HTTP endpoint.
+// (`packages/mcp/test/adapter.test.ts`) and over real MCP HTTP in
+// `test/config.spec.ts` (FIX-897) and `scripts/goal-check-fix-897.mts`.
 
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";

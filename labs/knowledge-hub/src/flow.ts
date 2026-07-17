@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
-// Knowledge Hub lab — the capture surface (FIX-882).
+// Knowledge Hub lab — the capture surface (FIX-882, FIX-897).
 //
-// A single `logActivity` MCP tool hands a piece of the owner's mental activity
+// `createContext` opens a conversation topic (session state holds the description);
+// `logActivity` hands a piece of the owner's mental activity
 // (a thought, journal fragment, task, memory, goal, decision, or topic of
 // interest) into the user-scoped `inbox` collection, and a `listInbox` read-back
 // inspects what's pending. Capture is strictly mechanical — the deterministic mailroom stamps a

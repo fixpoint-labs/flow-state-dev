@@ -19,6 +19,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { callMcpTool } from "../test/mcp-http";
+
 const SECRET = "test-secret";
 process.env.KH_MCP_SECRET = SECRET;
 
@@ -36,28 +38,25 @@ function check(label: string, ok: boolean): void {
 
 const flowState = (await import("../fsdev.config")).default;
 
-async function callTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const router = await flowState.getRouter();
-  const req = new Request("http://localhost/mcp/knowledge-hub", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${SECRET}` },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
-  });
-  const res = await router.POST(req, { params: { path: ["mcp", "knowledge-hub"] } });
-  const body = (await res.json()) as { result?: { content?: { text?: string }[] }; error?: unknown };
-  if (body.error !== undefined) throw new Error(`MCP error for ${name}: ${JSON.stringify(body.error)}`);
-  return JSON.parse(body.result!.content![0]!.text!) as Record<string, unknown>;
-}
-
 try {
   const description = "Planning the Q3 roadmap over a Claude conversation";
-  const opened = await callTool("create_context", { description });
+  const opened = await callMcpTool(flowState, "create_context", { description }, { secret: SECRET });
   const contextId = opened.contextId as string;
 
   check("(a) createContext returns a ctx_-prefixed id", typeof contextId === "string" && /^ctx_/.test(contextId));
 
-  await callTool("log_activity", { contextId, kind: "task", content: "Draft the roadmap doc", context: "roadmap chat" });
-  await callTool("log_activity", { contextId, kind: "goal", content: "Ship v1 by August", context: "roadmap chat" });
+  await callMcpTool(
+    flowState,
+    "log_activity",
+    { contextId, kind: "task", content: "Draft the roadmap doc", context: "roadmap chat" },
+    { secret: SECRET }
+  );
+  await callMcpTool(
+    flowState,
+    "log_activity",
+    { contextId, kind: "goal", content: "Ship v1 by August", context: "roadmap chat" },
+    { secret: SECRET }
+  );
 
   const runtime = await flowState.getRuntime();
 

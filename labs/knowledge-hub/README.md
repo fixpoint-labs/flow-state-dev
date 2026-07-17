@@ -20,7 +20,7 @@ The **capture layer** is now in place (FIX-882): a single `logActivity` MCP tool
 | `logActivity` capture action (now takes a required `contextId`) | `src/flow.ts` | FIX-882 / FIX-897 |
 | `listInbox` inspection action | `src/flow.ts` | FIX-882 |
 | Config (filesystem stores; MCP adapter mounted only when `KH_MCP_SECRET` is set) | `fsdev.config.ts` | FIX-882 |
-| Real-path goal check (MCP HTTP: open context → group captures) | `scripts/goal-check-fix-897.mts` | FIX-897 |
+| Real-path MCP grouping (`mcp.session` over HTTP) | `test/config.spec.ts` (CI) + `scripts/goal-check-fix-897.mts` (manual) | FIX-897 |
 
 ## Run it
 
@@ -65,8 +65,8 @@ still succeeds (auto-vivified, no description); no capture is lost to a missing
 > The directive is only consulted on the MCP HTTP path. `fsdev run` supplies its
 > own `--session`, so a CLI `logActivity` stores the `contextId` on the record
 > but does not route the flow session by it. The real-path grouping is verified
-> end-to-end by `scripts/goal-check-fix-897.mts`
-> (`KH_MCP_SECRET=test-secret pnpm tsx scripts/goal-check-fix-897.mts`).
+> end-to-end in `pnpm test` (`test/config.spec.ts`, FIX-897 describe) and the
+> standalone script `KH_MCP_SECRET=test-secret pnpm tsx scripts/goal-check-fix-897.mts`.
 
 ### Auth: HTTP access requires `KH_MCP_SECRET`
 

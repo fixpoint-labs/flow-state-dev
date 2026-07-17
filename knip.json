@@ -48,7 +48,7 @@
       "entry": ["src/**/index.ts", "test/**/*.{test,spec}.ts"]
     },
     "labs/knowledge-hub": {
-      "entry": ["src/index.ts", "fsdev.config.ts", "test/**/*.spec.ts", "scripts/**/*.mts"]
+      "entry": ["src/index.ts", "fsdev.config.ts", "test/**/*.spec.ts", "test/mcp-http.ts", "scripts/**/*.mts"]
     }
   }
 }

@@ -5,9 +5,10 @@
  * `POST /mcp/:kind` layout.
  *
  * v1 design choices (see FIX-22 spec § 1):
- *   - Stateless only. No `Mcp-Session-Id` is issued; every `tools/call`
- *     creates a fresh flow session under `host.dispatch`. Stateful mode
- *     is deferred until a real consumer asks for it.
+ *   - Stateless by default. No protocol `Mcp-Session-Id` is issued; every
+ *     `tools/call` without an action-level `mcp.session` directive mints a
+ *     fresh flow session under `host.dispatch`. Per-action session derivation
+ *     (`ActionMcpConfig.session`) groups related calls when a flow opts in.
  *   - Single JSON response on `tools/call`. No progress notifications,
  *     no SSE response stream, no `outputSchema`/`structuredContent`.
  *   - Hand-rolled JSON-RPC dispatch. The spec called for the
@@ -403,10 +404,6 @@ async function handleToolsCall(
         ? { ...((args ?? {}) as Record<string, unknown>), ...forwardedInput }
         : args;
 
-  // MCP is sessionless by default (a fresh ephemeral session per call). An
-  // action can opt in to a stable session via `mcp.session`: mint a fresh id
-  // from a template (`"ctx_*"`) or read a caller-supplied id from an input
-  // field (`{ fromInput }`). Undefined directive → undefined → the v1 default.
   const sessionId = deriveSessionId(target.action.mcp?.session, input);
 
   let handle: ReturnType<InboundTransportHost["dispatch"]>;
