@@ -6,15 +6,6 @@ import type { Scorer, ScoreResult } from "./types";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** JSON-shaped eval equality: key-order independent, preserves JSON.stringify undefined omission; never throws. */
-function evalValuesEqual(a: unknown, b: unknown): boolean {
-  try {
-    return stableStringify(a) === stableStringify(b);
-  } catch {
-    return false;
-  }
-}
-
 function getField(obj: unknown, field: string): unknown {
   if (obj == null || typeof obj !== "object") return undefined;
   return (obj as Record<string, unknown>)[field];
@@ -36,6 +27,15 @@ function passResult(reason?: string): ScoreResult {
 
 function failResult(reason?: string): ScoreResult {
   return { score: 0, passed: false, reason };
+}
+
+/** JSON-shaped eval equality: key-order independent, preserves JSON.stringify undefined omission; never throws. */
+function evalValuesEqual(a: unknown, b: unknown): boolean {
+  try {
+    return stableStringify(a) === stableStringify(b);
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------

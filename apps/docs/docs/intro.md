@@ -137,5 +137,3 @@ All composable, all optional.
 - **[Quick Start](/docs/getting-started/quick-start)** — Build a streaming chat app in five minutes
 - **[Blocks](/docs/fundamentals/blocks)** — Deep dive into the four primitives
 - **[Building a Chat App](/guides/building-a-chat-app)** — Complete walkthrough from blocks to React UI to tests
-
-> An optional cognitive layer ships separately as Thought Fabric — see [Thought Fabric →](/thought-fabric/introduction).

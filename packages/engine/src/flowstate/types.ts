@@ -226,6 +226,33 @@ export interface CreateFlowStateOptions<
    * subscription config; this is a host-level default target for the CLI.
    */
   chat?: { default?: string };
+
+  /**
+   * How `fsdev dev` should connect DevTool to this app. `fsdev dev` reads this
+   * and injects it into the DevTool page (served over loopback), so a secured
+   * flow is debuggable without hand-editing DevTool settings: `userId` becomes
+   * DevTool's session identity and `bearerToken` is sent as
+   * `Authorization: Bearer` on every flow request. It is a DEV convenience —
+   * only `fsdev dev` reads it; the production `serve`/deploy paths ignore it.
+   */
+  devtool?: DevToolConnectionConfig;
+}
+
+/**
+ * DevTool connection config declared in `fsdev.config.ts` (see
+ * {@link CreateFlowStateOptions.devtool}). Both fields are optional so an app
+ * can set just the identity, just the token, or both.
+ */
+export interface DevToolConnectionConfig {
+  /** Identity DevTool creates sessions and dispatches actions as. */
+  userId?: string;
+  /**
+   * Bearer token DevTool sends as `Authorization: Bearer <token>` on flow
+   * requests — the credential a bearer-gated flow's resolver validates. Read a
+   * secret from the environment here (e.g. `process.env.KH_MCP_SECRET`); it is
+   * exposed only to the loopback DevTool page `fsdev dev` serves.
+   */
+  bearerToken?: string;
 }
 
 /**
@@ -282,5 +309,7 @@ export interface FlowState<TSettings extends object = FlowStateSettings> {
     flowKeys: string[];
     profileKeys: string[];
     declaredSlots: Record<string, CapabilitySlot[]>;
+    /** DevTool connection config, forwarded verbatim from the options. */
+    devtool?: DevToolConnectionConfig;
   };
 }

@@ -14,9 +14,11 @@ export function SettingsSheet() {
   const { config, setConfig, userIdControl } = useDevTool();
   const [open, setOpen] = useState(false);
   const [userId, setUserId] = useState(config.userId);
+  const [bearerToken, setBearerToken] = useState(config.bearerToken ?? "");
 
   const handleSave = () => {
-    setConfig({ userId });
+    // Preserve both fields — saving only userId would drop a config-injected token.
+    setConfig({ userId, bearerToken: bearerToken.trim() ? bearerToken.trim() : undefined });
     setOpen(false);
   };
 
@@ -50,6 +52,17 @@ export function SettingsSheet() {
               id="settings-user"
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
+              className="h-7 text-xs"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="settings-bearer" className="text-[10px]">Bearer token</Label>
+            <Input
+              id="settings-bearer"
+              type="password"
+              value={bearerToken}
+              placeholder="for bearer-gated flows"
+              onChange={(e) => setBearerToken(e.target.value)}
               className="h-7 text-xs"
             />
           </div>

@@ -5,12 +5,12 @@
   "type": "module",
   "description": "Incubation lab: the Knowledge Hub (FIX-882–884). Capture layer — logActivity into a user-scoped inbox with a deterministic mailroom pass; the sweeper/workforce work lands in the follow-on issues.",
   "scripts": {
-    "dev": "tsx ../../packages/cli/bin/fsdev.ts dev",
+    "dev": "FSDEV_DEBUG_ENDPOINTS=1 KH_MCP_SECRET=test tsx ../../packages/cli/bin/fsdev.ts dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root . --passWithNoTests",
     "test:watch": "vitest --root . --passWithNoTests",
     "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
-    "serve": "pnpm fsdev serve"
+    "serve": "FSDEV_DEBUG_ENDPOINTS=1 KH_MCP_SECRET=test pnpm fsdev serve"
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",

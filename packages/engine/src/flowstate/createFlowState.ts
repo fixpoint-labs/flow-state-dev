@@ -129,7 +129,8 @@ class InternalFlowState<TSettings extends object>
     return {
       flowKeys: Object.keys(this.#options.flows),
       profileKeys: this.#profileKeys,
-      declaredSlots: declaredSlots(this.#options.stores)
+      declaredSlots: declaredSlots(this.#options.stores),
+      devtool: this.#options.devtool
     };
   }
 

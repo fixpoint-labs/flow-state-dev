@@ -342,3 +342,41 @@ describe("serve — static assets", () => {
     expect(await res.json()).toEqual({ ok: true });
   });
 });
+
+describe("serve() — devtoolConfig injection", () => {
+  async function staticDir(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "fsd-node-devtool-"));
+    await writeFile(join(dir, "index.html"), "<!doctype html><html><head></head><body></body></html>");
+    return dir;
+  }
+
+  it("injects the config into loopback HTML and marks it no-store", async () => {
+    const dir = await staticDir();
+    const handle = await start(fakeRouter, {
+      port: 0,
+      host: "127.0.0.1",
+      staticDir: dir,
+      devtoolConfig: { userId: "owner", bearerToken: "s3cret" },
+    });
+    const res = await fetch(`http://127.0.0.1:${handle.port}/`);
+    const html = await res.text();
+    expect(html).toContain('window.__FSD_DEVTOOL_CONFIG__ = {"userId":"owner","bearerToken":"s3cret"}');
+    // The token-bearing document must not be cached.
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("does NOT inject on a non-loopback bind (token stays off the network)", async () => {
+    const dir = await staticDir();
+    const handle = await start(fakeRouter, {
+      port: 0,
+      host: "0.0.0.0",
+      staticDir: dir,
+      devtoolConfig: { userId: "owner", bearerToken: "s3cret" },
+    });
+    const res = await fetch(`http://127.0.0.1:${handle.port}/`);
+    const html = await res.text();
+    expect(html).not.toContain("__FSD_DEVTOOL_CONFIG__");
+    expect(html).not.toContain("s3cret");
+    expect(res.headers.get("cache-control")).not.toBe("no-store");
+  });
+});
