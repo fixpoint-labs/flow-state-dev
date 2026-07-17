@@ -403,10 +403,6 @@ async function handleToolsCall(
         ? { ...((args ?? {}) as Record<string, unknown>), ...forwardedInput }
         : args;
 
-  // MCP is sessionless by default (a fresh ephemeral session per call). An
-  // action can opt in to a stable session via `mcp.session`: mint a fresh id
-  // from a template (`"ctx_*"`) or read a caller-supplied id from an input
-  // field (`{ fromInput }`). Undefined directive → undefined → the v1 default.
   const sessionId = deriveSessionId(target.action.mcp?.session, input);
 
   let handle: ReturnType<InboundTransportHost["dispatch"]>;

@@ -28,6 +28,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { callMcpTool as callMcpToolHttp } from "./mcp-http";
 
 const original = process.env.KH_MCP_SECRET;
 
@@ -96,26 +97,13 @@ describe("fsdev.config fail-closed MCP adapter", () => {
   });
 });
 
-/** Drive a real authenticated `tools/call` over the MCP endpoint (optionally
- *  with a query string) and return the parsed handler output. Shared by the
- *  ?source= forwarding cases and the FIX-897 grouping case so the JSON-RPC
- *  envelope is not hand-rolled twice. */
 async function callMcpTool(
   flowState: Awaited<ReturnType<typeof loadConfig>>,
   name: string,
   args: Record<string, unknown>,
   query = ""
 ): Promise<Record<string, unknown>> {
-  const router = await flowState.getRouter();
-  const req = new Request(`http://localhost/mcp/knowledge-hub${query}`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: "Bearer test-secret" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
-  });
-  const res = await router.POST(req, { params: { path: ["mcp", "knowledge-hub"] } });
-  const body = (await res.json()) as { result?: { content?: { text?: string }[] }; error?: unknown };
-  if (body.error !== undefined) throw new Error(`MCP error (${name}): ${JSON.stringify(body.error)}`);
-  return JSON.parse(body.result!.content![0]!.text!) as Record<string, unknown>;
+  return callMcpToolHttp(flowState, { secret: "test-secret", name, args, query });
 }
 
 /** `log_activity` over MCP with a defaulted contextId — these cases exercise
