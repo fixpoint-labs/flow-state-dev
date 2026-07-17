@@ -15,7 +15,7 @@ import {
   collapseToCanonicalLog,
   ITEM_UPDATE_INVARIANT_KEYS
 } from "@flow-state-dev/contracts/items";
-import { deepEqual } from "@flow-state-dev/core/helpers";
+import { deepEqual } from "@flow-state-dev/contracts/helpers";
 import type {
   Content,
   MessageItem,
