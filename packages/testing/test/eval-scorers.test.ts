@@ -23,6 +23,16 @@ describe("scorers", () => {
       expect(result).toEqual({ score: 1, passed: true, reason: undefined });
     });
 
+    it("passes when object keys differ in insertion order", () => {
+      const scorer = exactMatch();
+      const result = scorer.score({
+        output: { b: "two", a: 1 },
+        expected: { a: 1, b: "two" },
+        input: {},
+      });
+      expect(result).toEqual({ score: 1, passed: true, reason: undefined });
+    });
+
     it("fails on mismatch", () => {
       const scorer = exactMatch();
       const result = scorer.score({
