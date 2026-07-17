@@ -2,15 +2,15 @@
  * FIX-897 goal check — the real MCP HTTP path (not `testFlow`, which bypasses
  * the `mcp.session` directive).
  *
- * Goal: a client can open a named context and log multiple captures grouped
+ * Goal: a client can open a named conversation and log multiple captures grouped
  * under it. This drives the actual JSON-RPC `tools/call` surface through the
  * mounted MCP adapter and asserts, on the persisted stores:
  *
- *   (a) createContext returns a `ctx_`-prefixed id;
+ *   (a) createConversation returns a `conv_`-prefixed id;
  *   (b) both logActivity requests were dispatched under that session id
- *       (the `{ fromInput: "contextId" }` directive routed them);
- *   (c) both inbox rows carry the contextId (the grouping key the sweeper reads);
- *   (d) the session's state holds the description createContext wrote.
+ *       (the `{ fromInput: "conversationId" }` directive routed them);
+ *   (c) both inbox rows carry the conversationId (the grouping key the sweeper reads);
+ *   (d) the session's state holds the description createConversation wrote.
  *
  * Run from the lab root:
  *   KH_MCP_SECRET=test-secret pnpm tsx scripts/goal-check-fix-897.mts
@@ -43,28 +43,28 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Re
 
 try {
   const description = "Planning the Q3 roadmap over a Claude conversation";
-  const opened = await callTool("create_context", { description });
-  const contextId = opened.contextId as string;
+  const opened = await callTool("create_conversation", { description });
+  const conversationId = opened.conversationId as string;
 
-  check("(a) createContext returns a ctx_-prefixed id", typeof contextId === "string" && /^ctx_/.test(contextId));
+  check("(a) createConversation returns a conv_-prefixed id", typeof conversationId === "string" && /^conv_/.test(conversationId));
 
-  await callTool("log_activity", { contextId, kind: "task", content: "Draft the roadmap doc", context: "roadmap chat" });
-  await callTool("log_activity", { contextId, kind: "goal", content: "Ship v1 by August", context: "roadmap chat" });
+  await callTool("log_activity", { conversationId, kind: "task", content: "Draft the roadmap doc", situation: "roadmap chat" });
+  await callTool("log_activity", { conversationId, kind: "goal", content: "Ship v1 by August", situation: "roadmap chat" });
 
   const runtime = await flowState.getRuntime();
 
   // (b) both logActivity requests ran under the minted session id.
-  const reqs = await runtime.stores.request.list({ flowKind: "knowledge-hub", sessionId: contextId });
+  const reqs = await runtime.stores.request.list({ flowKind: "knowledge-hub", sessionId: conversationId });
   const logReqs = reqs.filter((r) => r.actionName === "logActivity");
-  check("(b) both logActivity requests recorded under the context session id", logReqs.length === 2);
+  check("(b) both logActivity requests recorded under the conversation session id", logReqs.length === 2);
 
-  // (c) both inbox rows carry the contextId.
-  const inbox = (await runtime.stores.resourceState.getAll("user", "owner")) as Record<string, { contextId?: string }>;
+  // (c) both inbox rows carry the conversationId.
+  const inbox = (await runtime.stores.resourceState.getAll("user", "owner")) as Record<string, { conversationId?: string }>;
   const rows = Object.entries(inbox).filter(([k]) => k.startsWith("inbox/"));
-  check("(c) two inbox rows exist and both carry the contextId", rows.length === 2 && rows.every(([, v]) => v.contextId === contextId));
+  check("(c) two inbox rows exist and both carry the conversationId", rows.length === 2 && rows.every(([, v]) => v.conversationId === conversationId));
 
-  // (d) the session record (the context record) holds the description.
-  const session = await runtime.stores.session.get(contextId);
+  // (d) the session record (the conversation record) holds the description.
+  const session = await runtime.stores.session.get(conversationId);
   check("(d) session state holds the description", (session?.state as { description?: unknown } | undefined)?.description === description);
 } finally {
   await flowState.dispose();
@@ -76,4 +76,4 @@ if (failures.length > 0) {
   console.error(`\nGOAL CHECK FAILED (${failures.length}): ${failures.join("; ")}`);
   process.exit(1);
 }
-console.log("\nGOAL CHECK PASSED — a client can open a context and group captures under it.");
+console.log("\nGOAL CHECK PASSED — a client can open a conversation and group captures under it.");

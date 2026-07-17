@@ -106,14 +106,14 @@ async function callMcpTool(
   return callMcpToolHttp(flowState, { secret: "test-secret", name, args, query });
 }
 
-/** `log_activity` over MCP with a defaulted contextId — these cases exercise
+/** `log_activity` over MCP with a defaulted conversationId — these cases exercise
  *  ?source= forwarding, not grouping. */
 async function captureViaMcp(
   flowState: Awaited<ReturnType<typeof loadConfig>>,
   query: string,
   args: Record<string, unknown>
 ): Promise<{ id: string; deduplicated: boolean }> {
-  return (await callMcpTool(flowState, "log_activity", { contextId: "ctx_config", ...args }, query)) as {
+  return (await callMcpTool(flowState, "log_activity", { conversationId: "conv_config", ...args }, query)) as {
     id: string;
     deduplicated: boolean;
   };
@@ -151,7 +151,7 @@ describe("fsdev.config forwards ?source= into the capture (FIX-888)", () => {
     const out = await captureViaMcp(flowState, "?source=claude-desktop", {
       kind: "task",
       content: `book dentist ${randomUUID()}`,
-      context: "config wiring test",
+      situation: "config wiring test",
     });
     expect(out.deduplicated).toBe(false);
     expect(await readSource(flowState, out.id)).toBe("claude-desktop");
@@ -163,7 +163,7 @@ describe("fsdev.config forwards ?source= into the capture (FIX-888)", () => {
     const out = await captureViaMcp(flowState, "?source=endpoint", {
       kind: "task",
       content: `renew passport ${randomUUID()}`,
-      context: "config wiring test",
+      situation: "config wiring test",
       source: "model-guess",
     });
     expect(await readSource(flowState, out.id)).toBe("endpoint");
@@ -171,10 +171,10 @@ describe("fsdev.config forwards ?source= into the capture (FIX-888)", () => {
 });
 
 // The real MCP HTTP path consults the `mcp.session` directive (which `testFlow`
-// bypasses), so this is the CI home for the FIX-897 goal — proving createContext
-// mints a ctx_ id and log_activity's `{ fromInput: "contextId" }` routes captures
+// bypasses), so this is the CI home for the FIX-897 goal — proving createConversation
+// mints a conv_ id and log_activity's `{ fromInput: "conversationId" }` routes captures
 // into that one flow session. Mirrors scripts/goal-check-fix-897.mts, in CI.
-describe("mcp.session groups captures under a context (FIX-897)", () => {
+describe("mcp.session groups captures under a conversation (FIX-897)", () => {
   let flowState: Awaited<ReturnType<typeof loadConfig>> | undefined;
   afterEach(async () => {
     await flowState?.dispose();
@@ -183,46 +183,46 @@ describe("mcp.session groups captures under a context (FIX-897)", () => {
     vi.resetModules();
   });
 
-  it("createContext mints a ctx_ id; captures sharing it run in one session, store the description, and carry it on the rows", async () => {
+  it("createConversation mints a conv_ id; captures sharing it run in one session, store the description, and carry it on the rows", async () => {
     setSecret("test-secret");
     flowState = await loadConfig();
 
     const description = `roadmap planning ${randomUUID()}`;
-    const opened = await callMcpTool(flowState, "create_context", { description });
-    const contextId = opened.contextId as string;
-    expect(contextId).toMatch(/^ctx_/);
+    const opened = await callMcpTool(flowState, "create_conversation", { description });
+    const conversationId = opened.conversationId as string;
+    expect(conversationId).toMatch(/^conv_/);
 
     await callMcpTool(flowState, "log_activity", {
-      contextId,
+      conversationId,
       kind: "task",
       content: `draft the doc ${randomUUID()}`,
-      context: "roadmap chat",
+      situation: "roadmap chat",
     });
     await callMcpTool(flowState, "log_activity", {
-      contextId,
+      conversationId,
       kind: "goal",
       content: `ship v1 ${randomUUID()}`,
-      context: "roadmap chat",
+      situation: "roadmap chat",
     });
 
     const runtime = await flowState.getRuntime();
 
     // Both log_activity requests dispatched under the minted session id (the
-    // `{ fromInput: "contextId" }` directive routed them) — the grouping proof.
-    const reqs = await runtime.stores.request.list({ flowKind: "knowledge-hub", sessionId: contextId });
+    // `{ fromInput: "conversationId" }` directive routed them) — the grouping proof.
+    const reqs = await runtime.stores.request.list({ flowKind: "knowledge-hub", sessionId: conversationId });
     expect(reqs.filter((r) => r.actionName === "logActivity")).toHaveLength(2);
 
-    // The session record IS the context record — its state holds the description.
-    const session = await runtime.stores.session.get(contextId);
+    // The session record IS the conversation record — its state holds the description.
+    const session = await runtime.stores.session.get(conversationId);
     expect((session?.state as { description?: unknown } | undefined)?.description).toBe(description);
 
-    // Both inbox rows carry the contextId (the grouping key the sweeper reads).
+    // Both inbox rows carry the conversationId (the grouping key the sweeper reads).
     const inbox = (await runtime.stores.resourceState.getAll("user", "owner")) as Record<
       string,
-      { contextId?: string }
+      { conversationId?: string }
     >;
     const rows = Object.entries(inbox).filter(([key]) => key.startsWith("inbox/"));
     expect(rows).toHaveLength(2);
-    expect(rows.every(([, record]) => record.contextId === contextId)).toBe(true);
+    expect(rows.every(([, record]) => record.conversationId === conversationId)).toBe(true);
   });
 });

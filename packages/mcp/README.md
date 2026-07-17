@@ -172,10 +172,10 @@ dispatch session id, so a client can group related calls:
 actions: {
   // Template string → a freshly minted id (`*` is replaced by a random token,
   // or appended when absent). The handler returns the id to the caller.
-  createContext: { block: createContext, mcp: { session: "ctx_*" } },
-  // { fromInput } → the session id is the string at input.contextId, so calls
-  // sharing a contextId land in one session.
-  logActivity: { block: logActivity, mcp: { session: { fromInput: "contextId" } } },
+  createConversation: { block: createConversation, mcp: { session: "conv_*" } },
+  // { fromInput } → the session id is the string at input.conversationId, so
+  // calls sharing a conversationId land in one session.
+  logActivity: { block: logActivity, mcp: { session: { fromInput: "conversationId" } } },
 }
 ```
 

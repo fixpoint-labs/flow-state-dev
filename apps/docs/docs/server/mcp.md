@@ -293,10 +293,10 @@ id whose prefix names the concept:
 
 ```ts
 actions: {
-  createContext: {
-    block: createContext,       // returns the new session id to the caller
-    description: "Open a context, then log activity under it.",
-    mcp: { session: "ctx_*" },  // this call dispatches under ctx_1784…_a1b2
+  createConversation: {
+    block: createConversation,   // returns the new session id to the caller
+    description: "Open a conversation, then log activity under it.",
+    mcp: { session: "conv_*" },  // this call dispatches under conv_1784…_a1b2
   },
 }
 ```
@@ -308,16 +308,16 @@ the session id, so calls passing the same value land in one session:
 actions: {
   logActivity: {
     block: logActivity,
-    description: "Log activity into the context named by contextId.",
-    mcp: { session: { fromInput: "contextId" } },
+    description: "Log activity into the conversation named by conversationId.",
+    mcp: { session: { fromInput: "conversationId" } },
   },
 }
 ```
 
-A client calls `createContext` once, gets back a `ctx_…` id, then passes it as
-`contextId` on every later `logActivity`. Those calls all run under the same
-flow session, so whatever an action writes to session state (or the session's
-request history) is shared across them.
+A client calls `createConversation` once, gets back a `conv_…` id, then passes it
+as `conversationId` on every later `logActivity`. Those calls all run under the
+same flow session, so whatever an action writes to session state (or the
+session's request history) is shared across them.
 
 This is a **flow** session id, not the protocol `Mcp-Session-Id`. No
 `Mcp-Session-Id` header is issued and the client needs no MCP session

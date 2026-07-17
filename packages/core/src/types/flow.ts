@@ -174,9 +174,9 @@ export interface ActionMcpConfig {
    * - Omitted (default): stateless — every `tools/call` mints a fresh
    *   ephemeral session (v1 behavior).
    * - `string`: a template for a freshly minted id. Only the FIRST `*` is
-   *   replaced by a random token (`"ctx_*"` → `"ctx_1784…_a1b2"`; extra `*`
+   *   replaced by a random token (`"conv_*"` → `"conv_1784…_a1b2"`; extra `*`
    *   stay literal); with no `*` the token is appended. Use to hand the caller
-   *   a reusable id whose prefix names the concept (e.g. a "context").
+   *   a reusable id whose prefix names the concept (e.g. a "conversation").
    * - `{ fromInput: <field> }`: use the string value at `input.<field>` as
    *   the sessionId, so a caller-supplied id groups calls into one session.
    *

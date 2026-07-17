@@ -24,7 +24,7 @@ function capture(stores: Stores, userId: string, sessionId: string, content: str
     userId,
     sessionId,
     stores,
-    input: { contextId: "ctx_iso", kind: "task", content, context: "isolation test" },
+    input: { conversationId: "conv_iso", kind: "task", content, situation: "isolation test" },
   });
 }
 

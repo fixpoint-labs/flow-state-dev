@@ -1,11 +1,11 @@
-// Caller-supplied context behaviours (FIX-897), driven through the real
+// Caller-supplied conversation behaviours (FIX-897), driven through the real
 // `runAction` engine via `testFlow`. The flow has zero generators, so no model
 // mocking is needed.
 //
 // NOTE: `testFlow` is the in-process (CLI-shaped) path — it supplies the
 // sessionId directly and never consults the `mcp.session` directive. So these
-// specs prove the handler/record side of the feature (createContext stores the
-// description and returns the session id; contextId lands on the record and in
+// specs prove the handler/record side of the feature (createConversation stores the
+// description and returns the session id; conversationId lands on the record and in
 // the fingerprint; auto-vivify; validation). The directive → sessionId routing
 // (the grouping mechanism) is proven at the MCP adapter layer
 // (`packages/mcp/test/adapter.test.ts`) and end-to-end by the real-path goal
@@ -20,10 +20,10 @@ import type { InboxRecord } from "../src/inbox";
 const USER = "owner";
 type Stores = ReturnType<typeof createInMemoryStores>;
 
-function openContext(stores: Stores, sessionId: string, description: string) {
+function openConversation(stores: Stores, sessionId: string, description: string) {
   return testFlow({
     flow: knowledgeHubFlow,
-    action: "createContext",
+    action: "createConversation",
     userId: USER,
     sessionId,
     stores,
@@ -39,42 +39,42 @@ async function storedRecords(stores: Stores): Promise<Record<string, InboxRecord
   return (await stores.resourceState.getAll("user", USER)) as Record<string, InboxRecord>;
 }
 
-/** The topic description stashed in a session's state (the context record). */
+/** The topic description stashed in a session's state (the conversation record). */
 async function sessionDescription(stores: Stores, sessionId: string): Promise<unknown> {
   const rec = await stores.session.get(sessionId);
   return (rec?.state as { description?: unknown } | undefined)?.description ?? null;
 }
 
-describe("createContext", () => {
-  it("stores the description and returns the session id as contextId", async () => {
+describe("createConversation", () => {
+  it("stores the description and returns the session id as conversationId", async () => {
     const stores = createInMemoryStores();
-    const res = await openContext(stores, "ctx_planning", "Planning the Q3 roadmap");
+    const res = await openConversation(stores, "conv_planning", "Planning the Q3 roadmap");
 
     expect(res.status).toBe("completed");
-    // The context id IS the session id (the session record is the context record).
-    expect(res.output).toEqual({ contextId: "ctx_planning" });
-    expect(await sessionDescription(stores, "ctx_planning")).toBe("Planning the Q3 roadmap");
+    // The conversation id IS the session id (the session record is the conversation record).
+    expect(res.output).toEqual({ conversationId: "conv_planning" });
+    expect(await sessionDescription(stores, "conv_planning")).toBe("Planning the Q3 roadmap");
   });
 
   it("rejects a blank description", async () => {
     const stores = createInMemoryStores();
-    const res = await openContext(stores, "ctx_blank", "   ");
+    const res = await openConversation(stores, "conv_blank", "   ");
     expect(res.status).not.toBe("completed");
   });
 });
 
-describe("logActivity contextId", () => {
-  it("stores the contextId on the record and listInbox surfaces it", async () => {
+describe("logActivity conversationId", () => {
+  it("stores the conversationId on the record and listInbox surfaces it", async () => {
     const stores = createInMemoryStores();
     await capture(stores, "test-session", {
-      contextId: "ctx_group",
+      conversationId: "conv_group",
       kind: "task",
       content: "ship it",
-      context: "standup",
+      situation: "standup",
     });
 
     const record = Object.values(await storedRecords(stores))[0];
-    expect(record.contextId).toBe("ctx_group");
+    expect(record.conversationId).toBe("conv_group");
 
     const listed = await testFlow({
       flow: knowledgeHubFlow,
@@ -83,72 +83,72 @@ describe("logActivity contextId", () => {
       stores,
       input: {},
     });
-    const out = listed.output as { items: { contextId: string }[] };
-    expect(out.items[0].contextId).toBe("ctx_group");
+    const out = listed.output as { items: { conversationId: string }[] };
+    expect(out.items[0].conversationId).toBe("conv_group");
   });
 
-  it("both captures sharing a contextId carry it — grouping is visible on inbox rows", async () => {
+  it("both captures sharing a conversationId carry it — grouping is visible on inbox rows", async () => {
     const stores = createInMemoryStores();
-    await capture(stores, "s1", { contextId: "ctx_conv", kind: "task", content: "a", context: "c" });
-    await capture(stores, "s1", { contextId: "ctx_conv", kind: "goal", content: "b", context: "c" });
+    await capture(stores, "s1", { conversationId: "conv_conv", kind: "task", content: "a", situation: "c" });
+    await capture(stores, "s1", { conversationId: "conv_conv", kind: "goal", content: "b", situation: "c" });
 
     const records = Object.values(await storedRecords(stores));
     expect(records).toHaveLength(2);
-    expect(records.every((r) => r.contextId === "ctx_conv")).toBe(true);
+    expect(records.every((r) => r.conversationId === "conv_conv")).toBe(true);
   });
 
-  it("keeps the same capture tuple under two contexts as two records (no cross-context dedup)", async () => {
+  it("keeps the same capture tuple under two conversations as two records (no cross-conversation dedup)", async () => {
     const stores = createInMemoryStores();
-    const tuple = { kind: "task", content: "Follow up with Sam", context: "Standup" } as const;
-    await capture(stores, "s", { contextId: "ctx_one", ...tuple });
-    await capture(stores, "s", { contextId: "ctx_two", ...tuple });
+    const tuple = { kind: "task", content: "Follow up with Sam", situation: "Standup" } as const;
+    await capture(stores, "s", { conversationId: "conv_one", ...tuple });
+    await capture(stores, "s", { conversationId: "conv_two", ...tuple });
     expect(Object.keys(await storedRecords(stores))).toHaveLength(2);
   });
 
-  it("auto-vivifies: a capture whose contextId was never opened still succeeds, with no description", async () => {
+  it("auto-vivifies: a capture whose conversationId was never opened still succeeds, with no description", async () => {
     const stores = createInMemoryStores();
-    // Mirror the MCP path (sessionId == contextId) for an id that was never
-    // opened via createContext — the capture must not be lost to a missing
+    // Mirror the MCP path (sessionId == conversationId) for an id that was never
+    // opened via createConversation — the capture must not be lost to a missing
     // precondition, and the session carries no topic description.
-    const res = await capture(stores, "ctx_never_opened", {
-      contextId: "ctx_never_opened",
+    const res = await capture(stores, "conv_never_opened", {
+      conversationId: "conv_never_opened",
       kind: "thought",
       content: "a stray idea",
-      context: "c",
+      situation: "c",
     });
 
     expect(res.status).toBe("completed");
-    expect(Object.values(await storedRecords(stores))[0].contextId).toBe("ctx_never_opened");
-    expect(await sessionDescription(stores, "ctx_never_opened")).toBeNull();
+    expect(Object.values(await storedRecords(stores))[0].conversationId).toBe("conv_never_opened");
+    expect(await sessionDescription(stores, "conv_never_opened")).toBeNull();
   });
 
-  it("rejects a capture with no contextId and the error names the field", async () => {
+  it("rejects a capture with no conversationId and the error names the field", async () => {
     const stores = createInMemoryStores();
-    const res = await capture(stores, "s", { kind: "thought", content: "x", context: "c" });
+    const res = await capture(stores, "s", { kind: "thought", content: "x", situation: "c" });
     expect(res.status).not.toBe("completed");
-    expect(res.error?.message).toMatch(/contextId/i);
+    expect(res.error?.message).toMatch(/conversationId/i);
     expect(Object.keys(await storedRecords(stores))).toHaveLength(0);
   });
 
-  it("rejects a contextId longer than 200 characters", async () => {
+  it("rejects a conversationId longer than 200 characters", async () => {
     const stores = createInMemoryStores();
     const res = await capture(stores, "s", {
-      contextId: "c".repeat(201),
+      conversationId: "c".repeat(201),
       kind: "thought",
       content: "x",
-      context: "c",
+      situation: "c",
     });
     expect(res.status).not.toBe("completed");
   });
 
-  it("lists a legacy record captured before contextId existed as ungrouped (BP-030)", async () => {
+  it("lists a legacy record captured before conversationId existed as ungrouped (BP-030)", async () => {
     const stores = createInMemoryStores();
-    // A pre-FIX-897 inbox record written straight to the store — no contextId
+    // A pre-FIX-897 inbox record written straight to the store — no conversationId
     // field. It must stay readable (list as ungrouped `null`), not break listInbox.
     await stores.resourceState.set("user", USER, "inbox/task/deadbeef", {
       kind: "task",
       content: "legacy capture",
-      context: "before contextId existed",
+      situation: "before conversationId existed",
       capturedAt: "2026-07-10T00:00:00.000Z",
       occurredAt: null,
       source: null,
@@ -164,9 +164,9 @@ describe("logActivity contextId", () => {
       input: {},
     });
     expect(listed.status).toBe("completed");
-    const out = listed.output as { items: { content: string; contextId: string | null }[]; totalPending: number };
+    const out = listed.output as { items: { content: string; conversationId: string | null }[]; totalPending: number };
     expect(out.totalPending).toBe(1);
     expect(out.items[0].content).toBe("legacy capture");
-    expect(out.items[0].contextId).toBeNull();
+    expect(out.items[0].conversationId).toBeNull();
   });
 });

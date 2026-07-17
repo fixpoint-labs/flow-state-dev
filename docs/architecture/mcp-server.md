@@ -172,7 +172,7 @@ JSON-RPC error body with code `-32001`.
   `Mcp-Session-Id` is issued. By default every `tools/call` runs in a fresh
   ephemeral flow session under `host.dispatch`. An action MAY opt in to a
   stable flow session via `ActionMcpConfig.session` (`packages/core`): a
-  string template mints a fresh id (`"ctx_*"`), or `{ fromInput: field }`
+  string template mints a fresh id (`"conv_*"`), or `{ fromInput: field }`
   reads a caller-supplied id, so related calls group into one flow session.
   The adapter derives the dispatch `sessionId` from that directive
   (`createMcpTransportAdapter`); the id is a *flow* session key (not a

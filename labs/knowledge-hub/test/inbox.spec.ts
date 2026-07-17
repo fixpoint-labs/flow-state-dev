@@ -13,8 +13,8 @@ describe("inboxRecordSchema", () => {
   const valid = {
     kind: "task",
     content: "Book dentist appointment",
-    context: "Planning the week",
-    contextId: "ctx_abc123",
+    situation: "Planning the week",
+    conversationId: "conv_abc123",
     capturedAt: "2026-07-10T00:00:00.000Z",
     fingerprint: "abc123",
   };
@@ -31,7 +31,7 @@ describe("inboxRecordSchema", () => {
   });
 
   it("rejects a missing required field", () => {
-    const { context: _omit, ...withoutContext } = valid;
+    const { situation: _omit, ...withoutContext } = valid;
     expect(() => inboxRecordSchema.parse(withoutContext)).toThrow();
   });
 });
