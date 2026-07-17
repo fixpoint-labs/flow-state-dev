@@ -63,7 +63,8 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Rule:
   - Maintain `README.md` in each public package directory (`packages/*`): purpose, current public API surface, basic usage, and package-local verification commands.
   - Update a package README in the same change set when that package's exported surface, runtime behavior, or setup scripts materially change.
-- Why: Docs next to the code that owns each contract reduce integration friction and drift.
+  - When one feature spans **multiple packages' public API** (e.g. a config type on `engine`, a `serve()` option on `node`, UI config on `devtool`), update **each** affected package README in the same PR — not only the file you touched first or the transport layer.
+- Why: Docs next to the code that owns each contract reduce integration friction and drift; multi-package features are easy to document at one seam and ship undocumented exports elsewhere.
 
 ### BP-037: Author specs as versioned docs, reviewed as a PR, synced with Linear
 
