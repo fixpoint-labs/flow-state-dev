@@ -111,7 +111,9 @@ async function captureViaMcp(
       jsonrpc: "2.0",
       id: 1,
       method: "tools/call",
-      params: { name: "log_activity", arguments: args },
+      // contextId is now required on log_activity; default one unless the case
+      // supplies its own (these cases exercise ?source= forwarding, not grouping).
+      params: { name: "log_activity", arguments: { contextId: "ctx_config", ...args } },
     }),
   });
   const res = await router.POST(req, { params: { path: ["mcp", "knowledge-hub"] } });

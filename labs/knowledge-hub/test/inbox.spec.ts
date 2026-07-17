@@ -14,6 +14,7 @@ describe("inboxRecordSchema", () => {
     kind: "task",
     content: "Book dentist appointment",
     context: "Planning the week",
+    contextId: "ctx_abc123",
     capturedAt: "2026-07-10T00:00:00.000Z",
     fingerprint: "abc123",
   };

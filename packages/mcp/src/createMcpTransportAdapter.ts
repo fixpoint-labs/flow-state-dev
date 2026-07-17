@@ -45,7 +45,7 @@ import {
   unstable_listExposedResources,
   unstable_renderContent
 } from "@flow-state-dev/engine";
-import type { ActionConfig, McpConfig } from "@flow-state-dev/core/types";
+import type { ActionConfig, ActionMcpConfig, McpConfig } from "@flow-state-dev/core/types";
 import {
   JSON_RPC_INVALID_PARAMS,
   JSON_RPC_INVALID_REQUEST,
@@ -403,6 +403,12 @@ async function handleToolsCall(
         ? { ...((args ?? {}) as Record<string, unknown>), ...forwardedInput }
         : args;
 
+  // MCP is sessionless by default (a fresh ephemeral session per call). An
+  // action can opt in to a stable session via `mcp.session`: mint a fresh id
+  // from a template (`"ctx_*"`) or read a caller-supplied id from an input
+  // field (`{ fromInput }`). Undefined directive → undefined → the v1 default.
+  const sessionId = deriveSessionId(target.action.mcp?.session, input);
+
   let handle: ReturnType<InboundTransportHost["dispatch"]>;
   try {
     handle = host.dispatch({
@@ -411,8 +417,7 @@ async function handleToolsCall(
       action: target.actionKey,
       input,
       principal,
-      // MCP v1 is stateless — every tools/call creates a fresh session.
-      sessionId: undefined,
+      sessionId,
       // No SSE response stream in v1; the runtime can still emit items
       // for observability without a live stream consumer.
       responseEmitter: null,
@@ -458,6 +463,34 @@ async function handleToolsCall(
     throw error;
   }
   return jsonRpcResponse(id, undefined, toolResultFromExecution(result));
+}
+
+/**
+ * Derive the dispatch `sessionId` for a `tools/call` from the action's
+ * `mcp.session` directive (see `ActionMcpConfig.session`).
+ *
+ * - `undefined` directive → `undefined` (fresh ephemeral session, v1 default).
+ * - `string` template → a freshly minted id: the first `*` is replaced by a
+ *   random token, or the token is appended when there is no `*` (so a template
+ *   with no `*` never collides on a constant id).
+ * - `{ fromInput }` → the string value at `input[fromInput]`, when present and
+ *   non-empty; otherwise `undefined` (the missing/blank field falls through to
+ *   an ephemeral session, and the action's own schema rejects it downstream).
+ */
+function deriveSessionId(
+  directive: ActionMcpConfig["session"],
+  input: unknown
+): string | undefined {
+  if (directive === undefined) return undefined;
+  if (typeof directive === "string") {
+    const token = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    return directive.includes("*") ? directive.replace("*", token) : `${directive}${token}`;
+  }
+  if (input !== null && typeof input === "object" && !Array.isArray(input)) {
+    const value = (input as Record<string, unknown>)[directive.fromInput];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

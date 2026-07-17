@@ -165,6 +165,28 @@ export interface ActionMcpConfig {
    * charset `[A-Za-z0-9_.-]{1,128}`.
    */
   name?: string;
+  /**
+   * How the MCP adapter derives the dispatch `sessionId` for this action.
+   * MCP is sessionless — by default every `tools/call` mints a fresh
+   * ephemeral session. This directive lets a specific action reuse or hand
+   * out a session id, so a client can group related calls together.
+   *
+   * - Omitted (default): stateless — every `tools/call` mints a fresh
+   *   ephemeral session (v1 behavior).
+   * - `string`: a template for a freshly minted id. The first `*` is
+   *   replaced by a random token (`"ctx_*"` → `"ctx_1784…_a1b2"`); with no
+   *   `*` the token is appended. Use to hand the caller a reusable id whose
+   *   prefix names the concept (e.g. a "context").
+   * - `{ fromInput: <field> }`: use the string value at `input.<field>` as
+   *   the sessionId, so a caller-supplied id groups calls into one session.
+   *
+   * Security: `fromInput` reads model-supplied input as a *flow* session key
+   * (not the protocol `Mcp-Session-Id`, and never an auth/routing decision —
+   * the principal still comes from `resolvePrincipal`, BP-031). A future
+   * `{ resolve: (input) => string | undefined }` arm can add a custom
+   * resolver without changing the two arms above.
+   */
+  session?: string | { fromInput: string };
 }
 
 /**

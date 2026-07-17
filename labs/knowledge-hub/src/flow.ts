@@ -35,6 +35,17 @@ import { computeFingerprint } from "./mailroom";
  *  stay verbatim (`.trim().min(1)` would mutate, breaking the verbatim contract). */
 const nonBlank = (s: string) => s.trim().length > 0;
 
+/**
+ * Session state IS the context record — one source of truth for the
+ * conversation topic (no separate `contexts` collection). `createContext`
+ * writes the description here; `null` for a session that was auto-vivified by a
+ * `logActivity` whose context was never explicitly opened (BP-023 nullable +
+ * default).
+ */
+const sessionStateSchema = z.object({
+  description: z.string().nullable().default(null),
+});
+
 /** The per-item shape `listInbox` returns — the fields an inspector needs, not
  *  the full record (the fingerprint and swept lifecycle stay internal). */
 const inboxItemSummarySchema = z.object({
@@ -42,6 +53,7 @@ const inboxItemSummarySchema = z.object({
   kind: activityKindSchema,
   content: z.string(),
   context: z.string(),
+  contextId: z.string(),
   capturedAt: z.string(),
   status: z.enum(["pending", "swept"]),
 });
@@ -49,6 +61,17 @@ const inboxItemSummarySchema = z.object({
 const logActivity = handler({
   name: "logActivity",
   inputSchema: z.object({
+    contextId: z
+      .string()
+      .min(1)
+      // Bound because a `fromInput` value becomes the literal session storage
+      // key, and a session record is persisted even when this surrounding call
+      // later fails validation (the MCP adapter reads the raw input before zod
+      // runs). 200 fits a minted `ctx_…` id (~35 chars) with headroom.
+      .max(200)
+      .describe(
+        "The context id returned by createContext. Required — groups this capture into that conversation. If you have not opened a context, call createContext first."
+      ),
     kind: activityKindSchema.describe(
       "What sort of mental activity this is. Best guess — a later review pass re-classifies."
     ),
@@ -117,6 +140,7 @@ const logActivity = handler({
       kind: input.kind,
       content: input.content,
       context: input.context,
+      contextId: input.contextId,
       capturedAt,
       occurredAt: input.occurredAt,
       source: input.source,
@@ -125,6 +149,33 @@ const logActivity = handler({
     };
     const ref = await ctx.resources.inbox.create(key, record, { replace: true });
     return { id: inboxIdFromPath(ref.path), capturedAt, deduplicated: false };
+  },
+});
+
+const createContext = handler({
+  name: "createContext",
+  inputSchema: z.object({
+    description: z
+      .string()
+      .min(1)
+      .max(2_000)
+      .refine(nonBlank, "description must not be blank")
+      .describe(
+        "A short description or topic for this context — what this conversation is about. Stored with the context so later passes know what was discussed."
+      ),
+  }),
+  outputSchema: z.object({
+    contextId: z
+      .string()
+      .describe("The context id to pass as `contextId` on subsequent logActivity captures."),
+  }),
+  // The session record IS the context record — the MCP `session: "ctx_*"`
+  // directive mints a fresh `ctx_…` session id for this call, and we stash the
+  // topic in that session's state (typed by `sessionStateSchema`).
+  sessionStateSchema,
+  execute: async (input, ctx) => {
+    await ctx.session.setState({ description: input.description });
+    return { contextId: ctx.session.identity.id };
   },
 });
 
@@ -159,6 +210,7 @@ const listInbox = handler({
       kind: r.state.kind,
       content: r.state.content,
       context: r.state.context,
+      contextId: r.state.contextId,
       capturedAt: r.state.capturedAt,
       status: r.state.status,
     }));
@@ -192,11 +244,24 @@ const knowledgeHubFlow = defineFlow({
         },
   },
   mcp: { enabled: true },
+  // Session state doubles as the per-conversation context record (description).
+  session: { stateSchema: sessionStateSchema },
   actions: {
+    createContext: {
+      block: createContext,
+      description:
+        "Open a context (a conversation/topic) before logging activity. Supply a short description of what the conversation is about; returns a contextId to pass on every subsequent logActivity call so related captures are grouped together.",
+      // Mint a fresh `ctx_…` session id for this call and hand it back as the
+      // contextId — the session record becomes the context record.
+      mcp: { session: "ctx_*" },
+    },
     logActivity: {
       block: logActivity,
       description:
-        "Log a piece of the owner's mental activity — a thought, journal fragment, task, memory, goal, decision, or topic of interest — into the knowledge inbox. Use whenever the owner says something worth remembering or acting on. Always include the context it arose in.",
+        "Log a piece of the owner's mental activity — a thought, journal fragment, task, memory, goal, decision, or topic of interest — into the knowledge inbox. Use whenever the owner says something worth remembering or acting on. Always include the context it arose in, and the contextId from createContext.",
+      // Route this capture into the session named by the caller's `contextId`,
+      // so captures sharing a contextId land in one session and are grouped.
+      mcp: { session: { fromInput: "contextId" } },
     },
     listInbox: {
       block: listInbox,

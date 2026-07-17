@@ -14,7 +14,16 @@ const USER = "owner";
 type Stores = ReturnType<typeof createInMemoryStores>;
 
 function capture(stores: Stores, input: Record<string, unknown>) {
-  return testFlow({ flow: knowledgeHubFlow, action: "logActivity", userId: USER, stores, input });
+  // Default a contextId (now required) so these FIX-882 behaviours — which test
+  // kind/content/context dedup, not grouping — keep asserting the same thing.
+  // A test that cares about the context id overrides it.
+  return testFlow({
+    flow: knowledgeHubFlow,
+    action: "logActivity",
+    userId: USER,
+    stores,
+    input: { contextId: "ctx_test", ...input },
+  });
 }
 
 function list(stores: Stores, input: Record<string, unknown> = {}) {

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { computeFingerprint, normalizeForFingerprint } from "../src/mailroom";
 
 const base = {
+  contextId: "ctx_abc123",
   kind: "task",
   content: "Book dentist appointment",
   context: "Planning the week in a Claude conversation",
@@ -60,6 +61,12 @@ describe("computeFingerprint", () => {
 
   it("changes when source differs", () => {
     expect(computeFingerprint({ ...base, source: "Claude Desktop" })).not.toBe(
+      computeFingerprint(base)
+    );
+  });
+
+  it("changes when contextId differs — the same tuple under two contexts stays two records", () => {
+    expect(computeFingerprint({ ...base, contextId: "ctx_other" })).not.toBe(
       computeFingerprint(base)
     );
   });

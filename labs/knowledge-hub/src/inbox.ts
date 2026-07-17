@@ -46,6 +46,13 @@ export const inboxRecordSchema = z.object({
    * context, so it is contractually the context source.
    */
   context: z.string(),
+  /**
+   * The conversation/context this capture belongs to (from `createContext`, or
+   * caller-supplied). Doubles as the flow session id the capture ran under; the
+   * FIX-883 sweeper groups inbox rows by this field directly, and loads the
+   * session's state (the topic description) by the same id when it wants it.
+   */
+  contextId: z.string(),
   /** Server-stamped ISO wall-clock capture time (mailroom). */
   capturedAt: z.string(),
   /**

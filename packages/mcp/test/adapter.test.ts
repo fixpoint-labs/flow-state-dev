@@ -625,6 +625,109 @@ describe("MCP adapter — forwardQueryParams", () => {
   });
 });
 
+describe("MCP adapter — mcp.session directive → dispatch sessionId", () => {
+  // A flow whose actions each carry a different `mcp.session` directive, plus
+  // one with none — so a single tools/call exercises one derivation arm.
+  function buildSessionFlow() {
+    return defineFlow({
+      kind: "sessions",
+      mcp: { enabled: true },
+      actions: {
+        stateless: {
+          inputSchema: z.object({}),
+          block: noopBlock,
+          description: "No session directive — a fresh ephemeral session per call."
+        },
+        openContext: {
+          inputSchema: z.object({}),
+          block: noopBlock,
+          description: "Mints a fresh ctx_ id.",
+          mcp: { session: "ctx_*" }
+        },
+        constantPrefix: {
+          inputSchema: z.object({}),
+          block: noopBlock,
+          description: "Template with no * — token is appended.",
+          mcp: { session: "ctx" }
+        },
+        routed: {
+          inputSchema: z.object({ contextId: z.string().optional() }),
+          block: noopBlock,
+          description: "Reads the session id from input.contextId.",
+          mcp: { session: { fromInput: "contextId" } }
+        }
+      }
+    });
+  }
+
+  async function callTool(
+    host: ReturnType<typeof createMockTransportHost>,
+    tool: string,
+    args: unknown
+  ): Promise<void> {
+    const adapter = createMcpTransportAdapter();
+    await callAdapter(adapter, host, "POST", "sessions", {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: tool, arguments: args }
+    });
+  }
+
+  it("dispatches sessionId: undefined when the action has no session directive", async () => {
+    const host = withFlow(createMockTransportHost(), buildSessionFlow());
+    await callTool(host, "stateless", {});
+    expect(host.dispatchCalls[0]!.envelope.sessionId).toBeUndefined();
+  });
+
+  it("mints a fresh ctx_-prefixed id from a `*` template, and two calls differ", async () => {
+    const host = withFlow(createMockTransportHost(), buildSessionFlow());
+    await callTool(host, "open_context", {});
+    await callTool(host, "open_context", {});
+    const first = host.dispatchCalls[0]!.envelope.sessionId;
+    const second = host.dispatchCalls[1]!.envelope.sessionId;
+    expect(first).toMatch(/^ctx_/);
+    expect(second).toMatch(/^ctx_/);
+    expect(first).not.toBe(second);
+  });
+
+  it("appends the token when the template has no `*` (never a colliding constant)", async () => {
+    const host = withFlow(createMockTransportHost(), buildSessionFlow());
+    await callTool(host, "constant_prefix", {});
+    const id = host.dispatchCalls[0]!.envelope.sessionId!;
+    expect(id.startsWith("ctx")).toBe(true);
+    expect(id).not.toBe("ctx");
+  });
+
+  it("uses the caller-supplied input field as the sessionId for `{ fromInput }`", async () => {
+    const host = withFlow(createMockTransportHost(), buildSessionFlow());
+    await callTool(host, "routed", { contextId: "ctx_abc123" });
+    expect(host.dispatchCalls[0]!.envelope.sessionId).toBe("ctx_abc123");
+  });
+
+  it("groups two calls sharing a contextId into the same session", async () => {
+    const host = withFlow(createMockTransportHost(), buildSessionFlow());
+    await callTool(host, "routed", { contextId: "ctx_shared" });
+    await callTool(host, "routed", { contextId: "ctx_shared" });
+    expect(host.dispatchCalls[0]!.envelope.sessionId).toBe("ctx_shared");
+    expect(host.dispatchCalls[1]!.envelope.sessionId).toBe("ctx_shared");
+  });
+
+  it("falls back to undefined when the `fromInput` field is missing or blank", async () => {
+    const host = withFlow(createMockTransportHost(), buildSessionFlow());
+    await callTool(host, "routed", {});
+    await callTool(host, "routed", { contextId: "" });
+    expect(host.dispatchCalls[0]!.envelope.sessionId).toBeUndefined();
+    expect(host.dispatchCalls[1]!.envelope.sessionId).toBeUndefined();
+  });
+
+  it("falls back to undefined when the `fromInput` value is not a string", async () => {
+    const host = withFlow(createMockTransportHost(), buildSessionFlow());
+    await callTool(host, "routed", { contextId: 42 });
+    expect(host.dispatchCalls[0]!.envelope.sessionId).toBeUndefined();
+  });
+});
+
 createInboundTransportConformanceTests({
   name: "mcp",
   factory: () => createMcpTransportAdapter(),
