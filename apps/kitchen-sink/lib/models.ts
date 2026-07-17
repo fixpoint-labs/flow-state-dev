@@ -30,7 +30,7 @@ export type KitchenSinkModel = (typeof KITCHEN_SINK_MODELS)[number];
 export const DEFAULT_KITCHEN_SINK_MODEL: KitchenSinkModel =
   "vercel/anthropic/claude-sonnet-5";
 
-/** True when `value` is a catalog model string (including stale persisted ids). */
+/** True when `value` is a current catalog model id. */
 export function isKitchenSinkModel(value: string): value is KitchenSinkModel {
   return (KITCHEN_SINK_MODELS as readonly string[]).includes(value);
 }
