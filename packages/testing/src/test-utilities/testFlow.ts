@@ -11,16 +11,9 @@
 import { createInMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
+import { cloneValue } from "@flow-state-dev/core/helpers";
 import { createMockModelResolver } from "../mocks/mockGenerator";
 import type { TestFlowOptions, TestFlowResult } from "./types";
-
-function cloneRecord<TValue extends Record<string, unknown>>(value: TValue): TValue {
-  if (typeof globalThis.structuredClone === "function") {
-    return globalThis.structuredClone(value) as TValue;
-  }
-
-  return JSON.parse(JSON.stringify(value)) as TValue;
-}
 
 function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -97,7 +90,7 @@ async function seedFlowStores(options: {
     resources: Record<string, unknown> | undefined
   ): Promise<void> => {
     if (resources === undefined) return;
-    const normalized = toJsonObjectRecord(cloneRecord(resources));
+    const normalized = toJsonObjectRecord(cloneValue(resources));
     for (const [key, value] of Object.entries(normalized)) {
       const existing = await options.stores.resourceState.get(scopeType, scopeId, key);
       if (existing === undefined) {
@@ -112,7 +105,7 @@ async function seedFlowStores(options: {
       await options.stores.user.set(options.userId, {
         id: options.userId,
         userId: options.userId,
-        state: toJsonObject(cloneRecord(options.seed.user.state ?? {})),
+        state: toJsonObject(cloneValue(options.seed.user.state ?? {})),
         version: 0,
         createdAt: now,
         updatedAt: now
@@ -128,7 +121,7 @@ async function seedFlowStores(options: {
         id: options.orgId,
         orgId: options.orgId,
         userId: options.userId,
-        state: toJsonObject(cloneRecord(options.seed?.org?.state ?? {})),
+        state: toJsonObject(cloneValue(options.seed?.org?.state ?? {})),
         version: 0,
         createdAt: now,
         updatedAt: now
@@ -147,7 +140,7 @@ async function seedFlowStores(options: {
         orgId: options.orgId,
         metadata: undefined,
         latestRequestId: undefined,
-        state: toJsonObject(cloneRecord(options.seed?.session?.state ?? {})),
+        state: toJsonObject(cloneValue(options.seed?.session?.state ?? {})),
         version: 0,
         createdAt: now,
         updatedAt: now,
@@ -172,7 +165,7 @@ async function seedFlowStores(options: {
         source: "http",
         status: "in_progress",
         startedAtMs: now,
-        state: toJsonObject(cloneRecord(options.seed.request.state ?? {})),
+        state: toJsonObject(cloneValue(options.seed.request.state ?? {})),
         metadata: undefined,
         version: 0,
         createdAt: now,
