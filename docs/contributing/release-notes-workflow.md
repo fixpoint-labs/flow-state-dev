@@ -62,7 +62,7 @@ This matches the [Vercel AI SDK contributing guide](https://github.com/vercel/ai
 
 ## Multi-package PRs
 
-Each fragment can list multiple packages with their own bumps:
+Each fragment can list multiple packages with their own bumps. If the PR title names one package but the diff also changes exported behavior in another publishable package (e.g. a scorer fix in `@flow-state-dev/testing`), list **every** affected package — see the BP-022 diff-scan rule in [`best-practices.md`](best-practices.md#bp-022-release-notes-via-changesets).
 
 ```md
 ---

@@ -198,6 +198,7 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 - Lifecycle hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
 - Package boundary: `react` wraps `client` — no transport logic in react
 - Package boundary: `server` never depends on `client` or `react`
+- Browser packages (`client`, `react`) value-import pure item/stream helpers from `@flow-state-dev/contracts`; do not hand-mirror logic from `core` (see `docs/architecture/overview.md`)
 - Collection key resolution: `collection.create("key")` auto-prepends the pattern prefix. `ref.name` returns the full storage key (e.g., `"artifacts/my-doc"`). Strip the prefix for bare keys.
 - Resource mutations emit `resource_change` SSE events via `onResourceChanged` in `createScopeResourceRegistry`. These are transient items — `useSession` checks for them before the transient filter.
 
@@ -255,7 +256,7 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 - **Common helpers** (`deepEqual`, formatting utilities, etc.) belong in a shared utils file — not inlined per-file. No duplicate copies across packages.
 
-### Best practices (BP-001…036)
+### Best practices (BP-001…041)
 
 Best practices have two altitudes. Full text lives in `docs/contributing/best-practices.md` (universal) and `docs/contributing/best-practices/<category>.md` (situational).
 
@@ -264,14 +265,15 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **BP-001** Documentation authority precedence — the more specific in-repo doc wins.
 - **BP-003** Verification evidence is mandatory — every deliverable has an evidence path + pass criteria.
 - **BP-007** Concise API/file docs — file header + 100% of exported APIs documented; non-obvious helpers too.
-- **BP-022** Release notes via Changesets — every user-facing PR adds a `.changeset/*.md`; internal-only → `--empty`. Pre-1.0: `patch`/`minor` only.
+- **BP-022** Release notes via Changesets — every user-facing PR adds a `.changeset/*.md`; internal-only → `--empty`. Pre-1.0: `patch`/`minor` only. Scan the full diff for every publishable package whose behavior changed, not only the title package.
 - **BP-028** Fix the bug at the layer that owns it, not where it bit you — a workaround each caller repeats is a smell.
 - **BP-029** Compose existing primitives over re-implementing what a tool already provides — reserve bespoke code for the genuinely-new primitive.
 - **BP-030** Tolerate the old shape when you change a persisted/in-flight field — dual-read legacy records; reject removed keys loudly; `== null`-guard new nullable fields.
 - **BP-031** Never make auth/routing decisions from caller-controllable input — derive them from a trusted source (server-set identity, verified token, the framework's transport `source`), not `body`/`metadata`/query/headers.
 - **BP-034** Finish move/rename refactors — update provenance (headers, diagrams, doc anchors) and subpath re-exports, not just imports.
-- **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state paths; test the off/new state of any new flag.
+- **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state paths; multi-consumer parity for shared item-log transforms; test the off/new state of any new flag.
 - **BP-038** Build the least that satisfies the spec; subtract before you add — no speculative surface (YAGNI), delete the path you supersede, minimize public API/options, prefer defaults over knobs.
+- **BP-040** Value-import canonical pure helpers from `@flow-state-dev/contracts` — never hand-mirror collapse/visibility/dedup logic in `client`/`react`.
 
 **Situational — open the category file when working in that area:**
 
@@ -281,6 +283,7 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **React** (`docs/contributing/best-practices/react.md`): BP-010 `useMemo` over `useEffect`; derive flags from the complete input set; signal only on real change.
 - **Engine & transport** (`docs/contributing/best-practices/engine.md`): BP-026 bundle forwarded options into `RuntimeConfig`.
 - **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a Linear-linked spec) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs are versioned docs (`docs/specs/<ISSUE-ID>.md`) reviewed as a PR, synced with Linear · BP-039 specs lead with a plain-language summary (grok before diving deep).
+- **Testing & eval** (`docs/contributing/best-practices/testing.md`): BP-041 match comparison-helper failure semantics to the harness (eval scorers must not turn comparator throws into case execution errors).
 
 **Document new and changed user-facing functionality** (always)
 

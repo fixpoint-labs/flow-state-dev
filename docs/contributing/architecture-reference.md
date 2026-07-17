@@ -106,8 +106,8 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 | `contracts` | Zero-dep shared layer (item taxonomy + leaf types) | Imports no workspace package; declares no dependencies (guarded). `core` re-exports it |
 | `core` | Isomorphic builders/types/items | No platform-specific code; value-imports `contracts` |
 | `engine` | Execution/runtime/stores/streaming/routes | No dependency on react or client |
-| `client` | Transport + session/request APIs | No dependency on server or react |
-| `react` | Hooks/renderers only | Wraps client; no transport logic |
+| `client` | Transport + session/request APIs | No dependency on server or react; value-import pure item/stream helpers from `contracts` (BP-040), never hand-mirror from `core` |
+| `react` | Hooks/renderers only | Wraps client; no transport logic; same `contracts` value-import rule as `client` (BP-040) |
 | `testing` | Deterministic harnesses + mocks | Uses core + server |
 | `cli` | Run/inspect/scaffold flows | Uses core + server + testing |
 | `apps/devtool` | Inspector app | Public APIs only (client + react) |
