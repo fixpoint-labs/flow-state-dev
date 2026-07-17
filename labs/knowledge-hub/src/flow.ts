@@ -211,15 +211,26 @@ const listInbox = handler({
       .filter((r) => r.state.status === "pending")
       .sort((a, b) => b.state.capturedAt.localeCompare(a.state.capturedAt));
 
-    const items = pending.slice(0, input.limit).map((r) => ({
-      id: inboxIdFromPath(r.path),
-      kind: r.state.kind,
-      content: r.state.content,
-      situation: r.state.situation,
-      conversationId: r.state.conversationId ?? null,
-      capturedAt: r.state.capturedAt,
-      status: r.state.status,
-    }));
+    const items = pending.slice(0, input.limit).map((r) => {
+      // Dual-read legacy rows (BP-030): before FIX-897's rename the per-capture
+      // text was stored under `context` (now `situation`), and rows had no
+      // `conversationId`. Map the old field forward so a single pre-rename
+      // capture never makes the whole inbox unreadable via output validation.
+      const legacy = r.state as {
+        situation?: string;
+        context?: string;
+        conversationId?: string | null;
+      };
+      return {
+        id: inboxIdFromPath(r.path),
+        kind: r.state.kind,
+        content: r.state.content,
+        situation: legacy.situation ?? legacy.context ?? "",
+        conversationId: legacy.conversationId ?? null,
+        capturedAt: r.state.capturedAt,
+        status: r.state.status,
+      };
+    });
 
     return {
       items,

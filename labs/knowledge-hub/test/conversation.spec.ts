@@ -141,14 +141,17 @@ describe("logActivity conversationId", () => {
     expect(res.status).not.toBe("completed");
   });
 
-  it("lists a legacy record captured before conversationId existed as ungrouped (BP-030)", async () => {
+  it("lists a legacy record in the pre-rename shape (`context`, no `conversationId`) without breaking (BP-030)", async () => {
     const stores = createInMemoryStores();
-    // A pre-FIX-897 inbox record written straight to the store — no conversationId
-    // field. It must stay readable (list as ungrouped `null`), not break listInbox.
+    // A record written in the ACTUAL pre-FIX-897-rename shape, straight to the
+    // store: the per-capture text under the old `context` field, and no
+    // `conversationId`. It must stay readable — the old text maps forward to
+    // `situation` and the row lists as ungrouped `null`, not fail output
+    // validation and take the whole inbox down.
     await stores.resourceState.set("user", USER, "inbox/task/deadbeef", {
       kind: "task",
       content: "legacy capture",
-      situation: "before conversationId existed",
+      context: "before the situation/conversation rename",
       capturedAt: "2026-07-10T00:00:00.000Z",
       occurredAt: null,
       source: null,
@@ -164,9 +167,14 @@ describe("logActivity conversationId", () => {
       input: {},
     });
     expect(listed.status).toBe("completed");
-    const out = listed.output as { items: { content: string; conversationId: string | null }[]; totalPending: number };
+    const out = listed.output as {
+      items: { content: string; situation: string; conversationId: string | null }[];
+      totalPending: number;
+    };
     expect(out.totalPending).toBe(1);
     expect(out.items[0].content).toBe("legacy capture");
+    // Old `context` value is surfaced under the new `situation` field.
+    expect(out.items[0].situation).toBe("before the situation/conversation rename");
     expect(out.items[0].conversationId).toBeNull();
   });
 });
