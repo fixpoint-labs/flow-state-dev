@@ -219,6 +219,45 @@ describe("FIX-523 — content.audio.delta is non-replayable", () => {
     expect(filter(audioDelta as never)).toBe(false);
   });
 
+  it("client-filter suppresses item.updated for non-client items", () => {
+    const filter = createClientEventFilter();
+    const requestId = "req_trace_item_updated_filter";
+
+    const nonClientItem = {
+      stream: "request" as const,
+      type: "item.added" as const,
+      requestId,
+      sequence_number: 1,
+      ts: 100,
+      item: {
+        id: "trace_1",
+        type: "block_trace",
+        status: "in_progress" as const,
+        requestId,
+        itemIndex: 0,
+        provenance: { blockName: "test", blockInstanceId: "test_1", phase: "main" as const },
+        itemVisibility: { client: false, history: false },
+        ts: 100,
+        blockName: "test",
+        blockKind: "handler" as const,
+        blockInstanceId: "test_1"
+      }
+    };
+
+    const itemUpdated = {
+      stream: "request" as const,
+      type: "item.updated" as const,
+      requestId,
+      sequence_number: 2,
+      ts: 101,
+      itemId: "trace_1",
+      patch: { status: "completed" as const, output: { ok: true } }
+    };
+
+    expect(filter(nonClientItem as never)).toBe(false);
+    expect(filter(itemUpdated as never)).toBe(false);
+  });
+
   it("replayRequestEvents drops any persisted content.audio.delta entries (belt-and-braces)", () => {
     // Defends against a pre-FIX-523 process whose write-path gate missed
     // the new event type — any audio deltas that escaped to disk must still

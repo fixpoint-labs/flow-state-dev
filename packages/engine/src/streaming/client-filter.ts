@@ -29,7 +29,8 @@ export function createClientEventFilter(): (event: RequestStreamEvent) => boolea
     }
 
     if (
-      (event.type === "content.added" ||
+      (event.type === "item.updated" ||
+        event.type === "content.added" ||
         event.type === "content.delta" ||
         event.type === "content.audio.delta" ||
         event.type === "content.done") &&
