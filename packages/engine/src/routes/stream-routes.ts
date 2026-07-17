@@ -13,6 +13,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import {
+  collectSuppressedClientItemIdsFromEvents,
   createClientEventFilter,
   filterClientEvents
 } from "../streaming/client-filter";
@@ -69,6 +70,32 @@ function shouldEmitToWire(
   if (event.type === "ping" || event.type === "debug") return false;
   if (shouldForward && !shouldForward(event)) return false;
   return true;
+}
+
+async function createClientEventFilterForResume(
+  stores: StoreRegistry,
+  requestId: string,
+  resumeThroughSequence: number
+): Promise<(event: RequestStreamEvent) => boolean> {
+  if (resumeThroughSequence <= 0) {
+    return createClientEventFilter();
+  }
+  const persisted = await stores.request.getEvents(requestId);
+  const seed = persisted.filter(
+    (event) => event.sequence_number <= resumeThroughSequence
+  );
+  return createClientEventFilter({
+    suppressedItemIds: collectSuppressedClientItemIdsFromEvents(seed)
+  });
+}
+
+function filterClientEventsForResume(
+  events: RequestStreamEvent[],
+  seedEvents: RequestStreamEvent[] | undefined
+): RequestStreamEvent[] {
+  return seedEvents !== undefined && seedEvents.length > 0
+    ? filterClientEvents(events, { seedEvents })
+    : filterClientEvents(events);
 }
 
 
@@ -139,7 +166,13 @@ export async function handleRequestStream(
     });
 
     const fromSequence = cursor.sequenceNumber ?? 0;
-    const shouldForward = includeTrace ? undefined : createClientEventFilter();
+    const shouldForward = includeTrace
+      ? undefined
+      : await createClientEventFilterForResume(
+          ctx.stores,
+          route.requestId,
+          fromSequence
+        );
     const handle = createSSEStream({
       pingIntervalMs: sseHeartbeatMs,
       signal: request.signal
@@ -183,10 +216,19 @@ export async function handleRequestStream(
     });
     // Read only events past the resume cursor — pre-cursor events are never
     // pulled from the store.
-    const events = await ctx.stores.request.getEvents(
-      route.requestId,
-      cursor.sequenceNumber
-    );
+    const persisted = await ctx.stores.request.getEvents(route.requestId);
+    const events =
+      cursor.sequenceNumber !== undefined
+        ? persisted.filter(
+            (event) => event.sequence_number > cursor.sequenceNumber!
+          )
+        : persisted;
+    const seedEvents =
+      cursor.sequenceNumber !== undefined
+        ? persisted.filter(
+            (event) => event.sequence_number <= cursor.sequenceNumber!
+          )
+        : undefined;
     if (events.length === 0) {
       // Without a cursor, an empty read means the request is genuinely
       // unknown → 404. With a cursor, the resuming client already consumed
@@ -205,7 +247,9 @@ export async function handleRequestStream(
       lastEventId: request.headers.get("last-event-id"),
       startingAfter: url.searchParams.get("starting_after")
     });
-    if (!includeTrace) replay = filterClientEvents(replay);
+    if (!includeTrace) {
+      replay = filterClientEventsForResume(replay, seedEvents);
+    }
     const payload = replay.map((event) => encodeStreamEvent(event)).join("");
     return new Response(payload, { status: 200, headers: SSE_HEADERS });
   }
@@ -237,10 +281,19 @@ export async function handleRequestStream(
   // reconstruction only when the *unfiltered* log is empty (no cursor and no
   // persisted events). A cursor that filters every event means the client
   // already has the whole stream, so deliver nothing new — never reconstruct.
-  let replaySource = await ctx.stores.request.getEvents(
-    route.requestId,
-    cursor.sequenceNumber
-  );
+  const persisted = await ctx.stores.request.getEvents(route.requestId);
+  let replaySource =
+    cursor.sequenceNumber !== undefined
+      ? persisted.filter(
+          (event) => event.sequence_number > cursor.sequenceNumber!
+        )
+      : persisted;
+  const seedEvents =
+    cursor.sequenceNumber !== undefined
+      ? persisted.filter(
+          (event) => event.sequence_number <= cursor.sequenceNumber!
+        )
+      : undefined;
   if (replaySource.length === 0 && cursor.sequenceNumber === undefined) {
     replaySource = buildReplayEvents(requestRecord, session);
   }
@@ -251,7 +304,9 @@ export async function handleRequestStream(
     lastEventId: request.headers.get("last-event-id"),
     startingAfter: url.searchParams.get("starting_after")
   });
-  if (!includeTrace) replay = filterClientEvents(replay);
+  if (!includeTrace) {
+    replay = filterClientEventsForResume(replay, seedEvents);
+  }
   const payload = replay.map((event) => encodeStreamEvent(event)).join("");
 
   return new Response(payload, {

@@ -2,10 +2,8 @@
  * Route-level tests for SSE resume cursor threading (FIX-685 Slice A).
  *
  * The terminal and GC'd-record replay branches of `handleRequestStream`
- * must push the resolved resume cursor into `getEvents(requestId,
- * fromSequence)` so pre-cursor events are never read from the store, and
- * the item-reconstruction fallback must only fire when the *unfiltered*
- * event log is empty (not when a cursor filtered everything out).
+ * must load the persisted log once and slice client-side for replay plus
+ * client-filter seeding at the resume cursor.
  */
 import type { MessageItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { describe, expect, it, vi } from "vitest";
@@ -93,8 +91,8 @@ describe("stream resume — route cursor threading (Slice A)", () => {
       stores
     });
 
-    // The store read is pushed past the cursor — not a full-log read.
-    expect(getEventsSpy).toHaveBeenCalledWith(requestId, 2);
+    // Full persisted log — replay is sliced after the cursor in-route.
+    expect(getEventsSpy).toHaveBeenCalledWith(requestId);
 
     const body = await readBody(response);
     // Only events after seq 2 reach the wire (item.done @3, request.completed @4).
@@ -161,7 +159,7 @@ describe("stream resume — route cursor threading (Slice A)", () => {
       stores
     });
 
-    expect(getEventsSpy).toHaveBeenCalledWith(requestId, 2);
+    expect(getEventsSpy).toHaveBeenCalledWith(requestId);
     const body = await readBody(response);
     expect(body).toContain("request.completed");
     expect(body).not.toContain("\"sequence_number\":1");
