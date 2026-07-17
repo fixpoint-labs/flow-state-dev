@@ -24,7 +24,7 @@ Update policy:
 
 - A practice is established by **user review** (see the `fsd:distill-lessons`
   skill). Add it in the same change set as the code/docs adopting it.
-- Number sequentially after the last existing BP (currently BP-039). Append;
+- Number sequentially after the last existing BP (currently BP-041). Append;
   never overwrite or renumber.
 - A new **universal** BP goes in this file's Universal section *and* the
   `CLAUDE.md` mirror. A new **situational** BP goes in the matching
@@ -175,7 +175,7 @@ Update policy:
 
 Full text lives in the category files. Open the file when working in that area.
 
-> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-040.
+> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-042.
 
 ### [Process & Docs](best-practices/process.md)
 
@@ -189,6 +189,8 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-009 | Maintain package-level READMEs for public packages |
 | BP-037 | Author specs as versioned docs (`docs/specs/<ISSUE-ID>.md`), reviewed as a PR, synced with Linear |
 | BP-039 | Specs lead with a plain-language summary (grok before diving deep) |
+| BP-040 | Document intent when nav/sidebar links are removed but routes/plugins stay enabled |
+| BP-041 | Docs code-block theming — built-in Prism themes first, single owner per invariant, WCAG AA on tokens |
 
 ### [Blocks & Composition](best-practices/blocks.md)
 

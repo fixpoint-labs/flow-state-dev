@@ -86,3 +86,24 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Begin every spec with a 2–4 sentence plain-language summary of the *solution* — what we're doing and why, in terms a multitasking or non-expert reader can grok without the framework vocabulary (no file paths, type names, or block/capability/scope/sequencer jargon).
   - It leads the TLDR, above the deliverables list and size estimate; the dense detail follows. "Explain it to a teammate in the hallway," not "scan the change list."
 - Why: A reader should get the gist before diving deep; a jargon-dense TLDR forces full attention just to understand the shape.
+
+### BP-040: Document intent when discoverability and enablement diverge
+
+- Status: Active
+- Date: 2026-07-17
+- Scope: Docs site (`apps/docs`) — Docusaurus config, sidebars, and nav.
+- Rule:
+  - When you remove navbar, footer, or sidebar links but leave the underlying plugin, route, or content tree enabled (e.g. blog still builds at `/blog/*`), add a short comment at the config switch stating the product intent: *unlisted but reachable*, *deprecated pending deletion*, or *fully removed* — and what a future editor should do instead of "fixing" the missing links.
+  - If the goal is to drop the feature from the site entirely, prefer disabling the plugin or removing the content in the same change rather than only hiding navigation.
+- Why: Partial hides look like oversights; without an inline intent comment, the next change often re-adds links and undoes the product decision.
+
+### BP-041: Docs code-block theming — one owner, built-ins first, contrast check
+
+- Status: Active
+- Date: 2026-07-17
+- Scope: Docs site (`apps/docs`) — Prism/syntax themes and `src/css/custom.css` code surfaces.
+- Rule:
+  - Before adding or extending a custom `prismThemes` palette, try built-in `prism-react-renderer` themes that match the site register (BP-029); keep custom token maps only after a deliberate visual rejection of those built-ins.
+  - Own each code-block visual invariant in one layer — e.g. background color in the Prism theme's `plain.backgroundColor`, not also on `.prism-code` in CSS (especially with `!important`).
+  - After palette or surface changes, verify WCAG AA contrast (≥ 4.5:1 for normal-sized text) for syntax tokens against their code-block background in **both** light and dark themes; prioritize comments and other explanatory tokens readers rely on in examples.
+- Why: Duplicate theme/CSS owners drift on the next tweak, custom palettes add maintenance without trying built-ins first, and muted "earthy" comment colors often fail AA on light code surfaces.
