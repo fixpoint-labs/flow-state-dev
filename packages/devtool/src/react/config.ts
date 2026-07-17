@@ -28,17 +28,21 @@ function readInjectedConfig(): InjectedConfig {
     : {};
 }
 
+function injectedUserId(): string | undefined {
+  const injected = readInjectedConfig().userId;
+  return typeof injected === "string" && injected.trim() ? injected : undefined;
+}
+
 /** True when `fsdev dev` injected a non-blank `userId` into the page global. */
 export function hasInjectedUserId(): boolean {
-  const injected = readInjectedConfig().userId;
-  return typeof injected === "string" && injected.trim().length > 0;
+  return injectedUserId() !== undefined;
 }
 
 export function readUserId(): string {
   // The app-declared userId wins on boot (it's the identity a secured flow
   // expects); otherwise fall back to the operator's persisted choice.
-  const injected = readInjectedConfig().userId;
-  if (typeof injected === "string" && injected.trim()) return injected;
+  const injected = injectedUserId();
+  if (injected) return injected;
   if (!hasWindow()) return DEFAULT_USER_ID;
   const stored = window.localStorage.getItem(USER_ID_KEY);
   return stored?.trim() ? stored : DEFAULT_USER_ID;

@@ -73,4 +73,21 @@ describe("DevToolProvider — config sync", () => {
     expect(result.current.config.userId).toBe("alice");
     expect(result.current.config.bearerToken).toBe("op-token");
   });
+
+  it("keeps a cleared Settings token when userId prop sync drops stale injected bearer", () => {
+    // Partial injection (bearer only): shell boot holds bearerToken="injected" on
+    // the prop; focus userId sync must pass bearerToken undefined so merge keeps
+    // the operator's cleared token instead of re-authorizing the boot prop.
+    let current: Cfg = { userId: "devuser", bearerToken: "injected" };
+    const { result, rerender } = renderWithConfig(() => current);
+
+    act(() => result.current.setConfig({ userId: "alice", bearerToken: undefined }));
+    expect(result.current.config.bearerToken).toBeUndefined();
+
+    current = { userId: "alice", bearerToken: undefined };
+    act(() => rerender());
+
+    expect(result.current.config.userId).toBe("alice");
+    expect(result.current.config.bearerToken).toBeUndefined();
+  });
 });
