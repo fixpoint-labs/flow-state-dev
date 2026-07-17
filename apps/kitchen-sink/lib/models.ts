@@ -30,6 +30,24 @@ export type KitchenSinkModel = (typeof KITCHEN_SINK_MODELS)[number];
 export const DEFAULT_KITCHEN_SINK_MODEL: KitchenSinkModel =
   "vercel/anthropic/claude-sonnet-5";
 
+/** True when `value` is a catalog model string (including stale persisted ids). */
+export function isKitchenSinkModel(value: string): value is KitchenSinkModel {
+  return (KITCHEN_SINK_MODELS as readonly string[]).includes(value);
+}
+
+/**
+ * Resolve a persisted or client-provided model id to a catalog entry.
+ * Unknown or removed catalog ids fall back to {@link DEFAULT_KITCHEN_SINK_MODEL}.
+ */
+export function coalesceKitchenSinkModel(
+  value: string | null | undefined,
+): KitchenSinkModel {
+  if (value != null && isKitchenSinkModel(value)) {
+    return value;
+  }
+  return DEFAULT_KITCHEN_SINK_MODEL;
+}
+
 /** Friendly labels and descriptions used by the selector dropdown. */
 export const MODEL_LABELS: Record<
   KitchenSinkModel,

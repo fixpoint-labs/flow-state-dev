@@ -21,7 +21,8 @@ import { Sparkles, ChevronDownIcon } from "lucide-react";
 import {
   KITCHEN_SINK_MODELS,
   MODEL_LABELS,
-  DEFAULT_KITCHEN_SINK_MODEL,
+  coalesceKitchenSinkModel,
+  isKitchenSinkModel,
   type KitchenSinkModel,
 } from "@/lib/models";
 
@@ -34,10 +35,6 @@ interface ModelSelectorProps {
   disabled?: boolean;
 }
 
-function isKitchenSinkModel(value: string): value is KitchenSinkModel {
-  return (KITCHEN_SINK_MODELS as readonly string[]).includes(value);
-}
-
 /**
  * Dropdown selector that lists every concrete model the kitchen-sink supports.
  * The trigger shows the active model's friendly label; rows show label +
@@ -48,9 +45,7 @@ export function ModelSelector({
   onValueChange,
   disabled,
 }: ModelSelectorProps) {
-  const activeId: KitchenSinkModel = isKitchenSinkModel(value)
-    ? value
-    : DEFAULT_KITCHEN_SINK_MODEL;
+  const activeId = coalesceKitchenSinkModel(value);
   const activeLabel = MODEL_LABELS[activeId].label;
 
   const handleValueChange = useCallback(

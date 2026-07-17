@@ -107,6 +107,6 @@ export const selectedModelSchema = z
 /** Per-user state: display name, selected model, extended-thinking toggle. */
 export const userStateSchema = z.object({
   displayName: z.string().default("Developer"),
-  selectedModel: z.string().default(DEFAULT_KITCHEN_SINK_MODEL),
+  selectedModel: selectedModelSchema,
   thinkingEnabled: z.boolean().default(false),
 });

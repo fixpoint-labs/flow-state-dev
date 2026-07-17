@@ -13,7 +13,7 @@ import { inputSchema, userStateSchema, modeSchema } from "../../shared/schemas";
 import { featuresCapability } from "../../shared/capabilities/features";
 import { mem, analystPerspective } from "../cognition";
 import { resolveModePrompt } from "./mode-prompt";
-import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../../lib/models";
+import { coalesceKitchenSinkModel } from "../../../../lib/models";
 
 export const assistantGenerator = generator({
   name: "assistant-generator",
@@ -55,7 +55,7 @@ export const assistantGenerator = generator({
   // scope, so fall back to the catalog default rather than relying on the
   // Zod default alone.
   model: (_input: any, ctx: any) =>
-    ctx.user?.state.selectedModel ?? DEFAULT_KITCHEN_SINK_MODEL,
+    coalesceKitchenSinkModel(ctx.user?.state.selectedModel),
   // Anthropic-only — OpenAI and Google ignore this namespace, so the toggle
   // is a no-op for non-Anthropic models until per-provider reasoning
   // mappings land (FIX-517).

@@ -12,12 +12,12 @@ import { assistantGenerator } from "../assistant/assistant";
 import { resolveModePrompt } from "../assistant/mode-prompt";
 import { mem } from "../cognition";
 import { featuresCapability } from "../../shared/capabilities/features";
-import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../../lib/models";
+import { coalesceKitchenSinkModel } from "../../../../lib/models";
 
 export const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
   modelId: (_input: any, ctx: any) =>
-    ctx.user?.state.selectedModel ?? DEFAULT_KITCHEN_SINK_MODEL,
+    coalesceKitchenSinkModel(ctx.user?.state.selectedModel),
   history: { limit: 8 },
   // Memory is the only context threaded by hand — it isn't part of
   // featuresCapability. Artifacts inventory arrives through the capability
