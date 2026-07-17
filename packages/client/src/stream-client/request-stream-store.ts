@@ -11,6 +11,10 @@
  * three former reducers) and extended with the status/sequence/status-event
  * bookkeeping the hook wrappers used to hand-roll.
  */
+import {
+  collapseToCanonicalLog,
+  ITEM_UPDATE_INVARIANT_KEYS
+} from "@flow-state-dev/contracts/items";
 import type {
   Content,
   MessageItem,
@@ -19,106 +23,6 @@ import type {
   RequestStatus,
   RequestStatusEvent
 } from "@flow-state-dev/core/items";
-
-// Mirrors `ITEM_UPDATE_INVARIANT_KEYS` from `@flow-state-dev/core/items` —
-// inlined because this package may only import types from core. Keep in sync
-// with the core source, which is the authority. Identity-invariant keys must
-// not be replaced by an `item.updated` patch.
-const ITEM_UPDATE_INVARIANT_KEYS: ReadonlyArray<string> = [
-  "id",
-  "type",
-  "provenance",
-  "itemVisibility",
-  "transient"
-];
-
-// Mirrors `collapseToCanonicalLog` from `@flow-state-dev/core/items` — inlined
-// because this package may only import types from core (same reason
-// `ITEM_UPDATE_INVARIANT_KEYS` is mirrored above). Keep in sync with the core
-// source, which is the authority. Collapses a resumed/continued request's
-// superseded re-emissions so the live view shows each emission once: Rule 1
-// (resolved suspension boundary), Rule 2 (canonical block_trace), and Rule 3
-// (crash-recovery re-run — a logical path with more than one block_trace, where
-// the canonical trace's item index bounds the surviving run; no
-// `suspension_resume` is emitted on the crash path). No-op for a single run.
-function logicalIdOfInstance(blockInstanceId: string | undefined): string | undefined {
-  if (blockInstanceId === undefined) return undefined;
-  const lastColon = blockInstanceId.lastIndexOf(":");
-  if (lastColon <= 0) return undefined;
-  const attempt = Number(blockInstanceId.slice(lastColon + 1));
-  if (!Number.isInteger(attempt) || attempt < 0) return undefined;
-  return blockInstanceId.slice(0, lastColon);
-}
-
-function collapseToCanonicalLog(items: OutputItem[]): OutputItem[] {
-  const resumed = new Set<string>();
-  for (const item of items) {
-    if (item.type === "suspension_resume") {
-      const id = (item as { suspensionId?: string }).suspensionId;
-      if (id !== undefined) resumed.add(id);
-    }
-  }
-  const supersededBefore = new Map<string, number>();
-  for (const item of items) {
-    if (item.type !== "suspension") continue;
-    const suspId = (item as { suspensionId?: string }).suspensionId;
-    if (suspId === undefined || !resumed.has(suspId)) continue;
-    const logicalId = logicalIdOfInstance(
-      (item as { blockInstanceId?: string }).blockInstanceId ?? item.provenance?.blockInstanceId
-    );
-    if (logicalId === undefined) continue;
-    const prior = supersededBefore.get(logicalId);
-    if (prior === undefined || item.itemIndex > prior) supersededBefore.set(logicalId, item.itemIndex);
-  }
-
-  const canonicalTrace = new Map<string, { id: string; itemIndex: number; completed: boolean }>();
-  const traceCount = new Map<string, number>();
-  for (const item of items) {
-    if ((item.type as string) !== "block_trace") continue;
-    const logicalId = logicalIdOfInstance(item.provenance?.blockInstanceId);
-    if (logicalId === undefined) continue;
-    traceCount.set(logicalId, (traceCount.get(logicalId) ?? 0) + 1);
-    const completed = item.status === "completed";
-    const prior = canonicalTrace.get(logicalId);
-    if (
-      prior === undefined ||
-      (completed && !prior.completed) ||
-      (completed === prior.completed && item.itemIndex > prior.itemIndex)
-    ) {
-      canonicalTrace.set(logicalId, { id: item.id, itemIndex: item.itemIndex, completed });
-    }
-  }
-
-  // Rule 3: a logical path that re-ran (more than one trace) but has no
-  // resolved-suspension boundary — the crash-recovery `continue` shape — uses
-  // its canonical trace's item index (the start of the surviving run) as the
-  // supersession boundary, taking the later of it and any Rule-1 boundary.
-  for (const [logicalId, count] of traceCount) {
-    if (count < 2) continue;
-    const canonical = canonicalTrace.get(logicalId);
-    if (canonical === undefined) continue;
-    const prior = supersededBefore.get(logicalId);
-    if (prior === undefined || canonical.itemIndex > prior) {
-      supersededBefore.set(logicalId, canonical.itemIndex);
-    }
-  }
-
-  if (supersededBefore.size === 0 && canonicalTrace.size === 0) return items;
-
-  return items.filter((item) => {
-    if ((item.type as string) === "block_trace") {
-      const logicalId = logicalIdOfInstance(item.provenance?.blockInstanceId);
-      if (logicalId === undefined) return true;
-      const canonical = canonicalTrace.get(logicalId);
-      return canonical === undefined || canonical.id === item.id;
-    }
-    if (item.type === "suspension" || item.type === "suspension_resume") return true;
-    const logicalId = logicalIdOfInstance(item.provenance?.blockInstanceId);
-    if (logicalId === undefined) return true;
-    const boundary = supersededBefore.get(logicalId);
-    return boundary === undefined || item.itemIndex >= boundary;
-  });
-}
 
 /** Buffered text delta waiting to be flushed into an item's content. */
 export type ContentDeltaAccumulator = {
@@ -455,7 +359,7 @@ export function createRequestStreamStore(): RequestStreamStore {
 
       const sanitized: Record<string, unknown> = {};
       for (const key of Object.keys(patch)) {
-        if (ITEM_UPDATE_INVARIANT_KEYS.includes(key)) continue;
+        if ((ITEM_UPDATE_INVARIANT_KEYS as ReadonlyArray<string>).includes(key)) continue;
         sanitized[key] = patch[key];
       }
 
