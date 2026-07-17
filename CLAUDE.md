@@ -270,15 +270,16 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **BP-030** Tolerate the old shape when you change a persisted/in-flight field — dual-read legacy records; reject removed keys loudly; `== null`-guard new nullable fields.
 - **BP-031** Never make auth/routing decisions from caller-controllable input — derive them from a trusted source (server-set identity, verified token, the framework's transport `source`), not `body`/`metadata`/query/headers.
 - **BP-034** Finish move/rename refactors — update provenance (headers, diagrams, doc anchors) and subpath re-exports, not just imports.
-- **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state paths; test the off/new state of any new flag.
+- **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state / partial multi-field external-sync paths; test the off/new state of any new flag.
 - **BP-038** Build the least that satisfies the spec; subtract before you add — no speculative surface (YAGNI), delete the path you supersede, minimize public API/options, prefer defaults over knobs.
+- **BP-040** Case-insensitive locate without normalizing the whole string — match on the original payload; don't `toLowerCase()` the entire value just to find an index.
 
 **Situational — open the category file when working in that area:**
 
 - **Blocks & composition** (`docs/contributing/best-practices/blocks.md`): BP-011 handlers don't call blocks (compose as a sequencer) · BP-012 `.tap()` for state-mutation-only blocks · BP-013 `connectInput`/`connectOutput` inside the router · BP-014 handlers never return input · BP-024 helpers when the body varies, factories when only identity does · BP-025 declare/validate sequencer output schemas deliberately · BP-036 prefer conditional step variants (`.workIf`/`.tapIf`/`.stepIf` with an inline connector) over wrapper sequencers.
 - **Generators & prompts** (`docs/contributing/best-practices/generators.md`): BP-016 outputSchemas OpenAI strict-compatible · BP-017 typed `context` slot for prompts · BP-018 shared prompt formatters in `lib/`.
 - **Resources & state** (`docs/contributing/best-practices/resources.md`): BP-015 `expose`/`exclude` over `data` projections · BP-019 resource refs in leaf modules · BP-020 live mode never falls back to fixtures · BP-021 `cacheable` declared deliberately · BP-023 state schemas `.nullable().default(null)` · BP-027 user-scoped resources default to shared · BP-033 filter at the source before you load (don't list-then-discard).
-- **React** (`docs/contributing/best-practices/react.md`): BP-010 `useMemo` over `useEffect`; derive flags from the complete input set; signal only on real change.
+- **React** (`docs/contributing/best-practices/react.md`): BP-010 `useMemo` over `useEffect`; derive flags from the complete input set; signal only on real change; audit sibling props on partial parent re-sync.
 - **Engine & transport** (`docs/contributing/best-practices/engine.md`): BP-026 bundle forwarded options into `RuntimeConfig`.
 - **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a Linear-linked spec) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs are versioned docs (`docs/specs/<ISSUE-ID>.md`) reviewed as a PR, synced with Linear · BP-039 specs lead with a plain-language summary (grok before diving deep).
 

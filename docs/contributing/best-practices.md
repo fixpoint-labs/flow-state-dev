@@ -24,7 +24,7 @@ Update policy:
 
 - A practice is established by **user review** (see the `fsd:distill-lessons`
   skill). Add it in the same change set as the code/docs adopting it.
-- Number sequentially after the last existing BP (currently BP-039). Append;
+- Number sequentially after the last existing BP (currently BP-040). Append;
   never overwrite or renumber.
 - A new **universal** BP goes in this file's Universal section *and* the
   `CLAUDE.md` mirror. A new **situational** BP goes in the matching
@@ -154,6 +154,7 @@ Update policy:
     - Second tenant / account — keys scoped to the full tuple, derived from the authenticated identity (BP-031).
     - Cost / observability — any new model/tool call is counted in usage/cost and threads `ctx.signal`, matching the call beside it.
     - React derived state — flags derived from the *complete* input set; change-signals fire only on a *real* change (BP-010).
+    - Partial multi-field external sync — when an event re-pushes only some config fields to a child with merge semantics, enumerate injection/source permutations for siblings (each field alone, together, neither); stopping re-read of one field can leave a stale boot-time sibling on the prop layer.
   - When a flag toggles behavior (`enabled: false`, a new mode), add the test for the off / new state in the same PR.
 - Why: The happy path is the part you thought about; the bugs hide in the paths the change implicitly touched but didn't add code for.
 
@@ -169,13 +170,23 @@ Update policy:
   - Same instinct at two altitudes: the spec-time necessity gate (`fsd:create-spec` Step 3.5) and the architecture-deepening pass (`fsd:improve-codebase-architecture`) — reach for them.
 - Why: An already-large framework stays maintainable only if new surface earns its keep and superseded surface is removed, not accumulated.
 
+### BP-040: Case-insensitive locate without normalizing the whole string
+
+- Status: Active
+- Date: 2026-07-17
+- Scope: Universal — any string search, splice, or HTML/text injection.
+- Rule:
+  - When matching case-insensitively, use a case-insensitive match on the **original** string (regex `/i`, `localeCompare`, etc.) and splice using indices from that match.
+  - Do not call `toLowerCase()` / `toUpperCase()` on the entire payload just to find a position, unless you intentionally need a transformed copy of the whole value.
+- Why: Whole-string normalization changes content you still emit (markup, URLs, identifiers, user text) and can misalign slice indices when only the needle was normalized.
+
 ---
 
 ## Situational Practices — Index
 
 Full text lives in the category files. Open the file when working in that area.
 
-> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-040.
+> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-041.
 
 ### [Process & Docs](best-practices/process.md)
 
