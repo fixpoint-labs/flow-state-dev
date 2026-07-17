@@ -35,18 +35,10 @@ function check(label: string, ok: boolean): void {
 }
 
 const flowState = (await import("../fsdev.config")).default;
+const { callMcpTool } = await import("../test/mcp-http");
 
 async function callTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const router = await flowState.getRouter();
-  const req = new Request("http://localhost/mcp/knowledge-hub", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${SECRET}` },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
-  });
-  const res = await router.POST(req, { params: { path: ["mcp", "knowledge-hub"] } });
-  const body = (await res.json()) as { result?: { content?: { text?: string }[] }; error?: unknown };
-  if (body.error !== undefined) throw new Error(`MCP error for ${name}: ${JSON.stringify(body.error)}`);
-  return JSON.parse(body.result!.content![0]!.text!) as Record<string, unknown>;
+  return callMcpTool(flowState, name, args, { bearerToken: SECRET });
 }
 
 try {
