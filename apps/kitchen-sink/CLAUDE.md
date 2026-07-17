@@ -26,6 +26,13 @@ Package builds (for typecheck, publish, and CI) run through Turborepo:
 `pnpm packages:build` from the repo root. Turbo caches task output, so an
 unchanged rebuild is a near-instant cache hit.
 
+## Model selector catalog
+
+Gateway model strings for the chat-agent dropdown live in `lib/models.ts` only
+(`KITCHEN_SINK_MODELS` + `MODEL_LABELS`). See [BP-040](../../docs/contributing/best-practices/process.md#bp-040-kitchen-sink-gateway-model-catalog-updates-stay-in-libmodelsts)
+for the add/remove checklist (empty changeset, live slug verification, no
+provider/intent over-wiring).
+
 ## Testing this app
 
 Three layers, picked by the kind of change you made:

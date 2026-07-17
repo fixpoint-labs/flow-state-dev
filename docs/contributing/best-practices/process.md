@@ -86,3 +86,16 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Begin every spec with a 2–4 sentence plain-language summary of the *solution* — what we're doing and why, in terms a multitasking or non-expert reader can grok without the framework vocabulary (no file paths, type names, or block/capability/scope/sequencer jargon).
   - It leads the TLDR, above the deliverables list and size estimate; the dense detail follows. "Explain it to a teammate in the hallway," not "scan the change list."
 - Why: A reader should get the gist before diving deep; a jargon-dense TLDR forces full attention just to understand the shape.
+
+### BP-040: Kitchen-sink gateway model catalog updates stay in `lib/models.ts`
+
+- Status: Active
+- Date: 2026-07-17
+- Scope: Kitchen-sink — adding or removing a Vercel AI Gateway model in the chat selector.
+- Rule:
+  - Edit only `apps/kitchen-sink/lib/models.ts`: append the `vercel/…` string to `KITCHEN_SINK_MODELS` and add the matching `MODEL_LABELS` entry (the exhaustive `Record<KitchenSinkModel, …>` catches a missing label).
+  - Do not register providers in core, add `@ai-sdk/*` factories, duplicate the list in flow files, or bump `models.intents` in `fsdev.config.ts` unless product explicitly wants the model in CLI fallbacks — the selector, Zod enum, and gateway resolver already derive from this catalog (same pattern as GLM 5.2 / MiMo V2.5).
+  - Confirm the bare gateway slug (strip the `vercel/` prefix) against the **live** Vercel AI Gateway catalog before merge — pinned `@ai-sdk/gateway` generated IDs lag the service and the union ends with `| (string & {})`, so "absent from the pinned typings" is not proof the slug fails at runtime (and presence in typings is not proof it is live).
+  - When you can run a provider-backed smoke, exercise the new slug from `apps/kitchen-sink`: `pnpm fsdev run chat-agent run -i '{"message":"ping","mode":"ask"}' --model <full vercel/… string>` — selector-only validation cannot catch an unsupported gateway ID.
+  - Land `pnpm changeset --empty` in the same PR per BP-022 (kitchen-sink is private; match the existing empty-fragment convention for reference-app-only catalog bumps).
+- Why: Catalog bumps are a frequent one-file change; over-wiring and stale typing checks create false blockers, while a bad slug only fails when a user actually chats.

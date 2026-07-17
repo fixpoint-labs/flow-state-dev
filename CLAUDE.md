@@ -264,7 +264,7 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **BP-001** Documentation authority precedence — the more specific in-repo doc wins.
 - **BP-003** Verification evidence is mandatory — every deliverable has an evidence path + pass criteria.
 - **BP-007** Concise API/file docs — file header + 100% of exported APIs documented; non-obvious helpers too.
-- **BP-022** Release notes via Changesets — every user-facing PR adds a `.changeset/*.md`; internal-only → `--empty`. Pre-1.0: `patch`/`minor` only.
+- **BP-022** Release notes via Changesets — every user-facing PR adds a `.changeset/*.md`; internal-only → `--empty` in the same PR (prefer the opening commit). Pre-1.0: `patch`/`minor` only.
 - **BP-028** Fix the bug at the layer that owns it, not where it bit you — a workaround each caller repeats is a smell.
 - **BP-029** Compose existing primitives over re-implementing what a tool already provides — reserve bespoke code for the genuinely-new primitive.
 - **BP-030** Tolerate the old shape when you change a persisted/in-flight field — dual-read legacy records; reject removed keys loudly; `== null`-guard new nullable fields.
@@ -280,7 +280,7 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **Resources & state** (`docs/contributing/best-practices/resources.md`): BP-015 `expose`/`exclude` over `data` projections · BP-019 resource refs in leaf modules · BP-020 live mode never falls back to fixtures · BP-021 `cacheable` declared deliberately · BP-023 state schemas `.nullable().default(null)` · BP-027 user-scoped resources default to shared · BP-033 filter at the source before you load (don't list-then-discard).
 - **React** (`docs/contributing/best-practices/react.md`): BP-010 `useMemo` over `useEffect`; derive flags from the complete input set; signal only on real change.
 - **Engine & transport** (`docs/contributing/best-practices/engine.md`): BP-026 bundle forwarded options into `RuntimeConfig`.
-- **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a Linear-linked spec) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs are versioned docs (`docs/specs/<ISSUE-ID>.md`) reviewed as a PR, synced with Linear · BP-039 specs lead with a plain-language summary (grok before diving deep).
+- **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a Linear-linked spec) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs are versioned docs (`docs/specs/<ISSUE-ID>.md`) reviewed as a PR, synced with Linear · BP-039 specs lead with a plain-language summary (grok before diving deep) · BP-040 kitchen-sink gateway model catalog stays in `lib/models.ts` (live slug check, no over-wiring).
 
 **Document new and changed user-facing functionality** (always)
 
