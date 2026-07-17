@@ -20,8 +20,6 @@ The split matters because it shapes what you should learn first. Core is a small
 
 **Memory** is the cross-turn memory system — working, episodic, semantic, and digest tiers behind a single `system()` factory. Lives at `@flow-state-dev/memory`.
 
-**Thought Fabric** is a separate cognitive architecture sub-site. Attention, identity. It builds on Core but has its own conventions.
-
 **Dev Experience** covers the CLI (`fsdev`) and the DevTool — a pre-built inspector you can mount into your own app or run standalone with `fsdev dev`.
 
 A full map of the ecosystem is still being assembled. Until then, browse the package READMEs in the repo for what's currently published.

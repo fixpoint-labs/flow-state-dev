@@ -121,9 +121,9 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* Code blocks */
+/* Code blocks — background is owned by the Prism theme (src/prismThemes.ts);
+   this rule only adds the surrounding border. */
 [data-theme="dark"] .prism-code {
-  background: #0c0c14 !important;
   border: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
 
