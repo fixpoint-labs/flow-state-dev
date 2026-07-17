@@ -143,6 +143,22 @@ describe("createRequestStreamStore — applyItemPatch", () => {
     expect(store.getById("a")!.type).toBe("message");
   });
 
+  it("returns false when patch values already match the stored item", () => {
+    const store = createRequestStreamStore();
+    store.upsert(
+      makeItem({ id: "a", ts: 100, status: "completed" as OutputItem["status"] })
+    );
+    expect(store.applyItemPatch("a", { status: "completed" })).toBe(false);
+  });
+
+  it("returns false for a structurally equal nested patch", () => {
+    const store = createRequestStreamStore();
+    const item = makeItem({ id: "a", ts: 100 });
+    (item as OutputItem & { output?: unknown }).output = { x: 1 };
+    store.upsert(item);
+    expect(store.applyItemPatch("a", { output: { x: 1 } })).toBe(false);
+  });
+
   it("re-sorts when a patch changes a sort key (ts)", () => {
     const store = createRequestStreamStore();
     store.upsert(makeItem({ id: "a", ts: 100 }));
