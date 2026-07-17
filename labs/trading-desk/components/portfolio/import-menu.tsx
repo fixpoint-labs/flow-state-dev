@@ -111,7 +111,7 @@ export function ImportMenu({
             onClick={() => choose(onImportTransactions)}
             className={itemClass}
           >
-            <FileUp className="h-3 w-3" aria-hidden /> Transaction file (OFX/QFX/QBO)
+            <FileUp className="h-3 w-3" aria-hidden /> Transaction file (OFX/QFX/QBO · tax-lot CSV)
           </button>
         </div>
       ) : null}
