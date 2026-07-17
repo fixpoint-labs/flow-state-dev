@@ -21,6 +21,7 @@ export const KITCHEN_SINK_MODELS = [
   "vercel/google/gemini-2.5-pro",
   "vercel/zai/glm-5.2",
   "vercel/xiaomi/mimo-v2.5",
+  "vercel/moonshotai/kimi-k3",
 ] as const;
 
 /** Union of accepted gateway model strings for the kitchen-sink. */
@@ -78,5 +79,9 @@ export const MODEL_LABELS: Record<
   "vercel/xiaomi/mimo-v2.5": {
     label: "MiMo V2.5",
     description: "Open-weight, efficient reasoning",
+  },
+  "vercel/moonshotai/kimi-k3": {
+    label: "Kimi K3",
+    description: "Open-weight, agentic long context",
   },
 };
