@@ -140,4 +140,33 @@ describe("logActivity contextId", () => {
     });
     expect(res.status).not.toBe("completed");
   });
+
+  it("lists a legacy record captured before contextId existed as ungrouped (BP-030)", async () => {
+    const stores = createInMemoryStores();
+    // A pre-FIX-897 inbox record written straight to the store — no contextId
+    // field. It must stay readable (list as ungrouped `null`), not break listInbox.
+    await stores.resourceState.set("user", USER, "inbox/task/deadbeef", {
+      kind: "task",
+      content: "legacy capture",
+      context: "before contextId existed",
+      capturedAt: "2026-07-10T00:00:00.000Z",
+      occurredAt: null,
+      source: null,
+      status: "pending",
+      fingerprint: "deadbeef",
+    });
+
+    const listed = await testFlow({
+      flow: knowledgeHubFlow,
+      action: "listInbox",
+      userId: USER,
+      stores,
+      input: {},
+    });
+    expect(listed.status).toBe("completed");
+    const out = listed.output as { items: { content: string; contextId: string | null }[]; totalPending: number };
+    expect(out.totalPending).toBe(1);
+    expect(out.items[0].content).toBe("legacy capture");
+    expect(out.items[0].contextId).toBeNull();
+  });
 });

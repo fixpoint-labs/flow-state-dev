@@ -182,9 +182,7 @@ export interface ActionMcpConfig {
    *
    * Security: `fromInput` reads model-supplied input as a *flow* session key
    * (not the protocol `Mcp-Session-Id`, and never an auth/routing decision —
-   * the principal still comes from `resolvePrincipal`, BP-031). A future
-   * `{ resolve: (input) => string | undefined }` arm can add a custom
-   * resolver without changing the two arms above.
+   * the principal still comes from `resolvePrincipal`, BP-031).
    */
   session?: string | { fromInput: string };
 }

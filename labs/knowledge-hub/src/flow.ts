@@ -53,7 +53,10 @@ const inboxItemSummarySchema = z.object({
   kind: activityKindSchema,
   content: z.string(),
   context: z.string(),
-  contextId: z.string(),
+  // Nullable so a legacy record captured before contextId existed lists as
+  // ungrouped rather than failing output validation (BP-030). New records
+  // always carry a real id.
+  contextId: z.string().nullable(),
   capturedAt: z.string(),
   status: z.enum(["pending", "swept"]),
 });
@@ -64,10 +67,13 @@ const logActivity = handler({
     contextId: z
       .string()
       .min(1)
-      // Bound because a `fromInput` value becomes the literal session storage
-      // key, and a session record is persisted even when this surrounding call
-      // later fails validation (the MCP adapter reads the raw input before zod
-      // runs). 200 fits a minted `ctx_…` id (~35 chars) with headroom.
+      // Bounds the stored contextId to a sane length. NOTE: this does NOT bound
+      // the session KEY the MCP adapter derives from this field — that raw value
+      // reaches `host.dispatch` (which persists a session record) BEFORE this
+      // schema runs, so an oversized id still writes an oversized-keyed session
+      // before being rejected here. Hardening caller-supplied session keys is a
+      // deliberate promotion Non-Goal (spec §8). 200 fits a minted `ctx_…` id
+      // (~35 chars) with headroom.
       .max(200)
       .describe(
         "The context id returned by createContext. Required — groups this capture into that conversation. If you have not opened a context, call createContext first."
@@ -210,7 +216,7 @@ const listInbox = handler({
       kind: r.state.kind,
       content: r.state.content,
       context: r.state.context,
-      contextId: r.state.contextId,
+      contextId: r.state.contextId ?? null,
       capturedAt: r.state.capturedAt,
       status: r.state.status,
     }));

@@ -51,8 +51,14 @@ export const inboxRecordSchema = z.object({
    * caller-supplied). Doubles as the flow session id the capture ran under; the
    * FIX-883 sweeper groups inbox rows by this field directly, and loads the
    * session's state (the topic description) by the same id when it wants it.
+   *
+   * `.nullable().default(null)` for the same BP-030 reason as `status` below:
+   * a record captured before `contextId` existed (FIX-882) stays readable — it
+   * reads back as an ungrouped `null` rather than failing `listInbox` / the
+   * sweeper. New captures always carry a real id (`logActivity` requires it on
+   * input).
    */
-  contextId: z.string(),
+  contextId: z.string().nullable().default(null),
   /** Server-stamped ISO wall-clock capture time (mailroom). */
   capturedAt: z.string(),
   /**
@@ -69,8 +75,10 @@ export const inboxRecordSchema = z.object({
    */
   status: z.enum(["pending", "swept"]).default("pending"),
   /**
-   * sha256 over the normalized capture tuple (kind, content, context,
-   * occurredAt, source) — transport-retry identity; also the key suffix.
+   * sha256 over the normalized capture tuple (contextId, kind, content,
+   * context, occurredAt, source) — transport-retry identity; also the key
+   * suffix. `contextId` leads the tuple and is hashed verbatim (see
+   * mailroom.ts), so the same capture under two contexts stays two records.
    */
   fingerprint: z.string(),
 });
