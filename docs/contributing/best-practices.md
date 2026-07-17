@@ -24,7 +24,7 @@ Update policy:
 
 - A practice is established by **user review** (see the `fsd:distill-lessons`
   skill). Add it in the same change set as the code/docs adopting it.
-- Number sequentially after the last existing BP (currently BP-039). Append;
+- Number sequentially after the last existing BP (currently BP-042). Append;
   never overwrite or renumber.
 - A new **universal** BP goes in this file's Universal section *and* the
   `CLAUDE.md` mirror. A new **situational** BP goes in the matching
@@ -117,6 +117,7 @@ Update policy:
   - Renaming or removing a key from a public config object: reject the dead key with an error pointing at the replacement (`"reactTo.updated was renamed to reactTo.stateUpdated"`). Never accept-then-silently-ignore an unknown key.
   - Adding a nullable field for back-compat: every downstream reader (formatter / renderer / prompt-context builder) must `== null`-guard it.
   - Pair any transitional dual-read with a cleanup pointer (`TODO(FIX-NNN)` or changeset note) so it doesn't outlive the rollout.
+  - **Renaming** a stored field key: dual-read the old key on every read/format/list path in the **same commit** as the write-path rename — not in a follow-up after review finds `list*` output validation failing on legacy rows.
 - Why: A schema change is a contract change for data that already exists; the rollout window — old records, in-flight requests, dead keys — is where these bugs live.
 
 ### BP-031: Never make authorization or control-flow decisions from caller-controllable input
@@ -169,13 +170,23 @@ Update policy:
   - Same instinct at two altitudes: the spec-time necessity gate (`fsd:create-spec` Step 3.5) and the architecture-deepening pass (`fsd:improve-codebase-architecture`) — reach for them.
 - Why: An already-large framework stays maintainable only if new surface earns its keep and superseded surface is removed, not accumulated.
 
+### BP-041: Don't overload vocabulary on adjacent unrelated fields
+
+- Status: Active
+- Date: 2026-07-17
+- Scope: Universal — public input schemas, tool parameters, and API surfaces.
+- Rule:
+  - When two fields on the same input surface serve different roles (e.g. a grouping identifier vs free-text description, a foreign key vs narrative context), use **distinct** terms — don't reuse the same word stem (`context` beside `contextId`) so callers and agents infer a relationship that isn't there.
+  - Prefer a domain-specific name for the grouping key and a plain descriptive name for the body text (`conversationId` + `situation`, not `context` + `contextId`).
+- Why: Adjacent overloaded naming reads as one concept and invites wrong wiring, bad prompts, and late rename churn.
+
 ---
 
 ## Situational Practices — Index
 
 Full text lives in the category files. Open the file when working in that area.
 
-> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-040.
+> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP after BP-042 is BP-043.
 
 ### [Process & Docs](best-practices/process.md)
 
@@ -189,6 +200,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-009 | Maintain package-level READMEs for public packages |
 | BP-037 | Author specs as versioned docs (`docs/specs/<ISSUE-ID>.md`), reviewed as a PR, synced with Linear |
 | BP-039 | Specs lead with a plain-language summary (grok before diving deep) |
+| BP-040 | Ship `docs/architecture/*` + `architecture-reference.md` with framework behavior/API changes — not user docs alone |
 
 ### [Blocks & Composition](best-practices/blocks.md)
 
@@ -233,6 +245,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP | Rule |
 | --- | --- |
 | BP-026 | Bundle forwarded options into a `RuntimeConfig`-shaped struct, never drill |
+| BP-042 | Transport-derived persistence and verification — keys written before action validation; test the transport seam, not only `testFlow` |
 
 ---
 

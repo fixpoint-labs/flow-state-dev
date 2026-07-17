@@ -86,3 +86,13 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Begin every spec with a 2–4 sentence plain-language summary of the *solution* — what we're doing and why, in terms a multitasking or non-expert reader can grok without the framework vocabulary (no file paths, type names, or block/capability/scope/sequencer jargon).
   - It leads the TLDR, above the deliverables list and size estimate; the dense detail follows. "Explain it to a teammate in the hallway," not "scan the change list."
 - Why: A reader should get the gist before diving deep; a jargon-dense TLDR forces full attention just to understand the shape.
+
+### BP-040: Ship architecture authority docs with framework behavior changes
+
+- Status: Active
+- Date: 2026-07-17
+- Scope: Process — framework/runtime/API changes (`packages/*`, transport, execution contracts).
+- Rule:
+  - When a PR changes framework behavior, a public API contract, or a locked runtime/transport guarantee, update the matching `docs/architecture/<area>.md` page and any bullet in `docs/contributing/architecture-reference.md` in the **same change set** as the code — with the first implementation slice, not deferred to a review follow-up.
+  - User-facing guides (`apps/docs`), package READMEs, and JSDoc are necessary but **not sufficient**: `docs/architecture/*` has highest authority (BP-001); leaving it stale misdirects the next agent even when Docusaurus is current.
+- Why: Architecture docs are the contract agents read first; shipping code without them invites implementations that contradict merged behavior.
