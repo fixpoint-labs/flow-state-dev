@@ -16,18 +16,21 @@ The **capture layer** is now in place (FIX-882): a single `logActivity` MCP tool
 | -- | -- | -- |
 | Inbox collection (`inbox/**`, user-scoped) + record schema + key helpers | `src/inbox.ts` | FIX-882 |
 | Mailroom pure helpers (normalize, fingerprint) | `src/mailroom.ts` | FIX-882 |
-| `logActivity` capture action | `src/flow.ts` | FIX-882 |
+| `createConversation` action (opens a conversation/topic, returns a `conversationId`) | `src/flow.ts` | FIX-897 |
+| `logActivity` capture action (now takes a required `conversationId`) | `src/flow.ts` | FIX-882 / FIX-897 |
 | `listInbox` inspection action | `src/flow.ts` | FIX-882 |
 | Config (filesystem stores; MCP adapter mounted only when `KH_MCP_SECRET` is set) | `fsdev.config.ts` | FIX-882 |
+| Real-path goal check (MCP HTTP: open conversation → group captures) | `scripts/goal-check-fix-897.mts` | FIX-897 |
 
 ## Run it
 
 Capture is CLI-only by default — see the auth note below.
 
 ```bash
-# Capture a piece of mental activity into the inbox.
+# Capture a piece of mental activity into the inbox. `conversationId` is required
+# — it groups related captures into one conversation (see "Grouping captures").
 pnpm fsdev run knowledge-hub logActivity \
-  -i '{"kind":"task","content":"Book dentist appointment","context":"Mentioned while planning the week in a Claude conversation"}'
+  -i '{"conversationId":"conv_demo","kind":"task","content":"Book dentist appointment","situation":"Mentioned while planning the week in a Claude conversation"}'
 
 # Inspect the pending inbox (items, counts, oldest age).
 pnpm fsdev run knowledge-hub listInbox -i '{}'
@@ -37,6 +40,33 @@ pnpm test
 ```
 
 The filesystem store persists across local runs (under `.fsdev/data`); remove it for a clean inbox. Re-running an identical capture returns the same id with `deduplicated: true` and does not add a second record.
+
+### Grouping captures into a conversation (FIX-897)
+
+MCP is sessionless, so by default every capture lands in its own throwaway
+session. A **conversation** groups related captures under one topic. A client
+calls `createConversation` once with a short topic description and gets back a
+`conversationId`, then passes that id on every `logActivity`:
+
+```bash
+# Over MCP: create_conversation mints a fresh conv_… id and stores the description;
+# log_activity with { session: { fromInput: "conversationId" } } routes each capture
+# into that same flow session, and the conversationId is stamped on every inbox row.
+```
+
+This uses the framework's per-action `mcp.session` directive: `createConversation`
+declares `mcp: { session: "conv_*" }` (mint a fresh id) and `logActivity`
+declares `mcp: { session: { fromInput: "conversationId" } }` (reuse the caller's id).
+The session record *is* the conversation record — its state holds the description,
+and the FIX-883 sweeper groups inbox rows by `conversationId`. An unknown
+`conversationId` still succeeds (auto-vivified, no description); no capture is
+lost to a missing `createConversation`.
+
+> The directive is only consulted on the MCP HTTP path. `fsdev run` supplies its
+> own `--session`, so a CLI `logActivity` stores the `conversationId` on the record
+> but does not route the flow session by it. The real-path grouping is verified
+> end-to-end by `scripts/goal-check-fix-897.mts`
+> (`KH_MCP_SECRET=test-secret pnpm tsx scripts/goal-check-fix-897.mts`).
 
 ### Auth: HTTP access requires `KH_MCP_SECRET`
 
