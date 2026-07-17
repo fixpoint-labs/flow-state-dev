@@ -68,12 +68,13 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 ### BP-037: Author specs as versioned docs, reviewed as a PR, synced with Linear
 
 - Status: Active
-- Date: 2026-06-29
+- Date: 2026-06-29 (updated 2026-07-17: post-review reconciliation section)
 - Scope: Process — spec authoring (`fsd:create-spec`).
 - Rule:
   - Write each spec to `docs/specs/<ISSUE-ID>.md` and open a spec PR for it (separate from the implementation PR) so the project's automated reviewers critique the design before any code is written.
   - The repo spec and the Linear spec document are the same content — keep them in sync; any edit to one mirrors to the other in the same change.
   - On spec-PR review: apply clear, obvious fixes directly (to both copies); for debatable or judgment-call feedback, surface it to the user rather than silently accepting.
+  - When a spec-PR review round **subtracts** machinery (BP-038), add an authoritative **reconciliation** section at the top of the implementation spec recording what was dropped and what governs — so implementers don't resurrect deleted paths while coding.
   - The spec PR is never merged: `fsd:implement-issue` closes it (unmerged, branch deleted) when implementation starts. Review history stays on the closed PR; the Linear document is the durable copy from then on. Merging would accumulate point-in-time spec docs on main that go stale as implementation deviates.
 - Why: Reviewing the spec before implementation catches design problems when they're cheapest to fix — a doc edit, not a code rewrite.
 

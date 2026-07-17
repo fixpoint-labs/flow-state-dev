@@ -24,7 +24,7 @@ Update policy:
 
 - A practice is established by **user review** (see the `fsd:distill-lessons`
   skill). Add it in the same change set as the code/docs adopting it.
-- Number sequentially after the last existing BP (currently BP-039). Append;
+- Number sequentially after the last existing BP (currently BP-041). Append;
   never overwrite or renumber.
 - A new **universal** BP goes in this file's Universal section *and* the
   `CLAUDE.md` mirror. A new **situational** BP goes in the matching
@@ -52,11 +52,12 @@ Update policy:
 ### BP-003: Verification evidence is mandatory
 
 - Status: Active
-- Date: 2026-02-15
+- Date: 2026-02-15 (updated 2026-07-17: discriminative pass criteria)
 - Scope: Universal — every claimed deliverable.
 - Rule:
   - Every claimed deliverable must have an evidence path and pass criteria, recorded on the change's spec / Linear issue.
-- Why: Eliminates ambiguous "done" — a deliverable isn't complete until something proves it.
+  - Pass criteria must **discriminate** the load-bearing behavior: the check should fail if the pre-change algorithm, a dangerous sibling path, or a no-op implementation were still in place (e.g. a headless goal that would pass under FIFO alone cannot stand in for specific-lot matching).
+- Why: Eliminates ambiguous "done" — a deliverable isn't complete until something proves it, including that the risky alternative didn't silently remain.
 
 ### BP-007: Concise API and file-level documentation
 
@@ -87,12 +88,13 @@ Update policy:
 ### BP-028: Fix the bug at the layer that owns it, not where it bit you
 
 - Status: Active
-- Date: 2026-06-27
+- Date: 2026-06-27 (updated 2026-07-17: ambient context on isomorphic boundaries)
 - Scope: Universal — applies to any change in any package; every agent should weigh it.
 - Rule:
   - When a failure forces a workaround at the call site — stripping an env var before spawning a subprocess, catching-and-massaging a framework error, guarding around a surprising default — treat that as a signal the bug likely lives one layer down. Before patching where it bit you, ask: "Which layer *owns* this behavior, and would fixing it there cure it for every caller?"
   - Push the fix to the owning layer whenever the same failure would recur for any other consumer in the same situation (another app on the framework, a shared/CI/automation environment, the next tool that spawns the same process). A workaround each caller has to repeat is a smell.
   - A leaf workaround is acceptable only when the owning layer genuinely can't change (third-party, or out of scope for the current work) — and then say so inline: document why the fix lives where it does.
+  - Validation that needs **ambient context** the caller doesn't have (target account currency, tenant, authenticated identity) belongs at the **owning server seam**, not duplicated in isomorphic parsers/dispatchers that also run in client preview without that context.
 - Why: A workaround at the call site leaves the bug live for every other caller; fixing the owning layer cures the whole class.
 
 ### BP-029: Prefer composing existing primitives over re-implementing what a tool already provides
@@ -143,7 +145,7 @@ Update policy:
 ### BP-035: Walk the second-path checklist before declaring a change done
 
 - Status: Active
-- Date: 2026-06-27
+- Date: 2026-06-27 (updated 2026-07-17: shared-seam guards and rollout gates)
 - Scope: Universal — review discipline for any change.
 - Rule:
   - For the changed surface, handle (or explicitly scope out) each path the change *touches but didn't add code for*:
@@ -154,6 +156,8 @@ Update policy:
     - Second tenant / account — keys scoped to the full tuple, derived from the authenticated identity (BP-031).
     - Cost / observability — any new model/tool call is counted in usage/cost and threads `ctx.signal`, matching the call beside it.
     - React derived state — flags derived from the *complete* input set; change-signals fire only on a *real* change (BP-010).
+    - **Sibling formats on a shared seam** — a reject/guard motivated by one import format or mode must not run on unrelated formats that share the same ingest path unless the spec explicitly widens scope.
+    - **Destructive rollout gates** — factor the allow/refuse decision into a pure function and unit-test every branch (empty, post-wipe, legacy-without-marker); don't leave it only in a script.
   - When a flag toggles behavior (`enabled: false`, a new mode), add the test for the off / new state in the same PR.
 - Why: The happy path is the part you thought about; the bugs hide in the paths the change implicitly touched but didn't add code for.
 
@@ -169,13 +173,33 @@ Update policy:
   - Same instinct at two altitudes: the spec-time necessity gate (`fsd:create-spec` Step 3.5) and the architecture-deepening pass (`fsd:improve-codebase-architecture`) — reach for them.
 - Why: An already-large framework stays maintainable only if new surface earns its keep and superseded surface is removed, not accumulated.
 
+### BP-040: Prefer honest unknowns over silent drops in allocation math
+
+- Status: Active
+- Date: 2026-07-17
+- Scope: Universal — quantity/money derivation, lot matching, ingest reconciliation, and similar allocation pipelines.
+- Rule:
+  - When consumption or matching cannot fully attribute an amount (partial lot, oversell against a keyed lot, missing basis/proceeds), surface an explicit unknown, partial, or unmatched row — never drop monetary proceeds or quantities silently.
+  - Mirror the same branch you already use for the analogous failure mode (e.g. FIFO oversell → unmatched disposal) so keyed and unkeyed paths stay honest consistently.
+- Why: Silent drops read as success in totals and tests; explicit unknowns preserve auditability and match user-visible honesty markers elsewhere in the pipeline.
+
+### BP-041: Centralize safety-critical predicates on shared seams
+
+- Status: Active
+- Date: 2026-07-17
+- Scope: Universal — invariants enforced at a shared boundary (ingest, dedup, authorization) from more than one caller.
+- Rule:
+  - When the same correctness predicate is inlined in multiple places on one seam (e.g. "is this event lot-keyed?"), extract one named helper beside the schema/contract it interprets and call it everywhere — a future field or definition change must not require hunting N copies.
+  - Apply especially when review flags duplication on the invariant the feature's safety hinges on.
+- Why: Inconsistent copies of one predicate fail only on the path nobody updated; one helper makes the seam definition single-sourced.
+
 ---
 
 ## Situational Practices — Index
 
 Full text lives in the category files. Open the file when working in that area.
 
-> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-040.
+> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-042.
 
 ### [Process & Docs](best-practices/process.md)
 
