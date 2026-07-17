@@ -33,6 +33,16 @@ describe("scorers", () => {
       expect(result).toEqual({ score: 1, passed: true, reason: undefined });
     });
 
+    it("passes when output has optional undefined fields omitted from expected", () => {
+      const scorer = exactMatch();
+      const result = scorer.score({
+        output: { a: 1, optional: undefined },
+        expected: { a: 1 },
+        input: {},
+      });
+      expect(result).toEqual({ score: 1, passed: true, reason: undefined });
+    });
+
     it("fails on mismatch", () => {
       const scorer = exactMatch();
       const result = scorer.score({

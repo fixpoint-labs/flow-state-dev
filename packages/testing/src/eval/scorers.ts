@@ -1,10 +1,19 @@
-import { deepEqual } from "@flow-state-dev/core/helpers";
+import { stableStringify } from "@flow-state-dev/core/helpers";
 import type { ZodTypeAny } from "zod";
 import type { Scorer, ScoreResult } from "./types";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** JSON-shaped eval equality: key-order independent, preserves JSON.stringify undefined omission; never throws. */
+function evalValuesEqual(a: unknown, b: unknown): boolean {
+  try {
+    return stableStringify(a) === stableStringify(b);
+  } catch {
+    return false;
+  }
+}
 
 function getField(obj: unknown, field: string): unknown {
   if (obj == null || typeof obj !== "object") return undefined;
@@ -42,7 +51,7 @@ export function exactMatch<TOutput = unknown>(field?: string): Scorer<TOutput> {
       }
       const a = field !== undefined ? getField(output, field) : output;
       const b = field !== undefined ? getField(expected, field) : expected;
-      return deepEqual(a, b)
+      return evalValuesEqual(a, b)
         ? passResult()
         : failResult(
             `Expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`,
@@ -107,7 +116,7 @@ export function jsonPath<TOutput = unknown>(
     name: `jsonPath(${path})`,
     score({ output }) {
       const value = resolvePath(output, path);
-      return deepEqual(value, expected)
+      return evalValuesEqual(value, expected)
         ? passResult()
         : failResult(
             `At path "${path}": expected ${JSON.stringify(expected)}, got ${JSON.stringify(value)}`,

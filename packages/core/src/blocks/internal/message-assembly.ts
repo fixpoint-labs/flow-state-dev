@@ -14,6 +14,7 @@ import type {
   PromptFileConfigView,
 } from "../../prompt/prompt-file";
 import type { CachingConfig } from "../../types/model";
+import { stableStringify } from "../../helpers/stable-stringify";
 
 /**
  * Post-resolution generator-config values exposed to PromptFile templates as
@@ -251,15 +252,4 @@ export function userMessageContentKey(msg: { content: unknown }): string {
   }
 }
 
-export function stableStringify(value: unknown): string | undefined {
-  return JSON.stringify(value, (_key, val) => {
-    if (val && typeof val === "object" && !Array.isArray(val)) {
-      const sorted: Record<string, unknown> = {};
-      for (const k of Object.keys(val as Record<string, unknown>).sort()) {
-        sorted[k] = (val as Record<string, unknown>)[k];
-      }
-      return sorted;
-    }
-    return val;
-  });
-}
+export { stableStringify } from "../../helpers/stable-stringify";
