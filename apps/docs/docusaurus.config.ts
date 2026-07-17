@@ -35,6 +35,10 @@ const config: Config = {
           editUrl:
             "https://github.com/fixpoint-labs/flow-state-dev/tree/main/implementation/apps/docs/",
         },
+        // Blog is intentionally unlisted, not disabled: posts still build and
+        // /blog/* stays reachable (e.g. the philosophy post), but the navbar
+        // and footer links are removed. Don't "fix" this by re-adding nav
+        // items — remove this block entirely if the blog should be dropped.
         blog: {
           showReadingTime: true,
           editUrl:
