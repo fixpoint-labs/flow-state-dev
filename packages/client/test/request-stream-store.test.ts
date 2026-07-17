@@ -210,6 +210,23 @@ describe("createRequestStreamStore — loadSnapshot", () => {
     expect(store.getSorted().map((i) => i.id)).toEqual(["a", "b"]);
   });
 
+  it("sorts snapshot items by ts and itemIndex regardless of input order", () => {
+    const store = createRequestStreamStore();
+    store.loadSnapshot([
+      makeItem({ id: "late", ts: 300, itemIndex: 0 }),
+      makeItem({ id: "early", ts: 100, itemIndex: 0 }),
+      makeItem({ id: "tie", ts: 200, itemIndex: 1 }),
+      makeItem({ id: "tie-first", ts: 200, itemIndex: 0 })
+    ]);
+
+    expect(store.getSorted().map((i) => i.id)).toEqual([
+      "early",
+      "tie-first",
+      "tie",
+      "late"
+    ]);
+  });
+
   it("rebuilds ownership index from snapshot", () => {
     const store = createRequestStreamStore();
     const items = [makeItem({ id: "a", ts: 100 }), makeItem({ id: "b", ts: 200 })];

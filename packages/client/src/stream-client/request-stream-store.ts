@@ -38,7 +38,7 @@ export type ContentDeltaAccumulator = {
  * status-event log. All methods are synchronous; no React state is touched.
  */
 export type RequestStreamStore = {
-  /** Replace all items with a pre-sorted snapshot. Rebuilds the ownership index. Leaves status/sequence/status-events untouched. */
+  /** Replace all items with a snapshot. Re-sorts by `ts` / `itemIndex` before indexing. Rebuilds the ownership index. Leaves status/sequence/status-events untouched. */
   loadSnapshot(items: OutputItem[]): void;
   /** Drop all items, sorted ids, ownership, pending deltas, and reset the status/sequence/status-event layer to a fresh stream. */
   clear(): void;
@@ -331,7 +331,8 @@ export function createRequestStreamStore(): RequestStreamStore {
       ownershipIndex = new Map<string, Set<string>>();
       deltaQueue.clear();
 
-      for (const item of items) {
+      const ordered = [...items].sort(compareItemOrder);
+      for (const item of ordered) {
         itemsById.set(item.id, item);
         sortedIds.push(item.id);
         trackOwnership(ownershipIndex, item);
