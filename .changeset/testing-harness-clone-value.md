@@ -1,5 +1,4 @@
 ---
-"@flow-state-dev/testing": patch
 ---
 
-Internal: test harness state cloning uses `cloneValue` from core helpers.
+Internal refactor: deduplicate clone helpers in test harness (no public API change).
