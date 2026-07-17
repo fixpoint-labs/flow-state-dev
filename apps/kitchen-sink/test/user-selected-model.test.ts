@@ -87,7 +87,17 @@ describe("persisted user selectedModel", () => {
     observeFixture.reset();
 
     const result = await testBlock(assistantGenerator, {
-      input: { message: "hello", mode: "ask", thinkingStyle: "auto" },
+      input: {
+        message: "hello",
+        mode: "ask",
+        thinkingStyle: "auto",
+        features: {
+          biasCheck: false,
+          search: true,
+          fetch: true,
+          crawl: false,
+        },
+      },
       flow: testFlow,
       user: {
         state: {
