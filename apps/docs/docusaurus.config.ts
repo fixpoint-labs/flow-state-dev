@@ -1,6 +1,6 @@
-import { themes as prismThemes } from "prism-react-renderer";
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
+import { earthyDark, earthyLight } from "./src/prismThemes";
 
 const config: Config = {
   title: "flow-state.dev",
@@ -59,17 +59,6 @@ const config: Config = {
           "https://github.com/fixpoint-labs/flow-state-dev/tree/main/implementation/apps/docs/",
       },
     ],
-    [
-      "@docusaurus/plugin-content-docs",
-      {
-        id: "thought-fabric",
-        path: "thought-fabric",
-        routeBasePath: "thought-fabric",
-        sidebarPath: "./sidebarsThoughtFabric.ts",
-        editUrl:
-          "https://github.com/fixpoint-labs/flow-state-dev/tree/main/implementation/apps/docs/",
-      },
-    ],
   ],
 
   themeConfig: {
@@ -93,14 +82,6 @@ const config: Config = {
           position: "left",
           label: "Guides",
         },
-        {
-          type: "docSidebar",
-          sidebarId: "thoughtFabricSidebar",
-          docsPluginId: "thought-fabric",
-          position: "left",
-          label: "Thought Fabric",
-        },
-        { to: "/blog", label: "Blog", position: "left" },
         {
           href: "https://github.com/fixpoint-labs/flow-state-dev",
           label: "GitHub",
@@ -127,16 +108,11 @@ const config: Config = {
               to: "/guides/building-a-chat-app",
             },
             { label: "Server Setup", to: "/docs/server/setup" },
-            {
-              label: "Thought Fabric",
-              to: "/thought-fabric/introduction",
-            },
           ],
         },
         {
           title: "More",
           items: [
-            { label: "Blog", to: "/blog" },
             {
               label: "GitHub",
               href: "https://github.com/fixpoint-labs/flow-state-dev",
@@ -147,8 +123,8 @@ const config: Config = {
       copyright: `Copyright ${new Date().getFullYear()} Fixpoint Labs, LLC. Built with Docusaurus.`,
     },
     prism: {
-      theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
+      theme: earthyLight,
+      darkTheme: earthyDark,
       additionalLanguages: ["bash", "json"],
     },
     colorMode: {
