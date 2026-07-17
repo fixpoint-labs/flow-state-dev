@@ -359,7 +359,7 @@ export function createRequestStreamStore(): RequestStreamStore {
 
       const sanitized: Record<string, unknown> = {};
       for (const key of Object.keys(patch)) {
-        if (ITEM_UPDATE_INVARIANT_KEYS.includes(key)) continue;
+        if ((ITEM_UPDATE_INVARIANT_KEYS as ReadonlyArray<string>).includes(key)) continue;
         sanitized[key] = patch[key];
       }
 
