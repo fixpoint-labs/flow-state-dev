@@ -35,4 +35,11 @@ describe("injectDevtoolConfig", () => {
     const out = injectDevtoolConfig(noHead, { userId: "owner" });
     expect(out.indexOf("__FSD_DEVTOOL_CONFIG__")).toBeLessThan(out.indexOf("</body>"));
   });
+
+  it("finds </head> case-insensitively without lowercasing the document", () => {
+    const mixedCase = "<html><HEAD><title>x</title></HEAD><body></body></html>";
+    const out = injectDevtoolConfig(mixedCase, { userId: "owner" });
+    expect(out).toContain("</HEAD>");
+    expect(out.indexOf("__FSD_DEVTOOL_CONFIG__")).toBeLessThan(out.indexOf("</HEAD>"));
+  });
 });

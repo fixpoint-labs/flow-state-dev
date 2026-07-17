@@ -3,6 +3,7 @@ import {
   readUserId,
   writeUserId,
   readBearerToken,
+  hasInjectedUserId,
   readActiveSession,
   writeActiveSession,
   readLastAction,
@@ -96,6 +97,16 @@ describe("config — localStorage helpers", () => {
     it("ignores a blank injected token", () => {
       setInjected({ bearerToken: "   " });
       expect(readBearerToken()).toBeUndefined();
+    });
+
+    it("hasInjectedUserId is true only for a non-blank injected userId", () => {
+      expect(hasInjectedUserId()).toBe(false);
+      setInjected({ bearerToken: "t" });
+      expect(hasInjectedUserId()).toBe(false);
+      setInjected({ userId: "owner" });
+      expect(hasInjectedUserId()).toBe(true);
+      setInjected({ userId: "  " });
+      expect(hasInjectedUserId()).toBe(false);
     });
   });
 
