@@ -154,6 +154,8 @@ Update policy:
     - Second tenant / account — keys scoped to the full tuple, derived from the authenticated identity (BP-031).
     - Cost / observability — any new model/tool call is counted in usage/cost and threads `ctx.signal`, matching the call beside it.
     - React derived state — flags derived from the *complete* input set; change-signals fire only on a *real* change (BP-010).
+    - **Sibling mutation paths** — a guard added on one entry point (`set`) must land on every op that mutates the same resource/subtree (`delete`, `deleteAll`, marker publish) in the same change.
+    - **Cached positive conclusions** — before a destructive op or stamping a durable version marker, re-run validation/scans; don't trust an instance memo from an earlier non-destructive read (another process or on-disk layout may have changed since).
   - When a flag toggles behavior (`enabled: false`, a new mode), add the test for the off / new state in the same PR.
 - Why: The happy path is the part you thought about; the bugs hide in the paths the change implicitly touched but didn't add code for.
 
@@ -175,7 +177,7 @@ Update policy:
 
 Full text lives in the category files. Open the file when working in that area.
 
-> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-040.
+> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-042.
 
 ### [Process & Docs](best-practices/process.md)
 
@@ -233,6 +235,8 @@ Full text lives in the category files. Open the file when working in that area.
 | BP | Rule |
 | --- | --- |
 | BP-026 | Bundle forwarded options into a `RuntimeConfig`-shaped struct, never drill |
+| BP-040 | Filesystem-backed persistence — symlink-safe on every segment and every op |
+| BP-041 | One shared factory, one parameterized conformance matrix |
 
 ---
 

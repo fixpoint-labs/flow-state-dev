@@ -270,7 +270,7 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **BP-030** Tolerate the old shape when you change a persisted/in-flight field — dual-read legacy records; reject removed keys loudly; `== null`-guard new nullable fields.
 - **BP-031** Never make auth/routing decisions from caller-controllable input — derive them from a trusted source (server-set identity, verified token, the framework's transport `source`), not `body`/`metadata`/query/headers.
 - **BP-034** Finish move/rename refactors — update provenance (headers, diagrams, doc anchors) and subpath re-exports, not just imports.
-- **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state paths; test the off/new state of any new flag.
+- **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state paths; sibling mutation paths; re-validate before destructive ops and durable markers; test the off/new state of any new flag.
 - **BP-038** Build the least that satisfies the spec; subtract before you add — no speculative surface (YAGNI), delete the path you supersede, minimize public API/options, prefer defaults over knobs.
 
 **Situational — open the category file when working in that area:**
@@ -279,7 +279,7 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **Generators & prompts** (`docs/contributing/best-practices/generators.md`): BP-016 outputSchemas OpenAI strict-compatible · BP-017 typed `context` slot for prompts · BP-018 shared prompt formatters in `lib/`.
 - **Resources & state** (`docs/contributing/best-practices/resources.md`): BP-015 `expose`/`exclude` over `data` projections · BP-019 resource refs in leaf modules · BP-020 live mode never falls back to fixtures · BP-021 `cacheable` declared deliberately · BP-023 state schemas `.nullable().default(null)` · BP-027 user-scoped resources default to shared · BP-033 filter at the source before you load (don't list-then-discard).
 - **React** (`docs/contributing/best-practices/react.md`): BP-010 `useMemo` over `useEffect`; derive flags from the complete input set; signal only on real change.
-- **Engine & transport** (`docs/contributing/best-practices/engine.md`): BP-026 bundle forwarded options into `RuntimeConfig`.
+- **Engine & transport** (`docs/contributing/best-practices/engine.md`): BP-026 bundle forwarded options into `RuntimeConfig` · BP-040 filesystem persistence symlink-safe on every segment/op · BP-041 shared factory → parameterized conformance matrix.
 - **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a Linear-linked spec) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs are versioned docs (`docs/specs/<ISSUE-ID>.md`) reviewed as a PR, synced with Linear · BP-039 specs lead with a plain-language summary (grok before diving deep).
 
 **Document new and changed user-facing functionality** (always)
