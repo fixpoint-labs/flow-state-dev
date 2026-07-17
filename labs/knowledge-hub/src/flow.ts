@@ -175,9 +175,9 @@ const createContext = handler({
       .string()
       .describe("The context id to pass as `contextId` on subsequent logActivity captures."),
   }),
-  // The session record IS the context record — the MCP `session: "ctx_*"`
-  // directive mints a fresh `ctx_…` session id for this call, and we stash the
-  // topic in that session's state (typed by `sessionStateSchema`).
+  // Types `ctx.session` so the topic description is a typed session field.
+  // (The "session record is the context record" rationale lives on the
+  // flow-level `session` config and the action's `mcp.session` wiring.)
   sessionStateSchema,
   execute: async (input, ctx) => {
     await ctx.session.setState({ description: input.description });

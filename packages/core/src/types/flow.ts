@@ -173,16 +173,22 @@ export interface ActionMcpConfig {
    *
    * - Omitted (default): stateless — every `tools/call` mints a fresh
    *   ephemeral session (v1 behavior).
-   * - `string`: a template for a freshly minted id. The first `*` is
-   *   replaced by a random token (`"ctx_*"` → `"ctx_1784…_a1b2"`); with no
-   *   `*` the token is appended. Use to hand the caller a reusable id whose
-   *   prefix names the concept (e.g. a "context").
+   * - `string`: a template for a freshly minted id. Only the FIRST `*` is
+   *   replaced by a random token (`"ctx_*"` → `"ctx_1784…_a1b2"`; extra `*`
+   *   stay literal); with no `*` the token is appended. Use to hand the caller
+   *   a reusable id whose prefix names the concept (e.g. a "context").
    * - `{ fromInput: <field> }`: use the string value at `input.<field>` as
    *   the sessionId, so a caller-supplied id groups calls into one session.
    *
    * Security: `fromInput` reads model-supplied input as a *flow* session key
    * (not the protocol `Mcp-Session-Id`, and never an auth/routing decision —
-   * the principal still comes from `resolvePrincipal`, BP-031).
+   * the principal still comes from `resolvePrincipal`, BP-031). Because the id
+   * is a bare, caller-controlled session key, `{ fromInput }` is safe only
+   * under a single server-trusted principal until caller-supplied keys are
+   * namespaced by principal: in a multi-user flow a caller could name another
+   * user's session id (the framework's user-binding check blocks the run, but
+   * bound the field length in your schema and namespace keys before exposing
+   * this to mutually-distrusting users). See the MCP server docs.
    */
   session?: string | { fromInput: string };
 }

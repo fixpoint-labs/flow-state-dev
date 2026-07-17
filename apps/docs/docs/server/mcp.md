@@ -327,11 +327,29 @@ for what a session holds.
 
 With `{ fromInput }` the id is model-supplied, so treat it as a grouping key
 only, never an auth or routing decision. The principal still comes from your
-[`resolvePrincipal`](#authentication), so a caller choosing a session id can
-only reach session state under its own resolved identity. If the field is
-missing or empty, the call falls back to a fresh ephemeral session and the
-action's own input schema decides whether that is an error. When a `fromInput`
-value becomes a literal storage key, bound its length in that schema.
+[`resolvePrincipal`](#authentication), and the framework's session user-binding
+check rejects a call whose caller identity does not match the stored session's
+owner — so an action cannot run against another principal's session state.
+
+Two caveats worth knowing before you use `{ fromInput }` beyond a single
+trusted principal:
+
+- **Single-principal until session keys are namespaced.** The id is used as a
+  bare flow session key. In a multi-user flow without distinct tenant prefixes,
+  a caller could pass another user's known id; the user-binding check blocks the
+  run, but a pre-dispatch metadata write (the session's auto-resume pointer) is
+  only tenant-guarded today, not user-guarded. Namespace caller-supplied session
+  keys by principal before exposing `{ fromInput }` to mutually-distrusting
+  users.
+- **The key is written before your schema validates.** The adapter derives the
+  session id and dispatches — persisting a session record keyed by that raw
+  value — *before* the action's input schema runs. So an oversized `fromInput`
+  value writes an oversized-keyed session even though the call is then rejected.
+  Bound the field's length in the action's input schema (the adapter does not
+  bound it for you).
+
+If the field is missing or empty, the call falls back to a fresh ephemeral
+session and the action's own input schema decides whether that is an error.
 
 ## Origin enforcement
 

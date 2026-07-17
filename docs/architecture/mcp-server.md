@@ -168,10 +168,19 @@ JSON-RPC error body with code `-32001`.
 
 ## v1 limitations
 
-- **Stateless only.** No `Mcp-Session-Id` is issued; every `tools/call`
-  runs in a fresh flow session under `host.dispatch`. The framework's
-  `RequestRecord` and item log still record the call. Stateful mode is
-  deferred until a real consumer asks for it.
+- **Stateless by default; opt-in per-action session derivation.** No
+  `Mcp-Session-Id` is issued. By default every `tools/call` runs in a fresh
+  ephemeral flow session under `host.dispatch`. An action MAY opt in to a
+  stable flow session via `ActionMcpConfig.session` (`packages/core`): a
+  string template mints a fresh id (`"ctx_*"`), or `{ fromInput: field }`
+  reads a caller-supplied id, so related calls group into one flow session.
+  The adapter derives the dispatch `sessionId` from that directive
+  (`createMcpTransportAdapter`); the id is a *flow* session key (not a
+  protocol session), and the principal still comes from `resolvePrincipal`.
+  A `fromInput` id is caller-controlled, so it is safe only under a single
+  server-trusted principal until caller-supplied session keys are
+  namespaced by principal (a documented follow-up). See
+  `apps/docs/docs/server/mcp.md` → "Deriving a session id per tool call."
 - **Single JSON tool result.** No `notifications/progress`, no
   `outputSchema`/`structuredContent`, no SSE response stream. Tool
   results are text content only — either the action's terminal output
@@ -179,9 +188,10 @@ JSON-RPC error body with code `-32001`.
   from the stream.
 - **`resources/list` returns the empty list.** The framework's resource
   model has no flow-bound scope yet (resources are session-, user-, or
-  org-scoped, all of which require a sessionId — which stateless MCP
-  doesn't carry). The hook is wired through and will surface entries
-  once the model grows a flow scope.
+  org-scoped). The hook is wired through and will surface entries once the
+  model grows a flow scope. (Session-scoped resources are reachable within a
+  call that opts into `mcp.session`, but `resources/list` itself is not yet
+  session-addressed.)
 - **`resources/subscribe`** returns `-32601` and the server advertises
   `capabilities.resources.subscribe: false` on `initialize`.
 - **No bundled OAuth.** Hosts own credential storage and verification.
