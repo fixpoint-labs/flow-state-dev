@@ -1,3 +1,4 @@
+import { deepEqual } from "@flow-state-dev/core/helpers";
 import type { ZodTypeAny } from "zod";
 import type { Scorer, ScoreResult } from "./types";
 
@@ -18,10 +19,6 @@ function resolvePath(obj: unknown, path: string): unknown {
     current = (current as Record<string, unknown>)[seg];
   }
   return current;
-}
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function passResult(reason?: string): ScoreResult {
