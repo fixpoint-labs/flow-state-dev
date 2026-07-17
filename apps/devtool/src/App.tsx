@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { DevToolPanel, readUserId, readBearerToken } from "@flow-state-dev/devtool/react";
+import {
+  DevToolPanel,
+  readUserId,
+  readBearerToken,
+  hasInjectedUserId,
+} from "@flow-state-dev/devtool/react";
 
 /**
  * Standalone DevTool shell. Resolves `userId` and `bearerToken` from the
@@ -9,15 +14,19 @@ import { DevToolPanel, readUserId, readBearerToken } from "@flow-state-dev/devto
  */
 export function App() {
   // Resolve on mount — these touch `window` (localStorage / injected global),
-  // unavailable during SSR. Pulling them into state keeps the hook usage
-  // explicit and lets us re-read on focus.
+  // unavailable during SSR. State holds boot-time values; userId re-syncs on
+  // focus only when identity is not injected from `fsdev.config.ts`.
   const [userId, setUserId] = useState(() => readUserId());
-  const [bearerToken, setBearerToken] = useState(() => readBearerToken());
+  const [bearerToken] = useState(() => readBearerToken());
 
   useEffect(() => {
     const onFocus = () => {
-      setUserId(readUserId());
-      setBearerToken(readBearerToken());
+      // Injected config is fixed until reload; re-reading it on focus would undo
+      // Settings edits. Bearer tokens are never persisted — only provider state —
+      // so focus must not re-read the injected global either.
+      if (!hasInjectedUserId()) {
+        setUserId(readUserId());
+      }
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);

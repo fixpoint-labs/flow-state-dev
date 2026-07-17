@@ -41,13 +41,15 @@ export function injectDevtoolConfig(
     .replace(/\u2029/g, "\\u2029");
   const tag = `<script>${GLOBAL} = ${json};</script>`;
 
-  const headClose = html.toLowerCase().indexOf("</head>");
-  if (headClose !== -1) {
-    return html.slice(0, headClose) + tag + html.slice(headClose);
+  const headClose = html.match(/<\/head>/i);
+  if (headClose?.index !== undefined) {
+    const at = headClose.index;
+    return html.slice(0, at) + tag + html.slice(at);
   }
-  const bodyClose = html.toLowerCase().indexOf("</body>");
-  if (bodyClose !== -1) {
-    return html.slice(0, bodyClose) + tag + html.slice(bodyClose);
+  const bodyClose = html.match(/<\/body>/i);
+  if (bodyClose?.index !== undefined) {
+    const at = bodyClose.index;
+    return html.slice(0, at) + tag + html.slice(at);
   }
   return html + tag;
 }

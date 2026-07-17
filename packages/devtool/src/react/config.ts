@@ -28,6 +28,12 @@ function readInjectedConfig(): InjectedConfig {
     : {};
 }
 
+/** True when `fsdev dev` injected a non-blank `userId` into the page global. */
+export function hasInjectedUserId(): boolean {
+  const injected = readInjectedConfig().userId;
+  return typeof injected === "string" && injected.trim().length > 0;
+}
+
 export function readUserId(): string {
   // The app-declared userId wins on boot (it's the identity a secured flow
   // expects); otherwise fall back to the operator's persisted choice.
