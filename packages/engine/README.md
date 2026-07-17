@@ -123,6 +123,20 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 
 `createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
 
+### DevTool connection (dev-only)
+
+`devtool?: { userId?, bearerToken? }` declares how `fsdev dev` should connect the DevTool UI to this app. `userId` is the session identity DevTool acts as; `bearerToken` is sent as `Authorization: Bearer` on every flow request, so a **bearer-gated flow** (one whose `resolvePrincipal` validates a shared secret) is debuggable through DevTool using its **real** authentication — no bypass.
+
+```ts
+createFlowState({
+  flows: { myFlow },
+  stores: { default: { primary: inMemoryStores() } },
+  devtool: { userId: "owner", bearerToken: process.env.MY_FLOW_SECRET },
+});
+```
+
+`fsdev dev` reads this off the sync `meta.devtool` getter (no store init) and injects it into the loopback DevTool page. It is **dev-only**: the token is exposed only to the loopback page `fsdev dev` serves, and production `serve`/deploy paths ignore it. The config type is exported as `DevToolConnectionConfig`. See the [DevTool setup guide](https://flow-state.dev/docs/devtool/setup).
+
 ## Lower-level: registry and router
 
 `createFlowApiRouter` and `createFlowRegistry` still exist for custom transports and advanced wiring. Most users want `createFlowState`. The sections below document the lower-level surface.
@@ -143,7 +157,7 @@ For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.p
 
 - **Action execution** — Validates input, resolves sessions, runs block pipelines, emits items
 - **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume. Resources declaring `client: { live: true }` emit their projected delta inline on each mutation so clients merge it without a refetch
-- **State persistence** — In-memory and filesystem store adapters with CAS-guarded atomic writes
+- **State persistence** — in-memory, filesystem, SQLite, and Postgres store adapters with CAS-guarded atomic writes
 - **Flow registry** — Register multiple flows, routes are derived automatically
 - **Error normalization** — All errors become typed `FlowError` instances with codes, retry signals, and scope context
 - **Structured logging** — Every action execution logs flow/action/block IDs, attempt numbers, timing, and summarized payloads
@@ -290,7 +304,7 @@ Read the value in a block via `ctx.session.identity.tenantId`. See the
 ```ts
 import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/engine";
 
-// Default: filesystem persistence
+// Default when no `stores` is passed: in-memory (dev/test only)
 const router = createFlowApiRouter({ registry });
 
 // Testing: in-memory (fast, no cleanup)
@@ -383,7 +397,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 
 **Stores:**
 - `createInMemoryStores` — Fast, ephemeral stores for testing
-- `createFilesystemStores` — Persistent stores for development and production
+- `createFilesystemStores` — Persistent stores for local development (not for production load; use SQLite or Postgres in production)
 - `createInMemoryContentStore` / `createFilesystemContentStore` — Content store adapters
 - `createInMemoryResourceStateStore` / `createFilesystemResourceStateStore` — Resource state store adapters
 - Scope store factories and CAS/state ops

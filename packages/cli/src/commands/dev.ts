@@ -15,6 +15,7 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createModelResolver,
+  type DevToolConnectionConfig,
   type FlowApiRouter,
   type FlowState,
 } from "@flow-state-dev/engine";
@@ -105,6 +106,10 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
   let flowNames: string[];
   let dataLine: string;
   let closeStores: (() => void) | undefined;
+  // DevTool connection config declared in the app's fsdev.config.ts (userId /
+  // bearer token). Only the config path has a FlowState to read it from; the
+  // discovery path serves a bare router with no such config.
+  let devtoolConfig: DevToolConnectionConfig | undefined;
 
   if (resolved.source === "config") {
     // --- config path: serve the app's own FlowState ---
@@ -136,6 +141,15 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     }
     flowNames = [...new Set(runtime.registry.list().map((f) => f.kind))];
     dataLine = `config: ${resolved.configPath}`;
+    // `meta` is a sync getter — no extra store init. Injected into the DevTool
+    // page by serve() so a secured flow is debuggable without hand-editing
+    // DevTool settings. Normalize an empty/blank-only `devtool` block to
+    // undefined so serve() leaves the static path byte-identical to production.
+    const declared = resolved.flowState.meta.devtool;
+    const hasField =
+      (declared?.userId?.trim().length ?? 0) > 0 ||
+      (declared?.bearerToken?.trim().length ?? 0) > 0;
+    devtoolConfig = hasField ? declared : undefined;
   } else {
     // --- discovery path: scan flows, build a router over local SQLite ---
     if (resolved.flows.length === 0) {
@@ -197,6 +211,7 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     host: "127.0.0.1",
     basePath: "/api/flows",
     staticDir: assetPath,
+    devtoolConfig,
     // The dev command owns shutdown, so opt out of serve's signal handlers and
     // drive a single teardown path below.
     handleSignals: false,

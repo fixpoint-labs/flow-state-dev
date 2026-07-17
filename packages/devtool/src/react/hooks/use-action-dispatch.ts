@@ -24,6 +24,7 @@ export function useActionDispatch(): UseActionDispatchResult {
         const result = await dispatchDevToolAction(flowKind, sessionId, action, input, {
           userId: config.userId,
           baseUrl,
+          bearerToken: config.bearerToken,
         });
         setLastResponse(result);
         return result;

@@ -21,8 +21,10 @@ import type { Server } from "node:http";
 import { serve as honoServe } from "@hono/node-server";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
-import type { FlowApiRouter, FlowState } from "@flow-state-dev/engine";
+import type { FlowApiRouter, FlowState, DevToolConnectionConfig } from "@flow-state-dev/engine";
 import { createServerApp } from "./app";
+import { injectDevtoolConfig } from "./devtool-config-injection";
+import { isLoopbackHost } from "./bind-guard";
 
 /** Options for {@link serve}. All have sensible defaults for PaaS hosting. */
 export interface ServeOptions {
@@ -36,6 +38,13 @@ export interface ServeOptions {
   healthPath?: string;
   /** Static asset dir served for non-API routes, with `index.html` SPA fallback. */
   staticDir?: string;
+  /**
+   * DevTool connection config to inject into the served `index.html` as
+   * `window.__FSD_DEVTOOL_CONFIG__` (userId / bearer token). Set only by
+   * `fsdev dev` from the app's `fsdev.config.ts`; the token is exposed only to
+   * the loopback page this dev server serves. Omit for production serving.
+   */
+  devtoolConfig?: DevToolConnectionConfig;
   /** SIGTERM/SIGINT grace window (ms) before connections are force-closed. Default 10000. */
   shutdownGraceMs?: number;
   /**
@@ -129,12 +138,31 @@ export function serve(
   //      including one that arrives during cold start.
   //   3. Anything still unmatched falls back to `index.html` (SPA routing).
   if (staticDir !== undefined) {
+    // Inject the DevTool connection config into every HTML response (both the
+    // real index.html and the SPA fallback) so the loopback DevTool page picks
+    // up userId/bearer on boot. Undefined for production serving.
+    //
+    // Enforce the loopback contract: the config can carry a bearer token, so it
+    // must never be injected on a network-exposed bind. Ignore it (with a
+    // warning) rather than publish a credential on every interface.
+    const devtoolConfig = options.devtoolConfig;
+    if (devtoolConfig !== undefined && !isLoopbackHost(host)) {
+      process.stderr.write(
+        `[flow-state] serve(): ignoring devtoolConfig on non-loopback host "${host}" — ` +
+          `it may carry a bearer token that must not be published on a network interface. ` +
+          `Bind a loopback host (127.0.0.1) to use DevTool config injection.\n`,
+      );
+    }
+    const htmlTransform =
+      devtoolConfig !== undefined && isLoopbackHost(host)
+        ? (html: string) => injectDevtoolConfig(html, devtoolConfig)
+        : undefined;
     honoApp.get("*", async (c) => {
-      const file = await serveStaticFile(c.req.path, staticDir);
+      const file = await serveStaticFile(c.req.path, staticDir, htmlTransform);
       if (file !== null) return file;
       const dedicated = await tryDedicatedRoute(c.req.raw);
       if (dedicated !== null) return dedicated;
-      return serveSpaIndex(staticDir);
+      return serveSpaIndex(staticDir, htmlTransform);
     });
   }
 
@@ -215,6 +243,7 @@ export function serve(
 async function serveStaticFile(
   pathname: string,
   staticDir: string,
+  htmlTransform?: (html: string) => string,
 ): Promise<Response | null> {
   let filePath: string;
   if (pathname === "/" || pathname === "") {
@@ -238,20 +267,31 @@ async function serveStaticFile(
     const ext = extname(filePath);
     const mimeType = MIME_TYPES[ext] ?? "application/octet-stream";
 
-    return new Response(content, { status: 200, headers: { "content-type": mimeType } });
+    const injected = ext === ".html" && htmlTransform !== undefined;
+    const body = injected ? htmlTransform(content.toString("utf8")) : content;
+    const headers: Record<string, string> = { "content-type": mimeType };
+    // The injected HTML may carry a bearer token — never let a browser or proxy
+    // cache the credential-bearing document.
+    if (injected) headers["cache-control"] = "no-store";
+    return new Response(body, { status: 200, headers });
   } catch {
     return null;
   }
 }
 
 /** SPA routing fallback: serve `index.html` for an unmatched client route, or 404. */
-async function serveSpaIndex(staticDir: string): Promise<Response> {
+async function serveSpaIndex(
+  staticDir: string,
+  htmlTransform?: (html: string) => string,
+): Promise<Response> {
   try {
     const content = await readFile(join(staticDir, "index.html"));
-    return new Response(content, {
-      status: 200,
-      headers: { "content-type": "text/html; charset=utf-8" },
-    });
+    const injected = htmlTransform !== undefined;
+    const body = injected ? htmlTransform(content.toString("utf8")) : content;
+    const headers: Record<string, string> = { "content-type": "text/html; charset=utf-8" };
+    // A bearer-bearing injected document must not be cached (see serveStaticFile).
+    if (injected) headers["cache-control"] = "no-store";
+    return new Response(body, { status: 200, headers });
   } catch {
     return new Response("Not found", { status: 404 });
   }

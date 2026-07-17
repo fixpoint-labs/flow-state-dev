@@ -28,7 +28,9 @@ vi.mock("../src/react/lib/client", () => ({
 }));
 
 vi.mock("../src/react/context/devtool-context", () => ({
-  useDevTool: () => ({ baseUrl: undefined }),
+  // The real context always carries `config`; the stream hook reads
+  // `config.bearerToken` to forward a bearer on the SSE request.
+  useDevTool: () => ({ baseUrl: undefined, config: { userId: "devuser" } }),
 }));
 
 import { useRequestStream } from "../src/react/hooks/use-request-stream";
