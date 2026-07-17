@@ -43,6 +43,7 @@ export type {
 export { createFlowState, isFlowState } from "./flowstate/createFlowState";
 export type {
   CreateFlowStateOptions,
+  DevToolConnectionConfig,
   FlowState,
   FlowStateModelsConfig,
   FlowStateRuntime,

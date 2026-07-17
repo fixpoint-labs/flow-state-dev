@@ -16,6 +16,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   type ReactNode,
 } from "react";
 import type { Client, FlowListEntry, RecoveryClient, SessionClient } from "@flow-state-dev/client";
@@ -44,6 +45,7 @@ type DevToolState = {
 
 type Action =
   | { type: "SET_CONFIG"; config: DevToolConfig; baseUrl: string | undefined }
+  | { type: "SYNC_EXTERNAL_CONFIG"; config: DevToolConfig; baseUrl: string | undefined }
   | { type: "SET_ACTIVE_FLOW"; flowKind: string | null }
   | { type: "SET_ACTIVE_SESSION"; sessionId: string | null }
   | { type: "SET_FLOWS"; flows: FlowListEntry[] }
@@ -53,8 +55,8 @@ type Action =
 function buildClients(config: DevToolConfig, baseUrl: string | undefined) {
   return {
     client: createDevToolClient(config, baseUrl),
-    sessionClient: createDevToolSessionClient(baseUrl),
-    recoveryClient: createDevToolRecoveryClient(baseUrl),
+    sessionClient: createDevToolSessionClient(baseUrl, config.bearerToken),
+    recoveryClient: createDevToolRecoveryClient(baseUrl, config.bearerToken),
   };
 }
 
@@ -63,6 +65,22 @@ function reducer(state: DevToolState, action: Action): DevToolState {
     case "SET_CONFIG": {
       const clients = buildClients(action.config, action.baseUrl);
       return { ...state, config: action.config, ...clients };
+    }
+    case "SYNC_EXTERNAL_CONFIG": {
+      // External prop sync (standalone-shell focus re-read, or a host swapping
+      // identity). Take the prop's userId, but keep the current bearer token
+      // when the prop asserts none: the ad-hoc token set via the Settings sheet
+      // lives only here (it's a credential we never persist to localStorage), so
+      // a userId-only prop change carrying `bearerToken: undefined` must not
+      // clobber it. A prop that DOES carry a token (an injected or host token)
+      // is authoritative and replaces. `setConfig` keeps its exact-set path, so
+      // clearing the token in Settings still works.
+      const config: DevToolConfig = {
+        ...action.config,
+        bearerToken: action.config.bearerToken ?? state.config.bearerToken,
+      };
+      const clients = buildClients(config, action.baseUrl);
+      return { ...state, config, ...clients };
     }
     case "SET_ACTIVE_FLOW":
       return { ...state, activeFlowKind: action.flowKind };
@@ -169,15 +187,31 @@ export function DevToolProvider({
     void refreshFlows();
   }, [refreshFlows]);
 
-  // Sync external `initialConfig`/`baseUrl` changes into state. The reducer's
-  // initializer only runs on mount, so without this the standalone shell's
-  // focus-driven re-read of localStorage (or a host swapping the userId
-  // prop) would be silently ignored. Skipped when nothing changed to avoid
-  // rebuilding the clients on every render.
+  // Propagate EXTERNAL config changes (a new `initialConfig`/`baseUrl` prop from
+  // the standalone shell's focus re-read or a host swapping identity/token) into
+  // state. `initialConfig` is memoized by the parent on `[userId, bearerToken]`,
+  // so its identity changes only on a real prop change — dispatch on that. We
+  // deliberately do NOT key off `state.config`: an in-panel Settings edit mutates
+  // `state.config` via `setConfig`, not the prop, so keying off it would revert
+  // the operator's edit back to the prop on the next run. The ref skips the
+  // redundant mount run (the reducer already seeded from `initialConfig`) and
+  // keeps this comparing values, not firing on identity alone (BP-010).
+  //
+  // Dispatch the SYNC_EXTERNAL_CONFIG merge (not SET_CONFIG): a focus re-read
+  // that changes only userId still carries `bearerToken: undefined` from the
+  // prop layer (the token is never persisted), so a plain SET_CONFIG would drop
+  // an ad-hoc Settings token on alt-tab. The merge keeps it.
+  const lastApplied = useRef({ config: initialConfig, baseUrl });
   useEffect(() => {
-    if (state.config.userId === initialConfig.userId) return;
-    dispatch({ type: "SET_CONFIG", config: initialConfig, baseUrl });
-  }, [initialConfig, baseUrl, state.config.userId]);
+    if (
+      lastApplied.current.config === initialConfig &&
+      lastApplied.current.baseUrl === baseUrl
+    ) {
+      return;
+    }
+    lastApplied.current = { config: initialConfig, baseUrl };
+    dispatch({ type: "SYNC_EXTERNAL_CONFIG", config: initialConfig, baseUrl });
+  }, [initialConfig, baseUrl]);
 
   // Sweep interrupted requests for the current user once on devtool mount.
   // Off by default for embedded panels — the host app may not want a panel

@@ -90,7 +90,8 @@ export type UseRequestStreamResult = {
 
 export function useRequestStream(options: UseRequestStreamOptions): UseRequestStreamResult {
   const { flowKind, requestId, startingAfter, lastEventId, enabled = true, reconnectToken, onSessionMetadataChanged } = options;
-  const { baseUrl } = useDevTool();
+  const { baseUrl, config } = useDevTool();
+  const bearerToken = config.bearerToken;
   const [streamState, setStreamState] = useState<StreamState | null>(null);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -217,7 +218,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         setError(err.message);
         setStreamStatus("disconnected");
       },
-    }, baseUrl);
+    }, baseUrl, bearerToken);
 
     handleRef.current = handle;
 
@@ -231,7 +232,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         rafRef.current = null;
       }
     };
-  }, [flowKind, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, close, scheduleFlush, flushNow, buildSnapshot, onSessionMetadataChanged]);
+  }, [flowKind, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, bearerToken, close, scheduleFlush, flushNow, buildSnapshot, onSessionMetadataChanged]);
 
   const items = useMemo(
     () => streamState

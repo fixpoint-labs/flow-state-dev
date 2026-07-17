@@ -56,4 +56,13 @@ export default createFlowState({
     dev: { primary: filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") }) },
   },
   defaultProfile: "dev",
+  // Let `fsdev dev` drive the bearer-gated flow through DevTool: the flow's
+  // resolver returns a fixed `owner` principal on a valid token, so DevTool
+  // creates its session as `owner` and forwards the same secret. With
+  // KH_MCP_SECRET unset the flow stays CLI-only (no token sent, resolver
+  // throws) — unchanged. The token reaches only the loopback DevTool page.
+  devtool: {
+    userId: "owner",
+    bearerToken: process.env.KH_MCP_SECRET,
+  },
 });

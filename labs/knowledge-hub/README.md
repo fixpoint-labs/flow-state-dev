@@ -47,6 +47,13 @@ KH_MCP_SECRET=... pnpm serve       # fsdev serve: authenticated MCP endpoint (PO
 KH_MCP_SECRET=... pnpm fsdev dev   # same endpoint plus the DevTool UI, for local inspection
 ```
 
+With the secret set, `pnpm fsdev dev` also drives the flow's own `logActivity` /
+`listInbox` actions **from DevTool** — the config's `devtool` block
+(`{ userId: "owner", bearerToken: process.env.KH_MCP_SECRET }`) makes DevTool
+create its session as `owner` and forward the secret as a bearer token, so the
+flow's real resolver accepts it. No secret means no token is sent and the flow
+stays CLI-only, unchanged.
+
 Both hosts serve the dedicated `/mcp/*` route: `serve()` from `@flow-state-dev/node`
 (which `fsdev serve` and `fsdev dev` both wrap) mounts dedicated adapter paths
 automatically, so no extra host wiring is needed.
