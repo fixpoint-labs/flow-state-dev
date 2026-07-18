@@ -37,6 +37,27 @@ const fixtureFlow = defineFlow({
   },
 })({ id: "test" });
 
+/**
+ * Freeze the analyzed ticker as an already-held position at a weight above any
+ * mandate target used here. The always-on FIX-781 evidence gate caps NEW exposure
+ * to the current position (`min(target, currentWeight)`) when evidence is thin, and
+ * it derives that scoped weight from this snapshot. Holding NVDA well above every
+ * target makes that no-add clamp inert, so these tests isolate the FIX-752 mandate
+ * gate rather than accidentally measuring the evidence gate (which two cases here
+ * deliberately trip with a thin/absent reward-to-risk figure).
+ */
+const HELD_PORTFOLIO = {
+  totalNav: 100000,
+  snapshotAsOf: null,
+  pricedHoldings: 1,
+  totalHoldings: 1,
+  health: null,
+  accounts: [{ id: "acc1", label: "Roth IRA", type: "Roth" as const, cash: 0 }],
+  holdings: [
+    { ticker: "NVDA", account: "acc1", weightPct: 100, marketValue: 100000, costBasis: 50000, sector: null },
+  ],
+};
+
 function baseState(riskMandate: unknown) {
   return {
     ticker: "NVDA",
@@ -47,6 +68,7 @@ function baseState(riskMandate: unknown) {
     maxDebateRounds: 1,
     runComplete: false,
     riskMandate,
+    portfolio: HELD_PORTFOLIO,
   };
 }
 
