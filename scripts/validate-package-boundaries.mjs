@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const rootDir = process.cwd();
-const packages = ["contracts", "core", "engine", "client", "react", "testing", "cli", "store-sqlite"];
+const packages = ["contracts", "core", "engine", "client", "react", "testing", "cli", "store-sqlite", "orchestration", "patterns", "workforce"];
 
 const packageRules = {
   // The zero-dependency shared layer: imports no workspace package. Its
@@ -46,6 +46,27 @@ const packageRules = {
     allow: new Set(["contracts", "core", "engine"]),
     typeOnly: new Set(["engine"]),
     deny: new Set(["client", "react"])
+  },
+  // Core-layer orchestration substrate: depends only on core. Must never
+  // import patterns or workforce — that would create a cycle with the two
+  // layers built on top of it.
+  orchestration: {
+    allow: new Set(["contracts", "core"]),
+    typeOnly: new Set([]),
+    deny: new Set(["engine", "client", "react", "patterns", "workforce"])
+  },
+  // Compositions built on the task board — may import orchestration, never
+  // workforce (a sibling layer, not a dependency).
+  patterns: {
+    allow: new Set(["contracts", "core", "orchestration"]),
+    typeOnly: new Set([]),
+    deny: new Set(["engine", "client", "react", "workforce"])
+  },
+  // Layer 2 on orchestration — may import orchestration, never patterns.
+  workforce: {
+    allow: new Set(["contracts", "core", "orchestration"]),
+    typeOnly: new Set([]),
+    deny: new Set(["engine", "client", "react", "patterns"])
   }
 };
 
