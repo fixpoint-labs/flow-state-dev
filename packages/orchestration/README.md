@@ -50,8 +50,8 @@ component item.
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 
-const collection = getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "plan" });
-await collection.addTask({ goal: "research the topic" });
+const collection = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "plan" });
+await collection.addTask({ id: "research", goal: "research the topic" });
 await collection.addTask({ goal: "draft the post", deps: ["research"] });
 ```
 
