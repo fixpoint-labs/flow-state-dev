@@ -13,10 +13,19 @@ This guide builds a small team of workers that research a subject together: anal
 **Concepts we'll cover:** worker blocks and `taskWorkerInputSchema`, the `taskBoard` factory, dependency gating with `deps`, reading upstream results off `input.deps`, runtime fan-out with a router, the same team as a `SKILL.md`, wiring the tool catalog, assigning work to a named agent, and letting an agent enqueue its own tasks.
 
 :::tip Full, runnable code
-Every worker, board, router, and a passing test suite for this guide lives in
-[`examples/guides/research-team`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team).
-The snippets here are trimmed for reading; open the example for the complete,
-tested source. Its workers are plain handlers so the tests run with no API keys.
+Every worker, board, router, `SKILL.md`, and a passing test suite for this
+guide lives in
+[`examples/guides/research-team`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team),
+wired into a `research-team` flow you can run with `fsdev`:
+
+```bash
+pnpm fsdev run research-team research -i '{}'
+pnpm fsdev run research-team researchCompetitors -i '{"subject":"Linear","competitors":["Jira","Asana","Trello"]}'
+```
+
+Those two actions use plain-handler workers, so they run — and their tests
+pass — with no API key. The snippets here are trimmed for reading; open the
+example for the complete, tested source.
 :::
 
 Everything here lives in `@flow-state-dev/orchestration`. If you haven't met the pieces underneath, [Task board](/docs/orchestration/task-board) and [Task substrate](/docs/orchestration/task-substrate) are the reference.
@@ -231,6 +240,13 @@ allowed-tools: [search, fetch]
 This skill runs a small team on a task board. The two analysts run in
 parallel; the primary synthesizer waits on both and writes the final brief.
 ```
+
+This skill — plus a dynamic `competitor-analysis` variant — ships in the
+example under [`src/skills/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/skills),
+with the worker prompts under each skill's `reference/` folder. The example's
+`chat` action carries the skills capability, so a model can dispatch them:
+`fsdev run research-team chat -i '{"message":"research ACME Corp"}'` (that path
+calls an LLM, so it needs an API key).
 
 ### Where `search` and `fetch` come from
 
