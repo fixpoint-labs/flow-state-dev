@@ -4,7 +4,7 @@
  * Each entry adapts a kebab-case `pattern-config` block declared in
  * `SKILL.md` frontmatter into the corresponding TypeScript factory
  * config. Adapters materialize worker generators via
- * `materializeWorker` from `@flow-state-dev/skills` and forward
+ * `materializeWorker` from `@flow-state-dev/orchestration` and forward
  * everything else to the underlying pattern factory.
  *
  * Out of scope: `responseAuditor` and `rlm` (not task-collection-shaped)
@@ -22,9 +22,9 @@ import {
   type PatternFactory,
   type PatternRegistry,
   type PatternRegistryDeps,
-} from "@flow-state-dev/skills";
-import type { TaskInit, TaskWorker, TaskWorkerRegistry } from "@flow-state-dev/tasks";
-import { taskBoard } from "./task-board";
+} from "@flow-state-dev/orchestration";
+import type { TaskInit, TaskWorker, TaskWorkerRegistry } from "@flow-state-dev/orchestration";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { planAndExecute } from "./plan-and-execute";
 import { supervisor } from "./supervisor";
 import { parallelTasks } from "./parallelTasks";

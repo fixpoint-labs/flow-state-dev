@@ -11,7 +11,7 @@
 import { sequencer, handler } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 import { supervisorStateSchema } from "../schemas";
 
 export interface CreateSynthesizeOptions {

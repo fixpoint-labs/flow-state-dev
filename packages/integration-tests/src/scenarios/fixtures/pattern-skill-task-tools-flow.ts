@@ -10,7 +10,7 @@
  * dispatch failure isolates to the capability-tool path itself.
  */
 import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
-import { taskTools } from "@flow-state-dev/skills";
+import { taskTools } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
 const inputSchema = z.object({ message: z.string() });

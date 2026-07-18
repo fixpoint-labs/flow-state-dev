@@ -56,10 +56,6 @@
       "types": "./dist/eventActors/index.d.ts",
       "default": "./src/eventActors/index.ts"
     },
-    "./task-board": {
-      "types": "./dist/task-board/index.d.ts",
-      "default": "./src/task-board/index.ts"
-    },
     "./round-robin": {
       "types": "./dist/round-robin/index.d.ts",
       "default": "./src/round-robin/index.ts"
@@ -107,10 +103,6 @@
         "types": "./dist/eventActors/index.d.ts",
         "default": "./dist/eventActors/index.js"
       },
-      "./task-board": {
-        "types": "./dist/task-board/index.d.ts",
-        "default": "./dist/task-board/index.js"
-      },
       "./round-robin": {
         "types": "./dist/round-robin/index.d.ts",
         "default": "./dist/round-robin/index.js"
@@ -127,8 +119,7 @@
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
-    "@flow-state-dev/skills": "workspace:*",
-    "@flow-state-dev/tasks": "workspace:*",
+    "@flow-state-dev/orchestration": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {

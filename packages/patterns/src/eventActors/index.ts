@@ -40,8 +40,8 @@ import {
   type TaskCollectionRef,
   type TaskWorkerInput,
   type TaskWorkerRegistry,
-} from "@flow-state-dev/tasks";
-import { taskBoard, taskWorkerInputSchema } from "../task-board";
+} from "@flow-state-dev/orchestration";
+import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { matchTopic } from "./match-topic";
 import {
   createEventActorsWorkspaceResource,

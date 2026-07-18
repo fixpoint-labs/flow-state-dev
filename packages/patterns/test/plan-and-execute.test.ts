@@ -852,7 +852,7 @@ describe("plan-and-execute pattern", () => {
       // to `taskBoard()` → `${configName}-board`. The pattern uses
       // `board.block.name` as its `loopBack` target so the loop re-
       // enters the same registered step on each iteration.
-      const { taskBoard } = await import("../src/task-board");
+      const { taskBoard } = await import("@flow-state-dev/orchestration/task-board");
       const board = taskBoard({
         name: "loopback-name-test-board",
         collection: { backing: "request", collectionId: "loopback-name-test" },

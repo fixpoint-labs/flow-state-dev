@@ -6,7 +6,7 @@
  * framework does not auto-match skills — the model decides when one applies.
  *
  * These types are exported from `@flow-state-dev/core` so other packages
- * (notably `@flow-state-dev/skills`, the runtime implementation) and user
+ * (notably `@flow-state-dev/orchestration`, the runtime implementation) and user
  * code can refer to a single source of truth.
  */
 

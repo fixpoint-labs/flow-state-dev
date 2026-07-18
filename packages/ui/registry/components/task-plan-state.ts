@@ -31,8 +31,8 @@ import {
 // Substrate-mirrored types
 //
 // Inlined to keep `@flow-state-dev/ui` registry-distributable without forcing
-// `@flow-state-dev/tasks` as a runtime dependency on every consumer. The
-// substrate's canonical types live in `@flow-state-dev/tasks/schema/task`;
+// `@flow-state-dev/orchestration` as a runtime dependency on every consumer. The
+// substrate's canonical types live in `@flow-state-dev/orchestration`;
 // keep these in sync with that schema.
 // ---------------------------------------------------------------------------
 
@@ -51,7 +51,7 @@ export type TaskStatus =
   | "cancelled"
   | (string & {});
 
-/** Mirror of `Task` from `@flow-state-dev/tasks`. Inlined to avoid the runtime dep. */
+/** Mirror of `Task` from `@flow-state-dev/orchestration`. Inlined to avoid the runtime dep. */
 export type Task = {
   id: string;
   goal: string;
@@ -133,7 +133,7 @@ export type TaskPlanState = {
 
 // ---------------------------------------------------------------------------
 // Component item type strings — duplicated from substrate to keep the registry
-// component free of `@flow-state-dev/tasks` / `@flow-state-dev/patterns`
+// component free of `@flow-state-dev/orchestration` / `@flow-state-dev/patterns`
 // imports at runtime.
 // ---------------------------------------------------------------------------
 

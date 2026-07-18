@@ -27,7 +27,7 @@ import {
   createSkillActivator,
   createSkillsCapability,
   readSkillsDirectory,
-} from "@flow-state-dev/skills";
+} from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactsCapability } from "../artifacts";

@@ -4,7 +4,7 @@
  * Two categories of names are reserved:
  *
  * 1. Framework-emitted tags. The only existing one is `active-skill`
- *    (emitted by `@flow-state-dev/skills`). Authors using this key would
+ *    (emitted by `@flow-state-dev/orchestration`). Authors using this key would
  *    silently collide with framework-injected content.
  * 2. Model-conditioned tags. Anthropic's training and tool-use protocol
  *    treat names like `thinking`, `tool_use`, `function_calls`, and the

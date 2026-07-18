@@ -41,7 +41,7 @@ import {
   getOrCreateTaskCollection,
   type Task,
   type TaskCollectionRef,
-} from "@flow-state-dev/tasks";
+} from "@flow-state-dev/orchestration";
 import {
   routedSpecialistsControlSchema,
   controllerOutputSchema,

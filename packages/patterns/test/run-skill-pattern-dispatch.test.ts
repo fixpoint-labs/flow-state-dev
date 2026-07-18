@@ -26,7 +26,7 @@ import { runForTest } from "@flow-state-dev/testing";
 import {
   createRunSkillTool,
   type ActiveSkillEntry,
-} from "@flow-state-dev/skills";
+} from "@flow-state-dev/orchestration";
 import { defaultPatternRegistry } from "../src/skill-registry";
 
 function buildCtx(opts: { sessionStateOverrides?: Record<string, unknown> } = {}) {

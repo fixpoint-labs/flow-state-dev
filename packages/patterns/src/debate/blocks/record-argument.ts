@@ -6,7 +6,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext, DefinedResource } from "@flow-state-dev/core/types";
-import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { coerceText } from "../../shared/coerce";
 import {

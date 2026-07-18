@@ -25,7 +25,7 @@ import { z } from "zod";
 import {
   getOrCreateTaskCollection,
   type TaskInit,
-} from "@flow-state-dev/tasks";
+} from "@flow-state-dev/orchestration";
 import { planAndExecuteStateSchema } from "../schemas";
 import type { TaskContextSupply } from "../../shared/planning-entry";
 

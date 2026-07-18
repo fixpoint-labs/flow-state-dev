@@ -10,7 +10,7 @@
  * Capture groups: `[1]` = command name, `[2]` = argument tail (may be `undefined`).
  *
  * Two consumers share this one pattern so their grammars can never drift:
- *   - `@flow-state-dev/skills` tier-1 slash match (`skill-slash-match.ts`), which
+ *   - `@flow-state-dev/orchestration` tier-1 slash match (`skill-slash-match.ts`), which
  *     resolves `/skill-name args` inside a running flow.
  *   - `@flow-state-dev/cli` `fsdev chat` parser, which classifies a typed line as a
  *     built-in command vs chat text; an unclaimed `/name` falls through to the flow,
