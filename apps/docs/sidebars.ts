@@ -207,7 +207,6 @@ const sidebars: SidebarsConfig = {
             "memory/hygiene",
           ],
         },
-        "ecosystem/thought-fabric-pointer",
         {
           type: "category",
           label: "Dev Experience",

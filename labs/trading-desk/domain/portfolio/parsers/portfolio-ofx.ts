@@ -241,6 +241,10 @@ function baseEvent(
     description: invtran ? str(invtran.MEMO) : null,
     basisUnknown: fields.basisUnknown,
     proceedsUnknown: fields.proceedsUnknown ?? null,
+    // OFX carries no lot identity — a FIFO feed (FIX-895). Both null so these rows
+    // behave bit-for-bit as before (unkeyed → FIFO derivation, unchanged).
+    lotKey: null,
+    closesLotKey: null,
   };
 }
 
@@ -625,6 +629,8 @@ function handleBankTran(ctx: Ctx, agg: OfxNode): void {
     description: str(stmt.NAME) ?? str(stmt.MEMO),
     basisUnknown: null,
     proceedsUnknown: null,
+    lotKey: null,
+    closesLotKey: null,
   });
 }
 

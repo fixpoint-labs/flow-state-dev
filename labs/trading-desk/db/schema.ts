@@ -161,6 +161,17 @@ export const ledgerEvents = appSchema.table(
     // derivation nulls proceeds/gain and excludes such a row rather than
     // fabricating a loss off a placeholder `amount:0`; null for a genuine sale.
     proceedsUnknown: text("proceeds_unknown"),
+    // Lot identity (FIX-895), additive + nullable. `lot_key` is the stable key of
+    // the lot a share-ADDING tax-lot event opens; `closes_lot_key` names the lot a
+    // share-REMOVING tax-lot disposal closes (null ⇒ FIFO). Both null for every
+    // existing feed (OFX / Plaid / manual), so those rows behave bit-for-bit as
+    // before. The linkage fields join `computeFingerprint` UNCONDITIONALLY (a
+    // sell's `lot_key` is null but its `closes_lot_key` distinguishes it), safe on
+    // a cleared ledger under the fresh-start wipe. The boundary rule (each field
+    // valid only on its matching share direction) is enforced at the zod refine
+    // AND the shared `assertShareEventInvariant`.
+    lotKey: text("lot_key"),
+    closesLotKey: text("closes_lot_key"),
     // Corporate-action payload (FIX-876) — the `{ numerator, denominator }` split
     // ratio for a `split` event, null for every other kind (enforced at the zod
     // boundary in `ledger-schema.ts`). A nullable jsonb column (the
@@ -314,3 +325,23 @@ export const taxProfiles = appSchema.table("tax_profiles", {
     .notNull()
     .default(sql`now()`),
 });
+
+/**
+ * One-time rollout markers (FIX-895) — a tiny audit table recording that a
+ * destructive, operator-run rollout step has been performed. Its only marker in
+ * v1 is the fresh-start ledger wipe (`ledger-reset` script): the lot-identity
+ * fingerprint recipe (`|lk|ck|`) is only safe on a cleared ledger, so the deploy
+ * migrator refuses to proceed when `ledger_events` still holds legacy rows and
+ * this marker is absent. Not a domain table — never read by the repository.
+ */
+export const rolloutMarkers = appSchema.table("rollout_markers", {
+  marker: text("marker").primaryKey(),
+  appliedAt: timestamp("applied_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .default(sql`now()`),
+});
+
+/** The `rollout_markers` row the fresh-start ledger wipe (`ledger-reset` script)
+ *  stamps and the deploy migrator checks for (FIX-895). Lives here — a
+ *  side-effect-free module — so both scripts share the one string. */
+export const FRESH_START_MARKER = "fresh-start-lotkey-fingerprint";

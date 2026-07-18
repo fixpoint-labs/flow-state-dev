@@ -88,9 +88,9 @@ mount (or an equivalent rewrite) before the dedicated URL is reachable.
 
 ## v1 Limitations
 
-- **Stateless only.** No `Mcp-Session-Id` is issued; every `tools/call` runs
-  in a fresh flow session. Stateful mode is deferred until a real consumer
-  asks for it.
+- **Stateless by default.** No `Mcp-Session-Id` is ever issued; every
+  `tools/call` runs in a fresh flow session unless the action opts in with
+  `mcp.session` (see [Deriving a session id per action](#deriving-a-session-id-per-action)).
 - **Single JSON tool result.** No `notifications/progress` streaming, no
   `outputSchema` / `structuredContent`. Tool results are text content only.
 - **`GET` and `DELETE`** on the endpoint return `405 Method Not Allowed`.
@@ -161,6 +161,30 @@ forwarded param only lands if the action's input schema accepts it (otherwise
 the normal zod boundary strips or rejects it). Only `tools/call` is affected;
 `initialize` / `tools/list` / `resources/*` and auth are untouched. Defaults to
 forwarding nothing.
+
+## Deriving a session id per action
+
+MCP is sessionless, so by default every `tools/call` mints a fresh flow
+session. The per-action `mcp.session` directive lets one action derive its
+dispatch session id, so a client can group related calls:
+
+```ts
+actions: {
+  // Template string → a freshly minted id (`*` is replaced by a random token,
+  // or appended when absent). The handler returns the id to the caller.
+  createConversation: { block: createConversation, mcp: { session: "conv_*" } },
+  // { fromInput } → the session id is the string at input.conversationId, so
+  // calls sharing a conversationId land in one session.
+  logActivity: { block: logActivity, mcp: { session: { fromInput: "conversationId" } } },
+}
+```
+
+This is a **flow** session id, not the protocol `Mcp-Session-Id`. It only
+selects which flow session state and history a call sees; the principal still
+comes from `resolvePrincipal`, so a `fromInput` id is a grouping key, never an
+auth decision. A missing/blank `fromInput` field falls back to a fresh
+ephemeral session. Bound the length of any `fromInput` field that becomes a
+storage key in the action's input schema.
 
 ## Status
 

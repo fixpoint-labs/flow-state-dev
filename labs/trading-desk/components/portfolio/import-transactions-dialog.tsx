@@ -13,8 +13,10 @@
  *
  * Parsing is async (the OFX tokenizer is), so the preview is computed in a file-
  * read handler and held in state — not a `useMemo` (BP-010: a `useMemo` can't
- * await). The `.csv` broker path is a follow-up (PR2); this dialog accepts OFX
- * files and reports a clear message for anything else.
+ * await). The dialog accepts the OFX family AND tax-lot CSVs (FIX-895); the
+ * client preview shows the detected format + counts, and the POST result (a
+ * `FileImportReport`) is rendered in place after submit — a one-source refusal
+ * (0 inserts + a conflicting-ticker warning) would otherwise close invisibly.
  */
 "use client";
 
@@ -24,6 +26,7 @@ import {
   detectAndParseTransactionFile,
   type TransactionFileParse,
 } from "@/domain/portfolio/parsers/transaction-file";
+import type { FileImportReport } from "@/domain/portfolio/schema/transaction-import-schema";
 import type { AccountState } from "@/domain/portfolio/schema/portfolio-schema";
 
 /** What the parent needs to dispatch `importTransactions`. `mode: "replace"`
@@ -42,8 +45,11 @@ type ImportTransactionsDialogProps = {
   accounts: AccountState[];
   /** The account selected by default (the currently-viewed account). */
   defaultAccountId: string | undefined;
-  /** Persist the import. Parent dispatches `importTransactions` + refetches. */
-  onSubmit: (submit: TransactionImportSubmit) => void;
+  /** Persist the import and RESOLVE with the server's `FileImportReport` (counts +
+   *  warnings). The dialog renders it in place — a one-source refusal is a normal
+   *  200 report (0 inserts + a conflict warning), not a throw. A genuine failure
+   *  (network / 500) rejects and surfaces as a submit error. */
+  onSubmit: (submit: TransactionImportSubmit) => Promise<FileImportReport>;
 };
 
 const inputClass = cn(
@@ -64,6 +70,11 @@ export function ImportTransactionsDialog({
   const [content, setContent] = useState("");
   const [filename, setFilename] = useState<string | null>(null);
   const [preview, setPreview] = useState<TransactionFileParse | null>(null);
+  // The server's post-submit report (rendered in place) + any hard failure.
+  // `result` staying null while `submitting` is the in-flight state.
+  const [result, setResult] = useState<FileImportReport | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   // Reset-account mode (FIX-876): a destructive full wipe, gated behind a typed
   // `REPLACE` confirmation (the CSV `replace-account` precedent).
   const [mode, setMode] = useState<"append" | "replace">("append");
@@ -87,6 +98,9 @@ export function ImportTransactionsDialog({
       setContent("");
       setFilename(null);
       setPreview(null);
+      setResult(null);
+      setSubmitting(false);
+      setSubmitError(null);
       setMode("append");
       setReplaceConfirm("");
     }
@@ -103,6 +117,9 @@ export function ImportTransactionsDialog({
     const token = ++parseToken.current;
     setContent("");
     setPreview(null);
+    // A new file supersedes any prior submit report/error.
+    setResult(null);
+    setSubmitError(null);
     setFilename(file.name);
     // A destructive REPLACE confirmation is tied to the exact account+file it was
     // typed for — a new file invalidates it (FIX-876 review).
@@ -134,12 +151,25 @@ export function ImportTransactionsDialog({
   // A replace requires the exact typed `REPLACE` confirmation before it can fire
   // (it destroys the account's manual entries — a real-money guard).
   const replaceConfirmed = mode === "append" || replaceConfirm.trim() === "REPLACE";
-  const canImport = accountId.length > 0 && eventCount > 0 && replaceConfirmed;
+  // Block a resubmit while one is in flight or after a report is shown (the report
+  // is terminal — choose a new file or close). A hard error stays retryable.
+  const canImport =
+    accountId.length > 0 && eventCount > 0 && replaceConfirmed && !submitting && result === null;
 
-  const handleSubmit = (): void => {
+  const handleSubmit = async (): Promise<void> => {
     if (!canImport) return;
-    onSubmit({ accountId, content, filename, mode });
-    onClose();
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      // Keep the dialog OPEN and render the report — a one-source refusal is a 200
+      // report (0 inserts + a conflict warning), invisible if we closed on submit.
+      const report = await onSubmit({ accountId, content, filename, mode });
+      setResult(report);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Import failed.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -158,9 +188,10 @@ export function ImportTransactionsDialog({
           <div>
             <h2 className="text-sm font-semibold">Import transactions</h2>
             <p className="mt-0.5 text-xs text-[color:var(--c-fg-muted)]">
-              Upload a brokerage transaction file (.ofx / .qfx / .qbo). Positions,
-              cost basis, and hold periods reconstruct from the imported trade
-              history. Re-importing is safe.
+              Upload a brokerage transaction file (.ofx / .qfx / .qbo) or a tax-lot
+              CSV (unrealized / realized). Positions, cost basis, and hold periods
+              reconstruct from the imported history. Re-importing is safe. Import
+              tax-lot CSVs into a fresh account dedicated to them.
             </p>
           </div>
           <button
@@ -205,7 +236,7 @@ export function ImportTransactionsDialog({
               Choose file
               <input
                 type="file"
-                accept=".ofx,.qfx,.qbo"
+                accept=".ofx,.qfx,.qbo,.csv"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.currentTarget.files?.[0];
@@ -327,27 +358,78 @@ export function ImportTransactionsDialog({
               ))}
             </div>
           ) : null}
+
+          {submitError !== null ? (
+            <p className="rounded-md border border-[color:var(--c-warn)] px-3 py-2 font-mono text-[10.5px] text-[color:var(--c-warn)]">
+              ⚠ {submitError}
+            </p>
+          ) : null}
+
+          {/* The server's post-submit report. A one-source conflict lands here as a
+              200 with 0 inserts + a warning (the refusal), NOT a thrown error — so
+              it must render, or the guidance is invisible. */}
+          {result !== null ? (
+            <div className="space-y-1.5 rounded-md border border-[color:var(--c-border)] bg-[color:var(--c-surface-2)] px-3 py-2">
+              <p className="font-mono text-[11px] text-[color:var(--c-fg)]">
+                Imported {result.inserted} · {result.deduplicated} already recorded
+                {result.inserted === 0 && result.warnings.length > 0
+                  ? " · nothing added"
+                  : ""}
+              </p>
+              {result.warnings.map((w, i) => (
+                <p
+                  key={i}
+                  className="font-mono text-[10.5px] text-[color:var(--c-warn)]"
+                >
+                  ⚠ {w}
+                </p>
+              ))}
+              {result.parseErrors.map((err, i) => (
+                <p
+                  key={i}
+                  className="font-mono text-[10.5px] text-[color:var(--c-fg-muted)]"
+                >
+                  • {err.reason}
+                </p>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-[color:var(--c-border)] px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded border border-[color:var(--c-border)] px-3 py-1 text-xs hover:bg-[color:var(--c-surface-2)]"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!canImport}
-            className={cn(
-              "rounded bg-[color:var(--c-accent)] px-3 py-1 text-xs font-medium text-white",
-              "hover:opacity-90 disabled:opacity-50",
-            )}
-          >
-            Import {eventCount > 0 ? eventCount : ""}
-          </button>
+          {result !== null ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className={cn(
+                "rounded bg-[color:var(--c-accent)] px-3 py-1 text-xs font-medium text-white",
+                "hover:opacity-90",
+              )}
+            >
+              Done
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded border border-[color:var(--c-border)] px-3 py-1 text-xs hover:bg-[color:var(--c-surface-2)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                disabled={!canImport}
+                className={cn(
+                  "rounded bg-[color:var(--c-accent)] px-3 py-1 text-xs font-medium text-white",
+                  "hover:opacity-90 disabled:opacity-50",
+                )}
+              >
+                {submitting ? "Importing…" : `Import ${eventCount > 0 ? eventCount : ""}`}
+              </button>
+            </>
+          )}
         </footer>
       </div>
     </dialog>

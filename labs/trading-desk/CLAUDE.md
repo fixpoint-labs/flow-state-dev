@@ -602,6 +602,27 @@ Two load-bearing decisions:
   skipped. Stock splits are the exception — they are now ingested (see below).
   The parser never fabricates a value to make a row land.
 
+### Tax-lot CSV (FIX-895)
+
+The second format on this path: brokerage **tax-lot CSVs** (an *unrealized*
+open-lots file and a *realized* closed-lots file), sniffed after OFX fails
+(`portfolio-tax-lot-csv.ts` → `detectTaxLotCsv` / `parseTaxLotCsv`). Unrealized
+rows become `buy`s; realized rows become linked `buy`+`sell` pairs that reproduce
+the exact disposal the broker reported. The load-bearing extension is **lot
+identity on the ledger**: a nullable `lotKey` on acquisitions and `closesLotKey`
+on disposals (`ledger_events` columns + `LedgerEventInput`), so `deriveLots`
+consumes the *specific* broker-matched lot instead of FIFO-guessing — FIFO stays
+the fallback for feeds that carry no lot identity. A **one-source-per-ticker seam**
+(`assertOneSourcePerTicker` in `db/repository.ts`) refuses mixing keyed and unkeyed
+share history for a ticker in either order, so tax-lot imports go into a **fresh,
+dedicated account**; a refusal renders as a normal `FileImportReport` (0 inserts +
+guidance). Because the lot fields join `computeFingerprint` unconditionally, the
+recipe is only safe on a cleared ledger — a **one-time fresh-start wipe** (`pnpm
+db:clean` in dev, `pnpm ledger-reset` on deploy, gated by a `rollout_markers`
+sentinel the deploy migrator checks) precedes it. The shared CSV primitives live
+in `parsers/csv-utils.ts` (both parsers import them, acyclically). Full grammar in
+[`docs/transaction-import-formats.md`](docs/transaction-import-formats.md).
+
 ## Stock splits / corporate actions (FIX-876)
 
 Positions are FIFO-derived from the ledger, and the ledger now models **stock

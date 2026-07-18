@@ -35,13 +35,28 @@ import { computeFingerprint } from "./mailroom";
  *  stay verbatim (`.trim().min(1)` would mutate, breaking the verbatim contract). */
 const nonBlank = (s: string) => s.trim().length > 0;
 
+/**
+ * Session state IS the conversation record — one source of truth for the
+ * conversation topic (no separate `conversations` collection).
+ * `createConversation` writes the description here; `null` for a session that
+ * was auto-vivified by a `logActivity` whose conversation was never explicitly
+ * opened (BP-023 nullable + default).
+ */
+const sessionStateSchema = z.object({
+  description: z.string().nullable().default(null),
+});
+
 /** The per-item shape `listInbox` returns — the fields an inspector needs, not
  *  the full record (the fingerprint and swept lifecycle stay internal). */
 const inboxItemSummarySchema = z.object({
   id: z.string(),
   kind: activityKindSchema,
   content: z.string(),
-  context: z.string(),
+  situation: z.string(),
+  // Nullable so a legacy record captured before conversationId existed lists as
+  // ungrouped rather than failing output validation (BP-030). New records
+  // always carry a real id.
+  conversationId: z.string().nullable(),
   capturedAt: z.string(),
   status: z.enum(["pending", "swept"]),
 });
@@ -49,6 +64,20 @@ const inboxItemSummarySchema = z.object({
 const logActivity = handler({
   name: "logActivity",
   inputSchema: z.object({
+    conversationId: z
+      .string()
+      .min(1)
+      // Bounds the stored conversationId to a sane length. NOTE: this does NOT
+      // bound the session KEY the MCP adapter derives from this field — that raw
+      // value reaches `host.dispatch` (which persists a session record) BEFORE
+      // this schema runs, so an oversized id still writes an oversized-keyed
+      // session before being rejected here. Hardening caller-supplied session
+      // keys is a deliberate promotion Non-Goal (spec §8). 200 fits a minted
+      // `conv_…` id (~35 chars) with headroom.
+      .max(200)
+      .describe(
+        "The conversation id returned by createConversation. Required — groups this capture into that conversation. If you have not opened a conversation, call createConversation first."
+      ),
     kind: activityKindSchema.describe(
       "What sort of mental activity this is. Best guess — a later review pass re-classifies."
     ),
@@ -60,11 +89,11 @@ const logActivity = handler({
       .describe(
         "The activity itself, verbatim — the thought, task, memory, goal, or decision as the owner expressed it."
       ),
-    context: z
+    situation: z
       .string()
       .min(1)
       .max(20_000)
-      .refine(nonBlank, "context must not be blank")
+      .refine(nonBlank, "situation must not be blank")
       .describe(
         "Required. The situation this arose in: what was being discussed, worked on, or happening when it came up. Summarize the surrounding conversation or activity."
       ),
@@ -116,7 +145,8 @@ const logActivity = handler({
     const record: InboxRecord = {
       kind: input.kind,
       content: input.content,
-      context: input.context,
+      situation: input.situation,
+      conversationId: input.conversationId,
       capturedAt,
       occurredAt: input.occurredAt,
       source: input.source,
@@ -125,6 +155,33 @@ const logActivity = handler({
     };
     const ref = await ctx.resources.inbox.create(key, record, { replace: true });
     return { id: inboxIdFromPath(ref.path), capturedAt, deduplicated: false };
+  },
+});
+
+const createConversation = handler({
+  name: "createConversation",
+  inputSchema: z.object({
+    description: z
+      .string()
+      .min(1)
+      .max(2_000)
+      .refine(nonBlank, "description must not be blank")
+      .describe(
+        "A short description or topic for this conversation — what it is about. Stored with the conversation so later passes know what was discussed."
+      ),
+  }),
+  outputSchema: z.object({
+    conversationId: z
+      .string()
+      .describe("The conversation id to pass as `conversationId` on subsequent logActivity captures."),
+  }),
+  // Types `ctx.session` so the topic description is a typed session field.
+  // (The "session record is the conversation record" rationale lives on the
+  // flow-level `session` config and the action's `mcp.session` wiring.)
+  sessionStateSchema,
+  execute: async (input, ctx) => {
+    await ctx.session.setState({ description: input.description });
+    return { conversationId: ctx.session.identity.id };
   },
 });
 
@@ -154,14 +211,26 @@ const listInbox = handler({
       .filter((r) => r.state.status === "pending")
       .sort((a, b) => b.state.capturedAt.localeCompare(a.state.capturedAt));
 
-    const items = pending.slice(0, input.limit).map((r) => ({
-      id: inboxIdFromPath(r.path),
-      kind: r.state.kind,
-      content: r.state.content,
-      context: r.state.context,
-      capturedAt: r.state.capturedAt,
-      status: r.state.status,
-    }));
+    const items = pending.slice(0, input.limit).map((r) => {
+      // Dual-read legacy rows (BP-030): before FIX-897's rename the per-capture
+      // text was stored under `context` (now `situation`), and rows had no
+      // `conversationId`. Map the old field forward so a single pre-rename
+      // capture never makes the whole inbox unreadable via output validation.
+      const legacy = r.state as {
+        situation?: string;
+        context?: string;
+        conversationId?: string | null;
+      };
+      return {
+        id: inboxIdFromPath(r.path),
+        kind: r.state.kind,
+        content: r.state.content,
+        situation: legacy.situation ?? legacy.context ?? "",
+        conversationId: legacy.conversationId ?? null,
+        capturedAt: r.state.capturedAt,
+        status: r.state.status,
+      };
+    });
 
     return {
       items,
@@ -192,11 +261,24 @@ const knowledgeHubFlow = defineFlow({
         },
   },
   mcp: { enabled: true },
+  // Session state doubles as the per-conversation record (description).
+  session: { stateSchema: sessionStateSchema },
   actions: {
+    createConversation: {
+      block: createConversation,
+      description:
+        "Open a conversation (a topic) before logging activity. Supply a short description of what the conversation is about; returns a conversationId to pass on every subsequent logActivity call so related captures are grouped together.",
+      // Mint a fresh `conv_…` session id for this call and hand it back as the
+      // conversationId — the session record becomes the conversation record.
+      mcp: { session: "conv_*" },
+    },
     logActivity: {
       block: logActivity,
       description:
-        "Log a piece of the owner's mental activity — a thought, journal fragment, task, memory, goal, decision, or topic of interest — into the knowledge inbox. Use whenever the owner says something worth remembering or acting on. Always include the context it arose in.",
+        "Log a piece of the owner's mental activity — a thought, journal fragment, task, memory, goal, decision, or topic of interest — into the knowledge inbox. Use whenever the owner says something worth remembering or acting on. Always include the situation it arose in, and the conversationId from createConversation.",
+      // Route this capture into the session named by the caller's `conversationId`,
+      // so captures sharing a conversationId land in one session and are grouped.
+      mcp: { session: { fromInput: "conversationId" } },
     },
     listInbox: {
       block: listInbox,

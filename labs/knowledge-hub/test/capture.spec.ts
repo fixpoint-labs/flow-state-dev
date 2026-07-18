@@ -14,7 +14,16 @@ const USER = "owner";
 type Stores = ReturnType<typeof createInMemoryStores>;
 
 function capture(stores: Stores, input: Record<string, unknown>) {
-  return testFlow({ flow: knowledgeHubFlow, action: "logActivity", userId: USER, stores, input });
+  // Default a conversationId (now required) so these FIX-882 behaviours — which test
+  // kind/content/situation dedup, not grouping — keep asserting the same thing.
+  // A test that cares about the conversation id overrides it.
+  return testFlow({
+    flow: knowledgeHubFlow,
+    action: "logActivity",
+    userId: USER,
+    stores,
+    input: { conversationId: "conv_test", ...input },
+  });
 }
 
 function list(stores: Stores, input: Record<string, unknown> = {}) {
@@ -32,11 +41,11 @@ beforeEach(() => {
 });
 
 describe("logActivity", () => {
-  it("creates a pending record carrying kind, verbatim content, context, capturedAt, and a fingerprint (behaviour 1)", async () => {
+  it("creates a pending record carrying kind, verbatim content, situation, capturedAt, and a fingerprint (behaviour 1)", async () => {
     const result = await capture(stores, {
       kind: "task",
       content: "Book dentist appointment",
-      context: "Mentioned while planning the week in a Claude conversation",
+      situation: "Mentioned while planning the week in a Claude conversation",
     });
 
     expect(result.status).toBe("completed");
@@ -50,7 +59,7 @@ describe("logActivity", () => {
     const record = records[0];
     expect(record.kind).toBe("task");
     expect(record.content).toBe("Book dentist appointment");
-    expect(record.context).toBe("Mentioned while planning the week in a Claude conversation");
+    expect(record.situation).toBe("Mentioned while planning the week in a Claude conversation");
     expect(record.status).toBe("pending");
     expect(typeof record.capturedAt).toBe("string");
     expect(record.fingerprint).toMatch(/^[0-9a-f]{64}$/);
@@ -58,33 +67,33 @@ describe("logActivity", () => {
     expect(record.source).toBeNull();
   });
 
-  it("rejects a missing context and the error names the field (behaviour 2)", async () => {
+  it("rejects a missing situation and the error names the field (behaviour 2)", async () => {
     const result = await capture(stores, { kind: "thought", content: "A stray idea" });
     expect(result.status).not.toBe("completed");
-    expect(result.error?.message).toMatch(/context/);
+    expect(result.error?.message).toMatch(/situation/);
     expect(Object.keys(await storedRecords(stores))).toHaveLength(0);
   });
 
-  it("rejects whitespace-only content or context (behaviour 3)", async () => {
-    const blankContent = await capture(stores, { kind: "thought", content: "   ", context: "ctx" });
+  it("rejects whitespace-only content or situation (behaviour 3)", async () => {
+    const blankContent = await capture(stores, { kind: "thought", content: "   ", situation: "ctx" });
     expect(blankContent.status).not.toBe("completed");
-    const blankContext = await capture(stores, { kind: "thought", content: "c", context: "  \t " });
+    const blankContext = await capture(stores, { kind: "thought", content: "c", situation: "  \t " });
     expect(blankContext.status).not.toBe("completed");
     expect(Object.keys(await storedRecords(stores))).toHaveLength(0);
   });
 
   it("stores leading/trailing whitespace verbatim when the value is non-blank (behaviour 3)", async () => {
-    await capture(stores, { kind: "thought", content: "  padded thought  ", context: "  padded ctx  " });
+    await capture(stores, { kind: "thought", content: "  padded thought  ", situation: "  padded ctx  " });
     const record = Object.values(await storedRecords(stores))[0];
     expect(record.content).toBe("  padded thought  ");
-    expect(record.context).toBe("  padded ctx  ");
+    expect(record.situation).toBe("  padded ctx  ");
   });
 
   it("treats an exact retry as a dedup — same id, no new record (behaviour 4)", async () => {
     const input = {
       kind: "decision",
       content: "Ship FIX-882 this week",
-      context: "Sprint planning",
+      situation: "Sprint planning",
     };
     const first = await capture(stores, input);
     const retry = await capture(stores, input);
@@ -98,15 +107,15 @@ describe("logActivity", () => {
     expect(Object.keys(await storedRecords(stores))).toHaveLength(1);
   });
 
-  it("keeps same content under a different context as two records (behaviour 5)", async () => {
-    await capture(stores, { kind: "task", content: "Follow up with Sam", context: "Standup" });
-    await capture(stores, { kind: "task", content: "Follow up with Sam", context: "1:1 with Sam" });
+  it("keeps same content under a different situation as two records (behaviour 5)", async () => {
+    await capture(stores, { kind: "task", content: "Follow up with Sam", situation: "Standup" });
+    await capture(stores, { kind: "task", content: "Follow up with Sam", situation: "1:1 with Sam" });
     expect(Object.keys(await storedRecords(stores))).toHaveLength(2);
   });
 
-  it("keeps same content + context under a different kind as two records (behaviour 6)", async () => {
-    await capture(stores, { kind: "task", content: "Renew passport", context: "Trip planning" });
-    await capture(stores, { kind: "memory", content: "Renew passport", context: "Trip planning" });
+  it("keeps same content + situation under a different kind as two records (behaviour 6)", async () => {
+    await capture(stores, { kind: "task", content: "Renew passport", situation: "Trip planning" });
+    await capture(stores, { kind: "memory", content: "Renew passport", situation: "Trip planning" });
     expect(Object.keys(await storedRecords(stores))).toHaveLength(2);
   });
 
@@ -114,7 +123,7 @@ describe("logActivity", () => {
     // The retry guarantee is bounded to the pending window: once the sweeper has
     // placed (swept) a record, an identical re-capture is a NEW mental event, not
     // a dedup — a fresh pending record replaces the swept copy at the same key.
-    const input = { kind: "task", content: "Renew passport", context: "Trip planning" };
+    const input = { kind: "task", content: "Renew passport", situation: "Trip planning" };
     await capture(stores, input);
     const [path, record] = Object.entries(await storedRecords(stores))[0];
     await stores.resourceState.set("user", USER, path, { ...record, status: "swept" });
@@ -144,11 +153,11 @@ describe("listInbox (behaviour 7)", () => {
     // sub-millisecond captures.
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-10T09:00:00.000Z"));
-    await capture(stores, { kind: "task", content: "oldest", context: "c" });
+    await capture(stores, { kind: "task", content: "oldest", situation: "c" });
     vi.setSystemTime(new Date("2026-07-10T10:00:00.000Z"));
-    await capture(stores, { kind: "goal", content: "middle", context: "c" });
+    await capture(stores, { kind: "goal", content: "middle", situation: "c" });
     vi.setSystemTime(new Date("2026-07-10T11:00:00.000Z"));
-    await capture(stores, { kind: "thought", content: "newest", context: "c" });
+    await capture(stores, { kind: "thought", content: "newest", situation: "c" });
 
     const result = await list(stores);
     const output = result.output as {
@@ -162,8 +171,8 @@ describe("listInbox (behaviour 7)", () => {
   });
 
   it("filters by kind via the key prefix", async () => {
-    await capture(stores, { kind: "task", content: "a task", context: "c" });
-    await capture(stores, { kind: "goal", content: "a goal", context: "c" });
+    await capture(stores, { kind: "task", content: "a task", situation: "c" });
+    await capture(stores, { kind: "goal", content: "a goal", situation: "c" });
     const result = await list(stores, { kind: "task" });
     const output = result.output as { items: { kind: string }[]; totalPending: number };
     expect(output.items).toHaveLength(1);
@@ -173,7 +182,7 @@ describe("listInbox (behaviour 7)", () => {
 
   it("respects limit while totalPending reports the full count", async () => {
     for (let i = 0; i < 5; i++) {
-      await capture(stores, { kind: "thought", content: `thought ${i}`, context: "c" });
+      await capture(stores, { kind: "thought", content: `thought ${i}`, situation: "c" });
     }
     const result = await list(stores, { limit: 2 });
     const output = result.output as { items: unknown[]; totalPending: number };
@@ -182,7 +191,7 @@ describe("listInbox (behaviour 7)", () => {
   });
 
   it("excludes swept records from items and totalPending", async () => {
-    await capture(stores, { kind: "task", content: "to be swept", context: "c" });
+    await capture(stores, { kind: "task", content: "to be swept", situation: "c" });
     // Simulate the FIX-883 sweeper marking the record swept, in place.
     const [path, record] = Object.entries(await storedRecords(stores))[0];
     await stores.resourceState.set("user", USER, path, { ...record, status: "swept" });

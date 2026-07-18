@@ -498,6 +498,8 @@ function mapLedgerRow(row: typeof ledgerEvents.$inferSelect): LedgerRow {
     description: row.description,
     basisUnknown: row.basisUnknown,
     proceedsUnknown: row.proceedsUnknown,
+    lotKey: row.lotKey,
+    closesLotKey: row.closesLotKey,
     attributes: parseSplitAttributes(row),
     voidedAt: row.voidedAt === null ? null : new Date(row.voidedAt).toISOString(),
     createdAt: new Date(row.createdAt).toISOString(),
@@ -605,7 +607,15 @@ function computeFingerprint(e: LedgerEventInput): string {
   // both blank-FITID). A genuine row (marker null) keeps the exact pre-FIX-874
   // hash — no fingerprint-recompute migration, back-compat by construction.
   const withMarker = e.proceedsUnknown !== null ? `${norm}|pu:${e.proceedsUnknown}` : norm;
-  return createHash("sha256").update(withMarker).digest("hex");
+  // Lot identity (FIX-895) joins the recipe UNCONDITIONALLY — both fields, because
+  // a sell's `lotKey` is null but its `closesLotKey` is what distinguishes it (two
+  // same-date/qty/proceeds sells of DIFFERENT lots must not dedup-collide under
+  // the unconditional `(account_id, fingerprint)` index). Unkeyed rows (both empty)
+  // hash with a fixed `|lk:|ck:` suffix; that differs from the pre-FIX-895 recipe,
+  // which is safe ONLY on a cleared ledger — the one-time fresh-start wipe is the
+  // rollout gate (spec §0 D6), NOT a branch here.
+  const withLinkage = `${withMarker}|lk:${e.lotKey ?? ""}|ck:${e.closesLotKey ?? ""}`;
+  return createHash("sha256").update(withLinkage).digest("hex");
 }
 
 /** Canonicalize a currency to an uppercase ISO-4217-shaped code, so the tax
@@ -635,8 +645,22 @@ function normalizeCurrency(raw: string): string {
  *   forms no lot, so a later sale becomes an unmatched disposal).
  * - `buy` is `+qty`, `sell` is `−qty`; `transfer` may be either sign (an OFX
  *   transfer-in is `+`, an out is `−`).
+ * - Lot identity (FIX-895) travels only in its matching share direction: `lotKey`
+ *   (opens a lot) only on a share-adding event (`quantity > 0`); `closesLotKey`
+ *   (closes a lot) only on a share-removing event (`quantity < 0`); both null on
+ *   cash events and splits. This mirrors the zod refine's rule so the file path
+ *   (which bypasses zod) can't persist a malformed lot pairing.
  */
 function assertShareEventInvariant(e: LedgerEventInput): void {
+  // Lot-linkage boundary (FIX-895) — checked first so it's independent of the
+  // quantity-null cash/transfer branches below. `!= null` catches a null quantity
+  // too (a cash event or split carrying a lot key), rejecting it.
+  if (e.lotKey != null && !(e.quantity != null && e.quantity > 0)) {
+    throw new Error("lotKey is only valid on a share-adding event (positive quantity).");
+  }
+  if (e.closesLotKey != null && !(e.quantity != null && e.quantity < 0)) {
+    throw new Error("closesLotKey is only valid on a share-removing event (negative quantity).");
+  }
   if (e.quantity === null) {
     // A `buy`/`sell` with no quantity would persist as a phantom cash event —
     // `deriveLots` forms no lot, so positions AND realized gains silently omit
@@ -908,7 +932,11 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
     // earlier oversell self-heals the row).
     await upsertMaterializedHolding(tx, accountId, ticker, {
       quantity: String(p.quantity),
-      costBasis: p.avgCost === null ? null : String(p.avgCost),
+      // D5 (FIX-895): when any open IMPORTED (keyed) lot lacks basis, persist a
+      // null aggregate basis rather than a partial average of only the known lots
+      // — an imported tax-lot position with one basis-unknown lot is honestly
+      // unknown, not partly-priced. Unkeyed FIFO feeds keep their partial average.
+      costBasis: p.avgCost === null || p.hasUnknownKeyedBasis ? null : String(p.avgCost),
       acquiredDate: p.acquiredDate,
       dataQuality: null,
     });
@@ -937,6 +965,108 @@ async function materializePositions(tx: Tx, accountId: string): Promise<void> {
       .set({ costBasis: null, acquiredDate: null, dataQuality: null, updatedAt: sql`now()` })
       .where(and(eq(holdings.accountId, accountId), inArray(holdings.ticker, tickers)));
   }
+}
+
+/**
+ * The one-source-per-ticker seam was violated (FIX-895): within an account, a
+ * ticker's share-moving events must be all tax-lot **keyed** or all feed
+ * **unkeyed**, never mixed (see {@link assertOneSourcePerTicker}). Thrown from
+ * inside the ingest transaction so the whole batch rolls back; caught by
+ * `importTransactionFile` (→ a rendered refusal report) and surfaced by
+ * `recordManualEvent` as a visible error. Carries the offending ticker(s) so the
+ * caller can name them and point at the fresh-account fix.
+ */
+export class OneSourceConflictError extends Error {
+  readonly tickers: string[];
+  constructor(tickers: string[]) {
+    super(
+      `One-source-per-ticker conflict for ${tickers.join(", ")}: a ticker's share ` +
+        `history must be all tax-lot-keyed or all feed-unkeyed, never mixed.`,
+    );
+    this.name = "OneSourceConflictError";
+    this.tickers = tickers;
+  }
+}
+
+/**
+ * Enforce the symmetric one-source-per-ticker seam invariant (FIX-895) on the
+ * shared ingest boundary — every writer (import, manual, future Plaid) funnels
+ * here. Within an `(account, ticker)`, share-moving events (`quantity != null` —
+ * buy/sell/transfer; `deriveLots` is sign-driven) must be all **keyed** (a tax-lot
+ * lot identity) or all **unkeyed** (a FIFO feed). **Keyedness is `lotKey ??
+ * closesLotKey != null`** — a realized sell carries only `closesLotKey` (its
+ * `lotKey` is null), so a bare `lotKey`-null test would misclassify every disposal
+ * as unkeyed and refuse the unrealized half of the very same paired import.
+ *
+ * Rejects (throws {@link OneSourceConflictError}, rolling back the batch) when
+ * either (1) the incoming batch itself mixes keyed + unkeyed share events for one
+ * ticker, or (2) an incoming share event's keyedness conflicts with that ticker's
+ * existing **non-voided** history. The history predicate is `voided_at IS NULL`: a
+ * voided tombstone keeps its linkage fields but is excluded from `deriveLots`, so
+ * counting it would permanently block a legitimate void-then-reimport of the other
+ * source. Same-kind (keyed onto keyed — e.g. realized-after-unrealized — or
+ * unkeyed onto unkeyed) is never a conflict. The caller acquires the per-account
+ * advisory lock BEFORE calling this, so two concurrent imports of the same empty
+ * ticker can't both pass the history read and land a keyed + an unkeyed batch.
+ */
+async function assertOneSourcePerTicker(tx: Tx, events: LedgerEventInput[]): Promise<void> {
+  const SEP = " ";
+  type Group = { keyed: boolean; unkeyed: boolean; accountId: string; ticker: string };
+  const incoming = new Map<string, Group>();
+  for (const e of events) {
+    // Share-moving only. `assertShareEventInvariant` already ran on every event,
+    // so a quantity-bearing row is guaranteed a non-null ticker here.
+    if (e.quantity === null || e.ticker === null) continue;
+    const gk = `${e.accountId}${SEP}${e.ticker}`;
+    const g = incoming.get(gk) ?? { keyed: false, unkeyed: false, accountId: e.accountId, ticker: e.ticker };
+    if ((e.lotKey ?? e.closesLotKey) != null) g.keyed = true;
+    else g.unkeyed = true;
+    incoming.set(gk, g);
+  }
+  if (incoming.size === 0) return;
+
+  const conflicts = new Set<string>();
+  // (1) In-batch: a single (account, ticker) group mixing keyed + unkeyed — caught
+  // even with no existing history (the empty-ticker case).
+  for (const g of incoming.values()) {
+    if (g.keyed && g.unkeyed) conflicts.add(g.ticker);
+  }
+
+  // (2) Vs the ticker's existing NON-VOIDED share history.
+  const accountIds = [...new Set([...incoming.values()].map((g) => g.accountId))];
+  const tickers = [...new Set([...incoming.values()].map((g) => g.ticker))];
+  const historyRows = await tx
+    .select({
+      accountId: ledgerEvents.accountId,
+      ticker: ledgerEvents.ticker,
+      lotKey: ledgerEvents.lotKey,
+      closesLotKey: ledgerEvents.closesLotKey,
+    })
+    .from(ledgerEvents)
+    .where(
+      and(
+        inArray(ledgerEvents.accountId, accountIds),
+        inArray(ledgerEvents.ticker, tickers),
+        isNotNull(ledgerEvents.quantity),
+        isNull(ledgerEvents.voidedAt),
+      ),
+    );
+  const history = new Map<string, { keyed: boolean; unkeyed: boolean }>();
+  for (const r of historyRows) {
+    if (r.ticker === null) continue;
+    const gk = `${r.accountId}${SEP}${r.ticker}`;
+    const h = history.get(gk) ?? { keyed: false, unkeyed: false };
+    if ((r.lotKey ?? r.closesLotKey) != null) h.keyed = true;
+    else h.unkeyed = true;
+    history.set(gk, h);
+  }
+  for (const [gk, g] of incoming) {
+    const h = history.get(gk);
+    if (h === undefined) continue;
+    if ((g.keyed && h.unkeyed) || (g.unkeyed && h.keyed)) conflicts.add(g.ticker);
+  }
+
+  if (conflicts.size > 0) throw new OneSourceConflictError([...conflicts].sort());
 }
 
 /**
@@ -1011,12 +1141,28 @@ async function ingestEventsInTx(
       // Reason a sell's proceeds are unknown (FIX-874 import placeholder); nulls
       // proceeds/gain in derivation rather than fabricating a loss off `amount:0`.
       proceedsUnknown: e.proceedsUnknown,
+      // Lot identity (FIX-895) — the lot a tax-lot buy opens / a disposal closes;
+      // null for every FIFO feed. Part of the content fingerprint unconditionally.
+      lotKey: e.lotKey,
+      closesLotKey: e.closesLotKey,
       // Corporate-action payload — the split ratio for a `split`, null otherwise
       // (the zod boundary guarantees this). Excluded from the fingerprint above,
       // so a same-date re-import dedups to one row.
       attributes: e.attributes ?? null,
     });
   }
+
+  // Serialize same-account recomputes AND the one-source seam check: acquire ALL
+  // per-account locks in sorted order first (deadlock-free). The lock is taken
+  // BEFORE the seam's history read (FIX-895) — not just before the materialize
+  // recompute as it used to be — so two concurrent imports of the same empty
+  // ticker can't both pass the keyedness check and land a keyed + an unkeyed batch.
+  for (const id of accountIds) await acquireRealizedLock(tx, id);
+
+  // One-source-per-ticker seam (FIX-895): reject-and-roll-back a batch that would
+  // mix keyed + unkeyed share events for one ticker (in-batch OR vs non-voided
+  // history). Runs before the insert so a conflict never persists a partial batch.
+  await assertOneSourcePerTicker(tx, events);
 
   // Chunked: one multi-row INSERT tops out at 32,767 bound params on PGlite and
   // 65,535 on node-pg; 1,000 rows/chunk clears both. The chunks share this
@@ -1032,10 +1178,8 @@ async function ingestEventsInTx(
     inserted += insertedRows.length;
   }
 
-  // Serialize same-account recomputes: acquire ALL per-account locks in sorted
-  // order first (deadlock-free), then materialize positions AND realized gains
-  // for each touched account in the same transaction (FIX-874).
-  for (const id of accountIds) await acquireRealizedLock(tx, id);
+  // Materialize positions AND realized gains for each touched account in the same
+  // transaction (FIX-874); the per-account locks above already serialize this.
   for (const id of accountIds) {
     await materializePositions(tx, id);
     await materializeRealizedGains(tx, id);

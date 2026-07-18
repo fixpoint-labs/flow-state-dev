@@ -44,6 +44,8 @@ function evt(over: Partial<LedgerEventInput> & { type: LedgerEventInput["type"] 
     description: null,
     basisUnknown: null,
     proceedsUnknown: null,
+    lotKey: null,
+    closesLotKey: null,
     attributes: null,
     ...over,
   };

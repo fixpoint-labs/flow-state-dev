@@ -64,6 +64,7 @@ import {
   ImportTransactionsDialog,
   type TransactionImportSubmit,
 } from "./import-transactions-dialog";
+import type { FileImportReport } from "@/domain/portfolio/schema/transaction-import-schema";
 import {
   AddTransactionDialog,
   type NewLedgerEvent,
@@ -466,41 +467,41 @@ export function PortfolioPane({
   );
 
   const handleImportTransactions = useCallback(
-    async (submit: TransactionImportSubmit) => {
-      try {
-        await apiMutate("/api/portfolio/transactions/import", "POST", {
-          userId: uid,
-          ...submit,
-        });
-        // An import writes ledger events AND materializes the derived positions
-        // into holdings, so refetch the ledger, the accounts, and the income.
-        // Sells produce realized gains, so refetch the tax read too.
-        refetchLedger();
-        refetchAccounts();
-        refetchIncome();
-        refetchTax();
-        await fetchPrices();
-      } catch (err) {
-        console.error("[trading-desk] importTransactions failed", err);
-      }
+    async (submit: TransactionImportSubmit): Promise<FileImportReport> => {
+      // Return the report so the dialog can render it (a one-source refusal is a
+      // 200 report, not a throw — FIX-895); a genuine failure propagates and the
+      // dialog shows it as a submit error, no longer a silent console.error.
+      const report = await apiMutate<FileImportReport>(
+        "/api/portfolio/transactions/import",
+        "POST",
+        { userId: uid, ...submit },
+      );
+      // An import writes ledger events AND materializes the derived positions
+      // into holdings, so refetch the ledger, the accounts, and the income.
+      // Sells produce realized gains, so refetch the tax read too.
+      refetchLedger();
+      refetchAccounts();
+      refetchIncome();
+      refetchTax();
+      await fetchPrices();
+      return report;
     },
     [uid, refetchLedger, refetchAccounts, refetchIncome, refetchTax, fetchPrices],
   );
 
   const handleRecordTransaction = useCallback(
     async (event: NewLedgerEvent) => {
-      try {
-        await apiMutate("/api/portfolio/ledger", "POST", { userId: uid, ...event });
-        // An ingest materializes derived positions into holdings, so refetch the
-        // ledger, the accounts, and the income. A sell realizes a gain, so
-        // refetch the tax read too.
-        refetchLedger();
-        refetchAccounts();
-        refetchIncome();
-        refetchTax();
-      } catch (err) {
-        console.error("[trading-desk] recordLedgerEvent failed", err);
-      }
+      // Let a failure propagate (e.g. the one-source seam 409, FIX-895) so the
+      // add-transaction dialog renders it as a visible error instead of it being
+      // a silent console.error.
+      await apiMutate("/api/portfolio/ledger", "POST", { userId: uid, ...event });
+      // An ingest materializes derived positions into holdings, so refetch the
+      // ledger, the accounts, and the income. A sell realizes a gain, so
+      // refetch the tax read too.
+      refetchLedger();
+      refetchAccounts();
+      refetchIncome();
+      refetchTax();
     },
     [uid, refetchLedger, refetchAccounts, refetchIncome, refetchTax],
   );
@@ -899,7 +900,7 @@ export function PortfolioPane({
         defaultAccountId={selectedAccountId ?? accounts[0]?.accountId}
         onSubmit={(submit) => {
           setSelectedAccountId(submit.accountId);
-          void handleImportTransactions(submit);
+          return handleImportTransactions(submit);
         }}
       />
       <AddTransactionDialog
@@ -907,7 +908,7 @@ export function PortfolioPane({
         onClose={() => setAddTransactionOpen(false)}
         accounts={accounts}
         defaultAccountId={selectedAccountId ?? accounts[0]?.accountId}
-        onSubmit={(event) => void handleRecordTransaction(event)}
+        onSubmit={(event) => handleRecordTransaction(event)}
       />
       <TaxProfileDialog
         open={taxProfileOpen}
