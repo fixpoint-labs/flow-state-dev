@@ -4,8 +4,9 @@
  * Drives `commitPortfolioManagerMemo` via `testBlock`, mandate-blind
  * (`riskMandate: null`, `portfolioMandate: null`) so the evidence gate is
  * isolated, and varies the evidence resources (spine / reward-to-risk /
- * financials) + the frozen `scopedTickerWeightPct`. Reads the published PM memo
- * back and asserts the gate:
+ * financials) + the scoped current weight, which the gate derives from the frozen
+ * `state.portfolio` snapshot (seeded here via `portfolioForScoped`). Reads the
+ * published PM memo back and asserts the gate:
  *   - emits `insufficient-evidence` on thin/absent spine, thin/absent
  *     reward-to-risk, or an unavailable primary financial input (fail-closed),
  *   - downgrades `initiate`/`add` → `hold` and no-adds the size (min with the
@@ -19,7 +20,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { commitPortfolioManagerMemo } from "../flows/analysis/agents/portfolio-manager/writer";
 import { memosCollection } from "../flows/analysis/resources";
-import { sessionStateSchema } from "../flows/analysis/state";
+import { sessionStateSchema, type SessionState } from "../flows/analysis/state";
 import { valuationSpineResource, type ValuationSpineState } from "../flows/analysis/valuation-spine-resource";
 import { decisionSnapshotResource } from "../flows/analysis/decision-snapshot-resource";
 import { lensConvergenceResource } from "../flows/analysis/agents/lenses/lens-convergence-resource";
@@ -109,6 +110,38 @@ type PmDelta = {
 const thinSpine: ValuationSpineState = { ...SUFFICIENT_SPINE, evidenceBasis: "thin" };
 const thinRewardToRisk: RewardToRiskState = { ...SUFFICIENT_REWARD_TO_RISK, evidenceBasis: "thin" };
 
+/**
+ * Build a frozen scoped portfolio snapshot whose analyzed-ticker (NVDA) weight
+ * derives (via the writer's `householdTickerWeight`) to `scoped` — the same
+ * three-value contract the evidence gate's no-add reference reads:
+ *   - `0` → portfolio-blind (not held), so the scoped weight derives to 0
+ *   - a positive number → one priced NVDA holding at that weight
+ *   - `null` → one held-but-unpriced NVDA holding (weightPct null → skip clamp)
+ * The gate reads the weight from this snapshot (not a session field), so seeding
+ * the portfolio is how a test controls the scoped current weight.
+ */
+function portfolioForScoped(scoped: number | null): SessionState["portfolio"] {
+  if (scoped === 0) return null; // portfolio-blind → householdTickerWeight → 0
+  return {
+    totalNav: 100000,
+    snapshotAsOf: null,
+    pricedHoldings: scoped == null ? 0 : 1,
+    totalHoldings: 1,
+    health: null,
+    accounts: [{ id: "acc1", label: "Roth IRA", type: "Roth", cash: 5000 }],
+    holdings: [
+      {
+        ticker: "NVDA",
+        account: "acc1",
+        weightPct: scoped,
+        marketValue: scoped == null ? null : 2000,
+        costBasis: 1000,
+        sector: null,
+      },
+    ],
+  };
+}
+
 async function commit(opts: {
   action?: "initiate" | "add" | "trim" | "exit" | "hold";
   targetWeightPct: number;
@@ -133,7 +166,9 @@ async function commit(opts: {
         riskMandate: null,
         portfolioMandate: null,
         householdTickerWeightPct: null,
-        scopedTickerWeightPct: opts.scopedTickerWeightPct,
+        // The gate reads the scoped current weight from the frozen portfolio
+        // snapshot (not a session field), so drive it via the snapshot.
+        portfolio: portfolioForScoped(opts.scopedTickerWeightPct),
       },
       resources: {
         "memos/p5/portfolio-manager": seededPmMemo(),

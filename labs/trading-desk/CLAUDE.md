@@ -1188,8 +1188,8 @@ risk mandate: it fires on mandate-blind and portfolio-blind runs alike.
   is capped to the current position (`min(target, currentWeight)`; `0` for a
   portfolio-blind / not-held name), `initiate`/`add` become `hold`, and
   `trim`/`exit`/`hold` are preserved. When the current position can't be measured
-  in the run's own NAV basis (`scopedTickerWeightPct == null`, held-but-unpriced)
-  the numeric clamp is SKIPPED and the pre-gate size passes through — the action
+  in the run's own NAV basis (the scoped weight is `null`, held-but-unpriced) the
+  numeric clamp is SKIPPED and the pre-gate size passes through — the action
   downgrade enforces the no-add, exactly the `computePolicyGate`
   `householdWeightKnown: false` precedent (never fabricate a size from an unknown
   basis). The gate NEVER touches `finalRating` (the FIX-715/752/761 orthogonality
@@ -1197,13 +1197,16 @@ risk mandate: it fires on mandate-blind and portfolio-blind runs alike.
   There is no override — `mandateOverrideReason` cannot clear an
   insufficient-evidence verdict.
 
-- **The scoped current weight is frozen at seed.** `seedSession`
-  (`orchestration/guards.ts`) freezes `state.scopedTickerWeightPct =
-  householdTickerWeight(scopedSnapshot, ticker)` alongside the FIX-761
-  `householdTickerWeightPct` — the analyzed ticker's weight in the run's OWN scoped
+- **The scoped current weight is computed at commit from the frozen snapshot.** The
+  PM commit derives it via `householdTickerWeight(portfolio, ticker)` (the same pure
+  helper `seedSession` uses for the FIX-761 household weight) over the FROZEN
+  `state.portfolio` snapshot — the analyzed ticker's weight in the run's OWN scoped
   NAV basis (three-value: `0` not-held, positive held+priced, `null`
-  held-but-unpriced). The evidence gate uses the SCOPED weight, not the household
-  weight the policy gate uses.
+  held-but-unpriced). It is NOT a separate session field: the snapshot is the single
+  source of truth, so a session predating a would-be scoped-weight field can't
+  default it to a wrong value (BP-030). Distinct from the `portfolioFit.currentWeightPct`
+  echo, which is a display partial-sum coercing unpriced lots to 0. The evidence
+  gate uses this SCOPED weight, not the household weight the policy gate uses.
 
 - **Derived at commit, mirrored three ways.** The PM commit
   (`agents/portfolio-manager/writer.ts`) runs the gate AFTER the mandate + policy

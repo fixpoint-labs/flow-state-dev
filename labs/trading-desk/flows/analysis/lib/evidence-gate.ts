@@ -19,8 +19,9 @@
  *     unknown basis).
  *
  * UNITS: percentage points 0..100 (matching `targetWeightPct`). `currentWeightPct`
- * is the analyzed ticker's weight in the run's OWN NAV basis (the frozen
- * `scopedTickerWeightPct`) — NOT the household weight the FIX-761 policy gate uses.
+ * is the analyzed ticker's weight in the run's OWN NAV basis — the scoped weight the
+ * PM commit computes from the frozen portfolio snapshot via `householdTickerWeight`,
+ * NOT the household weight the FIX-761 policy gate uses.
  *
  * Never touches `finalRating` (the FIX-715 / FIX-752 / FIX-761 orthogonality — a
  * bearish rating on observed negative evidence still stands; only new exposure is
@@ -88,9 +89,9 @@ export type EvidenceGateInput = {
   /** Size entering the gate (pct points), post-FIX-752 + post-FIX-761 clamps. */
   targetWeightPct: number;
   /** The analyzed ticker's current weight in the SAME NAV basis as
-   *  `targetWeightPct` (the frozen `scopedTickerWeightPct`). Three-value
-   *  contract: `0` = not held (portfolio-blind or not in this book), positive =
-   *  held+priced, `null` = held-but-unpriced (unknown → the numeric clamp is
+   *  `targetWeightPct` (the scoped weight from the frozen portfolio snapshot).
+   *  Three-value contract: `0` = not held (portfolio-blind or not in this book),
+   *  positive = held+priced, `null` = held-but-unpriced (unknown → the numeric clamp is
    *  skipped, exactly like `computePolicyGate`; the action downgrade still fires). */
   currentWeightPct: number | null;
 };

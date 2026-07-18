@@ -38,7 +38,6 @@ function sessionState(overrides: Partial<SessionState> = {}): SessionState {
     standingThesis: null,
     portfolioMandate: null,
     householdTickerWeightPct: null,
-    scopedTickerWeightPct: null,
     ...overrides,
   };
 }

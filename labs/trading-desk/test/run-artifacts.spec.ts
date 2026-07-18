@@ -54,7 +54,6 @@ function sessionState(overrides: Partial<SessionState> = {}): SessionState {
     riskMandate: null,
     portfolioMandate: null,
     householdTickerWeightPct: null,
-    scopedTickerWeightPct: null,
     standingThesis: null,
     ...overrides,
   };

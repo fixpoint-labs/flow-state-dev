@@ -44,6 +44,7 @@ import { clampRatingToBand } from "../../lib/rating-engine";
 import { clampTargetWeight, computeMandateGates } from "../../lib/mandate-gates";
 import { computePolicyGate } from "../../lib/policy-gate";
 import { computeEvidenceGate, deriveCriticalDataThin } from "../../lib/evidence-gate";
+import { householdTickerWeight } from "../../build-portfolio-context";
 import { publishMemo } from "../_recipe/memo-writer";
 import type { ReportDecisionMeta } from "../../report-index";
 import {
@@ -316,9 +317,18 @@ export const commitPortfolioManagerMemo = handler({
     // is the last of the three downward-only size gates. Non-overridable; never
     // touches finalRating. Reuses the `spine`/`rr` already read above (no re-read).
     // `criticalDataThin` is derived from the tool-set `source` markers, never the
-    // LLM self-report. On an unknown current weight (scopedTickerWeightPct null)
-    // the numeric clamp is skipped and the action downgrade enforces the no-add —
-    // the FIX-761 `computePolicyGate` precedent.
+    // LLM self-report. On an unknown current weight (the scoped weight is null —
+    // held-but-unpriced) the numeric clamp is skipped and the action downgrade
+    // enforces the no-add — the FIX-761 `computePolicyGate` precedent.
+    //
+    // The scoped no-add reference is computed HERE from the frozen `portfolio`
+    // snapshot via `householdTickerWeight` (the same pure helper `seedSession`
+    // uses), not read from a separate session field: the snapshot is the single
+    // source of truth for the three-value weight (0 not-held / positive held+priced
+    // / null held-unpriced), so a session predating a would-be `scopedWeight` field
+    // can't default it to a wrong value (BP-030). Distinct from the `currentWeightPct`
+    // echo above, which is a display partial-sum that coerces unpriced lots to 0.
+    const scopedTickerWeightPct = householdTickerWeight(portfolio, tickerUpper);
     const criticalDataThin = deriveCriticalDataThin(ctx.resources.financialsData?.state);
     const preGateEvidenceTargetPct = targetWeightPct;
     const evidence = computeEvidenceGate({
@@ -328,7 +338,7 @@ export const commitPortfolioManagerMemo = handler({
       criticalDataThin,
       action: gatedAction,
       targetWeightPct,
-      currentWeightPct: ctx.session.state.scopedTickerWeightPct,
+      currentWeightPct: scopedTickerWeightPct,
     });
     targetWeightPct = evidence.targetWeightPct;
     const finalAction = evidence.action; // supersedes gatedAction in portfolioFit
