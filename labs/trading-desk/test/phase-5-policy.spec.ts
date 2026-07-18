@@ -22,6 +22,12 @@ import { valuationSpineResource } from "../flows/analysis/valuation-spine-resour
 import { decisionSnapshotResource } from "../flows/analysis/decision-snapshot-resource";
 import { lensConvergenceResource } from "../flows/analysis/agents/lenses/lens-convergence-resource";
 import { rewardToRiskResource } from "../flows/analysis/reward-to-risk-resource";
+import { financialsDataResource } from "../flows/analysis/financials-data-resource";
+import {
+  SUFFICIENT_SPINE,
+  SUFFICIENT_REWARD_TO_RISK,
+  availableFinancials,
+} from "./_helpers/sufficient-evidence";
 import { PHASE_5_MEMO_KEYS } from "../flows/analysis/registry";
 import {
   portfolioMandateSchema,
@@ -39,6 +45,7 @@ const fixtureFlow = defineFlow({
     decisionSnapshot: decisionSnapshotResource,
     lensConvergence: lensConvergenceResource,
     rewardToRisk: rewardToRiskResource,
+    financialsData: financialsDataResource,
   },
 })({ id: "test" });
 
@@ -152,6 +159,12 @@ async function commit(opts: {
       resources: {
         "memos/p5/portfolio-manager": seededPmMemo(),
         "memos/p3/trader": { direction: "flat", dependsOn: null },
+        // Establish a SUFFICIENT evidence context so the always-on FIX-781 gate is
+        // a pass-through and the policy gate stays isolated (else it fail-closes
+        // and downgrades add→hold).
+        valuationSpine: SUFFICIENT_SPINE,
+        rewardToRisk: SUFFICIENT_REWARD_TO_RISK,
+        financialsData: availableFinancials(),
       },
     },
   });

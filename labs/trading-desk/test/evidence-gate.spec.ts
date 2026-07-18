@@ -118,8 +118,10 @@ describe("computeEvidenceGate — no-add clamp + action downgrade", () => {
   });
 });
 
-describe("computeEvidenceGate — withheld target (unknown current weight)", () => {
-  it("insufficient + null current → targetWithheld, target null, action→hold", () => {
+describe("computeEvidenceGate — unknown current weight (held-but-unpriced)", () => {
+  it("insufficient + null current + add → skip clamp (target preserved), action→hold", () => {
+    // Mirrors computePolicyGate's householdWeightKnown:false branch: the numeric
+    // clamp is skipped (no fabricated size), the no-add is enforced by the action.
     const r = computeEvidenceGate(
       input({
         spineEvidenceBasis: "thin",
@@ -128,19 +130,27 @@ describe("computeEvidenceGate — withheld target (unknown current weight)", () 
         currentWeightPct: null,
       }),
     );
-    expect(r.targetWithheld).toBe(true);
-    expect(r.targetWeightPct).toBeNull();
+    expect(r.targetWeightPct).toBe(4); // preserved — not withheld, not fabricated
+    expect(r.sizeClamped).toBe(false);
     expect(r.currentWeightKnown).toBe(false);
     expect(r.action).toBe("hold");
-    expect(r.sizeClamped).toBe(false);
+    expect(r.actionDowngraded).toBe(true);
   });
 
-  it("sufficient run with unknown current → pass-through, currentWeightKnown false, not withheld", () => {
+  it("insufficient + null current + exit → reducing target and action preserved", () => {
+    const r = computeEvidenceGate(
+      input({ spineEvidenceBasis: "thin", action: "exit", targetWeightPct: 0, currentWeightPct: null }),
+    );
+    expect(r.action).toBe("exit");
+    expect(r.targetWeightPct).toBe(0);
+    expect(r.currentWeightKnown).toBe(false);
+  });
+
+  it("sufficient run with unknown current → pass-through, currentWeightKnown false", () => {
     const r = computeEvidenceGate(input({ currentWeightPct: null }));
     expect(r.verdict).toBe("sufficient");
     expect(r.targetWeightPct).toBe(4);
     expect(r.currentWeightKnown).toBe(false);
-    expect(r.targetWithheld).toBe(false);
   });
 });
 

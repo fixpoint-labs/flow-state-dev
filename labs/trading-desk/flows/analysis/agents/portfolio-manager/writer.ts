@@ -43,13 +43,16 @@ import {
 import { clampRatingToBand } from "../../lib/rating-engine";
 import { clampTargetWeight, computeMandateGates } from "../../lib/mandate-gates";
 import { computePolicyGate } from "../../lib/policy-gate";
+import { computeEvidenceGate, deriveCriticalDataThin } from "../../lib/evidence-gate";
 import { publishMemo } from "../_recipe/memo-writer";
 import type { ReportDecisionMeta } from "../../report-index";
 import {
   memoResources,
   type MandateDecision,
   type PolicyDecision,
+  type EvidenceDecision,
 } from "../../resources";
+import { financialsDataResource } from "../../financials-data-resource";
 import { sessionStateSchema } from "../../state";
 import { valuationSpineResource, type ValuationSpineState } from "../../valuation-spine-resource";
 import {
@@ -98,6 +101,9 @@ export const commitPortfolioManagerMemo = handler({
     // frozen mandate to clamp size + derive the worth-it verdict. Null when the
     // forecaster produced no usable buckets (→ mandate-blind decision).
     rewardToRisk: rewardToRiskResource,
+    // FIX-781 — the primary financial payloads, read to derive the deterministic
+    // `criticalDataThin` signal (their tool-set `source: "unavailable"` markers).
+    financialsData: financialsDataResource,
   },
   execute: async (decision, ctx) => {
     // `agreesWithTrader` is computed, not LLM-emitted. If the trader memo
@@ -302,6 +308,43 @@ export const commitPortfolioManagerMemo = handler({
             constraintRead: decision.policyFit.constraintRead,
           };
 
+    // ── Always-on evidence-sufficiency gate (FIX-781) ──────────────────
+    // Independent of the optional mandate: caps NEW exposure when the valuation
+    // spine or the reward-to-risk figure rests on thin/absent evidence, or a
+    // primary financial input is unavailable. Runs on every completed run
+    // (mandate-blind or portfolio-blind), AFTER the FIX-752/FIX-761 clamps, so it
+    // is the last of the three downward-only size gates. Non-overridable; never
+    // touches finalRating. Reuses the `spine`/`rr` already read above (no re-read).
+    // `criticalDataThin` is derived from the tool-set `source` markers, never the
+    // LLM self-report. On an unknown current weight (scopedTickerWeightPct null)
+    // the numeric clamp is skipped and the action downgrade enforces the no-add —
+    // the FIX-761 `computePolicyGate` precedent.
+    const criticalDataThin = deriveCriticalDataThin(ctx.resources.financialsData?.state);
+    const preGateEvidenceTargetPct = targetWeightPct;
+    const evidence = computeEvidenceGate({
+      spineEvidenceBasis: spine?.evidenceBasis ?? null,
+      spineLowConfidence: spine?.expectedReturn?.lowConfidence ?? false,
+      rewardToRiskEvidenceBasis: rr?.evidenceBasis ?? null,
+      criticalDataThin,
+      action: gatedAction,
+      targetWeightPct,
+      currentWeightPct: ctx.session.state.scopedTickerWeightPct,
+    });
+    targetWeightPct = evidence.targetWeightPct;
+    const finalAction = evidence.action; // supersedes gatedAction in portfolioFit
+    const evidenceDecision: EvidenceDecision = {
+      verdict: evidence.verdict,
+      spineEvidenceBasis: spine?.evidenceBasis ?? null,
+      spineLowConfidence: spine?.expectedReturn?.lowConfidence ?? false,
+      rewardToRiskEvidenceBasis: rr?.evidenceBasis ?? null,
+      criticalDataThin,
+      sizeClamped: evidence.sizeClamped,
+      actionDowngraded: evidence.actionDowngraded,
+      currentWeightKnown: evidence.currentWeightKnown,
+      preGateEvidenceTargetPct,
+      preGateEvidenceAction: gatedAction,
+    };
+
     const weightDeltaPct = targetWeightPct - currentWeightPct;
 
     // Keep the hero's `metrics.size` chip in sync with the clamped size. Any
@@ -376,9 +419,10 @@ export const commitPortfolioManagerMemo = handler({
         // after the worth-it/capacity clamps, so the published size, the delta,
         // and the decision snapshot all agree.
         portfolioFit: {
-          // The policy-gated action: an excluded name never publishes add/initiate
-          // (FIX-761), so the card can't render a hard no-add as a green add.
-          action: gatedAction,
+          // The fully-gated action (FIX-761 policy → FIX-781 evidence): an excluded
+          // name never publishes add/initiate, and a thin-evidence run downgrades
+          // add/initiate to hold, so the card can't render a hard no-add as an add.
+          action: finalAction,
           targetWeightPct,
           sizingRationale: decision.portfolioFit.sizingRationale,
           concentrationRisk: decision.portfolioFit.concentrationRisk,
@@ -398,6 +442,9 @@ export const commitPortfolioManagerMemo = handler({
         // FIX-761 — the durable-mandate policy decision mirror (verdict + clamps +
         // narrative) for the PmHero policy-fit block. Null on a mandate-blind run.
         policyDecision,
+        // FIX-781 — the evidence-sufficiency decision mirror (verdict + clamp flags)
+        // for the PmHero evidence block. Always written on a completed run.
+        evidenceDecision,
         // FIX-676 — pass through any URLs the PM fetched (null when none).
         citations: decision.citations,
       },
@@ -448,6 +495,10 @@ export const commitPortfolioManagerMemo = handler({
       positionCapClamped: policyDecision?.positionCapClamped ?? null,
       excluded: policyDecision?.excluded ?? null,
       preGatePolicyTargetPct: policyDecision?.preGatePolicyTargetPct ?? null,
+      // Evidence-sufficiency verdict (FIX-781) — the always-on capital gate's
+      // machine-scoreable record. Always written on a completed run (null only on
+      // a legacy pre-feature snapshot).
+      evidenceVerdict: evidence.verdict,
       decidedAt,
       outcomeRealizedPrice: null,
       outcomeAsOf: null,

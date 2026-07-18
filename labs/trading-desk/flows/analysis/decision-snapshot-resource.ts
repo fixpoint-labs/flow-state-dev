@@ -76,6 +76,12 @@ export const decisionSnapshotStateSchema = z.object({
   // The target entering the policy gate (post-FIX-752, pre-cap/exclusion clamp) —
   // so a clamp is attributable to the policy cap vs the FIX-752 gate.
   preGatePolicyTargetPct: z.number().nullable().default(null),
+  // Evidence-sufficiency verdict (FIX-781) — the always-on capital gate's record.
+  // Null on a legacy pre-feature snapshot / stopped run.
+  evidenceVerdict: z
+    .enum(["sufficient", "insufficient-evidence"])
+    .nullable()
+    .default(null),
   // Provenance.
   decidedAt: z.string(), // ISO commit time
   // Outcome-tracking fields — NULL on write; a FUTURE feature fills these.
@@ -126,6 +132,7 @@ export const decisionSnapshotResource = defineResource({
       "positionCapClamped",
       "excluded",
       "preGatePolicyTargetPct",
+      "evidenceVerdict",
       "decidedAt",
       "outcomeRealizedPrice",
       "outcomeAsOf",
