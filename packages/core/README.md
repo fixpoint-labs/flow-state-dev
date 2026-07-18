@@ -222,7 +222,7 @@ Forwarding is direct-only: inner capabilities used by `myCap` do not propagate t
 - `bindToolCacheStore(ctx, store)` — Attach a store to a context without going through the capability path.
 - `canonicalizeToolArgs(value)` — Deterministic JSON canonicalizer for custom `keyFn`s that want the substrate's default normalization.
 - Types: `ToolCacheStore`, `ToolCacheEntry`, `ToolCacheAccessor`, `CreateToolCacheCapabilityOptions`.
-- See [Flow policy](https://flow-state.dev/docs/patterns/flow-policy) for the full guide, including when to mark a tool cacheable and how Task Board auto-installs the capability.
+- See [Flow policy](https://flow-state.dev/docs/orchestration/flow-policy) for the full guide, including when to mark a tool cacheable and how Task Board auto-installs the capability.
 
 **Context & client data:**
 - `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)
