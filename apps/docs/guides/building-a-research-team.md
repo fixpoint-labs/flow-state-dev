@@ -194,14 +194,14 @@ pattern-config:
   concurrency: 2
   dispatcher: topological
   on-idle: complete
-allowed-tools: [search, fetch, taskTools]
+allowed-tools: [search, fetch]
 ---
 
 This skill runs a small team on a task board. The two analysts run in
 parallel; the primary synthesizer waits on both and writes the final brief.
 ```
 
-`visibility: primary` marks the one worker whose output reaches the conversation — the synthesizer here. The analysts run as `sub`: they stream for observability but stay out of history. The agent runs the team by calling `runSkill({ name: "research-company", input: "ACME Corp" })`, and `$ARGUMENTS` is substituted into each task goal. Because `taskTools` is in `allowed-tools`, a worker can still `addTask` mid-run if a gap surfaces. See [Pattern skills](/docs/skills/pattern-skills) for the full frontmatter reference.
+`visibility: primary` marks the one worker whose output reaches the conversation — the synthesizer here. The analysts run as `sub`: they stream for observability but stay out of history. The agent runs the team by calling `runSkill({ name: "research-company", input: "ACME Corp" })`, and `$ARGUMENTS` is substituted into each task goal. If you want a worker to enqueue work mid-run, add `taskTools` to that worker's own `tools:` list — the way the discoverer did in section 3. Listing it only in the top-level `allowed-tools` does not install it on the pattern workers. See [Pattern skills](/docs/skills/pattern-skills) for the full frontmatter reference.
 
 ## 5. Assign a task to a named agent
 

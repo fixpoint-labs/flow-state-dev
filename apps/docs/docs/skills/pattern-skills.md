@@ -84,7 +84,7 @@ Per-worker tuning:
 
 ## The `taskTools` capability
 
-Workers can call eight runtime tools to mutate the active board. Opt in by adding `taskTools` to a worker's allowed list or to the skill's top-level `allowed-tools` array.
+Workers can call eight runtime tools to mutate the active board. Opt a worker in by adding `taskTools` to that worker's own `tools:` list — `materializeWorker` installs the capability only when the worker's `tools` array contains it. Listing `taskTools` in the skill's top-level `allowed-tools` does not install it on the pattern workers.
 
 | Tool | Purpose |
 |------|---------|
