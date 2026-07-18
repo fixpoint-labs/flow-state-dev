@@ -22,8 +22,9 @@ router, and a `SKILL.md` — each wired into a flow you can run with `fsdev`.
 
 ## Run it with fsdev
 
-The `research` and `researchCompetitors` actions use deterministic handler
-workers, so they run with **no API key**:
+Run these from this directory (`examples/guides/research-team`) — `fsdev`
+config discovery is cwd-only. The `research` and `researchCompetitors` actions
+use deterministic handler workers, so they run with **no API key**:
 
 ```bash
 # The static board — two analysts + a gated synthesizer.

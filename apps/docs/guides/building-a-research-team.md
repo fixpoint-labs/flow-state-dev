@@ -16,9 +16,11 @@ This guide builds a small team of workers that research a subject together: anal
 Every worker, board, router, `SKILL.md`, and a passing test suite for this
 guide lives in
 [`examples/guides/research-team`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team),
-wired into a `research-team` flow you can run with `fsdev`:
+wired into a `research-team` flow you can run with `fsdev` from the example
+directory:
 
 ```bash
+cd examples/guides/research-team
 pnpm fsdev run research-team research -i '{}'
 pnpm fsdev run research-team researchCompetitors -i '{"subject":"Linear","competitors":["Jira","Asana","Trello"]}'
 ```
@@ -244,9 +246,9 @@ parallel; the primary synthesizer waits on both and writes the final brief.
 This skill — plus a dynamic `competitor-analysis` variant — ships in the
 example under [`src/skills/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/skills),
 with the worker prompts under each skill's `reference/` folder. The example's
-`chat` action carries the skills capability, so a model can dispatch them:
-`fsdev run research-team chat -i '{"message":"research ACME Corp"}'` (that path
-calls an LLM, so it needs an API key).
+`chat` action carries the skills capability, so a model can dispatch them —
+from the example directory, `pnpm fsdev run research-team chat -i '{"message":"research ACME Corp"}'`
+(that path calls an LLM, so it needs an API key).
 
 ### Where `search` and `fetch` come from
 
