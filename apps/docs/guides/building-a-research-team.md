@@ -141,6 +141,7 @@ Give a worker the `taskTools` capability and it can add tasks to the live board 
 import { generator } from "@flow-state-dev/core";
 import { taskTools } from "@flow-state-dev/orchestration";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { z } from "zod";
 
 export const discoverer = generator({
   name: "discoverer",
