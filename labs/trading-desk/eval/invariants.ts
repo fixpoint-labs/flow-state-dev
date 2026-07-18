@@ -24,6 +24,7 @@ import type { MemoState } from "../flows/analysis/resources";
 import type { RunArtifactsBundle } from "../flows/analysis/run-artifacts";
 import { computeMandateGates } from "../flows/analysis/lib/mandate-gates";
 import { computePolicyGate } from "../flows/analysis/lib/policy-gate";
+import { computeEvidenceGate } from "../flows/analysis/lib/evidence-gate";
 import { computeRewardToRisk } from "../flows/analysis/lib/reward-to-risk";
 import { DIVERGENCE_THRESHOLD } from "../flows/analysis/lib/triangulation";
 import {
@@ -883,6 +884,131 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
   }
 }
 
+// ── evidence/* (FIX-781) ─────────────────────────────────────────────────
+/**
+ * The always-on evidence-sufficiency gate. Recomputes the verdict from the run's
+ * OWN substrate — the valuation spine + reward-to-risk resources in the bundle
+ * plus the persisted deterministic `criticalDataThin` scalar — and asserts the
+ * capital gate held: the verdict mirrors agree (recompute ↔ memo ↔ snapshot) and,
+ * on insufficient evidence, the committed decision adds NO new exposure
+ * (`initiate`/`add` downgraded, size never above the pre-gate baseline).
+ *
+ * The four financial tool payloads that feed `criticalDataThin` are not in the
+ * bundle, so we trust the writer's persisted scalar rather than re-deriving them
+ * (the lean seam — the deterministic derivation is already unit-tested). The
+ * verdict + action are independent of the current weight, so the numeric clamp is
+ * asserted as a downward-only property, not recomputed from the scoped weight.
+ */
+function checkEvidenceGate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): void {
+  const snapshot = bundle.decisionSnapshot;
+  const pm = published(memos.get(PM_KEY));
+  const ev = pm?.evidenceDecision ?? null;
+  const snapshotVerdict = snapshot?.evidenceVerdict ?? null;
+
+  // Feature marker: every completed run since FIX-781 writes the snapshot verdict
+  // and the memo evidenceDecision. Both absent → a legacy or stopped run predating
+  // the gate; skip rather than false-fail (BP-030/BP-035 second-path).
+  if (snapshotVerdict == null && ev == null) {
+    c.skip("evidence/verdict", "hard", "no evidence gate recorded (legacy or stopped run)");
+    c.skip("evidence/no-add", "hard", "no evidence gate recorded (legacy or stopped run)");
+    return;
+  }
+  if (ev == null || pm?.portfolioFit == null) {
+    c.hardFail(
+      "evidence/verdict",
+      "an evidence gate was recorded but the PM memo evidenceDecision or portfolioFit is absent",
+      "published PM evidenceDecision + portfolioFit",
+      pm == null ? "PM memo absent" : ev == null ? "evidenceDecision null" : "portfolioFit null",
+    );
+    c.skip("evidence/no-add", "hard", "no PM evidenceDecision to check the no-add invariant against");
+    return;
+  }
+
+  // Recompute the verdict + action from the bundle's spine/reward-to-risk resources
+  // and the persisted criticalDataThin. currentWeightPct is immaterial to the
+  // verdict + action (the size clamp is checked as a property below), so pass 0.
+  const spineBasis =
+    bundle.valuationSpine != null && typeof bundle.valuationSpine.evidenceBasis === "string"
+      ? bundle.valuationSpine.evidenceBasis
+      : null;
+  const spineLowConfidence = bundle.valuationSpine?.expectedReturn?.lowConfidence ?? false;
+  const rrBasis =
+    bundle.rewardToRisk != null && typeof bundle.rewardToRisk.evidenceBasis === "string"
+      ? bundle.rewardToRisk.evidenceBasis
+      : null;
+  const recomputed = computeEvidenceGate({
+    spineEvidenceBasis: spineBasis,
+    spineLowConfidence,
+    rewardToRiskEvidenceBasis: rrBasis,
+    criticalDataThin: ev.criticalDataThin,
+    action: ev.preGateEvidenceAction,
+    targetWeightPct: ev.preGateEvidenceTargetPct,
+    currentWeightPct: 0,
+  });
+
+  // evidence/verdict — the memo's recorded evidence bases mirror the actual bundle
+  // resources (a partial write would let a stale basis produce a wrong verdict),
+  // the recomputed verdict matches the memo, and the snapshot mirror agrees.
+  const verdictMismatches: string[] = [];
+  if (ev.spineEvidenceBasis !== spineBasis) {
+    verdictMismatches.push(`spineEvidenceBasis memo ${ev.spineEvidenceBasis} vs resource ${spineBasis}`);
+  }
+  if (ev.rewardToRiskEvidenceBasis !== rrBasis) {
+    verdictMismatches.push(`rewardToRiskEvidenceBasis memo ${ev.rewardToRiskEvidenceBasis} vs resource ${rrBasis}`);
+  }
+  if (ev.spineLowConfidence !== spineLowConfidence) {
+    verdictMismatches.push(`spineLowConfidence memo ${ev.spineLowConfidence} vs resource ${spineLowConfidence}`);
+  }
+  if (recomputed.verdict !== ev.verdict) {
+    verdictMismatches.push(`recomputed verdict ${recomputed.verdict} vs memo ${ev.verdict}`);
+  }
+  if (snapshotVerdict != null && snapshotVerdict !== ev.verdict) {
+    verdictMismatches.push(`snapshot verdict ${snapshotVerdict} vs memo ${ev.verdict}`);
+  }
+  if (verdictMismatches.length === 0) {
+    c.hardPass("evidence/verdict", `evidence verdict ${ev.verdict} recomputes and the mirrors agree`);
+  } else {
+    c.hardFail("evidence/verdict", `evidence verdict drift: ${verdictMismatches.join("; ")}`);
+  }
+
+  // evidence/no-add — the deterministic capital gate. On insufficient evidence the
+  // committed decision must authorize no NEW exposure (action not initiate/add,
+  // size not above the pre-gate baseline). On sufficient evidence the gate is a
+  // no-op on size/action.
+  const committedAction = pm.portfolioFit.action;
+  const committedTarget = pm.portfolioFit.targetWeightPct;
+  const noAddIssues: string[] = [];
+  if (committedAction !== recomputed.action) {
+    noAddIssues.push(`committed action ${committedAction} vs recomputed ${recomputed.action}`);
+  }
+  if (ev.verdict === "insufficient-evidence") {
+    if (committedAction === "initiate" || committedAction === "add") {
+      noAddIssues.push(`insufficient evidence but committed action ${committedAction} adds exposure`);
+    }
+    if (committedTarget > ev.preGateEvidenceTargetPct + 1e-6) {
+      noAddIssues.push(
+        `insufficient evidence but committed size ${committedTarget} exceeds pre-gate ${ev.preGateEvidenceTargetPct}`,
+      );
+    }
+  } else {
+    if (!approx(committedTarget, ev.preGateEvidenceTargetPct)) {
+      noAddIssues.push(
+        `sufficient evidence but committed size ${committedTarget} ≠ pre-gate ${ev.preGateEvidenceTargetPct}`,
+      );
+    }
+    if (ev.sizeClamped || ev.actionDowngraded) {
+      noAddIssues.push(
+        `sufficient evidence but sizeClamped=${ev.sizeClamped} / actionDowngraded=${ev.actionDowngraded}`,
+      );
+    }
+  }
+  if (noAddIssues.length === 0) {
+    c.hardPass("evidence/no-add", `evidence gate no-add holds for a ${ev.verdict} run`);
+  } else {
+    c.hardFail("evidence/no-add", `evidence gate no-add violation: ${noAddIssues.join("; ")}`);
+  }
+}
+
 // ── valuation/* ──────────────────────────────────────────────────────────
 function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
   const spine = bundle.valuationSpine;
@@ -1167,6 +1293,7 @@ export function checkRun(bundle: RunArtifactsBundle): InvariantReport {
   checkRewardToRisk(bundle, c, memos);
   checkMandate(bundle, c, memos);
   checkDecisionConsistency(bundle, c, memos);
+  checkEvidenceGate(bundle, c, memos);
   checkValuation(bundle, c);
   checkCitations(bundle, c);
   checkNullHonesty(bundle, c);

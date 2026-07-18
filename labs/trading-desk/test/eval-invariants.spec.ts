@@ -172,6 +172,18 @@ function healthyBundle(): RunArtifactsBundle {
             sizeStance: "stance",
             overrideReason: "",
           },
+          evidenceDecision: {
+            verdict: "sufficient",
+            spineEvidenceBasis: "sufficient",
+            spineLowConfidence: false,
+            rewardToRiskEvidenceBasis: RR.evidenceBasis,
+            criticalDataThin: false,
+            sizeClamped: false,
+            actionDowngraded: false,
+            currentWeightKnown: true,
+            preGateEvidenceTargetPct: CLAMP.targetWeightPct,
+            preGateEvidenceAction: "add",
+          },
         } as MemoState,
       };
     }
@@ -206,7 +218,7 @@ function healthyBundle(): RunArtifactsBundle {
       positionCapClamped: null,
       excluded: null,
       preGatePolicyTargetPct: null,
-      evidenceVerdict: null,
+      evidenceVerdict: "sufficient",
       decidedAt: "2026-06-25T00:00:00.000Z",
       outcomeRealizedPrice: null,
       outcomeAsOf: null,
@@ -577,6 +589,9 @@ describe("checkRun — decision-consistency", () => {
       targetWeightPct: 1,
       weightDeltaPct: 1 - pm.portfolioFit!.currentWeightPct,
     };
+    // The evidence gate runs AFTER the policy gate, so its input (a no-op on a
+    // sufficient run) is the post-policy target, not the pre-policy CLAMP value.
+    pm.evidenceDecision!.preGateEvidenceTargetPct = 1;
     b.summary.targetWeightPct = 1;
     b.decisionSnapshot!.mandatePresent = true;
     b.decisionSnapshot!.policyVerdict = "capped";
@@ -636,6 +651,98 @@ describe("checkRun — decision-consistency", () => {
     pm.portfolioFit = null;
     const report = checkRun(b);
     expect(byId(report.checks, "decision-consistency/weight-delta")?.status).toBe("fail");
+  });
+});
+
+describe("checkRun — evidence gate", () => {
+  const PM_KEY = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+  function pmMemo(b: RunArtifactsBundle): MemoState {
+    return b.memos.find((m) => m.key === PM_KEY)!.state as MemoState;
+  }
+
+  it("passes verdict + no-add on a coherent sufficient-evidence run", () => {
+    const report = checkRun(healthyBundle());
+    expect(byId(report.checks, "evidence/verdict")?.status).toBe("pass");
+    expect(byId(report.checks, "evidence/no-add")?.status).toBe("pass");
+  });
+
+  it("fails verdict when the memo verdict contradicts the recomputed substrate", () => {
+    const b = healthyBundle();
+    pmMemo(b).evidenceDecision!.verdict = "insufficient-evidence"; // substrate is sufficient
+    const report = checkRun(b);
+    expect(byId(report.checks, "evidence/verdict")?.status).toBe("fail");
+  });
+
+  it("fails verdict when the snapshot mirror disagrees with the memo", () => {
+    const b = healthyBundle();
+    b.decisionSnapshot!.evidenceVerdict = "insufficient-evidence"; // memo says sufficient
+    const report = checkRun(b);
+    expect(byId(report.checks, "evidence/verdict")?.status).toBe("fail");
+  });
+
+  it("fails verdict when a recorded evidence basis drifts from the bundle resource", () => {
+    const b = healthyBundle();
+    pmMemo(b).evidenceDecision!.spineEvidenceBasis = "thin"; // spine resource is sufficient
+    const report = checkRun(b);
+    expect(byId(report.checks, "evidence/verdict")?.status).toBe("fail");
+  });
+
+  it("fails no-add when an insufficient run still committed an add", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.evidenceBasis = "thin"; // → recomputed verdict insufficient
+    b.decisionSnapshot!.evidenceVerdict = "insufficient-evidence";
+    const ev = pmMemo(b).evidenceDecision!;
+    ev.verdict = "insufficient-evidence";
+    ev.spineEvidenceBasis = "thin"; // mirror the substrate so verdict stays consistent
+    // A broken commit: insufficient evidence but the action still adds exposure.
+    pmMemo(b).portfolioFit!.action = "add";
+    const report = checkRun(b);
+    expect(byId(report.checks, "evidence/verdict")?.status).toBe("pass");
+    expect(byId(report.checks, "evidence/no-add")?.status).toBe("fail");
+  });
+
+  it("fails no-add when an insufficient run committed a size above the pre-gate baseline", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.evidenceBasis = "thin";
+    b.decisionSnapshot!.evidenceVerdict = "insufficient-evidence";
+    const ev = pmMemo(b).evidenceDecision!;
+    ev.verdict = "insufficient-evidence";
+    ev.spineEvidenceBasis = "thin";
+    ev.preGateEvidenceAction = "hold";
+    ev.preGateEvidenceTargetPct = 1;
+    // Correctly held, but size somehow rose above the pre-gate baseline.
+    pmMemo(b).portfolioFit!.action = "hold";
+    pmMemo(b).portfolioFit!.targetWeightPct = 3;
+    const report = checkRun(b);
+    expect(byId(report.checks, "evidence/no-add")?.status).toBe("fail");
+  });
+
+  it("passes no-add on a correctly-handled insufficient run (add downgraded to hold)", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.evidenceBasis = "thin";
+    b.decisionSnapshot!.evidenceVerdict = "insufficient-evidence";
+    const ev = pmMemo(b).evidenceDecision!;
+    ev.verdict = "insufficient-evidence";
+    ev.spineEvidenceBasis = "thin";
+    ev.preGateEvidenceAction = "add";
+    ev.preGateEvidenceTargetPct = 1.4;
+    ev.actionDowngraded = true;
+    ev.sizeClamped = true;
+    // The gate downgraded the add to a hold and capped the size to the current weight.
+    pmMemo(b).portfolioFit!.action = "hold";
+    pmMemo(b).portfolioFit!.targetWeightPct = 0.5;
+    const report = checkRun(b);
+    expect(byId(report.checks, "evidence/verdict")?.status).toBe("pass");
+    expect(byId(report.checks, "evidence/no-add")?.status).toBe("pass");
+  });
+
+  it("skips both checks on a legacy run with no evidence gate recorded", () => {
+    const b = healthyBundle();
+    b.decisionSnapshot!.evidenceVerdict = null;
+    pmMemo(b).evidenceDecision = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "evidence/verdict")?.status).toBe("skipped");
+    expect(byId(report.checks, "evidence/no-add")?.status).toBe("skipped");
   });
 });
 

@@ -12,9 +12,11 @@
  *     (`min(target, currentWeight)`); `initiate`/`add` become `hold`; `trim`,
  *     `exit`, and an existing `hold` are preserved.
  *   - When the current position can't be measured in the run's own NAV basis
- *     (`currentWeightPct == null`) → WITHHOLD the numeric target rather than
- *     publish an uncapped positive % (never fabricate a trim from a wrong-basis
- *     or partial weight).
+ *     (`currentWeightPct == null`, held-but-unpriced) → SKIP the numeric clamp and
+ *     let the pre-gate size pass through, relying on the `initiate`/`add`→`hold`
+ *     action downgrade for the no-add (the `computePolicyGate`
+ *     `householdWeightKnown: false` precedent — never fabricate a size from an
+ *     unknown basis).
  *
  * UNITS: percentage points 0..100 (matching `targetWeightPct`). `currentWeightPct`
  * is the analyzed ticker's weight in the run's OWN NAV basis (the frozen
