@@ -17,6 +17,7 @@ import {
 import { ThesisBody } from "./thesis-body";
 import { MandatePanel } from "./mandate-panel";
 import { PolicyPanel } from "./policy-panel";
+import { EvidencePanel } from "./evidence-panel";
 import type {
   MemoState,
   ThesisSection,
@@ -44,6 +45,7 @@ type PortfolioFit = NonNullable<MemoState["portfolioFit"]>;
 type LensConvergence = NonNullable<MemoState["lensConvergence"]>;
 type MandateDecision = NonNullable<MemoState["mandateDecision"]>;
 type PolicyDecision = NonNullable<MemoState["policyDecision"]>;
+type EvidenceDecision = NonNullable<MemoState["evidenceDecision"]>;
 
 type ScenarioSummary = {
   name: string;
@@ -93,6 +95,9 @@ export type PmHeroProps = {
   mandateDecision: MandateDecision | null;
   // FIX-761 — durable portfolio-mandate policy fit. Null on a mandate-blind run.
   policyDecision: PolicyDecision | null;
+  // FIX-781 — always-on evidence-sufficiency gate. Null only on a legacy run
+  // predating the gate (the panel is omitted, like the siblings above).
+  evidenceDecision: EvidenceDecision | null;
 };
 
 const METRIC_ORDER = ["rating", "ticker", "window", "size", "stop", "target"] as const;
@@ -117,6 +122,7 @@ export function PmHero({
   snapshotAsOf,
   mandateDecision,
   policyDecision,
+  evidenceDecision,
 }: PmHeroProps): ReactElement {
   const meta = AGENTS[agent];
   const idx = tierIndex(finalRating);
@@ -257,6 +263,8 @@ export function PmHero({
       ) : null}
 
       {policyDecision !== null ? <PolicyPanel decision={policyDecision} /> : null}
+
+      {evidenceDecision !== null ? <EvidencePanel decision={evidenceDecision} /> : null}
 
       {decisionConfidence !== null || agreesWithTrader !== null ? (
         <div className="flex flex-wrap items-center gap-4 text-[11px] text-[color:var(--c-fg-muted)]">
