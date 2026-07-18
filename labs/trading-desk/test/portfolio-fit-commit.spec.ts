@@ -254,9 +254,9 @@ function scenarioForecasterOutput() {
       metrics: { horizon: "months", distribution: "concentrated", buckets: "3", evidence: "sufficient" },
       body: [{ h: "Summary", p: "Base dominant.", items: null }],
       scenarios: [
-        { name: "Base", probability: 0.55, trigger: "t", triggerSource: "investmentThesis", expectedOutcome: "o", tradeBehavior: "b" },
-        { name: "Up", probability: 0.25, trigger: "t", triggerSource: "tradeProposal", expectedOutcome: "o", tradeBehavior: "b" },
-        { name: "Down", probability: 0.2, trigger: "t", triggerSource: "riskAssessment", expectedOutcome: "o", tradeBehavior: "b" },
+        { name: "Base", probability: 0.55, expectedReturnPct: 8, trigger: "t", triggerSource: "investmentThesis", expectedOutcome: "o", tradeBehavior: "b" },
+        { name: "Up", probability: 0.25, expectedReturnPct: 30, trigger: "t", triggerSource: "tradeProposal", expectedOutcome: "o", tradeBehavior: "b" },
+        { name: "Down", probability: 0.2, expectedReturnPct: -15, trigger: "t", triggerSource: "riskAssessment", expectedOutcome: "o", tradeBehavior: "b" },
       ],
       distribution: "concentrated",
       evidenceBasis: "sufficient",
