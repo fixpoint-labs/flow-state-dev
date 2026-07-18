@@ -78,6 +78,9 @@ importers:
       '@docusaurus/core':
         specifier: ^3.7.0
         version: 3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.4))(lightningcss@1.32.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.7.3)
+      '@docusaurus/plugin-client-redirects':
+        specifier: 3.9.2
+        version: 3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.4))(lightningcss@1.32.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.7.3)
       '@docusaurus/plugin-content-docs':
         specifier: ^3.7.0
         version: 3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.4))(lightningcss@1.32.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.7.3)
@@ -2726,6 +2729,13 @@ packages:
       react: '*'
       react-dom: '*'
 
+  '@docusaurus/plugin-client-redirects@3.9.2':
+    resolution: {integrity: sha512-lUgMArI9vyOYMzLRBUILcg9vcPTCyyI2aiuXq/4npcMVqOr6GfmwtmBYWSbNMlIUM0147smm4WhpXD0KFboffw==}
+    engines: {node: '>=20.0'}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+
   '@docusaurus/plugin-content-blog@3.9.2':
     resolution: {integrity: sha512-3I2HXy3L1QcjLJLGAoTvoBnpOwa6DPUa3Q0dMK19UTY9mhPkKQg/DYhAGTiBUKcTR0f08iw7kLPqOhIgdV3eVQ==}
     engines: {node: '>=20.0'}
@@ -2870,11 +2880,11 @@ packages:
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild-kit/esm-loader@2.6.5':
     resolution: {integrity: sha512-FxEMIkJKnodyA1OaCUoEvbYRkoZlLZ4d/eXFu9Fh8CbBBgP5EmZxrfTRyN0qpXZ4vOvqnE5YdRdcrmUUXuU+dA==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild/aix-ppc64@0.25.12':
     resolution: {integrity: sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA==}
@@ -13635,6 +13645,37 @@ snapshots:
       - uglify-js
       - webpack-cli
 
+  '@docusaurus/plugin-client-redirects@3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.4))(lightningcss@1.32.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.7.3)':
+    dependencies:
+      '@docusaurus/core': 3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.4))(lightningcss@1.32.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.7.3)
+      '@docusaurus/logger': 3.9.2
+      '@docusaurus/utils': 3.9.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@docusaurus/utils-common': 3.9.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@docusaurus/utils-validation': 3.9.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      eta: 2.2.0
+      fs-extra: 11.3.3
+      lodash: 4.17.23
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+      tslib: 2.8.1
+    transitivePeerDependencies:
+      - '@docusaurus/faster'
+      - '@mdx-js/react'
+      - '@parcel/css'
+      - '@rspack/core'
+      - '@swc/core'
+      - '@swc/css'
+      - bufferutil
+      - csso
+      - debug
+      - esbuild
+      - lightningcss
+      - supports-color
+      - typescript
+      - uglify-js
+      - utf-8-validate
+      - webpack-cli
+
   '@docusaurus/plugin-content-blog@3.9.2(@docusaurus/plugin-content-docs@3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.4))(lightningcss@1.32.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.7.3))(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.4))(lightningcss@1.32.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.7.3)':
     dependencies:
       '@docusaurus/core': 3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.4))(lightningcss@1.32.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.7.3)
@@ -17104,14 +17145,6 @@ snapshots:
       '@vitest/utils': 4.1.10
       chai: 6.2.2
       tinyrainbow: 3.1.0
-
-  '@vitest/mocker@3.2.4(vite@7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))':
-    dependencies:
-      '@vitest/spy': 3.2.4
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      vite: 7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
 
   '@vitest/mocker@3.2.4(vite@7.3.1(@types/node@25.3.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))':
     dependencies:
@@ -23700,7 +23733,7 @@ snapshots:
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.4
-      '@vitest/mocker': 3.2.4(vite@7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))
+      '@vitest/mocker': 3.2.4(vite@7.3.1(@types/node@25.3.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))
       '@vitest/pretty-format': 3.2.4
       '@vitest/runner': 3.2.4
       '@vitest/snapshot': 3.2.4

@@ -63,6 +63,24 @@ const config: Config = {
           "https://github.com/fixpoint-labs/flow-state-dev/tree/main/implementation/apps/docs/",
       },
     ],
+    [
+      // Task Board and Flow Policy moved from /docs/patterns/* to
+      // /docs/orchestration/* when the orchestration package was carved out.
+      // Keep the old URLs alive so existing links don't 404.
+      "@docusaurus/plugin-client-redirects",
+      {
+        redirects: [
+          {
+            from: "/docs/patterns/task-board",
+            to: "/docs/orchestration/task-board",
+          },
+          {
+            from: "/docs/patterns/flow-policy",
+            to: "/docs/orchestration/flow-policy",
+          },
+        ],
+      },
+    ],
   ],
 
   themeConfig: {
