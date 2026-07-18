@@ -225,7 +225,6 @@ initial-tasks:
 pattern-config:
   concurrency: 2
   dispatcher: topological
-  on-idle: complete
 allowed-tools: [search, fetch]
 ---
 
@@ -337,7 +336,6 @@ initial-tasks:
 pattern-config:
   concurrency: 4
   dispatcher: topological
-  on-idle: complete
 allowed-tools: [search, fetch, taskTools]
 ---
 ```
