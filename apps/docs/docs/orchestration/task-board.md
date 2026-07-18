@@ -194,7 +194,8 @@ A task whose `assignee` doesn't match any worker fails per `onError`.
 
 - `concurrency` — max parallel workers. Default `4`.
 - `onError: "skip" | "fail"` — `"skip"` records the error on the offending task; siblings continue. `"fail"` rethrows; the board fails. Default `"skip"`.
-- `maxAttemptsPerTask` — per-task retry cap before the failure is final.
+- `maxAttempts` (per task) — set on a task's `TaskInit`, not on the board. While `attempts < maxAttempts`, a failed task is re-dispatched instead of left errored. There is no board-level retry cap.
+- `maxIterations` — board-level safety cap on total dispatch loops before the board stops. Default `10000`.
 
 ## Stream items emitted
 
