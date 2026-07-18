@@ -288,7 +288,8 @@ Workers emit `message`, `source`, `tool_call`, and `reasoning` items naturally a
 ```typescript
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 
-const collection = getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "my-plan" });
+// inside a block's async execute(input, ctx):
+const collection = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "my-plan" });
 
 for (const task of collection.list({ status: "completed" })) {
   const items = task.items();
