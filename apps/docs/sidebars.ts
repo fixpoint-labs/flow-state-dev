@@ -114,6 +114,27 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "Orchestration",
+      items: [
+        "orchestration/overview",
+        "orchestration/task-substrate",
+        "orchestration/task-board",
+        "orchestration/flow-policy",
+        "orchestration/agents",
+        {
+          type: "category",
+          label: "Skills",
+          items: [
+            "skills/overview",
+            "skills/activation",
+            "skills/authoring",
+            "skills/pattern-skills",
+          ],
+        },
+      ],
+    },
+    {
+      type: "category",
       label: "Ecosystem",
       items: [
         "ecosystem/overview",
@@ -128,9 +149,7 @@ const sidebars: SidebarsConfig = {
               items: [
                 "patterns/parallelTasks",
                 "patterns/supervisor",
-                "patterns/task-board",
                 "patterns/plan-and-execute",
-                "patterns/flow-policy",
                 "patterns/routed-specialists",
                 "patterns/round-robin",
                 "patterns/debate",
@@ -165,16 +184,6 @@ const sidebars: SidebarsConfig = {
             "tools/bash",
             "tools/claude-code-cli",
             "tools/claude-code-sdk",
-          ],
-        },
-        {
-          type: "category",
-          label: "Skills",
-          items: [
-            "skills/overview",
-            "skills/activation",
-            "skills/authoring",
-            "skills/pattern-skills",
           ],
         },
         {

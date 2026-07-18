@@ -92,7 +92,7 @@ fsdev ui add request-group
 
 ## TaskPlan
 
-The generalized renderer for any `TaskCollection` — the unified Plan/Task primitive from `@flow-state-dev/tasks`. Subscribes to `task-change` and `task-board-meta` component items, latest-wins per task, and groups them into sections by status.
+The generalized renderer for any `TaskCollection` — the unified Plan/Task primitive from `@flow-state-dev/orchestration`. Subscribes to `task-change` and `task-board-meta` component items, latest-wins per task, and groups them into sections by status.
 
 ```bash
 fsdev ui add task-plan

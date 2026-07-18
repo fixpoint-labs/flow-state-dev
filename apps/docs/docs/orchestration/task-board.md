@@ -52,9 +52,9 @@ Each worker runs its own claim/run/check loop. Claims are CAS-safe — two worke
 ## Basic usage
 
 ```ts
-import { taskBoard } from "@flow-state-dev/patterns/task-board";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { handler } from "@flow-state-dev/core";
-import { taskWorkerInputSchema } from "@flow-state-dev/patterns/task-board";
+import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";
 
 const worker = handler({
@@ -142,7 +142,7 @@ Most boards leave `onIdle` alone. Override when:
 `"complete-or-blocked"` ends the drain when pending tasks can no longer run, but it leaves those tasks `pending`. To fold them into a terminal status, `.tap()` the `createCascadeSkipDependents` building block after `board.block`:
 
 ```ts
-import { taskBoard, createCascadeSkipDependents } from "@flow-state-dev/patterns/task-board";
+import { taskBoard, createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
 
 const board = taskBoard({ name: "research", collection: { backing: "request", collectionId: "research" }, workers });
 const cascadeSkip = createCascadeSkipDependents({ name: "research" });
@@ -162,7 +162,7 @@ The dispatcher decides which `pending` task gets claimed next. Three built-ins:
 - `"fifo"` — first-added-first-claimed, ignores `deps` (use for flat fan-out).
 - `"priority"` — claims the highest-priority `pending` task; ignores `deps`.
 
-You can pass a custom `TaskDispatcher` instance too. The dispatcher contract is in `@flow-state-dev/tasks`. For deeper dispatcher behavior (caching, ledger, flow policy), see [Flow Policy](./flow-policy).
+You can pass a custom `TaskDispatcher` instance too. The dispatcher contract is in `@flow-state-dev/orchestration`. For deeper dispatcher behavior (caching, ledger, flow policy), see [Flow Policy](./flow-policy).
 
 ## Worker registry
 
@@ -223,8 +223,8 @@ The collection then lives on `ctx.request` and survives every block boundary in 
 
 ## See also
 
-- [Parallel Tasks](./parallelTasks) — single-pass fan-out wrapper on top of Task Board.
-- [Supervisor](./supervisor) — per-task review wrapper.
-- [Plan and Execute](./plan-and-execute) — replan-loop wrapper.
+- [Parallel Tasks](../patterns/parallelTasks) — single-pass fan-out wrapper on top of Task Board.
+- [Supervisor](../patterns/supervisor) — per-task review wrapper.
+- [Plan and Execute](../patterns/plan-and-execute) — replan-loop wrapper.
 - [Flow Policy](./flow-policy) — dispatcher policy and `priorWork` shaping.
-- [Patterns Overview](./overview) — when to use which pattern.
+- [Patterns Overview](../patterns/overview) — when to use which pattern.

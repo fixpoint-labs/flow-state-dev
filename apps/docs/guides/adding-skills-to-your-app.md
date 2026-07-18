@@ -19,7 +19,7 @@ This guide assumes you already have an app with a generator that takes a user me
 ## Step 1: Install the package
 
 ```bash
-pnpm add @flow-state-dev/skills
+pnpm add @flow-state-dev/orchestration
 ```
 
 Everything lives there — the capability factory, the directory reader, and the primitives under it.
@@ -79,7 +79,7 @@ In the module where you define your capabilities, load the directory:
 
 ```ts
 // lib/capabilities.ts
-import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/skills";
+import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/orchestration";
 import { search, fetch, crawl } from "@flow-state-dev/tools";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -164,7 +164,7 @@ import {
   createSkillActivator,
   createSkillsCapability,
   readSkillsDirectory,
-} from "@flow-state-dev/skills";
+} from "@flow-state-dev/orchestration";
 
 // ... readSkillsDirectory + tools as before ...
 

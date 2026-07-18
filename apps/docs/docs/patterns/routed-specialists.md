@@ -112,11 +112,11 @@ When a synthesizer is configured (default), the synthesizer receives the above s
 
 ## Substrate notes
 
-The pattern stores per-iteration records in a sequencer-state-backed `TaskCollection` (`@flow-state-dev/tasks`). The decision sequence renders natively in `<Plan />` and is queryable post-run via `collection.list({ status: "completed" })`. The shared workspace is a sibling writable resource — the pattern does not co-mingle workspace state with the TaskCollection.
+The pattern stores per-iteration records in a sequencer-state-backed `TaskCollection` (`@flow-state-dev/orchestration`). The decision sequence renders natively in `<Plan />` and is queryable post-run via `collection.list({ status: "completed" })`. The shared workspace is a sibling writable resource — the pattern does not co-mingle workspace state with the TaskCollection.
 
 ## See also
 
 - [Round Robin](./round-robin) — fixed roster in declared order, judge as terminator. The flip side of "controller picks next."
 - [Event Actors](./event-actors) — actors react to entry topics in parallel; no controller.
-- [Task Board](./task-board) — concurrent drain over a `TaskCollection` with dependency gating and worker routing.
+- [Task Board](../orchestration/task-board) — concurrent drain over a `TaskCollection` with dependency gating and worker routing.
 - [Supervisor](./supervisor) — plan, execute, review, replan loop.

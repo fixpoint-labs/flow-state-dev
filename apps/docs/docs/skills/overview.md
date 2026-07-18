@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Skills
 
-`@flow-state-dev/skills` — Markdown playbooks the agent loads on demand. Each skill is a folder with a `SKILL.md` and (optionally) supporting files. When a skill activates, its body is rendered into the generator's system prompt as specialized instructions for one kind of task.
+`@flow-state-dev/orchestration` — Markdown playbooks the agent loads on demand. Each skill is a folder with a `SKILL.md` and (optionally) supporting files. When a skill activates, its body is rendered into the generator's system prompt as specialized instructions for one kind of task.
 
 ## What a skill is
 
@@ -57,7 +57,7 @@ Choose fork when the skill is a self-contained investigation that shouldn't bias
 Add the capability to a generator via `uses:`. The capability installs a skills resource collection plus three presets (all on by default): `tools` (catalog tool schemas), `context` (the active-skill body formatter), and `runSkill` (the `runSkill` tool plus the catalog listing the model reads).
 
 ```ts
-import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/skills";
+import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/orchestration";
 import { search, fetch, crawl } from "@flow-state-dev/tools";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
