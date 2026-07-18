@@ -687,6 +687,13 @@ describe("checkRun — evidence gate", () => {
     expect(byId(report.checks, "evidence/verdict")?.status).toBe("fail");
   });
 
+  it("fails verdict when the memo evidence exists but the snapshot mirror is null", () => {
+    const b = healthyBundle();
+    b.decisionSnapshot!.evidenceVerdict = null; // dropped mirror while memo has a decision
+    const report = checkRun(b);
+    expect(byId(report.checks, "evidence/verdict")?.status).toBe("fail");
+  });
+
   it("fails no-add when an insufficient run still committed an add", () => {
     const b = healthyBundle();
     b.valuationSpine!.evidenceBasis = "thin"; // → recomputed verdict insufficient
@@ -711,6 +718,25 @@ describe("checkRun — evidence gate", () => {
     ev.preGateEvidenceAction = "hold";
     ev.preGateEvidenceTargetPct = 1;
     // Correctly held, but size somehow rose above the pre-gate baseline.
+    pmMemo(b).portfolioFit!.action = "hold";
+    pmMemo(b).portfolioFit!.targetWeightPct = 3;
+    const report = checkRun(b);
+    expect(byId(report.checks, "evidence/no-add")?.status).toBe("fail");
+  });
+
+  it("fails no-add when an insufficient run sized between the current weight and the pre-gate target", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.evidenceBasis = "thin";
+    b.decisionSnapshot!.evidenceVerdict = "insufficient-evidence";
+    const ev = pmMemo(b).evidenceDecision!;
+    ev.verdict = "insufficient-evidence";
+    ev.spineEvidenceBasis = "thin";
+    ev.currentWeightKnown = true;
+    ev.preGateEvidenceAction = "add";
+    ev.preGateEvidenceTargetPct = 4;
+    // Current 2%, pre-gate 4% — a broken commit lands at 3%: below pre-gate but
+    // still above the current position, so it adds exposure.
+    pmMemo(b).portfolioFit!.currentWeightPct = 2;
     pmMemo(b).portfolioFit!.action = "hold";
     pmMemo(b).portfolioFit!.targetWeightPct = 3;
     const report = checkRun(b);

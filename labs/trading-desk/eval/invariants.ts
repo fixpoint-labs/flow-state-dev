@@ -962,8 +962,12 @@ function checkEvidenceGate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap
   if (recomputed.verdict !== ev.verdict) {
     verdictMismatches.push(`recomputed verdict ${recomputed.verdict} vs memo ${ev.verdict}`);
   }
-  if (snapshotVerdict != null && snapshotVerdict !== ev.verdict) {
-    verdictMismatches.push(`snapshot verdict ${snapshotVerdict} vs memo ${ev.verdict}`);
+  // A completed run writes the snapshot verdict alongside the memo evidence
+  // decision, so once the memo decision exists a null (dropped/omitted) snapshot
+  // mirror is itself drift — the RunSummary path would project a missing verdict —
+  // not a case to skip (the legacy skip above only covers BOTH being absent).
+  if (snapshotVerdict !== ev.verdict) {
+    verdictMismatches.push(`snapshot verdict ${snapshotVerdict ?? "null"} vs memo ${ev.verdict}`);
   }
   if (verdictMismatches.length === 0) {
     c.hardPass("evidence/verdict", `evidence verdict ${ev.verdict} recomputes and the mirrors agree`);
@@ -988,6 +992,23 @@ function checkEvidenceGate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap
     if (committedTarget > ev.preGateEvidenceTargetPct + 1e-6) {
       noAddIssues.push(
         `insufficient evidence but committed size ${committedTarget} exceeds pre-gate ${ev.preGateEvidenceTargetPct}`,
+      );
+    }
+    // The gate's actual clamp is `min(pre-gate, currentWeight)` when the current
+    // weight is a usable reference (priced). The pre-gate bound alone would let a
+    // broken commit publish a size BETWEEN the current weight and the pre-gate
+    // target (current 2%, pre-gate 4%, committed 3%) — still adding exposure. The
+    // PM echo `currentWeightPct` is the same scoped NAV basis as the gate's
+    // `scopedTickerWeightPct` exactly when `currentWeightKnown` (both are the full
+    // priced sum; 0 when not held), so cap against it there. A held-but-unpriced
+    // name (`currentWeightKnown` false) skips the numeric clamp by design — only
+    // the pre-gate bound + the action downgrade apply.
+    if (
+      ev.currentWeightKnown &&
+      committedTarget > pm.portfolioFit.currentWeightPct + 1e-6
+    ) {
+      noAddIssues.push(
+        `insufficient evidence but committed size ${committedTarget} exceeds the current position ${pm.portfolioFit.currentWeightPct} (adds exposure)`,
       );
     }
   } else {
