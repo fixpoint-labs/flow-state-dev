@@ -19,7 +19,7 @@
  */
 import { z, type ZodTypeAny } from "zod";
 import { transientSlot } from "@flow-state-dev/core";
-import { taskSchema, type Task } from "../tasks";
+import { type Task } from "../tasks";
 
 /**
  * Default outer-sequencer state shape: a `tasks` record under the default key.

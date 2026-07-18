@@ -342,12 +342,6 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   toolCache?: TaskBoardToolCacheConfig | boolean;
 
   /**
-   * Per-board flow policy (FIX-610 Layer A). Decides which prior-task
-   * observations a soon-to-dispatch worker sees on
-   * `TaskWorkerInput.priorWork`. Default: `flowPolicy.declaredDepsOnly()`
-   * — wire-identical to pre-FIX-610 behavior. Pattern factories like
-   * `planAndExecute` pin richer defaults (`recentTrajectory({ n: 8 })`).
-   *
    * Per-board flow policy. Decides which prior-task observations a
    * soon-to-dispatch worker sees on `TaskWorkerInput.priorWork`.
    * Default: `flowPolicy.declaredDepsOnly()`. Pattern factories like
