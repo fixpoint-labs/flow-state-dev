@@ -115,6 +115,14 @@ export const sessionStateSchema = z.object({
   // clamp rather than fabricating a full exit — never coerce to 0); 0 when the name
   // is not held (initiating). Frozen for the PM commit's policy gate (FIX-761).
   householdTickerWeightPct: z.number().nullable().default(null),
+  // The analyzed ticker's weight in the RUN'S OWN NAV basis (the scoped snapshot,
+  // which equals the household snapshot on an unscoped run). This is the
+  // basis-consistent no-add reference for the FIX-781 evidence gate — distinct
+  // from the household cap reference above. Same three-value contract: 0 not-held /
+  // portfolio-blind, positive when every scoped row is priced, null when any is
+  // unpriced (the gate then withholds the numeric target rather than trim off a
+  // partial sum). Frozen for the PM commit's evidence gate.
+  scopedTickerWeightPct: z.number().nullable().default(null),
 });
 
 export type SessionState = z.infer<typeof sessionStateSchema>;

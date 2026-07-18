@@ -246,6 +246,11 @@ export const seedSession = handler({
       );
     }
     const householdTickerWeightPct = householdTickerWeight(householdSnapshot, input.ticker);
+    // Weight of the analyzed ticker in the RUN'S OWN NAV basis (the scoped
+    // `portfolio` snapshot, which equals `householdSnapshot` on an unscoped run) —
+    // the basis-consistent no-add reference for the FIX-781 evidence gate. Reuses
+    // the same pure helper, so the three-value contract (0 / positive / null) holds.
+    const scopedTickerWeightPct = householdTickerWeight(portfolio, input.ticker);
 
     // Resolve the effective risk-appetite mandate: a per-run override wins; else
     // the most-conservative default among the selected accounts (all accounts when
@@ -307,6 +312,9 @@ export const seedSession = handler({
       // Household weight of the analyzed ticker, frozen so the PM commit's policy
       // gate measures the household cap/exclusion against the full book.
       householdTickerWeightPct,
+      // Weight of the analyzed ticker in the run's own NAV basis, frozen so the PM
+      // commit's evidence gate (FIX-781) caps new exposure basis-consistently.
+      scopedTickerWeightPct,
     });
     return input;
   },
