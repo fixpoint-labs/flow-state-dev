@@ -1165,6 +1165,74 @@ constraints, a time horizon, and rebalancing bands. Full detail in
   and the per-run appetite dial,
   [Risk-appetite mandate (FIX-752)](#risk-appetite-mandate-decision-tier--fix-752).
 
+## Evidence-sufficiency gate (always-on) — FIX-781
+
+An always-on, deterministic capital gate — the third sibling of the FIX-752
+appetite dial and the FIX-761 policy gate, but unconditional. It caps NEW
+exposure whenever the evidence behind a call is too thin, so a thin/missing
+substrate can never authorize adding to a position. Independent of the optional
+risk mandate: it fires on mandate-blind and portfolio-blind runs alike.
+
+- **Three evidence layers, fail-closed OR (`lib/evidence-gate.ts`, pure).**
+  `computeEvidenceGate` reads (1) the valuation-spine `evidenceBasis` +
+  `expectedReturn.lowConfidence`, (2) the reward-to-risk `evidenceBasis`, and (3)
+  a DETERMINISTIC `criticalDataThin` signal — true when ANY of the four primary
+  financial payloads (fundamentals / income / balance-sheet / cashflow) is absent
+  or `source: "unavailable"`, derived by `deriveCriticalDataThin` from the tool-set
+  markers, NEVER the LLM `dataQuality`. Sufficient requires all three clear; any one
+  thin ⇒ `insufficient-evidence`. The OR (not AND) closes the "forecaster emits ≥3
+  buckets on thin substrate → reward-to-risk reads sufficient" hole — a single
+  missing statement still gates.
+
+- **No-add, downward-only, non-overridable.** On insufficient evidence the target
+  is capped to the current position (`min(target, currentWeight)`; `0` for a
+  portfolio-blind / not-held name), `initiate`/`add` become `hold`, and
+  `trim`/`exit`/`hold` are preserved. When the current position can't be measured
+  in the run's own NAV basis (`scopedTickerWeightPct == null`, held-but-unpriced)
+  the numeric clamp is SKIPPED and the pre-gate size passes through — the action
+  downgrade enforces the no-add, exactly the `computePolicyGate`
+  `householdWeightKnown: false` precedent (never fabricate a size from an unknown
+  basis). The gate NEVER touches `finalRating` (the FIX-715/752/761 orthogonality
+  — observed negative evidence still rates bearish; only new exposure is gated).
+  There is no override — `mandateOverrideReason` cannot clear an
+  insufficient-evidence verdict.
+
+- **The scoped current weight is frozen at seed.** `seedSession`
+  (`orchestration/guards.ts`) freezes `state.scopedTickerWeightPct =
+  householdTickerWeight(scopedSnapshot, ticker)` alongside the FIX-761
+  `householdTickerWeightPct` — the analyzed ticker's weight in the run's OWN scoped
+  NAV basis (three-value: `0` not-held, positive held+priced, `null`
+  held-but-unpriced). The evidence gate uses the SCOPED weight, not the household
+  weight the policy gate uses.
+
+- **Derived at commit, mirrored three ways.** The PM commit
+  (`agents/portfolio-manager/writer.ts`) runs the gate AFTER the mandate + policy
+  gates (its input is the post-policy `gatedAction` + target), sets the final
+  `portfolioFit.action`/`targetWeightPct`, and mirrors the full
+  `evidenceDecision` (verdict + evidence bases + clamp flags +
+  `preGateEvidenceTargetPct`/`preGateEvidenceAction`) onto the memo, the
+  `evidenceVerdict` onto the decision snapshot, and the same onto the RunSummary.
+  The PmHero `EvidencePanel` (`components/theses/evidence-panel.tsx`) reads the
+  memo mirror. Because the gate runs last, eval clamp checks compare against
+  `evidenceDecision.preGateEvidenceTargetPct` (the pre-evidence baseline), and a
+  dedicated `evidence/*` deterministic invariant (`eval/invariants.ts`) recomputes
+  the verdict and asserts the no-add held.
+
+- **NOT a generator output.** `evidenceDecisionSchema` is a memo-state mirror —
+  `.nullable()`/`.default()` are fine; do NOT add it to
+  `output-schemas-strict.spec.ts`. The gate derives everything; the PM emits no
+  evidence-specific prose (the prompt only states the symmetric "missing data is
+  non-evidence in both directions" rule).
+
+- **v1 simplifications.** The `criticalDataThin` set is the four primary financial
+  payloads; a broader "underwriting-critical inputs" set is a deferred option. On a
+  held-but-unpriced name the size passes through unclamped (the action still
+  enforces the no-add) rather than withholding a numeric target — the Option-B
+  match to the FIX-761 sibling, avoiding a nullable-target blast radius across the
+  hero / summary / eval consumers. See the sibling gates,
+  [Risk-appetite mandate (FIX-752)](#risk-appetite-mandate-decision-tier--fix-752)
+  and [Portfolio mandate (IPS) — FIX-761](#portfolio-mandate-ips--fix-761).
+
 ## Adding a new generator
 
 **Structured-output agents in the trader / risk / forecaster / PM /

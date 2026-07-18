@@ -478,6 +478,22 @@ This is a documented, user-set policy — not financial advice, and not a
 production IPS governance framework. See
 [`docs/portfolio-mandate.md`](docs/portfolio-mandate.md).
 
+## Evidence-sufficiency gate
+
+There is one more sizing rule, and it is always on. You can't turn it off and
+there's nothing to configure. If the evidence behind a call is too thin, the desk
+will not add to the position. "Too thin" means a concrete gap: the valuation work
+couldn't be grounded, the reward-to-risk read has no real distribution behind it,
+or one of the core financial statements came back unavailable. Any one of those and
+the recommendation is held, not added — an `initiate` or `add` becomes a `hold`,
+and the size is capped at what you already own.
+
+The point is honesty about what's missing. A blank where a number should be is not
+a reason to buy and not a reason to sell. It's just missing, in both directions. So
+the gate never turns thin data into a bearish call: it leaves the rating alone and
+only holds back new money. It runs on every analysis, with or without a portfolio
+or a mandate, and it can't be overridden.
+
 ## Custom instructions
 
 The status bar carries a gear icon that opens a settings dialog where you can
