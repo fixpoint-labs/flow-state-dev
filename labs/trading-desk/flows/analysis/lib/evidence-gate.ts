@@ -61,7 +61,6 @@ export type EvidenceGateInput = {
 
 export type EvidenceGateResult = {
   verdict: EvidenceVerdict;
-  sufficient: boolean;
   spineSufficient: boolean;
   rewardToRiskSufficient: boolean;
   /** Downward-only clamped weight; null when `targetWithheld`. */
@@ -93,7 +92,6 @@ export function computeEvidenceGate(input: EvidenceGateInput): EvidenceGateResul
   if (sufficient) {
     return {
       verdict: "sufficient",
-      sufficient: true,
       spineSufficient,
       rewardToRiskSufficient,
       targetWeightPct: input.targetWeightPct,
@@ -111,8 +109,8 @@ export function computeEvidenceGate(input: EvidenceGateInput): EvidenceGateResul
   let targetWeightPct: number | null = input.targetWeightPct;
   let sizeClamped = false;
   let targetWithheld = false;
-  if (currentWeightKnown) {
-    const capped = Math.min(input.targetWeightPct, input.currentWeightPct as number);
+  if (input.currentWeightPct != null) {
+    const capped = Math.min(input.targetWeightPct, input.currentWeightPct);
     if (capped < input.targetWeightPct) {
       targetWeightPct = capped;
       sizeClamped = true;
@@ -127,7 +125,6 @@ export function computeEvidenceGate(input: EvidenceGateInput): EvidenceGateResul
 
   return {
     verdict: "insufficient-evidence",
-    sufficient: false,
     spineSufficient,
     rewardToRiskSufficient,
     targetWeightPct,
