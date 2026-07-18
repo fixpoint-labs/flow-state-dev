@@ -67,12 +67,12 @@ All policies live on the `flowPolicy` namespace exported from `@flow-state-dev/o
 The common pick for plan-and-execute-shaped work is recent trajectory:
 
 ```ts
-import { taskBoard } from "@flow-state-dev/patterns";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { flowPolicy } from "@flow-state-dev/orchestration";
 
 const board = taskBoard({
   name: "research",
-  worker: researchWorker,
+  workers: researchWorker,
   flowPolicy: flowPolicy.recentTrajectory({ n: 8 }),
 });
 ```
@@ -82,12 +82,12 @@ const board = taskBoard({
 Both layers are board-level config. Setting either is enough; you can mix and match.
 
 ```ts
-import { taskBoard } from "@flow-state-dev/patterns";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { flowPolicy } from "@flow-state-dev/orchestration";
 
 const board = taskBoard({
   name: "research",
-  worker: researchWorker,
+  workers: researchWorker,
 
   // Layer A: which prior-task observations the next worker sees.
   flowPolicy: flowPolicy.recentTrajectory({ n: 8, maxTokens: 4000 }),

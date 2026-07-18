@@ -1,4 +1,4 @@
-# @flow-state-dev/tasks
+# @flow-state-dev/orchestration
 
 ## Pre-1.0 history
 

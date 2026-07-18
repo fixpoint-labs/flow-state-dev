@@ -543,7 +543,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
       // FIX-610: also stamp the active task id onto the shared
       // run-state bag so any cacheable tool the worker invokes attributes
       // cache writes to this task (later hits get `sourceTask`).
-      stampCurrentTaskId(runState, task);
+      stampCurrentTaskId(task);
     })
     .step(workerStep)
     .tap(recordSuccess)

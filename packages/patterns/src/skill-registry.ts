@@ -18,6 +18,7 @@ import type { PatternBinding, WorkerSpec } from "@flow-state-dev/core";
 import {
   createPatternRegistry,
   materializeWorker,
+  kebabToCamel,
   type MaterializedPattern,
   type PatternFactory,
   type PatternRegistry,
@@ -34,11 +35,12 @@ import { routedSpecialists, createWorkspace } from "./routedSpecialists";
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/** Map kebab-case patternConfig keys to camelCase. */
+/** Map kebab-case patternConfig keys to camelCase, reusing the substrate's
+ *  string converter so the transform stays defined in one place (BP-029). */
 function kebabToCamelObj(input: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(input)) {
-    out[k.replace(/-([a-z0-9])/g, (_, c) => (c as string).toUpperCase())] = v;
+    out[kebabToCamel(k)] = v;
   }
   return out;
 }

@@ -104,7 +104,7 @@ Status icons: gray circle (pending), blue spinner (in\_progress), green check (c
 
 ### TaskPlan Component
 
-`TaskPlan` is the generalized renderer for any TaskCollection (the unified Plan/Task primitive from `@flow-state-dev/tasks`). Pass a `collectionId` and it subscribes to `task-change` and `task-board-meta` component items in the session stream, latest-wins per task, grouped into sections by status.
+`TaskPlan` is the generalized renderer for any TaskCollection (the unified Plan/Task primitive from `@flow-state-dev/orchestration`). Pass a `collectionId` and it subscribes to `task-change` and `task-board-meta` component items in the session stream, latest-wins per task, grouped into sections by status.
 
 ```tsx
 import { TaskPlan } from "@/components/flow-state/task-plan";

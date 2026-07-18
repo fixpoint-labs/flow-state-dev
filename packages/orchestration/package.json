@@ -33,6 +33,10 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
+    "./tasks": {
+      "types": "./dist/tasks/index.d.ts",
+      "default": "./src/tasks/index.ts"
+    },
     "./task-board": {
       "types": "./dist/task-board/index.d.ts",
       "default": "./src/task-board/index.ts"
@@ -51,6 +55,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./tasks": {
+        "types": "./dist/tasks/index.d.ts",
+        "default": "./dist/tasks/index.js"
       },
       "./task-board": {
         "types": "./dist/task-board/index.d.ts",

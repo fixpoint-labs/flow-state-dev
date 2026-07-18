@@ -295,11 +295,7 @@ export function createFlowPolicyResolver(runState: BoardRunFlowState) {
  * async resource so all downstream `await` chains in this worker
  * iteration inherit the value; sibling worker iterations have their
  * own resource and never see it.
- *
- * `_runState` is accepted only to keep the existing call-site
- * signature stable; it's intentionally unused now that per-worker
- * state lives in ALS.
  */
-export function stampCurrentTaskId(_runState: BoardRunFlowState, task: Task): void {
+export function stampCurrentTaskId(task: Task): void {
   workerTaskIdStore.enterWith(task.id);
 }
