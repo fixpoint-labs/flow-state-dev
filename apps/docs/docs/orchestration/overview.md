@@ -41,7 +41,7 @@ You wire orchestration one of two ways, depending on who's in charge.
 
 **Agent-first.** An agent decides what work to create at runtime. You give it the `taskTools` capability — eight tools like `addTask` and `completeTask` — and it enqueues tasks as it discovers them. A discoverer agent might search, find twelve items, and queue one analysis task per item plus a synthesis task that waits on all twelve. This path usually rides on a `pattern: task-board` skill. See [Pattern skills](../skills/pattern-skills).
 
-Both paths drive the same substrate. You can mix them: a code-defined board whose workers call `taskTools` to enqueue follow-up work mid-run.
+Both paths drive the same substrate, and a worker can enqueue follow-up work mid-run either way. In a code-defined board, a worker resolves the collection with `getOrCreateTaskCollection` and calls `addTask`. An agent worker under a pattern skill calls `addTask` through the `taskTools` capability, which resolves the active pattern's board. (`taskTools` only works under an active pattern skill, not on a bare code-first board.)
 
 ## Where work blocks, and where it doesn't
 

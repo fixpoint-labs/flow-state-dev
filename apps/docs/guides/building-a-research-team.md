@@ -135,30 +135,47 @@ The `topological` dispatcher is what enforces the wait: it will not hand `synth`
 
 The board above knows all its tasks up front. Often you don't — you find the work while running. Say you want to research every competitor, but you don't know who they are until an agent looks.
 
-Give a worker the `taskTools` capability and it can add tasks to the live board while it runs. The eight tools include `addTask`, which returns the new task's id.
+A worker enqueues follow-up work by resolving the same collection and calling `addTask`. Give the board a request-scoped backing so a worker can look the collection up by id from inside its own execution, then have the discoverer add one analyzer task per competitor plus a synthesizer that depends on all of them:
 
 ```ts title="src/flows/research/discoverer.ts"
-import { generator } from "@flow-state-dev/core";
-import { taskTools } from "@flow-state-dev/orchestration";
+import { handler } from "@flow-state-dev/core";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";
 
-export const discoverer = generator({
+export const discoverer = handler({
   name: "discoverer",
-  model: "openai/gpt-5.4-mini",
   inputSchema: taskWorkerInputSchema,
   outputSchema: z.object({ queued: z.number() }),
-  uses: [taskTools],
-  prompt:
-    "Identify 3-5 competitors for the target. For each, call " +
-    "addTask({ goal, assignee: 'analyzer' }) and collect the returned ids. " +
-    "Then call addTask({ goal: 'synthesize', assignee: 'synthesizer', " +
-    "deps: [<all analyzer ids>] }). Return how many analyzer tasks you queued.",
-  user: (input) => `Target: ${input.goal}`,
+  async execute(input, ctx) {
+    // A generator step would decide these; hard-coded here for brevity.
+    const competitors = ["Rival A", "Rival B", "Rival C"];
+
+    const collection = await getOrCreateTaskCollection({
+      ctx,
+      backing: "request",
+      collectionId: "competitors",
+    });
+
+    const analyzerIds: string[] = [];
+    for (const name of competitors) {
+      const task = await collection.addTask({ goal: `analyze ${name}`, assignee: "analyzer" });
+      analyzerIds.push(task.id);
+    }
+    await collection.addTask({
+      goal: "synthesize the comparison",
+      assignee: "synthesizer",
+      deps: analyzerIds,
+    });
+
+    return { queued: analyzerIds.length };
+  },
 });
 ```
 
-The discoverer queues one analyzer per competitor, then a synthesizer whose `deps` cover every analyzer it just created. The synthesizer waits for all of them. The board started with a single `discover` task and grew itself. This is the same substrate, driven at runtime instead of at definition time. Keep the fan-out bounded — every added task the synthesizer depends on is one more thing it waits for.
+Mount this on a request-backed board (`collection: { backing: "request", collectionId: "competitors" }`) with `analyzer` and `synthesizer` workers built like the analysts above, seeded with a single `discover` task. The board grows itself: the synthesizer waits on every analyzer the discoverer queued, because its `deps` name them. Keep the fan-out bounded — every added task the synthesizer depends on is one more thing it waits for.
+
+An agent worker driving a board through a pattern skill gets the same ability more ergonomically. The `taskTools` capability exposes `addTask` (and seven siblings) as named tools the model calls directly, resolving the active pattern's board for you. That path is section 4 — and `taskTools` only works under an active pattern skill, not on a bare code-first board like this one.
 
 ## 4. The same team as a skill
 
