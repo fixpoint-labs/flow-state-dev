@@ -1,7 +1,7 @@
 ---
 "@flow-state-dev/core": minor
 "@flow-state-dev/engine": patch
-"@flow-state-dev/tasks": minor
+"@flow-state-dev/orchestration": minor
 "@flow-state-dev/patterns": minor
 ---
 

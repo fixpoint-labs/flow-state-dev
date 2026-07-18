@@ -13,10 +13,9 @@
 "@flow-state-dev/patterns": patch
 "@flow-state-dev/react": patch
 "@flow-state-dev/scheduled": patch
-"@flow-state-dev/skills": patch
+"@flow-state-dev/orchestration": patch
 "@flow-state-dev/store-postgres": patch
 "@flow-state-dev/store-sqlite": patch
-"@flow-state-dev/tasks": patch
 "@flow-state-dev/testing": patch
 "@flow-state-dev/vercel": patch
 "@flow-state-dev/voice-openai": patch
