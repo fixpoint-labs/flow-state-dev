@@ -638,8 +638,14 @@ function checkMandate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): vo
     // portfolioFit target again, so validate the persisted pre-policy target when
     // present (legacy/no-policy runs fall back to the final target).
     if (decision.sizeClamped) {
+      // The FIX-781 evidence gate runs AFTER both the mandate and policy gates, so
+      // the final target may be lower than the mandate clamp. Prefer the post-policy
+      // pre-cap target; else the post-mandate pre-evidence target (when a mandate but
+      // no policy gate sits between); else the final target (legacy / no later gate).
       const mandateGatedTargetPct =
-        pm?.policyDecision?.preGatePolicyTargetPct ?? targetWeightPct;
+        pm?.policyDecision?.preGatePolicyTargetPct ??
+        pm?.evidenceDecision?.preGateEvidenceTargetPct ??
+        targetWeightPct;
       const applicableCap = !gates.capacityCleared
         ? mandate.capacityVetoCapPct
         : !gates.cleared && !override
@@ -791,14 +797,26 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
         policyMismatches.push(`${field} ${storedValue} vs recomputed ${recomputedValue}`);
       }
     }
-    const targetPairs: Array<[string, number | null, number]> = [
-      ["memo.targetWeightPct", pm.portfolioFit.targetWeightPct, recomputedPolicy.targetWeightPct],
-      ["summary.targetWeightPct", bundle.summary.targetWeightPct, recomputedPolicy.targetWeightPct],
-    ];
-    for (const [field, storedValue, recomputedValue] of targetPairs) {
-      if (storedValue == null || !approx(storedValue, recomputedValue)) {
-        policyMismatches.push(`${field} ${storedValue} vs recomputed ${recomputedValue}`);
-      }
+    // The committed target is now the POST-evidence value (FIX-781): the evidence
+    // gate runs after the policy gate. The policy recompute must therefore check the
+    // POLICY output — the pre-evidence target (`evidenceDecision.preGateEvidenceTargetPct`),
+    // falling back to the final target on a legacy / no-evidence-gate run — not the
+    // final target, which the evidence gate may have clamped further.
+    const policyOutputTarget =
+      pm.evidenceDecision?.preGateEvidenceTargetPct ?? pm.portfolioFit.targetWeightPct;
+    if (!approx(policyOutputTarget, recomputedPolicy.targetWeightPct)) {
+      policyMismatches.push(
+        `policy-output target ${policyOutputTarget} vs recomputed ${recomputedPolicy.targetWeightPct}`,
+      );
+    }
+    // The summary target mirrors the committed (post-evidence) memo target.
+    if (
+      bundle.summary.targetWeightPct == null ||
+      !approx(bundle.summary.targetWeightPct, pm.portfolioFit.targetWeightPct)
+    ) {
+      policyMismatches.push(
+        `summary.targetWeightPct ${bundle.summary.targetWeightPct} vs memo ${pm.portfolioFit.targetWeightPct}`,
+      );
     }
     if (policyMismatches.length === 0) {
       c.hardPass(
