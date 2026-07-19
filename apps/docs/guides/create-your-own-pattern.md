@@ -137,6 +137,8 @@ export const wordCountFlow = defineFlow({
 ```
 
 ```bash
+# Run from the example directory — fsdev config discovery is cwd-only.
+cd examples/guides/custom-pattern
 pnpm fsdev run word-count count -i '{"documents":["a b c","one two","single"]}'
 # → { total: 6 }
 ```

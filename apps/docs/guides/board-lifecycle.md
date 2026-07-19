@@ -61,6 +61,8 @@ const seedAndInspect = sequencer({ name: "seed-and-inspect" })
 ```
 
 ```bash
+# Run from the example directory — fsdev config discovery is cwd-only.
+cd examples/guides/board-lifecycle
 pnpm fsdev run board-lifecycle seedAndInspect -i '{"items":["alpha","beta"]}'
 # → tasks: [{ id: "task-0", status: "pending", result: null }, … ]
 ```
@@ -147,7 +149,8 @@ const board = taskBoard({
     getOrCreateTaskCollection({
       ctx,
       backing: "resource",
-      collection: todoTasks, // a ResourceCollectionRef declared on the flow
+      collectionId: "todos",  // stable id — also used for task-change event attribution
+      collection: todoTasks,  // a ResourceCollectionRef declared on the flow
     }),
   workers: { processor },
 });
