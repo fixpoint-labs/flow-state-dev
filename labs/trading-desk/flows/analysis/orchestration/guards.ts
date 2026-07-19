@@ -26,7 +26,7 @@ import { analyzeInputSchema } from "../flow-schema";
 import { resolveTicker } from "../lib/ticker-resolver";
 import { memoResources, phase2Contributions } from "../resources";
 import { financialsDataResource } from "../financials-data-resource";
-import { clearRecoveryForRun } from "../tools/runtime/critical-financials-recovery";
+import { clearRecoveryForSession } from "../tools/runtime/critical-financials-recovery";
 import { quantDataResource } from "../quant-data-resource";
 import { technicalDataResource } from "../technical-data-resource";
 import { profileDataResource } from "../profile-data-resource";
@@ -107,13 +107,14 @@ export const seedSession = handler({
     // `{}` makes every field absent — a miss the tools recompute. Idempotent on
     // a first run (state is already `{}`, so the write is skipped). The quant /
     // technical / profile spines are reset for the same reason.
-    // Clear the run-scoped critical-financials recovery cache (FIX-898) for this
-    // (session, ticker, date) FIRST — before the awaited spine reset below — so a
-    // prior recovery still in flight sees the bumped generation and its `finish`
-    // won't patch `recoveryAudit` back into the just-reset spine during the
-    // await. It also makes a re-run re-attempt recovery from scratch (the spine
-    // reset alone wouldn't clear the module-level recovery cache).
-    clearRecoveryForRun(ctx.session.identity.id, input.ticker, input.date);
+    // Supersede + clear the critical-financials recovery caches (FIX-898) for the
+    // WHOLE session FIRST — before the awaited spine reset below — so any prior
+    // recovery still in flight (for this OR a different ticker/date on the same
+    // session) sees the bumped generation and throws at its write instead of
+    // patching `recoveryAudit`/statements back into the just-reset spine during
+    // the await. It also makes the re-run re-attempt recovery from scratch (the
+    // spine reset alone wouldn't clear the module-level recovery cache).
+    clearRecoveryForSession(ctx.session.identity.id);
     await ctx.resources.financialsData.setState({});
     await ctx.resources.quantData.setState({});
     await ctx.resources.technicalData.setState({});

@@ -39,7 +39,7 @@ vi.mock("../flows/analysis/tools/runtime/recover-financials-extract", () => ({
 
 import {
   recoverCriticalFinancials,
-  clearRecoveryForRun,
+  clearRecoveryForSession,
   _resetRecoveryInflight,
 } from "../flows/analysis/tools/runtime/critical-financials-recovery";
 import type { FinancialCandidate } from "../flows/analysis/lib/financial-candidate";
@@ -139,9 +139,9 @@ describe("recoverCriticalFinancials", () => {
     const { ctx } = makeCtx();
 
     const p1 = recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
-    // A concurrent re-run seeds and clears the key while p1 is still in flight.
-    clearRecoveryForRun("sess-1", "SPCX", "2026-05-06");
-    await p1;
+    // A concurrent re-run seeds and clears the session while p1 is still in flight.
+    clearRecoveryForSession("sess-1");
+    await p1.catch(() => {}); // the superseded run rejects
 
     // The cleared run must NOT have cached its result → a later call re-fetches.
     stubs.fetchCandidates.mockClear();
@@ -149,9 +149,10 @@ describe("recoverCriticalFinancials", () => {
     expect(stubs.fetchCandidates).toHaveBeenCalledTimes(1);
   });
 
-  it("does not patch a stale audit/statements when cleared while the fetch is in flight", async () => {
-    // Hold the prior run inside the prospectus fetch, clear it (a re-run's
-    // seedSession), then let it finish: it must not write into the reset spine.
+  it("rejects (writes nothing) when cleared while the fetch is in flight", async () => {
+    // Hold the prior run inside the prospectus fetch, clear the session (a re-run's
+    // seedSession), then let it finish: it must throw rather than write a stale
+    // audit or a fallback payload into the reset spine.
     let releaseHtml!: (html: string) => void;
     const gate = new Promise<string>((resolve) => {
       releaseHtml = resolve;
@@ -161,14 +162,31 @@ describe("recoverCriticalFinancials", () => {
     const { ctx, audits } = makeCtx();
 
     const p1 = recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
-    clearRecoveryForRun("sess-1", "SPCX", "2026-05-06");
+    clearRecoveryForSession("sess-1");
     releaseHtml(spcxHtml); // the superseded run now completes its extract
-    const result = await p1;
 
-    // A superseded run writes NO audit and hands back NO statements — it cannot
-    // repopulate the newly reset financialsData.
+    await expect(p1).rejects.toThrow(/superseded/i);
+    // A superseded run writes NO audit — it cannot repopulate the reset spine.
     expect(audits).toHaveLength(0);
-    expect(result.statements).toBeNull();
+  });
+
+  it("supersedes an in-flight recovery for a DIFFERENT ticker on the same session", async () => {
+    // A re-run for ticker B clears the whole session; ticker A's in-flight
+    // recovery must be superseded too (session-level generation, not per-ticker).
+    let releaseHtml!: (html: string) => void;
+    const gate = new Promise<string>((resolve) => {
+      releaseHtml = resolve;
+    });
+    stubs.fetchCandidates.mockResolvedValue([candidate424]);
+    stubs.fetchHtml.mockReturnValue(gate);
+    const { ctx, audits } = makeCtx();
+
+    const pA = recoverCriticalFinancials(ctx, { ticker: "AAA", date: "2026-05-06" });
+    clearRecoveryForSession("sess-1"); // as a re-run for ticker "BBB" would do
+    releaseHtml(spcxHtml);
+
+    await expect(pA).rejects.toThrow(/superseded/i);
+    expect(audits).toHaveLength(0);
   });
 
   it("records honest no-candidates (statements null) when discovery finds nothing", async () => {

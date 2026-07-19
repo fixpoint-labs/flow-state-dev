@@ -156,6 +156,24 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     expect(c!.income.operatingIncome).toBe(3_000_000);
   });
 
+  it("negates a loss/used-in row printed as a positive magnitude", () => {
+    // "Operating loss 1,200,000" and "Net cash used in ... 2,000,000" print the
+    // magnitude positive; both are negative values.
+    const lossPositive = `
+<html><body>
+<p>Amounts in thousands of U.S. dollars. Year ended December 31, 2025.</p>
+<table>
+<tr><td>Total revenue</td><td>8,500,000</td></tr>
+<tr><td>Operating loss</td><td>1,200,000</td></tr>
+<tr><td>Net cash used in operating activities</td><td>2,000,000</td></tr>
+<tr><td>Purchases of property and equipment</td><td>(3,500,000)</td></tr>
+</table></body></html>`;
+    const c = extractProspectusFinancials(lossPositive, meta);
+    expect(c).not.toBeNull();
+    expect(c!.income.operatingIncome).toBe(-1_200_000_000); // loss → negative
+    expect(c!.cashflow.operating).toBe(-2_000_000_000); // used in → negative
+  });
+
   it("does not let a narrative 'in millions' set the table scale", () => {
     // A narrative sentence mentions millions (of users), but the statements are
     // stated in thousands — the accounting-units note must win.

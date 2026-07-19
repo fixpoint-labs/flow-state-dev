@@ -109,16 +109,40 @@ function toRow(line: string): Row | null {
 }
 
 /** First row whose label matches `pattern` (and does not match `exclude`). */
-function findMetric(
-  rows: Row[],
-  pattern: RegExp,
-  exclude?: RegExp,
-): number | null {
+function findRow(rows: Row[], pattern: RegExp, exclude?: RegExp): Row | null {
   for (const row of rows) {
     if (exclude && exclude.test(row.label)) continue;
-    if (pattern.test(row.label)) return row.value;
+    if (pattern.test(row.label)) return row;
   }
   return null;
+}
+
+/** The numeric value of the first matching row, or null. */
+function findMetric(rows: Row[], pattern: RegExp, exclude?: RegExp): number | null {
+  return findRow(rows, pattern, exclude)?.value ?? null;
+}
+
+/**
+ * Value of the first matching row, negated when the label ASSERTS a loss/outflow
+ * but the cell was printed as a positive magnitude. Statements often print
+ * "Operating loss 1,200" or "Net cash used in ... 500" as positive numbers; the
+ * validator's FCF reconciliation and completeness gates don't catch a
+ * sign-flipped operating income, so a real loss would promote as positive.
+ * A parenthesized cell is already negative (authoritative) and is left alone; a
+ * neutral "(loss)" header (`Income (loss) from operations`) is NOT treated as a
+ * loss assertion — its cell sign decides. `signalPattern` matches only the
+ * unambiguous loss/used-in wording.
+ */
+function findSignedMetric(
+  rows: Row[],
+  pattern: RegExp,
+  signalPattern: RegExp,
+  exclude?: RegExp,
+): number | null {
+  const row = findRow(rows, pattern, exclude);
+  if (!row) return null;
+  if (row.value > 0 && signalPattern.test(row.label)) return -row.value;
+  return row.value;
 }
 
 /** Accounting-units note: the unit word must be followed by an accounting
@@ -238,19 +262,25 @@ export function extractProspectusFinancials(
     /^(total\s+)?(net\s+)?(revenues?|net\s+sales|total\s+revenue)\b/i,
     /cost of|per share|recognition|polic/i,
   );
-  const operatingIncome = findMetric(
+  // A "loss"-asserting label ("Loss from operations", "Operating loss") printed
+  // as a positive magnitude is a negative operating income. A neutral "(loss)"
+  // header keeps its cell sign, so the loss signal excludes the "(loss)" form.
+  const operatingIncome = findSignedMetric(
     rows,
     /^(income|loss|profit)\s+(from|\(loss\)\s+from)?\s*operations\b|^operating (income|loss)\b/i,
+    /^(operating\s+loss|loss\s+from\s+operations)\b/i,
   );
   // No revenue AND no operating income → not a usable statement table.
   if (revenue == null && operatingIncome == null) return null;
 
   // Anchored on "net cash provided by / used in … operating activities" — the
   // statement TOTAL — so a narrative or reconciliation row that merely mentions
-  // "operating activities" cannot be picked as operating cash flow.
-  const operating = findMetric(
+  // "operating activities" cannot be picked as operating cash flow. "used in"
+  // printed as a positive magnitude is a negative operating cash flow.
+  const operating = findSignedMetric(
     rows,
     /^net cash (provided by|used in)[^.]*operating activities/i,
+    /^net cash used in/i,
   );
   const capitalExpenditure = findMetric(
     rows,

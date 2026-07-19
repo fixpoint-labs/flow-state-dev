@@ -83,46 +83,60 @@ export interface RecoveryCtx {
 /** Caps (spec §4.4): ≤3 document fetches, ≤1 LLM invocation, SEC-first URLs. */
 const MAX_DOCS = 3;
 
+/** Thrown by a recovery attempt that a concurrent re-run SUPERSEDED mid-flight
+ *  (its session generation was bumped by `clearRecoveryForSession`). The
+ *  statement tool lets it propagate so `getOrPatchState` writes NOTHING into the
+ *  freshly-reset spine — a superseded run must not repopulate it with a stale
+ *  audit, promoted statements, or a fallback partial/empty payload. */
+export class RecoverySupersededError extends Error {
+  constructor() {
+    super("critical-financials recovery superseded by a re-run");
+    this.name = "RecoverySupersededError";
+  }
+}
+
 // Run-scoped single-flight, keyed by session+ticker+date. `inflight` collapses
 // CONCURRENT statement tools onto one attempt; `settled` keeps the resolved
 // result so a SEQUENTIAL later statement call (income first, cashflow later)
 // reuses it rather than re-fetching/re-modelling — the ≤1 recovery/model-call
-// cap holds for the whole run, not just the parallel fan-out. Both are cleared
-// per run by `clearRecoveryForRun` at `seedSession` (so a re-run re-attempts and
-// a failed attempt never sticks across runs), and are session-scoped so
-// concurrent runs never share a result.
+// cap holds for the whole run, not just the parallel fan-out.
 const inflight = new Map<string, Promise<RecoveryResult>>();
 const settled = new Map<string, RecoveryResult>();
-// Per-key run generation, bumped by `clearRecoveryForRun`. An in-flight attempt
-// captures the generation at start and only caches its result if the generation
-// is unchanged — so a run cleared MID-FLIGHT (a concurrent re-run seeding while
-// the first recovery is still running) never repopulates `settled` with the
-// stale result after the clear.
+// SESSION-level run generation, bumped by `clearRecoveryForSession` at
+// `seedSession`. Keyed by session (NOT session+ticker+date) so a re-run for ANY
+// ticker/date supersedes EVERY in-flight recovery on that session — an earlier
+// run's recovery for a different ticker can't patch the reset spine either. An
+// attempt captures its session's generation at start; if the generation changes
+// before it writes, it is superseded (throws, caches nothing).
 const generation = new Map<string, number>();
 
 const recoveryKey = (sessionId: string, ticker: string, date: string): string =>
   `${sessionId}:${ticker}:${date}`;
-const currentGen = (key: string): number => generation.get(key) ?? 0;
+const currentGen = (sessionId: string): number => generation.get(sessionId) ?? 0;
 
 /**
  * Recover the subject's critical statements from IPO/registration filings, or
  * return an honest `unavailable` audit. Single-flight per (session, ticker,
  * date); writes `recoveryAudit` exactly once via `ctx.resources.financialsData`.
+ * Rejects with `RecoverySupersededError` if a concurrent re-run cleared the
+ * session before this attempt could write.
  */
 export function recoverCriticalFinancials(
   ctx: RecoveryCtx,
   args: { ticker: string; date: string },
 ): Promise<RecoveryResult> {
-  const key = recoveryKey(ctx.session.identity.id, args.ticker, args.date);
+  const sessionId = ctx.session.identity.id;
+  const key = recoveryKey(sessionId, args.ticker, args.date);
   const done = settled.get(key);
   if (done) return Promise.resolve(done);
   const existing = inflight.get(key);
   if (existing) return existing;
-  const gen = currentGen(key);
-  const run = runRecovery(ctx, args, key, gen)
+  const gen = currentGen(sessionId);
+  const run = runRecovery(ctx, args, sessionId, gen)
     .then((result) => {
-      // Only cache if this run was not cleared (a re-run seeded) while in flight.
-      if (currentGen(key) === gen) settled.set(key, result);
+      // Only cache if this run's session was not cleared (a re-run seeded) while
+      // in flight — a superseded run rejects before reaching here.
+      if (currentGen(sessionId) === gen) settled.set(key, result);
       return result;
     })
     .finally(() => {
@@ -132,20 +146,22 @@ export function recoverCriticalFinancials(
   return run;
 }
 
-/** Clear the run-scoped recovery cache for one (session, ticker, date) — called
- *  at `seedSession` so a re-run re-attempts and a prior run's result (including
- *  a failed one, or one still in flight) never sticks. */
-export function clearRecoveryForRun(sessionId: string, ticker: string, date: string): void {
-  const key = recoveryKey(sessionId, ticker, date);
-  generation.set(key, currentGen(key) + 1);
-  inflight.delete(key);
-  settled.delete(key);
+/** Supersede + drop every recovery attempt/result for a SESSION — called at
+ *  `seedSession` before the spine reset. Bumping the session generation makes any
+ *  in-flight attempt (for ANY ticker/date on this session) throw
+ *  `RecoverySupersededError` at its write instead of patching the reset spine;
+ *  clearing the caches makes the re-run re-attempt from scratch. */
+export function clearRecoveryForSession(sessionId: string): void {
+  generation.set(sessionId, currentGen(sessionId) + 1);
+  const prefix = `${sessionId}:`;
+  for (const k of [...inflight.keys()]) if (k.startsWith(prefix)) inflight.delete(k);
+  for (const k of [...settled.keys()]) if (k.startsWith(prefix)) settled.delete(k);
 }
 
 async function runRecovery(
   ctx: RecoveryCtx,
   args: { ticker: string; date: string },
-  key: string,
+  sessionId: string,
   gen: number,
 ): Promise<RecoveryResult> {
   const rejectionReasons: string[] = [];
@@ -164,11 +180,13 @@ async function runRecovery(
       rejectionReasons,
       ...(outcome === "promoted" ? { recoveredSource: "edgar-prospectus" as const } : {}),
     };
-    // A run SUPERSEDED mid-flight (a concurrent re-run bumped the generation via
-    // `clearRecoveryForRun` after `seedSession` reset the spine) must not mutate
-    // the new run's `financialsData` — neither the audit nor the statements —
-    // even though this stale run already computed them. Return quietly.
-    if (currentGen(key) !== gen) return { statements: null, audit };
+    // A run SUPERSEDED mid-flight (a concurrent re-run bumped this session's
+    // generation via `clearRecoveryForSession` and reset the spine) must not
+    // mutate the new run's `financialsData` at all. THROW rather than return: the
+    // statement tool writes through `getOrPatchState(field, load)`, so a returned
+    // fallback (partial/empty) would still land on the reset spine and the new
+    // run would read it as a cache hit and skip recovery. A throw writes nothing.
+    if (currentGen(sessionId) !== gen) throw new RecoverySupersededError();
     // A run cancelled mid-recovery must not write an audit or promote statements
     // — even if a deterministic SEC fetch already resolved. Rethrow the abort
     // before any spine write, matching the model-call cancellation semantics.
