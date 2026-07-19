@@ -286,11 +286,19 @@ export function extractProspectusFinancials(
     rows,
     /^(purchases? of property|capital expenditures?|purchase of property)/i,
   );
-  const freeCashFlow = findMetric(rows, /^free cash flow\b/i);
+  // A "Free cash flow deficit" (or "... loss") printed as a positive magnitude is
+  // a negative FCF; the reconciliation gate only fires when operating+capex are
+  // BOTH present, so an explicit-FCF-only row would otherwise promote positive.
+  const freeCashFlow = findSignedMetric(rows, /^free cash flow\b/i, /deficit|loss/i);
+  // Exclude the cash-flow statement's "Cash and cash equivalents, beginning of
+  // period" reconciliation row (which can precede the balance sheet) — it is the
+  // PRIOR period's cash, not current. `restricted` is excluded for the usual
+  // reason. The remaining match (balance-sheet line, or the "end of period"
+  // cash-flow row — same current value) is the right one.
   const cashAndEquivalents = findMetric(
     rows,
     /^cash and cash equivalents\b/i,
-    /restricted/i,
+    /restricted|beginning/i,
   );
   // Require an explicit TOTAL debt/borrowings line — NOT "Total long-term debt",
   // which still excludes the current portion of debt and understates the total

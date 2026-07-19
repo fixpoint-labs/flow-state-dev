@@ -174,6 +174,38 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     expect(c!.cashflow.operating).toBe(-2_000_000_000); // used in → negative
   });
 
+  it("negates a 'Free cash flow deficit' row printed as a positive magnitude", () => {
+    const fcfDeficit = `
+<html><body>
+<p>Amounts in thousands of U.S. dollars. Year ended December 31, 2025.</p>
+<table>
+<tr><td>Total revenue</td><td>8,500,000</td></tr>
+<tr><td>Income from operations</td><td>1,200,000</td></tr>
+<tr><td>Free cash flow deficit</td><td>1,500,000</td></tr>
+</table></body></html>`;
+    const c = extractProspectusFinancials(fcfDeficit, meta);
+    expect(c).not.toBeNull();
+    expect(c!.cashflow.freeCashFlow).toBe(-1_500_000_000); // deficit → negative
+  });
+
+  it("ignores a 'beginning of period' cash row and takes current cash", () => {
+    // The cash-flow reconciliation lists beginning-of-period cash before the
+    // balance sheet; the current (end/balance) figure must win.
+    const beginningCash = `
+<html><body>
+<p>Amounts in thousands of U.S. dollars. Year ended December 31, 2025.</p>
+<table>
+<tr><td>Total revenue</td><td>8,500,000</td></tr>
+<tr><td>Income from operations</td><td>1,200,000</td></tr>
+<tr><td>Net cash provided by operating activities</td><td>2,000,000</td></tr>
+<tr><td>Cash and cash equivalents, beginning of period</td><td>3,000,000</td></tr>
+<tr><td>Cash and cash equivalents</td><td>4,000,000</td></tr>
+</table></body></html>`;
+    const c = extractProspectusFinancials(beginningCash, meta);
+    expect(c).not.toBeNull();
+    expect(c!.balance.cashAndEquivalents).toBe(4_000_000_000); // not the 3.0M beginning cash
+  });
+
   it("does not let a narrative 'in millions' set the table scale", () => {
     // A narrative sentence mentions millions (of users), but the statements are
     // stated in thousands — the accounting-units note must win.
