@@ -185,14 +185,18 @@ function latestDate(html: string, prefix: string): string | null {
   return best;
 }
 
-/** Fiscal period end — ONLY a date in a statement-header context ("year ended
- *  …", "as of …"). No fallback to the latest date anywhere in the filing: an
- *  unrelated offering/contract date would stamp the recovered statements to the
- *  wrong fiscal period, and the validator only checks non-future/non-stale, so it
- *  would not catch it. No statement-period context → null → defer to the LLM tier
- *  (which reads the statement structure directly). */
+/** Fiscal period end — anchored to the income/cashflow statement period header
+ *  ("… ended DATE"), statement-specific wording narrative virtually never uses.
+ *  Deliberately NOT anchored on "as of DATE": the balance sheet's "As of DATE"
+ *  header shares this same fiscal close (so it adds nothing), but "As of DATE"
+ *  also appears in later subsequent-events narrative ("As of May 1, 2026, we
+ *  had …") — strictly AFTER the audited close, so as the LATEST such date it
+ *  would outrank the real period end, stamping the annual statements to a
+ *  non-statement date the validator's non-future/non-stale checks wouldn't
+ *  catch. No "ended" header (no income statement, or an unusual layout) → null →
+ *  defer to the LLM tier, which reads the statement structure directly. */
 function parsePeriodEnd(html: string): string | null {
-  return latestDate(html, "(?:ended|as\\s+of)\\s+");
+  return latestDate(html, "ended\\s+");
 }
 
 /** Non-U.S. currency names/codes an F-1 might report in. */

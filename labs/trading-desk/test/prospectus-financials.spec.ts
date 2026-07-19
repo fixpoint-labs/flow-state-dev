@@ -353,6 +353,21 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     // The header 'Year Ended December 31, 2025' wins over the 2099 footnote date.
     expect(c!.periodEnd).toBe("2025-12-31");
   });
+
+  it("ignores a later subsequent-events 'As of' narrative date", () => {
+    // A prospectus routinely carries subsequent-events narrative dated AFTER the
+    // audited close ("As of May 1, 2026, we had 1,200 employees"). Being the
+    // latest 'as of' date in the filing, it must NOT outrank the 'Year Ended
+    // December 31, 2025' statement header as the recovered period — otherwise
+    // the annual statements would be stamped current to the narrative date, and
+    // the validator's non-future/non-stale checks wouldn't catch it.
+    const withAsOfNarrative = html.replace(
+      "</body>",
+      "<p>As of May 1, 2026, we had 1,200 full-time employees.</p></body>",
+    );
+    const c = extractProspectusFinancials(withAsOfNarrative, meta);
+    expect(c!.periodEnd).toBe("2025-12-31");
+  });
 });
 
 /** A valid baseline candidate the reject cases each mutate one field of. */
