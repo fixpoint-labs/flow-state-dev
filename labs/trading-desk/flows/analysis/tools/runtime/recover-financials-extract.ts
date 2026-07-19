@@ -65,19 +65,35 @@ const DOC_CHAR_CAP = 24_000;
 const STATEMENT_ANCHOR =
   /consolidated statements?\s+of\s+operations|consolidated balance sheets?|consolidated statements?\s+of\s+cash\s+flows?|index to (?:consolidated )?financial statements|report of independent registered public accounting/i;
 
+/** Strip HTML tags/entities to plain text so a heading split across tags
+ *  ("Consolidated <span>Statements</span> of Operations") is contiguous for the
+ *  anchor search — and the model gets cleaner, denser text. */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#8217;|&rsquo;/gi, "'")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
  * Window the doc around its financial-statement section before the cap. In a
  * large S-1/424B the audited tables often start well past the first 24k chars
  * (cover / TOC / summary / risk factors first) — feeding only the head would
- * hand the model no statements. Center the cap a little before the first
- * statement heading; fall back to the head when no heading is found.
+ * hand the model no statements. The doc is first flattened to plain text (so
+ * a tag-split heading still matches); the cap is then centered a little before
+ * the first statement heading, falling back to the head when none is found.
  */
 function sliceAroundStatements(text: string): string {
-  if (text.length <= DOC_CHAR_CAP) return text;
-  const m = STATEMENT_ANCHOR.exec(text);
-  if (!m) return text.slice(0, DOC_CHAR_CAP);
+  const plain = htmlToText(text);
+  if (plain.length <= DOC_CHAR_CAP) return plain;
+  const m = STATEMENT_ANCHOR.exec(plain);
+  if (!m) return plain.slice(0, DOC_CHAR_CAP);
   const start = Math.max(0, m.index - 500);
-  return text.slice(start, start + DOC_CHAR_CAP);
+  return plain.slice(start, start + DOC_CHAR_CAP);
 }
 
 const SYSTEM_PROMPT = [

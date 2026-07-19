@@ -39,6 +39,7 @@ vi.mock("../flows/analysis/tools/runtime/recover-financials-extract", () => ({
 
 import {
   recoverCriticalFinancials,
+  clearRecoveryForRun,
   _resetRecoveryInflight,
 } from "../flows/analysis/tools/runtime/critical-financials-recovery";
 import type { FinancialCandidate } from "../flows/analysis/lib/financial-candidate";
@@ -130,6 +131,22 @@ describe("recoverCriticalFinancials", () => {
     expect(second).toBe(first);
     expect(stubs.fetchCandidates).toHaveBeenCalledTimes(1);
     expect(stubs.fetchHtml).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cache a result whose run was cleared mid-flight (concurrent re-run)", async () => {
+    stubs.fetchCandidates.mockResolvedValue([candidate424]);
+    stubs.fetchHtml.mockResolvedValue(spcxHtml);
+    const { ctx } = makeCtx();
+
+    const p1 = recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
+    // A concurrent re-run seeds and clears the key while p1 is still in flight.
+    clearRecoveryForRun("sess-1", "SPCX", "2026-05-06");
+    await p1;
+
+    // The cleared run must NOT have cached its result → a later call re-fetches.
+    stubs.fetchCandidates.mockClear();
+    await recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
+    expect(stubs.fetchCandidates).toHaveBeenCalledTimes(1);
   });
 
   it("records honest no-candidates (statements null) when discovery finds nothing", async () => {

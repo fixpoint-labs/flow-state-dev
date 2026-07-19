@@ -53,6 +53,15 @@ function daysBetween(a: string, b: string): number {
   return (Date.parse(a) - Date.parse(b)) / 86_400_000;
 }
 
+/** True for USD and its common spellings ("USD", "$", "US dollars",
+ *  "U.S. dollars", "United States dollars"). The `NON-USD` marker and any
+ *  foreign currency return false. */
+function isUsdCurrency(currency: string): boolean {
+  return /^(?:usd|\$|u\.?\s?s\.?\s*\$?|(?:u\.?\s?s\.?\s+|united\s+states\s+)?dollars?)$/i.test(
+    currency.trim(),
+  );
+}
+
 /** Loose name agreement: share at least one 4+-char alphanumeric token. Guards
  *  against a recycled ticker whose CIK happens to match but whose filing names
  *  a different entity. */
@@ -124,8 +133,10 @@ export function validateFinancialCandidate(
     reasons.push(`ambiguous-scale: ${candidate.scale}`);
   }
 
-  // 6. Currency — USD only in v1.
-  if (candidate.currency.toUpperCase() !== "USD") {
+  // 6. Currency — USD only in v1. Accept common US-dollar spellings (the LLM
+  //    extractor emits a free string, not an ISO code), but not a foreign or
+  //    the deterministic `NON-USD` marker.
+  if (!isUsdCurrency(candidate.currency)) {
     reasons.push(`non-usd-currency: ${candidate.currency}`);
   }
 

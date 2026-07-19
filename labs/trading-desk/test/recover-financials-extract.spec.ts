@@ -65,7 +65,8 @@ describe("recoverFinancialsExtract", () => {
 
   it("windows the prompt around the statement section for a large filing", async () => {
     const filler = "cover page and table of contents. ".repeat(1000); // > 24k chars
-    const statements = "Consolidated Statements of Operations. Total revenue 8,500,000 (in thousands).";
+    // Heading split across tags — the anchor must still match after HTML flatten.
+    const statements = "Consolidated <span>Statements</span> of Operations. Total revenue 8,500,000 (in thousands).";
     let capturedUser = "";
     const model: ExtractModel = {
       generate: vi.fn(async (opts: { messages: Array<{ role: string; content: string }> }) => {

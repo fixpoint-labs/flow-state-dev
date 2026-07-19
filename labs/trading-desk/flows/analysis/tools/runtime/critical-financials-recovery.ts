@@ -91,9 +91,16 @@ const MAX_DOCS = 3;
 // concurrent runs never share a result.
 const inflight = new Map<string, Promise<RecoveryResult>>();
 const settled = new Map<string, RecoveryResult>();
+// Per-key run generation, bumped by `clearRecoveryForRun`. An in-flight attempt
+// captures the generation at start and only caches its result if the generation
+// is unchanged — so a run cleared MID-FLIGHT (a concurrent re-run seeding while
+// the first recovery is still running) never repopulates `settled` with the
+// stale result after the clear.
+const generation = new Map<string, number>();
 
 const recoveryKey = (sessionId: string, ticker: string, date: string): string =>
   `${sessionId}:${ticker}:${date}`;
+const currentGen = (key: string): number => generation.get(key) ?? 0;
 
 /**
  * Recover the subject's critical statements from IPO/registration filings, or
@@ -109,21 +116,26 @@ export function recoverCriticalFinancials(
   if (done) return Promise.resolve(done);
   const existing = inflight.get(key);
   if (existing) return existing;
+  const gen = currentGen(key);
   const run = runRecovery(ctx, args)
     .then((result) => {
-      settled.set(key, result);
+      // Only cache if this run was not cleared (a re-run seeded) while in flight.
+      if (currentGen(key) === gen) settled.set(key, result);
       return result;
     })
-    .finally(() => inflight.delete(key));
+    .finally(() => {
+      if (inflight.get(key) === run) inflight.delete(key);
+    });
   inflight.set(key, run);
   return run;
 }
 
 /** Clear the run-scoped recovery cache for one (session, ticker, date) — called
  *  at `seedSession` so a re-run re-attempts and a prior run's result (including
- *  a failed one) never sticks. */
+ *  a failed one, or one still in flight) never sticks. */
 export function clearRecoveryForRun(sessionId: string, ticker: string, date: string): void {
   const key = recoveryKey(sessionId, ticker, date);
+  generation.set(key, currentGen(key) + 1);
   inflight.delete(key);
   settled.delete(key);
 }
@@ -268,4 +280,5 @@ async function runRecovery(
 export function _resetRecoveryInflight(): void {
   inflight.clear();
   settled.clear();
+  generation.clear();
 }

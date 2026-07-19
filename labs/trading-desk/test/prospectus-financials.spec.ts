@@ -265,4 +265,11 @@ describe("validateFinancialCandidate — hard reject gates", () => {
     c.cashflow.freeCashFlow = -1_500_000_000; // exactly operating − |capex|
     expect(validateFinancialCandidate(c, validateCtx).ok).toBe(true);
   });
+
+  it("accepts common US-dollar currency spellings, rejects NON-USD", () => {
+    for (const cur of ["USD", "$", "US dollars", "U.S. dollars", "United States dollars"]) {
+      expect(validateFinancialCandidate({ ...baseCandidate(), currency: cur }, validateCtx).ok).toBe(true);
+    }
+    expect(validateFinancialCandidate({ ...baseCandidate(), currency: "NON-USD" }, validateCtx).ok).toBe(false);
+  });
 });
