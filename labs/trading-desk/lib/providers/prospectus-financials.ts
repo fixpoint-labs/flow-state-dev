@@ -40,6 +40,10 @@ function rowsFromHtml(html: string): string[] {
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&#8217;|&rsquo;/gi, "'")
+    // Numeric entities (decimal `&#160;` / hex `&#xA0;`) — EDGAR tables use
+    // numeric non-breaking spaces as spacer cells. Drop them BEFORE tokenizing,
+    // or `<td>&#160;</td>` leaves "160" and NUMBER_TOKEN reads it as the amount.
+    .replace(/&#x?[0-9a-f]+;/gi, " ")
     .replace(/&[a-z]+;/gi, " ");
   return text
     .split("\n")

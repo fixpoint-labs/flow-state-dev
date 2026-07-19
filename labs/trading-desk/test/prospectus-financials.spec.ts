@@ -206,6 +206,21 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     expect(c!.balance.cashAndEquivalents).toBe(4_000_000_000); // not the 3.0M beginning cash
   });
 
+  it("drops numeric-entity spacer cells before reading the amount", () => {
+    // EDGAR uses `&#160;` spacer cells; without decoding, NUMBER_TOKEN reads 160.
+    const spacerEntities = `
+<html><body>
+<p>Amounts in thousands of U.S. dollars. Year ended December 31, 2025.</p>
+<table>
+<tr><td>Total revenue</td><td>&#160;</td><td>8,500,000</td></tr>
+<tr><td>Income from operations</td><td>&#160;</td><td>1,200,000</td></tr>
+</table></body></html>`;
+    const c = extractProspectusFinancials(spacerEntities, meta);
+    expect(c).not.toBeNull();
+    expect(c!.income.revenue).toBe(8_500_000_000); // not 160 × scale
+    expect(c!.income.operatingIncome).toBe(1_200_000_000);
+  });
+
   it("does not let a narrative 'in millions' set the table scale", () => {
     // A narrative sentence mentions millions (of users), but the statements are
     // stated in thousands — the accounting-units note must win.
