@@ -68,14 +68,19 @@ function parseNumber(token: string): number | null {
 /** Split a row into its leading label and first FINANCIAL numeric value,
  *  skipping any leading footnote markers. */
 function toRow(line: string): Row | null {
+  // Rejoin an accounting-negative whose parentheses/`$` were split into separate
+  // table cells and space-collapsed ("( $ 1,200 )" / "( 1,200 )") into
+  // "($1,200)" — otherwise the leading `(` is dropped and the loss reads as a
+  // positive value.
+  const normalized = line.replace(/\(\s*\$?\s*(\d[\d,]*(?:\.\d+)?)\s*\)/g, "($1)");
   NUMBER_TOKEN.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = NUMBER_TOKEN.exec(line)) !== null) {
+  while ((m = NUMBER_TOKEN.exec(normalized)) !== null) {
     const tok = m[0].trim();
     if (FOOTNOTE_MARKER.test(tok)) continue;
     const value = parseNumber(tok);
     if (value == null) continue;
-    const label = line.slice(0, m.index).trim();
+    const label = normalized.slice(0, m.index).trim();
     if (!label) return null;
     return { label, value };
   }
@@ -138,18 +143,27 @@ function parsePeriodEnd(html: string): string | null {
   return latestDate(html, "(?:ended|as\\s+of)\\s+") ?? latestDate(html, "");
 }
 
-/** Reject an explicit non-USD reporting currency; default to USD otherwise.
- *  A QUALIFIED "dollars" note (Canadian / Australian / Hong Kong / … dollars) is
- *  NOT U.S. dollars — a common F-1 case — so it is surfaced as non-USD and the
- *  validator rejects it, rather than silently promoting local-currency figures
- *  as USD billions. */
+/** Non-U.S. currency names/codes an F-1 might report in. */
+const FOREIGN_CURRENCY =
+  "renminbi|rmb|yuan|cny|euros?|eur|pounds?\\s+sterling|sterling|gbp|yen|jpy|won|krw|rupees?|inr|reais|real|brl|pesos?|mxn|francs?|chf|kron[oa]r|kroner|sek|nok|dkk|ringgit|myr|baht|thb|rand|zar|shekels?|ils|dirhams?|aed|riyals?|sar|lira|try|z[łl]oty|pln|rupiah|idr|dong|vnd|hryvnia|rubles?|rub|new taiwan|ntd|twd";
+
+/** Reject a non-U.S. reporting currency; default to USD otherwise.
+ *  A QUALIFIED "dollars" note (Canadian / Australian / Hong Kong / … dollars) or
+ *  a foreign reporting currency stated in the units note or a
+ *  "reporting/functional/presentation currency" clause (a common F-1 case, e.g.
+ *  Renminbi) is surfaced as non-USD so the validator rejects it, rather than
+ *  silently promoting local-currency figures as USD billions. */
 function parseCurrency(html: string): string {
-  if (/\bin\s+(thousands|millions|billions)\s+of\s+euros?\b/i.test(html)) return "EUR";
   if (/\b(canadian|australian|new zealand|singapore|hong ?kong|hk|taiwan|nt|jamaican|caribbean)\s+dollars?\b/i.test(html)) {
     return "NON-USD";
   }
-  const m = /\breporting currency[^.]{0,40}\b(EUR|GBP|JPY|CNY|CAD|AUD)\b/i.exec(html);
-  if (m) return m[1].toUpperCase();
+  // Units note or reporting-currency clause naming a foreign currency.
+  if (new RegExp(`\\bin\\s+(?:thousands|millions|billions)\\s+of\\s+(?:${FOREIGN_CURRENCY})\\b`, "i").test(html)) {
+    return "NON-USD";
+  }
+  if (new RegExp(`\\b(?:reporting|functional|presentation|reported|expressed|denominated|presented)\\b[^.]{0,60}\\b(?:${FOREIGN_CURRENCY})\\b`, "i").test(html)) {
+    return "NON-USD";
+  }
   return "USD";
 }
 

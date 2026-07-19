@@ -31,10 +31,11 @@ type StatementSpec =
   | { field: "cashflow"; tool: "get_cashflow" };
 
 /**
- * True when a statement payload lacks its valuation-critical fields — either an
- * explicit `unavailable`, or an HTTP-success provider payload whose critical
- * fields are all null (the sparse-companyfacts case). A sparse payload is a
- * MISS: the provider chain must fall through rather than let it stick.
+ * True when a statement payload is FULLY void of its valuation-critical fields —
+ * an explicit `unavailable`, or an HTTP-success payload whose critical fields
+ * are ALL null (the sparse-companyfacts case). Used to decide honest
+ * `unavailable` vs. keeping a partial payload: a fully-void payload is dropped,
+ * a partial one is preserved.
  */
 export function isCriticallySparse(
   field: StatementSpec["field"],
@@ -47,6 +48,31 @@ export function isCriticallySparse(
       return payload.revenue == null && payload.operatingIncome == null;
     case "cashflow":
       return payload.operating == null && payload.freeCashFlow == null;
+    case "balanceSheet":
+      return payload.cashAndEquivalents == null && payload.totalDebt == null;
+  }
+}
+
+/**
+ * True when a payload LACKS ANY valuation-critical field — so the provider chain
+ * should keep looking (recovery could supply the missing one). Stricter than
+ * `isCriticallySparse`: a companyfacts income with revenue but no
+ * `operatingIncome` is incomplete here (recovery may fill it) yet not fully
+ * sparse (its revenue is preserved if recovery can't). The balance sheet's
+ * cash/debt are "when disclosed", so it only counts as incomplete when BOTH are
+ * absent — a partial balance is not worth a recovery attempt.
+ */
+function lacksAnyCritical(
+  field: StatementSpec["field"],
+  payload: ({ source?: string } & Record<string, unknown>) | null,
+): boolean {
+  if (!payload) return true;
+  if (payload.source === "unavailable") return true;
+  switch (field) {
+    case "incomeStatement":
+      return payload.revenue == null || payload.operatingIncome == null;
+    case "cashflow":
+      return payload.operating == null || payload.freeCashFlow == null;
     case "balanceSheet":
       return payload.cashAndEquivalents == null && payload.totalDebt == null;
   }
@@ -67,20 +93,32 @@ export async function loadStatementWithRecovery<S extends StatementSpec>(opts: {
 }): Promise<ToolOutput<S["tool"]>> {
   const { spec, input, ctx, toSpine } = opts;
 
+  // A provider payload short-circuits only when it is COMPLETE on the
+  // valuation-critical fields; an incomplete one (e.g. companyfacts revenue but
+  // no operating income) falls through so recovery can try to fill the gap —
+  // without losing the field it DID supply (see the partial-preserve tail).
   let edgar: ToolOutput<S["tool"]> | null = null;
   try {
     edgar = await opts.fetchEdgar();
   } catch {}
-  if (edgar && !isCriticallySparse(spec.field, edgar)) return edgar;
+  if (edgar && !lacksAnyCritical(spec.field, edgar)) return edgar;
 
   let yahoo: ToolOutput<S["tool"]> | null = null;
   try {
     yahoo = await opts.fetchYahoo();
   } catch {}
-  if (yahoo && !isCriticallySparse(spec.field, yahoo)) return yahoo;
+  if (yahoo && !lacksAnyCritical(spec.field, yahoo)) return yahoo;
 
   const empty = () =>
     emptyPayload(spec.tool as ToolName, input as ToolInput<ToolName>) as ToolOutput<S["tool"]>;
+  // Best PARTIAL provider payload — one that still carries SOME critical data
+  // (not fully void). Preserves what a provider supplied when recovery can't
+  // complete the statement.
+  const bestPartial = (): ToolOutput<S["tool"]> | null => {
+    if (edgar && !isCriticallySparse(spec.field, edgar as { source?: string })) return edgar;
+    if (yahoo && !isCriticallySparse(spec.field, yahoo as { source?: string })) return yahoo;
+    return null;
+  };
 
   // Critical miss on the subject → one bounded, single-flight recovery attempt.
   if (toSpine) {
@@ -92,20 +130,18 @@ export async function loadStatementWithRecovery<S extends StatementSpec>(opts: {
     // Only take a recovered field that actually carries its critical data. A
     // promoted candidate can pass validation on income+cashflow yet leave the
     // balance sheet's cash/debt undisclosed — that `edgar-prospectus` shell is
-    // still critically sparse and must read as honest `unavailable`, not as an
-    // authoritative answer.
+    // still critically sparse and must not be read as authoritative.
     if (recovered && !isCriticallySparse(spec.field, recovered as { source?: string })) {
       return recovered as ToolOutput<S["tool"]>;
     }
-    // Recovery RAN and did not promote this field: the subject's critical
-    // fields are a genuine void. Return an honest `source: "unavailable"` rather
-    // than the sparse provider shell — a critically-sparse `source: "edgar"`
+    // Recovery did not supply usable data. Keep the best PARTIAL provider payload
+    // (so a companyfacts revenue is not discarded); honest `unavailable` only
+    // when both providers were fully void — a critically-sparse `source: "edgar"`
     // would read downstream as "the authoritative provider answered". The
     // `recoveryAudit` carries the exhaustion trail (no-candidates / rejected).
-    return empty();
+    return bestPartial() ?? empty();
   }
 
-  // Non-subject probe (no recovery): return the best-available payload; a sparse
-  // edgar/Yahoo shell over an empty one preserves any partial fields.
-  return edgar ?? yahoo ?? empty();
+  // Non-subject probe (no recovery): keep the best partial, else honest empty.
+  return bestPartial() ?? empty();
 }

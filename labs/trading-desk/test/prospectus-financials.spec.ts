@@ -140,6 +140,27 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     expect(validateFinancialCandidate(c!, validateCtx).ok).toBe(false);
   });
 
+  it("preserves an accounting-negative whose parentheses are split across cells", () => {
+    // "( 1,200,000 )" laid out across separate <td> cells (space-collapsed) must
+    // read as an operating LOSS, not a positive value.
+    const withLoss = html.replace(
+      "<tr><td>Income from operations</td><td>1,200,000</td><td>640,000</td></tr>",
+      "<tr><td>Loss from operations</td><td>(</td><td>1,200,000</td><td>)</td><td>(640,000)</td></tr>",
+    );
+    const c = extractProspectusFinancials(withLoss, meta);
+    expect(c!.income.operatingIncome).toBe(-1_200_000_000);
+  });
+
+  it("flags a foreign reporting currency stated outside the units note", () => {
+    const rmb = html.replace(
+      "in thousands of U.S. dollars",
+      "in thousands, expressed in Renminbi (RMB)",
+    );
+    const c = extractProspectusFinancials(rmb, meta);
+    expect(c!.currency).toBe("NON-USD");
+    expect(validateFinancialCandidate(c!, validateCtx).ok).toBe(false);
+  });
+
   it("returns null when no fiscal period is parseable (does not fall back to the filing date)", () => {
     // Strip every 'Month DD, YYYY' date so no period can be parsed.
     const noDates = html.replace(

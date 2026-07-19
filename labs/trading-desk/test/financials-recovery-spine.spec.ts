@@ -31,6 +31,9 @@ const stubs = vi.hoisted(() => ({
   resolveCik: vi.fn(async () => "0001750000"),
   fetchCandidates: vi.fn(),
   fetchHtml: vi.fn(),
+  fetchEdgarIncome: vi.fn(),
+  fetchEdgarBalance: vi.fn(),
+  fetchEdgarCashflow: vi.fn(),
 }));
 
 const sparse = (extra: Record<string, unknown>) => ({
@@ -40,16 +43,16 @@ const sparse = (extra: Record<string, unknown>) => ({
   unit: "USD billions",
   ...extra,
 });
+const emptyIncome = () => sparse({ revenue: null, grossProfit: null, operatingIncome: null, netIncome: null, yoyRevenueGrowth: null });
+const emptyBalance = () => sparse({ totalAssets: null, totalLiabilities: null, totalEquity: null, cashAndEquivalents: null, totalDebt: null });
+const emptyCashflow = () => sparse({ operating: null, investing: null, financing: null, freeCashFlow: null });
 
 // EDGAR companyfacts answers 200 but sparse (null criticals); Yahoo misses.
 vi.mock("@/lib/providers/edgar", () => ({
   resolveCik: stubs.resolveCik,
-  fetchEdgarIncomeStatement: vi.fn(async () =>
-    sparse({ revenue: null, grossProfit: null, operatingIncome: null, netIncome: null, yoyRevenueGrowth: null })),
-  fetchEdgarBalanceSheet: vi.fn(async () =>
-    sparse({ totalAssets: null, totalLiabilities: null, totalEquity: null, cashAndEquivalents: null, totalDebt: null })),
-  fetchEdgarCashflow: vi.fn(async () =>
-    sparse({ operating: null, investing: null, financing: null, freeCashFlow: null })),
+  fetchEdgarIncomeStatement: stubs.fetchEdgarIncome,
+  fetchEdgarBalanceSheet: stubs.fetchEdgarBalance,
+  fetchEdgarCashflow: stubs.fetchEdgarCashflow,
 }));
 vi.mock("@/lib/providers/yahoo", () => ({
   fetchYahooIncomeStatement: vi.fn(async () => { throw new Error("yahoo miss"); }),
@@ -115,6 +118,9 @@ beforeEach(() => {
   stubs.resolveCik.mockResolvedValue("0001750000");
   stubs.fetchCandidates.mockReset().mockResolvedValue([candidate424]);
   stubs.fetchHtml.mockReset().mockResolvedValue(spcxHtml);
+  stubs.fetchEdgarIncome.mockReset().mockResolvedValue(emptyIncome());
+  stubs.fetchEdgarBalance.mockReset().mockResolvedValue(emptyBalance());
+  stubs.fetchEdgarCashflow.mockReset().mockResolvedValue(emptyCashflow());
 });
 
 describe("critical-financials recovery on the live statement chain", () => {
@@ -153,6 +159,49 @@ describe("critical-financials recovery on the live statement chain", () => {
     // Single-flight: three parallel tools, ONE discovery + ONE prospectus fetch.
     expect(stubs.fetchCandidates).toHaveBeenCalledTimes(1);
     expect(stubs.fetchHtml).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs recovery for a PARTIAL companyfacts income (revenue but no operating income) and promotes the full statement", async () => {
+    // EDGAR has revenue but not operating income — incomplete, so recovery runs
+    // rather than sticking a half-populated `edgar` payload.
+    stubs.fetchEdgarIncome.mockResolvedValue(
+      sparse({ revenue: 8.4, grossProfit: null, operatingIncome: null, netIncome: null, yoyRevenueGrowth: null }),
+    );
+    const stores = createInMemoryStores();
+    const sessionId = "recovery-partial-income";
+
+    const result = await testFlow({
+      flow: recoveryFlow, action: "fill", userId: "u", sessionId, stores,
+      input: { ticker: "SPCX", date: "2026-05-06" },
+      seed: { session: { state: baseState } },
+    });
+    expect(result.error).toBeUndefined();
+    const financials = (await stores.resourceState.getAll("session", sessionId))[
+      "financialsData"
+    ] as Record<string, any>;
+    expect(financials.incomeStatement.source).toBe("edgar-prospectus");
+    expect(financials.incomeStatement.operatingIncome).toBeCloseTo(1.2, 6);
+    expect(financials.recoveryAudit.outcome).toBe("promoted");
+  });
+
+  it("preserves a PARTIAL companyfacts income when recovery finds nothing (does not discard revenue)", async () => {
+    stubs.fetchEdgarIncome.mockResolvedValue(
+      sparse({ revenue: 8.4, grossProfit: null, operatingIncome: null, netIncome: null, yoyRevenueGrowth: null }),
+    );
+    stubs.fetchCandidates.mockResolvedValue([]); // recovery fails
+    const stores = createInMemoryStores();
+    const sessionId = "recovery-partial-preserve";
+
+    const result = await testFlow({
+      flow: recoveryFlow, action: "fetchIncome", userId: "u", sessionId, stores,
+      input: { ticker: "SPCX", date: "2026-05-06" },
+      seed: { session: { state: baseState } },
+    });
+    expect(result.error).toBeUndefined();
+    // The revenue EDGAR supplied is kept (source edgar), not discarded as unavailable.
+    const out = result.output as { source?: string; revenue?: number | null };
+    expect(out.source).toBe("edgar");
+    expect(out.revenue).toBeCloseTo(8.4, 6);
   });
 
   it("returns unavailable for the balance sheet when the prospectus omits cash and debt", async () => {
