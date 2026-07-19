@@ -286,7 +286,10 @@ Defaults to `NVDA / 2026-05-06`. The top bar exposes four controls:
   tool payload into the fixture corpus, making the run immediately replayable
   with `fixture`; not offered in the UI — pass it via the action input). The
   three financial statements (balance sheet, income statement, cash flow) come
-  from SEC EDGAR XBRL filings first, falling back to Yahoo for non-US filers.
+  from SEC EDGAR XBRL filings first, falling back to Yahoo for non-US filers, and
+  — for a newly listed issuer whose audited financials live only in its IPO
+  prospectus — a bounded S-1 / 424B* recovery before "unavailable"
+  ([financials recovery](docs/financials-recovery.md)).
 
 Press **re-run** to dispatch a new `analyze` request.
 
@@ -733,13 +736,16 @@ methodology rather than advice:
 - **Not a complete data layer.** Fixture mode ships hand-curated JSON
   snapshots at `2026-05-06` for NVDA / AAPL / JPM. Live mode wires SEC
   EDGAR (authoritative US filings, keyless) for the financial statements
-  with Yahoo Finance as fallback, and Yahoo for prices and the valuation
-  snapshot (keyless). A field a provider doesn't report reads `null`
-  (unobserved), never a fabricated 0. Don't extrapolate from a fixture run
-  to a real-data run.
+  with Yahoo Finance as fallback, then a bounded IPO-prospectus recovery
+  (S-1 / 424B*) for a newly listed issuer companyfacts and Yahoo both miss
+  ([financials recovery](docs/financials-recovery.md)), and Yahoo for prices
+  and the valuation snapshot (keyless). A field a provider doesn't report reads
+  `null` (unobserved), never a fabricated 0. Don't extrapolate from a fixture
+  run to a real-data run.
 
 ## Further reading
 
+- [Critical-financials recovery](docs/financials-recovery.md) — the IPO-prospectus fallback: the recovery hierarchy, promote gates, cost behavior, and the `recoveryAudit` trail when a newly listed issuer's audited financials live only in its S-1 / 424B*.
 - [Portfolio mandate (IPS)](docs/portfolio-mandate.md) — the durable household policy: schema, validation, the FIX-752 reconciliation, and what the desk enforces vs treats as advisory.
 - [Architecture deep-dive](../../docs/internal/design/trading-desk.md) — in-repo design doc covering pipeline shape, identity, resource flow, pattern choices, and the work the framework absorbs.
 - [Public guide](../../apps/docs/guides/trading-desk-walkthrough.md) — published Docusaurus walkthrough of the app phase by phase.

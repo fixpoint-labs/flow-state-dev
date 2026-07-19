@@ -1,0 +1,157 @@
+/**
+ * Unit tests for prospectus extraction + candidate validation + promotion
+ * (FIX-898) — the deterministic recovery tier and its hard gates.
+ *
+ * Intent encoded:
+ *   1. A clean prospectus table yields the valuation-critical line items with
+ *      the correct scale (thousands → raw USD → USD billions on promote).
+ *   2. The validator is a HARD gate: wrong company, non-SEC source, non-USD,
+ *      stale period, an insufficient set, and an unreconciled FCF triple are all
+ *      rejected — no zero-fill, no magnitude guessing.
+ */
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { extractProspectusFinancials } from "../lib/providers/prospectus-financials";
+import {
+  promoteCandidate,
+  type FinancialCandidate,
+} from "../flows/analysis/lib/financial-candidate";
+import { validateFinancialCandidate } from "../flows/analysis/lib/validate-financial-candidate";
+
+const html = readFileSync(
+  path.join(__dirname, "__fixtures__", "spcx-prospectus.html"),
+  "utf8",
+);
+
+const meta = {
+  ticker: "SPCX",
+  cik: 1750000,
+  form: "424B4",
+  filingDate: "2026-02-10",
+  sourceUrl: "https://www.sec.gov/Archives/edgar/data/1750000/000000000026000004/424b4.htm",
+  companyName: "SpaceCo Exploration Inc.",
+};
+
+const validateCtx = {
+  ticker: "SPCX",
+  expectedCik: 1750000,
+  asOfDate: "2026-05-06",
+  expectedName: "SpaceCo Exploration Inc.",
+};
+
+describe("extractProspectusFinancials — deterministic table extract", () => {
+  const candidate = extractProspectusFinancials(html, meta);
+
+  it("extracts the critical line items at the stated 'in thousands' scale (raw USD)", () => {
+    expect(candidate).not.toBeNull();
+    expect(candidate!.scale).toBe(1_000);
+    expect(candidate!.currency).toBe("USD");
+    expect(candidate!.periodEnd).toBe("2025-12-31");
+    // 8,500,000 thousands = $8.5B raw.
+    expect(candidate!.income.revenue).toBe(8_500_000_000);
+    expect(candidate!.income.operatingIncome).toBe(1_200_000_000);
+    expect(candidate!.cashflow.operating).toBe(2_000_000_000);
+    // capex parsed from a parenthesized (negative-printed) outflow → magnitude.
+    expect(candidate!.cashflow.capitalExpenditure).toBe(-3_500_000_000);
+    expect(candidate!.balance.cashAndEquivalents).toBe(4_000_000_000);
+    expect(candidate!.balance.totalDebt).toBe(1_000_000_000);
+  });
+
+  it("promotes a validated candidate into USD-billions statements tagged edgar-prospectus", () => {
+    expect(validateFinancialCandidate(candidate!, validateCtx).ok).toBe(true);
+    const { incomeStatement, balanceSheet, cashflow } = promoteCandidate(candidate!);
+    expect(incomeStatement.source).toBe("edgar-prospectus");
+    expect(incomeStatement.unit).toBe("USD billions");
+    expect(incomeStatement.revenue).toBeCloseTo(8.5, 6);
+    expect(incomeStatement.operatingIncome).toBeCloseTo(1.2, 6);
+    // FCF = operating − |capex| = 2.0 − 3.5 = −1.5 (billions).
+    expect(cashflow.operating).toBeCloseTo(2.0, 6);
+    expect(cashflow.freeCashFlow).toBeCloseTo(-1.5, 6);
+    expect(balanceSheet.cashAndEquivalents).toBeCloseTo(4.0, 6);
+    expect(balanceSheet.totalDebt).toBeCloseTo(1.0, 6);
+    // Not disclosed on this shape → null, never zero-filled.
+    expect(incomeStatement.netIncome).toBeNull();
+    expect(balanceSheet.totalAssets).toBeNull();
+  });
+
+  it("returns null when no scale is stated (never guesses magnitude)", () => {
+    const noScale = html.replace(/in thousands of U\.S\. dollars/i, "in U.S. dollars");
+    expect(extractProspectusFinancials(noScale, meta)).toBeNull();
+  });
+});
+
+/** A valid baseline candidate the reject cases each mutate one field of. */
+function baseCandidate(): FinancialCandidate {
+  return {
+    ticker: "SPCX",
+    cik: 1750000,
+    companyName: "SpaceCo Exploration Inc.",
+    form: "424B4",
+    filingDate: "2026-02-10",
+    periodEnd: "2025-12-31",
+    scale: 1_000,
+    currency: "USD",
+    sourceUrl: meta.sourceUrl,
+    income: { revenue: 8_500_000_000, operatingIncome: 1_200_000_000 },
+    cashflow: { operating: 2_000_000_000, capitalExpenditure: -3_500_000_000, freeCashFlow: null },
+    balance: { cashAndEquivalents: 4_000_000_000, totalDebt: 1_000_000_000 },
+    fieldProvenance: {},
+  };
+}
+
+describe("validateFinancialCandidate — hard reject gates", () => {
+  it("accepts the baseline candidate", () => {
+    expect(validateFinancialCandidate(baseCandidate(), validateCtx).ok).toBe(true);
+  });
+
+  it("rejects a wrong-company CIK", () => {
+    const r = validateFinancialCandidate({ ...baseCandidate(), cik: 999 }, validateCtx);
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/wrong-company/);
+  });
+
+  it("rejects a non-SEC (open-web) source URL", () => {
+    const r = validateFinancialCandidate(
+      { ...baseCandidate(), sourceUrl: "https://spaceco.example.com/ir/prospectus" },
+      validateCtx,
+    );
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/non-sec-source/);
+  });
+
+  it("rejects a non-USD candidate", () => {
+    const r = validateFinancialCandidate({ ...baseCandidate(), currency: "EUR" }, validateCtx);
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/non-usd/);
+  });
+
+  it("rejects a decades-stale period end", () => {
+    const r = validateFinancialCandidate({ ...baseCandidate(), periodEnd: "2015-12-31" }, validateCtx);
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/stale/);
+  });
+
+  it("rejects an insufficient set (missing operating income)", () => {
+    const c = baseCandidate();
+    c.income.operatingIncome = null;
+    const r = validateFinancialCandidate(c, validateCtx);
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/missing-operating-income/);
+  });
+
+  it("rejects an unreconciled operating/capex/FCF triple", () => {
+    const c = baseCandidate();
+    // stated FCF wildly off from operating − |capex| (= −1.5B).
+    c.cashflow.freeCashFlow = 5_000_000_000;
+    const r = validateFinancialCandidate(c, validateCtx);
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/unreconciled-fcf/);
+  });
+
+  it("accepts a reconciled operating/capex/FCF triple within tolerance", () => {
+    const c = baseCandidate();
+    c.cashflow.freeCashFlow = -1_500_000_000; // exactly operating − |capex|
+    expect(validateFinancialCandidate(c, validateCtx).ok).toBe(true);
+  });
+});

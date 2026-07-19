@@ -1,0 +1,212 @@
+/**
+ * Deterministic prospectus statement extractor — the zero-model tier of the
+ * critical-financials recovery ladder (FIX-898).
+ *
+ * Given the HTML of an SEC registration primary document (S-1 / 424B*), pull
+ * the valuation-critical line items out of its financial tables into a typed
+ * `FinancialCandidate` (raw USD, scale applied). This is preferred over the
+ * bounded LLM extractor because it is free and reproducible; when a filing's
+ * layout defeats it (no parseable scale, a critical line missing) it returns
+ * `null` and the recovery runtime escalates to the model.
+ *
+ * It is deliberately conservative: it never GUESSES scale from magnitude and
+ * never fabricates a line it cannot find (both would be rejected by
+ * `validateFinancialCandidate` anyway, but failing early keeps the audit
+ * honest). Table structure across issuers varies, so extraction works on
+ * normalized "label → first number" rows rather than fixed column positions.
+ */
+import type {
+  CandidateScale,
+  FinancialCandidate,
+} from "../../flows/analysis/lib/financial-candidate";
+
+/** One normalized statement row: the leading label and its first numeric cell
+ *  (raw, pre-scale, sign applied for parenthesized negatives). */
+type Row = { label: string; value: number };
+
+const MONTHS: Record<string, string> = {
+  january: "01", february: "02", march: "03", april: "04", may: "05",
+  june: "06", july: "07", august: "08", september: "09", october: "10",
+  november: "11", december: "12",
+};
+
+/** Normalize prospectus HTML into single-line rows. Row-ending tags become
+ *  line breaks; cell separators collapse to spaces; remaining tags and a few
+ *  common entities are stripped. */
+function rowsFromHtml(html: string): string[] {
+  const text = html
+    .replace(/<\s*(\/tr|\/p|br\s*\/?|\/div|\/h[1-6])\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#8217;|&rsquo;/gi, "'")
+    .replace(/&[a-z]+;/gi, " ");
+  return text
+    .split("\n")
+    .map((l) => l.replace(/[ \t]+/g, " ").trim())
+    .filter((l) => l.length > 0);
+}
+
+/** Parse a numeric token (strip `$`/commas; parentheses → negative). */
+function parseNumber(token: string): number | null {
+  const negative = /^\(.*\)$/.test(token.trim());
+  const cleaned = token.replace(/[(),$\s]/g, "");
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n)) return null;
+  return negative ? -Math.abs(n) : n;
+}
+
+/** Split a row into its leading label and first numeric value. */
+function toRow(line: string): Row | null {
+  const match = /\(?-?\$?\s?\d[\d,]*(?:\.\d+)?\)?/.exec(line);
+  if (!match) return null;
+  const value = parseNumber(match[0]);
+  if (value == null) return null;
+  const label = line.slice(0, match.index).trim();
+  if (!label) return null;
+  return { label, value };
+}
+
+/** First row whose label matches `pattern` (and does not match `exclude`). */
+function findMetric(
+  rows: Row[],
+  pattern: RegExp,
+  exclude?: RegExp,
+): number | null {
+  for (const row of rows) {
+    if (exclude && exclude.test(row.label)) continue;
+    if (pattern.test(row.label)) return row.value;
+  }
+  return null;
+}
+
+/** Parse the reporting scale from an "(in thousands/millions/billions)" note.
+ *  Returns null when no explicit scale note is present — the caller then
+ *  refuses to guess. */
+function parseScale(html: string): CandidateScale | null {
+  const m = /\bin\s+(thousands|millions|billions)\b/i.exec(html);
+  if (!m) return null;
+  switch (m[1].toLowerCase()) {
+    case "thousands":
+      return 1_000;
+    case "millions":
+      return 1_000_000;
+    case "billions":
+      return 1_000_000_000;
+    default:
+      return null;
+  }
+}
+
+/** Latest "Month DD, YYYY" date in the document (fiscal period end). */
+function parseLatestPeriodEnd(html: string): string | null {
+  const re = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),\s+(\d{4})\b/gi;
+  let best: string | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const iso = `${m[3]}-${MONTHS[m[1].toLowerCase()]}-${m[2].padStart(2, "0")}`;
+    if (best == null || iso > best) best = iso;
+  }
+  return best;
+}
+
+/** Reject an explicit non-USD reporting currency; default to USD otherwise. */
+function parseCurrency(html: string): string {
+  if (/\bin\s+(thousands|millions|billions)\s+of\s+euros?\b/i.test(html)) return "EUR";
+  if (/\breporting currency[^.]{0,40}\b(EUR|GBP|JPY|CNY|CAD)\b/i.test(html)) {
+    return RegExp.$1.toUpperCase();
+  }
+  return "USD";
+}
+
+/**
+ * Extract a `FinancialCandidate` from prospectus HTML, or `null` when the
+ * layout defeats deterministic parsing (no explicit scale, or no revenue/
+ * operating-income line found). The CIK is carried on `meta` (the recovery
+ * runtime resolves it once from the ticker) so the candidate holds the
+ * authoritative identity the validator checks — a mismatch there is what
+ * rejects a wrong-company document. Pure: no network, fully unit-testable.
+ */
+export function extractProspectusFinancials(
+  html: string,
+  meta: {
+    ticker: string;
+    cik: number;
+    form: string;
+    filingDate: string;
+    sourceUrl: string;
+    companyName: string;
+  },
+): FinancialCandidate | null {
+  const scale = parseScale(html);
+  if (scale == null) return null;
+
+  const rows = rowsFromHtml(html).map(toRow).filter((r): r is Row => r !== null);
+  if (rows.length === 0) return null;
+
+  const revenue = findMetric(
+    rows,
+    /^(total\s+)?(net\s+)?(revenues?|net\s+sales|total\s+revenue)\b/i,
+    /cost of|per share/i,
+  );
+  const operatingIncome = findMetric(
+    rows,
+    /^(income|loss|profit)\s+(from|\(loss\)\s+from)?\s*operations\b|^operating (income|loss)\b/i,
+  );
+  // No revenue AND no operating income → not a usable statement table.
+  if (revenue == null && operatingIncome == null) return null;
+
+  const operating = findMetric(
+    rows,
+    /^net cash (provided by|used in)( operating|.*operating activities)|operating activities\b/i,
+  );
+  const capitalExpenditure = findMetric(
+    rows,
+    /^(purchases? of property|capital expenditures?|purchase of property)/i,
+  );
+  const freeCashFlow = findMetric(rows, /^free cash flow\b/i);
+  const cashAndEquivalents = findMetric(
+    rows,
+    /^cash and cash equivalents\b/i,
+    /restricted/i,
+  );
+  const totalDebt = findMetric(
+    rows,
+    /^total debt\b|^(total )?long-term debt\b/i,
+    /current portion/i,
+  );
+
+  const applyScale = (n: number | null): number | null => (n == null ? null : n * scale);
+
+  const provenance: FinancialCandidate["fieldProvenance"] = {};
+  for (const field of ["revenue", "operatingIncome", "operating", "capitalExpenditure", "cashAndEquivalents", "totalDebt"]) {
+    provenance[field] = { sourceUrl: meta.sourceUrl };
+  }
+
+  return {
+    ticker: meta.ticker,
+    cik: meta.cik,
+    companyName: meta.companyName,
+    form: meta.form,
+    filingDate: meta.filingDate,
+    periodEnd: parseLatestPeriodEnd(html) ?? meta.filingDate,
+    scale,
+    currency: parseCurrency(html),
+    sourceUrl: meta.sourceUrl,
+    income: {
+      revenue: applyScale(revenue),
+      operatingIncome: applyScale(operatingIncome),
+    },
+    cashflow: {
+      operating: applyScale(operating),
+      capitalExpenditure: applyScale(capitalExpenditure),
+      freeCashFlow: applyScale(freeCashFlow),
+    },
+    balance: {
+      cashAndEquivalents: applyScale(cashAndEquivalents),
+      totalDebt: applyScale(totalDebt),
+    },
+    fieldProvenance: provenance,
+  };
+}

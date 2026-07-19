@@ -7,6 +7,7 @@
  */
 import { resolveCik, USER_AGENT } from "./edgar";
 import { classifyItems, type MaterialEventItem } from "./eight-k-items";
+import { REGISTRATION_FORMS } from "./edgar-registration";
 
 const SUBMISSIONS_BASE = "https://data.sec.gov/submissions";
 const ARCHIVES_BASE = "https://www.sec.gov/Archives/edgar/data";
@@ -62,6 +63,10 @@ export type EdgarFilingsPayload = {
   ticker: string;
   asOf: string;
   recentFilings: FilingEntry[];
+  // Registration / prospectus primary documents (S-1, 424B*, F-1*), kept apart
+  // from `recentFilings` so the periodic MD&A / red-flag consumers are unchanged
+  // (FIX-898). Surfaces IPO disclosure as primary for newly listed issuers.
+  registrationFilings: FilingEntry[];
   materialEvents: MaterialEvent[];
   latestPeriodic: LatestPeriodic | null;
   redFlagProbes: RedFlagProbe[];
@@ -77,6 +82,7 @@ async function edgarFetch(url: string): Promise<Response> {
 async function fetchSubmissions(ticker: string, date: string): Promise<{
   cik: number;
   recentFilings: FilingEntry[];
+  registrationFilings: FilingEntry[];
   materialEvents: MaterialEvent[];
 }> {
   const paddedCik = await resolveCik(ticker);
@@ -95,22 +101,35 @@ async function fetchSubmissions(ticker: string, date: string): Promise<{
     };
   };
   const recent = data.filings?.recent;
-  if (!recent?.form) return { cik: data.cik, recentFilings: [], materialEvents: [] };
+  if (!recent?.form) {
+    return { cik: data.cik, recentFilings: [], registrationFilings: [], materialEvents: [] };
+  }
 
   const cutoff = windowCutoff(date, LOOKBACK_DAYS);
   const entries: FilingEntry[] = [];
+  const registrationFilings: FilingEntry[] = [];
   const materialEvents: MaterialEvent[] = [];
   const len = recent.form.length;
 
   for (let i = 0; i < len; i++) {
-    if (entries.length >= MAX_RECENT && materialEvents.length >= MAX_EVENTS) break;
     const form = recent.form[i];
-    if (!PERIODIC_FORMS.has(form)) continue;
+    const isPeriodic = PERIODIC_FORMS.has(form);
+    const isRegistration = REGISTRATION_FORMS.has(form);
+    if (!isPeriodic && !isRegistration) continue;
     const accession = (recent.accessionNumber?.[i] ?? "").replace(/-/g, "");
     const primaryDoc = recent.primaryDocument?.[i] ?? "";
     const url = `${ARCHIVES_BASE}/${data.cik}/${accession}/${primaryDoc}`;
     const filingDate = recent.filingDate?.[i] ?? "";
     const title = recent.primaryDocDescription?.[i] ?? form;
+
+    // Registration primaries go in the sibling list (never fed to the periodic
+    // MD&A / red-flag extractors); periodic forms keep the existing behavior.
+    if (isRegistration) {
+      if (registrationFilings.length < MAX_RECENT) {
+        registrationFilings.push({ form, filingDate, title, url });
+      }
+      continue;
+    }
 
     if (entries.length < MAX_RECENT) {
       entries.push({ form, filingDate, title, url });
@@ -129,7 +148,7 @@ async function fetchSubmissions(ticker: string, date: string): Promise<{
     }
   }
 
-  return { cik: data.cik, recentFilings: entries, materialEvents };
+  return { cik: data.cik, recentFilings: entries, registrationFilings, materialEvents };
 }
 
 /** Extract a section from filing HTML by item header pattern. */
@@ -227,7 +246,8 @@ export async function fetchEdgarFilings(
   ticker: string,
   date: string,
 ): Promise<EdgarFilingsPayload> {
-  const { cik, recentFilings, materialEvents } = await fetchSubmissions(ticker, date);
+  const { cik, recentFilings, registrationFilings, materialEvents } =
+    await fetchSubmissions(ticker, date);
   const [latestPeriodic, redFlagProbes] = await Promise.all([
     fetchLatestPeriodic(recentFilings),
     probeRedFlags(cik),
@@ -237,6 +257,7 @@ export async function fetchEdgarFilings(
     ticker,
     asOf: date,
     recentFilings,
+    registrationFilings,
     materialEvents,
     latestPeriodic,
     redFlagProbes,
