@@ -74,6 +74,11 @@ function htmlToText(html: string): string {
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&#8217;|&rsquo;/gi, "'")
+    // Numeric entities (decimal `&#160;` / hex `&#xA0;`) — EDGAR headings pad
+    // words with numeric non-breaking spaces, so collapse them to a space
+    // BEFORE the anchor search or a heading like
+    // "Consolidated&#160;Statements&#160;of&#160;Operations" won't match `\s+`.
+    .replace(/&#x?[0-9a-f]+;/gi, " ")
     .replace(/&[a-z]+;/gi, " ")
     .replace(/\s+/g, " ")
     .trim();

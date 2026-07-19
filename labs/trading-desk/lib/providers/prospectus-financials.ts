@@ -54,6 +54,11 @@ const NUMBER_TOKEN = /\(?-?\$?\s?\d[\d,]*(?:\.\d+)?\)?/g;
  *  with no separators. Skipped so a note marker before the amount is not read as
  *  the financial value (`Revenue (1) 8,500` → 8,500, not −1). */
 const FOOTNOTE_MARKER = /^\(\d{1,2}\)$/;
+/** A BARE note reference (`Revenue 1 8,500` — a Notes column or superscript that
+ *  normalized to a plain number): a 1–2 digit integer with no `$`, comma,
+ *  decimal, or sign. Only skipped when another number follows on the row (the
+ *  real amount), so a genuine small standalone value is still read. */
+const BARE_NOTE_MARKER = /^\d{1,2}$/;
 
 /** Parse a numeric token (strip `$`/commas; parentheses → negative). */
 function parseNumber(token: string): number | null {
@@ -73,14 +78,22 @@ function toRow(line: string): Row | null {
   // "($1,200)" — otherwise the leading `(` is dropped and the loss reads as a
   // positive value.
   const normalized = line.replace(/\(\s*\$?\s*(\d[\d,]*(?:\.\d+)?)\s*\)/g, "($1)");
+  const tokens: Array<{ tok: string; index: number }> = [];
   NUMBER_TOKEN.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = NUMBER_TOKEN.exec(normalized)) !== null) {
-    const tok = m[0].trim();
+    tokens.push({ tok: m[0].trim(), index: m.index });
+  }
+  for (let i = 0; i < tokens.length; i++) {
+    const { tok, index } = tokens[i];
     if (FOOTNOTE_MARKER.test(tok)) continue;
+    // A leading bare note number (`Revenue 1 8,500`) is a Notes-column /
+    // superscript reference when a real amount follows — skip it, mirroring the
+    // parenthesized-`(1)` skip.
+    if (BARE_NOTE_MARKER.test(tok) && i < tokens.length - 1) continue;
     const value = parseNumber(tok);
     if (value == null) continue;
-    const label = normalized.slice(0, m.index).trim();
+    const label = normalized.slice(0, index).trim();
     if (!label) return null;
     return { label, value };
   }
