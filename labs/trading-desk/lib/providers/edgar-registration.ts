@@ -15,9 +15,12 @@
  * resolution + User-Agent from `edgar.ts`; the fetch helpers throw on any
  * failure so the recovery runtime can `try/catch` and record an honest audit.
  */
-import { resolveCik, USER_AGENT } from "./edgar";
+import {
+  edgarFetch,
+  fetchRecentSubmissions,
+  type RecentSubmissions,
+} from "./edgar";
 
-const SUBMISSIONS_BASE = "https://data.sec.gov/submissions";
 const ARCHIVES_BASE = "https://www.sec.gov/Archives/edgar/data";
 
 /**
@@ -85,14 +88,10 @@ export type RegistrationCandidate = {
   companyName: string;
 };
 
-/** The subset of the submissions `filings.recent` arrays this module reads. */
-export type RecentSubmissions = {
-  form?: string[];
-  filingDate?: string[];
-  accessionNumber?: string[];
-  primaryDocument?: string[];
-  primaryDocDescription?: string[];
-};
+// The raw `filings.recent` shape lives on `edgar.ts` (shared with the filings
+// provider); re-exported here so `selectRegistrationCandidates` callers/tests
+// keep one import site.
+export type { RecentSubmissions };
 
 /**
  * Pure selector: pick and rank registration candidates from the raw
@@ -138,34 +137,20 @@ export function selectRegistrationCandidates(
   return candidates.slice(0, limit);
 }
 
-async function edgarFetch(url: string): Promise<Response> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
-  if (!res.ok) throw new Error(`EDGAR ${url} failed: HTTP ${res.status}`);
-  return res;
-}
-
 /**
  * Discover the preferred registration/prospectus primary documents for a
  * ticker, newest-and-most-authoritative first. Throws when the ticker has no
  * SEC CIK (non-US, no submissions) so the recovery runtime records
- * `no-candidates` honestly.
+ * `no-candidates` honestly. Reuses the shared, cached submissions fetch.
  */
 export async function fetchRegistrationCandidates(
   ticker: string,
   date: string,
   limit = 3,
 ): Promise<RegistrationCandidate[]> {
-  const paddedCik = await resolveCik(ticker);
-  const res = await edgarFetch(`${SUBMISSIONS_BASE}/CIK${paddedCik}.json`);
-  const data = (await res.json()) as {
-    cik?: number;
-    name?: string;
-    filings?: { recent?: RecentSubmissions };
-  };
-  const recent = data.filings?.recent;
-  const cik = data.cik ?? Number(paddedCik);
-  if (!recent?.form) return [];
-  return selectRegistrationCandidates(recent, cik, data.name ?? "", date, limit);
+  const { cik, name, recent } = await fetchRecentSubmissions(ticker);
+  if (!recent.form) return [];
+  return selectRegistrationCandidates(recent, cik, name, date, limit);
 }
 
 /**

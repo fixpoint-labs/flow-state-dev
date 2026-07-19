@@ -88,7 +88,7 @@ recovery runtime is the sole writer):
 ```ts
 {
   attempted: boolean,
-  outcome: "promoted" | "rejected" | "no-candidates" | "extract-failed" | "skipped",
+  outcome: "promoted" | "rejected" | "no-candidates" | "extract-failed",
   formsTried: string[],      // e.g. ["424B4", "S-1/A"]
   urls: string[],            // SEC documents fetched
   rejectionReasons: string[],// why a candidate failed the gates
@@ -96,8 +96,11 @@ recovery runtime is the sole writer):
 }
 ```
 
-So a downstream evidence-sufficiency gate (FIX-781) can tell an honest
-exhaustion (`outcome: "rejected"` with reasons) from an untried path. The
+The audit is written only when recovery RUNS; when companyfacts or Yahoo
+answered, recovery never runs and the audit is simply **absent** (absence is the
+"skipped" signal — there is no explicit skipped record). So a downstream
+evidence-sufficiency gate (FIX-781) can tell an honest exhaustion
+(`outcome: "rejected"` with reasons) from an untried path. The
 recovered statements carry the `edgar-prospectus` source tag; registration
 filings are also surfaced on `get_sec_filings` in a sibling `registrationFilings`
 array (kept apart from the periodic MD&A / red-flag extractors).

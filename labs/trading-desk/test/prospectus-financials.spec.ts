@@ -81,6 +81,46 @@ describe("extractProspectusFinancials — deterministic table extract", () => {
   });
 });
 
+describe("extractProspectusFinancials — parsing robustness", () => {
+  it("skips a footnote marker before the amount instead of reading it as the value", () => {
+    const withNotes = `
+<html><body>
+<p>Amounts in thousands of U.S. dollars. Year ended December 31, 2025.</p>
+<table>
+<tr><td>Total revenue (1)</td><td>8,500,000</td></tr>
+<tr><td>Income from operations (2)</td><td>1,200,000</td></tr>
+<tr><td>Net cash provided by operating activities</td><td>2,000,000</td></tr>
+<tr><td>Purchases of property and equipment</td><td>(3,500,000)</td></tr>
+</table></body></html>`;
+    const c = extractProspectusFinancials(withNotes, meta);
+    expect(c).not.toBeNull();
+    expect(c!.income.revenue).toBe(8_500_000_000); // not (1) → −1
+    expect(c!.income.operatingIncome).toBe(1_200_000_000);
+  });
+
+  it("does not let a narrative 'in millions' set the table scale", () => {
+    // A narrative sentence mentions millions (of users), but the statements are
+    // stated in thousands — the accounting-units note must win.
+    const narrative = html.replace(
+      /Amounts are presented in thousands of U\.S\. dollars\./,
+      "Our platform reached tens of millions of users. Amounts are presented in thousands of U.S. dollars.",
+    );
+    const c = extractProspectusFinancials(narrative, meta);
+    expect(c!.scale).toBe(1_000);
+    expect(c!.income.revenue).toBe(8_500_000_000);
+  });
+
+  it("takes the period end from a statement-header context, not a footnote date", () => {
+    const withFootnoteDate = html.replace(
+      "</body>",
+      "<p>(1) A distribution agreement was signed on December 31, 2099.</p></body>",
+    );
+    const c = extractProspectusFinancials(withFootnoteDate, meta);
+    // The header 'Year Ended December 31, 2025' wins over the 2099 footnote date.
+    expect(c!.periodEnd).toBe("2025-12-31");
+  });
+});
+
 /** A valid baseline candidate the reject cases each mutate one field of. */
 function baseCandidate(): FinancialCandidate {
   return {
@@ -96,7 +136,6 @@ function baseCandidate(): FinancialCandidate {
     income: { revenue: 8_500_000_000, operatingIncome: 1_200_000_000 },
     cashflow: { operating: 2_000_000_000, capitalExpenditure: -3_500_000_000, freeCashFlow: null },
     balance: { cashAndEquivalents: 4_000_000_000, totalDebt: 1_000_000_000 },
-    fieldProvenance: {},
   };
 }
 

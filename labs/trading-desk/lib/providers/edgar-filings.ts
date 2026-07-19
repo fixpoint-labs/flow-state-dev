@@ -5,11 +5,10 @@
  * Reuses the shared CIK resolution and User-Agent from `providers/edgar.ts`.
  * Tools using this helper: get_sec_filings.
  */
-import { resolveCik, USER_AGENT } from "./edgar";
+import { edgarFetch, fetchRecentSubmissions } from "./edgar";
 import { classifyItems, type MaterialEventItem } from "./eight-k-items";
-import { REGISTRATION_FORMS } from "./edgar-registration";
+import { selectRegistrationCandidates } from "./edgar-registration";
 
-const SUBMISSIONS_BASE = "https://data.sec.gov/submissions";
 const ARCHIVES_BASE = "https://www.sec.gov/Archives/edgar/data";
 const EFTS_BASE = "https://efts.sec.gov/LATEST/search-index";
 
@@ -72,64 +71,34 @@ export type EdgarFilingsPayload = {
   redFlagProbes: RedFlagProbe[];
 };
 
-async function edgarFetch(url: string): Promise<Response> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
-  if (!res.ok) throw new Error(`EDGAR ${url} failed: HTTP ${res.status}`);
-  return res;
-}
-
-/** Fetch the submissions list for a ticker. */
+/** Fetch the submissions list for a ticker and project the periodic list,
+ *  material events, and the sibling registration list (the last two share the
+ *  raw submissions with registration recovery — one cached fetch). */
 async function fetchSubmissions(ticker: string, date: string): Promise<{
   cik: number;
   recentFilings: FilingEntry[];
   registrationFilings: FilingEntry[];
   materialEvents: MaterialEvent[];
 }> {
-  const paddedCik = await resolveCik(ticker);
-  const res = await edgarFetch(`${SUBMISSIONS_BASE}/CIK${paddedCik}.json`);
-  const data = (await res.json()) as {
-    cik: number;
-    filings?: {
-      recent?: {
-        form?: string[];
-        filingDate?: string[];
-        accessionNumber?: string[];
-        primaryDocument?: string[];
-        primaryDocDescription?: string[];
-        items?: string[];
-      };
-    };
-  };
-  const recent = data.filings?.recent;
-  if (!recent?.form) {
-    return { cik: data.cik, recentFilings: [], registrationFilings: [], materialEvents: [] };
+  const { cik, name, recent } = await fetchRecentSubmissions(ticker);
+  if (!recent.form) {
+    return { cik, recentFilings: [], registrationFilings: [], materialEvents: [] };
   }
 
   const cutoff = windowCutoff(date, LOOKBACK_DAYS);
   const entries: FilingEntry[] = [];
-  const registrationFilings: FilingEntry[] = [];
   const materialEvents: MaterialEvent[] = [];
   const len = recent.form.length;
 
   for (let i = 0; i < len; i++) {
+    if (entries.length >= MAX_RECENT && materialEvents.length >= MAX_EVENTS) break;
     const form = recent.form[i];
-    const isPeriodic = PERIODIC_FORMS.has(form);
-    const isRegistration = REGISTRATION_FORMS.has(form);
-    if (!isPeriodic && !isRegistration) continue;
+    if (!PERIODIC_FORMS.has(form)) continue;
     const accession = (recent.accessionNumber?.[i] ?? "").replace(/-/g, "");
     const primaryDoc = recent.primaryDocument?.[i] ?? "";
-    const url = `${ARCHIVES_BASE}/${data.cik}/${accession}/${primaryDoc}`;
+    const url = `${ARCHIVES_BASE}/${cik}/${accession}/${primaryDoc}`;
     const filingDate = recent.filingDate?.[i] ?? "";
     const title = recent.primaryDocDescription?.[i] ?? form;
-
-    // Registration primaries go in the sibling list (never fed to the periodic
-    // MD&A / red-flag extractors); periodic forms keep the existing behavior.
-    if (isRegistration) {
-      if (registrationFilings.length < MAX_RECENT) {
-        registrationFilings.push({ form, filingDate, title, url });
-      }
-      continue;
-    }
 
     if (entries.length < MAX_RECENT) {
       entries.push({ form, filingDate, title, url });
@@ -148,7 +117,18 @@ async function fetchSubmissions(ticker: string, date: string): Promise<{
     }
   }
 
-  return { cik: data.cik, recentFilings: entries, registrationFilings, materialEvents };
+  // Registration primaries go through the SAME selector recovery uses — so the
+  // disclosure list and recovery agree on ranking, and both drop filings dated
+  // after the as-of `date` (no future prospectus leaks into a historical run).
+  const registrationFilings: FilingEntry[] = selectRegistrationCandidates(
+    recent,
+    cik,
+    name,
+    date,
+    MAX_RECENT,
+  ).map((c) => ({ form: c.form, filingDate: c.filingDate, title: c.form, url: c.url }));
+
+  return { cik, recentFilings: entries, registrationFilings, materialEvents };
 }
 
 /** Extract a section from filing HTML by item header pattern. */

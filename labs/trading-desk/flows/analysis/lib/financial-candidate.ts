@@ -56,7 +56,6 @@ export type FinancialCandidate = {
     cashAndEquivalents: number | null;
     totalDebt: number | null;
   };
-  fieldProvenance: Record<string, { sourceUrl: string; excerpt?: string }>;
 };
 
 const USD_BILLION = 1_000_000_000;

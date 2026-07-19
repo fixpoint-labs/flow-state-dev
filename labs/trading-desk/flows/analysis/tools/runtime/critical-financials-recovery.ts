@@ -218,7 +218,10 @@ async function runRecovery(
     }
   } catch (err) {
     rejectionReasons.push(`llm-extract-error: ${(err as Error).message}`);
-    return finish(null, "extract-failed");
+    // If deterministic candidates were already produced and rejected by the
+    // gates, that is a `rejected` outcome — a model/transport failure on top of
+    // it must not overwrite the gate verdict downstream consumers rely on.
+    return finish(null, producedCandidate ? "rejected" : "extract-failed");
   }
 
   // Docs fetched, but nothing validated: rejected if a candidate was produced

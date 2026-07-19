@@ -24,10 +24,10 @@ export const financialsDataStateSchema = z.object({
   incomeStatement: toolOutputSchemas.get_income_statement.optional(),
   cashflow: toolOutputSchemas.get_cashflow.optional(),
   // Critical-source recovery audit (FIX-898). Written once per run by the
-  // recovery runtime — records whether the IPO/prospectus recovery ladder was
-  // attempted and how it terminated (promoted / rejected / no-candidates /
-  // extract-failed / skipped), so an "unavailable" statement carries an
-  // explicit trail rather than an unexplained void. Absent until recovery runs.
+  // recovery runtime when recovery RUNS — records how the IPO/prospectus ladder
+  // terminated (promoted / rejected / no-candidates / extract-failed), so an
+  // "unavailable" statement carries an explicit trail rather than an unexplained
+  // void. Absent when companyfacts/Yahoo answered (recovery never ran).
   recoveryAudit: recoveryAuditSchema.optional(),
 });
 

@@ -47,6 +47,14 @@ function rowsFromHtml(html: string): string[] {
     .filter((l) => l.length > 0);
 }
 
+/** A numeric cell token: optional `$`, thousands-separated digits, optional
+ *  decimals, optionally parenthesized (accounting negative). */
+const NUMBER_TOKEN = /\(?-?\$?\s?\d[\d,]*(?:\.\d+)?\)?/g;
+/** A footnote reference like `(1)` / `(12)` — a parenthesized 1–2 digit integer
+ *  with no separators. Skipped so a note marker before the amount is not read as
+ *  the financial value (`Revenue (1) 8,500` → 8,500, not −1). */
+const FOOTNOTE_MARKER = /^\(\d{1,2}\)$/;
+
 /** Parse a numeric token (strip `$`/commas; parentheses → negative). */
 function parseNumber(token: string): number | null {
   const negative = /^\(.*\)$/.test(token.trim());
@@ -57,15 +65,21 @@ function parseNumber(token: string): number | null {
   return negative ? -Math.abs(n) : n;
 }
 
-/** Split a row into its leading label and first numeric value. */
+/** Split a row into its leading label and first FINANCIAL numeric value,
+ *  skipping any leading footnote markers. */
 function toRow(line: string): Row | null {
-  const match = /\(?-?\$?\s?\d[\d,]*(?:\.\d+)?\)?/.exec(line);
-  if (!match) return null;
-  const value = parseNumber(match[0]);
-  if (value == null) return null;
-  const label = line.slice(0, match.index).trim();
-  if (!label) return null;
-  return { label, value };
+  NUMBER_TOKEN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = NUMBER_TOKEN.exec(line)) !== null) {
+    const tok = m[0].trim();
+    if (FOOTNOTE_MARKER.test(tok)) continue;
+    const value = parseNumber(tok);
+    if (value == null) continue;
+    const label = line.slice(0, m.index).trim();
+    if (!label) return null;
+    return { label, value };
+  }
+  return null;
 }
 
 /** First row whose label matches `pattern` (and does not match `exclude`). */
@@ -81,11 +95,13 @@ function findMetric(
   return null;
 }
 
-/** Parse the reporting scale from an "(in thousands/millions/billions)" note.
- *  Returns null when no explicit scale note is present — the caller then
+/** Parse the reporting scale from an accounting-units note. The unit word must
+ *  be followed by an accounting context (`,` / `)` / "of … dollars" / "except")
+ *  so a NARRATIVE "in millions of users" earlier in the document cannot set the
+ *  table scale. Returns null when no such note is present — the caller then
  *  refuses to guess. */
 function parseScale(html: string): CandidateScale | null {
-  const m = /\bin\s+(thousands|millions|billions)\b/i.exec(html);
+  const m = /\bin\s+(thousands|millions|billions)\b(?=\s*(?:,|\)|\s+of\s+(?:u\.?\s?s\.?\s+)?dollars|\s+except))/i.exec(html);
   if (!m) return null;
   switch (m[1].toLowerCase()) {
     case "thousands":
@@ -99,9 +115,11 @@ function parseScale(html: string): CandidateScale | null {
   }
 }
 
-/** Latest "Month DD, YYYY" date in the document (fiscal period end). */
-function parseLatestPeriodEnd(html: string): string | null {
-  const re = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),\s+(\d{4})\b/gi;
+const MONTH_NAMES = "(january|february|march|april|may|june|july|august|september|october|november|december)";
+
+/** Latest ISO date matching `Month DD, YYYY` with the given `prefix` context. */
+function latestDate(html: string, prefix: string): string | null {
+  const re = new RegExp(`${prefix}${MONTH_NAMES}\\s+(\\d{1,2}),\\s+(\\d{4})`, "gi");
   let best: string | null = null;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
@@ -111,12 +129,18 @@ function parseLatestPeriodEnd(html: string): string | null {
   return best;
 }
 
+/** Fiscal period end. Prefer a date in a statement-header context ("year ended
+ *  …", "as of …") over a global max-date scan, so a footnote/comparative date
+ *  cannot become the period the validator checks. */
+function parsePeriodEnd(html: string): string | null {
+  return latestDate(html, "(?:ended|as\\s+of)\\s+") ?? latestDate(html, "");
+}
+
 /** Reject an explicit non-USD reporting currency; default to USD otherwise. */
 function parseCurrency(html: string): string {
   if (/\bin\s+(thousands|millions|billions)\s+of\s+euros?\b/i.test(html)) return "EUR";
-  if (/\breporting currency[^.]{0,40}\b(EUR|GBP|JPY|CNY|CAD)\b/i.test(html)) {
-    return RegExp.$1.toUpperCase();
-  }
+  const m = /\breporting currency[^.]{0,40}\b(EUR|GBP|JPY|CNY|CAD)\b/i.exec(html);
+  if (m) return m[1].toUpperCase();
   return "USD";
 }
 
@@ -157,9 +181,12 @@ export function extractProspectusFinancials(
   // No revenue AND no operating income → not a usable statement table.
   if (revenue == null && operatingIncome == null) return null;
 
+  // Anchored on "net cash provided by / used in … operating activities" — the
+  // statement TOTAL — so a narrative or reconciliation row that merely mentions
+  // "operating activities" cannot be picked as operating cash flow.
   const operating = findMetric(
     rows,
-    /^net cash (provided by|used in)( operating|.*operating activities)|operating activities\b/i,
+    /^net cash (provided by|used in)[^.]*operating activities/i,
   );
   const capitalExpenditure = findMetric(
     rows,
@@ -179,18 +206,13 @@ export function extractProspectusFinancials(
 
   const applyScale = (n: number | null): number | null => (n == null ? null : n * scale);
 
-  const provenance: FinancialCandidate["fieldProvenance"] = {};
-  for (const field of ["revenue", "operatingIncome", "operating", "capitalExpenditure", "cashAndEquivalents", "totalDebt"]) {
-    provenance[field] = { sourceUrl: meta.sourceUrl };
-  }
-
   return {
     ticker: meta.ticker,
     cik: meta.cik,
     companyName: meta.companyName,
     form: meta.form,
     filingDate: meta.filingDate,
-    periodEnd: parseLatestPeriodEnd(html) ?? meta.filingDate,
+    periodEnd: parsePeriodEnd(html) ?? meta.filingDate,
     scale,
     currency: parseCurrency(html),
     sourceUrl: meta.sourceUrl,
@@ -207,6 +229,5 @@ export function extractProspectusFinancials(
       cashAndEquivalents: applyScale(cashAndEquivalents),
       totalDebt: applyScale(totalDebt),
     },
-    fieldProvenance: provenance,
   };
 }

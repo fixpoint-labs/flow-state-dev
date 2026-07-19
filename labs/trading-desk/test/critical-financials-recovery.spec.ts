@@ -174,7 +174,6 @@ describe("recoverCriticalFinancials", () => {
       income: { revenue: 8_500_000_000, operatingIncome: 1_200_000_000 },
       cashflow: { operating: 2_000_000_000, capitalExpenditure: -3_500_000_000, freeCashFlow: null },
       balance: { cashAndEquivalents: 4_000_000_000, totalDebt: 1_000_000_000 },
-      fieldProvenance: {},
     };
     stubs.llmExtract.mockResolvedValue(llmCandidate);
     const { ctx } = makeCtx();

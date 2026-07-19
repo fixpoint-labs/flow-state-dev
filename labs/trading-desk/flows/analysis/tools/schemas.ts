@@ -117,10 +117,11 @@ export const cashflowSchema = z.object({
 /**
  * Audit trail for one critical-financials recovery attempt (FIX-898). Written
  * once per run onto the `financialsData` spine by the recovery runtime — the
- * SOLE writer — on every outcome, so downstream evidence-sufficiency gates
+ * SOLE writer — whenever recovery RUNS, so downstream evidence-sufficiency gates
  * (FIX-781) can read whether "unavailable" is honest exhaustion vs. an untried
- * path. `attempted: false` / `outcome: "skipped"` means the subject was not a
- * critical miss (companyfacts or Yahoo answered), so recovery never ran.
+ * path. When companyfacts or Yahoo answered, recovery never runs and the audit
+ * is simply ABSENT (there is no explicit "skipped" record — absence is the
+ * skipped signal).
  */
 export const recoveryAuditSchema = z.object({
   attempted: z.boolean(),
@@ -129,7 +130,6 @@ export const recoveryAuditSchema = z.object({
     "rejected",
     "no-candidates",
     "extract-failed",
-    "skipped",
   ]),
   formsTried: z.array(z.string()),
   urls: z.array(z.string()),

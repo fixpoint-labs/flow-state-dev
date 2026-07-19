@@ -117,9 +117,6 @@ export async function recoverFinancialsExtract(
 
   const scale = SCALE_MULTIPLIER[e.scale];
   const s = (n: number | null): number | null => (n == null ? null : n * scale);
-  const fields = ["revenue", "operatingIncome", "operatingCashFlow", "capitalExpenditure", "cashAndEquivalents", "totalDebt"];
-  const provenance: FinancialCandidate["fieldProvenance"] = {};
-  for (const f of fields) provenance[f] = { sourceUrl: meta.sourceUrl };
 
   return {
     ticker: meta.ticker,
@@ -138,6 +135,5 @@ export async function recoverFinancialsExtract(
       freeCashFlow: s(e.freeCashFlow),
     },
     balance: { cashAndEquivalents: s(e.cashAndEquivalents), totalDebt: s(e.totalDebt) },
-    fieldProvenance: provenance,
   };
 }
