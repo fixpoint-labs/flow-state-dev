@@ -36,7 +36,11 @@ export interface ExtractModel {
  *  does not disclose. */
 const prospectusExtractSchema = z.object({
   currency: z.string(),
-  scale: z.enum(["ones", "thousands", "millions", "billions"]),
+  // `unspecified` when the table states no explicit units — the caller REJECTS
+  // it rather than guessing whole-dollars, matching the deterministic tier's
+  // explicit-scale gate. No `ones` guess (a face-value read of a "in thousands"
+  // table mis-states every figure 1000x).
+  scale: z.enum(["unspecified", "thousands", "millions", "billions"]),
   periodEnd: z.string(),
   revenue: z.number().nullable(),
   operatingIncome: z.number().nullable(),
@@ -48,8 +52,7 @@ const prospectusExtractSchema = z.object({
 });
 type ProspectusExtract = z.infer<typeof prospectusExtractSchema>;
 
-const SCALE_MULTIPLIER: Record<ProspectusExtract["scale"], CandidateScale> = {
-  ones: 1,
+const SCALE_MULTIPLIER: Record<Exclude<ProspectusExtract["scale"], "unspecified">, CandidateScale> = {
   thousands: 1_000,
   millions: 1_000_000,
   billions: 1_000_000_000,
@@ -67,9 +70,10 @@ const SYSTEM_PROMPT = [
   "- Read ONLY the document text provided below. Never recall from training,",
   "  never estimate, never fabricate a number the document does not print.",
   "- Emit numbers EXACTLY as printed in the primary financial statements table",
-  "  (do not rescale) and report the table's stated units in `scale`",
+  "  (do not rescale) and report the table's EXPLICITLY stated units in `scale`",
   "  (\"in thousands\" -> thousands, \"in millions\" -> millions, etc.). If the",
-  "  table states no units, use \"ones\".",
+  "  table does NOT explicitly state its units, use \"unspecified\" — do NOT",
+  "  guess whole dollars.",
   "- Prefer the MOST RECENT audited full-fiscal-year column.",
   "- `currency`: the reporting currency (usually USD).",
   "- `periodEnd`: the fiscal period end as YYYY-MM-DD.",
@@ -114,6 +118,9 @@ export async function recoverFinancialsExtract(
   if (!parsed.success) return null;
   const e = parsed.data;
   if (e.revenue == null && e.operatingIncome == null) return null;
+  // No explicit units → reject (do not guess whole-dollars): the same
+  // explicit-scale bar the deterministic tier enforces.
+  if (e.scale === "unspecified") return null;
 
   const scale = SCALE_MULTIPLIER[e.scale];
   const s = (n: number | null): number | null => (n == null ? null : n * scale);
