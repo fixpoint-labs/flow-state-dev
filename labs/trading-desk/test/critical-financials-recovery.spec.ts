@@ -156,6 +156,24 @@ describe("recoverCriticalFinancials", () => {
     expect(result.audit.rejectionReasons.join(" ")).toMatch(/stale/);
   });
 
+  it("rethrows on abort instead of swallowing it into an audit", async () => {
+    const noScaleHtml = "<html><body><p>no financial tables here</p></body></html>";
+    stubs.fetchCandidates.mockResolvedValue([candidate424]);
+    stubs.fetchHtml.mockResolvedValue(noScaleHtml);
+    const abortErr = new Error("The operation was aborted");
+    stubs.llmExtract.mockRejectedValue(abortErr);
+    const { ctx, audits } = makeCtx();
+    const controller = new AbortController();
+    controller.abort();
+    (ctx as { signal?: AbortSignal }).signal = controller.signal;
+
+    await expect(
+      recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" }),
+    ).rejects.toBe(abortErr);
+    // A cancellation must not write a recovery audit.
+    expect(audits).toHaveLength(0);
+  });
+
   it("falls back to the ONE bounded LLM extract when the deterministic tier misses", async () => {
     // HTML with no scale note → deterministic extractor returns null.
     const noScaleHtml = "<html><body><p>no financial tables here</p></body></html>";

@@ -221,6 +221,10 @@ async function runRecovery(
       rejectionReasons.push("llm-extract-empty");
     }
   } catch (err) {
+    // A cancellation is not an extraction failure: rethrow so the run stops
+    // (no audit write, no unavailable payload) — matching generator-block
+    // cancellation semantics.
+    if (ctx.signal?.aborted) throw err;
     rejectionReasons.push(`llm-extract-error: ${(err as Error).message}`);
     // If deterministic candidates were already produced and rejected by the
     // gates, that is a `rejected` outcome — a model/transport failure on top of

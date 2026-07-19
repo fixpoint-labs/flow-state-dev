@@ -80,6 +80,12 @@ document fetches, an SEC-first URL set, and no open-ended research loop. The
 deterministic tier is always tried first, so a cleanly tabulated prospectus
 costs zero model spend.
 
+Known limitation: the bounded recovery model call is a direct `model.generate`
+(not a generator block), so its token usage is not yet folded into the
+framework's per-action cost accounting (`block_trace.modelUsage`). The call is
+capped at one invocation, but its tokens are currently invisible to the token
+budget — surfacing them needs a framework usage seam (follow-up).
+
 ## Audit trail
 
 Every recovery attempt writes `financialsData.recoveryAudit` exactly once (the

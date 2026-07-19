@@ -95,24 +95,26 @@ function findMetric(
   return null;
 }
 
-/** Parse the reporting scale from an accounting-units note. The unit word must
- *  be followed by an accounting context (`,` / `)` / "of … dollars" / "except")
- *  so a NARRATIVE "in millions of users" earlier in the document cannot set the
- *  table scale. Returns null when no such note is present — the caller then
- *  refuses to guess. */
+/** Accounting-units note: the unit word must be followed by an accounting
+ *  context (`,` / `)` / "of … dollars" / "except"), so a NARRATIVE
+ *  "in millions of users" cannot set the table scale. Global so ALL notes are
+ *  collected. */
+const SCALE_NOTE_RE = /\bin\s+(thousands|millions|billions)\b(?=\s*(?:,|\)|\s+of\s+(?:u\.?\s?s\.?\s+)?dollars|\s+except))/gi;
+
+function scaleWord(word: string): CandidateScale {
+  return word === "thousands" ? 1_000 : word === "millions" ? 1_000_000 : 1_000_000_000;
+}
+
+/** Parse the ONE reporting scale from the document's accounting-units notes.
+ *  Returns null when there is none (nothing to key on) OR when the document
+ *  carries CONFLICTING notes (e.g. a capitalization table "in millions" and the
+ *  audited statements "in thousands") — an ambiguous scale must fall back to the
+ *  LLM extractor, never be guessed, since a wrong multiplier mis-scales every
+ *  row by 1000x while still reconciling internally. */
 function parseScale(html: string): CandidateScale | null {
-  const m = /\bin\s+(thousands|millions|billions)\b(?=\s*(?:,|\)|\s+of\s+(?:u\.?\s?s\.?\s+)?dollars|\s+except))/i.exec(html);
-  if (!m) return null;
-  switch (m[1].toLowerCase()) {
-    case "thousands":
-      return 1_000;
-    case "millions":
-      return 1_000_000;
-    case "billions":
-      return 1_000_000_000;
-    default:
-      return null;
-  }
+  const found = new Set<CandidateScale>();
+  for (const m of html.matchAll(SCALE_NOTE_RE)) found.add(scaleWord(m[1].toLowerCase()));
+  return found.size === 1 ? [...found][0] : null;
 }
 
 const MONTH_NAMES = "(january|february|march|april|may|june|july|august|september|october|november|december)";

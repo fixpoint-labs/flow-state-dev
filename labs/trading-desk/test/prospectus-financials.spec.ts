@@ -110,6 +110,16 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     expect(c!.income.revenue).toBe(8_500_000_000);
   });
 
+  it("returns null on conflicting scale notes (falls back rather than mis-scaling)", () => {
+    // A capitalization table 'in millions' precedes the audited statements
+    // 'in thousands' — an ambiguous scale must NOT be guessed.
+    const conflicting = html.replace(
+      /Amounts are presented in thousands of U\.S\. dollars\./,
+      "Capitalization is presented in millions, except share data. Amounts are presented in thousands of U.S. dollars.",
+    );
+    expect(extractProspectusFinancials(conflicting, meta)).toBeNull();
+  });
+
   it("takes the period end from a statement-header context, not a footnote date", () => {
     const withFootnoteDate = html.replace(
       "</body>",
