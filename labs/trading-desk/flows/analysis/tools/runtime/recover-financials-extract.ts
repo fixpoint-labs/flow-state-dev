@@ -35,6 +35,11 @@ export interface ExtractModel {
  *  table (the `scale` field says which units); `null` for any line the document
  *  does not disclose. */
 const prospectusExtractSchema = z.object({
+  // The `index` of the <document> the statements were transcribed FROM, so the
+  // promoted candidate cites the exact SEC primary (not always the lead) — the
+  // caller stamps `form`/`filingDate`/`sourceUrl` from that document. Clamped to
+  // the valid range on read.
+  sourceDocumentIndex: z.number(),
   currency: z.string(),
   // `unspecified` when the table states no explicit units — the caller REJECTS
   // it rather than guessing whole-dollars, matching the deterministic tier's
@@ -121,6 +126,9 @@ const SYSTEM_PROMPT = [
   "  equipment). freeCashFlow: only if the document states it explicitly.",
   "- Any line item the document does not disclose: emit null. Never emit 0 for",
   "  a missing line.",
+  "- `sourceDocumentIndex`: the integer `index` of the <document> you transcribed",
+  "  the statements FROM (if several are provided, the one whose audited table you",
+  "  actually read).",
   "</rules>",
 ].join("\n");
 
@@ -133,10 +141,11 @@ const SYSTEM_PROMPT = [
  */
 export async function recoverFinancialsExtract(
   model: ExtractModel,
-  docs: Array<{ url: string; text: string }>,
-  meta: { ticker: string; cik: number; form: string; filingDate: string; sourceUrl: string; companyName: string },
+  docs: Array<{ url: string; text: string; form: string; filingDate: string }>,
+  meta: { ticker: string; cik: number; companyName: string },
   options: { signal?: AbortSignal } = {},
 ): Promise<FinancialCandidate | null> {
+  if (docs.length === 0) return null;
   const corpus = docs
     .map((d, i) => `<document index="${i}" url="${d.url}">\n${sliceAroundStatements(d.text)}\n</document>`)
     .join("\n\n");
@@ -146,7 +155,7 @@ export async function recoverFinancialsExtract(
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Transcribe the audited financial statements for ${meta.ticker} (${meta.companyName}) from the ${meta.form} below.\n\n${corpus}`,
+        content: `Transcribe the audited financial statements for ${meta.ticker} (${meta.companyName}) from the SEC registration document(s) below. Report which document you used in \`sourceDocumentIndex\`.\n\n${corpus}`,
       },
     ],
     outputSchema: prospectusExtractSchema,
@@ -162,6 +171,16 @@ export async function recoverFinancialsExtract(
   // explicit-scale bar the deterministic tier enforces.
   if (e.scale === "unspecified") return null;
 
+  // Stamp provenance from the document the model actually transcribed (not always
+  // the lead), clamped to the fetched set so a bad index can't index out of range.
+  const idx =
+    Number.isInteger(e.sourceDocumentIndex) &&
+    e.sourceDocumentIndex >= 0 &&
+    e.sourceDocumentIndex < docs.length
+      ? e.sourceDocumentIndex
+      : 0;
+  const src = docs[idx];
+
   const scale = SCALE_MULTIPLIER[e.scale];
   const s = (n: number | null): number | null => (n == null ? null : n * scale);
 
@@ -169,12 +188,12 @@ export async function recoverFinancialsExtract(
     ticker: meta.ticker,
     cik: meta.cik,
     companyName: meta.companyName,
-    form: meta.form,
-    filingDate: meta.filingDate,
+    form: src.form,
+    filingDate: src.filingDate,
     periodEnd: e.periodEnd,
     scale,
     currency: e.currency,
-    sourceUrl: meta.sourceUrl,
+    sourceUrl: src.url,
     income: { revenue: s(e.revenue), operatingIncome: s(e.operatingIncome) },
     cashflow: {
       operating: s(e.operatingCashFlow),

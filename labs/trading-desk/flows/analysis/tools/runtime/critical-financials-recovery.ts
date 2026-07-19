@@ -266,8 +266,11 @@ async function runRecovery(
 
   if (docs.length === 0) return finish(null, "extract-failed");
 
-  // Tier 2: one bounded LLM transcription over the fetched docs.
-  const lead = docs[0].candidate;
+  // Tier 2: one bounded LLM transcription over the fetched docs. Each doc carries
+  // its OWN form/filingDate/url so the model can cite the exact primary it read
+  // (via `sourceDocumentIndex`) instead of always the lead — the extractor stamps
+  // provenance from that document. Issuer identity (ticker/cik/companyName) is
+  // shared across candidates (same CIK).
   try {
     const model = ctx.resolveModel(
       `intent/${ctx.session.state.costPreset ?? "fast"}`,
@@ -275,15 +278,13 @@ async function runRecovery(
     );
     const llmCandidate = await recoverFinancialsExtract(
       model,
-      docs.map((d) => ({ url: d.url, text: d.text })),
-      {
-        ticker: args.ticker,
-        cik,
-        form: lead.form,
-        filingDate: lead.filingDate,
-        sourceUrl: lead.url,
-        companyName: lead.companyName,
-      },
+      docs.map((d) => ({
+        url: d.url,
+        text: d.text,
+        form: d.candidate.form,
+        filingDate: d.candidate.filingDate,
+      })),
+      { ticker: args.ticker, cik, companyName: docs[0].candidate.companyName },
       { signal: ctx.signal },
     );
     if (llmCandidate) {

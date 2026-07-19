@@ -5,7 +5,9 @@
  * applies the scale; a table with NO explicit units is rejected (`unspecified`)
  * rather than guessed as whole-dollars — the same explicit-scale bar the
  * deterministic tier enforces (so a "in thousands" table with a dropped unit
- * note can't be normalized 1000x too low and promoted).
+ * note can't be normalized 1000x too low and promoted). The extractor also
+ * stamps provenance from the document the model reports it read
+ * (`sourceDocumentIndex`), not always the lead.
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -13,18 +15,13 @@ import {
   type ExtractModel,
 } from "../flows/analysis/tools/runtime/recover-financials-extract";
 
-const meta = {
-  ticker: "SPCX",
-  cik: 1750000,
-  form: "424B4",
-  filingDate: "2026-02-10",
-  sourceUrl: "https://www.sec.gov/Archives/edgar/data/1750000/000000000026000004/424b4.htm",
-  companyName: "SpaceCo Exploration Inc.",
-};
-const docs = [{ url: meta.sourceUrl, text: "<financials>" }];
+const SOURCE_URL =
+  "https://www.sec.gov/Archives/edgar/data/1750000/000000000026000004/424b4.htm";
+const meta = { ticker: "SPCX", cik: 1750000, companyName: "SpaceCo Exploration Inc." };
+const docs = [{ url: SOURCE_URL, text: "<financials>", form: "424B4", filingDate: "2026-02-10" }];
 
-function modelReturning(structuredOutput: unknown): ExtractModel {
-  return { generate: vi.fn(async () => ({ structuredOutput })) };
+function modelReturning(structuredOutput: Record<string, unknown>): ExtractModel {
+  return { generate: vi.fn(async () => ({ structuredOutput: { sourceDocumentIndex: 0, ...structuredOutput } })) };
 }
 
 describe("recoverFinancialsExtract", () => {
@@ -45,6 +42,54 @@ describe("recoverFinancialsExtract", () => {
     expect(candidate).not.toBeNull();
     expect(candidate!.income.revenue).toBe(8_500_000_000);
     expect(candidate!.cashflow.operating).toBe(2_000_000_000);
+    expect(candidate!.sourceUrl).toBe(SOURCE_URL);
+    expect(candidate!.form).toBe("424B4");
+  });
+
+  it("stamps provenance from the document the model actually transcribed", async () => {
+    // Two candidates fetched (the deterministic tier missed both); the model
+    // reports it read the SECOND doc — the promoted candidate must cite THAT
+    // primary, not the lead.
+    const twoDocs = [
+      { url: "https://www.sec.gov/Archives/edgar/data/1750000/a/424b4.htm", text: "<lead>", form: "424B4", filingDate: "2026-02-10" },
+      { url: "https://www.sec.gov/Archives/edgar/data/1750000/b/s1.htm", text: "<later>", form: "S-1", filingDate: "2026-01-05" },
+    ];
+    const model = modelReturning({
+      sourceDocumentIndex: 1,
+      currency: "USD",
+      scale: "thousands",
+      periodEnd: "2025-12-31",
+      revenue: 8_500_000,
+      operatingIncome: 1_200_000,
+      operatingCashFlow: null,
+      capitalExpenditure: null,
+      freeCashFlow: null,
+      cashAndEquivalents: null,
+      totalDebt: null,
+    });
+    const candidate = await recoverFinancialsExtract(model, twoDocs, meta);
+    expect(candidate).not.toBeNull();
+    expect(candidate!.sourceUrl).toBe(twoDocs[1].url);
+    expect(candidate!.form).toBe("S-1");
+    expect(candidate!.filingDate).toBe("2026-01-05");
+  });
+
+  it("clamps an out-of-range sourceDocumentIndex to the lead document", async () => {
+    const model = modelReturning({
+      sourceDocumentIndex: 9, // out of range → fall back to doc 0
+      currency: "USD",
+      scale: "thousands",
+      periodEnd: "2025-12-31",
+      revenue: 8_500_000,
+      operatingIncome: 1_200_000,
+      operatingCashFlow: null,
+      capitalExpenditure: null,
+      freeCashFlow: null,
+      cashAndEquivalents: null,
+      totalDebt: null,
+    });
+    const candidate = await recoverFinancialsExtract(model, docs, meta);
+    expect(candidate!.sourceUrl).toBe(SOURCE_URL);
   });
 
   it("rejects an unspecified scale instead of guessing whole-dollars", async () => {
@@ -74,6 +119,7 @@ describe("recoverFinancialsExtract", () => {
         capturedUser = opts.messages.map((m) => m.content).join("\n");
         return {
           structuredOutput: {
+            sourceDocumentIndex: 0,
             currency: "USD", scale: "thousands", periodEnd: "2025-12-31",
             revenue: 8_500_000, operatingIncome: 1_200_000, operatingCashFlow: null,
             capitalExpenditure: null, freeCashFlow: null, cashAndEquivalents: null, totalDebt: null,
@@ -81,7 +127,11 @@ describe("recoverFinancialsExtract", () => {
         };
       }),
     };
-    await recoverFinancialsExtract(model, [{ url: meta.sourceUrl, text: filler + statements }], meta);
+    await recoverFinancialsExtract(
+      model,
+      [{ url: SOURCE_URL, text: filler + statements, form: "424B4", filingDate: "2026-02-10" }],
+      meta,
+    );
     // The statement section (past the 24k head) reached the model, not just the cover.
     expect(capturedUser).toContain("Consolidated Statements of Operations");
   });
