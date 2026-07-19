@@ -156,11 +156,15 @@ It walks the dependency graph from every `errored` task, cancelling each pending
 
 ## Dispatcher modes
 
-The dispatcher decides which `pending` task gets claimed next. Three built-ins:
+The dispatcher decides which `pending` task gets claimed next. All three built-ins claim a task only when its `deps` are all `completed` — dep-eligibility is enforced by the collection, not by the dispatcher — so they differ only in how they order the ready tasks:
 
-- `"topological"` (default) — claims a `pending` task only when all of its `deps` are `completed`. Cycles in `deps` are rejected at task-add time.
-- `"fifo"` — first-added-first-claimed, ignores `deps` (use for flat fan-out).
-- `"priority"` — claims the highest-priority `pending` task; ignores `deps`.
+- `"topological"` (default) — earliest-added ready task first.
+- `"fifo"` — also earliest-added first. Same dep-eligibility as `topological`; the name just reads better for flat fan-out that has no deps.
+- `"priority"` — highest-`priority` ready task first (ties break on earliest-added).
+
+None of them ignore `deps`; a task with unmet deps is never claimed, whichever dispatcher you pick.
+
+Dependency cycles are only rejected when tasks come from a SKILL.md `initial-tasks` block, which parses the graph with an acyclicity check. A code-first board that declares a `deps` cycle is **not** rejected at add time — those tasks never become claimable, so the drain ends blocked (under `"complete-or-blocked"`) or idles until its iteration cap.
 
 You can pass a custom `TaskDispatcher` instance too. The dispatcher contract is in `@flow-state-dev/orchestration`. For deeper dispatcher behavior (caching, ledger, flow policy), see [Flow Policy](./flow-policy).
 
