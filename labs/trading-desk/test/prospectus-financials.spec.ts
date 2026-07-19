@@ -120,6 +120,26 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     expect(extractProspectusFinancials(conflicting, meta)).toBeNull();
   });
 
+  it("defers to the LLM (returns null) when interim/unaudited columns are present", () => {
+    const interim = html.replace(
+      "Year Ended December 31, 2025",
+      "Six Months Ended June 30, 2026 (unaudited)",
+    );
+    expect(extractProspectusFinancials(interim, meta)).toBeNull();
+  });
+
+  it("flags a qualified non-U.S.-dollar currency (rejected by the validator)", () => {
+    // Scale still parses ('in thousands,'), but the currency is Canadian dollars.
+    const cad = html.replace(
+      "in thousands of U.S. dollars",
+      "in thousands, expressed in Canadian dollars",
+    );
+    const c = extractProspectusFinancials(cad, meta);
+    expect(c).not.toBeNull();
+    expect(c!.currency).toBe("NON-USD");
+    expect(validateFinancialCandidate(c!, validateCtx).ok).toBe(false);
+  });
+
   it("returns null when no fiscal period is parseable (does not fall back to the filing date)", () => {
     // Strip every 'Month DD, YYYY' date so no period can be parsed.
     const noDates = html.replace(

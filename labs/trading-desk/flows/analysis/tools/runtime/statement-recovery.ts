@@ -89,7 +89,14 @@ export async function loadStatementWithRecovery<S extends StatementSpec>(opts: {
       date: input.date,
     });
     const recovered = recovery.statements?.[spec.field];
-    if (recovered) return recovered as ToolOutput<S["tool"]>;
+    // Only take a recovered field that actually carries its critical data. A
+    // promoted candidate can pass validation on income+cashflow yet leave the
+    // balance sheet's cash/debt undisclosed — that `edgar-prospectus` shell is
+    // still critically sparse and must read as honest `unavailable`, not as an
+    // authoritative answer.
+    if (recovered && !isCriticallySparse(spec.field, recovered as { source?: string })) {
+      return recovered as ToolOutput<S["tool"]>;
+    }
     // Recovery RAN and did not promote this field: the subject's critical
     // fields are a genuine void. Return an honest `source: "unavailable"` rather
     // than the sparse provider shell — a critically-sparse `source: "edgar"`

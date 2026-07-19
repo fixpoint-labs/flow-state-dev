@@ -118,6 +118,20 @@ describe("recoverCriticalFinancials", () => {
     expect(stubs.fetchHtml).toHaveBeenCalledTimes(1);
   });
 
+  it("reuses the settled result for a SEQUENTIAL later call in the same run (≤1 attempt)", async () => {
+    stubs.fetchCandidates.mockResolvedValue([candidate424]);
+    stubs.fetchHtml.mockResolvedValue(spcxHtml);
+    const { ctx } = makeCtx();
+
+    const first = await recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
+    // A later, non-concurrent call (e.g. get_cashflow after get_income_statement).
+    const second = await recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
+
+    expect(second).toBe(first);
+    expect(stubs.fetchCandidates).toHaveBeenCalledTimes(1);
+    expect(stubs.fetchHtml).toHaveBeenCalledTimes(1);
+  });
+
   it("records honest no-candidates (statements null) when discovery finds nothing", async () => {
     stubs.fetchCandidates.mockResolvedValue([]);
     const { ctx, audits } = makeCtx();

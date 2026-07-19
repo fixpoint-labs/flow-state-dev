@@ -138,10 +138,17 @@ function parsePeriodEnd(html: string): string | null {
   return latestDate(html, "(?:ended|as\\s+of)\\s+") ?? latestDate(html, "");
 }
 
-/** Reject an explicit non-USD reporting currency; default to USD otherwise. */
+/** Reject an explicit non-USD reporting currency; default to USD otherwise.
+ *  A QUALIFIED "dollars" note (Canadian / Australian / Hong Kong / … dollars) is
+ *  NOT U.S. dollars — a common F-1 case — so it is surfaced as non-USD and the
+ *  validator rejects it, rather than silently promoting local-currency figures
+ *  as USD billions. */
 function parseCurrency(html: string): string {
   if (/\bin\s+(thousands|millions|billions)\s+of\s+euros?\b/i.test(html)) return "EUR";
-  const m = /\breporting currency[^.]{0,40}\b(EUR|GBP|JPY|CNY|CAD)\b/i.exec(html);
+  if (/\b(canadian|australian|new zealand|singapore|hong ?kong|hk|taiwan|nt|jamaican|caribbean)\s+dollars?\b/i.test(html)) {
+    return "NON-USD";
+  }
+  const m = /\breporting currency[^.]{0,40}\b(EUR|GBP|JPY|CNY|CAD|AUD)\b/i.exec(html);
   if (m) return m[1].toUpperCase();
   return "USD";
 }
@@ -167,6 +174,16 @@ export function extractProspectusFinancials(
 ): FinancialCandidate | null {
   const scale = parseScale(html);
   if (scale == null) return null;
+
+  // Interim/unaudited columns (a stub period) are commonly laid out to the LEFT
+  // of the audited full-year column, and this "first number on the row"
+  // extractor would pick the interim figure. That column selection needs table
+  // structure the LLM tier reads — so when interim-period language is present,
+  // defer to it rather than risk promoting a 3/6/9-month value as the annual
+  // statement.
+  if (/\b(three|six|nine)\s+months?\s+ended\b/i.test(html) || /\bunaudited\b/i.test(html)) {
+    return null;
+  }
 
   const rows = rowsFromHtml(html).map(toRow).filter((r): r is Row => r !== null);
   if (rows.length === 0) return null;

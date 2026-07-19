@@ -26,6 +26,7 @@ import { analyzeInputSchema } from "../flow-schema";
 import { resolveTicker } from "../lib/ticker-resolver";
 import { memoResources, phase2Contributions } from "../resources";
 import { financialsDataResource } from "../financials-data-resource";
+import { clearRecoveryForRun } from "../tools/runtime/critical-financials-recovery";
 import { quantDataResource } from "../quant-data-resource";
 import { technicalDataResource } from "../technical-data-resource";
 import { profileDataResource } from "../profile-data-resource";
@@ -110,6 +111,11 @@ export const seedSession = handler({
     await ctx.resources.quantData.setState({});
     await ctx.resources.technicalData.setState({});
     await ctx.resources.profileData.setState({});
+    // Clear the run-scoped critical-financials recovery cache (FIX-898) for this
+    // (session, ticker, date), so a re-run re-attempts recovery from scratch and
+    // a prior run's result never sticks — the spine reset above alone wouldn't
+    // clear the module-level recovery cache.
+    clearRecoveryForRun(ctx.session.identity.id, input.ticker, input.date);
 
     // Reset the DERIVED surfaces too, so a re-run that fails to recompute them
     // (e.g. compute-spine returns early on missing financials, or the price tap

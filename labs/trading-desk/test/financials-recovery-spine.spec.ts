@@ -155,6 +155,37 @@ describe("critical-financials recovery on the live statement chain", () => {
     expect(stubs.fetchHtml).toHaveBeenCalledTimes(1);
   });
 
+  it("returns unavailable for the balance sheet when the prospectus omits cash and debt", async () => {
+    // Income + cashflow are disclosed (recovery promotes), but the balance table
+    // is absent — the promoted `edgar-prospectus` balance sheet is critically
+    // sparse and must read as honest `unavailable`, not authoritative.
+    const noBalance = spcxHtml.replace(/<h2>Consolidated Balance Sheet Data[\s\S]*?<\/table>/i, "");
+    stubs.fetchHtml.mockResolvedValue(noBalance);
+    const stores = createInMemoryStores();
+    const sessionId = "recovery-no-balance";
+
+    const result = await testFlow({
+      flow: recoveryFlow,
+      action: "fill",
+      userId: "u",
+      sessionId,
+      stores,
+      input: { ticker: "SPCX", date: "2026-05-06" },
+      seed: { session: { state: baseState } },
+    });
+    expect(result.error).toBeUndefined();
+
+    const financials = (await stores.resourceState.getAll("session", sessionId))[
+      "financialsData"
+    ] as Record<string, any>;
+    // Income + cashflow recovered from the prospectus...
+    expect(financials.incomeStatement.source).toBe("edgar-prospectus");
+    expect(financials.cashflow.source).toBe("edgar-prospectus");
+    // ...but the balance sheet (no cash/debt disclosed) is honestly unavailable.
+    expect(financials.balanceSheet.source).toBe("unavailable");
+    expect(financials.recoveryAudit.outcome).toBe("promoted");
+  });
+
   it("returns honest unavailable (not a sparse edgar shell) when subject recovery finds nothing", async () => {
     stubs.fetchCandidates.mockResolvedValue([]); // no registration candidates
     const stores = createInMemoryStores();

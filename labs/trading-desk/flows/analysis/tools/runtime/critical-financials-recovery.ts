@@ -81,8 +81,19 @@ export interface RecoveryCtx {
 /** Caps (spec §4.4): ≤3 document fetches, ≤1 LLM invocation, SEC-first URLs. */
 const MAX_DOCS = 3;
 
-// Run-local single-flight: concurrent statement tools share one attempt.
+// Run-scoped single-flight, keyed by session+ticker+date. `inflight` collapses
+// CONCURRENT statement tools onto one attempt; `settled` keeps the resolved
+// result so a SEQUENTIAL later statement call (income first, cashflow later)
+// reuses it rather than re-fetching/re-modelling — the ≤1 recovery/model-call
+// cap holds for the whole run, not just the parallel fan-out. Both are cleared
+// per run by `clearRecoveryForRun` at `seedSession` (so a re-run re-attempts and
+// a failed attempt never sticks across runs), and are session-scoped so
+// concurrent runs never share a result.
 const inflight = new Map<string, Promise<RecoveryResult>>();
+const settled = new Map<string, RecoveryResult>();
+
+const recoveryKey = (sessionId: string, ticker: string, date: string): string =>
+  `${sessionId}:${ticker}:${date}`;
 
 /**
  * Recover the subject's critical statements from IPO/registration filings, or
@@ -93,12 +104,28 @@ export function recoverCriticalFinancials(
   ctx: RecoveryCtx,
   args: { ticker: string; date: string },
 ): Promise<RecoveryResult> {
-  const key = `${ctx.session.identity.id}:${args.ticker}:${args.date}`;
+  const key = recoveryKey(ctx.session.identity.id, args.ticker, args.date);
+  const done = settled.get(key);
+  if (done) return Promise.resolve(done);
   const existing = inflight.get(key);
   if (existing) return existing;
-  const run = runRecovery(ctx, args).finally(() => inflight.delete(key));
+  const run = runRecovery(ctx, args)
+    .then((result) => {
+      settled.set(key, result);
+      return result;
+    })
+    .finally(() => inflight.delete(key));
   inflight.set(key, run);
   return run;
+}
+
+/** Clear the run-scoped recovery cache for one (session, ticker, date) — called
+ *  at `seedSession` so a re-run re-attempts and a prior run's result (including
+ *  a failed one) never sticks. */
+export function clearRecoveryForRun(sessionId: string, ticker: string, date: string): void {
+  const key = recoveryKey(sessionId, ticker, date);
+  inflight.delete(key);
+  settled.delete(key);
 }
 
 async function runRecovery(
@@ -237,7 +264,8 @@ async function runRecovery(
   return finish(null, producedCandidate ? "rejected" : "extract-failed");
 }
 
-/** Test seam: clear the run-local single-flight map between cases. */
+/** Test seam: clear the run-scoped recovery caches between cases. */
 export function _resetRecoveryInflight(): void {
   inflight.clear();
+  settled.clear();
 }
