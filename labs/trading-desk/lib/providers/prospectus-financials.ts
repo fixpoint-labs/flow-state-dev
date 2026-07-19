@@ -185,11 +185,14 @@ function latestDate(html: string, prefix: string): string | null {
   return best;
 }
 
-/** Fiscal period end. Prefer a date in a statement-header context ("year ended
- *  …", "as of …") over a global max-date scan, so a footnote/comparative date
- *  cannot become the period the validator checks. */
+/** Fiscal period end — ONLY a date in a statement-header context ("year ended
+ *  …", "as of …"). No fallback to the latest date anywhere in the filing: an
+ *  unrelated offering/contract date would stamp the recovered statements to the
+ *  wrong fiscal period, and the validator only checks non-future/non-stale, so it
+ *  would not catch it. No statement-period context → null → defer to the LLM tier
+ *  (which reads the statement structure directly). */
 function parsePeriodEnd(html: string): string | null {
-  return latestDate(html, "(?:ended|as\\s+of)\\s+") ?? latestDate(html, "");
+  return latestDate(html, "(?:ended|as\\s+of)\\s+");
 }
 
 /** Non-U.S. currency names/codes an F-1 might report in. */

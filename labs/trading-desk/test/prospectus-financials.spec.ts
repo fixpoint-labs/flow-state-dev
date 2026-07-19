@@ -221,6 +221,20 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     expect(c!.income.operatingIncome).toBe(1_200_000_000);
   });
 
+  it("returns null when the only date is a non-statement date (no 'ended'/'as of')", () => {
+    // Valid revenue/op-income rows, but the ONLY date is an offering date with no
+    // statement-header context — must NOT stamp that as the fiscal period.
+    const offeringDateOnly = `
+<html><body>
+<p>Amounts in thousands of U.S. dollars.</p>
+<p>This offering is expected to close on April 30, 2026.</p>
+<table>
+<tr><td>Total revenue</td><td>8,500,000</td></tr>
+<tr><td>Income from operations</td><td>1,200,000</td></tr>
+</table></body></html>`;
+    expect(extractProspectusFinancials(offeringDateOnly, meta)).toBeNull();
+  });
+
   it("does not let a narrative 'in millions' set the table scale", () => {
     // A narrative sentence mentions millions (of users), but the statements are
     // stated in thousands — the accounting-units note must win.
