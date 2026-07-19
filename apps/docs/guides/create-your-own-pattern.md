@@ -1,7 +1,7 @@
 ---
 title: Create your own pattern
 sidebar_label: Create your own pattern
-description: A pattern is a factory that wraps taskBoard into a reusable block. Build a mapReduce pattern from the same skeleton the built-in patterns use.
+description: A pattern is a factory that wraps taskBoard into a reusable block. Build a planMapReduce pattern from the same plan → drain → reduce skeleton the built-in patterns use.
 ---
 
 # Create your own pattern
@@ -12,8 +12,9 @@ that wraps [`taskBoard`](/docs/orchestration/task-board) and hands back a block.
 When a recurring shape of work doesn't quite match a built-in, you write your
 own the same way.
 
-This guide builds `mapReduce` — fan a list of items across a worker, then fold
-the results — and a flow that uses it. The runnable, tested code is in
+This guide builds `planMapReduce` — plan the work, fan the items across a
+worker, then fold the results — and a flow that uses it. The runnable, tested
+code is in
 [`examples/guides/custom-pattern`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/custom-pattern).
 
 If you haven't yet, read [The board lifecycle](./board-lifecycle) first — a
@@ -22,29 +23,36 @@ guide assumes you know what `board.block` does.
 
 ## The skeleton
 
-Every board-backed pattern is three moves against one collection:
+Every board-backed pattern is the same moves against one collection:
 
 ```
-seed the collection  →  drain via board.block  →  read the results back
+plan the work  →  seed the collection  →  drain via board.block  →  reduce the results
 ```
 
-A pattern factory just wires those three into a sequencer and exposes a small
-config so callers never touch the board directly. That's the whole idea. The
-value of writing a pattern is that the wiring lives in one place and every
-caller gets it right.
+A pattern factory wires those into a sequencer and exposes a small config so
+callers never touch the board directly. The value of writing a pattern is that
+the wiring lives in one place and every caller gets it right.
 
-## The config
+## Plan is a block, not a function
 
-Decide what the caller supplies and what you own. For `mapReduce`, the caller
-brings three things — how to turn the input into items, the worker, and the fold
-— and the pattern owns the board, the seeding, and the gather:
+The one design decision worth dwelling on: **`plan` is a block, not a plain
+function.** Real planning usually calls a model — a generator that looks at the
+input and decides how much work there is and what each unit should be. So the
+pattern takes a `plan` *block* whose output is the list of items to map over. A
+consumer can hand it a deterministic handler (for cheap or fixed splits) or a
+generator (to let a model plan), and the pattern doesn't care which.
 
-```ts title="map-reduce.ts"
-export interface MapReduceConfig<TInput, TItem, TResult> {
+```ts title="plan-map-reduce.ts"
+/** The shape a `plan` block must output. */
+export const planOutputSchema = z.object({
+  items: z.array(z.object({ id: z.string(), input: z.unknown() })),
+});
+
+export interface PlanMapReduceConfig<TResult> {
   name: string;
   inputSchema: ZodTypeAny;
-  /** Turn the flow input into the list of items to map over. */
-  plan: (input: TInput) => Array<{ id: string; input: TItem }>;
+  /** A block (often a generator) that turns the input into items to map over. */
+  plan: BlockDefinition;
   /** The worker block that processes one item. */
   map: BlockDefinition;
   /** Fold the completed workers' outputs into the final result. Pure. */
@@ -54,13 +62,13 @@ export interface MapReduceConfig<TInput, TItem, TResult> {
 
 ## The factory
 
-Build the board once, then the three blocks around it. Note that the board is
-request-backed so the seed and reduce blocks — which run outside `board.block` —
-can resolve the same collection:
+Build the board once, then the blocks around it. The board is request-backed so
+the seed and reduce blocks — which run outside `board.block` — can resolve the
+same collection:
 
-```ts title="map-reduce.ts"
-export function mapReduce<TInput, TItem, TResult>(
-  config: MapReduceConfig<TInput, TItem, TResult>,
+```ts title="plan-map-reduce.ts"
+export function planMapReduce<TResult>(
+  config: PlanMapReduceConfig<TResult>,
 ): BlockDefinition {
   const collectionId = config.name;
 
@@ -68,20 +76,19 @@ export function mapReduce<TInput, TItem, TResult>(
     name: config.name,
     collection: { backing: "request", collectionId },
     workers: { map: config.map },   // one assignee, staffed by the caller's worker
-    initialTasks: [],               // seeded dynamically below
+    initialTasks: [],               // seeded from the plan below
   });
 
   const seed = handler({
     name: `${config.name}-seed`,
-    inputSchema: config.inputSchema,
+    inputSchema: planOutputSchema,   // consumes the plan block's output
     outputSchema: z.object({ seeded: z.number() }),
     execute: async (input, ctx) => {
       const collection = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId });
-      const items = config.plan(input as TInput);
-      for (const item of items) {
+      for (const item of input.items) {
         await collection.addTask({ id: item.id, goal: item.id, assignee: "map", input: item.input });
       }
-      return { seeded: items.length };
+      return { seeded: input.items.length };
     },
   });
 
@@ -97,7 +104,8 @@ export function mapReduce<TInput, TItem, TResult>(
   });
 
   return sequencer({ name: config.name, inputSchema: config.inputSchema })
-    .tap(seed)          // a tap, so it passes the input through
+    .step(config.plan)  // input → { items }
+    .step(seed)         // enqueue one task per item
     .step(board.block)  // drain
     .step(reduce);      // fold the collected outputs
 }
@@ -105,25 +113,24 @@ export function mapReduce<TInput, TItem, TResult>(
 
 Three things worth calling out:
 
-- **`seed` is a `.tap`.** A tap runs a block for its state mutation (here, adding
-  tasks) and passes the original input through to the next step, so the drain
-  still sees the action input if it needs it.
+- **`plan` runs first as a real step**, and its `{ items }` output is the seed
+  block's input. Swap the handler for a generator and a model plans the work.
 - **`reduce` reads through `ctx`, not its input.** It resolves the collection by
-  id and folds the completed outputs, so it ignores whatever the drain handed
-  it.
+  id and folds the completed outputs, so it ignores whatever the drain handed it.
 - **Nothing here is board-internal.** `taskBoard`, `getOrCreateTaskCollection`,
   and the block builders are all public. A pattern is ordinary composition.
 
 ## Using it
 
-A consumer writes a worker and a reducer and mounts the block like any other:
+A consumer writes a plan block, a worker, and a reducer, then mounts the block
+like any other:
 
 ```ts title="word-count-flow.ts"
-const wordCountBlock = mapReduce({
+const wordCountBlock = planMapReduce({
   name: "word-count",
   inputSchema,
-  plan: (input) => input.documents.map((text, i) => ({ id: `doc-${i}`, input: { text } })),
-  map: countWords, // a handler (or a generator) that counts one document
+  plan: planDocuments, // input → { items: one per document }
+  map: countWords,     // a handler (or a generator) that counts one document
   reduce: (outputs) => ({
     total: outputs.reduce<number>((sum, o) => sum + ((o as { count?: number })?.count ?? 0), 0),
   }),
@@ -137,16 +144,15 @@ export const wordCountFlow = defineFlow({
 ```
 
 ```bash
-# Run from the example directory — fsdev config discovery is cwd-only.
 cd examples/guides/custom-pattern
 pnpm fsdev run word-count count -i '{"documents":["a b c","one two","single"]}'
 # → { total: 6 }
 ```
 
-The worker here is a deterministic handler so the example runs with no key. Swap
-it for a `generator({ model: "openai/gpt-5.4-mini", … })` and the same pattern
-fans an LLM call across every item — the pattern doesn't care whether its worker
-calls a model.
+The plan and map blocks are deterministic handlers here so the example runs with
+no key. Make `plan` (or `map`) a `generator({ model: "openai/gpt-5.4-mini", … })`
+and the same pattern lets a model plan the work or process each item — the
+pattern doesn't care whether its blocks call a model.
 
 ## Progress comes for free
 
@@ -159,7 +165,9 @@ live progress view without your pattern rendering anything.
 
 - **The built-in patterns are the reference.** `parallelTasks` is the closest
   minimal shape to this guide; `supervisor` and `planAndExecute` add review and
-  replan loops on the same skeleton. See the [Patterns](/docs/patterns/overview) docs.
+  replan loops on the same skeleton — and `planAndExecute`'s planner is a real
+  generator, exactly the `plan`-as-a-block idea taken to its conclusion. See the
+  [Patterns](/docs/patterns/overview) docs.
 - **The `create-pattern` skill** in the repo scaffolds a pattern with tests and
   docs if you're building one for real.
 

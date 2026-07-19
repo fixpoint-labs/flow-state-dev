@@ -1,29 +1,37 @@
-// A custom pattern: `mapReduce`.
+// A custom pattern: `planMapReduce`.
 //
 // A "pattern" in flow-state is just a factory that wraps `taskBoard` into a
 // reusable block. The built-in patterns (supervisor, planAndExecute,
-// parallelTasks) all follow the same skeleton this one does:
+// parallelTasks) all follow the same skeleton:
 //
-//   seed the collection  →  drain via board.block  →  read results back out
+//   plan the work  →  seed the collection  →  drain via board.block  →  reduce
 //
-// `mapReduce` fans a list of items out across a worker (the "map"), then folds
-// the workers' outputs with a pure reducer (the "reduce"). A consumer supplies
-// three things: how to turn the flow input into items, the map worker, and the
-// reduce function. Everything else — the board, the seeding, the gather — is
-// packaged here so callers never touch the substrate directly.
+// The important design choice: `plan` is a **block**, not a plain function.
+// Real planning usually calls a model — a generator that looks at the input and
+// decides the tasks — so the pattern takes a plan *block* whose output is the
+// list of items to map over. (In this example the plan block is a deterministic
+// handler so the tests need no key; swap it for a generator for real work.)
 import { handler, sequencer, type BlockDefinition } from "@flow-state-dev/core";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z, type ZodTypeAny } from "zod";
 
-export interface MapReduceConfig<TInput, TItem, TResult> {
+/** The shape a `plan` block must output: the items to map over. */
+export const planOutputSchema = z.object({
+  items: z.array(z.object({ id: z.string(), input: z.unknown() })),
+});
+
+export interface PlanMapReduceConfig<TResult> {
   /** Unique name — used for the board and its collection. */
   name: string;
   /** Schema of the flow input this pattern is mounted against. */
   inputSchema: ZodTypeAny;
-  /** Turn the flow input into the list of items to map over. */
-  plan: (input: TInput) => Array<{ id: string; input: TItem }>;
+  /**
+   * A block (usually a generator) that turns the flow input into the items to
+   * map over. Its output must match `planOutputSchema`: `{ items: [{ id, input }] }`.
+   */
+  plan: BlockDefinition;
   /** The worker block that processes one item. Its output is what `reduce` sees. */
   map: BlockDefinition;
   /** Fold the completed workers' outputs into the final result. Pure. */
@@ -31,11 +39,11 @@ export interface MapReduceConfig<TInput, TItem, TResult> {
 }
 
 /**
- * Build a `mapReduce` block. Mount the returned block in a flow action like any
- * other block — the caller never sees the board.
+ * Build a `planMapReduce` block. Mount the returned block in a flow action like
+ * any other block — the caller never sees the board.
  */
-export function mapReduce<TInput, TItem, TResult>(
-  config: MapReduceConfig<TInput, TItem, TResult>,
+export function planMapReduce<TResult>(
+  config: PlanMapReduceConfig<TResult>,
 ): BlockDefinition {
   const collectionId = config.name;
 
@@ -49,10 +57,10 @@ export function mapReduce<TInput, TItem, TResult>(
     initialTasks: [],
   });
 
-  // Seed: plan the input into items and enqueue one task each.
+  // Seed: consume the plan block's `{ items }` output and enqueue one task each.
   const seed = handler({
     name: `${config.name}-seed`,
-    inputSchema: config.inputSchema,
+    inputSchema: planOutputSchema,
     outputSchema: z.object({ seeded: z.number() }),
     execute: async (input, ctx) => {
       const collection = await getOrCreateTaskCollection({
@@ -60,8 +68,7 @@ export function mapReduce<TInput, TItem, TResult>(
         backing: "request",
         collectionId,
       });
-      const items = config.plan(input as TInput);
-      for (const item of items) {
+      for (const item of input.items) {
         await collection.addTask({
           id: item.id,
           goal: item.id,
@@ -69,7 +76,7 @@ export function mapReduce<TInput, TItem, TResult>(
           input: item.input,
         });
       }
-      return { seeded: items.length };
+      return { seeded: input.items.length };
     },
   });
 
@@ -92,10 +99,10 @@ export function mapReduce<TInput, TItem, TResult>(
     },
   });
 
-  // The pattern is the pipeline: seed (a tap, so it passes the input through) →
-  // drain the board → reduce the collected outputs.
+  // The pattern is the pipeline: plan (input → items) → seed → drain → reduce.
   return sequencer({ name: config.name, inputSchema: config.inputSchema })
-    .tap(seed)
+    .step(config.plan)
+    .step(seed)
     .step(board.block)
     .step(reduce);
 }

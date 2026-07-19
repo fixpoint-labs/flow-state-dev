@@ -136,6 +136,13 @@ action. Reach for `request` when a block outside the drain needs the same
 collection (the example uses `request` for exactly this). Reach for `resource`
 when the tasks themselves are the durable thing.
 
+**Multiple boards, one request.** Nothing stops you running several boards in
+the same request or sequencer. Each board is keyed by its own `collectionId`
+(the request backing namespaces its state by it), and each board's `name` must
+be unique in the flow. Two boards with different `collectionId`s never see each
+other's tasks, so a flow can drain, say, a "research" board and a "review" board
+independently.
+
 ## Living across requests as a resource
 
 Here's the part that trips people up. A `resource`-backed collection persists
@@ -156,9 +163,29 @@ const board = taskBoard({
 });
 ```
 
+Two things differ from the request example above, and both trip people up:
+
+- **Resource backing goes through a factory**, not a config object. `taskBoard`'s
+  `collection` accepts a `{ backing: "sequencer" | "request", … }` object *or* a
+  `(ctx) => collection` factory. There's no `{ backing: "resource" }` object form,
+  because resource backing needs a `ResourceCollectionRef` you resolve inside the
+  factory. (That asymmetry is a rough edge, not a deep reason — a config form
+  could exist.)
+- **The scope isn't set in the `taskBoard` call.** `session` / `user` / `org`
+  lives on the `ResourceCollectionRef` where you declare it:
+
+  ```ts
+  // declared once on the flow — the scope is here, not in the board config
+  const todoTasks = defineResourceCollection({
+    pattern: "todos/**",
+    scope: "user",           // ← the collection's scope
+    stateSchema: taskStateSchema,
+  });
+  ```
+
 So request A can `addTask` into it, the request ends, and request B — a
-different call, even a different session turn — can still see those tasks. The
-**state** genuinely outlives the request.
+different call, even a different session turn — can still see those tasks (same
+`user`). The **state** genuinely outlives the request.
 
 What that does **not** give you is background processing. The tasks persisting
 does not mean anything is draining them. There is no worker sitting behind the
@@ -176,16 +203,34 @@ does: when some request mounts a board over that collection and runs
 requests, drained by whatever request next runs the board." The durability is
 in the state, not in a running process.
 
-### One limitation to know
+### A gotcha: a resource handle knows a fixed set of tasks
 
-The resource backing hydrates a **synchronous** read mirror once, when the
-collection handle is constructed. Reads through that handle always reflect the
-latest committed data for the tasks the handle already knows about. But tasks
-inserted into the underlying collection by a *different* block after your handle
-was constructed won't appear in your handle's `list()`. For "seed, then drain,
-then read" within one request this never bites. It does mean you can't treat one
-long-lived handle as a live view of inserts happening concurrently elsewhere —
-resolve a fresh handle when you need to see external additions.
+To keep reads synchronous, `getOrCreateTaskCollection` takes a one-time snapshot
+of *which tasks exist* when you resolve the handle, then tracks that set. Reads
+through the handle stay live for those tasks — if a task's status changes, your
+`list()` sees the new status. And tasks *you* add through the handle join its
+set. But a task inserted through a **different** handle, after yours was
+resolved, won't appear in your `list()`.
+
+```ts
+// Block A resolves a handle and adds two tasks.
+const a = await getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: "todos", collection: todoTasks });
+await a.addTask({ id: "t1", goal: "…" });
+await a.addTask({ id: "t2", goal: "…" });
+
+// Block B, later, resolves its OWN handle and adds a third through it.
+const b = await getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: "todos", collection: todoTasks });
+await b.addTask({ id: "t3", goal: "…" });
+
+a.list(); // → [t1, t2]      — a added these; it never learned about t3
+b.list(); // → [t1, t2, t3]  — b snapshotted [t1, t2] at resolve, then added t3 itself
+```
+
+Within one request's "seed, then drain, then read", this never bites: the seed,
+the drain, and the reader run under the same flow and the drain adds tasks
+through its own handle. It matters when two independently-resolved handles are
+live at once, or across requests — resolve a **fresh** handle when you need to
+see additions made elsewhere.
 
 ## What a board is not
 
