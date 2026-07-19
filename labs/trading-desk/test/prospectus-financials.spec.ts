@@ -136,6 +136,26 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     expect(c!.income.operatingIncome).toBe(1_200_000_000); // not 2 × scale
   });
 
+  it("keeps a small current-year cell in a millions table with comparative columns", () => {
+    // Values under 100 in a millions table: the current-year cell must win, not
+    // the following (older) comparative column. A bare 1-2 digit is only a note
+    // marker when a FORMATTED amount follows — "8" then "5" is not.
+    const millionsComparative = `
+<html><body>
+<p>Amounts in millions of U.S. dollars. Year ended December 31, 2025.</p>
+<table>
+<tr><td>Total revenue</td><td>8</td><td>5</td></tr>
+<tr><td>Income from operations</td><td>3</td><td>2</td></tr>
+<tr><td>Net cash provided by operating activities</td><td>4</td><td>3</td></tr>
+<tr><td>Purchases of property and equipment</td><td>2</td><td>1</td></tr>
+</table></body></html>`;
+    const c = extractProspectusFinancials(millionsComparative, meta);
+    expect(c).not.toBeNull();
+    expect(c!.scale).toBe(1_000_000);
+    expect(c!.income.revenue).toBe(8_000_000); // current 8M, not prior-year 5M
+    expect(c!.income.operatingIncome).toBe(3_000_000);
+  });
+
   it("does not let a narrative 'in millions' set the table scale", () => {
     // A narrative sentence mentions millions (of users), but the statements are
     // stated in thousands — the accounting-units note must win.
@@ -277,6 +297,16 @@ function baseCandidate(): FinancialCandidate {
 describe("validateFinancialCandidate — hard reject gates", () => {
   it("accepts the baseline candidate", () => {
     expect(validateFinancialCandidate(baseCandidate(), validateCtx).ok).toBe(true);
+  });
+
+  it("accepts an exact short-token company name (empty 4-char token set)", () => {
+    // "XP Inc." → no 4+-char tokens, but the candidate name is copied from the
+    // same submissions record as expectedName, so an exact match must agree.
+    const r = validateFinancialCandidate(
+      { ...baseCandidate(), companyName: "XP Inc." },
+      { ...validateCtx, expectedName: "XP Inc." },
+    );
+    expect(r.ok).toBe(true);
   });
 
   it("rejects a wrong-company CIK", () => {

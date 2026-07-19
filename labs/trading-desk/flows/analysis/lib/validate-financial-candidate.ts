@@ -62,18 +62,21 @@ function isUsdCurrency(currency: string): boolean {
   );
 }
 
-/** Loose name agreement: share at least one 4+-char alphanumeric token. Guards
- *  against a recycled ticker whose CIK happens to match but whose filing names
- *  a different entity. */
+/** Loose name agreement: a normalized exact match, else share at least one
+ *  4+-char alphanumeric token. Guards against a recycled ticker whose CIK
+ *  happens to match but whose filing names a different entity. The exact-match
+ *  pass handles issuers made only of short tokens (`XP Inc.`, `C3.ai, Inc.`)
+ *  whose token sets are empty after the 4-char filter — the candidate name is
+ *  copied from the same submissions record as `expected`, so an exact normalized
+ *  match must agree rather than reject. */
 function namesAgree(candidate: string, expected: string): boolean {
+  const normalize = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const na = normalize(candidate);
+  if (na && na === normalize(expected)) return true;
+
   const tokens = (s: string) =>
-    new Set(
-      s
-        .toLowerCase()
-        .replace(/[^a-z0-9 ]/g, " ")
-        .split(/\s+/)
-        .filter((t) => t.length >= 4),
-    );
+    new Set(normalize(s).split(/\s+/).filter((t) => t.length >= 4));
   const a = tokens(candidate);
   const b = tokens(expected);
   for (const t of a) if (b.has(t)) return true;

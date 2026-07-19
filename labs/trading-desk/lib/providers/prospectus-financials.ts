@@ -56,9 +56,14 @@ const NUMBER_TOKEN = /\(?-?\$?\s?\d[\d,]*(?:\.\d+)?\)?/g;
 const FOOTNOTE_MARKER = /^\(\d{1,2}\)$/;
 /** A BARE note reference (`Revenue 1 8,500` — a Notes column or superscript that
  *  normalized to a plain number): a 1–2 digit integer with no `$`, comma,
- *  decimal, or sign. Only skipped when another number follows on the row (the
- *  real amount), so a genuine small standalone value is still read. */
+ *  decimal, or sign. */
 const BARE_NOTE_MARKER = /^\d{1,2}$/;
+/** A clearly-FORMATTED financial amount: a thousands separator, a decimal, or
+ *  3+ digits. A bare leading 1–2 digit token is only treated as a note marker
+ *  when the FOLLOWING value looks like this — otherwise a genuine small
+ *  current-year cell (`Revenue 8 5` in a millions table, comparative columns)
+ *  would be dropped and the prior-year column promoted as current. */
+const FORMATTED_AMOUNT = /[,.]|\d{3,}/;
 
 /** Parse a numeric token (strip `$`/commas; parentheses → negative). */
 function parseNumber(token: string): number | null {
@@ -88,9 +93,12 @@ function toRow(line: string): Row | null {
     const { tok, index } = tokens[i];
     if (FOOTNOTE_MARKER.test(tok)) continue;
     // A leading bare note number (`Revenue 1 8,500`) is a Notes-column /
-    // superscript reference when a real amount follows — skip it, mirroring the
-    // parenthesized-`(1)` skip.
-    if (BARE_NOTE_MARKER.test(tok) && i < tokens.length - 1) continue;
+    // superscript reference — but ONLY when the following token is a clearly
+    // formatted amount. A bare 1–2 digit followed by another bare small integer
+    // is an ambiguous comparative-columns cell (`Revenue 8 5`, millions), so
+    // keep the first value rather than promote the older column.
+    const next = tokens[i + 1]?.tok;
+    if (BARE_NOTE_MARKER.test(tok) && next != null && FORMATTED_AMOUNT.test(next)) continue;
     const value = parseNumber(tok);
     if (value == null) continue;
     const label = normalized.slice(0, index).trim();
