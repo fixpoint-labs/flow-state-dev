@@ -225,6 +225,17 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     expect(c!.balance.totalDebt).toBeNull();
   });
 
+  it("does not promote a 'Total long-term debt' line as total debt", () => {
+    // "Total long-term debt" still excludes the current portion — not the total.
+    const ltTotalOnly = html.replace(
+      "<tr><td>Total debt</td><td>1,000,000</td><td>1,200,000</td></tr>",
+      "<tr><td>Current portion of long-term debt</td><td>200,000</td><td>150,000</td></tr>\n<tr><td>Total long-term debt</td><td>1,000,000</td><td>1,200,000</td></tr>",
+    );
+    const c = extractProspectusFinancials(ltTotalOnly, meta);
+    expect(c).not.toBeNull();
+    expect(c!.balance.totalDebt).toBeNull();
+  });
+
   it("returns null when no fiscal period is parseable (does not fall back to the filing date)", () => {
     // Strip every 'Month DD, YYYY' date so no period can be parsed.
     const noDates = html.replace(

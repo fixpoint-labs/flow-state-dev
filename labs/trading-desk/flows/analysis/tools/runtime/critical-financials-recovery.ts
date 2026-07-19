@@ -119,7 +119,7 @@ export function recoverCriticalFinancials(
   const existing = inflight.get(key);
   if (existing) return existing;
   const gen = currentGen(key);
-  const run = runRecovery(ctx, args)
+  const run = runRecovery(ctx, args, key, gen)
     .then((result) => {
       // Only cache if this run was not cleared (a re-run seeded) while in flight.
       if (currentGen(key) === gen) settled.set(key, result);
@@ -145,6 +145,8 @@ export function clearRecoveryForRun(sessionId: string, ticker: string, date: str
 async function runRecovery(
   ctx: RecoveryCtx,
   args: { ticker: string; date: string },
+  key: string,
+  gen: number,
 ): Promise<RecoveryResult> {
   const rejectionReasons: string[] = [];
   const urls: string[] = [];
@@ -154,10 +156,6 @@ async function runRecovery(
     statements: RecoveryStatements | null,
     outcome: RecoveryAudit["outcome"],
   ): Promise<RecoveryResult> => {
-    // A run cancelled mid-recovery must not write an audit or promote statements
-    // — even if a deterministic SEC fetch already resolved. Rethrow the abort
-    // before any spine write, matching the model-call cancellation semantics.
-    ctx.signal?.throwIfAborted();
     const audit: RecoveryAudit = {
       attempted: true,
       outcome,
@@ -166,6 +164,15 @@ async function runRecovery(
       rejectionReasons,
       ...(outcome === "promoted" ? { recoveredSource: "edgar-prospectus" as const } : {}),
     };
+    // A run SUPERSEDED mid-flight (a concurrent re-run bumped the generation via
+    // `clearRecoveryForRun` after `seedSession` reset the spine) must not mutate
+    // the new run's `financialsData` — neither the audit nor the statements —
+    // even though this stale run already computed them. Return quietly.
+    if (currentGen(key) !== gen) return { statements: null, audit };
+    // A run cancelled mid-recovery must not write an audit or promote statements
+    // — even if a deterministic SEC fetch already resolved. Rethrow the abort
+    // before any spine write, matching the model-call cancellation semantics.
+    ctx.signal?.throwIfAborted();
     await ctx.resources.financialsData.patchState({ recoveryAudit: audit });
     return { statements, audit };
   };

@@ -149,6 +149,28 @@ describe("recoverCriticalFinancials", () => {
     expect(stubs.fetchCandidates).toHaveBeenCalledTimes(1);
   });
 
+  it("does not patch a stale audit/statements when cleared while the fetch is in flight", async () => {
+    // Hold the prior run inside the prospectus fetch, clear it (a re-run's
+    // seedSession), then let it finish: it must not write into the reset spine.
+    let releaseHtml!: (html: string) => void;
+    const gate = new Promise<string>((resolve) => {
+      releaseHtml = resolve;
+    });
+    stubs.fetchCandidates.mockResolvedValue([candidate424]);
+    stubs.fetchHtml.mockReturnValue(gate);
+    const { ctx, audits } = makeCtx();
+
+    const p1 = recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
+    clearRecoveryForRun("sess-1", "SPCX", "2026-05-06");
+    releaseHtml(spcxHtml); // the superseded run now completes its extract
+    const result = await p1;
+
+    // A superseded run writes NO audit and hands back NO statements — it cannot
+    // repopulate the newly reset financialsData.
+    expect(audits).toHaveLength(0);
+    expect(result.statements).toBeNull();
+  });
+
   it("records honest no-candidates (statements null) when discovery finds nothing", async () => {
     stubs.fetchCandidates.mockResolvedValue([]);
     const { ctx, audits } = makeCtx();
