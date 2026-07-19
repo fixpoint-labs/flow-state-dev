@@ -150,9 +150,10 @@ const FOREIGN_CURRENCY =
 /** Reject a non-U.S. reporting currency; default to USD otherwise.
  *  A QUALIFIED "dollars" note (Canadian / Australian / Hong Kong / … dollars) or
  *  a foreign reporting currency stated in the units note or a
- *  "reporting/functional/presentation currency" clause (a common F-1 case, e.g.
- *  Renminbi) is surfaced as non-USD so the validator rejects it, rather than
- *  silently promoting local-currency figures as USD billions. */
+ *  "reporting/presentation currency" clause (a common F-1 case, e.g. Renminbi)
+ *  is surfaced as non-USD so the validator rejects it, rather than silently
+ *  promoting local-currency figures as USD billions. A subsidiary's FUNCTIONAL
+ *  currency does not count — a USD table stays USD. */
 function parseCurrency(html: string): string {
   if (/\b(canadian|australian|new zealand|singapore|hong ?kong|hk|taiwan|nt|jamaican|caribbean)\s+dollars?\b/i.test(html)) {
     return "NON-USD";
@@ -161,7 +162,11 @@ function parseCurrency(html: string): string {
   if (new RegExp(`\\bin\\s+(?:thousands|millions|billions)\\s+of\\s+(?:${FOREIGN_CURRENCY})\\b`, "i").test(html)) {
     return "NON-USD";
   }
-  if (new RegExp(`\\b(?:reporting|functional|presentation|reported|expressed|denominated|presented)\\b[^.]{0,60}\\b(?:${FOREIGN_CURRENCY})\\b`, "i").test(html)) {
+  // Presentation/reporting-currency clause only — NOT "functional currency": a
+  // USD-reporting F-1 routinely discloses a subsidiary's functional currency
+  // (RMB/EUR/…) while presenting the consolidated statements in U.S. dollars, so
+  // a `functional` mention must not flip an otherwise-USD table to non-USD.
+  if (new RegExp(`\\b(?:reporting|presentation|reported|expressed|presented)\\b[^.]{0,60}\\b(?:${FOREIGN_CURRENCY})\\b`, "i").test(html)) {
     return "NON-USD";
   }
   return "USD";

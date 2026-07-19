@@ -149,9 +149,12 @@ export async function fetchRegistrationCandidates(
   ticker: string,
   date: string,
   limit = 3,
-  signal?: AbortSignal,
 ): Promise<RegistrationCandidate[]> {
-  const { cik, name, recent } = await fetchRecentSubmissions(ticker, signal);
+  // No `signal`: discovery reads the process-shared, per-CIK submissions cache
+  // (see `fetchRecentSubmissions`), which must not be bound to one caller's
+  // abort. The recovery runtime's own abort guards handle cancellation; only the
+  // per-document prospectus fetch (uncached) takes a signal.
+  const { cik, name, recent } = await fetchRecentSubmissions(ticker);
   if (!recent.form) return [];
   return selectRegistrationCandidates(recent, cik, name, date, limit);
 }

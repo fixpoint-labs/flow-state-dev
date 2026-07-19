@@ -182,7 +182,7 @@ async function runRecovery(
 
   let candidates: RegistrationCandidate[];
   try {
-    candidates = await fetchRegistrationCandidates(args.ticker, args.date, MAX_DOCS, ctx.signal);
+    candidates = await fetchRegistrationCandidates(args.ticker, args.date, MAX_DOCS);
   } catch (err) {
     rejectionReasons.push(`submissions-fetch-failed: ${(err as Error).message}`);
     return finish(null, "no-candidates");

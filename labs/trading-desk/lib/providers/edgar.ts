@@ -106,15 +106,17 @@ export async function resolveCik(ticker: string): Promise<string> {
  * filings provider and the registration-recovery provider both project from
  * this one payload — one SEC round-trip per issuer per run, not two.
  */
-export async function fetchRecentSubmissions(
-  ticker: string,
-  signal?: AbortSignal,
-): Promise<SubmissionsData> {
+// No `signal` here on purpose: this promise is SHARED across callers via the
+// per-CIK cache (recovery + the periodic `get_sec_filings` path), so binding it
+// to one caller's abort signal would let a cancelled recovery reject the fetch
+// out from under a concurrent, un-cancelled caller. The submissions call is one
+// small JSON; recovery's own abort guards stop it before any spine write.
+export async function fetchRecentSubmissions(ticker: string): Promise<SubmissionsData> {
   const cik = await resolveCik(ticker);
   const cached = submissionsCache.get(cik);
   if (cached && cached.expires > Date.now()) return cached.data;
   const pending = (async () => {
-    const res = await edgarFetch(`${SUBMISSIONS_BASE}/CIK${cik}.json`, signal);
+    const res = await edgarFetch(`${SUBMISSIONS_BASE}/CIK${cik}.json`);
     const data = (await res.json()) as {
       cik?: number;
       name?: string;

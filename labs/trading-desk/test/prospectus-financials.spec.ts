@@ -181,6 +181,20 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     expect(validateFinancialCandidate(c!, validateCtx).ok).toBe(false);
   });
 
+  it("keeps a USD-presented table USD when only a subsidiary's functional currency is foreign", () => {
+    // A USD-presented F-1 that discloses a subsidiary's RMB FUNCTIONAL currency
+    // must NOT be flipped to non-USD — functional currency is an entity
+    // attribute, not the statements' presentation currency.
+    const withFunctional = html.replace(
+      "in thousands of U.S. dollars",
+      "in thousands of U.S. dollars. The functional currency of our principal operating subsidiary is the Renminbi (RMB)",
+    );
+    const c = extractProspectusFinancials(withFunctional, meta);
+    expect(c).not.toBeNull();
+    expect(c!.currency).toBe("USD");
+    expect(validateFinancialCandidate(c!, validateCtx).ok).toBe(true);
+  });
+
   it("does not promote a bare long-term debt line as total debt", () => {
     const ltOnly = html.replace(
       "<tr><td>Total debt</td><td>1,000,000</td><td>1,200,000</td></tr>",
