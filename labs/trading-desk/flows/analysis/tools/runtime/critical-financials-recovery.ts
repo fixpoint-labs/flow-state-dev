@@ -114,6 +114,31 @@ const recoveryKey = (sessionId: string, ticker: string, date: string): string =>
   `${sessionId}:${ticker}:${date}`;
 const currentGen = (sessionId: string): number => generation.get(sessionId) ?? 0;
 
+// Bound module-cache growth on a long-lived, multi-tenant server (BP-035): every
+// analyze run seeds a `generation` entry for its session and recovery may leave a
+// `settled` result, and a session that never re-runs is never cleared — so both
+// maps would grow without bound. Cap each and evict oldest (insertion order)
+// beyond it, skipping any key with a recovery still in flight. A dropped `settled`
+// re-fetches on next use; a dropped `generation` resets to 0 (a fresh start).
+const MAX_CACHE_ENTRIES = 512;
+
+function evictOldest<V>(m: Map<string, V>, isBusy: (key: string) => boolean): void {
+  if (m.size <= MAX_CACHE_ENTRIES) return;
+  for (const key of [...m.keys()]) {
+    if (m.size <= MAX_CACHE_ENTRIES) break;
+    if (!isBusy(key)) m.delete(key);
+  }
+}
+
+/** A session (generation key) is busy if any of its ticker/date recoveries is
+ *  still in flight; a settled key is busy if that exact recovery is in flight. */
+const sessionBusy = (sessionId: string): boolean => {
+  const prefix = `${sessionId}:`;
+  for (const k of inflight.keys()) if (k.startsWith(prefix)) return true;
+  return false;
+};
+const keyBusy = (key: string): boolean => inflight.has(key);
+
 /**
  * Recover the subject's critical statements from IPO/registration filings, or
  * return an honest `unavailable` audit. Single-flight per (session, ticker,
@@ -136,7 +161,10 @@ export function recoverCriticalFinancials(
     .then((result) => {
       // Only cache if this run's session was not cleared (a re-run seeded) while
       // in flight — a superseded run rejects before reaching here.
-      if (currentGen(sessionId) === gen) settled.set(key, result);
+      if (currentGen(sessionId) === gen) {
+        settled.set(key, result);
+        evictOldest(settled, keyBusy);
+      }
       return result;
     })
     .finally(() => {
@@ -156,6 +184,7 @@ export function clearRecoveryForSession(sessionId: string): void {
   const prefix = `${sessionId}:`;
   for (const k of [...inflight.keys()]) if (k.startsWith(prefix)) inflight.delete(k);
   for (const k of [...settled.keys()]) if (k.startsWith(prefix)) settled.delete(k);
+  evictOldest(generation, sessionBusy);
 }
 
 async function runRecovery(
@@ -316,3 +345,11 @@ export function _resetRecoveryInflight(): void {
   settled.clear();
   generation.clear();
 }
+
+/** Test seam: current module-cache sizes (to assert the bound holds). */
+export function _recoveryCacheSizes(): { generation: number; settled: number; inflight: number } {
+  return { generation: generation.size, settled: settled.size, inflight: inflight.size };
+}
+
+/** Test seam: the module-cache cap (so a bound test doesn't hardcode it). */
+export const _MAX_RECOVERY_CACHE_ENTRIES = MAX_CACHE_ENTRIES;

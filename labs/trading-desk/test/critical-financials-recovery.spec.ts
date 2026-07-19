@@ -41,6 +41,8 @@ import {
   recoverCriticalFinancials,
   clearRecoveryForSession,
   _resetRecoveryInflight,
+  _recoveryCacheSizes,
+  _MAX_RECOVERY_CACHE_ENTRIES,
 } from "../flows/analysis/tools/runtime/critical-financials-recovery";
 import type { FinancialCandidate } from "../flows/analysis/lib/financial-candidate";
 
@@ -187,6 +189,15 @@ describe("recoverCriticalFinancials", () => {
 
     await expect(pA).rejects.toThrow(/superseded/i);
     expect(audits).toHaveLength(0);
+  });
+
+  it("bounds the module generation cache on a long-lived server (no unbounded leak)", () => {
+    // Every analyze run seeds a generation entry for its session; a server that
+    // runs many one-off sessions must not grow the map without bound.
+    for (let i = 0; i < _MAX_RECOVERY_CACHE_ENTRIES + 200; i++) {
+      clearRecoveryForSession(`sess-oneoff-${i}`);
+    }
+    expect(_recoveryCacheSizes().generation).toBeLessThanOrEqual(_MAX_RECOVERY_CACHE_ENTRIES);
   });
 
   it("records honest no-candidates (statements null) when discovery finds nothing", async () => {
