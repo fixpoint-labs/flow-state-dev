@@ -231,9 +231,13 @@ export function extractProspectusFinancials(
     /^cash and cash equivalents\b/i,
     /restricted/i,
   );
+  // Require an explicit TOTAL debt/borrowings line. A bare "long-term debt"
+  // understates total debt whenever a current portion is listed separately, and
+  // the validator doesn't reconcile balance totals — so leave it null (honest,
+  // and cash/debt are "when disclosed") rather than promote an understated value.
   const totalDebt = findMetric(
     rows,
-    /^total debt\b|^(total )?long-term debt\b/i,
+    /^total\s+(debt|borrowings|indebtedness|long-term debt)\b/i,
     /current portion/i,
   );
 

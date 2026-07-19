@@ -63,6 +63,27 @@ describe("recoverFinancialsExtract", () => {
     expect(await recoverFinancialsExtract(model, docs, meta)).toBeNull();
   });
 
+  it("windows the prompt around the statement section for a large filing", async () => {
+    const filler = "cover page and table of contents. ".repeat(1000); // > 24k chars
+    const statements = "Consolidated Statements of Operations. Total revenue 8,500,000 (in thousands).";
+    let capturedUser = "";
+    const model: ExtractModel = {
+      generate: vi.fn(async (opts: { messages: Array<{ role: string; content: string }> }) => {
+        capturedUser = opts.messages.map((m) => m.content).join("\n");
+        return {
+          structuredOutput: {
+            currency: "USD", scale: "thousands", periodEnd: "2025-12-31",
+            revenue: 8_500_000, operatingIncome: 1_200_000, operatingCashFlow: null,
+            capitalExpenditure: null, freeCashFlow: null, cashAndEquivalents: null, totalDebt: null,
+          },
+        };
+      }),
+    };
+    await recoverFinancialsExtract(model, [{ url: meta.sourceUrl, text: filler + statements }], meta);
+    // The statement section (past the 24k head) reached the model, not just the cover.
+    expect(capturedUser).toContain("Consolidated Statements of Operations");
+  });
+
   it("returns null when the model surfaces neither revenue nor operating income", async () => {
     const model = modelReturning({
       currency: "USD",

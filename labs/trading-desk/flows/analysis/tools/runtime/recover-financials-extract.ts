@@ -61,6 +61,25 @@ const SCALE_MULTIPLIER: Record<Exclude<ProspectusExtract["scale"], "unspecified"
 /** Per-document text cap fed to the model (keeps the prompt bounded). */
 const DOC_CHAR_CAP = 24_000;
 
+/** Headings that mark the audited financial-statement section of a filing. */
+const STATEMENT_ANCHOR =
+  /consolidated statements?\s+of\s+operations|consolidated balance sheets?|consolidated statements?\s+of\s+cash\s+flows?|index to (?:consolidated )?financial statements|report of independent registered public accounting/i;
+
+/**
+ * Window the doc around its financial-statement section before the cap. In a
+ * large S-1/424B the audited tables often start well past the first 24k chars
+ * (cover / TOC / summary / risk factors first) — feeding only the head would
+ * hand the model no statements. Center the cap a little before the first
+ * statement heading; fall back to the head when no heading is found.
+ */
+function sliceAroundStatements(text: string): string {
+  if (text.length <= DOC_CHAR_CAP) return text;
+  const m = STATEMENT_ANCHOR.exec(text);
+  if (!m) return text.slice(0, DOC_CHAR_CAP);
+  const start = Math.max(0, m.index - 500);
+  return text.slice(start, start + DOC_CHAR_CAP);
+}
+
 const SYSTEM_PROMPT = [
   "You transcribe audited financial statements from a company's SEC",
   "registration statement / IPO prospectus (Form S-1 or 424B) into a strict",
@@ -98,7 +117,7 @@ export async function recoverFinancialsExtract(
   options: { signal?: AbortSignal } = {},
 ): Promise<FinancialCandidate | null> {
   const corpus = docs
-    .map((d, i) => `<document index="${i}" url="${d.url}">\n${d.text.slice(0, DOC_CHAR_CAP)}\n</document>`)
+    .map((d, i) => `<document index="${i}" url="${d.url}">\n${sliceAroundStatements(d.text)}\n</document>`)
     .join("\n\n");
 
   const result = await model.generate({
