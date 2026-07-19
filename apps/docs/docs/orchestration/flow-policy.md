@@ -72,6 +72,7 @@ import { flowPolicy } from "@flow-state-dev/orchestration";
 
 const board = taskBoard({
   name: "research",
+  collection: { collectionId: "research" },
   workers: researchWorker,
   flowPolicy: flowPolicy.recentTrajectory({ n: 8 }),
 });
@@ -87,6 +88,7 @@ import { flowPolicy } from "@flow-state-dev/orchestration";
 
 const board = taskBoard({
   name: "research",
+  collection: { collectionId: "research" },
   workers: researchWorker,
 
   // Layer A: which prior-task observations the next worker sees.

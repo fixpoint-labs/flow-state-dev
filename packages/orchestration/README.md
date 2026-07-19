@@ -73,7 +73,8 @@ Mount `board.block` in a sequencer. `workers` is a single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`), `initialTasks`,
-`onError`, `maxAttemptsPerTask`. See the
+`onError`, and `maxIterations` (loop-cap, default 10000). Per-task retries are set
+via `maxAttempts` on each task (`TaskInit`), not on the board. See the
 [Task Board guide](https://flow-state.dev/docs/orchestration/task-board).
 
 ## Skills + taskTools
