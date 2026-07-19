@@ -155,6 +155,33 @@ describe("critical-financials recovery on the live statement chain", () => {
     expect(stubs.fetchHtml).toHaveBeenCalledTimes(1);
   });
 
+  it("returns honest unavailable (not a sparse edgar shell) when subject recovery finds nothing", async () => {
+    stubs.fetchCandidates.mockResolvedValue([]); // no registration candidates
+    const stores = createInMemoryStores();
+    const sessionId = "recovery-honest-unavailable";
+
+    const result = await testFlow({
+      flow: recoveryFlow,
+      action: "fetchIncome",
+      userId: "u",
+      sessionId,
+      stores,
+      input: { ticker: "SPCX", date: "2026-05-06" },
+      seed: { session: { state: baseState } },
+    });
+    expect(result.error).toBeUndefined();
+    // Sparse companyfacts + Yahoo miss + failed recovery → the subject's income
+    // is honestly `unavailable`, NOT a `source: "edgar"` shell that reads as
+    // "the authoritative provider answered".
+    expect((result.output as { source?: string }).source).toBe("unavailable");
+
+    const financials = (await stores.resourceState.getAll("session", sessionId))[
+      "financialsData"
+    ] as Record<string, any>;
+    expect(financials.incomeStatement.source).toBe("unavailable");
+    expect(financials.recoveryAudit.outcome).toBe("no-candidates");
+  });
+
   it("does not trigger subject recovery for a toSpine:false peer probe", async () => {
     const stores = createInMemoryStores();
     const sessionId = "recovery-peer";

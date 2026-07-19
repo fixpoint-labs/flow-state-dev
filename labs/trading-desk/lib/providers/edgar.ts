@@ -53,12 +53,14 @@ export type RecentSubmissions = {
 
 export type SubmissionsData = { cik: number; name: string; recent: RecentSubmissions };
 
-// Process-wide submissions cache, keyed by padded CIK — the same idiom as the
-// ticker→CIK map. The full recent-filings list is date-independent, so both the
-// disclosure list (get_sec_filings) and registration recovery project their own
-// shape from ONE fetch instead of hitting SEC twice for the same issuer on the
-// newly listed path this feature targets.
-const submissionsCache = new Map<string, Promise<SubmissionsData>>();
+// Short-TTL submissions cache, keyed by padded CIK. The full recent-filings
+// list is date-independent, so both the disclosure list (get_sec_filings) and
+// registration recovery project their own shape from ONE fetch instead of
+// hitting SEC twice for the same issuer within a run. A short TTL (not the
+// permanent ticker→CIK idiom) bounds staleness: on a long-lived server a newly
+// posted 424B/8-K/10-K becomes visible within minutes rather than at restart.
+const SUBMISSIONS_TTL_MS = 5 * 60 * 1000;
+const submissionsCache = new Map<string, { expires: number; data: Promise<SubmissionsData> }>();
 
 /** One entry in SEC's `company_tickers.json` map. */
 type TickerEntry = { cik_str: number; ticker: string; title: string };
@@ -106,7 +108,7 @@ export async function resolveCik(ticker: string): Promise<string> {
 export async function fetchRecentSubmissions(ticker: string): Promise<SubmissionsData> {
   const cik = await resolveCik(ticker);
   const cached = submissionsCache.get(cik);
-  if (cached) return cached;
+  if (cached && cached.expires > Date.now()) return cached.data;
   const pending = (async () => {
     const res = await edgarFetch(`${SUBMISSIONS_BASE}/CIK${cik}.json`);
     const data = (await res.json()) as {
@@ -120,7 +122,7 @@ export async function fetchRecentSubmissions(ticker: string): Promise<Submission
       recent: data.filings?.recent ?? {},
     };
   })();
-  submissionsCache.set(cik, pending);
+  submissionsCache.set(cik, { expires: Date.now() + SUBMISSIONS_TTL_MS, data: pending });
   pending.catch(() => submissionsCache.delete(cik));
   return pending;
 }

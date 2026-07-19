@@ -73,6 +73,9 @@ export interface RecoveryCtx {
       patchState(updates: { recoveryAudit: RecoveryAudit }): Promise<void>;
     };
   };
+  /** The request abort signal (threaded into the bounded model call so a
+   *  cancelled run stops spending tokens, matching generator-block behavior). */
+  signal?: AbortSignal;
 }
 
 /** Caps (spec §4.4): ≤3 document fetches, ≤1 LLM invocation, SEC-first URLs. */
@@ -209,6 +212,7 @@ async function runRecovery(
         sourceUrl: lead.url,
         companyName: lead.companyName,
       },
+      { signal: ctx.signal },
     );
     if (llmCandidate) {
       const promoted = await tryPromote(llmCandidate);

@@ -79,6 +79,9 @@ export async function loadStatementWithRecovery<S extends StatementSpec>(opts: {
   } catch {}
   if (yahoo && !isCriticallySparse(spec.field, yahoo)) return yahoo;
 
+  const empty = () =>
+    emptyPayload(spec.tool as ToolName, input as ToolInput<ToolName>) as ToolOutput<S["tool"]>;
+
   // Critical miss on the subject → one bounded, single-flight recovery attempt.
   if (toSpine) {
     const recovery = await recoverCriticalFinancials(ctx, {
@@ -87,9 +90,15 @@ export async function loadStatementWithRecovery<S extends StatementSpec>(opts: {
     });
     const recovered = recovery.statements?.[spec.field];
     if (recovered) return recovered as ToolOutput<S["tool"]>;
+    // Recovery RAN and did not promote this field: the subject's critical
+    // fields are a genuine void. Return an honest `source: "unavailable"` rather
+    // than the sparse provider shell — a critically-sparse `source: "edgar"`
+    // would read downstream as "the authoritative provider answered". The
+    // `recoveryAudit` carries the exhaustion trail (no-candidates / rejected).
+    return empty();
   }
 
-  // Nothing usable: return the best-available honest payload (a sparse edgar/
-  // Yahoo shell over an empty one preserves any partial fields), or empty.
-  return edgar ?? yahoo ?? emptyPayload(spec.tool as ToolName, input as ToolInput<ToolName>) as ToolOutput<S["tool"]>;
+  // Non-subject probe (no recovery): return the best-available payload; a sparse
+  // edgar/Yahoo shell over an empty one preserves any partial fields.
+  return edgar ?? yahoo ?? empty();
 }
