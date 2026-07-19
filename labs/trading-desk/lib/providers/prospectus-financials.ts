@@ -202,10 +202,15 @@ export function extractProspectusFinancials(
   const rows = rowsFromHtml(html).map(toRow).filter((r): r is Row => r !== null);
   if (rows.length === 0) return null;
 
+  // Exclude non-statement rows that begin with "revenue": the "Revenue
+  // Recognition" accounting-policy note / index entry (whose trailing page or
+  // ASC reference — "Revenue Recognition F-12", "Revenue recognition ASC 606" —
+  // would otherwise be read as a tiny revenue and promoted, since the validator
+  // does not magnitude-check revenue), plus cost-of-revenue and per-share rows.
   const revenue = findMetric(
     rows,
     /^(total\s+)?(net\s+)?(revenues?|net\s+sales|total\s+revenue)\b/i,
-    /cost of|per share/i,
+    /cost of|per share|recognition|polic/i,
   );
   const operatingIncome = findMetric(
     rows,

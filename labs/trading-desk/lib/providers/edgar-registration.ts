@@ -39,6 +39,7 @@ export const REGISTRATION_FORMS = new Set([
   "424B3",
   "424B4",
   "424B5",
+  "424B6",
   "424B7",
   "424B8",
   "F-1",
@@ -61,6 +62,7 @@ function formRank(form: string): number {
     case "424B1":
     case "424B2":
     case "424B5":
+    case "424B6":
     case "424B7":
     case "424B8":
       return 2;
@@ -147,8 +149,9 @@ export async function fetchRegistrationCandidates(
   ticker: string,
   date: string,
   limit = 3,
+  signal?: AbortSignal,
 ): Promise<RegistrationCandidate[]> {
-  const { cik, name, recent } = await fetchRecentSubmissions(ticker);
+  const { cik, name, recent } = await fetchRecentSubmissions(ticker, signal);
   if (!recent.form) return [];
   return selectRegistrationCandidates(recent, cik, name, date, limit);
 }
@@ -156,9 +159,13 @@ export async function fetchRegistrationCandidates(
 /**
  * Fetch a prospectus primary document as raw HTML text. The SEC Archives serve
  * the document verbatim; the caller (deterministic + LLM extractors) reads the
- * financial tables out of it. Throws on any non-2xx.
+ * financial tables out of it. Throws on any non-2xx. An optional `signal` aborts
+ * the request when the run is cancelled.
  */
-export async function fetchProspectusPrimaryHtml(url: string): Promise<string> {
-  const res = await edgarFetch(url);
+export async function fetchProspectusPrimaryHtml(
+  url: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const res = await edgarFetch(url, signal);
   return res.text();
 }

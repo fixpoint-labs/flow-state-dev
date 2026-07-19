@@ -187,12 +187,33 @@ describe("recoverCriticalFinancials", () => {
     expect(result.audit.rejectionReasons.join(" ")).toMatch(/stale/);
   });
 
-  it("rethrows on abort instead of swallowing it into an audit", async () => {
+  it("rethrows on abort during the model call instead of swallowing it into an audit", async () => {
     const noScaleHtml = "<html><body><p>no financial tables here</p></body></html>";
     stubs.fetchCandidates.mockResolvedValue([candidate424]);
     stubs.fetchHtml.mockResolvedValue(noScaleHtml);
+    const { ctx, audits } = makeCtx();
+    const controller = new AbortController();
+    (ctx as { signal?: AbortSignal }).signal = controller.signal;
+    // Abort at MODEL-call time (the deterministic tier already missed): the
+    // catch must rethrow the original error, not turn it into an audit.
     const abortErr = new Error("The operation was aborted");
-    stubs.llmExtract.mockRejectedValue(abortErr);
+    stubs.llmExtract.mockImplementation(async () => {
+      controller.abort();
+      throw abortErr;
+    });
+
+    await expect(
+      recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" }),
+    ).rejects.toBe(abortErr);
+    // A cancellation must not write a recovery audit.
+    expect(audits).toHaveLength(0);
+  });
+
+  it("rethrows an abort during deterministic discovery/fetch without writing an audit", async () => {
+    // A run cancelled while recovery is still discovering/fetching SEC docs must
+    // not finish() an audit or promote — even before the model tier is reached.
+    stubs.fetchCandidates.mockResolvedValue([candidate424]);
+    stubs.fetchHtml.mockResolvedValue(spcxHtml);
     const { ctx, audits } = makeCtx();
     const controller = new AbortController();
     controller.abort();
@@ -200,9 +221,10 @@ describe("recoverCriticalFinancials", () => {
 
     await expect(
       recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" }),
-    ).rejects.toBe(abortErr);
-    // A cancellation must not write a recovery audit.
+    ).rejects.toThrow();
     expect(audits).toHaveLength(0);
+    // The model tier is never reached on a cancelled run.
+    expect(stubs.llmExtract).not.toHaveBeenCalled();
   });
 
   it("falls back to the ONE bounded LLM extract when the deterministic tier misses", async () => {

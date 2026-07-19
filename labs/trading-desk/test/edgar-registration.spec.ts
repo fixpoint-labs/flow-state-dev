@@ -53,12 +53,26 @@ describe("selectRegistrationCandidates", () => {
   });
 
   it("REGISTRATION_FORMS covers the S-1, full 424B, and F-1 families but not periodic forms", () => {
-    expect(REGISTRATION_FORMS.has("424B4")).toBe(true);
-    expect(REGISTRATION_FORMS.has("424B3")).toBe(true);
-    expect(REGISTRATION_FORMS.has("424B5")).toBe(true);
+    // The whole 424B(1..8) prospectus family — no gap in the middle (424B6 is a
+    // valid Rule 424(b)(6) final prospectus and must not be filtered out).
+    for (let n = 1; n <= 8; n++) {
+      expect(REGISTRATION_FORMS.has(`424B${n}`)).toBe(true);
+    }
     expect(REGISTRATION_FORMS.has("S-1")).toBe(true);
     expect(REGISTRATION_FORMS.has("F-1")).toBe(true);
     expect(REGISTRATION_FORMS.has("10-K")).toBe(false);
     expect(REGISTRATION_FORMS.has("8-K")).toBe(false);
+  });
+
+  it("ranks a 424B6 final prospectus alongside the rest of the 424B family", () => {
+    const withB6: RecentSubmissions = {
+      form: ["424B6", "S-1"],
+      filingDate: ["2026-02-10", "2026-01-05"],
+      accessionNumber: ["0000000000-26-000004", "0000000000-26-000002"],
+      primaryDocument: ["424b6.htm", "s1.htm"],
+    };
+    const got = selectRegistrationCandidates(withB6, 1750000, "SpaceCo", "2026-05-06", 3);
+    // 424B6 (a final prospectus, rank 2) is preferred over the original S-1 (rank 4).
+    expect(got.map((c) => c.form)).toEqual(["424B6", "S-1"]);
   });
 });

@@ -73,8 +73,10 @@ export interface RecoveryCtx {
       patchState(updates: { recoveryAudit: RecoveryAudit }): Promise<void>;
     };
   };
-  /** The request abort signal (threaded into the bounded model call so a
-   *  cancelled run stops spending tokens, matching generator-block behavior). */
+  /** The request abort signal. Threaded into the SEC discovery/prospectus
+   *  fetches AND the bounded model call, and re-checked before any audit write,
+   *  so a cancelled run stops network + token spend and never promotes
+   *  statements — matching generator-block cancellation behavior. */
   signal?: AbortSignal;
 }
 
@@ -152,6 +154,10 @@ async function runRecovery(
     statements: RecoveryStatements | null,
     outcome: RecoveryAudit["outcome"],
   ): Promise<RecoveryResult> => {
+    // A run cancelled mid-recovery must not write an audit or promote statements
+    // — even if a deterministic SEC fetch already resolved. Rethrow the abort
+    // before any spine write, matching the model-call cancellation semantics.
+    ctx.signal?.throwIfAborted();
     const audit: RecoveryAudit = {
       attempted: true,
       outcome,
@@ -176,7 +182,7 @@ async function runRecovery(
 
   let candidates: RegistrationCandidate[];
   try {
-    candidates = await fetchRegistrationCandidates(args.ticker, args.date, MAX_DOCS);
+    candidates = await fetchRegistrationCandidates(args.ticker, args.date, MAX_DOCS, ctx.signal);
   } catch (err) {
     rejectionReasons.push(`submissions-fetch-failed: ${(err as Error).message}`);
     return finish(null, "no-candidates");
@@ -207,9 +213,11 @@ async function runRecovery(
 
   // Tier 1: deterministic extract, doc by doc (stop at the first that promotes).
   for (const candidate of candidates) {
+    // Stop promptly if the run was cancelled between document fetches.
+    ctx.signal?.throwIfAborted();
     let html: string;
     try {
-      html = await fetchProspectusPrimaryHtml(candidate.url);
+      html = await fetchProspectusPrimaryHtml(candidate.url, ctx.signal);
     } catch (err) {
       rejectionReasons.push(`fetch-failed ${candidate.url}: ${(err as Error).message}`);
       continue;

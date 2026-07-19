@@ -34,9 +34,10 @@ const SUBMISSIONS_BASE = "https://data.sec.gov/submissions";
 
 /** GET an EDGAR URL with the required User-Agent, throwing on any non-2xx so
  *  callers fall through with a single `try/catch`. Shared by the filings and
- *  registration providers (one copy, not three). */
-export async function edgarFetch(url: string): Promise<Response> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+ *  registration providers (one copy, not three). An optional `signal` lets a
+ *  caller (recovery on a cancelled run) abort the in-flight request. */
+export async function edgarFetch(url: string, signal?: AbortSignal): Promise<Response> {
+  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal });
   if (!res.ok) throw new Error(`EDGAR ${url} failed: HTTP ${res.status}`);
   return res;
 }
@@ -105,12 +106,15 @@ export async function resolveCik(ticker: string): Promise<string> {
  * filings provider and the registration-recovery provider both project from
  * this one payload — one SEC round-trip per issuer per run, not two.
  */
-export async function fetchRecentSubmissions(ticker: string): Promise<SubmissionsData> {
+export async function fetchRecentSubmissions(
+  ticker: string,
+  signal?: AbortSignal,
+): Promise<SubmissionsData> {
   const cik = await resolveCik(ticker);
   const cached = submissionsCache.get(cik);
   if (cached && cached.expires > Date.now()) return cached.data;
   const pending = (async () => {
-    const res = await edgarFetch(`${SUBMISSIONS_BASE}/CIK${cik}.json`);
+    const res = await edgarFetch(`${SUBMISSIONS_BASE}/CIK${cik}.json`, signal);
     const data = (await res.json()) as {
       cik?: number;
       name?: string;
