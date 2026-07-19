@@ -206,6 +206,13 @@ export function extractProspectusFinancials(
     /current portion/i,
   );
 
+  // Require an actual audited period end. Falling back to the filing date would
+  // let a document with no parseable period pass validation dated to the filing
+  // instead of the audited period — misleading spine data. No period → defer to
+  // the LLM extractor (which reads the statement context directly).
+  const periodEnd = parsePeriodEnd(html);
+  if (!periodEnd) return null;
+
   const applyScale = (n: number | null): number | null => (n == null ? null : n * scale);
 
   return {
@@ -214,7 +221,7 @@ export function extractProspectusFinancials(
     companyName: meta.companyName,
     form: meta.form,
     filingDate: meta.filingDate,
-    periodEnd: parsePeriodEnd(html) ?? meta.filingDate,
+    periodEnd,
     scale,
     currency: parseCurrency(html),
     sourceUrl: meta.sourceUrl,

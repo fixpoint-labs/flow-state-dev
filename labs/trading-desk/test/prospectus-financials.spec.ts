@@ -120,6 +120,15 @@ describe("extractProspectusFinancials — parsing robustness", () => {
     expect(extractProspectusFinancials(conflicting, meta)).toBeNull();
   });
 
+  it("returns null when no fiscal period is parseable (does not fall back to the filing date)", () => {
+    // Strip every 'Month DD, YYYY' date so no period can be parsed.
+    const noDates = html.replace(
+      /(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}/g,
+      "the most recent fiscal year",
+    );
+    expect(extractProspectusFinancials(noDates, meta)).toBeNull();
+  });
+
   it("takes the period end from a statement-header context, not a footnote date", () => {
     const withFootnoteDate = html.replace(
       "</body>",
