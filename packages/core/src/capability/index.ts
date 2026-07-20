@@ -1,6 +1,8 @@
 export { defineCapability } from "./define-capability";
 export type {
   CapabilityConfig,
+  CapabilityConfigDef,
+  CapabilityConfigResolveCtx,
   CapabilityPresetCtx,
   CapabilityRef,
   UsesEntry,
@@ -25,5 +27,6 @@ export {
   extractMergedResources,
   mergeSurfaceInto,
   resolveActivePresets,
+  resolveConfigSurface,
 } from "./merge";
 export type { MergedCapabilitySurface, DynamicUsesResolver, FlattenResult } from "./merge";

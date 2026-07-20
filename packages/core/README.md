@@ -190,6 +190,7 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
 - `defineCapability(config)` — Bundle resources, state schemas, targets, and helper functions under a single name. Blocks declare capabilities via `uses: [cap]` and the framework merges everything transitively.
   - `fns: (ctx) => ({ ... })` — Helper functions exposed at `ctx.cap.{name}.{fn}`, memoized on first access
   - `presets` — Named opt-in/opt-out bundles of any block config surface. Use `.presets({ name: true/false })` to configure
+  - `config: { schema?, resolve }` — Open, typed configuration. The resolver maps a validated value onto a block surface (like a preset, but value-carrying). Consumers pass it with `.config(value)`, which composes with `.presets()` in either order
   - `uses` — Capabilities can depend on other capabilities (transitive composition with diamond dedup)
   - Factory pattern: wrap `defineCapability()` in a function for parameterized capabilities
 

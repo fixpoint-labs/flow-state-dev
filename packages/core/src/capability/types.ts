@@ -10,6 +10,7 @@
 import type { ZodTypeAny } from "zod";
 import type {
   BlockContext,
+  BlockKind,
   DeclaredResourceEntry,
   InferResourcesFromDefinitions,
   InferTargetStatesFromSchemas,
@@ -118,6 +119,51 @@ export type PresetContextEntry<TSessionState = any> =
     >);
 
 // ---------------------------------------------------------------------------
+// Open config (typed config input + resolver)
+// ---------------------------------------------------------------------------
+
+/**
+ * Context handed to a capability's config resolver at block-build time. Lets
+ * the resolver see which of the capability's own presets are active for this
+ * block, so it can own override-vs-add semantics per setting, and the kind of
+ * block it is contributing to.
+ */
+export interface CapabilityConfigResolveCtx {
+  /** Names of this capability's presets active for the block being built. */
+  presets: ReadonlySet<string>;
+  /** The consuming block's kind. */
+  blockKind: BlockKind;
+}
+
+/**
+ * Open, typed configuration a capability accepts via `.config(value)`. The
+ * author supplies a `resolve` function that maps a validated config value onto
+ * the same partial block surface a preset contributes, merged through the same
+ * pipeline. Distinct from presets (predefined on/off bundles): config carries
+ * values, and the capability owns what they mean.
+ *
+ * `TConfigOut` is the resolver's input — the parsed schema output
+ * (`z.output`) when `schema` is set, or the explicit type when schemaless.
+ */
+export interface CapabilityConfigDef<TConfigOut = any, TSessionState = any> {
+  /**
+   * Optional Zod schema. Validates the value passed to `.config()` and types
+   * both the `.config()` argument (`z.input`) and the resolver's `config`
+   * parameter (`z.output`). A capability meant to be usable without `.config()`
+   * must declare a schema that accepts `undefined` at the top level — e.g.
+   * `z.object({ ... }).default({})`; optional *fields* alone do not make the
+   * object optional. Omit `schema` for a schemaless config typed only by the
+   * resolver's `config` parameter; schemaless config makes `.config()` required.
+   */
+  schema?: ZodTypeAny;
+  /** Maps validated config → a partial block surface, merged like a preset. */
+  resolve: (
+    config: TConfigOut,
+    ctx: CapabilityConfigResolveCtx
+  ) => Partial<PresetDef<TSessionState>>;
+}
+
+// ---------------------------------------------------------------------------
 // Capability config (input to defineCapability)
 // ---------------------------------------------------------------------------
 
@@ -195,7 +241,47 @@ export interface CapabilityConfig<
   // `default` is a reserved key listing which presets are on by default.
   // Preset callbacks (tools, context) are typed via sessionStateSchema.
   presets?: Record<string, PresetDef<InferSessionState<TSessionStateSchema>> | string[]> & { default?: string[] };
+
+  /**
+   * Open config — a typed value the capability accepts via `.config()`, plus a
+   * resolver mapping it onto a block surface. Complements presets; the exact
+   * `.config()` argument / resolver-param types are refined by defineCapability.
+   */
+  config?: CapabilityConfigDef<any, InferSessionState<TSessionStateSchema>>;
 }
+
+// ---------------------------------------------------------------------------
+// Builder carrier preservation
+// ---------------------------------------------------------------------------
+
+/**
+ * Type-only escape-hatch carrier fields threaded through builder chaining. When
+ * `.config()` or `.presets()` returns a fresh configured ref, these carriers
+ * are copied forward from the receiver so a `sessionStateType` override (or the
+ * `.config()` argument type) survives `.config().presets()` in either order.
+ */
+type CapabilityCarrierKeys =
+  | "sessionStateType"
+  | "resourcesType"
+  | "targetStatesType"
+  | "sequencerStateType"
+  | "__configInType";
+
+/** Preserve the receiver's carrier fields on a builder's return type. */
+type PreserveCarriers<Self> = Pick<Self, Extract<keyof Self, CapabilityCarrierKeys>>;
+
+/**
+ * The `.config()` argument type, read from the receiver's `__configInType`
+ * carrier. Resolves to `never` when the capability declares no config, so
+ * `.config()` is a compile error on a config-less capability.
+ */
+type ConfigArgOf<Self> = Self extends { __configInType?: infer I }
+  ? [I] extends [never]
+    ? never
+    : [unknown] extends [I]
+      ? never
+      : I
+  : never;
 
 // ---------------------------------------------------------------------------
 // Defined capability (output of defineCapability)
@@ -252,6 +338,13 @@ export interface DefinedCapability<
   readonly targetStatesType?: unknown;
   readonly sequencerStateType?: unknown;
 
+  /**
+   * Type-only carrier for the `.config()` argument type. Set by defineCapability
+   * to `z.input` of the config schema (or the explicit schemaless type), or
+   * `never` when the capability declares no config. Holds no runtime value.
+   */
+  readonly __configInType?: unknown;
+
   // Capability composition — static refs and/or dynamic resolver functions
   uses?: UsesSlot;
 
@@ -268,8 +361,12 @@ export interface DefinedCapability<
    * Configure which presets are active. Returns a new capability reference
    * with the overrides recorded (does not mutate the original).
    * Uses Object.create() to preserve base reference identity for diamond dedup.
+   *
+   * Polymorphic over `this` so escape-hatch carriers (and any `.config()`
+   * argument type) survive the chain — `.presets().config()` keeps both.
    */
-  presets(
+  presets<Self>(
+    this: Self,
     overrides: PresetOverrides<TPresetNames, TPresets>
   ): ConfiguredCapability<
     TName,
@@ -280,7 +377,28 @@ export interface DefinedCapability<
     TResources,
     TTargetSchemas,
     TSequencerStateSchema
-  >;
+  > & PreserveCarriers<Self>;
+
+  /**
+   * Apply typed open configuration declared via `defineCapability({ config })`.
+   * Returns a new configured reference (does not mutate the original), one hop
+   * from the base so diamond dedup still works. Composes with `.presets()` in
+   * either order. A compile error on a capability that declares no config
+   * (`__configInType` is `never`).
+   */
+  config<Self>(
+    this: Self,
+    value: ConfigArgOf<Self>
+  ): ConfiguredCapability<
+    TName,
+    TFns,
+    TPresetNames,
+    TPresets,
+    TSessionStateSchema,
+    TResources,
+    TTargetSchemas,
+    TSequencerStateSchema
+  > & PreserveCarriers<Self>;
 }
 
 // ---------------------------------------------------------------------------
