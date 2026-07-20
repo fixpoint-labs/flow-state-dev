@@ -1,7 +1,8 @@
 /**
- * Bounded LLM prospectus extractor — the second tier of the critical-financials
- * recovery ladder (FIX-898), used only when the deterministic extractor
- * (`lib/providers/prospectus-financials.ts`) could not parse a candidate.
+ * Bounded LLM prospectus extractor — the ONLY extraction step in the
+ * critical-financials recovery path (FIX-898; FIX-913 removed the deterministic
+ * table parser that used to precede it). Recovery is now discover → fetch →
+ * this model call → validate → promote.
  *
  * This is a PLAIN model+schema helper, NOT a `generator` block: the recovery
  * runtime is invoked from statement-tool handlers, and a handler must not
@@ -16,6 +17,19 @@
  * module applies the reported `scale` to reach raw USD. Everything the model
  * emits is still gated by `validateFinancialCandidate` before it can touch the
  * spine — the model is a transcriber, not a source of truth.
+ *
+ * Free cash flow is NOT transcribed — it is derived downstream from operating
+ * cash flow − |capex| (`candidateFreeCashFlowRaw`). When operating and capex are
+ * present (always true for an audited GAAP cash-flow statement — FCF is a
+ * non-GAAP figure rarely printed as a line), a model-stated FCF only ever
+ * cleared the validator by equalling operating − |capex| within tolerance (any
+ * other value hits the `unreconciled-fcf` reject), so deriving it promotes the
+ * same figure while removing the one field the model would not reliably leave
+ * null when a filing omits it — the failure mode the FIX-913 goal check surfaced
+ * once the deterministic tier (which already derived FCF) was removed. The one
+ * case the old path promoted and this does not — a filing stating only a headline
+ * FCF with null operating/capex — is now an honest `missing-free-cash-flow`
+ * reject (stricter, not laxer).
  */
 import { z } from "zod";
 import type { FinancialCandidate, CandidateScale } from "../../lib/financial-candidate";
@@ -42,16 +56,15 @@ const prospectusExtractSchema = z.object({
   sourceDocumentIndex: z.number(),
   currency: z.string(),
   // `unspecified` when the table states no explicit units — the caller REJECTS
-  // it rather than guessing whole-dollars, matching the deterministic tier's
-  // explicit-scale gate. No `ones` guess (a face-value read of a "in thousands"
-  // table mis-states every figure 1000x).
+  // it rather than guessing whole-dollars (the explicit-scale gate). No `ones`
+  // guess (a face-value read of a "in thousands" table mis-states every figure
+  // 1000x).
   scale: z.enum(["unspecified", "thousands", "millions", "billions"]),
   periodEnd: z.string(),
   revenue: z.number().nullable(),
   operatingIncome: z.number().nullable(),
   operatingCashFlow: z.number().nullable(),
   capitalExpenditure: z.number().nullable(),
-  freeCashFlow: z.number().nullable(),
   cashAndEquivalents: z.number().nullable(),
   totalDebt: z.number().nullable(),
 });
@@ -123,7 +136,7 @@ const SYSTEM_PROMPT = [
   "- `currency`: the reporting currency (usually USD).",
   "- `periodEnd`: the fiscal period end as YYYY-MM-DD.",
   "- capitalExpenditure: report as a POSITIVE outflow (purchases of property /",
-  "  equipment). freeCashFlow: only if the document states it explicitly.",
+  "  equipment). Do NOT report free cash flow — it is derived downstream.",
   "- Any line item the document does not disclose: emit null. Never emit 0 for",
   "  a missing line.",
   "- `sourceDocumentIndex`: the integer `index` of the <document> you transcribed",
@@ -167,8 +180,8 @@ export async function recoverFinancialsExtract(
   if (!parsed.success) return null;
   const e = parsed.data;
   if (e.revenue == null && e.operatingIncome == null) return null;
-  // No explicit units → reject (do not guess whole-dollars): the same
-  // explicit-scale bar the deterministic tier enforces.
+  // No explicit units → reject (do not guess whole-dollars): the explicit-scale
+  // bar the validator relies on.
   if (e.scale === "unspecified") return null;
 
   // Stamp provenance from the document the model actually transcribed (not always
@@ -198,7 +211,9 @@ export async function recoverFinancialsExtract(
     cashflow: {
       operating: s(e.operatingCashFlow),
       capitalExpenditure: s(e.capitalExpenditure),
-      freeCashFlow: s(e.freeCashFlow),
+      // Always derived downstream from operating − |capex| (see header) — never
+      // taken from the model, which will not reliably leave it null.
+      freeCashFlow: null,
     },
     balance: { cashAndEquivalents: s(e.cashAndEquivalents), totalDebt: s(e.totalDebt) },
   };

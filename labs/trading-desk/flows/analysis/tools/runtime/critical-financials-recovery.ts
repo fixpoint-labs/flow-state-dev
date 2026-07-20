@@ -13,18 +13,16 @@
  * subsequent run (that is why this is a run-local map, not the process-TTL
  * `getOrFetch`).
  *
- * The recovery ladder is deterministic-first, then one bounded model call:
+ * The recovery path is discover → fetch → one bounded model call → validate:
  *   1. Discover S-1 / 424B* / F-1 candidates (≤3), fetch their primary HTML.
- *   2. Deterministic table extract → validate → promote (zero model spend).
- *   3. On a deterministic miss, ONE bounded LLM transcription over the same
- *      docs → validate → promote.
- *   4. Otherwise keep `unavailable`.
+ *   2. ONE bounded LLM transcription over the fetched docs → validate → promote.
+ *   3. Otherwise keep `unavailable`.
  * Every outcome is recorded on `financialsData.recoveryAudit` — this runtime is
  * the SOLE writer of that field, so the tools never race-patch the audit. A
  * promoted result is normalized to USD billions (`promoteCandidate`); nothing
  * that fails `validateFinancialCandidate` ever reaches the spine (no zero-fill,
  * no magnitude guessing). Correctness path: NOT cost-gated — it may spend one
- * model call on the `fast` preset after the deterministic tier misses.
+ * model call on the `fast` preset whenever at least one document is fetched.
  */
 import { resolveCik } from "@/lib/providers/edgar";
 import {
@@ -32,7 +30,6 @@ import {
   fetchRegistrationCandidates,
   type RegistrationCandidate,
 } from "@/lib/providers/edgar-registration";
-import { extractProspectusFinancials } from "@/lib/providers/prospectus-financials";
 import { promoteCandidate, type FinancialCandidate } from "../../lib/financial-candidate";
 import { validateFinancialCandidate } from "../../lib/validate-financial-candidate";
 import { recoverFinancialsExtract, type ExtractModel } from "./recover-financials-extract";
@@ -286,9 +283,10 @@ async function runRecovery(
     return null;
   };
 
-  // Tier 1: deterministic extract, doc by doc (stop at the first that promotes).
+  // Fetch each registration candidate's primary HTML (SEC-first, ≤3), collecting
+  // the docs the one bounded model call will transcribe over. A per-doc fetch
+  // failure is recorded and skipped; a run cancelled between fetches stops here.
   for (const candidate of candidates) {
-    // Stop promptly if the run was cancelled between document fetches.
     ctx.signal?.throwIfAborted();
     let html: string;
     try {
@@ -299,24 +297,21 @@ async function runRecovery(
     }
     urls.push(candidate.url);
     docs.push({ url: candidate.url, text: html, candidate });
-
-    const deterministic = extractProspectusFinancials(html, {
-      ticker: args.ticker,
-      cik,
-      form: candidate.form,
-      filingDate: candidate.filingDate,
-      sourceUrl: candidate.url,
-      companyName: candidate.companyName,
-    });
-    if (deterministic) {
-      const promoted = await tryPromote(deterministic);
-      if (promoted) return promoted;
-    }
   }
-
   if (docs.length === 0) return finish(null, "extract-failed");
 
-  // Tier 2: one bounded LLM transcription over the fetched docs. Each doc carries
+  // Supersession/abort re-check BEFORE resolving the model. `clearRecoveryForSession`
+  // (a re-run's seedSession) bumps the session generation but does NOT abort the
+  // signal, and the fetch loop above only checks the abort signal — so a run
+  // superseded while its fetches were in flight would otherwise fall through and
+  // spend a bounded model call (and race the new run's call) before `finish`
+  // throws. With the deterministic tier gone there is no short-circuit left to
+  // catch it first, so this guard is what preserves the ≤1-bounded-call cost cap
+  // and single-flight discipline for superseded runs.
+  if (currentGen(scope) !== gen) throw new RecoverySupersededError();
+  ctx.signal?.throwIfAborted();
+
+  // One bounded LLM transcription over the fetched docs. Each doc carries
   // its OWN form/filingDate/url so the model can cite the exact primary it read
   // (via `sourceDocumentIndex`) instead of always the lead — the extractor stamps
   // provenance from that document. Issuer identity (ticker/cik/companyName) is
@@ -349,9 +344,9 @@ async function runRecovery(
     // cancellation semantics.
     if (ctx.signal?.aborted) throw err;
     rejectionReasons.push(`llm-extract-error: ${(err as Error).message}`);
-    // If deterministic candidates were already produced and rejected by the
-    // gates, that is a `rejected` outcome — a model/transport failure on top of
-    // it must not overwrite the gate verdict downstream consumers rely on.
+    // If the model already produced a candidate that the gates rejected, that is
+    // a `rejected` outcome — a model/transport failure on top of it must not
+    // overwrite the gate verdict downstream consumers rely on.
     return finish(null, producedCandidate ? "rejected" : "extract-failed");
   }
 

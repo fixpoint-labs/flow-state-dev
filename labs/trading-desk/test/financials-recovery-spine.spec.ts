@@ -34,6 +34,7 @@ const stubs = vi.hoisted(() => ({
   fetchEdgarIncome: vi.fn(),
   fetchEdgarBalance: vi.fn(),
   fetchEdgarCashflow: vi.fn(),
+  llmExtract: vi.fn(),
 }));
 
 const sparse = (extra: Record<string, unknown>) => ({
@@ -63,12 +64,20 @@ vi.mock("@/lib/providers/edgar-registration", () => ({
   fetchRegistrationCandidates: stubs.fetchCandidates,
   fetchProspectusPrimaryHtml: stubs.fetchHtml,
 }));
+// The bounded model extractor is the recovery path's only extraction step; mock
+// it per-test (full vs partial candidate). The validator + promote mapping run
+// for real, so the sparse-balance assertion still exercises the honest-unavailable
+// gate — just off the model's candidate instead of the (deleted) deterministic parse.
+vi.mock("../flows/analysis/tools/runtime/recover-financials-extract", () => ({
+  recoverFinancialsExtract: stubs.llmExtract,
+}));
 
 import { get_income_statement } from "../flows/analysis/tools/data/get_income_statement";
 import { get_balance_sheet } from "../flows/analysis/tools/data/get_balance_sheet";
 import { get_cashflow } from "../flows/analysis/tools/data/get_cashflow";
 import { financialsDataResource } from "../flows/analysis/financials-data-resource";
 import { _resetRecoveryInflight } from "../flows/analysis/tools/runtime/critical-financials-recovery";
+import type { FinancialCandidate } from "../flows/analysis/lib/financial-candidate";
 
 const candidate424 = {
   form: "424B4",
@@ -78,6 +87,32 @@ const candidate424 = {
   url: "https://www.sec.gov/Archives/edgar/data/1750000/000000000026000004/424b4.htm",
   cik: 1750000,
   companyName: "SpaceCo Exploration Inc.",
+};
+
+/** The full SPCX candidate the mocked model tier returns by default (raw USD) —
+ *  all criticals present, so recovery promotes revenue/op-income/FCF + cash/debt. */
+const fullCandidate: FinancialCandidate = {
+  ticker: "SPCX",
+  cik: 1750000,
+  companyName: "SpaceCo Exploration Inc.",
+  form: "424B4",
+  filingDate: "2026-02-10",
+  periodEnd: "2025-12-31",
+  scale: 1_000,
+  currency: "USD",
+  sourceUrl: candidate424.url,
+  income: { revenue: 8_500_000_000, operatingIncome: 1_200_000_000 },
+  cashflow: { operating: 2_000_000_000, capitalExpenditure: -3_500_000_000, freeCashFlow: null },
+  balance: { cashAndEquivalents: 4_000_000_000, totalDebt: 1_000_000_000 },
+};
+
+/** A candidate whose prospectus disclosed income + cash flow but NO balance table
+ *  (cash + debt null). The full-candidate mock can't reproduce the sparse-balance
+ *  case, so the "omits cash and debt" test overrides with this — the promoted
+ *  balance sheet then reads honestly `unavailable`, not authoritative. */
+const noBalanceCandidate: FinancialCandidate = {
+  ...fullCandidate,
+  balance: { cashAndEquivalents: null, totalDebt: null },
 };
 
 const fillStatements = sequencer({
@@ -121,6 +156,9 @@ beforeEach(() => {
   stubs.fetchEdgarIncome.mockReset().mockResolvedValue(emptyIncome());
   stubs.fetchEdgarBalance.mockReset().mockResolvedValue(emptyBalance());
   stubs.fetchEdgarCashflow.mockReset().mockResolvedValue(emptyCashflow());
+  // Default the model tier to the full SPCX candidate; the sparse-balance case
+  // overrides it per-test.
+  stubs.llmExtract.mockReset().mockResolvedValue(fullCandidate);
 });
 
 describe("critical-financials recovery on the live statement chain", () => {
@@ -136,6 +174,10 @@ describe("critical-financials recovery on the live statement chain", () => {
       stores,
       input: { ticker: "SPCX", date: "2026-05-06" },
       seed: { session: { state: baseState } },
+      // Recovery resolves a model before the (mocked) extractor; allow it to
+      // resolve — the model is never actually called (recoverFinancialsExtract
+      // is stubbed), it just must not throw an unmocked-generator error.
+      unmockedGeneratorPolicy: "allow",
     });
     expect(result.error).toBeUndefined();
 
@@ -174,6 +216,7 @@ describe("critical-financials recovery on the live statement chain", () => {
       flow: recoveryFlow, action: "fill", userId: "u", sessionId, stores,
       input: { ticker: "SPCX", date: "2026-05-06" },
       seed: { session: { state: baseState } },
+      unmockedGeneratorPolicy: "allow", // model resolved but unused (extractor mocked)
     });
     expect(result.error).toBeUndefined();
     const financials = (await stores.resourceState.getAll("session", sessionId))[
@@ -206,10 +249,10 @@ describe("critical-financials recovery on the live statement chain", () => {
 
   it("returns unavailable for the balance sheet when the prospectus omits cash and debt", async () => {
     // Income + cashflow are disclosed (recovery promotes), but the balance table
-    // is absent — the promoted `edgar-prospectus` balance sheet is critically
-    // sparse and must read as honest `unavailable`, not authoritative.
-    const noBalance = spcxHtml.replace(/<h2>Consolidated Balance Sheet Data[\s\S]*?<\/table>/i, "");
-    stubs.fetchHtml.mockResolvedValue(noBalance);
+    // is absent (model returns null cash + debt) — the promoted `edgar-prospectus`
+    // balance sheet is critically sparse and must read as honest `unavailable`,
+    // not authoritative.
+    stubs.llmExtract.mockResolvedValue(noBalanceCandidate);
     const stores = createInMemoryStores();
     const sessionId = "recovery-no-balance";
 
@@ -221,6 +264,7 @@ describe("critical-financials recovery on the live statement chain", () => {
       stores,
       input: { ticker: "SPCX", date: "2026-05-06" },
       seed: { session: { state: baseState } },
+      unmockedGeneratorPolicy: "allow", // model resolved but unused (extractor mocked)
     });
     expect(result.error).toBeUndefined();
 
