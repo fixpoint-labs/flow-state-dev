@@ -611,7 +611,9 @@ export async function executeBlock(
       instanceId,
       path,
       transient: block.transient || undefined,
-      stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
+      // FIX-914: any block with an own `stateSchema` gets a container now,
+      // not just sequencers.
+      stateSchema: block.config.stateSchema,
       input,
       phase: options?.phase ?? ctx._blockIdentity?.phase,
       container:
@@ -2269,9 +2271,10 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
 export function sequencer<
   const TInputSchema extends ZodTypeAny = ZodTypeAny,
   const TStateSchema extends ZodTypeAny | undefined = undefined,
+  const TParentStateSchema extends ZodTypeAny | undefined = undefined,
   TInput = z.infer<TInputSchema>,
 >(
-  config: SequencerConfig<TInputSchema, TInput, TStateSchema>
+  config: SequencerConfig<TInputSchema, TInput, TStateSchema, TParentStateSchema>
 ): SequencerDefinition<TInput, TInput, TStateSchema> {
   const { declaredResources, resolvedCapabilities } = resolveCapabilities(config, "sequencer");
 

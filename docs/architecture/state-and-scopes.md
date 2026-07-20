@@ -284,6 +284,25 @@ import { createFilesystemStores } from "@flow-state-dev/engine";
 const devStores = createFilesystemStores({ rootDir: "./data", developmentOnly: true });
 ```
 
+## Block-Level State (FIX-914)
+
+The per-execution-scope state container — originally gated to `kind === "sequencer"` — is generalized to any block that declares an own-state `stateSchema`. `config.stateSchema` already meant "this block's own state"; the change lifts the container-creation gate at four call sites (`createExecutionContext.ts`'s `_withExecutionScope`, `sequencer.ts`'s in-flow child dispatch, `executeBlock.ts`'s root dispatch, `tool-executor.ts`'s tool `ExecutionParent`) from `kind === "sequencer"` to "effective `stateSchema` present."
+
+**One runtime primitive, four addressing modes**, all resolving over the same per-scope-node container:
+
+- `ctx.self` — the current block's own container. Bound directly to the current scope node (not via `getTarget`, which resolves by name and can throw `AmbiguousBlockNameError` — `ctx.self` never needs a name).
+- `ctx.parent` — the immediate parent's container, gained via a new `parentStateSchema` declaration. A child reaches its owner without naming it — the tool → generator write for skill activation is `ctx.parent`, not a new resolver.
+- `ctx.sequencer` — nearest sequencer ancestor (unchanged; already implemented as `getTarget(nearestSequencerName)`).
+- `ctx.targets.<name>` / `getTarget` — a named ancestor (unchanged); a named non-sequencer target now has state if it declared `stateSchema`.
+
+**Fan-out / loop contract:** each `forEach`/`parallel` iteration and each `loopBack`-re-executed body is a fresh scope node → a fresh container → private state per iteration. A loop-owning sequencer keeps its own container across passes, so its `ctx.self` (or a step's `ctx.sequencer`) accumulates. This is emergent from the existing per-scope-node model, not new machinery.
+
+**Router purity:** a router's `execute` can read `ctx.self`/`ctx.parent` but must not write to them — the suspendable-router purity contract (`execution-and-errors.md`) requires resume to re-run `execute` as a pure, read-only function. A preceding `.tap(handler)` performs any write a router-adjacent flow needs recorded.
+
+**Durability boundary (PR1 scope):** block state is in-memory only. Durable checkpoint + suspend/resume persistence for non-sequencer block state is an explicit follow-up — the checkpoint store keys on `provenance.blockInstanceId` (not `item.key`), and retry-stable durability for an arbitrary block needs a path-based storage key, a new `emitStateSnapshot` call site, and suspension stamping/restore on the block's own path. Sequencer checkpoints are unchanged. `state_change` items for non-sequencer containers reuse the existing `scope: "block_instance"` emit path and are transient-by-default in production (`shouldPersistScopeChange`) — not a client-visible projection.
+
+**Deferred (not PR1):** a capability-contributed own-state `stateSchema` (the seam a generator capability needs to give its host generator a `ctx.self` container without the block author declaring `stateSchema` directly) is a separate PR against the capability-merge surface (`capability/merge.ts`'s `extendSchema`, which currently silently last-wins on duplicate fields and needs explicit collision detection first). Removing the legacy `targetStateSchemas`/`sequencerStateSchema`/`parentStateSchema` declaration-key fragmentation in favor of one consolidated key is a later audit-then-remove issue — the *runtime* unifies onto one container now; the *config surface* still has four schema keys.
+
 ## State Schema Bubbling
 
 Block-level state declarations bubble upward for compatibility checking. This enables:
