@@ -58,7 +58,7 @@ import type {
   UsesEntry,
 } from "../capability/types";
 
-import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
+import { resolveActivePresets, flattenCapabilities, getBaseCapability } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
 import { sanitizeToolName, computeToolAliases, assertUniqueToolNames } from "../helpers/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
@@ -112,6 +112,22 @@ async function resolveDynamicCapSurface(
   cap: CapabilityRef,
   ctx: BlockContext,
 ): Promise<DynamicCapSurface> {
+  // Open config is a build-time transform resolved by mergeCapabilities. A
+  // config-declaring capability reaching the dynamic `uses` path — returned
+  // directly by a dynamic resolver, or nested in a dynamically-resolved
+  // capability's own `uses` — is only known at request time, and this path
+  // resolves presets only, so its resolver surface would be silently dropped.
+  // Reject it (whether explicitly `.config()`-ed or relying on a schema
+  // default) with a clear error; v1 supports config on static uses only
+  // (FIX-915).
+  const base = getBaseCapability(cap);
+  if (base.__configDef) {
+    throw new Error(
+      `Capability "${base.name}" declares open config but was reached through a ` +
+      `dynamic uses resolver, which is not supported. Use it on a static uses entry.`
+    );
+  }
+
   const contextEntries: Array<unknown> = [];
   const tools: GeneratorTool[] = [];
 
