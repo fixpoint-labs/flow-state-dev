@@ -82,6 +82,10 @@ jobs:
       # Vercel reads the project (and its Root Directory) from VERCEL_PROJECT_ID,
       # so every command runs from the repo root and Vercel handles the monorepo
       # install/build via each app's vercel.json.
+      # Resolve the project id for this target and check the required secrets
+      # exist. We report the state (rather than exiting cryptically) so the
+      # PR always gets a per-target status comment — one findable link per
+      # label — even when the deploy can't run.
       - name: Resolve Vercel project id
         id: proj
         env:
@@ -91,27 +95,41 @@ jobs:
           PID_STORYBOOK: ${{ secrets.VERCEL_PROJECT_ID_STORYBOOK }}
         run: |
           case "$SLUG" in
-            kitchen-sink) echo "id=$PID_KITCHEN_SINK" >> "$GITHUB_OUTPUT" ;;
-            docs)         echo "id=$PID_DOCS"         >> "$GITHUB_OUTPUT" ;;
-            storybook)    echo "id=$PID_STORYBOOK"    >> "$GITHUB_OUTPUT" ;;
+            kitchen-sink) PID="$PID_KITCHEN_SINK" ;;
+            docs)         PID="$PID_DOCS" ;;
+            storybook)    PID="$PID_STORYBOOK" ;;
             *) echo "::error::Unknown target slug '$SLUG'"; exit 1 ;;
           esac
+          missing=""
+          [ -z "$VERCEL_TOKEN" ] && missing="$missing VERCEL_TOKEN"
+          [ -z "$VERCEL_ORG_ID" ] && missing="$missing VERCEL_ORG_ID"
+          [ -z "$PID" ] && missing="$missing VERCEL_PROJECT_ID(for $SLUG)"
+          missing="${missing# }"
+          echo "id=$PID" >> "$GITHUB_OUTPUT"
+          echo "missing=$missing" >> "$GITHUB_OUTPUT"
+          if [ -n "$missing" ]; then
+            echo "::warning::Skipping '$SLUG' preview: missing repository secret(s): $missing. See docs/contributing/preview-deployments.md."
+          fi
 
       - name: Install Vercel CLI
+        if: steps.proj.outputs.missing == ''
         run: npm install --global vercel@latest
 
       - name: Pull Vercel environment
+        if: steps.proj.outputs.missing == ''
         env:
           VERCEL_PROJECT_ID: ${{ steps.proj.outputs.id }}
         run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
 
       - name: Build project artifacts
+        if: steps.proj.outputs.missing == ''
         env:
           VERCEL_PROJECT_ID: ${{ steps.proj.outputs.id }}
         run: vercel build --token="$VERCEL_TOKEN"
 
       - name: Deploy prebuilt artifacts
         id: deploy
+        if: steps.proj.outputs.missing == ''
         env:
           VERCEL_PROJECT_ID: ${{ steps.proj.outputs.id }}
           SLUG: ${{ matrix.target.slug }}
@@ -120,26 +138,50 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed $SLUG -> $url"
 
-      - name: Post deployment URL to PR
-        if: steps.deploy.outputs.url != ''
+      # One sticky comment per target (keyed by the marker), always posted so
+      # every label has its own stable, individually-linkable status line —
+      # deployed URL on success, an actionable pointer otherwise.
+      - name: Post status to PR
+        if: always()
         uses: actions/github-script@v7
         env:
           SLUG: ${{ matrix.target.slug }}
           URL: ${{ steps.deploy.outputs.url }}
+          MISSING: ${{ steps.proj.outputs.missing }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
-            const slug = process.env.SLUG;
-            const url = process.env.URL;
+            const { SLUG: slug, URL: url, MISSING: missing, RUN_URL: runUrl } = process.env;
             const marker = `<!-- preview-deploy:${slug} -->`;
             const sha = context.payload.pull_request.head.sha.slice(0, 7);
-            const body = [
-              marker,
-              `### 🔎 Preview — \`${slug}\``,
-              '',
-              `**${url}**`,
-              '',
-              `Deployed from \`${sha}\`. Redeploys on new commits while the \`preview/${slug}\` label is applied; remove the label to stop.`,
-            ].join('\n');
+            let body;
+            if (url) {
+              body = [
+                marker,
+                `### 🔎 Preview — \`${slug}\``,
+                '',
+                `**${url}**`,
+                '',
+                `Deployed from \`${sha}\`. Redeploys on new commits while the \`preview/${slug}\` label is applied; remove the label to stop.`,
+              ].join('\n');
+            } else if (missing) {
+              body = [
+                marker,
+                `### ⚠️ Preview — \`${slug}\` (not configured)`,
+                '',
+                `Deploy skipped for \`${sha}\`: missing repository secret(s): \`${missing}\`.`,
+                'Add them under **Settings → Secrets and variables → Actions** — see `docs/contributing/preview-deployments.md`.',
+                '',
+                `[View run](${runUrl})`,
+              ].join('\n');
+            } else {
+              body = [
+                marker,
+                `### ❌ Preview — \`${slug}\` (build failed)`,
+                '',
+                `Deploy failed for \`${sha}\`. [View logs](${runUrl}).`,
+              ].join('\n');
+            }
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
             const comments = await github.paginate(github.rest.issues.listComments, {
@@ -151,3 +193,11 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
+
+      # Keep the check red (honestly) when the deploy couldn't run for lack of
+      # secrets — the sticky comment above says how to fix it.
+      - name: Fail if not configured
+        if: steps.proj.outputs.missing != ''
+        run: |
+          echo "::error::Preview deploy for '${{ matrix.target.slug }}' was skipped — configure the missing secret(s) noted in the PR comment."
+          exit 1

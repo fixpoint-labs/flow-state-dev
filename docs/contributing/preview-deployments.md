@@ -18,8 +18,12 @@ Each target is a separate Vercel project.
 1. Open (or push) a PR.
 2. Add one or more of the `preview/*` labels.
 3. The [`Preview Deploy`](../../.github/workflows/preview-deploy.yml) workflow
-   builds that target from your branch and **posts the deployment URL as a PR
-   comment** — one sticky comment per target, updated in place on each redeploy.
+   builds that target from your branch and **posts a status as a PR comment** —
+   one sticky comment per target, updated in place on each redeploy. On success
+   it shows the deployment URL; if the deploy is skipped (missing secrets) or
+   fails, the same comment links to the run so each label stays individually
+   traceable. Each label runs as its own independent deployment — adding a
+   second label never disturbs the first.
 4. While the label stays applied, new commits redeploy that target
    automatically (the `synchronize` event). Remove the label to stop.
 
