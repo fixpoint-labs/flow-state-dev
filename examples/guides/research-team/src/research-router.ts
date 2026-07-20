@@ -51,7 +51,7 @@ export const researchRouter = router({
 
     return taskBoard({
       name: "competitor-board",
-      collection: { backing: "request", collectionId: "competitors" },
+      collection: { collectionId: "competitors" },
       concurrency: 4,
       dispatcher: "topological",
       workers: { analyzer: analyst("competitor"), synthesizer },

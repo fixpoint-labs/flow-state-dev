@@ -42,10 +42,11 @@ pending ─┬─→ in_progress ─┬─→ completed
 ### TaskCollection
 
 `getOrCreateTaskCollection` resolves a CAS-safe `TaskCollectionRef` over one of
-three backings — block-state (default, per board invocation — sequencer state is
-the common case), request-state (survives block boundaries within a request), or
-resource-collection (outlives the request: a user's queue, an org work pool).
-Every mutation emits a `task-change` component item.
+three backings — request-state (the `taskBoard` default; survives block boundaries
+within a request), block-scoped state (per board invocation — `backing: "sequencer"`
+is the common case), or resource-collection (outlives the request: a user's queue, an
+org work pool — declare one with `defineTaskCollection`). Every mutation emits a
+`task-change` component item.
 
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";

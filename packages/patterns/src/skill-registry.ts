@@ -131,7 +131,6 @@ const taskBoardFactory: PatternFactory = {
     const handle = taskBoard({
       name: `skill_${deps.skillName}`,
       collection: {
-        backing: "request",
         collectionId: deps.collectionId,
         stateKey: deps.collectionId,
       },

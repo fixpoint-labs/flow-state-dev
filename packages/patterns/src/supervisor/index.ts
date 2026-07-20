@@ -336,7 +336,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   // drain — they get cascade-skipped after instead.
   const board = taskBoard({
     name: `${name}-board`,
-    collection: { backing: "request", collectionId: name },
+    collection: { collectionId: name },
     workers: reviewedWorkers,
     concurrency: maxConcurrency,
     dispatcher: "topological",

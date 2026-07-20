@@ -102,7 +102,7 @@ describe("taskBoard - research-board demo", () => {
   it("dispatches 3 worker types through a dep chain", async () => {
     const board = taskBoard({
       name: "research-board",
-      collection: { collectionId: "research" },
+      collection: { backing: "sequencer", collectionId: "research" },
       concurrency: 3,
       dispatcher: "topological",
       workers: {

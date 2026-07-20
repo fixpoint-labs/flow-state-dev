@@ -126,15 +126,15 @@ lever for "when is the board's state still around":
 
 | Backing | Lives for | Reach for it when |
 |---------|-----------|-------------------|
-| `sequencer` (default) | the `board.drain` sequencer's own invocation | the board seeds, drains, and is read within one block slot — the common "fan out and gather" case |
-| `request` | the whole request | a seed/read block outside `board.drain` shares the collection, or an outer loop re-enters `board.drain` to drain freshly added tasks |
+| `request` (default) | the whole request | most work: a seed/read block outside `board.drain` shares the collection, or an outer loop re-enters `board.drain` to drain freshly added tasks — and it works when `collection` is omitted entirely |
+| `sequencer` | the `board.drain` sequencer's own invocation | you specifically want per-invocation isolation: the board seeds, drains, and is read within one block slot and two calls should not share state. Opt in with `{ backing: "sequencer", collectionId }` |
 | `resource` (scope `session`/`user`/`org`) | across requests | the tasks are a durable queue or list that must outlive the request that created them |
 
-The default is the tightest lifetime, and that's usually right — a board that
-fans out and gathers inside one action doesn't need its tasks to survive the
-action. Reach for `request` when a block outside the drain needs the same
-collection (the example uses `request` for exactly this). Reach for `resource`
-when the tasks themselves are the durable thing.
+The default is `request`, and that's usually right — a block outside the drain
+(or a later drain in a replan loop) can see the same tasks. Opt into `sequencer`
+only when you want each `board.drain` call to get its own isolated collection —
+note that omitting `backing` no longer gives you that; you have to ask for it.
+Reach for `resource` when the tasks themselves are the durable thing.
 
 **Multiple boards, one request.** Nothing stops you running several boards in
 the same request or sequencer. Each board is keyed by its own `collectionId`
@@ -145,43 +145,35 @@ independently.
 
 ## Living across requests as a resource
 
-Here's the part that trips people up. A `resource`-backed collection persists
-its tasks in the resource graph, scoped to a session, user, or org:
+Here's the part that trips people up. A durable collection persists its tasks in
+the resource graph, scoped to a session, user, or org. Declare it with
+`defineTaskCollection` and pass it straight to the board:
 
 ```ts
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+
+const todos = defineTaskCollection({
+  id: "todos",             // stable id — the resource pattern and the board's collectionId
+  scope: "user",           // ← the collection's lifetime
+  stateSchema: z.object({ topic: z.string() }), // the task `input` payload
+});
+
 const board = taskBoard({
   name: "todo-board",
-  // A caller-supplied factory resolves a resource-backed collection.
-  collection: (ctx) =>
-    getOrCreateTaskCollection({
-      ctx,
-      backing: "resource",
-      collectionId: "todos",  // stable id — also used for task-change event attribution
-      collection: todoTasks,  // a ResourceCollectionRef declared on the flow
-    }),
+  collection: todos,
   workers: { processor },
 });
 ```
 
-Two things differ from the request example above, and both trip people up:
+The board registers the collection on both its drain and `board.capability`, so a
+sibling action that lists `board.capability` in `uses` reads and writes the same
+durable tasks. Two things to keep in mind:
 
-- **Resource backing goes through a factory**, not a config object. `taskBoard`'s
-  `collection` accepts a `{ backing: "sequencer" | "request", … }` object *or* a
-  `(ctx) => collection` factory. There's no `{ backing: "resource" }` object form,
-  because resource backing needs a `ResourceCollectionRef` you resolve inside the
-  factory. (That asymmetry is a rough edge, not a deep reason — a config form
-  could exist.)
-- **The scope isn't set in the `taskBoard` call.** `session` / `user` / `org`
-  lives on the `ResourceCollectionRef` where you declare it:
-
-  ```ts
-  // declared once on the flow — the scope is here, not in the board config
-  const todoTasks = defineResourceCollection({
-    pattern: "todos/**",
-    scope: "user",           // ← the collection's scope
-    stateSchema: taskStateSchema,
-  });
-  ```
+- **The scope lives on the collection, not the board.** `session` / `user` / `org`
+  is set once on `defineTaskCollection`; the board just points at it.
+- **For an externally-managed store**, `collection` also accepts a
+  `(ctx) => TaskCollectionRef` factory — resolve any `ResourceCollectionRef`
+  yourself inside it. `defineTaskCollection` is the one-liner for the common case.
 
 So request A can `addTask` into it, the request ends, and request B — a
 different call, even a different session turn — can still see those tasks (same

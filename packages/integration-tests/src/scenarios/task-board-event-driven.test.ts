@@ -49,7 +49,9 @@ describe("FIX-621: task-board event-driven worker idle-wait", () => {
 
     const board = taskBoard({
       name: "ed-board",
-      collection: { collectionId: "ed-board" },
+      // Sequencer-backed: `ed-root` below holds the `tasks` slot this board
+      // drains. Explicit since the default backing is request.
+      collection: { backing: "sequencer", collectionId: "ed-board" },
       concurrency: CONCURRENCY,
       dispatcher: "topological",
       workers: worker,

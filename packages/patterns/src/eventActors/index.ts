@@ -360,7 +360,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
 
   const board = taskBoard({
     name: `${name}-board`,
-    collection: { backing: "request", collectionId },
+    collection: { collectionId },
     workers: workerRegistry,
     concurrency,
     dispatcher: "fifo",

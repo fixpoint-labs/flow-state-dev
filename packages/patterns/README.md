@@ -146,17 +146,17 @@ const board = taskBoard({
 
 #### Re-entry across an outer loop
 
-The default `collection: { collectionId: "..." }` puts the `tasks` record on the board's own sequencer state. That state is per-invocation, so calling `board.drain` twice from a parent sequencer produces two independent collections. For boards that need to be re-entered — typically a replan loop that calls `board.drain` across iterations and adds new tasks between rounds — opt into the request-scoped backing:
+The default backing is request-scoped, so `board.drain` re-entry works out of the box. Omit `collection` (or pass `{ collectionId }` to name it) and the `tasks` record lives on `ctx.request`, surviving every block boundary in the request — including subsequent `board.drain` invocations and adds from a sibling step before the first drain. This is what a replan loop needs: call the board across iterations, add new tasks between rounds, and each drain picks them up.
 
 ```typescript
 const board = taskBoard({
   name: "replan-board",
-  collection: { backing: "request", collectionId: "replan-board" },
+  // request-scoped by default; nothing to restate
   // ...workers, dispatcher, etc.
 });
 ```
 
-The collection then lives on `ctx.request` and survives every block boundary in the request, including subsequent `board.drain` invocations. CAS semantics are identical to the sequencer-state default — request-state exposes the same atomic-state surface — so contention safety, retries, and `task-change` emission all work the same. Lifetime is the request, not the session; for cross-request boards, use a caller-supplied factory with a session/user/org-scoped resource collection.
+CAS semantics are identical across backings — request-state exposes the same atomic-state surface — so contention safety, retries, and `task-change` emission all work the same. For single-invocation, per-call storage, opt into `{ backing: "sequencer", collectionId }`. For a board whose tasks outlive the request, declare a durable collection with `defineTaskCollection({ id, scope, stateSchema })` and pass it as `collection`.
 
 `awaiting_review` is fully supported: standard dispatchers skip it, and the loop counts it as in-flight (resume from `awaiting_review` wakes the loop on the next idle poll). `reviewPolicy`, review UI, and the `tasks.review.requested` topic ship in Wave 2.
 
