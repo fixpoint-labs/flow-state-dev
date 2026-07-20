@@ -12,8 +12,8 @@ import { sequencer, handler, utility } from "@flow-state-dev/core";
 import type { SequencerDefinition } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
-import { taskBoard } from "../task-board";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { createSeedTasksFromPlan } from "../shared/planning-entry";
 import { parallelTasksInputSchema, type SubTaskErrorStrategy } from "./schemas";
 

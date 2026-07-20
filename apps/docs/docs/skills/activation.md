@@ -24,7 +24,7 @@ The tool-call path is still the right choice when activation is fluid (the agent
 ## Up-front: `createSkillActivator`
 
 ```ts
-import { createSkillActivator } from "@flow-state-dev/skills";
+import { createSkillActivator } from "@flow-state-dev/orchestration";
 
 export const skillActivator = createSkillActivator({
   scope: "user", // matches the skills capability's scope
@@ -78,7 +78,7 @@ Set `enableLlmClassifier: false` in tests that shouldn't depend on a mocked clas
 When a flow uses `skillActivator`, the `runSkill` tool and the catalog context formatter are redundant — the up-front path activates skills before the model has anything to call. The capability ships them in a `runSkill` preset that you opt out of with the standard preset overrides:
 
 ```ts
-import { createSkillsCapability, createSkillActivator } from "@flow-state-dev/skills";
+import { createSkillsCapability, createSkillActivator } from "@flow-state-dev/orchestration";
 
 export const skillsCap = createSkillsCapability({
   catalog: { /* ... */ },

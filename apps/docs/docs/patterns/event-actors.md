@@ -182,7 +182,7 @@ Each actor task drains through `taskBoard` with `onError: "skip"` (the default).
 
 ## Substrate notes
 
-- Actor invocations are `Task` records in a request-scoped `TaskCollection` (`@flow-state-dev/tasks`). They show up in `<Plan />` and the devtool with the actor name as `task.assignee`.
+- Actor invocations are `Task` records in a request-scoped `TaskCollection` (`@flow-state-dev/orchestration`). They show up in `<Plan />` and the devtool with the actor name as `task.assignee`.
 - `task.metadata.depth` carries the reactive cascade depth. `task.metadata.type` and `task.metadata.topic` carry the matched entry.
 - The entry log is a sibling session resource (writable, with `client.data` projection so renderers see live entries).
 
@@ -208,6 +208,6 @@ import { createAppendEntry } from "@flow-state-dev/patterns/eventActors";
 ## See also
 
 - [Routed Specialists](./routed-specialists) — controller-driven sibling pattern.
-- [Task Board](./task-board) — concurrent drain over a `TaskCollection` with dependency gating.
+- [Task Board](../orchestration/task-board) — concurrent drain over a `TaskCollection` with dependency gating.
 - [Parallel Tasks](./parallelTasks) — single-pass fan-out when tasks are known upfront.
 - [Supervisor](./supervisor) — fan-out with review loop.

@@ -53,7 +53,7 @@
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
-    "@flow-state-dev/skills": "workspace:*",
+    "@flow-state-dev/orchestration": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {

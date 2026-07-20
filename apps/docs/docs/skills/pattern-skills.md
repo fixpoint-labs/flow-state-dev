@@ -72,7 +72,7 @@ Each worker has exactly one of four resolution fields. Parse fails with a precis
 | `prompt` | Inline body. `$ARGUMENTS` substituted at activation. |
 | `prompt-ref` | Path to a Markdown file inside the skill folder. Loaded at activation; missing files surface as a clear activation error. |
 | `block-ref` | Registry key into the optional `BlockRegistry` passed to `createSkillsCapability`. Use when a worker needs custom code beyond what a prompt expresses. Unknown refs fail at activation. |
-| `agent-ref` | Reserved slot for a forthcoming Agents primitive. The schema is supported today; resolution lands with the Agents work. Until then, workers should use `prompt` or `prompt-ref`. |
+| `agent-ref` | Name of a registered agent (from `@flow-state-dev/workforce`). The worker is staffed by that agent's persona, model, and tools. Requires both `agentRegistry` and `materializeAgent` on `createSkillsCapability` — an agent-ref worker fails at activation if either is missing. See [Agents](../orchestration/agents). |
 
 Per-worker tuning:
 
@@ -84,7 +84,9 @@ Per-worker tuning:
 
 ## The `taskTools` capability
 
-Workers can call eight runtime tools to mutate the active board. Opt in by adding `taskTools` to a worker's allowed list or to the skill's top-level `allowed-tools` array.
+Workers can call eight runtime tools to mutate the active board. Opt a **prompt** or **prompt-ref** worker in by adding `taskTools` to that worker's own `tools:` list — `materializeWorker` installs the capability only when the worker's `tools` array contains it. Listing `taskTools` in the skill's top-level `allowed-tools` does not install it on the pattern workers.
+
+For an **agent-ref** worker the worker's own `tools:` field is not read — the agent is materialized from its own definition. Put `taskTools` in the agent's `allowedTools`, or override per-skill via `agent-overrides.tools`.
 
 | Tool | Purpose |
 |------|---------|
@@ -133,7 +135,7 @@ The user sees the synthesizer's output. Kitchen-sink's `competitor-analysis` ski
 Pattern skills are off by default. Pass the registry when constructing the skills capability:
 
 ```ts
-import { createSkillsCapability } from "@flow-state-dev/skills";
+import { createSkillsCapability } from "@flow-state-dev/orchestration";
 import { defaultPatternRegistry } from "@flow-state-dev/patterns";
 
 export const skillsCap = createSkillsCapability({
@@ -148,7 +150,7 @@ export const skillsCap = createSkillsCapability({
 To register a custom pattern, use `createPatternRegistry`:
 
 ```ts
-import { createPatternRegistry } from "@flow-state-dev/skills";
+import { createPatternRegistry } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
 const myPattern = {

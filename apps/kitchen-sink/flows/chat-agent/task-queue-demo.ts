@@ -12,8 +12,8 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
-import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/patterns/task-board";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 
 const COLLECTION_ID = "task-queue-demo";
 

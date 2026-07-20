@@ -14,7 +14,7 @@
  */
 import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
 import { defaultPatternRegistry } from "@flow-state-dev/patterns";
-import { createSkillsCapability } from "@flow-state-dev/skills";
+import { createSkillsCapability } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
 const inputSchema = z.object({ message: z.string() });

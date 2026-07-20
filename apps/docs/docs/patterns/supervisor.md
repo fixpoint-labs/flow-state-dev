@@ -269,7 +269,7 @@ The synthesizer receives `{ goal: string, results: unknown[] }` where `results` 
 
 ## See also
 
-- [Task Board](./task-board) — the substrate that powers Supervisor's worker dispatch
+- [Task Board](../orchestration/task-board) — the substrate that powers Supervisor's worker dispatch
 - [Parallel Tasks](./parallelTasks) — fan-out without per-task review
 - [Round Robin](./round-robin) — fixed-roster turn-taking with a judge, no per-task retry
 - [Plan and Execute](./plan-and-execute) — sequential dependency-ordered execution with optional replanning

@@ -109,7 +109,7 @@ const system = eventActors({
 
 ### Task Board
 
-Concurrent drain over a `TaskCollection` with dependency gating and per-task worker routing. Built on the unified Plan/Task substrate (`@flow-state-dev/tasks`). Up to N workers run in parallel, each task is routed to the worker whose key matches `task.assignee`, and dependencies (`deps[]`) are respected via the topological dispatcher. Workers can enqueue new tasks mid-drain; the loop terminates when the board drains, or when no remaining pending task can be claimed (every pending has a non-`completed` dep — `onIdle: "complete-or-blocked"` default), or when `shouldExit` returns true in `wait` mode.
+Concurrent drain over a `TaskCollection` with dependency gating and per-task worker routing. Built on the unified Plan/Task substrate (`@flow-state-dev/orchestration`). Up to N workers run in parallel, each task is routed to the worker whose key matches `task.assignee`, and dependencies (`deps[]`) are respected via the topological dispatcher. Workers can enqueue new tasks mid-drain; the loop terminates when the board drains, or when no remaining pending task can be claimed (every pending has a non-`completed` dep — `onIdle: "complete-or-blocked"` default), or when `shouldExit` returns true in `wait` mode.
 
 **Termination modes (`onIdle`)**:
 
@@ -120,7 +120,7 @@ Concurrent drain over a `TaskCollection` with dependency gating and per-task wor
 The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures"` field so callers can tell a clean drain from a dep-blocked exit without inspecting `counts`.
 
 ```typescript
-import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/patterns/task-board";
+import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/orchestration/task-board";
 
 const board = taskBoard({
   name: "research-board",
@@ -286,9 +286,10 @@ Pre-migration workers that declared the legacy `executableTaskSchema` (input sha
 Workers emit `message`, `source`, `tool_call`, and `reasoning` items naturally as they run. Synthesizer prompt builders, reviewer input builders, and replanners can read those emissions per-task via `TaskHandle.items()` instead of forcing the worker to pack everything into a structured `outputSchema`.
 
 ```typescript
-import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 
-const collection = getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "my-plan" });
+// inside a block's async execute(input, ctx):
+const collection = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "my-plan" });
 
 for (const task of collection.list({ status: "completed" })) {
   const items = task.items();
@@ -335,7 +336,7 @@ The `emitPlanMeta`, `emitTaskUpdate`, and `emitPlanSnapshot` runtime helpers hav
 
 ## Skill-pattern binding
 
-`defaultPatternRegistry` plugs into `@flow-state-dev/skills` so a SKILL.md frontmatter can declare a multi-agent pattern. Wire it via `createSkillsCapability({ patternRegistry: defaultPatternRegistry })`. Eight entries are registered: `task-board`, `plan-and-execute`, `supervisor`, `parallel-tasks`, `coordinator` (deprecated alias for `parallel-tasks`), `routed-specialists`, plus two reserved stubs (`event-actors`, `approval-gate`) that throw clear deferral errors.
+`defaultPatternRegistry` plugs into `@flow-state-dev/orchestration` so a SKILL.md frontmatter can declare a multi-agent pattern. Wire it via `createSkillsCapability({ patternRegistry: defaultPatternRegistry })`. Eight entries are registered: `task-board`, `plan-and-execute`, `supervisor`, `parallel-tasks`, `coordinator` (deprecated alias for `parallel-tasks`), `routed-specialists`, plus two reserved stubs (`event-actors`, `approval-gate`) that throw clear deferral errors.
 
 Each adapter validates its `pattern-config` block via a strict Zod schema — unknown keys reject at parse rather than silently passing through. See the [pattern skills docs](https://flow-state.dev/docs/skills/pattern-skills) for the full surface.
 

@@ -20,7 +20,7 @@ import {
   taskBoard,
   taskBoardStateSchema,
   taskWorkerInputSchema,
-} from "@flow-state-dev/patterns/task-board";
+} from "@flow-state-dev/orchestration/task-board";
 import { testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { itemsByType } from "../helpers/assertions";

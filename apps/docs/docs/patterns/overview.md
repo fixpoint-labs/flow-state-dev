@@ -20,6 +20,8 @@ Primitives → Utility Blocks → Composable Patterns
 
 The line between utility blocks and composable patterns is clear: utility blocks are single blocks. Patterns are multi-block sequencer compositions.
 
+Several of the coordination patterns below — `supervisor`, `parallelTasks`, `plan-and-execute` — are compositions over the task board, the concurrent-drain primitive documented under [Orchestration](../orchestration/overview). Reach for a pattern when its shape fits; drop to the [task board](../orchestration/task-board) directly when none of them do.
+
 > **Memory is orthogonal.** Cross-turn memory is a capability you install on blocks regardless of which coordination pattern you choose. See [Ecosystem → Memory](../memory/overview).
 
 ## When to use each tier
@@ -95,7 +97,7 @@ More specifically:
 - **Fixed-roster turn-taking with a judge deciding when to stop** → [Round Robin](./round-robin)
 - **Adversarial argumentation with assigned stances and a final judge. An optional moderator can drive non-deterministic dispatch across rounds and signal early termination.** → [Debate](./debate)
 - **Event-driven multi-agent coordination (broadcast/react)** → [Event Actors](./event-actors)
-- **Concurrent dependency-aware drain over a Task Collection** → [Task Board](./task-board)
+- **Concurrent dependency-aware drain over a Task Collection** → [Task Board](../orchestration/task-board)
 - **Complex hierarchical work where steps need their own sub-planning** → Plan and Execute with a Supervisor as the `stepExecutor`
 
 The first three accept a custom `planner` override, so you can swap out `utility.decomposer` for a domain-specific planner if you need tighter control.

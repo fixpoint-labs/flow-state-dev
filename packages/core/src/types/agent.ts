@@ -104,7 +104,7 @@ export interface AgentRegistry {
 
 /**
  * Options for materializing an Agent into a worker-shaped or standalone generator.
- * Defined in core (not workforce) so `@flow-state-dev/skills` can type the
+ * Defined in core (not workforce) so `@flow-state-dev/orchestration` can type the
  * injected `materializeAgent` dep without importing `@flow-state-dev/workforce`.
  */
 export interface MaterializeAgentOptions {

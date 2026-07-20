@@ -18,7 +18,7 @@ import {
   workerInputSchema,
   buildUserMessage,
   taskTools as taskToolsCapability,
-} from "@flow-state-dev/skills";
+} from "@flow-state-dev/orchestration";
 import { resolveAgentPersona } from "./resolve-persona";
 
 function resolveCatalogTools(

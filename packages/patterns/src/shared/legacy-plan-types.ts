@@ -1,12 +1,12 @@
 /**
  * Deprecated plan/task type shapes. Pre-substrate (P&E + supervisor) used these
  * to drive the `plan-meta`/`plan-task` ComponentItems. Both patterns now run on
- * `@flow-state-dev/tasks` and emit `task-change` + `task-board-meta` instead.
+ * `@flow-state-dev/orchestration` and emit `task-change` + `task-board-meta` instead.
  *
  * Types are kept exported for backward compatibility with consumers that imported
  * them from `@flow-state-dev/patterns`. They're not used internally.
  *
- * @deprecated Use the substrate's `Task` type from `@flow-state-dev/tasks`
+ * @deprecated Use the substrate's `Task` type from `@flow-state-dev/orchestration`
  *             and the `task-change` / `task-board-meta` ComponentItem shapes.
  */
 import { z } from "zod";
@@ -14,7 +14,7 @@ import { z } from "zod";
 /**
  * Base schema for a plan task.
  *
- * @deprecated Use the substrate's `Task` type from `@flow-state-dev/tasks`.
+ * @deprecated Use the substrate's `Task` type from `@flow-state-dev/orchestration`.
  */
 export const BasePlanTaskSchema = z.object({
   id: z.string(),
@@ -34,13 +34,13 @@ export const BasePlanTaskSchema = z.object({
   error: z.string().optional(),
 });
 
-/** @deprecated Use the substrate's `Task` type from `@flow-state-dev/tasks`. */
+/** @deprecated Use the substrate's `Task` type from `@flow-state-dev/orchestration`. */
 export type BasePlanTask = z.infer<typeof BasePlanTaskSchema>;
 
 /**
  * Base schema for a plan.
  *
- * @deprecated Use the substrate's `TaskCollection` from `@flow-state-dev/tasks`.
+ * @deprecated Use the substrate's `TaskCollection` from `@flow-state-dev/orchestration`.
  */
 export const BasePlanSchema = z.object({
   goal: z.string(),
@@ -51,7 +51,7 @@ export const BasePlanSchema = z.object({
   iteration: z.number().optional(),
 });
 
-/** @deprecated Use the substrate's `TaskCollection` from `@flow-state-dev/tasks`. */
+/** @deprecated Use the substrate's `TaskCollection` from `@flow-state-dev/orchestration`. */
 export type BasePlan = z.infer<typeof BasePlanSchema>;
 
 /** @deprecated Use `task-board-meta` ComponentItem data shape instead. */

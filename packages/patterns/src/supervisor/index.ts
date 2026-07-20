@@ -14,7 +14,7 @@
  *   → labelFailedReviews (.tap) → synthesize
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
-import { flowPolicy } from "@flow-state-dev/tasks";
+import { flowPolicy } from "@flow-state-dev/orchestration";
 import type {
   ItemVisibility,
   GeneratorHistoryConfig,
@@ -25,7 +25,7 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskBoard, createCascadeSkipDependents } from "../task-board";
+import { taskBoard, createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
 import {
   supervisorInputSchema,
   supervisorStateSchema,

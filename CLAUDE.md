@@ -129,7 +129,9 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/store-sqlite`      | SQLite-backed persistent store                                          |
 | `@flow-state-dev/vercel`            | Vercel deployment adapter (SSE shaping, heartbeats, runtime config)     |
 | `@flow-state-dev/tools`             | Reusable tool blocks                                                    |
-| `@flow-state-dev/patterns`          | Higher-level composition patterns                                       |
+| `@flow-state-dev/orchestration`     | Task substrate, dispatchers, the task-board primitive, and the skills runtime |
+| `@flow-state-dev/workforce`         | Agent registry, personas, and materialization (Layer 2 on orchestration) |
+| `@flow-state-dev/patterns`          | Higher-level composition patterns (built on the task board)             |
 | `@flow-state-dev/memory`            | Cross-turn memory system (working / episodic / semantic / digest tiers) |
 | `@flow-state-dev/ui`                | Component registry for flow UIs                                         |
 | `@thought-fabric/core`              | Cognitive architecture primitives (attention, identity)                 |

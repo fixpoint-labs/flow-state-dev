@@ -2,7 +2,7 @@
  * Local mirror of the unified Plan/Task substrate's component-item types
  * (FIX-444 / FIX-446) for the DevTool TaskCollections panel (FIX-445).
  *
- * Inlined rather than imported from `@flow-state-dev/tasks` to keep the
+ * Inlined rather than imported from `@flow-state-dev/orchestration` to keep the
  * DevTool app dep surface narrow — the panel only needs the wire shape, not
  * the runtime mutation API. Update in lockstep with
  * `packages/tasks/src/schema/task.ts` and the substrate emission sites in
@@ -48,7 +48,7 @@ export type TaskChangeKind =
   | "assignee_changed"
   | (string & {});
 
-/** Mirror of `Task` from `@flow-state-dev/tasks`. Wire-shape only. */
+/** Mirror of `Task` from `@flow-state-dev/orchestration`. Wire-shape only. */
 export type Task = {
   id: string;
   goal: string;

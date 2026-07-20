@@ -3,7 +3,7 @@ import type {
   PatternBinding,
   ResourceCollectionRef,
 } from "@flow-state-dev/core";
-import type { PatternRegistryDeps } from "@flow-state-dev/skills";
+import type { PatternRegistryDeps } from "@flow-state-dev/orchestration";
 import { defaultPatternRegistry } from "../src/skill-registry";
 
 /** Minimal stub resource collection — pattern factories don't read from it

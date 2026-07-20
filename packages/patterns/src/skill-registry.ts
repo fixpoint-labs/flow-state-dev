@@ -4,7 +4,7 @@
  * Each entry adapts a kebab-case `pattern-config` block declared in
  * `SKILL.md` frontmatter into the corresponding TypeScript factory
  * config. Adapters materialize worker generators via
- * `materializeWorker` from `@flow-state-dev/skills` and forward
+ * `materializeWorker` from `@flow-state-dev/orchestration` and forward
  * everything else to the underlying pattern factory.
  *
  * Out of scope: `responseAuditor` and `rlm` (not task-collection-shaped)
@@ -18,13 +18,14 @@ import type { PatternBinding, WorkerSpec } from "@flow-state-dev/core";
 import {
   createPatternRegistry,
   materializeWorker,
+  kebabToCamel,
   type MaterializedPattern,
   type PatternFactory,
   type PatternRegistry,
   type PatternRegistryDeps,
-} from "@flow-state-dev/skills";
-import type { TaskInit, TaskWorker, TaskWorkerRegistry } from "@flow-state-dev/tasks";
-import { taskBoard } from "./task-board";
+} from "@flow-state-dev/orchestration";
+import type { TaskInit, TaskWorker, TaskWorkerRegistry } from "@flow-state-dev/orchestration";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { planAndExecute } from "./plan-and-execute";
 import { supervisor } from "./supervisor";
 import { parallelTasks } from "./parallelTasks";
@@ -34,11 +35,12 @@ import { routedSpecialists, createWorkspace } from "./routedSpecialists";
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/** Map kebab-case patternConfig keys to camelCase. */
+/** Map kebab-case patternConfig keys to camelCase, reusing the substrate's
+ *  string converter so the transform stays defined in one place (BP-029). */
 function kebabToCamelObj(input: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(input)) {
-    out[k.replace(/-([a-z0-9])/g, (_, c) => (c as string).toUpperCase())] = v;
+    out[kebabToCamel(k)] = v;
   }
   return out;
 }

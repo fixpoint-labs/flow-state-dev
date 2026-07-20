@@ -8,7 +8,7 @@ An **Agent** is a named, reusable participant composed of a Persona (its system-
 
 ```ts
 import { defineAgent, createAgentRegistry, materializeAgent } from "@flow-state-dev/workforce";
-import { createSkillsCapability } from "@flow-state-dev/skills";
+import { createSkillsCapability } from "@flow-state-dev/orchestration";
 
 const analyst = defineAgent({
   name: "research-analyst",

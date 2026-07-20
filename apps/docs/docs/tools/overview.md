@@ -105,7 +105,7 @@ Errors are never cached. If `execute` throws, no entry is written and the next c
 
 Don't mark a tool cacheable if it mutates state, depends on time or randomness not captured in its arguments, or if a stale result would cause real harm. A cache hit isn't always a correct hit.
 
-The cross-task observation flow that pairs with this layer is documented in the [Flow policy](/docs/patterns/flow-policy) guide — observations get recorded whether or not the tool is cacheable.
+The cross-task observation flow that pairs with this layer is documented in the [Flow policy](/docs/orchestration/flow-policy) guide — observations get recorded whether or not the tool is cacheable.
 
 ## Installation
 

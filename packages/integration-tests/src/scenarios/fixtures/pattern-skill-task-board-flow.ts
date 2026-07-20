@@ -13,8 +13,8 @@
  * the discoverer tries to mutate the same scope) to surface.
  */
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
-import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/patterns/task-board";
-import { taskTools } from "@flow-state-dev/skills";
+import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/orchestration/task-board";
+import { taskTools } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
 const inputSchema = z.object({ message: z.string() });

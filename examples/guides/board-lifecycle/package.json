@@ -1,0 +1,26 @@
+{
+  "name": "@flow-state-dev/example-guide-board-lifecycle",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Runnable companion code for the board-lifecycle guide: when a board's drain runs, and how a collection is shared across blocks.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root .",
+    "fsdev": "tsx ../../../packages/cli/bin/fsdev.ts"
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/orchestration": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

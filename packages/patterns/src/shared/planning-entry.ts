@@ -22,8 +22,8 @@ import { z } from "zod";
 import {
   getOrCreateTaskCollection,
   type TaskInit,
-} from "@flow-state-dev/tasks";
-import { TASK_BOARD_META_COMPONENT_TYPE } from "../task-board/blocks/board-meta";
+} from "@flow-state-dev/orchestration";
+import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/task-board";
 
 export interface PlanningEntryStateShape {
   goal?: string;
