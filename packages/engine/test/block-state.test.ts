@@ -286,7 +286,7 @@ describe("FIX-914: block-level state", () => {
       tools: [track],
       stateSchema: z.object({ loaded: z.array(z.string()).default([]) }),
       context: (_input, ctx) => {
-        const loaded = (ctx.self?.state as { loaded?: string[] } | undefined)?.loaded ?? [];
+        const loaded = ctx.self?.state.loaded ?? [];
         seenContexts.push(loaded.join(","));
         return `loaded: ${loaded.join(", ")}`;
       }
@@ -444,5 +444,60 @@ describe("FIX-914: block-level state", () => {
     expect(result.error).toBeUndefined();
     expect(result.output).toBe(true);
     expect(observedParent).toMatchObject({ name: "stateless-owner", kind: "sequencer" });
+  });
+
+  it("ctx.sequencer resolves the enclosing sequencer, not a same-named stateful sibling (regression)", async () => {
+    // Before FIX-914, a non-sequencer block never had a container, so a
+    // same-named sibling could never shadow ctx.sequencer's getTarget(name)
+    // lookup (siblings resolve before ancestors). Now that any block can
+    // declare stateSchema, a sibling sharing the sequencer's name and ALSO
+    // declaring stateSchema would shadow it unless ctx.sequencer binds
+    // directly to the walked sequencer node instead of by name.
+    const decoy = handler({
+      name: "shared-name",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      stateSchema: z.object({ owner: z.string().default("decoy") }),
+      execute: (value) => value
+    });
+    let observedOwner: string | undefined;
+    const reader = handler({
+      name: "reader",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      sequencerStateSchema: z.object({ owner: z.string() }),
+      execute: (value, ctx) => {
+        observedOwner = ctx.sequencer?.state.owner;
+        return value;
+      }
+    });
+
+    const seq = sequencer({
+      name: "shared-name",
+      inputSchema: z.number(),
+      stateSchema: z.object({ owner: z.string().default("sequencer") })
+    })
+      .step(decoy)
+      .step(reader);
+
+    const flow = defineFlow({
+      kind: "sibling-shadow-flow",
+      actions: { run: { inputSchema: z.number(), block: seq } }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: 1,
+      userId: "user",
+      sessionId: "sess",
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
+    });
+
+    expect(result.error).toBeUndefined();
+    // "reader" must see the SEQUENCER's own state, not the same-named
+    // "decoy" sibling's state.
+    expect(observedOwner).toBe("sequencer");
   });
 });

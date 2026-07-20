@@ -3189,7 +3189,12 @@ export async function createExecutionContext<
             cursor.parent.kind === "sequencer" &&
             cursor.parentStateContainer !== undefined
           ) {
-            return context.getTarget(cursor.parent.name);
+            // FIX-914: bind directly to the walked sequencer node, not via
+            // getTarget(name) — getTarget searches siblings before
+            // ancestors, so a stateful sibling sharing the sequencer's name
+            // (possible now that any block can have a container, not just
+            // sequencers) would otherwise shadow the real sequencer here.
+            return buildStateRef(cursor);
           }
 
           cursor = cursor.previous;

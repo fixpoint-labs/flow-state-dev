@@ -291,7 +291,7 @@ The per-execution-scope state container — originally gated to `kind === "seque
 **One runtime primitive, four addressing modes**, all resolving over the same per-scope-node container:
 
 - `ctx.self` — the current block's own container. Bound directly to the current scope node (not via `getTarget`, which resolves by name and can throw `AmbiguousBlockNameError` — `ctx.self` never needs a name).
-- `ctx.parent` — the immediate parent's container, gained via a new `parentStateSchema` declaration. A child reaches its owner without naming it — the tool → generator write for skill activation is `ctx.parent`, not a new resolver.
+- `ctx.parent` — the immediate parent's container, present when the parent has `stateSchema` (checked via `parentChain.previous.parentStateContainer`) — regardless of whether the child declares `parentStateSchema`. `parentStateSchema` is compile-time only today (typing `ctx.parent`'s state ops), mirroring the existing `parentInputSchema`; it doesn't gate runtime access. A child reaches its owner without naming it — the tool → generator write for skill activation is `ctx.parent`, not a new resolver.
 - `ctx.sequencer` — nearest sequencer ancestor (unchanged; already implemented as `getTarget(nearestSequencerName)`).
 - `ctx.targets.<name>` / `getTarget` — a named ancestor (unchanged); a named non-sequencer target now has state if it declared `stateSchema`.
 

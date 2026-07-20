@@ -37,30 +37,28 @@ Block state is one primitive with four addressing modes, depending on which bloc
 
 ## Reading a parent's state: `ctx.parent`
 
-A child block reaches its immediate parent's state via `ctx.parent`, without naming it. Declare the shape you expect with `parentStateSchema`:
+A child block reaches its immediate parent's state via `ctx.parent`, without naming it. Declare the shape you expect with `parentStateSchema`.
+
+The catch: only a sequencer, router, or generator can dispatch a *child* block — a plain handler is always a leaf, so two handlers chained with `.step().step()` on the same sequencer are siblings, not parent and child (both report to the sequencer as their `ctx.parent`). To see a genuine owner/child pair, the owner has to be the thing doing the dispatching:
 
 ```ts
-const owner = handler({
-  name: "owner",
-  stateSchema: z.object({ note: z.string().nullable().default(null) }),
-  execute: async (input, ctx) => {
-    await ctx.self!.setState({ note: summarize(input) });
-    return input;
-  },
-});
-
 const child = handler({
   name: "child",
   parentStateSchema: z.object({ note: z.string().nullable() }),
   execute: async (_input, ctx) => `parent said: ${ctx.parent?.state?.note}`,
 });
 
-const pipeline = sequencer({ name: "owner-then-child" })
-  .step(owner)
+const pipeline = sequencer({
+  name: "owner-then-child",
+  stateSchema: z.object({ note: z.string().nullable().default(null) }),
+})
+  .tap(async (input, ctx) => {
+    await ctx.self!.setState({ note: summarize(input) });
+  })
   .step(child);
 ```
 
-`owner` and `child` are two sides of the same container: `owner`'s `ctx.self` is `child`'s `ctx.parent`. Whoever is asking determines which handle you reach for — the block itself uses `ctx.self`, anything nested one level inside it uses `ctx.parent`.
+`pipeline` is the owner here: its `.tap()` step runs directly in the sequencer's own scope, so `ctx.self` there is the sequencer's own state. `child`, dispatched one level inside it via `.step()`, reads that same container as `ctx.parent`. Same container, two sides — whoever is asking determines which handle you reach for.
 
 `ctx.parent` is `undefined` when there's no parent (the block is at the root), and its state ops are absent — not present-and-throwing — when the parent declared no `stateSchema`. Guard with `?.` either way.
 
