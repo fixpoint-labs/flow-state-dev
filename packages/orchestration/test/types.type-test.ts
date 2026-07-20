@@ -55,7 +55,10 @@ void _registry;
 async function checkBoardAccessorTypes() {
   const board = taskBoard<{ q: string }, { a: number }>({
     name: "typed",
-    workers: myWorker as TaskWorker,
+    // No widening assertion: `myWorker` keeps its `{ q: string }` input
+    // specialization so the board's generics are actually exercised (a
+    // `myWorker as TaskWorker` here erases that and defeats the test).
+    workers: myWorker,
   });
 
   // The handle's capability carries the accessor generics.
