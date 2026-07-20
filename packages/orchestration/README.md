@@ -68,8 +68,8 @@ and lease stamping run uniformly.
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 ```
 
-`taskBoard({ name, collection, workers, ... })` returns `{ block, collectionId, capability }`.
-Mount `board.block` in a sequencer. `workers` is a single uniform worker or a
+`taskBoard({ name, collection, workers, ... })` returns `{ drain, collectionId, capability }`.
+Mount `board.drain` in a sequencer. `workers` is a single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`), `initialTasks`,

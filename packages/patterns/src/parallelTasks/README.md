@@ -10,7 +10,7 @@ Use this when sub-tasks are independent. Use [Supervisor](../supervisor/) when r
 goal
   → planner        (decompose into sub-tasks)
   → seedTasks      (seed board collection)
-  → board.block    (drain — run worker for each task concurrently)
+  → board.drain    (drain — run worker for each task concurrently)
   → collectResults (gather completed task outputs)
   → synthesizer    (merge/combine)
 ```

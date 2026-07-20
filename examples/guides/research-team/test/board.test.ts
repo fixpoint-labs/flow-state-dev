@@ -13,7 +13,7 @@ type TaskChange = {
 
 describe("static research board", () => {
   it("runs both analysts, then the synthesizer, and passes deps through", async () => {
-    const result = await testBlock(researchBoard.block, { input: undefined });
+    const result = await testBlock(researchBoard.drain, { input: undefined });
     expect(result.error).toBeNull();
 
     const statusByTask = new Map<string, string>();

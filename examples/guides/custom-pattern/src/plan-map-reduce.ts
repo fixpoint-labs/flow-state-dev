@@ -4,7 +4,7 @@
 // reusable block. The built-in patterns (supervisor, planAndExecute,
 // parallelTasks) all follow the same skeleton:
 //
-//   plan the work  →  seed the collection  →  drain via board.block  →  reduce
+//   plan the work  →  seed the collection  →  drain via board.drain  →  reduce
 //
 // The important design choice: `plan` is a **block**, not a plain function.
 // Real planning usually calls a model — a generator that looks at the input and
@@ -103,6 +103,6 @@ export function planMapReduce<TResult>(
   return sequencer({ name: config.name, inputSchema: config.inputSchema })
     .step(config.plan)
     .step(seed)
-    .step(board.block)
+    .step(board.drain)
     .step(reduce);
 }

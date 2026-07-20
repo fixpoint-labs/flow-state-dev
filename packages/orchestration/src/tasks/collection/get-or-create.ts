@@ -60,7 +60,7 @@ export interface ResourceBackingSpec extends CommonOptions {
  * sequencer state ref exposes — so the collection survives every block
  * boundary inside a single request. Use this backing when a board needs
  * to be re-entered from inside an outer loop (e.g. a replan loop wraps
- * the same `taskBoard.block` to drain freshly added tasks across
+ * the same `taskBoard.drain` to drain freshly added tasks across
  * iterations); sequencer-backed collections don't survive across
  * sequencer invocations because each call creates a fresh state
  * container.

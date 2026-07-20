@@ -2,7 +2,7 @@
  * task-board pattern tests (FIX-446).
  *
  * Coverage:
- *   - block structure and validation
+ *   - handle structure and validation
  *   - basic drain (single + multi worker)
  *   - dependency-gated dispatch (topological)
  *   - worker registry routing by task.assignee
@@ -112,14 +112,14 @@ function lastTaskState(items: unknown[]): Map<string, string> {
 // Block structure
 // ---------------------------------------------------------------------------
 
-describe("taskBoard - block structure", () => {
-  it("returns block + collectionId", () => {
+describe("taskBoard - handle structure", () => {
+  it("returns drain + collectionId", () => {
     const board = taskBoard({
       name: "structure",
       collection: { collectionId: "test" },
       workers: makeGoalWorker("noop", () => null),
     });
-    expect(board.block.kind).toBe("sequencer");
+    expect(board.drain.kind).toBe("sequencer");
     expect(board.collectionId).toBe("test");
   });
 
@@ -177,7 +177,7 @@ describe("taskBoard - basic drain", () => {
       ],
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     expect(trace.sort()).toEqual([
       "uniform:alpha",
@@ -216,7 +216,7 @@ describe("taskBoard - basic drain", () => {
       ],
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     expect(seen?.goal).toBe("research the listed subdomains");
     expect(seen?.title).toBe("Subdomain research");
@@ -240,7 +240,7 @@ describe("taskBoard - basic drain", () => {
       initialTasks: inits,
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     expect(trace.length).toBe(12);
     expect(new Set(trace).size).toBe(12);
@@ -256,7 +256,7 @@ describe("taskBoard - basic drain", () => {
       }),
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
   });
 });
@@ -292,7 +292,7 @@ describe("taskBoard - dependency-gated dispatch (topological)", () => {
       ],
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     // u must come first; leaf must come last; downstream sits between.
     expect(order[0]).toBe("upstream");
@@ -340,7 +340,7 @@ describe("taskBoard - worker registry routing", () => {
       ],
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     expect(trace.sort()).toEqual([
       "researcher:topic-1",
@@ -369,7 +369,7 @@ describe("taskBoard - worker registry routing", () => {
       onError: "skip",
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     const final = lastTaskState(result.items);
     expect(final.get("x")).toBe("errored");
@@ -413,7 +413,7 @@ describe("taskBoard - CAS contention safety", () => {
       initialTasks: inits,
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     expect(duplicates).toEqual([]);
     expect(seen.size).toBe(100);
@@ -461,7 +461,7 @@ describe("taskBoard - mid-drain enqueue", () => {
       idlePollMs: 10,
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     expect(processed.sort()).toEqual(["child-a", "child-b", "seed"]);
   });
@@ -499,7 +499,7 @@ describe("taskBoard - failure handling", () => {
       onError: "skip",
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     expect(processed.sort()).toEqual(["good-1", "good-2"]);
     const final = lastTaskState(result.items);
@@ -528,7 +528,7 @@ describe("taskBoard - failure handling", () => {
       onError: "fail",
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).not.toBeNull();
     expect(result.error?.message).toContain("boom-err");
   });
@@ -581,7 +581,7 @@ describe("taskBoard - failure handling", () => {
       maxIterations: 200,
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     const final = lastTaskState(result.items);
     expect(final.get("u")).toBe("errored");
@@ -641,7 +641,7 @@ describe("taskBoard - awaiting_review", () => {
       maxIterations: 500,
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     const final = lastTaskState(result.items);
     expect(final.get("park")).toBe("completed");
@@ -669,7 +669,7 @@ describe("taskBoard - onIdle modes", () => {
       onIdle: "complete",
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     expect(trace.length).toBe(2);
   });
@@ -696,7 +696,7 @@ describe("taskBoard - onIdle modes", () => {
       maxIterations: 50,
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
 
     const stateChanges = result.items.filter((item) => item.type === "state_change");
@@ -742,7 +742,7 @@ describe("taskBoard - onIdle modes", () => {
       maxIterations: 200,
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     const final = lastTaskState(result.items);
     expect(final.get("u")).toBe("errored");
@@ -767,7 +767,7 @@ describe("taskBoard - onIdle modes", () => {
       onIdle: "complete-or-blocked",
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     expect(trace.length).toBe(2);
   });
@@ -817,7 +817,7 @@ describe("taskBoard - onIdle modes", () => {
       maxIterations: 500,
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
     expect(trace.sort()).toEqual(["late", "seed"]);
   });
@@ -1020,7 +1020,7 @@ describe("taskBoard - capability", () => {
       initialTasks: [{ id: "a", goal: "alpha", input: { topic: "alpha" } }],
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
 
     type ChangeItem = {
@@ -1041,13 +1041,13 @@ describe("taskBoard - capability", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Re-entry — request-scoped collection survives multiple `board.block`
+// Re-entry — request-scoped collection survives multiple `board.drain`
 // invocations from a parent sequencer (FIX-471)
 // ---------------------------------------------------------------------------
 //
 // Sequencer-backed boards lose their `tasks` slot at the end of each
-// `board.block` invocation because sequencer state is per-instance. A
-// replan loop that wraps `board.block` (e.g. the FIX-447 P&E migration)
+// `board.drain` invocation because sequencer state is per-instance. A
+// replan loop that wraps `board.drain` (e.g. the FIX-447 P&E migration)
 // needs the collection to survive across calls. Request-scoped backing
 // is the substrate's answer: `ctx.request` exposes the same atomic-state
 // surface as a sequencer state ref, so the same CAS engine writes there
@@ -1091,9 +1091,9 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
     });
 
     const wrapper = sequencer({ name: "reentry-basic-wrapper" })
-      .tap(board.block)
+      .tap(board.drain)
       .tap(enqueueBetween)
-      .tap(board.block);
+      .tap(board.drain);
 
     const result = await testBlock(wrapper, { input: undefined });
     expect(result.error).toBeNull();
@@ -1148,11 +1148,11 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
     }
 
     const wrapper = sequencer({ name: "reentry-three-rounds-wrapper" })
-      .tap(board.block)
+      .tap(board.drain)
       .tap(makeEnqueue("enq-2", ["r2-y", "r2-z"]))
-      .tap(board.block)
+      .tap(board.drain)
       .tap(makeEnqueue("enq-3", ["r3-q"]))
-      .tap(board.block);
+      .tap(board.drain);
 
     const result = await testBlock(wrapper, { input: undefined });
     expect(result.error).toBeNull();
@@ -1208,9 +1208,9 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
     });
 
     const wrapper = sequencer({ name: "reentry-concurrent-wrapper" })
-      .tap(board.block)
+      .tap(board.drain)
       .tap(enqueueRound2)
-      .tap(board.block);
+      .tap(board.drain);
 
     const result = await testBlock(wrapper, { input: undefined });
     expect(result.error).toBeNull();
@@ -1244,7 +1244,7 @@ describe("taskBoard - board-meta emission", () => {
       ],
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
 
     type MetaItem = {
@@ -1309,7 +1309,7 @@ describe("taskBoard - board-meta emission", () => {
       maxIterations: 200,
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
 
     type MetaItem = {
@@ -1356,7 +1356,7 @@ describe("taskBoard - board-meta emission", () => {
       ],
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
 
     type MetaItem = {
@@ -1436,7 +1436,7 @@ describe("taskBoard - seed idempotency", () => {
     expect(addedEvents.map((e) => e.data?.taskId).sort()).toEqual(["a", "b"]);
   });
 
-  // Cross-invocation re-entry — the broader case where `board.block`
+  // Cross-invocation re-entry — the broader case where `board.drain`
   // is called multiple times from a parent sequencer — is covered by
   // the `taskBoard - re-entry (request-scoped collection)` describe
   // block above. The sequencer-backed default still creates fresh
@@ -1507,7 +1507,7 @@ describe("taskBoard - item attribution (FIX-658)", () => {
       idlePollMs: 5,
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
 
     const windows = extractTaskItemWindows(result.items as OutputItem[], "fanout");
@@ -1545,7 +1545,7 @@ describe("taskBoard - item attribution (FIX-658)", () => {
       idlePollMs: 5,
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
 
     const windows = extractTaskItemWindows(result.items as OutputItem[], "seq");

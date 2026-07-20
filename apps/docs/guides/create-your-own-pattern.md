@@ -19,14 +19,14 @@ code is in
 
 If you haven't yet, read [The board lifecycle](./board-lifecycle) first — a
 pattern is exactly the "seed, drain, read" lifecycle packaged up, and this
-guide assumes you know what `board.block` does.
+guide assumes you know what `board.drain` does.
 
 ## The skeleton
 
 Every board-backed pattern is the same moves against one collection:
 
 ```
-plan the work  →  seed the collection  →  drain via board.block  →  reduce the results
+plan the work  →  seed the collection  →  drain via board.drain  →  reduce the results
 ```
 
 A pattern factory wires those into a sequencer and exposes a small config so
@@ -63,7 +63,7 @@ export interface PlanMapReduceConfig<TResult> {
 ## The factory
 
 Build the board once, then the blocks around it. The board is request-backed so
-the seed and reduce blocks — which run outside `board.block` — can resolve the
+the seed and reduce blocks — which run outside `board.drain` — can resolve the
 same collection:
 
 ```ts title="plan-map-reduce.ts"
@@ -106,7 +106,7 @@ export function planMapReduce<TResult>(
   return sequencer({ name: config.name, inputSchema: config.inputSchema })
     .step(config.plan)  // input → { items }
     .step(seed)         // enqueue one task per item
-    .step(board.block)  // drain
+    .step(board.drain)  // drain
     .step(reduce);      // fold the collected outputs
 }
 ```

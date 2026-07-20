@@ -3,14 +3,14 @@
 // A `taskBoard` gives you two separable things:
 //   1. a task COLLECTION — durable state whose lifetime is set by the backing
 //      (here `request`, so it survives every block boundary in one request);
-//   2. `board.block` — the DRAIN, which claims pending tasks, runs workers, and
+//   2. `board.drain` — the DRAIN, which claims pending tasks, runs workers, and
 //      moves tasks pending → completed. The drain only happens while this block
 //      executes inside a request.
 //
 // The two actions below seed the SAME collection identically. The only
-// difference is whether `board.block` runs:
+// difference is whether `board.drain` runs:
 //   - seedAndInspect: seed, then read without draining → tasks are "pending".
-//   - seedDrainRead:  seed, run board.block, then read → tasks are "completed".
+//   - seedDrainRead:  seed, run board.drain, then read → tasks are "completed".
 //
 // That contrast is the whole lesson: a collection can hold tasks, but nothing
 // processes them until a drain runs over it.
@@ -97,11 +97,11 @@ const seedAndInspect = sequencer({ name: "seed-and-inspect", inputSchema })
   .tap(seedTasks)
   .step(readResults);
 
-// seedDrainRead — seed, drain via board.block, then read. Now tasks are
+// seedDrainRead — seed, drain via board.drain, then read. Now tasks are
 // "completed" and carry their worker output.
 const seedDrainRead = sequencer({ name: "seed-drain-read", inputSchema })
   .tap(seedTasks)
-  .step(board.block)
+  .step(board.drain)
   .step(readResults);
 
 export const boardLifecycleFlow = defineFlow({

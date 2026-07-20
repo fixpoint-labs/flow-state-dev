@@ -140,7 +140,7 @@ const taskBoardFactory: PatternFactory = {
       ...cfg,
     });
     return {
-      block: handle.block as unknown as BlockDefinition,
+      block: handle.drain as unknown as BlockDefinition,
       collectionId: deps.collectionId,
       backing: "request",
     };

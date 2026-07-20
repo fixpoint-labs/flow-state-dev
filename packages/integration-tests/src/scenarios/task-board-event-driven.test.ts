@@ -76,7 +76,7 @@ describe("FIX-621: task-board event-driven worker idle-wait", () => {
             name: "ed-root",
             inputSchema: z.unknown(),
             stateSchema: taskBoardStateSchema,
-          }).step(board.block),
+          }).step(board.drain),
         },
       },
     })({ id: "default" });

@@ -127,13 +127,13 @@ export const researchBoard = taskBoard({
 });
 ```
 
-`researchBoard.block` is a normal block. Drop it into a flow action, or run it in a test — the example's [`test/board.test.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/test/board.test.ts) does exactly this and asserts both analysts complete, the synthesizer runs after them, and the dep outputs pass through:
+`researchBoard.drain` is a normal block. Drop it into a flow action, or run it in a test — the example's [`test/board.test.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/test/board.test.ts) does exactly this and asserts both analysts complete, the synthesizer runs after them, and the dep outputs pass through:
 
 ```ts title="board.test.ts"
 import { testBlock } from "@flow-state-dev/testing";
 import { researchBoard } from "../src/board";
 
-const result = await testBlock(researchBoard.block, { input: undefined });
+const result = await testBlock(researchBoard.drain, { input: undefined });
 // The two analysts run concurrently; `synth` only runs once both complete.
 ```
 
@@ -187,7 +187,7 @@ export const researchRouter = router({
       dispatcher: "topological",
       workers: { analyzer: analyst("competitor"), synthesizer },
       initialTasks,
-    }).block;
+    }).drain;
   },
 });
 ```

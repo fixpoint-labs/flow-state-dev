@@ -19,7 +19,7 @@ If you don't need review, use [Parallel Tasks](./parallelTasks) for concurrent e
 ```
 goal
   → captureAndPlan            (store goal, run planner, seed taskBoard collection)
-  → board.block               (drain — each worker runs the per-task review chain)
+  → board.drain               (drain — each worker runs the per-task review chain)
   → cascadeSkipDependents     (.tap — cancel pendings whose deps errored)
   → labelFailedReviews        (.tap — label terminal errored tasks by failure category)
   → synthesize                (build { goal, results } and run the synthesizer)

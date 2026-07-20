@@ -21,7 +21,7 @@ If you need a controller that reads shared state and picks the next specialist i
 emit(entry)
   → appendEntry          (write to workspace resource)
   → spawnInitialTasks    (one Task per matching actor, depth=1)
-  → taskBoard.block      (concurrent drain — workers re-emit recursively)
+  → taskBoard.drain      (concurrent drain — workers re-emit recursively)
 ```
 
 Each actor task drains through a wrapped sequencer:

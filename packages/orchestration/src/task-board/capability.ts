@@ -76,7 +76,7 @@ export interface TaskBoardSequencerCapabilityOptions {
  * sibling — can read/mutate it. The capability does NOT declare
  * `targetStateSchemas` (the slot isn't on a parent sequencer) and does
  * NOT require the consumer to be inside the board's subtree, which is
- * what enables re-entry from outer loops that wrap `board.block`
+ * what enables re-entry from outer loops that wrap `board.drain`
  * across iterations.
  *
  * The slot key on `ctx.request.state` defaults to `collectionId` so
@@ -184,7 +184,7 @@ export function createTaskBoardCapability(
     // there's no parent sequencer slot to declare and no `getTarget`
     // scoping check. Any block that lists this capability in `uses` can
     // read or mutate the board, including blocks that run BEFORE,
-    // AFTER, or BETWEEN `board.block` invocations from a parent loop.
+    // AFTER, or BETWEEN `board.drain` invocations from a parent loop.
     // That's the whole point of this backing — re-entry across multiple
     // board calls within the same request.
     //

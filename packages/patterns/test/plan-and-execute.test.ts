@@ -847,10 +847,10 @@ describe("plan-and-execute pattern", () => {
       expect(evaluatorCalled).toBe(true);
     });
 
-    it("uses board.block.name as the loopBack target step name", async () => {
+    it("uses board.drain.name as the loopBack target step name", async () => {
       // The substrate names the board's block exactly the `name` passed
       // to `taskBoard()` → `${configName}-board`. The pattern uses
-      // `board.block.name` as its `loopBack` target so the loop re-
+      // `board.drain.name` as its `loopBack` target so the loop re-
       // enters the same registered step on each iteration.
       const { taskBoard } = await import("@flow-state-dev/orchestration/task-board");
       const board = taskBoard({
@@ -858,7 +858,7 @@ describe("plan-and-execute pattern", () => {
         collection: { backing: "request", collectionId: "loopback-name-test" },
         workers: echoExecutor,
       });
-      expect(board.block.name).toBe("loopback-name-test-board");
+      expect(board.drain.name).toBe("loopback-name-test-board");
     });
 
     it("accepts string priority from default decomposer-shaped planners", async () => {
@@ -1360,8 +1360,8 @@ describe("plan-and-execute pattern", () => {
   // -----------------------------------------------------------------------
   // FIX-447 regression — seed step writes must reach board reads
   // -----------------------------------------------------------------------
-  describe("captureAndPlan → board.block request-state bridge (FIX-447 regression)", () => {
-    it("seed step writes survive into board.block reads in the same request", async () => {
+  describe("captureAndPlan → board.drain request-state bridge (FIX-447 regression)", () => {
+    it("seed step writes survive into board.drain reads in the same request", async () => {
       const planner = createDeterministicPlanner([
         { id: "t1", goal: "first" },
         { id: "t2", goal: "second" },
@@ -1391,7 +1391,7 @@ describe("plan-and-execute pattern", () => {
       expect(sawTasks).toHaveLength(2);
     });
 
-    it("seed step writes survive into board.block reads with enableReplanning: true", async () => {
+    it("seed step writes survive into board.drain reads with enableReplanning: true", async () => {
       const planner = createDeterministicPlanner([
         { id: "t1", goal: "first" },
         { id: "t2", goal: "second" },

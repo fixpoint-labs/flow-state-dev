@@ -131,4 +131,4 @@ const board = taskBoard({
   maxIterations: 20,
 });
 
-export const taskQueueDemo = board.block;
+export const taskQueueDemo = board.drain;

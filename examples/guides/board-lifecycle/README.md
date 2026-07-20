@@ -3,14 +3,14 @@
 Runnable companion code for the [Board lifecycle](https://flow-state.dev/guides/board-lifecycle) guide.
 
 It makes one thing observable: **a task board is durable task state plus a
-drain, and the drain only runs when `board.block` executes.** Two actions seed
+drain, and the drain only runs when `board.drain` executes.** Two actions seed
 the same request-backed collection identically; the only difference is whether
 the board's drain runs.
 
 | File | What it shows |
 |------|---------------|
 | `src/workers.ts` | A deterministic `processor` handler (uppercases its task's text) so everything runs with no model. |
-| `src/lifecycle-flow.ts` | One request-backed collection shared across three blocks: a seed block, `board.block` (the drain), and a read block. Two actions: `seedAndInspect` (no drain) and `seedDrainRead` (drain). |
+| `src/lifecycle-flow.ts` | One request-backed collection shared across three blocks: a seed block, `board.drain` (the drain), and a read block. Two actions: `seedAndInspect` (no drain) and `seedDrainRead` (drain). |
 | `test/lifecycle.test.ts` | Asserts `seedAndInspect` leaves tasks `pending` and `seedDrainRead` leaves them `completed` with output. |
 
 ## Run it with fsdev
@@ -22,7 +22,7 @@ the workers are deterministic:
 # Seed the collection, then read it WITHOUT draining → tasks are "pending".
 pnpm fsdev run board-lifecycle seedAndInspect -i '{"items":["alpha","beta"]}'
 
-# Seed, run board.block (the drain), then read → tasks are "completed".
+# Seed, run board.drain (the drain), then read → tasks are "completed".
 pnpm fsdev run board-lifecycle seedDrainRead -i '{"items":["alpha","beta"]}'
 ```
 

@@ -24,7 +24,7 @@ the drain runs — you can watch the difference from the CLI.
 1. **A task collection** — the durable state. A `Record<id, Task>`: each task's
    goal, status, assignee, input, and (once it runs) output. This is just data
    sitting in a state store.
-2. **`board.block`** — the drain. A normal block you mount in a flow. When it
+2. **`board.drain`** — the drain. A normal block you mount in a flow. When it
    runs, it claims pending tasks, hands each to its worker, and moves the task
    from `pending` to `completed` (or `errored`). When there's nothing left to
    do, it stops.
@@ -37,17 +37,17 @@ const board = taskBoard({
   initialTasks: [],
 });
 
-// board.block  → the drain (a block you mount)
+// board.drain  → the drain (a block you mount)
 // the collection lives at the backing you chose ("queue" on the request)
 ```
 
 Keep those two separate in your head and everything else follows. The
-collection can hold tasks that nobody has processed yet. `board.block` is the
+collection can hold tasks that nobody has processed yet. `board.drain` is the
 only thing that processes them.
 
 ## When does the drain run?
 
-**Only while `board.block` is executing inside a request.** Not before it's
+**Only while `board.drain` is executing inside a request.** Not before it's
 mounted, not after it finishes, not on a timer. If no block is draining, tasks
 just sit in the collection at whatever status they're in.
 
@@ -57,7 +57,7 @@ first seeds tasks and reads them back **without** draining:
 ```ts
 const seedAndInspect = sequencer({ name: "seed-and-inspect" })
   .tap(seedTasks)     // add tasks to the collection
-  .step(readResults); // read them back — no board.block here
+  .step(readResults); // read them back — no board.drain here
 ```
 
 ```bash
@@ -72,7 +72,7 @@ The tasks exist. Nothing ran them. Now add the drain in the middle:
 ```ts
 const seedDrainRead = sequencer({ name: "seed-drain-read" })
   .tap(seedTasks)
-  .step(board.block) // the drain
+  .step(board.drain) // the drain
   .step(readResults);
 ```
 
@@ -81,13 +81,13 @@ pnpm fsdev run board-lifecycle seedDrainRead -i '{"items":["alpha","beta"]}'
 # → tasks: [{ id: "task-0", status: "completed", result: "ALPHA" }, … ]
 ```
 
-Same seeding. The only difference is that `board.block` ran, and that's what
+Same seeding. The only difference is that `board.drain` ran, and that's what
 moved every task from `pending` to `completed`. That is the entire lifecycle in
 one contrast.
 
 Under the hood, the drain is a loop: idle workers wait for a task to become
 claimable, wake when one does, run it, and repeat until the board is idle. That
-loop lives inside `board.block`'s execution. When the block returns, the loop
+loop lives inside `board.drain`'s execution. When the block returns, the loop
 is gone — even if you add more tasks to the collection afterward, nothing
 processes them until a drain runs again.
 
@@ -126,8 +126,8 @@ lever for "when is the board's state still around":
 
 | Backing | Lives for | Reach for it when |
 |---------|-----------|-------------------|
-| `sequencer` (default) | the `board.block` sequencer's own invocation | the board seeds, drains, and is read within one block slot — the common "fan out and gather" case |
-| `request` | the whole request | a seed/read block outside `board.block` shares the collection, or an outer loop re-enters `board.block` to drain freshly added tasks |
+| `sequencer` (default) | the `board.drain` sequencer's own invocation | the board seeds, drains, and is read within one block slot — the common "fan out and gather" case |
+| `request` | the whole request | a seed/read block outside `board.drain` shares the collection, or an outer loop re-enters `board.drain` to drain freshly added tasks |
 | `resource` (scope `session`/`user`/`org`) | across requests | the tasks are a durable queue or list that must outlive the request that created them |
 
 The default is the tightest lifetime, and that's usually right — a board that
@@ -191,7 +191,7 @@ What that does **not** give you is background processing. The tasks persisting
 does not mean anything is draining them. There is no worker sitting behind the
 collection pulling tasks off it. Processing still only happens the way it always
 does: when some request mounts a board over that collection and runs
-`board.block`. So the shape of a durable board is:
+`board.drain`. So the shape of a durable board is:
 
 - Request A adds tasks to the resource-backed collection (maybe it drains them,
   maybe it just enqueues and returns).
