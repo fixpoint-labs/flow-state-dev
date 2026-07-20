@@ -154,7 +154,7 @@ The four axes where this flows:
 | `targetStateSchemas` | `ctx.targets.*` |
 | `sequencerStateSchema` (preset) | `ctx.sequencer.state` |
 
-If the block declares its own schema for the same axis, both are merged. The block's own declaration wins on key collision.
+If the block declares its own schema for the same axis, both are merged. The block's own declaration wins on key collision. `ctx.targets` and `ctx.sequencer` here are two of [block state](/docs/advanced/block-state)'s four addressing modes — the other two, `ctx.self` and `ctx.parent`, address a block's own local state rather than a scope a capability declares into.
 
 Here's a concrete example. A capability declares session state with a `ticker` field. A handler lists it in `uses` and reads `ticker` without declaring anything itself:
 

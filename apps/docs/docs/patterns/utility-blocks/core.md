@@ -1198,4 +1198,5 @@ const customAnalyzer = utility.analyzer({
 - See [Composable Patterns](/docs/patterns/overview) to understand how utility blocks compose into full agentic architectures
 - See [Composing Blocks](/docs/sequencers/composing-blocks) for the day-one sequencer methods, or the [Control Flow Reference](/docs/sequencers/control-flow) for the full DSL
 - Read about [Blocks](/docs/fundamentals/blocks) to understand how utilities fit into the four-primitive model
+- See [Block State](/docs/advanced/block-state) for the `sequencerStateSchema` mechanism `upsertResource` uses to carry an id across steps
 - Check [Testing Flows](/docs/testing/testing-flows) for how to test utility-based pipelines with mocked generators

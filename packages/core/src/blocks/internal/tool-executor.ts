@@ -162,7 +162,11 @@ export function buildToolExecutor(
       const toolPath = extendBlockPath(parentPath, blockPathTool(tool.name, disambiguator));
       const instanceId = buildBlockInstanceId(ctx.request.identity.id, toolPath, 0);
       return ctx._withExecutionScope(
-        { name: tool.name, kind: tool.kind, instanceId, path: toolPath, input: args },
+        // FIX-914: a tool that declares its own `stateSchema` gets a
+        // container too (a tool's own `ctx.self` resets per call — fresh
+        // scope node each invocation — so its valuable path is `ctx.parent`
+        // reaching back to the generator that owns it).
+        { name: tool.name, kind: tool.kind, instanceId, path: toolPath, input: args, stateSchema: tool.config.stateSchema },
         run,
       );
     };

@@ -611,7 +611,9 @@ export async function executeBlock(
       instanceId,
       path,
       transient: block.transient || undefined,
-      stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
+      // FIX-914: any block with an own `stateSchema` gets a container now,
+      // not just sequencers.
+      stateSchema: block.config.stateSchema,
       input,
       phase: options?.phase ?? ctx._blockIdentity?.phase,
       container:
