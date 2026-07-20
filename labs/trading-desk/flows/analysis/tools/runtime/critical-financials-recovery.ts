@@ -61,10 +61,22 @@ export type RecoveryResult = {
   audit: RecoveryAudit;
 };
 
+/** The identity fields the recovery single-flight keys on. `tenantId` is the
+ *  `ScopeIdentity` tenant (FIX-682): when present it namespaces session STORAGE
+ *  (session record, session-scoped resource state) while `id` stays the bare
+ *  caller-supplied session id. So the in-process single-flight/generation maps
+ *  must key on the tenant-qualified scope too — otherwise two tenants sharing a
+ *  session id + ticker + date collide: one awaits the other's recovery Promise
+ *  (and never gets its own `financialsData.recoveryAudit` patch), or one
+ *  tenant's `seedSession` bumps the shared generation and supersedes the other's
+ *  in-flight run. Undefined tenant (single-tenant apps) → the bare session id,
+ *  behavior unchanged. */
+export type RecoveryIdentity = { id: string; tenantId?: string };
+
 /** The minimal execution context the recovery needs from a statement tool. */
 export interface RecoveryCtx {
   session: {
-    identity: { id: string };
+    identity: RecoveryIdentity;
     state: { costPreset?: string };
   };
   resolveModel: (modelId: string, blockName?: string) => ExtractModel;
@@ -110,9 +122,15 @@ const settled = new Map<string, RecoveryResult>();
 // before it writes, it is superseded (throws, caches nothing).
 const generation = new Map<string, number>();
 
-const recoveryKey = (sessionId: string, ticker: string, date: string): string =>
-  `${sessionId}:${ticker}:${date}`;
-const currentGen = (sessionId: string): number => generation.get(sessionId) ?? 0;
+/** Tenant-qualified session scope. The NUL separator can't appear in a session
+ *  id or tenant id, so it can't collide with the `:` that `recoveryKey` uses to
+ *  split scope from ticker/date. Undefined tenant → the bare session id. */
+const scopeKey = (identity: RecoveryIdentity): string =>
+  identity.tenantId ? `${identity.tenantId}\u0000${identity.id}` : identity.id;
+
+const recoveryKey = (scope: string, ticker: string, date: string): string =>
+  `${scope}:${ticker}:${date}`;
+const currentGen = (scope: string): number => generation.get(scope) ?? 0;
 
 // Bound module-cache growth on a long-lived, multi-tenant server (BP-035): every
 // analyze run seeds a `generation` entry for its session and recovery may leave a
@@ -150,18 +168,18 @@ export function recoverCriticalFinancials(
   ctx: RecoveryCtx,
   args: { ticker: string; date: string },
 ): Promise<RecoveryResult> {
-  const sessionId = ctx.session.identity.id;
-  const key = recoveryKey(sessionId, args.ticker, args.date);
+  const scope = scopeKey(ctx.session.identity);
+  const key = recoveryKey(scope, args.ticker, args.date);
   const done = settled.get(key);
   if (done) return Promise.resolve(done);
   const existing = inflight.get(key);
   if (existing) return existing;
-  const gen = currentGen(sessionId);
-  const run = runRecovery(ctx, args, sessionId, gen)
+  const gen = currentGen(scope);
+  const run = runRecovery(ctx, args, scope, gen)
     .then((result) => {
       // Only cache if this run's session was not cleared (a re-run seeded) while
       // in flight — a superseded run rejects before reaching here.
-      if (currentGen(sessionId) === gen) {
+      if (currentGen(scope) === gen) {
         settled.set(key, result);
         evictOldest(settled, keyBusy);
       }
@@ -178,10 +196,13 @@ export function recoverCriticalFinancials(
  *  `seedSession` before the spine reset. Bumping the session generation makes any
  *  in-flight attempt (for ANY ticker/date on this session) throw
  *  `RecoverySupersededError` at its write instead of patching the reset spine;
- *  clearing the caches makes the re-run re-attempt from scratch. */
-export function clearRecoveryForSession(sessionId: string): void {
-  generation.set(sessionId, currentGen(sessionId) + 1);
-  const prefix = `${sessionId}:`;
+ *  clearing the caches makes the re-run re-attempt from scratch. Takes the
+ *  identity (not a bare id) so it namespaces by the same tenant-qualified scope
+ *  the recovery keyed on — a tenant's re-run supersedes only its own runs. */
+export function clearRecoveryForSession(identity: RecoveryIdentity): void {
+  const scope = scopeKey(identity);
+  generation.set(scope, currentGen(scope) + 1);
+  const prefix = `${scope}:`;
   for (const k of [...inflight.keys()]) if (k.startsWith(prefix)) inflight.delete(k);
   for (const k of [...settled.keys()]) if (k.startsWith(prefix)) settled.delete(k);
   evictOldest(generation, sessionBusy);
@@ -190,7 +211,7 @@ export function clearRecoveryForSession(sessionId: string): void {
 async function runRecovery(
   ctx: RecoveryCtx,
   args: { ticker: string; date: string },
-  sessionId: string,
+  scope: string,
   gen: number,
 ): Promise<RecoveryResult> {
   const rejectionReasons: string[] = [];
@@ -215,7 +236,7 @@ async function runRecovery(
     // statement tool writes through `getOrPatchState(field, load)`, so a returned
     // fallback (partial/empty) would still land on the reset spine and the new
     // run would read it as a cache hit and skip recovery. A throw writes nothing.
-    if (currentGen(sessionId) !== gen) throw new RecoverySupersededError();
+    if (currentGen(scope) !== gen) throw new RecoverySupersededError();
     // A run cancelled mid-recovery must not write an audit or promote statements
     // — even if a deterministic SEC fetch already resolved. Rethrow the abort
     // before any spine write, matching the model-call cancellation semantics.

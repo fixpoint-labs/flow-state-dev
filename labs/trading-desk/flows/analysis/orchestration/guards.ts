@@ -114,7 +114,7 @@ export const seedSession = handler({
     // patching `recoveryAudit`/statements back into the just-reset spine during
     // the await. It also makes the re-run re-attempt recovery from scratch (the
     // spine reset alone wouldn't clear the module-level recovery cache).
-    clearRecoveryForSession(ctx.session.identity.id);
+    clearRecoveryForSession(ctx.session.identity);
     await ctx.resources.financialsData.setState({});
     await ctx.resources.quantData.setState({});
     await ctx.resources.technicalData.setState({});

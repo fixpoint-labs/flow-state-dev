@@ -43,6 +43,7 @@ import {
   _resetRecoveryInflight,
   _recoveryCacheSizes,
   _MAX_RECOVERY_CACHE_ENTRIES,
+  type RecoveryIdentity,
 } from "../flows/analysis/tools/runtime/critical-financials-recovery";
 import type { FinancialCandidate } from "../flows/analysis/lib/financial-candidate";
 
@@ -59,7 +60,7 @@ const candidate424 = {
 function makeCtx() {
   const audits: Array<Record<string, unknown>> = [];
   const ctx = {
-    session: { identity: { id: "sess-1" }, state: { costPreset: "fast" } },
+    session: { identity: { id: "sess-1" } as RecoveryIdentity, state: { costPreset: "fast" } },
     resolveModel: () => ({ generate: async () => ({ structuredOutput: null }) }),
     resources: {
       financialsData: {
@@ -142,7 +143,7 @@ describe("recoverCriticalFinancials", () => {
 
     const p1 = recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
     // A concurrent re-run seeds and clears the session while p1 is still in flight.
-    clearRecoveryForSession("sess-1");
+    clearRecoveryForSession({ id: "sess-1" });
     await p1.catch(() => {}); // the superseded run rejects
 
     // The cleared run must NOT have cached its result → a later call re-fetches.
@@ -164,7 +165,7 @@ describe("recoverCriticalFinancials", () => {
     const { ctx, audits } = makeCtx();
 
     const p1 = recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
-    clearRecoveryForSession("sess-1");
+    clearRecoveryForSession({ id: "sess-1" });
     releaseHtml(spcxHtml); // the superseded run now completes its extract
 
     await expect(p1).rejects.toThrow(/superseded/i);
@@ -184,18 +185,61 @@ describe("recoverCriticalFinancials", () => {
     const { ctx, audits } = makeCtx();
 
     const pA = recoverCriticalFinancials(ctx, { ticker: "AAA", date: "2026-05-06" });
-    clearRecoveryForSession("sess-1"); // as a re-run for ticker "BBB" would do
+    clearRecoveryForSession({ id: "sess-1" }); // as a re-run for ticker "BBB" would do
     releaseHtml(spcxHtml);
 
     await expect(pA).rejects.toThrow(/superseded/i);
     expect(audits).toHaveLength(0);
   });
 
+  it("isolates recovery by tenant (same session id, different tenantId)", async () => {
+    // A tenant-aware host keeps the bare caller session id on `identity.id`
+    // while namespacing session STORAGE by `tenantId` (FIX-682). The in-process
+    // single-flight/settled maps must key on the tenant too — else tenant B
+    // awaits tenant A's recovery Promise and never gets its own audit patch.
+    stubs.fetchCandidates.mockResolvedValue([candidate424]);
+    stubs.fetchHtml.mockResolvedValue(spcxHtml);
+    const a = makeCtx();
+    const b = makeCtx();
+    a.ctx.session.identity = { id: "sess-1", tenantId: "tenant-a" };
+    b.ctx.session.identity = { id: "sess-1", tenantId: "tenant-b" };
+
+    const ra = await recoverCriticalFinancials(a.ctx, { ticker: "SPCX", date: "2026-05-06" });
+    const rb = await recoverCriticalFinancials(b.ctx, { ticker: "SPCX", date: "2026-05-06" });
+
+    // Separate attempts, each with its own audit patch — not one shared result.
+    expect(ra).not.toBe(rb);
+    expect(a.audits).toHaveLength(1);
+    expect(b.audits).toHaveLength(1);
+    expect(stubs.fetchCandidates).toHaveBeenCalledTimes(2);
+  });
+
+  it("a tenant's re-run does not supersede another tenant's in-flight recovery", async () => {
+    // The generation bump is tenant-scoped: tenant B clearing its same-id
+    // session must NOT throw `RecoverySupersededError` in tenant A's run.
+    let releaseHtml!: (html: string) => void;
+    const gate = new Promise<string>((resolve) => {
+      releaseHtml = resolve;
+    });
+    stubs.fetchCandidates.mockResolvedValue([candidate424]);
+    stubs.fetchHtml.mockReturnValue(gate);
+    const a = makeCtx();
+    a.ctx.session.identity = { id: "sess-1", tenantId: "tenant-a" };
+
+    const pA = recoverCriticalFinancials(a.ctx, { ticker: "SPCX", date: "2026-05-06" });
+    clearRecoveryForSession({ id: "sess-1", tenantId: "tenant-b" });
+    releaseHtml(spcxHtml);
+
+    const ra = await pA; // resolves normally — a different tenant can't supersede it
+    expect(ra.audit.outcome).toBe("promoted");
+    expect(a.audits).toHaveLength(1);
+  });
+
   it("bounds the module generation cache on a long-lived server (no unbounded leak)", () => {
     // Every analyze run seeds a generation entry for its session; a server that
     // runs many one-off sessions must not grow the map without bound.
     for (let i = 0; i < _MAX_RECOVERY_CACHE_ENTRIES + 200; i++) {
-      clearRecoveryForSession(`sess-oneoff-${i}`);
+      clearRecoveryForSession({ id: `sess-oneoff-${i}` });
     }
     expect(_recoveryCacheSizes().generation).toBeLessThanOrEqual(_MAX_RECOVERY_CACHE_ENTRIES);
   });
