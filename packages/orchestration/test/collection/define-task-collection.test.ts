@@ -46,6 +46,17 @@ describe("defineTaskCollection", () => {
     );
   });
 
+  it("rejects ids that collide with ctx.resources registry methods (get/list)", () => {
+    // The id becomes a ctx.resources key; "get"/"list" would shadow the
+    // registry's own methods and leave the durable board unable to resolve.
+    expect(() => defineTaskCollection({ id: "get", scope: "user" })).toThrow(
+      /registry method/
+    );
+    expect(() => defineTaskCollection({ id: "list", scope: "user" })).toThrow(
+      /registry method/
+    );
+  });
+
   it("forwards maxInstances when provided", () => {
     const todos = defineTaskCollection({
       id: "capped",

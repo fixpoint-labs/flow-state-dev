@@ -14,6 +14,14 @@
 const UNSAFE_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
 /**
+ * Method names on the `ctx.resources` registry (`ResourceRegistry` is
+ * `handles & { get(), list() }`). A durable collection id becomes a registry
+ * key, so an id of `"get"` / `"list"` would shadow the method the resolver
+ * calls — the handle is lost and the durable board can't resolve its backing.
+ */
+const RESERVED_RESOURCE_KEYS = new Set(["get", "list"]);
+
+/**
  * True when `key` is safe to use as a plain-object property key: non-empty and
  * not a member of `Object.prototype` (`toString`, `hasOwnProperty`, …) nor one
  * of the prototype-poisoning names.
@@ -58,6 +66,13 @@ export function assertSafeCollectionId(id: string): void {
     throw new Error(
       `[tasks] defineTaskCollection id "${id}" collides with a JavaScript object ` +
         `prototype member (e.g. __proto__, constructor, toString)`
+    );
+  }
+  if (RESERVED_RESOURCE_KEYS.has(id)) {
+    throw new Error(
+      `[tasks] defineTaskCollection id "${id}" collides with a ctx.resources ` +
+        `registry method (get, list) — the durable board could not resolve its ` +
+        `backing. Pick a different id.`
     );
   }
 }
