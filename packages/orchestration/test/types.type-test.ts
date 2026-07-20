@@ -92,3 +92,16 @@ async function checkBoardAccessorTypes() {
 }
 
 void checkBoardAccessorTypes;
+
+// The board name is preserved as a string literal on the capability type, so
+// core's `InferCapabilities` exposes a precise `ctx.cap["research-desk"]` key
+// rather than a `Record<string, …>` index signature (which would let
+// `ctx.cap.notTheBoard` type-check yet be `undefined` at runtime). This only
+// compiles if the literal survived — a widened `string` name would fail to
+// assign to the literal below.
+function checkBoardNameLiteral() {
+  const board = taskBoard({ name: "research-desk", workers: myWorker });
+  const name: "research-desk" = board.capability.name;
+  void name;
+}
+void checkBoardNameLiteral;

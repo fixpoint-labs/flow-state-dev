@@ -188,9 +188,20 @@ function buildTaskBoardAccessor<TInput, TOutput>(
  * `ctx.cap.<boardName>`. See module doc. The returned capability is reused as a
  * singleton by `taskBoard()` — consumers use `board.capability`, not this.
  */
-export function createTaskBoardCapability<TInput = unknown, TOutput = unknown>(
-  options: TaskBoardCapabilityOptions<TInput, TOutput>
-): DefinedCapability<string, TaskBoardCapabilityAccessor<TInput, TOutput>> {
+export function createTaskBoardCapability<
+  TInput = unknown,
+  TOutput = unknown,
+  const TName extends string = string,
+>(
+  // `& { boardName: TName }` captures the board name as a string literal (via the
+  // `const` type param) so the returned capability is `DefinedCapability<TName,
+  // …>`, not `DefinedCapability<string, …>`. That matters downstream: core's
+  // `InferCapabilities` maps a `string` name to a `Record<string, accessor>`
+  // index signature (so `ctx.cap.anyName` wrongly type-checks and multiple boards'
+  // payloads intersect), whereas a literal name yields a single precise
+  // `ctx.cap[<boardName>]` property.
+  options: TaskBoardCapabilityOptions<TInput, TOutput> & { boardName: TName }
+): DefinedCapability<TName, TaskBoardCapabilityAccessor<TInput, TOutput>> {
   const { boardName, collectionId } = options;
   // Board name flows verbatim into `ctx.cap[<name>]`. Reject prototype-poisoning
   // names here — the layer that owns the accessor key — so misuse throws at

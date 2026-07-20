@@ -370,7 +370,11 @@ export interface TaskBoardToolCacheConfig {
   defaultScope?: "run" | "request" | "session";
 }
 
-export interface TaskBoardHandle<TInput = unknown, TOutput = unknown> {
+export interface TaskBoardHandle<
+  TInput = unknown,
+  TOutput = unknown,
+  TName extends string = string,
+> {
   /**
    * The composed drain sequencer — the block that runs the board's
    * tasks. Plug into a parent flow or sequencer.
@@ -397,11 +401,13 @@ export interface TaskBoardHandle<TInput = unknown, TOutput = unknown> {
    * if used from outside the board's subtree (state must be in scope). Factory-
    * backed boards defer entirely to the user's factory.
    *
-   * Carries the board's `TInput`/`TOutput`, so a consumer doing
-   * `ctx.cap.<name>.addTask({ input })` type-checks the payload against the
-   * board's task input rather than `unknown`.
+   * Carries the board's `TInput`/`TOutput` AND its name literal, so a consumer
+   * doing `ctx.cap.<name>.addTask({ input })` type-checks the payload against the
+   * board's task input rather than `unknown`, and only the actual `<name>` key is
+   * exposed on `ctx.cap` (a wrong key is a compile error, not a runtime
+   * `undefined`).
    */
-  capability: DefinedCapability<string, TaskBoardCapabilityAccessor<TInput, TOutput>>;
+  capability: DefinedCapability<TName, TaskBoardCapabilityAccessor<TInput, TOutput>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -412,9 +418,17 @@ export interface TaskBoardHandle<TInput = unknown, TOutput = unknown> {
  * Build a Task Board pattern instance. See module doc for the
  * pipeline semantics and termination rules.
  */
-export function taskBoard<TInput = unknown, TOutput = unknown>(
-  config: TaskBoardConfig<TInput, TOutput>
-): TaskBoardHandle<TInput, TOutput> {
+export function taskBoard<
+  TInput = unknown,
+  TOutput = unknown,
+  const TName extends string = string,
+>(
+  // `& { name: TName }` captures the board name as a literal so the returned
+  // handle's `capability` is keyed by that literal on `ctx.cap` (see
+  // `TaskBoardHandle.capability`). Inference-only callers get the precise key;
+  // explicit-generic callers (`taskBoard<In, Out>(…)`) fall back to `string`.
+  config: TaskBoardConfig<TInput, TOutput> & { name: TName }
+): TaskBoardHandle<TInput, TOutput, TName> {
   const {
     name,
     collection: collectionConfig,
@@ -448,7 +462,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
   }
 
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
-  const binding = resolveCollectionBinding<TInput, TOutput>(
+  const binding = resolveCollectionBinding<TInput, TOutput, TName>(
     name,
     collectionConfig
   );
@@ -690,13 +704,13 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
  * capability, and (durable boards only) the extra `uses` the drain sequencer
  * must install to make the resource collection resolvable.
  */
-interface CollectionBinding<TInput, TOutput> {
+interface CollectionBinding<TInput, TOutput, TName extends string> {
   collectionFactory: (
     ctx: BlockContext
   ) => Promise<TaskCollectionRef<TInput, TOutput>>;
   collectionId: string;
   capability: DefinedCapability<
-    string,
+    TName,
     TaskBoardCapabilityAccessor<TInput, TOutput>
   >;
   drainUses?: readonly DefinedCapability[];
@@ -718,10 +732,10 @@ interface CollectionBinding<TInput, TOutput> {
  *   top-level seed handler).
  * - factory — caller-supplied `(ctx) => collection`, passed through unchanged.
  */
-function resolveCollectionBinding<TInput, TOutput>(
-  boardName: string,
+function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
+  boardName: TName,
   collectionConfig: TaskBoardConfig<TInput, TOutput>["collection"]
-): CollectionBinding<TInput, TOutput> {
+): CollectionBinding<TInput, TOutput, TName> {
   // 1. Caller-supplied factory. Sync-or-async, normalized via `Promise.resolve`.
   if (typeof collectionConfig === "function") {
     const userFactory = collectionConfig;
@@ -729,7 +743,7 @@ function resolveCollectionBinding<TInput, TOutput>(
     return {
       collectionFactory: (ctx) => Promise.resolve(userFactory(ctx)),
       collectionId,
-      capability: createTaskBoardCapability<TInput, TOutput>({
+      capability: createTaskBoardCapability<TInput, TOutput, TName>({
         backing: "factory",
         boardName,
         collectionId,
@@ -758,7 +772,7 @@ function resolveCollectionBinding<TInput, TOutput>(
     return {
       collectionFactory,
       collectionId,
-      capability: createTaskBoardCapability<TInput, TOutput>({
+      capability: createTaskBoardCapability<TInput, TOutput, TName>({
         backing: "resource",
         boardName,
         collectionId,
@@ -799,7 +813,7 @@ function resolveCollectionBinding<TInput, TOutput>(
     return {
       collectionFactory,
       collectionId,
-      capability: createTaskBoardCapability<TInput, TOutput>({
+      capability: createTaskBoardCapability<TInput, TOutput, TName>({
         backing: "sequencer",
         boardName,
         collectionId,
@@ -822,7 +836,7 @@ function resolveCollectionBinding<TInput, TOutput>(
   return {
     collectionFactory,
     collectionId,
-    capability: createTaskBoardCapability<TInput, TOutput>({
+    capability: createTaskBoardCapability<TInput, TOutput, TName>({
       backing: "request",
       boardName,
       collectionId,
