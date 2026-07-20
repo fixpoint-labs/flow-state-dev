@@ -190,6 +190,7 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
 - `defineCapability(config)` — Bundle resources, state schemas, targets, and helper functions under a single name. Blocks declare capabilities via `uses: [cap]` and the framework merges everything transitively.
   - `fns: (ctx) => ({ ... })` — Helper functions exposed at `ctx.cap.{name}.{fn}`, memoized on first access
   - `presets` — Named opt-in/opt-out bundles of any block config surface. Use `.presets({ name: true/false })` to configure
+  - `config: { schema?, resolve }` — Open, typed configuration. The resolver maps a validated value onto a block surface (like a preset, but value-carrying). Consumers pass it with `.config(value)`, which composes with `.presets()` in either order
   - `uses` — Capabilities can depend on other capabilities (transitive composition with diamond dedup)
   - Factory pattern: wrap `defineCapability()` in a function for parameterized capabilities
 
@@ -419,7 +420,9 @@ A reusable typed-edge primitive for relational state. `edgeSchema` describes a d
 
 Resources opt into a first-class edge graph with `defineResource({ edges: true })` (or `{ vocabulary, maxEdges }`): the framework stores an `edges` array in the resource's state and exposes an `.edges` API (`add`, `supersede`, `remove`, `all`, `neighbors`, `egoGraph`, `shortestPath`, `pruneDangling`) on the live resource reference. Resources without `edges` are unaffected.
 
-## Sequencer instance state
+## Block state (and its sequencer special case)
+
+Any block — handler, generator, router, or sequencer — can declare its own request-scoped `stateSchema` and read/write it via `ctx.self`. A child block reaches its immediate parent's state the same way, via `ctx.parent`, when it declares `parentStateSchema`. Sequencer instance state below is the common case of this same primitive: `ctx.sequencer` is `ctx.self` addressed by "nearest enclosing sequencer" instead of "this block." See [Block State](https://flow-state.dev/docs/advanced/block-state) for the full addressing model (`ctx.self`, `ctx.parent`, `ctx.sequencer`, `ctx.targets`) and the fan-out/loop isolation contract.
 
 A sequencer can declare a `stateSchema` that gives every step in the pipeline a shared, typed state container. State is read via `ctx.sequencer.state` and written via the seven helpers on `ctx.sequencer`: `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, and `atomicState`.
 

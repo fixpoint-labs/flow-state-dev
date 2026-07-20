@@ -6,6 +6,8 @@ sidebar_position: 12
 
 The four persistence scopes — `request`, `session`, `user`, `org` — are tied to identity. Sequencer state is tied to execution: it lives for one execution of one sequencer instance and is checkpointed at every step boundary so the run can resume after an interruption (FIX-401). When the run finishes, the state is done.
 
+Sequencer state is [block state](/docs/advanced/block-state) addressed through the nearest enclosing sequencer — `ctx.sequencer` is one of four handles onto the same underlying container. A sequencer just happens to be the block kind that also gets durable checkpointing.
+
 When blocks inside a sequencer need to share data — a plan one block built and the next blocks act on, partial findings accumulating across steps — sequencer state is the right primitive.
 
 ## Declaring sequencer state
@@ -198,6 +200,7 @@ If a deeply nested block needs to read or write state on a *specific* outer sequ
 
 ## Where to next
 
+- **[Block State](/docs/advanced/block-state)** — the underlying primitive; any block, not just a sequencer, can hold its own state.
 - **[State Operations](/docs/fundamentals/state-operations)** — the full operation reference; sequencer scope shares the same surface.
 - **[State Mutation Model](/docs/state/mutation-model)** — why the in-memory path uses a FIFO lock instead of CAS.
 - **[State Targets and Parents](/docs/advanced/state-targets-and-parents)** — typed access to ancestor state by name.

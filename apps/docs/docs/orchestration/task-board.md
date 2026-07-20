@@ -277,6 +277,7 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 
 ## See also
 
+- [Block State](../advanced/block-state) — the primitive behind the board's sequencer-scoped task collection.
 - [Parallel Tasks](../patterns/parallelTasks) — single-pass fan-out wrapper on top of Task Board.
 - [Supervisor](../patterns/supervisor) — per-task review wrapper.
 - [Plan and Execute](../patterns/plan-and-execute) — replan-loop wrapper.

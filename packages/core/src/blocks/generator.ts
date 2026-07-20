@@ -58,7 +58,7 @@ import type {
   UsesEntry,
 } from "../capability/types";
 
-import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
+import { resolveActivePresets, flattenCapabilities, getBaseCapability } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
 import { sanitizeToolName, computeToolAliases, assertUniqueToolNames } from "../helpers/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
@@ -112,6 +112,22 @@ async function resolveDynamicCapSurface(
   cap: CapabilityRef,
   ctx: BlockContext,
 ): Promise<DynamicCapSurface> {
+  // Open config is a build-time transform resolved by mergeCapabilities. A
+  // config-declaring capability reaching the dynamic `uses` path — returned
+  // directly by a dynamic resolver, or nested in a dynamically-resolved
+  // capability's own `uses` — is only known at request time, and this path
+  // resolves presets only, so its resolver surface would be silently dropped.
+  // Reject it (whether explicitly `.config()`-ed or relying on a schema
+  // default) with a clear error; v1 supports config on static uses only
+  // (FIX-915).
+  const base = getBaseCapability(cap);
+  if (base.__configDef) {
+    throw new Error(
+      `Capability "${base.name}" declares open config but was reached through a ` +
+      `dynamic uses resolver, which is not supported. Use it on a static uses entry.`
+    );
+  }
+
   const contextEntries: Array<unknown> = [];
   const tools: GeneratorTool[] = [];
 
@@ -404,13 +420,19 @@ export interface GeneratorConfig<
   TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
   TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
+  // FIX-914: this generator's own state (`stateSchema`) and its immediate
+  // parent's state (`parentStateSchema`).
+  TStateSchema extends ZodTypeAny | undefined = undefined,
+  TParentStateSchema extends ZodTypeAny | undefined = undefined,
+  TSelfState extends object = InferStateFromSchema<TStateSchema>,
+  TParentState extends object = InferStateFromSchema<TParentStateSchema>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
     TResources, TSequencerState, unknown, TMergedTargetSchemas,
-    TCapabilities
+    TCapabilities, TSelfState, TParentState
   >,
-> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "onCompleted"> {
+> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "onCompleted" | "stateSchema"> {
   onCompleted?: (
     output: TOutput,
     ctx: TCtx,
@@ -421,6 +443,12 @@ export interface GeneratorConfig<
   userStateSchema?: TUserStateSchema;
   orgStateSchema?: TOrgStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
+  /** This generator's own request-scoped state (FIX-914). Exposed via
+   *  `ctx.self` in `context`/`prompt`/tool-loop callbacks — a generator can
+   *  accumulate across its own tool loop (e.g. what it has loaded so far). */
+  stateSchema?: TStateSchema;
+  /** Expected shape of the immediate parent's own state (FIX-914). */
+  parentStateSchema?: TParentStateSchema;
   /** Flat resource declaration. See `HandlerConfig.resources` (FIX-435). */
   resources?: TResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
@@ -2523,10 +2551,14 @@ export function generator<
   TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
   TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
+  TStateSchema extends ZodTypeAny | undefined = undefined,
+  TParentStateSchema extends ZodTypeAny | undefined = undefined,
+  TSelfState extends object = InferStateFromSchema<TStateSchema>,
+  TParentState extends object = InferStateFromSchema<TParentStateSchema>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
     TResources, TSequencerState, unknown, TMergedTargetSchemas,
-    TCapabilities
+    TCapabilities, TSelfState, TParentState
   >,
 >(
   config: GeneratorConfig<
@@ -2534,7 +2566,7 @@ export function generator<
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
     TResourceDefs, TTargetSchemas, TUses,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
-    TResources, TMergedTargetSchemas, TCapabilities, TCtx
+    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses } = resolveCapabilities(config, "generator");

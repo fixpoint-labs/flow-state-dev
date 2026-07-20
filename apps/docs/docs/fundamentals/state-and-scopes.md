@@ -314,6 +314,8 @@ Two scopes would force you to choose between "per-request" and "everything else.
 - **User** — what follows a person across conversations.
 - **Org** — what a team shares.
 
+These four are tied to identity. Blocks can also hold state tied to *execution* — a generator remembering what it's loaded so far, a sequencer counting its own loop passes — that lives and dies with one run. See [Block State](/docs/advanced/block-state) for that primitive.
+
 ## When to declare state at the flow level
 
 In practice, most state declarations live on blocks, not flows. A counter block declares `messageCount`, a mode-switcher declares `mode`, and the flow picks them up by bubbling. You don't need to repeat them on `defineFlow`.
@@ -352,6 +354,7 @@ const myFlow = defineFlow({
 ## Where to next
 
 - **[State Operations](/docs/fundamentals/state-operations)** — full operation reference: every helper, CAS semantics, version handling, `ConcurrentModificationError`.
+- **[Block State](/docs/advanced/block-state)** — request-scoped state any block can hold, addressed via `ctx.self` and `ctx.parent`.
 - **[State Targets and Parents](/docs/advanced/state-targets-and-parents)** — typed access to ancestor block state via `targetStateSchemas` and `ctx.getTarget()`.
 - **[Sequencer State](/docs/advanced/sequencer-state)** — state scoped to a sequencer's execution rather than identity, with a different durability boundary.
 - **[Resources](/docs/resources/overview)** — typed containers for structured data and rich content, with the same atomic operations as state.
