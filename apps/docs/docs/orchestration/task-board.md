@@ -74,7 +74,7 @@ const board = taskBoard({
   ],
 });
 
-// `board.block` plugs into a parent sequencer as a normal step.
+// `board.drain` plugs into a parent sequencer as a normal step.
 ```
 
 Defaults: concurrency `4`, `dispatcher: "topological"`, `onIdle: "complete-or-blocked"`, `onError: "skip"`.
@@ -139,7 +139,7 @@ Most boards leave `onIdle` alone. Override when:
 
 ## Cascade-skipping dep-blocked tasks
 
-`"complete-or-blocked"` ends the drain when pending tasks can no longer run, but it leaves those tasks `pending`. To fold them into a terminal status, `.tap()` the `createCascadeSkipDependents` building block after `board.block`:
+`"complete-or-blocked"` ends the drain when pending tasks can no longer run, but it leaves those tasks `pending`. To fold them into a terminal status, `.tap()` the `createCascadeSkipDependents` building block after `board.drain`:
 
 ```ts
 import { taskBoard, createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
@@ -148,7 +148,7 @@ const board = taskBoard({ name: "research", collection: { backing: "request", co
 const cascadeSkip = createCascadeSkipDependents({ name: "research" });
 
 sequencer({ name: "research" })
-  .step(board.block)
+  .step(board.drain)
   .tap(cascadeSkip); // transitively cancels pendings whose deps errored
 ```
 
@@ -212,7 +212,7 @@ Renderers like `<TaskPlan />` subscribe to both: `task-board-meta` for the board
 
 ## Collection backing: sequencer vs request
 
-The default `collection: { collectionId: "x" }` puts the `tasks` record on the board's own sequencer state. That state lives for one invocation of `board.block`. Calling the board twice from a parent sequencer gives two independent collections.
+The default `collection: { collectionId: "x" }` puts the `tasks` record on the board's own sequencer state. That state lives for one invocation of `board.drain`. Calling the board twice from a parent sequencer gives two independent collections.
 
 For boards re-entered across an outer loop (Plan & Execute does this for replanning), opt into request-scoped backing:
 

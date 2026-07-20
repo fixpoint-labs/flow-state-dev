@@ -6,7 +6,7 @@
  * no feedback loop. Use Supervisor when tasks need judgment and iteration.
  *
  * Pipeline:
- *   [planner] → [seedTasksFromPlan] → [board.block] → [collectResults] → [synthesizer]
+ *   [planner] → [seedTasksFromPlan] → [board.drain] → [collectResults] → [synthesizer]
  */
 import { sequencer, handler, utility } from "@flow-state-dev/core";
 import type { SequencerDefinition } from "@flow-state-dev/core";
@@ -132,7 +132,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   })
     .step(activePlanner)
     .tap(seedTasks)
-    .step(board.block)
+    .step(board.drain)
     .step(collectResults)
     .step(finalize) as SequencerDefinition<any, any>;
 }

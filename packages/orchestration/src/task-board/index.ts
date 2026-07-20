@@ -191,7 +191,7 @@ export type { BoardRunFlowState } from "./flow-policy-wiring";
  * canonical shape.
  *
  * Single-invocation only. If a board needs to be re-entered from
- * inside an outer loop (e.g. a replan loop that calls `board.block`
+ * inside an outer loop (e.g. a replan loop that calls `board.drain`
  * across iterations), use `TaskBoardRequestCollectionSpec` instead —
  * sequencer state is per-invocation and won't survive across calls.
  */
@@ -204,7 +204,7 @@ export interface TaskBoardSequencerCollectionSpec {
 /**
  * Request-scoped collection spec (FIX-471). Tasks live on
  * `ctx.request` so the collection survives every block boundary —
- * including multiple invocations of `board.block` from a parent
+ * including multiple invocations of `board.drain` from a parent
  * sequencer's outer loop. The `tasks` record persists for the request
  * lifetime; cross-request boards still want
  * `TaskBoardCollectionFactory` with a session/user/org-scoped resource
@@ -214,7 +214,7 @@ export interface TaskBoardSequencerCollectionSpec {
  * `targetStateSchemas` (the storage isn't on a parent sequencer slot)
  * and reaches the collection via `getOrCreateTaskCollection({ backing:
  * "request" })` from any block in the request, not just blocks running
- * under `board.block`'s subtree.
+ * under `board.drain`'s subtree.
  */
 export interface TaskBoardRequestCollectionSpec {
   backing: "request";
@@ -246,7 +246,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * - `TaskBoardSequencerCollectionSpec` (default) — tasks on the
    *   board's own sequencer state. Single-invocation; per-call state.
    * - `TaskBoardRequestCollectionSpec` (FIX-471) — tasks on
-   *   `ctx.request`. Re-enterable across multiple `board.block`
+   *   `ctx.request`. Re-enterable across multiple `board.drain`
    *   invocations within the same request.
    * - `TaskBoardCollectionFactory<TInput, TOutput>` — caller-supplied
    *   `(ctx) => collection` for advanced cases (resource-collection
@@ -366,22 +366,22 @@ export interface TaskBoardToolCacheConfig {
 
 export interface TaskBoardHandle {
   /**
-   * The composed sequencer block. Plug into a parent flow or
-   * sequencer.
+   * The composed drain sequencer — the block that runs the board's
+   * tasks. Plug into a parent flow or sequencer.
    *
    * For the sequencer-backed default, the parent sequencer's
    * `stateSchema` MUST include a `Record<string, Task>` slot at
    * `[stateKey]` (default `"tasks"`). `taskBoardStateSchema` declares
    * the canonical shape.
    */
-  block: SequencerDefinition<any, any>;
+  drain: SequencerDefinition<any, any>;
   /** Stable identifier for the collection — matches `data.collectionId` on emitted `task-change` items. */
   collectionId: string;
   /**
    * Capability exposing the board's `TaskCollectionRef` at
    * `ctx.cap.taskBoard_<name>.tasks()`. Add to any block's `uses` array
    * to read or mutate the board's tasks from inside the board's
-   * sequencer subtree (i.e. blocks executing under `board.block`).
+   * sequencer subtree (i.e. blocks executing under `board.drain`).
    *
    * Backing-aware: sequencer-spec collections also auto-declare the
    * board's `tasks` slot via `targetStateSchemas`, so consumers don't
@@ -666,7 +666,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
   // sequencer's state ref AND declares the `tasks` slot transitively.
   // Request-spec collections (FIX-471) skip the schema declaration and
   // resolve the collection through `ctx.request` so re-entry works
-  // across multiple `board.block` invocations. Caller-supplied factories
+  // across multiple `board.drain` invocations. Caller-supplied factories
   // defer entirely to the user's factory function — useful for
   // resource-collection-backed boards or any custom storage. Either way
   // `board.capability` is always defined; consumers that opt into
@@ -688,7 +688,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
         stateKey: collectionConfig.stateKey,
       });
 
-  return { block, collectionId, capability };
+  return { drain: block, collectionId, capability };
 }
 
 // ---------------------------------------------------------------------------
@@ -713,7 +713,7 @@ function isFactoryFn<TInput, TOutput>(
  * - `request` (FIX-471): `getOrCreateTaskCollection({ backing:
  *   "request" })`. The request scope's CAS surface is identical to a
  *   sequencer state ref's, so the underlying mutation engine is the
- *   same. State survives across multiple `board.block` invocations,
+ *   same. State survives across multiple `board.drain` invocations,
  *   which is the point of this backing.
  * - factory: caller-supplied `(ctx) => collection` passes through
  *   unchanged.

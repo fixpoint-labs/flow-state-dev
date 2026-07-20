@@ -133,7 +133,7 @@ describe("taskBoard - research-board demo", () => {
       ],
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
 
     // Walk the `task-change` component-item stream: assert all three

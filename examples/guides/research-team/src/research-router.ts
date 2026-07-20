@@ -56,6 +56,6 @@ export const researchRouter = router({
       dispatcher: "topological",
       workers: { analyzer: analyst("competitor"), synthesizer },
       initialTasks,
-    }).block;
+    }).drain;
   },
 });

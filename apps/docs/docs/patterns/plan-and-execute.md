@@ -18,7 +18,7 @@ If tasks are independent and can run in parallel, use [Parallel Tasks](./paralle
 ```
 goal
   → captureAndPlan          (store goal, run planner, seed taskBoard collection)
-  → board.block             (drain — workers process tasks until idle)   ←┐ loopBack target
+  → board.drain             (drain — workers process tasks until idle)   ←┐ loopBack target
   → cascadeSkipDependents   (cancel pendings whose deps errored)            │
   → evaluator               (decide: continue | replan | complete)         │
   → [replanner]             (only when replan + no inline tasks)            │
@@ -27,7 +27,7 @@ goal
   → synthesize              (build legacy plan output, then run synthesizer)
 ```
 
-Plan tasks live on a request-scoped `TaskCollection` so the same collection survives across multiple `board.block` re-entries inside the replan loop. The outer sequencer state is minimal — `{ goal, status?, iteration }` — with the substrate's `task-change` and `task-board-meta` items as the source of truth for per-task progress.
+Plan tasks live on a request-scoped `TaskCollection` so the same collection survives across multiple `board.drain` re-entries inside the replan loop. The outer sequencer state is minimal — `{ goal, status?, iteration }` — with the substrate's `task-change` and `task-board-meta` items as the source of truth for per-task progress.
 
 ## Basic usage
 

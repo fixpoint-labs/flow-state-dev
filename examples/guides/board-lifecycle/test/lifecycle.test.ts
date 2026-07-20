@@ -26,12 +26,12 @@ describe("board lifecycle", () => {
     expect(result.error).toBeUndefined();
     const tasks = tasksOf(result);
     expect(tasks).toHaveLength(3);
-    // No board.block ran, so nothing processed them.
+    // No board.drain ran, so nothing processed them.
     expect(tasks.every((t) => t.status === "pending")).toBe(true);
     expect(tasks.every((t) => t.result === null)).toBe(true);
   });
 
-  it("seedDrainRead: adding the board.block drain moves the same tasks to completed", async () => {
+  it("seedDrainRead: adding the board.drain drain moves the same tasks to completed", async () => {
     const result = await testFlow({
       flow: boardLifecycleFlow,
       action: "seedDrainRead",

@@ -3,7 +3,7 @@
  * any pending task whose deps include an `errored` task.
  *
  * A task-board substrate building block: consumers `.tap()` it after
- * `board.block` to fold dep-blocked pendings into terminal `cancelled`
+ * `board.drain` to fold dep-blocked pendings into terminal `cancelled`
  * status (plan-and-execute and supervisor both wire it this way).
  * State-mutation only (no output) per BP-012.
  *

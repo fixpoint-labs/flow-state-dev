@@ -9,17 +9,17 @@
  * Pipeline (post-FIX-447 migration onto the taskBoard substrate):
  *
  *   captureAndPlan
- *     → board.block                   ← loopBack target
+ *     → board.drain                   ← loopBack target
  *     → cascadeSkipDependents
  *     → evaluatePlanProgress
  *     → .stepIf(decision === "replan", replanner)
  *     → .stepIf(Array.isArray(tasks), applyReplan)
  *     → .map(d => { decision: d.decision ?? "continue" })
- *     → .loopBack(board.block.name, { when: decision !== "complete" })
+ *     → .loopBack(board.drain.name, { when: decision !== "complete" })
  *     → synthesize
  *
  * The board is request-backed (`{ backing: "request", collectionId:
- * name }`) so the same TaskCollection survives across `board.block`
+ * name }`) so the same TaskCollection survives across `board.drain`
  * re-entries inside the replan loop. Per-worker concurrency defaults to
  * 1 to preserve the legacy single-stream-per-step semantic; bump
  * `maxConcurrency` to fan out independent steps within a single drain.
@@ -735,7 +735,7 @@ export function planAndExecute<
   pipeline = pipeline
     .tap(stampOuterGoal)
     .step(captureAndPlan)
-    .step(board.block)
+    .step(board.drain)
     .tap(cascadeSkipDependents)
     .step(evaluator)
     // Replanner only runs when the evaluator asked for a replan AND
@@ -754,7 +754,7 @@ export function planAndExecute<
     .map((d: unknown) => ({
       decision: (d as { decision?: string }).decision ?? "continue",
     }))
-    .loopBack(board.block.name, {
+    .loopBack(board.drain.name, {
       when: (r: unknown) => (r as { decision?: string }).decision !== "complete",
       maxIterations,
     })

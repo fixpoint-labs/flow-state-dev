@@ -8,7 +8,7 @@ across a worker, then fold the outputs — and a `word-count` flow that uses it.
 
 | File | What it shows |
 |------|---------------|
-| `src/plan-map-reduce.ts` | The pattern factory. Owns the board; runs a `plan` **block**, seeds tasks from its output, drains via `board.block`, and folds the completed outputs with a `reduce`. A consumer supplies `plan`, `map`, and `reduce`. |
+| `src/plan-map-reduce.ts` | The pattern factory. Owns the board; runs a `plan` **block**, seeds tasks from its output, drains via `board.drain`, and folds the completed outputs with a `reduce`. A consumer supplies `plan`, `map`, and `reduce`. |
 | `src/word-count-flow.ts` | A consumer: plans one item per document, maps each to a word count, reduces to a total. The plan and map blocks are deterministic handlers (in practice `plan` is often a generator). |
 | `test/plan-map-reduce.test.ts` | Runs the flow and asserts the reduced total (and the empty case). |
 

@@ -44,7 +44,7 @@ describe("taskBoard - flow-policy back-compat", () => {
       ],
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
 
     expect(captured.length).toBe(1);
