@@ -266,6 +266,16 @@ describe("diamond config conflict", () => {
       /Conflicting .config\(\) for capability "child"/,
     );
   });
+
+  it("semantically-equal config dedups (omitting a defaulted field is not a conflict)", () => {
+    // Both parse to { note: "x", loud: false } despite different raw inputs.
+    const parentA = defineCapability({ name: "pa", uses: [banner.config({ note: "x" })] });
+    const parentB = defineCapability({
+      name: "pb",
+      uses: [banner.config({ note: "x", loud: false })],
+    });
+    expect(() => flattenCapabilities([parentA, parentB])).not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -283,7 +293,7 @@ describe("configured ref via dynamic uses", () => {
     const context = (gen.config as { context: Array<(i: unknown, c: unknown) => unknown> }).context;
     const dynamicResolver = context[context.length - 1];
     await expect(dynamicResolver({}, {} as never)).rejects.toThrow(
-      /Capability "banner" was configured with .config\(\) inside a dynamic/,
+      /Capability "banner" carries .config\(\) but was reached through a dynamic/,
     );
   });
 });

@@ -156,7 +156,11 @@ export interface CapabilityConfigDef<TConfigOut = any, TSessionState = any> {
    * resolver's `config` parameter; schemaless config makes `.config()` required.
    */
   schema?: ZodTypeAny;
-  /** Maps validated config → a partial block surface, merged like a preset. */
+  /**
+   * Maps validated config → a partial block surface, merged like a preset. Runs
+   * at block-build time, before the merged surface is block-kind validated, so
+   * it must be pure (value → surface) with no side effects.
+   */
   resolve: (
     config: TConfigOut,
     ctx: CapabilityConfigResolveCtx

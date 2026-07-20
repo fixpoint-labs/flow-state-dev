@@ -52,22 +52,40 @@ function readConfig(ref: CapabilityRef): unknown {
 /**
  * Two diamond paths reaching the same base with different `.config()` values
  * would silently bake one closure and drop the other. Unlike presets (first-
- * wins), config carries values, so a conflict is a build-time error. Identical
- * config (by value) dedups. Compares the raw `.config()` argument: duplicate
- * uses of a base must pass the same deep-equal value.
+ * wins), config carries values, so a conflict is a build-time error; identical
+ * config dedups.
+ *
+ * Compares the *parsed* config when the base declares a schema, so semantically
+ * equal inputs dedup — omitting a defaulted field on one path (or using the cap
+ * bare where a `.default({})` schema supplies the same value) is not a conflict.
+ * Falls back to the raw argument when the config is schemaless or a value fails
+ * to parse (the invalid one surfaces a clearer error later during resolution).
  */
 function assertConfigCompatible(
   existing: CapabilityRef,
   incoming: CapabilityRef,
-  name: string
+  base: DefinedCapability
 ): void {
   if (existing === incoming) return;
-  const a = readConfig(existing);
-  const b = readConfig(incoming);
-  if (a === undefined && b === undefined) return;
+  const rawA = readConfig(existing);
+  const rawB = readConfig(incoming);
+  if (rawA === undefined && rawB === undefined) return;
+
+  let a = rawA;
+  let b = rawB;
+  const schema = (base as { __configDef?: CapabilityConfigDef }).__configDef?.schema;
+  if (schema) {
+    const parsedA = schema.safeParse(rawA);
+    const parsedB = schema.safeParse(rawB);
+    if (parsedA.success && parsedB.success) {
+      a = parsedA.data;
+      b = parsedB.data;
+    }
+  }
+
   if (!deepEqual(a, b)) {
     throw new Error(
-      `Conflicting .config() for capability "${name}": the same capability is ` +
+      `Conflicting .config() for capability "${base.name}": the same capability is ` +
       `used more than once with different configuration. Pass identical config, ` +
       `or configure it in a single place.`
     );
@@ -128,7 +146,7 @@ export function flattenCapabilities(
       const existing = seen.get(name)!;
       // Same base capability reference → allowed (diamond dependency)
       if (getBaseCapability(existing) === base) {
-        assertConfigCompatible(existing, ref, name);
+        assertConfigCompatible(existing, ref, base);
         return;
       }
       // Different capability, same name → error
@@ -357,16 +375,11 @@ export function mergeSurfaceInto(
   blockKind: BlockKind,
   capName: string,
   presetName: string,
-  sourceKind: "preset" | "config" | "required" = "preset"
+  sourceKind: "preset" | "config" = "preset"
 ): void {
   // How this surface is named in error messages: config surfaces report
   // "config" rather than a preset name (FIX-915); presets keep their name.
-  const source =
-    sourceKind === "config"
-      ? "config"
-      : sourceKind === "required"
-        ? "required surface"
-        : `preset "${presetName}"`;
+  const source = sourceKind === "config" ? "config" : `preset "${presetName}"`;
 
   // Resources — valid on all block kinds. Flat map; resource scope is
   // intrinsic via `defineResource({ scope })` (FIX-435).
@@ -551,7 +564,7 @@ export function mergeCapabilities(
     const base = getBaseCapability(cap);
 
     // 1. Merge required surface
-    mergeSurfaceInto(acc, base, blockKind, base.name, "<required>", "required");
+    mergeSurfaceInto(acc, base, blockKind, base.name, "<required>");
 
     // 2. Merge active preset surfaces
     const activePresets = resolveActivePresets(cap);

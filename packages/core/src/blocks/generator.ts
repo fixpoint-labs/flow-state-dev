@@ -113,14 +113,17 @@ async function resolveDynamicCapSurface(
   ctx: BlockContext,
 ): Promise<DynamicCapSurface> {
   // Open config is a build-time transform resolved by mergeCapabilities. A
-  // configured ref reaching the dynamic `uses` path is only known at request
-  // time and would silently drop its resolver contributions, so reject it with
-  // a clear error (v1 supports .config() on static uses only — FIX-915).
+  // configured ref reaching the dynamic `uses` path — returned directly by a
+  // dynamic resolver, or nested in a dynamically-resolved capability's own
+  // `uses` — is only known at request time and would silently drop its resolver
+  // contributions, so reject it with a clear error (v1 supports .config() on
+  // static uses only — FIX-915).
   if ("__config" in cap) {
     const base = getBaseCapability(cap);
     throw new Error(
-      `Capability "${base.name}" was configured with .config() inside a dynamic ` +
-      `uses resolver, which is not supported. Move it to a static uses entry.`
+      `Capability "${base.name}" carries .config() but was reached through a ` +
+      `dynamic uses resolver, which is not supported. Configure it on a static ` +
+      `uses entry.`
     );
   }
 
