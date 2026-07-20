@@ -41,6 +41,7 @@ const snapshot: DecisionSnapshotState = {
   positionCapClamped: null,
   excluded: null,
   preGatePolicyTargetPct: null,
+  evidenceVerdict: null,
   decidedAt: "2026-06-25T00:00:00.000Z",
   outcomeRealizedPrice: null,
   outcomeAsOf: null,

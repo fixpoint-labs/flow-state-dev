@@ -507,6 +507,7 @@ function PmHeroWithScenarios({
       snapshotAsOf={data?.portfolioFit?.snapshotAsOf ?? null}
       mandateDecision={data?.mandateDecision ?? null}
       policyDecision={data?.policyDecision ?? null}
+      evidenceDecision={data?.evidenceDecision ?? null}
       />
     </div>
   );

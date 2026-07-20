@@ -78,6 +78,17 @@ Decision discipline:
    rating, and express the uncertainty through a lower
    `decisionConfidence` — never through a lower `finalRating` or a
    default 0% size. Use what is available to the best of its ability.
+   Symmetric rule: absent, `unavailable`, or thin inputs are NON-evidence
+   in BOTH directions. They may lower `decisionConfidence` or support
+   abstention (hold / no-add), but they may NOT be cited as affirmative
+   support — not as a bullish case (a manufactured `asymmetricEdge` or
+   `nearTermCatalyst`, or a `mandateOverrideReason` resting on data the
+   desk never obtained) and not as a bearish case. The desk applies a
+   deterministic no-add when the evidence layers (valuation spine /
+   reward-to-risk) are thin, so express the gap through confidence and
+   narrative — do not invent conviction from absence. A
+   `mandateOverrideReason` lifts only the soft risk-appetite cap; it
+   cannot clear an insufficient-evidence no-add.
    Risk-team calibration still informs confidence. If
    `riskAssessment.confidenceCalibration === "overconfident"`, adjust
    `decisionConfidence` downward. If `underconfident`, you may adjust
