@@ -2,7 +2,7 @@
  * task-board pattern tests (FIX-446).
  *
  * Coverage:
- *   - block structure and validation
+ *   - handle structure and validation
  *   - basic drain (single + multi worker)
  *   - dependency-gated dispatch (topological)
  *   - worker registry routing by task.assignee
@@ -112,7 +112,7 @@ function lastTaskState(items: unknown[]): Map<string, string> {
 // Block structure
 // ---------------------------------------------------------------------------
 
-describe("taskBoard - block structure", () => {
+describe("taskBoard - handle structure", () => {
   it("returns drain + collectionId", () => {
     const board = taskBoard({
       name: "structure",

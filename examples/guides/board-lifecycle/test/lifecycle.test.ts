@@ -31,7 +31,7 @@ describe("board lifecycle", () => {
     expect(tasks.every((t) => t.result === null)).toBe(true);
   });
 
-  it("seedDrainRead: adding the board.drain drain moves the same tasks to completed", async () => {
+  it("seedDrainRead: running board.drain moves the same tasks to completed", async () => {
     const result = await testFlow({
       flow: boardLifecycleFlow,
       action: "seedDrainRead",

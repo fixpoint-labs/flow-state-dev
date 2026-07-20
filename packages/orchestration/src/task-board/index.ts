@@ -638,7 +638,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
       });
   }
 
-  const block = sequencer({
+  const drain = sequencer({
     name,
     stateSchema: taskBoardStateSchema,
   })
@@ -688,7 +688,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
         stateKey: collectionConfig.stateKey,
       });
 
-  return { drain: block, collectionId, capability };
+  return { drain, collectionId, capability };
 }
 
 // ---------------------------------------------------------------------------
