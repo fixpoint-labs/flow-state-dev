@@ -231,6 +231,8 @@ const enqueue = handler({
 
 The accessor has `addTask`, `addTasks`, `getTask`, `listTasks`, `countTasks`, and `tasks()` (the full `TaskCollectionRef` when you need a method the sugar doesn't cover). Because the default backing is request-scoped, a sibling or outer step can add tasks *before* `board.drain` runs — the board picks them up on its first pass.
 
+Each sugar call re-resolves the collection so reads always reflect the latest state. That's cheap for the request and sequencer backings. For a durable (resource-backed) board it re-hydrates on every call, so when you need several reads in a row without writes between them, grab the ref once with `const tasks = await ctx.cap.<name>.tasks()` and read from it.
+
 ## Collection backing
 
 A board stores its tasks in one of three places. You choose once; nothing downstream restates it.

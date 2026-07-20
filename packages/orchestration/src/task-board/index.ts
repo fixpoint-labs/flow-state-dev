@@ -370,15 +370,16 @@ export interface TaskBoardToolCacheConfig {
   defaultScope?: "run" | "request" | "session";
 }
 
-export interface TaskBoardHandle {
+export interface TaskBoardHandle<TInput = unknown, TOutput = unknown> {
   /**
    * The composed drain sequencer — the block that runs the board's
    * tasks. Plug into a parent flow or sequencer.
    *
-   * For the sequencer-backed default, the parent sequencer's
-   * `stateSchema` MUST include a `Record<string, Task>` slot at
-   * `[stateKey]` (default `"tasks"`). `taskBoardStateSchema` declares
-   * the canonical shape.
+   * Only when `collection` opts into `{ backing: "sequencer" }`: the parent
+   * sequencer's `stateSchema` MUST include a `Record<string, Task>` slot at
+   * `[stateKey]` (default `"tasks"`) — `taskBoardStateSchema` declares the
+   * canonical shape. The default (request) and durable (resource) backings put
+   * tasks off the parent sequencer, so no such slot is required.
    */
   drain: SequencerDefinition<any, any>;
   /** Stable identifier for the collection — matches `data.collectionId` on emitted `task-change` items. */
@@ -395,8 +396,12 @@ export interface TaskBoardHandle {
    * auto-declares the board's `tasks` slot via `targetStateSchemas` and throws
    * if used from outside the board's subtree (state must be in scope). Factory-
    * backed boards defer entirely to the user's factory.
+   *
+   * Carries the board's `TInput`/`TOutput`, so a consumer doing
+   * `ctx.cap.<name>.addTask({ input })` type-checks the payload against the
+   * board's task input rather than `unknown`.
    */
-  capability: DefinedCapability<string, TaskBoardCapabilityAccessor>;
+  capability: DefinedCapability<string, TaskBoardCapabilityAccessor<TInput, TOutput>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -409,7 +414,7 @@ export interface TaskBoardHandle {
  */
 export function taskBoard<TInput = unknown, TOutput = unknown>(
   config: TaskBoardConfig<TInput, TOutput>
-): TaskBoardHandle {
+): TaskBoardHandle<TInput, TOutput> {
   const {
     name,
     collection: collectionConfig,
@@ -690,7 +695,10 @@ interface CollectionBinding<TInput, TOutput> {
     ctx: BlockContext
   ) => Promise<TaskCollectionRef<TInput, TOutput>>;
   collectionId: string;
-  capability: DefinedCapability<string, TaskBoardCapabilityAccessor>;
+  capability: DefinedCapability<
+    string,
+    TaskBoardCapabilityAccessor<TInput, TOutput>
+  >;
   drainUses?: readonly DefinedCapability[];
 }
 
@@ -721,7 +729,7 @@ function resolveCollectionBinding<TInput, TOutput>(
     return {
       collectionFactory: (ctx) => Promise.resolve(userFactory(ctx)),
       collectionId,
-      capability: createTaskBoardCapability({
+      capability: createTaskBoardCapability<TInput, TOutput>({
         backing: "factory",
         boardName,
         collectionId,
@@ -750,7 +758,7 @@ function resolveCollectionBinding<TInput, TOutput>(
     return {
       collectionFactory,
       collectionId,
-      capability: createTaskBoardCapability({
+      capability: createTaskBoardCapability<TInput, TOutput>({
         backing: "resource",
         boardName,
         collectionId,
@@ -764,6 +772,12 @@ function resolveCollectionBinding<TInput, TOutput>(
   // 3. Sequencer opt-in.
   if (collectionConfig !== undefined && collectionConfig.backing === "sequencer") {
     const { collectionId, stateKey } = collectionConfig;
+    // NOTE: the `ctx.sequencer` fallback below is for the DRAIN factory only —
+    // the board's own seed handler runs directly under the drain, where
+    // `ctx.sequencer` IS the board sequencer. The capability accessor
+    // (`createTaskBoardCapability` sequencer branch) is deliberately stricter:
+    // `getTarget` only, no `ctx.sequencer` fallback, so a sibling can't silently
+    // write to the wrong state. The two resolution paths are not identical.
     const collectionFactory = (ctx: BlockContext) => {
       const target = ctx.getTarget<Record<string, unknown>>(boardName);
       const stateRef = (target ?? ctx.sequencer) as
@@ -785,7 +799,7 @@ function resolveCollectionBinding<TInput, TOutput>(
     return {
       collectionFactory,
       collectionId,
-      capability: createTaskBoardCapability({
+      capability: createTaskBoardCapability<TInput, TOutput>({
         backing: "sequencer",
         boardName,
         collectionId,
@@ -808,7 +822,7 @@ function resolveCollectionBinding<TInput, TOutput>(
   return {
     collectionFactory,
     collectionId,
-    capability: createTaskBoardCapability({
+    capability: createTaskBoardCapability<TInput, TOutput>({
       backing: "request",
       boardName,
       collectionId,

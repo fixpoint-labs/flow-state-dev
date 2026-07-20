@@ -114,21 +114,26 @@ export interface TaskBoardResourceCapabilityOptions {
  * externally-managed or custom stores. No state schema is declared (the storage
  * is opaque; the factory owns any declaration).
  */
-export interface TaskBoardFactoryCapabilityOptions {
+export interface TaskBoardFactoryCapabilityOptions<TInput = unknown, TOutput = unknown> {
   backing: "factory";
   boardName: string;
   collectionId: string;
-  factory: (ctx: BlockContext) => MaybePromise<TaskCollectionRef>;
+  factory: (ctx: BlockContext) => MaybePromise<TaskCollectionRef<TInput, TOutput>>;
 }
 
-export type TaskBoardCapabilityOptions =
+export type TaskBoardCapabilityOptions<TInput = unknown, TOutput = unknown> =
   | TaskBoardSequencerCapabilityOptions
   | TaskBoardRequestCapabilityOptions
   | TaskBoardResourceCapabilityOptions
-  | TaskBoardFactoryCapabilityOptions;
+  | TaskBoardFactoryCapabilityOptions<TInput, TOutput>;
 
 /**
  * Capability accessor — what consumers see at `ctx.cap.<boardName>`.
+ *
+ * Generic in the board's task payload types: `taskBoard<TInput, TOutput>(...)`
+ * threads `TInput`/`TOutput` through the handle to here, so `addTask` type-checks
+ * the payload and the query methods return `Task<TInput, TOutput>`. Without the
+ * threading a mismatched `addTask({ input })` would compile silently.
  *
  * `tasks()` returns the full `TaskCollectionRef`. The sugar methods delegate to
  * that ref: `addTask`/`addTasks` mutate; `getTask`/`listTasks`/`countTasks`
@@ -136,23 +141,25 @@ export type TaskBoardCapabilityOptions =
  * ref is). Every method re-resolves the ref, so reads always reflect the latest
  * committed state.
  *
- * The intersection with `Record<string, (...args) => any>` satisfies
- * `defineCapability`'s `TFns` constraint without widening the consumer's `ctx`.
+ * A closed object of function-typed properties satisfies `defineCapability`'s
+ * `TFns extends Record<string, (...args) => any>` constraint on its own — no
+ * `& Record<string, …>` intersection, which would re-widen every method back to
+ * `(...args: any[]) => any` and erase exactly the payload checking above.
  */
-export type TaskBoardCapabilityAccessor = {
+export type TaskBoardCapabilityAccessor<TInput = unknown, TOutput = unknown> = {
   /** The board's full `TaskCollectionRef` — the escape hatch for the whole API. */
-  tasks: () => Promise<TaskCollectionRef>;
+  tasks: () => Promise<TaskCollectionRef<TInput, TOutput>>;
   /** Add one task. */
-  addTask: (task: TaskInit) => Promise<Task>;
+  addTask: (task: TaskInit<TInput>) => Promise<Task<TInput, TOutput>>;
   /** Add several tasks. */
-  addTasks: (tasks: TaskInit[]) => Promise<Task[]>;
+  addTasks: (tasks: TaskInit<TInput>[]) => Promise<Task<TInput, TOutput>[]>;
   /** Read one task by id (undefined if absent). */
-  getTask: (id: string) => Promise<TaskHandle | undefined>;
+  getTask: (id: string) => Promise<TaskHandle<TInput, TOutput> | undefined>;
   /** List tasks, optionally filtered. */
-  listTasks: (filter?: TaskFilter) => Promise<TaskHandle[]>;
+  listTasks: (filter?: TaskFilter) => Promise<TaskHandle<TInput, TOutput>[]>;
   /** Count tasks, optionally filtered. */
   countTasks: (filter?: TaskFilter) => Promise<number>;
-} & Record<string, (...args: any[]) => any>;
+};
 
 /**
  * Build the accessor over a per-call `resolve`. Not memoized: each method
@@ -163,9 +170,9 @@ export type TaskBoardCapabilityAccessor = {
  * large durable board pays that per call. Reach for `tasks()` once and reuse the
  * ref when you need many reads in a row without intervening writes.
  */
-function buildTaskBoardAccessor(
-  resolve: () => Promise<TaskCollectionRef>
-): TaskBoardCapabilityAccessor {
+function buildTaskBoardAccessor<TInput, TOutput>(
+  resolve: () => Promise<TaskCollectionRef<TInput, TOutput>>
+): TaskBoardCapabilityAccessor<TInput, TOutput> {
   return {
     tasks: resolve,
     addTask: async (task) => (await resolve()).addTask(task),
@@ -181,9 +188,9 @@ function buildTaskBoardAccessor(
  * `ctx.cap.<boardName>`. See module doc. The returned capability is reused as a
  * singleton by `taskBoard()` — consumers use `board.capability`, not this.
  */
-export function createTaskBoardCapability(
-  options: TaskBoardCapabilityOptions
-): DefinedCapability<string, TaskBoardCapabilityAccessor> {
+export function createTaskBoardCapability<TInput = unknown, TOutput = unknown>(
+  options: TaskBoardCapabilityOptions<TInput, TOutput>
+): DefinedCapability<string, TaskBoardCapabilityAccessor<TInput, TOutput>> {
   const { boardName, collectionId } = options;
   // Board name flows verbatim into `ctx.cap[<name>]`. Reject prototype-poisoning
   // names here — the layer that owns the accessor key — so misuse throws at
@@ -195,10 +202,10 @@ export function createTaskBoardCapability(
     const userFactory = options.factory;
     return defineCapability({
       name: capabilityName,
-      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor =>
+      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor<TInput, TOutput> =>
         // `async` normalizes a sync-or-async factory to a Promise and captures a
         // synchronous throw as a rejection, honoring the accessor contract.
-        buildTaskBoardAccessor(async () => userFactory(ctx)),
+        buildTaskBoardAccessor<TInput, TOutput>(async () => userFactory(ctx)),
     });
   }
 
@@ -206,9 +213,9 @@ export function createTaskBoardCapability(
     const { stateKey } = options;
     return defineCapability({
       name: capabilityName,
-      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor =>
-        buildTaskBoardAccessor(() =>
-          getOrCreateTaskCollection({
+      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor<TInput, TOutput> =>
+        buildTaskBoardAccessor<TInput, TOutput>(() =>
+          getOrCreateTaskCollection<TInput, TOutput>({
             ctx,
             backing: "request",
             collectionId,
@@ -225,9 +232,9 @@ export function createTaskBoardCapability(
       // Compose the internal resource-declaring capability so any block that
       // lists `board.capability` also installs the durable collection.
       uses: [resourceCapability],
-      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor =>
-        buildTaskBoardAccessor(() =>
-          resolveResourceTaskCollection(ctx, {
+      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor<TInput, TOutput> =>
+        buildTaskBoardAccessor<TInput, TOutput>(() =>
+          resolveResourceTaskCollection<TInput, TOutput>(ctx, {
             boardName,
             resourceKey,
             collectionId,
@@ -246,8 +253,8 @@ export function createTaskBoardCapability(
     targetStateSchemas: {
       [boardName]: taskBoardStateSchema,
     },
-    fns: (ctx: BlockContext): TaskBoardCapabilityAccessor =>
-      buildTaskBoardAccessor(async () => {
+    fns: (ctx: BlockContext): TaskBoardCapabilityAccessor<TInput, TOutput> =>
+      buildTaskBoardAccessor<TInput, TOutput>(async () => {
         const target = ctx.getTarget<Record<string, unknown>>(boardName);
         if (target === undefined) {
           throw new Error(
@@ -256,7 +263,7 @@ export function createTaskBoardCapability(
               `returned undefined — the board is not on the current execution chain.`
           );
         }
-        return getOrCreateTaskCollection({
+        return getOrCreateTaskCollection<TInput, TOutput>({
           ctx,
           backing: "sequencer",
           collectionId,

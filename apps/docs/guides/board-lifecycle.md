@@ -126,15 +126,15 @@ lever for "when is the board's state still around":
 
 | Backing | Lives for | Reach for it when |
 |---------|-----------|-------------------|
-| `sequencer` (default) | the `board.drain` sequencer's own invocation | the board seeds, drains, and is read within one block slot — the common "fan out and gather" case |
-| `request` | the whole request | a seed/read block outside `board.drain` shares the collection, or an outer loop re-enters `board.drain` to drain freshly added tasks |
+| `request` (default) | the whole request | most work: a seed/read block outside `board.drain` shares the collection, or an outer loop re-enters `board.drain` to drain freshly added tasks — and it works when `collection` is omitted entirely |
+| `sequencer` | the `board.drain` sequencer's own invocation | you specifically want per-invocation isolation: the board seeds, drains, and is read within one block slot and two calls should not share state. Opt in with `{ backing: "sequencer", collectionId }` |
 | `resource` (scope `session`/`user`/`org`) | across requests | the tasks are a durable queue or list that must outlive the request that created them |
 
-The default is the tightest lifetime, and that's usually right — a board that
-fans out and gathers inside one action doesn't need its tasks to survive the
-action. Reach for `request` when a block outside the drain needs the same
-collection (the example uses `request` for exactly this). Reach for `resource`
-when the tasks themselves are the durable thing.
+The default is `request`, and that's usually right — a block outside the drain
+(or a later drain in a replan loop) can see the same tasks. Opt into `sequencer`
+only when you want each `board.drain` call to get its own isolated collection —
+note that omitting `backing` no longer gives you that; you have to ask for it.
+Reach for `resource` when the tasks themselves are the durable thing.
 
 **Multiple boards, one request.** Nothing stops you running several boards in
 the same request or sequencer. Each board is keyed by its own `collectionId`

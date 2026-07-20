@@ -16,8 +16,8 @@ describe("defineTaskCollection", () => {
     // … plus the additive marker carrying the id.
     expect(todos.__taskCollection.id).toBe("todos");
     expect(isDefinedTaskCollection(todos)).toBe(true);
-    // Pattern is `<id>/*`, scope is passed through.
-    expect(todos.pattern).toBe("todos/*");
+    // Pattern is `<id>/**` (deep — task ids may contain slashes), scope passes through.
+    expect(todos.pattern).toBe("todos/**");
     expect(todos.scope).toBe("user");
   });
 
