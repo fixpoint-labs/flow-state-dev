@@ -13,7 +13,6 @@ import {
   mergeCapabilities,
 } from "../src/capability";
 import { generator } from "../src/blocks/generator";
-import { handler } from "../src/blocks/handler";
 
 // A representative configured capability: a schema with an optional (defaulted)
 // field, and a resolver that maps the parsed value onto generator context.
@@ -276,6 +275,41 @@ describe("diamond config conflict", () => {
     });
     expect(() => flattenCapabilities([parentA, parentB])).not.toThrow();
   });
+
+  it("bare vs .config({}) dedups on a top-level-defaulted schema", () => {
+    const defaulted = defineCapability({
+      name: "defaulted",
+      config: {
+        schema: z.object({ label: z.string().default("x") }).default({}),
+        resolve: (cfg) => ({ context: [cfg.label] }),
+      },
+    });
+    // One path uses it bare, the other with an empty config — both parse to
+    // { label: "x" }, so this is not a conflict.
+    const parentA = defineCapability({ name: "pa", uses: [defaulted] });
+    const parentB = defineCapability({ name: "pb", uses: [defaulted.config({})] });
+    expect(() => flattenCapabilities([parentA, parentB])).not.toThrow();
+  });
+
+  it("schemaless bare vs .config(undefined) is a deterministic conflict (not order-dependent)", () => {
+    const schemaless = defineCapability({
+      name: "sl",
+      config: { resolve: (cfg: unknown) => ({ context: [String(cfg)] }) },
+    });
+    const parentA = defineCapability({ name: "pa", uses: [schemaless] });
+    const parentB = defineCapability({
+      name: "pb",
+      uses: [schemaless.config(undefined as never)],
+    });
+    // Bare is a mandatory-config error; .config(undefined) runs the resolver —
+    // they resolve differently, so the diamond throws regardless of visit order.
+    expect(() => flattenCapabilities([parentA, parentB])).toThrow(
+      /Conflicting .config\(\) for capability "sl"/,
+    );
+    expect(() => flattenCapabilities([parentB, parentA])).toThrow(
+      /Conflicting .config\(\) for capability "sl"/,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -293,7 +327,7 @@ describe("configured ref via dynamic uses", () => {
     const context = (gen.config as { context: Array<(i: unknown, c: unknown) => unknown> }).context;
     const dynamicResolver = context[context.length - 1];
     await expect(dynamicResolver({}, {} as never)).rejects.toThrow(
-      /Capability "banner" carries .config\(\) but was reached through a dynamic/,
+      /Capability "banner" declares open config but was reached through a dynamic/,
     );
   });
 });

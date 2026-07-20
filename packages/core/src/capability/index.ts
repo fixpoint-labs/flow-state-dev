@@ -27,6 +27,5 @@ export {
   extractMergedResources,
   mergeSurfaceInto,
   resolveActivePresets,
-  resolveConfigSurface,
 } from "./merge";
 export type { MergedCapabilitySurface, DynamicUsesResolver, FlattenResult } from "./merge";

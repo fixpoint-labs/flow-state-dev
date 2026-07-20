@@ -282,9 +282,7 @@ type PreserveCarriers<Self> = Pick<Self, Extract<keyof Self, CapabilityCarrierKe
 type ConfigArgOf<Self> = Self extends { __configInType?: infer I }
   ? [I] extends [never]
     ? never
-    : [unknown] extends [I]
-      ? never
-      : I
+    : I
   : never;
 
 // ---------------------------------------------------------------------------
@@ -348,6 +346,18 @@ export interface DefinedCapability<
    * `never` when the capability declares no config. Holds no runtime value.
    */
   readonly __configInType?: unknown;
+
+  /**
+   * @internal Runtime-only carrier: the config declaration, set by
+   * defineCapability. Read by the merge pipeline; not a public API.
+   */
+  readonly __configDef?: CapabilityConfigDef;
+
+  /**
+   * @internal Runtime-only carrier: the value passed to `.config()`, present as
+   * an own prop on a configured ref. Read by the merge pipeline; not a public API.
+   */
+  readonly __config?: unknown;
 
   // Capability composition — static refs and/or dynamic resolver functions
   uses?: UsesSlot;

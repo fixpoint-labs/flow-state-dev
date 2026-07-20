@@ -44,22 +44,27 @@ export function getBaseCapability(ref: CapabilityRef): DefinedCapability {
   return ref as DefinedCapability;
 }
 
-/** Read the own `__config` value off a ref, or undefined if unconfigured. */
-function readConfig(ref: CapabilityRef): unknown {
-  return "__config" in ref ? (ref as { __config?: unknown }).__config : undefined;
+/** Whether a ref carries an own `.config()` value (vs. being used bare). */
+function hasConfig(ref: CapabilityRef): boolean {
+  return "__config" in ref;
 }
 
 /**
- * Two diamond paths reaching the same base with different `.config()` values
- * would silently bake one closure and drop the other. Unlike presets (first-
- * wins), config carries values, so a conflict is a build-time error; identical
- * config dedups.
+ * Two diamond paths reaching the same base would silently bake one config
+ * closure and drop the other. Unlike presets (first-wins), config carries
+ * values, so paths that would resolve differently are a build-time error;
+ * paths that resolve identically dedup.
  *
- * Compares the *parsed* config when the base declares a schema, so semantically
- * equal inputs dedup — omitting a defaulted field on one path (or using the cap
- * bare where a `.default({})` schema supplies the same value) is not a conflict.
- * Falls back to the raw argument when the config is schemaless or a value fails
- * to parse (the invalid one surfaces a clearer error later during resolution).
+ * Compatibility is decided on the value each ref would feed its resolver, which
+ * is what `resolveConfigSurface` computes:
+ * - With a schema, that is `schema.parse(configured ? value : undefined)`. So a
+ *   bare ref and `.config({})` on a `.default({})` schema dedup (both parse to
+ *   the defaults), and an omitted defaulted field is not a conflict. If exactly
+ *   one path parses (e.g. the schema rejects `undefined`, making the bare path
+ *   invalid), they resolve differently → conflict.
+ * - Schemaless, the resolver receives the raw value and a bare ref is a
+ *   mandatory-config error, so bare-vs-configured is a conflict and two
+ *   configured refs compare by raw value.
  */
 function assertConfigCompatible(
   existing: CapabilityRef,
@@ -67,29 +72,31 @@ function assertConfigCompatible(
   base: DefinedCapability
 ): void {
   if (existing === incoming) return;
-  const rawA = readConfig(existing);
-  const rawB = readConfig(incoming);
-  if (rawA === undefined && rawB === undefined) return;
+  const hasA = hasConfig(existing);
+  const hasB = hasConfig(incoming);
+  const schema = base.__configDef?.schema;
 
-  let a = rawA;
-  let b = rawB;
-  const schema = (base as { __configDef?: CapabilityConfigDef }).__configDef?.schema;
   if (schema) {
-    const parsedA = schema.safeParse(rawA);
-    const parsedB = schema.safeParse(rawB);
-    if (parsedA.success && parsedB.success) {
-      a = parsedA.data;
-      b = parsedB.data;
+    const a = schema.safeParse(hasA ? existing.__config : undefined);
+    const b = schema.safeParse(hasB ? incoming.__config : undefined);
+    if (a.success && b.success) {
+      if (deepEqual(a.data, b.data)) return;
+    } else if (!a.success && !b.success) {
+      // Both invalid — a shared parse error surfaces at resolution.
+      return;
     }
+    // else: exactly one parses → they resolve differently → conflict below.
+  } else {
+    if (!hasA && !hasB) return; // both bare — a shared mandatory-config error
+    if (hasA === hasB && deepEqual(existing.__config, incoming.__config)) return;
+    // bare vs configured, or two differing values → conflict below.
   }
 
-  if (!deepEqual(a, b)) {
-    throw new Error(
-      `Conflicting .config() for capability "${base.name}": the same capability is ` +
-      `used more than once with different configuration. Pass identical config, ` +
-      `or configure it in a single place.`
-    );
-  }
+  throw new Error(
+    `Conflicting .config() for capability "${base.name}": the same capability is ` +
+    `used more than once with different configuration. Pass identical config, ` +
+    `or configure it in a single place.`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -498,17 +505,17 @@ export function resolveConfigSurface(
   ctx: { presets: ReadonlySet<string>; blockKind: BlockKind }
 ): Partial<PresetDef> | undefined {
   const base = getBaseCapability(cap);
-  const configDef = (base as { __configDef?: CapabilityConfigDef }).__configDef;
+  const configDef = base.__configDef;
   if (!configDef) return undefined;
 
-  const hasConfig = "__config" in cap;
-  const rawConfig = hasConfig ? (cap as { __config?: unknown }).__config : undefined;
+  const configured = hasConfig(cap);
+  const rawConfig = configured ? cap.__config : undefined;
 
   let configValue: unknown;
   if (configDef.schema) {
     const parsed = configDef.schema.safeParse(rawConfig);
     if (!parsed.success) {
-      if (!hasConfig) {
+      if (!configured) {
         throw new Error(
           `Capability "${base.name}" requires configuration: call .config(...) ` +
           `on it (its config schema does not accept an absent value).`
@@ -523,7 +530,7 @@ export function resolveConfigSurface(
     // Schemaless config — .config() is mandatory (there is no default to fall
     // back to), so an absent value is a build-time error rather than passing
     // raw undefined to a resolver typed as receiving a value.
-    if (!hasConfig) {
+    if (!configured) {
       throw new Error(
         `Capability "${base.name}" declares schemaless config and must be used ` +
         `with .config(...).`
