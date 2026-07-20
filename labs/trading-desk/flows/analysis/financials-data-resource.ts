@@ -16,13 +16,19 @@
  */
 import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
-import { toolOutputSchemas } from "./tools/schemas";
+import { recoveryAuditSchema, toolOutputSchemas } from "./tools/schemas";
 
 export const financialsDataStateSchema = z.object({
   fundamentals: toolOutputSchemas.get_fundamentals.optional(),
   balanceSheet: toolOutputSchemas.get_balance_sheet.optional(),
   incomeStatement: toolOutputSchemas.get_income_statement.optional(),
   cashflow: toolOutputSchemas.get_cashflow.optional(),
+  // Critical-source recovery audit (FIX-898). Written once per run by the
+  // recovery runtime when recovery RUNS — records how the IPO/prospectus ladder
+  // terminated (promoted / rejected / no-candidates / extract-failed), so an
+  // "unavailable" statement carries an explicit trail rather than an unexplained
+  // void. Absent when companyfacts/Yahoo answered (recovery never ran).
+  recoveryAudit: recoveryAuditSchema.optional(),
 });
 
 export type FinancialsDataState = z.infer<typeof financialsDataStateSchema>;

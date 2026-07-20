@@ -10,6 +10,7 @@ Hand-curated JSON fixtures keyed by `(ticker, date)`. The fixture
 | `NVDA` | `2026-05-06` | Default demo fixture; matches the design handoff. |
 | `AAPL` | `2026-05-06` | Demonstrates the (ticker, date) keying mechanism. |
 | `JPM` | `2026-05-06` | Demonstrates the (ticker, date) keying mechanism. |
+| `SPCX` | `2026-05-06` | Synthetic newly listed issuer (FIX-898): statements are recovered from an IPO prospectus (`edgar-prospectus`) — see [`../docs/financials-recovery.md`](../docs/financials-recovery.md). Statements-only (not a full analyze corpus). |
 
 ## Recording fixtures
 
@@ -54,6 +55,8 @@ canonical tool name. Record runs write these names automatically.
 - `balance-sheet.json` — `get_balance_sheet`
 - `income-statement.json` — `get_income_statement`
 - `cashflow.json` — `get_cashflow`
+- `sec-filings.json` — `get_sec_filings` (includes `registrationFilings`: the
+  S-1 / 424B* prospectus primaries surfaced for newly listed issuers, FIX-898)
 - `fundamentals.json` — `get_fundamentals`
 - `prices.json` — `get_price_history`
 - `indicators.json` — `compute_indicators`

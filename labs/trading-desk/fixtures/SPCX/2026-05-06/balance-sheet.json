@@ -1,0 +1,10 @@
+{
+  "ticker": "SPCX",
+  "asOf": "2025-12-31",
+  "totalAssets": null,
+  "totalLiabilities": null,
+  "totalEquity": null,
+  "cashAndEquivalents": 4.0,
+  "totalDebt": 1.0,
+  "unit": "USD billions"
+}

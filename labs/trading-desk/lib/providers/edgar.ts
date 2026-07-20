@@ -30,6 +30,38 @@ import type { FinancialPeriod } from "./financials-history";
 export const USER_AGENT = "flow-state-dev-example (flow-state@fixpointlabs.co)";
 const TICKERS_URL = "https://www.sec.gov/files/company_tickers.json";
 const COMPANYFACTS_BASE = "https://data.sec.gov/api/xbrl/companyfacts";
+const SUBMISSIONS_BASE = "https://data.sec.gov/submissions";
+
+/** GET an EDGAR URL with the required User-Agent, throwing on any non-2xx so
+ *  callers fall through with a single `try/catch`. Shared by the filings and
+ *  registration providers (one copy, not three). An optional `signal` lets a
+ *  caller (recovery on a cancelled run) abort the in-flight request. */
+export async function edgarFetch(url: string, signal?: AbortSignal): Promise<Response> {
+  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal });
+  if (!res.ok) throw new Error(`EDGAR ${url} failed: HTTP ${res.status}`);
+  return res;
+}
+
+/** The `filings.recent` arrays the filings + registration providers read. */
+export type RecentSubmissions = {
+  form?: string[];
+  filingDate?: string[];
+  accessionNumber?: string[];
+  primaryDocument?: string[];
+  primaryDocDescription?: string[];
+  items?: string[];
+};
+
+export type SubmissionsData = { cik: number; name: string; recent: RecentSubmissions };
+
+// Short-TTL submissions cache, keyed by padded CIK. The full recent-filings
+// list is date-independent, so both the disclosure list (get_sec_filings) and
+// registration recovery project their own shape from ONE fetch instead of
+// hitting SEC twice for the same issuer within a run. A short TTL (not the
+// permanent ticker→CIK idiom) bounds staleness: on a long-lived server a newly
+// posted 424B/8-K/10-K becomes visible within minutes rather than at restart.
+const SUBMISSIONS_TTL_MS = 5 * 60 * 1000;
+const submissionsCache = new Map<string, { expires: number; data: Promise<SubmissionsData> }>();
 
 /** One entry in SEC's `company_tickers.json` map. */
 type TickerEntry = { cik_str: number; ticker: string; title: string };
@@ -66,6 +98,39 @@ export async function resolveCik(ticker: string): Promise<string> {
   const cik = map.get(ticker.toUpperCase());
   if (cik == null) throw new Error(`No SEC CIK for ticker ${ticker} (non-US filer?)`);
   return String(cik).padStart(10, "0");
+}
+
+/**
+ * Fetch the raw submissions (`{ cik, name, recent }`) for a ticker, cached per
+ * CIK for the process (a failed fetch is evicted so a retry re-fetches). The
+ * filings provider and the registration-recovery provider both project from
+ * this one payload — one SEC round-trip per issuer per run, not two.
+ */
+// No `signal` here on purpose: this promise is SHARED across callers via the
+// per-CIK cache (recovery + the periodic `get_sec_filings` path), so binding it
+// to one caller's abort signal would let a cancelled recovery reject the fetch
+// out from under a concurrent, un-cancelled caller. The submissions call is one
+// small JSON; recovery's own abort guards stop it before any spine write.
+export async function fetchRecentSubmissions(ticker: string): Promise<SubmissionsData> {
+  const cik = await resolveCik(ticker);
+  const cached = submissionsCache.get(cik);
+  if (cached && cached.expires > Date.now()) return cached.data;
+  const pending = (async () => {
+    const res = await edgarFetch(`${SUBMISSIONS_BASE}/CIK${cik}.json`);
+    const data = (await res.json()) as {
+      cik?: number;
+      name?: string;
+      filings?: { recent?: RecentSubmissions };
+    };
+    return {
+      cik: data.cik ?? Number(cik),
+      name: data.name ?? "",
+      recent: data.filings?.recent ?? {},
+    };
+  })();
+  submissionsCache.set(cik, { expires: Date.now() + SUBMISSIONS_TTL_MS, data: pending });
+  pending.catch(() => submissionsCache.delete(cik));
+  return pending;
 }
 
 /** Fetch + cache the raw companyfacts payload for a ticker (one HTTP call). */
