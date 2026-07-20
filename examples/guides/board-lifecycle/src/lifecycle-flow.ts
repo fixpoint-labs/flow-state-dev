@@ -85,7 +85,7 @@ const readResults = handler({
 // initialTasks — it drains whatever the seed block put in the collection.
 const board = taskBoard({
   name: "queue-board",
-  collection: { backing: "request", collectionId: COLLECTION_ID },
+  collection: { collectionId: COLLECTION_ID },
   concurrency: 4,
   dispatcher: "fifo",
   workers: { processor },

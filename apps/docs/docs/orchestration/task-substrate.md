@@ -136,9 +136,9 @@ Where a collection stores its tasks decides how long they live. `getOrCreateTask
 
 | Backing | Lifetime | Reach for it when |
 |---------|----------|-------------------|
-| `sequencer` (default) | One board invocation | A pattern decomposes work and drains it within a single sequencer run. |
-| `request` | The whole request, across block boundaries | An outer loop re-enters the same board, e.g. a replan loop that drains freshly added tasks each iteration. |
-| `resource` | Outlives the request | A durable queue: a user's task list, an org work pool that accepts tasks across sessions. |
+| `request` (task-board default) | The whole request, across block boundaries | Most work: an outer loop re-enters the same board, or a sibling step adds tasks before the drain. |
+| `sequencer` | One board invocation | A pattern decomposes work and drains it within a single sequencer run and wants per-call storage. |
+| `resource` | Outlives the request | A durable queue: a user's task list, an org work pool that accepts tasks across sessions. Declare it with `defineTaskCollection`. |
 
 The sequencer backing is per-invocation because each sequencer call allocates a fresh state container. If you need the collection to survive across those calls but stay inside one request, use `request`. For anything that has to persist between requests, use `resource` with a session-, user-, or org-scoped resource collection.
 

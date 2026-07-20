@@ -18,9 +18,9 @@
  *     → .loopBack(board.drain.name, { when: decision !== "complete" })
  *     → synthesize
  *
- * The board is request-backed (`{ backing: "request", collectionId:
- * name }`) so the same TaskCollection survives across `board.drain`
- * re-entries inside the replan loop. Per-worker concurrency defaults to
+ * The board uses the default request backing (`{ collectionId: name }`)
+ * so the same TaskCollection survives across `board.drain` re-entries
+ * inside the replan loop. Per-worker concurrency defaults to
  * 1 to preserve the legacy single-stream-per-step semantic; bump
  * `maxConcurrency` to fan out independent steps within a single drain.
  *
@@ -687,7 +687,7 @@ export function planAndExecute<
   // `cascadeSkipDependents` after the drain.
   const board = taskBoard({
     name: `${name}-board`,
-    collection: { backing: "request", collectionId: name },
+    collection: { collectionId: name },
     workers: adaptedWorker,
     concurrency: maxConcurrency,
     dispatcher: "topological",

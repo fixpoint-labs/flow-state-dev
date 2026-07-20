@@ -55,6 +55,16 @@ export {
   type ResourceBackingSpec,
 } from "./collection/get-or-create";
 
+// Durable (resource-backed) task collections — the one-liner for a board
+// whose tasks survive across turns.
+export {
+  defineTaskCollection,
+  isDefinedTaskCollection,
+  type DefinedTaskCollection,
+  type DefineTaskCollectionOptions,
+} from "./collection/define-task-collection";
+export { resolveResourceCollection } from "./collection/resolve-resource-collection";
+
 // Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.
 export { onTaskChangeFor } from "./collection/predicates";
 

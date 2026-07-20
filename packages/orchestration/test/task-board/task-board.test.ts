@@ -24,6 +24,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
+  defineTaskCollection,
   extractTaskItemWindows,
   fifoDispatcher,
   getOrCreateTaskCollection,
@@ -453,7 +454,7 @@ describe("taskBoard - mid-drain enqueue", () => {
 
     const board = taskBoard({
       name: "fanout",
-      collection: { collectionId: "fanout" },
+      collection: { backing: "sequencer", collectionId: "fanout" },
       concurrency: 2,
       dispatcher: "fifo",
       workers: fanoutWorker,
@@ -567,7 +568,7 @@ describe("taskBoard - failure handling", () => {
 
     const board = taskBoard({
       name: "deps-fail",
-      collection: { collectionId: "df" },
+      collection: { backing: "sequencer", collectionId: "df" },
       concurrency: 1,
       dispatcher: "topological",
       workers: failingWorker,
@@ -624,7 +625,7 @@ describe("taskBoard - awaiting_review", () => {
 
     const board = taskBoard({
       name: "hitl",
-      collection: { collectionId: "review" },
+      collection: { backing: "sequencer", collectionId: "review" },
       concurrency: 1,
       dispatcher: "fifo",
       workers: reviewWorker,
@@ -802,7 +803,7 @@ describe("taskBoard - onIdle modes", () => {
 
     const board = taskBoard({
       name: "wait-mode",
-      collection: { collectionId: "wm" },
+      collection: { backing: "sequencer", collectionId: "wm" },
       concurrency: 1,
       dispatcher: "fifo",
       workers: waitWorker,
@@ -945,35 +946,68 @@ describe("taskBoard - remix blocks", () => {
 // ---------------------------------------------------------------------------
 
 describe("taskBoard - capability", () => {
-  it("returns a capability whose name encodes the board's name", () => {
+  it("names the capability the board name verbatim (bare accessor key)", () => {
     const board = taskBoard({
       name: "research",
       collection: { collectionId: "research" },
       workers: makeGoalWorker("noop", () => null),
     });
     expect(board.capability).toBeDefined();
-    expect(board.capability!.name).toBe("taskBoard_research");
+    // Bare `<name>` — consumers reach it at `ctx.cap.research`, not
+    // `ctx.cap.taskBoard_research`.
+    expect(board.capability!.name).toBe("research");
   });
 
-  it("declares the board's state slot via targetStateSchemas", () => {
+  it("keeps a hyphenated board name verbatim (bracket-accessible)", () => {
     const board = taskBoard({
-      name: "schemas-board",
-      collection: { collectionId: "x" },
+      name: "research-board",
       workers: makeGoalWorker("noop", () => null),
     });
-    // The capability must declare the board's `tasks` slot so blocks
-    // that consume the capability transitively contribute the state
+    expect(board.capability!.name).toBe("research-board");
+  });
+
+  it("throws when the board name would poison the accessor prototype", () => {
+    expect(() =>
+      taskBoard({
+        name: "__proto__",
+        workers: makeGoalWorker("noop", () => null),
+      })
+    ).toThrow(/not a safe accessor key/);
+    expect(() =>
+      taskBoard({
+        name: "toString",
+        workers: makeGoalWorker("noop", () => null),
+      })
+    ).toThrow(/not a safe accessor key/);
+  });
+
+  it("declares the board's state slot via targetStateSchemas (sequencer backing)", () => {
+    const board = taskBoard({
+      name: "schemas-board",
+      collection: { backing: "sequencer", collectionId: "x" },
+      workers: makeGoalWorker("noop", () => null),
+    });
+    // The sequencer-backed capability declares the board's `tasks` slot so
+    // blocks that consume the capability transitively contribute the state
     // schema without manual flow-level wiring.
     const targetSchemas = board.capability!.targetStateSchemas;
     expect(targetSchemas).toBeDefined();
     expect(targetSchemas?.["schemas-board"]).toBeDefined();
   });
 
+  it("does not declare targetStateSchemas for the request default", () => {
+    const board = taskBoard({
+      name: "req-board",
+      workers: makeGoalWorker("noop", () => null),
+    });
+    // Request-backed tasks live on ctx.request, not a parent sequencer slot.
+    expect(board.capability!.targetStateSchemas).toBeUndefined();
+  });
+
   it("returns a factory-backed capability when a caller-supplied factory is used", () => {
-    // Factory-backed boards still get a capability — the capability's
-    // `tasks()` getter delegates to the user's factory. No state schema
-    // is declared because the storage is opaque (typically a
-    // ResourceCollection that already declares its own).
+    // Factory-backed boards still get a capability — the accessor delegates to
+    // the user's factory. No state schema is declared because the storage is
+    // opaque (typically a ResourceCollection that already declares its own).
     const board = taskBoard({
       name: "factory-board",
       collection: () => {
@@ -982,7 +1016,7 @@ describe("taskBoard - capability", () => {
       workers: makeGoalWorker("noop", () => null),
     });
     expect(board.capability).toBeDefined();
-    expect(board.capability!.name).toBe("taskBoard_factory-board");
+    expect(board.capability!.name).toBe("factory-board");
     // Factory mode does NOT declare targetStateSchemas — storage is the
     // caller's responsibility.
     expect(board.capability!.targetStateSchemas).toBeUndefined();
@@ -999,8 +1033,8 @@ describe("taskBoard - capability", () => {
       collection: { collectionId: "financials" },
       workers: makeGoalWorker("noop", () => null),
     });
-    expect(research.capability!.name).toBe("taskBoard_research");
-    expect(financials.capability!.name).toBe("taskBoard_financials");
+    expect(research.capability!.name).toBe("research");
+    expect(financials.capability!.name).toBe("financials");
     expect(research.capability!.name).not.toBe(financials.capability!.name);
   });
 
@@ -1008,8 +1042,8 @@ describe("taskBoard - capability", () => {
     // End-to-end smoke: the board's drain produces `task-change`
     // component items keyed by `${collectionId}/${taskId}`. Any future
     // consumer that wires the capability into a generator's `uses` and
-    // calls `ctx.cap.taskBoard_<name>.tasks()` reads the same
-    // collection that emits these items.
+    // calls `ctx.cap.<name>.tasks()` reads the same collection that emits
+    // these items.
     const trace: string[] = [];
     const board = taskBoard({
       name: "smoke",
@@ -1037,6 +1071,173 @@ describe("taskBoard - capability", () => {
       expect(item.data?.collectionId).toBe("smoke");
       expect(item.key).toBe(`smoke/${item.data?.taskId}`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Request default — a sibling/outer step can add a task BEFORE the board
+// drains (the footgun the sequencer default made throw), and the accessor
+// sugar (addTask/addTasks/getTask/listTasks/countTasks) delegates to the ref.
+// ---------------------------------------------------------------------------
+
+describe("taskBoard - request default + accessor sugar", () => {
+  it("a sibling step adds a task before the board drains (omitted collection)", async () => {
+    const processed: string[] = [];
+    const board = taskBoard({
+      // No `collection` — request default, collectionId = board name.
+      name: "preboard",
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: makeEchoWorker("uniform", processed),
+    });
+
+    // Runs BEFORE board.drain. Under the old sequencer default this threw
+    // (the board's state didn't exist yet); with the request default the
+    // collection is already reachable from any block in the request.
+    const seedFromSibling = handler({
+      name: "seed-from-sibling",
+      inputSchema: z.unknown(),
+      uses: [board.capability],
+      execute: async (_input, ctx) => {
+        await ctx.cap.preboard.addTask({
+          id: "s1",
+          goal: "s1",
+          input: { topic: "s1" },
+        });
+        await ctx.cap.preboard.addTasks([
+          { id: "s2", goal: "s2", input: { topic: "s2" } },
+        ]);
+      },
+    });
+
+    const wrapper = sequencer({ name: "preboard-wrapper" })
+      .tap(seedFromSibling)
+      .tap(board.drain);
+
+    const result = await testBlock(wrapper, { input: undefined });
+    expect(result.error).toBeNull();
+    expect(processed.sort()).toEqual(["uniform:s1", "uniform:s2"]);
+  });
+
+  it("getTask/listTasks/countTasks read through the accessor after adds", async () => {
+    const board = taskBoard({
+      name: "sugar",
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: makeEchoWorker("uniform"),
+    });
+
+    const probe = handler({
+      name: "sugar-probe",
+      inputSchema: z.unknown(),
+      outputSchema: z.object({
+        count: z.number(),
+        first: z.string().optional(),
+        completed: z.number(),
+      }),
+      uses: [board.capability],
+      execute: async (_input, ctx) => {
+        const acc = ctx.cap.sugar;
+        await acc.addTask({ id: "t1", goal: "g1", input: { topic: "t1" } });
+        await acc.addTasks([{ id: "t2", goal: "g2", input: { topic: "t2" } }]);
+        const t1 = await acc.getTask("t1");
+        return {
+          count: await acc.countTasks(),
+          first: t1?.goal,
+          completed: (await acc.listTasks({ status: "completed" })).length,
+        };
+      },
+    });
+
+    const wrapper = sequencer({ name: "sugar-wrapper" }).step(probe);
+    const result = await testBlock(wrapper, { input: undefined });
+    expect(result.error).toBeNull();
+    expect(result.output).toEqual({ count: 2, first: "g1", completed: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Durable (resource-backed) board — `defineTaskCollection` as `collection`.
+// ---------------------------------------------------------------------------
+
+describe("taskBoard - durable (resource-backed) collection", () => {
+  const todos = defineTaskCollection({
+    id: "todos",
+    scope: "session",
+    stateSchema: z.object({ topic: z.string() }),
+  });
+
+  it("drains a resource-backed board and a sibling using board.capability resolves the collection", async () => {
+    const processed: string[] = [];
+    const board = taskBoard({
+      name: "todo-board",
+      collection: todos,
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: makeEchoWorker("uniform", processed),
+    });
+
+    // A sibling action that does NOT run under board.drain — it lists
+    // board.capability in `uses`, which installs the durable collection on its
+    // own action tree, so the resource resolves. It seeds a task before the
+    // drain (durable + request-default composability).
+    const seed = handler({
+      name: "todo-seed",
+      inputSchema: z.unknown(),
+      uses: [board.capability],
+      execute: async (_input, ctx) => {
+        await ctx.cap["todo-board"].addTask({
+          id: "d1",
+          goal: "d1",
+          input: { topic: "d1" },
+        });
+      },
+    });
+
+    const wrapper = sequencer({ name: "todo-wrapper" })
+      .tap(seed)
+      .tap(board.drain);
+
+    const result = await testBlock(wrapper, { input: undefined });
+    expect(result.error).toBeNull();
+    expect(processed).toEqual(["uniform:d1"]);
+    const final = lastTaskState(result.items);
+    expect(final.get("d1")).toBe("completed");
+  });
+
+  it("re-resolves per call so a read after a mid-run add sees fresh state", async () => {
+    const board = taskBoard({
+      name: "fresh-board",
+      collection: defineTaskCollection({ id: "fresh", scope: "session" }),
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: makeEchoWorker("uniform"),
+    });
+
+    // The accessor is not memoized: two adds separated by a fresh countTasks
+    // must both be visible. If the ref were cached from the first resolve, a
+    // resource backing (whose sync mirror only tracks refs it created) would
+    // still see them — but the count is read through a *new* resolve each time,
+    // proving per-call resolution.
+    const probe = handler({
+      name: "fresh-probe",
+      inputSchema: z.unknown(),
+      outputSchema: z.object({ afterFirst: z.number(), afterSecond: z.number() }),
+      uses: [board.capability],
+      execute: async (_input, ctx) => {
+        const acc = ctx.cap["fresh-board"];
+        await acc.addTask({ id: "f1", goal: "f1" });
+        const afterFirst = await acc.countTasks();
+        await acc.addTask({ id: "f2", goal: "f2" });
+        const afterSecond = await acc.countTasks();
+        return { afterFirst, afterSecond };
+      },
+    });
+
+    const wrapper = sequencer({ name: "fresh-wrapper" }).step(probe);
+    const result = await testBlock(wrapper, { input: undefined });
+    expect(result.error).toBeNull();
+    expect(result.output).toEqual({ afterFirst: 1, afterSecond: 2 });
   });
 });
 
@@ -1499,7 +1700,7 @@ describe("taskBoard - item attribution (FIX-658)", () => {
 
     const board = taskBoard({
       name: "fanout",
-      collection: { collectionId: "fanout" },
+      collection: { backing: "sequencer", collectionId: "fanout" },
       concurrency: 2,
       dispatcher: "fifo",
       workers: worker,

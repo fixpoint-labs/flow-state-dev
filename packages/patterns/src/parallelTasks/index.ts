@@ -90,7 +90,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
 
   const board = taskBoard({
     name: `${name}-board`,
-    collection: { backing: "request", collectionId: name },
+    collection: { collectionId: name },
     workers: worker,
     concurrency: maxConcurrency,
     dispatcher: "fifo",

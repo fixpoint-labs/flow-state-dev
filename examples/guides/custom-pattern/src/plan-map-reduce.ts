@@ -49,7 +49,7 @@ export function planMapReduce<TResult>(
 
   const board = taskBoard({
     name: config.name,
-    collection: { backing: "request", collectionId },
+    collection: { collectionId },
     concurrency: 8,
     dispatcher: "fifo",
     // One assignee, "map", staffed by the caller's worker.
