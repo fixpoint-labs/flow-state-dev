@@ -17,14 +17,12 @@ import type { UsesEntry } from "../capability/types";
  *
  * FIX-914: the sequencer's own DSL callbacks (`.step`/`.tap`/`.loopBack`'s
  * `when`, etc.) run AS the sequencer's own scope, so `ctx.self` mirrors
- * `ctx.sequencer` here — both typed from the same `TStateSchema`.
- * `TParentStateSchema` (optional, defaults to `undefined`) types `ctx.parent`
- * from the sequencer's own `parentStateSchema`.
+ * `ctx.sequencer` here — both typed from the same `TStateSchema`. (A
+ * sequencer's `ctx.parent` — its own enclosing block's state — isn't typed
+ * here; it falls back to `BlockContext`'s untyped default, same as before
+ * this addressing mode existed.)
  */
-export type SequencerCtx<
-  TStateSchema extends ZodTypeAny | undefined,
-  TParentStateSchema extends ZodTypeAny | undefined = undefined,
-> =
+export type SequencerCtx<TStateSchema extends ZodTypeAny | undefined> =
   BlockContext<
     Record<string, unknown>,
     Record<string, unknown>,
@@ -35,8 +33,7 @@ export type SequencerCtx<
     unknown,
     undefined,
     {},
-    InferStateFromSchema<TStateSchema>,
-    InferStateFromSchema<TParentStateSchema>
+    InferStateFromSchema<TStateSchema>
   >;
 
 export type ParallelStep<TCurrent> =
@@ -397,7 +394,6 @@ export type SequencerConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TInput = z.infer<TInputSchema>,
   TStateSchema extends ZodTypeAny | undefined = undefined,
-  TParentStateSchema extends ZodTypeAny | undefined = undefined,
 > = {
   name: string;
   description?: string;
@@ -418,8 +414,6 @@ export type SequencerConfig<
   /** This sequencer's own request-scoped state (FIX-914 alias: also exposed
    *  as `ctx.self` within its own DSL callbacks, in addition to `ctx.sequencer`). */
   stateSchema?: TStateSchema;
-  /** Expected shape of the immediate parent's own state (FIX-914). */
-  parentStateSchema?: TParentStateSchema;
   /** Capabilities to install. Merges resources, state schemas, targets,
    *  and any active preset surfaces into this sequencer's config. */
   uses?: readonly UsesEntry[];

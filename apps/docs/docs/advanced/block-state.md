@@ -62,7 +62,7 @@ const pipeline = sequencer({ name: "owner-then-child" })
 
 `owner` and `child` are two sides of the same container: `owner`'s `ctx.self` is `child`'s `ctx.parent`. Whoever is asking determines which handle you reach for — the block itself uses `ctx.self`, anything nested one level inside it uses `ctx.parent`.
 
-`ctx.parent` is `undefined` when there's no parent (the block is at the root) and its state ops are absent when the parent declared no `stateSchema` — guard with `?.` the same way you would with `ctx.targets`.
+`ctx.parent` is `undefined` when there's no parent (the block is at the root), and its state ops are absent — not present-and-throwing — when the parent declared no `stateSchema`. Guard with `?.` either way.
 
 This is the shape a generator's tool loop uses: the generator declares `stateSchema` and reads `ctx.self`; a tool it calls is a child block and writes back via `ctx.parent`, without either side naming the other.
 

@@ -3222,7 +3222,16 @@ export async function createExecutionContext<
           return { name: p.parent.name, kind: p.parent.kind, input: p.parent.input };
         }
 
-        return { kind: p.parent.kind, ...buildStateRef(p) };
+        // Attach `kind` via defineProperty rather than an object spread —
+        // spreading would eagerly evaluate `buildStateRef`'s `state` getter
+        // and flatten it into a stale snapshot, so a caller holding
+        // `const p = ctx.parent` would see `p.state` frozen at capture time
+        // even after writing through `p` itself.
+        return Object.defineProperty(buildStateRef(p), "kind", {
+          value: p.parent.kind,
+          enumerable: true,
+          configurable: true
+        });
       }
     });
 

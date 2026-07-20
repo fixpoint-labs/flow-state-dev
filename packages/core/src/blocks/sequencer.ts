@@ -2271,10 +2271,9 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
 export function sequencer<
   const TInputSchema extends ZodTypeAny = ZodTypeAny,
   const TStateSchema extends ZodTypeAny | undefined = undefined,
-  const TParentStateSchema extends ZodTypeAny | undefined = undefined,
   TInput = z.infer<TInputSchema>,
 >(
-  config: SequencerConfig<TInputSchema, TInput, TStateSchema, TParentStateSchema>
+  config: SequencerConfig<TInputSchema, TInput, TStateSchema>
 ): SequencerDefinition<TInput, TInput, TStateSchema> {
   const { declaredResources, resolvedCapabilities } = resolveCapabilities(config, "sequencer");
 

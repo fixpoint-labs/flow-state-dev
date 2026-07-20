@@ -175,6 +175,56 @@ describe("FIX-914: block-level state", () => {
     expect(observedCounts).toEqual([1, 1, 1]);
   });
 
+  it("loop-owner accumulation: the sequencer's own state persists across its own .loopBack passes", async () => {
+    const inc = handler({
+      name: "inc-touching-owner",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      sequencerStateSchema: z.object({ passes: z.number() }),
+      execute: async (value, ctx) => {
+        await ctx.sequencer?.incState({ passes: 1 });
+        return value + 1;
+      }
+    });
+    const reportPasses = handler({
+      name: "report-passes",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      sequencerStateSchema: z.object({ passes: z.number() }),
+      execute: (_value, ctx) => ctx.sequencer!.state.passes
+    });
+
+    const seq = sequencer({
+      name: "loop-owner-accum",
+      inputSchema: z.number(),
+      stateSchema: z.object({ passes: z.number().default(0) })
+    })
+      .step(inc)
+      .loopBack("inc-touching-owner", { when: (value) => (value as number) < 3, maxIterations: 5 })
+      .step(reportPasses);
+
+    const flow = defineFlow({
+      kind: "loop-owner-accum-flow",
+      actions: { run: { inputSchema: z.number(), block: seq } }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: 0,
+      userId: "user",
+      sessionId: "sess",
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
+    });
+
+    expect(result.error).toBeUndefined();
+    // Loop runs 3 passes (0 -> 1 -> 2 -> 3); the sequencer keeps the SAME
+    // container across every pass (unlike a step's own container, which
+    // resets each pass — see the isolation test above), so `passes` reaches 3.
+    expect(result.output).toBe(3);
+  });
+
   it("forEach isolation: each iteration's own ctx.self is private to that iteration", async () => {
     const item = handler({
       name: "item-with-own-state",
@@ -306,5 +356,93 @@ describe("FIX-914: block-level state", () => {
     expect(result.error).toBeUndefined();
     expect(result.output).toBe("picked-a");
     expect(observedPicks).toBe(0);
+  });
+
+  it("ctx.parent.state stays live when captured into a local variable across a write", async () => {
+    let staleRead: number | undefined;
+    let freshRead: number | undefined;
+    const writer = handler({
+      name: "writer-owner",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value
+    });
+    const reader = handler({
+      name: "reader",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      parentStateSchema: z.object({ count: z.number().default(0) }),
+      execute: async (value, ctx) => {
+        const p = ctx.parent;
+        await p?.setState?.({ count: value });
+        // Read back through the SAME captured reference — must reflect the
+        // write, not a snapshot taken when `ctx.parent` was first accessed.
+        staleRead = p?.state?.count;
+        freshRead = ctx.parent?.state?.count;
+        return value;
+      }
+    });
+
+    const pipeline = sequencer({
+      name: "live-parent-state",
+      inputSchema: z.number(),
+      stateSchema: z.object({ count: z.number().default(0) })
+    })
+      .step(writer)
+      .step(reader);
+
+    const flow = defineFlow({
+      kind: "live-parent-state-flow",
+      actions: { run: { inputSchema: z.number(), block: pipeline } }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: 42,
+      userId: "user",
+      sessionId: "sess",
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(staleRead).toBe(42);
+    expect(freshRead).toBe(42);
+  });
+
+  it("ctx.parent's state ops are absent (not present-and-throwing) when the parent declares no stateSchema", async () => {
+    let observedParent: unknown;
+    const child = handler({
+      name: "child-of-stateless-parent",
+      inputSchema: z.number(),
+      outputSchema: z.boolean(),
+      parentStateSchema: z.object({ count: z.number() }),
+      execute: (_value, ctx) => {
+        observedParent = ctx.parent;
+        return ctx.parent?.setState === undefined;
+      }
+    });
+
+    const pipeline = sequencer({ name: "stateless-owner", inputSchema: z.number() }).step(child);
+
+    const flow = defineFlow({
+      kind: "stateless-parent-flow",
+      actions: { run: { inputSchema: z.number(), block: pipeline } }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: 1,
+      userId: "user",
+      sessionId: "sess",
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe(true);
+    expect(observedParent).toMatchObject({ name: "stateless-owner", kind: "sequencer" });
   });
 });
