@@ -12,7 +12,6 @@ import { sequencer, handler, utility } from "@flow-state-dev/core";
 import type { SequencerDefinition } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { createSeedTasksFromPlan } from "../shared/planning-entry";
 import { parallelTasksInputSchema, type SubTaskErrorStrategy } from "./schemas";
@@ -112,14 +111,12 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     activeStatusMessage: "Combining results",
     inputSchema: z.unknown(),
     outputSchema: z.array(z.unknown()),
+    uses: [board.capability],
     execute: async (_input, ctx) => {
-      const collection = await getOrCreateTaskCollection({
-        ctx,
-        backing: "request",
-        collectionId: name,
+      const completed = await ctx.cap[board.capability.name].listTasks({
+        status: "completed",
       });
-      return collection
-        .list({ status: "completed" })
+      return completed
         .map((t) => t.output)
         .filter((o): o is unknown => o !== undefined);
     }
