@@ -5,10 +5,10 @@
  * Reuses the shared CIK resolution and User-Agent from `providers/edgar.ts`.
  * Tools using this helper: get_sec_filings.
  */
-import { resolveCik, USER_AGENT } from "./edgar";
+import { edgarFetch, fetchRecentSubmissions } from "./edgar";
 import { classifyItems, type MaterialEventItem } from "./eight-k-items";
+import { selectRegistrationCandidates } from "./edgar-registration";
 
-const SUBMISSIONS_BASE = "https://data.sec.gov/submissions";
 const ARCHIVES_BASE = "https://www.sec.gov/Archives/edgar/data";
 const EFTS_BASE = "https://efts.sec.gov/LATEST/search-index";
 
@@ -62,40 +62,28 @@ export type EdgarFilingsPayload = {
   ticker: string;
   asOf: string;
   recentFilings: FilingEntry[];
+  // Registration / prospectus primary documents (S-1, 424B*, F-1*), kept apart
+  // from `recentFilings` so the periodic MD&A / red-flag consumers are unchanged
+  // (FIX-898). Surfaces IPO disclosure as primary for newly listed issuers.
+  registrationFilings: FilingEntry[];
   materialEvents: MaterialEvent[];
   latestPeriodic: LatestPeriodic | null;
   redFlagProbes: RedFlagProbe[];
 };
 
-async function edgarFetch(url: string): Promise<Response> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
-  if (!res.ok) throw new Error(`EDGAR ${url} failed: HTTP ${res.status}`);
-  return res;
-}
-
-/** Fetch the submissions list for a ticker. */
+/** Fetch the submissions list for a ticker and project the periodic list,
+ *  material events, and the sibling registration list (the last two share the
+ *  raw submissions with registration recovery — one cached fetch). */
 async function fetchSubmissions(ticker: string, date: string): Promise<{
   cik: number;
   recentFilings: FilingEntry[];
+  registrationFilings: FilingEntry[];
   materialEvents: MaterialEvent[];
 }> {
-  const paddedCik = await resolveCik(ticker);
-  const res = await edgarFetch(`${SUBMISSIONS_BASE}/CIK${paddedCik}.json`);
-  const data = (await res.json()) as {
-    cik: number;
-    filings?: {
-      recent?: {
-        form?: string[];
-        filingDate?: string[];
-        accessionNumber?: string[];
-        primaryDocument?: string[];
-        primaryDocDescription?: string[];
-        items?: string[];
-      };
-    };
-  };
-  const recent = data.filings?.recent;
-  if (!recent?.form) return { cik: data.cik, recentFilings: [], materialEvents: [] };
+  const { cik, name, recent } = await fetchRecentSubmissions(ticker);
+  if (!recent.form) {
+    return { cik, recentFilings: [], registrationFilings: [], materialEvents: [] };
+  }
 
   const cutoff = windowCutoff(date, LOOKBACK_DAYS);
   const entries: FilingEntry[] = [];
@@ -108,7 +96,7 @@ async function fetchSubmissions(ticker: string, date: string): Promise<{
     if (!PERIODIC_FORMS.has(form)) continue;
     const accession = (recent.accessionNumber?.[i] ?? "").replace(/-/g, "");
     const primaryDoc = recent.primaryDocument?.[i] ?? "";
-    const url = `${ARCHIVES_BASE}/${data.cik}/${accession}/${primaryDoc}`;
+    const url = `${ARCHIVES_BASE}/${cik}/${accession}/${primaryDoc}`;
     const filingDate = recent.filingDate?.[i] ?? "";
     const title = recent.primaryDocDescription?.[i] ?? form;
 
@@ -129,7 +117,18 @@ async function fetchSubmissions(ticker: string, date: string): Promise<{
     }
   }
 
-  return { cik: data.cik, recentFilings: entries, materialEvents };
+  // Registration primaries go through the SAME selector recovery uses — so the
+  // disclosure list and recovery agree on ranking, and both drop filings dated
+  // after the as-of `date` (no future prospectus leaks into a historical run).
+  const registrationFilings: FilingEntry[] = selectRegistrationCandidates(
+    recent,
+    cik,
+    name,
+    date,
+    MAX_RECENT,
+  ).map((c) => ({ form: c.form, filingDate: c.filingDate, title: c.form, url: c.url }));
+
+  return { cik, recentFilings: entries, registrationFilings, materialEvents };
 }
 
 /** Extract a section from filing HTML by item header pattern. */
@@ -227,7 +226,8 @@ export async function fetchEdgarFilings(
   ticker: string,
   date: string,
 ): Promise<EdgarFilingsPayload> {
-  const { cik, recentFilings, materialEvents } = await fetchSubmissions(ticker, date);
+  const { cik, recentFilings, registrationFilings, materialEvents } =
+    await fetchSubmissions(ticker, date);
   const [latestPeriodic, redFlagProbes] = await Promise.all([
     fetchLatestPeriodic(recentFilings),
     probeRedFlags(cik),
@@ -237,6 +237,7 @@ export async function fetchEdgarFilings(
     ticker,
     asOf: date,
     recentFilings,
+    registrationFilings,
     materialEvents,
     latestPeriodic,
     redFlagProbes,

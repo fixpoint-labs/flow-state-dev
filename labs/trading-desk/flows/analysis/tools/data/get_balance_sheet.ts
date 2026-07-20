@@ -1,16 +1,20 @@
 /**
  * Latest balance sheet (totals only). Live: SEC EDGAR companyfacts
  * (authoritative US filings) preferred, Yahoo `fundamentals-timeseries`
- * fallback. Fixture: curated per-ticker JSON.
+ * fallback. When both miss the subject's cash / debt — including a sparse
+ * companyfacts for a newly listed issuer — a bounded IPO-prospectus recovery
+ * runs and fills cash/debt when the prospectus discloses them (FIX-898).
+ * Fixture: curated per-ticker JSON.
  */
 import { handler } from "@flow-state-dev/core";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchEdgarBalanceSheet } from "@/lib/providers/edgar";
 import { fetchYahooBalanceSheet } from "@/lib/providers/yahoo";
-import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { financialsDataResource } from "../../financials-data-resource";
 import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { loadStatementWithRecovery } from "../runtime/statement-recovery";
+import type { RecoveryCtx } from "../runtime/critical-financials-recovery";
 import { recordIfRecording } from "../runtime/resolve";
 
 export const get_balance_sheet = handler({
@@ -22,20 +26,20 @@ export const get_balance_sheet = handler({
   // Write-through to the session financials spine (see get_fundamentals).
   execute: async (input, ctx) => {
     const mode = pickMode(ctx);
+    const toSpine = input.ticker === (ctx.session.state as { ticker?: string }).ticker;
     const loadBalanceSheet = async () => {
       if (mode === "fixture") return loadFixture("get_balance_sheet", input);
-      // EDGAR first (authoritative, no key); Yahoo backstops non-US filers and
-      // EDGAR outages; empty payload only when both fail.
-      try {
-        return await fetchEdgarBalanceSheet(input);
-      } catch {}
-      try {
-        return await fetchYahooBalanceSheet(input);
-      } catch {}
-      return emptyPayload("get_balance_sheet", input);
+      return loadStatementWithRecovery({
+        spec: { field: "balanceSheet", tool: "get_balance_sheet" },
+        input,
+        ctx: ctx as unknown as RecoveryCtx,
+        toSpine,
+        fetchEdgar: () => fetchEdgarBalanceSheet(input),
+        fetchYahoo: () => fetchYahooBalanceSheet(input),
+      });
     };
     const payload = await writeSubjectSpine({
-      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      toSpine,
       resource: ctx.resources.financialsData,
       field: "balanceSheet",
       tool: "get_balance_sheet",

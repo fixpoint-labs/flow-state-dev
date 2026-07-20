@@ -1,0 +1,23 @@
+{
+  "source": "fixture",
+  "ticker": "SPCX",
+  "asOf": "2026-05-06",
+  "recentFilings": [],
+  "registrationFilings": [
+    {
+      "form": "424B4",
+      "filingDate": "2026-02-10",
+      "title": "424B4",
+      "url": "https://www.sec.gov/Archives/edgar/data/1750000/000000000026000004/424b4.htm"
+    },
+    {
+      "form": "S-1/A",
+      "filingDate": "2026-01-20",
+      "title": "S-1/A",
+      "url": "https://www.sec.gov/Archives/edgar/data/1750000/000000000026000003/s1a.htm"
+    }
+  ],
+  "materialEvents": [],
+  "latestPeriodic": null,
+  "redFlagProbes": []
+}

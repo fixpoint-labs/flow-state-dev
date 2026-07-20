@@ -41,7 +41,7 @@ export const researchTeamFlow = defineFlow({
   actions: {
     // Code-first path: mount the static board's block directly. Its tasks are
     // fixed at definition time, so it takes no input.
-    research: { block: researchBoard.block },
+    research: { block: researchBoard.drain },
 
     // Runtime fan-out: the router reads { subject, competitors } and builds a
     // board with one analyzer per competitor plus a gated synthesizer.

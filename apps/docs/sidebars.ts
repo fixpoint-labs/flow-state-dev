@@ -245,6 +245,7 @@ const sidebars: SidebarsConfig = {
         "advanced/custom-model-resolver",
         "advanced/inbound-transports",
         "advanced/manual-flow-execution",
+        "advanced/block-state",
         "advanced/state-targets-and-parents",
         "advanced/sequencer-state",
         "state/mutation-model",

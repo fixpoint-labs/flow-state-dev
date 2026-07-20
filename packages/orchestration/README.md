@@ -42,10 +42,11 @@ pending ─┬─→ in_progress ─┬─→ completed
 ### TaskCollection
 
 `getOrCreateTaskCollection` resolves a CAS-safe `TaskCollectionRef` over one of
-three backings — sequencer-state (default, per board invocation), request-state
-(survives block boundaries within a request), or resource-collection (outlives the
-request: a user's queue, an org work pool). Every mutation emits a `task-change`
-component item.
+three backings — request-state (the `taskBoard` default; survives block boundaries
+within a request), block-scoped state (per board invocation — `backing: "sequencer"`
+is the common case), or resource-collection (outlives the request: a user's queue, an
+org work pool — declare one with `defineTaskCollection`). Every mutation emits a
+`task-change` component item.
 
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
@@ -68,8 +69,8 @@ and lease stamping run uniformly.
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 ```
 
-`taskBoard({ name, collection, workers, ... })` returns `{ block, collectionId, capability }`.
-Mount `board.block` in a sequencer. `workers` is a single uniform worker or a
+`taskBoard({ name, collection, workers, ... })` returns `{ drain, collectionId, capability }`.
+Mount `board.drain` in a sequencer. `workers` is a single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`), `initialTasks`,

@@ -14,6 +14,13 @@ import type { UsesEntry } from "../capability/types";
  * defaults `BlockContext` itself uses (`Record<string, unknown>` for state
  * slots, `unknown` for parent input, etc.) so non-sequencer accesses still
  * surface typos as type errors instead of silently passing under `any`.
+ *
+ * FIX-914: the sequencer's own DSL callbacks (`.step`/`.tap`/`.loopBack`'s
+ * `when`, etc.) run AS the sequencer's own scope, so `ctx.self` mirrors
+ * `ctx.sequencer` here — both typed from the same `TStateSchema`. (A
+ * sequencer's `ctx.parent` — its own enclosing block's state — isn't typed
+ * here; it falls back to `BlockContext`'s untyped default, same as before
+ * this addressing mode existed.)
  */
 export type SequencerCtx<TStateSchema extends ZodTypeAny | undefined> =
   BlockContext<
@@ -25,7 +32,8 @@ export type SequencerCtx<TStateSchema extends ZodTypeAny | undefined> =
     InferStateFromSchema<TStateSchema>,
     unknown,
     undefined,
-    {}
+    {},
+    InferStateFromSchema<TStateSchema>
   >;
 
 export type ParallelStep<TCurrent> =
@@ -403,6 +411,8 @@ export type SequencerConfig<
   durable?: boolean;
   inputSchema?: TInputSchema;
   outputSchema?: ZodTypeAny;
+  /** This sequencer's own request-scoped state (FIX-914 alias: also exposed
+   *  as `ctx.self` within its own DSL callbacks, in addition to `ctx.sequencer`). */
   stateSchema?: TStateSchema;
   /** Capabilities to install. Merges resources, state schemas, targets,
    *  and any active preset surfaces into this sequencer's config. */

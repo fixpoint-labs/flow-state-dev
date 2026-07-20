@@ -6,13 +6,12 @@
  * no feedback loop. Use Supervisor when tasks need judgment and iteration.
  *
  * Pipeline:
- *   [planner] → [seedTasksFromPlan] → [board.block] → [collectResults] → [synthesizer]
+ *   [planner] → [seedTasksFromPlan] → [board.drain] → [collectResults] → [synthesizer]
  */
 import { sequencer, handler, utility } from "@flow-state-dev/core";
 import type { SequencerDefinition } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { createSeedTasksFromPlan } from "../shared/planning-entry";
 import { parallelTasksInputSchema, type SubTaskErrorStrategy } from "./schemas";
@@ -90,7 +89,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
 
   const board = taskBoard({
     name: `${name}-board`,
-    collection: { backing: "request", collectionId: name },
+    collection: { collectionId: name },
     workers: worker,
     concurrency: maxConcurrency,
     dispatcher: "fifo",
@@ -112,14 +111,12 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     activeStatusMessage: "Combining results",
     inputSchema: z.unknown(),
     outputSchema: z.array(z.unknown()),
+    uses: [board.capability],
     execute: async (_input, ctx) => {
-      const collection = await getOrCreateTaskCollection({
-        ctx,
-        backing: "request",
-        collectionId: name,
+      const completed = await ctx.cap[board.capability.name].listTasks({
+        status: "completed",
       });
-      return collection
-        .list({ status: "completed" })
+      return completed
         .map((t) => t.output)
         .filter((o): o is unknown => o !== undefined);
     }
@@ -132,7 +129,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   })
     .step(activePlanner)
     .tap(seedTasks)
-    .step(board.block)
+    .step(board.drain)
     .step(collectResults)
     .step(finalize) as SequencerDefinition<any, any>;
 }

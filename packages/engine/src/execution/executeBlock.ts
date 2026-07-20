@@ -298,7 +298,9 @@ export async function executeBlock(
             kind: options.block.kind,
             instanceId: currentInstanceId,
             transient: options.block.transient || undefined,
-            stateSchema: options.block.kind === "sequencer" ? options.block.config.stateSchema : undefined,
+            // FIX-914: any block with an own `stateSchema` gets a container
+            // now, not just sequencers.
+            stateSchema: options.block.config.stateSchema,
             parentInstanceId: attemptMetadata.parentBlockInstanceId,
             path: blockPath,
             phase: attemptMetadata.scope === "work" ? "work" : "main",

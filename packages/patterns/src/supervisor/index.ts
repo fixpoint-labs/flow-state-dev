@@ -10,7 +10,7 @@
  * exhausted, then `labelFailedReviews` tags the terminal task.
  *
  * Pipeline:
- *   captureAndPlan → board.block → cascadeSkipDependents (.tap)
+ *   captureAndPlan → board.drain → cascadeSkipDependents (.tap)
  *   → labelFailedReviews (.tap) → synthesize
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
@@ -336,7 +336,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   // drain — they get cascade-skipped after instead.
   const board = taskBoard({
     name: `${name}-board`,
-    collection: { backing: "request", collectionId: name },
+    collection: { collectionId: name },
     workers: reviewedWorkers,
     concurrency: maxConcurrency,
     dispatcher: "topological",
@@ -388,7 +388,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   return pipeline
     .tap(stampOuterGoal)
     .step(captureAndPlan)
-    .step(board.block)
+    .step(board.drain)
     .tap(cascadeSkipDependents)
     .tap(labelFailedReviews)
     .step(synthesize) as SequencerDefinition<any, any>;

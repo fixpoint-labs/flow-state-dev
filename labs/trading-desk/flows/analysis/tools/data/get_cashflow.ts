@@ -2,16 +2,20 @@
  * Trailing cash-flow statement. Live: SEC EDGAR companyfacts (authoritative
  * US filings) preferred, Yahoo `fundamentals-timeseries` fallback. FCF =
  * operating − capex (EDGAR reports capex as a positive outflow; the Yahoo
- * mapper handles its own sign convention). Fixture: curated per-ticker JSON.
+ * mapper handles its own sign convention). When both miss the subject's
+ * operating cash flow / FCF — including a sparse companyfacts for a newly
+ * listed issuer — a bounded IPO-prospectus recovery runs (FIX-898). Fixture:
+ * curated per-ticker JSON.
  */
 import { handler } from "@flow-state-dev/core";
 import { loadFixture } from "../runtime/fixtures";
 import { fetchEdgarCashflow } from "@/lib/providers/edgar";
 import { fetchYahooCashflow } from "@/lib/providers/yahoo";
-import { emptyPayload } from "../empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 import { financialsDataResource } from "../../financials-data-resource";
 import { writeSubjectSpine } from "../runtime/spine-write-through";
+import { loadStatementWithRecovery } from "../runtime/statement-recovery";
+import type { RecoveryCtx } from "../runtime/critical-financials-recovery";
 import { recordIfRecording } from "../runtime/resolve";
 
 export const get_cashflow = handler({
@@ -23,20 +27,20 @@ export const get_cashflow = handler({
   // Write-through to the session financials spine (see get_fundamentals).
   execute: async (input, ctx) => {
     const mode = pickMode(ctx);
+    const toSpine = input.ticker === (ctx.session.state as { ticker?: string }).ticker;
     const loadCashflow = async () => {
       if (mode === "fixture") return loadFixture("get_cashflow", input);
-      // EDGAR first (authoritative, no key); Yahoo backstops non-US filers and
-      // EDGAR outages; empty payload only when both fail.
-      try {
-        return await fetchEdgarCashflow(input);
-      } catch {}
-      try {
-        return await fetchYahooCashflow(input);
-      } catch {}
-      return emptyPayload("get_cashflow", input);
+      return loadStatementWithRecovery({
+        spec: { field: "cashflow", tool: "get_cashflow" },
+        input,
+        ctx: ctx as unknown as RecoveryCtx,
+        toSpine,
+        fetchEdgar: () => fetchEdgarCashflow(input),
+        fetchYahoo: () => fetchYahooCashflow(input),
+      });
     };
     const payload = await writeSubjectSpine({
-      toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
+      toSpine,
       resource: ctx.resources.financialsData,
       field: "cashflow",
       tool: "get_cashflow",

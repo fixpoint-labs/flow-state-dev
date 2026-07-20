@@ -12,10 +12,11 @@ import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 export const get_sec_filings = handler({
   name: "get_sec_filings",
   description:
-    "Fetch the latest SEC filings (10-K, 10-Q, 8-K) for a ticker: " +
-    "recent filing list, extracted risk factors and MD&A from the latest " +
-    "periodic filing, and red-flag probes (going concern, material weakness, " +
-    "restatement, covenant, litigation, dilution).",
+    "Fetch the latest SEC filings for a ticker: recent periodic filing list " +
+    "(10-K, 10-Q, 8-K), registration/prospectus primaries (S-1, 424B*, F-1) " +
+    "which carry a newly listed issuer's audited financials, extracted risk " +
+    "factors and MD&A from the latest periodic filing, and red-flag probes " +
+    "(going concern, material weakness, restatement, covenant, litigation, dilution).",
   inputSchema: toolInputSchemas.get_sec_filings,
   outputSchema: toolOutputSchemas.get_sec_filings,
   execute: async (input, ctx) => {

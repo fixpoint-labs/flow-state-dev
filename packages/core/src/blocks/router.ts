@@ -83,12 +83,25 @@ export interface RouterConfig<
   TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
   TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
-> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
+  // FIX-914: this router's own state (`stateSchema`) and its immediate
+  // parent's state (`parentStateSchema`). A router should treat `ctx.self`
+  // as read-only in `execute` — see the suspendable-router purity contract
+  // in `execution-and-errors.md`; a preceding `.tap(handler)` should write it.
+  TStateSchema extends ZodTypeAny | undefined = undefined,
+  TParentStateSchema extends ZodTypeAny | undefined = undefined,
+  TSelfState extends object = InferStateFromSchema<TStateSchema>,
+  TParentState extends object = InferStateFromSchema<TParentStateSchema>,
+> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "stateSchema"> {
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
   orgStateSchema?: TOrgStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
+  /** This router's own request-scoped state (FIX-914). Read-only in
+   *  `execute` — see `ctx.self` purity note above. */
+  stateSchema?: TStateSchema;
+  /** Expected shape of the immediate parent's own state (FIX-914). */
+  parentStateSchema?: TParentStateSchema;
   /** Flat resource declaration. See `HandlerConfig.resources` (FIX-435). */
   resources?: TResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
@@ -102,7 +115,7 @@ export interface RouterConfig<
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TOrgState,
       TResources, TSequencerState, unknown, TMergedTargetSchemas,
-      TCapabilities
+      TCapabilities, TSelfState, TParentState
     >
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
   validateRoute?: (
@@ -112,7 +125,7 @@ export interface RouterConfig<
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TOrgState,
       TResources, TSequencerState, unknown, TMergedTargetSchemas,
-      TCapabilities
+      TCapabilities, TSelfState, TParentState
     >
   ) => Promise<boolean> | boolean;
   container?: {
@@ -143,13 +156,17 @@ export function router<
   TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
   TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
+  TStateSchema extends ZodTypeAny | undefined = undefined,
+  TParentStateSchema extends ZodTypeAny | undefined = undefined,
+  TSelfState extends object = InferStateFromSchema<TStateSchema>,
+  TParentState extends object = InferStateFromSchema<TParentStateSchema>,
 >(
   config: RouterConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
     TResourceDefs, TTargetSchemas, TUses,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
-    TResources, TMergedTargetSchemas, TCapabilities
+    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   // A route name must map to exactly ONE distinct definition (FIX-814): the

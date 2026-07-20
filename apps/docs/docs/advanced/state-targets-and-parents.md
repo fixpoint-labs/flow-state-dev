@@ -6,6 +6,8 @@ sidebar_position: 11
 
 Targets give a block typed access to the state of **named ancestor blocks** in the execution tree. A block running inside a sequencer can reach up and read or write the sequencer's state — without knowing exactly where in the flow it lives.
 
+Targets address a named ancestor's [block state](/docs/advanced/block-state) by name; `ctx.parent`, covered below, addresses the *immediate* parent's state without naming it at all.
+
 This is a power-user surface. Most flows don't need it. When you do — typically a leaf block that reports progress to an enclosing sequencer, or a worker that writes findings back to a coordinator — `targetStateSchemas` is what you reach for.
 
 ## `targetStateSchemas`
@@ -75,17 +77,33 @@ This forces you to be explicit. The fix is usually to give one of the blocks a m
 
 The framework refuses to *guess* which ancestor you mean. In a deeply nested pipeline, picking "the closest one" silently is a bug factory — a refactor that adds an outer sequencer with the same name would change behavior with no test failure to catch it. Failing loudly at the first cross-block read is the right tradeoff.
 
-## `ctx.targets` vs `ctx.sequencer`
+## `ctx.parent`: the immediate parent's state
 
-Both reach into ancestor state. Different use cases:
+`ctx.parent` reaches the block's *immediate* parent — no name required. Declare the shape you expect with `parentStateSchema`:
 
-| | `ctx.sequencer` | `ctx.targets.<name>` |
-|---|---|---|
-| **What it points to** | Nearest enclosing sequencer | Specific named ancestor |
-| **Typing** | Inferred from the sequencer's `stateSchema` | Inferred from `targetStateSchemas` entry |
-| **Use case** | Access the direct parent pipeline | Cross-sequencer coordination |
+```ts
+const activateSkill = handler({
+  name: "activate-skill",
+  parentStateSchema: z.object({ activeSkills: z.array(z.string()) }),
+  execute: async (input, ctx) => {
+    await ctx.parent?.pushState?.("activeSkills", input.id);
+  },
+});
+```
 
-Use `ctx.sequencer` when a block cooperates with its immediate parent — a chain of steps sharing per-run state. Use `ctx.targets.<name>` when a block needs to communicate with a *specific* ancestor, possibly across multiple nesting levels.
+This is the tightest-scoped of the three ancestor handles — it only ever reaches one level up, and only when the immediate parent declared its own `stateSchema`. See [Block State](/docs/advanced/block-state) for the full picture, including how `ctx.self` and `ctx.parent` are two sides of the same container.
+
+## `ctx.targets` vs `ctx.sequencer` vs `ctx.parent`
+
+All three reach into ancestor state. Different use cases:
+
+| | `ctx.sequencer` | `ctx.targets.<name>` | `ctx.parent` |
+|---|---|---|---|
+| **What it points to** | Nearest enclosing sequencer | Specific named ancestor | Immediate parent, whatever kind it is |
+| **Typing** | Inferred from the sequencer's `stateSchema` | Inferred from `targetStateSchemas` entry | Inferred from `parentStateSchema` |
+| **Use case** | Access the direct parent pipeline | Cross-sequencer coordination | A child (e.g. a generator tool) writing back to exactly the block that dispatched it |
+
+Use `ctx.sequencer` when a block cooperates with its immediate parent — a chain of steps sharing per-run state. Use `ctx.targets.<name>` when a block needs to communicate with a *specific* ancestor, possibly across multiple nesting levels. Use `ctx.parent` when you only ever care about whoever dispatched you directly, regardless of its name or kind.
 
 ## Dynamic access via `ctx.getTarget`
 
@@ -151,6 +169,7 @@ The point: `processChunk` doesn't know how many sequencers wrap it, only that an
 
 ## Where to next
 
+- **[Block State](/docs/advanced/block-state)** — the underlying primitive; `ctx.self`, `ctx.parent`, `ctx.sequencer`, and `ctx.targets` are four addressing modes over the same container.
 - **[State Operations](/docs/fundamentals/state-operations)** — the full operation reference shared by every scope and target.
 - **[Sequencer State](/docs/advanced/sequencer-state)** — the per-execution scope `ctx.sequencer` points to.
 - **[Blocks](/docs/fundamentals/blocks)** — block configuration, including the `targetStateSchemas` field.

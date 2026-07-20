@@ -74,6 +74,25 @@ uses: [memoryCapability.presets({ recentContext: false, fullContext: true })]
 
 Each capability documents which presets it ships with and what they do. If you pass a preset name that doesn't exist on the capability, you get an error at factory time.
 
+## Configuring open config
+
+Presets are on/off switches. Some capabilities also accept a typed **value** — a list, a limit, a field name — through `.config()`. The capability author declares what the value looks like and a resolver that turns it into behavior; you pass it in one place:
+
+```ts
+// A capability that accepts a list of allowed skills:
+uses: [skills.config({ allowed: ["research", "summarize"] })]
+```
+
+`.config()` and `.presets()` compose. You can set both on the same capability, in either order:
+
+```ts
+uses: [skills.config({ allowed: ["research"] }).presets({ dynamicActivation: true })]
+```
+
+The value is validated against the capability's schema — a wrong shape is a build-time error. One thing to watch: using the **same** capability more than once in a block with **conflicting** `.config()` values throws (config carries values, so the framework won't silently pick one). Pass identical config, or configure it in a single place.
+
+Each capability documents the config it accepts. See [authoring open config](/docs/advanced/capabilities-authoring#open-config-with-a-resolver) to write one.
+
 ## Parameterized capabilities
 
 Some capabilities require configuration. They're exposed as factories — call the function to get a configured capability:
@@ -135,7 +154,7 @@ The four axes where this flows:
 | `targetStateSchemas` | `ctx.targets.*` |
 | `sequencerStateSchema` (preset) | `ctx.sequencer.state` |
 
-If the block declares its own schema for the same axis, both are merged. The block's own declaration wins on key collision.
+If the block declares its own schema for the same axis, both are merged. The block's own declaration wins on key collision. `ctx.targets` and `ctx.sequencer` here are two of [block state](/docs/advanced/block-state)'s four addressing modes — the other two, `ctx.self` and `ctx.parent`, address a block's own local state rather than a scope a capability declares into.
 
 Here's a concrete example. A capability declares session state with a `ticker` field. A handler lists it in `uses` and reads `ticker` without declaring anything itself:
 

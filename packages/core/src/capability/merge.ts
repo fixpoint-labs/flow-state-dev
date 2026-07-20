@@ -8,6 +8,7 @@
  */
 import type { ZodObject, ZodRawShape, ZodTypeAny } from "zod";
 import { isZodObject } from "../helpers/zod-introspect";
+import { deepEqual } from "../helpers/deep-equal";
 import type { BlockKind, DeclaredResourceEntry, DeclaredResources } from "../types/block";
 import type {
   GeneratorTool,
@@ -17,6 +18,7 @@ import type {
 } from "../blocks/generator";
 import type { BlockContext } from "../types/block";
 import type {
+  CapabilityConfigDef,
   CapabilityRef,
   ConfiguredCapability,
   DefinedCapability,
@@ -29,14 +31,72 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
- * Recover the base defineCapability() reference from a potentially
- * configured capability (one that had .presets() called on it).
+ * Recover the base defineCapability() reference from a potentially configured
+ * capability — one that had `.presets()` and/or `.config()` called on it. Both
+ * builders produce a clone exactly one hop from the base, so a single
+ * `Object.getPrototypeOf` recovers it. A ref is configured iff it carries an
+ * own `__presetOverrides` or `__config`.
  */
 export function getBaseCapability(ref: CapabilityRef): DefinedCapability {
-  if ("__presetOverrides" in ref) {
+  if ("__presetOverrides" in ref || "__config" in ref) {
     return Object.getPrototypeOf(ref) as DefinedCapability;
   }
   return ref as DefinedCapability;
+}
+
+/** Whether a ref carries an own `.config()` value (vs. being used bare). */
+function hasConfig(ref: CapabilityRef): boolean {
+  return "__config" in ref;
+}
+
+/**
+ * Two diamond paths reaching the same base would silently bake one config
+ * closure and drop the other. Unlike presets (first-wins), config carries
+ * values, so paths that would resolve differently are a build-time error;
+ * paths that resolve identically dedup.
+ *
+ * Compatibility is decided on the value each ref would feed its resolver, which
+ * is what `resolveConfigSurface` computes:
+ * - With a schema, that is `schema.parse(configured ? value : undefined)`. So a
+ *   bare ref and `.config({})` on a `.default({})` schema dedup (both parse to
+ *   the defaults), and an omitted defaulted field is not a conflict. If exactly
+ *   one path parses (e.g. the schema rejects `undefined`, making the bare path
+ *   invalid), they resolve differently → conflict.
+ * - Schemaless, the resolver receives the raw value and a bare ref is a
+ *   mandatory-config error, so bare-vs-configured is a conflict and two
+ *   configured refs compare by raw value.
+ */
+function assertConfigCompatible(
+  existing: CapabilityRef,
+  incoming: CapabilityRef,
+  base: DefinedCapability
+): void {
+  if (existing === incoming) return;
+  const hasA = hasConfig(existing);
+  const hasB = hasConfig(incoming);
+  const schema = base.__configDef?.schema;
+
+  if (schema) {
+    const a = schema.safeParse(hasA ? existing.__config : undefined);
+    const b = schema.safeParse(hasB ? incoming.__config : undefined);
+    if (a.success && b.success) {
+      if (deepEqual(a.data, b.data)) return;
+    } else if (!a.success && !b.success) {
+      // Both invalid — a shared parse error surfaces at resolution.
+      return;
+    }
+    // else: exactly one parses → they resolve differently → conflict below.
+  } else {
+    if (!hasA && !hasB) return; // both bare — a shared mandatory-config error
+    if (hasA === hasB && deepEqual(existing.__config, incoming.__config)) return;
+    // bare vs configured, or two differing values → conflict below.
+  }
+
+  throw new Error(
+    `Conflicting .config() for capability "${base.name}": the same capability is ` +
+    `used more than once with different configuration. Pass identical config, ` +
+    `or configure it in a single place.`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +152,10 @@ export function flattenCapabilities(
     if (seen.has(name)) {
       const existing = seen.get(name)!;
       // Same base capability reference → allowed (diamond dependency)
-      if (getBaseCapability(existing) === base) return;
+      if (getBaseCapability(existing) === base) {
+        assertConfigCompatible(existing, ref, base);
+        return;
+      }
       // Different capability, same name → error
       throw new Error(
         `Capability name collision: "${name}" is declared by two different ` +
@@ -246,7 +309,7 @@ function mergeResourcesInto(
   target: Record<string, DeclaredResourceEntry> | undefined,
   source: Record<string, DeclaredResourceEntry>,
   capName: string,
-  presetName: string
+  sourceLabel: string
 ): Record<string, DeclaredResourceEntry> {
   const merged = target ? { ...target } : {};
   for (const [name, resource] of Object.entries(source)) {
@@ -257,7 +320,7 @@ function mergeResourcesInto(
     }
     if (existing === resource) continue;
     throw new Error(
-      `Resource conflict in capability "${capName}" (preset "${presetName}"): ` +
+      `Resource conflict in capability "${capName}" (${sourceLabel}): ` +
       `accessor "${name}" is declared with different defineResource() references`
     );
   }
@@ -291,7 +354,7 @@ function mergeTargetsInto(
   target: Record<string, ZodTypeAny> | undefined,
   source: Record<string, ZodTypeAny>,
   capName: string,
-  presetName: string
+  sourceLabel: string
 ): Record<string, ZodTypeAny> {
   const merged = target ? { ...target } : {};
   for (const [name, schema] of Object.entries(source)) {
@@ -302,7 +365,7 @@ function mergeTargetsInto(
     }
     if (existing === schema) continue;
     throw new Error(
-      `Target conflict in capability "${capName}" (preset "${presetName}"): ` +
+      `Target conflict in capability "${capName}" (${sourceLabel}): ` +
       `"${name}" is declared with different schema references`
     );
   }
@@ -318,13 +381,18 @@ export function mergeSurfaceInto(
   surface: Partial<PresetDef>,
   blockKind: BlockKind,
   capName: string,
-  presetName: string
+  presetName: string,
+  sourceKind: "preset" | "config" = "preset"
 ): void {
+  // How this surface is named in error messages: config surfaces report
+  // "config" rather than a preset name (FIX-915); presets keep their name.
+  const source = sourceKind === "config" ? "config" : `preset "${presetName}"`;
+
   // Resources — valid on all block kinds. Flat map; resource scope is
   // intrinsic via `defineResource({ scope })` (FIX-435).
   if (surface.resources) {
     acc.resources = mergeResourcesInto(
-      acc.resources, surface.resources, capName, presetName
+      acc.resources, surface.resources, capName, source
     );
   }
 
@@ -346,7 +414,7 @@ export function mergeSurfaceInto(
   if (surface.sequencerStateSchema) {
     if (blockKind !== "sequencer") {
       throw new Error(
-        `Capability "${capName}" preset "${presetName}" declares sequencerStateSchema, ` +
+        `Capability "${capName}" ${source} declares sequencerStateSchema, ` +
         `but the consuming block is a ${blockKind}. sequencerStateSchema is only valid on sequencer blocks.`
       );
     }
@@ -356,7 +424,7 @@ export function mergeSurfaceInto(
   // Targets — valid on all block kinds
   if (surface.targetStateSchemas) {
     acc.targetStateSchemas = mergeTargetsInto(
-      acc.targetStateSchemas, surface.targetStateSchemas, capName, presetName
+      acc.targetStateSchemas, surface.targetStateSchemas, capName, source
     );
   }
 
@@ -364,7 +432,7 @@ export function mergeSurfaceInto(
   if (surface.context !== undefined) {
     if (blockKind !== "generator") {
       throw new Error(
-        `Capability "${capName}" preset "${presetName}" declares context, ` +
+        `Capability "${capName}" ${source} declares context, ` +
         `but the consuming block is a ${blockKind}. context is only valid on generator blocks.`
       );
     }
@@ -378,7 +446,7 @@ export function mergeSurfaceInto(
   if (surface.tools !== undefined) {
     if (blockKind !== "generator") {
       throw new Error(
-        `Capability "${capName}" preset "${presetName}" declares tools, ` +
+        `Capability "${capName}" ${source} declares tools, ` +
         `but the consuming block is a ${blockKind}. tools is only valid on generator blocks.`
       );
     }
@@ -390,7 +458,7 @@ export function mergeSurfaceInto(
   if (surface.model !== undefined) {
     if (blockKind !== "generator") {
       throw new Error(
-        `Capability "${capName}" preset "${presetName}" declares model, ` +
+        `Capability "${capName}" ${source} declares model, ` +
         `but the consuming block is a ${blockKind}. model is only valid on generator blocks.`
       );
     }
@@ -399,7 +467,7 @@ export function mergeSurfaceInto(
   if (surface.providerOptions !== undefined) {
     if (blockKind !== "generator") {
       throw new Error(
-        `Capability "${capName}" preset "${presetName}" declares providerOptions, ` +
+        `Capability "${capName}" ${source} declares providerOptions, ` +
         `but the consuming block is a ${blockKind}. providerOptions is only valid on generator blocks.`
       );
     }
@@ -408,7 +476,7 @@ export function mergeSurfaceInto(
   if (surface.caching !== undefined) {
     if (blockKind !== "generator") {
       throw new Error(
-        `Capability "${capName}" preset "${presetName}" declares caching, ` +
+        `Capability "${capName}" ${source} declares caching, ` +
         `but the consuming block is a ${blockKind}. caching is only valid on generator blocks.`
       );
     }
@@ -417,12 +485,81 @@ export function mergeSurfaceInto(
 }
 
 // ---------------------------------------------------------------------------
+// Resolve open config into a block surface
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a capability's config resolver (from `defineCapability({ config })`) into
+ * a partial block surface, if it declares one. Returns undefined for a
+ * capability with no config declaration.
+ *
+ * The config value is `schema.parse(rawConfig)` when a schema is declared, or
+ * the raw `.config()` argument when schemaless. A capability meant to be usable
+ * without `.config()` must declare a schema that accepts `undefined` at the top
+ * level (e.g. `z.object({...}).default({})`); a schema that rejects `undefined`,
+ * or a schemaless config, makes `.config()` mandatory and throws when omitted.
+ * Resolver throws are wrapped with the capability name.
+ */
+export function resolveConfigSurface(
+  cap: CapabilityRef,
+  ctx: { presets: ReadonlySet<string>; blockKind: BlockKind }
+): Partial<PresetDef> | undefined {
+  const base = getBaseCapability(cap);
+  const configDef = base.__configDef;
+  if (!configDef) return undefined;
+
+  const configured = hasConfig(cap);
+  const rawConfig = configured ? cap.__config : undefined;
+
+  let configValue: unknown;
+  if (configDef.schema) {
+    const parsed = configDef.schema.safeParse(rawConfig);
+    if (!parsed.success) {
+      if (!configured) {
+        throw new Error(
+          `Capability "${base.name}" requires configuration: call .config(...) ` +
+          `on it (its config schema does not accept an absent value).`
+        );
+      }
+      throw new Error(
+        `Invalid config for capability "${base.name}": ${parsed.error.message}`
+      );
+    }
+    configValue = parsed.data;
+  } else {
+    // Schemaless config — .config() is mandatory (there is no default to fall
+    // back to), so an absent value is a build-time error rather than passing
+    // raw undefined to a resolver typed as receiving a value.
+    if (!configured) {
+      throw new Error(
+        `Capability "${base.name}" declares schemaless config and must be used ` +
+        `with .config(...).`
+      );
+    }
+    configValue = rawConfig;
+  }
+
+  try {
+    return configDef.resolve(configValue, {
+      presets: ctx.presets,
+      blockKind: ctx.blockKind,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Config resolver for capability "${base.name}" threw: ${message}`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Merge all capabilities into a surface accumulator
 // ---------------------------------------------------------------------------
 
 /**
- * Merge all flattened capabilities (required + active presets) into
- * a MergedCapabilitySurface. The caller is responsible for flattening first.
+ * Merge all flattened capabilities (required + active presets + open config)
+ * into a MergedCapabilitySurface. The caller is responsible for flattening
+ * first.
  */
 export function mergeCapabilities(
   caps: readonly CapabilityRef[],
@@ -440,6 +577,17 @@ export function mergeCapabilities(
     const activePresets = resolveActivePresets(cap);
     for (const { name: presetName, preset } of activePresets) {
       mergeSurfaceInto(acc, preset, blockKind, base.name, presetName);
+    }
+
+    // 3. Merge the open-config surface (after presets, so an explicit config
+    //    value can win over this capability's own preset defaults; the resolver
+    //    sees which presets are active and owns override-vs-add semantics).
+    const configSurface = resolveConfigSurface(cap, {
+      presets: new Set(activePresets.map((p) => p.name)),
+      blockKind,
+    });
+    if (configSurface) {
+      mergeSurfaceInto(acc, configSurface, blockKind, base.name, "<config>", "config");
     }
   }
 

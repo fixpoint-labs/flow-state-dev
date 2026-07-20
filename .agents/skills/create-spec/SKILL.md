@@ -248,16 +248,25 @@ Once design questions are resolved, draft the implementation spec. The spec must
 
 1. **TLDR**
 
-   A summary that anyone opening the document can read to know what's changing without reading further. Four parts, in this order:
+   A summary that anyone opening the document can read to know what's changing without reading further. Five parts, in this order:
 
    - **Plain-language summary (2–4 sentences).** The solution explained so a multitasking or non-expert reader gets the gist *before* diving deep — what we're going to do and why, in everyday terms. No file paths, type names, or framework jargon (block / capability / scope / sequencer / item). If a teammate asked "what's this spec about?" in the hallway, this is the answer. This leads the spec (BP-039).
    - **One-sentence technical statement** of what's being built / fixed / changed.
+   - **The solution in plain terms.** A labeled sub-block placed **immediately after the one-sentence technical statement and before the deliverables bullets**. It gives a reader the *shape* of the change without the deep-dive — the "how would I evaluate this?" cut, **distinct from the plain-language summary's "what is this?"** Don't restate the summary. Keep it in plain language: no file paths, type names, or framework jargon (block / capability / scope / sequencer / item). Four short facets, nothing padded. Note that **Where the work sits** is not a second size call — it says where the effort *concentrates*; the **Size estimate** bullet below owns the Small/Medium/Large magnitude. Copy this literal form:
+
+     ```
+     **The solution in plain terms.** *(the shape of the change, if you don't want the deep-dive)*
+     - **What we gain.** <the concrete payoff; what improves for users/maintainers; what shrinks>
+     - **Where the work sits.** <where the effort concentrates — mostly new logic, or mostly rewiring? NOT a magnitude call; the Size estimate below owns that>
+     - **Where the complexity actually is.** <the genuinely hard/subtle part — usually NOT the happy path>
+     - **The risk.** <what could go wrong and how it's caught (tests, parity, staging)>
+     ```
    - **Bulleted list of concrete deliverables.** Each bullet is one shippable thing — a new file, a modified API, an added capability, a removed function, a docs page. Use the form `<verb> <thing> in <location>` (e.g., *"Add `resumeFromSequence` parameter to `createSSEStream()` in `packages/engine/src/streaming/sse.ts`"*). Keep the list to 3–8 bullets; if the change has more deliverables than that, group by area (e.g., *"Server:"*, *"Client:"*, *"Docs:"*) and bullet within each group. Group order should mirror the Implementation Sequence (section 5) so readers can pivot from TLDR to sequence without re-mapping.
    - **Size estimate.** One of: **Small** (1 file / 1 PR / <100 LOC), **Medium** (multi-file / 1 PR / 100–500 LOC), or **Large** (multi-PR / >500 LOC / multi-package). If multi-PR, name the PR split (e.g., *"Large — split as server changes, then client changes, then docs"*).
 
-   **Write the TLDR last,** after the rest of the spec is drafted. It's a summary of what's below, not an outline of what's coming. Before publishing, verify every TLDR bullet traces to a specific section (3, 4, or 5) — if a bullet has no home in the spec body, either the spec is incomplete or the TLDR overpromised. Reconcile both before publishing.
+   **Write the TLDR last,** after the rest of the spec is drafted. It's a summary of what's below, not an outline of what's coming. Before publishing, verify every TLDR deliverable bullet traces to a specific section (3, 4, or 5) — if a bullet has no home in the spec body, either the spec is incomplete or the TLDR overpromised. Reconcile both before publishing. Each of the four "solution in plain terms" facets must likewise trace to the spec body, so none drifts into unfalsifiable boilerplate ("reduces maintenance burden," "medium-sized change"): **What we gain** to the Overview and the deliverables it produces, **Where the work sits** to the Implementation Sequence (which steps carry the bulk), **Where the complexity actually is** to the Technical Design and Edge Cases, **The risk** to the Testing Strategy and the Key Decisions ramifications.
 
-   The TLDR is not a substitute for any other section — Overview still gives prose context, Implementation Sequence still gives the ordered step list. TLDR is the "if you only read 10 lines, read these" surface.
+   The TLDR is not a substitute for any other section — Overview still gives prose context, Implementation Sequence still gives the ordered step list. TLDR is the scan-first surface: the block a reader takes in under a minute before deciding whether to read on. It runs a bit longer with the "solution in plain terms" facets — keep the summary, deliverables, and size lines tight so it still scans in one pass.
 
 2. **Overview**
    - Link back to the Linear issue
@@ -273,6 +282,7 @@ Once design questions are resolved, draft the implementation spec. The spec must
    - Architecture: which packages, modules, and files are involved
    - Data flow: how data moves through the system for this feature
    - API surface: exact function signatures, types, request/response shapes
+   - **Usage examples (required when the public API surface changes materially).** Show what the change looks like *in use* — the actual code a developer or end user writes against the new or changed surface, and the observable result (return value, emitted items, rendered output). This is not the API-surface bullet above: that gives the contract (signatures, types, shapes); this shows someone *calling* it. Include a short before/after when an existing call site changes. Keep each snippet minimal — the smallest thing that conveys the usage, not a kitchen-sink demo. Skip it — and say so in one line — when the change doesn't materially alter how anyone writes code against the framework (internal refactor, pure type/schema change, config or build plumbing, a bug fix that restores documented behavior).
    - State management: what state is created, modified, or consumed
    - Error handling: specific error cases and how each is handled
 
@@ -388,7 +398,7 @@ The spec is published in two places that must hold identical content: a versione
 
 1. **Write the spec to `docs/specs/<ISSUE-ID>.md`** (e.g. `docs/specs/FIX-775.md`). This is the canonical reviewable artifact.
 
-2. **Open a spec PR.** Branch `spec/<ISSUE-ID>`, commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>`. It is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the spec *before* any code is written.
+2. **Open a spec PR.** Branch `spec/<ISSUE-ID>`, commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>`. **The PR description leads with the spec's §1 TLDR verbatim** — plain-language summary, "solution in plain terms" block, deliverables, and size — so reviewers see the scan-first shape without opening the doc. It is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the spec *before* any code is written.
 
 3. **Publish to Linear.** Check for an existing spec document on the issue: `update_document` if one exists, else `create_document` linked to the issue — with the same content as the repo doc.
 
@@ -456,7 +466,7 @@ This step is required, not optional. The spec now exists as the authoritative so
 Present the completed spec to the user:
 
 1. **Necessity verdict** (one line): "Build as scoped" or "Build smaller — dropped <X>." Surfacing this in the summary lets the user see that Step 3.5 actually ran and what its outcome was; future readers can audit whether the gate worked. If the verdict was anything other than "Build as scoped," you will not have reached Step 8 without user confirmation — note that confirmation here too.
-2. **TLDR**: paste the spec's TLDR section verbatim, **leading with the plain-language summary** (BP-039) so the user gets the gist before the dense detail. This is the scan-first surface — the user should see exactly what they'd see opening the spec document. If you find yourself rewording it for the summary, the TLDR itself is wrong; fix it in the spec and then paste here.
+2. **TLDR**: paste the spec's TLDR section verbatim, **leading with the plain-language summary** (BP-039) so the user gets the gist before the dense detail, and keeping the **"solution in plain terms"** block so the user can evaluate the change (gains, where the work sits, complexity, risk) at a glance. This is the same scan-first surface the spec PR description already leads with (Step 6, item 2) — the user should see exactly what they'd see opening the spec document. If you find yourself rewording it for the summary, the TLDR itself is wrong; fix it in the spec and then paste here.
 3. **Approach chosen**: 2-3 sentences on what the spec proposes and why
 4. **Key decisions & ramifications (top 5)**: paste the spec's "Key Decisions & Ramifications" list verbatim — each decision, the alternative rejected, and what it locks in. This is what the user reviews to sign off on the direction, not just the code. If you can't name five that genuinely shape the outcome, say which ones are load-bearing and why the rest are mechanical.
 5. **Documentation plan**: one or two sentences naming the docs surfaces affected, any new pages and their sidebar placement, and explicit call-out if the conclusion is "no docs changes." Never omit this — the user has flagged docs scoping as a recurring miss.

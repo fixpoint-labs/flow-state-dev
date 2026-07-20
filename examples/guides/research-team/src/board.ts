@@ -6,7 +6,7 @@ import { analyst, synthesizer } from "./workers";
  * depends on both and starts only once they finish. The dependency
  * graph is fixed at definition time via `initialTasks` + `deps`.
  *
- * `researchBoard.block` is a normal block — mount it as a step in a flow
+ * `researchBoard.drain` is a normal block — mount it as a step in a flow
  * action, or run it directly (see test/board.test.ts).
  */
 export const researchBoard = taskBoard({

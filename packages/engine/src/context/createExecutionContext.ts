@@ -2418,6 +2418,61 @@ export async function createExecutionContext<
   ): ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> => {
     const activeEmCtx = scopeEmCtx ?? emCtx;
     const childSiblingRegistry: SiblingRegistryEntry[] = [];
+
+    // Shared by `getTarget`, `ctx.self`, and `ctx.parent`: builds a StateRef
+    // bound to a specific scope node's container. `getTarget` resolves
+    // `matched` by name (siblings-then-ancestors); `ctx.self`/`ctx.parent`
+    // bind directly to a node (no name search — see FIX-914).
+    const buildStateRef = <TState extends object = Record<string, unknown>>(
+      matched: Pick<SiblingRegistryEntry, "parent" | "parentStateContainer">
+    ): StateRef<TState> => {
+      const container = matched.parentStateContainer;
+      const noState = async (): Promise<never> => {
+        throw new Error(
+          `Target "${matched.parent.name}" does not expose instance state operations.`
+        );
+      };
+      const ops: Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> =
+        container === undefined
+          ? {
+              patchState: noState,
+              setState: noState,
+              incState: noState,
+              pushState: noState,
+              setStateRecord: noState,
+              deleteStateRecord: noState,
+              atomicState: noState
+            }
+          : (wrapStateOpsWithEmit({
+              scope: "block_instance",
+              baseOps: createScopeStateOps(container, {
+                mutationTimeoutMs: resolvedMutationTimeoutMs
+              }),
+              container,
+              getResponse: () => responseRef.current,
+              requestId: requestRef.current.id,
+              nextItemIndex: () => emittedItemCount++,
+              provenance: () => ({
+                blockName: matched.parent.name,
+                blockInstanceId: matched.parent.instanceId,
+                phase: matched.parent.phase ?? "main"
+              }),
+              blockInstanceId: matched.parent.instanceId,
+              transient: transientStateChanges,
+              transientKeys: getTransientKeys(matched.parent.stateSchema)
+            }) as unknown as Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
+
+      return defineStateProperty(
+        {
+          name: matched.parent.name,
+          instanceId: matched.parent.instanceId,
+          input: matched.parent.input,
+          ...ops
+        },
+        () => (container?.read() ?? {}) as TState
+      ) as unknown as StateRef<TState>;
+    };
+
     const context: ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> = {
       flow,
       actionName: options.actionName,
@@ -2456,56 +2511,6 @@ export async function createExecutionContext<
         }
       }) as BlockContext["targets"],
       getTarget: <TState extends object = Record<string, unknown>>(name: string): StateRef<TState> | undefined => {
-        const toTargetRef = (
-          matched: Pick<SiblingRegistryEntry, "parent" | "parentStateContainer">
-        ): StateRef<TState> => {
-          const container = matched.parentStateContainer;
-          const noState = async (): Promise<never> => {
-            throw new Error(
-              `Target "${matched.parent.name}" does not expose instance state operations.`
-            );
-          };
-          const ops: Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> =
-            container === undefined
-              ? {
-                  patchState: noState,
-                  setState: noState,
-                  incState: noState,
-                  pushState: noState,
-                  setStateRecord: noState,
-                  deleteStateRecord: noState,
-                  atomicState: noState
-                }
-              : (wrapStateOpsWithEmit({
-                  scope: "block_instance",
-                  baseOps: createScopeStateOps(container, {
-                    mutationTimeoutMs: resolvedMutationTimeoutMs
-                  }),
-                  container,
-                  getResponse: () => responseRef.current,
-                  requestId: requestRef.current.id,
-                  nextItemIndex: () => emittedItemCount++,
-                  provenance: () => ({
-                    blockName: matched.parent.name,
-                    blockInstanceId: matched.parent.instanceId,
-                    phase: matched.parent.phase ?? "main"
-                  }),
-                  blockInstanceId: matched.parent.instanceId,
-                  transient: transientStateChanges,
-                  transientKeys: getTransientKeys(matched.parent.stateSchema)
-                }) as unknown as Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
-
-          return defineStateProperty(
-            {
-              name: matched.parent.name,
-              instanceId: matched.parent.instanceId,
-              input: matched.parent.input,
-              ...ops
-            },
-            () => (container?.read() ?? {}) as TState
-          ) as unknown as StateRef<TState>;
-        };
-
         if (siblingRegistry !== undefined && siblingRegistry.length > 0) {
           const searchFrom = Math.min(
             siblingSearchLimit ?? siblingRegistry.length - 1,
@@ -2514,7 +2519,7 @@ export async function createExecutionContext<
           for (let index = searchFrom; index >= 0; index -= 1) {
             const sibling = siblingRegistry[index];
             if (sibling?.parent.name === name) {
-              return toTargetRef(sibling);
+              return buildStateRef<TState>(sibling);
             }
           }
         }
@@ -2538,7 +2543,7 @@ export async function createExecutionContext<
           );
         }
 
-        return toTargetRef(matches[0]!);
+        return buildStateRef<TState>(matches[0]!);
       },
 
       getBlockOutput: (block) => {
@@ -2770,8 +2775,12 @@ export async function createExecutionContext<
           path: parent.path ?? parentChain?.parent.path
         };
 
+        // FIX-914: any block with an (own-declared) `stateSchema` gets a
+        // container, not just sequencers — `ctx.self`/`ctx.parent` and the
+        // existing `ctx.sequencer`/`ctx.targets` addressing modes all resolve
+        // over this same per-scope-node mechanism.
         const parentStateContainer =
-          resolvedParent.kind === "sequencer" && resolvedParent.stateSchema !== undefined
+          resolvedParent.stateSchema !== undefined
             ? createStateContainer<JsonObject>(
                 normalizeStateDefault(resolvedParent.stateSchema)
               )
@@ -3180,13 +3189,29 @@ export async function createExecutionContext<
             cursor.parent.kind === "sequencer" &&
             cursor.parentStateContainer !== undefined
           ) {
-            return context.getTarget(cursor.parent.name);
+            // FIX-914: bind directly to the walked sequencer node, not via
+            // getTarget(name) — getTarget searches siblings before
+            // ancestors, so a stateful sibling sharing the sequencer's name
+            // (possible now that any block can have a container, not just
+            // sequencers) would otherwise shadow the real sequencer here.
+            return buildStateRef(cursor);
           }
 
           cursor = cursor.previous;
         }
 
         return undefined;
+      }
+    });
+
+    Object.defineProperty(context, "self", {
+      enumerable: true,
+      get() {
+        if (parentChain === undefined || parentChain.parentStateContainer === undefined) {
+          return undefined;
+        }
+
+        return buildStateRef(parentChain);
       }
     });
 
@@ -3197,8 +3222,21 @@ export async function createExecutionContext<
           return undefined;
         }
 
-        const p = parentChain.previous.parent;
-        return { name: p.name, kind: p.kind, input: p.input };
+        const p = parentChain.previous;
+        if (p.parentStateContainer === undefined) {
+          return { name: p.parent.name, kind: p.parent.kind, input: p.parent.input };
+        }
+
+        // Attach `kind` via defineProperty rather than an object spread —
+        // spreading would eagerly evaluate `buildStateRef`'s `state` getter
+        // and flatten it into a stale snapshot, so a caller holding
+        // `const p = ctx.parent` would see `p.state` frozen at capture time
+        // even after writing through `p` itself.
+        return Object.defineProperty(buildStateRef(p), "kind", {
+          value: p.parent.kind,
+          enumerable: true,
+          configurable: true
+        });
       }
     });
 

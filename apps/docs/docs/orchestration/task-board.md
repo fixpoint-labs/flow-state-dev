@@ -74,10 +74,10 @@ const board = taskBoard({
   ],
 });
 
-// `board.block` plugs into a parent sequencer as a normal step.
+// `board.drain` plugs into a parent sequencer as a normal step.
 ```
 
-Defaults: concurrency `4`, `dispatcher: "topological"`, `onIdle: "complete-or-blocked"`, `onError: "skip"`.
+Defaults: request-scoped storage (`collection` is optional), concurrency `4`, `dispatcher: "topological"`, `onIdle: "complete-or-blocked"`, `onError: "skip"`.
 
 ## Termination: `onIdle` modes
 
@@ -139,16 +139,16 @@ Most boards leave `onIdle` alone. Override when:
 
 ## Cascade-skipping dep-blocked tasks
 
-`"complete-or-blocked"` ends the drain when pending tasks can no longer run, but it leaves those tasks `pending`. To fold them into a terminal status, `.tap()` the `createCascadeSkipDependents` building block after `board.block`:
+`"complete-or-blocked"` ends the drain when pending tasks can no longer run, but it leaves those tasks `pending`. To fold them into a terminal status, `.tap()` the `createCascadeSkipDependents` building block after `board.drain`:
 
 ```ts
 import { taskBoard, createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
 
-const board = taskBoard({ name: "research", collection: { backing: "request", collectionId: "research" }, workers });
+const board = taskBoard({ name: "research", collection: { collectionId: "research" }, workers });
 const cascadeSkip = createCascadeSkipDependents({ name: "research" });
 
 sequencer({ name: "research" })
-  .step(board.block)
+  .step(board.drain)
   .tap(cascadeSkip); // transitively cancels pendings whose deps errored
 ```
 
@@ -210,24 +210,74 @@ A board run produces two item streams:
 
 Renderers like `<TaskPlan />` subscribe to both: `task-board-meta` for the board-level status header, `task-change` for per-task rows.
 
-## Collection backing: sequencer vs request
+## Commanding the board with its capability
 
-The default `collection: { collectionId: "x" }` puts the `tasks` record on the board's own sequencer state. That state lives for one invocation of `board.block`. Calling the board twice from a parent sequencer gives two independent collections.
-
-For boards re-entered across an outer loop (Plan & Execute does this for replanning), opt into request-scoped backing:
+You pick where a board stores its tasks once, on `taskBoard({...})`. After that, the only thing other blocks touch is `board.capability`. List it in a block's `uses` and the board's tasks are on `ctx.cap.<name>` — the board name verbatim. Hyphenated names work through bracket access (`ctx.cap["my-board"]`).
 
 ```ts
-const board = taskBoard({
-  name: "replan-board",
-  collection: { backing: "request", collectionId: "replan-board" },
-  // ...
+const board = taskBoard({ name: "research", workers });
+
+const enqueue = handler({
+  name: "enqueue-more",
+  inputSchema: z.unknown(),
+  uses: [board.capability],
+  execute: async (_input, ctx) => {
+    await ctx.cap.research.addTask({ goal: "check competitors" });
+    const open = await ctx.cap.research.countTasks({ status: "pending" });
+    return { open };
+  },
 });
 ```
 
-The collection then lives on `ctx.request` and survives every block boundary in the request. CAS semantics are identical to the sequencer-state default. For cross-request lifetime (session, user, org), pass a caller-supplied factory.
+The accessor has `addTask`, `addTasks`, `getTask`, `listTasks`, `countTasks`, and `tasks()` (the full `TaskCollectionRef` when you need a method the sugar doesn't cover). Because the default backing is request-scoped, a sibling or outer step can add tasks *before* `board.drain` runs — the board picks them up on its first pass.
+
+Each sugar call re-resolves the collection so reads always reflect the latest state. That's cheap for the request and sequencer backings. For a durable (resource-backed) board it re-hydrates on every call, so when you need several reads in a row without writes between them, grab the ref once with `const tasks = await ctx.cap.<name>.tasks()` and read from it.
+
+## Collection backing
+
+A board stores its tasks in one of three places. You choose once; nothing downstream restates it.
+
+- **Request (default)** — tasks live on `ctx.request` and survive every block boundary in the request, including re-entry across an outer loop (Plan & Execute replans this way) and adds from sibling steps before the drain. Omit `collection` entirely, or pass `{ collectionId }` to name it (the id defaults to the board name).
+- **Durable (resource-backed)** — tasks outlive the request. Declare the collection with `defineTaskCollection` and pass it as `collection`; the board registers and resolves it for you.
+- **Sequencer** — tasks live on the board's own sequencer state, which lasts one `board.drain` invocation. Opt in with `{ backing: "sequencer", collectionId }`. Calling the board twice gives two independent collections.
+
+```ts
+// Request default — nothing to restate.
+const board = taskBoard({ name: "research", workers });
+
+// Sequencer opt-in — single-invocation, per-call state.
+const board = taskBoard({
+  name: "one-shot",
+  collection: { backing: "sequencer", collectionId: "one-shot" },
+  workers,
+});
+```
+
+For a custom or externally-managed store, pass a factory `(ctx) => TaskCollectionRef` as `collection`.
+
+## Durable boards that survive across turns
+
+When a board's tasks must persist past the request — a user's standing to-do list, an org-wide work queue — declare a durable collection with `defineTaskCollection` and hand it to the board. The tasks live as resource instances at the scope you name (`session`, `user`, or `org`).
+
+```ts
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+import { z } from "zod";
+
+const todos = defineTaskCollection({
+  id: "todos",
+  scope: "user",
+  stateSchema: z.object({ topic: z.string() }), // the task `input` payload
+});
+
+const board = taskBoard({ name: "todos", collection: todos, workers });
+```
+
+`id` names the collection (it forms the resource pattern and the board's `collectionId`), `scope` sets its lifetime, and `stateSchema` types each task's `input` payload — the rest of the task envelope is validated for you. The board installs the collection on both its own drain and `board.capability`, so a sibling action that lists `board.capability` in `uses` reads and writes the same durable tasks.
 
 ## See also
 
+- [Block State](../advanced/block-state) — the primitive behind the board's sequencer-scoped task collection.
 - [Parallel Tasks](../patterns/parallelTasks) — single-pass fan-out wrapper on top of Task Board.
 - [Supervisor](../patterns/supervisor) — per-task review wrapper.
 - [Plan and Execute](../patterns/plan-and-execute) — replan-loop wrapper.

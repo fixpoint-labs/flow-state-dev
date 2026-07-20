@@ -113,7 +113,7 @@ describe("taskBoard - tool-cache wiring", () => {
       ],
     });
 
-    const result = await testBlock(board.block, { input: undefined });
+    const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
 
     expect(seenStores.size).toBe(1);

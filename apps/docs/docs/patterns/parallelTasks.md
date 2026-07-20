@@ -19,7 +19,7 @@ If you need results reviewed and revised before merging, use [Supervisor](./supe
 goal
   → planner        (decompose into sub-tasks)
   → seedTasks      (seed taskBoard collection)
-  → board.block    (drain — run worker for each task concurrently)
+  → board.drain    (drain — run worker for each task concurrently)
   → collectResults (gather completed task outputs)
   → synthesizer    (merge/combine)
 ```

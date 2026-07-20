@@ -1,39 +1,44 @@
 /**
- * Task Board capability — exposes a board's `TaskCollectionRef` as a
- * first-class capability so any block in the same flow can read or
- * mutate the board without re-deriving the collection wiring.
+ * Task Board capability — the whole consumer surface for a board's tasks.
  *
- * Why a capability and not just a helper:
+ * A composer picks the board's backing once on `taskBoard({...})` and then only
+ * ever touches this capability's accessor. Add `board.capability` to any block's
+ * `uses` and call the sugar directly:
  *
- * - **Single config surface.** A board's `name`, `collectionId`, and
- *   `stateKey` get declared once on `taskBoard({...})`. The returned
- *   `.capability` is the only thing other blocks need to import. No
- *   second `getOrCreateTaskCollection` call with matching arguments,
- *   no risk of drift between the pattern's collection and a manually-
- *   wired one.
+ * ```ts
+ * await ctx.cap.<name>.addTask({ goal: "…" });
+ * const done = await ctx.cap.<name>.listTasks({ status: "completed" });
+ * ```
  *
- * - **Auto-installed schema.** The capability declares
- *   `targetStateSchemas: { [boardName]: taskBoardStateSchema }` so any
- *   block that lists the capability in `uses` automatically contributes
- *   the board's `tasks` slot to the parent sequencer's state schema.
- *   Consumers no longer need to extend their flow-level state schema by
- *   hand to add a board.
+ * Why a capability and not a helper:
  *
- * - **Typed `ctx.cap.<name>` accessor.** `defineCapability`'s `fns`
- *   field exposes `ctx.cap.taskBoard_<boardName>.tasks` to the
- *   consuming block. The reach-across to the parent board's state ref
- *   is centralized here — the same `ctx.getTarget(boardName)` lookup
- *   the pattern uses internally.
+ * - **Single config surface.** The board's storage choice, `collectionId`, and
+ *   `stateKey` are declared once on `taskBoard({...})`. Consumers import only
+ *   `board.capability` — no second `getOrCreateTaskCollection` call with
+ *   matching arguments, no drift.
+ * - **Direct sugar.** `addTask`/`addTasks`/`getTask`/`listTasks`/`countTasks`
+ *   delegate to the resolved `TaskCollectionRef`, so a read or write is one call
+ *   instead of resolve-then-call. `tasks()` is retained as the full-ref escape
+ *   hatch.
+ * - **Bare `ctx.cap.<name>` accessor.** The capability name is the board name
+ *   verbatim. Hyphenated names (`ctx.cap["my-board"]`) work via bracket access;
+ *   prototype-poisoning names are rejected at construction here — the layer that
+ *   owns the key.
  *
- * Naming: capability name is `taskBoard_<boardName>` (underscore, not
- * dot) so the resulting key is a valid JavaScript identifier and
- * consumers get dot-notation access in TypeScript:
- * `ctx.cap.taskBoard_research`, `ctx.cap.taskBoard_financials`. Other
- * capabilities in the codebase (`workingMemory`, `skills`, `mcp`) are
- * singletons with flat names; Task Board is parameterized per board so
- * the prefix carries the board name.
+ * Backing-aware resolution — all three backings share `buildTaskBoardAccessor`:
+ * - **sequencer**: resolves strictly via `ctx.getTarget(boardName)`; throws if
+ *   used from outside the board's sequencer subtree (state must be in scope).
+ * - **request**: resolves via `ctx.request`; usable from any block in the
+ *   request (siblings, outer loops), which is what makes add-before-drain work.
+ * - **resource**: resolves the registered `DefinedTaskCollection` from
+ *   `ctx.resources`; the collection is installed via the internal
+ *   resource-declaring capability threaded through this capability's `uses`.
+ * - **factory**: defers to the caller-supplied `(ctx) => TaskCollectionRef`.
+ *
+ * The resolve is re-run on every accessor call (not memoized) so a resource-
+ * backed read after a mid-drain add sees fresh state.
  */
-import { defineCapability } from "@flow-state-dev/core";
+import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type {
   BlockContext,
   MaybePromise,
@@ -41,28 +46,31 @@ import type {
 } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
+  type Task,
   type TaskCollectionRef,
+  type TaskFilter,
+  type TaskHandle,
+  type TaskInit,
 } from "../tasks";
 
 import { taskBoardStateSchema } from "./schemas";
+import { assertSafeCapabilityKey } from "../tasks/collection/safe-key";
+import { resolveResourceTaskCollection } from "./resolve-resource";
 
 /**
- * Sequencer-spec options. The capability constructs the collection
- * via `getOrCreateTaskCollection({ backing: "sequencer", ... })`
- * against the parent board sequencer's state ref, resolved via
- * `ctx.getTarget(boardName)`. Consumers must run inside the board's
- * sequencer subtree (the targets registry won't resolve `boardName`
- * for siblings) — using the capability from outside that scope throws
- * a clear error instead of silently writing to the wrong state.
+ * Sequencer-spec options. Resolves the collection via
+ * `getOrCreateTaskCollection({ backing: "sequencer", ... })` against the parent
+ * board sequencer's state ref (`ctx.getTarget(boardName)`). Consumers must run
+ * inside the board's sequencer subtree; using the capability from a sibling
+ * throws rather than writing to the wrong state.
  *
- * The capability declares the board's `tasks` slot via
- * `targetStateSchemas: { [boardName]: taskBoardStateSchema }` so
- * consumers transitively contribute the state schema without manual
- * flow-level wiring.
+ * Declares the board's `tasks` slot via
+ * `targetStateSchemas: { [boardName]: taskBoardStateSchema }` so consumers
+ * contribute the state schema transitively.
  */
 export interface TaskBoardSequencerCapabilityOptions {
   backing: "sequencer";
-  /** Board name — also the key used by `ctx.getTarget(boardName)` to find the board's state ref. */
+  /** Board name — also the `ctx.getTarget(boardName)` key for the board's state ref. */
   boardName: string;
   /** Stable collection identifier — matches `data.collectionId` on emitted `task-change` items. */
   collectionId: string;
@@ -71,18 +79,11 @@ export interface TaskBoardSequencerCapabilityOptions {
 }
 
 /**
- * Request-scoped options (FIX-471). The collection lives on
- * `ctx.request` so any block in the request — board-internal or
- * sibling — can read/mutate it. The capability does NOT declare
- * `targetStateSchemas` (the slot isn't on a parent sequencer) and does
- * NOT require the consumer to be inside the board's subtree, which is
- * what enables re-entry from outer loops that wrap `board.block`
- * across iterations.
- *
- * The slot key on `ctx.request.state` defaults to `collectionId` so
- * multiple request-backed boards in one request are namespaced by
- * default; override `stateKey` if the id collides with other
- * request-state shapes.
+ * Request-scoped options. The collection lives on `ctx.request`, so any block in
+ * the request — board-internal or sibling — can read/mutate it. No
+ * `targetStateSchemas`, no subtree requirement: that's what enables adding a
+ * task from a sibling or outer step before the board drains, and re-entry from
+ * outer loops that wrap `board.drain`.
  */
 export interface TaskBoardRequestCapabilityOptions {
   backing: "request";
@@ -92,164 +93,194 @@ export interface TaskBoardRequestCapabilityOptions {
 }
 
 /**
- * Factory-backed options. The capability defers entirely to the
- * caller-supplied factory — used for resource-collection-backed boards
- * or any custom backing the pattern itself doesn't understand. The
- * factory may be sync or async (`getOrCreateTaskCollection` is now
- * async, so a factory that wraps it returns a Promise).
- *
- * The capability does NOT declare a state schema in this mode, since
- * the storage is opaque. Schema declaration is the caller's
- * responsibility (typically already handled by their resource
- * collection's `defineResource`).
+ * Resource-backed options (durable board). The collection is a
+ * `DefinedTaskCollection` registered via an internal resource-declaring
+ * capability, threaded through this capability's `uses` (so sibling actions that
+ * list `board.capability` install the resource too) and the board sequencer's
+ * `uses` (so the drain does). Resolved from `ctx.resources[resourceKey]`.
  */
-export interface TaskBoardFactoryCapabilityOptions {
+export interface TaskBoardResourceCapabilityOptions {
+  backing: "resource";
+  boardName: string;
+  collectionId: string;
+  /** `ctx.resources` key the durable collection is registered under (its id). */
+  resourceKey: string;
+  /** Internal resource-declaring capability composed via `uses`. */
+  resourceCapability: DefinedCapability;
+}
+
+/**
+ * Factory-backed options. Defers entirely to the caller-supplied factory — for
+ * externally-managed or custom stores. No state schema is declared (the storage
+ * is opaque; the factory owns any declaration).
+ */
+export interface TaskBoardFactoryCapabilityOptions<TInput = unknown, TOutput = unknown> {
   backing: "factory";
   boardName: string;
   collectionId: string;
-  factory: (ctx: BlockContext) => MaybePromise<TaskCollectionRef>;
+  factory: (ctx: BlockContext) => MaybePromise<TaskCollectionRef<TInput, TOutput>>;
 }
 
-export type TaskBoardCapabilityOptions =
+export type TaskBoardCapabilityOptions<TInput = unknown, TOutput = unknown> =
   | TaskBoardSequencerCapabilityOptions
   | TaskBoardRequestCapabilityOptions
-  | TaskBoardFactoryCapabilityOptions;
+  | TaskBoardResourceCapabilityOptions
+  | TaskBoardFactoryCapabilityOptions<TInput, TOutput>;
 
 /**
- * Capability accessor — what consumers see at
- * `ctx.cap.taskBoard_<boardName>`. Exposes the board's
- * `TaskCollectionRef` via a getter; every method on the returned ref
- * is CAS-safe and emits `task-change` component items on the same
- * stream the board itself publishes on.
+ * Capability accessor — what consumers see at `ctx.cap.<boardName>`.
  *
- * `tasks` is a getter (not a bare property) because `defineCapability`
- * constrains `fns` to a record of functions — capabilities expose
- * helpers, not values. Calling `ctx.cap.taskBoard_<name>.tasks()`
- * resolves the collection lazily through the active block context.
- * Collection construction is async (`getOrCreateTaskCollection` now
- * returns a Promise), so `tasks()` returns a Promise — consumers must
- * `await ctx.cap.taskBoard_<name>.tasks()`. The resolved
- * `TaskCollectionRef`'s own reads (`get`/`list`/`count`) stay
- * synchronous.
+ * Generic in the board's task payload types: `taskBoard<TInput, TOutput>(...)`
+ * threads `TInput`/`TOutput` through the handle to here, so `addTask` type-checks
+ * the payload and the query methods return `Task<TInput, TOutput>`. Without the
+ * threading a mismatched `addTask({ input })` would compile silently.
  *
- * The intersection with `Record<string, (...args) => any>` satisfies
- * `defineCapability`'s `TFns` generic constraint without forcing the
- * consumer to widen `ctx: any` to the same shape.
+ * `tasks()` returns the full `TaskCollectionRef`. The sugar methods delegate to
+ * that ref: `addTask`/`addTasks` mutate; `getTask`/`listTasks`/`countTasks`
+ * wrap the ref's synchronous reads (they're `async` only because resolving the
+ * ref is). Every method re-resolves the ref, so reads always reflect the latest
+ * committed state.
+ *
+ * A closed object of function-typed properties satisfies `defineCapability`'s
+ * `TFns extends Record<string, (...args) => any>` constraint on its own — no
+ * `& Record<string, …>` intersection, which would re-widen every method back to
+ * `(...args: any[]) => any` and erase exactly the payload checking above.
  */
-export type TaskBoardCapabilityAccessor = {
-  tasks: () => Promise<TaskCollectionRef>;
-} & Record<string, (...args: any[]) => any>;
+export type TaskBoardCapabilityAccessor<TInput = unknown, TOutput = unknown> = {
+  /** The board's full `TaskCollectionRef` — the escape hatch for the whole API. */
+  tasks: () => Promise<TaskCollectionRef<TInput, TOutput>>;
+  /** Add one task. */
+  addTask: (task: TaskInit<TInput>) => Promise<Task<TInput, TOutput>>;
+  /** Add several tasks. */
+  addTasks: (tasks: TaskInit<TInput>[]) => Promise<Task<TInput, TOutput>[]>;
+  /** Read one task by id (undefined if absent). */
+  getTask: (id: string) => Promise<TaskHandle<TInput, TOutput> | undefined>;
+  /** List tasks, optionally filtered. */
+  listTasks: (filter?: TaskFilter) => Promise<TaskHandle<TInput, TOutput>[]>;
+  /** Count tasks, optionally filtered. */
+  countTasks: (filter?: TaskFilter) => Promise<number>;
+};
+
+/**
+ * Build the accessor over a per-call `resolve`. Not memoized: each method
+ * re-resolves so a read after a mid-drain add sees fresh state — the freshness
+ * resource backing depends on. For request/sequencer backings `resolve` is a
+ * cheap synchronous wrap; for resource backing it re-hydrates the collection's
+ * read-mirror (one `collection.list()`), so a tight loop of sugar calls on a
+ * large durable board pays that per call. Reach for `tasks()` once and reuse the
+ * ref when you need many reads in a row without intervening writes.
+ */
+function buildTaskBoardAccessor<TInput, TOutput>(
+  resolve: () => Promise<TaskCollectionRef<TInput, TOutput>>
+): TaskBoardCapabilityAccessor<TInput, TOutput> {
+  return {
+    tasks: resolve,
+    addTask: async (task) => (await resolve()).addTask(task),
+    addTasks: async (tasks) => (await resolve()).addTasks(tasks),
+    getTask: async (id) => (await resolve()).get(id),
+    listTasks: async (filter) => (await resolve()).list(filter),
+    countTasks: async (filter) => (await resolve()).count(filter),
+  };
+}
 
 /**
  * Build a `DefinedCapability` that exposes a Task Board's collection at
- * `ctx.cap["taskBoard.<boardName>"].tasks`.
- *
- * Backing-aware: sequencer-spec options auto-wire
- * `getOrCreateTaskCollection({ backing: "sequencer", ... })` and declare
- * the board's `tasks` slot via `targetStateSchemas`. Factory options
- * defer entirely to the caller-supplied `(ctx) => TaskCollectionRef`
- * factory, which can produce any backing (resource-collection, custom
- * external store, etc.).
- *
- * The returned capability is reused as a singleton by `taskBoard()` —
- * consumers don't typically call this directly. Use `board.capability`
- * from a `taskBoard({...})` handle instead.
+ * `ctx.cap.<boardName>`. See module doc. The returned capability is reused as a
+ * singleton by `taskBoard()` — consumers use `board.capability`, not this.
  */
-export function createTaskBoardCapability(
-  options: TaskBoardCapabilityOptions
-) {
+export function createTaskBoardCapability<
+  TInput = unknown,
+  TOutput = unknown,
+  const TName extends string = string,
+>(
+  // `& { boardName: TName }` captures the board name as a string literal (via the
+  // `const` type param) so the returned capability is `DefinedCapability<TName,
+  // …>`, not `DefinedCapability<string, …>`. That matters downstream: core's
+  // `InferCapabilities` maps a `string` name to a `Record<string, accessor>`
+  // index signature (so `ctx.cap.anyName` wrongly type-checks and multiple boards'
+  // payloads intersect), whereas a literal name yields a single precise
+  // `ctx.cap[<boardName>]` property.
+  options: TaskBoardCapabilityOptions<TInput, TOutput> & { boardName: TName }
+): DefinedCapability<TName, TaskBoardCapabilityAccessor<TInput, TOutput>> {
   const { boardName, collectionId } = options;
-  const capabilityName = `taskBoard_${boardName}` as const;
+  // Board name flows verbatim into `ctx.cap[<name>]`. Reject prototype-poisoning
+  // names here — the layer that owns the accessor key — so misuse throws at
+  // construction instead of corrupting the accessor record at runtime.
+  assertSafeCapabilityKey(boardName);
+  const capabilityName = boardName;
 
   if (options.backing === "factory") {
-    // Factory-backed boards are opaque to the pattern — defer entirely
-    // to the user's factory. No state schema declaration, since the
-    // storage is the caller's responsibility (typically a
-    // ResourceCollection that already declares its own).
     const userFactory = options.factory;
     return defineCapability({
       name: capabilityName,
-      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor => ({
-        // `async` normalizes a sync-or-async user factory to a Promise and
-        // captures a synchronous throw from the factory as a rejection, so
-        // the accessor's `() => Promise<TaskCollectionRef>` contract holds for
-        // callers that capture the value before awaiting it.
-        tasks: async () => userFactory(ctx),
-      }),
+      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor<TInput, TOutput> =>
+        // `async` normalizes a sync-or-async factory to a Promise and captures a
+        // synchronous throw as a rejection, honoring the accessor contract.
+        buildTaskBoardAccessor<TInput, TOutput>(async () => userFactory(ctx)),
     });
   }
 
   if (options.backing === "request") {
-    // Request-backed: the collection's tasks live on `ctx.request`, so
-    // there's no parent sequencer slot to declare and no `getTarget`
-    // scoping check. Any block that lists this capability in `uses` can
-    // read or mutate the board, including blocks that run BEFORE,
-    // AFTER, or BETWEEN `board.block` invocations from a parent loop.
-    // That's the whole point of this backing — re-entry across multiple
-    // board calls within the same request.
-    //
-    // Tasks are namespaced on `ctx.request.state` at `[stateKey ??
-    // collectionId]`; collisions with other request-state shapes are
-    // the consumer's responsibility (override `stateKey` if needed).
-    const { collectionId, stateKey } = options;
+    const { stateKey } = options;
     return defineCapability({
       name: capabilityName,
-      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor => ({
-        tasks: () =>
-          getOrCreateTaskCollection({
+      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor<TInput, TOutput> =>
+        buildTaskBoardAccessor<TInput, TOutput>(() =>
+          getOrCreateTaskCollection<TInput, TOutput>({
             ctx,
             backing: "request",
             collectionId,
             stateKey,
-          }),
-      }),
+          })
+        ),
     });
   }
 
-  // Sequencer-backed: state schema declared transitively, collection
-  // resolved strictly via `ctx.getTarget(boardName)` against the parent
-  // board sequencer.
-  //
-  // No `ctx.sequencer` fallback: the targets registry only resolves
-  // when `boardName` is in scope (i.e. the calling block is executing
-  // inside the board's sequencer subtree). Falling back to
-  // `ctx.sequencer` for siblings would silently return a foreign state
-  // ref and let the collection write to the wrong record. Failing
-  // loudly here makes the misuse case obvious instead of corrupting
-  // state.
-  //
-  // `taskBoardStateSchema` is passed directly (no `: ZodTypeAny` widening).
-  // The block-factory schema-level merge path handles the per-target
-  // `StateRef<TaskBoardState> | undefined` shape from the schema map
-  // without tripping TypeScript's depth guard, so no escape hatch is
-  // needed at the capability level.
-  const { stateKey } = options;
+  if (options.backing === "resource") {
+    const { resourceKey, resourceCapability } = options;
+    return defineCapability({
+      name: capabilityName,
+      // Compose the internal resource-declaring capability so any block that
+      // lists `board.capability` also installs the durable collection.
+      uses: [resourceCapability],
+      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor<TInput, TOutput> =>
+        buildTaskBoardAccessor<TInput, TOutput>(() =>
+          resolveResourceTaskCollection<TInput, TOutput>(ctx, {
+            boardName,
+            resourceKey,
+            collectionId,
+          })
+        ),
+    });
+  }
 
+  // Sequencer-backed: state schema declared transitively; collection resolved
+  // strictly via `ctx.getTarget(boardName)`. No `ctx.sequencer` fallback — the
+  // targets registry only resolves inside the board's subtree, so failing loudly
+  // here beats silently writing to a sibling's state.
+  const { stateKey } = options;
   return defineCapability({
     name: capabilityName,
     targetStateSchemas: {
       [boardName]: taskBoardStateSchema,
     },
-    fns: (ctx: BlockContext): TaskBoardCapabilityAccessor => ({
-      // `async` so the not-on-execution-chain guard below rejects the returned
-      // promise rather than throwing synchronously — keeps the
-      // `() => Promise<TaskCollectionRef>` contract honest for non-awaiting
-      // callers.
-      tasks: async () => {
+    fns: (ctx: BlockContext): TaskBoardCapabilityAccessor<TInput, TOutput> =>
+      buildTaskBoardAccessor<TInput, TOutput>(async () => {
         const target = ctx.getTarget<Record<string, unknown>>(boardName);
         if (target === undefined) {
           throw new Error(
-            `[task-board] capability "${capabilityName}" can only be used from a block executing inside the board sequencer "${boardName}". ctx.getTarget("${boardName}") returned undefined — the board is not on the current execution chain.`
+            `[task-board] capability "${capabilityName}" can only be used from a block ` +
+              `executing inside the board sequencer "${boardName}". ctx.getTarget("${boardName}") ` +
+              `returned undefined — the board is not on the current execution chain.`
           );
         }
-        return getOrCreateTaskCollection({
+        return getOrCreateTaskCollection<TInput, TOutput>({
           ctx,
           backing: "sequencer",
           collectionId,
           sequencer: target as StateRef<Record<string, unknown>>,
           stateKey,
         });
-      },
-    }),
+      }),
   });
 }

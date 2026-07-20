@@ -108,7 +108,7 @@ export const taskQueueDemoInputSchema = z.object({
 
 const board = taskBoard({
   name: "task-queue-demo",
-  collection: { backing: "request", collectionId: COLLECTION_ID },
+  collection: { collectionId: COLLECTION_ID },
   // Cast: TaskWorkerRegistry expects TaskWorker<unknown, unknown>; our
   // handlers are typed-narrower (z.object outputs). The taskBoard
   // pipeline only reads task.input/output as `unknown`, so the runtime
@@ -131,4 +131,4 @@ const board = taskBoard({
   maxIterations: 20,
 });
 
-export const taskQueueDemo = board.block;
+export const taskQueueDemo = board.drain;

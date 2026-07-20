@@ -16,7 +16,7 @@
  * Note: seed idempotency makes the seed step itself safe to re-run.
  * Whether the surrounding board can be cleanly re-entered (e.g. inside
  * a replan loop) is a separate concern — sequencer-backed boards
- * create a fresh state per `board.block` invocation, so the `tasks`
+ * create a fresh state per `board.drain` invocation, so the `tasks`
  * slot doesn't persist across calls. Use a resource-collection-backed
  * collection for that, or wait on substrate work to lift the state
  * into a parent slot.

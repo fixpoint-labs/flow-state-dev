@@ -204,12 +204,32 @@ export interface BlockContext<
   TTargets extends Record<string, ZodTypeAny> | undefined = undefined,
   // Derive-once: capability helper namespaces from the `uses` array
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = {},
+  // FIX-914: own state (from this block's `stateSchema`) and the immediate
+  // parent's state (from this block's `parentStateSchema`). Appended at the
+  // end (rather than interleaved) so existing positional `BlockContext<...>`
+  // usages stay valid.
+  TSelfState extends object = Record<string, unknown>,
+  TParentState extends object = Record<string, unknown>,
 > {
   request: RequestScopeHandle<TRequestState>;
   session: SessionScopeHandle<TSessionState>;
   user: UserScopeHandle<TUserState>;
   org?: OrgScopeHandle<TOrgState>;
   sequencer?: StateRef<TSequencerState>;
+
+  /**
+   * This block's own request-scoped state, if it declared `stateSchema`.
+   * Undefined when the block declares no own state. Namespaced by the block
+   * itself, so a field can be named freely with no cross-block collision
+   * worry. Read anywhere; write is meaningful for blocks with an `execute`
+   * (handlers, sequencer callbacks) — generators read it in config functions.
+   *
+   * Routers should treat `ctx.self` as read-only in their selector: a durable
+   * router's `execute` re-runs on resume (see `execution-and-errors.md`'s
+   * suspendable-router purity contract), so a preceding `.tap(handler)` should
+   * perform the write instead.
+   */
+  self?: StateRef<TSelfState>;
 
   /**
    * Instance-level settings declared on `createFlowState({ settings })`.
@@ -234,12 +254,18 @@ export interface BlockContext<
    * Useful when a nested block (e.g. a step inside a sequencer, a tool block
    * inside a generator, or a route inside a router) needs the original input
    * that triggered its parent.
+   *
+   * When this block declares `parentStateSchema` and the parent has its own
+   * `stateSchema`, `ctx.parent` also carries the parent's state operations
+   * (FIX-914) — a child writes its owner's state without naming it (e.g. a
+   * generator's activation tool writing `ctx.parent.pushState(...)`). Absent
+   * (guard with `?.`) when the parent declares no own state.
    */
   parent?: {
     name: string;
     kind: BlockKind;
     input: TParentInput;
-  };
+  } & Partial<StateRef<TParentState>>;
 
   response: ResponseEmitterHandle;
   signal: AbortSignal;

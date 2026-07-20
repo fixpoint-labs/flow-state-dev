@@ -221,6 +221,8 @@ Here's what the framework infers so you don't have to:
 | Capability `targetStateSchemas` (via `uses`) | `ctx.targets.*` (merged with block's own) |
 | Capability `sequencerStateSchema` preset (via `uses`) | `ctx.sequencer.state` (merged with block's own) |
 
+A block's own local state follows the same pattern — `stateSchema` and `parentStateSchema` type `ctx.self` and `ctx.parent`; see [Block State](/docs/advanced/block-state).
+
 The pattern is always the same: **Zod schema in, TypeScript types out.** One source of truth. No drift between runtime validation and compile-time checking.
 
 ## Extracting types when you need them
