@@ -86,10 +86,17 @@ extract) is a **correctness path, not analyst color**, so — unlike `investigat
 — it is NOT skipped on the `fast` preset. When recovery fetches at least one
 prospectus document it spends one bounded model call (always ≤1, ≤3 document
 fetches, SEC-first URLs, no open-ended research loop). A no-candidates or
-all-fetch-failed exit spends none: the runtime returns before resolving the
-model. There is no longer a deterministic first attempt, so a cleanly tabulated
-prospectus that would once have parsed for free now costs that one model call —
-the accepted price of deleting the brittle regex parser.
+all-fetch-failed exit spends none, and a run superseded while its fetches were
+in flight spends none either: both return before resolving the model. There is
+no longer a deterministic first attempt, so a cleanly tabulated prospectus that
+would once have parsed for free now costs that one model call — the accepted
+price of deleting the brittle regex parser.
+
+The fetch count also shifts. The old deterministic tier could short-circuit the
+fetch loop on a first-document promote; with one bounded call over all fetched
+docs there is no early exit, so a multi-filer issuer now fetches every discovered
+primary (up to the 3-doc cap) rather than stopping at the first that parses — up
+to two extra SEC EDGAR fetches per recovery, still one model call either way.
 
 Known limitation: the bounded recovery model call is a direct `model.generate`
 (not a generator block), so its token usage is not yet folded into the
