@@ -1643,11 +1643,11 @@ The three financial statements (`get_balance_sheet` / `get_income_statement`
 payload**. When companyfacts + Yahoo both miss the subject's valuation-critical
 fields — including a newly listed issuer whose companyfacts is HTTP-success but
 sparse (null revenue/operating income/FCF) — a single-flight recovery discovers
-S-1 / 424B* primaries, extracts + hard-validates typed statements, and promotes
-them onto the spine tagged `source: "edgar-prospectus"` (USD billions), else
-keeps `unavailable` with a `financialsData.recoveryAudit` trail. It is a
-correctness path (one bounded model call may fire even on `fast`), not analyst
-color. See [`docs/financials-recovery.md`](docs/financials-recovery.md). EDGAR is the authoritative
+S-1 / 424B* primaries, transcribes their audited statements with one bounded
+model call, hard-validates the result, and promotes it onto the spine tagged
+`source: "edgar-prospectus"` (USD billions), else keeps `unavailable` with a
+`financialsData.recoveryAudit` trail. It is a correctness path (that one bounded
+model call may fire even on `fast`), not analyst color. See [`docs/financials-recovery.md`](docs/financials-recovery.md). EDGAR is the authoritative
 US-filing source and answers even when Yahoo throttles its unauthenticated
 endpoint (a 200-with-no-data response the Yahoo mapper detects and treats as a
 miss). Non-US tickers have no EDGAR CIK and fall through to Yahoo. Statement

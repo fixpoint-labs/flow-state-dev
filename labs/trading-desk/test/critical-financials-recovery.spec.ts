@@ -2,14 +2,14 @@
  * Tests for the single-flight critical-financials recovery runtime (FIX-898).
  *
  * The network providers (CIK resolution, registration discovery, prospectus
- * fetch) and the bounded LLM extractor are mocked; the deterministic extractor
- * and the validator run for real. Intent encoded:
- *   1. A validated prospectus promotes into USD-billions statements tagged
+ * fetch) and the bounded LLM extractor are mocked; the validator + promote
+ * mapping run for real. Intent encoded:
+ *   1. A validated model candidate promotes into USD-billions statements tagged
  *      `edgar-prospectus`, and the audit records `promoted` with provenance.
  *   2. Parallel callers share ONE recovery attempt (single-flight).
- *   3. No candidates → honest `no-candidates`; a poisoned candidate → `rejected`
- *      with reasons; both keep statements null (no zero-fill).
- *   4. On a deterministic miss, the ONE bounded LLM extract can still promote.
+ *   3. No candidates → honest `no-candidates`; a poisoned model candidate →
+ *      `rejected` with reasons; the model returning nothing → `extract-failed`;
+ *      all keep statements null (no zero-fill).
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -57,6 +57,26 @@ const candidate424 = {
   companyName: "SpaceCo Exploration Inc.",
 };
 
+/** The valid full-SPCX candidate the mocked model tier returns by default —
+ *  raw USD, all criticals present. `beforeEach` defaults `llmExtract` to it, so
+ *  every promotion-asserting case reaches the audit through the model tier (with
+ *  the deterministic tier gone, a `null` default would turn them into
+ *  `extract-failed`). Reject / extract-failed cases override it per test. */
+const validCandidate: FinancialCandidate = {
+  ticker: "SPCX",
+  cik: 1750000,
+  companyName: "SpaceCo Exploration Inc.",
+  form: "424B4",
+  filingDate: "2026-02-10",
+  periodEnd: "2025-12-31",
+  scale: 1_000,
+  currency: "USD",
+  sourceUrl: candidate424.url,
+  income: { revenue: 8_500_000_000, operatingIncome: 1_200_000_000 },
+  cashflow: { operating: 2_000_000_000, capitalExpenditure: -3_500_000_000, freeCashFlow: null },
+  balance: { cashAndEquivalents: 4_000_000_000, totalDebt: 1_000_000_000 },
+};
+
 function makeCtx() {
   const audits: Array<Record<string, unknown>> = [];
   const ctx = {
@@ -79,11 +99,13 @@ beforeEach(() => {
   stubs.fetchCandidates.mockReset();
   stubs.fetchHtml.mockReset();
   stubs.llmExtract.mockReset();
-  stubs.llmExtract.mockResolvedValue(null);
+  // Default to a VALID model candidate: the deterministic tier is gone, so every
+  // promotion-asserting case now reaches the audit through the model tier.
+  stubs.llmExtract.mockResolvedValue(validCandidate);
 });
 
 describe("recoverCriticalFinancials", () => {
-  it("promotes a validated prospectus into USD-billions statements + a promoted audit", async () => {
+  it("promotes a validated model candidate into USD-billions statements + a promoted audit", async () => {
     stubs.fetchCandidates.mockResolvedValue([candidate424]);
     stubs.fetchHtml.mockResolvedValue(spcxHtml);
     const { ctx, audits } = makeCtx();
@@ -101,8 +123,8 @@ describe("recoverCriticalFinancials", () => {
     // The runtime is the sole audit writer — exactly one patch.
     expect(audits).toHaveLength(1);
     expect(audits[0].outcome).toBe("promoted");
-    // The deterministic tier succeeded → the model was never consulted.
-    expect(stubs.llmExtract).not.toHaveBeenCalled();
+    // The single bounded model call is the ONLY extraction step now.
+    expect(stubs.llmExtract).toHaveBeenCalledTimes(1);
   });
 
   it("shares ONE attempt across parallel callers (single-flight)", async () => {
@@ -166,11 +188,15 @@ describe("recoverCriticalFinancials", () => {
 
     const p1 = recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
     clearRecoveryForSession({ id: "sess-1" });
-    releaseHtml(spcxHtml); // the superseded run now completes its extract
+    releaseHtml(spcxHtml); // the superseded run now returns from its fetch
 
     await expect(p1).rejects.toThrow(/superseded/i);
     // A superseded run writes NO audit — it cannot repopulate the reset spine.
     expect(audits).toHaveLength(0);
+    // The §4.3 guard (supersession re-check before model resolution) skips the
+    // one bounded model call on a superseded run — no wasted spend, no race with
+    // the concurrent re-run's call.
+    expect(stubs.llmExtract).not.toHaveBeenCalled();
   });
 
   it("supersedes an in-flight recovery for a DIFFERENT ticker on the same session", async () => {
@@ -267,12 +293,12 @@ describe("recoverCriticalFinancials", () => {
     expect(stubs.fetchCandidates).not.toHaveBeenCalled();
   });
 
-  it("rejects a stale prospectus (statements null) with reasons in the audit", async () => {
-    // A prospectus whose latest period is a decade old → the stale gate rejects.
-    const staleHtml = spcxHtml.replace(/December 31, 2025/g, "December 31, 2014")
-      .replace(/December 31, 2024/g, "December 31, 2013");
+  it("rejects a stale model candidate (statements null) with reasons in the audit", async () => {
+    // The model returns a candidate whose period is a decade old → the stale gate
+    // rejects it: `rejected`, statements null, reasons recorded (no zero-fill).
     stubs.fetchCandidates.mockResolvedValue([candidate424]);
-    stubs.fetchHtml.mockResolvedValue(staleHtml);
+    stubs.fetchHtml.mockResolvedValue(spcxHtml);
+    stubs.llmExtract.mockResolvedValue({ ...validCandidate, periodEnd: "2015-12-31" });
     const { ctx } = makeCtx();
 
     const result = await recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
@@ -282,15 +308,41 @@ describe("recoverCriticalFinancials", () => {
     expect(result.audit.rejectionReasons.join(" ")).toMatch(/stale/);
   });
 
-  it("rethrows on abort during the model call instead of swallowing it into an audit", async () => {
-    const noScaleHtml = "<html><body><p>no financial tables here</p></body></html>";
+  it("records extract-failed (statements null) when the model returns nothing usable", async () => {
     stubs.fetchCandidates.mockResolvedValue([candidate424]);
-    stubs.fetchHtml.mockResolvedValue(noScaleHtml);
+    stubs.fetchHtml.mockResolvedValue(spcxHtml);
+    stubs.llmExtract.mockResolvedValue(null); // model found no usable statements
+    const { ctx, audits } = makeCtx();
+
+    const result = await recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
+
+    expect(result.statements).toBeNull();
+    expect(result.audit.outcome).toBe("extract-failed");
+    expect(audits[0].outcome).toBe("extract-failed");
+  });
+
+  it("records extract-failed when every candidate document fetch fails (no model call)", async () => {
+    // All fetches fail → docs.length === 0 → the runtime returns before resolving
+    // the model, so recovery spends zero model calls on this path.
+    stubs.fetchCandidates.mockResolvedValue([candidate424]);
+    stubs.fetchHtml.mockRejectedValue(new Error("fetch boom"));
+    const { ctx } = makeCtx();
+
+    const result = await recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
+
+    expect(result.statements).toBeNull();
+    expect(result.audit.outcome).toBe("extract-failed");
+    expect(stubs.llmExtract).not.toHaveBeenCalled();
+  });
+
+  it("rethrows on abort during the model call instead of swallowing it into an audit", async () => {
+    stubs.fetchCandidates.mockResolvedValue([candidate424]);
+    stubs.fetchHtml.mockResolvedValue(spcxHtml);
     const { ctx, audits } = makeCtx();
     const controller = new AbortController();
     (ctx as { signal?: AbortSignal }).signal = controller.signal;
-    // Abort at MODEL-call time (the deterministic tier already missed): the
-    // catch must rethrow the original error, not turn it into an audit.
+    // Abort at MODEL-call time: the catch must rethrow the original error, not
+    // turn it into an audit.
     const abortErr = new Error("The operation was aborted");
     stubs.llmExtract.mockImplementation(async () => {
       controller.abort();
@@ -322,32 +374,4 @@ describe("recoverCriticalFinancials", () => {
     expect(stubs.llmExtract).not.toHaveBeenCalled();
   });
 
-  it("falls back to the ONE bounded LLM extract when the deterministic tier misses", async () => {
-    // HTML with no scale note → deterministic extractor returns null.
-    const noScaleHtml = "<html><body><p>no financial tables here</p></body></html>";
-    stubs.fetchCandidates.mockResolvedValue([candidate424]);
-    stubs.fetchHtml.mockResolvedValue(noScaleHtml);
-    const llmCandidate: FinancialCandidate = {
-      ticker: "SPCX",
-      cik: 1750000,
-      companyName: "SpaceCo Exploration Inc.",
-      form: "424B4",
-      filingDate: "2026-02-10",
-      periodEnd: "2025-12-31",
-      scale: 1_000,
-      currency: "USD",
-      sourceUrl: candidate424.url,
-      income: { revenue: 8_500_000_000, operatingIncome: 1_200_000_000 },
-      cashflow: { operating: 2_000_000_000, capitalExpenditure: -3_500_000_000, freeCashFlow: null },
-      balance: { cashAndEquivalents: 4_000_000_000, totalDebt: 1_000_000_000 },
-    };
-    stubs.llmExtract.mockResolvedValue(llmCandidate);
-    const { ctx } = makeCtx();
-
-    const result = await recoverCriticalFinancials(ctx, { ticker: "SPCX", date: "2026-05-06" });
-
-    expect(stubs.llmExtract).toHaveBeenCalledTimes(1);
-    expect(result.audit.outcome).toBe("promoted");
-    expect(result.statements!.incomeStatement.revenue).toBeCloseTo(8.5, 6);
-  });
 });
