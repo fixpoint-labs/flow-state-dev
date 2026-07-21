@@ -88,6 +88,15 @@ Declare that field in the scope's state schema where it's **written**. The upstr
 
 ### Who writes the activation
 
+:::note Two activation paths — only one uses block state
+Don't read the automatic block-state field as making `createSkillActivator` unnecessary. They're different mechanisms:
+
+- **`dynamicActivation`'s `loadSkill` tool** is *model-driven* and runs *inside* the generator (as a child block), so it writes the generator's own block state — which the binding now installs for you.
+- **`createSkillActivator`** is *deterministic* (a `/skill` slash command, a keyword, or the classifier) and runs *before* the generator, as its own block. At that point the generator's block state doesn't exist yet, so it can't use it no matter who declares the schema — it must write an explicit shared field. It also gives you rule-based activation the model-driven tool can't (a `/research` command activates research whether or not the model would pick it).
+
+So the automatic block-state field removed the hand-declared `stateSchema` for the load-tool path; it did **not** remove the matcher's need for a shared field. Reach for the matcher when you want up-front, deterministic activation; reach for `dynamicActivation` when you want the model to decide mid-turn.
+:::
+
 Three writers, and the storage choice follows from which one you have:
 
 - **The load tool** (the LLM, mid-turn) writes the generator's block state by default, or the explicit `activeState` field if you set one.
