@@ -735,15 +735,14 @@ export function planAndExecute<
   if (synthesizeGoalStep !== undefined) seed = seed.step(synthesizeGoalStep);
   seed = seed.tap(stampOuterGoal).step(captureAndPlan);
 
-  // Judge adapter: unwrap the normalized `JudgeInput` back to the raw drain
-  // output (preserving a custom evaluator's legacy input), run P&E's evaluator,
-  // run P&E's own replanner on a replan-without-tasks (its legacy contract is
-  // the evaluator's full output, NOT goalSeekLoop's lossy Verdict), then map to
-  // a Verdict. The self-cap reason is keyed on the iteration count both
-  // evaluator variants patch: a `complete` at `iteration >= maxIterations`
-  // reports `max-iterations`, an earlier `complete` reports `converged`.
+  // Judge adapter (a block judge, so it receives the raw drain output directly —
+  // preserving a custom evaluator's legacy input): run P&E's evaluator, run
+  // P&E's own replanner on a replan-without-tasks (its legacy contract is the
+  // evaluator's full output, NOT goalSeekLoop's lossy Verdict), then map to a
+  // Verdict. The self-cap reason is keyed on the iteration count both evaluator
+  // variants patch: a `complete` at `iteration >= maxIterations` reports
+  // `max-iterations`, an earlier `complete` reports `converged`.
   const judgeAdapter = sequencer({ name: `${name}-judge`, inputSchema: z.unknown() })
-    .map((ji: unknown) => (ji as { drainResult?: unknown }).drainResult)
     .step(evaluator)
     .stepIf(
       (d: unknown) =>

@@ -57,11 +57,11 @@ export type Verdict =
   | { decision: "replan"; reason: string; tasks?: TaskInit[] };
 
 /**
- * Normalized judge input — the SAME shape whether the judge is a block,
- * sub-sequencer, or inline fn, so a judge is expressible either way. Built by
- * `goalSeekLoop` before the judge runs. Block/sub-sequencer judges may ignore
- * it and read the board from `ctx` (the built-in patterns do); inline fns
- * receive the resolved collection ref directly.
+ * Input to an inline-fn judge: the resolved collection ref plus the raw drain
+ * result. Built inside the judge wrapper (never placed on the chain — a live
+ * ref would not survive a structured-clone step boundary). A block or
+ * sub-sequencer judge instead receives the raw drain result and reads the board
+ * from `ctx` (what the built-in patterns do).
  */
 export interface JudgeInput {
   collection: TaskCollectionRef;
@@ -312,17 +312,13 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     },
   });
 
-  // ---- judgeStep: normalize input → run judge → validate, judge-scoped rescue
-
-  const judgeInputBlock = handler({
-    name: `${name}-gsl-judge-input`,
-    inputSchema: z.unknown(),
-    uses: [board.capability],
-    execute: async (drainResult, ctx): Promise<JudgeInput> => {
-      const collection = await resolveBoardRef(ctx, boardCapName);
-      return { collection, drainResult };
-    },
-  });
+  // ---- judgeStep: run judge → validate, judge-scoped rescue
+  //
+  // The live `TaskCollectionRef` (a methods-bearing object) is NEVER placed on
+  // the chain — a structured-clone boundary between steps would reject it. An
+  // inline-fn judge gets its `JudgeInput` built INSIDE the wrapper's `execute`
+  // (local, not a step output); a block/sub-sequencer judge receives the raw
+  // drain result and reads the board from `ctx` (what the built-in patterns do).
 
   const judgeBlock: BlockDefinition<any, any> =
     typeof judge === "function"
@@ -330,7 +326,10 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
           name: `${name}-gsl-judge`,
           inputSchema: z.unknown(),
           uses: [board.capability],
-          execute: async (input, ctx) => judge(input as JudgeInput, ctx),
+          execute: async (drainResult, ctx) => {
+            const collection = await resolveBoardRef(ctx, boardCapName);
+            return judge({ collection, drainResult }, ctx);
+          },
         })
       : (judge as BlockDefinition<any, any>);
 
@@ -374,7 +373,6 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   // block-level `.rescue` (skip only) is scoped to the judge + validation, so a
   // seed/board.drain failure earlier in the outer chain is never swallowed.
   let judgeStep = sequencer({ name: `${name}-gsl-judge-step`, inputSchema: z.unknown() })
-    .step(judgeInputBlock)
     .step(judgeBlock)
     .step(validateVerdictBlock);
   if (onError === "skip") {
