@@ -35,6 +35,7 @@ import type {
 } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
 import { getCollection as resolveCollection } from "./internal/get-collection";
+import { listEnabledSkills } from "./internal/list-enabled-skills";
 import { ensureSeeded } from "./seeding";
 import {
   createSkillForkGenerator,
@@ -123,30 +124,8 @@ function getRequiredCollection(
   return collection;
 }
 
-/** List enabled (non-disabled) skill names + descriptions for the tool surface. */
-export async function listEnabledSkills(
-  collection: ResourceCollectionRef,
-): Promise<Array<{ name: string; description: string }>> {
-  const out: Array<{ name: string; description: string }> = [];
-  const seen = new Set<string>();
-  for (const ref of await collection.list()) {
-    // The collection holds a mix of SKILL.md manifests and supporting files.
-    // Manifests have keys ending in `/SKILL.md` once stripped of the prefix.
-    if (!ref.path.endsWith("/SKILL.md")) continue;
-    const state = ref.state as unknown as SkillState;
-    if (state.disableModelInvocation) continue;
-    // Extract skill name from the storage key — strip prefix and `/SKILL.md`.
-    const segments = ref.path.split("/");
-    if (segments.length < 2) continue;
-    const name = segments[segments.length - 2]!;
-    if (seen.has(name)) continue;
-    seen.add(name);
-    let desc = state.description ?? "";
-    if (state.whenToUse) desc = `${desc}\n${state.whenToUse}`;
-    out.push({ name, description: desc });
-  }
-  return out;
-}
+// Re-exported so existing importers of the v1 catalog primitive keep working.
+export { listEnabledSkills } from "./internal/list-enabled-skills";
 
 /**
  * Build the runSkill tool's dynamic description listing available skills.

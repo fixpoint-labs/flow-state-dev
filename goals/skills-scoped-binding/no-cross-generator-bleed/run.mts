@@ -200,12 +200,12 @@ async function runGoalCheck(): Promise<string[]> {
       },
     },
   });
-  const runSkill = (await resolveTools(genD, ctxTool)).find((t) => t.name === "runSkill");
-  if (!runSkill) {
-    failures.push("dynamic: runSkill load tool was not installed by dynamicActivation");
+  const loadSkill = (await resolveTools(genD, ctxTool)).find((t) => t.name === "loadSkill");
+  if (!loadSkill) {
+    failures.push("dynamic: loadSkill load tool was not installed by dynamicActivation");
     return failures;
   }
-  const exec = (runSkill.execute ?? runSkill.config?.execute) as Function;
+  const exec = (loadSkill.execute ?? loadSkill.config?.execute) as Function;
   await exec({ name: fx.skillA.name }, ctxTool);
 
   // The reader running in genD's scope (ctx.self == the same block-state cell)

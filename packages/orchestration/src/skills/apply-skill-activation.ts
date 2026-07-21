@@ -22,7 +22,10 @@ import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import type { SkillState } from "@flow-state-dev/core";
 import { activeSkillsArraySchema } from "./active-skill-state";
-import type { ExplicitActivationScope } from "./activation-store";
+import {
+  replaceActivations,
+  type ExplicitActivationScope,
+} from "./activation-store";
 import { skillActivatorStateSchema } from "./skill-activation-types";
 import { skillManifestKey } from "./collection";
 import { getCollection } from "./internal/get-collection";
@@ -98,8 +101,9 @@ export function createApplySkillActivation(options: ApplySkillActivationOptions 
       );
       // Replace (per-turn semantics) the resolved set at the configured scope
       // + field. Default target is session `activeSkills` (legacy slot).
-      const handle = ctx[scope] as { patchState: (u: Record<string, unknown>) => Promise<unknown> };
-      await handle.patchState({ [field]: activeSkillEntries });
+      // Goes through the shared activation-store helper so the matcher, the
+      // load tool, and the reader agree on one write model.
+      await replaceActivations(ctx, { kind: "explicit", scope, field }, activeSkillEntries);
 
       return { skillCount: skills.length, activationSource };
     },

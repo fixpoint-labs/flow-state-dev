@@ -35,6 +35,10 @@ const analyst = generator({
 
 `createSkillsLibrary` returns a capability. You bind to it per generator with `.config({ ... })` and `.presets({ ... })`, the same two builders every capability has. The library owns seeding: bundled `initialSkills` are seeded on a binding's first render, so even a generator that only preloads a static skill sees a populated catalog on turn 1.
 
+:::note One skills surface per generator
+`createSkillsLibrary` and the older `createSkillsCapability` both register a `skills` resource collection under the same key, so don't mount both on the same generator — the duplicate collection key fails loudly at build time. Pick the per-generator library or the session-global capability for a given generator, not both.
+:::
+
 ## `config({ active })` — preload a skill
 
 `active` is the one-line common case. Name the skills this generator should always have, and their bodies (plus the tools they declare) are in context from the start.
@@ -45,13 +49,13 @@ uses: [skills.config({ active: ["detailed-analysis", "cite-sources"] })];
 
 - **Inline-mode only.** `active` preloads a skill body. Fork and pattern skills are dispatch routes, not context injections, so they can't be preloaded here — they stay on the `runSkill` router (see [Pattern skills](./pattern-skills)).
 - **Declared tools ride along.** Each preloaded skill contributes the tools it names in `allowed-tools`. A skill that declares none is unrestricted, so the whole catalog is contributed.
-- **Fails loud on a typo.** A name that isn't a known skill throws at build time. This is an author declaration, not a runtime read, so a silent skip would run the generator without the instructions you asked for.
+- **Fails loud on a typo.** A name that isn't a known skill throws at build time. This is an author declaration, not a runtime read, so a silent skip would run the generator without the instructions you asked for. Binding by name validates against the library's bundled `initialSkills`, so pass them to `createSkillsLibrary` — binding a name with no catalog to check against is itself an error.
 
 Two generators, two different `active` sets, and neither sees the other's skill. That's the whole point.
 
 ## `presets({ dynamicActivation })` — let the agent load a skill mid-turn
 
-Sometimes the agent should decide. Turn on `dynamicActivation` and the generator gets a `runSkill` tool: the model reads a catalog of loadable skills and calls the tool when one applies. The skill's body injects on the next step of the same turn.
+Sometimes the agent should decide. Turn on `dynamicActivation` and the generator gets a `loadSkill` tool: the model reads a catalog of loadable skills and calls the tool when one applies. The skill's body injects on the next step of the same turn. (The catalog lists only inline skills, since the load tool loads inline bodies — fork/pattern dispatch stays on the v1 `runSkill` router.)
 
 ```ts
 uses: [
@@ -82,7 +86,7 @@ const worker = generator({
 });
 ```
 
-The `runSkill` tool runs as a child of the generator, so it writes the generator's state through `ctx.parent`; the reader runs in the generator's own scope and reads it through `ctx.self`. Same container, two sides. See [Block state](/docs/advanced/block-state) for the addressing model. If you'd rather not declare the field, use an explicit `activeState` instead.
+The `loadSkill` tool runs as a child of the generator, so it writes the generator's state through `ctx.parent`; the reader runs in the generator's own scope and reads it through `ctx.self`. Same container, two sides. See [Block state](/docs/advanced/block-state) for the addressing model. If you'd rather not declare the field, use an explicit `activeState` instead.
 
 ## `config({ activeState })` — put the activation somewhere shared or durable
 

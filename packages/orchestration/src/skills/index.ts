@@ -28,34 +28,16 @@ export {
 } from "./capability";
 
 // Skills v2 (FIX-911) — shared library + per-generator binding via config.
+// The activation-store, binding reader, and load tool are binding internals
+// composed by `createSkillsLibrary`, not public surface (BP-038). Only the
+// scope union leaks through `createSkillActivator`'s public options.
 export {
   createSkillsLibrary,
   type SkillsLibraryOptions,
   type SkillsBindingConfig,
 } from "./library";
 
-export {
-  BLOCK_LOCATION,
-  BLOCK_STATE_FIELD,
-  readActivations,
-  appendActivation,
-  type ActivationLocation,
-  type ExplicitActivationScope,
-} from "./activation-store";
-
-export {
-  buildSkillBindingReader,
-  type SkillBindingReaderOptions,
-} from "./binding-reader";
-
-export {
-  createLoadSkillTool,
-  buildLoadCatalogContext,
-  type LoadSkillToolOptions,
-  type LoadCatalogContextOptions,
-} from "./load-tool";
-
-export { renderActiveSkillBody } from "./render-skill-body";
+export type { ExplicitActivationScope } from "./activation-store";
 
 export {
   defineSkillsCollection,

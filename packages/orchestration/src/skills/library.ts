@@ -179,10 +179,18 @@ export function createSkillsLibrary(
     [collectionKey]: skillsCollection,
   };
 
-  // Assert a name is a known inline skill (fail loud on typos). No-ops when no
-  // bundled index is available to validate against.
+  // Assert a name is a known inline skill (fail loud on typos). Binding by name
+  // requires a bundled catalog to validate against — if none parsed (no
+  // `initialSkills`, or every bundled skill was malformed), that's an author
+  // error, not a reason to silently skip validation and widen the tool surface.
   const assertInline = (name: string, where: "active" | "allowed"): void => {
-    if (index.size === 0) return;
+    if (index.size === 0) {
+      throw new Error(
+        `skills.config({ ${where}: [...] }) binds "${name}" by name, but no bundled ` +
+          `skills are available to validate against. Pass valid \`initialSkills\` to ` +
+          `createSkillsLibrary() (an empty index also means every bundled skill failed to parse).`,
+      );
+    }
     const entry = index.get(name);
     if (!entry) {
       throw new Error(

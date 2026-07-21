@@ -111,6 +111,18 @@ describe("createSkillsLibrary — static active binding", () => {
     ).toThrow(/unknown skill "typo-skill"/);
   });
 
+  it("fails loud when binding by name with no bundled catalog to validate against", () => {
+    const skills = createSkillsLibrary({}); // no initialSkills → empty index
+    expect(() =>
+      generator({
+        name: "g",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        uses: [skills.config({ active: ["anything"] })],
+      }),
+    ).toThrow(/no bundled skills are available to validate against/);
+  });
+
   it("renders the bound skill body — and only that generator's skill", async () => {
     const initialSkills = [
       inlineSkill("alpha", "ALPHA-BODY-MARKER"),
@@ -178,11 +190,11 @@ describe("createSkillsLibrary — static active binding", () => {
 });
 
 describe("createSkillsLibrary — dynamicActivation load tool", () => {
-  const runSkillExecute = (
+  const loadSkillExecute = (
     tool: { execute?: Function; config?: { execute?: Function } },
   ): Function => (tool.execute ?? tool.config?.execute) as Function;
 
-  it("installs the runSkill load tool when dynamicActivation is on", async () => {
+  it("installs the loadSkill load tool when dynamicActivation is on", async () => {
     const skills = createSkillsLibrary({
       initialSkills: [inlineSkill("deep-research", "body")],
     });
@@ -195,7 +207,7 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
     const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
       (t) => t.name,
     );
-    expect(toolNames).toContain("runSkill");
+    expect(toolNames).toContain("loadSkill");
   });
 
   it("load tool writes the host generator's block state via ctx.parent", async () => {
@@ -220,12 +232,33 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
         },
       },
     });
-    const runSkill = (await resolveTools(gen, ctx)).find((t) => t.name === "runSkill")!;
+    const loadSkill = (await resolveTools(gen, ctx)).find((t) => t.name === "loadSkill")!;
 
-    const result = await runSkillExecute(runSkill)({ name: "deep-research" }, ctx);
+    const result = await loadSkillExecute(loadSkill)({ name: "deep-research" }, ctx);
     expect(result.mode).toBe("inline");
     expect(parentState.activeSkills).toHaveLength(1);
     expect((parentState.activeSkills as Array<{ name: string }>)[0]!.name).toBe("deep-research");
+  });
+
+  it("load catalog lists only inline skills, never fork/pattern (allowed omitted)", async () => {
+    const forkSkill: InitialSkill = {
+      name: "forky",
+      skillMd: "---\ndescription: a fork skill\ncontext: fork\n---\n\nbody",
+    };
+    const skills = createSkillsLibrary({
+      initialSkills: [inlineSkill("inliney", "body"), forkSkill],
+    });
+    // `allowed` omitted → the catalog is the whole enabled set; the load tool is
+    // inline-only, so the listing must exclude the fork skill.
+    const gen = generator({
+      name: "g",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      uses: [skills.config({}).presets({ dynamicActivation: true })],
+    });
+    const out = await renderGeneratorSkills(gen, buildReaderCtx(createMockSkillsCollection()));
+    expect(out).toContain("inliney");
+    expect(out).not.toContain("forky");
   });
 
   it("load tool rejects a skill outside the allowed set", async () => {
@@ -241,8 +274,8 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
     const ctx = buildReaderCtx(createMockSkillsCollection(), {
       parent: { name: "g", kind: "generator", atomicState: async () => true },
     });
-    const runSkill = (await resolveTools(gen, ctx)).find((t) => t.name === "runSkill")!;
-    await expect(runSkillExecute(runSkill)({ name: "other" }, ctx)).rejects.toThrow(
+    const loadSkill = (await resolveTools(gen, ctx)).find((t) => t.name === "loadSkill")!;
+    await expect(loadSkillExecute(loadSkill)({ name: "other" }, ctx)).rejects.toThrow(
       /not in this generator's allowed set/,
     );
   });

@@ -8,9 +8,10 @@
  * for the block-state default it writes the generator's own state via
  * `ctx.parent` (FIX-914's child→ancestor handle).
  *
- * This tool is **inline-only** by construction: `fork` / `pattern` skills are
- * dispatch routes, not context injections, and stay on the `runSkill` router
- * (`run-skill-tool.ts`). A binding rejects fork/pattern skills from `allowed`
+ * It is named `loadSkill` (distinct from the v1 dispatch router `runSkill` in
+ * `run-skill-tool.ts`) because it does one thing — load an inline skill's body.
+ * `fork` / `pattern` skills are dispatch routes, not context injections, and
+ * stay on the v1 router. A binding rejects fork/pattern skills from `allowed`
  * at build time; this tool rejects them again at call time as a backstop.
  */
 
@@ -26,9 +27,9 @@ import {
 } from "./activation-store";
 import { skillManifestKey } from "./collection";
 import { getCollection } from "./internal/get-collection";
+import { listEnabledSkills } from "./internal/list-enabled-skills";
 import { ensureSeeded } from "./seeding";
 import { validateSkillName } from "./skill-md";
-import { listEnabledSkills } from "./run-skill-tool";
 
 const inputSchema = z.object({
   name: z
@@ -75,7 +76,7 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
   const allowedSet = allowed ? new Set(allowed) : undefined;
 
   return handler({
-    name: "runSkill",
+    name: "loadSkill",
     description:
       "Load a named skill's instructions into your context for the rest of this turn. " +
       "The list of loadable skills is provided in the system context — call this with one of those names.",
@@ -148,7 +149,8 @@ export interface LoadCatalogContextOptions {
 /**
  * Build the catalog-listing context entry the model reads to discover which
  * skills it can load. Filtered to the binding's `allowed` set (if any) and to
- * `inline`-mode skills (the load tool is inline-only).
+ * `inline`-mode skills — the load tool rejects fork/pattern skills, so listing
+ * them would only invite a call that can't succeed.
  */
 export function buildLoadCatalogContext(
   opts: LoadCatalogContextOptions,
@@ -163,10 +165,12 @@ export function buildLoadCatalogContext(
       // Seeding failure already logged.
     }
     const enabled = await listEnabledSkills(collection);
-    const loadable = enabled.filter((s) => !allowedSet || allowedSet.has(s.name));
+    const loadable = enabled.filter(
+      (s) => s.mode === "inline" && (!allowedSet || allowedSet.has(s.name)),
+    );
     if (loadable.length === 0) return null;
     const lines = [
-      "You can load any of these skills with the `runSkill` tool to pull its instructions into context:",
+      "You can load any of these skills with the `loadSkill` tool to pull its instructions into context:",
       "",
     ];
     for (const skill of loadable) lines.push(`- ${skill.name}: ${skill.description}`);
