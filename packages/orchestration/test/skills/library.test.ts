@@ -370,6 +370,28 @@ describe("createSkillsLibrary — explicit activeState", () => {
     expect(toolNames).not.toContain("loadSkill");
   });
 
+  it("registers the full catalog for an unscoped activeState binding (no allowed, no load tool)", async () => {
+    const mk = (name: string) =>
+      handler({ name, inputSchema: z.object({}), outputSchema: z.object({}), execute: async () => ({}) });
+    const skills = createSkillsLibrary({
+      catalog: { search: mk("search"), fetch: mk("fetch") },
+      initialSkills: [inlineSkill("s", "body")],
+    });
+    // activeState with no `allowed` and no dynamicActivation: a writer can place
+    // any inline skill in the field, so the whole catalog must be available.
+    const gen = generator({
+      name: "g",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      uses: [skills.config({ activeState: { scope: "session", field: "activeAnalystSkills" } })],
+    });
+    const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
+      (t) => t.name,
+    );
+    expect(toolNames).toEqual(expect.arrayContaining(["search", "fetch"]));
+    expect(toolNames).not.toContain("loadSkill");
+  });
+
   it("reader reads dynamic entries from the explicit field, inline only", async () => {
     const skills = createSkillsLibrary({
       initialSkills: [inlineSkill("s", "S-BODY-MARKER"), inlineSkill("f", "F-BODY-MARKER")],

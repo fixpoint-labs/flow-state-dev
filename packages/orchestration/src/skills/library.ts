@@ -276,12 +276,18 @@ export function createSkillsLibrary(
     if (cfg.allowed) for (const name of cfg.allowed) assertInline(name, "allowed");
 
     const dynamic = resolveCtx.presets.has("dynamicActivation");
-    // An `allowed` skill can be activated at runtime by the load tool OR by an
-    // upstream matcher / code writing an explicit `activeState` field. Either
-    // way its body may render, so register its declared tools whenever such an
-    // activation path exists — not only under `dynamicActivation`.
-    if (cfg.allowed && (dynamic || cfg.activeState)) {
-      tools.push(...declaredTools(cfg.allowed));
+    // A runtime activation can arrive from the load tool (`dynamicActivation`)
+    // or from an upstream matcher / code writing an explicit `activeState`
+    // field. Any such path can render a skill body, so register the tools those
+    // bodies may reference: the `allowed` skills' declared tools when scoped, or
+    // the whole catalog when the activatable set is unbounded (no `allowed`).
+    const hasActivationPath = dynamic || Boolean(cfg.activeState);
+    if (hasActivationPath) {
+      tools.push(
+        ...(cfg.allowed
+          ? declaredTools(cfg.allowed)
+          : (Object.values(catalog) as GeneratorTool[])),
+      );
     }
 
     // `dynamicActivation` preset → install the load tool + catalog listing.
@@ -294,9 +300,6 @@ export function createSkillsLibrary(
           ...(initialSkills ? { initialSkills } : {}),
         }),
       );
-      // With no `allowed`, the load tool may pull any skill → contribute the
-      // whole catalog. (When `allowed` is set, its tools were added above.)
-      if (!cfg.allowed) tools.push(...(Object.values(catalog) as GeneratorTool[]));
       contextEntries.push(
         buildLoadCatalogContext({
           collectionKey,
