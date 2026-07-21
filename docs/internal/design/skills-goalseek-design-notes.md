@@ -397,20 +397,27 @@ each against "does task-board + delegation + goalSeekLoop subsume it?" — track
 - **Consumer reality:** the only non-test consumers outside `packages/patterns`
   are demo surfaces — kitchen-sink `thinking-styles` and `apps/pattern-benchmark`.
   `roundRobin` has zero. Cutting costs demos, not production.
-- **Cut / demote:** parallelTasks, planAndExecute (→ recipe), routedSpecialists
-  (→ router + board), round-robin/debate/rlm (→ examples), eventActors (niche; UI
+- **Starting state (verified on main):** FIX-910 is **DONE** (goalSeekLoop shipped,
+  PR #841); **parallelTasks and planAndExecute are already re-expressed onto it**
+  (`patterns-goal-seek-loop-reexpression` changeset). So the job is delete/demote,
+  **not** re-express. FIX-910 does not reopen — cut work lives in FIX-922.
+- **Cut / demote:** parallelTasks, planAndExecute (already thin `goalSeekLoop`
+  wrappers → recipe), **routedSpecialists (= the goal pattern itself** — the
+  kitchen-sink demo of goal→research→critique rounds is a goal-seeking task board,
+  just not named one), round-robin/debate/rlm (→ examples), eventActors (niche; UI
   already broken — open Q: does the board's dynamic work-graph cover pub-sub?).
 - **Keep:** `response-auditor` — distinct, small, load-bearing (the output gate
   that covers enforced output without a harness).
-- **Supervisor — corrected finding.** Source header confirms it's a **per-task**
-  `worker → reviewer → applyVerdict` gate with `maxAttempts` retry, plus an
-  **upfront** `captureAndPlan`. It is *not* board-level "review-and-decide-next"
-  (that's the delegation host / goalSeekLoop). Decomposes into: generic board
-  delegation + **`buildReviewedWorker`** (the one keeper, as a utility) + a
-  plan-timing config choice.
-- **Design decision it surfaces (→ FIX-918):** delegation plan timing —
-  **full-plan-upfront vs incremental "plan a few → review → replan."** Make it a
-  deliberate config, not a side effect of which pattern you picked.
-- **FIX-910 knock-on:** if parallelTasks/planAndExecute are deleted (not
-  re-expressed), FIX-910 drops its parity-migration leg → shrinks to "just build
-  `goalSeekLoop`." Feed back into #821.
+- **Supervisor — corrected finding + refinement.** Source header confirms it's a
+  **per-task** `worker → reviewer → applyVerdict` gate with `maxAttempts` retry,
+  plus an **upfront** `captureAndPlan`. It is *not* board-level "review-and-decide-
+  next" (that's the delegation host / goalSeekLoop). Decomposes into: generic board
+  delegation + **`buildReviewedWorker`** (a keeper utility) + a plan-timing choice.
+  **Generalize:** reviewer becomes a **per-task assignment slot** (worker/reviewer)
+  — skills express how tasks are created/assigned and may attach a reviewer per
+  task. Supervisor **may still stand as a deterministic standalone pattern** (more
+  deterministic than a generator host driving delegation ad hoc).
+- **Design decisions it surfaces (→ FIX-918):** (1) **per-task assignment slots**
+  (worker/reviewer, skill-expressed assignment); (2) **plan timing** —
+  full-plan-upfront vs incremental "plan a few → review → replan," a deliberate
+  config, not a side effect of which pattern you picked.
