@@ -371,6 +371,12 @@ describe("goalSeekLoop - terminal item", () => {
     expect(boardMeta.length).toBeGreaterThan(0);
     expect(termination.length).toBe(1);
     expect((termination[0] as any).component).not.toBe("task-board-meta");
+    // It's an internal observability signal — not client/history-rendered — so
+    // it never surfaces as raw JSON in the client stream.
+    expect((termination[0] as any).itemVisibility).toEqual({
+      client: false,
+      history: false,
+    });
   });
 });
 

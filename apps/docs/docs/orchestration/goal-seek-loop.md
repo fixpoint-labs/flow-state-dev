@@ -100,7 +100,7 @@ Supervisor's judge runs *inside* each worker as a retry budget, not across the w
 
 ## Stream items
 
-The loop emits one **`goal-seek-loop-termination`** component when it exits, carrying the termination `reason` (`converged`, `max-iterations`, or `judge-error`) and the drain count. It is a distinct component type with its own key, so it never clobbers the board's own completed `task-board-meta` snapshot that renderers scan. Renderers are otherwise unaffected.
+The loop emits one **`goal-seek-loop-termination`** signal when it exits, carrying the termination `reason` (`converged`, `max-iterations`, or `judge-error`) and the drain count. It is a typed observability signal for tooling, not a rendered UI element — it's emitted client- and history-invisible, so it never appears in the client output. It also uses a distinct component type and key, so it never clobbers the board's own completed `task-board-meta` snapshot that renderers scan. Renderers are otherwise unaffected.
 
 ## Non-goals
 

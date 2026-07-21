@@ -152,8 +152,10 @@ export interface GoalSeekLoopConfig {
   onError?: "skip" | "fail";
 }
 
-/** Distinct component type for the terminal item — NOT `task-board-meta`, so it
- *  never clobbers the completed board snapshot `<TaskPlan/>` scans. */
+/** Component type of the loop's terminal observability signal (reason + drain
+ *  count). Distinct from `task-board-meta` so it never clobbers the completed
+ *  board snapshot `<TaskPlan/>` scans, and emitted client/history-invisible
+ *  (no renderer consumes it) so it never surfaces as raw JSON in the stream. */
 export const GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE = "goal-seek-loop-termination";
 
 // ---------------------------------------------------------------------------
@@ -437,10 +439,17 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
       };
       const iterations = state.goalSeekLoopDrains ?? 0;
       const reason = state.goalSeekLoopVerdict?.reason ?? "converged";
+      // A typed observability signal, NOT a rendered UI element: no renderer
+      // consumes this component, so it's emitted client- and history-invisible
+      // to avoid surfacing as raw JSON in the client stream. It stays on the
+      // live stream for tooling and is what the goalSeekLoop tests assert on.
       ctx.emit.component(
         GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
         { collectionId: board.collectionId, reason, iterations },
-        { key: `${board.collectionId}:goalSeekLoop-termination` },
+        {
+          key: `${board.collectionId}:goalSeekLoop-termination`,
+          itemVisibility: { client: false, history: false },
+        },
       );
     },
   });
