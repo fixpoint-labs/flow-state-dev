@@ -273,4 +273,5 @@ The synthesizer receives `{ goal: string, results: unknown[] }` where `results` 
 - [Parallel Tasks](./parallelTasks) — fan-out without per-task review
 - [Round Robin](./round-robin) — fixed-roster turn-taking with a judge, no per-task retry
 - [Plan and Execute](./plan-and-execute) — sequential dependency-ordered execution with optional replanning
+- [GoalSeekLoop](../orchestration/goal-seek-loop) — the board-level judge loop Supervisor is deliberately *not* built on (its review is per-task, a different axis)
 - [Patterns Overview](./overview) — when to use which pattern

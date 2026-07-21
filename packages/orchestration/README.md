@@ -69,7 +69,8 @@ and lease stamping run uniformly.
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 ```
 
-`taskBoard({ name, collection, workers, ... })` returns `{ drain, collectionId, capability }`.
+`taskBoard({ name, collection, workers, ... })` returns
+`{ drain, collectionId, capability, backing, hasIdlessInitialTasks }`.
 Mount `board.drain` in a sequencer. `workers` is a single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
@@ -77,6 +78,21 @@ Mount `board.drain` in a sequencer. `workers` is a single uniform worker or a
 `onError`, and `maxIterations` (loop-cap, default 10000). Per-task retries are set
 via `maxAttempts` on each task (`TaskInit`), not on the board. See the
 [Task Board guide](https://flow-state.dev/docs/orchestration/task-board).
+
+### goalSeekLoop
+
+```ts
+import { goalSeekLoop } from "@flow-state-dev/orchestration/task-board";
+```
+
+`goalSeekLoop({ name, board, seed?, judge, maxIterations, finalize?, ... })` wraps a
+board's drain in an outer, judge-gated loop: seed → drain → judge → (replan) →
+repeat → finalize. The `judge` returns a three-way `Verdict`
+(`done`/`continue`/`replan`); `maxIterations` is a mandatory finite backstop, and
+the loop lands with a typed `goal-seek-loop-termination` item rather than hanging.
+It generalizes the `taskLoopBack` helper into a real primitive; the board must be
+request- or resource-backed. `parallelTasks` and `planAndExecute` are expressed on
+it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
 
 ## Skills + taskTools
 
