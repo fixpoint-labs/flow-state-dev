@@ -231,6 +231,25 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
     tool: { execute?: Function; config?: { execute?: Function } },
   ): Function => (tool.execute ?? tool.config?.execute) as Function;
 
+  it("validates every bundled inline skill's tools in whole-catalog dynamic mode (allowed omitted)", () => {
+    const mk = (name: string) =>
+      handler({ name, inputSchema: z.object({}), outputSchema: z.object({}), execute: async () => ({}) });
+    const skills = createSkillsLibrary({
+      catalog: { search: mk("search") },
+      // `allowed` omitted → whole catalog loadable; `needs-db` declares a tool
+      // not in the catalog, so the build must fail loud.
+      initialSkills: [inlineSkill("ok", "body", ["search"]), inlineSkill("needs-db", "body", ["db"])],
+    });
+    expect(() =>
+      generator({
+        name: "g",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        uses: [skills.config({}).presets({ dynamicActivation: true })],
+      }),
+    ).toThrow(/skill "needs-db" declares tool "db", which is not in the catalog/);
+  });
+
   it("installs the loadSkill load tool when dynamicActivation is on", async () => {
     const skills = createSkillsLibrary({
       initialSkills: [inlineSkill("deep-research", "body")],

@@ -283,6 +283,17 @@ export function createSkillsLibrary(
 
     const dynamic = resolveCtx.presets.has("dynamicActivation");
     const hasActivationPath = dynamic || Boolean(cfg.activeState);
+
+    // Whole-catalog mode (activation path + no `allowed`): any bundled inline
+    // skill is loadable/activatable, so validate each one's declared tools —
+    // the `allowed` loop above only covers an explicit list. Fork/pattern skills
+    // can't render/load inline, so they're skipped.
+    if (hasActivationPath && !cfg.allowed) {
+      for (const [name, entry] of index) {
+        if (entry.contextMode === "inline") validateDeclaredTools(name);
+      }
+    }
+
     // Whenever a skill body can render — statically preloaded (`active`) or
     // activated at runtime (load tool / upstream matcher / code) — register the
     // whole catalog as a safe superset. The skill's own `allowed-tools` scopes

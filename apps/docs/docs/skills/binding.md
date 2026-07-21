@@ -113,6 +113,11 @@ Three writers, and the storage choice follows from which one you have:
 const activator = createSkillActivator({
   activeState: { scope: "session", field: "activeAnalystSkills" },
   allowed: ["detailed-analysis", "cite-sources"],
+  // Seed the catalog before the tiers run — the matcher runs upstream of the
+  // generator, so it can't rely on the binding reader's lazy seeding. Pass the
+  // same `initialSkills` you gave `createSkillsLibrary`, or a fresh collection
+  // scans an empty catalog on turn 1 and matches nothing.
+  initialSkills,
 });
 ```
 
