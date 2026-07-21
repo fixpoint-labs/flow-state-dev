@@ -25,6 +25,8 @@ const outputSchema = z.object({ skillsMatched: z.number() });
 
 export interface KeywordMatchOptions {
   collectionKey: string;
+  /** When set, only these skill names may match. */
+  allowed?: readonly string[];
 }
 
 /**
@@ -32,6 +34,7 @@ export interface KeywordMatchOptions {
  * already `resolved`.
  */
 export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
+  const allowedSet = opts.allowed ? new Set(opts.allowed) : undefined;
   return handler({
     name: "skill-keyword-match",
     inputSchema,
@@ -58,6 +61,7 @@ export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
           const skillName = segments[segments.length - 2]!;
           if (seen.has(skillName)) continue;
           seen.add(skillName);
+          if (allowedSet && !allowedSet.has(skillName)) continue;
           const state = ref.state as unknown as SkillState;
           if (state.disableModelInvocation) continue;
           if (!state.keywords || state.keywords.length === 0) continue;

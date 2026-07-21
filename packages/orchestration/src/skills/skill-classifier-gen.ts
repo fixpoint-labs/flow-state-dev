@@ -54,12 +54,15 @@ export interface SkillClassifierOptions {
   confidenceThreshold?: number;
   /** Maximum number of skills described in the classifier prompt. */
   maxSkillsInClassifier?: number;
+  /** When set, only these skill names may be offered / accepted. */
+  allowed?: readonly string[];
 }
 
 /** List enabled skills (capped) with their description for the prompt. */
 async function listSkillsForPrompt(
   collection: ResourceCollectionRef | undefined,
   cap: number,
+  allowedSet: Set<string> | undefined,
 ): Promise<Array<{ name: string; description: string }>> {
   if (!collection) return [];
   const out: Array<{ name: string; description: string }> = [];
@@ -72,6 +75,7 @@ async function listSkillsForPrompt(
     const skillName = segments[segments.length - 2]!;
     if (seen.has(skillName)) continue;
     seen.add(skillName);
+    if (allowedSet && !allowedSet.has(skillName)) continue;
     const state = ref.state as unknown as SkillState;
     if (state.disableModelInvocation) continue;
     let desc = state.description ?? "";
@@ -88,6 +92,7 @@ async function listSkillsForPrompt(
 export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
   const cap = opts.maxSkillsInClassifier ?? DEFAULT_MAX_SKILLS;
   const threshold = opts.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
+  const allowedSet = opts.allowed ? new Set(opts.allowed) : undefined;
 
   const classifier = generator({
     name: "skill-classifier",
@@ -97,7 +102,7 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
     itemVisibility: { client: false, history: false },
     prompt: async (_input, ctx) => {
       const collection = getCollection(ctx, opts.collectionKey);
-      const skills = await listSkillsForPrompt(collection, cap);
+      const skills = await listSkillsForPrompt(collection, cap, allowedSet);
       if (skills.length === 0) {
         return [
           "You classify a single user message: which (if any) of the available skills applies?",
@@ -134,6 +139,7 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
           const segments = ref.path.split("/");
           if (segments.length < 2) continue;
           const skillName = segments[segments.length - 2]!;
+          if (allowedSet && !allowedSet.has(skillName)) continue;
           const state = ref.state as unknown as SkillState;
           if (state.disableModelInvocation) continue;
           validNames.add(skillName);

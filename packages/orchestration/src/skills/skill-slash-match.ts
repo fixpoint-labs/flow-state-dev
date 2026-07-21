@@ -24,6 +24,12 @@ const outputSchema = z.object({ matched: z.boolean() });
 
 export interface SlashMatchOptions {
   collectionKey: string;
+  /**
+   * When set, only these skill names may match. A `/other` where `other`
+   * isn't allowed falls through (doesn't resolve), so a later tier can still
+   * match an allowed skill in the same message.
+   */
+  allowed?: readonly string[];
 }
 
 /**
@@ -34,6 +40,7 @@ export interface SlashMatchOptions {
  * `MatchedSkill` and `resolved: true`.
  */
 export function createSkillSlashMatch(opts: SlashMatchOptions) {
+  const allowedSet = opts.allowed ? new Set(opts.allowed) : undefined;
   return handler({
     name: "skill-slash-match",
     inputSchema,
@@ -46,6 +53,10 @@ export function createSkillSlashMatch(opts: SlashMatchOptions) {
 
       const skillName = match[1]!;
       const argument = (match[2] ?? "").trim();
+
+      // A slash for a skill outside the binding's allowed set must not resolve
+      // the turn — fall through so a later tier can still match an allowed one.
+      if (allowedSet && !allowedSet.has(skillName)) return { matched: false };
 
       const collection = getCollection(ctx, opts.collectionKey);
       if (!collection) return { matched: false };

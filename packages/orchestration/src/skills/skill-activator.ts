@@ -89,12 +89,19 @@ export function createSkillActivator(
   const collectionKey = options.collectionKey ?? "skills";
   const enableLlm = options.enableLlmClassifier ?? true;
 
-  const slashTier = createSkillSlashMatch({ collectionKey });
-  const keywordTier = createSkillKeywordMatch({ collectionKey });
+  const allowed = options.allowed;
+  const slashTier = createSkillSlashMatch({
+    collectionKey,
+    ...(allowed ? { allowed } : {}),
+  });
+  const keywordTier = createSkillKeywordMatch({
+    collectionKey,
+    ...(allowed ? { allowed } : {}),
+  });
   const apply = createApplySkillActivation({
     collectionKey,
     ...(options.activeState ? { activeState: options.activeState } : {}),
-    ...(options.allowed ? { allowed: options.allowed } : {}),
+    ...(allowed ? { allowed } : {}),
   });
 
   let pipeline = sequencer({
@@ -113,6 +120,7 @@ export function createSkillActivator(
         options.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD,
       maxSkillsInClassifier:
         options.maxSkillsInClassifier ?? DEFAULT_MAX_SKILLS,
+      ...(allowed ? { allowed } : {}),
     });
     pipeline = pipeline.tapIf(
       (_input, ctx) => !ctx.sequencer?.state.resolved,
