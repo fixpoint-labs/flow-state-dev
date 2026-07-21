@@ -1,12 +1,23 @@
 /**
  * Fork-mode skill subagent — a framework `generator` block.
  *
- * When a skill declares `context: fork` in its frontmatter, `runSkill`
- * dispatches the invocation to this generator. The subagent runs with
+ * When a skill declares `context: fork` in its frontmatter, the fork tool
+ * (installed by `createSkillsLibrary`'s `fork` preset) dispatches the
+ * invocation to this generator. The subagent runs with
  * `itemVisibility: { client: true, history: false }`, meaning its tool
  * calls and streaming output reach the client for live observability but
  * are excluded from the parent conversation's history — the isolation
  * guarantee fork skills need, without bypassing the framework.
+ *
+ * **History inheritance (FIX-919).** The subagent seeds its messages from the
+ * engine's already-assembled history view via the generator `history` slot
+ * (`ctx.session.items.history()`, shared by reference from the parent's
+ * execution context). This is what makes a fork behave like a real fork in
+ * the road: the child picks up the conversation up to the fork point, then
+ * diverges. `history()` self-excludes the child's own `history: false` work
+ * and the still-in-flight fork tool call, so no dangling tool call leaks into
+ * the seeded messages. Assembly order is `system (skill body) → history
+ * (inherited) → user (task)`.
  *
  * Per-invocation inputs:
  *   - `body`: the substituted SKILL.md body, used as the system prompt.
@@ -19,6 +30,7 @@
 
 import { generator, type GeneratorTool } from "@flow-state-dev/core";
 import type { ToolCatalog } from "@flow-state-dev/core";
+import type { MessageLimit } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 export const forkInputSchema = z.object({
@@ -43,6 +55,12 @@ export interface CreateSkillForkGeneratorOptions {
   maxSteps?: number;
   /** Token budget for the subagent. */
   maxTokens?: number;
+  /**
+   * Bound on the inherited history the subagent seeds from. Whole turns, never
+   * split mid-tool-pair (uses the engine's turn-aligned `MessageLimit`).
+   * Omitted = inherit all history up to the fork point.
+   */
+  historyLimit?: MessageLimit;
 }
 
 /**
@@ -60,6 +78,7 @@ export function createSkillForkGenerator(
     defaultModelId = "intent/chat",
     maxSteps = 12,
     maxTokens,
+    historyLimit,
   } = options;
 
   return generator({
@@ -69,10 +88,15 @@ export function createSkillForkGenerator(
     inputSchema: forkInputSchema,
     // Output is whatever the subagent returns — plain text unless the skill
     // declared an outputSchema (not supported in V1 of the skills package).
-    // The router wraps this into the public runSkill output shape.
+    // The fork tool wraps this into the public fork output shape.
     outputSchema: z.string(),
     model: (input) => input.modelId ?? defaultModelId,
     prompt: (input) => input.body,
+    // Seed prior turns between the skill body (system) and the run instruction
+    // (user). `history: true` reads `ctx.session.items.history()`; the optional
+    // limit bounds it by whole turns so a long conversation doesn't blow up the
+    // (uncached) child prompt. See the module header for the fork-point semantics.
+    history: historyLimit ? { limit: historyLimit } : true,
     user: "Run the skill above. Return your final answer as plain text.",
     tools: (input, _ctx) => resolveForkTools(input, catalog),
     maxIterations: maxSteps,

@@ -129,6 +129,7 @@ const sidebars: SidebarsConfig = {
             "skills/binding",
             "skills/activation",
             "skills/authoring",
+            "skills/fork",
             "skills/pattern-skills",
           ],
         },

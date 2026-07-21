@@ -345,9 +345,16 @@ Search broadly, fetch the most promising sources, and return a structured
 report with: background, key findings, open questions.
 ```
 
-The `runSkill` router spawns a sub-agent generator (the framework's own `generator` block with `itemVisibility: { client: true, history: false }`) running the skill body as its system prompt with only the listed tools. The sub-agent's tool calls and streaming output reach the client for DevTool observability, but don't appear in the parent's conversation history.
+Fork installs per generator through `createSkillsLibrary`'s `fork` preset, which adds a `forkSkill` tool:
 
-The parent sees only a single `runSkill` tool call with the sub-agent's final text as its result.
+```ts
+const skills = createSkillsLibrary({ catalog, initialSkills, forkModelId: "openai/gpt-5.4-mini" });
+generator({ uses: [skills.with({ allowed: ["research"], fork: true })] });
+```
+
+When the model calls `forkSkill`, a sub-agent runs the skill body as its system prompt with only the listed tools. It inherits the conversation up to the fork point, so it can act on what earlier turns established, then works in isolation: its tool calls and streaming output reach the client for DevTool observability but don't enter the parent's conversation history.
+
+The parent sees only a single `forkSkill` tool call with the sub-agent's final text as its result. See [Fork skills](/docs/skills/fork) for the full mechanics.
 
 ## Verifying it works
 

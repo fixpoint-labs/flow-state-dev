@@ -6,14 +6,17 @@
  * the skill from the configured collection and dispatches to:
  *   - `inlineActivate` (handler) — patches `activeSkills` so the next
  *     generator step renders the substituted body in its system prompt.
- *   - `skillFork` (generator, `itemVisibility: { client: true, history: false }`)
- *     — runs the skill body as a subagent with a resolved subset of catalog tools.
+ *   - the pattern route — when the skill declares `pattern:` frontmatter.
+ *
+ * Fork-mode skills no longer dispatch here (FIX-919). Fork installs per
+ * generator via `createSkillsLibrary`'s `fork` preset — a `forkSkill` tool
+ * whose child inherits the conversation to the fork point and returns only its
+ * result. This router rejects a fork skill with a pointer to that path.
  *
  * The tool is a `router` rather than a handler: dispatch + per-branch
  * input/output adaptation belongs inside a router (BP-013), and routing to
- * a framework-native generator lets fork mode stream tool calls and text
- * to the client in real time for DevTool observability — a concrete win
- * over the previous hand-rolled `model.generate(...)` shortcut.
+ * a framework-native generator (the pattern route) lets a subagent stream tool
+ * calls and text to the client in real time for DevTool observability.
  *
  * The dynamic tool `description` is built from the active skill catalog at
  * call time so the model sees only currently-enabled skill names.
@@ -37,16 +40,10 @@ import { skillManifestKey } from "./collection";
 import { getCollection as resolveCollection } from "./internal/get-collection";
 import { listEnabledSkills } from "./internal/list-enabled-skills";
 import { ensureSeeded } from "./seeding";
-import {
-  createSkillForkGenerator,
-  type SkillForkInput,
-} from "./fork-generator";
 import { inlineActivate } from "./inline-activate";
 import { createPatternRunRoute } from "./pattern-run";
 import type { PatternRegistry } from "./pattern-registry";
-import { stripFrontmatter } from "./internal/strip-frontmatter";
-import { substitute, toSkill, validateSkillName } from "./skill-md";
-import path from "node:path";
+import { validateSkillName } from "./skill-md";
 
 // ---------------------------------------------------------------------------
 // Tool I/O — public surface unchanged from the prior handler implementation
@@ -83,13 +80,11 @@ type RunSkillOutput = z.infer<typeof outputSchema>;
 export interface RunSkillToolOptions {
   /** Resource registry key for the skills collection. */
   collectionKey: string;
-  /** Tool catalog used by fork-mode subagents to resolve `allowed-tools`. */
+  /** Tool catalog used by pattern-mode workers to resolve `allowed-tools`. */
   catalog: ToolCatalog;
   /** Default-on initial skills, lazily seeded on first invocation. */
   initialSkills?: InitialSkill[];
-  /** Mount root for `${SKILL_DIR}` substitution. Default `.fsdev/skills`. */
-  mountPath?: string;
-  /** Optional override of the default model used by fork-mode subagents. */
+  /** Optional override of the default model used by pattern-mode workers. */
   forkModelId?: string;
   /**
    * Optional pattern registry. When supplied, skills declaring `pattern:`
@@ -166,7 +161,6 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
     collectionKey,
     catalog,
     initialSkills,
-    mountPath = ".fsdev/skills",
     forkModelId,
     patternRegistry,
     blockRegistry,
@@ -174,11 +168,6 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
     capabilityCatalog,
     materializeAgent,
   } = opts;
-
-  const forkGen = createSkillForkGenerator({
-    catalog,
-    defaultModelId: forkModelId,
-  });
 
   const patternRoute = patternRegistry
     ? createPatternRunRoute({
@@ -194,7 +183,6 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
 
   const routes: BlockDefinition<typeof inputSchema, typeof outputSchema>[] = [
     inlineActivate,
-    forkGen,
   ] as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>[];
   if (patternRoute) {
     routes.push(
@@ -284,34 +272,13 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
           }));
       }
 
-      // Fork branch: resolve the skill body + allowed tools now (closure
-      // captures these so connectInput can synthesize a full SkillForkInput
-      // from the router's raw input at subagent invocation time).
-      const skill = toSkill(input.name, state, "");
-      const rawBody = (await manifest.readContent()) ?? "";
-      const substitutedBody = substitute(stripFrontmatter(rawBody), {
-        arguments: input.input,
-        skillDir: path.posix.join("/workspace", mountPath, input.name),
-      });
-      const allowedToolNames = skill.allowedTools ?? Object.keys(catalog);
-
-      const skillName = input.name;
-      return forkGen
-        .connectInput(
-          (_raw: RunSkillInput): SkillForkInput => ({
-            skillName,
-            body: substitutedBody,
-            allowedToolNames,
-            modelId: forkModelId,
-          }),
-        )
-        .connectOutput(
-          (result: unknown): RunSkillOutput => ({
-            skill: skillName,
-            mode: "fork" as const,
-            result: result ?? null,
-          }),
-        ) as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>;
+      // Fork skills no longer dispatch here (FIX-919). They install per
+      // generator via createSkillsLibrary's `fork` preset.
+      throw new Error(
+        `Skill "${input.name}" is a fork skill. Fork skills are invoked via the ` +
+          `\`forkSkill\` tool installed by createSkillsLibrary's fork preset, not the ` +
+          `runSkill router.`,
+      );
     },
   });
 }

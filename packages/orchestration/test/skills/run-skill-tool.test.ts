@@ -1,5 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
-import { handler } from "@flow-state-dev/core";
+import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   buildRunSkillDescription,
@@ -173,8 +172,10 @@ describe("createRunSkillTool — inline mode", () => {
   });
 });
 
-describe("createRunSkillTool — fork mode", () => {
-  it("dispatches to the fork generator with the substituted body and resolved tools", async () => {
+describe("createRunSkillTool — fork mode retired (FIX-919)", () => {
+  it("rejects a fork skill, pointing at the fork preset", async () => {
+    // Fork dispatch moved off the session-global router to createSkillsLibrary's
+    // `fork` preset. The router now rejects a fork skill rather than running it.
     const c = createMockSkillsCollection();
     c._store.set("skills/researcher/SKILL.md", {
       name: "skills/researcher/SKILL.md",
@@ -185,81 +186,10 @@ describe("createRunSkillTool — fork mode", () => {
       },
       content: `---\ndescription: Research a topic\ncontext: fork\nallowed-tools: [webSearch]\n---\n\nResearch $ARGUMENTS thoroughly.`,
     });
-
-    const webSearch = handler({
-      name: "webSearch",
-      inputSchema: z.object({ q: z.string() }),
-      outputSchema: z.object({}),
-      execute: async () => ({}),
-    });
-
-    let seenPrompt: string | undefined;
-    let seenToolNames: string[] | undefined;
-    const generate = vi.fn(async (options: { messages?: Array<{ role: string; content: string }>; tools?: Array<{ name: string }> }) => {
-      seenPrompt = options.messages?.find((m) => m.role === "system")?.content;
-      seenToolNames = (options.tools ?? []).map((t) => t.name);
-      return { text: "forked result" };
-    });
-
-    const tool = createRunSkillTool({
-      collectionKey: "skills",
-      catalog: { webSearch },
-    });
-
-    const ctx = buildCtx(c);
-    (ctx as { resolveModel: unknown }).resolveModel = () => ({ modelId: "test", generate });
-
-    const result = await runForTest(tool, { name: "researcher", input: "quantum" }, ctx);
-
-    expect(result.skill).toBe("researcher");
-    expect(result.mode).toBe("fork");
-    expect(result.result).toBe("forked result");
-
-    // Body substitution happened: $ARGUMENTS → "quantum".
-    expect(seenPrompt).toContain("Research quantum thoroughly.");
-    // Frontmatter was stripped from the system prompt.
-    expect(seenPrompt).not.toContain("---");
-
-    // Only allowed-tools from the catalog are exposed to the subagent.
-    expect(seenToolNames).toEqual(["webSearch"]);
-  });
-
-  it("warns on and skips unknown allowed-tools entries", async () => {
-    const c = createMockSkillsCollection();
-    c._store.set("skills/misconfig/SKILL.md", {
-      name: "skills/misconfig/SKILL.md",
-      state: {
-        description: "Misconfigured fork skill",
-        contextMode: "fork",
-        allowedTools: ["doesNotExist"],
-      },
-      content: `---\ndescription: Misconfigured fork skill\ncontext: fork\nallowed-tools: [doesNotExist]\n---\n\nBody`,
-    });
-
-    let seenToolCount: number | undefined;
-    const generate = vi.fn(async (options: { tools?: unknown[] }) => {
-      seenToolCount = (options.tools ?? []).length;
-      return { text: "done" };
-    });
-
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const tool = createRunSkillTool({
-        collectionKey: "skills",
-        catalog: {},
-      });
-      const ctx = buildCtx(c);
-      (ctx as { resolveModel: unknown }).resolveModel = () => ({ modelId: "test", generate });
-
-      const result = await runForTest(tool, { name: "misconfig" }, ctx);
-      expect(result.mode).toBe("fork");
-      expect(seenToolCount).toBe(0);
-      expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining('unknown tool "doesNotExist"'),
-      );
-    } finally {
-      warn.mockRestore();
-    }
+    const tool = createRunSkillTool({ collectionKey: "skills", catalog: {} });
+    await expect(
+      runForTest(tool, { name: "researcher", input: "quantum" }, buildCtx(c)),
+    ).rejects.toThrow(/is a fork skill.*fork preset/s);
   });
 });
 

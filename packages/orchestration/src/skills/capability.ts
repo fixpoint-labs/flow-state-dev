@@ -69,7 +69,7 @@ export interface SkillsCapabilityOptions {
    * mounted via the bash capability (the default mount setup).
    */
   collectionConfig?: Pick<DefineSkillsCollectionOptions, "maxInstances" | "prefix">;
-  /** Optional override of the model fork-mode subagents run on. */
+  /** Optional override of the model pattern-mode workers run on. */
   forkModelId?: string;
   /**
    * Restrict this capability to blocks with a matching `itemVisibility`.
@@ -164,7 +164,6 @@ export function createSkillsCapability(
     collectionKey,
     catalog,
     initialSkills,
-    mountPath,
     ...(options.forkModelId !== undefined ? { forkModelId: options.forkModelId } : {}),
     ...(options.patternRegistry ? { patternRegistry: options.patternRegistry } : {}),
     ...(options.blockRegistry ? { blockRegistry: options.blockRegistry } : {}),

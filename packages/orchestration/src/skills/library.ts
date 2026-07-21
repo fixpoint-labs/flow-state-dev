@@ -25,15 +25,21 @@
  * binding's first render, so even a static-only binding sees a populated
  * catalog on turn 1.
  *
- * Fork- and pattern-mode skills are dispatch routes, not context injections;
- * they stay on the `runSkill` router (`createSkillsCapability`). This surface
- * is inline-only by construction.
+ * Fork-mode skills are dispatch routes, not context injections. They install
+ * per generator via the `fork` preset (`with({ allowed, fork: true })`), which
+ * adds a `forkSkill` tool: calling it spawns a child that inherits the
+ * conversation to the fork point, works in isolation, and returns only its
+ * result. Pattern-mode skills stay on the `runSkill` router
+ * (`createSkillsCapability`) pending their own migration. The inline binding
+ * surface (`active` / `allowed` + `dynamicActivation`) is inline-only by
+ * construction; `allowed` names a fork set only when the `fork` preset is on.
  */
 
 import { z } from "zod";
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type {
   DeclaredResourceEntry,
+  MessageLimit,
   ResourceScope,
 } from "@flow-state-dev/core/types";
 import type { CapabilityConfigResolveCtx } from "@flow-state-dev/core/capability";
@@ -53,6 +59,7 @@ import {
   type DefineSkillsCollectionOptions,
 } from "./collection";
 import { buildLoadCatalogContext, createLoadSkillTool } from "./load-tool";
+import { buildForkCatalogContext, createForkSkillTool } from "./fork-tool";
 import { parseSkillMd, validateSkillName } from "./skill-md";
 
 // ---------------------------------------------------------------------------
@@ -78,6 +85,19 @@ export interface SkillsLibraryOptions {
    * `itemVisibility`. See `createSkillsCapability` for the multi-agent rationale.
    */
   itemVisibility?: ItemVisibility | readonly ItemVisibility[];
+  /**
+   * Model the `fork` preset's child subagent runs on. This is NOT the host
+   * generator's resolved model — a capability tool can't reach it — so a fork
+   * child runs on a library-configured model. Default: `intent/chat`.
+   */
+  forkModelId?: string;
+  /**
+   * Bound on the history a `fork` child inherits. Whole turns, never split
+   * mid-tool-pair. Omitted = inherit all history up to the fork point; set a
+   * limit for apps with long conversations where the (uncached) child prompt
+   * cost matters.
+   */
+  forkHistoryLimit?: MessageLimit;
 }
 
 /** The per-generator binding configuration (`skills.with({ ... })`). */
@@ -223,6 +243,32 @@ export function createSkillsLibrary(
     }
   };
 
+  // Assert a name is a known fork skill (fail loud on typos / wrong mode). The
+  // mirror of `assertInline` for the `fork` preset: `allowed` names a fork set
+  // there, not an inline one, so the inline check would reject valid fork skills.
+  const assertFork = (name: string): void => {
+    if (index.size === 0) {
+      throw new Error(
+        `skills.with({ allowed: [...], fork: true }) binds "${name}" by name, but no ` +
+          `bundled skills are available to validate against. Pass valid \`initialSkills\` to ` +
+          `createSkillsLibrary() (an empty index also means every bundled skill failed to parse).`,
+      );
+    }
+    const entry = index.get(name);
+    if (!entry) {
+      throw new Error(
+        `skills.with({ allowed: [...], fork: true }): unknown skill "${name}". ` +
+          `Known skills: ${[...index.keys()].join(", ") || "(none)"}.`,
+      );
+    }
+    if (entry.contextMode !== "fork") {
+      throw new Error(
+        `skills.with({ allowed: [...], fork: true }): "${name}" is a ${entry.contextMode}-mode ` +
+          `skill. Only fork skills can be bound to the fork preset.`,
+      );
+    }
+  };
+
   // Validate a bound skill's declared `allowed-tools` all exist in the catalog.
   // Author feedback only — it does NOT scope what gets registered. Tool
   // registration is a safe superset (the whole catalog), like the legacy
@@ -278,16 +324,23 @@ export function createSkillsLibrary(
       }),
     );
 
+    const dynamic = resolveCtx.presets.has("dynamicActivation");
+    const fork = resolveCtx.presets.has("fork");
+
     // Validate `allowed` names up front so a typo fails loud regardless of
-    // which activation path (load tool / upstream matcher / code) feeds it.
+    // which path consumes them. The `fork` preset reads `allowed` as a fork
+    // set; every other path reads it as an inline set — validate accordingly.
     if (cfg.allowed) {
       for (const name of cfg.allowed) {
-        assertInline(name, "allowed");
-        validateDeclaredTools(name);
+        if (fork) {
+          assertFork(name);
+        } else {
+          assertInline(name, "allowed");
+          validateDeclaredTools(name);
+        }
       }
     }
 
-    const dynamic = resolveCtx.presets.has("dynamicActivation");
     const hasActivationPath = dynamic || Boolean(cfg.activeState);
 
     // Whole-catalog mode (activation path + no `allowed`): any bundled inline
@@ -330,6 +383,33 @@ export function createSkillsLibrary(
       );
     }
 
+    // `fork` preset → install the fork tool + fork catalog listing. The tool
+    // spawns a child that inherits history to the fork point; the child's tools
+    // go to the child, so — unlike inline activation — we do NOT push the full
+    // catalog onto the host here. Only the `forkSkill` tool reaches the host.
+    if (fork) {
+      tools.push(
+        createForkSkillTool({
+          collectionKey,
+          catalog,
+          mountPath,
+          ...(cfg.allowed ? { allowed: cfg.allowed } : {}),
+          ...(initialSkills ? { initialSkills } : {}),
+          ...(options.forkModelId !== undefined ? { forkModelId: options.forkModelId } : {}),
+          ...(options.forkHistoryLimit !== undefined
+            ? { forkHistoryLimit: options.forkHistoryLimit }
+            : {}),
+        }),
+      );
+      contextEntries.push(
+        buildForkCatalogContext({
+          collectionKey,
+          ...(cfg.allowed ? { allowed: cfg.allowed } : {}),
+          ...(initialSkills ? { initialSkills } : {}),
+        }),
+      );
+    }
+
     // Block-state default: contribute the generator's own `activeSkills` field
     // (FIX-914 PR2). The load tool runs as a child and writes it via `ctx.parent`;
     // the reader runs in the generator's scope and reads `ctx.self`. Because a
@@ -363,8 +443,11 @@ export function createSkillsLibrary(
     itemVisibility: options.itemVisibility,
     resources,
     presets: {
-      // Flag-only preset; the resolver reads `ctx.presets` to install the tool.
+      // Flag-only presets; the resolver reads `ctx.presets` to install the
+      // matching tool. `fork` installs the `forkSkill` tool for the binding's
+      // `allowed` fork skills.
       dynamicActivation: {},
+      fork: {},
       default: [],
     },
     config: {

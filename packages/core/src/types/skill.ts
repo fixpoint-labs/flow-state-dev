@@ -28,7 +28,9 @@ export type ToolCatalog = Record<string, GeneratorTool>;
  *
  * - `inline` (default): skill body is injected into the in-flight generator
  *   on the next tool-loop step via the existing `prepareStep` machinery.
- * - `fork`: skill runs in a subagent with isolated context and tool set.
+ * - `fork`: skill runs in a subagent that inherits the conversation up to the
+ *   fork point, then diverges in isolation and returns only its result.
+ *   Installed per generator by `createSkillsLibrary`'s `fork` preset.
  * - `pattern`: skill activates a multi-agent pattern declared in frontmatter.
  *   Set automatically when `pattern:` is present; rejected if combined with
  *   `context: fork` or `context: inline`.

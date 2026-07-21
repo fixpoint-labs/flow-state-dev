@@ -59,7 +59,7 @@ export interface PatternRunRouterOptions {
 
 /**
  * Build the pattern-route router. Wired into `createRunSkillTool` as a
- * third route alongside `inlineActivate` and `forkGen`.
+ * route alongside `inlineActivate`.
  */
 export function createPatternRunRoute(
   opts: PatternRunRouterOptions,

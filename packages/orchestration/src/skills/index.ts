@@ -125,6 +125,15 @@ export {
   type SkillForkInput,
 } from "./fork-generator";
 
+// Fork tool (FIX-919) — installed per generator by the `fork` preset on
+// createSkillsLibrary. Exported so custom tool wiring can reuse it.
+export {
+  createForkSkillTool,
+  buildForkCatalogContext,
+  type ForkSkillToolOptions,
+  type ForkCatalogContextOptions,
+} from "./fork-tool";
+
 export {
   inlineActivate,
   inlineActivateInputSchema,

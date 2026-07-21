@@ -584,3 +584,93 @@ describe("createSkillsLibrary — explicit activeState", () => {
     expect(out).not.toContain("F-BODY-MARKER");
   });
 });
+
+const forkSkill = (name: string, allowedTools?: string[]): InitialSkill => ({
+  name,
+  skillMd: [
+    "---",
+    `description: ${name} skill`,
+    "context: fork",
+    ...(allowedTools ? [`allowed-tools: [${allowedTools.join(", ")}]`] : []),
+    "---",
+    "",
+    `Fork body for ${name}.`,
+  ].join("\n"),
+});
+
+describe("createSkillsLibrary — fork preset (FIX-919)", () => {
+  it("installs the forkSkill tool without pushing the whole catalog onto the host", async () => {
+    const search = handler({
+      name: "search",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: async () => ({}),
+    });
+    const skills = createSkillsLibrary({
+      catalog: { search },
+      initialSkills: [forkSkill("deep-research", ["search"])],
+    });
+    const gen = generator({
+      name: "g",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      uses: [skills.with({ allowed: ["deep-research"], fork: true })],
+    });
+    const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
+      (t) => t.name,
+    );
+    // The host gets the forkSkill tool — the fork child's tools go to the child.
+    expect(toolNames).toContain("forkSkill");
+    // ...not the catalog itself (unlike inline activation).
+    expect(toolNames).not.toContain("search");
+  });
+
+  it("rejects a non-fork skill in the fork `allowed` set at build time", () => {
+    const skills = createSkillsLibrary({
+      initialSkills: [inlineSkill("inliney", "body")],
+    });
+    expect(() =>
+      generator({
+        name: "g",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        uses: [skills.with({ allowed: ["inliney"], fork: true })],
+      }),
+    ).toThrow(/"inliney" is a inline-mode skill\. Only fork skills/);
+  });
+
+  it("lists the allowed fork skills in the model-facing catalog", async () => {
+    const skills = createSkillsLibrary({
+      initialSkills: [forkSkill("deep-research"), forkSkill("summarize")],
+    });
+    const gen = generator({
+      name: "g",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      uses: [skills.with({ allowed: ["deep-research"], fork: true })],
+    });
+    const out = await renderGeneratorSkills(gen, buildReaderCtx(createMockSkillsCollection()));
+    expect(out).toContain("deep-research");
+    // Outside the allowed set → excluded from the fork listing.
+    expect(out).not.toContain("summarize");
+  });
+
+  it("with `allowed` omitted, installs the fork tool over the whole fork catalog", async () => {
+    const skills = createSkillsLibrary({
+      initialSkills: [forkSkill("deep-research"), inlineSkill("inliney", "body")],
+    });
+    const gen = generator({
+      name: "g",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      uses: [skills.with({ fork: true })],
+    });
+    const ctx = buildReaderCtx(createMockSkillsCollection());
+    const toolNames = (await resolveTools(gen, ctx)).map((t) => t.name);
+    expect(toolNames).toContain("forkSkill");
+    const out = await renderGeneratorSkills(gen, ctx);
+    // The fork listing shows fork skills only, never inline ones.
+    expect(out).toContain("deep-research");
+    expect(out).not.toContain("inliney");
+  });
+});

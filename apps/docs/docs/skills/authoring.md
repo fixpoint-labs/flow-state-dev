@@ -124,13 +124,13 @@ Inline skills read like a coach sitting next to the agent. The conversation cont
 - The user is collaborating with the agent and wants the guidance to persist.
 - The skill doesn't need a different tool set from the parent.
 
-Fork skills read like dispatching a junior agent to run a task and report back. Use fork when:
+Fork skills read like dispatching a junior agent to run a task and report back. The child inherits the conversation up to the fork point, works in isolation, and returns only its result. Use fork when:
 
 - The skill is a self-contained task with a clean input and a clean output (e.g. "research this topic").
 - You want to restrict the tools the task can use.
 - You don't want the sub-agent's tool calls and intermediate messages in the parent conversation's history.
 
-Fork mode requires `allowed-tools` to be meaningful — it filters the parent's tool catalog down to the listed keys. Unknown keys are logged and skipped.
+Fork mode requires `allowed-tools` to be meaningful — it filters the parent's tool catalog down to the listed keys. Unknown keys are logged and skipped. For how a fork inherits history, installs onto a generator, and what it returns, see [Fork skills](./fork).
 
 ## Reference files
 

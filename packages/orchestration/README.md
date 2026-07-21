@@ -121,10 +121,17 @@ generator({ uses: [skills.with({ active: ["detailed-analysis"] })] });
 generator({
   uses: [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
 });
+
+// Let the agent fork a skill into a child that inherits the conversation up to
+// the fork point, works in isolation, and returns only its result. The child's
+// model is set on the library via `forkModelId` (a capability tool can't read
+// the host generator's resolved model):
+generator({ uses: [skills.with({ allowed: ["deep-research"], fork: true })] });
 ```
 
 See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
-`active` / `allowed` / `activeState` surface and where activations are stored.
+`active` / `allowed` / `activeState` surface, and [Fork skills](https://flow-state.dev/docs/skills/fork)
+for the `fork` preset and history inheritance.
 
 ## Documentation
 
