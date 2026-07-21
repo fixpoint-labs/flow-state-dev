@@ -150,8 +150,12 @@ const bindingConfigSchema = z
         scope: z.enum(["request", "session", "user", "org"]),
         field: z.string().min(1),
       })
+      .strict()
       .optional(),
   })
+  // `.strict()` so a typo'd key (`actve`) fails loud instead of being silently
+  // stripped and building a generator without the intended binding.
+  .strict()
   // `.default({})` makes the config usable without an explicit `.config()`
   // call, so `presets({ dynamicActivation: true })` alone still resolves.
   .default({});

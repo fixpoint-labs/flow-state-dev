@@ -123,6 +123,19 @@ describe("createSkillsLibrary — static active binding", () => {
     ).toThrow(/no bundled skills are available to validate against/);
   });
 
+  it("rejects an unknown/misspelled config key (fails loud, not silently stripped)", () => {
+    const skills = createSkillsLibrary({ initialSkills: [inlineSkill("valid", "body")] });
+    expect(() =>
+      generator({
+        name: "g",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        // `actve` is a typo for `active` — must not be silently ignored.
+        uses: [skills.config({ actve: ["valid"] } as never)],
+      }),
+    ).toThrow();
+  });
+
   it("rejects a binding to an invalidly-named bundled skill (seeding would drop it)", () => {
     // A bundled skill whose name the seeder would reject (uppercase / reserved)
     // must not pass build validation — otherwise it never seeds and the reader
