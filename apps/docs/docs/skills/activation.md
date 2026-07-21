@@ -89,7 +89,7 @@ export const skillsCap = createSkillsCapability({
 export const skillActivator = createSkillActivator({ scope: "user" });
 
 // At the use site:
-//   uses: [skillsCap.presets({ runSkill: false }), skillActivator, ...]
+//   uses: [skillsCap.with({ runSkill: false }), skillActivator, ...]
 ```
 
 The active-skill body formatter lives on a separate `context` preset that stays on by default — that's how matched skills get their substituted body into the system prompt. Dropping `runSkill` only removes the catalog listing and the tool itself.

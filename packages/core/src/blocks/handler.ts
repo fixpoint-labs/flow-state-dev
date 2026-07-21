@@ -11,6 +11,7 @@ import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type {
   InferCapabilities,
+  InferCapabilityOwnState,
   InferCapabilityResources,
   InferCapabilitySequencerState,
   InferCapabilitySessionState,
@@ -60,7 +61,7 @@ export interface HandlerConfig<
   // positional `HandlerConfig<...>` usages stay valid.
   TStateSchema extends ZodTypeAny | undefined = undefined,
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
-  TSelfState extends object = InferStateFromSchema<TStateSchema>,
+  TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "stateSchema"> {
   requestStateSchema?: TRequestStateSchema;
@@ -121,7 +122,7 @@ export function handler<
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   TStateSchema extends ZodTypeAny | undefined = undefined,
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
-  TSelfState extends object = InferStateFromSchema<TStateSchema>,
+  TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
 >(
   config: HandlerConfig<
@@ -132,11 +133,11 @@ export function handler<
     TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
-  const { declaredResources, resolvedCapabilities } = resolveCapabilities(config, "handler");
+  const { declaredResources, resolvedCapabilities, stateSchema } = resolveCapabilities(config, "handler");
 
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "handler",
-    config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
+    config: { ...config, stateSchema } as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     execute: config.execute as unknown as (input: TInput, ctx: BlockContext) => Promise<TOutput> | TOutput,
     declaredResources,
     // A handler is a leaf — its OWN declarations equal its bubble-up set
@@ -247,7 +248,7 @@ handler.withDefaults = function withDefaults<
     TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
     TStateSchema extends ZodTypeAny | undefined = undefined,
     TParentStateSchema extends ZodTypeAny | undefined = undefined,
-    TSelfState extends object = InferStateFromSchema<TStateSchema>,
+    TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
     TParentState extends object = InferStateFromSchema<TParentStateSchema>,
   >(
     config: Omit<

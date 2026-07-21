@@ -148,13 +148,13 @@ generator({
 
 generator({
   // No tool — context-only
-  uses: [mem.capability.presets({ recall: false })],
+  uses: [mem.capability.with({ recall: false })],
 });
 
 generator({
   // No context, no tool — capability still installs resources
   uses: [
-    mem.capability.presets({ digest: false, working: false, recall: false }),
+    mem.capability.with({ digest: false, working: false, recall: false }),
   ],
 });
 ```

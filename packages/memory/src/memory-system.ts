@@ -544,16 +544,16 @@ export interface MemorySystem extends MemoryProvider {
    *
    * // Worker — recall tool only, no memory injected into the prompt
    * generator({
-   *   uses: [mem.capability.presets({ digest: false, working: false })],
+   *   uses: [mem.capability.with({ digest: false, working: false })],
    * })
    *
    * // Add semantic facts alongside the defaults
-   * generator({ uses: [mem.capability.presets({ semantic: true })] })
+   * generator({ uses: [mem.capability.with({ semantic: true })] })
    *
    * // For non-default top-N / limit values, bypass presets and use the
    * // factory directly:
    * generator({
-   *   uses: [mem.capability.presets({ digest: false, working: false })],
+   *   uses: [mem.capability.with({ digest: false, working: false })],
    *   context: {
    *     memory: createMemoryContextFormatter({
    *       digest: true,
@@ -568,7 +568,7 @@ export interface MemorySystem extends MemoryProvider {
    * helpers:
    * ```ts
    * handler({
-   *   uses: [mem.capability.presets({
+   *   uses: [mem.capability.with({
    *     digest: false, working: false, recall: false,
    *   })],
    *   execute: async (input, ctx) => {

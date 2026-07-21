@@ -79,7 +79,7 @@ The framework exports `ResolvableModel`, `ResolvableProviderOptions`, and `Resol
 
 ### Capability schema forwarding (FIX-616)
 
-As of FIX-616, capability-declared schemas flow into consumer block `ctx` types for static `uses` entries. The four forwarded axes:
+As of FIX-616, capability-declared schemas flow into consumer block `ctx` types for static `uses` entries. The forwarded axes (own-state added in FIX-914 PR2):
 
 | Capability field | Consumer `ctx` slot |
 |---|---|
@@ -87,8 +87,11 @@ As of FIX-616, capability-declared schemas flow into consumer block `ctx` types 
 | `resources` | `ctx.resources.*` |
 | `targetStateSchemas` | `ctx.targets.*` |
 | `sequencerStateSchema` | `ctx.sequencer.state` |
+| `stateSchema` | `ctx.self.state` |
 
-The merge intersects capability contributions with block-own declarations; block-own keys win on collision. Four `Infer*` utilities on `@flow-state-dev/core` drive the computation: `InferCapabilitySessionState<TUses>`, `InferCapabilityResources<TUses>`, `InferCapabilityTargets<TUses>`, `InferCapabilitySequencerState<TUses>`.
+For most axes the merge intersects capability contributions with block-own declarations and block-own keys win on collision. **Own-state (`stateSchema`) is the exception**: it merges via `mergeCapabilityOwnStateWithBlock` with explicit collision detection — a field declared by two sources (two capabilities, or a capability and the block's own `stateSchema`) must be the same schema reference or the build throws, rather than silently letting one side win. This is the same reference-equality rule the sibling `targetStateSchemas`/`resources` merges already use; contributors that legitimately share a field reference one schema constant. Five `Infer*` utilities on `@flow-state-dev/core` drive the computation: `InferCapabilitySessionState<TUses>`, `InferCapabilityResources<TUses>`, `InferCapabilityTargets<TUses>`, `InferCapabilitySequencerState<TUses>`, `InferCapabilityOwnState<TUses>`. Own-state inference feeds `TSelfState` on handler/generator/router; sequencer own-state merges at runtime but isn't typed (matching `SequencerCtx`'s untyped `ctx.cap`).
+
+**Top-level schema only.** Every `Infer*` utility reflects the capability's *top-level* schema declarations (`stateSchema`, `sessionStateSchema`, …). A schema contributed only through a preset or the open-config resolver merges at runtime via `mergeSurfaceInto` but is not reflected in the consumer's `ctx` types — declare the schema at the capability's top level when you want it typed.
 
 **Direct-only contract.** If capability A `uses` capability B, B's schema contributions do NOT flow to blocks that `uses` A. Each capability exposes only what it directly declares. This matches the precedent established by tRPC, Hono, and Fastify middleware chains — transitive type propagation creates fragile deep inference chains. Capability authors who want B's schemas visible to consumers must re-declare them on A.
 

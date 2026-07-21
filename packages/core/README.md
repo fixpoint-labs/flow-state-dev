@@ -191,12 +191,13 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
   - `fns: (ctx) => ({ ... })` — Helper functions exposed at `ctx.cap.{name}.{fn}`, memoized on first access
   - `presets` — Named opt-in/opt-out bundles of any block config surface. Use `.presets({ name: true/false })` to configure
   - `config: { schema?, resolve }` — Open, typed configuration. The resolver maps a validated value onto a block surface (like a preset, but value-carrying). Consumers pass it with `.config(value)`, which composes with `.presets()` in either order
+  - `.with(bag)` — The normalized consumer builder. Collapses `.config()` and `.presets()` into one flat call: preset-named keys become preset toggles, the rest become the config value. `cap.with({ allowed: ["x"], dynamicActivation: true })` ≡ `cap.config({ allowed: ["x"] }).presets({ dynamicActivation: true })`. `.config`/`.presets` remain the underlying primitives; a preset name colliding with a config field is a `defineCapability()` error
   - `uses` — Capabilities can depend on other capabilities (transitive composition with diamond dedup)
   - Factory pattern: wrap `defineCapability()` in a function for parameterized capabilities
 
 **Capability schema forwarding:**
 
-When a block lists a capability in `uses`, the capability's declared schemas flow into the block's `ctx` types at factory time. No re-declaration on the block is needed. The four forwarded axes are `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, and `sequencerStateSchema` (from presets). Block-own declarations merge in; the block wins on key collision.
+When a block lists a capability in `uses`, the capability's declared schemas flow into the block's `ctx` types at factory time. No re-declaration on the block is needed. The forwarded axes are `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, `sequencerStateSchema` (from presets), and `stateSchema` (the block's own state, `ctx.self` — valid on any block kind). Block-own declarations merge in; for most axes the block wins on key collision, but `stateSchema` requires a shared field to be the *same schema reference* instead (matching the `resources`/`targetStateSchemas` merges) — a duplicate field with a different reference throws at build time rather than one side silently winning.
 
 ```ts
 const myCap = defineCapability({

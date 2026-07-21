@@ -10,6 +10,7 @@ export type {
   ConfiguredCapability,
   DefinedCapability,
   InferCapabilities,
+  InferCapabilityOwnState,
   InferCapabilityResources,
   InferCapabilitySequencerState,
   InferCapabilitySessionState,
@@ -18,12 +19,15 @@ export type {
   PresetDef,
   PresetOverrideFn,
   PresetOverrides,
+  ConfigArgOf,
+  WithArg,
 } from "./types";
 export {
   flattenCapabilities,
   getBaseCapability,
   mergeCapabilities,
   mergeWithBlockResources,
+  mergeCapabilityOwnStateWithBlock,
   extractMergedResources,
   mergeSurfaceInto,
   resolveActivePresets,
