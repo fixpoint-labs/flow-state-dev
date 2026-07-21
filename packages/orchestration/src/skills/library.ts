@@ -213,11 +213,16 @@ export function createSkillsLibrary(
   const declaredTools = (names: readonly string[]): GeneratorTool[] => {
     if (names.length === 0) return [];
     const keys = new Set<string>();
+    let unrestricted = false;
+    // Scan every name — validate each skill's declared tools against the
+    // catalog even once we know an earlier skill was unrestricted, so a bad
+    // declaration on a later skill still fails loud instead of being masked by
+    // the full-catalog fallback.
     for (const name of names) {
       const declared = index.get(name)?.allowedTools;
       if (!declared || declared.length === 0) {
-        // Unrestricted skill → contribute the whole catalog.
-        return Object.values(catalog) as GeneratorTool[];
+        unrestricted = true;
+        continue;
       }
       for (const key of declared) {
         if (!(key in catalog)) {
@@ -228,6 +233,8 @@ export function createSkillsLibrary(
         keys.add(key);
       }
     }
+    // Any unrestricted skill widens the effective contribution to the whole catalog.
+    if (unrestricted) return Object.values(catalog) as GeneratorTool[];
     return [...keys].map((k) => catalog[k]!) as GeneratorTool[];
   };
 

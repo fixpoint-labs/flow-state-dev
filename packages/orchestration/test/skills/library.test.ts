@@ -187,6 +187,26 @@ describe("createSkillsLibrary — static active binding", () => {
     const wideTools = (await resolveTools(gWide, ctx)).map((t) => t.name);
     expect(wideTools).toEqual(expect.arrayContaining(["search", "fetch"]));
   });
+
+  it("validates every bound skill's declared tools, even after an unrestricted one", () => {
+    const mk = (name: string) =>
+      handler({ name, inputSchema: z.object({}), outputSchema: z.object({}), execute: async () => ({}) });
+    const skills = createSkillsLibrary({
+      catalog: { search: mk("search") },
+      initialSkills: [
+        inlineSkill("open", "body"), // unrestricted (no allowed-tools)
+        inlineSkill("needs-db", "body", ["db"]), // declares a tool not in the catalog
+      ],
+    });
+    expect(() =>
+      generator({
+        name: "g",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        uses: [skills.config({ active: ["open", "needs-db"] })],
+      }),
+    ).toThrow(/skill "needs-db" declares tool "db", which is not in the catalog/);
+  });
 });
 
 describe("createSkillsLibrary — dynamicActivation load tool", () => {
