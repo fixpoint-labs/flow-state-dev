@@ -119,6 +119,7 @@ const sidebars: SidebarsConfig = {
         "orchestration/overview",
         "orchestration/task-substrate",
         "orchestration/task-board",
+        "orchestration/goal-seek-loop",
         "orchestration/flow-policy",
         "orchestration/agents",
         {
