@@ -15,12 +15,12 @@ import {
   taskBoard,
   goalSeekLoop,
   mapToVerdict,
-  getOrCreateTaskCollection,
   taskWorkerInputSchema,
   GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
   type Verdict,
   type TaskBoardHandle,
 } from "../../src/task-board";
+import { getOrCreateTaskCollection } from "../../src/tasks";
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -194,6 +194,31 @@ describe("goalSeekLoop - replan", () => {
     const output = result.output as { tasks: Array<{ id: string }> };
     // The un-drainable replan task was dropped (no orphaned pending).
     expect(output.tasks.map((t) => t.id)).toEqual(["a"]);
+  });
+
+  it("a done verdict carrying a stray tasks array terminates (does not loop/apply)", async () => {
+    const board = makeBoard("done-tasks");
+    let calls = 0;
+    const loop = goalSeekLoop({
+      name: "done-tasks",
+      board,
+      seed: seedTasks("done-tasks", board, ["a"]),
+      // A sloppy judge returns `done` with a leftover tasks array. The schema's
+      // passthrough lets it through; the loop must still stop, not treat it as a
+      // replan and re-drain forever.
+      judge: (): Verdict => {
+        calls += 1;
+        return { decision: "done", reason: "converged", tasks: [{ id: "b", goal: "b" }] } as Verdict;
+      },
+      maxIterations: 5,
+    });
+    const result = await testBlock(loop, { input: undefined });
+    expect(result.error).toBeNull();
+    expect(readTermination(result.items)).toMatchObject({ reason: "converged", iterations: 1 });
+    // The stray task was NOT applied.
+    const output = result.output as { tasks: Array<{ id: string }> };
+    expect(output.tasks.map((t) => t.id)).toEqual(["a"]);
+    expect(calls).toBe(1);
   });
 
   it("replan (no tasks) runs the configured replanner", async () => {

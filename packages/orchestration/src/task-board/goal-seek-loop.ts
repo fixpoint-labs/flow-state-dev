@@ -473,7 +473,15 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   }
   pipeline = pipeline
     .stepIf(
-      (v: unknown) => Array.isArray((v as { tasks?: unknown }).tasks),
+      // Add tasks only on a non-`done` verdict that carries an array — inline
+      // replan tasks (`decision: "replan"`) or the replanner's `{ tasks }`
+      // (no `decision`). Guard on `decision !== "done"` so a `done` verdict that
+      // slips a stray `tasks` array through the schema's passthrough is NOT
+      // mis-applied as a replan (which would return `continue` and loop instead
+      // of stopping). A cap-coerced `done` carries no tasks, so it's unaffected.
+      (v: unknown) =>
+        (v as { decision?: string }).decision !== "done" &&
+        Array.isArray((v as { tasks?: unknown }).tasks),
       applyReplanTasks,
     )
     .map((v: unknown) => ({
