@@ -77,3 +77,19 @@ scalar.with("hi"); // ok — scalar value
 
 // @ts-expect-error - config value must be a string
 scalar.with(123);
+
+// ── Scalar config + presets — scalar routed wholesale, no `never` ─────
+
+const scalarWithPresets = defineCapability({
+  name: "scalar-with-presets",
+  presets: { flag: {}, default: [] },
+  config: {
+    schema: z.string(),
+    resolve: (cfg) => ({ context: [cfg] }),
+  },
+});
+
+scalarWithPresets.with("hi"); // ok — scalar value, not intersected into `never`
+
+// @ts-expect-error - scalar config: the bag is the string, not a number
+scalarWithPresets.with(123);

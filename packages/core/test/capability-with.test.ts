@@ -104,6 +104,36 @@ describe(".with() — scalar config routed wholesale", () => {
   });
 });
 
+describe(".with() — empty bag & passthrough config", () => {
+  it("`.with({})` configures with an empty object (=== `.config({})`) for an optional object schema", () => {
+    // Schema accepts `{}` but not `undefined`, so `.config({})` works and bare
+    // use errors — `.with({})` must match `.config({})`, not hit that error.
+    const optional = defineCapability({
+      name: "optional-config",
+      config: {
+        schema: z.object({ note: z.string().optional() }),
+        resolve: (cfg) => ({ context: [`note:${cfg.note ?? "none"}`] }),
+      },
+    });
+    const viaWith = mergeCapabilities([optional.with({})], "generator");
+    const viaConfig = mergeCapabilities([optional.config({})], "generator");
+    expect(viaWith.contextEntries).toEqual(viaConfig.contextEntries);
+    expect(viaWith.contextEntries).toContain("note:none");
+  });
+
+  it("passes through unexpected keys for a passthrough config schema", () => {
+    const passthrough = defineCapability({
+      name: "passthrough-config",
+      config: {
+        schema: z.object({ a: z.string() }).passthrough(),
+        resolve: (cfg) => ({ context: [`keys:${Object.keys(cfg).sort().join(",")}`] }),
+      },
+    });
+    const merged = mergeCapabilities([passthrough.with({ a: "x", extra: "y" })], "generator");
+    expect(merged.contextEntries).toContain("keys:a,extra");
+  });
+});
+
 describe(".with() — fail-loud paths", () => {
   it("throws on a non-preset key when the capability declares no config", () => {
     const presetsOnly = defineCapability({
@@ -111,7 +141,16 @@ describe(".with() — fail-loud paths", () => {
       presets: { extra: {}, default: [] },
     });
     expect(() => presetsOnly.with({ notAPreset: true } as never)).toThrow(
-      /neither config nor a preset/,
+      /neither a preset nor a config field/,
+    );
+  });
+
+  it("throws on a typo'd preset name when config is a closed object schema", () => {
+    // `skills` has preset `dynamicActivation` + a closed object config {allowed}.
+    // A misspelled preset name matches neither, so it throws instead of silently
+    // routing into config and being stripped by Zod's default key policy.
+    expect(() => skills.with({ dynammicActivation: true } as never)).toThrow(
+      /neither a preset nor a config field/,
     );
   });
 

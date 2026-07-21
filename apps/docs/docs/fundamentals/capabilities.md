@@ -72,7 +72,7 @@ uses: [memoryCapability.with({ tools: false })]
 uses: [memoryCapability.with({ recentContext: false, fullContext: true })]
 ```
 
-Each capability documents which presets it ships with and what they do. Pass a preset name that doesn't exist on a capability with no config and you get an error at factory time.
+Each capability documents which presets it ships with and what they do. Passing an unknown preset name to `.presets()` errors at factory time; passing `.with()` a key that matches neither a preset nor a config field errors at the `.with()` call site — so a misspelled preset name fails loud instead of silently slipping into config.
 
 ## Configuring open config
 

@@ -465,11 +465,14 @@ export interface DefinedCapability<
 }
 
 /**
- * The `.with()` argument type: the capability's config input (from the
- * `__configInType` carrier, with nullish stripped so a config-less capability's
- * `never` collapses cleanly) intersected with its all-optional preset overrides.
- * A config-less capability resolves to just the preset overrides; a scalar/array
- * config with no presets resolves to that scalar/array unchanged.
+ * The `.with()` argument type. Cases, in order:
+ * - **No config** (config half is `never`, nullish stripped): just the
+ *   all-optional preset overrides.
+ * - **Array or scalar config**: that value unchanged — a non-object config is
+ *   routed wholesale at runtime and can't share a bag with preset keys, so the
+ *   preset overrides are not intersected (which would collapse to `never`).
+ * - **Object config**: the config input intersected with the preset overrides,
+ *   the flat mixed bag.
  */
 export type WithArg<
   Self,
@@ -477,7 +480,11 @@ export type WithArg<
   TPresets extends Record<string, PresetDef | string[]>,
 > = [NonNullable<ConfigArgOf<Self>>] extends [never]
   ? PresetOverrides<TNames, TPresets>
-  : NonNullable<ConfigArgOf<Self>> & PresetOverrides<TNames, TPresets>;
+  : NonNullable<ConfigArgOf<Self>> extends readonly unknown[]
+    ? NonNullable<ConfigArgOf<Self>>
+    : NonNullable<ConfigArgOf<Self>> extends object
+      ? NonNullable<ConfigArgOf<Self>> & PresetOverrides<TNames, TPresets>
+      : NonNullable<ConfigArgOf<Self>>;
 
 // ---------------------------------------------------------------------------
 // Preset overrides

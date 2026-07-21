@@ -63,6 +63,36 @@ export function getZodInnerType(schema: ZodTypeAny): ZodTypeAny | undefined {
   return def.innerType ?? def.schema ?? undefined;
 }
 
+/**
+ * Peel wrapper layers (`.default()`, `.optional()`, `.nullable()`, effects) off
+ * a schema until a `ZodObject` is reached, and return it — or `undefined` when
+ * the schema isn't object-shaped (scalar/array/record). Handles the dominant
+ * `z.object({...}).default({})` config pattern that a single-layer unwrap misses.
+ */
+export function unwrapToZodObject(schema: ZodTypeAny): ZodTypeAny | undefined {
+  let s: ZodTypeAny | undefined = schema;
+  const seen = new Set<unknown>();
+  while (s && !seen.has(s)) {
+    seen.add(s);
+    if (isZodObject(s)) return s;
+    s = getZodInnerType(s);
+  }
+  return undefined;
+}
+
+/**
+ * A `ZodObject`'s unknown-key policy: `"strip"` (default — silently drops
+ * unknown keys), `"strict"` (rejects them), or `"passthrough"` (keeps them).
+ * `undefined` for non-objects. Lets callers tell a closed object (whose key set
+ * is exhaustive) from a passthrough one (which accepts arbitrary keys).
+ */
+export function getZodObjectUnknownKeysMode(
+  schema: ZodTypeAny
+): "strip" | "strict" | "passthrough" | undefined {
+  if (!isZodObject(schema)) return undefined;
+  return (schema as any)._def.unknownKeys;
+}
+
 // ---------------------------------------------------------------------------
 // Structural comparison
 // ---------------------------------------------------------------------------
