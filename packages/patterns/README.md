@@ -49,6 +49,8 @@ See `apps/kitchen-sink` for a full integration example.
 
 Single-pass fan-out/fan-in orchestration backed by `taskBoard`. Decomposes a goal into sub-tasks, dispatches a worker concurrently for each, and synthesizes the completed results. No feedback loop.
 
+> `parallelTasks` and `planAndExecute` are expressed on the [`goalSeekLoop`](https://flow-state.dev/docs/orchestration/goal-seek-loop) primitive (`parallelTasks` as a single pass, `planAndExecute` as a re-planning loop). Their public factories, config, and output shapes are unchanged.
+
 ```typescript
 import { parallelTasks } from "@flow-state-dev/patterns";
 import { handler } from "@flow-state-dev/core";

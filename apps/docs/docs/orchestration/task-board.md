@@ -277,6 +277,7 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 
 ## See also
 
+- [GoalSeekLoop](./goal-seek-loop) — a config-driven, judge-gated loop over the board's drain.
 - [Block State](../advanced/block-state) — the primitive behind the board's sequencer-scoped task collection.
 - [Parallel Tasks](../patterns/parallelTasks) — single-pass fan-out wrapper on top of Task Board.
 - [Supervisor](../patterns/supervisor) — per-task review wrapper.

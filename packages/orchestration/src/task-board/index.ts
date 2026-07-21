@@ -168,6 +168,20 @@ export { createCheckBoard } from "./blocks/check-board";
 export type { CheckBoardOptions } from "./blocks/check-board";
 export { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
 export type { CascadeSkipDependentsOptions } from "./blocks/cascade-skip-dependents";
+export { createApplyReplan } from "./apply-replan";
+export type { ApplyReplanOptions, TaskContextSupply } from "./apply-replan";
+export {
+  goalSeekLoop,
+  mapToVerdict,
+  GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
+} from "./goal-seek-loop";
+export type {
+  GoalSeekLoopConfig,
+  Verdict,
+  JudgeSlot,
+  JudgeInput,
+  VerdictMapping,
+} from "./goal-seek-loop";
 export {
   createBoardMetaActive,
   createBoardMetaCompleted,
@@ -370,6 +384,15 @@ export interface TaskBoardToolCacheConfig {
   defaultScope?: "run" | "request" | "session";
 }
 
+/**
+ * The board's once-chosen storage backing, surfaced on the handle so a
+ * consumer can classify it without re-deriving from the `collection` config
+ * (FIX-910). Mirrors the four discriminants the capability distinguishes:
+ * `request`/`resource` are re-enterable (survive `board.drain` re-entry);
+ * `sequencer` is single-invocation; `factory` is caller-opaque.
+ */
+export type TaskBoardBacking = "request" | "resource" | "sequencer" | "factory";
+
 export interface TaskBoardHandle<
   TInput = unknown,
   TOutput = unknown,
@@ -408,6 +431,21 @@ export interface TaskBoardHandle<
    * `undefined`).
    */
   capability: DefinedCapability<TName, TaskBoardCapabilityAccessor<TInput, TOutput>>;
+  /**
+   * The board's once-chosen storage backing (FIX-910). Lets a consumer such as
+   * `goalSeekLoop` reject an unsupported backing at construction (it requires a
+   * re-enterable `request`/`resource` board) instead of waiting for a runtime
+   * capability throw. Additive and always populated.
+   */
+  backing: TaskBoardBacking;
+  /**
+   * Whether the board's own `initialTasks` seed carries any task without a
+   * stable `id` (FIX-910). An idless initial task is re-added on every drain
+   * re-entry (`createSeedCollection` only dedups stable ids), so a multi-drain
+   * consumer must reject such a board up front. `false` when there are no
+   * initial tasks or all carry ids.
+   */
+  hasIdlessInitialTasks: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -466,7 +504,14 @@ export function taskBoard<
     name,
     collectionConfig
   );
-  const { collectionFactory, collectionId, capability, drainUses } = binding;
+  const { collectionFactory, collectionId, capability, backing, drainUses } =
+    binding;
+
+  // Seed-inspectability for construction-time guards (FIX-910): an initial task
+  // without a stable id is re-added on every drain re-entry, so a multi-drain
+  // consumer must be able to reject such a board. Derived from the top-level
+  // `initialTasks` config field (not the `collection` spec).
+  const hasIdlessInitialTasks = initialTasks.some((t) => t.id === undefined);
 
   const seedBlock = createSeedCollection<TInput>({
     name: `${name}-seed`,
@@ -691,7 +736,7 @@ export function taskBoard<
   // once-chosen backing onto every downstream wiring, so no call site restates
   // it. `board.capability` is always defined; `uses: [board.capability]` gets a
   // typed `ctx.cap.<name>` accessor regardless of backing.
-  return { drain, collectionId, capability };
+  return { drain, collectionId, capability, backing, hasIdlessInitialTasks };
 }
 
 // ---------------------------------------------------------------------------
@@ -713,6 +758,8 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
     TName,
     TaskBoardCapabilityAccessor<TInput, TOutput>
   >;
+  /** The once-chosen backing, surfaced on the handle (FIX-910). */
+  backing: TaskBoardBacking;
   drainUses?: readonly DefinedCapability[];
 }
 
@@ -743,6 +790,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
     return {
       collectionFactory: (ctx) => Promise.resolve(userFactory(ctx)),
       collectionId,
+      backing: "factory",
       capability: createTaskBoardCapability<TInput, TOutput, TName>({
         backing: "factory",
         boardName,
@@ -772,6 +820,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
     return {
       collectionFactory,
       collectionId,
+      backing: "resource",
       capability: createTaskBoardCapability<TInput, TOutput, TName>({
         backing: "resource",
         boardName,
@@ -813,6 +862,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
     return {
       collectionFactory,
       collectionId,
+      backing: "sequencer",
       capability: createTaskBoardCapability<TInput, TOutput, TName>({
         backing: "sequencer",
         boardName,
@@ -836,6 +886,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
   return {
     collectionFactory,
     collectionId,
+    backing: "request",
     capability: createTaskBoardCapability<TInput, TOutput, TName>({
       backing: "request",
       boardName,

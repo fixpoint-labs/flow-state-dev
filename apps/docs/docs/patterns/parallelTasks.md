@@ -209,4 +209,5 @@ const outer = sequencer({ name: "outer", inputSchema })
 
 - [Supervisor](./supervisor) — same fan-out model, adds a quality review loop
 - [Plan and Execute](./plan-and-execute) — sequential dependency-ordered execution
+- [GoalSeekLoop](../orchestration/goal-seek-loop) — the loop primitive Parallel Tasks is expressed on (as a single pass)
 - [Patterns Overview](./overview) — when to use which pattern

@@ -5,14 +5,17 @@
  * the taskBoard primitive, then synthesizes the completed results. One pass,
  * no feedback loop. Use Supervisor when tasks need judgment and iteration.
  *
- * Pipeline:
- *   [planner] → [seedTasksFromPlan] → [board.drain] → [collectResults] → [synthesizer]
+ * Expressed on the `goalSeekLoop` primitive (FIX-910) as a single-pass loop —
+ * `maxIterations: 1` with an always-`done` judge, so there is exactly one drain
+ * and no feedback iteration. The seed (planner + seedTasksFromPlan) and the
+ * finalize (collectResults + synthesizer) become the loop's `seed`/`finalize`
+ * slots; the bespoke drain-and-collect pipeline is gone.
  */
 import { sequencer, handler, utility } from "@flow-state-dev/core";
 import type { SequencerDefinition } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { taskBoard, goalSeekLoop, type Verdict } from "@flow-state-dev/orchestration/task-board";
 import { createSeedTasksFromPlan } from "../shared/planning-entry";
 import { parallelTasksInputSchema, type SubTaskErrorStrategy } from "./schemas";
 
@@ -122,14 +125,32 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     }
   });
 
-  return sequencer({
+  // Seed: plan the goal, then seed the board — the loop's produce step.
+  const seed = sequencer({
+    name: `${name}-plan`,
+    inputSchema: parallelTasksInputSchema,
+  })
+    .step(activePlanner)
+    .tap(seedTasks);
+
+  // Finalize: collect completed outputs, then merge/synthesize. Both steps —
+  // `goalSeekLoop` projects the settled board before invoking `finalize`, but
+  // `collectResults` re-reads the collection, so the projection is ignored and
+  // the merge/`outputSchema` step still runs (parity with the old
+  // `.step(collectResults).step(finalize)` tail).
+  const finalizeStep = sequencer({ name: `${name}-finalize` })
+    .step(collectResults)
+    .step(finalize);
+
+  return goalSeekLoop({
     name,
     inputSchema: parallelTasksInputSchema,
     activeStatusMessage: "Planning tasks",
-  })
-    .step(activePlanner)
-    .tap(seedTasks)
-    .step(board.drain)
-    .step(collectResults)
-    .step(finalize) as SequencerDefinition<any, any>;
+    board,
+    seed,
+    // Single pass: after the one drain the work is done by construction.
+    judge: (): Verdict => ({ decision: "done", reason: "converged" }),
+    maxIterations: 1,
+    finalize: finalizeStep,
+  }) as SequencerDefinition<any, any>;
 }

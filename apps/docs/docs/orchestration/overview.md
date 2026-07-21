@@ -52,6 +52,7 @@ A board also needs a rule for when to stop. By default it drains until either ev
 ## Start here
 
 - **[Task board](./task-board)** — the primitive, its config, and its termination modes.
+- **[GoalSeekLoop](./goal-seek-loop)** — a config-driven loop over the board that keeps re-draining until a judge says done. The shared shape `planAndExecute` and `parallelTasks` are built on.
 - **[Build a research team](/guides/building-a-research-team)** — a guide that goes from an empty flow to a running multi-agent board, both the code-first and agent-first way.
 - **[Task substrate](./task-substrate)** — the `Task` and `TaskCollection` contracts underneath it all.
 

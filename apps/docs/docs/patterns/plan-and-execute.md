@@ -420,6 +420,7 @@ Pre-migration the pattern emitted `plan-meta` and `plan-task` items. Those have 
 ## See also
 
 - [Task Board](../orchestration/task-board) — the substrate that powers Plan & Execute's task dispatch and replan re-entry
+- [GoalSeekLoop](../orchestration/goal-seek-loop) — the judge-gated loop primitive Plan & Execute is expressed on
 - [Parallel Tasks](./parallelTasks) — parallel execution, no dependencies, single pass
 - [Supervisor](./supervisor) — parallel execution with quality review loop
 - [Decomposer](./utility-blocks/core) — the default planner, including the `title`/`context` output fields

@@ -159,6 +159,75 @@ describe("taskBoard - handle structure", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Backing + seed descriptor (FIX-910)
+// ---------------------------------------------------------------------------
+
+describe("taskBoard - backing + seed descriptor", () => {
+  const noop = () => makeGoalWorker("noop", () => null);
+
+  it("reports request backing for an omitted collection (the default)", () => {
+    const board = taskBoard({ name: "req-default", workers: noop() });
+    expect(board.backing).toBe("request");
+  });
+
+  it("reports request backing for an explicit request spec", () => {
+    const board = taskBoard({
+      name: "req",
+      collection: { collectionId: "req" },
+      workers: noop(),
+    });
+    expect(board.backing).toBe("request");
+  });
+
+  it("reports resource backing for a defineTaskCollection", () => {
+    const board = taskBoard({
+      name: "res",
+      collection: defineTaskCollection({ id: "res-coll", scope: "session" }),
+      workers: noop(),
+    });
+    expect(board.backing).toBe("resource");
+  });
+
+  it("reports sequencer backing for the sequencer opt-in", () => {
+    const board = taskBoard({
+      name: "seq",
+      collection: { backing: "sequencer", collectionId: "seq" },
+      workers: noop(),
+    });
+    expect(board.backing).toBe("sequencer");
+  });
+
+  it("reports factory backing for a caller-supplied factory", () => {
+    const board = taskBoard({
+      name: "fac",
+      collection: (ctx) =>
+        getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "fac" }),
+      workers: noop(),
+    });
+    expect(board.backing).toBe("factory");
+  });
+
+  it("flags idless initialTasks and clears when all carry ids", () => {
+    const withIdless = taskBoard({
+      name: "idless",
+      workers: noop(),
+      initialTasks: [{ goal: "a" }, { id: "t2", goal: "b" }],
+    });
+    expect(withIdless.hasIdlessInitialTasks).toBe(true);
+
+    const allIds = taskBoard({
+      name: "all-ids",
+      workers: noop(),
+      initialTasks: [{ id: "t1", goal: "a" }, { id: "t2", goal: "b" }],
+    });
+    expect(allIds.hasIdlessInitialTasks).toBe(false);
+
+    const none = taskBoard({ name: "no-seed", workers: noop() });
+    expect(none.hasIdlessInitialTasks).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Basic drain
 // ---------------------------------------------------------------------------
 
