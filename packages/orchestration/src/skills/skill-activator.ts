@@ -29,8 +29,10 @@
 import { z } from "zod";
 import { sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { InitialSkill } from "@flow-state-dev/core";
 import type { ExplicitActivationScope } from "./activation-store";
 import { createApplySkillActivation } from "./apply-skill-activation";
+import { createCatalogSeedStep } from "./seed-step";
 import {
   createSkillClassifierSequencer,
   DEFAULT_CONFIDENCE_THRESHOLD,
@@ -75,6 +77,14 @@ export interface SkillActivatorOptions {
    * shared field and render on a generator that was never given that skill.
    */
   allowed?: readonly string[];
+  /**
+   * Bundled defaults to seed **before** the matcher tiers scan the collection.
+   * The matcher runs upstream of the generator, so it can't rely on the binding
+   * reader's lazy seeding — on a fresh collection the slash/keyword/classifier
+   * tiers would otherwise see an empty catalog on turn 1 and match nothing.
+   * Pass the same `initialSkills` given to `createSkillsLibrary`.
+   */
+  initialSkills?: InitialSkill[];
 }
 
 /**
@@ -104,11 +114,26 @@ export function createSkillActivator(
     ...(allowed ? { allowed } : {}),
   });
 
+  // Seed the catalog before any tier reads it — the matcher runs upstream of
+  // the generator, so it can't rely on the binding reader's lazy seeding.
+  const initialSkills = options.initialSkills;
+  const seedStep = createCatalogSeedStep({
+    collectionKey,
+    ...(initialSkills ? { initialSkills } : {}),
+  });
+
   let pipeline = sequencer({
     name: options.name ?? "skill-activator",
     inputSchema: activatorInputSchema,
     stateSchema: skillActivatorStateSchema,
-  })
+  });
+
+  // Only prepend the seed step when there are bundled defaults to seed.
+  if (initialSkills && initialSkills.length > 0) {
+    pipeline = pipeline.tap(seedStep);
+  }
+
+  pipeline = pipeline
     .tap(slashTier)
     .tapIf((_input, ctx) => !ctx.sequencer?.state.resolved, keywordTier);
 

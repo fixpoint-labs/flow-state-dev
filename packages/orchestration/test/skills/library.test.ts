@@ -344,6 +344,29 @@ describe("createSkillsLibrary — block-state default reader", () => {
     expect(out).not.toContain("EDITED-MARKER");
   });
 
+  it("does not render a statically-bound skill flagged disable-model-invocation", async () => {
+    const skills = createSkillsLibrary({ initialSkills: [inlineSkill("draft", "DRAFT-MARKER")] });
+    const gen = generator({
+      name: "g",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      uses: [skills.config({ active: ["draft"] })],
+    });
+    const collection = createMockSkillsCollection();
+    collection._store.set("skills/_meta", {
+      name: "skills/_meta",
+      state: { seededNames: ["draft"] },
+      content: null,
+    });
+    collection._store.set("skills/draft/SKILL.md", {
+      name: "skills/draft/SKILL.md",
+      state: { description: "draft", disableModelInvocation: true },
+      content: "---\ndescription: draft\ndisable-model-invocation: true\n---\n\nDRAFT-MARKER",
+    });
+    const out = await renderGeneratorSkills(gen, buildReaderCtx(collection));
+    expect(out).not.toContain("DRAFT-MARKER");
+  });
+
   it("renders dynamic entries from the generator's own block state (ctx.self)", async () => {
     const skills = createSkillsLibrary({
       initialSkills: [inlineSkill("loaded", "LOADED-BODY-MARKER")],

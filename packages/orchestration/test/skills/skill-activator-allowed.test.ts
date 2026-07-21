@@ -5,9 +5,12 @@
  * (e.g. `/draft please research` with `allowed: ["research"]`).
  */
 import { describe, expect, it } from "vitest";
+import type { InitialSkill } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
 import { createSkillSlashMatch } from "../../src/skills/skill-slash-match";
 import { createSkillKeywordMatch } from "../../src/skills/skill-keyword-match";
+import { createCatalogSeedStep } from "../../src/skills/seed-step";
+import { _resetSeedingCache } from "../../src/skills/seeding";
 import { createMockSkillsCollection } from "./mocks";
 
 function seed(
@@ -58,6 +61,33 @@ describe("allowed-scoped activator tiers", () => {
     expect((ctx as { sequencer: { state: { resolved: boolean } } }).sequencer.state.resolved).toBe(
       false,
     );
+  });
+
+  it("seed step populates a fresh catalog before the tiers read it, then the slash tier matches on turn 1", async () => {
+    const c = createMockSkillsCollection();
+    _resetSeedingCache(c);
+    const initialSkills: InitialSkill[] = [
+      { name: "known", skillMd: "---\ndescription: known skill\n---\n\nbody" },
+    ];
+    const ctx = buildCtx(c);
+
+    // Before the seed step, the catalog is empty and a slash match can't resolve.
+    const slash = createSkillSlashMatch({ collectionKey: "skills" });
+    const before = await runForTest(slash, { message: "/known" }, ctx);
+    expect((before as { matched: boolean }).matched).toBe(false);
+
+    // The seed step (prepended by createSkillActivator when initialSkills is set)
+    // populates the catalog before the tiers run.
+    const seed = createCatalogSeedStep({ collectionKey: "skills", initialSkills });
+    await runForTest(seed, { message: "/known" }, ctx);
+    expect(c.getOptional("known/SKILL.md")).toBeDefined();
+
+    // Now the slash tier matches on the same turn, on the same (seeded) ctx.
+    const after = await runForTest(slash, { message: "/known" }, ctx);
+    expect((after as { matched: boolean }).matched).toBe(true);
+    const seqSkills = (ctx as { sequencer: { state: { skills: Array<{ name: string }> } } })
+      .sequencer.state.skills;
+    expect(seqSkills.map((s) => s.name)).toContain("known");
   });
 
   it("keyword tier then matches only the allowed skill in the same message", async () => {

@@ -35,10 +35,12 @@ export async function renderActiveSkillBody(
   const manifest = await collection.getOptional(skillManifestKey(name));
   if (!manifest) return null;
   const state = manifest.state as unknown as SkillState;
-  // Honor the LIVE mode: a skill edited to fork/pattern after it was bound must
-  // not render as `<active_skill>` context — those are dispatch routes, not
-  // context injections. The inline-only binding contract is enforced here, at
-  // render time, against the persisted manifest (not a build-time snapshot).
+  // Honor the LIVE manifest, not a build-time snapshot:
+  //  - a skill edited to fork/pattern after binding must not render as
+  //    `<active_skill>` context — those are dispatch routes, not injections;
+  //  - a skill flagged `disable-model-invocation` must never reach the model
+  //    through any path, so a draft/admin-only skill can't leak in here either.
+  if (state.disableModelInvocation) return null;
   if ((state.contextMode ?? "inline") !== "inline") return null;
   const raw = (await manifest.readContent()) ?? "";
   const body = stripFrontmatter(raw);
