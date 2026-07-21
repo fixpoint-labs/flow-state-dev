@@ -11,7 +11,7 @@
  *   under FIX-435; the capability declares them on a single flat `resources`
  *   map.
  * - Two context presets (`static`, `accumulated`) — both on by default for
- *   generators, individually opt-out-able via `cap.presets({ ... })`
+ *   generators, individually opt-out-able via `cap.with({ ... })`
  * - Typed helpers via `ctx.cap.perspective.*` — `observe()`, `position()`,
  *   `challenge()`, `observations()`, `positions()`, `format()`, etc.
  *

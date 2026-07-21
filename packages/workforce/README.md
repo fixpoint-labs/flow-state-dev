@@ -53,7 +53,7 @@ const block = agentBlock(analyst, { catalog });
 
 By default an agent emits free text (`z.string()`). A **standalone** agent can declare a structured `outputSchema` instead, and the materialized generator emits that typed shape — subject to the same OpenAI-strict requirement as any generator output. Workers always emit `z.string()`, because the skills pattern machinery builds follow-on actions from text.
 
-`usesCapabilities` accepts either a **string key** (resolved against the materialize-time `capabilityCatalog`) or a **capability reference** used as-is — including a `.presets({ ... })`-configured capability, which keeps full preset typing (the same way `generator({ uses })` consumes capabilities).
+`usesCapabilities` accepts either a **string key** (resolved against the materialize-time `capabilityCatalog`) or a **capability reference** used as-is — including a `.with({ ... })`-configured capability, which keeps full preset typing (the same way `generator({ uses })` consumes capabilities).
 
 ```ts
 const pm = defineAgent({

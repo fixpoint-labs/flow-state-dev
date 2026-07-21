@@ -111,7 +111,7 @@ Mount `briefingBlock` in a sequencer or wire it as an action the same way you wo
 
 A standalone agent can return typed data instead of free text. Declare an `outputSchema` and the materialized generator emits that shape, subject to the same OpenAI-strict requirement as any generator output. Workers stay `z.string()` regardless, because the pattern machinery builds follow-on actions from a worker's text.
 
-`usesCapabilities` accepts two forms in the same array: a string key resolved against the materialize-time capability catalog, or a capability reference used as-is. A reference can be preset-configured with `.presets({ ... })`, and the preset typing carries through, the same way `generator({ uses })` consumes capabilities.
+`usesCapabilities` accepts two forms in the same array: a string key resolved against the materialize-time capability catalog, or a capability reference used as-is. A reference can be configured with `.with({ ... })`, and the preset typing carries through, the same way `generator({ uses })` consumes capabilities.
 
 ```ts
 import { defineAgent } from "@flow-state-dev/workforce";
