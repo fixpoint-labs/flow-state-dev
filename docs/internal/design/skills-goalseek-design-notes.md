@@ -211,8 +211,44 @@ The LLM decides *what/when*; the flow decides *how*, deterministically.
 - **Goal-collection graduation** — set-on-the-strategy now; full collection when a
   tier needs dynamic/shared/persisted goals. When does that line get crossed?
 - **A vs B final call** — see §7. Leaning B.
-- **Naming** — "Converge" → **GoalSeek / `goalSeekLoop`** (settled). "pattern
-  skill" → "delegation skill" (or drop the concept entirely under B).
+- **Naming** — "Converge" → **`goalSeekLoop`** — *already the name in the FIX-910
+  spec* (#821); the spec body uses `goalSeekLoop` end-to-end. Aligned.
+- **Evaluator contract — RESOLVED, reuse FIX-910's.** Do not invent a
+  `{met,feedback}` shape. The single evaluator seam is FIX-910's:
+  `JudgeSlot = BlockDefinition | SequencerDefinition | ((input, ctx) => Verdict)`
+  and `Verdict = { decision: "done"|"continue"|"replan"; reason: string; tasks?: TaskInit[] }`.
+  Any block that outputs `Verdict` is a valid evaluator. Skills' goal/verification
+  support consumes this same pair.
+
+## 8. Actions taken this session (steering)
+
+- **Design notes** committed to branch `claude/skills-system-architecture-kw77zs`.
+- **FIX-918** created — *Remove skill pattern-mode; deliver delegation via a
+  capability + blocks-as-tools.* Supersedes FIX-916's premise. Relates 910/911/916.
+- **FIX-919** created — *Fix fork skills: inherit history-to-fork-point, delivered
+  as a capability-installed tool.* Relates 911.
+- **FIX-916** (skills declare a `strategy` in frontmatter) — commented as **likely
+  superseded by FIX-918**; recommend close/re-scope pending confirmation. The
+  binding path changes from "materialize a strategy from frontmatter" to "call a
+  block as a tool," so the frontmatter-recipe premise no longer holds.
+- **PR #821 (FIX-910 `goalSeekLoop` spec)** — commented: primitive is aligned
+  (name, JudgeSlot/Verdict, mandatory maxIterations); one forward gap raised
+  (keep the primitive **tool-exposable** for an executive generator, not only a
+  pattern substrate); FIX-916→FIX-918 handoff reconciliation noted. Proceed as
+  specced.
+- **PR #836 (FIX-911 binding)** — commented: land the context-skill binding, but
+  (1) adopt FIX-914 PR2 own-state and drop the hand-declared `stateSchema`
+  workaround, (2) treat session-global `createSkillsCapability` as transitional
+  (pattern-mode → FIX-918, fork → FIX-919), (3) delegation + fork are follow-ups,
+  not this PR.
+
+### Open for Jake
+- Confirm **FIX-916 close/re-scope** in favor of FIX-918.
+- Decide whether the **delegation Shape-1 capability** is a sub-task of FIX-918 or
+  its own issue.
+- The one place B could still be wrong: a concrete "enforce the whole turn on the
+  generator's own output" case that `response-auditor` + goalSeek-as-tool can't
+  cover (would revive the harness). None identified yet.
 
 ---
 
