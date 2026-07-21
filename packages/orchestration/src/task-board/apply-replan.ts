@@ -149,20 +149,30 @@ export function createApplyReplan(options: ApplyReplanOptions) {
 
       const taken = new Set(collection.list().map((t) => t.id));
 
-      // Build a remap from the replanner's chosen id (if any) to the id
-      // we'll actually use. Suffix duplicates so the LLM's natural
-      // "redo task-1" output doesn't collide with the original.
+      // Assign a unique final id PER TASK (by index), suffixing collisions so the
+      // LLM's natural "redo task-1" output doesn't clobber the original — and so
+      // two tasks in the SAME batch that carry the same id become two DISTINCT
+      // tasks rather than collapsing onto one final id (which would make
+      // `addTasks` reject the whole batch). `idRemap` (original id → final id) is
+      // built alongside for dependency rewriting; when a batch repeats an id, the
+      // last occurrence wins for dep resolution, which is the best we can do for
+      // an inherently ambiguous input.
+      const finalIds: (string | undefined)[] = [];
       const idRemap = new Map<string, string>();
       for (const t of input.tasks) {
-        if (t.id === undefined) continue;
+        if (t.id === undefined) {
+          finalIds.push(undefined);
+          continue;
+        }
         let candidate = t.id;
         let suffix = 1;
         while (taken.has(candidate)) {
           candidate = `${t.id}-replan-${suffix}`;
           suffix++;
         }
-        idRemap.set(t.id, candidate);
         taken.add(candidate);
+        finalIds.push(candidate);
+        idRemap.set(t.id, candidate);
       }
 
       // Mirror the planning-entry context enricher on the replan path: unless
@@ -171,9 +181,8 @@ export function createApplyReplan(options: ApplyReplanOptions) {
       const goal =
         (ctx.sequencer?.state as { goal?: string } | undefined)?.goal ?? "";
 
-      const tasks: TaskInit[] = input.tasks.map((t) => {
-        const remappedId =
-          t.id !== undefined ? idRemap.get(t.id) : undefined;
+      const tasks: TaskInit[] = input.tasks.map((t, i) => {
+        const remappedId = finalIds[i];
         const rawDeps = t.deps ?? t.dependencies ?? [];
         const remappedDeps = rawDeps.map((d) => idRemap.get(d) ?? d);
         const emittedContext = (t as { context?: unknown }).context;

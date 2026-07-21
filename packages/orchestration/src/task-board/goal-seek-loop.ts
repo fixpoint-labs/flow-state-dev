@@ -355,9 +355,14 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
         );
       }
       const v = parsed.data as Verdict;
-      // A `replan` with neither an inline tasks array nor a replanner to produce
-      // one would silently re-drain the settled board to the cap.
-      if (v.decision === "replan" && !Array.isArray((v as { tasks?: unknown }).tasks) && !replanner) {
+      // A `replan` that produces no actual work — no NON-EMPTY inline array — and
+      // has no replanner to produce any would silently re-drain the settled board
+      // to the cap. Treat it as a judge-error (mirrors the wrappedReplanner gate,
+      // which fires the replanner on the same empty-or-absent condition when one
+      // IS configured). An empty `tasks: []` is not valid inline work.
+      const replanTasks = (v as { tasks?: unknown }).tasks;
+      const hasInlineWork = Array.isArray(replanTasks) && replanTasks.length > 0;
+      if (v.decision === "replan" && !hasInlineWork && !replanner) {
         throw new Error(
           `[goalSeekLoop] "${name}" judge returned "replan" with no tasks and no replanner configured`,
         );

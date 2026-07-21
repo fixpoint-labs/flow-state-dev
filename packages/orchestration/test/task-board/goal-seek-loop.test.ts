@@ -252,6 +252,51 @@ describe("goalSeekLoop - replan", () => {
     expect(output.tasks.map((t) => t.id).sort()).toEqual(["a", "b"]);
   });
 
+  it("inline replan tasks sharing an id become distinct tasks (no batch rejection)", async () => {
+    const board = makeBoard("dup-ids");
+    let calls = 0;
+    const loop = goalSeekLoop({
+      name: "dup-ids",
+      board,
+      seed: seedTasks("dup-ids", board, ["a"]),
+      judge: (): Verdict => {
+        calls += 1;
+        return calls === 1
+          ? {
+              decision: "replan",
+              reason: "dups",
+              tasks: [
+                { id: "dup", goal: "x" },
+                { id: "dup", goal: "y" },
+              ],
+            }
+          : { decision: "done", reason: "converged" };
+      },
+      maxIterations: 5,
+    });
+    const result = await testBlock(loop, { input: undefined });
+    expect(result.error).toBeNull();
+    const output = result.output as { tasks: Array<{ id: string }> };
+    // Both duplicate-id tasks landed as distinct ids — the batch was not rejected.
+    expect(output.tasks.map((t) => t.id).sort()).toEqual(["a", "dup", "dup-replan-1"]);
+  });
+
+  it("replan with an empty tasks array and no replanner → judge-error", async () => {
+    const board = makeBoard("empty-no-replanner");
+    const loop = goalSeekLoop({
+      name: "empty-no-replanner",
+      board,
+      seed: seedTasks("empty-no-replanner", board, ["a"]),
+      // An empty inline array with no replanner produces no work and can't — so
+      // it lands as judge-error rather than spinning to the cap.
+      judge: () => ({ decision: "replan", reason: "empty", tasks: [] }) as Verdict,
+      maxIterations: 3,
+    });
+    const result = await testBlock(loop, { input: undefined });
+    expect(result.error).toBeNull();
+    expect(readTermination(result.items)?.reason).toBe("judge-error");
+  });
+
   it("replan (no tasks) runs the configured replanner", async () => {
     const board = makeBoard("replanner");
     let judgeCalls = 0;
