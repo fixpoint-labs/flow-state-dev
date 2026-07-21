@@ -108,6 +108,8 @@ export interface SkillsBindingConfig {
 interface IndexedSkill {
   allowedTools?: string[];
   contextMode: SkillContextMode;
+  /** `disable-model-invocation` — the skill can't be exposed to the model. */
+  disableModelInvocation?: boolean;
 }
 
 function indexInitialSkills(
@@ -126,6 +128,7 @@ function indexInitialSkills(
       index.set(skill.name, {
         allowedTools: parsed.state.allowedTools,
         contextMode: parsed.state.contextMode ?? "inline",
+        disableModelInvocation: parsed.state.disableModelInvocation,
       });
     } catch {
       // A malformed or invalidly-named bundled skill is a seeding-time concern;
@@ -286,11 +289,14 @@ export function createSkillsLibrary(
 
     // Whole-catalog mode (activation path + no `allowed`): any bundled inline
     // skill is loadable/activatable, so validate each one's declared tools —
-    // the `allowed` loop above only covers an explicit list. Fork/pattern skills
-    // can't render/load inline, so they're skipped.
+    // the `allowed` loop above only covers an explicit list. Skip fork/pattern
+    // skills (can't render/load inline) and `disable-model-invocation` skills
+    // (omitted from the catalog and renderer, so never exposed) — validating
+    // those would fail construction over a skill that can't reach the model.
     if (hasActivationPath && !cfg.allowed) {
       for (const [name, entry] of index) {
-        if (entry.contextMode === "inline") validateDeclaredTools(name);
+        if (entry.contextMode !== "inline" || entry.disableModelInvocation) continue;
+        validateDeclaredTools(name);
       }
     }
 

@@ -250,6 +250,29 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
     ).toThrow(/skill "needs-db" declares tool "db", which is not in the catalog/);
   });
 
+  it("skips disabled skills in whole-catalog validation (they can't reach the model)", () => {
+    const mk = (name: string) =>
+      handler({ name, inputSchema: z.object({}), outputSchema: z.object({}), execute: async () => ({}) });
+    // A disabled draft declares a tool absent from the catalog. It's omitted
+    // from the catalog and renderer, so it must NOT fail whole-catalog build.
+    const draft: InitialSkill = {
+      name: "draft",
+      skillMd: "---\ndescription: draft\ndisable-model-invocation: true\nallowed-tools: [db]\n---\n\nbody",
+    };
+    const skills = createSkillsLibrary({
+      catalog: { search: mk("search") },
+      initialSkills: [inlineSkill("ok", "body", ["search"]), draft],
+    });
+    expect(() =>
+      generator({
+        name: "g",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        uses: [skills.config({}).presets({ dynamicActivation: true })],
+      }),
+    ).not.toThrow();
+  });
+
   it("installs the loadSkill load tool when dynamicActivation is on", async () => {
     const skills = createSkillsLibrary({
       initialSkills: [inlineSkill("deep-research", "body")],
