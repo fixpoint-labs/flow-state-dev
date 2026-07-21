@@ -27,6 +27,36 @@ export {
   type SkillsCapabilityOptions,
 } from "./capability";
 
+// Skills v2 (FIX-911) — shared library + per-generator binding via config.
+export {
+  createSkillsLibrary,
+  type SkillsLibraryOptions,
+  type SkillsBindingConfig,
+} from "./library";
+
+export {
+  BLOCK_LOCATION,
+  BLOCK_STATE_FIELD,
+  readActivations,
+  appendActivation,
+  type ActivationLocation,
+  type ExplicitActivationScope,
+} from "./activation-store";
+
+export {
+  buildSkillBindingReader,
+  type SkillBindingReaderOptions,
+} from "./binding-reader";
+
+export {
+  createLoadSkillTool,
+  buildLoadCatalogContext,
+  type LoadSkillToolOptions,
+  type LoadCatalogContextOptions,
+} from "./load-tool";
+
+export { renderActiveSkillBody } from "./render-skill-body";
+
 export {
   defineSkillsCollection,
   skillStateSchema,
@@ -65,6 +95,7 @@ export {
 
 export {
   activeSkillStateSchema,
+  activeSkillsArraySchema,
   pushActiveSkill,
   readActiveSkills,
   unionAllowedTools,

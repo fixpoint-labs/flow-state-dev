@@ -29,6 +29,7 @@
 import { z } from "zod";
 import { sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { ExplicitActivationScope } from "./activation-store";
 import { createApplySkillActivation } from "./apply-skill-activation";
 import {
   createSkillClassifierSequencer,
@@ -59,6 +60,21 @@ export interface SkillActivatorOptions {
    * deployments that want only deterministic tiers.
    */
   enableLlmClassifier?: boolean;
+  /**
+   * Where the matcher writes its resolved activations. Default
+   * `{ scope: "session", field: "activeSkills" }`. To feed a Skills v2
+   * per-generator binding, point this at that binding's explicit
+   * `activeState` field (a matcher runs before the generator, so it cannot
+   * reach a downstream generator's block-state default — it needs an explicit
+   * shared field).
+   */
+  activeState?: { scope: ExplicitActivationScope; field: string };
+  /**
+   * Restrict matches to the target binding's `allowed` set. Without it, a
+   * `/skill` or keyword hit for any skill in the collection would land in the
+   * shared field and render on a generator that was never given that skill.
+   */
+  allowed?: readonly string[];
 }
 
 /**
@@ -75,7 +91,11 @@ export function createSkillActivator(
 
   const slashTier = createSkillSlashMatch({ collectionKey });
   const keywordTier = createSkillKeywordMatch({ collectionKey });
-  const apply = createApplySkillActivation({ collectionKey });
+  const apply = createApplySkillActivation({
+    collectionKey,
+    ...(options.activeState ? { activeState: options.activeState } : {}),
+    ...(options.allowed ? { allowed: options.allowed } : {}),
+  });
 
   let pipeline = sequencer({
     name: options.name ?? "skill-activator",

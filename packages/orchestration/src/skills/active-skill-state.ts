@@ -56,28 +56,37 @@ export interface ActivePatternMeta {
   resourceCollectionKey?: string;
 }
 
+/**
+ * Zod schema for a single active-skill array field. Reused by the v2
+ * per-generator binding (`skills.config({ activeState })` contributes this
+ * as the field schema at the chosen scope, and a block-state default binds it
+ * onto the generator's own `stateSchema`) and by the legacy session-state
+ * fragment below.
+ */
+export const activeSkillsArraySchema = z
+  .array(
+    z.object({
+      name: z.string(),
+      mode: z.enum(["inline", "fork", "pattern"]),
+      input: z.string().optional(),
+      activatedAt: z.number(),
+      source: skillActivationSourceSchema.optional(),
+      pattern: z
+        .object({
+          patternKey: z.string(),
+          collectionId: z.string(),
+          backing: z.enum(["request", "resource"]),
+          resourceCollectionKey: z.string().optional(),
+        })
+        .optional(),
+    }),
+  )
+  .optional()
+  .default([]);
+
 /** Zod schema for the session-state fragment the capability declares. */
 export const activeSkillStateSchema = z.object({
-  activeSkills: z
-    .array(
-      z.object({
-        name: z.string(),
-        mode: z.enum(["inline", "fork", "pattern"]),
-        input: z.string().optional(),
-        activatedAt: z.number(),
-        source: skillActivationSourceSchema.optional(),
-        pattern: z
-          .object({
-            patternKey: z.string(),
-            collectionId: z.string(),
-            backing: z.enum(["request", "resource"]),
-            resourceCollectionKey: z.string().optional(),
-          })
-          .optional(),
-      }),
-    )
-    .optional()
-    .default([]),
+  activeSkills: activeSkillsArraySchema,
 });
 
 /** Read the active-skills array from a session-state-like object. */

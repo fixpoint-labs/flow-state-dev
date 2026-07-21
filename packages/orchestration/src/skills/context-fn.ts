@@ -16,17 +16,15 @@
  */
 
 import type { BlockContext } from "@flow-state-dev/core/types";
-import type { InitialSkill, SkillState } from "@flow-state-dev/core";
-import path from "node:path";
+import type { InitialSkill } from "@flow-state-dev/core";
 import { readActiveSkills } from "./active-skill-state";
-import { skillManifestKey } from "./collection";
 import { getCollection } from "./internal/get-collection";
+import { renderActiveSkillBody } from "./render-skill-body";
 import {
   buildRunSkillDescription,
   listEnabledSkills,
 } from "./run-skill-tool";
 import { ensureSeeded } from "./seeding";
-import { substitute } from "./skill-md";
 
 export interface SkillsContextOptions {
   collectionKey: string;
@@ -89,21 +87,13 @@ export function buildActiveSkillsContext(
     const blocks: string[] = [];
     for (const entry of active) {
       if (entry.mode !== "inline") continue;
-      const manifest = await collection.getOptional(skillManifestKey(entry.name));
-      if (!manifest) continue;
-      const raw = (await manifest.readContent()) ?? "";
-      const body = stripFrontmatter(raw);
-      const substituted = substitute(body, {
-        arguments: entry.input,
-        skillDir: path.posix.join("/workspace", opts.mountPath, entry.name),
-      });
-      const state = manifest.state as unknown as SkillState;
-      const restriction = state.allowedTools && state.allowedTools.length > 0
-        ? `\n(While this skill is active, only these tools are available: ${state.allowedTools.join(", ")}.)`
-        : "";
-      blocks.push(
-        `<active_skill name="${entry.name}">\n${substituted}${restriction}\n</active_skill>`,
+      const block = await renderActiveSkillBody(
+        collection,
+        entry.name,
+        opts.mountPath,
+        entry.input,
       );
+      if (block) blocks.push(block);
     }
 
     if (blocks.length === 0) return null;
@@ -113,16 +103,4 @@ export function buildActiveSkillsContext(
       ...blocks,
     ].join("\n");
   };
-}
-
-function stripFrontmatter(text: string): string {
-  if (!text.startsWith("---")) return text;
-  const lines = text.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return text;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i]?.trim() === "---") {
-      return lines.slice(i + 1).join("\n").replace(/^\r?\n/, "");
-    }
-  }
-  return text;
 }

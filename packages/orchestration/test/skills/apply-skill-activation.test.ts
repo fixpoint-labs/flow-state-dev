@@ -79,6 +79,35 @@ describe("createApplySkillActivation — honors each skill's contextMode", () =>
     expect(entries?.[0]?.mode).toBe("fork");
   });
 
+  it("writes to an explicit activeState field and filters to the allowed set", async () => {
+    const c = createMockSkillsCollection();
+    for (const n of ["bound", "unbound"]) {
+      c._store.set(`skills/${n}/SKILL.md`, {
+        name: `skills/${n}/SKILL.md`,
+        state: { description: n },
+        content: null,
+      });
+    }
+    const handler = createApplySkillActivation({
+      activeState: { scope: "session", field: "activeAnalystSkills" },
+      allowed: ["bound"],
+    });
+    const ctx = buildCtx({
+      collection: c,
+      matched: [
+        { name: "bound", source: "slash" },
+        { name: "unbound", source: "keyword" }, // outside allowed → dropped
+      ],
+    });
+    await runForTest(handler, { message: "/bound" }, ctx);
+    const state = (ctx as { session: { state: Record<string, Array<{ name: string }>> } }).session
+      .state;
+    // Legacy slot untouched; the bound skill lands in the explicit field only.
+    expect(state.activeSkills ?? []).toHaveLength(0);
+    expect(state.activeAnalystSkills).toHaveLength(1);
+    expect(state.activeAnalystSkills[0]!.name).toBe("bound");
+  });
+
   it("stamps pattern mode when the skill declares context: pattern", async () => {
     const c = createMockSkillsCollection();
     c._store.set("skills/team-work/SKILL.md", {

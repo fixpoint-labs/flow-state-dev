@@ -126,6 +126,7 @@ const sidebars: SidebarsConfig = {
           label: "Skills",
           items: [
             "skills/overview",
+            "skills/binding",
             "skills/activation",
             "skills/authoring",
             "skills/pattern-skills",

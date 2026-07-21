@@ -101,6 +101,31 @@ The concrete `defaultPatternRegistry` (which wires `taskBoard`, `supervisor`,
 `planAndExecute`, etc.) lives in `@flow-state-dev/patterns` and is injected at
 runtime, so this package stays free of a dependency on `patterns`.
 
+### Per-generator binding (`createSkillsLibrary`)
+
+`createSkillsCapability` activates skills into session-global state shared by
+every generator. To bind a skill to **one** generator instead — no shared bag,
+no cross-agent bleed — use `createSkillsLibrary` and configure the binding where
+the generator is defined:
+
+```ts
+import { createSkillsLibrary } from "@flow-state-dev/orchestration";
+
+const skills = createSkillsLibrary({ catalog, initialSkills });
+
+// Preload a skill (inline-only), fails loud on a typo:
+generator({ uses: [skills.config({ active: ["detailed-analysis"] })] });
+
+// Let the agent load a skill mid-turn, stored in this generator's block state:
+generator({
+  stateSchema: z.object({ activeSkills: activeSkillsArraySchema }),
+  uses: [skills.config({ allowed: ["deep-research"] }).presets({ dynamicActivation: true })],
+});
+```
+
+See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
+`active` / `allowed` / `activeState` surface and where activations are stored.
+
 ## Documentation
 
 - [Orchestration overview](https://flow-state.dev/docs/orchestration/overview)

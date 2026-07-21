@@ -572,6 +572,9 @@ importers:
       '@flow-state-dev/node':
         specifier: workspace:*
         version: link:../packages/node
+      '@flow-state-dev/orchestration':
+        specifier: workspace:*
+        version: link:../packages/orchestration
       '@flow-state-dev/store-postgres':
         specifier: workspace:*
         version: link:../packages/store-postgres
