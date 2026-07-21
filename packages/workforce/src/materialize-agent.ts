@@ -50,7 +50,7 @@ function resolveCapabilities(
   const out: DefinedCapability[] = [];
   for (const entry of entries) {
     // A string is a catalog key (registry-resolved); a capability reference
-    // (base or `.presets()`-configured) is used as-is — refs need no catalog.
+    // (base or `.with()`-configured) is used as-is — refs need no catalog.
     if (typeof entry === "string") {
       // No catalog → a string key can't be resolved; skip SILENTLY, preserving
       // the pre-FIX-732 behavior for string-key agents materialized without a

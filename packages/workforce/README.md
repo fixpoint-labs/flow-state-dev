@@ -62,7 +62,7 @@ const pm = defineAgent({
   persona: { path: "personas/pm" },
   outputSchema: portfolioDecisionSchema, // standalone only; workers stay string
   usesCapabilities: [
-    tradingDesk.presets({ valuationSpine: true }), // typed capability ref
+    tradingDesk.with({ valuationSpine: true }),    // typed capability ref
     "someSharedSkill",                             // string key (catalog)
   ],
 });

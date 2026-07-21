@@ -79,7 +79,7 @@ export const skillsCap = createSkillsCapability({
 When you adopt up-front activation via `createSkillActivator`, drop the `runSkill` preset at the use site to skip the redundant tool-call path:
 
 ```ts
-uses: [skillsCap.presets({ runSkill: false }), skillActivator, /* ... */]
+uses: [skillsCap.with({ runSkill: false }), skillActivator, /* ... */]
 ```
 
 Then attach it to any generator:
@@ -139,7 +139,7 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 
 | Export | Purpose |
 |--------|---------|
-| `createSkillsCapability(options)` | The one-line wiring path. Returns a capability with three presets — `tools`, `context`, `runSkill` — all on by default. Drop the tool-call path at the use site with `cap.presets({ runSkill: false })`. |
+| `createSkillsCapability(options)` | The one-line wiring path. Returns a capability with three presets — `tools`, `context`, `runSkill` — all on by default. Drop the tool-call path at the use site with `cap.with({ runSkill: false })`. |
 | `createSkillActivator(options)` | The up-front skill router. Returns a `.tap`-able sequencer. See [Activation paths](./activation). |
 | `readSkillsDirectory(root)` | Walk a filesystem tree and return `InitialSkill[]` for `initialSkills`. Node only. |
 | `createRunSkillTool(options)` | The `runSkill` router as a standalone tool, for custom wiring outside the capability. |

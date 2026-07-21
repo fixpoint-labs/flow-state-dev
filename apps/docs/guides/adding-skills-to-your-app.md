@@ -193,7 +193,7 @@ export const assistant = generator({
   prompt: "You are a helpful assistant. Active skills override defaults.",
   // The active-skill body formatter (in the `context` preset) stays on,
   // so matched skills still get their body injected.
-  uses: [skillsCap.presets({ runSkill: false })],
+  uses: [skillsCap.with({ runSkill: false })],
 });
 ```
 

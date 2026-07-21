@@ -130,7 +130,7 @@ const positionSizer = defineAgent({
   persona: { path: "personas/portfolio-manager" },
   outputSchema: positionSizerSchema, // standalone only
   usesCapabilities: [
-    tradingDeskCapability.presets({ valuationSpine: true }), // typed capability ref
+    tradingDeskCapability.with({ valuationSpine: true }), // typed capability ref
     "marketDataAccess", // string key, resolved from the catalog
   ],
 });
