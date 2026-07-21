@@ -386,3 +386,31 @@ fork** (correct, not limiting — fork *is* delegation).
 - **FIX-921** — (low pri, deferred) skills define resources; assign a task a
   workspace resource (blackboard). Interim workaround: install a resource on the
   generator + task guidance to write to it.
+
+## 10. Pattern-catalog focus pass (FIX-922)
+
+Thesis: once `goalSeekLoop` (FIX-910) + task board + delegation skills exist, most
+of `@flow-state-dev/patterns` is "abstract patterns on abstract patterns." Audit
+each against "does task-board + delegation + goalSeekLoop subsume it?" — tracked as
+**FIX-922** (investigation, not a decision).
+
+- **Consumer reality:** the only non-test consumers outside `packages/patterns`
+  are demo surfaces — kitchen-sink `thinking-styles` and `apps/pattern-benchmark`.
+  `roundRobin` has zero. Cutting costs demos, not production.
+- **Cut / demote:** parallelTasks, planAndExecute (→ recipe), routedSpecialists
+  (→ router + board), round-robin/debate/rlm (→ examples), eventActors (niche; UI
+  already broken — open Q: does the board's dynamic work-graph cover pub-sub?).
+- **Keep:** `response-auditor` — distinct, small, load-bearing (the output gate
+  that covers enforced output without a harness).
+- **Supervisor — corrected finding.** Source header confirms it's a **per-task**
+  `worker → reviewer → applyVerdict` gate with `maxAttempts` retry, plus an
+  **upfront** `captureAndPlan`. It is *not* board-level "review-and-decide-next"
+  (that's the delegation host / goalSeekLoop). Decomposes into: generic board
+  delegation + **`buildReviewedWorker`** (the one keeper, as a utility) + a
+  plan-timing config choice.
+- **Design decision it surfaces (→ FIX-918):** delegation plan timing —
+  **full-plan-upfront vs incremental "plan a few → review → replan."** Make it a
+  deliberate config, not a side effect of which pattern you picked.
+- **FIX-910 knock-on:** if parallelTasks/planAndExecute are deleted (not
+  re-expressed), FIX-910 drops its parity-migration leg → shrinks to "just build
+  `goalSeekLoop`." Feed back into #821.
