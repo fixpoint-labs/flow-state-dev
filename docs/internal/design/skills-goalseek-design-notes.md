@@ -430,9 +430,13 @@ doesn't validate `assignee`; dispatch is a `keyedRouter` over the worker registr
 the host isn't in it, so a self-assigned task throws a registry-miss and is marked
 `errored` (default skip). Executive and worker pool are disjoint.
 
-Open question (**FIX-923**, split out of FIX-918 to keep that spec unloaded):
-should a delegating host also execute tasks itself (manager **and** IC), or stay a
-pure coordinator? Includes a **research pass** on whether mixing planner+executor
-in one agent is a known anti-pattern (context dilution / role confusion) — the
-"manager and IC is a no-no for AI" hypothesis. Also a fail-late smell to fix
-regardless: validate `assignee` at `addTask` instead of failing at dispatch.
+Two things split out of FIX-918 to keep that spec unloaded:
+
+- **FIX-923 (research):** should a delegating host also execute tasks itself
+  (manager **and** IC), or stay a pure coordinator? Research pass on whether mixing
+  planner+executor in one agent is a known anti-pattern (context dilution / role
+  confusion) — the "manager and IC is a no-no for AI" hypothesis.
+- **FIX-924 (concrete design requirement, not research):** the manager must **know
+  its roster** and assign only to real workers. Surface the roster to the host;
+  validate `assignee` at creation (fail loud), not at dispatch. Belongs to the
+  reworked delegation surface — don't patch the pattern-era `taskTools`.
