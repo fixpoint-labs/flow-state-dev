@@ -209,6 +209,8 @@ generator({ uses: [skills.config({ allowed: ["research"] }).presets({ dynamicAct
 generator({ uses: [skills.presets({ dynamicActivation: true }).config({ allowed: ["research"] })] });
 ```
 
+Consumers rarely write that chain. `.with()` is the one-call shorthand for exactly this composition — it routes a flat bag by preset-name membership (preset-named keys become preset toggles, the rest become the config value), so the above is just `skills.with({ allowed: ["research"], dynamicActivation: true })`. As an author you don't do anything to enable it: any capability with `presets` and/or `config` gets `.with()` for free. The one rule it imposes is that a preset name and a config field name must not collide (otherwise the bag split would be ambiguous) — a collision is a `defineCapability()` error, so keep the two name sets disjoint.
+
 Using the same capability twice with **conflicting** `.config()` values in one block throws — config carries values, so silently baking one and dropping the other would be a correctness bug. Identical config deduplicates. (Presets keep their first-wins behavior; the stricter rule is specific to config.)
 
 ### Config vs. function-form preset overrides vs. bespoke factories
