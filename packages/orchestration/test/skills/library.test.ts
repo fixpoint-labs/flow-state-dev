@@ -319,6 +319,31 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
 });
 
 describe("createSkillsLibrary — block-state default reader", () => {
+  it("does not render a statically-bound skill edited to fork/pattern in the live catalog", async () => {
+    const skills = createSkillsLibrary({ initialSkills: [inlineSkill("edited", "EDITED-MARKER")] });
+    const gen = generator({
+      name: "g",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      uses: [skills.config({ active: ["edited"] })],
+    });
+    const collection = createMockSkillsCollection();
+    // Mark it already-seeded so ensureSeeded won't overwrite our edit, then
+    // simulate an admin editing the persisted manifest to fork mode.
+    collection._store.set("skills/_meta", {
+      name: "skills/_meta",
+      state: { seededNames: ["edited"] },
+      content: null,
+    });
+    collection._store.set("skills/edited/SKILL.md", {
+      name: "skills/edited/SKILL.md",
+      state: { description: "edited", contextMode: "fork" },
+      content: "---\ndescription: edited\ncontext: fork\n---\n\nEDITED-MARKER",
+    });
+    const out = await renderGeneratorSkills(gen, buildReaderCtx(collection));
+    expect(out).not.toContain("EDITED-MARKER");
+  });
+
   it("renders dynamic entries from the generator's own block state (ctx.self)", async () => {
     const skills = createSkillsLibrary({
       initialSkills: [inlineSkill("loaded", "LOADED-BODY-MARKER")],
@@ -340,22 +365,18 @@ describe("createSkillsLibrary — block-state default reader", () => {
 });
 
 describe("createSkillsLibrary — explicit activeState", () => {
-  it("contributes the field schema at the chosen scope", () => {
-    const skills = createSkillsLibrary({
-      initialSkills: [inlineSkill("s", "body")],
-    });
-    // The resolver owns the schema contribution; it's merged into the scope's
-    // state schema (not surfaced on gen.config), so assert on the resolver's
-    // returned surface for the chosen scope.
+  it("does not return a no-op scope state schema from the resolver", () => {
+    // A config resolver's returned surface reaches only the generator's
+    // context/tools; the framework does not apply a merged-surface
+    // sessionStateSchema to the block state contract. Returning one would be a
+    // silent no-op, so the resolver must not claim to contribute it — the field
+    // is declared by the writer (matcher / flow) instead.
+    const skills = createSkillsLibrary({ initialSkills: [inlineSkill("s", "body")] });
     const resolved = skills.__configDef!.resolve(
       { activeState: { scope: "session", field: "activeAnalystSkills" } } as never,
       { presets: new Set(), blockKind: "generator" },
-    ) as { sessionStateSchema?: { safeParse: Function } };
-    expect(resolved.sessionStateSchema).toBeDefined();
-    const parsed = resolved.sessionStateSchema!.safeParse({
-      activeAnalystSkills: [{ name: "s", mode: "inline", activatedAt: 1 }],
-    });
-    expect(parsed.success).toBe(true);
+    ) as Record<string, unknown>;
+    expect(resolved.sessionStateSchema).toBeUndefined();
   });
 
   it("contributes allowed skills' declared tools on the explicit-activeState path (no dynamicActivation)", async () => {

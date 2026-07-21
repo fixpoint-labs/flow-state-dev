@@ -34,13 +34,18 @@ export async function renderActiveSkillBody(
 ): Promise<string | null> {
   const manifest = await collection.getOptional(skillManifestKey(name));
   if (!manifest) return null;
+  const state = manifest.state as unknown as SkillState;
+  // Honor the LIVE mode: a skill edited to fork/pattern after it was bound must
+  // not render as `<active_skill>` context — those are dispatch routes, not
+  // context injections. The inline-only binding contract is enforced here, at
+  // render time, against the persisted manifest (not a build-time snapshot).
+  if ((state.contextMode ?? "inline") !== "inline") return null;
   const raw = (await manifest.readContent()) ?? "";
   const body = stripFrontmatter(raw);
   const substituted = substitute(body, {
     arguments: input,
     skillDir: path.posix.join("/workspace", mountPath, name),
   });
-  const state = manifest.state as unknown as SkillState;
   const restriction =
     state.allowedTools && state.allowedTools.length > 0
       ? `\n(While this skill is active, only these tools are available: ${state.allowedTools.join(", ")}.)`

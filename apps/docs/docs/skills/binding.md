@@ -99,7 +99,7 @@ skills.config({ activeState: { scope: "session", field: "activeAnalystSkills" } 
 - `scope` is `request`, `session`, `user`, or `org`. `session` / `user` / `org` persist across turns; `request` does not.
 - `field` is the state key the activations live under. Two generators that name the same field share their activations — an explicit choice, not an accident.
 
-The binding contributes the field's schema at that scope, so the reader, the load tool, and any upstream matcher all agree on the shape.
+Declare that field in the scope's state schema where it's **written**. The upstream matcher does this for you (see below). If code or the generator writes it, add the field to the writer's own `sessionStateSchema` (or the matching scope schema) with `activeSkillsArraySchema` as its shape. The reader tolerates an absent field — it just renders nothing — so reads never need the declaration, only writes that must persist do.
 
 ### Who writes the activation
 

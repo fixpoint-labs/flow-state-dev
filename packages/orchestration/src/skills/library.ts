@@ -43,7 +43,6 @@ import type {
   SkillContextMode,
   ToolCatalog,
 } from "@flow-state-dev/core";
-import { activeSkillsArraySchema } from "./active-skill-state";
 import type { ActivationLocation } from "./activation-store";
 import { buildSkillBindingReader } from "./binding-reader";
 import {
@@ -311,14 +310,16 @@ export function createSkillsLibrary(
       );
     }
 
-    // Explicit activeState → contribute the field schema at the chosen scope so
-    // the reader/writer/matcher share a validated shape.
-    if (cfg.activeState) {
-      const schemaKey = `${cfg.activeState.scope}StateSchema` as const;
-      (contributions as Record<string, unknown>)[schemaKey] = z.object({
-        [cfg.activeState.field]: activeSkillsArraySchema,
-      });
-    }
+    // NOTE: an explicit `activeState` deliberately does NOT contribute a scope
+    // state schema here. A config resolver's returned surface only reaches the
+    // generator's context/tools — the framework does not apply a merged-surface
+    // `sessionStateSchema` to the block's state contract (only a capability's or
+    // block's own top-level state-schema field does). So a schema returned here
+    // would be a silent no-op. Instead the author declares the field where it is
+    // written: the upstream matcher (`createApplySkillActivation`) declares its
+    // scope schema on its own block, and a code/generator writer declares the
+    // field on the flow/generator's own `sessionStateSchema`. The reader
+    // tolerates an absent field (renders nothing), so reads never require it.
 
     // Group the reader + catalog under a single `<skills>` tag.
     contributions.context = [{ skills: contextEntries } as never];
