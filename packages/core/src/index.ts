@@ -117,6 +117,7 @@ export { defineCapability, getBaseCapability } from "./capability";
 export type {
   CapabilityPresetCtx,
   CapabilityRef,
+  ConfigArgOf,
   ConfiguredCapability,
   DefinedCapability,
   InferCapabilities,
@@ -125,6 +126,7 @@ export type {
   PresetOverrides,
   UsesEntry,
   UsesSlot,
+  WithArg,
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";

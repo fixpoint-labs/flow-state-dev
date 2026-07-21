@@ -14,7 +14,7 @@
  *     prompt, regardless of which activation path matched it.
  *   - **Preset `runSkill`** (default-on): the mid-flow activation path —
  *     the `runSkill` tool plus the catalog listing the model reads to
- *     decide when to call it. Drop with `cap.presets({ runSkill: false })`
+ *     decide when to call it. Drop with `cap.with({ runSkill: false })`
  *     when using up-front activation via `createSkillActivator`.
  */
 
@@ -217,7 +217,7 @@ export function createSkillsCapability(
 
       // Mid-flow activation: the runSkill tool + the catalog listing the
       // model reads to decide when to call it. Drop with
-      // `cap.presets({ runSkill: false })` when using up-front activation
+      // `cap.with({ runSkill: false })` when using up-front activation
       // via createSkillActivator — the active-skills formatter above
       // still injects the matched skill's body.
       runSkill: {

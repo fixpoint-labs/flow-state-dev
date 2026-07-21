@@ -11,7 +11,7 @@
  *   under FIX-435; the capability declares them on a single flat `resources`
  *   map.
  * - Two context presets (`static`, `accumulated`) — both on by default for
- *   generators, individually opt-out-able via `cap.presets({ ... })`
+ *   generators, individually opt-out-able via `cap.with({ ... })`
  * - Typed helpers via `ctx.cap.perspective.*` — `observe()`, `position()`,
  *   `challenge()`, `observations()`, `positions()`, `format()`, etc.
  *
@@ -105,7 +105,7 @@ function getObservationsRef(ctx: any): ResourceContext<PerspectiveObservationsSt
  * - `accumulated` (default on): observations and positions formatted from
  *   the resource state. Empty until the perspective starts recording.
  *
- * Disable either preset via `cap.presets({ accumulated: false })` when
+ * Disable either preset via `cap.with({ accumulated: false })` when
  * token budget is tight or when the block doesn't need the framing.
  *
  * ```ts
@@ -123,7 +123,7 @@ function getObservationsRef(ctx: any): ResourceContext<PerspectiveObservationsSt
  *
  * const observe = handler({
  *   name: 'capture-findings',
- *   uses: [cap.presets({ accumulated: false, static: false })],
+ *   uses: [cap.with({ accumulated: false, static: false })],
  *   execute: async (input, ctx) => {
  *     await ctx.cap.perspective.observe({
  *       content: 'Auth endpoint lacks rate limiting',

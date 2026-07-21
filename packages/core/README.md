@@ -191,6 +191,7 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
   - `fns: (ctx) => ({ ... })` — Helper functions exposed at `ctx.cap.{name}.{fn}`, memoized on first access
   - `presets` — Named opt-in/opt-out bundles of any block config surface. Use `.presets({ name: true/false })` to configure
   - `config: { schema?, resolve }` — Open, typed configuration. The resolver maps a validated value onto a block surface (like a preset, but value-carrying). Consumers pass it with `.config(value)`, which composes with `.presets()` in either order
+  - `.with(bag)` — The normalized consumer builder. Collapses `.config()` and `.presets()` into one flat call: preset-named keys become preset toggles, the rest become the config value. `cap.with({ allowed: ["x"], dynamicActivation: true })` ≡ `cap.config({ allowed: ["x"] }).presets({ dynamicActivation: true })`. `.config`/`.presets` remain the underlying primitives; a preset name colliding with a config field is a `defineCapability()` error
   - `uses` — Capabilities can depend on other capabilities (transitive composition with diamond dedup)
   - Factory pattern: wrap `defineCapability()` in a function for parameterized capabilities
 

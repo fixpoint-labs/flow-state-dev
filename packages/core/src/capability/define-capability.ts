@@ -6,6 +6,11 @@
  * reused across blocks, enabling diamond-dependency deduplication via ===.
  */
 import type { DeclaredResourceEntry } from "../types/block";
+import {
+  getZodObjectShape,
+  getZodObjectUnknownKeysMode,
+  unwrapToZodObject,
+} from "../helpers/zod-introspect";
 import { getBaseCapability } from "./merge";
 import type {
   CapabilityConfig,
@@ -94,6 +99,26 @@ export function defineCapability<
     throw new Error("defineCapability() requires a non-empty name");
   }
 
+  // `.with()` routes a flat bag by preset-name membership: a key that names a
+  // preset is a preset override, everything else is config. That is only
+  // unambiguous when preset names and config field names are disjoint, so a
+  // collision is a definition-time error rather than a silent mis-route.
+  if (config.config?.schema && config.presets) {
+    const configKeys = getConfigObjectKeys(config.config.schema);
+    if (configKeys) {
+      const presetNames = Object.keys(config.presets).filter((k) => k !== "default");
+      const overlap = presetNames.filter((k) => configKeys.includes(k));
+      if (overlap.length > 0) {
+        throw new Error(
+          `defineCapability("${config.name}"): preset name(s) [${overlap.join(", ")}] ` +
+            `collide with config field name(s). .with() routes a flat bag by ` +
+            `preset-name membership, so the two sets must be disjoint — rename ` +
+            `the preset or the config field.`
+        );
+      }
+    }
+  }
+
   // Build the runtime object: copy config fields, move presets to __presetDefs,
   // replace presets with the builder method.
   const capability: any = {
@@ -127,8 +152,106 @@ export function defineCapability<
   capability.config = function configBuilder(this: any, value: unknown): ConfiguredCapability {
     return createConfiguredRef(this, { __config: value });
   };
+  // `.with()` — the normalized consumer builder. Collapses `.config()` and
+  // `.presets()` into one flat call: preset-named keys become preset overrides,
+  // the rest become the config value. Pure sugar over the same two carriers, so
+  // `.with({ allowed, dynamicActivation: true })` is exactly
+  // `.config({ allowed }).presets({ dynamicActivation: true })`.
+  //
+  // Fail-loud: a key that is neither a preset nor a known config field throws at
+  // the call site. For a config-less capability every non-preset key is unknown;
+  // for a capability whose config is a *closed* object schema (strip/strict), a
+  // key outside the schema's fields is unknown too — so a misspelled preset name
+  // (which would otherwise route silently into the config bag and be dropped by
+  // Zod's default key-stripping) is caught. Schemaless, scalar, and passthrough
+  // configs can't enumerate valid keys, so their non-preset keys pass through.
+  capability.with = function withBuilder(this: any, bag: unknown): ConfiguredCapability {
+    // A non-object bag is a scalar/array config value (schema config that isn't
+    // object-shaped) — route it wholesale to config; it can carry no presets.
+    if (bag === null || typeof bag !== "object" || Array.isArray(bag)) {
+      return createConfiguredRef(this, { __config: bag });
+    }
+
+    const presetNames = new Set(
+      Object.keys(this.__presetDefs ?? {}).filter((k) => k !== "default")
+    );
+    const configDef = this.__configDef;
+    // Known config field names — only when the schema is a *closed* object
+    // (strip/strict). `null` for no-config / schemaless / non-object / passthrough
+    // configs, where an "unknown" non-preset key can't be judged and passes through.
+    const closedConfigKeys = configDef?.schema ? getClosedConfigKeys(configDef.schema) : null;
+
+    const presetPart: Record<string, unknown> = {};
+    const configPart: Record<string, unknown> = {};
+    const unknownKeys: string[] = [];
+    let hasConfigKeys = false;
+    for (const [k, v] of Object.entries(bag as Record<string, unknown>)) {
+      if (presetNames.has(k)) {
+        presetPart[k] = v;
+      } else if (!configDef || (closedConfigKeys && !closedConfigKeys.has(k))) {
+        unknownKeys.push(k);
+      } else {
+        configPart[k] = v;
+        hasConfigKeys = true;
+      }
+    }
+
+    if (unknownKeys.length > 0) {
+      const presets = [...presetNames].join(", ") || "(none)";
+      const fields = closedConfigKeys
+        ? [...closedConfigKeys].join(", ")
+        : configDef
+          ? "(open — any key)"
+          : "(none — no config)";
+      throw new Error(
+        `.with() on capability "${this.name}" received key(s) [${unknownKeys.join(", ")}] ` +
+          `that match neither a preset nor a config field — a misspelled preset name ` +
+          `would otherwise route silently into config. Presets: [${presets}]. ` +
+          `Config fields: [${fields}].`
+      );
+    }
+
+    let ref: any = this;
+    if (Object.keys(presetPart).length > 0) {
+      ref = createConfiguredRef(ref, { __presetOverrides: presetPart });
+    }
+    // Write `__config` when there are config keys, or for an empty bag on a
+    // config-capable capability so `.with({})` === `.config({})` (an optional
+    // object schema that accepts `{}` but not `undefined` must not hit the
+    // mandatory-config error). A presets-only non-empty bag leaves config unset,
+    // matching `.presets(...)` alone.
+    if (hasConfigKeys || (configDef && Object.keys(bag as object).length === 0)) {
+      ref = createConfiguredRef(ref, { __config: configPart });
+    }
+    return ref;
+  };
 
   return capability;
+}
+
+/**
+ * Extract a config schema's declared object keys, peeling the wrappers a config
+ * schema commonly carries (`.default({})`, `.optional()`, `.strict()`, effects).
+ * Returns the key list, or `null` when the schema isn't object-shaped (scalar/
+ * array config). Used for the definition-time preset/config collision check.
+ */
+function getConfigObjectKeys(schema: import("zod").ZodTypeAny): string[] | null {
+  const obj = unwrapToZodObject(schema);
+  const shape = obj ? getZodObjectShape(obj) : undefined;
+  return shape ? Object.keys(shape) : null;
+}
+
+/**
+ * The field names of a *closed* config object (unknown-key policy `strip` or
+ * `strict`), as a Set. Returns `null` for a non-object schema or a `passthrough`
+ * object — cases where the key set isn't exhaustive, so `.with()` can't treat an
+ * unexpected key as unknown.
+ */
+function getClosedConfigKeys(schema: import("zod").ZodTypeAny): Set<string> | null {
+  const obj = unwrapToZodObject(schema);
+  if (!obj || getZodObjectUnknownKeysMode(obj) === "passthrough") return null;
+  const shape = getZodObjectShape(obj);
+  return shape ? new Set(Object.keys(shape)) : null;
 }
 
 /**

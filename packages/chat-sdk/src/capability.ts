@@ -13,7 +13,7 @@
  *
  * `default: []` ensures `uses: [chatCapability]` adds the methods only.
  * Consumers opt into the formatter via
- * `uses: [chatCapability.presets({ threadContext: true })]`.
+ * `uses: [chatCapability.with({ threadContext: true })]`.
  */
 import { defineCapability } from "@flow-state-dev/core";
 import type { Thread, Message } from "chat";

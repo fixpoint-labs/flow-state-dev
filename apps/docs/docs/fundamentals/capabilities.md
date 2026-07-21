@@ -59,37 +59,39 @@ Capabilities can declare other capabilities they depend on. Those dependencies i
 
 ## Configuring presets
 
-A capability can ship with named presets that toggle pieces of its behavior. The default usually does the right thing, but you can opt parts in or out.
+A capability can ship with named presets that toggle pieces of its behavior. The default usually does the right thing, but you can opt parts in or out. Set them with `.with()`:
 
 ```ts
 // Default — recent context and tools are both active
 uses: [memoryCapability]
 
 // Read-only generator — turn off the tools preset
-uses: [memoryCapability.presets({ tools: false })]
+uses: [memoryCapability.with({ tools: false })]
 
 // Swap to full context instead of recent
-uses: [memoryCapability.presets({ recentContext: false, fullContext: true })]
+uses: [memoryCapability.with({ recentContext: false, fullContext: true })]
 ```
 
-Each capability documents which presets it ships with and what they do. If you pass a preset name that doesn't exist on the capability, you get an error at factory time.
+Each capability documents which presets it ships with and what they do. Passing an unknown preset name to `.presets()` errors at factory time; passing `.with()` a key that matches neither a preset nor a config field errors at the `.with()` call site — so a misspelled preset name fails loud instead of silently slipping into config.
 
 ## Configuring open config
 
-Presets are on/off switches. Some capabilities also accept a typed **value** — a list, a limit, a field name — through `.config()`. The capability author declares what the value looks like and a resolver that turns it into behavior; you pass it in one place:
+Presets are on/off switches. Some capabilities also accept a typed **value** — a list, a limit, a field name. Pass it through the same `.with()`:
 
 ```ts
 // A capability that accepts a list of allowed skills:
-uses: [skills.config({ allowed: ["research", "summarize"] })]
+uses: [skills.with({ allowed: ["research", "summarize"] })]
 ```
 
-`.config()` and `.presets()` compose. You can set both on the same capability, in either order:
+`.with()` takes preset toggles and config values in one flat object, routing each key to the right place — a key that names a preset toggles it, everything else is config:
 
 ```ts
-uses: [skills.config({ allowed: ["research"] }).presets({ dynamicActivation: true })]
+uses: [skills.with({ allowed: ["research"], dynamicActivation: true })]
 ```
 
-The value is validated against the capability's schema — a wrong shape is a build-time error. One thing to watch: using the **same** capability more than once in a block with **conflicting** `.config()` values throws (config carries values, so the framework won't silently pick one). Pass identical config, or configure it in a single place.
+The value is validated against the capability's schema — a wrong shape is a build-time error. One thing to watch: using the **same** capability more than once in a block with **conflicting** config values throws (config carries values, so the framework won't silently pick one). Pass identical config, or configure it in a single place.
+
+Under `.with()` are the two primitives the capability author defines: `.presets({ name: true/false })` for the toggles and `.config(value)` for the typed value. They compose directly too — `skills.config({ allowed: ["research"] }).presets({ dynamicActivation: true })`, in either order — when you want to be explicit about which surface you're touching. `.with()` is that composition in one call.
 
 Each capability documents the config it accepts. See [authoring open config](/docs/advanced/capabilities-authoring#open-config-with-a-resolver) to write one.
 

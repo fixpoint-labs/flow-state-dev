@@ -90,7 +90,7 @@ The trader runs two generators in sequence. First, a fast-model **approach pream
 Reading the upstream thesis happens through a capability. A capability bundles resources, tools, and context formatters; the generator opts in declaratively:
 
 ```ts
-uses: [tradingDesk.presets({ investmentThesis: true })]
+uses: [tradingDesk.with({ investmentThesis: true })]
 ```
 
 That one line means: install the resource that the investment thesis lives in, and format it into the generator's prompt context. No manual wiring of `context: { ... }` functions, no threading the resource through sequencer state. Adding a new generator that needs the thesis is one preset flag.
@@ -118,7 +118,7 @@ export const traderApproachGenerator = createApproachGenerator({
   agentName: PHASE_3_MEMO_KEYS.trader.agentName,
   artifactName: "TradeProposal",
   prompt: TRADER_APPROACH_PROMPT,
-  uses: [tradingDesk.presets({ investmentThesis: true })],
+  uses: [tradingDesk.with({ investmentThesis: true })],
 });
 ```
 

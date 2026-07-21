@@ -104,7 +104,7 @@ The `route()` callback and the static `flowKind`/`action` mount options are remo
 import { chatCapability } from "@flow-state-dev/chat-sdk";
 
 const replyToThread = generator({
-  uses: [chatCapability.presets({ threadContext: true })],
+  uses: [chatCapability.with({ threadContext: true })],
   async execute(input, ctx) {
     const platform = ctx.cap.chat.getPlatform(); // "slack"
     const thread = ctx.cap.chat.getThread();

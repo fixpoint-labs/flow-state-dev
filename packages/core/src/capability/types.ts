@@ -294,7 +294,7 @@ type PreserveCarriers<Self> = Pick<Self, Extract<keyof Self, CapabilityCarrierKe
  * carrier. Resolves to `never` when the capability declares no config, so
  * `.config()` is a compile error on a config-less capability.
  */
-type ConfigArgOf<Self> = Self extends { __configInType?: infer I }
+export type ConfigArgOf<Self> = Self extends { __configInType?: infer I }
   ? [I] extends [never]
     ? never
     : I
@@ -434,7 +434,57 @@ export interface DefinedCapability<
     TSequencerStateSchema,
     TOwnStateSchema
   > & PreserveCarriers<Self>;
+
+  /**
+   * Normalized consumer builder — collapses `.config()` and `.presets()` into
+   * one flat call. Preset-named keys become preset overrides; the rest become
+   * the config value. `.with({ allowed, dynamicActivation: true })` is exactly
+   * `.config({ allowed }).presets({ dynamicActivation: true })`.
+   *
+   * The argument is the config input intersected with the (all-optional) preset
+   * overrides. When the capability declares no config, the config half collapses
+   * away, so `.with()` accepts preset overrides alone; when it declares no
+   * presets, the preset half is empty, so `.with()` accepts the config value
+   * alone (including a scalar/array config, routed wholesale at runtime).
+   * Composes with `.config()`/`.presets()` and preserves escape-hatch carriers.
+   */
+  with<Self>(
+    this: Self,
+    bag: WithArg<Self, TPresetNames, TPresets>
+  ): ConfiguredCapability<
+    TName,
+    TFns,
+    TPresetNames,
+    TPresets,
+    TSessionStateSchema,
+    TResources,
+    TTargetSchemas,
+    TSequencerStateSchema,
+    TOwnStateSchema
+  > & PreserveCarriers<Self>;
 }
+
+/**
+ * The `.with()` argument type. Cases, in order:
+ * - **No config** (config half is `never`, nullish stripped): just the
+ *   all-optional preset overrides.
+ * - **Array or scalar config**: that value unchanged — a non-object config is
+ *   routed wholesale at runtime and can't share a bag with preset keys, so the
+ *   preset overrides are not intersected (which would collapse to `never`).
+ * - **Object config**: the config input intersected with the preset overrides,
+ *   the flat mixed bag.
+ */
+export type WithArg<
+  Self,
+  TNames extends string,
+  TPresets extends Record<string, PresetDef | string[]>,
+> = [NonNullable<ConfigArgOf<Self>>] extends [never]
+  ? PresetOverrides<TNames, TPresets>
+  : NonNullable<ConfigArgOf<Self>> extends readonly unknown[]
+    ? NonNullable<ConfigArgOf<Self>>
+    : NonNullable<ConfigArgOf<Self>> extends object
+      ? NonNullable<ConfigArgOf<Self>> & PresetOverrides<TNames, TPresets>
+      : NonNullable<ConfigArgOf<Self>>;
 
 // ---------------------------------------------------------------------------
 // Preset overrides

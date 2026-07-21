@@ -19,6 +19,8 @@ export type {
   PresetDef,
   PresetOverrideFn,
   PresetOverrides,
+  ConfigArgOf,
+  WithArg,
 } from "./types";
 export {
   flattenCapabilities,

@@ -235,7 +235,7 @@ const chat = generator({
 // Handler that records observations — opt out of context presets
 const observe = handler({
   name: 'capture-findings',
-  uses: [sec.capability.presets({ static: false, accumulated: false })],
+  uses: [sec.capability.with({ static: false, accumulated: false })],
   execute: async (input, ctx) => {
     await ctx.cap.perspective.observe({
       content: 'Auth endpoint lacks rate limiting',
@@ -262,7 +262,7 @@ const flow = defineFlow({
 - `static` (default on) — initial perspective framing (role, salience, reasoning, expertise)
 - `accumulated` (default on) — observations + positions formatted from the resources
 
-Disable either via `cap.presets({ accumulated: false })` when token budget is tight.
+Disable either via `cap.with({ accumulated: false })` when token budget is tight.
 
 | Export | Kind | Description |
 |--------|------|-------------|
