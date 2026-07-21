@@ -421,3 +421,18 @@ each against "does task-board + delegation + goalSeekLoop subsume it?" — track
   (worker/reviewer, skill-expressed assignment); (2) **plan timing** —
   full-plan-upfront vs incremental "plan a few → review → replan," a deliberate
   config, not a side effect of which pattern you picked.
+
+## 11. Host-as-worker / manager-vs-IC (FIX-923 — research)
+
+Probing "what happens when a generator assigns one task to itself and one to a
+worker" surfaced that **there is no host-as-worker concept today**: `addTask`
+doesn't validate `assignee`; dispatch is a `keyedRouter` over the worker registry;
+the host isn't in it, so a self-assigned task throws a registry-miss and is marked
+`errored` (default skip). Executive and worker pool are disjoint.
+
+Open question (**FIX-923**, split out of FIX-918 to keep that spec unloaded):
+should a delegating host also execute tasks itself (manager **and** IC), or stay a
+pure coordinator? Includes a **research pass** on whether mixing planner+executor
+in one agent is a known anti-pattern (context dilution / role confusion) — the
+"manager and IC is a no-no for AI" hypothesis. Also a fail-late smell to fix
+regardless: validate `assignee` at `addTask` instead of failing at dispatch.
