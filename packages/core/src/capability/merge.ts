@@ -333,6 +333,14 @@ function mergeResourcesInto(
 /**
  * Merge Zod state schemas using z.object().extend() semantics.
  * Both schemas must be ZodObject instances for extend to work.
+ *
+ * NOTE: this silently last-wins on a duplicate field — the right policy for
+ * session/request/user/org/sequencer scope schemas, where a later capability
+ * refining a field is intended. Own-state (`stateSchema`) deliberately does
+ * NOT route through here: it uses `collideOwnStateFields` instead, which
+ * throws on an incompatible duplicate field (see FIX-914 PR2). Do not
+ * "simplify" own-state by pointing it at `extendSchema` — the loud-collision
+ * behavior is the point.
  */
 function extendSchema(
   existing: ZodTypeAny | undefined,

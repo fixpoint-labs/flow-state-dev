@@ -2278,10 +2278,10 @@ export function sequencer<
   const { declaredResources, resolvedCapabilities, stateSchema } = resolveCapabilities(config, "sequencer");
 
   // FIX-914 PR2: `resolveCapabilities` already merged any capability-
-  // contributed own state (`ctx.self` / `ctx.sequencer`) with the
-  // sequencer's own `stateSchema` declaration. Runtime-only — sequencer
-  // capabilities aren't statically typed (see `SequencerCtx`'s hardcoded
-  // `TCapabilities = {}`), so this doesn't affect the `TStateSchema` generic.
+  // contributed own state (`ctx.self`) with the sequencer's own `stateSchema`
+  // declaration. Runtime-only — sequencer capabilities aren't statically typed
+  // (see `SequencerCtx`'s hardcoded `TCapabilities = {}`), so this doesn't
+  // affect the `TStateSchema` generic.
   const effectiveConfig = { ...config, stateSchema };
 
   // A sequencer has no direct `resources` config field — its OWN declarations

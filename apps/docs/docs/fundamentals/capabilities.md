@@ -157,6 +157,8 @@ The axes where this flows:
 
 If the block declares its own schema for the same axis, both are merged. For most axes the block's own declaration wins on key collision; `stateSchema` is stricter — a field declared by both a capability and the block (or by two capabilities) must be structurally compatible, or the build throws instead of silently picking one side. `ctx.targets`, `ctx.sequencer`, and `ctx.self` here are three of [block state](/docs/advanced/block-state)'s four addressing modes — the remaining one, `ctx.parent`, addresses the immediate parent's state, which a capability can't declare into (it isn't the parent's own capability).
 
+Type inference reflects the capability's **top-level** schema declarations. A schema contributed only through a preset (or the open-config resolver) still merges at runtime — the container works and `ctx.self` is populated — but it isn't reflected in the block's `ctx` types, so declare the schema at the capability's top level when you want it typed without re-declaring it on the block.
+
 Here's a concrete example. A capability declares session state with a `ticker` field. A handler lists it in `uses` and reads `ticker` without declaring anything itself:
 
 ```ts
