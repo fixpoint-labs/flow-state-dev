@@ -226,11 +226,20 @@ const verdictSchema = z.discriminatedUnion("decision", [
     .passthrough(),
 ]);
 
-function mergeStateSchema(extra: ZodTypeAny | undefined): ZodTypeAny {
+function mergeStateSchema(extra: ZodTypeAny | undefined, name: string): ZodTypeAny {
+  if (extra === undefined) return goalSeekLoopStateSchema;
+  // Only a ZodObject can merge field-wise with the loop's own container. A
+  // non-object schema (intersection, lazy, refined) can't, and silently keeping
+  // only the loop's fields would drop the caller's — so fail fast at
+  // construction, consistent with the primitive's other guards.
   if (extra instanceof z.ZodObject) {
     return goalSeekLoopStateSchema.merge(extra);
   }
-  return goalSeekLoopStateSchema;
+  throw new Error(
+    `[goalSeekLoop] "${name}" stateSchema must be a ZodObject so its fields can merge ` +
+      `into the loop-owner state (got ${(extra as { constructor?: { name?: string } }).constructor?.name ?? typeof extra}). ` +
+      `Wrap your fields in z.object({ ... }).`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -282,7 +291,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   }
 
   const boardCapName = board.capability.name;
-  const merged = mergeStateSchema(stateSchema);
+  const merged = mergeStateSchema(stateSchema, name);
 
   // ---- Small state-touching helpers (read/patch the loop-owner container) --
 

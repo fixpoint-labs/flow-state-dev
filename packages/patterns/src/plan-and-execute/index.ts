@@ -6,17 +6,18 @@
  * worker by default), and an evaluator decides whether to replan and
  * re-enter the board for another drain.
  *
- * Pipeline (post-FIX-447 migration onto the taskBoard substrate):
+ * Expressed on the `goalSeekLoop` primitive (FIX-910). The pattern supplies the
+ * loop's slots and `goalSeekLoop` assembles the judge-gated drain loop:
  *
- *   captureAndPlan
- *     → board.drain                   ← loopBack target
- *     → cascadeSkipDependents
- *     → evaluatePlanProgress
- *     → .stepIf(decision === "replan", replanner)
- *     → .stepIf(Array.isArray(tasks), applyReplan)
- *     → .map(d => { decision: d.decision ?? "continue" })
- *     → .loopBack(board.drain.name, { when: decision !== "complete" })
- *     → synthesize
+ *   seed:      synthesizeGoal? → stampOuterGoal → captureAndPlan
+ *   afterDrain: cascadeSkipDependents
+ *   judge:     evaluator → (replanner on replan-without-tasks) → Verdict
+ *   finalize:  synthesize
+ *   onError:   "fail"   (an evaluator throw propagates, as before)
+ *
+ * The replan branch stays *inside* the judge adapter (not `goalSeekLoop`'s
+ * generic `replanner` slot) because P&E's public `replanner` contract is fed the
+ * evaluator's full output, which the normalized `Verdict` would drop.
  *
  * The board uses the default request backing (`{ collectionId: name }`)
  * so the same TaskCollection survives across `board.drain` re-entries
