@@ -51,7 +51,7 @@ import {
   type DefineSkillsCollectionOptions,
 } from "./collection";
 import { buildLoadCatalogContext, createLoadSkillTool } from "./load-tool";
-import { parseSkillMd } from "./skill-md";
+import { parseSkillMd, validateSkillName } from "./skill-md";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -117,14 +117,21 @@ function indexInitialSkills(
   const index = new Map<string, IndexedSkill>();
   for (const skill of initialSkills ?? []) {
     try {
+      // Apply the same name validation runtime seeding does. An invalid or
+      // reserved name (`BadName`, `_meta`) is skipped by the seeder, so it must
+      // not enter the index either — otherwise an `active` binding to it would
+      // pass build validation but never get seeded, and the reader would omit
+      // the skill, leaving the generator without its instructions.
+      validateSkillName(skill.name);
       const parsed = parseSkillMd(skill.skillMd);
       index.set(skill.name, {
         allowedTools: parsed.state.allowedTools,
         contextMode: parsed.state.contextMode ?? "inline",
       });
     } catch {
-      // A malformed bundled skill is a seeding-time concern; skip it here so
-      // config resolution doesn't hard-fail on an unrelated skill's typo.
+      // A malformed or invalidly-named bundled skill is a seeding-time concern;
+      // skip it here so config resolution fails loud on a binding to it (via
+      // the "unknown skill" path) rather than silently accepting it.
     }
   }
   return index;

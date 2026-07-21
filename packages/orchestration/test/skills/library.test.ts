@@ -123,6 +123,23 @@ describe("createSkillsLibrary — static active binding", () => {
     ).toThrow(/no bundled skills are available to validate against/);
   });
 
+  it("rejects a binding to an invalidly-named bundled skill (seeding would drop it)", () => {
+    // A bundled skill whose name the seeder would reject (uppercase / reserved)
+    // must not pass build validation — otherwise it never seeds and the reader
+    // omits it. A valid skill is present so the index isn't empty.
+    const skills = createSkillsLibrary({
+      initialSkills: [inlineSkill("valid", "body"), { name: "BadName", skillMd: "---\ndescription: x\n---\n\nbody" }],
+    });
+    expect(() =>
+      generator({
+        name: "g",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        uses: [skills.config({ active: ["BadName"] })],
+      }),
+    ).toThrow(/unknown skill "BadName"/);
+  });
+
   it("renders the bound skill body — and only that generator's skill", async () => {
     const initialSkills = [
       inlineSkill("alpha", "ALPHA-BODY-MARKER"),
