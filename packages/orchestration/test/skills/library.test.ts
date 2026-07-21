@@ -341,6 +341,35 @@ describe("createSkillsLibrary — explicit activeState", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("contributes allowed skills' declared tools on the explicit-activeState path (no dynamicActivation)", async () => {
+    const mk = (name: string) =>
+      handler({ name, inputSchema: z.object({}), outputSchema: z.object({}), execute: async () => ({}) });
+    const search = mk("search");
+    const skills = createSkillsLibrary({
+      catalog: { search },
+      initialSkills: [inlineSkill("uses-search", "body", ["search"])],
+    });
+    // Upstream-matcher path: explicit activeState + allowed, but no load tool.
+    const gen = generator({
+      name: "g",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      uses: [
+        skills.config({
+          allowed: ["uses-search"],
+          activeState: { scope: "session", field: "activeAnalystSkills" },
+        }),
+      ],
+    });
+    const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
+      (t) => t.name,
+    );
+    // The activated skill's body can reference `search`, so it must be registered.
+    expect(toolNames).toContain("search");
+    // ...but the load tool is NOT installed (dynamicActivation off).
+    expect(toolNames).not.toContain("loadSkill");
+  });
+
   it("reader reads dynamic entries from the explicit field, inline only", async () => {
     const skills = createSkillsLibrary({
       initialSkills: [inlineSkill("s", "S-BODY-MARKER"), inlineSkill("f", "F-BODY-MARKER")],
