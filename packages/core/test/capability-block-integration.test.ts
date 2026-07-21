@@ -796,7 +796,7 @@ describe("own state via capability (FIX-914 PR2)", () => {
     expect(stateSchema.parse({})).toEqual({ loaded: [], note: null });
   });
 
-  it("capability stateSchema + block stateSchema with an incompatible duplicate field throws at build time", () => {
+  it("capability stateSchema + block stateSchema declaring the same field (different reference) throws at build time", () => {
     const cap = defineCapability({
       name: "own-state-conflict",
       stateSchema: z.object({ count: z.string() }),
@@ -814,7 +814,7 @@ describe("own state via capability (FIX-914 PR2)", () => {
     ).toThrow("Own-state conflict");
   });
 
-  it("two capabilities contributing incompatible duplicate fields throws at build time", () => {
+  it("two capabilities declaring the same field with different schema references throw at build time", () => {
     const capA = defineCapability({
       name: "own-state-a",
       stateSchema: z.object({ count: z.string() }),
@@ -835,14 +835,41 @@ describe("own state via capability (FIX-914 PR2)", () => {
     ).toThrow("Own-state conflict");
   });
 
-  it("two capabilities contributing the same compatible field does not throw", () => {
+  it("same field name as differently-shaped nested objects throws (reference-equality catches what a shallow structural check misses)", () => {
+    // A shallow structural comparison sees only that both `config` fields are
+    // ZodObject and would let `.extend()` silently pick one, diverging from the
+    // intersected ctx.self type. Reference-equality rejects it outright.
+    const capA = defineCapability({
+      name: "own-state-nested-a",
+      stateSchema: z.object({ config: z.object({ nested: z.object({ a: z.string() }) }) }),
+    });
+    const capB = defineCapability({
+      name: "own-state-nested-b",
+      stateSchema: z.object({ config: z.object({ nested: z.object({ b: z.number() }) }) }),
+    });
+
+    expect(() =>
+      handler({
+        name: "test",
+        uses: [capA, capB],
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: async () => ({}),
+      })
+    ).toThrow("Own-state conflict");
+  });
+
+  it("two capabilities sharing the same schema reference for a field dedupes (no throw)", () => {
+    // Reference-equality: to legitimately share a field, both capabilities
+    // reference one schema constant — matching how targets/resources dedupe.
+    const countField = z.number();
     const capA = defineCapability({
       name: "own-state-c",
-      stateSchema: z.object({ count: z.number() }),
+      stateSchema: z.object({ count: countField }),
     });
     const capB = defineCapability({
       name: "own-state-d",
-      stateSchema: z.object({ count: z.number() }),
+      stateSchema: z.object({ count: countField }),
     });
 
     const block = handler({

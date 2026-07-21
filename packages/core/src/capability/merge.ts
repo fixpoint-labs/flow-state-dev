@@ -7,7 +7,7 @@
  *   an accumulator that becomes the block's effective config.
  */
 import type { ZodObject, ZodRawShape, ZodTypeAny } from "zod";
-import { isZodObject, compareZodSchemasStructurally } from "../helpers/zod-introspect";
+import { isZodObject } from "../helpers/zod-introspect";
 import { deepEqual } from "../helpers/deep-equal";
 import type { BlockKind, DeclaredResourceEntry, DeclaredResources } from "../types/block";
 import type {
@@ -337,10 +337,10 @@ function mergeResourcesInto(
  * NOTE: this silently last-wins on a duplicate field — the right policy for
  * session/request/user/org/sequencer scope schemas, where a later capability
  * refining a field is intended. Own-state (`stateSchema`) deliberately does
- * NOT route through here: it uses `collideOwnStateFields` instead, which
- * throws on an incompatible duplicate field (see FIX-914 PR2). Do not
- * "simplify" own-state by pointing it at `extendSchema` — the loud-collision
- * behavior is the point.
+ * NOT route through here: it uses `mergeOwnStateShapes` instead, which throws
+ * on a duplicate field unless both sides are the same schema reference (see
+ * FIX-914 PR2). Do not "simplify" own-state by pointing it at `extendSchema`
+ * — the loud-collision behavior is the point.
  */
 function extendSchema(
   existing: ZodTypeAny | undefined,
@@ -384,28 +384,43 @@ function mergeTargetsInto(
 }
 
 /**
- * Merge two own-state schemas field-by-field, throwing on the first
- * structurally-incompatible duplicate field instead of silently letting the
- * incoming side win (unlike `extendSchema`). A field declared by both sides
- * must be structurally compatible (see `compareZodSchemasStructurally`) —
- * this is the "collision detection" `sequencerStateSchema`'s `.extend()`
- * merge never had.
+ * Merge two own-state schemas field-by-field. A field declared by both sides
+ * must be the SAME schema reference, or this throws — the same reference-
+ * equality collision detection the sibling `mergeTargetsInto` /
+ * `mergeResourcesInto` already use for their axes. This is the "collision
+ * detection" `sequencerStateSchema`'s silent-last-wins `.extend()` never had:
+ * two sources contributing the same `ctx.self` field fail loud instead of one
+ * silently overwriting the other.
+ *
+ * Reference-equality (rather than a structural comparison) is deliberate — a
+ * shallow structural check admits nested-object / parse-mode divergence that
+ * `.extend()` then resolves last-wins, so the runtime schema and the
+ * intersected `ctx.self` type disagree. Requiring identity is sound with no
+ * such blind spots: two contributors that both want a field share the schema
+ * definition (import one constant) or use distinct field names. Disjoint
+ * fields merge cleanly via `.extend()`.
  */
-function collideOwnStateFields(
+function mergeOwnStateShapes(
   existing: ZodTypeAny,
   incoming: ZodTypeAny,
-  describe: (key: string, reason: string) => string
+  context: string
 ): ZodTypeAny {
+  // Own state is addressed as `ctx.self.state.<field>`, so both sides must be
+  // objects to merge field-by-field.
   if (!isZodObject(existing) || !isZodObject(incoming)) {
-    throw new Error(describe("<root>", "both sides must be z.object() schemas to merge"));
+    throw new Error(
+      `Own-state conflict (${context}): own-state schemas must both be z.object() to merge.`
+    );
   }
   const existingShape = (existing as ZodObject<ZodRawShape>).shape;
   const incomingShape = (incoming as ZodObject<ZodRawShape>).shape;
   for (const key of Object.keys(incomingShape)) {
-    if (!(key in existingShape)) continue;
-    const mismatch = compareZodSchemasStructurally(existingShape[key], incomingShape[key]);
-    if (mismatch) {
-      throw new Error(describe(key, mismatch.reason));
+    if (key in existingShape && existingShape[key] !== incomingShape[key]) {
+      throw new Error(
+        `Own-state conflict (${context}): field "${key}" is declared by two sources with ` +
+        `different schema references. Two contributors to the same ctx.self field must share ` +
+        `the schema definition (reference one constant) or use distinct field names.`
+      );
     }
   }
   return (existing as ZodObject<ZodRawShape>).extend(incomingShape);
@@ -413,8 +428,8 @@ function collideOwnStateFields(
 
 /**
  * Merge own-state (`stateSchema`) contributions across capabilities in the
- * accumulator. Same-name fields from two capabilities must be structurally
- * compatible or this throws — see `collideOwnStateFields`.
+ * accumulator. A same-name field from two capabilities must be the same
+ * schema reference or this throws — see `mergeOwnStateShapes`.
  */
 function mergeOwnStateSchema(
   target: ZodTypeAny | undefined,
@@ -423,17 +438,15 @@ function mergeOwnStateSchema(
   sourceLabel: string
 ): ZodTypeAny {
   if (target === undefined) return source;
-  return collideOwnStateFields(target, source, (key, reason) =>
-    `Own-state conflict in capability "${capName}" (${sourceLabel}): field "${key}" is ` +
-    `already declared with an incompatible schema — ${reason}`
-  );
+  return mergeOwnStateShapes(target, source, `capability "${capName}" ${sourceLabel}`);
 }
 
 /**
  * Merge the capability-contributed own-state schema (from `mergeCapabilities`)
- * with a block's own declared `stateSchema`. Same-name fields must be
- * structurally compatible or this throws — see `collideOwnStateFields`.
- * Mirrors `mergeWithBlockResources`'s capability-then-block shape.
+ * with a block's own declared `stateSchema`. A same-name field declared by
+ * both must be the same schema reference or this throws — see
+ * `mergeOwnStateShapes`. Mirrors `mergeWithBlockResources`'s capability-then-
+ * block shape (and its reference-equality collision rule).
  */
 export function mergeCapabilityOwnStateWithBlock(
   capStateSchema: ZodTypeAny | undefined,
@@ -442,9 +455,10 @@ export function mergeCapabilityOwnStateWithBlock(
 ): ZodTypeAny | undefined {
   if (capStateSchema === undefined) return blockStateSchema;
   if (blockStateSchema === undefined) return capStateSchema;
-  return collideOwnStateFields(capStateSchema, blockStateSchema, (key, reason) =>
-    `Own-state conflict on block "${blockName}": field "${key}" is declared both directly ` +
-    `and by a capability, with an incompatible schema — ${reason}`
+  return mergeOwnStateShapes(
+    capStateSchema,
+    blockStateSchema,
+    `block "${blockName}" own stateSchema + capability`
   );
 }
 

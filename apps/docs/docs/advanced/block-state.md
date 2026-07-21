@@ -139,7 +139,7 @@ const researcher = generator({
 });
 ```
 
-If two sources declare the same field — two capabilities, or a capability and the block's own `stateSchema` — the fields must be structurally compatible, or the build throws. See [Authoring capabilities](/docs/advanced/capabilities-authoring) for the merge rules.
+If two sources declare the same field — two capabilities, or a capability and the block's own `stateSchema` — they must reference the *same schema constant*, or the build throws. See [Authoring capabilities](/docs/advanced/capabilities-authoring) for the merge rules.
 
 ## Where to next
 
