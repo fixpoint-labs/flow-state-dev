@@ -66,9 +66,19 @@ export function buildSkillBindingReader(
     const rendered = new Set<string>();
     const blocks: string[] = [];
 
-    // 1. Static preloaded skills (no runtime input).
+    // Dynamic (inline) activations carry an `input` for `$ARGUMENTS`; a static
+    // `active` copy of the same skill does not. When a name appears in both, the
+    // dynamic entry wins so the argument-bearing body is what renders — a static
+    // copy rendered first would otherwise dedupe out the loaded arguments.
+    const dynamicEntries = readActivations(ctx, opts.location).filter(
+      (e) => e.mode === "inline",
+    );
+    const dynamicNames = new Set(dynamicEntries.map((e) => e.name));
+
+    // 1. Static preloaded skills (no runtime input) — unless superseded by a
+    //    dynamic activation of the same name (rendered below with its input).
     for (const name of staticActive) {
-      if (rendered.has(name)) continue;
+      if (rendered.has(name) || dynamicNames.has(name)) continue;
       const block = await renderActiveSkillBody(collection, name, opts.mountPath, undefined);
       if (block) {
         rendered.add(name);
@@ -79,8 +89,7 @@ export function buildSkillBindingReader(
     // 2. Dynamic activations — inline mode only. Preserve each entry's input
     //    (substituted into `$ARGUMENTS`); fork/pattern entries are dispatch
     //    concerns and never render as context.
-    for (const entry of readActivations(ctx, opts.location)) {
-      if (entry.mode !== "inline") continue;
+    for (const entry of dynamicEntries) {
       if (rendered.has(entry.name)) continue;
       const block = await renderActiveSkillBody(
         collection,

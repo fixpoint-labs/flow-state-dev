@@ -367,6 +367,31 @@ describe("createSkillsLibrary — block-state default reader", () => {
     expect(out).not.toContain("DRAFT-MARKER");
   });
 
+  it("a dynamic load with an input arg wins over the static copy of the same skill", async () => {
+    // `dual` is preloaded via `active` (no $ARGUMENTS) and also loadable. When
+    // the model loads it with an input, the argument-bearing body must render —
+    // the static copy must not dedupe out the loaded arguments.
+    const skills = createSkillsLibrary({
+      initialSkills: [inlineSkill("dual", "ARG=[$ARGUMENTS]")],
+    });
+    const gen = generator({
+      name: "g",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      uses: [skills.config({ active: ["dual"] }).presets({ dynamicActivation: true })],
+    });
+    const collection = createMockSkillsCollection();
+    const ctx = buildReaderCtx(collection, {
+      self: {
+        state: { activeSkills: [{ name: "dual", mode: "inline", input: "topic-42", activatedAt: 1 }] },
+      },
+    });
+    const out = await renderGeneratorSkills(gen, ctx);
+    expect(out).toContain("ARG=[topic-42]");
+    // The static (argument-less) copy is not also rendered.
+    expect(out).not.toContain("ARG=[]");
+  });
+
   it("renders dynamic entries from the generator's own block state (ctx.self)", async () => {
     const skills = createSkillsLibrary({
       initialSkills: [inlineSkill("loaded", "LOADED-BODY-MARKER")],
