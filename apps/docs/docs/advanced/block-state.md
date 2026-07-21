@@ -120,8 +120,30 @@ Block state lives in memory for the duration of the request, the same FIFO-locke
 
 A non-sequencer block that suspends mid-execution loses its in-memory state on resume today. If your block needs to survive a suspend/resume cycle, keep that state on the enclosing durable sequencer for now, where checkpointing already works.
 
+## Capabilities can contribute `ctx.self`
+
+A capability can declare `stateSchema` too, and give the blocks it's used on a working `ctx.self` without them declaring `stateSchema` directly — useful when a capability (a skills registry, say) needs somewhere to keep its own state on the generator it's attached to:
+
+```ts
+const skillsCapability = defineCapability({
+  name: "skills",
+  stateSchema: z.object({ activeSkills: z.array(z.string()).default([]) }),
+});
+
+const researcher = generator({
+  name: "researcher",
+  uses: [skillsCapability],
+  // No `stateSchema` here — the capability supplied it. ctx.self still works.
+  context: (_input, ctx) => `active skills: ${ctx.self?.state.activeSkills.join(", ")}`,
+  // ...
+});
+```
+
+If two sources declare the same field — two capabilities, or a capability and the block's own `stateSchema` — the fields must be structurally compatible, or the build throws. See [Authoring capabilities](/docs/advanced/capabilities-authoring) for the merge rules.
+
 ## Where to next
 
 - **[Sequencer State](/docs/advanced/sequencer-state)** — `ctx.sequencer` is the nearest-sequencer addressing mode over this same primitive.
 - **[State Targets and Parents](/docs/advanced/state-targets-and-parents)** — `ctx.targets.<name>` reaches a specific named ancestor instead of the immediate parent.
 - **[State Operations](/docs/fundamentals/state-operations)** — the operation reference (`setState`, `patchState`, `incState`, ...) shared by every state handle.
+- **[Authoring capabilities](/docs/advanced/capabilities-authoring)** — how a capability contributes `stateSchema` (and other config) to the blocks that use it.

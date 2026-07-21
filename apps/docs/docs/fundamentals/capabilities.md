@@ -145,7 +145,7 @@ Capabilities are validated at factory time, so most install mistakes show up bef
 
 When a block lists a capability in `uses`, the framework reflects the capability's declared schemas into the block's `ctx` types at factory time. You don't need to re-declare what the capability already claims.
 
-The four axes where this flows:
+The axes where this flows:
 
 | Capability field | Where it appears in `ctx` |
 |---|---|
@@ -153,8 +153,9 @@ The four axes where this flows:
 | `sessionResourceSchemas` / `sessionResources` | `ctx.session.resources.*` |
 | `targetStateSchemas` | `ctx.targets.*` |
 | `sequencerStateSchema` (preset) | `ctx.sequencer.state` |
+| `stateSchema` | `ctx.self.state` |
 
-If the block declares its own schema for the same axis, both are merged. The block's own declaration wins on key collision. `ctx.targets` and `ctx.sequencer` here are two of [block state](/docs/advanced/block-state)'s four addressing modes — the other two, `ctx.self` and `ctx.parent`, address a block's own local state rather than a scope a capability declares into.
+If the block declares its own schema for the same axis, both are merged. For most axes the block's own declaration wins on key collision; `stateSchema` is stricter — a field declared by both a capability and the block (or by two capabilities) must be structurally compatible, or the build throws instead of silently picking one side. `ctx.targets`, `ctx.sequencer`, and `ctx.self` here are three of [block state](/docs/advanced/block-state)'s four addressing modes — the remaining one, `ctx.parent`, addresses the immediate parent's state, which a capability can't declare into (it isn't the parent's own capability).
 
 Here's a concrete example. A capability declares session state with a `ticker` field. A handler lists it in `uses` and reads `ticker` without declaring anything itself:
 

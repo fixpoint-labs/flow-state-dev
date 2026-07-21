@@ -7,7 +7,7 @@
  *   an accumulator that becomes the block's effective config.
  */
 import type { ZodObject, ZodRawShape, ZodTypeAny } from "zod";
-import { isZodObject } from "../helpers/zod-introspect";
+import { isZodObject, compareZodSchemasStructurally } from "../helpers/zod-introspect";
 import { deepEqual } from "../helpers/deep-equal";
 import type { BlockKind, DeclaredResourceEntry, DeclaredResources } from "../types/block";
 import type {
@@ -267,6 +267,8 @@ export type MergedCapabilitySurface = {
   userStateSchema: ZodTypeAny | undefined;
   orgStateSchema: ZodTypeAny | undefined;
   sequencerStateSchema: ZodTypeAny | undefined;
+  /** Own-state contribution, merged across capabilities (FIX-914 PR2). */
+  stateSchema: ZodTypeAny | undefined;
   targetStateSchemas: Record<string, ZodTypeAny> | undefined;
   contextEntries: Array<PresetContextEntry>;
   toolEntries: Array<GeneratorTool[] | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>)>;
@@ -288,6 +290,7 @@ export function createEmptyMergedSurface(): MergedCapabilitySurface {
     userStateSchema: undefined,
     orgStateSchema: undefined,
     sequencerStateSchema: undefined,
+    stateSchema: undefined,
     targetStateSchemas: undefined,
     contextEntries: [],
     toolEntries: [],
@@ -373,6 +376,71 @@ function mergeTargetsInto(
 }
 
 /**
+ * Merge two own-state schemas field-by-field, throwing on the first
+ * structurally-incompatible duplicate field instead of silently letting the
+ * incoming side win (unlike `extendSchema`). A field declared by both sides
+ * must be structurally compatible (see `compareZodSchemasStructurally`) —
+ * this is the "collision detection" `sequencerStateSchema`'s `.extend()`
+ * merge never had.
+ */
+function collideOwnStateFields(
+  existing: ZodTypeAny,
+  incoming: ZodTypeAny,
+  describe: (key: string, reason: string) => string
+): ZodTypeAny {
+  if (!isZodObject(existing) || !isZodObject(incoming)) {
+    throw new Error(describe("<root>", "both sides must be z.object() schemas to merge"));
+  }
+  const existingShape = (existing as ZodObject<ZodRawShape>).shape;
+  const incomingShape = (incoming as ZodObject<ZodRawShape>).shape;
+  for (const key of Object.keys(incomingShape)) {
+    if (!(key in existingShape)) continue;
+    const mismatch = compareZodSchemasStructurally(existingShape[key], incomingShape[key]);
+    if (mismatch) {
+      throw new Error(describe(key, mismatch.reason));
+    }
+  }
+  return (existing as ZodObject<ZodRawShape>).extend(incomingShape);
+}
+
+/**
+ * Merge own-state (`stateSchema`) contributions across capabilities in the
+ * accumulator. Same-name fields from two capabilities must be structurally
+ * compatible or this throws — see `collideOwnStateFields`.
+ */
+function mergeOwnStateSchema(
+  target: ZodTypeAny | undefined,
+  source: ZodTypeAny,
+  capName: string,
+  sourceLabel: string
+): ZodTypeAny {
+  if (target === undefined) return source;
+  return collideOwnStateFields(target, source, (key, reason) =>
+    `Own-state conflict in capability "${capName}" (${sourceLabel}): field "${key}" is ` +
+    `already declared with an incompatible schema — ${reason}`
+  );
+}
+
+/**
+ * Merge the capability-contributed own-state schema (from `mergeCapabilities`)
+ * with a block's own declared `stateSchema`. Same-name fields must be
+ * structurally compatible or this throws — see `collideOwnStateFields`.
+ * Mirrors `mergeWithBlockResources`'s capability-then-block shape.
+ */
+export function mergeCapabilityOwnStateWithBlock(
+  capStateSchema: ZodTypeAny | undefined,
+  blockStateSchema: ZodTypeAny | undefined,
+  blockName: string
+): ZodTypeAny | undefined {
+  if (capStateSchema === undefined) return blockStateSchema;
+  if (blockStateSchema === undefined) return capStateSchema;
+  return collideOwnStateFields(capStateSchema, blockStateSchema, (key, reason) =>
+    `Own-state conflict on block "${blockName}": field "${key}" is declared both directly ` +
+    `and by a capability, with an incompatible schema — ${reason}`
+  );
+}
+
+/**
  * Merge a single surface (required or preset) into the accumulator.
  * Validates block-kind compatibility and throws clear errors.
  */
@@ -419,6 +487,12 @@ export function mergeSurfaceInto(
       );
     }
     acc.sequencerStateSchema = extendSchema(acc.sequencerStateSchema, surface.sequencerStateSchema);
+  }
+
+  // Own state — valid on all block kinds (FIX-914 PR2: any block can hold
+  // its own state, so any block's capability can contribute to it).
+  if (surface.stateSchema) {
+    acc.stateSchema = mergeOwnStateSchema(acc.stateSchema, surface.stateSchema, capName, source);
   }
 
   // Targets — valid on all block kinds

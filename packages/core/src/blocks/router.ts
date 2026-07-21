@@ -12,6 +12,7 @@ import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type {
   InferCapabilities,
+  InferCapabilityOwnState,
   InferCapabilityResources,
   InferCapabilitySequencerState,
   InferCapabilitySessionState,
@@ -89,7 +90,7 @@ export interface RouterConfig<
   // in `execution-and-errors.md`; a preceding `.tap(handler)` should write it.
   TStateSchema extends ZodTypeAny | undefined = undefined,
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
-  TSelfState extends object = InferStateFromSchema<TStateSchema>,
+  TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "stateSchema"> {
   requestStateSchema?: TRequestStateSchema;
@@ -158,7 +159,7 @@ export function router<
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   TStateSchema extends ZodTypeAny | undefined = undefined,
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
-  TSelfState extends object = InferStateFromSchema<TStateSchema>,
+  TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
 >(
   config: RouterConfig<
@@ -193,7 +194,7 @@ export function router<
     }
   }
 
-  const { declaredResources: capResources, resolvedCapabilities } = resolveCapabilities(config, "router");
+  const { declaredResources: capResources, resolvedCapabilities, stateSchema: effectiveStateSchema } = resolveCapabilities(config, "router");
   // Merge capability resources with the router's own + route resources.
   // capResources already includes the router's own declared resources (via resolveCapabilities).
   // mergeRouterResources also includes the router's own resources plus route resources.
@@ -226,7 +227,7 @@ export function router<
 
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
-    config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
+    config: { ...config, stateSchema: effectiveStateSchema } as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     declaredResources,
     ownDeclaredResources,
     resolvedCapabilities,

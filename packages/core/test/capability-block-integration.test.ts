@@ -753,3 +753,160 @@ describe("generator singletons via capability", () => {
     ).toThrow(/declares model.*only valid on generator/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Own state via capability (FIX-914 PR2)
+// ---------------------------------------------------------------------------
+
+describe("own state via capability (FIX-914 PR2)", () => {
+  it("capability stateSchema becomes the handler's effective ctx.self schema", () => {
+    const cap = defineCapability({
+      name: "own-state-cap",
+      stateSchema: z.object({ loaded: z.array(z.string()).default([]) }),
+    });
+
+    const block = handler({
+      name: "test",
+      uses: [cap],
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async () => ({}),
+    });
+
+    const stateSchema = (block.config as any).stateSchema;
+    expect(stateSchema.parse({})).toEqual({ loaded: [] });
+  });
+
+  it("capability stateSchema merges with the block's own stateSchema (disjoint fields)", () => {
+    const cap = defineCapability({
+      name: "own-state-cap-disjoint",
+      stateSchema: z.object({ loaded: z.array(z.string()).default([]) }),
+    });
+
+    const block = handler({
+      name: "test",
+      uses: [cap],
+      stateSchema: z.object({ note: z.string().nullable().default(null) }),
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async () => ({}),
+    });
+
+    const stateSchema = (block.config as any).stateSchema;
+    expect(stateSchema.parse({})).toEqual({ loaded: [], note: null });
+  });
+
+  it("capability stateSchema + block stateSchema with an incompatible duplicate field throws at build time", () => {
+    const cap = defineCapability({
+      name: "own-state-conflict",
+      stateSchema: z.object({ count: z.string() }),
+    });
+
+    expect(() =>
+      handler({
+        name: "test",
+        uses: [cap],
+        stateSchema: z.object({ count: z.number() }),
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: async () => ({}),
+      })
+    ).toThrow("Own-state conflict");
+  });
+
+  it("two capabilities contributing incompatible duplicate fields throws at build time", () => {
+    const capA = defineCapability({
+      name: "own-state-a",
+      stateSchema: z.object({ count: z.string() }),
+    });
+    const capB = defineCapability({
+      name: "own-state-b",
+      stateSchema: z.object({ count: z.number() }),
+    });
+
+    expect(() =>
+      handler({
+        name: "test",
+        uses: [capA, capB],
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: async () => ({}),
+      })
+    ).toThrow("Own-state conflict");
+  });
+
+  it("two capabilities contributing the same compatible field does not throw", () => {
+    const capA = defineCapability({
+      name: "own-state-c",
+      stateSchema: z.object({ count: z.number() }),
+    });
+    const capB = defineCapability({
+      name: "own-state-d",
+      stateSchema: z.object({ count: z.number() }),
+    });
+
+    const block = handler({
+      name: "test",
+      uses: [capA, capB],
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async () => ({}),
+    });
+
+    expect((block.config as any).stateSchema.parse({ count: 1 })).toEqual({ count: 1 });
+  });
+
+  it("generator: capability stateSchema becomes the effective stateSchema", () => {
+    const cap = defineCapability({
+      name: "gen-own-state-cap",
+      stateSchema: z.object({ activeSkills: z.array(z.string()).default([]) }),
+    });
+
+    const gen = generator({
+      name: "test",
+      uses: [cap],
+      model: "intent/utility",
+      prompt: "test",
+    });
+
+    const stateSchema = (gen.config as any).stateSchema;
+    expect(stateSchema.parse({})).toEqual({ activeSkills: [] });
+  });
+
+  it("router: declaring stateSchema alongside a capability's contribution merges both", () => {
+    const routeA = handler({
+      name: "route-a",
+      execute: () => ({}),
+    });
+    const cap = defineCapability({
+      name: "router-own-state-cap",
+      stateSchema: z.object({ picks: z.number().default(0) }),
+    });
+
+    const pickRouter = router({
+      name: "pick",
+      uses: [cap],
+      stateSchema: z.object({ note: z.string().nullable().default(null) }),
+      routes: [routeA],
+      execute: async () => routeA,
+    });
+
+    const stateSchema = (pickRouter.config as any).stateSchema;
+    expect(stateSchema.parse({})).toEqual({ picks: 0, note: null });
+  });
+
+  it("sequencer: capability stateSchema is wired into the sequencer's effective stateSchema", () => {
+    const cap = defineCapability({
+      name: "seq-own-state-cap",
+      stateSchema: z.object({ steps: z.number().default(0) }),
+    });
+
+    const seq = sequencer({
+      name: "seq",
+      uses: [cap],
+    });
+
+    const stateSchema = (seq.config as any).stateSchema;
+    expect(stateSchema.parse({})).toEqual({ steps: 0 });
+  });
+});

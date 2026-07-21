@@ -24,11 +24,13 @@ export function defineCapability<
   const TResources extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   const TTargetSchemas extends Record<string, import("zod").ZodTypeAny> | undefined = undefined,
   const TSequencerStateSchema extends import("zod").ZodTypeAny | undefined = undefined,
+  const TOwnStateSchema extends import("zod").ZodTypeAny | undefined = undefined,
   const TPresetKeys extends string = never,
   const TSessionStateType = unknown,
   const TResourcesType = unknown,
   const TTargetStatesType = unknown,
   const TSequencerStateType = unknown,
+  const TOwnStateType = unknown,
   const TConfigSchema extends import("zod").ZodTypeAny | undefined = undefined,
   const TConfigExplicit = never,
 >(
@@ -38,7 +40,8 @@ export function defineCapability<
     TSessionStateSchema,
     TResources,
     TTargetSchemas,
-    TSequencerStateSchema
+    TSequencerStateSchema,
+    TOwnStateSchema
   >, "config"> & {
     presets?: { [K in TPresetKeys]: PresetDef<InferSessionState<TSessionStateSchema>> | string[] } & { default?: string[] };
     // Capture the literal override type via const generics so the
@@ -49,6 +52,7 @@ export function defineCapability<
     resourcesType?: TResourcesType;
     targetStatesType?: TTargetStatesType;
     sequencerStateType?: TSequencerStateType;
+    stateSchemaType?: TOwnStateType;
     // Open config. `schema` types the resolver's `config` param as z.output
     // (parsed) and the `.config()` argument as z.input. Schemaless: both are
     // the explicit type inferred from the resolver's `config` annotation.
@@ -70,12 +74,14 @@ export function defineCapability<
   TSessionStateSchema,
   TResources,
   TTargetSchemas,
-  TSequencerStateSchema
+  TSequencerStateSchema,
+  TOwnStateSchema
 > & {
   readonly sessionStateType?: TSessionStateType;
   readonly resourcesType?: TResourcesType;
   readonly targetStatesType?: TTargetStatesType;
   readonly sequencerStateType?: TSequencerStateType;
+  readonly stateSchemaType?: TOwnStateType;
   // z.input at the call site (a `.default()` field is optional here); `never`
   // when no config is declared, which makes `.config()` a compile error.
   readonly __configInType?: TConfigSchema extends import("zod").ZodTypeAny
@@ -97,6 +103,7 @@ export function defineCapability<
     userStateSchema: config.userStateSchema,
     orgStateSchema: config.orgStateSchema,
     sequencerStateSchema: config.sequencerStateSchema,
+    stateSchema: config.stateSchema,
     targetStateSchemas: config.targetStateSchemas,
     uses: config.uses,
     itemVisibility: config.itemVisibility,

@@ -6,7 +6,7 @@
  * exposed via `ctx.self` (own container) and `ctx.parent` (immediate parent's
  * container, when the child declares `parentStateSchema`).
  */
-import { defineFlow, generator, handler, router, sequencer } from "@flow-state-dev/core";
+import { defineCapability, defineFlow, generator, handler, router, sequencer } from "@flow-state-dev/core";
 import type { GeneratorModel, GeneratorModelCallOptions, GeneratorModelResult } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -499,5 +499,67 @@ describe("FIX-914: block-level state", () => {
     // "reader" must see the SEQUENCER's own state, not the same-named
     // "decoy" sibling's state.
     expect(observedOwner).toBe("sequencer");
+  });
+});
+
+describe("FIX-914 PR2: capability-contributed own state", () => {
+  it("capability stateSchema gives a generator a working ctx.self, populated by a tool via ctx.parent", async () => {
+    const seenContexts: string[] = [];
+    const track = handler({
+      name: "track-pr2",
+      inputSchema: z.object({ id: z.string() }),
+      outputSchema: z.object({ ok: z.boolean() }),
+      parentStateSchema: z.object({ loaded: z.array(z.string()).default([]) }),
+      execute: async (input, ctx) => {
+        await ctx.parent?.pushState?.("loaded", input.id);
+        return { ok: true };
+      }
+    });
+
+    // The generator declares NO own `stateSchema` — this capability alone
+    // supplies it, the way the skills capability (FIX-911) contributes
+    // `activeSkills` to a consuming generator without the generator author
+    // redeclaring it.
+    const trackingCapability = defineCapability({
+      name: "tracking",
+      stateSchema: z.object({ loaded: z.array(z.string()).default([]) }),
+    });
+
+    const model = stepModel([
+      () => ({ toolCalls: [{ toolCallId: "c1", toolName: "track-pr2", args: { id: "a" } }], finishReason: "tool-calls" }),
+      () => ({ text: "done", finishReason: "stop" }),
+    ]);
+
+    const researcher = generator({
+      name: "researcher-pr2",
+      model,
+      prompt: "p",
+      tools: [track],
+      uses: [trackingCapability],
+      context: (_input, ctx) => {
+        const loaded = ctx.self?.state.loaded ?? [];
+        seenContexts.push(loaded.join(","));
+        return `loaded: ${loaded.join(", ")}`;
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "gen-cap-own-state-flow",
+      actions: { run: { block: researcher, inputSchema: z.object({}) } }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "user",
+      sessionId: "sess",
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe("done");
+    expect(seenContexts).toEqual(["", "a"]);
   });
 });

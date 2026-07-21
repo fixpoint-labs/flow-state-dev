@@ -2275,7 +2275,14 @@ export function sequencer<
 >(
   config: SequencerConfig<TInputSchema, TInput, TStateSchema>
 ): SequencerDefinition<TInput, TInput, TStateSchema> {
-  const { declaredResources, resolvedCapabilities } = resolveCapabilities(config, "sequencer");
+  const { declaredResources, resolvedCapabilities, stateSchema } = resolveCapabilities(config, "sequencer");
+
+  // FIX-914 PR2: `resolveCapabilities` already merged any capability-
+  // contributed own state (`ctx.self` / `ctx.sequencer`) with the
+  // sequencer's own `stateSchema` declaration. Runtime-only — sequencer
+  // capabilities aren't statically typed (see `SequencerCtx`'s hardcoded
+  // `TCapabilities = {}`), so this doesn't affect the `TStateSchema` generic.
+  const effectiveConfig = { ...config, stateSchema };
 
   // A sequencer has no direct `resources` config field — its OWN declarations
   // are exactly its capability-injected resources, which `resolveCapabilities`
@@ -2283,7 +2290,7 @@ export function sequencer<
   // sequencer's `ownDeclaredResources` (FIX-688): identical to the initial
   // accumulator, but it stays fixed as children bubble into the accumulator.
   return createSequencer<TInput, TInput, TStateSchema>(
-    config as SequencerConfig<any>,
+    effectiveConfig as SequencerConfig<any>,
     [],
     [],
     config.inputSchema,
