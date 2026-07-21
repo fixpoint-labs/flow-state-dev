@@ -31,6 +31,7 @@
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
 import { flowPolicy } from "@flow-state-dev/orchestration";
+import type { TaskInit } from "@flow-state-dev/orchestration";
 import type {
   ItemVisibility,
   GeneratorHistoryConfig,
@@ -43,7 +44,12 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskBoard, createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
+import {
+  taskBoard,
+  createCascadeSkipDependents,
+  goalSeekLoop,
+  type Verdict,
+} from "@flow-state-dev/orchestration/task-board";
 import {
   planAndExecuteInputSchema,
   planAndExecuteStateSchema,
@@ -53,7 +59,6 @@ import {
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
 import { resolveGoalSynthesisStep } from "../shared/planning-entry";
 import { createEvaluateProgress } from "./blocks/evaluate-progress";
-import { createApplyReplan } from "./blocks/apply-replan";
 import { createSynthesize, normalizeOutputStatus } from "./blocks/synthesize";
 
 // ---------------------------------------------------------------------------
@@ -702,20 +707,15 @@ export function planAndExecute<
   });
 
   const cascadeSkipDependents = createCascadeSkipDependents({ name });
-  const applyReplan = createApplyReplan({
-    name,
-    maxAttemptsPerTask,
-    ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
-  });
   const synthesize = createSynthesize({ name, synthesizer });
 
-  // ------- Assemble pipeline -----------------------------------------------
+  // ------- Assemble on goalSeekLoop (FIX-910) ------------------------------
 
   // captureAndPlan stamps `goal` on its OWN inner sequencer state — that
-  // doesn't reach the outer pipeline's state where evaluator and synthesize
+  // doesn't reach the loop-owner state where the evaluator and synthesize
   // read from. Mirror the goal here so downstream blocks see it. When goal
   // synthesis ran first, the chain value carries the synthesized goal, so
-  // this stamps the synthesized goal into the outer state too (FIX-827).
+  // this stamps the synthesized goal into the loop state too (FIX-827).
   const stampOuterGoal = handler({
     name: `${name}-stamp-outer-goal`,
     inputSchema: planAndExecuteInputSchema,
@@ -725,40 +725,69 @@ export function planAndExecute<
     },
   });
 
-  // Loosely typed so the optional synthesis prefix can change the chain shape.
-  let pipeline: any = sequencer({
-    name,
+  // Seed (the loop's produce step): optional goal synthesis, then stamp the
+  // goal, then plan + seed the board. No `stateSchema` here so the inner blocks
+  // resolve `ctx.sequencer` up to the loop-owner container (where `goal` lives).
+  let seed: any = sequencer({
+    name: `${name}-plan`,
     inputSchema: planAndExecuteInputSchema,
-    stateSchema: planAndExecuteStateSchema,
   });
-  if (synthesizeGoalStep !== undefined) pipeline = pipeline.step(synthesizeGoalStep);
-  pipeline = pipeline
-    .tap(stampOuterGoal)
-    .step(captureAndPlan)
-    .step(board.drain)
-    .tap(cascadeSkipDependents)
+  if (synthesizeGoalStep !== undefined) seed = seed.step(synthesizeGoalStep);
+  seed = seed.tap(stampOuterGoal).step(captureAndPlan);
+
+  // Judge adapter: unwrap the normalized `JudgeInput` back to the raw drain
+  // output (preserving a custom evaluator's legacy input), run P&E's evaluator,
+  // run P&E's own replanner on a replan-without-tasks (its legacy contract is
+  // the evaluator's full output, NOT goalSeekLoop's lossy Verdict), then map to
+  // a Verdict. The self-cap reason is keyed on the iteration count both
+  // evaluator variants patch: a `complete` at `iteration >= maxIterations`
+  // reports `max-iterations`, an earlier `complete` reports `converged`.
+  const judgeAdapter = sequencer({ name: `${name}-judge`, inputSchema: z.unknown() })
+    .map((ji: unknown) => (ji as { drainResult?: unknown }).drainResult)
     .step(evaluator)
-    // Replanner only runs when the evaluator asked for a replan AND
-    // didn't pre-bake the new tasks. Pre-baked `tasks` bypasses the
-    // LLM call and goes straight to applyReplan.
     .stepIf(
       (d: unknown) =>
         (d as { decision?: string }).decision === "replan" &&
         !Array.isArray((d as { tasks?: unknown }).tasks),
       replanner,
     )
-    .stepIf(
-      (d: unknown) => Array.isArray((d as { tasks?: unknown }).tasks),
-      applyReplan,
-    )
-    .map((d: unknown) => ({
-      decision: (d as { decision?: string }).decision ?? "continue",
-    }))
-    .loopBack(board.drain.name, {
-      when: (r: unknown) => (r as { decision?: string }).decision !== "complete",
-      maxIterations,
-    })
-    .step(synthesize);
+    .map((out: unknown, ctx): Verdict => {
+      const iteration =
+        (ctx.sequencer?.state as { iteration?: number } | undefined)?.iteration ?? 0;
+      const o = out as { decision?: string; reasoning?: string; tasks?: unknown };
+      // The replanner ran — its output is `{ tasks }` with no `decision`.
+      if (o.decision === undefined && Array.isArray(o.tasks)) {
+        return { decision: "replan", reason: "replan", tasks: o.tasks as TaskInit[] };
+      }
+      if (o.decision === "complete") {
+        return {
+          decision: "done",
+          reason: iteration >= maxIterations ? "max-iterations" : "converged",
+        };
+      }
+      if (o.decision === "replan") {
+        return Array.isArray(o.tasks)
+          ? { decision: "replan", reason: "replan", tasks: o.tasks as TaskInit[] }
+          : { decision: "replan", reason: "replan" };
+      }
+      return { decision: "continue", reason: o.reasoning ?? "continue" };
+    });
 
-  return pipeline as SequencerDefinition<any, any>;
+  return goalSeekLoop({
+    name,
+    inputSchema: planAndExecuteInputSchema,
+    stateSchema: planAndExecuteStateSchema,
+    board,
+    seed,
+    afterDrain: cascadeSkipDependents,
+    judge: judgeAdapter,
+    maxAttemptsPerTask,
+    ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
+    maxIterations,
+    finalize: synthesize,
+    // Parity: today's P&E has no rescue around `.step(evaluator)`, so an
+    // evaluator throw must propagate as a request error, not be swallowed as a
+    // judge-error termination.
+    onError: "fail",
+  }) as SequencerDefinition<any, any>;
 }
