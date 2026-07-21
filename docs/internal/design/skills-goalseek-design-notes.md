@@ -107,7 +107,7 @@ These survived the whole discussion and we treat them as settled:
 
 ---
 
-## 3. Fork — corrected model (holds across directions)
+## 3. Fork — corrected model  *(SUPERSEDED by §9 — fork is not a skill mode)*
 
 Current fork is misnamed: it starts a child with an empty context. A **fork should
 inherit history up to the fork point, then diverge** — the point is to spend a lot
@@ -115,9 +115,9 @@ of work and return only the result, *preserving the parent's context window*.
 
 The engine already supports this: `SessionItemViews.history()` walks prior turns +
 live in-flight items, filtered by `itemVisibility.history`. Fork just doesn't use
-it. Whichever direction we pick, fork = "run a child seeded from history-to-here,
-return only its result." As a tool call, the return-only-the-result property is
-free (that's what a tool result *is*).
+it. **Update (§9): fork is no longer a skill mode at all** — it becomes a *task
+context-supply mode*. The history-inheritance mechanism above is still correct;
+only its home changes.
 
 ---
 
@@ -335,3 +335,54 @@ is a block by design — exactly the Direction-B split. No harness anywhere.
   turn" case appears that response-auditor + goalSeek-as-tool can't cover.
 - These are notes to inform PR comments on the in-flight 910/911 work, not
   necessarily a new PR of their own.
+
+## 9. Fork reframed — a task context-supply mode, not a skill mode
+
+Reviewing the FIX-919 implementation (PR #844, which shipped fork as a `forkSkill`
+preset/tool) surfaced that **fork should not be a skill mode at all.** A skill
+declaring how it runs is the same smell we removed for pattern skills.
+
+**The reframe.** Isolated sub-execution that doesn't bloat the host's context
+window *is delegation*. The task system already has a context-supply seam —
+`TaskFlowPolicy` selects `priorWork` for a dispatched worker from the per-run
+**observation ledger** (`none` / `declaredDepsOnly` / `ancestors` /
+`recentTrajectory` / `allCompleted` / `compact` / `custom`). Fork's distinguishing
+trait is that its child inherits the **parent conversation history**, which the
+ledger policies don't cover. So:
+
+- **A skill = loaded instructions + accessible files + tools + delegation
+  authority.** No `context:` execution modes (no `inline`/`fork`/`pattern`). The
+  *host* decides how delegated work runs.
+- **Fork = a `conversation` context-supply mode on a delegated task** — extend the
+  supply axis with the parent-conversation source (reuse #844's generator
+  `history`-slot). Worker `itemVisibility: { history: false }` already keeps the
+  sub-execution's steps out of host history (verified) — so delegation is a *true*
+  fork of the expensive work; only the delegate-call + result remain in host
+  history (the desired minimal footprint).
+- **Large results** stay out of context via a **scratchpad/blackboard resource**
+  (store the payload, return a reference) — the real lever, applies to any
+  delegated task.
+
+**Confirmations from the code (this is not speculative):**
+- Worker default `itemVisibility { client: true, history: false }`
+  (`worker-materializer.ts`) → sub-work excluded from host history.
+- The observation ledger is a separate in-memory store
+  (`ctx.request.__fsd_observationLedgers`), cleared at run end — not host history.
+- `TaskFlowPolicy` / `priorWork` is the existing context-supply axis to extend.
+
+**Consequence — requires:** a **lightweight single-shot delegation path** (run one
+sub-task, get result) so fork stays a one-liner, and **delegation authority to
+fork** (correct, not limiting — fork *is* delegation).
+
+### Issue map after this session
+- **FIX-918** — expanded: remove **both** pattern-mode and fork-mode; deliver the
+  delegation capability (incl. the single-shot path) + blocks-as-tools.
+- **FIX-919** — **canceled/deprecated.** PR #844 **closed** as superseded (its
+  `history`-slot mechanism migrates to FIX-920).
+- **FIX-920** — re-introduce fork-like behavior as a `conversation` task
+  context-supply mode; document how FSD "forking" deviates from typical skill
+  systems (guide). Optional `fork: true` sugar later. Open: do we even need
+  first-class fork ergonomics?
+- **FIX-921** — (low pri, deferred) skills define resources; assign a task a
+  workspace resource (blackboard). Interim workaround: install a resource on the
+  generator + task guidance to write to it.
