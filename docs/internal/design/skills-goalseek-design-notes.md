@@ -227,10 +227,8 @@ The LLM decides *what/when*; the flow decides *how*, deterministically.
   capability + blocks-as-tools.* Supersedes FIX-916's premise. Relates 910/911/916.
 - **FIX-919** created — *Fix fork skills: inherit history-to-fork-point, delivered
   as a capability-installed tool.* Relates 911.
-- **FIX-916** (skills declare a `strategy` in frontmatter) — commented as **likely
-  superseded by FIX-918**; recommend close/re-scope pending confirmation. The
-  binding path changes from "materialize a strategy from frontmatter" to "call a
-  block as a tool," so the frontmatter-recipe premise no longer holds.
+- **FIX-916** (skills declare a `strategy` in frontmatter) — **closed** by Jake,
+  superseded by FIX-918.
 - **PR #821 (FIX-910 `goalSeekLoop` spec)** — commented: primitive is aligned
   (name, JudgeSlot/Verdict, mandatory maxIterations); one forward gap raised
   (keep the primitive **tool-exposable** for an executive generator, not only a
@@ -242,10 +240,12 @@ The LLM decides *what/when*; the flow decides *how*, deterministically.
   (pattern-mode → FIX-918, fork → FIX-919), (3) delegation + fork are follow-ups,
   not this PR.
 
-### Open for Jake
-- Confirm **FIX-916 close/re-scope** in favor of FIX-918.
-- Decide whether the **delegation Shape-1 capability** is a sub-task of FIX-918 or
-  its own issue.
+### Resolved
+- FIX-916 **closed** in favor of FIX-918.
+- **Delegation Shape-1 capability is in scope for FIX-918** (not a separate issue):
+  removal of pattern-mode must land *with* its replacement, never before it.
+
+### Still open
 - The one place B could still be wrong: a concrete "enforce the whole turn on the
   generator's own output" case that `response-auditor` + goalSeek-as-tool can't
   cover (would revive the harness). None identified yet.
