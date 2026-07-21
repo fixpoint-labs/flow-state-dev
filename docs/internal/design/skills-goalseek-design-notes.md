@@ -446,3 +446,25 @@ Two things split out of FIX-918 to keep that spec unloaded:
   its roster** and assign only to real workers. Surface the roster to the host;
   validate `assignee` at creation (fail loud), not at dispatch. Belongs to the
   reworked delegation surface — don't patch the pattern-era `taskTools`.
+
+## 12. Plan-only skills + context pruning (adjacent issues)
+
+- **Plan-only skill (create ≠ execute).** A skill can have delegation authority,
+  **add tasks, and not run them** — the board sits *pending* until an explicit
+  execute step (host in a later turn / a deliberately-kicked `goalSeekLoop` or
+  drain / human approval / another agent). This is natural now *because* the
+  delegation model decouples task creation from execution (board = ledger, host =
+  executive); the old pattern-skill model coupled them (materialize = auto-drain).
+  **Requirement for FIX-918:** task-creation tools must be usable with **no drain
+  running**, and "execute the pending board" is a separate explicit action. It's
+  the plan-timing axis at its limit (plan fully, dispatch never until told), and it
+  is exactly what a HITL plan/review/execute flow needs.
+- **FIX-312 (kitchen-sink "Plan Mode")** — concept validated by the above, but its
+  implementation is on the disappearing stack (thinking-style dispatch to
+  P&E/Supervisor, bespoke `planPhase` machine, `BasePlan`). **Re-ground** on
+  delegation-skill (plan-only) → pending board → explicit execute. Rebuild, not cut.
+- **FIX-482 (`utility.contextSelector`)** — **rescoped.** Composable-utility design
+  stays; premise corrected. Now owns proactive goal-aware pruning of *ambient*
+  context (memory / MCP / conversation) for any LLM block. Reconcile with
+  `TaskFlowPolicy` (owns inter-worker observations) and its `compact` summarizer
+  stub (LLM-summarization home); composes with FIX-920 (inherit → prune).
