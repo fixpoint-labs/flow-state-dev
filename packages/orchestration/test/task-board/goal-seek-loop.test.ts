@@ -221,6 +221,37 @@ describe("goalSeekLoop - replan", () => {
     expect(calls).toBe(1);
   });
 
+  it("replan with an empty tasks array falls through to the configured replanner", async () => {
+    const board = makeBoard("replan-empty-inline");
+    let judgeCalls = 0;
+    const replanner = handler({
+      name: "fallthrough-replanner",
+      inputSchema: z.unknown(),
+      outputSchema: z.object({ tasks: z.array(z.object({ id: z.string(), goal: z.string() })) }),
+      execute: () => ({ tasks: [{ id: "b", goal: "b" }] }),
+    });
+    const loop = goalSeekLoop({
+      name: "replan-empty-inline",
+      board,
+      seed: seedTasks("replan-empty-inline", board, ["a"]),
+      // An empty inline tasks array is a replan with no actual work — it should
+      // run the replanner, not no-op-add and spin the board to the cap.
+      judge: (): Verdict => {
+        judgeCalls += 1;
+        return judgeCalls === 1
+          ? { decision: "replan", reason: "empty", tasks: [] }
+          : { decision: "done", reason: "converged" };
+      },
+      replanner,
+      maxIterations: 5,
+    });
+    const result = await testBlock(loop, { input: undefined });
+    expect(result.error).toBeNull();
+    expect(readTermination(result.items)?.reason).toBe("converged");
+    const output = result.output as { tasks: Array<{ id: string }> };
+    expect(output.tasks.map((t) => t.id).sort()).toEqual(["a", "b"]);
+  });
+
   it("replan (no tasks) runs the configured replanner", async () => {
     const board = makeBoard("replanner");
     let judgeCalls = 0;

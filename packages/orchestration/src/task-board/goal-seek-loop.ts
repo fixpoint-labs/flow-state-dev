@@ -485,7 +485,15 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     .step(coerceAtCap);
   if (wrappedReplanner !== undefined) {
     pipeline = pipeline.stepIf(
-      (v: Verdict) => v.decision === "replan" && !Array.isArray((v as { tasks?: unknown }).tasks),
+      // Fire the replanner on a `replan` verdict that carries no *actual* inline
+      // work — an absent tasks array OR an empty one. An empty `tasks: []` is a
+      // judge that asked to replan but produced nothing, so fall through to the
+      // configured replanner (whose job is to produce work) rather than
+      // no-op-adding and spinning the settled board to the cap.
+      (v: Verdict) => {
+        const tasks = (v as { tasks?: unknown }).tasks;
+        return v.decision === "replan" && !(Array.isArray(tasks) && tasks.length > 0);
+      },
       wrappedReplanner,
     );
   }
