@@ -399,6 +399,14 @@ function mergeTargetsInto(
  * such blind spots: two contributors that both want a field share the schema
  * definition (import one constant) or use distinct field names. Disjoint
  * fields merge cleanly via `.extend()`.
+ *
+ * Known limitation: `.extend()` keeps the base (`existing`) object's
+ * unknown-key policy, so a non-default `.strict()` / `.passthrough()` /
+ * `.catchall()` on the OTHER side isn't preserved through a merge. Own-state
+ * is a plain field bag (`ctx.self.state.<field>`), so declare it with the
+ * default object policy; a non-default policy on a merged own-state schema is
+ * unsupported. A lone own-state schema (no second contributor) never reaches
+ * this path and keeps its policy untouched.
  */
 function mergeOwnStateShapes(
   existing: ZodTypeAny,

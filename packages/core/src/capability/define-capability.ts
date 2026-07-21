@@ -24,15 +24,17 @@ export function defineCapability<
   const TResources extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   const TTargetSchemas extends Record<string, import("zod").ZodTypeAny> | undefined = undefined,
   const TSequencerStateSchema extends import("zod").ZodTypeAny | undefined = undefined,
-  const TOwnStateSchema extends import("zod").ZodTypeAny | undefined = undefined,
   const TPresetKeys extends string = never,
   const TSessionStateType = unknown,
   const TResourcesType = unknown,
   const TTargetStatesType = unknown,
   const TSequencerStateType = unknown,
-  const TOwnStateType = unknown,
   const TConfigSchema extends import("zod").ZodTypeAny | undefined = undefined,
   const TConfigExplicit = never,
+  // FIX-914 PR2 — appended at the end so existing explicit type-argument
+  // usages (e.g. pinning TPresetKeys) keep their positional slots.
+  const TOwnStateSchema extends import("zod").ZodTypeAny | undefined = undefined,
+  const TOwnStateType = unknown,
 >(
   config: Omit<CapabilityConfig<
     TName,
