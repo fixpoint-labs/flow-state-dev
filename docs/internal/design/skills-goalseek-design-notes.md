@@ -216,6 +216,72 @@ The LLM decides *what/when*; the flow decides *how*, deterministically.
 
 ---
 
+## 6a. Locked decisions (this session) + delegation mechanics
+
+Direction **B is chosen.** No harness. The following are locked:
+
+- **Pattern-mode skills are dropped.** No PatternRegistry-from-frontmatter, no
+  worker-materializer-from-YAML, no pattern-run router. Delegation is delivered by
+  a capability (below); deterministic multi-step flows are blocks called as tools
+  or used as roots.
+- **Whole-turn enforced convergence is an escape hatch, not a primitive.** If a
+  product truly needs it, build a custom block for that niche. We ship primitives
+  for the 90%, custom blocks unlock the last 10%. (This is why the harness dies.)
+- **Blocks are referenced, never embedded in skill folders.** Portability tiers:
+  - *Portable/shared skills* → rely only on common shipped patterns + inline
+    prompt/`promptRef` workers (data, not code). Fully portable.
+  - *App-specific skills* → may `blockRef`/`agentRef` custom app blocks for
+    fine-grained deterministic control. Trades portability for power — an accepted,
+    explicit tradeoff.
+- **FIX-914 PR2 (capability own-state) is available on main** (`82ff339a`):
+  `defineCapability({ stateSchema })` / `PresetDef.stateSchema`, merged via
+  `mergeOwnStateSchema`. FIX-911 must adopt it and drop the hand-declared
+  `stateSchema` workaround.
+
+### Delegation via capability — Shape 1 vs Shape 2 (the distinction that matters)
+
+There are two "delegation" shapes; conflating them is a design error.
+
+- **Shape 1 — generator-as-executive (THE delegation capability, fully installable).**
+  The host generator orchestrates. The capability installs, when the skill opts
+  into delegation:
+  - a **task board** — a private request-scoped collection by default (its state
+    installed as **capability own-state** per FIX-914), or a **passed-in shared
+    board** when provided;
+  - **built-in delegation tools** (`taskTools`: addTask/assign/complete/list/…),
+    injected by the delegation *preset* directly — NOT via the app's `tools`
+    config;
+  - a **callable worker-tool per skill-defined worker** (see below).
+  There is **no drain loop** — the executive's own ReAct loop is the orchestrator.
+  The board is a ledger, not an execution engine. This is 100% capability, no
+  harness, no framework change beyond FIX-914 (already landed).
+
+- **Shape 2 — autonomous board-drain (a BLOCK, not a capability).** `taskBoard()` /
+  `goalSeekLoop()` own a sequencer loop that claims→dispatches→records until
+  drained. A generator cannot install a sequencer that wraps itself. Shape 2 is
+  called **as a tool** or used **as a root** (Direction B's two topologies). Its
+  worker registry is assembled at **build time** from the shared worker library.
+
+**Workers.** The capability supports both, mapping onto the existing `WorkerSpec`
+taxonomy and the security model:
+  - `prompt` / `promptRef` → portable **data**; materialized into callable
+    sub-generator-tools by the capability. Safe to define inside a (portable) skill.
+  - `blockRef` / `agentRef` → **references** into the app's code/agent library.
+    App-specific; not embedded.
+
+**"Passed-in board must reference skill workers" (resolved).** Assignment is by
+**key**, never by block reference. Tasks carry an `assignee` string; the capability
+installs a matching worker-tool under the same key on the executive. So a shared
+board holds only keys; the executive holds the workers. Nothing injects blocks into
+a built board at runtime (which would fight the framework). Cross-skill / team-level
+shared boards that autonomously dispatch to many skills' workers are the Shape-2 /
+workstream tier — build-time-composed from the shared worker library, deferred.
+
+**Final determination:** Shape-1 delegation (board + built-in tools + keyed
+worker-tools + own board-state) is **fully expressible as a capability** on main
+today. The only non-capability piece is the deterministic autonomous drain, which
+is a block by design — exactly the Direction-B split. No harness anywhere.
+
 ## 7. Steering implications for FIX-910 / FIX-911
 
 - **FIX-910 (`goalSeekLoop` / strategies):** the block-shaped `goalSeekLoop` in
