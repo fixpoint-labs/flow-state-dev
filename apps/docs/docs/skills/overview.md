@@ -52,6 +52,12 @@ A skill that has been matched runs in one of three modes, declared in its frontm
 
 Choose fork when the skill is a self-contained investigation that shouldn't bias the rest of the conversation. Choose inline when the user is collaborating with the agent and wants the guidance to persist. Choose pattern when the work decomposes naturally into independent sub-tasks that can run concurrently.
 
+## Binding skills to one generator
+
+The activation paths above write into session-wide state that every generator in the conversation reads. That's fine for a single agent. In a multi-agent flow it means one agent's skill leaks into another's context, and an activation persists for the rest of the conversation.
+
+When you want a skill to belong to **one** generator — declared where that generator is defined, carried only by it — reach for the per-generator binding: a shared `createSkillsLibrary` plus `generator({ uses: [skills.with({ active, dynamicActivation })] })`. The common case is a one-line declarative `active` list, with no activate/deactivate lifecycle. See [Per-generator binding](./binding) for the full surface.
+
 ## Wiring it up
 
 Add the capability to a generator via `uses:`. The capability installs a skills resource collection plus three presets (all on by default): `tools` (catalog tool schemas), `context` (the active-skill body formatter), and `runSkill` (the `runSkill` tool plus the catalog listing the model reads).

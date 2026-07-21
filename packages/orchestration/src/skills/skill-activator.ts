@@ -29,7 +29,10 @@
 import { z } from "zod";
 import { sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { InitialSkill } from "@flow-state-dev/core";
+import type { ExplicitActivationScope } from "./activation-store";
 import { createApplySkillActivation } from "./apply-skill-activation";
+import { createCatalogSeedStep } from "./seed-step";
 import {
   createSkillClassifierSequencer,
   DEFAULT_CONFIDENCE_THRESHOLD,
@@ -59,6 +62,29 @@ export interface SkillActivatorOptions {
    * deployments that want only deterministic tiers.
    */
   enableLlmClassifier?: boolean;
+  /**
+   * Where the matcher writes its resolved activations. Default
+   * `{ scope: "session", field: "activeSkills" }`. To feed a Skills v2
+   * per-generator binding, point this at that binding's explicit
+   * `activeState` field (a matcher runs before the generator, so it cannot
+   * reach a downstream generator's block-state default — it needs an explicit
+   * shared field).
+   */
+  activeState?: { scope: ExplicitActivationScope; field: string };
+  /**
+   * Restrict matches to the target binding's `allowed` set. Without it, a
+   * `/skill` or keyword hit for any skill in the collection would land in the
+   * shared field and render on a generator that was never given that skill.
+   */
+  allowed?: readonly string[];
+  /**
+   * Bundled defaults to seed **before** the matcher tiers scan the collection.
+   * The matcher runs upstream of the generator, so it can't rely on the binding
+   * reader's lazy seeding — on a fresh collection the slash/keyword/classifier
+   * tiers would otherwise see an empty catalog on turn 1 and match nothing.
+   * Pass the same `initialSkills` given to `createSkillsLibrary`.
+   */
+  initialSkills?: InitialSkill[];
 }
 
 /**
@@ -73,15 +99,41 @@ export function createSkillActivator(
   const collectionKey = options.collectionKey ?? "skills";
   const enableLlm = options.enableLlmClassifier ?? true;
 
-  const slashTier = createSkillSlashMatch({ collectionKey });
-  const keywordTier = createSkillKeywordMatch({ collectionKey });
-  const apply = createApplySkillActivation({ collectionKey });
+  const allowed = options.allowed;
+  const slashTier = createSkillSlashMatch({
+    collectionKey,
+    ...(allowed ? { allowed } : {}),
+  });
+  const keywordTier = createSkillKeywordMatch({
+    collectionKey,
+    ...(allowed ? { allowed } : {}),
+  });
+  const apply = createApplySkillActivation({
+    collectionKey,
+    ...(options.activeState ? { activeState: options.activeState } : {}),
+    ...(allowed ? { allowed } : {}),
+  });
+
+  // Seed the catalog before any tier reads it — the matcher runs upstream of
+  // the generator, so it can't rely on the binding reader's lazy seeding.
+  const initialSkills = options.initialSkills;
+  const seedStep = createCatalogSeedStep({
+    collectionKey,
+    ...(initialSkills ? { initialSkills } : {}),
+  });
 
   let pipeline = sequencer({
     name: options.name ?? "skill-activator",
     inputSchema: activatorInputSchema,
     stateSchema: skillActivatorStateSchema,
-  })
+  });
+
+  // Only prepend the seed step when there are bundled defaults to seed.
+  if (initialSkills && initialSkills.length > 0) {
+    pipeline = pipeline.tap(seedStep);
+  }
+
+  pipeline = pipeline
     .tap(slashTier)
     .tapIf((_input, ctx) => !ctx.sequencer?.state.resolved, keywordTier);
 
@@ -93,6 +145,7 @@ export function createSkillActivator(
         options.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD,
       maxSkillsInClassifier:
         options.maxSkillsInClassifier ?? DEFAULT_MAX_SKILLS,
+      ...(allowed ? { allowed } : {}),
     });
     pipeline = pipeline.tapIf(
       (_input, ctx) => !ctx.sequencer?.state.resolved,

@@ -1,0 +1,12 @@
+{
+  "skillA": {
+    "name": "detailed-analysis",
+    "description": "Produce a rigorous, structured analysis",
+    "marker": "MARKER-ALPHA-7f3a"
+  },
+  "skillB": {
+    "name": "quick-summary",
+    "description": "Produce a terse one-paragraph summary",
+    "marker": "MARKER-BETA-91c2"
+  }
+}
