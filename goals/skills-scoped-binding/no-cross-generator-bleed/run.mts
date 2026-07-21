@@ -3,7 +3,7 @@
  * in another generator's context, and a runtime activation is request-scoped by
  * default (it does not carry into the next turn).
  *
- * Drives the REAL block-build path: `generator({ uses: [skills.config(...)] })`
+ * Drives the REAL block-build path: `generator({ uses: [skills.with(...)] })`
  * runs resolveCapabilities → mergeCapabilities → the skills config resolver →
  * the generator's assembled context/tool surface. We then execute that real
  * assembled surface (the reader context functions, and the load tool) against
@@ -158,13 +158,13 @@ async function runGoalCheck(): Promise<string[]> {
     name: "analyst",
     model: "openai/gpt-5.4-mini",
     prompt: "p",
-    uses: [skills.config({ active: [fx.skillA.name] })],
+    uses: [skills.with({ active: [fx.skillA.name] })],
   });
   const genB = generator({
     name: "summarizer",
     model: "openai/gpt-5.4-mini",
     prompt: "p",
-    uses: [skills.config({ active: [fx.skillB.name] })],
+    uses: [skills.with({ active: [fx.skillB.name] })],
   });
 
   const outA = await renderSkills(genA, ctxWith(createInMemorySkillsCollection()));
@@ -185,7 +185,7 @@ async function runGoalCheck(): Promise<string[]> {
     name: "worker",
     model: "openai/gpt-5.4-mini",
     prompt: "p",
-    uses: [dyn.config({ allowed: [fx.skillA.name] }).presets({ dynamicActivation: true })],
+    uses: [dyn.with({ allowed: [fx.skillA.name], dynamicActivation: true })],
   });
 
   // Turn 1: a fresh request-scoped block-state cell for genD.

@@ -56,7 +56,7 @@ Choose fork when the skill is a self-contained investigation that shouldn't bias
 
 The activation paths above write into session-wide state that every generator in the conversation reads. That's fine for a single agent. In a multi-agent flow it means one agent's skill leaks into another's context, and an activation persists for the rest of the conversation.
 
-When you want a skill to belong to **one** generator — declared where that generator is defined, carried only by it — reach for the per-generator binding: a shared `createSkillsLibrary` plus `generator({ uses: [skills.config({ active }).presets({ dynamicActivation })] })`. The common case is a one-line declarative `active` list, with no activate/deactivate lifecycle. See [Per-generator binding](./binding) for the full surface.
+When you want a skill to belong to **one** generator — declared where that generator is defined, carried only by it — reach for the per-generator binding: a shared `createSkillsLibrary` plus `generator({ uses: [skills.with({ active, dynamicActivation })] })`. The common case is a one-line declarative `active` list, with no activate/deactivate lifecycle. See [Per-generator binding](./binding) for the full surface.
 
 ## Wiring it up
 

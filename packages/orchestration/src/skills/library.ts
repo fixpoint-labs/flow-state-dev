@@ -3,21 +3,23 @@
  *
  * A **library** is a shared catalog of skills (the resource collection plus its
  * bundled defaults, installed once). A generator then **binds** to it per
- * generator via `.config({ active, allowed, activeState })` and
- * `.presets({ dynamicActivation })`. The binding carries the skills — there is
- * no session-global `activeSkills` bag, so a skill given to one generator never
- * appears in another's context, and a runtime activation is request-scoped by
- * default (it does not carry into the next turn).
+ * generator via `.with({ active, allowed, activeState, dynamicActivation })` —
+ * the flat builder that collapses config (`active`/`allowed`/`activeState`) and
+ * the `dynamicActivation` preset into one call. The binding carries the skills —
+ * there is no session-global `activeSkills` bag, so a skill given to one
+ * generator never appears in another's context, and a runtime activation is
+ * request-scoped by default (it does not carry into the next turn).
  *
  * Two binding surfaces:
- *   - `config({ active })` — statically preload these skills' bodies (and their
+ *   - `with({ active })` — statically preload these skills' bodies (and their
  *     declared `allowed-tools`) into the generator. Inline-mode only; a
  *     missing/typo'd name fails loud at build time.
- *   - `config({ allowed }).presets({ dynamicActivation: true })` — install the
- *     model-facing load tool, letting the agent pull any `allowed` skill into
- *     context mid-turn. Storage defaults to the generator's own block state
- *     (FIX-914); set `config({ activeState: { scope, field } })` to store it at
- *     a named, shareable, or durable scope instead.
+ *   - `with({ allowed, dynamicActivation: true })` — install the model-facing
+ *     load tool, letting the agent pull any `allowed` skill into context
+ *     mid-turn. Storage defaults to the generator's own block state, which the
+ *     binding installs for you (FIX-914 PR2 — no hand-declared `stateSchema`
+ *     needed); set `with({ activeState: { scope, field } })` to store it at a
+ *     named, shareable, or durable scope instead.
  *
  * The library owns **seeding**: bundled `initialSkills` are seeded on the
  * binding's first render, so even a static-only binding sees a populated
@@ -43,6 +45,7 @@ import type {
   SkillContextMode,
   ToolCatalog,
 } from "@flow-state-dev/core";
+import { activeSkillsArraySchema } from "./active-skill-state";
 import type { ActivationLocation } from "./activation-store";
 import { buildSkillBindingReader } from "./binding-reader";
 import {
@@ -77,7 +80,7 @@ export interface SkillsLibraryOptions {
   itemVisibility?: ItemVisibility | readonly ItemVisibility[];
 }
 
-/** The per-generator binding configuration (`skills.config({ ... })`). */
+/** The per-generator binding configuration (`skills.with({ ... })`). */
 export interface SkillsBindingConfig {
   /**
    * Statically-preloaded skill names. Their bodies + declared `allowed-tools`
@@ -158,8 +161,8 @@ const bindingConfigSchema = z
   // `.strict()` so a typo'd key (`actve`) fails loud instead of being silently
   // stripped and building a generator without the intended binding.
   .strict()
-  // `.default({})` makes the config usable without an explicit `.config()`
-  // call, so `presets({ dynamicActivation: true })` alone still resolves.
+  // `.default({})` makes the config usable without config keys, so
+  // `with({ dynamicActivation: true })` (preset only) still resolves.
   .default({});
 
 // ---------------------------------------------------------------------------
@@ -168,7 +171,7 @@ const bindingConfigSchema = z
 
 /**
  * Create a shared skills library. Install it once (`uses: [skills]`), then bind
- * per generator via `skills.config({ ... })` / `skills.presets({ ... })`.
+ * per generator via `skills.with({ ... })`.
  */
 export function createSkillsLibrary(
   options: SkillsLibraryOptions = {},
@@ -199,7 +202,7 @@ export function createSkillsLibrary(
   const assertInline = (name: string, where: "active" | "allowed"): void => {
     if (index.size === 0) {
       throw new Error(
-        `skills.config({ ${where}: [...] }) binds "${name}" by name, but no bundled ` +
+        `skills.with({ ${where}: [...] }) binds "${name}" by name, but no bundled ` +
           `skills are available to validate against. Pass valid \`initialSkills\` to ` +
           `createSkillsLibrary() (an empty index also means every bundled skill failed to parse).`,
       );
@@ -207,13 +210,13 @@ export function createSkillsLibrary(
     const entry = index.get(name);
     if (!entry) {
       throw new Error(
-        `skills.config({ ${where}: [...] }): unknown skill "${name}". ` +
+        `skills.with({ ${where}: [...] }): unknown skill "${name}". ` +
           `Known skills: ${[...index.keys()].join(", ") || "(none)"}.`,
       );
     }
     if (entry.contextMode !== "inline") {
       throw new Error(
-        `skills.config({ ${where}: [...] }): "${name}" is a ${entry.contextMode}-mode ` +
+        `skills.with({ ${where}: [...] }): "${name}" is a ${entry.contextMode}-mode ` +
           `skill. Only inline skills can be bound here — fork/pattern skills dispatch ` +
           `through the runSkill router (createSkillsCapability).`,
       );
@@ -327,16 +330,23 @@ export function createSkillsLibrary(
       );
     }
 
-    // NOTE: an explicit `activeState` deliberately does NOT contribute a scope
-    // state schema here. A config resolver's returned surface only reaches the
-    // generator's context/tools — the framework does not apply a merged-surface
-    // `sessionStateSchema` to the block's state contract (only a capability's or
-    // block's own top-level state-schema field does). So a schema returned here
-    // would be a silent no-op. Instead the author declares the field where it is
-    // written: the upstream matcher (`createApplySkillActivation`) declares its
-    // scope schema on its own block, and a code/generator writer declares the
-    // field on the flow/generator's own `sessionStateSchema`. The reader
-    // tolerates an absent field (renders nothing), so reads never require it.
+    // Block-state default: contribute the generator's own `activeSkills` field
+    // (FIX-914 PR2). The load tool runs as a child and writes it via `ctx.parent`;
+    // the reader runs in the generator's scope and reads `ctx.self`. Because a
+    // config resolver's returned surface now flows through the own-state merge
+    // (`mergeCapabilityOwnStateWithBlock`), the generator no longer needs to
+    // hand-declare `stateSchema: { activeSkills }` — the binding installs it. A
+    // consumer that still declares it keeps working: both reference the shared
+    // `activeSkillsArraySchema`, so the duplicate field dedups instead of colliding.
+    //
+    // An explicit `activeState` (scope/field) is deliberately NOT contributed
+    // here — it lives at a session/user/org scope, declared where it is written:
+    // the upstream matcher (`createApplySkillActivation`) declares its scope
+    // schema on its own block, and a code/generator writer declares the field on
+    // its own `sessionStateSchema`. The reader tolerates an absent field.
+    if (location.kind === "block" && dynamic) {
+      contributions.stateSchema = z.object({ activeSkills: activeSkillsArraySchema });
+    }
 
     // Group the reader + catalog under a single `<skills>` tag.
     contributions.context = [{ skills: contextEntries } as never];

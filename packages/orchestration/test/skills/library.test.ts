@@ -1,6 +1,6 @@
 /**
  * Tests for the Skills v2 per-generator binding (FIX-911): `createSkillsLibrary`
- * + `.config({ active, allowed, activeState })` + `.presets({ dynamicActivation })`.
+ * bound per generator via `.with({ active, allowed, activeState, dynamicActivation })`.
  *
  * The core guarantee is isolation: a skill bound to one generator never appears
  * in another's context, and a dynamic activation is request-scoped by default
@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { generator, handler } from "@flow-state-dev/core";
+import { mergeCapabilities } from "@flow-state-dev/core/capability";
 import type { InitialSkill } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
@@ -106,7 +107,7 @@ describe("createSkillsLibrary — static active binding", () => {
         name: "g",
         model: "openai/gpt-5.4-mini",
         prompt: "p",
-        uses: [skills.config({ active: ["typo-skill"] })],
+        uses: [skills.with({ active: ["typo-skill"] })],
       }),
     ).toThrow(/unknown skill "typo-skill"/);
   });
@@ -118,7 +119,7 @@ describe("createSkillsLibrary — static active binding", () => {
         name: "g",
         model: "openai/gpt-5.4-mini",
         prompt: "p",
-        uses: [skills.config({ active: ["anything"] })],
+        uses: [skills.with({ active: ["anything"] })],
       }),
     ).toThrow(/no bundled skills are available to validate against/);
   });
@@ -131,7 +132,7 @@ describe("createSkillsLibrary — static active binding", () => {
         model: "openai/gpt-5.4-mini",
         prompt: "p",
         // `actve` is a typo for `active` — must not be silently ignored.
-        uses: [skills.config({ actve: ["valid"] } as never)],
+        uses: [skills.with({ actve: ["valid"] } as never)],
       }),
     ).toThrow();
   });
@@ -148,7 +149,7 @@ describe("createSkillsLibrary — static active binding", () => {
         name: "g",
         model: "openai/gpt-5.4-mini",
         prompt: "p",
-        uses: [skills.config({ active: ["BadName"] })],
+        uses: [skills.with({ active: ["BadName"] })],
       }),
     ).toThrow(/unknown skill "BadName"/);
   });
@@ -165,13 +166,13 @@ describe("createSkillsLibrary — static active binding", () => {
       name: "a",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skillsA.config({ active: ["alpha"] })],
+      uses: [skillsA.with({ active: ["alpha"] })],
     });
     const genB = generator({
       name: "b",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skillsB.config({ active: ["beta"] })],
+      uses: [skillsB.with({ active: ["beta"] })],
     });
 
     const outA = await renderGeneratorSkills(genA, buildReaderCtx(createMockSkillsCollection()));
@@ -199,7 +200,7 @@ describe("createSkillsLibrary — static active binding", () => {
       name: "s",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skills.config({ active: ["narrow"] })],
+      uses: [skills.with({ active: ["narrow"] })],
     });
     const toolNames = (await resolveTools(gen, ctx)).map((t) => t.name);
     expect(toolNames).toEqual(expect.arrayContaining(["search", "fetch"]));
@@ -220,7 +221,7 @@ describe("createSkillsLibrary — static active binding", () => {
         name: "g",
         model: "openai/gpt-5.4-mini",
         prompt: "p",
-        uses: [skills.config({ active: ["open", "needs-db"] })],
+        uses: [skills.with({ active: ["open", "needs-db"] })],
       }),
     ).toThrow(/skill "needs-db" declares tool "db", which is not in the catalog/);
   });
@@ -245,7 +246,7 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
         name: "g",
         model: "openai/gpt-5.4-mini",
         prompt: "p",
-        uses: [skills.config({}).presets({ dynamicActivation: true })],
+        uses: [skills.with({ dynamicActivation: true })],
       }),
     ).toThrow(/skill "needs-db" declares tool "db", which is not in the catalog/);
   });
@@ -268,7 +269,7 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
         name: "g",
         model: "openai/gpt-5.4-mini",
         prompt: "p",
-        uses: [skills.config({}).presets({ dynamicActivation: true })],
+        uses: [skills.with({ dynamicActivation: true })],
       }),
     ).not.toThrow();
   });
@@ -281,7 +282,7 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skills.config({ allowed: ["deep-research"] }).presets({ dynamicActivation: true })],
+      uses: [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
     });
     const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
       (t) => t.name,
@@ -297,7 +298,7 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skills.config({ allowed: ["deep-research"] }).presets({ dynamicActivation: true })],
+      uses: [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
     });
     const collection = createMockSkillsCollection();
     let parentState: { activeSkills?: unknown[] } = {};
@@ -319,6 +320,43 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
     expect((parentState.activeSkills as Array<{ name: string }>)[0]!.name).toBe("deep-research");
   });
 
+  it("block-state default installs the generator's own `activeSkills` field (no hand-declared stateSchema)", () => {
+    // FIX-914 PR2: the binding contributes the block-state field itself, so the
+    // generator no longer needs `stateSchema: { activeSkills }`. The resolver's
+    // surface flows through the own-state merge, so a merged `stateSchema` with
+    // `activeSkills` is present on the block-state (dynamicActivation) default.
+    const skills = createSkillsLibrary({
+      initialSkills: [inlineSkill("deep-research", "body")],
+    });
+    const merged = mergeCapabilities(
+      [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
+      "generator",
+    );
+    expect(merged.stateSchema).toBeDefined();
+    expect(Object.keys((merged.stateSchema as z.ZodObject<z.ZodRawShape>).shape)).toContain(
+      "activeSkills",
+    );
+  });
+
+  it("an explicit `activeState` does NOT contribute own-block state (it lives at the named scope)", () => {
+    const skills = createSkillsLibrary({
+      initialSkills: [inlineSkill("deep-research", "body")],
+    });
+    const merged = mergeCapabilities(
+      [
+        skills.with({
+          allowed: ["deep-research"],
+          activeState: { scope: "session", field: "activeAnalystSkills" },
+          dynamicActivation: true,
+        }),
+      ],
+      "generator",
+    );
+    // Block-state own field is only for the block-state default; the explicit
+    // field is declared where it's written, not as generator own-state.
+    expect(merged.stateSchema).toBeUndefined();
+  });
+
   it("load catalog lists only inline skills, never fork/pattern (allowed omitted)", async () => {
     const forkSkill: InitialSkill = {
       name: "forky",
@@ -333,7 +371,7 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skills.config({}).presets({ dynamicActivation: true })],
+      uses: [skills.with({ dynamicActivation: true })],
     });
     const out = await renderGeneratorSkills(gen, buildReaderCtx(createMockSkillsCollection()));
     expect(out).toContain("inliney");
@@ -348,7 +386,7 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skills.config({ allowed: ["deep-research"] }).presets({ dynamicActivation: true })],
+      uses: [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
     });
     const ctx = buildReaderCtx(createMockSkillsCollection(), {
       parent: { name: "g", kind: "generator", atomicState: async () => true },
@@ -367,7 +405,7 @@ describe("createSkillsLibrary — block-state default reader", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skills.config({ active: ["edited"] })],
+      uses: [skills.with({ active: ["edited"] })],
     });
     const collection = createMockSkillsCollection();
     // Mark it already-seeded so ensureSeeded won't overwrite our edit, then
@@ -392,7 +430,7 @@ describe("createSkillsLibrary — block-state default reader", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skills.config({ active: ["draft"] })],
+      uses: [skills.with({ active: ["draft"] })],
     });
     const collection = createMockSkillsCollection();
     collection._store.set("skills/_meta", {
@@ -420,7 +458,7 @@ describe("createSkillsLibrary — block-state default reader", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skills.config({ active: ["dual"] }).presets({ dynamicActivation: true })],
+      uses: [skills.with({ active: ["dual"], dynamicActivation: true })],
     });
     const collection = createMockSkillsCollection();
     const ctx = buildReaderCtx(collection, {
@@ -443,7 +481,7 @@ describe("createSkillsLibrary — block-state default reader", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skills.config({ allowed: ["loaded"] }).presets({ dynamicActivation: true })],
+      uses: [skills.with({ allowed: ["loaded"], dynamicActivation: true })],
     });
     const collection = createMockSkillsCollection();
     const ctx = buildReaderCtx(collection, {
@@ -483,7 +521,7 @@ describe("createSkillsLibrary — explicit activeState", () => {
       model: "openai/gpt-5.4-mini",
       prompt: "p",
       uses: [
-        skills.config({
+        skills.with({
           allowed: ["uses-search"],
           activeState: { scope: "session", field: "activeAnalystSkills" },
         }),
@@ -511,7 +549,7 @@ describe("createSkillsLibrary — explicit activeState", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skills.config({ activeState: { scope: "session", field: "activeAnalystSkills" } })],
+      uses: [skills.with({ activeState: { scope: "session", field: "activeAnalystSkills" } })],
     });
     const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
       (t) => t.name,
@@ -528,7 +566,7 @@ describe("createSkillsLibrary — explicit activeState", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [skills.config({ activeState: { scope: "session", field: "activeAnalystSkills" } })],
+      uses: [skills.with({ activeState: { scope: "session", field: "activeAnalystSkills" } })],
     });
     const collection = createMockSkillsCollection();
     const ctx = buildReaderCtx(collection, {

@@ -114,12 +114,12 @@ import { createSkillsLibrary } from "@flow-state-dev/orchestration";
 const skills = createSkillsLibrary({ catalog, initialSkills });
 
 // Preload a skill (inline-only), fails loud on a typo:
-generator({ uses: [skills.config({ active: ["detailed-analysis"] })] });
+generator({ uses: [skills.with({ active: ["detailed-analysis"] })] });
 
-// Let the agent load a skill mid-turn, stored in this generator's block state:
+// Let the agent load a skill mid-turn, stored in this generator's block state
+// (the binding installs the block-state field for you):
 generator({
-  stateSchema: z.object({ activeSkills: activeSkillsArraySchema }),
-  uses: [skills.config({ allowed: ["deep-research"] }).presets({ dynamicActivation: true })],
+  uses: [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
 });
 ```
 
