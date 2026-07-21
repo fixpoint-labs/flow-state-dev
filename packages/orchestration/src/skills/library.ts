@@ -235,10 +235,13 @@ export function createSkillsLibrary(
       );
     }
     if (entry.contextMode !== "inline") {
+      const redirect =
+        entry.contextMode === "fork"
+          ? `fork skills install via the \`fork\` preset (skills.with({ ${where}: [...], fork: true }))`
+          : `pattern skills dispatch through the runSkill router (createSkillsCapability)`;
       throw new Error(
         `skills.with({ ${where}: [...] }): "${name}" is a ${entry.contextMode}-mode ` +
-          `skill. Only inline skills can be bound here — fork/pattern skills dispatch ` +
-          `through the runSkill router (createSkillsCapability).`,
+          `skill. Only inline skills can be bound here — ${redirect}.`,
       );
     }
   };
