@@ -76,6 +76,15 @@ export type PresetDef<TSessionState = any> = {
   // Sequencer-only
   sequencerStateSchema?: ZodTypeAny;
 
+  /**
+   * Own-state — this block's `ctx.self` container (FIX-914 PR2). Valid on
+   * any block kind, since any block can hold its own request-scoped state.
+   * Merged with the block's own `stateSchema` (and any sibling capability's
+   * own-state contribution) with explicit duplicate-field collision
+   * detection — see `mergeCapabilityOwnStateWithBlock` in `capability/merge.ts`.
+   */
+  stateSchema?: ZodTypeAny;
+
   // Targets (any block kind)
   targetStateSchemas?: Record<string, ZodTypeAny>;
 
@@ -185,6 +194,7 @@ export interface CapabilityConfig<
   TResources extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
+  TOwnStateSchema extends ZodTypeAny | undefined = undefined,
 > {
   name: TName;
 
@@ -200,6 +210,8 @@ export interface CapabilityConfig<
   sequencerStateSchema?: TSequencerStateSchema extends ZodTypeAny
     ? TSequencerStateSchema
     : ZodTypeAny;
+  /** Own-state contribution — see `PresetDef.stateSchema` (FIX-914 PR2). */
+  stateSchema?: TOwnStateSchema extends ZodTypeAny ? TOwnStateSchema : ZodTypeAny;
   targetStateSchemas?: TTargetSchemas extends Record<string, ZodTypeAny>
     ? TTargetSchemas
     : Record<string, ZodTypeAny>;
@@ -219,6 +231,8 @@ export interface CapabilityConfig<
   targetStatesType?: TTargetSchemas extends Record<string, ZodTypeAny> ? unknown : never;
   /** Type-only escape hatch for sequencer state. See `sessionStateType`. */
   sequencerStateType?: TSequencerStateSchema extends ZodTypeAny ? unknown : never;
+  /** Type-only escape hatch for own state. See `sessionStateType`. */
+  stateSchemaType?: TOwnStateSchema extends ZodTypeAny ? unknown : never;
 
   // Capability composition — static refs and/or dynamic resolver functions.
   // Dynamic entries (functions) receive typed ctx from sessionStateSchema.
@@ -269,6 +283,7 @@ type CapabilityCarrierKeys =
   | "resourcesType"
   | "targetStatesType"
   | "sequencerStateType"
+  | "stateSchemaType"
   | "__configInType";
 
 /** Preserve the receiver's carrier fields on a builder's return type. */
@@ -306,6 +321,7 @@ export interface DefinedCapability<
   TResources extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
+  TOwnStateSchema extends ZodTypeAny | undefined = undefined,
 > {
   /** Brand — set by defineCapability() to identify capability objects. */
   readonly __brand: "Capability";
@@ -325,6 +341,8 @@ export interface DefinedCapability<
   sequencerStateSchema?: TSequencerStateSchema extends ZodTypeAny
     ? TSequencerStateSchema
     : ZodTypeAny;
+  /** Own-state contribution — see `PresetDef.stateSchema` (FIX-914 PR2). */
+  stateSchema?: TOwnStateSchema extends ZodTypeAny ? TOwnStateSchema : ZodTypeAny;
   targetStateSchemas?: TTargetSchemas extends Record<string, ZodTypeAny>
     ? TTargetSchemas
     : Record<string, ZodTypeAny>;
@@ -339,6 +357,7 @@ export interface DefinedCapability<
   readonly resourcesType?: unknown;
   readonly targetStatesType?: unknown;
   readonly sequencerStateType?: unknown;
+  readonly stateSchemaType?: unknown;
 
   /**
    * Type-only carrier for the `.config()` argument type. Set by defineCapability
@@ -390,7 +409,8 @@ export interface DefinedCapability<
     TSessionStateSchema,
     TResources,
     TTargetSchemas,
-    TSequencerStateSchema
+    TSequencerStateSchema,
+    TOwnStateSchema
   > & PreserveCarriers<Self>;
 
   /**
@@ -411,7 +431,8 @@ export interface DefinedCapability<
     TSessionStateSchema,
     TResources,
     TTargetSchemas,
-    TSequencerStateSchema
+    TSequencerStateSchema,
+    TOwnStateSchema
   > & PreserveCarriers<Self>;
 }
 
@@ -453,6 +474,7 @@ export interface ConfiguredCapability<
   TResources extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
+  TOwnStateSchema extends ZodTypeAny | undefined = undefined,
 > extends DefinedCapability<
     TName,
     TFns,
@@ -461,7 +483,8 @@ export interface ConfiguredCapability<
     TSessionStateSchema,
     TResources,
     TTargetSchemas,
-    TSequencerStateSchema
+    TSequencerStateSchema,
+    TOwnStateSchema
   > {
   readonly __presetOverrides: PresetOverrides<TPresetNames, TPresets>;
 }
@@ -473,7 +496,7 @@ export interface ConfiguredCapability<
 /**
  * Accepted in block-level and capability-level `uses` arrays.
  */
-export type CapabilityRef = DefinedCapability<any, any, any, any, any, any, any, any>;
+export type CapabilityRef = DefinedCapability<any, any, any, any, any, any, any, any, any>;
 
 /**
  * A single entry in a `uses` array — either a static capability reference
@@ -509,7 +532,7 @@ export type InferCapabilities<TUses extends readonly UsesEntry[]> =
       : {};
 
 type InferCapabilityEntry<T> =
-  T extends DefinedCapability<infer N, infer F, any, any, any, any, any, any>
+  T extends DefinedCapability<infer N, infer F, any, any, any, any, any, any, any>
     ? { [K in N]: F }
     : never;
 
@@ -533,7 +556,7 @@ export type InferCapabilitySessionState<TUses extends readonly UsesEntry[]> =
     : Prettify<UnionToIntersection<InferCapabilitySessionStateEntry<Extract<TUses[number], CapabilityRef>>>>;
 
 type InferCapabilitySessionStateEntry<T> =
-  T extends DefinedCapability<any, any, any, any, infer S, any, any, any>
+  T extends DefinedCapability<any, any, any, any, infer S, any, any, any, any>
     ? T extends { sessionStateType?: infer O }
       ? unknown extends O
         ? S extends ZodTypeAny ? import("zod").infer<S> : {}
@@ -553,7 +576,7 @@ export type InferCapabilityResources<TUses extends readonly UsesEntry[]> =
     : Prettify<UnionToIntersection<InferCapabilityResourcesEntry<Extract<TUses[number], CapabilityRef>>>>;
 
 type InferCapabilityResourcesEntry<T> =
-  T extends DefinedCapability<any, any, any, any, any, infer R, any, any>
+  T extends DefinedCapability<any, any, any, any, any, infer R, any, any, any>
     ? T extends { resourcesType?: infer O }
       ? unknown extends O
         ? R extends Record<string, DeclaredResourceEntry> ? InferResourcesFromDefinitions<R> : {}
@@ -572,7 +595,7 @@ export type InferCapabilityTargets<TUses extends readonly UsesEntry[]> =
     : Prettify<UnionToIntersection<InferCapabilityTargetsEntry<Extract<TUses[number], CapabilityRef>>>>;
 
 type InferCapabilityTargetsEntry<T> =
-  T extends DefinedCapability<any, any, any, any, any, any, infer S, any>
+  T extends DefinedCapability<any, any, any, any, any, any, infer S, any, any>
     ? T extends { targetStatesType?: infer O }
       ? unknown extends O
         ? S extends Record<string, ZodTypeAny> ? InferTargetStatesFromSchemas<S> : {}
@@ -595,7 +618,7 @@ export type InferCapabilityTargetSchemas<TUses extends readonly UsesEntry[]> =
     : Prettify<UnionToIntersection<InferCapabilityTargetSchemasEntry<Extract<TUses[number], CapabilityRef>>>>;
 
 type InferCapabilityTargetSchemasEntry<T> =
-  T extends DefinedCapability<any, any, any, any, any, any, infer S, any>
+  T extends DefinedCapability<any, any, any, any, any, any, infer S, any, any>
     ? S extends Record<string, ZodTypeAny> ? S : {}
     : {};
 
@@ -628,8 +651,29 @@ export type InferCapabilitySequencerState<TUses extends readonly UsesEntry[]> =
     : Prettify<UnionToIntersection<InferCapabilitySequencerStateEntry<Extract<TUses[number], CapabilityRef>>>>;
 
 type InferCapabilitySequencerStateEntry<T> =
-  T extends DefinedCapability<any, any, any, any, any, any, any, infer S>
+  T extends DefinedCapability<any, any, any, any, any, any, any, infer S, any>
     ? T extends { sequencerStateType?: infer O }
+      ? unknown extends O
+        ? S extends ZodTypeAny ? import("zod").infer<S> : {}
+        : NonNullable<O>
+      : S extends ZodTypeAny ? import("zod").infer<S> : {}
+    : {};
+
+/**
+ * Infer the merged own-state shape (`ctx.self`) contributed by static
+ * capabilities (FIX-914 PR2). Same shape as session state — `z.infer` of
+ * `stateSchema` per capability, with `stateSchemaType` as an override.
+ * Consuming block factories intersect this with their own declared
+ * `stateSchema` (block-own on the LEFT — see e.g. `HandlerConfig.TSelfState`).
+ */
+export type InferCapabilityOwnState<TUses extends readonly UsesEntry[]> =
+  [Extract<TUses[number], CapabilityRef>] extends [never]
+    ? {}
+    : Prettify<UnionToIntersection<InferCapabilityOwnStateEntry<Extract<TUses[number], CapabilityRef>>>>;
+
+type InferCapabilityOwnStateEntry<T> =
+  T extends DefinedCapability<any, any, any, any, any, any, any, any, infer S>
+    ? T extends { stateSchemaType?: infer O }
       ? unknown extends O
         ? S extends ZodTypeAny ? import("zod").infer<S> : {}
         : NonNullable<O>

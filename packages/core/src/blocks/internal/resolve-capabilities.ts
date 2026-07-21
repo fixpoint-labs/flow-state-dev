@@ -6,6 +6,7 @@
  * for ctx.cap construction at runtime, and optionally the merged surface
  * (used by generators to merge context/tools from presets).
  */
+import type { ZodTypeAny } from "zod";
 import type { BlockKind, DeclaredResources } from "../../types/block";
 import type { CapabilityRef, UsesEntry } from "../../capability/types";
 import type { MergedCapabilitySurface, DynamicUsesResolver } from "../../capability/merge";
@@ -16,15 +17,19 @@ import {
   mergeCapabilities,
   extractMergedResources,
   mergeWithBlockResources,
+  mergeCapabilityOwnStateWithBlock,
 } from "../../capability/merge";
 import { extractDeclaredResources } from "./build-block";
 
 const PRIMARY_VISIBILITY: ItemVisibility = { client: true, history: true };
 
 interface HasResources {
+  name: string;
   resources?: Record<string, any>;
   uses?: readonly UsesEntry[];
   itemVisibility?: ItemVisibility;
+  /** This block's own declared `stateSchema` (FIX-914 PR2). */
+  stateSchema?: ZodTypeAny;
 }
 
 /**
@@ -53,6 +58,14 @@ export interface ResolveResult {
   mergedSurface: MergedCapabilitySurface | undefined;
   /** Dynamic uses entries collected from the block's uses AND nested capabilities. */
   dynamicUses: DynamicUsesResolver[];
+  /**
+   * This block's effective own-state schema (FIX-914 PR2): the block's own
+   * `stateSchema` merged with any capability-contributed `stateSchema`, with
+   * explicit duplicate-field collision detection (see
+   * `mergeCapabilityOwnStateWithBlock`). Consumed by each block factory to
+   * build `ctx.self`'s container.
+   */
+  stateSchema: ZodTypeAny | undefined;
 }
 
 /**
@@ -77,6 +90,7 @@ export function resolveCapabilities(
       resolvedCapabilities: [],
       mergedSurface: undefined,
       dynamicUses: [],
+      stateSchema: config.stateSchema,
     };
   }
 
@@ -97,6 +111,7 @@ export function resolveCapabilities(
       resolvedCapabilities: [],
       mergedSurface: undefined,
       dynamicUses: topDynamicFns,
+      stateSchema: config.stateSchema,
     };
   }
 
@@ -113,11 +128,19 @@ export function resolveCapabilities(
   const merged = mergeCapabilities(scoped, blockKind);
   const capResources = extractMergedResources(merged);
   const declaredResources = mergeWithBlockResources(capResources, blockResources);
+  // FIX-914 PR2: a capability can contribute to this block's own state
+  // (`ctx.self`); merge it with the block's own `stateSchema` declaration.
+  const stateSchema = mergeCapabilityOwnStateWithBlock(
+    merged.stateSchema,
+    config.stateSchema,
+    config.name
+  );
 
   return {
     declaredResources,
     resolvedCapabilities: scoped,
     mergedSurface: merged,
     dynamicUses: allDynamic,
+    stateSchema,
   };
 }

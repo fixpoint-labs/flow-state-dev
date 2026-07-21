@@ -31,6 +31,10 @@ export function defineCapability<
   const TSequencerStateType = unknown,
   const TConfigSchema extends import("zod").ZodTypeAny | undefined = undefined,
   const TConfigExplicit = never,
+  // FIX-914 PR2 — appended at the end so existing explicit type-argument
+  // usages (e.g. pinning TPresetKeys) keep their positional slots.
+  const TOwnStateSchema extends import("zod").ZodTypeAny | undefined = undefined,
+  const TOwnStateType = unknown,
 >(
   config: Omit<CapabilityConfig<
     TName,
@@ -38,7 +42,8 @@ export function defineCapability<
     TSessionStateSchema,
     TResources,
     TTargetSchemas,
-    TSequencerStateSchema
+    TSequencerStateSchema,
+    TOwnStateSchema
   >, "config"> & {
     presets?: { [K in TPresetKeys]: PresetDef<InferSessionState<TSessionStateSchema>> | string[] } & { default?: string[] };
     // Capture the literal override type via const generics so the
@@ -49,6 +54,7 @@ export function defineCapability<
     resourcesType?: TResourcesType;
     targetStatesType?: TTargetStatesType;
     sequencerStateType?: TSequencerStateType;
+    stateSchemaType?: TOwnStateType;
     // Open config. `schema` types the resolver's `config` param as z.output
     // (parsed) and the `.config()` argument as z.input. Schemaless: both are
     // the explicit type inferred from the resolver's `config` annotation.
@@ -70,12 +76,14 @@ export function defineCapability<
   TSessionStateSchema,
   TResources,
   TTargetSchemas,
-  TSequencerStateSchema
+  TSequencerStateSchema,
+  TOwnStateSchema
 > & {
   readonly sessionStateType?: TSessionStateType;
   readonly resourcesType?: TResourcesType;
   readonly targetStatesType?: TTargetStatesType;
   readonly sequencerStateType?: TSequencerStateType;
+  readonly stateSchemaType?: TOwnStateType;
   // z.input at the call site (a `.default()` field is optional here); `never`
   // when no config is declared, which makes `.config()` a compile error.
   readonly __configInType?: TConfigSchema extends import("zod").ZodTypeAny
@@ -97,6 +105,7 @@ export function defineCapability<
     userStateSchema: config.userStateSchema,
     orgStateSchema: config.orgStateSchema,
     sequencerStateSchema: config.sequencerStateSchema,
+    stateSchema: config.stateSchema,
     targetStateSchemas: config.targetStateSchemas,
     uses: config.uses,
     itemVisibility: config.itemVisibility,

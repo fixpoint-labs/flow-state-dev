@@ -267,6 +267,8 @@ export type MergedCapabilitySurface = {
   userStateSchema: ZodTypeAny | undefined;
   orgStateSchema: ZodTypeAny | undefined;
   sequencerStateSchema: ZodTypeAny | undefined;
+  /** Own-state contribution, merged across capabilities (FIX-914 PR2). */
+  stateSchema: ZodTypeAny | undefined;
   targetStateSchemas: Record<string, ZodTypeAny> | undefined;
   contextEntries: Array<PresetContextEntry>;
   toolEntries: Array<GeneratorTool[] | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>)>;
@@ -288,6 +290,7 @@ export function createEmptyMergedSurface(): MergedCapabilitySurface {
     userStateSchema: undefined,
     orgStateSchema: undefined,
     sequencerStateSchema: undefined,
+    stateSchema: undefined,
     targetStateSchemas: undefined,
     contextEntries: [],
     toolEntries: [],
@@ -330,6 +333,14 @@ function mergeResourcesInto(
 /**
  * Merge Zod state schemas using z.object().extend() semantics.
  * Both schemas must be ZodObject instances for extend to work.
+ *
+ * NOTE: this silently last-wins on a duplicate field — the right policy for
+ * session/request/user/org/sequencer scope schemas, where a later capability
+ * refining a field is intended. Own-state (`stateSchema`) deliberately does
+ * NOT route through here: it uses `mergeOwnStateShapes` instead, which throws
+ * on a duplicate field unless both sides are the same schema reference (see
+ * FIX-914 PR2). Do not "simplify" own-state by pointing it at `extendSchema`
+ * — the loud-collision behavior is the point.
  */
 function extendSchema(
   existing: ZodTypeAny | undefined,
@@ -370,6 +381,93 @@ function mergeTargetsInto(
     );
   }
   return merged;
+}
+
+/**
+ * Merge two own-state schemas field-by-field. A field declared by both sides
+ * must be the SAME schema reference, or this throws — the same reference-
+ * equality collision detection the sibling `mergeTargetsInto` /
+ * `mergeResourcesInto` already use for their axes. This is the "collision
+ * detection" `sequencerStateSchema`'s silent-last-wins `.extend()` never had:
+ * two sources contributing the same `ctx.self` field fail loud instead of one
+ * silently overwriting the other.
+ *
+ * Reference-equality (rather than a structural comparison) is deliberate — a
+ * shallow structural check admits nested-object / parse-mode divergence that
+ * `.extend()` then resolves last-wins, so the runtime schema and the
+ * intersected `ctx.self` type disagree. Requiring identity is sound with no
+ * such blind spots: two contributors that both want a field share the schema
+ * definition (import one constant) or use distinct field names. Disjoint
+ * fields merge cleanly via `.extend()`.
+ *
+ * Known limitation: `.extend()` keeps the base (`existing`) object's
+ * unknown-key policy, so a non-default `.strict()` / `.passthrough()` /
+ * `.catchall()` on the OTHER side isn't preserved through a merge. Own-state
+ * is a plain field bag (`ctx.self.state.<field>`), so declare it with the
+ * default object policy; a non-default policy on a merged own-state schema is
+ * unsupported. A lone own-state schema (no second contributor) never reaches
+ * this path and keeps its policy untouched.
+ */
+function mergeOwnStateShapes(
+  existing: ZodTypeAny,
+  incoming: ZodTypeAny,
+  context: string
+): ZodTypeAny {
+  // Own state is addressed as `ctx.self.state.<field>`, so both sides must be
+  // objects to merge field-by-field.
+  if (!isZodObject(existing) || !isZodObject(incoming)) {
+    throw new Error(
+      `Own-state conflict (${context}): own-state schemas must both be z.object() to merge.`
+    );
+  }
+  const existingShape = (existing as ZodObject<ZodRawShape>).shape;
+  const incomingShape = (incoming as ZodObject<ZodRawShape>).shape;
+  for (const key of Object.keys(incomingShape)) {
+    if (key in existingShape && existingShape[key] !== incomingShape[key]) {
+      throw new Error(
+        `Own-state conflict (${context}): field "${key}" is declared by two sources with ` +
+        `different schema references. Two contributors to the same ctx.self field must share ` +
+        `the schema definition (reference one constant) or use distinct field names.`
+      );
+    }
+  }
+  return (existing as ZodObject<ZodRawShape>).extend(incomingShape);
+}
+
+/**
+ * Merge own-state (`stateSchema`) contributions across capabilities in the
+ * accumulator. A same-name field from two capabilities must be the same
+ * schema reference or this throws — see `mergeOwnStateShapes`.
+ */
+function mergeOwnStateSchema(
+  target: ZodTypeAny | undefined,
+  source: ZodTypeAny,
+  capName: string,
+  sourceLabel: string
+): ZodTypeAny {
+  if (target === undefined) return source;
+  return mergeOwnStateShapes(target, source, `capability "${capName}" ${sourceLabel}`);
+}
+
+/**
+ * Merge the capability-contributed own-state schema (from `mergeCapabilities`)
+ * with a block's own declared `stateSchema`. A same-name field declared by
+ * both must be the same schema reference or this throws — see
+ * `mergeOwnStateShapes`. Mirrors `mergeWithBlockResources`'s capability-then-
+ * block shape (and its reference-equality collision rule).
+ */
+export function mergeCapabilityOwnStateWithBlock(
+  capStateSchema: ZodTypeAny | undefined,
+  blockStateSchema: ZodTypeAny | undefined,
+  blockName: string
+): ZodTypeAny | undefined {
+  if (capStateSchema === undefined) return blockStateSchema;
+  if (blockStateSchema === undefined) return capStateSchema;
+  return mergeOwnStateShapes(
+    capStateSchema,
+    blockStateSchema,
+    `block "${blockName}" own stateSchema + capability`
+  );
 }
 
 /**
@@ -419,6 +517,12 @@ export function mergeSurfaceInto(
       );
     }
     acc.sequencerStateSchema = extendSchema(acc.sequencerStateSchema, surface.sequencerStateSchema);
+  }
+
+  // Own state — valid on all block kinds (FIX-914 PR2: any block can hold
+  // its own state, so any block's capability can contribute to it).
+  if (surface.stateSchema) {
+    acc.stateSchema = mergeOwnStateSchema(acc.stateSchema, surface.stateSchema, capName, source);
   }
 
   // Targets — valid on all block kinds

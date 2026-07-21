@@ -50,6 +50,7 @@ import type { ToolsConfig } from "../types/flow";
 import type {
   CapabilityRef,
   InferCapabilities,
+  InferCapabilityOwnState,
   InferCapabilityResources,
   InferCapabilitySequencerState,
   InferCapabilitySessionState,
@@ -424,7 +425,7 @@ export interface GeneratorConfig<
   // parent's state (`parentStateSchema`).
   TStateSchema extends ZodTypeAny | undefined = undefined,
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
-  TSelfState extends object = InferStateFromSchema<TStateSchema>,
+  TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
@@ -2553,7 +2554,7 @@ export function generator<
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   TStateSchema extends ZodTypeAny | undefined = undefined,
   TParentStateSchema extends ZodTypeAny | undefined = undefined,
-  TSelfState extends object = InferStateFromSchema<TStateSchema>,
+  TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
@@ -2569,7 +2570,7 @@ export function generator<
     TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
-  const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses } = resolveCapabilities(config, "generator");
+  const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses, stateSchema: effectiveStateSchema } = resolveCapabilities(config, "generator");
   const blockItemVisibility = config.itemVisibility;
 
   // Eager strict-mode guard: a reachable z.record / non-literal union in the
@@ -2633,6 +2634,11 @@ export function generator<
   if (normalizedConfig.caching === undefined && mergedSurface?.caching !== undefined) {
     (normalizedConfig as { caching?: unknown }).caching = mergedSurface.caching;
   }
+
+  // -- Own state (FIX-914 PR2): a capability can contribute to this
+  // generator's own state (`ctx.self`); `resolveCapabilities` already merged
+  // it with the generator's own `stateSchema` declaration.
+  (normalizedConfig as { stateSchema?: unknown }).stateSchema = effectiveStateSchema;
 
   // -- Context: append static + dynamic entries to the user's context array
   if (hasStaticContext || hasDynamic) {

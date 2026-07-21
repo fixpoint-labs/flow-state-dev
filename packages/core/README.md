@@ -196,7 +196,7 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
 
 **Capability schema forwarding:**
 
-When a block lists a capability in `uses`, the capability's declared schemas flow into the block's `ctx` types at factory time. No re-declaration on the block is needed. The four forwarded axes are `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, and `sequencerStateSchema` (from presets). Block-own declarations merge in; the block wins on key collision.
+When a block lists a capability in `uses`, the capability's declared schemas flow into the block's `ctx` types at factory time. No re-declaration on the block is needed. The forwarded axes are `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, `sequencerStateSchema` (from presets), and `stateSchema` (the block's own state, `ctx.self` — valid on any block kind). Block-own declarations merge in; for most axes the block wins on key collision, but `stateSchema` requires a shared field to be the *same schema reference* instead (matching the `resources`/`targetStateSchemas` merges) — a duplicate field with a different reference throws at build time rather than one side silently winning.
 
 ```ts
 const myCap = defineCapability({
