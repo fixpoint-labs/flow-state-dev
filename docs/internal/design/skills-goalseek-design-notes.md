@@ -432,10 +432,16 @@ the host isn't in it, so a self-assigned task throws a registry-miss and is mark
 
 Two things split out of FIX-918 to keep that spec unloaded:
 
-- **FIX-923 (research):** should a delegating host also execute tasks itself
-  (manager **and** IC), or stay a pure coordinator? Research pass on whether mixing
-  planner+executor in one agent is a known anti-pattern (context dilution / role
-  confusion) — the "manager and IC is a no-no for AI" hypothesis.
+- **FIX-923 (research + the self-execution story):** should a delegating host also
+  execute tasks itself (manager **and** IC), or stay a pure coordinator? Research
+  pass on whether mixing planner+executor in one agent is a known anti-pattern
+  (context dilution / role confusion) — the "manager and IC is a no-no for AI"
+  hypothesis. **Also owns the ad-hoc `delegate({ instructions })` case** (pulled
+  out of FIX-918): `delegate` ≈ old fork ≈ "self-as-IC via an ephemeral child," so
+  the ad-hoc one-off and manager-as-IC are the *same* question. **Guardrail:** keep
+  the two axes separate — *assignee* = WHO (roster / self), *context-supply mode* =
+  HOW MUCH (incl. `conversation` = fork-like inheritance, FIX-920). Do **not** model
+  self/ad-hoc as `assignee: "fork"` (that collapses WHO into the context-mode axis).
 - **FIX-924 (concrete design requirement, not research):** the manager must **know
   its roster** and assign only to real workers. Surface the roster to the host;
   validate `assignee` at creation (fail loud), not at dispatch. Belongs to the
