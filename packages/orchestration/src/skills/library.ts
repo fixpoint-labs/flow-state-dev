@@ -218,43 +218,37 @@ export function createSkillsLibrary(
     }
   };
 
-  // Resolve a set of skills' declared catalog tools. Any skill that omits
-  // `allowed-tools` is unrestricted, so the effective contribution becomes the
-  // full catalog. A declared tool absent from the catalog is a config error.
-  const declaredTools = (names: readonly string[]): GeneratorTool[] => {
-    if (names.length === 0) return [];
-    const keys = new Set<string>();
-    let unrestricted = false;
-    // Scan every name — validate each skill's declared tools against the
-    // catalog even once we know an earlier skill was unrestricted, so a bad
-    // declaration on a later skill still fails loud instead of being masked by
-    // the full-catalog fallback.
-    for (const name of names) {
-      const declared = index.get(name)?.allowedTools;
-      if (!declared || declared.length === 0) {
-        unrestricted = true;
-        continue;
-      }
-      for (const key of declared) {
-        if (!(key in catalog)) {
-          throw new Error(
-            `skills: skill "${name}" declares tool "${key}", which is not in the catalog`,
-          );
-        }
-        keys.add(key);
+  // Validate a bound skill's declared `allowed-tools` all exist in the catalog.
+  // Author feedback only — it does NOT scope what gets registered. Tool
+  // registration is a safe superset (the whole catalog), like the legacy
+  // capability: the reader renders the LIVE manifest, which an admin can edit
+  // after seeding, so freezing a per-skill tool subset at build time would let
+  // the rendered `allowed-tools` restriction note reference a tool the
+  // generator never registered. The per-skill restriction stays a soft,
+  // prompt-level scope via the rendered note.
+  const validateDeclaredTools = (name: string): void => {
+    const declared = index.get(name)?.allowedTools;
+    if (!declared) return;
+    for (const key of declared) {
+      if (!(key in catalog)) {
+        throw new Error(
+          `skills: skill "${name}" declares tool "${key}", which is not in the catalog`,
+        );
       }
     }
-    // Any unrestricted skill widens the effective contribution to the whole catalog.
-    if (unrestricted) return Object.values(catalog) as GeneratorTool[];
-    return [...keys].map((k) => catalog[k]!) as GeneratorTool[];
   };
+
+  const fullCatalog = (): GeneratorTool[] => Object.values(catalog) as GeneratorTool[];
 
   const resolve = (
     cfg: z.output<typeof bindingConfigSchema>,
     resolveCtx: CapabilityConfigResolveCtx,
   ): Partial<PresetDef> => {
     const active = cfg.active ?? [];
-    for (const name of active) assertInline(name, "active");
+    for (const name of active) {
+      assertInline(name, "active");
+      validateDeclaredTools(name);
+    }
 
     const location: ActivationLocation = cfg.activeState
       ? {
@@ -279,27 +273,24 @@ export function createSkillsLibrary(
       }),
     );
 
-    // Static `active` skills contribute their declared tools.
-    if (active.length > 0) tools.push(...declaredTools(active));
-
     // Validate `allowed` names up front so a typo fails loud regardless of
     // which activation path (load tool / upstream matcher / code) feeds it.
-    if (cfg.allowed) for (const name of cfg.allowed) assertInline(name, "allowed");
+    if (cfg.allowed) {
+      for (const name of cfg.allowed) {
+        assertInline(name, "allowed");
+        validateDeclaredTools(name);
+      }
+    }
 
     const dynamic = resolveCtx.presets.has("dynamicActivation");
-    // A runtime activation can arrive from the load tool (`dynamicActivation`)
-    // or from an upstream matcher / code writing an explicit `activeState`
-    // field. Any such path can render a skill body, so register the tools those
-    // bodies may reference: the `allowed` skills' declared tools when scoped, or
-    // the whole catalog when the activatable set is unbounded (no `allowed`).
     const hasActivationPath = dynamic || Boolean(cfg.activeState);
-    if (hasActivationPath) {
-      tools.push(
-        ...(cfg.allowed
-          ? declaredTools(cfg.allowed)
-          : (Object.values(catalog) as GeneratorTool[])),
-      );
-    }
+    // Whenever a skill body can render — statically preloaded (`active`) or
+    // activated at runtime (load tool / upstream matcher / code) — register the
+    // whole catalog as a safe superset. The skill's own `allowed-tools` scopes
+    // the model softly via the rendered restriction note; registering the
+    // superset keeps a live post-seeding edit to that list from pointing the
+    // model at an unregistered tool.
+    if (active.length > 0 || hasActivationPath) tools.push(...fullCatalog());
 
     // `dynamicActivation` preset → install the load tool + catalog listing.
     if (dynamic) {

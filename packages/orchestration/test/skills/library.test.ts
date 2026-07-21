@@ -183,39 +183,26 @@ describe("createSkillsLibrary — static active binding", () => {
     expect(outB).not.toContain("ALPHA-BODY-MARKER");
   });
 
-  it("contributes the bound skills' declared tools; omitted allowed-tools → full catalog", async () => {
+  it("registers the whole catalog as a safe superset for a bound skill", async () => {
+    // Registration is a superset (like the legacy capability): the reader renders
+    // the live manifest, so a per-skill declared-tools subset can't be frozen at
+    // build time. The `allowed-tools` note scopes the model softly. A skill
+    // declaring only `search` still gets the whole catalog registered.
     const mk = (name: string) =>
       handler({ name, inputSchema: z.object({}), outputSchema: z.object({}), execute: async () => ({}) });
-    const search = mk("search");
-    const fetchTool = mk("fetch");
     const ctx = buildReaderCtx(createMockSkillsCollection());
-
-    const scoped = createSkillsLibrary({
-      catalog: { search, fetch: fetchTool },
+    const skills = createSkillsLibrary({
+      catalog: { search: mk("search"), fetch: mk("fetch") },
       initialSkills: [inlineSkill("narrow", "body", ["search"])],
     });
-    const gScoped = generator({
+    const gen = generator({
       name: "s",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
-      uses: [scoped.config({ active: ["narrow"] })],
+      uses: [skills.config({ active: ["narrow"] })],
     });
-    const scopedTools = (await resolveTools(gScoped, ctx)).map((t) => t.name);
-    expect(scopedTools).toContain("search");
-    expect(scopedTools).not.toContain("fetch");
-
-    const wide = createSkillsLibrary({
-      catalog: { search, fetch: fetchTool },
-      initialSkills: [inlineSkill("open", "body")], // no allowed-tools → full catalog
-    });
-    const gWide = generator({
-      name: "w",
-      model: "openai/gpt-5.4-mini",
-      prompt: "p",
-      uses: [wide.config({ active: ["open"] })],
-    });
-    const wideTools = (await resolveTools(gWide, ctx)).map((t) => t.name);
-    expect(wideTools).toEqual(expect.arrayContaining(["search", "fetch"]));
+    const toolNames = (await resolveTools(gen, ctx)).map((t) => t.name);
+    expect(toolNames).toEqual(expect.arrayContaining(["search", "fetch"]));
   });
 
   it("validates every bound skill's declared tools, even after an unrestricted one", () => {
