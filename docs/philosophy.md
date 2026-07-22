@@ -176,26 +176,26 @@ gate is for the ones that shape the design.)
 
 ---
 
-## Philosophy → principles → best practices
+## Philosophy → tenets → best practices
 
 The grounding has three tiers, each derived from the one above:
 
 1. **Philosophy** — the convictions above (what FSD is; the two failures).
-2. **Principles** — the tenets. The stable, enumerable rules of thought the
-   convictions yield. Always in force.
-3. **Best practices** — the *situational* refinements of the principles: concrete,
+2. **Tenets** — the stable, enumerable rules of thought the convictions yield (the
+   seven above). Always in force.
+3. **Best practices** — the *situational* refinements of the tenets: concrete,
    testable guidance for a specific area. The volatile tier.
 
-The lasting layer is the **principles**. Best practices are specific by nature, so
-they must stay **few** — we do not want dozens or hundreds. Most situational guidance
-is worked out **per spec**: for the solution at hand, reason from the principles plus
-the handful of common best practices already established, and name the 1–5 that fit
+The lasting layer is the **tenets**. Best practices are specific by nature, so they
+must stay **few** — we do not want dozens or hundreds. Most situational guidance is
+worked out **per spec**: for the solution at hand, reason from the tenets plus the
+handful of common best practices already established, and name the 1–5 that fit
 *this* change. You are not meant to consult, or grow, a large global registry.
 
-Every BP still traces to a principle; one that serves none is miscategorized or a
-sign a principle is missing. Sharpen or prune before you add — tenet 3 governs our
-own grounding as much as our code. Principles endure; best practices earn their
-place one at a time and stay a short list.
+Every BP still traces to a tenet; one that serves none is miscategorized or a sign a
+tenet is missing. Sharpen or prune before you add — tenet 3 governs our own grounding
+as much as our code. Tenets endure; best practices earn their place one at a time and
+stay a short list.
 
 ---
 

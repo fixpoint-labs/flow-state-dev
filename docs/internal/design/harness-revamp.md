@@ -295,7 +295,9 @@ prescribes.
   refine, don't accrete.
 
 Drafted: `docs/philosophy.md` (WS-1) — 7 tenets, coherence-apex, three-tier grounding.
-`docs/contributing/spec-template.md` (WS-2) — the two-part Case/Build-Plan contract.
+`docs/contributing/spec-template.md` (WS-2) — the two-part Case/Build-Plan contract;
+`create-spec` wired to it (refinement-lens Step 3.5, interactivity dial, anti-addenda,
+structure now lives in the template — skill shrank).
 
 ## 7. Verification (how we'll know it worked)
 
