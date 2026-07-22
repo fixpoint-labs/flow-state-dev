@@ -297,6 +297,18 @@ describe("parseSkillMd — delegation agents", () => {
     expect(() => parseSkillMd(text)).toThrow(/mutually exclusive/);
   });
 
+  it("rejects a non-string resolution field (present but not a usable string)", () => {
+    // `prompt: 123` satisfies the exactly-one check but leaves no usable string,
+    // so it must fail at parse time, not confusingly at materialization.
+    const numeric = withFrontmatter([`agents:`, `  bad:`, `    prompt: 123`].join("\n"));
+    expect(() => parseSkillMd(numeric)).toThrow(/`prompt` must be a non-empty string/);
+
+    const boolRef = withFrontmatter(
+      [`agents:`, `  bad:`, `    agent-ref: false`].join("\n"),
+    );
+    expect(() => parseSkillMd(boolRef)).toThrow(/`agent-ref` must be a non-empty string/);
+  });
+
   it("rejects agent-overrides without agent-ref", () => {
     const text = withFrontmatter(
       [

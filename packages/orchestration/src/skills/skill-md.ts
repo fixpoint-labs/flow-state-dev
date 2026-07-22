@@ -199,6 +199,17 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
       `SKILL.md agent \`${key}\`: fields ${setResolution.map((f) => `\`${f}\``).join(", ")} are mutually exclusive — set exactly one`,
     );
   }
+  // The exactly-one check above only proves the field is *present* and non-null.
+  // A non-string value (e.g. `prompt: 123`, `agent-ref: false`) would pass it but
+  // leave the AgentSpec with no usable resolution below, failing confusingly at
+  // materialization instead of here. Reject it at parse time with a clear error.
+  const resolutionField = setResolution[0]!;
+  const resolutionValue = obj[resolutionField];
+  if (typeof resolutionValue !== "string" || resolutionValue.trim() === "") {
+    throw new Error(
+      `SKILL.md agent \`${key}\`: \`${resolutionField}\` must be a non-empty string`,
+    );
+  }
 
   if ("agent-overrides" in obj && !("agent-ref" in obj)) {
     throw new Error(
