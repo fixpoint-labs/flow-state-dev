@@ -34,23 +34,20 @@ Each worker has exactly one resolution field:
 | `prompt` | Inline prompt body. `$ARGUMENTS` is substituted at activation. | Yes — ships inside the skill folder. |
 | `prompt-ref` | Path to a Markdown prompt file inside the skill folder. Loaded at activation. | Yes — ships inside the skill folder. |
 | `block-ref` | Registry key into the `blocks` map passed to the library. The worker is custom app code. | No — needs an app-supplied registry. |
-| `agent-ref` | Name of a registered agent (from `@flow-state-dev/workforce`). The worker is staffed by that agent's persona, model, and tools. Requires `agentRegistry` + `materializeAgent` on the library. See [Agents](../orchestration/agents). | No — needs an app-supplied registry. |
 
-`prompt` and `prompt-ref` workers are fully portable: a skill folder carries its own delegation behavior with no app wiring beyond the tool catalog. `block-ref` and `agent-ref` workers resolve a string key against a registry the app supplies, so they can't travel alone.
+`prompt` and `prompt-ref` workers are fully portable: a skill folder carries its own delegation behavior with no app wiring beyond the tool catalog. `block-ref` workers resolve a string key against a `blocks` registry the app supplies, so they can't travel alone.
 
-Per-worker tuning is unchanged: `tools` (catalog keys the worker may call), `visibility` (`sub`, `primary`, or a `{ client, history }` mapping), and `model`. `agent-ref` workers also accept an `agent-overrides` sibling object (`tools`, `model`, `visibility`) that REPLACES the agent's defaults for this skill — no merging.
+The `WorkerSpec` also has an `agent-ref` field (staffing a worker from a registered agent). Agent resolution is asynchronous, so `agent-ref` workers are not built by the delegation surface today — use a `prompt`/`prompt-ref` worker, or expose the agent as a `block-ref`. For a whole deterministic team (concurrency, dependencies), build a task-board block and call it as a tool instead (see [Running a board as a tool](#running-a-board-as-a-tool)).
+
+Per-worker tuning: `tools` (catalog keys the worker may call), `visibility` (`sub`, `primary`, or a `{ client, history }` mapping), and `model`.
 
 ## Board and overrides
 
 By default the delegation board is the generator's own **own-state** — a state container scoped to the one generator that installed it, never shared with or namespaced against any other block. The board is a private ledger: your worker calls run against it, and nothing else can see it.
 
-Two optional overrides on the binding change that:
+Force delegation off even though the skill declares workers:
 
 ```ts
-// Share one board across several generators:
-skills.with({ active: ["research-lead"], delegationBoard: mySharedBoard });
-
-// Force delegation off even though the skill declares workers:
 skills.with({ active: ["research-lead"], delegation: false });
 ```
 
