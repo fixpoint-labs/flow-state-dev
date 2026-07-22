@@ -1,29 +1,35 @@
 // Skills wiring for the research-team example.
 //
-// The two SKILL.md folders under `./skills` declare their teams as delegation
-// `agents:` (FIX-918). Binding an agent-declaring skill to a generator installs
-// the board-commanded delegation surface automatically: a private task board,
-// the task tools (`addTask`/`listTasks`/…), and `runBoard` — a real drain over
-// that board. The skill body plans the work as tasks (assignee names an agent,
-// deps order them); `runBoard` executes the graph with concurrency and
-// dependency gating. The board runs the agents — there are no per-agent tools.
+// The two SKILL.md folders under `./skills` each define their own team in
+// `agents:` frontmatter, and they show the different ways to staff an agent:
 //
-// Each agent is declared with `agent-ref` and resolved through the registry +
-// materializer below. To keep the whole example model-free (its tests run with
-// no API key), the materializer returns the same deterministic handler workers
-// `board.ts` uses instead of building an LLM generator. In a real app you'd use
-// `@flow-state-dev/workforce`'s `materializeAgent` (persona + model) or declare
-// inline `prompt:`/`prompt-ref:` agents in the SKILL.md — an agent is any block.
+//   - research-company defines its whole team inline — three `prompt-ref`
+//     agents whose personas live in the skill folder. Nothing in app code
+//     registers them; the team travels with the skill. This is the flagship
+//     "a skill defines its own team" case.
+//   - competitor-analysis adds the two other forms: an inline `discoverer`, an
+//     `analyzer` that references a shared registry agent (`agent-ref` → an app
+//     `defineAgent`), and a `comparison-writer` that references a handler block
+//     staffed as an agent. See ./agents.ts.
+//
+// Binding an agent-declaring skill to a generator installs the board-commanded
+// delegation surface: a private task board, the task tools (`addTask`/
+// `listTasks`/…), and `runBoard` — a real drain over that board. The skill body
+// plans the work as tasks (assignee names an agent, deps order them); `runBoard`
+// executes the graph with concurrency and dependency gating. The board runs the
+// agents — there are no per-agent tools.
+//
+// `agentRegistry` + `materializeAgent` resolve the two `agent-ref` agents that
+// competitor-analysis borrows; the `catalog` carries the leaf tools the inline
+// agents reference via `tools:` (search, fetch). Because the agents are LLMs,
+// the skill path (the flow's `chat` action) needs an API key — the deterministic
+// no-key paths are the code-first board and router (see board.ts / flow.ts).
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSkillsLibrary, readSkillsDirectory } from "@flow-state-dev/orchestration";
-import type {
-  Agent,
-  AgentRegistry,
-  BlockDefinition,
-  MaterializeAgentFn,
-} from "@flow-state-dev/core";
-import { analyst, synthesizer } from "./workers";
+import { search } from "@flow-state-dev/tools/search";
+import { fetch } from "@flow-state-dev/tools/fetch";
+import { agentRegistry, materializeAgent } from "./agents";
 
 /** Absolute path to the bundled `SKILL.md` folders. */
 export const skillsDir = path.resolve(
@@ -39,39 +45,16 @@ for (const { name, error } of errors) {
 /** The parsed skill definitions, exported so tests can assert they loaded. */
 export { bundledSkills };
 
-// The example's deterministic team, keyed by the `agent-ref` name each SKILL.md
-// uses. Both skills share the same `synthesizer` — identical specs dedupe.
-const teamBlocks: Record<string, BlockDefinition> = {
-  "market-analyst": analyst("market") as unknown as BlockDefinition,
-  "financial-analyst": analyst("financial") as unknown as BlockDefinition,
-  "competitor-analyst": analyst("competitor") as unknown as BlockDefinition,
-  synthesizer: synthesizer as unknown as BlockDefinition,
-};
-
-/** A minimal registry over the team — `agent-ref` names resolve to these. */
-const agentRegistry: AgentRegistry = {
-  get: async (name: string) =>
-    name in teamBlocks ? ({ name, description: name, persona: name } as Agent) : undefined,
-  list: async () =>
-    Object.keys(teamBlocks).map((name) => ({ name, description: name, persona: name }) as Agent),
-};
-
-/**
- * Model-free materializer: return the deterministic handler worker for the
- * resolved agent instead of building an LLM generator. Keeps the example (and
- * its tests) runnable with no API key.
- */
-const materializeAgent: MaterializeAgentFn = (agent) =>
-  teamBlocks[agent.name] as unknown as ReturnType<MaterializeAgentFn>;
-
 /**
  * A shared skills library preloaded with the bundled research skills. Bind it
  * per generator via `uses: [skillsLibrary.with({ ... })]`; a bound skill that
  * declares `agents:` gives that generator its board, the task tools, and
- * `runBoard`.
+ * `runBoard`. The `catalog` holds the leaf tools inline agents reference by key;
+ * `agentRegistry`/`materializeAgent` resolve competitor-analysis's `agent-ref`
+ * agents.
  */
 export const skillsLibrary = createSkillsLibrary({
-  catalog: {},
+  catalog: { search: search(), fetch: fetch() },
   initialSkills: bundledSkills,
   agentRegistry,
   materializeAgent,

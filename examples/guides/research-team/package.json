@@ -16,6 +16,7 @@
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/tools": "workspace:*",
+    "@flow-state-dev/workforce": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {

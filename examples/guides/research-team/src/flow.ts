@@ -8,8 +8,9 @@
 //
 // The first two run with no API key — their workers are plain handlers — so
 // they're the ones the tests exercise end-to-end. `chat` binds the skills
-// library; each skill declares `agents:`, so the coordinator gets a task
-// board, the task tools, and runBoard. It needs OPENAI_API_KEY.
+// library; each skill defines its own team of prompt agents, so the
+// coordinator gets a task board, the task tools, and runBoard. Because the
+// agents are LLMs, it needs OPENAI_API_KEY.
 import { defineFlow, generator } from "@flow-state-dev/core";
 import type { SkillsBindingConfig } from "@flow-state-dev/orchestration";
 import { z } from "zod";
@@ -27,8 +28,9 @@ const skillsBinding = {
 } satisfies SkillsBindingConfig;
 
 // A small coordinator agent. It doesn't research anything itself — the bound
-// skill tells it how to plan tasks on its board (addTask with assignees and
-// deps), and runBoard executes the team. The skill runs the board.
+// skill defines its own team and tells the coordinator how to plan tasks on its
+// board (addTask with assignees and deps), and runBoard executes the team. The
+// skill runs the board.
 const researchChat = generator({
   name: "research-chat",
   // Resolves through the `chat` intent declared in ../fsdev.config.ts
@@ -36,9 +38,9 @@ const researchChat = generator({
   model: "intent/chat",
   inputSchema: z.object({ message: z.string().min(1) }),
   history: true,
-  // Both skills are preloaded. Each declares `agents:`, so the binding
-  // installs the board-commanded delegation surface — the task tools and
-  // runBoard — alongside the skill bodies.
+  // Both skills are preloaded. Each defines its own team in `agents:`, so the
+  // binding installs the board-commanded delegation surface — the task tools
+  // and runBoard — alongside the skill bodies.
   uses: [skillsLibrary.with(skillsBinding as never)],
   prompt:
     "You coordinate a small research team. Follow the active skill's " +
@@ -61,8 +63,9 @@ export const researchTeamFlow = defineFlow({
     // board with one analyzer per competitor plus a gated synthesizer.
     researchCompetitors: { block: researchRouter },
 
-    // Skill path: a coordinator agent whose SKILL.md teams plan and run their
-    // own boards. Needs a model (OPENAI_API_KEY).
+    // Skill path: a coordinator agent whose SKILL.md teams (each skill defines
+    // its own prompt agents) plan and run their own boards. Needs a model
+    // (OPENAI_API_KEY).
     chat: { block: researchChat, userMessage: (input) => input.message },
   },
   session: { stateSchema: z.object({}) },

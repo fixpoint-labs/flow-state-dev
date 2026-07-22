@@ -425,6 +425,9 @@ importers:
       '@flow-state-dev/tools':
         specifier: workspace:*
         version: link:../../../packages/tools
+      '@flow-state-dev/workforce':
+        specifier: workspace:*
+        version: link:../../../packages/workforce
       zod:
         specifier: ^3.24.1
         version: 3.25.76
