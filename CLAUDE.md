@@ -264,19 +264,17 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 Best practices have two altitudes. Full text lives in `docs/contributing/best-practices.md` (universal) and `docs/contributing/best-practices/<category>.md` (situational).
 
-**Universal — always apply, every task:**
+**Convictions live as tenets** in `docs/philosophy.md` (read first). Former BP-001 / BP-028 / BP-029 / BP-038 are folded into tenets 1 / 5 / 2 / 3 and are no longer separate always-loaded BPs.
 
-- **BP-001** Documentation authority precedence — the more specific in-repo doc wins.
+**Universal — the operational core, always apply, every task:**
+
 - **BP-003** Verification evidence is mandatory — every deliverable has an evidence path + pass criteria.
 - **BP-007** Concise API/file docs — file header + 100% of exported APIs documented; non-obvious helpers too.
 - **BP-022** Release notes via Changesets — every user-facing PR adds a `.changeset/*.md`; internal-only → `--empty`. Pre-1.0: `patch`/`minor` only.
-- **BP-028** Fix the bug at the layer that owns it, not where it bit you — a workaround each caller repeats is a smell.
-- **BP-029** Compose existing primitives over re-implementing what a tool already provides — reserve bespoke code for the genuinely-new primitive.
 - **BP-030** Tolerate the old shape when you change a persisted/in-flight field — dual-read legacy records; reject removed keys loudly; `== null`-guard new nullable fields.
 - **BP-031** Never make auth/routing decisions from caller-controllable input — derive them from a trusted source (server-set identity, verified token, the framework's transport `source`), not `body`/`metadata`/query/headers.
 - **BP-034** Finish move/rename refactors — update provenance (headers, diagrams, doc anchors) and subpath re-exports, not just imports.
 - **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state paths; test the off/new state of any new flag.
-- **BP-038** Build the least that satisfies the spec; subtract before you add — no speculative surface (YAGNI), delete the path you supersede, minimize public API/options, prefer defaults over knobs.
 
 **Situational — open the category file when working in that area:**
 

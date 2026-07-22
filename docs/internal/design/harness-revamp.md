@@ -312,7 +312,12 @@ philosophy-drift / philosophy-gap).
 WS-6: `distill-lessons` reframed into the self-improvement engine — auto-derived
 cycle-ledger (rounds + feedback classes from GitHub/Linear), metric = rounds &
 design-off trending down, unit = recurring class, smallest-upstream-fix preference.
-WS-7 (started): philosophy wired into the always-loaded surfaces — `CLAUDE.md`
+WS-7: BP tone-down (universal tier) applied — folded BP-001/028/029/038 into
+tenets 1/5/2/3 (marked Superseded, kept for history), trimmed the always-loaded
+`CLAUDE.md` mirror to the operational core (BP-003/007/022/030/031/034/035). Situational
+category BPs retained as the per-spec reference set. BP-030/034 flagged as demote
+candidates for a later situational-tier pass.
+WS-7 grounding wiring: philosophy wired into the always-loaded surfaces — `CLAUDE.md`
 orientation + authority hierarchy, `AGENTS.md` startup reads + authority order, skills
 table. **Remaining WS-7: the BP tone-down** (prune the 39 granular BPs to a lean
 universal core + established set), which needs user judgment per-BP.
