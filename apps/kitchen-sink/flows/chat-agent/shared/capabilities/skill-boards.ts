@@ -19,6 +19,7 @@
  * only changing the invocation path from pattern-router dispatch to a tool call.
  */
 import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { generator, sequencer, handler } from "@flow-state-dev/core";
@@ -107,24 +108,43 @@ function boardWorker(config: {
   }) as unknown as GeneratorTool;
 }
 
-/** Resolve the board's request-scoped collection by id (seed + projection share it). */
+/** Resolve a request-scoped collection by id (seed + drain + projection share it). */
 function boardCollection(ctx: BlockContext, collectionId: string): Promise<TaskCollectionRef> {
   return getOrCreateTaskCollection({ ctx, backing: "request", collectionId });
 }
 
 /**
- * Project the synthesizer's text output off the settled board. Selects by the
- * `synthesizer` assignee rather than a fixed id — the competitor discoverer
- * queues its synth task via `taskTools.addTask` (no id field), so the id is
- * auto-generated, but exactly one task is assigned to the synthesizer.
+ * Per-invocation collection id, stored in request state under `${base}__runId`
+ * so the seed tap, the board drain (and its mid-drain `taskTools` fan-out), and
+ * the projection all resolve the SAME fresh collection. A second call to the
+ * same tool in one request gets a new id, so the fixed task ids never collide —
+ * restoring the per-activation collection pattern mode used to give each call.
  */
-function projectReport(collectionId: string) {
+function currentRunId(ctx: BlockContext, base: string): string {
+  const existing = (ctx.request?.state as Record<string, unknown> | undefined)?.[`${base}__runId`];
+  return typeof existing === "string" ? existing : base;
+}
+
+/** Start a fresh run: allocate + record a unique collection id, return its collection. */
+async function beginRun(ctx: BlockContext, base: string): Promise<TaskCollectionRef> {
+  const runId = `${base}-${randomUUID()}`;
+  await ctx.request.patchState({ [`${base}__runId`]: runId });
+  return boardCollection(ctx, runId);
+}
+
+/**
+ * Project the synthesizer's text output off the current run's settled board.
+ * Selects by the `synthesizer` assignee rather than a fixed id — the competitor
+ * discoverer queues its synth task via `taskTools.addTask` (no id field), so the
+ * id is auto-generated, but exactly one task is assigned to the synthesizer.
+ */
+function projectReport(base: string) {
   return handler({
-    name: `${collectionId}-project`,
+    name: `${base}-project`,
     inputSchema: z.unknown(),
     outputSchema: z.object({ report: z.string() }),
     execute: async (_input, ctx) => {
-      const collection = await boardCollection(ctx as unknown as BlockContext, collectionId);
+      const collection = await boardCollection(ctx, currentRunId(ctx, base));
       const synth = collection
         .list({ assignee: "synthesizer" })
         .find((t) => t.status === "completed");
@@ -144,7 +164,7 @@ const RESEARCH_COMPANY_ID = "research-company";
 
 const researchCompanyBoard = taskBoard({
   name: "research-company-board",
-  collection: { collectionId: RESEARCH_COMPANY_ID },
+  collection: (ctx) => boardCollection(ctx, currentRunId(ctx, RESEARCH_COMPANY_ID)),
   concurrency: 2,
   dispatcher: "topological",
   workers: {
@@ -172,7 +192,7 @@ let researchCompanyPipeline: any = sequencer({
 });
 researchCompanyPipeline = researchCompanyPipeline
   .tap(async (input: { topic: string }, ctx: BlockContext) => {
-    const collection = await boardCollection(ctx, RESEARCH_COMPANY_ID);
+    const collection = await beginRun(ctx, RESEARCH_COMPANY_ID);
     await collection.addTask({
       id: "market",
       goal: `Analyze market positioning of ${input.topic} — category, target customer, key differentiators, recent narrative shifts. Cite sources.`,
@@ -207,12 +227,12 @@ const COMPETITOR_ID = "competitor-analysis";
 // singleton's own-state default), so the tasks it adds are picked up by the
 // still-running drain (§4.5 C).
 const competitorBoardTaskTools = createTaskToolsCapability((ctx) =>
-  getOrCreateTaskCollection({ ctx, backing: "request", collectionId: COMPETITOR_ID }),
+  boardCollection(ctx, currentRunId(ctx, COMPETITOR_ID)),
 );
 
 const competitorBoard = taskBoard({
   name: "competitor-analysis-board",
-  collection: { collectionId: COMPETITOR_ID },
+  collection: (ctx) => boardCollection(ctx, currentRunId(ctx, COMPETITOR_ID)),
   concurrency: 4,
   dispatcher: "topological",
   workers: {
@@ -242,7 +262,7 @@ let competitorPipeline: any = sequencer({
 });
 competitorPipeline = competitorPipeline
   .tap(async (input: { topic: string }, ctx: BlockContext) => {
-    const collection = await boardCollection(ctx, COMPETITOR_ID);
+    const collection = await beginRun(ctx, COMPETITOR_ID);
     // Seed only the discoverer; it enqueues one analyzer per competitor plus a
     // synthesizer gated on all of them at runtime.
     await collection.addTask({

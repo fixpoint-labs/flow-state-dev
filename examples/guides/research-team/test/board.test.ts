@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
 import { testBlock } from "@flow-state-dev/testing";
 import { researchCompany } from "../src/skill-boards";
 
@@ -31,5 +33,31 @@ describe("researchCompany drain-as-tool", () => {
     const report = (result.output as { report: string }).report;
     expect(report).toContain("market: ACME Corp");
     expect(report).toContain("financial: ACME Corp");
+  });
+
+  it("a second call in the same request drains a fresh board, not colliding on task ids", async () => {
+    // Two researchCompany calls in ONE request. With a fixed collection id +
+    // fixed task ids (`market`/`financial`/`synth`) the second call's seed would
+    // throw "task already exists"; per-call collection isolation (FIX-918 PR
+    // review) gives each call its own fresh board.
+    const twice = (
+      sequencer({
+        name: "research-twice",
+        inputSchema: z.object({}),
+        outputSchema: z.object({ report: z.string() }),
+      }) as unknown as {
+        step: (b: unknown) => { step: (b: unknown) => unknown };
+      }
+    )
+      .step((researchCompany as unknown as { connectInput: (f: () => unknown) => unknown }).connectInput(() => ({ topic: "ACME Corp" })))
+      .step((researchCompany as unknown as { connectInput: (f: () => unknown) => unknown }).connectInput(() => ({ topic: "Globex Inc" })));
+
+    const result = await testBlock(twice as never, { input: {} as never });
+    expect(result.error).toBeNull();
+    // Output is the SECOND call's brief — proof it ran fresh, not a stale
+    // first-call board or a duplicate-id error.
+    const report = (result.output as { report: string }).report;
+    expect(report).toContain("market: Globex Inc");
+    expect(report).toContain("financial: Globex Inc");
   });
 });

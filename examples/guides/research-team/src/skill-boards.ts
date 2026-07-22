@@ -15,6 +15,7 @@
 // handlers `board.ts`/`workers.ts` use, so these run in tests without a model —
 // the board's topological dispatch and dependency gating are the load-bearing
 // behavior the migration preserves, not the worker internals.
+import { randomUUID } from "node:crypto";
 import { sequencer, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
@@ -24,19 +25,38 @@ import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";
 import { analyst, synthesizer } from "./workers";
 
-/** Resolve the board's request-scoped collection by id (seed + projection share it). */
+/** Resolve a request-scoped collection by id (seed + drain + projection share it). */
 function boardCollection(ctx: BlockContext, collectionId: string): Promise<TaskCollectionRef> {
   return getOrCreateTaskCollection({ ctx, backing: "request", collectionId });
 }
 
-/** Project the synthesizer task's report off the settled board. */
-function projectReport(collectionId: string) {
+/**
+ * Per-invocation collection id, stored in request state under `${base}__runId`
+ * so the seed tap, the board drain, and the projection all resolve the SAME
+ * fresh collection. A second call to the same tool in one request gets a new
+ * id, so the fixed task ids (`market`/`synth`/…) never collide — restoring the
+ * per-activation collection pattern mode used to give each `runSkill` call.
+ */
+function currentRunId(ctx: BlockContext, base: string): string {
+  const existing = (ctx.request?.state as Record<string, unknown> | undefined)?.[`${base}__runId`];
+  return typeof existing === "string" ? existing : base;
+}
+
+/** Start a fresh run: allocate + record a unique collection id, return its collection. */
+async function beginRun(ctx: BlockContext, base: string): Promise<TaskCollectionRef> {
+  const runId = `${base}-${randomUUID()}`;
+  await ctx.request.patchState({ [`${base}__runId`]: runId });
+  return boardCollection(ctx, runId);
+}
+
+/** Project the synthesizer task's report off the current run's settled board. */
+function projectReport(base: string) {
   return handler({
-    name: `${collectionId}-project`,
+    name: `${base}-project`,
     inputSchema: z.unknown(),
     outputSchema: z.object({ report: z.string() }),
     execute: async (_input, ctx) => {
-      const collection = await boardCollection(ctx as unknown as BlockContext, collectionId);
+      const collection = await boardCollection(ctx, currentRunId(ctx, base));
       const synth = collection.get("synth");
       const report = (synth?.output as { report?: string } | undefined)?.report;
       return { report: report ?? "(no report produced)" };
@@ -52,7 +72,7 @@ const RESEARCH_COMPANY_ID = "research-company";
 
 const researchCompanyBoard = taskBoard({
   name: "research-company-board",
-  collection: { collectionId: RESEARCH_COMPANY_ID },
+  collection: (ctx) => boardCollection(ctx, currentRunId(ctx, RESEARCH_COMPANY_ID)),
   concurrency: 2,
   dispatcher: "topological",
   workers: {
@@ -72,7 +92,7 @@ let researchCompanyPipeline: any = sequencer({
 });
 researchCompanyPipeline = researchCompanyPipeline
   .tap(async (input: { topic: string }, ctx: BlockContext) => {
-    const collection = await boardCollection(ctx, RESEARCH_COMPANY_ID);
+    const collection = await beginRun(ctx, RESEARCH_COMPANY_ID);
     await collection.addTask({
       id: "market",
       goal: `Analyze the market positioning of ${input.topic}.`,
@@ -111,7 +131,7 @@ const COMPETITOR_ID = "competitor-analysis";
 
 const competitorBoard = taskBoard({
   name: "competitor-analysis-board",
-  collection: { collectionId: COMPETITOR_ID },
+  collection: (ctx) => boardCollection(ctx, currentRunId(ctx, COMPETITOR_ID)),
   concurrency: 4,
   dispatcher: "topological",
   workers: { analyzer: analyst("competitor"), synthesizer },
@@ -128,7 +148,7 @@ let competitorPipeline: any = sequencer({
 });
 competitorPipeline = competitorPipeline
   .tap(async (input: { topic: string; competitors: string[] }, ctx: BlockContext) => {
-    const collection = await boardCollection(ctx, COMPETITOR_ID);
+    const collection = await beginRun(ctx, COMPETITOR_ID);
     const analyzerIds = input.competitors.map((_, i) => `analyze-${i}`);
     for (let i = 0; i < input.competitors.length; i++) {
       await collection.addTask({
