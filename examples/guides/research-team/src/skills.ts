@@ -7,10 +7,9 @@
 //     agents whose personas live in the skill folder. Nothing in app code
 //     registers them; the team travels with the skill. This is the flagship
 //     "a skill defines its own team" case.
-//   - competitor-analysis adds the two other forms: an inline `discoverer`, an
-//     `analyzer` that references a shared registry agent (`agent-ref` → an app
-//     `defineAgent`), and a `comparison-writer` that references a handler block
-//     staffed as an agent. See ./agents.ts.
+//   - competitor-analysis adds the registry form: inline agents (`discoverer`,
+//     `comparison-writer`) plus an `analyzer` that references a shared registry
+//     agent (`agent-ref` → an app `defineAgent`). See ./agents.ts.
 //
 // Binding an agent-declaring skill to a generator installs the board-commanded
 // delegation surface: a private task board, the task tools (`addTask`/

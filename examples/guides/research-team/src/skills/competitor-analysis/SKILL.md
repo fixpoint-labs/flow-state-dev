@@ -3,12 +3,12 @@ description: Produce a competitor analysis as a comparison matrix plus a synthes
 keywords: [competitor, competitors, competition, compare, versus, landscape, market]
 argument-hint: <product, company, or market>
 
-# This skill shows all three ways to staff an agent:
-#   - discoverer:        an inline prompt agent, defined right here in the skill.
-#   - analyzer:          agent-ref to `competitor-analyst`, a shared agent
-#                        defined in app code (src/agents.ts) via defineAgent().
-#   - comparison-writer: agent-ref to `comparison-writer`, which resolves to a
-#                        deterministic handler block — a block staffed as an agent.
+# This skill shows the two ways to staff an agent:
+#   - discoverer, comparison-writer: inline prompt agents, defined right here in
+#                                    the skill (prompt-ref to the skill folder).
+#   - analyzer:                      agent-ref to `competitor-analyst`, a shared
+#                                    agent defined in app code (src/agents.ts)
+#                                    via defineAgent() and borrowed by name.
 agents:
   discoverer:
     prompt-ref: ./reference/discover.md
@@ -16,12 +16,12 @@ agents:
   analyzer:
     agent-ref: competitor-analyst
   comparison-writer:
-    agent-ref: comparison-writer
+    prompt-ref: ./reference/compare.md
 ---
 
 This skill runs a competitor-analysis team on your task board. A discoverer picks 3-5 competitors and queues one analyzer per competitor plus a comparison-writer gated on all of them. The analyzers run in parallel; the comparison-writer waits on all of them and formats the matrix.
 
-The three agents come from three different places. The discoverer is an inline prompt agent defined in this skill. The analyzer is a shared agent registered in app code and referenced by name. The comparison-writer is a plain handler block staffed as an agent. From the board's point of view they're all just agents you assign tasks to.
+The team is staffed two ways. The discoverer and comparison-writer are inline prompt agents defined in this skill — their personas live in the skill folder. The analyzer is a shared agent registered in app code and referenced by name (`agent-ref`), so other skills can borrow the same participant. From the board's point of view they're all just agents you assign tasks to.
 
 You seed the board and run it. Extract the target from the user's message (for "who competes with Linear?", the target is `Linear`; if the user named several targets, pick the one they led with), then:
 

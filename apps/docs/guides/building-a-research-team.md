@@ -1,7 +1,7 @@
 ---
 sidebar_position: 9
 title: Building a research team
-description: Build a multi-agent task board — a static board, runtime fan-out with a router, a skill that defines its own agent team, the three ways to staff an agent, and letting the model decide the tasks.
+description: Build a multi-agent task board — a static board, runtime fan-out with a router, a skill that defines its own agent team, the two ways to staff an agent, and letting the model decide the tasks.
 ---
 
 # Building a research team
@@ -10,7 +10,7 @@ This guide builds a small team of workers that research a subject together: anal
 
 **What we're building:** a task board where analysts run at the same time and a `synthesizer` starts only after they finish and combines their findings — first with a fixed set of tasks, then with a set decided at runtime.
 
-**Concepts we'll cover:** worker blocks and `taskWorkerInputSchema`, the `taskBoard` factory, dependency gating with `deps`, reading upstream results off `input.deps`, runtime fan-out with a router, a skill that defines its own team of prompt agents and runs its own board, the three ways to staff an agent (inline prompt, registered agent, plain block), and letting the model plan the tasks at runtime.
+**Concepts we'll cover:** worker blocks and `taskWorkerInputSchema`, the `taskBoard` factory, dependency gating with `deps`, reading upstream results off `input.deps`, runtime fan-out with a router, a skill that defines its own team of prompt agents and runs its own board, the two ways to staff an agent (inline prompt, registered agent), and letting the model plan the tasks at runtime.
 
 :::tip Full, runnable code
 Every worker, board, router, `SKILL.md`, and a passing test suite for this
@@ -270,11 +270,11 @@ agent's history. When the graph *should* stay fixed in code, register a
 `taskBoard(...).drain` block in the skills `catalog` and list it under
 `allowed-tools` — [any block can be a tool](/docs/fundamentals/blocks#any-block-can-be-a-tool).
 
-## 5. Three ways to staff an agent
+## 5. Two ways to staff an agent
 
 Section 4's team is defined entirely inline — every agent is a `prompt-ref`
-persona in the skill folder. That's one of three ways to fill a seat on the
-board. The example's `competitor-analysis` skill shows all three side by side.
+persona in the skill folder. That's one of two ways to fill a seat on the
+board. The example's `competitor-analysis` skill shows both side by side.
 
 **Inline prompt agent.** A `prompt` or `prompt-ref` right in the SKILL.md. The
 persona travels with the skill; no app code registers it. This is section 4's
@@ -315,21 +315,8 @@ agents:
     agent-ref: competitor-analyst
 ```
 
-**A plain block, staffed as an agent.** An agent doesn't have to be a persona at
-all. Any block — a handler, a sequencer — can fill a seat: from the board's point
-of view it's just something you assign tasks to. The example's `comparison-writer`
-is a deterministic handler that folds the analyzers' outputs into a matrix, no
-model in the loop. It resolves through the same `agent-ref` seam — the registry
-returns a stub for the name, and `materializeAgent` swaps in the block:
-
-```yaml
-agents:
-  comparison-writer:
-    agent-ref: comparison-writer
-```
-
-Registry agents and block agents both need `agentRegistry` + `materializeAgent`
-on the library; inline agents need neither:
+Only registry agents need `agentRegistry` + `materializeAgent` on the library;
+inline agents need neither:
 
 ```ts title="skills.ts"
 import { agentRegistry, materializeAgent } from "./agents";
@@ -337,16 +324,22 @@ import { agentRegistry, materializeAgent } from "./agents";
 export const skills = createSkillsLibrary({
   catalog: { search: search(), fetch: fetch() },
   initialSkills,
-  agentRegistry,      // resolves `agent-ref` names — registered agents and block agents
-  materializeAgent,   // turns a resolved agent into the block the board dispatches
+  agentRegistry,      // resolves `agent-ref` names to registered agents
+  materializeAgent,   // turns a resolved agent into the board worker the drain dispatches
 });
 ```
 
 `agent-overrides` on an `agent-ref` entry lets one skill swap a registered agent's
 model or tools without touching its definition. See [Agents](/docs/orchestration/agents)
 and [Delegation](/docs/skills/delegation) for personas, structured output, and the
-agent resolution table. The example wires all three forms in
+agent resolution table. The example wires both forms in
 [`src/agents.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/agents.ts).
+
+A seat doesn't have to be a persona — the task board can dispatch any block as a
+worker (that's [section 2](#2-the-code-first-board)). Staffing a non-agent block through
+a skill's `agents:` map is a deliberate non-goal here: once a task can be assigned
+to a tool directly, dressing a deterministic block up as an "agent" is the wrong
+shape. Keep `agents:` for prompt-driven participants — inline or registered.
 
 ## 6. Let an agent decide the tasks
 

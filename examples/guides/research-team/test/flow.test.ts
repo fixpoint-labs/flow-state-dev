@@ -86,9 +86,9 @@ describe("research-team flow", () => {
     expect(byName.get("competitor-analysis")?.skillMd).not.toContain("workers:");
     expect(byName.get("competitor-analysis")?.skillMd).toContain("agents:");
     expect(byName.get("competitor-analysis")?.skillMd).toContain("runBoard");
-    // competitor-analysis showcases all three assignment forms — an inline
-    // prompt agent plus two `agent-ref` agents (a registry agent and a
-    // block-as-agent).
+    // competitor-analysis showcases both assignment forms — inline prompt
+    // agents (discoverer, comparison-writer) plus an `agent-ref` registry agent
+    // (analyzer → competitor-analyst).
     expect(byName.get("competitor-analysis")?.skillMd).toContain("agent-ref");
   });
 });
