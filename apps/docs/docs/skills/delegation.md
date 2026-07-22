@@ -7,9 +7,9 @@ sidebar_label: Delegation
 
 A skill is usually just instructions: matched text spliced into the generator's system prompt. Sometimes one skill needs to hand pieces of its work to sub-workers — a research lead that dispatches subtopics, an analyst that farms out per-item lookups. That's delegation.
 
-A skill turns on delegation by declaring a `workers:` field in its frontmatter. When a bound skill declares workers, the skills library gives that generator a private task board, the `taskTools` for tracking a plan, and one callable tool per worker. The generator's own tool-calling loop drives the work — it decides when to call a worker, reads the result, and moves on. There's no separate dispatch engine running underneath.
+A skill turns on delegation by declaring a `workers:` field in its frontmatter. When a bound skill declares workers, the skills library gives that generator a private task board, the `taskTools` for planning on it, one callable tool per worker, and `runBoard` — a real board drain over that ledger. The generator stays in charge: it calls a worker directly for one-shot work, or plans a graph of tasks and runs the whole thing under concurrency and dependency gating with a single `runBoard` call. The skill runs the board.
 
-Reach for delegation when a single agent isn't the right shape and you want the agent itself to stay in charge of the orchestration. If the work is a fixed or dependency-ordered graph that should run under explicit concurrency, put a task board in the generator's tools instead — see [Running a board as a tool](#running-a-board-as-a-tool) below.
+Reach for delegation when a single agent isn't the right shape and you want the agent itself to stay in charge of the orchestration. If the graph is fixed in code (not planned by the model), a task board block in the generator's `tools:` is still the right shape — see [Running a board as a tool](#running-a-board-as-a-tool) below.
 
 ## Declaring workers
 
@@ -34,12 +34,13 @@ Each worker has exactly one resolution field:
 | `prompt` | Inline prompt body. `$ARGUMENTS` is substituted at activation. | Yes — ships inside the skill folder. |
 | `prompt-ref` | Path to a Markdown prompt file inside the skill folder. Loaded at activation. | Yes — ships inside the skill folder. |
 | `block-ref` | Registry key into the `blocks` map passed to the library. The worker is custom app code. | No — needs an app-supplied registry. |
+| `agent-ref` | Name of a registered agent, resolved through the `agentRegistry` / `materializeAgent` pair passed to the library. | No — needs the app's agent registry. |
 
-`prompt` and `prompt-ref` workers are fully portable: a skill folder carries its own delegation behavior with no app wiring beyond the tool catalog. `block-ref` workers resolve a string key against a `blocks` registry the app supplies, so they can't travel alone.
+`prompt` and `prompt-ref` workers are fully portable: a skill folder carries its own delegation behavior with no app wiring beyond the tool catalog. `block-ref` and `agent-ref` workers resolve against registries the app supplies, so they can't travel alone. Workers materialize when the generator's tool surface resolves (per execution), so async resolution — an agent registry lookup, a prompt file read — is fine; a statically-bound skill with missing wiring (an unknown `block-ref`, an `agent-ref` with no registry) still fails loud at build time.
 
-The `WorkerSpec` also has an `agent-ref` field (staffing a worker from a registered agent). Agent resolution is asynchronous, so `agent-ref` workers are not built by the delegation surface today — use a `prompt`/`prompt-ref` worker, or expose the agent as a `block-ref`. For a whole deterministic team (concurrency, dependencies), build a task-board block and call it as a tool instead (see [Running a board as a tool](#running-a-board-as-a-tool)).
+One naming rule for `block-ref`: the direct-call tool registers under the block's own name, so the worker key and the block's name must match — a mismatch fails at materialization rather than pointing the model at a tool that doesn't exist.
 
-Per-worker tuning: `tools` (catalog keys the worker may call), `visibility` (`sub`, `primary`, or a `{ client, history }` mapping), and `model`.
+Per-worker tuning: `tools` (catalog keys the worker may call — `taskTools` is a special key that gives the worker the task tools bound to the executive's board, which is how a worker fans out follow-up tasks mid-run), `visibility` (`sub`, `primary`, or a `{ client, history }` mapping), and `model`.
 
 ## Board and overrides
 
@@ -61,13 +62,15 @@ A skill that declares no `workers:` installs none of this — no board, no `task
 
 ## What the executive gets
 
-Two things land on the generator when a worker-declaring skill is active.
+Three things land on the generator when a worker-declaring skill is active.
 
 **Worker tools — the single-shot path.** Each worker key becomes a tool the generator can call. Calling `researcher("WebTransport adoption")` runs that worker to completion and returns its result inline, in one tool call. That is the everyday "run this as a sub-agent, hand me the result" case: one call, one result, no board choreography. Call a worker, read what it returns, decide what to do next.
 
-**`taskTools` — an optional ledger.** The eight task tools (`addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks`) let the generator track a multi-step plan. They write to the private board.
+**`taskTools` — the planning ledger.** The eight task tools (`addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks`) let the generator plan multi-step work on its private board. `addTask` takes a `goal`, an `assignee` (a worker key), `deps` (task ids that must complete first), and an optional structured `input` payload the worker receives.
 
-The point to keep straight: **nothing auto-runs the board.** `addTask({ goal, assignee })` writes a ledger row — it does not execute anything. The generator still runs delegated work by calling a worker tool. The board is note-taking; the worker tools are execution. There is no drain loop watching the ledger. When you want a board that drains itself under concurrency, that's a task board as a tool (below), not this.
+**`runBoard` — the execution path for a plan.** One call drains the board: every runnable task is dispatched to its assigned worker — independent tasks in parallel, dependency-gated tasks once their deps complete — and the settled board comes back with each task's output. Task ids are generated and the drain claims pending tasks only, so plan-then-run again on the same ledger just executes the new tasks. A worker that declares `tools: [taskTools]` can enqueue more tasks mid-run (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.
+
+The division of labor to keep straight: `addTask` writes a ledger row — it does not execute anything by itself. Execution happens when the generator calls a worker tool (one task, inline result) or `runBoard` (the whole runnable graph). Nothing drains the board behind the model's back; the skill decides when to run it.
 
 ```ts
 const skills = createSkillsLibrary({ catalog, initialSkills });
@@ -77,13 +80,15 @@ const researchLead = generator({
 });
 // Because "research-lead" declares `workers:`, delegation installs
 // automatically. researchLead now has: addTask/assignTask/completeTask/...
-// (taskTools), plus a `researcher` tool and a `writer` tool, each a
-// materialized worker, plus the guidance context.
+// (taskTools), a `researcher` tool and a `writer` tool (each a materialized
+// worker), runBoard, and the guidance context.
 ```
+
+The board's `task-change` stream is client-visible (it drives live plan UIs) but stays out of the generator's LLM history — the tools' return values and `runBoard`'s settled summary already carry that signal.
 
 ## Running a board as a tool {#running-a-board-as-a-tool}
 
-Worker tools serialize: the generator calls one, waits, calls the next. When you need real concurrency or a dependency graph — analysts running in parallel, a synthesizer gated on all of them — put a task board in the generator's `tools:` instead. A `taskBoard(...).drain` (or a `goalSeekLoop`) is a block, and any block can be a tool. The generator calls it once, the board drains internally under its own concurrency and dispatcher, and only the finalized result re-enters the generator's history.
+`runBoard` covers the model-planned case. When the graph is fixed in *code* — seeded `initialTasks`, a custom collection backing, a tuned dispatcher — build the board yourself and put it in the generator's `tools:`. A `taskBoard(...).drain` (or a `goalSeekLoop`) is a block, and any block can be a tool. The generator calls it once, the board drains internally under its own concurrency and dispatcher, and only the finalized result re-enters the generator's history.
 
 Register the drain block in the skills `catalog` and list it under the skill's `allowed-tools`, exactly as you'd list `search` or `fetch`. See [Any block can be a tool](../fundamentals/blocks#any-block-can-be-a-tool) for the mechanism and [Using a goalSeekLoop as a tool](../orchestration/goal-seek-loop#using-a-goalseekloop-as-a-tool) for a worked example.
 
@@ -128,9 +133,7 @@ const skills = createSkillsLibrary({ catalog, initialSkills });
 generator({ uses: [skills.with({ active: ["research-lead"] })] });
 ```
 
-The `context: pattern` mode, the `pattern:` / `pattern-config:` / `initial-tasks:` fields, and the `runSkill`-driven dispatch are all removed. `initial-tasks:` does not come back — the generator adds its own tasks with `addTask`, or you use a board-as-tool that carries its own seed. A `pattern:` field left in a skill file now fails loudly at parse rather than being reinterpreted.
-
-For a graph that genuinely needs concurrent, dependency-ordered dispatch (the old `pattern: task-board` with `initial-tasks` and `concurrency`), re-express it as a `taskBoard(...).drain` block and call it as a tool ([above](#running-a-board-as-a-tool)). The board's own dispatch does the parallel work; only the invocation path changed.
+The `context: pattern` mode, the `pattern:` / `pattern-config:` / `initial-tasks:` fields, and the `runSkill`-driven dispatch are all removed. `initial-tasks:` does not come back as data — the skill body instructs the generator to plan the tasks itself with `addTask` and execute them with `runBoard`. That is strictly more capable than the frozen YAML graph: the model sets the goals, fan-out, and dependencies per request. A `pattern:` field left in a skill file now fails loudly at parse rather than being reinterpreted.
 
 ## Where fork went
 

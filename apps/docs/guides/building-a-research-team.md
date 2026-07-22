@@ -198,65 +198,76 @@ A few things worth calling out, because they answer "when does the board actuall
 - **`routes: []` + `validateRoute: () => true`** let the router return a board it constructed on this call, rather than picking from a fixed list. (A router normally selects among pre-declared `routes`; here the route is built per request.)
 - **Seed through `initialTasks`, not a manual `addTask` in the router.** A router's `execute` must be replay-safe — on a resumed request it re-runs. The board's seed step is idempotent by task id, so re-running it never double-seeds. Do the seeding declaratively and you get that for free.
 
-The example's [`test/research-router.test.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/test/research-router.test.ts) drives this router with three competitors and asserts all four tasks (three analyzers + the synthesizer) complete.
+The example's [`test/flow.test.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/test/flow.test.ts) drives this router with three competitors and asserts all four tasks (three analyzers + the synthesizer) complete.
 
 There's a second way to grow a board at runtime: a worker on an already-running board can enqueue more tasks while it runs. That's the agent-driven path, and it's section 6.
 
-## 4. The same team, callable from a skill
+## 4. The same team, as a skill that runs its own board
 
-Both boards above are TypeScript. A conversational agent can reach one of them by
-calling it as a **tool**. A `taskBoard(...).drain` is a block, and
-[any block can be a tool](/docs/fundamentals/blocks#any-block-can-be-a-tool): drop
-the board into a generator's `tools:` and the generator calls the whole board as a
-single tool. The board drains under its own concurrency, and only the finalized
-brief re-enters the conversation — the analysts' intermediate work stays out of the
-agent's history.
-
-To reach it from a skill, register the drain block in the skills **catalog** and
-list it under the skill's `allowed-tools`, the same way you'd list `search` or
-`fetch`. The skill stays plain inline instructions; the board is just one of its
-tools.
-
-```ts title="skills.ts"
-import { search } from "@flow-state-dev/tools/search";
-import { fetch } from "@flow-state-dev/tools/fetch";
-import { createSkillsLibrary } from "@flow-state-dev/orchestration";
-import { researchBoard } from "./board";
-
-// Wrap the board's drain as a tool the model can call with a { subject }.
-const researchTeam = researchBoard.drain; // a block; the catalog exposes it as a tool
-
-export const skills = createSkillsLibrary({
-  // "search"/"fetch" are worker tools; "research-team" is the board-as-tool
-  // a skill lists in its allowed-tools.
-  catalog: { search: search(), fetch: fetch(), "research-team": researchTeam },
-  initialSkills,
-});
-```
+Both boards above are TypeScript — your code decides the tasks. A skill flips
+that: the SKILL.md declares the *team* in a `workers:` map, and its instructions
+tell the agent how to plan the tasks itself. Binding a worker-declaring skill
+gives the generator a private task board, the task tools (`addTask`,
+`listTasks`, …), one callable tool per worker, and `runBoard` — a real board
+drain over that ledger. The agent plans with `addTask` (assignee, deps,
+structured input) and executes the whole graph with one `runBoard` call. The
+skill runs the board.
 
 ```markdown title="skills/research-company/SKILL.md"
 ---
 description: Multi-angle company research by a small team of analysts.
-context: inline
-allowed-tools: [research-team]
+workers:
+  market-analyst:
+    block-ref: market-analyst
+  financial-analyst:
+    block-ref: financial-analyst
+  synthesizer:
+    block-ref: synthesizer
 ---
 
-When the user asks for company research, call the `research-team` tool with the
-subject. It runs the analysts in parallel and returns the synthesized brief.
+You run the board. Extract the target from the user's message, then:
+
+1. `addTask` a market analysis — `assignee: "market-analyst"`.
+2. `addTask` a financial analysis — `assignee: "financial-analyst"`.
+3. `addTask` the synthesis — `assignee: "synthesizer"`, `deps` set to the two
+   task ids returned above.
+4. Call `runBoard` once. Surface the synthesizer's report as-is.
+```
+
+```ts title="skills.ts"
+import { createSkillsLibrary } from "@flow-state-dev/orchestration";
+import { analyst, synthesizer } from "./workers";
+
+export const skills = createSkillsLibrary({
+  catalog: {},
+  initialSkills,
+  // The skill's `block-ref:` workers resolve against this registry. These are
+  // the same deterministic handlers the static board uses — swap one for a
+  // generator (or a `prompt:` worker in the SKILL.md) to put an LLM in a seat.
+  blocks: {
+    "market-analyst": analyst("market"),
+    "financial-analyst": analyst("financial"),
+    synthesizer,
+  },
+});
 ```
 
 Bind the skill to your conversation generator with
 `uses: [skills.with({ active: ["research-company"] })]`. The example ships this
-skill — plus a dynamic `competitor-analysis` variant — under
+skill — plus a `competitor-analysis` variant where the agent picks the
+competitors and fans out one analyzer per pick — under
 [`src/skills/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/skills).
 From the example directory,
 `pnpm fsdev run research-team chat -i '{"message":"research ACME Corp"}'` runs it
-(that path calls an LLM, so it needs an API key).
+(the coordinator is an LLM, so it needs an API key — the workers here aren't).
 
-The board's own `visibility` settings still decide what streams: the synthesizer is
-`primary` (its output reaches the conversation), the analysts are `sub` (they stream
-for observability but stay out of history). Because the whole board runs inside one
-tool call, only the finalized result lands in the agent's history regardless.
+Compared to the frozen graphs in sections 2 and 3, the agent now sets the
+goals, the fan-out, and the dependencies per request. The board still does the
+deterministic part — parallel dispatch, dependency gating, one settled result —
+and its task-change stream drives a live plan UI without re-entering the
+agent's history. When the graph *should* stay fixed in code, register a
+`taskBoard(...).drain` block in the skills `catalog` and list it under
+`allowed-tools` — [any block can be a tool](/docs/fundamentals/blocks#any-block-can-be-a-tool).
 
 ## 5. Staff a worker with a named agent
 

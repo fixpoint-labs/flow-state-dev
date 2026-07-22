@@ -8,8 +8,8 @@
  *   OPENAI_API_KEY=... pnpm fsdev run research-team chat -i '{"message":"research ACME Corp"}'
  *
  * `research` and `researchCompetitors` use deterministic handler workers, so
- * they run with no API key. `chat` dispatches the pattern skills through a
- * model, so it needs OPENAI_API_KEY.
+ * they run with no API key. `chat` runs the delegation skills through a
+ * coordinator model, so it needs OPENAI_API_KEY.
  *
  * The `chat` action's generator resolves through the `chat` intent below,
  * which falls back to openai/gpt-5.4-mini and auto-detects the provider from

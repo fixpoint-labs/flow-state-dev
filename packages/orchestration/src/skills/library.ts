@@ -32,6 +32,7 @@
 
 import { z } from "zod";
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
+import { deepEqual } from "@flow-state-dev/core/helpers";
 import type {
   DeclaredResourceEntry,
   ResourceScope,
@@ -436,16 +437,23 @@ export function createSkillsLibrary(
       ...Object.keys(catalog),
     ]);
     const seenWorkerNames = new Set<string>(reservedToolNames);
+    const seenWorkerSpecs = new Map<string, WorkerSpec>();
     for (const { name: skillName, entry } of staticWorkerSkills) {
       for (const [workerKey, spec] of Object.entries(entry.workers!)) {
         if (seenWorkerNames.has(workerKey)) {
+          // Two active skills may share a worker (e.g. a common synthesizer).
+          // An IDENTICAL spec dedupes into one tool; anything else — a
+          // different spec, or a reserved/catalog name — is a real collision.
+          const prior = seenWorkerSpecs.get(workerKey);
+          if (prior && deepEqual(prior, spec)) continue;
           throw new Error(
             `skills: delegation worker "${workerKey}" (skill "${skillName}") collides ` +
               `with an existing tool name (a taskTools handler, ${RUN_BOARD_TOOL_NAME}, a ` +
-              `catalog tool, or another worker). Rename the worker key.`,
+              `catalog tool, or a different worker under the same key). Rename the worker key.`,
           );
         }
         seenWorkerNames.add(workerKey);
+        seenWorkerSpecs.set(workerKey, spec);
         if (
           spec.agentRef !== undefined &&
           (!options.agentRegistry || !options.materializeAgent)

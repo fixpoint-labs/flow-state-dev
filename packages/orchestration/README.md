@@ -10,8 +10,8 @@ build on each other:
   `supervisor`, `parallelTasks`, and `planAndExecute` (in `@flow-state-dev/patterns`)
   are built on.
 - **Skills** — user-editable `SKILL.md` folders injected as inline instructions,
-  optionally with a `workers:` field that installs a private delegation board and
-  the agent-callable `taskTools` surface.
+  optionally with a `workers:` field that installs a private delegation board,
+  the agent-callable `taskTools` surface, per-worker tools, and `runBoard`.
 
 Layering: `core → orchestration → patterns`. This package depends only on
 `@flow-state-dev/core` and never imports from `patterns` or `workforce`.
@@ -119,9 +119,13 @@ generator({
 A skill that declares a `workers:` field turns on **delegation**. Binding it installs
 a private task board (own-state, scoped to that generator), the eight `taskTools`
 (`addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`,
-`updateTask`, `listTasks`), one callable tool per worker, and a guidance context.
-The generator's own loop orchestrates: it calls a worker tool to run a unit of work
-and reads the result inline. The board is a ledger — nothing auto-drains it. With no
+`updateTask`, `listTasks`), one callable tool per worker, `runBoard`, and a guidance
+context. The generator orchestrates: call a worker tool for a single unit of work
+(result returns inline), or plan a graph with `addTask` (assignee, deps, structured
+input) and call `runBoard` once — the board drains under concurrency with dependency
+gating and returns every task's output. Workers materialize at runtime, so
+`agent-ref` workers resolve through the library's `agentRegistry`/`materializeAgent`
+options and runtime-activated worker skills contribute their tools too. With no
 delegation board resolvable, a stray `taskTools` call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing.
 
@@ -130,9 +134,10 @@ delegation board resolvable, a stray `taskTools` call returns
 generator({ uses: [skills.with({ active: ["research-lead"] })] });
 ```
 
-For concurrent, dependency-ordered work, put a `taskBoard(...).drain` or a
-`goalSeekLoop` in the generator's `tools:` — any block can be a tool, and only the
-finalized result re-enters the caller's history.
+For a graph fixed in code (seeded `initialTasks`, custom collection, tuned
+dispatcher), put a `taskBoard(...).drain` or a `goalSeekLoop` in the generator's
+`tools:` — any block can be a tool, and only the finalized result re-enters the
+caller's history.
 
 See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `active` / `allowed` / `activeState` surface and

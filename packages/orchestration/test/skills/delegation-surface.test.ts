@@ -289,6 +289,89 @@ describe("delegation surface — runBoard drains the own-state ledger", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Cross-skill worker dedupe
+// ---------------------------------------------------------------------------
+
+describe("delegation surface — two active skills sharing a worker", () => {
+  it("dedupes an identical worker spec into one tool; distinct specs still collide", async () => {
+    const skillA: InitialSkill = {
+      name: "team-a",
+      skillMd: [
+        "---",
+        "description: a",
+        "workers:",
+        "  analyst:",
+        "    block-ref: analyst",
+        "  synthesizer:",
+        "    block-ref: synthesizer",
+        "---",
+        "",
+        "a",
+      ].join("\n"),
+    };
+    const skillB: InitialSkill = {
+      name: "team-b",
+      skillMd: [
+        "---",
+        "description: b",
+        "workers:",
+        "  synthesizer:",
+        "    block-ref: synthesizer",
+        "---",
+        "",
+        "b",
+      ].join("\n"),
+    };
+    const skills = createSkillsLibrary({
+      catalog: {},
+      initialSkills: [skillA, skillB],
+      blocks: { analyst: analystBlock as never, synthesizer: synthesizerBlock as never },
+    });
+    const gen = generator({
+      name: "g",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      inputSchema: z.object({}),
+      uses: [skills.with({ active: ["team-a", "team-b"] } as never)],
+    });
+    const { ctx } = buildExecCtx();
+    const names = (await resolveTools(gen, ctx)).map(
+      (t) => (t as { config?: { name?: string } }).config?.name ?? (t as { name?: string }).name,
+    );
+    expect(names.filter((n) => n === "synthesizer")).toHaveLength(1);
+
+    // A DIFFERENT spec under the same key is a real collision — fails at build.
+    const conflicting: InitialSkill = {
+      name: "team-c",
+      skillMd: [
+        "---",
+        "description: c",
+        "workers:",
+        "  synthesizer:",
+        "    prompt: You synthesize differently.",
+        "---",
+        "",
+        "c",
+      ].join("\n"),
+    };
+    const skills2 = createSkillsLibrary({
+      catalog: {},
+      initialSkills: [skillA, conflicting],
+      blocks: { analyst: analystBlock as never, synthesizer: synthesizerBlock as never },
+    });
+    expect(() =>
+      generator({
+        name: "g2",
+        model: "openai/gpt-5.4-mini",
+        prompt: "p",
+        inputSchema: z.object({}),
+        uses: [skills2.with({ active: ["team-a", "team-c"] } as never)],
+      }),
+    ).toThrow(/collides/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // agent-ref workers
 // ---------------------------------------------------------------------------
 

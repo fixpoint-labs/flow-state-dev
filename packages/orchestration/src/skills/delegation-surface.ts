@@ -24,6 +24,7 @@
  */
 
 import { handler, sequencer } from "@flow-state-dev/core";
+import { deepEqual } from "@flow-state-dev/core/helpers";
 import type {
   AgentRegistry,
   BlockDefinition,
@@ -299,18 +300,24 @@ export async function buildDelegationTools(
 
   const staticNames = new Set(deps.staticSources.map((s) => s.skillName));
   const seen = new Set<string>(deps.reservedToolNames);
+  const seenSpecs = new Map<string, WorkerSpec>();
   const directTools: GeneratorTool[] = [];
   const boardWorkers: Record<string, BlockDefinition> = {};
 
+  // prompt-refs are pre-resolved for bundled skills; a missing collection
+  // only matters for a non-bundled prompt-ref, which materializeWorker
+  // reports precisely when it tries to read it.
+  const collection: ResourceCollectionRef | undefined = getCollection(ctx, deps.collectionKey);
+
   for (const source of sources) {
-    const collection =
-      getCollection(ctx, deps.collectionKey) ??
-      // prompt-refs are pre-resolved for bundled skills; a missing collection
-      // only matters for a non-bundled prompt-ref, which materializeWorker
-      // reports precisely when it tries to read it.
-      (undefined as unknown as ResourceCollectionRef);
     for (const [workerKey, spec] of Object.entries(source.workers)) {
       if (seen.has(workerKey)) {
+        // An identical spec under the same key (two skills sharing a worker)
+        // dedupes into the already-built tool. Anything else collides: fail
+        // loud for static skills (build-time validation mirrors this), warn +
+        // skip for a runtime activation so a model-driven load can't crash
+        // the turn.
+        if (deepEqual(seenSpecs.get(workerKey), spec)) continue;
         if (!staticNames.has(source.skillName)) {
           console.warn(
             `[skills] delegation worker "${workerKey}" (runtime skill "${source.skillName}") ` +
@@ -321,10 +328,11 @@ export async function buildDelegationTools(
         throw new Error(
           `skills: delegation worker "${workerKey}" (skill "${source.skillName}") collides ` +
             `with an existing tool name (a taskTools handler, ${RUN_BOARD_TOOL_NAME}, a catalog ` +
-            `tool, or another worker). Rename the worker key.`,
+            `tool, or a different worker under the same key). Rename the worker key.`,
         );
       }
       seen.add(workerKey);
+      seenSpecs.set(workerKey, spec);
 
       const resolvedSpec = withBundledPrompt(spec, source.files);
       const materializeDeps = {
@@ -401,11 +409,14 @@ export function buildDelegationGuidance(deps: DelegationSurfaceDeps) {
   return async (_input: unknown, ctx: BlockContext): Promise<string | null> => {
     const sources = await collectWorkerSources(ctx, deps);
     if (sources.length === 0) return null;
-    const rosterLines = sources.flatMap((source) =>
-      Object.entries(source.workers).map(
-        ([key, spec]) => `- ${key}: ${workerPurpose(spec, source.files)}`,
-      ),
-    );
-    return `${DELEGATION_PLAYBOOK}\n\nYour workers:\n${rosterLines.join("\n")}`;
+    // Dedupe by worker key — two skills sharing a worker list it once,
+    // mirroring the tool surface.
+    const roster = new Map<string, string>();
+    for (const source of sources) {
+      for (const [key, spec] of Object.entries(source.workers)) {
+        if (!roster.has(key)) roster.set(key, `- ${key}: ${workerPurpose(spec, source.files)}`);
+      }
+    }
+    return `${DELEGATION_PLAYBOOK}\n\nYour workers:\n${[...roster.values()].join("\n")}`;
   };
 }
