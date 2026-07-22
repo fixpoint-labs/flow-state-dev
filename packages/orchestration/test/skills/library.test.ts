@@ -357,27 +357,6 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
     expect(merged.stateSchema).toBeUndefined();
   });
 
-  it("load catalog lists only inline skills, never fork/pattern (allowed omitted)", async () => {
-    const forkSkill: InitialSkill = {
-      name: "forky",
-      skillMd: "---\ndescription: a fork skill\ncontext: fork\n---\n\nbody",
-    };
-    const skills = createSkillsLibrary({
-      initialSkills: [inlineSkill("inliney", "body"), forkSkill],
-    });
-    // `allowed` omitted → the catalog is the whole enabled set; the load tool is
-    // inline-only, so the listing must exclude the fork skill.
-    const gen = generator({
-      name: "g",
-      model: "openai/gpt-5.4-mini",
-      prompt: "p",
-      uses: [skills.with({ dynamicActivation: true })],
-    });
-    const out = await renderGeneratorSkills(gen, buildReaderCtx(createMockSkillsCollection()));
-    expect(out).toContain("inliney");
-    expect(out).not.toContain("forky");
-  });
-
   it("load tool rejects a skill outside the allowed set", async () => {
     const skills = createSkillsLibrary({
       initialSkills: [inlineSkill("deep-research", "body"), inlineSkill("other", "body")],
@@ -399,31 +378,6 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
 });
 
 describe("createSkillsLibrary — block-state default reader", () => {
-  it("does not render a statically-bound skill edited to fork/pattern in the live catalog", async () => {
-    const skills = createSkillsLibrary({ initialSkills: [inlineSkill("edited", "EDITED-MARKER")] });
-    const gen = generator({
-      name: "g",
-      model: "openai/gpt-5.4-mini",
-      prompt: "p",
-      uses: [skills.with({ active: ["edited"] })],
-    });
-    const collection = createMockSkillsCollection();
-    // Mark it already-seeded so ensureSeeded won't overwrite our edit, then
-    // simulate an admin editing the persisted manifest to fork mode.
-    collection._store.set("skills/_meta", {
-      name: "skills/_meta",
-      state: { seededNames: ["edited"] },
-      content: null,
-    });
-    collection._store.set("skills/edited/SKILL.md", {
-      name: "skills/edited/SKILL.md",
-      state: { description: "edited", contextMode: "fork" },
-      content: "---\ndescription: edited\ncontext: fork\n---\n\nEDITED-MARKER",
-    });
-    const out = await renderGeneratorSkills(gen, buildReaderCtx(collection));
-    expect(out).not.toContain("EDITED-MARKER");
-  });
-
   it("does not render a statically-bound skill flagged disable-model-invocation", async () => {
     const skills = createSkillsLibrary({ initialSkills: [inlineSkill("draft", "DRAFT-MARKER")] });
     const gen = generator({

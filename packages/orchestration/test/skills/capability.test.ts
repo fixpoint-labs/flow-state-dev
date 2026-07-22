@@ -96,25 +96,8 @@ describe("createSkillsCapability", () => {
     ]);
   });
 
-  it("does NOT compose taskTools when no patternRegistry is supplied", () => {
+  it("does not auto-compose a delegation surface via `uses` (inline-only)", () => {
     const cap = createSkillsCapability();
-    expect(cap.uses).toBeUndefined();
-  });
-
-  it("composes the taskTools capability when patternRegistry is supplied", () => {
-    const registry = { get: () => undefined, list: () => [] };
-    const cap = createSkillsCapability({ patternRegistry: registry as never });
-    expect(cap.uses).toBeDefined();
-    expect(cap.uses).toHaveLength(1);
-    expect((cap.uses![0] as { name?: string }).name).toBe("taskTools");
-  });
-
-  it("respects taskTools: false to disable the runtime mutation surface", () => {
-    const registry = { get: () => undefined, list: () => [] };
-    const cap = createSkillsCapability({
-      patternRegistry: registry as never,
-      taskTools: false,
-    });
     expect(cap.uses).toBeUndefined();
   });
 });

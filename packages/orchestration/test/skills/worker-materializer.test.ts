@@ -1,18 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WorkerSpec } from "@flow-state-dev/core";
 import { materializeWorker } from "../../src/skills/worker-materializer";
-import type { PatternRegistryDeps } from "../../src/skills/pattern-registry";
+import type { WorkerMaterializationDeps } from "../../src/skills/worker-materializer";
 import { skillFileKey } from "../../src/skills/collection";
 import { createMockSkillsCollection } from "./mocks";
 
-function deps(overrides: Partial<PatternRegistryDeps> = {}): PatternRegistryDeps {
+function deps(
+  overrides: Partial<WorkerMaterializationDeps> = {},
+): WorkerMaterializationDeps {
   const collection = createMockSkillsCollection();
   return {
     catalog: {},
     skillName: "demo",
     skillCollection: collection,
     defaultModelId: "openai/gpt-4o-mini",
-    collectionId: "skill_demo_r1_1",
     ...overrides,
   };
 }
@@ -76,7 +77,7 @@ describe("materializeWorker — prompt-driven branches", () => {
     const withWorkerModel = await materializeWorker(
       "a",
       { prompt: "x", model: "anthropic/claude-haiku" },
-      { catalog: {}, skillName: "demo", skillCollection: collection, collectionId: "skill_demo_r1_1" },
+      { catalog: {}, skillName: "demo", skillCollection: collection },
     );
     expect((withWorkerModel as { config?: { model?: string } }).config?.model).toBe(
       "anthropic/claude-haiku",
@@ -91,7 +92,6 @@ describe("materializeWorker — prompt-driven branches", () => {
         skillName: "demo",
         skillCollection: collection,
         defaultModelId: "openai/gpt-4o-mini",
-        collectionId: "skill_demo_r1_1",
       },
     );
     expect((withDepsDefault as { config?: { model?: string } }).config?.model).toBe(
@@ -103,7 +103,7 @@ describe("materializeWorker — prompt-driven branches", () => {
     const fallback = await materializeWorker(
       "c",
       { prompt: "x" },
-      { catalog: {}, skillName: "demo", skillCollection: collection, collectionId: "skill_demo_r1_1" },
+      { catalog: {}, skillName: "demo", skillCollection: collection },
     );
     expect((fallback as { config?: { model?: string } }).config?.model).toBe("intent/chat");
   });
