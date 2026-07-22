@@ -1,82 +1,58 @@
 import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { taskTools, createTaskToolsCapability } from "../../src/skills/task-tools-capability";
+import {
+  taskTools,
+  createTaskToolsCapability,
+  delegationBoardSchema,
+  DELEGATION_BOARD_FIELD,
+} from "../../src/skills/task-tools-capability";
 import type { GeneratorTool } from "@flow-state-dev/core";
-import type { ActiveSkillEntry } from "../../src/skills/active-skill-state";
 
 /**
- * Build a minimal BlockContext + sessionState shape carrying a single
- * `mode: "pattern"` activeSkill entry. The collection is request-backed,
- * so `getActivePatternCollection` reaches `getOrCreateTaskCollection`
- * which reads `ctx.request.state[collectionId]`.
+ * Build a minimal BlockContext whose `ctx.parent` carries an own-state
+ * delegation board (FIX-918). The default `taskTools` resolver reads the host
+ * generator's own-state board via `ctx.parent`, so the mock parent exposes a
+ * live `state` getter with a `delegationBoard` record plus a CAS-shaped
+ * `atomicState` — the two surfaces `createSequencerBackedTaskCollection` uses.
  */
-function buildPatternCtx(opts: { skillName?: string; preTasks?: Record<string, unknown> } = {}) {
-  const skillName = opts.skillName ?? "demo";
-  const collectionId = `skill_${skillName}`;
-  const requestState: Record<string, unknown> = {
-    [collectionId]: opts.preTasks ?? {},
+function buildDelegationCtx(opts: { preTasks?: Record<string, unknown> } = {}) {
+  const parentState: Record<string, unknown> = {
+    [DELEGATION_BOARD_FIELD]: opts.preTasks ?? {},
   };
-  const entry: ActiveSkillEntry = {
-    name: skillName,
-    mode: "pattern",
-    activatedAt: Date.now(),
-    pattern: {
-      patternKey: "task-board",
-      collectionId,
-      backing: "request",
+  const parent = {
+    name: "executive",
+    instanceId: "executive#0",
+    get state() {
+      return parentState;
     },
-  };
-  const request = {
-    identity: { id: "r1", userId: "u1" },
-    state: requestState,
+    // Mirrors the real StateRef contract: the mutator returns a partial patch
+    // that is merged into the state (not an in-place mutation).
+    atomicState: async (
+      fn: (
+        state: Record<string, unknown>,
+      ) => Promise<Record<string, unknown>> | Record<string, unknown>,
+    ): Promise<void> => {
+      const patch = await fn(parentState);
+      Object.assign(parentState, patch);
+    },
     patchState: async (updates: Record<string, unknown>) => {
-      Object.assign(requestState, updates);
+      Object.assign(parentState, updates);
     },
-    setState: async (next: Record<string, unknown>) => {
-      for (const k of Object.keys(requestState)) delete requestState[k];
-      Object.assign(requestState, next);
-    },
-    incState: async (key: string, delta: number) => {
-      requestState[key] = ((requestState[key] as number) ?? 0) + delta;
-    },
-    pushState: async (key: string, value: unknown) => {
-      const arr = (requestState[key] as unknown[]) ?? [];
-      arr.push(value);
-      requestState[key] = arr;
-    },
-    setStateRecord: async (
-      record: string,
-      key: string,
-      value: unknown,
-    ) => {
-      const rec = (requestState[record] as Record<string, unknown>) ?? {};
-      rec[key] = value;
-      requestState[record] = rec;
-    },
-    deleteStateRecord: async (record: string, key: string) => {
-      const rec = requestState[record] as Record<string, unknown> | undefined;
-      if (rec) delete rec[key];
-    },
-    atomicState: async <T>(
-      fn: (state: Record<string, unknown>) => Promise<T> | T,
-    ): Promise<T> => fn(requestState),
   };
   return {
-    request,
+    parent,
+    request: { identity: { id: "r1", userId: "u1" }, state: {} },
     session: {
       identity: { id: "s1", userId: "u1" },
-      state: { activeSkills: [entry] },
+      state: {},
       patchState: async () => {},
     },
     org: { identity: { type: "org" as const, id: "p1" } },
     user: {},
     resources: { get: () => undefined, list: () => [] },
     signal: new AbortController().signal,
-    response: {
-      emit: async () => {},
-      getItems: () => [],
-    },
+    response: { emit: async () => {}, getItems: () => [] },
     cap: {},
     getTarget: () => undefined,
     getBlockOutput: () => undefined,
@@ -86,13 +62,14 @@ function buildPatternCtx(opts: { skillName?: string; preTasks?: Record<string, u
   } as never;
 }
 
-/** Build a context with no active pattern entry. */
-function buildNoPatternCtx() {
+/** Build a context whose parent exposes no delegation board (→ no_delegation_board). */
+function buildNoBoardCtx() {
   return {
+    // No `parent` — the own-state resolver returns undefined.
     request: { identity: { id: "r1", userId: "u1" }, state: {} },
     session: {
       identity: { id: "s1", userId: "u1" },
-      state: { activeSkills: [] },
+      state: {},
       patchState: async () => {},
     },
     org: { identity: { type: "org" as const, id: "p1" } },
@@ -143,16 +120,46 @@ describe("taskTools capability", () => {
   });
 });
 
-describe("taskTools — happy paths", () => {
-  it("addTask creates a task on the active board", async () => {
-    const ctx = buildPatternCtx();
+describe("delegation board state slot", () => {
+  it("initializes from an empty parse, so the board exists on first use", () => {
+    // The engine seeds a block's initial own state via `stateSchema.safeParse({})`
+    // (see engine route-utils). Without a field default that parse fails, the
+    // state starts as `{}`, and the first addTask hits `no_delegation_board`
+    // even though the binding declared the board.
+    const hostSchema = z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSchema });
+    const parsed = hostSchema.safeParse({});
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data).toEqual({ [DELEGATION_BOARD_FIELD]: {} });
+  });
+});
+
+describe("taskTools — happy paths (own-state board)", () => {
+  it("addTask creates a task on the delegation board", async () => {
+    const ctx = buildDelegationCtx();
     const result = await runForTest(findTool("addTask"), { goal: "write report" }, ctx);
     expect((result as { ok: boolean }).ok).toBe(true);
     expect((result as { taskId: string }).taskId).toMatch(/^task_/);
   });
 
+  it("addTask stores a structured input payload on the task", async () => {
+    const ctx = buildDelegationCtx();
+    const result = await runForTest(
+      findTool("addTask"),
+      { goal: "analyze", assignee: "analyst", input: { subject: "ACME" } },
+      ctx,
+    );
+    expect((result as { ok: boolean }).ok).toBe(true);
+    const taskId = (result as { taskId: string }).taskId;
+    const board = (
+      (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
+        DELEGATION_BOARD_FIELD
+      ] as Record<string, { input?: unknown }>
+    );
+    expect(board[taskId]?.input).toEqual({ subject: "ACME" });
+  });
+
   it("listTasks returns the seeded board entries", async () => {
-    const ctx = buildPatternCtx({
+    const ctx = buildDelegationCtx({
       preTasks: {
         a: {
           id: "a",
@@ -170,7 +177,7 @@ describe("taskTools — happy paths", () => {
   });
 
   it("completeTask transitions a pending task to completed", async () => {
-    const ctx = buildPatternCtx({
+    const ctx = buildDelegationCtx({
       preTasks: {
         a: {
           id: "a",
@@ -191,23 +198,23 @@ describe("taskTools — happy paths", () => {
   });
 });
 
-describe("taskTools — no active pattern", () => {
-  it("addTask returns the no_active_pattern error rather than throwing", async () => {
-    const ctx = buildNoPatternCtx();
+describe("taskTools — no delegation board", () => {
+  it("addTask returns the no_delegation_board error rather than throwing", async () => {
+    const ctx = buildNoBoardCtx();
     const result = await runForTest(findTool("addTask"), { goal: "x" }, ctx);
-    expect(result).toEqual({ ok: false, error: "no_active_pattern" });
+    expect(result).toEqual({ ok: false, error: "no_delegation_board" });
   });
 
-  it("listTasks returns the no_active_pattern error rather than throwing", async () => {
-    const ctx = buildNoPatternCtx();
+  it("listTasks returns the no_delegation_board error rather than throwing", async () => {
+    const ctx = buildNoBoardCtx();
     const result = await runForTest(findTool("listTasks"), {}, ctx);
-    expect(result).toEqual({ ok: false, error: "no_active_pattern" });
+    expect(result).toEqual({ ok: false, error: "no_delegation_board" });
   });
 });
 
 describe("taskTools — unknown task ids", () => {
   it("completeTask returns task_not_found for an unknown id", async () => {
-    const ctx = buildPatternCtx();
+    const ctx = buildDelegationCtx();
     const result = await runForTest(
       findTool("completeTask"),
       { taskId: "ghost", output: null },
@@ -220,6 +227,3 @@ describe("taskTools — unknown task ids", () => {
     });
   });
 });
-
-// Suppress unused import warnings.
-void z;

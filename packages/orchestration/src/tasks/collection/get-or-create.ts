@@ -12,7 +12,7 @@
  * these items, filter by `data.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
   RequestScopeHandle,
@@ -32,6 +32,15 @@ interface CommonOptions {
   collectionId: string;
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
+  /**
+   * Visibility stamped on the `task-change` component items emitted on every
+   * lifecycle transition (FIX-918). Omit for the default (client + history).
+   * A board that runs *inside* a tool-wrapped drain passes
+   * `{ client: true, history: false }` so its O(tasks × transitions) change
+   * stream still drives the live `<Plan />` UI but never re-enters the calling
+   * generator's LLM history.
+   */
+  changeVisibility?: ItemVisibility;
 }
 
 /** Sequencer-state backing options. */
@@ -129,7 +138,12 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
         task: event.task,
         ...(event.prevStatus !== undefined ? { prevStatus: event.prevStatus } : {}),
       },
-      { key: `${event.collectionId}/${event.taskId}` }
+      {
+        key: `${event.collectionId}/${event.taskId}`,
+        ...(options.changeVisibility !== undefined
+          ? { itemVisibility: options.changeVisibility }
+          : {}),
+      }
     );
   };
 

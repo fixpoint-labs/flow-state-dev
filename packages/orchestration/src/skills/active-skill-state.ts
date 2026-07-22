@@ -20,7 +20,7 @@ import { skillActivationSourceSchema } from "./skill-activation-types";
 export interface ActiveSkillEntry {
   /** Skill name. Matches the parent directory in the resource collection. */
   name: string;
-  /** Mode the skill activated in. */
+  /** Mode the skill activated in. Always `"inline"` after FIX-918. */
   mode: SkillContextMode;
   /** Argument string the agent passed to runSkill (substituted for $ARGUMENTS). */
   input?: string;
@@ -33,27 +33,6 @@ export interface ActiveSkillEntry {
    * up-front router.
    */
   source?: SkillActivationSource;
-  /**
-   * Set when `mode === "pattern"`. Carries enough info for the
-   * `taskTools` capability to reconstruct the live TaskCollection from
-   * any block context via `getOrCreateTaskCollection`.
-   */
-  pattern?: ActivePatternMeta;
-}
-
-/** Metadata describing the live pattern run a `pattern`-mode entry refers to. */
-export interface ActivePatternMeta {
-  /** Pattern key (e.g. `"task-board"`). */
-  patternKey: string;
-  /** TaskCollection id used at activation time. */
-  collectionId: string;
-  /** Backing kind so the helper can call getOrCreateTaskCollection correctly. */
-  backing: "request" | "resource";
-  /**
-   * Resource registry key for the backing collection when `backing === "resource"`.
-   * Undefined for the request backing.
-   */
-  resourceCollectionKey?: string;
 }
 
 /**
@@ -62,23 +41,24 @@ export interface ActivePatternMeta {
  * as the field schema at the chosen scope, and a block-state default binds it
  * onto the generator's own `stateSchema`) and by the legacy session-state
  * fragment below.
+ *
+ * `mode` is `"inline"` — the only surviving value after FIX-918. A persisted
+ * session from before the fork/pattern removal may carry a stale
+ * `"fork"`/`"pattern"` entry; those are tolerated on read (`.catch`) and
+ * normalized to `"inline"` so a resume never crashes (BP-030). The entries are
+ * inert either way — nothing reads `mode` other than the inline path.
  */
 export const activeSkillsArraySchema = z
   .array(
     z.object({
       name: z.string(),
-      mode: z.enum(["inline", "fork", "pattern"]),
+      mode: z
+        .enum(["inline", "fork", "pattern"])
+        .catch("inline")
+        .transform(() => "inline" as const),
       input: z.string().optional(),
       activatedAt: z.number(),
       source: skillActivationSourceSchema.optional(),
-      pattern: z
-        .object({
-          patternKey: z.string(),
-          collectionId: z.string(),
-          backing: z.enum(["request", "resource"]),
-          resourceCollectionKey: z.string().optional(),
-        })
-        .optional(),
     }),
   )
   .optional()

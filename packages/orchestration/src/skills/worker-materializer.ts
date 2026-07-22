@@ -1,32 +1,78 @@
 /**
- * Worker materialization for pattern skills.
+ * Agent → board-worker materialization for delegation skills (FIX-918).
  *
- * Given a parsed `WorkerSpec` (one of `prompt`, `promptRef`, `blockRef`,
- * `agentRef`), build a `TaskWorker`-shaped `BlockDefinition` suitable
- * for plugging into a pattern factory's worker registry.
+ * Given a parsed `AgentSpec` (one of `prompt`, `promptRef`, `agentRef`), build a
+ * `BlockDefinition` the delegation board dispatches by `task.assignee`. Every
+ * declared agent becomes a **board worker**: its `inputSchema` is the
+ * substrate's `workerInputSchema` (`taskId`/`goal`/`attempts`/…) and its name is
+ * namespaced (`skillWorker_<skill>_<key>`), matching what the board drain feeds.
+ * There is no direct-call (host-tool) mode — work reaches an agent only by being
+ * assigned as a task and drained (see `delegation-surface.ts`).
  *
- * The `agentRef` branch is the explicit forward-compat hook for the
- * Agents primitive — this work parses the field, validates that the
- * caller-supplied `agentRegistry` is wired, and then stubs activation
- * with a clear deferral error. When the Agents package ships, the
- * inner stub-throw is replaced with a call to `materializeAgent`.
+ * Inline agents (`prompt`/`prompt-ref`) build a generator with the substituted
+ * body as the system prompt; the `agentRef` branch resolves a registered Agent
+ * through the injected registry + `materializeAgent`.
  */
 
 import {
   generator,
   type GeneratorTool,
 } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type {
+  AgentRegistry,
+  AgentSpec,
+  DefinedCapability,
+  MaterializeAgentFn,
+  ToolCatalog,
+} from "@flow-state-dev/core";
+import type {
+  BlockDefinition,
+  ResourceCollectionRef,
+} from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { TaskWorkerInput } from "../tasks";
-import type { PatternRegistryDeps } from "./pattern-registry";
 import { skillFileKey } from "./collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { substitute } from "./skill-md";
 import { taskTools as taskToolsCapability } from "./task-tools-capability";
-import type { WorkerSpec } from "@flow-state-dev/core";
 
-/** Input every materialized worker accepts — matches the substrate's TaskWorkerInput. */
+/**
+ * Dependencies for materializing a skill's agents into board workers.
+ */
+export interface WorkerMaterializationDeps {
+  /** Tool catalog. Inline agents resolve their `tools:` field against this. */
+  catalog: ToolCatalog;
+  /**
+   * Optional agent registry consumed by `agent-ref` agents. When undefined,
+   * any agent using `agent-ref` fails with a "no registry configured" error.
+   */
+  agentRegistry?: AgentRegistry;
+  /** Optional capability catalog forwarded to `materializeAgent`. */
+  capabilityCatalog?: Record<string, DefinedCapability>;
+  /** Injected materializer that turns a resolved Agent into a worker generator. */
+  materializeAgent?: MaterializeAgentFn;
+  /** Skill name — used for the board worker block name. */
+  skillName: string;
+  /**
+   * Skill resource collection — supports `prompt-ref` reads. Optional: a
+   * caller that pre-resolves prompt bodies (bundled skill files) may omit it;
+   * a `prompt-ref` agent that still needs a read fails with a clear message.
+   */
+  skillCollection?: ResourceCollectionRef;
+  /** Default model id when an agent omits its own `model`. */
+  defaultModelId?: string;
+  /** Activation input ($ARGUMENTS substitution context). */
+  input?: string;
+  /**
+   * Optional board-bound `taskTools` capability for an inline agent that itself
+   * declares `tools: [taskTools]` (mid-drain fan-out). When set, the agent's
+   * `taskTools` resolve against the drain board it was dispatched from rather
+   * than the singleton's own-state default. When unset, the singleton is used.
+   */
+  boardTaskTools?: DefinedCapability;
+}
+
+/** Board-worker input — matches the substrate's TaskWorkerInput. */
 export const workerInputSchema = z.object({
   taskId: z.string(),
   goal: z.string(),
@@ -40,62 +86,39 @@ export const workerInputSchema = z.object({
 type WorkerInput = TaskWorkerInput;
 
 /**
- * Build the executable block for one worker entry of a pattern skill.
+ * Build the executable board worker for one agent entry.
  *
- * Dispatch order (parse-time mutual exclusion guarantees exactly one
- * branch fires):
- *   1. `blockRef` → look up in `deps.blocks`.
- *   2. `agentRef` → stubbed; throws either "no registry configured" or
- *      "registry supplied but Agents implementation not wired".
- *   3. `promptRef` → read file from the skill collection.
- *   4. `prompt` → use the inline body.
- *
- * For prompt-driven workers, the materializer composes a generator whose
- * system prompt is the substituted worker body. Per-invocation the
- * generator builds a user message from the task goal and any upstream
- * dep outputs, runs to a final answer, and returns the assistant text.
+ * Dispatch order (parse-time mutual exclusion guarantees exactly one branch
+ * fires): `agentRef` → `promptRef` → `prompt`.
  */
 export async function materializeWorker(
-  workerKey: string,
-  spec: WorkerSpec,
-  deps: PatternRegistryDeps,
+  agentKey: string,
+  spec: AgentSpec,
+  deps: WorkerMaterializationDeps,
 ): Promise<BlockDefinition> {
-  // 1. block-ref — look up in the optional block registry.
-  if (spec.blockRef !== undefined) {
-    const registry = deps.blocks ?? {};
-    const block = registry[spec.blockRef];
-    if (!block) {
-      const available = Object.keys(registry).join(", ") || "(empty)";
-      throw new Error(
-        `Worker '${workerKey}': block-ref '${spec.blockRef}' not found in block registry. Available: ${available}`,
-      );
-    }
-    return block;
-  }
-
-  // 2. agent-ref — resolve a registered Agent via the injected registry
-  //    and materializeAgent function.
+  // 1. agent-ref — resolve a registered Agent via the injected registry.
   if (spec.agentRef !== undefined) {
     if (!deps.agentRegistry) {
       throw new Error(
-        `Worker '${workerKey}' uses agent-ref '${spec.agentRef}' but no ` +
-          `agentRegistry was supplied to createSkillsCapability. ` +
-          `Wire an AgentRegistry via createSkillsCapability({ agentRegistry }) ` +
-          `or use prompt/prompt-ref instead.`,
+        `Agent '${agentKey}' uses agent-ref '${spec.agentRef}' but no ` +
+          `agentRegistry was supplied to materializeWorker. The delegation surface ` +
+          `does not resolve agent-ref agents — use prompt/prompt-ref, or ` +
+          `supply an agentRegistry to whatever wires this board's workers.`,
       );
     }
     if (!deps.materializeAgent) {
       throw new Error(
-        `Worker '${workerKey}' uses agent-ref '${spec.agentRef}' but no ` +
-          `materializeAgent function was supplied to createSkillsCapability. ` +
-          `Wire it via createSkillsCapability({ materializeAgent }).`,
+        `Agent '${agentKey}' uses agent-ref '${spec.agentRef}' but no ` +
+          `materializeAgent function was supplied to materializeWorker. The delegation ` +
+          `surface does not resolve agent-ref agents — use prompt/prompt-ref, ` +
+          `or supply a materializeAgent to whatever wires this board's workers.`,
       );
     }
     const agent = await deps.agentRegistry.get(spec.agentRef);
     if (!agent) {
       const registered = (await deps.agentRegistry.list()).map((a) => a.name);
       throw new Error(
-        `Worker '${workerKey}' references agent '${spec.agentRef}' which is not in the registry. ` +
+        `Agent '${agentKey}' references agent '${spec.agentRef}' which is not in the registry. ` +
           `Registered agents: ${registered.join(", ") || "(none)"}.`,
       );
     }
@@ -105,35 +128,33 @@ export async function materializeWorker(
       defaultModelId: deps.defaultModelId,
       overrides: spec.agentOverrides,
       shape: "worker",
-      workerKey,
+      workerKey: agentKey,
       skillName: deps.skillName,
     });
   }
 
-  // 3 & 4. prompt-ref / prompt — both build a generator with the
-  // substituted body as system prompt.
-  const baseBody = await resolvePromptBody(workerKey, spec, deps);
+  // 2 & 3. prompt-ref / prompt — both build a generator with the substituted
+  //        body as the system prompt.
+  const baseBody = await resolvePromptBody(agentKey, spec, deps);
   const substituted = substitute(baseBody, { arguments: deps.input ?? "" });
 
-  // `taskTools` in the tools array is shorthand for the capability —
-  // workers that list it get all eight addTask/.../listTasks tools
-  // installed via capability composition rather than a catalog lookup.
-  // Filter it out before catalog resolution so it doesn't warn.
+  // `taskTools` in the tools array is shorthand for the capability. An agent
+  // that lists it gets the eight addTask/…/listTasks tools. For a mid-drain
+  // fan-out agent, resolve them against the drain board (deps.boardTaskTools);
+  // otherwise the own-state singleton.
   const usesTaskTools = spec.tools?.includes("taskTools") ?? false;
+  const taskToolsCap = deps.boardTaskTools ?? taskToolsCapability;
   const catalogToolKeys = spec.tools?.filter((t) => t !== "taskTools");
-  const tools = resolveTools(workerKey, catalogToolKeys, deps.catalog);
+  const tools = resolveTools(agentKey, catalogToolKeys, deps.catalog);
 
-  // Model resolution: per-worker `model:` wins, then the capability's
-  // `defaultModelId`, then the same `"intent/chat"` fallback the
-  // fork-mode generator uses. The fallback keeps pattern skills working
-  // out of the box without forcing every app to wire a default; apps
-  // that want a specific model still override at either level.
+  // Model resolution: per-agent `model:` wins, then the deps' default, then a
+  // neutral `"intent/chat"` fallback so a delegation skill works out of the box.
   const modelId = spec.model ?? deps.defaultModelId ?? "intent/chat";
 
   return generator({
-    name: `skillWorker_${deps.skillName}_${workerKey}`,
+    name: `skillWorker_${deps.skillName}_${agentKey}`,
     itemVisibility: spec.itemVisibility ?? { client: true, history: false },
-    agentName: `skill-${deps.skillName}-${workerKey}`,
+    agentName: `skill-${deps.skillName}-${agentKey}`,
     inputSchema: workerInputSchema,
     outputSchema: z.string(),
     model: modelId,
@@ -141,26 +162,32 @@ export async function materializeWorker(
     user: (input: WorkerInput) => buildUserMessage(input),
     tools,
     maxIterations: 12,
-    ...(usesTaskTools ? { uses: [taskToolsCapability] as const } : {}),
+    ...(usesTaskTools ? { uses: [taskToolsCap] as const } : {}),
   }) as unknown as BlockDefinition;
 }
 
-/** Read the worker's prompt body — inline for `prompt`, file-read for `prompt-ref`. */
+/** Read the agent's prompt body — inline for `prompt`, file-read for `prompt-ref`. */
 async function resolvePromptBody(
-  workerKey: string,
-  spec: WorkerSpec,
-  deps: PatternRegistryDeps,
+  agentKey: string,
+  spec: AgentSpec,
+  deps: WorkerMaterializationDeps,
 ): Promise<string> {
   if (spec.prompt !== undefined) return spec.prompt;
-  // Parser-enforced invariant: exactly one of the four resolution fields
-  // is set on every WorkerSpec, and the caller has already dispatched
-  // block-ref / agent-ref branches before reaching here.
+  // Parser-enforced invariant: exactly one of the resolution fields is set on
+  // every AgentSpec, and the caller has already dispatched the agent-ref branch
+  // before reaching here.
   const promptRef = spec.promptRef!;
+  if (!deps.skillCollection) {
+    throw new Error(
+      `Agent '${agentKey}': prompt-ref '${promptRef}' needs the skills collection to ` +
+        `read from, but none was supplied (and the body was not pre-resolved from bundled files)`,
+    );
+  }
   const key = skillFileKey(deps.skillName, promptRef);
   const ref = await deps.skillCollection.getOptional(key);
   if (!ref) {
     throw new Error(
-      `Worker '${workerKey}': prompt-ref '${promptRef}' not found in skill folder (resolved key: ${key})`,
+      `Agent '${agentKey}': prompt-ref '${promptRef}' not found in skill folder (resolved key: ${key})`,
     );
   }
   const content = (await ref.readContent()) ?? "";
@@ -168,12 +195,11 @@ async function resolvePromptBody(
 }
 
 /**
- * Resolve a worker's `tools:` array against the catalog. Mirrors
- * `fork-generator.ts`'s additive-not-restrictive policy: unknown keys
- * warn and drop rather than throw.
+ * Resolve an agent's `tools:` array against the catalog. Additive-not-
+ * restrictive: unknown keys warn and drop rather than throw.
  */
 function resolveTools(
-  workerKey: string,
+  agentKey: string,
   toolKeys: readonly string[] | undefined,
   catalog: Record<string, GeneratorTool>,
 ): GeneratorTool[] {
@@ -183,7 +209,7 @@ function resolveTools(
     const tool = catalog[key];
     if (!tool) {
       console.warn(
-        `[skills] worker "${workerKey}": unknown tool "${key}" — skipped`,
+        `[skills] agent "${agentKey}": unknown tool "${key}" — skipped`,
       );
       continue;
     }
@@ -195,6 +221,16 @@ function resolveTools(
 /** Build the per-invocation user turn from the substrate's TaskWorkerInput. */
 export function buildUserMessage(input: WorkerInput): string {
   const parts: string[] = [`Task: ${input.goal}`];
+  // The structured payload the planner attached via `addTask({ input })`. It is
+  // advertised in the addTask tool description as "handed to the worker," so it
+  // must actually reach the worker's turn — not just sit on the task record.
+  if (input.input !== undefined && input.input !== null) {
+    const rendered =
+      typeof input.input === "string"
+        ? input.input
+        : JSON.stringify(input.input, null, 2);
+    parts.push("", `Input: ${rendered}`);
+  }
   if (input.feedback) {
     parts.push("", `Reviewer feedback: ${input.feedback}`);
   }
@@ -209,4 +245,3 @@ export function buildUserMessage(input: WorkerInput): string {
   }
   return parts.join("\n");
 }
-

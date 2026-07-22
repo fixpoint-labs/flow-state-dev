@@ -8,27 +8,21 @@
  * dedup-by-name+mode logic there keeps the array clean.
  *
  * Each entry carries the activation `source` (slash / keyword /
- * classifier) and the skill's declared `contextMode` (`inline` / `fork` /
- * `pattern`) so the badge surfaces the right variant and `runSkill` can
- * pick the right dispatch route when invoked mid-flow.
- *
- * Note: skillActivator only WRITES the entries; it doesn't dispatch
- * fork or pattern skills on its own. For those modes, the parent
- * generator must have the `runSkill` tool available (the agent calls
- * `runSkill` when it sees a matched non-inline skill in its catalog).
+ * classifier). Since fork/pattern modes were removed (FIX-918), every
+ * activated skill is inline, so the entry `mode` is stamped `"inline"`
+ * unconditionally — never read from a possibly-stale persisted
+ * `contextMode`, which the binding reader would then skip if it still
+ * said `"pattern"`/`"fork"` on a pre-migration manifest.
  */
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type { SkillState } from "@flow-state-dev/core";
 import { activeSkillsArraySchema } from "./active-skill-state";
 import {
   replaceActivations,
   type ExplicitActivationScope,
 } from "./activation-store";
 import { skillActivatorStateSchema } from "./skill-activation-types";
-import { skillManifestKey } from "./collection";
-import { getCollection } from "./internal/get-collection";
 
 const inputSchema = z.object({ message: z.string() }).passthrough();
 const outputSchema = z.object({
@@ -57,7 +51,6 @@ export interface ApplySkillActivationOptions {
 
 /** Build the apply-skill-activation handler. */
 export function createApplySkillActivation(options: ApplySkillActivationOptions = {}) {
-  const collectionKey = options.collectionKey ?? "skills";
   const scope: ExplicitActivationScope = options.activeState?.scope ?? "session";
   const field = options.activeState?.field ?? "activeSkills";
   const allowedSet = options.allowed ? new Set(options.allowed) : undefined;
@@ -80,25 +73,17 @@ export function createApplySkillActivation(options: ApplySkillActivationOptions 
       // No matches → classifier was the last tier to run.
       const activationSource = skills[0]?.source ?? "classifier";
 
-      // Look up each matched skill's contextMode so the entry's mode
-      // reflects what the skill actually does, not a hardcoded "inline".
-      // Fork / pattern mode entries surface correctly on the badge and
-      // signal to `runSkill` which dispatch route to take.
-      const collection = getCollection(ctx, collectionKey);
-      const activeSkillEntries = await Promise.all(
-        skills.map(async (s) => {
-          const manifest = await collection?.getOptional(skillManifestKey(s.name));
-          const mode =
-            (manifest?.state as SkillState | undefined)?.contextMode ?? "inline";
-          return {
-            name: s.name,
-            mode,
-            input: s.input,
-            activatedAt: Date.now(),
-            source: s.source,
-          };
-        }),
-      );
+      // Inline is the only mode after FIX-918, so stamp it directly rather
+      // than reading a possibly-stale persisted `contextMode` (a pre-migration
+      // manifest could still say `"pattern"`/`"fork"`, which the binding reader
+      // would then skip — dropping the migrated skill's body).
+      const activeSkillEntries = skills.map((s) => ({
+        name: s.name,
+        mode: "inline" as const,
+        input: s.input,
+        activatedAt: Date.now(),
+        source: s.source,
+      }));
       // Replace (per-turn semantics) the resolved set at the configured scope
       // + field. Default target is session `activeSkills` (legacy slot).
       // Goes through the shared activation-store helper so the matcher, the

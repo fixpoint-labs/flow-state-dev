@@ -1,3 +1,10 @@
+/**
+ * The code-first board, end-to-end and deterministic. `researchBoard.drain` is
+ * a plain block: two analyst handlers run in parallel, then a synthesizer gated
+ * on both stitches their findings off `input.deps`. No model, no API key — this
+ * is the no-model path (the LLM skill surface is exercised by the `chat` action,
+ * not here).
+ */
 import { describe, it, expect } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
 import { researchBoard } from "../src/board";

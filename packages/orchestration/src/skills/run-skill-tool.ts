@@ -1,22 +1,20 @@
 /**
- * The `runSkill` tool — the agent's entry point into the skills system.
+ * The `runSkill` tool — the agent's mid-flow entry point into the skills
+ * system (the legacy session-global surface).
  *
  * Skills are NOT auto-matched. The model decides when a skill applies by
- * calling this tool with `name` (and optionally `input`). The tool resolves
- * the skill from the configured collection and dispatches to:
- *   - `inlineActivate` (handler) — patches `activeSkills` so the next
- *     generator step renders the substituted body in its system prompt.
- *   - `skillFork` (generator, `itemVisibility: { client: true, history: false }`)
- *     — runs the skill body as a subagent with a resolved subset of catalog tools.
+ * calling this tool with `name` (and optionally `input`). The tool resolves the
+ * skill from the configured collection and dispatches to `inlineActivate`,
+ * which patches `activeSkills` so the next generator step renders the
+ * substituted body in its system prompt.
  *
- * The tool is a `router` rather than a handler: dispatch + per-branch
- * input/output adaptation belongs inside a router (BP-013), and routing to
- * a framework-native generator lets fork mode stream tool calls and text
- * to the client in real time for DevTool observability — a concrete win
- * over the previous hand-rolled `model.generate(...)` shortcut.
+ * After FIX-918 there is only one mode (`inline`) — the `fork` and `pattern`
+ * dispatch routes were removed. The router shell is kept for the mid-flow
+ * activation path; the per-generator binding surface (`createSkillsLibrary`) is
+ * the modern home for inline activation.
  *
- * The dynamic tool `description` is built from the active skill catalog at
- * call time so the model sees only currently-enabled skill names.
+ * The dynamic tool `description` is built from the active skill catalog at call
+ * time so the model sees only currently-enabled skill names.
  */
 
 import { z } from "zod";
@@ -25,28 +23,13 @@ import type {
   BlockDefinition,
   ResourceCollectionRef,
 } from "@flow-state-dev/core/types";
-import type {
-  AgentRegistry,
-  DefinedCapability,
-  InitialSkill,
-  MaterializeAgentFn,
-  SkillState,
-  ToolCatalog,
-} from "@flow-state-dev/core";
+import type { InitialSkill, SkillState, ToolCatalog } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
 import { getCollection as resolveCollection } from "./internal/get-collection";
 import { listEnabledSkills } from "./internal/list-enabled-skills";
 import { ensureSeeded } from "./seeding";
-import {
-  createSkillForkGenerator,
-  type SkillForkInput,
-} from "./fork-generator";
 import { inlineActivate } from "./inline-activate";
-import { createPatternRunRoute } from "./pattern-run";
-import type { PatternRegistry } from "./pattern-registry";
-import { stripFrontmatter } from "./internal/strip-frontmatter";
-import { substitute, toSkill, validateSkillName } from "./skill-md";
-import path from "node:path";
+import { validateSkillName } from "./skill-md";
 
 // ---------------------------------------------------------------------------
 // Tool I/O — public surface unchanged from the prior handler implementation
@@ -68,13 +51,11 @@ const inputSchema = z.object({
 
 const outputSchema = z.object({
   skill: z.string(),
-  mode: z.enum(["inline", "fork", "pattern"]),
+  mode: z.literal("inline"),
   message: z.string().optional(),
-  result: z.unknown().optional(),
 });
 
 type RunSkillInput = z.infer<typeof inputSchema>;
-type RunSkillOutput = z.infer<typeof outputSchema>;
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -83,28 +64,14 @@ type RunSkillOutput = z.infer<typeof outputSchema>;
 export interface RunSkillToolOptions {
   /** Resource registry key for the skills collection. */
   collectionKey: string;
-  /** Tool catalog used by fork-mode subagents to resolve `allowed-tools`. */
-  catalog: ToolCatalog;
   /** Default-on initial skills, lazily seeded on first invocation. */
   initialSkills?: InitialSkill[];
-  /** Mount root for `${SKILL_DIR}` substitution. Default `.fsdev/skills`. */
-  mountPath?: string;
-  /** Optional override of the default model used by fork-mode subagents. */
-  forkModelId?: string;
   /**
-   * Optional pattern registry. When supplied, skills declaring `pattern:`
-   * frontmatter dispatch through the pattern route; when absent, those
-   * skills fail with a clear configuration error at activation.
+   * Tool catalog. Retained for API compatibility with the prior fork-mode
+   * surface; inline activation does not resolve tools here (the generator
+   * registers the catalog directly).
    */
-  patternRegistry?: PatternRegistry;
-  /** Optional block-ref registry for pattern workers. */
-  blockRegistry?: Record<string, BlockDefinition>;
-  /** Optional AgentRegistry for pattern workers using `agent-ref`. */
-  agentRegistry?: AgentRegistry;
-  /** Optional capability catalog forwarded to the Agents primitive. */
-  capabilityCatalog?: Record<string, DefinedCapability>;
-  /** Injected materializer for `agent-ref` workers. */
-  materializeAgent?: MaterializeAgentFn;
+  catalog?: ToolCatalog;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,49 +125,15 @@ export function buildRunSkillDescription(
 
 /**
  * Create the `runSkill` router tool configured against a specific collection
- * scope and tool catalog. Returns a `BlockDefinition` usable as a
- * `GeneratorTool` (router + handler + generator all satisfy the surface).
+ * scope. Returns a `BlockDefinition` usable as a `GeneratorTool`.
  */
 export function createRunSkillTool(opts: RunSkillToolOptions) {
-  const {
-    collectionKey,
-    catalog,
-    initialSkills,
-    mountPath = ".fsdev/skills",
-    forkModelId,
-    patternRegistry,
-    blockRegistry,
-    agentRegistry,
-    capabilityCatalog,
-    materializeAgent,
-  } = opts;
+  const { collectionKey, initialSkills } = opts;
 
-  const forkGen = createSkillForkGenerator({
-    catalog,
-    defaultModelId: forkModelId,
-  });
-
-  const patternRoute = patternRegistry
-    ? createPatternRunRoute({
-        catalog,
-        patternRegistry,
-        ...(blockRegistry ? { blockRegistry } : {}),
-        ...(agentRegistry ? { agentRegistry } : {}),
-        ...(capabilityCatalog ? { capabilityCatalog } : {}),
-        ...(materializeAgent ? { materializeAgent } : {}),
-        ...(forkModelId ? { defaultModelId: forkModelId } : {}),
-      })
-    : undefined;
-
-  const routes: BlockDefinition<typeof inputSchema, typeof outputSchema>[] = [
-    inlineActivate,
-    forkGen,
-  ] as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>[];
-  if (patternRoute) {
-    routes.push(
-      patternRoute as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>,
-    );
-  }
+  const routes = [inlineActivate] as unknown as BlockDefinition<
+    typeof inputSchema,
+    typeof outputSchema
+  >[];
 
   return router({
     name: "runSkill",
@@ -235,84 +168,26 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
         );
       }
 
-      const mode = state.contextMode ?? "inline";
-      if (mode === "inline") {
-        // Inline branch: adapt input shape and pass output through as the
-        // router's output (it already matches RunSkillOutput).
-        return inlineActivate.connectInput(
-          (raw: RunSkillInput) => ({
-            skillName: raw.name,
-            input: raw.input,
-          }),
-        ) as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>;
+      // A manifest persisted before FIX-918 can still carry a non-inline
+      // contextMode. Activating it inline would ack success while the reader
+      // skips the body — fail loud with the same migration guidance a fresh
+      // SKILL.md parse gets, instead of silently doing nothing.
+      if (state.contextMode !== undefined && state.contextMode !== "inline") {
+        throw new Error(
+          `Skill "${input.name}" was stored with \`context: ${state.contextMode}\`, ` +
+            `which was removed (FIX-918). Re-import the skill: declare \`workers:\` for ` +
+            `delegation, or expose a task-board/goalSeekLoop block as an allowed tool.`,
+        );
       }
 
-      if (mode === "pattern") {
-        if (!patternRoute) {
-          throw new Error(
-            `Skill "${input.name}" declares a pattern but no patternRegistry was supplied to createSkillsCapability`,
-          );
-        }
-        const binding = state.patternBinding;
-        if (!binding) {
-          throw new Error(
-            `Skill "${input.name}" has contextMode="pattern" but no patternBinding parsed — re-seed the skill`,
-          );
-        }
-        const skillName = input.name;
-        type AnyBlock = BlockDefinition<typeof inputSchema, typeof outputSchema>;
-        // The patternRoute's input shape differs from runSkill's; bypass
-        // the strict ConnectorFn typing via an `as unknown as AnyBlock` cast.
-        // The pattern-run router will validate the payload at execute.
-        return (patternRoute as unknown as {
-          connectInput: (
-            fn: (raw: RunSkillInput) => unknown,
-          ) => {
-            connectOutput: (fn: (result: unknown) => RunSkillOutput) => AnyBlock;
-          };
-        })
-          .connectInput((raw) => ({
-            skillName: raw.name,
-            binding,
-            input: raw.input,
-            skillCollection: collection,
-          }))
-          .connectOutput((result) => ({
-            skill: skillName,
-            mode: "pattern" as const,
-            result: result ?? null,
-          }));
-      }
-
-      // Fork branch: resolve the skill body + allowed tools now (closure
-      // captures these so connectInput can synthesize a full SkillForkInput
-      // from the router's raw input at subagent invocation time).
-      const skill = toSkill(input.name, state, "");
-      const rawBody = (await manifest.readContent()) ?? "";
-      const substitutedBody = substitute(stripFrontmatter(rawBody), {
-        arguments: input.input,
-        skillDir: path.posix.join("/workspace", mountPath, input.name),
-      });
-      const allowedToolNames = skill.allowedTools ?? Object.keys(catalog);
-
-      const skillName = input.name;
-      return forkGen
-        .connectInput(
-          (_raw: RunSkillInput): SkillForkInput => ({
-            skillName,
-            body: substitutedBody,
-            allowedToolNames,
-            modelId: forkModelId,
-          }),
-        )
-        .connectOutput(
-          (result: unknown): RunSkillOutput => ({
-            skill: skillName,
-            mode: "fork" as const,
-            result: result ?? null,
-          }),
-        ) as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>;
+      // Inline is the only mode. Adapt input shape and pass output through as
+      // the router's output (it already matches the inline ack shape).
+      return inlineActivate.connectInput(
+        (raw: RunSkillInput) => ({
+          skillName: raw.name,
+          input: raw.input,
+        }),
+      ) as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>;
     },
   });
 }
-

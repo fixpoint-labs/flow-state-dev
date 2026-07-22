@@ -41,7 +41,7 @@ export interface PersonaInlineConfig {
  *
  * No prompt/system override: a change to an agent's persona is a change
  * to the agent definition; for ad-hoc bodies, use `prompt` or `prompt-ref`
- * on the WorkerSpec instead of `agent-ref`.
+ * on the AgentSpec instead of `agent-ref`.
  */
 export interface AgentOverrides {
   /** REPLACES the agent's allowed-tools list. */

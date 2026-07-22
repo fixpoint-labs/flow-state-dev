@@ -8,7 +8,7 @@ import {
 
 const entry = (
   name: string,
-  mode: "inline" | "fork" = "inline",
+  mode: "inline" = "inline",
   input?: string,
 ): ActiveSkillEntry => ({
   name,
@@ -41,11 +41,6 @@ describe("pushActiveSkill", () => {
     expect(out).toHaveLength(1);
     expect(out[0]!.input).toBe("new");
   });
-  it("keeps entries with the same name but different mode", () => {
-    const initial = [entry("foo", "inline")];
-    const out = pushActiveSkill(initial, entry("foo", "fork"));
-    expect(out).toHaveLength(2);
-  });
 });
 
 describe("unionAllowedTools", () => {
@@ -61,12 +56,5 @@ describe("unionAllowedTools", () => {
     expect(
       unionAllowedTools(active, { foo: ["a", "b"], bar: ["b", "c"] }),
     ).toEqual(["a", "b", "c"]);
-  });
-
-  it("ignores fork-mode skills", () => {
-    const active = [entry("forked", "fork"), entry("inlined", "inline")];
-    expect(
-      unionAllowedTools(active, { forked: ["x"], inlined: ["y"] }),
-    ).toEqual(["y"]);
   });
 });

@@ -32,17 +32,20 @@
 
 import { z } from "zod";
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
+import { deepEqual } from "@flow-state-dev/core/helpers";
 import type {
   DeclaredResourceEntry,
   ResourceScope,
 } from "@flow-state-dev/core/types";
 import type { CapabilityConfigResolveCtx } from "@flow-state-dev/core/capability";
 import type {
+  AgentSpec,
   GeneratorTool,
   InitialSkill,
   ItemVisibility,
   PresetDef,
   SkillContextMode,
+  SkillFile,
   ToolCatalog,
 } from "@flow-state-dev/core";
 import { activeSkillsArraySchema } from "./active-skill-state";
@@ -54,6 +57,16 @@ import {
 } from "./collection";
 import { buildLoadCatalogContext, createLoadSkillTool } from "./load-tool";
 import { parseSkillMd, validateSkillName } from "./skill-md";
+import {
+  buildDelegationGuidance,
+  buildDelegationTools,
+  type DelegationSurfaceDeps,
+  type DelegationAgentSource,
+} from "./delegation-surface";
+import {
+  DELEGATION_BOARD_FIELD,
+  delegationBoardSchema,
+} from "./task-tools-capability";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -78,6 +91,22 @@ export interface SkillsLibraryOptions {
    * `itemVisibility`. See `createSkillsCapability` for the multi-agent rationale.
    */
   itemVisibility?: ItemVisibility | readonly ItemVisibility[];
+  /**
+   * Model id for delegation agents that don't declare their own `model:`.
+   * Falls back to a neutral default when omitted.
+   */
+  workerModelId?: string;
+  /**
+   * Agent registry for delegation agents declared with `agent-ref:`. Agents
+   * materialize at runtime (the tool surface resolves async), so registry
+   * lookups can await. A statically-`active` skill with an `agent-ref` agent
+   * and no registry fails loud at build time.
+   */
+  agentRegistry?: import("@flow-state-dev/core").AgentRegistry;
+  /** Turns a resolved Agent into a board worker generator (pairs with `agentRegistry`). */
+  materializeAgent?: import("@flow-state-dev/core").MaterializeAgentFn;
+  /** Optional capability catalog forwarded to `materializeAgent`. */
+  capabilityCatalog?: Record<string, DefinedCapability>;
 }
 
 /** The per-generator binding configuration (`skills.with({ ... })`). */
@@ -102,6 +131,16 @@ export interface SkillsBindingConfig {
     scope: "request" | "session" | "user" | "org";
     field: string;
   };
+  /**
+   * Force-off delegation even when a bound skill declares `agents:`. Delegation
+   * is otherwise derived automatically from the presence of `agents:` (FIX-918).
+   */
+  delegation?: boolean;
+  /**
+   * Opt out of the delegation guidance context (the static "how to orchestrate"
+   * playbook + live agent roster). Default on when delegation installs.
+   */
+  guidance?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +152,10 @@ interface IndexedSkill {
   contextMode: SkillContextMode;
   /** `disable-model-invocation` — the skill can't be exposed to the model. */
   disableModelInvocation?: boolean;
+  /** Declared delegation agents (FIX-918). Presence turns on delegation. */
+  agents?: Record<string, AgentSpec>;
+  /** Bundled skill files — used to resolve `prompt-ref` agent bodies at build time. */
+  files?: SkillFile[];
 }
 
 function indexInitialSkills(
@@ -132,6 +175,8 @@ function indexInitialSkills(
         allowedTools: parsed.state.allowedTools,
         contextMode: parsed.state.contextMode ?? "inline",
         disableModelInvocation: parsed.state.disableModelInvocation,
+        ...(parsed.state.agents ? { agents: parsed.state.agents } : {}),
+        ...(skill.files ? { files: skill.files } : {}),
       });
     } catch {
       // A malformed or invalidly-named bundled skill is a seeding-time concern;
@@ -157,6 +202,8 @@ const bindingConfigSchema = z
       })
       .strict()
       .optional(),
+    delegation: z.boolean().optional(),
+    guidance: z.boolean().optional(),
   })
   // `.strict()` so a typo'd key (`actve`) fails loud instead of being silently
   // stripped and building a generator without the intended binding.
@@ -195,11 +242,13 @@ export function createSkillsLibrary(
     [collectionKey]: skillsCollection,
   };
 
-  // Assert a name is a known inline skill (fail loud on typos). Binding by name
+  // Assert a name is a known skill (fail loud on typos). Binding by name
   // requires a bundled catalog to validate against — if none parsed (no
   // `initialSkills`, or every bundled skill was malformed), that's an author
   // error, not a reason to silently skip validation and widen the tool surface.
-  const assertInline = (name: string, where: "active" | "allowed"): void => {
+  // After FIX-918 every skill is inline, so there is no non-inline mode to
+  // reject here — the surface is inline-by-construction.
+  const assertKnownSkill = (name: string, where: "active" | "allowed"): void => {
     if (index.size === 0) {
       throw new Error(
         `skills.with({ ${where}: [...] }) binds "${name}" by name, but no bundled ` +
@@ -207,18 +256,10 @@ export function createSkillsLibrary(
           `createSkillsLibrary() (an empty index also means every bundled skill failed to parse).`,
       );
     }
-    const entry = index.get(name);
-    if (!entry) {
+    if (!index.has(name)) {
       throw new Error(
         `skills.with({ ${where}: [...] }): unknown skill "${name}". ` +
           `Known skills: ${[...index.keys()].join(", ") || "(none)"}.`,
-      );
-    }
-    if (entry.contextMode !== "inline") {
-      throw new Error(
-        `skills.with({ ${where}: [...] }): "${name}" is a ${entry.contextMode}-mode ` +
-          `skill. Only inline skills can be bound here — fork/pattern skills dispatch ` +
-          `through the runSkill router (createSkillsCapability).`,
       );
     }
   };
@@ -251,7 +292,7 @@ export function createSkillsLibrary(
   ): Partial<PresetDef> => {
     const active = cfg.active ?? [];
     for (const name of active) {
-      assertInline(name, "active");
+      assertKnownSkill(name, "active");
       validateDeclaredTools(name);
     }
 
@@ -282,7 +323,7 @@ export function createSkillsLibrary(
     // which activation path (load tool / upstream matcher / code) feeds it.
     if (cfg.allowed) {
       for (const name of cfg.allowed) {
-        assertInline(name, "allowed");
+        assertKnownSkill(name, "allowed");
         validateDeclaredTools(name);
       }
     }
@@ -344,17 +385,156 @@ export function createSkillsLibrary(
     // the upstream matcher (`createApplySkillActivation`) declares its scope
     // schema on its own block, and a code/generator writer declares the field on
     // its own `sessionStateSchema`. The reader tolerates an absent field.
+    const ownStateFields: Record<string, z.ZodTypeAny> = {};
     if (location.kind === "block" && dynamic) {
-      contributions.stateSchema = z.object({ activeSkills: activeSkillsArraySchema });
+      ownStateFields.activeSkills = activeSkillsArraySchema;
     }
 
-    // Group the reader + catalog under a single `<skills>` tag.
-    contributions.context = [{ skills: contextEntries } as never];
-    if (tools.length > 0) {
+    // -----------------------------------------------------------------------
+    // Delegation (FIX-918) — derived from a bound skill's `agents:`.
+    // -----------------------------------------------------------------------
+    // A bound skill that declares `agents:` installs the delegation surface:
+    // a private own-state task board, the `taskTools` ledger, the `runBoard`
+    // drain, and (unless opted out) a guidance context. Delegation is
+    // board-commanded — there are NO per-agent host tools. `delegation: false`
+    // force-suppresses it.
+    //
+    // Agents materialize at RUNTIME: the contributed tool surface is an async
+    // function the generator resolves per execution with its full context, so
+    // `agent-ref` agents (async registry lookups) and runtime-activated agent
+    // skills are first-class. Static wiring errors still fail loud at build
+    // time via the validation pass below.
+    const delegationOn = cfg.delegation !== false;
+    const staticAgentSkills = delegationOn
+      ? active
+          .map((name) => ({ name, entry: index.get(name)! }))
+          .filter(
+            (s) =>
+              // A `disable-model-invocation` skill is invisible to the model —
+              // its body is suppressed even when force-bound via `active` (see
+              // render-skill-body.ts). The delegation surface (task tools +
+              // guidance roster) is model-facing too, so a disabled skill must
+              // not install it, or a draft/private skill would be reachable
+              // through addTask/runBoard.
+              !s.entry.disableModelInvocation &&
+              s.entry.agents &&
+              Object.keys(s.entry.agents).length > 0,
+          )
+      : [];
+
+    // Build-time validation for the static set — divergent same-key agents and
+    // missing wiring surface here, not mid-request. Agent keys are the board's
+    // assignee routing keys, not tool names, so they don't collide with tools —
+    // the only cross-skill hazard is two active skills declaring the same key
+    // with different specs.
+    const seenAgentSpecs = new Map<string, AgentSpec>();
+    for (const { name: skillName, entry } of staticAgentSkills) {
+      for (const [agentKey, spec] of Object.entries(entry.agents!)) {
+        const prior = seenAgentSpecs.get(agentKey);
+        if (prior) {
+          // Two active skills may share an agent (e.g. a common synthesizer).
+          // An IDENTICAL spec dedupes into one board worker; a different spec
+          // under the same key is a real collision.
+          if (deepEqual(prior, spec)) continue;
+          throw new Error(
+            `skills: delegation agent "${agentKey}" (skill "${skillName}") declares a ` +
+              `different spec than another active skill's agent under the same key. Rename the agent key.`,
+          );
+        }
+        seenAgentSpecs.set(agentKey, spec);
+        if (
+          spec.agentRef !== undefined &&
+          (!options.agentRegistry || !options.materializeAgent)
+        ) {
+          throw new Error(
+            `skills: delegation agent "${agentKey}" (skill "${skillName}") uses ` +
+              `agent-ref "${spec.agentRef}", but createSkillsLibrary() was given no ` +
+              `\`agentRegistry\`/\`materializeAgent\` to resolve it with.`,
+          );
+        }
+        if (spec.promptRef !== undefined && !hasBundledFile(entry.files, spec.promptRef)) {
+          throw new Error(
+            `skills: delegation agent "${agentKey}" (skill "${skillName}") declares ` +
+              `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
+          );
+        }
+      }
+    }
+
+    // Runtime activations can bring agents too: whole-catalog mode admits any
+    // bundled (or later-imported) skill, an `allowed` list only its entries.
+    // Own-state can't be added mid-run, so the board field is pre-declared for
+    // any binding that MIGHT resolve an agent-declaring skill (harmless if
+    // unused — it defaults to an empty record).
+    const dynamicAgentEligible =
+      hasActivationPath &&
+      (cfg.allowed
+        ? cfg.allowed.some((name) => {
+            const entry = index.get(name);
+            return Boolean(
+              entry &&
+                !entry.disableModelInvocation &&
+                entry.agents &&
+                Object.keys(entry.agents).length > 0,
+            );
+          })
+        : true);
+    const delegationPossible =
+      delegationOn && (staticAgentSkills.length > 0 || dynamicAgentEligible);
+    if (delegationPossible) {
+      ownStateFields[DELEGATION_BOARD_FIELD] = delegationBoardSchema;
+    }
+
+    if (Object.keys(ownStateFields).length > 0) {
+      contributions.stateSchema = z.object(ownStateFields);
+    }
+
+    if (delegationPossible) {
+      const surfaceDeps: DelegationSurfaceDeps = {
+        catalog,
+        ...(options.agentRegistry ? { agentRegistry: options.agentRegistry } : {}),
+        ...(options.materializeAgent
+          ? { materializeAgent: options.materializeAgent }
+          : {}),
+        ...(options.capabilityCatalog
+          ? { capabilityCatalog: options.capabilityCatalog }
+          : {}),
+        ...(options.workerModelId !== undefined
+          ? { defaultModelId: options.workerModelId }
+          : {}),
+        collectionKey,
+        location,
+        staticSources: staticAgentSkills.map(
+          ({ name, entry }): DelegationAgentSource => ({
+            skillName: name,
+            agents: entry.agents!,
+            ...(entry.files ? { files: entry.files } : {}),
+          }),
+        ),
+        bundledAgentIndex: buildBundledAgentIndex(index),
+        ...(cfg.allowed ? { allowedNames: cfg.allowed } : {}),
+        dynamicEligible: dynamicAgentEligible,
+      };
+      // Static tools (catalog superset + load tool) are known now; the
+      // taskTools and runBoard resolve per execution.
+      const staticTools = [...new Set(tools)];
+      contributions.tools = (async (blockCtx) => [
+        ...staticTools,
+        ...(await buildDelegationTools(blockCtx as never, surfaceDeps)),
+      ]) as PresetDef["tools"];
+      // Guidance context — the "how to delegate" playbook + live roster,
+      // resolved at render time so runtime activations appear too.
+      if (cfg.guidance !== false) {
+        contextEntries.push(buildDelegationGuidance(surfaceDeps) as never);
+      }
+    } else if (tools.length > 0) {
       // De-dupe by identity so a tool declared by both `active` and `allowed`
       // is contributed once.
       contributions.tools = [...new Set(tools)];
     }
+
+    // Group the reader + catalog under a single `<skills>` tag.
+    contributions.context = [{ skills: contextEntries } as never];
     return contributions;
   };
 
@@ -372,4 +552,34 @@ export function createSkillsLibrary(
       resolve,
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Delegation helpers (FIX-918)
+// ---------------------------------------------------------------------------
+
+/** Whether a skill's bundled files contain the given `prompt-ref` path. */
+function hasBundledFile(files: SkillFile[] | undefined, ref: string): boolean {
+  const wanted = ref.replace(/^\.\//, "").replace(/^\//, "");
+  return (files ?? []).some(
+    (f) => f.path === wanted || f.path.replace(/^\.\//, "") === wanted,
+  );
+}
+
+/**
+ * Project the bundled index down to agent-declaring skills, so a runtime
+ * activation of a bundled skill materializes without a manifest read.
+ */
+function buildBundledAgentIndex(
+  index: Map<string, IndexedSkill>,
+): Map<string, { agents: Record<string, AgentSpec>; files?: SkillFile[] }> {
+  const out = new Map<string, { agents: Record<string, AgentSpec>; files?: SkillFile[] }>();
+  for (const [name, entry] of index) {
+    if (!entry.agents || Object.keys(entry.agents).length === 0) continue;
+    out.set(name, {
+      agents: entry.agents,
+      ...(entry.files ? { files: entry.files } : {}),
+    });
+  }
+  return out;
 }

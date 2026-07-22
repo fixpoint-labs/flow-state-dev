@@ -22,7 +22,9 @@ async function resolveTools(
   ctx: unknown,
 ): Promise<Array<{ name: string; execute?: Function; config?: { execute?: Function } }>> {
   const tools = (gen.config as { tools?: unknown }).tools;
-  if (typeof tools === "function") return (await (tools as Function)(ctx)) ?? [];
+  // The merged resolver has the generator's dynamic-tools signature
+  // `(input, ctx)`; capability-contributed entries receive `ctx`.
+  if (typeof tools === "function") return (await (tools as Function)(undefined, ctx)) ?? [];
   return (tools as never[]) ?? [];
 }
 
@@ -357,27 +359,6 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
     expect(merged.stateSchema).toBeUndefined();
   });
 
-  it("load catalog lists only inline skills, never fork/pattern (allowed omitted)", async () => {
-    const forkSkill: InitialSkill = {
-      name: "forky",
-      skillMd: "---\ndescription: a fork skill\ncontext: fork\n---\n\nbody",
-    };
-    const skills = createSkillsLibrary({
-      initialSkills: [inlineSkill("inliney", "body"), forkSkill],
-    });
-    // `allowed` omitted → the catalog is the whole enabled set; the load tool is
-    // inline-only, so the listing must exclude the fork skill.
-    const gen = generator({
-      name: "g",
-      model: "openai/gpt-5.4-mini",
-      prompt: "p",
-      uses: [skills.with({ dynamicActivation: true })],
-    });
-    const out = await renderGeneratorSkills(gen, buildReaderCtx(createMockSkillsCollection()));
-    expect(out).toContain("inliney");
-    expect(out).not.toContain("forky");
-  });
-
   it("load tool rejects a skill outside the allowed set", async () => {
     const skills = createSkillsLibrary({
       initialSkills: [inlineSkill("deep-research", "body"), inlineSkill("other", "body")],
@@ -399,31 +380,6 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
 });
 
 describe("createSkillsLibrary — block-state default reader", () => {
-  it("does not render a statically-bound skill edited to fork/pattern in the live catalog", async () => {
-    const skills = createSkillsLibrary({ initialSkills: [inlineSkill("edited", "EDITED-MARKER")] });
-    const gen = generator({
-      name: "g",
-      model: "openai/gpt-5.4-mini",
-      prompt: "p",
-      uses: [skills.with({ active: ["edited"] })],
-    });
-    const collection = createMockSkillsCollection();
-    // Mark it already-seeded so ensureSeeded won't overwrite our edit, then
-    // simulate an admin editing the persisted manifest to fork mode.
-    collection._store.set("skills/_meta", {
-      name: "skills/_meta",
-      state: { seededNames: ["edited"] },
-      content: null,
-    });
-    collection._store.set("skills/edited/SKILL.md", {
-      name: "skills/edited/SKILL.md",
-      state: { description: "edited", contextMode: "fork" },
-      content: "---\ndescription: edited\ncontext: fork\n---\n\nEDITED-MARKER",
-    });
-    const out = await renderGeneratorSkills(gen, buildReaderCtx(collection));
-    expect(out).not.toContain("EDITED-MARKER");
-  });
-
   it("does not render a statically-bound skill flagged disable-model-invocation", async () => {
     const skills = createSkillsLibrary({ initialSkills: [inlineSkill("draft", "DRAFT-MARKER")] });
     const gen = generator({
@@ -489,6 +445,44 @@ describe("createSkillsLibrary — block-state default reader", () => {
     });
     const out = await renderGeneratorSkills(gen, ctx);
     expect(out).toContain("LOADED-BODY-MARKER");
+  });
+});
+
+describe("createSkillsLibrary — delegation gating", () => {
+  const agentSkill = (name: string, disabled: boolean): InitialSkill => ({
+    name,
+    skillMd: [
+      "---",
+      `description: ${name} skill`,
+      ...(disabled ? ["disable-model-invocation: true"] : []),
+      "agents:",
+      "  researcher:",
+      "    prompt: You research things.",
+      "---",
+      "",
+      "addTask then runBoard.",
+    ].join("\n"),
+  });
+
+  const boardField = (skills: ReturnType<typeof createSkillsLibrary>, active: string[]) => {
+    const resolved = skills.__configDef!.resolve(
+      { active } as never,
+      { presets: new Set(), blockKind: "generator" },
+    ) as { stateSchema?: { shape?: Record<string, unknown> } };
+    return resolved.stateSchema?.shape?.delegationBoard;
+  };
+
+  it("installs the delegation board for an enabled agent skill", () => {
+    const skills = createSkillsLibrary({ initialSkills: [agentSkill("team", false)] });
+    expect(boardField(skills, ["team"])).toBeDefined();
+  });
+
+  it("does NOT install delegation for a disable-model-invocation agent skill, even when force-bound via active", () => {
+    // A disabled skill is invisible to the model (its body is suppressed). The
+    // delegation surface is model-facing too, so it must not install — otherwise
+    // a draft/private skill's agents would be reachable through addTask/runBoard.
+    const skills = createSkillsLibrary({ initialSkills: [agentSkill("draft-team", true)] });
+    expect(boardField(skills, ["draft-team"])).toBeUndefined();
   });
 });
 

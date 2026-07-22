@@ -9,8 +9,10 @@ build on each other:
   gating and per-task worker routing. The orchestration primitive that
   `supervisor`, `parallelTasks`, and `planAndExecute` (in `@flow-state-dev/patterns`)
   are built on.
-- **Skills** — user-editable `SKILL.md` folders that materialize into runnable
-  pattern boards, plus the agent-callable `taskTools` surface.
+- **Skills** — user-editable `SKILL.md` folders injected as inline instructions,
+  optionally with an `agents:` field that installs a private delegation board,
+  the `taskTools` surface, and `runBoard` — the skill assigns work as tasks and
+  drains the board.
 
 Layering: `core → orchestration → patterns`. This package depends only on
 `@flow-state-dev/core` and never imports from `patterns` or `workforce`.
@@ -94,42 +96,18 @@ It generalizes the `taskLoopBack` helper into a real primitive; the board must b
 request- or resource-backed. `parallelTasks` and `planAndExecute` are expressed on
 it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
 
-## Skills + taskTools
+## Skills and delegation
 
-```ts
-import { createSkillsCapability, taskTools } from "@flow-state-dev/orchestration";
-import { defaultPatternRegistry } from "@flow-state-dev/patterns";
-
-export const skillsCap = createSkillsCapability({
-  catalog: { /* tool catalog */ },
-  initialSkills,
-  patternRegistry: defaultPatternRegistry, // enables `pattern: task-board` skills
-});
-```
-
-`taskTools` exposes eight handler-shaped tools an agent calls by name —
-`addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`,
-`updateTask`, `listTasks` — that mutate the active pattern's board. With no pattern
-active each returns `{ ok: false, error: "no_active_pattern" }` rather than throwing.
-Composed by default whenever `patternRegistry` is set; pass `taskTools: false` to opt out.
-
-The concrete `defaultPatternRegistry` (which wires `taskBoard`, `supervisor`,
-`planAndExecute`, etc.) lives in `@flow-state-dev/patterns` and is injected at
-runtime, so this package stays free of a dependency on `patterns`.
-
-### Per-generator binding (`createSkillsLibrary`)
-
-`createSkillsCapability` activates skills into session-global state shared by
-every generator. To bind a skill to **one** generator instead — no shared bag,
-no cross-agent bleed — use `createSkillsLibrary` and configure the binding where
-the generator is defined:
+A skill is inline instructions injected into a generator's prompt. Bind skills to
+**one** generator with `createSkillsLibrary` — no shared bag, no cross-agent bleed —
+and configure the binding where the generator is defined:
 
 ```ts
 import { createSkillsLibrary } from "@flow-state-dev/orchestration";
 
 const skills = createSkillsLibrary({ catalog, initialSkills });
 
-// Preload a skill (inline-only), fails loud on a typo:
+// Preload a skill, fails loud on a typo:
 generator({ uses: [skills.with({ active: ["detailed-analysis"] })] });
 
 // Let the agent load a skill mid-turn, stored in this generator's block state
@@ -139,8 +117,34 @@ generator({
 });
 ```
 
+A skill that declares an `agents:` field turns on **delegation**. An agent is a
+prompt-driven teammate — defined inline (`prompt` / `prompt-ref`) inside the skill,
+or referenced from the registry (`agent-ref`). Binding the skill installs a private
+task board (own-state, scoped to that generator), the eight `taskTools` (`addTask`,
+`assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
+`listTasks`), `runBoard`, and a guidance context. The generator orchestrates by
+planning a graph with `addTask` (assignee, deps, structured input) and calling
+`runBoard` once — the board drains under concurrency with dependency gating and
+returns every task's output. There is no per-agent tool the generator calls
+directly; draining the board is the sole execution path. Agents materialize at
+runtime, so `agent-ref` agents resolve through the library's
+`agentRegistry`/`materializeAgent` options and runtime-activated skills contribute
+their tools too. With no delegation board resolvable, a stray `taskTools` call
+returns `{ ok: false, error: "no_delegation_board" }` rather than throwing.
+
+```ts
+// "research-lead" declares agents: → delegation installs automatically.
+generator({ uses: [skills.with({ active: ["research-lead"] })] });
+```
+
+For a graph fixed in code (seeded `initialTasks`, custom collection, tuned
+dispatcher), put a `taskBoard(...).drain` or a `goalSeekLoop` in the generator's
+`tools:` — any block can be a tool, and only the finalized result re-enters the
+caller's history.
+
 See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
-`active` / `allowed` / `activeState` surface and where activations are stored.
+`active` / `allowed` / `activeState` surface and
+[Delegation](https://flow-state.dev/docs/skills/delegation) for the `agents:` shape.
 
 ## Documentation
 

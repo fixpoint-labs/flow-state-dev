@@ -1,7 +1,7 @@
 ---
 sidebar_position: 9
 title: Building a research team
-description: Build a multi-agent task board — a static board, runtime fan-out with a router, the SKILL.md form, named agents, and agents that enqueue their own work.
+description: Build a multi-agent task board — a static board, runtime fan-out with a router, a skill that defines its own agent team, the two ways to staff an agent, and letting the model decide the tasks.
 ---
 
 # Building a research team
@@ -10,7 +10,7 @@ This guide builds a small team of workers that research a subject together: anal
 
 **What we're building:** a task board where analysts run at the same time and a `synthesizer` starts only after they finish and combines their findings — first with a fixed set of tasks, then with a set decided at runtime.
 
-**Concepts we'll cover:** worker blocks and `taskWorkerInputSchema`, the `taskBoard` factory, dependency gating with `deps`, reading upstream results off `input.deps`, runtime fan-out with a router, the same team as a `SKILL.md`, wiring the tool catalog, assigning work to a named agent, and letting an agent enqueue its own tasks.
+**Concepts we'll cover:** worker blocks and `taskWorkerInputSchema`, the `taskBoard` factory, dependency gating with `deps`, reading upstream results off `input.deps`, runtime fan-out with a router, a skill that defines its own team of prompt agents and runs its own board, the two ways to staff an agent (inline prompt, registered agent), and letting the model plan the tasks at runtime.
 
 :::tip Full, runnable code
 Every worker, board, router, `SKILL.md`, and a passing test suite for this
@@ -198,174 +198,178 @@ A few things worth calling out, because they answer "when does the board actuall
 - **`routes: []` + `validateRoute: () => true`** let the router return a board it constructed on this call, rather than picking from a fixed list. (A router normally selects among pre-declared `routes`; here the route is built per request.)
 - **Seed through `initialTasks`, not a manual `addTask` in the router.** A router's `execute` must be replay-safe — on a resumed request it re-runs. The board's seed step is idempotent by task id, so re-running it never double-seeds. Do the seeding declaratively and you get that for free.
 
-The example's [`test/research-router.test.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/test/research-router.test.ts) drives this router with three competitors and asserts all four tasks (three analyzers + the synthesizer) complete.
+The example's [`test/flow.test.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/test/flow.test.ts) drives this router with three competitors and asserts all four tasks (three analyzers + the synthesizer) complete.
 
 There's a second way to grow a board at runtime: a worker on an already-running board can enqueue more tasks while it runs. That's the agent-driven path, and it's section 6.
 
-## 4. The same team as a skill
+## 4. The same team, as a skill that runs its own board
 
-Both boards above are TypeScript. You can also describe the team in a `SKILL.md` file and let an agent invoke it. A `pattern: task-board` skill declares its workers, initial tasks, and board config in frontmatter; the prompts live in Markdown files next to it.
+Both boards above are TypeScript — your code decides the tasks. A skill flips
+that: the SKILL.md declares the *team* in an `agents:` map, and its instructions
+tell the coordinating model how to plan the tasks itself. An agent is a
+prompt-driven teammate — a persona that ships right inside the skill folder.
+Binding an agent-declaring skill gives the generator a private task board, the
+task tools (`addTask`, `listTasks`, …), and `runBoard` — a real board drain over
+that board. The coordinator plans with `addTask` (assignee, deps, structured
+input) and executes the whole graph with one `runBoard` call. The board is how
+the work runs — there is no per-agent tool the coordinator calls directly.
 
 ```markdown title="skills/research-company/SKILL.md"
 ---
 description: Multi-angle company research by a small team of analysts.
-pattern: task-board
-workers:
+agents:
   market-analyst:
     prompt-ref: ./reference/market.md
     tools: [search, fetch]
-    visibility: sub
   financial-analyst:
     prompt-ref: ./reference/financials.md
     tools: [search, fetch]
-    visibility: sub
   synthesizer:
     prompt-ref: ./reference/synthesis.md
-    visibility: primary
-initial-tasks:
-  - id: market
-    goal: Analyze market positioning of $ARGUMENTS. Cite sources.
-    assignee: market-analyst
-  - id: financials
-    goal: Analyze financial health of $ARGUMENTS. Cite sources.
-    assignee: financial-analyst
-  - id: synth
-    goal: Synthesize the reports into one brief for $ARGUMENTS.
-    assignee: synthesizer
-    deps: [market, financials]
-pattern-config:
-  concurrency: 2
-  dispatcher: topological
-allowed-tools: [search, fetch]
 ---
 
-This skill runs a small team on a task board. The two analysts run in
-parallel; the primary synthesizer waits on both and writes the final brief.
+You run the board. Extract the target from the user's message, then:
+
+1. `addTask` a market analysis — `assignee: "market-analyst"`.
+2. `addTask` a financial analysis — `assignee: "financial-analyst"`.
+3. `addTask` the synthesis — `assignee: "synthesizer"`, `deps` set to the two
+   task ids returned above.
+4. Call `runBoard` once. Surface the synthesizer task's report as-is.
 ```
 
-This skill — plus a dynamic `competitor-analysis` variant — ships in the
-example under [`src/skills/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/skills),
-with the worker prompts under each skill's `reference/` folder. The example's
-`chat` action carries the skills capability, so a model can dispatch them —
-from the example directory, `pnpm fsdev run research-team chat -i '{"message":"research ACME Corp"}'`
-(that path calls an LLM, so it needs an API key).
-
-### Where `search` and `fetch` come from
-
-Those `tools:` entries are string keys into a **tool catalog** you provide when you wire the skills capability. The catalog maps each key to a real tool block. You build it once and hand it to `createSkillsCapability`:
+The `prompt-ref` personas live beside the SKILL.md, so the whole team travels
+with the skill folder — no app wiring beyond the tool catalog:
 
 ```ts title="skills.ts"
-import { search } from "@flow-state-dev/tools/search";
-import { fetch } from "@flow-state-dev/tools/fetch";
-import { createSkillsCapability } from "@flow-state-dev/orchestration";
-import { defaultPatternRegistry } from "@flow-state-dev/patterns";
+import { createSkillsLibrary } from "@flow-state-dev/orchestration";
+import { search, fetch } from "@flow-state-dev/tools";
 
-export const skillsCap = createSkillsCapability({
-  // The keys here ("search", "fetch") are exactly what a worker's `tools:`
-  // and the skill's `allowed-tools:` reference. Unknown keys warn and drop.
+export const skills = createSkillsLibrary({
   catalog: { search: search(), fetch: fetch() },
-  patternRegistry: defaultPatternRegistry, // enables `pattern: task-board` skills
   initialSkills,
+  // Inline `prompt`/`prompt-ref` agents need no registry — they materialize
+  // straight from the SKILL.md. Reach for `agent-ref` (section 5) when you want
+  // a named agent defined once and reused across skills.
 });
 ```
 
-Attach it to the generator that runs your conversation with `uses: [skillsCap]`. That generator gets a `runSkill` tool; the agent runs the team by calling `runSkill({ name: "research-company", input: "ACME Corp" })`, and `$ARGUMENTS` is substituted into each task goal.
+Bind the skill to your conversation generator with
+`uses: [skills.with({ active: ["research-company"] })]`. The example ships this
+skill — plus a `competitor-analysis` variant where the coordinator picks the
+competitors and fans out one analyzer per pick — under
+[`src/skills/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/skills).
+From the example directory,
+`pnpm fsdev run research-team chat -i '{"message":"research ACME Corp"}'` runs it
+(the coordinator and the analyst agents are all models, so it needs an API key).
 
-`visibility: primary` marks the one worker whose output reaches the conversation — the synthesizer. The analysts run as `sub`: they stream for observability but stay out of history. See [Pattern skills](/docs/skills/pattern-skills) for the full frontmatter reference.
+Compared to the frozen graphs in sections 2 and 3, the agent now sets the
+goals, the fan-out, and the dependencies per request. The board still does the
+deterministic part — parallel dispatch, dependency gating, one settled result —
+and its task-change stream drives a live plan UI without re-entering the
+agent's history. When the graph *should* stay fixed in code, register a
+`taskBoard(...).drain` block in the skills `catalog` and list it under
+`allowed-tools` — [any block can be a tool](/docs/fundamentals/blocks#any-block-can-be-a-tool).
 
-## 5. Assign a task to a named agent
+## 5. Two ways to staff an agent
 
-A worker so far has been a block or a prompt. It can also be an **agent**: a named participant with a persona, a model, and tools, defined once and reused across skills. Define one with `defineAgent` and register it.
+Section 4's team is defined entirely inline — every agent is a `prompt-ref`
+persona in the skill folder. That's one of two ways to fill a seat on the
+board. The example's `competitor-analysis` skill shows both side by side.
+
+**Inline prompt agent.** A `prompt` or `prompt-ref` right in the SKILL.md. The
+persona travels with the skill; no app code registers it. This is section 4's
+whole team, and the `discoverer` here:
+
+```yaml
+agents:
+  discoverer:
+    prompt-ref: ./reference/discover.md
+    tools: [search, taskTools]
+```
+
+**A registered agent, by name.** Define an agent once with `defineAgent` — a
+persona, a model, tools — and reference it from any skill with `agent-ref`. Reach
+for this when several skills share the same participant, or when the agent is app
+code you maintain outside the skill folder.
 
 ```ts title="agents.ts"
 import { defineAgent, createAgentRegistry, materializeAgent } from "@flow-state-dev/workforce";
 
-const marketAnalystAgent = defineAgent({
-  name: "market-analyst",
-  description: "Analyzes market positioning and competitive differentiation.",
+export const competitorAnalyst = defineAgent({
+  name: "competitor-analyst",
+  description: "Analyzes one competitor across positioning, pricing, and distribution.",
   persona:
-    "You are a senior market analyst. Cover category, target customer, and " +
-    "differentiators. Cite every claim.",
+    "You analyze ONE competitor and surface the facts a comparison writer will " +
+    "use. Cover positioning, pricing, distribution, and differentiators. Cite sources.",
   model: "openai/gpt-5.4-mini",
-  allowedTools: ["search", "fetch"], // the same catalog keys from section 4
+  allowedTools: ["search", "fetch"],
 });
 
-export const agentRegistry = createAgentRegistry([marketAnalystAgent]);
+export const agentRegistry = createAgentRegistry([competitorAnalyst]);
 export { materializeAgent };
 ```
 
-### Installing the registry
+```yaml
+agents:
+  analyzer:
+    agent-ref: competitor-analyst
+```
 
-The registry doesn't do anything until it's wired into the skills capability. Pass `agentRegistry` and `materializeAgent` (both from `@flow-state-dev/workforce`) alongside the catalog — that's the seam that resolves `agent-ref` workers:
+Only registry agents need `agentRegistry` + `materializeAgent` on the library;
+inline agents need neither:
 
 ```ts title="skills.ts"
 import { agentRegistry, materializeAgent } from "./agents";
 
-export const skillsCap = createSkillsCapability({
+export const skills = createSkillsLibrary({
   catalog: { search: search(), fetch: fetch() },
-  patternRegistry: defaultPatternRegistry,
-  agentRegistry,      // resolves an `agent-ref` worker to its agent
-  materializeAgent,   // turns that agent into a runnable worker block
   initialSkills,
+  agentRegistry,      // resolves `agent-ref` names to registered agents
+  materializeAgent,   // turns a resolved agent into the board worker the drain dispatches
 });
 ```
 
-Now a pattern-skill worker can point at the agent by name instead of a prompt:
+`agent-overrides` on an `agent-ref` entry lets one skill swap a registered agent's
+model or tools without touching its definition. See [Agents](/docs/orchestration/agents)
+and [Delegation](/docs/skills/delegation) for personas, structured output, and the
+agent resolution table. The example wires both forms in
+[`src/agents.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/agents.ts).
 
-```yaml
-workers:
-  market-analyst:
-    agent-ref: market-analyst
-    agent-overrides:
-      model: openai/gpt-5.4-mini
-```
+A seat doesn't have to be a persona — the task board can dispatch any block as a
+worker (that's [section 2](#2-the-code-first-board)). Staffing a non-agent block through
+a skill's `agents:` map is a deliberate non-goal here: once a task can be assigned
+to a tool directly, dressing a deterministic block up as an "agent" is the wrong
+shape. Keep `agents:` for prompt-driven participants — inline or registered.
 
-The same agent can staff a worker slot in any skill that references it, and `agent-overrides` lets one skill swap its model or tools without touching the definition. See [Agents](/docs/orchestration/agents) for personas, structured output, and the current limits.
+## 6. Let an agent decide the tasks
 
-## 6. Let an agent add tasks and assign workers
+Section 3 grew a board at runtime with a router — your code decided the tasks. You
+can also let the *model* decide. Two shapes, depending on where the plan lives.
 
-Section 3 grew a board at runtime with a router — your code decided the tasks. Under a pattern skill, an agent can grow the board itself while it runs. A worker with the `taskTools` capability gets eight board-mutation tools, including `addTask` (enqueue work) and `assignTask` (hand a task to a different worker).
+**A delegation skill.** A skill that declares `agents:` gives its generator the
+eight `taskTools` (`addTask`, `assignTask`, `completeTask`, …) plus `runBoard`. The
+coordinating model plans the work as tasks on its private board — assignees, deps,
+structured input — and runs the whole graph with one `runBoard` call. That drain is
+a real board drain: independent tasks run in parallel, dep-gated tasks wait, and one
+settled board comes back. The `competitor-analysis` skill does this — the
+coordinator picks the competitors and fans out one analyzer per pick. An agent can
+even decide its own fan-out mid-drain: give it `tools: [taskTools]` and it enqueues
+follow-up tasks onto the same board while the drain runs. See
+[Delegation](/docs/skills/delegation).
 
-Give the deciding worker `taskTools` in its own `tools:` list. Here a discoverer finds competitors and enqueues one analyzer per competitor plus a synthesizer that waits on all of them:
+**A code-defined board as a tool.** When the graph should stay fixed in code — a
+tuned dispatcher, a seeded task set, a custom collection backing — skip agents and
+call a `taskBoard(...).drain` as a single tool (section 4). Your code owns the tasks;
+the board's own dispatcher runs them under `concurrency`.
 
-```markdown title="skills/competitor-analysis/SKILL.md"
----
-description: Competitor analysis by a team that sizes itself to the landscape.
-pattern: task-board
-workers:
-  discoverer:
-    prompt-ref: ./reference/discover.md
-    tools: [search, taskTools]   # taskTools installs the eight board-mutation tools
-    visibility: sub
-  analyzer:
-    prompt-ref: ./reference/analyze.md
-    tools: [search, fetch]
-    visibility: sub
-  synthesizer:
-    prompt-ref: ./reference/synthesize.md
-    visibility: primary
-initial-tasks:
-  - id: discover
-    goal: >-
-      Find 3-5 competitors for $ARGUMENTS. Call addTask once per competitor
-      (assignee "analyzer"), collect the returned ids, then addTask a
-      synthesizer (assignee "synthesizer") whose deps cover every analyzer.
-    assignee: discoverer
-pattern-config:
-  concurrency: 4
-  dispatcher: topological
-allowed-tools: [search, fetch, taskTools]
----
-```
+Both drain concurrently — a delegation board is a real board drain, not a serialized
+loop of tool calls. The difference is who writes the tasks: the model, task by task,
+or your code, up front.
 
-This is the same fan-out shape as section 3's router, but the model decides it from inside a running board rather than your code deciding it up front. The discoverer's prompt instructs it to call `addTask({ goal, assignee: "analyzer" })` per competitor and one `addTask({ goal, assignee: "synthesizer", deps: [...] })`.
-
-Two things to keep straight:
-
-- **`taskTools` must be on the worker's own `tools:` list** — putting it only in the top-level `allowed-tools` does not install it on pattern workers.
-- **`taskTools` resolves the *active pattern skill's* board.** It works here because the skill activated a board. On a bare code-first `taskBoard` (sections 2–3) there is no active pattern, so `taskTools` returns `no_active_pattern` — that's why runtime fan-out in code uses the router instead.
-
-See [Pattern skills](/docs/skills/pattern-skills) for the full `taskTools` reference.
+The old ceiling here is gone: `taskTools` used to return `no_active_pattern` unless a
+session-global pattern skill was active. Now the board a `taskTools` call commands is
+whichever board its skill installed. With no delegation board resolvable at all, a
+stray `taskTools` call returns `no_delegation_board` rather than throwing.
 
 ## 7. When the board stops, and when it waits
 
@@ -383,5 +387,5 @@ Whether a task blocks the request comes down to the same dependency graph: the s
 - [`examples/guides/research-team`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team) — the complete, tested source for this guide.
 - [Task board](/docs/orchestration/task-board) — every config option, dispatcher, and termination mode.
 - [Task substrate](/docs/orchestration/task-substrate) — the `Task` and `TaskCollection` contracts underneath.
-- [Pattern skills](/docs/skills/pattern-skills) — the full `SKILL.md` frontmatter and the `taskTools` reference.
+- [Delegation](/docs/skills/delegation) — the `agents:` field, the private board, and the `taskTools` + `runBoard` reference.
 - [Supervisor](/docs/patterns/supervisor) — add a review step before each result is written back.

@@ -1,42 +1,33 @@
 ---
-description: Competitor analysis as a comparison matrix plus a synthesized read. Use when the user asks who competes with a product, how one stacks up against another, or what a category's landscape looks like. A discoverer identifies competitors and queues one analyzer per competitor; the analyzers run in parallel; a synthesizer waits on all of them.
-keywords: [competitor, competitors, competition, compare, versus, landscape]
+description: Produce a competitor analysis as a comparison matrix plus a synthesized read. Use when the user asks who competes with a product, how one stacks up against another, or what a category's landscape looks like. A discoverer picks the competitors and fans out one analyzer per competitor on your board; a comparison-writer waits on all of them.
+keywords: [competitor, competitors, competition, compare, versus, landscape, market]
 argument-hint: <product, company, or market>
 
-pattern: task-board
-workers:
+# This skill shows the two ways to staff an agent:
+#   - discoverer, comparison-writer: inline prompt agents, defined right here in
+#                                    the skill (prompt-ref to the skill folder).
+#   - analyzer:                      agent-ref to `competitor-analyst`, a shared
+#                                    agent defined in app code (src/agents.ts)
+#                                    via defineAgent() and borrowed by name.
+agents:
   discoverer:
     prompt-ref: ./reference/discover.md
     tools: [search, taskTools]
-    visibility: sub
   analyzer:
-    prompt-ref: ./reference/analyze.md
-    tools: [search, fetch]
-    visibility: sub
-  synthesizer:
-    prompt-ref: ./reference/synthesize.md
-    visibility: primary
-
-initial-tasks:
-  - id: discover
-    goal: Identify 3 to 5 competitors for $ARGUMENTS, then enqueue one analyzer task per competitor plus a single synthesizer task whose deps cover every analyzer task you queued.
-    assignee: discoverer
-
-pattern-config:
-  concurrency: 4
-  dispatcher: topological
-
-allowed-tools: [search, fetch, taskTools]
+    agent-ref: competitor-analyst
+  comparison-writer:
+    prompt-ref: ./reference/compare.md
 ---
 
-This skill fans out at runtime. The board starts with one task — a discoverer — which picks 3-5 competitors and calls `addTask` once per competitor (assignee `analyzer`) plus one `addTask` for a synthesizer whose `deps` cover every analyzer it queued. The analyzers run in parallel; the synthesizer waits on all of them.
+This skill runs a competitor-analysis team on your task board. A discoverer picks 3-5 competitors and queues one analyzer per competitor plus a comparison-writer gated on all of them. The analyzers run in parallel; the comparison-writer waits on all of them and formats the matrix.
 
-**Dispatching the team.** This is a pattern skill — invoke it with `runSkill`:
+The team is staffed two ways. The discoverer and comparison-writer are inline prompt agents defined in this skill — their personas live in the skill folder. The analyzer is a shared agent registered in app code and referenced by name (`agent-ref`), so other skills can borrow the same participant. From the board's point of view they're all just agents you assign tasks to.
 
-```
-runSkill({ name: "competitor-analysis", input: "<product, company, or market>" })
-```
+You seed the board and run it. Extract the target from the user's message (for "who competes with Linear?", the target is `Linear`; if the user named several targets, pick the one they led with), then:
 
-Pass the target the user named as `input`. The tool returns the synthesizer's comparison matrix and read; surface it as-is.
+1. `addTask` — goal: `"Identify 3 to 5 competitors for <target> across direct / adjacent / DIY-status-quo tiers, then enqueue one analyzer task per competitor plus a single comparison-writer task whose deps cover every analyzer task you queued."`, `assignee: "discoverer"`.
+2. Call `runBoard` once. The discoverer enqueues the analyzers and the gated comparison-writer mid-run; the board keeps draining until all of them settle.
 
-The discoverer's `tools` include `taskTools`, which is what gives it `addTask` — the runtime mutation surface. A worker only gets `taskTools` when its own `tools:` list contains it; listing it only in the top-level `allowed-tools` would not install it on the worker.
+The settled board's `comparison-writer` task carries the final comparison matrix. Surface it to the user as-is; don't paraphrase the matrix or add commentary on top. The team has already done the work — don't do the competitor analysis yourself in the chat.
+
+If you're not sure this skill applies (e.g. the user's question is only tangentially competitive), ask once before planning the board.

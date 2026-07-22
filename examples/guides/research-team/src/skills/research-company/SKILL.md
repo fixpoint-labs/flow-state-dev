@@ -1,49 +1,28 @@
 ---
-description: Multi-angle company research by a small team of analysts. Use when the user asks to research a company or wants several perspectives stitched into one brief. Activates a task board where market and financial analysts run in parallel and a primary synthesizer writes the final brief.
-keywords: [research, company, deep-dive, briefing, analyst, market]
+description: Multi-angle company research delivered by a small team of analysts. Use when the user asks to research a company, wants a deep dive on what a company is up to, or wants several perspectives stitched into one brief. You plan the tasks on your board — a market analyst and a financial analyst in parallel, a synthesizer gated on both — and run it.
+keywords: [research, company, deep-dive, deep, dive, briefing, analyst, market]
 argument-hint: <company name or ticker>
 
-pattern: task-board
-workers:
+agents:
   market-analyst:
     prompt-ref: ./reference/market.md
     tools: [search, fetch]
-    visibility: sub
   financial-analyst:
     prompt-ref: ./reference/financials.md
     tools: [search, fetch]
-    visibility: sub
   synthesizer:
     prompt-ref: ./reference/synthesis.md
-    visibility: primary
-
-initial-tasks:
-  - id: market
-    goal: Analyze market positioning of $ARGUMENTS — category, target customer, key differentiators, recent narrative shifts. Cite sources.
-    assignee: market-analyst
-  - id: financials
-    goal: Analyze financial health of $ARGUMENTS — revenue scale and trajectory, funding or public financials, profitability/burn, runway signals. Cite sources.
-    assignee: financial-analyst
-  - id: synth
-    goal: Synthesize the reports into one research brief for $ARGUMENTS. Lead with the takeaway, then evidence, then risks.
-    assignee: synthesizer
-    deps: [market, financials]
-
-pattern-config:
-  concurrency: 2
-  dispatcher: topological
-
-allowed-tools: [search, fetch]
 ---
 
-This skill runs a small team on a task board: the market analyst and financial analyst run in parallel, then a primary synthesizer waits on both to produce the final brief.
+This skill defines its own team. The three `agents:` above are inline prompt agents — each one's persona is a file in this skill folder, so the whole team travels with the skill. No app code registers them.
 
-**Dispatching the team.** This is a pattern skill — the team only runs when you invoke it through the `runSkill` tool:
+You run the board. Extract the target from the user's message (for "research ACME Corp", the target is `ACME Corp`; for "what's Anthropic up to lately", it's `Anthropic`), then:
 
-```
-runSkill({ name: "research-company", input: "<company name or ticker>" })
-```
+1. `addTask` — goal: `"Analyze market positioning of <target> — category, target customer, key differentiators, recent narrative shifts. Cite sources."`, `assignee: "market-analyst"`.
+2. `addTask` — goal: `"Analyze financial health of <target> — revenue scale and trajectory, funding or public financials, profitability/burn, runway signals. Cite sources."`, `assignee: "financial-analyst"`.
+3. `addTask` — goal: `"Synthesize the prior reports into a single research brief for <target>. Lead with the takeaway, then evidence, then risks."`, `assignee: "synthesizer"`, `deps` set to the two task ids returned above.
+4. Call `runBoard` once. The analysts run in parallel; the synthesizer starts when both complete.
 
-The `input` is the target — extract it from the user's message. For "research ACME Corp", pass `"ACME Corp"`. The tool returns the synthesizer's brief; surface it to the user as-is.
+The settled board's synthesizer task carries the brief (takeaway, what they do, market position, financial picture, risks, sources). Surface it to the user as-is; don't restate it. The team has already done the work — don't research the company yourself in the chat.
 
-`pattern-config` omits `on-idle`, so the board uses the `complete-or-blocked` default. That's what you want for this dependency graph: if an analyst fails, the synthesizer's dependency is unmet, and the board reports a blocked drain instead of idle-polling to a timeout.
+If you're not sure this skill applies (e.g. the user wants only a one-line refresher), ask once before planning the board.

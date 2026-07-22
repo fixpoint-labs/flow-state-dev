@@ -5,7 +5,7 @@ Runnable, tested companion code for the [Building a research team](https://flow-
 A small team of workers researches a subject together: analysts run in
 parallel, then a synthesizer waits for them and stitches their findings. The
 example shows the same team three ways — a static board, a runtime fan-out
-router, and a `SKILL.md` — each wired into a flow you can run with `fsdev`.
+router, and `SKILL.md` folders — each wired into a flow you can run with `fsdev`.
 
 ## What's here
 
@@ -14,11 +14,24 @@ router, and a `SKILL.md` — each wired into a flow you can run with `fsdev`.
 | `src/workers.ts` | The analyst and synthesizer workers. Plain handlers so the example runs without a model — swap a handler for a `generator` to call an LLM. The synthesizer reads its dependencies' outputs off `input.deps`. |
 | `src/board.ts` | A **static** board: two analysts + a synthesizer, with a fixed dependency graph via `initialTasks` + `deps`. |
 | `src/research-router.ts` | **Runtime fan-out**: a router reads a request, computes one analyzer task per competitor plus a synthesizer, and returns a board seeded with exactly those tasks. |
-| `src/skills/` | The same team as two `pattern: task-board` **skills** — `research-company` (static) and `competitor-analysis` (a discoverer fans out via `addTask`), each with its worker prompts under `reference/`. |
-| `src/skills.ts` | Loads the `SKILL.md` folders and builds a skills capability (`runSkill` tool + catalog) a generator can carry. |
-| `src/flow.ts` | The `research-team` flow: one action per path — `research`, `researchCompetitors`, and `chat` (dispatches the skills). |
+| `src/skills/` | The same team as two delegation **skills**. Each skill defines its own team in `agents:` frontmatter, and its body plans the board (`addTask` with assignees and deps, then `runBoard`). `research-company` defines its whole team inline — three `prompt-ref` agents whose personas live in the skill folder. `competitor-analysis` adds the registry form for one seat. |
+| `src/agents.ts` | The shared agent `competitor-analysis` borrows: `competitor-analyst`, defined once with `defineAgent` and referenced by `agent-ref`. Also the `agentRegistry` + `materializeAgent` pair that resolves it. |
+| `src/skills.ts` | Loads the `SKILL.md` folders and builds the skills library — the catalog of leaf tools the inline agents call, plus the registry/materializer for the `agent-ref` agent. |
+| `src/flow.ts` | The `research-team` flow: one action per path — `research`, `researchCompetitors`, and `chat` (the delegation skills through a coordinator). |
 | `fsdev.config.ts` | Registers the flow so `fsdev` can run it. |
-| `test/` | `board.test.ts` and `research-router.test.ts` drive the blocks directly; `flow.test.ts` runs the two model-free actions end-to-end and checks the bundled skills parse. |
+| `test/` | `board.test.ts` drives the code-first board deterministically (drain → completed tasks + stitched synthesizer output); `flow.test.ts` runs the two no-model actions end-to-end and checks both skills parse and declare their teams. |
+
+## The two ways to staff an agent
+
+`competitor-analysis` shows both side by side:
+
+- **Inline prompt agent** — `discoverer` and `comparison-writer` are defined
+  right in the SKILL.md (`prompt-ref` to files in the skill folder). The team
+  travels with the skill; no app code registers it. `research-company` is
+  entirely this form.
+- **Registry agent** — `analyzer` references `competitor-analyst`, a shared
+  agent defined in app code with `defineAgent` and resolved through the
+  registry. Many skills can borrow the same agent.
 
 ## Run it with fsdev
 
@@ -37,8 +50,9 @@ pnpm fsdev run research-team researchCompetitors \
 
 Both drain to a `task-board-meta` item with `terminationReason: "all-completed"`.
 
-The `chat` action dispatches the pattern skills through a coordinator agent, so
-it needs a model (the skill workers call an LLM):
+The `chat` action binds the delegation skills to a coordinator agent, which
+plans tasks on its board and runs them. Each skill defines its own team of
+prompt agents, and those agents are LLMs — so this path needs a model:
 
 ```bash
 OPENAI_API_KEY=... pnpm fsdev run research-team chat \
@@ -52,5 +66,5 @@ pnpm --filter @flow-state-dev/example-guide-research-team test
 pnpm --filter @flow-state-dev/example-guide-research-team typecheck
 ```
 
-The board, router, and flow tests are deterministic and need no API keys. The
-skill test only parses the `SKILL.md` folders, so it needs no model either.
+The board and flow tests are deterministic and need no API keys. They exercise
+the code-first board and router; the LLM skill path is the `chat` action above.

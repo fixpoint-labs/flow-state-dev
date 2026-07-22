@@ -78,6 +78,10 @@ const config: Config = {
             from: "/docs/patterns/flow-policy",
             to: "/docs/orchestration/flow-policy",
           },
+          {
+            from: "/docs/skills/pattern-skills",
+            to: "/docs/skills/delegation",
+          },
         ],
       },
     ],

@@ -98,6 +98,41 @@ The board must be **request- or resource-backed** so its tasks survive across dr
 
 Supervisor's judge runs *inside* each worker as a retry budget, not across the whole board, so it is a different axis and stays as-is. See [Supervisor](../patterns/supervisor.md) for the contrast.
 
+## Using a goalSeekLoop as a tool
+
+A `goalSeekLoop` is a block, and [any block can be a tool](../fundamentals/blocks#any-block-can-be-a-tool). Drop one into a generator's `tools:` array and the generator can call the whole loop as a single tool. The loop drains, judges, replans, and finalizes internally; only the finalized result re-enters the generator's conversation history. The per-iteration work — worker outputs, judge verdicts, replan steps — stays out of the caller's history.
+
+This is how a chat agent reaches for a rigorous, autonomous multi-step recipe without wrapping itself in one. The generator stays the executive and calls the recipe when it applies.
+
+```ts
+import { goalSeekLoop, taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const board = taskBoard({ name: "research", workers: researchWorker });
+
+const deepResearch = goalSeekLoop({
+  name: "deep-research",
+  inputSchema: z.object({ question: z.string() }),
+  board,
+  seed: planQuestions,
+  judge: assessCoverage,
+  replanner: proposeFollowups,
+  maxIterations: 4,
+  finalize: synthesizeAnswer,
+});
+
+const chatAgent = generator({
+  name: "chat-agent",
+  model: "openai/gpt-5.4-mini",
+  tools: [deepResearch], // callable directly — no wrapper needed
+});
+```
+
+When the model calls `deep-research`, the framework runs the loop to completion and feeds `finalize`'s projected output back as the tool result. The generator declares the loop's own `inputSchema` as the tool's input, so the model supplies `{ question }` and gets the synthesized answer — nothing about the board internals leaks in.
+
+A skill can wire this too: register the loop block in the skills catalog and list it under the skill's `allowed-tools`. See [Delegation](../skills/delegation#running-a-board-as-a-tool).
+
 ## Stream items
 
 The loop emits one **`goal-seek-loop-termination`** signal when it exits, carrying the termination `reason` (`converged`, `max-iterations`, or `judge-error`) and the drain count. It is a typed observability signal for tooling, not a rendered UI element — it's emitted client- and history-invisible, so it never appears in the client output. It also uses a distinct component type and key, so it never clobbers the board's own completed `task-board-meta` snapshot that renderers scan. Renderers are otherwise unaffected.

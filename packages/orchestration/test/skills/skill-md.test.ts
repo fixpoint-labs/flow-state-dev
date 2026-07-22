@@ -29,10 +29,10 @@ describe("parseSkillMd", () => {
     expect(state.allowedTools).toEqual(["bash", "Read", "Glob"]);
   });
 
-  it("honors context: fork", () => {
-    const text = `---\ndescription: x\ncontext: fork\n---\n\nbody`;
+  it("honors context: inline", () => {
+    const text = `---\ndescription: x\ncontext: inline\n---\n\nbody`;
     const { state } = parseSkillMd(text);
-    expect(state.contextMode).toBe("fork");
+    expect(state.contextMode).toBe("inline");
   });
 
   it("warns and defaults when context is invalid", () => {
@@ -119,13 +119,13 @@ describe("parseSkillMd", () => {
 
 describe("serializeSkillMd", () => {
   it("round-trips the documented fields", () => {
-    const text = `---\ndescription: round trip\nallowed-tools: [bash, Read]\ncontext: fork\ndisable-model-invocation: true\n---\n\nThe body lives here.\n`;
+    const text = `---\ndescription: round trip\nallowed-tools: [bash, Read]\ncontext: inline\ndisable-model-invocation: true\n---\n\nThe body lives here.\n`;
     const parsed = parseSkillMd(text);
     const out = serializeSkillMd(parsed.state, parsed.body);
     const reparsed = parseSkillMd(out);
     expect(reparsed.state.description).toBe(parsed.state.description);
     expect(reparsed.state.allowedTools).toEqual(parsed.state.allowedTools);
-    expect(reparsed.state.contextMode).toBe("fork");
+    expect(reparsed.state.contextMode).toBe("inline");
     expect(reparsed.state.disableModelInvocation).toBe(true);
     expect(reparsed.body.trim()).toBe(parsed.body.trim());
   });
@@ -212,333 +212,168 @@ describe("kebabToCamel / camelToKebab", () => {
   });
 });
 
+
 // ---------------------------------------------------------------------------
-// Pattern binding parsing — FIX-450
+// Delegation agents parsing — FIX-918
 // ---------------------------------------------------------------------------
 
 const baseHeader = `description: company research`;
 
-function withPattern(extra: string): string {
+function withFrontmatter(extra: string): string {
   return `---\n${baseHeader}\n${extra}\n---\n\nbody`;
 }
 
-describe("parseSkillMd — pattern binding", () => {
-  it("parses a minimal pattern skill with a prompt-ref worker", () => {
-    const text = withPattern(
+describe("parseSkillMd — delegation agents", () => {
+  it("parses a standalone `agents:` map into state.agents", () => {
+    const text = withFrontmatter(
       [
-        `pattern: task-board`,
-        `workers:`,
+        `agents:`,
         `  analyst:`,
         `    prompt-ref: ./reference/analyst.md`,
-        `initial-tasks:`,
-        `  - id: a`,
-        `    goal: investigate $ARGUMENTS`,
-        `    assignee: analyst`,
+        `  writer:`,
+        `    prompt: Write the final report.`,
       ].join("\n"),
     );
-    const { state } = parseSkillMd(text);
-    expect(state.contextMode).toBe("pattern");
-    expect(state.patternBinding?.pattern).toBe("task-board");
-    expect(state.patternBinding?.workers.analyst?.promptRef).toBe(
-      "./reference/analyst.md",
-    );
-    expect(state.patternBinding?.initialTasks).toEqual([
-      { id: "a", goal: "investigate $ARGUMENTS", assignee: "analyst" },
-    ]);
+    const { state, warnings } = parseSkillMd(text);
+    expect(state.agents?.analyst?.promptRef).toBe("./reference/analyst.md");
+    expect(state.agents?.writer?.prompt).toBe("Write the final report.");
+    // Declaring `agents:` is sufficient — no `pattern:` required, no warning.
+    expect(warnings.some((w) => w.includes("agents"))).toBe(false);
   });
 
-  it("parses inline `prompt: |` literal block scalars", () => {
-    const text = withPattern(
+  it("parses inline `prompt: |` literal block scalars and visibility", () => {
+    const text = withFrontmatter(
       [
-        `pattern: supervisor`,
-        `workers:`,
+        `agents:`,
         `  synth:`,
         `    prompt: |`,
         `      You write the report.`,
         `      Use prior findings.`,
         `    visibility: primary`,
-        `initial-tasks:`,
-        `  - id: s`,
-        `    goal: finalize`,
-        `    assignee: synth`,
       ].join("\n"),
     );
     const { state } = parseSkillMd(text);
-    expect(state.patternBinding?.workers.synth?.prompt).toMatch(
+    expect(state.agents?.synth?.prompt).toMatch(
       /You write the report\.\nUse prior findings\./,
     );
-    expect(state.patternBinding?.workers.synth?.itemVisibility).toEqual({ client: true, history: true });
-  });
-
-  it("parses pattern-config and collection scope", () => {
-    const text = withPattern(
-      [
-        `pattern: task-board`,
-        `collection:`,
-        `  scope: session`,
-        `workers:`,
-        `  w:`,
-        `    prompt: hi`,
-        `initial-tasks:`,
-        `  - id: t`,
-        `    goal: do`,
-        `    assignee: w`,
-        `pattern-config:`,
-        `  concurrency: 2`,
-        `  on-idle: complete`,
-      ].join("\n"),
-    );
-    const { state } = parseSkillMd(text);
-    expect(state.patternBinding?.collection?.scope).toBe("session");
-    expect(state.patternBinding?.patternConfig).toEqual({
-      concurrency: 2,
-      "on-idle": "complete",
+    expect(state.agents?.synth?.itemVisibility).toEqual({
+      client: true,
+      history: true,
     });
   });
 
   it("parses agent-ref + agent-overrides without resolving them", () => {
-    const text = withPattern(
+    const text = withFrontmatter(
       [
-        `pattern: task-board`,
-        `workers:`,
+        `agents:`,
         `  vet:`,
         `    agent-ref: research-analyst`,
         `    agent-overrides:`,
         `      tools: [search, fetch]`,
         `      model: anthropic/claude-haiku`,
-        `initial-tasks:`,
-        `  - id: r`,
-        `    goal: research`,
-        `    assignee: vet`,
       ].join("\n"),
     );
     const { state } = parseSkillMd(text);
-    expect(state.patternBinding?.workers.vet?.agentRef).toBe(
-      "research-analyst",
-    );
-    expect(state.patternBinding?.workers.vet?.agentOverrides).toEqual({
+    expect(state.agents?.vet?.agentRef).toBe("research-analyst");
+    expect(state.agents?.vet?.agentOverrides).toEqual({
       tools: ["search", "fetch"],
       model: "anthropic/claude-haiku",
     });
   });
 
-  it("rejects a worker with zero of prompt/prompt-ref/block-ref/agent-ref", () => {
-    const text = withPattern(
-      [
-        `pattern: task-board`,
-        `workers:`,
-        `  bare:`,
-        `    tools: [search]`,
-        `initial-tasks:`,
-        `  - id: t`,
-        `    goal: do`,
-        `    assignee: bare`,
-      ].join("\n"),
+  it("rejects an agent with zero of prompt/prompt-ref/agent-ref", () => {
+    const text = withFrontmatter(
+      [`agents:`, `  bare:`, `    tools: [search]`].join("\n"),
     );
     expect(() => parseSkillMd(text)).toThrow(
-      /exactly one of `prompt`, `prompt-ref`, `block-ref`, `agent-ref`/,
+      /exactly one of `prompt`, `prompt-ref`, `agent-ref`/,
     );
   });
 
-  it("rejects a worker with two of the four resolution fields", () => {
-    const text = withPattern(
-      [
-        `pattern: task-board`,
-        `workers:`,
-        `  bad:`,
-        `    prompt: hi`,
-        `    prompt-ref: ./x.md`,
-        `initial-tasks:`,
-        `  - id: t`,
-        `    goal: do`,
-        `    assignee: bad`,
-      ].join("\n"),
+  it("rejects an agent with two resolution fields", () => {
+    const text = withFrontmatter(
+      [`agents:`, `  bad:`, `    prompt: hi`, `    prompt-ref: ./x.md`].join("\n"),
     );
     expect(() => parseSkillMd(text)).toThrow(/mutually exclusive/);
   });
 
-  it("rejects a worker with three of the four resolution fields", () => {
-    const text = withPattern(
-      [
-        `pattern: task-board`,
-        `workers:`,
-        `  bad:`,
-        `    prompt: hi`,
-        `    prompt-ref: ./x.md`,
-        `    block-ref: someBlock`,
-        `initial-tasks:`,
-        `  - id: t`,
-        `    goal: do`,
-        `    assignee: bad`,
-      ].join("\n"),
+  it("rejects a non-string resolution field (present but not a usable string)", () => {
+    // `prompt: 123` satisfies the exactly-one check but leaves no usable string,
+    // so it must fail at parse time, not confusingly at materialization.
+    const numeric = withFrontmatter([`agents:`, `  bad:`, `    prompt: 123`].join("\n"));
+    expect(() => parseSkillMd(numeric)).toThrow(/`prompt` must be a non-empty string/);
+
+    const boolRef = withFrontmatter(
+      [`agents:`, `  bad:`, `    agent-ref: false`].join("\n"),
     );
-    expect(() => parseSkillMd(text)).toThrow(/mutually exclusive/);
+    expect(() => parseSkillMd(boolRef)).toThrow(/`agent-ref` must be a non-empty string/);
+  });
+
+  it("rejects inline tuning fields (tools/model/visibility) on an agent-ref spec", () => {
+    // These apply only to inline agents; on agent-ref the materializer uses
+    // agent-overrides and would silently ignore them. Fail loud instead.
+    const text = withFrontmatter(
+      [`agents:`, `  a:`, `    agent-ref: shared`, `    tools: [search]`].join("\n"),
+    );
+    expect(() => parseSkillMd(text)).toThrow(/can't be set alongside `agent-ref`/);
   });
 
   it("rejects agent-overrides without agent-ref", () => {
-    const text = withPattern(
+    const text = withFrontmatter(
       [
-        `pattern: task-board`,
-        `workers:`,
+        `agents:`,
         `  w:`,
         `    prompt: hi`,
         `    agent-overrides:`,
         `      tools: [x]`,
-        `initial-tasks:`,
-        `  - id: t`,
-        `    goal: do`,
-        `    assignee: w`,
       ].join("\n"),
     );
     expect(() => parseSkillMd(text)).toThrow(/agent-overrides[`]? requires/);
   });
 
-  it("rejects initial-task assignee referencing an unknown worker", () => {
-    const text = withPattern(
-      [
-        `pattern: task-board`,
-        `workers:`,
-        `  a:`,
-        `    prompt: hi`,
-        `initial-tasks:`,
-        `  - id: t`,
-        `    goal: do`,
-        `    assignee: ghost`,
-      ].join("\n"),
+  it("rejects an invalid agent key", () => {
+    const text = withFrontmatter(
+      [`agents:`, `  "Bad Key":`, `    prompt: hi`].join("\n"),
     );
-    expect(() => parseSkillMd(text)).toThrow(/unknown worker "ghost"/);
-  });
-
-  it("rejects a deps reference to an unknown task id", () => {
-    const text = withPattern(
-      [
-        `pattern: task-board`,
-        `workers:`,
-        `  a:`,
-        `    prompt: hi`,
-        `initial-tasks:`,
-        `  - id: t`,
-        `    goal: do`,
-        `    assignee: a`,
-        `    deps: [nope]`,
-      ].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/unknown task id "nope"/);
-  });
-
-  it("rejects a cyclic dependency graph", () => {
-    const text = withPattern(
-      [
-        `pattern: task-board`,
-        `workers:`,
-        `  a:`,
-        `    prompt: hi`,
-        `initial-tasks:`,
-        `  - id: x`,
-        `    goal: x`,
-        `    assignee: a`,
-        `    deps: [y]`,
-        `  - id: y`,
-        `    goal: y`,
-        `    assignee: a`,
-        `    deps: [x]`,
-      ].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/cycle/);
-  });
-
-  it("rejects combining context: fork with pattern:", () => {
-    const text = withPattern(
-      [
-        `context: fork`,
-        `pattern: task-board`,
-        `workers:`,
-        `  a:`,
-        `    prompt: hi`,
-        `initial-tasks:`,
-        `  - id: t`,
-        `    goal: do`,
-        `    assignee: a`,
-      ].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/mutually exclusive/);
-  });
-
-  it("rejects context: pattern without a pattern: field", () => {
-    const text = `---\n${baseHeader}\ncontext: pattern\n---\n\nbody`;
-    expect(() => parseSkillMd(text)).toThrow(/no `pattern:` field/);
-  });
-
-  it("rejects an invalid worker key", () => {
-    const text = withPattern(
-      [
-        `pattern: task-board`,
-        `workers:`,
-        `  "Bad Key":`,
-        `    prompt: hi`,
-        `initial-tasks:`,
-        `  - id: t`,
-        `    goal: do`,
-        `    assignee: "Bad Key"`,
-      ].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/worker key/);
-  });
-
-  it("auto-assigns ids when initial-tasks omit them", () => {
-    const text = withPattern(
-      [
-        `pattern: task-board`,
-        `workers:`,
-        `  a:`,
-        `    prompt: hi`,
-        `initial-tasks:`,
-        `  - goal: first`,
-        `    assignee: a`,
-        `  - goal: second`,
-        `    assignee: a`,
-      ].join("\n"),
-    );
-    const { state } = parseSkillMd(text);
-    const ids = state.patternBinding?.initialTasks.map((t) => t.id);
-    expect(ids).toEqual(["task-1", "task-2"]);
-  });
-
-  it("rejects duplicate initial-task ids", () => {
-    const text = withPattern(
-      [
-        `pattern: task-board`,
-        `workers:`,
-        `  a:`,
-        `    prompt: hi`,
-        `initial-tasks:`,
-        `  - id: same`,
-        `    goal: a`,
-        `    assignee: a`,
-        `  - id: same`,
-        `    goal: b`,
-        `    assignee: a`,
-      ].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/duplicate id "same"/);
-  });
-
-  it("warns when pattern-only keys appear without pattern:", () => {
-    const text = `---\n${baseHeader}\nworkers:\n  a:\n    prompt: hi\n---\n\nbody`;
-    const { state, warnings } = parseSkillMd(text);
-    expect(state.patternBinding).toBeUndefined();
-    expect(warnings.some((w) => w.includes("workers"))).toBe(true);
+    expect(() => parseSkillMd(text)).toThrow(/agent key/);
   });
 });
 
-describe("serializeSkillMd — pattern binding round-trip", () => {
-  it("round-trips prompt-ref, agent-ref, and pattern-config", () => {
-    const text = withPattern(
+describe("parseSkillMd — removed pattern/fork/workers/block-ref frontmatter (FIX-918)", () => {
+  it("throws a migration error on `context: fork`", () => {
+    const text = `---\n${baseHeader}\ncontext: fork\n---\n\nbody`;
+    expect(() => parseSkillMd(text)).toThrow(/context: fork.*removed/);
+  });
+
+  it("throws a migration error on `pattern:`", () => {
+    const text = withFrontmatter([`pattern: task-board`].join("\n"));
+    expect(() => parseSkillMd(text)).toThrow(/pattern.*removed/);
+  });
+
+  it("throws a migration error pointing at `agents:` on legacy `workers:`", () => {
+    const text = withFrontmatter(
+      [`workers:`, `  analyst:`, `    prompt: hi`].join("\n"),
+    );
+    expect(() => parseSkillMd(text)).toThrow(
+      /`workers:` was renamed to `agents:`/,
+    );
+  });
+
+  it("throws a migration error pointing at `agent-ref` on a `block-ref:` agent field", () => {
+    const text = withFrontmatter(
+      [`agents:`, `  analyst:`, `    block-ref: analyst`].join("\n"),
+    );
+    expect(() => parseSkillMd(text)).toThrow(
+      /`block-ref` was removed.*agent-ref/s,
+    );
+  });
+});
+
+describe("serializeSkillMd — delegation agents round-trip", () => {
+  it("round-trips a prompt-ref + agent-ref agent map", () => {
+    const text = withFrontmatter(
       [
-        `pattern: task-board`,
-        `collection:`,
-        `  scope: session`,
-        `workers:`,
+        `agents:`,
         `  market:`,
         `    prompt-ref: ./reference/market.md`,
         `    tools: [search]`,
@@ -548,47 +383,30 @@ describe("serializeSkillMd — pattern binding round-trip", () => {
         `    agent-overrides:`,
         `      tools: [search, fetch]`,
         `      model: anthropic/claude-haiku`,
-        `initial-tasks:`,
-        `  - id: m`,
-        `    goal: study market`,
-        `    assignee: market`,
-        `  - id: v`,
-        `    goal: deep dive`,
-        `    assignee: vet`,
-        `    deps: [m]`,
-        `pattern-config:`,
-        `  concurrency: 2`,
-        `  on-idle: complete`,
       ].join("\n"),
     );
     const parsed = parseSkillMd(text);
     const out = serializeSkillMd(parsed.state, parsed.body);
     const reparsed = parseSkillMd(out);
-    expect(reparsed.state.patternBinding).toEqual(parsed.state.patternBinding);
-    expect(reparsed.state.contextMode).toBe("pattern");
+    expect(reparsed.state.agents).toEqual(parsed.state.agents);
   });
 
   it("round-trips an inline `prompt: |` body", () => {
-    const text = withPattern(
+    const text = withFrontmatter(
       [
-        `pattern: supervisor`,
-        `workers:`,
+        `agents:`,
         `  synth:`,
         `    prompt: |`,
         `      First line.`,
         `      Second line.`,
         `    visibility: primary`,
-        `initial-tasks:`,
-        `  - id: s`,
-        `    goal: synthesize`,
-        `    assignee: synth`,
       ].join("\n"),
     );
     const parsed = parseSkillMd(text);
     const out = serializeSkillMd(parsed.state, parsed.body);
     const reparsed = parseSkillMd(out);
-    expect(reparsed.state.patternBinding?.workers.synth?.prompt).toBe(
-      parsed.state.patternBinding?.workers.synth?.prompt,
+    expect(reparsed.state.agents?.synth?.prompt).toBe(
+      parsed.state.agents?.synth?.prompt,
     );
   });
 });

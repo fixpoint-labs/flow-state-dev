@@ -104,6 +104,11 @@ The first three accept a custom `planner` override, so you can swap out `utility
 
 Not sure which to pick? Benchmark them on your own tasks. See [Benchmarks](../testing/benchmarks.md).
 
-## Declarative binding from skills
+## Reaching a pattern from a skill
 
-Every pattern in the table above (except Response Auditor, Round Robin, Debate, and RLM, which aren't task-collection-shaped) is reachable from a `SKILL.md` frontmatter declaration via `defaultPatternRegistry`. See [Pattern skills](../skills/pattern-skills) for the YAML shape, the worker resolution table, and the pattern-config crosswalk per factory.
+A skill reaches these patterns two ways now. Both keep the skill as plain inline instructions.
+
+- **Delegation.** A skill that declares an `agents:` field gets a private task board plus `taskTools` and a `runBoard` tool. The generator plans the work as tasks (`addTask` with an `assignee`) and drains the board with `runBoard`; the board runs the agents. See [Delegation](../skills/delegation).
+- **Blocks as tools.** A deterministic recipe — a `taskBoard(...).drain`, a `goalSeekLoop`, or a whole pattern sequencer — is a block, and [any block can be a tool](../fundamentals/blocks#any-block-can-be-a-tool). Register it in the skills catalog and list it under the skill's `allowed-tools`; the generator calls it as one tool and gets back only the finalized result.
+
+The older `defaultPatternRegistry` path (a `pattern:` frontmatter key that handed control to a session-global dispatcher) has been removed.

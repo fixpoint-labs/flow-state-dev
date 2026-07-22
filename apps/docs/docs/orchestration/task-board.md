@@ -164,7 +164,7 @@ The dispatcher decides which `pending` task gets claimed next. All three built-i
 
 None of them ignore `deps`; a task with unmet deps is never claimed, whichever dispatcher you pick.
 
-Dependency cycles are only rejected when tasks come from a SKILL.md `initial-tasks` block, which parses the graph with an acyclicity check. A code-first board that declares a `deps` cycle is **not** rejected at add time — those tasks never become claimable, so the drain ends blocked (under `"complete-or-blocked"`) or idles until its iteration cap.
+Dependency cycles are not rejected at add time. Avoiding them is the caller's responsibility when you build the `deps` graph passed to `addTask`/`addTasks` or `initialTasks`. A board that declares a `deps` cycle still runs, but those tasks never become claimable — the drain ends blocked (under `"complete-or-blocked"`) or idles until its iteration cap.
 
 You can pass a custom `TaskDispatcher` instance too. The dispatcher contract is in `@flow-state-dev/orchestration`. For deeper dispatcher behavior (caching, ledger, flow policy), see [Flow Policy](./flow-policy).
 

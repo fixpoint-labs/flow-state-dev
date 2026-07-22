@@ -1,24 +1,34 @@
 // Skills wiring for the research-team example.
 //
-// The two SKILL.md folders under `./skills` describe the same team as a
-// `pattern: task-board` skill — one static (research-company), one that fans
-// out at runtime via a discoverer worker calling addTask (competitor-analysis).
+// The two SKILL.md folders under `./skills` each define their own team in
+// `agents:` frontmatter, and they show the different ways to staff an agent:
 //
-// `readSkillsDirectory` parses those folders into skill definitions;
-// `createSkillsCapability` turns them into a `runSkill` tool + context that any
-// generator can carry via `uses: [skillsCapability]`. `defaultPatternRegistry`
-// is what lets `pattern:` skills dispatch a board; the workers declare
-// `tools: [search, fetch]`, so the catalog wires those tool blocks.
+//   - research-company defines its whole team inline — three `prompt-ref`
+//     agents whose personas live in the skill folder. Nothing in app code
+//     registers them; the team travels with the skill. This is the flagship
+//     "a skill defines its own team" case.
+//   - competitor-analysis adds the registry form: inline agents (`discoverer`,
+//     `comparison-writer`) plus an `analyzer` that references a shared registry
+//     agent (`agent-ref` → an app `defineAgent`). See ./agents.ts.
 //
-// The worker prompts call a model, so dispatching a skill live needs an API key
-// (see the flow's `chat` action). Loading and parsing the skills needs neither
-// a model nor a key, which is what `test/flow.test.ts` checks.
+// Binding an agent-declaring skill to a generator installs the board-commanded
+// delegation surface: a private task board, the task tools (`addTask`/
+// `listTasks`/…), and `runBoard` — a real drain over that board. The skill body
+// plans the work as tasks (assignee names an agent, deps order them); `runBoard`
+// executes the graph with concurrency and dependency gating. The board runs the
+// agents — there are no per-agent tools.
+//
+// `agentRegistry` + `materializeAgent` resolve the two `agent-ref` agents that
+// competitor-analysis borrows; the `catalog` carries the leaf tools the inline
+// agents reference via `tools:` (search, fetch). Because the agents are LLMs,
+// the skill path (the flow's `chat` action) needs an API key — the deterministic
+// no-key paths are the code-first board and router (see board.ts / flow.ts).
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/orchestration";
-import { defaultPatternRegistry } from "@flow-state-dev/patterns";
+import { createSkillsLibrary, readSkillsDirectory } from "@flow-state-dev/orchestration";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
+import { agentRegistry, materializeAgent } from "./agents";
 
 /** Absolute path to the bundled `SKILL.md` folders. */
 export const skillsDir = path.resolve(
@@ -35,19 +45,19 @@ for (const { name, error } of errors) {
 export { bundledSkills };
 
 /**
- * A skills capability preloaded with the bundled research skills. Drop it into
- * any generator via `uses: [skillsCapability]` and the model can dispatch a
- * team with `runSkill({ name, input })`.
+ * A shared skills library preloaded with the bundled research skills. Bind it
+ * per generator via `uses: [skillsLibrary.with({ ... })]`; a bound skill that
+ * declares `agents:` gives that generator its board, the task tools, and
+ * `runBoard`. The `catalog` holds the leaf tools inline agents reference by key;
+ * `agentRegistry`/`materializeAgent` resolve competitor-analysis's `agent-ref`
+ * agents.
  */
-export const skillsCapability = createSkillsCapability({
-  // Catalog: the string tool keys the skill workers reference (`tools:`).
+export const skillsLibrary = createSkillsLibrary({
   catalog: { search: search(), fetch: fetch() },
   initialSkills: bundledSkills,
+  agentRegistry,
+  materializeAgent,
   // Session scope keeps the example self-contained — a per-session skill
   // library, no user/org persistence wiring needed.
   scope: "session",
-  // Required for `pattern:` skills to dispatch a board; also composes the
-  // `taskTools` surface (addTask/…) that the competitor-analysis discoverer
-  // uses to fan out at runtime.
-  patternRegistry: defaultPatternRegistry,
 });
