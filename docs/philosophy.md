@@ -82,8 +82,16 @@ Most asks are compositions in disguise. Reserve a genuinely new primitive for wh
 cannot be composed from the current ones — and when you do add one, it has to
 compose cleanly with the rest, or it fractures the model everything else relies on.
 
+Primitives should stay **few, highly impactful, and flexible.** When a request
+strains what exists, that friction is a signal: the move is usually to *refine the
+substrate* — subtract then add, or realign an existing primitive so it covers the
+new case — rather than pile on another concept. A rare, high-cost edge case is not
+worth a framework change; a genuine gap in the primitives is an opportunity to
+improve how the framework operates. **Refine, don't accrete.**
+
 *Derives:* BP-029 (compose over reimplement), the pattern and capability libraries,
-the necessity gate's "what existing primitive solves this today?".
+the necessity gate's refinement lens ("does this friction reveal a way to sharpen a
+primitive?").
 
 ### 3. Earn every addition
 
@@ -158,22 +166,36 @@ The rule is **surface the tradeoff; do not average it, and do not pick silently.
 Averaging two patterns produces a third that matches neither — the worst outcome for
 coherence. When the collision is real and load-bearing, escalate it to the human
 with the tradeoff named. That is not indecision; it is refusing to make a coherence-
-shaping call in the dark. (Small, obvious collisions you resolve and note. The gate
-is for the ones that shape the design.)
+shaping call in the dark.
+
+And the point of surfacing is not only to pick a side. A genuine deadlock between
+coherence and restraint is often the sign that a *third* move exists — refine the
+primitive so the dilemma dissolves (tenet 2). Look for the subtract-and-add before
+you settle for either horn. (Small, obvious collisions you resolve and note; the
+gate is for the ones that shape the design.)
 
 ---
 
-## Best practices are derived
+## Philosophy → principles → best practices
 
-Best practices are the testable, situational consequences of these tenets. Every BP
-should trace to one. When you write or review a BP, name the tenet it serves — a BP
-that serves none is either miscategorized or a sign a tenet is missing. This is how
-the BP list stays a sharp tool instead of the granular sprawl it drifts toward:
-the tenets are the fixed points, and a new BP has to earn its place against them
-exactly the way new code does (tenet 2 applies to our own grounding).
+The grounding has three tiers, each derived from the one above:
 
-Sharpen an existing BP before adding a new one. Prune a BP that no longer traces to
-a tenet.
+1. **Philosophy** — the convictions above (what FSD is; the two failures).
+2. **Principles** — the tenets. The stable, enumerable rules of thought the
+   convictions yield. Always in force.
+3. **Best practices** — the *situational* refinements of the principles: concrete,
+   testable guidance for a specific area. The volatile tier.
+
+The lasting layer is the **principles**. Best practices are specific by nature, so
+they must stay **few** — we do not want dozens or hundreds. Most situational guidance
+is worked out **per spec**: for the solution at hand, reason from the principles plus
+the handful of common best practices already established, and name the 1–5 that fit
+*this* change. You are not meant to consult, or grow, a large global registry.
+
+Every BP still traces to a principle; one that serves none is miscategorized or a
+sign a principle is missing. Sharpen or prune before you add — tenet 3 governs our
+own grounding as much as our code. Principles endure; best practices earn their
+place one at a time and stay a short list.
 
 ---
 

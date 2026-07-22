@@ -284,8 +284,18 @@ prescribes.
 - **Tenet collisions:** surface the tradeoff to a human; never average or pick silently.
 - **Composition** is its own tenet; a **doc/code disagreement** is surfaced as a
   coherence gap, not auto-ranked.
+- **Grounding is three tiers:** Philosophy → Principles (the tenets) → Best Practices.
+  Principles are the lasting layer; BPs stay *few*. Situational guidance is worked out
+  **per spec** (the 1–5 focus practices), not from a large global registry. This
+  makes WS-7 include a **BP tone-down** — prune the granular global BPs to a lean
+  universal core, keep the rest as a short established set specs reason from.
+- **Necessity gate → refinement lens:** not strict-vs-lenient. Friction between a
+  request and the framework is a signal to *refine the substrate* (subtract+add /
+  realign a primitive), compose, escape-hatch a rare edge, or not build. Bias:
+  refine, don't accrete.
 
-Drafted: `docs/philosophy.md` (WS-1) — 7 tenets, coherence-apex.
+Drafted: `docs/philosophy.md` (WS-1) — 7 tenets, coherence-apex, three-tier grounding.
+`docs/contributing/spec-template.md` (WS-2) — the two-part Case/Build-Plan contract.
 
 ## 7. Verification (how we'll know it worked)
 
