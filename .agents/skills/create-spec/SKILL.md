@@ -297,7 +297,7 @@ Launch a `feature-dev:code-architect` sub-agent to review the spec for:
 - Missing edge cases or error scenarios
 - Whether the implementation sequence makes sense (dependencies, ordering)
 - Whether the testing strategy is adequate
-- Whether §4's usage examples are present when the public API surface changes materially — showing the change *in use* (the actual calling code plus its observable result, with a before/after when a call site moves), not just the signatures — or, when they're skipped, whether the one-line justification is stated and defensible
+- Whether **Part I §5's** usage examples are present when the public API surface changes materially — showing the change *in use* (the actual calling code plus its observable result, with a before/after when a call site moves), not just the signatures — or, when they're skipped, whether the one-line justification is stated and defensible
 - Any conflicts with the project's architectural constraints (check `docs/architecture/*.md`)
 
 #### Agent F: Scope & Dependency Validation
@@ -411,7 +411,7 @@ If there are open questions, ask the user to resolve them. Once resolved, update
 
 - **Depth over speed.** This is a research task. Spend the time to get it right. A thin spec is worse than no spec because it gives false confidence.
 - **Be specific.** "Update the server" is not a spec. "Add a `resumeFromSequence` parameter to `createSSEStream()` in `packages/engine/src/streaming/sse.ts` that filters items below the given sequence number" is a spec.
-- **Show the code in use, not just the contract.** When the change materially alters the public API surface, §4 must include minimal usage examples — the actual code a developer or end user writes against the new or changed surface and the observable result — not only the signatures. The API-surface bullet gives the contract; the examples show someone calling it. Skip only when nothing about how code is written against the framework changes (internal refactor, pure type/schema change, config or build plumbing, a bug fix that restores documented behavior), and say so in one line.
+- **Show the code in use, not just the contract.** When the change materially alters the public API surface, **Part I §5** must include minimal usage examples — the actual code a developer or end user writes against the new or changed surface and the observable result — not only the signatures. Part II §7's API surface gives the contract; §5's examples show someone calling it. Skip only when nothing about how code is written against the framework changes (internal refactor, pure type/schema change, config or build plumbing, a bug fix that restores documented behavior), and say so in one line.
 - **Follow existing patterns.** The codebase has established conventions. The spec should extend them, not invent new ones. When deviating, explain why.
 - **Research is not copying.** Industry research informs the approach but the implementation must fit this codebase's architecture, not blindly adopt an external pattern.
 - **Self-contained.** The spec must include everything an implementer needs. If they have to read 5 other documents to understand the spec, it's not done.
