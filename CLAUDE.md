@@ -98,9 +98,10 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 
 **Read first (every session):**
 
-1. `docs/architecture/overview.md` — System architecture and package roles
-2. `docs/contributing/architecture-reference.md` — Locked contracts quick reference
-3. `AGENTS.md` — Process protocol and code style rules
+1. `docs/philosophy.md` — How we build FSD: the tenets, the apex of the grounding (BPs derive from it)
+2. `docs/architecture/overview.md` — System architecture and package roles
+3. `docs/contributing/architecture-reference.md` — Locked contracts quick reference
+4. `AGENTS.md` — Process protocol and code style rules
 
 **Verifying flow changes**: When you change flow logic, the default verification is `fsdev run` (see `AGENTS.md` → "Verifying flow changes during development"). Reach for `pnpm test` only for unit-level changes; reach for kitchen-sink in a browser only for UI-layer changes.
 
@@ -164,7 +165,8 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `debug-flow`              | Debug flow execution via CLI traces and NDJSON logs        |
 | `linear-triage`           | Review and prioritize Linear issues                        |
 | `plan-day`                | Identify unblocked tasks and generate a daily work plan    |
-| `distill-lessons`         | Reflect on reworked/reviewed work, extract transferable lessons, propose best-practice updates |
+| `distill-lessons`         | Self-improvement engine: measure the loop (auto-derived cycle-ledger) and push the smallest upstream fix for a recurring rework class |
+| `audit-coherence`         | Sweep the codebase for incoherence (conflicting patterns, philosophy drift, gaps); feeds pruning + grounding refinement |
 
 
 ### Development skills
@@ -205,11 +207,12 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 
 ## Authority Hierarchy
 
-1. `docs/architecture/*` — Reference docs
-2. `docs/contributing/best-practices.md` — Implementation standards
-3. `AGENTS.md` — Process protocol
+1. `docs/philosophy.md` — How we think about building FSD (the apex; the tenets BPs derive from)
+2. `docs/architecture/*` — Reference docs
+3. `docs/contributing/best-practices.md` — Implementation standards
+4. `AGENTS.md` — Process protocol
 
-If docs conflict, the more specific reference wins (e.g. `docs/architecture/streaming.md` over a general statement in `overview.md`).
+If docs conflict, the more specific reference wins (e.g. `docs/architecture/streaming.md` over a general statement in `overview.md`). Where code and grounding are incoherent and no doc disambiguates, that is a philosophy gap — surface it (`fsd:audit-coherence`), don't route around it.
 
 ## Commands
 

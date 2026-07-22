@@ -307,6 +307,15 @@ Review notes folded in: spec-review feedback splits directional (fold in) vs
 in-the-weeds (leave as implementer notes); the throwaway spec PR hosts full examples;
 philosophy scopes framework-vs-labs; "align as you go" made explicit given current
 known bloat/incoherence.
+WS-5: new `audit-coherence` skill (standalone; three kinds — code-conflict /
+philosophy-drift / philosophy-gap).
+WS-6: `distill-lessons` reframed into the self-improvement engine — auto-derived
+cycle-ledger (rounds + feedback classes from GitHub/Linear), metric = rounds &
+design-off trending down, unit = recurring class, smallest-upstream-fix preference.
+WS-7 (started): philosophy wired into the always-loaded surfaces — `CLAUDE.md`
+orientation + authority hierarchy, `AGENTS.md` startup reads + authority order, skills
+table. **Remaining WS-7: the BP tone-down** (prune the 39 granular BPs to a lean
+universal core + established set), which needs user judgment per-BP.
 
 ## 7. Verification (how we'll know it worked)
 
