@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-22
 **Branch:** `claude/dev-process-improvement-6irwyn`
-**Status:** DRAFT — for review. No skill/doc files changed yet.
+**Status:** IN PROGRESS — one PR (docs-only). WS-1 (philosophy) drafted; grilling
+through the remaining workstreams with the user.
 
 > This is the blueprint. It proposes the target system and the sequence to get
 > there. Nothing below is built yet — the point is to agree the *shape* before
@@ -269,15 +270,22 @@ improvement loop has data by the time we build it.
 This design doc is itself the dogfood case: it should read at the altitude WS-2
 prescribes.
 
-## 6. Open questions for you
+## 6. Decisions (resolved)
 
-1. **Philosophy sourcing** — strawman-then-grill (my default), interview-first, or
-   draft-only-you-edit?
-2. **Delivery** — sequenced PRs off this doc (my default), one foundation PR, or
-   one big PR?
-3. **Spec modes** — one skill with an interactivity dial (my default), two skills,
-   or default + `grill-me`?
-4. Anything in §1 you'd dispute, or a workstream you'd cut / reprioritize?
+- **Delivery:** one PR (docs-only revamp).
+- **Philosophy sourcing:** strawman-then-grill; the user stays involved (grill) through
+  *every* workstream, not just philosophy.
+- **Spec modes:** one `create-spec` with an interactivity dial (default = key decisions
+  up front, then draft; `--interactive` = pause at each load-bearing decision).
+- **Chief enemy → apex tenet:** incoherence, with bloat the close second; the philosophy
+  frames them as one enemy on two timescales.
+- **Framework/app boundary:** balanced — absorb what most apps need, opinionated
+  defaults OK, escape hatch for the long tail.
+- **Tenet collisions:** surface the tradeoff to a human; never average or pick silently.
+- **Composition** is its own tenet; a **doc/code disagreement** is surfaced as a
+  coherence gap, not auto-ranked.
+
+Drafted: `docs/philosophy.md` (WS-1) — 7 tenets, coherence-apex.
 
 ## 7. Verification (how we'll know it worked)
 
