@@ -36,8 +36,13 @@ import {
  */
 export const DELEGATION_BOARD_FIELD = "delegationBoard";
 
-/** Schema for the delegation board field (a `Record<taskId, Task>`). */
-export const delegationBoardSchema = z.record(z.string(), taskSchema);
+/**
+ * Schema for the delegation board field (a `Record<taskId, Task>`). Defaults to
+ * `{}` so the engine's empty-parse own-state seeding (`stateSchema.safeParse({})`)
+ * creates the board — without the default the host state initializes to `{}`,
+ * the field is absent, and the first task tool call reports `no_delegation_board`.
+ */
+export const delegationBoardSchema = z.record(z.string(), taskSchema).default({});
 
 /** Resolves the live TaskCollection a `taskTools` handler mutates. */
 export type TaskCollectionResolver = (
@@ -69,6 +74,10 @@ export const defaultOwnStateResolver: TaskCollectionResolver = async (ctx) => {
     stateKey: DELEGATION_BOARD_FIELD,
     collectionId: DELEGATION_BOARD_FIELD,
     ctx,
+    // Ledger changes drive the client's plan UI but stay out of the LLM
+    // history — the tools' return values already carry the signal. Matches
+    // the runBoard drain's visibility so both paths to this board agree.
+    changeVisibility: { client: true, history: false },
   });
 };
 
@@ -115,6 +124,10 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
       assignee: z.string().optional(),
       deps: z.array(z.string()).optional(),
       priority: z.number().optional(),
+      input: z
+        .unknown()
+        .optional()
+        .describe("Structured payload handed to the worker as the task's input."),
       metadata: z.record(z.string(), z.unknown()).optional(),
     }),
     outputSchema: z.union([
@@ -130,6 +143,7 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
         ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
         ...(input.deps !== undefined ? { deps: input.deps } : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.input !== undefined ? { input: input.input } : {}),
         ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
       });
       return { ok: true as const, taskId: task.id };

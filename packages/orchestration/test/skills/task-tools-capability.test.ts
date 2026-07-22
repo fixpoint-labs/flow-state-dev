@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
+import { z } from "zod";
 import {
   taskTools,
   createTaskToolsCapability,
+  delegationBoardSchema,
   DELEGATION_BOARD_FIELD,
 } from "../../src/skills/task-tools-capability";
 import type { GeneratorTool } from "@flow-state-dev/core";
@@ -24,9 +26,16 @@ function buildDelegationCtx(opts: { preTasks?: Record<string, unknown> } = {}) {
     get state() {
       return parentState;
     },
-    atomicState: async <T>(
-      fn: (state: Record<string, unknown>) => Promise<T> | T,
-    ): Promise<T> => fn(parentState),
+    // Mirrors the real StateRef contract: the mutator returns a partial patch
+    // that is merged into the state (not an in-place mutation).
+    atomicState: async (
+      fn: (
+        state: Record<string, unknown>,
+      ) => Promise<Record<string, unknown>> | Record<string, unknown>,
+    ): Promise<void> => {
+      const patch = await fn(parentState);
+      Object.assign(parentState, patch);
+    },
     patchState: async (updates: Record<string, unknown>) => {
       Object.assign(parentState, updates);
     },
@@ -111,12 +120,42 @@ describe("taskTools capability", () => {
   });
 });
 
+describe("delegation board state slot", () => {
+  it("initializes from an empty parse, so the board exists on first use", () => {
+    // The engine seeds a block's initial own state via `stateSchema.safeParse({})`
+    // (see engine route-utils). Without a field default that parse fails, the
+    // state starts as `{}`, and the first addTask hits `no_delegation_board`
+    // even though the binding declared the board.
+    const hostSchema = z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSchema });
+    const parsed = hostSchema.safeParse({});
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data).toEqual({ [DELEGATION_BOARD_FIELD]: {} });
+  });
+});
+
 describe("taskTools — happy paths (own-state board)", () => {
   it("addTask creates a task on the delegation board", async () => {
     const ctx = buildDelegationCtx();
     const result = await runForTest(findTool("addTask"), { goal: "write report" }, ctx);
     expect((result as { ok: boolean }).ok).toBe(true);
     expect((result as { taskId: string }).taskId).toMatch(/^task_/);
+  });
+
+  it("addTask stores a structured input payload on the task", async () => {
+    const ctx = buildDelegationCtx();
+    const result = await runForTest(
+      findTool("addTask"),
+      { goal: "analyze", assignee: "analyst", input: { subject: "ACME" } },
+      ctx,
+    );
+    expect((result as { ok: boolean }).ok).toBe(true);
+    const taskId = (result as { taskId: string }).taskId;
+    const board = (
+      (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
+        DELEGATION_BOARD_FIELD
+      ] as Record<string, { input?: unknown }>
+    );
+    expect(board[taskId]?.input).toEqual({ subject: "ACME" });
   });
 
   it("listTasks returns the seeded board entries", async () => {

@@ -153,6 +153,27 @@ describe("createRunSkillTool — inline mode", () => {
     );
   });
 
+  it("rejects a persisted pre-FIX-918 non-inline manifest with migration guidance", async () => {
+    // A collection seeded before FIX-918 can still carry `contextMode:
+    // "pattern"` / `"fork"` manifests. Activating one through the inline path
+    // would ack success while the binding reader skips the non-inline body —
+    // a silent no-op. It must fail loud with the same migration guidance a
+    // fresh SKILL.md parse gets.
+    const c = createMockSkillsCollection();
+    c._store.set("skills/legacy/SKILL.md", {
+      name: "skills/legacy/SKILL.md",
+      state: { description: "legacy pattern skill", contextMode: "pattern" },
+      content: `---\ndescription: legacy pattern skill\n---\n\nbody`,
+    });
+    const tool = createRunSkillTool({
+      collectionKey: "skills",
+      catalog: {},
+    });
+    await expect(runForTest(tool, { name: "legacy" }, buildCtx(c))).rejects.toThrow(
+      /removed|workers:/,
+    );
+  });
+
   it("rejects skills with disable-model-invocation: true", async () => {
     const c = createMockSkillsCollection();
     c._store.set("skills/private/SKILL.md", {

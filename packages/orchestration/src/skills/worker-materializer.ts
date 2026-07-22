@@ -62,8 +62,12 @@ export interface WorkerMaterializationDeps {
   materializeAgent?: MaterializeAgentFn;
   /** Skill name — used for the board-mode block name. */
   skillName: string;
-  /** Skill resource collection — supports `prompt-ref` reads. */
-  skillCollection: ResourceCollectionRef;
+  /**
+   * Skill resource collection — supports `prompt-ref` reads. Optional: a
+   * caller that pre-resolves prompt bodies (bundled skill files) may omit it;
+   * a `prompt-ref` worker that still needs a read fails with a clear message.
+   */
+  skillCollection?: ResourceCollectionRef;
   /** Default model id when a worker omits its own `model`. */
   defaultModelId?: string;
   /** Activation input ($ARGUMENTS substitution context). */
@@ -102,10 +106,8 @@ export type WorkerMaterializeMode = "direct" | "board";
 
 /**
  * Build the direct-call (single-shot) worker generator from an already-resolved
- * prompt body. Shared by the async `materializeWorker` and the synchronous
- * build-time `buildDirectWorkerTool` (used by `createSkillsLibrary`'s resolver,
- * which is pure and cannot await). The tool is named by the bare worker key and
- * exposes the minimal LLM-facing `{ input }` schema.
+ * prompt body. The tool is named by the bare worker key and exposes the
+ * minimal LLM-facing `{ input }` schema.
  */
 function buildDirectWorkerGenerator(params: {
   workerKey: string;
@@ -134,72 +136,6 @@ function buildDirectWorkerGenerator(params: {
     maxIterations: 12,
     ...(params.usesTaskTools ? { uses: [params.taskToolsCap] as const } : {}),
   }) as unknown as BlockDefinition;
-}
-
-/**
- * Synchronous direct-call worker-tool builder for the delegation surface's
- * build-time path. Handles `prompt` (and `promptRef` when its body is
- * pre-resolved by the caller from bundled skill files) and `block-ref`.
- * `agent-ref` requires async registry resolution and is therefore only
- * available through {@link materializeWorker}; the delegation surface rejects
- * it at bind time with a clear message.
- */
-export function buildDirectWorkerTool(
-  workerKey: string,
-  spec: WorkerSpec,
-  deps: {
-    catalog: ToolCatalog;
-    blocks?: Record<string, BlockDefinition>;
-    skillName: string;
-    /** Pre-resolved prompt body (required for `prompt-ref` workers). */
-    resolvedPrompt?: string;
-    defaultModelId?: string;
-    input?: string;
-    boardTaskTools?: DefinedCapability;
-    description?: string;
-  },
-): BlockDefinition {
-  if (spec.blockRef !== undefined) {
-    const registry = deps.blocks ?? {};
-    const block = registry[spec.blockRef];
-    if (!block) {
-      const available = Object.keys(registry).join(", ") || "(empty)";
-      throw new Error(
-        `Worker '${workerKey}': block-ref '${spec.blockRef}' not found in block registry. Available: ${available}`,
-      );
-    }
-    return block;
-  }
-  if (spec.agentRef !== undefined) {
-    throw new Error(
-      `Worker '${workerKey}': agent-ref delegation workers are not supported here — ` +
-        `agent resolution is async. Use a \`prompt\`/\`prompt-ref\` worker, or expose the ` +
-        `agent as a catalog block referenced via \`block-ref\`.`,
-    );
-  }
-  const body = spec.prompt ?? deps.resolvedPrompt;
-  if (body === undefined) {
-    throw new Error(
-      `Worker '${workerKey}': no prompt body resolved (expected inline \`prompt\` or a resolved \`prompt-ref\`)`,
-    );
-  }
-  const substituted = substitute(body, { arguments: deps.input ?? "" });
-  const usesTaskTools = spec.tools?.includes("taskTools") ?? false;
-  const taskToolsCap = deps.boardTaskTools ?? taskToolsCapability;
-  const catalogToolKeys = spec.tools?.filter((t) => t !== "taskTools");
-  const tools = resolveTools(workerKey, catalogToolKeys, deps.catalog);
-  const modelId = spec.model ?? deps.defaultModelId ?? "intent/chat";
-  return buildDirectWorkerGenerator({
-    workerKey,
-    skillName: deps.skillName,
-    body: substituted,
-    modelId,
-    tools,
-    itemVisibility: spec.itemVisibility,
-    usesTaskTools,
-    taskToolsCap,
-    ...(deps.description !== undefined ? { description: deps.description } : {}),
-  });
 }
 
 export interface MaterializeWorkerOptions {
@@ -234,6 +170,21 @@ export async function materializeWorker(
       const available = Object.keys(registry).join(", ") || "(empty)";
       throw new Error(
         `Worker '${workerKey}': block-ref '${spec.blockRef}' not found in block registry. Available: ${available}`,
+      );
+    }
+    // Direct mode exposes the block under its OWN name as a model-facing
+    // tool. The roster, collision checks, and guidance all use the worker
+    // key, so a mismatch would tell the model to call a tool that doesn't
+    // exist. Fail loud rather than register a mis-named tool. (Board mode is
+    // exempt — there the assignee key routes, the block name never faces the
+    // model.)
+    const blockName = (block as { config?: { name?: string }; name?: string }).config?.name ??
+      (block as { name?: string }).name;
+    if (mode === "direct" && blockName !== workerKey) {
+      throw new Error(
+        `Worker '${workerKey}': block-ref '${spec.blockRef}' resolves to a block named ` +
+          `'${blockName}'. A direct-call worker tool is registered under the block's own ` +
+          `name, so the worker key and block name must match — rename one of them.`,
       );
     }
     return block;
@@ -335,6 +286,12 @@ async function resolvePromptBody(
   // on every WorkerSpec, and the caller has already dispatched block-ref /
   // agent-ref branches before reaching here.
   const promptRef = spec.promptRef!;
+  if (!deps.skillCollection) {
+    throw new Error(
+      `Worker '${workerKey}': prompt-ref '${promptRef}' needs the skills collection to ` +
+        `read from, but none was supplied (and the body was not pre-resolved from bundled files)`,
+    );
+  }
   const key = skillFileKey(deps.skillName, promptRef);
   const ref = await deps.skillCollection.getOptional(key);
   if (!ref) {

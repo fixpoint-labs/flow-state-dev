@@ -57,10 +57,14 @@ import {
 } from "./collection";
 import { buildLoadCatalogContext, createLoadSkillTool } from "./load-tool";
 import { parseSkillMd, validateSkillName } from "./skill-md";
-import { stripFrontmatter } from "./internal/strip-frontmatter";
-import { buildDirectWorkerTool } from "./worker-materializer";
 import {
-  buildTaskToolsList,
+  buildDelegationGuidance,
+  buildDelegationTools,
+  RUN_BOARD_TOOL_NAME,
+  type DelegationSurfaceDeps,
+  type DelegationWorkerSource,
+} from "./delegation-surface";
+import {
   DELEGATION_BOARD_FIELD,
   delegationBoardSchema,
 } from "./task-tools-capability";
@@ -110,6 +114,17 @@ export interface SkillsLibraryOptions {
    * Falls back to a neutral default when omitted.
    */
   workerModelId?: string;
+  /**
+   * Agent registry for delegation workers declared with `agent-ref:`. Workers
+   * materialize at runtime (the tool surface resolves async), so registry
+   * lookups can await. A statically-`active` skill with an `agent-ref` worker
+   * and no registry fails loud at build time.
+   */
+  agentRegistry?: import("@flow-state-dev/core").AgentRegistry;
+  /** Turns a resolved Agent into a worker generator (pairs with `agentRegistry`). */
+  materializeAgent?: import("@flow-state-dev/core").MaterializeAgentFn;
+  /** Optional capability catalog forwarded to `materializeAgent`. */
+  capabilityCatalog?: Record<string, DefinedCapability>;
 }
 
 /** The per-generator binding configuration (`skills.with({ ... })`). */
@@ -396,81 +411,139 @@ export function createSkillsLibrary(
     // -----------------------------------------------------------------------
     // Delegation (FIX-918) — derived from a bound skill's `workers:`.
     // -----------------------------------------------------------------------
-    // A statically-`active` skill that declares `workers:` installs the
-    // delegation surface: a private own-state task board, the `taskTools`
-    // ledger, one direct-call tool per worker, and (unless opted out) a
-    // guidance context. `delegation: false` force-suppresses it.
+    // A bound skill that declares `workers:` installs the delegation surface:
+    // a private own-state task board, the `taskTools` ledger, one direct-call
+    // tool per worker, the `runBoard` drain, and (unless opted out) a guidance
+    // context. `delegation: false` force-suppresses it.
+    //
+    // Workers materialize at RUNTIME: the contributed tool surface is an async
+    // function the generator resolves per execution with its full context, so
+    // `agent-ref` workers (async registry lookups) and runtime-activated
+    // worker skills are first-class. Static wiring errors still fail loud at
+    // build time via the validation pass below.
     const delegationOn = cfg.delegation !== false;
-    const activeWorkerSkills = delegationOn
+    const staticWorkerSkills = delegationOn
       ? active
           .map((name) => ({ name, entry: index.get(name)! }))
           .filter((s) => s.entry.workers && Object.keys(s.entry.workers).length > 0)
       : [];
 
-    // Own-state can't be added mid-run, so the board field must be declared for
-    // any binding that *might* later resolve a worker-declaring skill:
-    //  - a statically-active worker skill (below), or
-    //  - whole-catalog dynamic activation, where a runtime-loaded skill could
-    //    declare workers (pre-declare an empty board; harmless if unused).
-    const wholeCatalogDynamic = dynamic && !cfg.allowed;
-    const needsBoard =
-      delegationOn && (activeWorkerSkills.length > 0 || wholeCatalogDynamic);
-    if (needsBoard) {
-      ownStateFields[DELEGATION_BOARD_FIELD] = delegationBoardSchema;
-    }
-
-    if (activeWorkerSkills.length > 0) {
-      // taskTools ledger (own-state board via ctx.parent).
-      tools.push(...(buildTaskToolsList() as GeneratorTool[]));
-
-      // One direct-call tool per declared worker. Fail loud at bind time on a
-      // name collision with taskTools, a catalog tool, or another worker — the
-      // runtime rejects duplicate model-facing tool names.
-      const seen = new Set<string>([...TASK_TOOL_NAMES, ...Object.keys(catalog)]);
-      const rosterLines: string[] = [];
-      for (const { name: skillName, entry } of activeWorkerSkills) {
-        for (const [workerKey, spec] of Object.entries(entry.workers!)) {
-          if (seen.has(workerKey)) {
-            throw new Error(
-              `skills: delegation worker "${workerKey}" (skill "${skillName}") collides ` +
-                `with an existing tool name (a taskTools handler, a catalog tool, or another ` +
-                `worker). Rename the worker key.`,
-            );
-          }
-          seen.add(workerKey);
-          const resolvedPrompt = resolveWorkerPrompt(skillName, workerKey, spec, entry.files);
-          tools.push(
-            buildDirectWorkerTool(workerKey, spec, {
-              catalog,
-              skillName,
-              ...(options.blocks ? { blocks: options.blocks } : {}),
-              ...(resolvedPrompt !== undefined ? { resolvedPrompt } : {}),
-              ...(options.workerModelId !== undefined
-                ? { defaultModelId: options.workerModelId }
-                : {}),
-            }) as GeneratorTool,
+    // Build-time validation for the static set — collisions and missing
+    // wiring surface here, not mid-request.
+    const reservedToolNames: ReadonlySet<string> = new Set<string>([
+      ...TASK_TOOL_NAMES,
+      RUN_BOARD_TOOL_NAME,
+      ...Object.keys(catalog),
+    ]);
+    const seenWorkerNames = new Set<string>(reservedToolNames);
+    for (const { name: skillName, entry } of staticWorkerSkills) {
+      for (const [workerKey, spec] of Object.entries(entry.workers!)) {
+        if (seenWorkerNames.has(workerKey)) {
+          throw new Error(
+            `skills: delegation worker "${workerKey}" (skill "${skillName}") collides ` +
+              `with an existing tool name (a taskTools handler, ${RUN_BOARD_TOOL_NAME}, a ` +
+              `catalog tool, or another worker). Rename the worker key.`,
           );
-          rosterLines.push(`- ${workerKey}: ${workerPurpose(spec)}`);
+        }
+        seenWorkerNames.add(workerKey);
+        if (
+          spec.agentRef !== undefined &&
+          (!options.agentRegistry || !options.materializeAgent)
+        ) {
+          throw new Error(
+            `skills: delegation worker "${workerKey}" (skill "${skillName}") uses ` +
+              `agent-ref "${spec.agentRef}", but createSkillsLibrary() was given no ` +
+              `\`agentRegistry\`/\`materializeAgent\` to resolve it with.`,
+          );
+        }
+        if (spec.promptRef !== undefined && !hasBundledFile(entry.files, spec.promptRef)) {
+          throw new Error(
+            `skills: delegation worker "${workerKey}" (skill "${skillName}") declares ` +
+              `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
+          );
+        }
+        if (spec.blockRef !== undefined && !(options.blocks ?? {})[spec.blockRef]) {
+          const available = Object.keys(options.blocks ?? {}).join(", ") || "(empty)";
+          throw new Error(
+            `skills: delegation worker "${workerKey}" (skill "${skillName}") declares ` +
+              `block-ref "${spec.blockRef}", which is not in the \`blocks\` registry. ` +
+              `Available: ${available}`,
+          );
         }
       }
+    }
 
-      // Guidance context — the uniform "how to delegate" playbook + live roster.
-      if (cfg.guidance !== false) {
-        contextEntries.push(buildDelegationGuidance(rosterLines));
-      }
+    // Runtime activations can bring workers too: whole-catalog mode admits any
+    // bundled (or later-imported) skill, an `allowed` list only its entries.
+    // Own-state can't be added mid-run, so the board field is pre-declared for
+    // any binding that MIGHT resolve a worker-declaring skill (harmless if
+    // unused — it defaults to an empty record).
+    const dynamicWorkerEligible =
+      hasActivationPath &&
+      (cfg.allowed
+        ? cfg.allowed.some((name) => {
+            const entry = index.get(name);
+            return Boolean(entry?.workers && Object.keys(entry.workers).length > 0);
+          })
+        : true);
+    const delegationPossible =
+      delegationOn && (staticWorkerSkills.length > 0 || dynamicWorkerEligible);
+    if (delegationPossible) {
+      ownStateFields[DELEGATION_BOARD_FIELD] = delegationBoardSchema;
     }
 
     if (Object.keys(ownStateFields).length > 0) {
       contributions.stateSchema = z.object(ownStateFields);
     }
 
-    // Group the reader + catalog under a single `<skills>` tag.
-    contributions.context = [{ skills: contextEntries } as never];
-    if (tools.length > 0) {
+    if (delegationPossible) {
+      const surfaceDeps: DelegationSurfaceDeps = {
+        catalog,
+        ...(options.blocks ? { blocks: options.blocks } : {}),
+        ...(options.agentRegistry ? { agentRegistry: options.agentRegistry } : {}),
+        ...(options.materializeAgent
+          ? { materializeAgent: options.materializeAgent }
+          : {}),
+        ...(options.capabilityCatalog
+          ? { capabilityCatalog: options.capabilityCatalog }
+          : {}),
+        ...(options.workerModelId !== undefined
+          ? { defaultModelId: options.workerModelId }
+          : {}),
+        collectionKey,
+        location,
+        staticSources: staticWorkerSkills.map(
+          ({ name, entry }): DelegationWorkerSource => ({
+            skillName: name,
+            workers: entry.workers!,
+            ...(entry.files ? { files: entry.files } : {}),
+          }),
+        ),
+        bundledWorkerIndex: buildBundledWorkerIndex(index),
+        ...(cfg.allowed ? { allowedNames: cfg.allowed } : {}),
+        dynamicEligible: dynamicWorkerEligible,
+        reservedToolNames,
+      };
+      // Static tools (catalog superset + load tool) are known now; the worker
+      // tools, taskTools, and runBoard resolve per execution.
+      const staticTools = [...new Set(tools)];
+      contributions.tools = (async (blockCtx) => [
+        ...staticTools,
+        ...(await buildDelegationTools(blockCtx as never, surfaceDeps)),
+      ]) as PresetDef["tools"];
+      // Guidance context — the "how to delegate" playbook + live roster,
+      // resolved at render time so runtime activations appear too.
+      if (cfg.guidance !== false) {
+        contextEntries.push(buildDelegationGuidance(surfaceDeps) as never);
+      }
+    } else if (tools.length > 0) {
       // De-dupe by identity so a tool declared by both `active` and `allowed`
       // is contributed once.
       contributions.tools = [...new Set(tools)];
     }
+
+    // Group the reader + catalog under a single `<skills>` tag.
+    contributions.context = [{ skills: contextEntries } as never];
     return contributions;
   };
 
@@ -494,63 +567,28 @@ export function createSkillsLibrary(
 // Delegation helpers (FIX-918)
 // ---------------------------------------------------------------------------
 
-/**
- * Resolve a worker's prompt body at build time. Inline `prompt` returns as-is;
- * `prompt-ref` is read from the skill's bundled files (the resolver is pure and
- * cannot read the runtime skill collection). Returns `undefined` for
- * `block-ref`/`agent-ref` workers (no prompt body).
- */
-function resolveWorkerPrompt(
-  skillName: string,
-  workerKey: string,
-  spec: WorkerSpec,
-  files: SkillFile[] | undefined,
-): string | undefined {
-  if (spec.prompt !== undefined) return spec.prompt;
-  if (spec.promptRef === undefined) return undefined;
-  const wanted = spec.promptRef.replace(/^\.\//, "").replace(/^\//, "");
-  const file = (files ?? []).find(
+/** Whether a skill's bundled files contain the given `prompt-ref` path. */
+function hasBundledFile(files: SkillFile[] | undefined, ref: string): boolean {
+  const wanted = ref.replace(/^\.\//, "").replace(/^\//, "");
+  return (files ?? []).some(
     (f) => f.path === wanted || f.path.replace(/^\.\//, "") === wanted,
   );
-  if (!file) {
-    throw new Error(
-      `skills: delegation worker "${workerKey}" (skill "${skillName}") declares ` +
-        `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
-    );
-  }
-  return stripFrontmatter(file.content);
 }
-
-/** One-line worker purpose for the roster, derived from its declaration. */
-function workerPurpose(spec: WorkerSpec): string {
-  if (spec.agentRef) return `agent \`${spec.agentRef}\``;
-  if (spec.blockRef) return `block \`${spec.blockRef}\``;
-  const body = spec.prompt;
-  if (body) {
-    const firstLine = body.split("\n").map((l) => l.trim()).find(Boolean);
-    if (firstLine) return firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
-  }
-  return "a delegated worker";
-}
-
-/** The static delegation playbook, prefixed to the live worker roster. */
-const DELEGATION_PLAYBOOK = [
-  "You can delegate work. You have a private task board and one tool per worker.",
-  "To hand off a unit of work, call the matching worker tool and use the result it returns.",
-  "Nothing runs tasks automatically — you drive the work by calling workers yourself.",
-  "For a multi-step plan, track it with the task tools (addTask/listTasks/completeTask).",
-  "Synthesize the workers' results into your own answer.",
-].join(" ");
 
 /**
- * Build the delegation guidance context — the static playbook plus the live
- * worker roster. A plain string context entry (the roster is known at build
- * time from the active skills' `workers:` maps).
+ * Project the bundled index down to worker-declaring skills, so a runtime
+ * activation of a bundled skill materializes without a manifest read.
  */
-function buildDelegationGuidance(rosterLines: string[]): string {
-  const roster =
-    rosterLines.length > 0
-      ? ["", "Your workers:", ...rosterLines].join("\n")
-      : "";
-  return `${DELEGATION_PLAYBOOK}${roster}`;
+function buildBundledWorkerIndex(
+  index: Map<string, IndexedSkill>,
+): Map<string, { workers: Record<string, WorkerSpec>; files?: SkillFile[] }> {
+  const out = new Map<string, { workers: Record<string, WorkerSpec>; files?: SkillFile[] }>();
+  for (const [name, entry] of index) {
+    if (!entry.workers || Object.keys(entry.workers).length === 0) continue;
+    out.set(name, {
+      workers: entry.workers,
+      ...(entry.files ? { files: entry.files } : {}),
+    });
+  }
+  return out;
 }

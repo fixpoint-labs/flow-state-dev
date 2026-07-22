@@ -22,7 +22,9 @@ async function resolveTools(
   ctx: unknown,
 ): Promise<Array<{ name: string; execute?: Function; config?: { execute?: Function } }>> {
   const tools = (gen.config as { tools?: unknown }).tools;
-  if (typeof tools === "function") return (await (tools as Function)(ctx)) ?? [];
+  // The merged resolver has the generator's dynamic-tools signature
+  // `(input, ctx)`; capability-contributed entries receive `ctx`.
+  if (typeof tools === "function") return (await (tools as Function)(undefined, ctx)) ?? [];
   return (tools as never[]) ?? [];
 }
 

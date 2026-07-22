@@ -168,6 +168,18 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
         );
       }
 
+      // A manifest persisted before FIX-918 can still carry a non-inline
+      // contextMode. Activating it inline would ack success while the reader
+      // skips the body — fail loud with the same migration guidance a fresh
+      // SKILL.md parse gets, instead of silently doing nothing.
+      if (state.contextMode !== undefined && state.contextMode !== "inline") {
+        throw new Error(
+          `Skill "${input.name}" was stored with \`context: ${state.contextMode}\`, ` +
+            `which was removed (FIX-918). Re-import the skill: declare \`workers:\` for ` +
+            `delegation, or expose a task-board/goalSeekLoop block as an allowed tool.`,
+        );
+      }
+
       // Inline is the only mode. Adapt input shape and pass output through as
       // the router's output (it already matches the inline ack shape).
       return inlineActivate.connectInput(

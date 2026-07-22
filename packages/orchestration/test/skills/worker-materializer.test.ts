@@ -149,9 +149,30 @@ describe("materializeWorker — block-ref branch", () => {
   it("returns the registered block when block-ref matches", async () => {
     const blockDef = { kind: "handler", name: "custom" } as never;
     const block = await materializeWorker(
+      "custom",
+      { blockRef: "custom" },
+      deps({ blocks: { custom: blockDef } }),
+    );
+    expect(block).toBe(blockDef);
+  });
+
+  it("direct mode rejects a block whose name differs from the worker key", async () => {
+    // The direct-call tool registers under the block's own name while the
+    // roster/collision checks use the worker key — a mismatch would tell the
+    // model to call a tool that doesn't exist.
+    const blockDef = { kind: "handler", name: "custom" } as never;
+    await expect(
+      materializeWorker("vet", { blockRef: "custom" }, deps({ blocks: { custom: blockDef } })),
+    ).rejects.toThrow(/worker key and block name must match/);
+  });
+
+  it("board mode allows a block name differing from the worker key (assignee routes)", async () => {
+    const blockDef = { kind: "handler", name: "custom" } as never;
+    const block = await materializeWorker(
       "vet",
       { blockRef: "custom" },
       deps({ blocks: { custom: blockDef } }),
+      { mode: "board" },
     );
     expect(block).toBe(blockDef);
   });
